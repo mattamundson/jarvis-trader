@@ -23,7 +23,6 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Literal, Optional
 
-import anthropic
 import httpx
 from anthropic import APIConnectionError, APIStatusError, RateLimitError
 from tenacity import (
@@ -34,6 +33,7 @@ from tenacity import (
 )
 
 from .cost_tracker import CostTracker
+from .provider_factory import get_anthropic_client, to_vertex_model_id
 
 try:
     from utils.token_proxy import get_token_proxy
@@ -139,6 +139,13 @@ class JarvisLLMClient:
         "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
         "deepseek-reasoner": {"input": 0.55, "output": 2.19},
         "hermes3:latest": {"input": 0.0, "output": 0.0},
+        # Claude-on-Vertex @-pinned ids — same list price as direct Anthropic.
+        # [UNVERIFIED] confirm against the live catalog (Vertex integration
+        # Task 1). Cost is normally keyed on the direct alias (see call()), so
+        # these are defensive: a translated id never trips "Unknown model".
+        "claude-opus-4-1@20250805": {"input": 15.0, "output": 75.0},
+        "claude-sonnet-4-5@20250929": {"input": 3.0, "output": 15.0},
+        "claude-haiku-4-5@20251001": {"input": 0.80, "output": 4.0},
     }
 
     # Model fallback chain when overloaded
@@ -244,9 +251,13 @@ class JarvisLLMClient:
                     logger.warning(
                         f"OLLAMA_NUM_CTX_PER_AGENT: invalid value '{ctx_str}' for agent '{agent}' — skipped"
                     )
-        self.client = (
-            None if self.provider == "ollama" else anthropic.AsyncAnthropic(api_key=api_key)
-        )
+        # Provider-aware client construction (Vertex integration 2026-06-02):
+        #   ollama -> None; "vertex" -> AsyncAnthropicVertex (ADC auth, no key);
+        #   else -> AsyncAnthropic. The Vertex client exposes the identical
+        #   .messages.create() interface, so the downstream call path is
+        #   unchanged — only the model id is translated at the wire (see
+        #   _call_with_retry).
+        self.client = get_anthropic_client(api_key=api_key, provider=self.provider)
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
         self.fast_model = (
@@ -277,6 +288,30 @@ class JarvisLLMClient:
         self.deepseek_endpoint = os.getenv(
             "DEEPSEEK_ENDPOINT", "https://api.deepseek.com/v1/chat/completions"
         ).strip()
+
+        # Vertex shadow mode (Vertex integration 2026-06-02): when
+        # JARVIS_LLM_VERTEX_SHADOW=1 AND the primary provider is NOT vertex,
+        # build a second Vertex-backed client and fire a parallel call after
+        # each successful primary Anthropic call — purely to log a
+        # latency/length comparison. It never affects the returned result or the
+        # trading decision. Silently disabled if the Vertex client can't be
+        # built (e.g. ADC not configured yet), so it's safe to enable early.
+        self.vertex_shadow_enabled = os.getenv(
+            "JARVIS_LLM_VERTEX_SHADOW", "0"
+        ).strip().lower() in {"1", "true", "yes", "on"} and self.provider not in {
+            "ollama",
+            "vertex",
+        }
+        self._shadow_vertex_client = None
+        self.vertex_shadow_count = 0
+        if self.vertex_shadow_enabled:
+            try:
+                self._shadow_vertex_client = get_anthropic_client(provider="vertex")
+            except Exception as exc:
+                logger.warning(
+                    "vertex shadow disabled — could not build Vertex client: %s", exc
+                )
+                self.vertex_shadow_enabled = False
 
         google_status = (
             "enabled"
@@ -644,7 +679,7 @@ class JarvisLLMClient:
                     temperature=temperature,
                     agent_name=agent_name,
                 )
-                return await self._handle_success(
+                primary = await self._handle_success(
                     result,
                     current_model,
                     start_time,
@@ -655,6 +690,18 @@ class JarvisLLMClient:
                     compressed_key=compressed_key,
                     cache_salt=cache_salt,
                 )
+                # Shadow only the real direct-Claude path (not Gemini-primary or
+                # cache hits) so the A/B compares like-for-like.
+                self._maybe_fire_vertex_shadow(
+                    current_model,
+                    system,
+                    working_messages,
+                    max_tokens,
+                    temperature,
+                    agent_name,
+                    primary,
+                )
+                return primary
 
             except RateLimitError as e:
                 last_error = e
@@ -792,6 +839,78 @@ class JarvisLLMClient:
         return await self._handle_failure(
             last_error, current_model, start_time, retries, agent_name, tier=tier
         )
+
+    def _maybe_fire_vertex_shadow(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        agent_name: str,
+        primary_result: LLMCallResult,
+    ) -> None:
+        """Fire-and-forget a parallel Vertex call for A/B comparison (shadow mode).
+
+        Non-blocking and fully isolated: scheduled as a background task and any
+        failure is swallowed, so the live (direct) path and the returned result
+        are never affected. No-op unless shadow mode built a Vertex client.
+        """
+        if self._shadow_vertex_client is None:
+            return
+        try:
+            asyncio.create_task(
+                self._run_vertex_shadow(
+                    model, system, messages, max_tokens, temperature, agent_name, primary_result
+                )
+            )
+        except RuntimeError:
+            # No running event loop (e.g. called from a sync context) — skip.
+            pass
+
+    async def _run_vertex_shadow(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        agent_name: str,
+        primary_result: LLMCallResult,
+    ) -> None:
+        """Execute the shadow Vertex call and log a divergence comparison line."""
+        try:
+            t0 = time.time()
+            vertex_model = to_vertex_model_id(model)
+            kwargs = {
+                "model": vertex_model,
+                "system": system,
+                "messages": messages,
+                "max_tokens": max_tokens,
+            }
+            if not _temperature_deprecated(model):
+                kwargs["temperature"] = temperature
+            vresult = await self._shadow_vertex_client.messages.create(**kwargs)
+            latency_ms = int((time.time() - t0) * 1000)
+            shadow_text = vresult.content[0].text if vresult.content else ""
+            primary_text = primary_result.content or ""
+            self.vertex_shadow_count += 1
+            logger.info(
+                "vertex_shadow agent=%s model=%s->%s primary_len=%d shadow_len=%d "
+                "primary_lat=%dms shadow_lat=%dms shadow_in=%d shadow_out=%d (n=%d)",
+                agent_name,
+                model,
+                vertex_model,
+                len(primary_text),
+                len(shadow_text),
+                primary_result.latency_ms,
+                latency_ms,
+                vresult.usage.input_tokens,
+                vresult.usage.output_tokens,
+                self.vertex_shadow_count,
+            )
+        except Exception as exc:
+            logger.warning("vertex_shadow failed agent=%s: %s", agent_name, exc)
 
     def _messages_to_ollama_prompt(self, system: str, messages: list[dict]) -> str:
         parts: list[str] = []
@@ -1006,8 +1125,12 @@ class JarvisLLMClient:
                 model=model,
             )
 
+        # Claude-on-Vertex serves under version-pinned model ids; translate the
+        # direct alias just for the wire call. Cost/logging stay keyed on the
+        # original alias (see call()), so provider switching is transparent.
+        api_model = to_vertex_model_id(model) if self.provider == "vertex" else model
         kwargs = {
-            "model": model,
+            "model": api_model,
             "system": system,
             "messages": messages,
             "max_tokens": max_tokens,
