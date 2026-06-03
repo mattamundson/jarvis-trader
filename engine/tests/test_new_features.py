@@ -612,18 +612,13 @@ class TestManagedAgentBridge:
     """Tests for Track H: Claude Managed Agents bridge."""
 
     def test_import(self):
-        try:
-            from engine.agents.managed_agent_bridge import ManagedAgentBridge
+        from engine.agents.managed_agent_bridge import ManagedAgentBridge
 
-            assert ManagedAgentBridge is not None
-        except ImportError:
-            pytest.skip("ManagedAgentBridge not yet implemented")
+        assert ManagedAgentBridge is not None
 
     def test_get_status_returns_expected_keys(self):
-        try:
-            from engine.agents.managed_agent_bridge import ManagedAgentBridge
-        except ImportError:
-            pytest.skip("ManagedAgentBridge not yet implemented")
+        from engine.agents.managed_agent_bridge import ManagedAgentBridge
+
         bridge = ManagedAgentBridge()
         status = bridge.get_status()
         assert "managed_mode" in status
@@ -631,10 +626,8 @@ class TestManagedAgentBridge:
         assert "env_var" in status
 
     def test_inactive_by_default_without_env_var(self):
-        try:
-            from engine.agents.managed_agent_bridge import ManagedAgentBridge
-        except ImportError:
-            pytest.skip("ManagedAgentBridge not yet implemented")
+        from engine.agents.managed_agent_bridge import ManagedAgentBridge
+
         # Remove env var if present
         env_copy = {k: v for k, v in os.environ.items() if k != "USE_MANAGED_AGENTS"}
         with patch.dict(os.environ, env_copy, clear=True):
@@ -643,10 +636,8 @@ class TestManagedAgentBridge:
             assert "managed_mode" in status
 
     def test_raises_if_managed_called_without_managed_mode(self):
-        try:
-            from engine.agents.managed_agent_bridge import ManagedAgentBridge
-        except ImportError:
-            pytest.skip("ManagedAgentBridge not yet implemented")
+        from engine.agents.managed_agent_bridge import ManagedAgentBridge
+
         bridge = ManagedAgentBridge()
         if not bridge.is_managed_mode():
             import asyncio
