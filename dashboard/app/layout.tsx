@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
+import { AnomalySentinelStrip } from "@/components/AnomalySentinelStrip";
 import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
 import { CommandPalette } from "@/components/CommandPalette";
 import { EngineWebSocketProvider } from "@/lib/engine-websocket-context";
@@ -38,6 +39,7 @@ export default function RootLayout({
           <EngineWebSocketProvider>
             <PendingApprovalToastListener />
             <CommandPalette />
+            <AnomalySentinelStrip />
             <EngineAvailabilityHint />
             <div className="flex min-h-screen">
               <Sidebar />
