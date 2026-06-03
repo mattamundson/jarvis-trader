@@ -355,6 +355,67 @@ class TestGetPeakBalance:
         # Max is 0; not > 0, so falls to paper
         assert monitor.get_peak_balance() == 0.0
 
+    # ── Contamination sanity bound (incident 2026-06-02, 92.61% false drawdown) ──
+
+    def test_contaminated_db_peak_rejected_falls_to_paper(self):
+        # A $113K ending_balance against a $10K paper book is IB-demo/cumulative
+        # contamination (>5x). It must be rejected so it can't trip a false halt.
+        db = MagicMock()
+        db.get_daily_pnl.return_value = [
+            {"ending_balance": 9800.0},
+            {"ending_balance": 113482.0},  # contaminated row
+        ]
+        paper = MagicMock()
+        paper.get_performance.return_value = {"equity_curve": [10000.0, 9500.0]}
+        monitor = _monitor(db=db, paper=paper, starting_balance=10000.0)
+        # Falls through to the clean session tracker peak, not the $113K row.
+        assert monitor.get_peak_balance() == pytest.approx(10000.0)
+
+    def test_contaminated_db_peak_no_tracker_returns_zero(self):
+        db = MagicMock()
+        db.get_daily_pnl.return_value = [{"ending_balance": 113482.0}]
+        monitor = _monitor(db=db, starting_balance=10000.0)
+        # No clean fallback → 0.0 (drawdown breaker inert on corrupt source;
+        # the daily-loss breaker is unaffected) rather than a false breach.
+        assert monitor.get_peak_balance() == 0.0
+
+    def test_plausible_peak_within_bound_still_returned(self):
+        # 1.4x starting balance is legitimate growth — must NOT be rejected.
+        db = MagicMock()
+        db.get_daily_pnl.return_value = [
+            {"ending_balance": 10000.0},
+            {"ending_balance": 14000.0},
+        ]
+        monitor = _monitor(db=db, starting_balance=10000.0)
+        assert monitor.get_peak_balance() == pytest.approx(14000.0)
+
+    def test_no_starting_balance_skips_sanity_check(self):
+        # Backward compatible: with starting_balance=0 the bound can't be computed,
+        # so the DB peak is returned unchanged (matches legacy behaviour).
+        db = MagicMock()
+        db.get_daily_pnl.return_value = [{"ending_balance": 113482.0}]
+        monitor = _monitor(db=db)  # starting_balance defaults to 0.0
+        assert monitor.get_peak_balance() == pytest.approx(113482.0)
+
+    def test_contaminated_peak_does_not_produce_false_drawdown(self):
+        # End-to-end: a contaminated DB peak must not yield a -90% drawdown that
+        # would trip the -10% kill switch. Current balance is read from SQLite.
+        db = MagicMock()
+        db.get_daily_pnl.return_value = [
+            {
+                "starting_balance": 10000.0,
+                "ending_balance": 113482.0,  # contaminated peak
+                "realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+            }
+        ]
+        paper = MagicMock()
+        paper.get_performance.return_value = {"equity_curve": [10000.0, 9900.0]}
+        monitor = _monitor(db=db, paper=paper, starting_balance=10000.0)
+        # Drawdown is computed against the clean ~$10K tracker peak, not $113K,
+        # so it stays well inside the -10% limit (no false breach).
+        assert monitor.get_drawdown_pct() > -0.10
+
 
 # ── record_eod_snapshot ───────────────────────────────────────────────────────
 

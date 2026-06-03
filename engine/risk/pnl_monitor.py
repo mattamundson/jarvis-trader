@@ -18,6 +18,21 @@ from typing import Optional, Tuple
 logger = logging.getLogger("jarvis_trader.pnl_monitor")
 
 
+# Peak-equity sanity bound for the drawdown circuit breaker.
+#
+# The daily_pnl history has historically been contaminated by IB-demo / cumulative
+# rows (e.g. a $113K ending_balance against a real $8K paper balance) that inflate
+# the equity peak and trip a FALSE -10% drawdown halt (incident 2026-06-02, 92.61%).
+# A real paper book ($5K-$10K, 2 micro contracts, 40% max margin) cannot plausibly
+# grow past a small multiple of its starting balance over the validation horizon, so
+# any DB peak beyond this multiple is treated as corrupt and rejected.
+#
+# Safety note: this can only ever REMOVE a false breach, never mask a real one — a
+# genuine drawdown requires current < true_peak, and a true peak never approaches
+# this bound, so the clamp never fires on legitimate data.
+_PEAK_SANITY_MULTIPLE: float = 5.0
+
+
 # ── State container ────────────────────────────────────────────────────────────
 
 
@@ -327,7 +342,22 @@ class PnLMonitor:
                 if rows:
                     peak = max(r.get("ending_balance", 0.0) or 0.0 for r in rows)
                     if peak > 0:
-                        return peak
+                        # Reject an implausibly large peak as daily_pnl contamination
+                        # (IB-demo / cumulative rows) rather than let it trip a false
+                        # drawdown halt.  Fall through to the clean session tracker.
+                        sane_ceiling = self._starting_balance * _PEAK_SANITY_MULTIPLE
+                        if self._starting_balance > 0 and peak > sane_ceiling:
+                            logger.warning(
+                                "[PnLMonitor] Rejecting contaminated daily_pnl peak "
+                                "%.2f (> %.1fx starting balance %.2f) for drawdown "
+                                "calc — falling back to session tracker. Audit "
+                                "daily_pnl for IB-demo/cumulative rows.",
+                                peak,
+                                _PEAK_SANITY_MULTIPLE,
+                                self._starting_balance,
+                            )
+                        else:
+                            return peak
             except Exception as exc:
                 logger.warning(f"[PnLMonitor] get_peak_balance DB read failed: {exc}")
 
