@@ -27,5 +27,8 @@
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "chrome"
-  ]
+  ],
+  "worktree": {
+    "bgIsolation": "none"
+  }
 }
