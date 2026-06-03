@@ -116,6 +116,10 @@ class PortfolioTracker:
     all mutations are synchronous (file I/O) before returning to the caller.
     """
 
+    # Set once the redundant-JSONL deprecation notice has been logged, so the
+    # warning fires at most once per process rather than on every trade write.
+    _jsonl_deprecation_warned: bool = False
+
     def __init__(
         self,
         store_path: Path = _DEFAULT_STORE,
@@ -1373,15 +1377,21 @@ class PortfolioTracker:
     def _append_record(self, trade: PaperTrade) -> None:
         """Append a single trade record to the JSONL store (append-only audit log).
 
-        TODO Sprint 17 US-1703: Remove this JSON write path after migration completes.
-        JSON write path marked for removal — SQLite will be canonical after migration.
+        JSONL is the canonical store when no ``db_manager`` is configured. When
+        SQLite IS active this is a redundant secondary audit write, deprecated for
+        removal (Sprint 17 US-1703). The deprecation notice therefore fires only in
+        the redundant case and only once per process — the previous unconditional
+        per-trade ``logger.warning`` spammed the log on every close and, worse,
+        warned even when JSONL was actually the sole source of truth.
         """
-        logger.warning(
-            "[DEPRECATED] Writing paper trade to JSON at %s — "
-            "JSON storage is deprecated; SQLite is the source of truth. "
-            "This path will be removed in a future release.",
-            self._store,
-        )
+        if self._db is not None and not PortfolioTracker._jsonl_deprecation_warned:
+            logger.warning(
+                "[DEPRECATED] SQLite is active; the secondary JSONL write at %s is "
+                "redundant and will be removed in a future release (Sprint 17 US-1703). "
+                "Logged once per process.",
+                self._store,
+            )
+            PortfolioTracker._jsonl_deprecation_warned = True
         try:
             with self._store.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(trade.to_dict()) + "\n")
