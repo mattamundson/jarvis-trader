@@ -4,6 +4,7 @@ import { AnomalySentinel } from "@/components/AnomalySentinel";
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
 import { JarvisCommandBar } from "@/components/JarvisCommandBar";
 import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
+import { SafetyEventListener } from "@/components/SafetyEventListener";
 import { EngineWebSocketProvider } from "@/lib/engine-websocket-context";
 import { ToastProvider } from "@/lib/toast-context";
 import { Sidebar } from "@/components/Sidebar";
@@ -38,6 +39,7 @@ export default function RootLayout({
         <ToastProvider>
           <EngineWebSocketProvider>
             <PendingApprovalToastListener />
+            <SafetyEventListener />
             <EngineAvailabilityHint />
             <AnomalySentinel />
             <JarvisCommandBar />
