@@ -7,7 +7,8 @@ session (RTH vs. Overnight) and trade type.
 
 import logging
 from datetime import datetime, time, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("jarvis_trader.risk.approval_timeout")
 
@@ -17,15 +18,36 @@ logger = logging.getLogger("jarvis_trader.risk.approval_timeout")
 TIMEOUT_RTH = 5
 TIMEOUT_OVERNIGHT = 10
 
-def is_rth() -> bool:
+# Exchange timezone — using the IANA zone (not a fixed UTC offset) so the
+# EDT/EST daylight-saving transition is handled automatically.
+_ET = ZoneInfo("America/New_York")
+_RTH_OPEN = time(9, 30)
+_RTH_CLOSE = time(16, 0)
+
+
+def is_rth(now: Optional[datetime] = None) -> bool:
     """
-    Check if currently in Regular Trading Hours (NYSE: 09:30 - 16:00 ET).
-    For simplicity, we use UTC offset for ET (currently -4 or -5).
+    Return True if the US equity market is in Regular Trading Hours
+    (NYSE 09:30-16:00 ET, Monday-Friday).
+
+    Converts to America/New_York so the DST transition is correct year-round
+    (the previous fixed 13:30-20:00 UTC heuristic was only right in summer and
+    also fired on weekends). Market holidays are intentionally NOT modelled: the
+    only consequence here is a holiday getting the shorter RTH approval timeout,
+    which is low-stakes — add a market-calendar dependency if holiday precision
+    is ever needed.
+
+    Args:
+        now: optional reference instant (for testing). Naive datetimes are
+            treated as UTC. Defaults to the current time.
     """
-    # TODO: Use a proper market calendar for robust RTH detection
-    # For now, heuristic: 13:30 - 20:00 UTC (9:30 - 16:00 ET in Summer)
-    now_utc = datetime.now(timezone.utc).time()
-    return time(13, 30) <= now_utc <= time(20, 0)
+    ref = now or datetime.now(timezone.utc)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=timezone.utc)
+    now_et = ref.astimezone(_ET)
+    if now_et.weekday() >= 5:  # Saturday (5) / Sunday (6)
+        return False
+    return _RTH_OPEN <= now_et.time() <= _RTH_CLOSE
 
 def get_timeout_for_trade(approval_row: Dict[str, Any]) -> int:
     """
