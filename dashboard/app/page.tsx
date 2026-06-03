@@ -36,6 +36,7 @@ import { BookmarkFeedPanel } from "@/components/BookmarkFeedPanel";
 import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import { EngineHealthWidget } from "@/components/EngineHealthWidget";
+import { ConfidenceGauge } from "@/components/ConfidenceGauge";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
@@ -221,6 +222,9 @@ export default function DashboardPage() {
 
           {/* Engine Health — live /health subsystem checks (TV MCP, LLM, IBKR) */}
           <EngineHealthWidget />
+
+          {/* JARVIS Calibration — Brier/IC ensemble calibration (honest empty state) */}
+          <ConfidenceGauge />
 
           {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
           <Pm2StabilityWidget />
