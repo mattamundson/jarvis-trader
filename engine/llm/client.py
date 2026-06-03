@@ -283,6 +283,21 @@ class JarvisLLMClient:
         ).strip().lower() not in {"0", "false", "no", "off"}
         self.google_fallback_count = 0  # incremented on each successful fallback
 
+        # Task 6 (Vertex integration 2026-06-02): route Gemini through Vertex AI
+        # (google-genai vertexai=True) instead of the AI-Studio key. Gated by
+        # JARVIS_GEMINI_USE_VERTEX (default off) so it only activates post-ADC.
+        # When on, the analyst-tier agents and the credit-exhaustion Gemini
+        # fallback are served via Vertex, with NO AI-Studio key required.
+        self.gemini_use_vertex = os.getenv(
+            "JARVIS_GEMINI_USE_VERTEX", "0"
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.gemini_vertex_project = (
+            os.getenv("GOOGLE_CLOUD_PROJECT") or "jarvis-trading-493009"
+        ).strip()
+        self.gemini_vertex_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
+        # "Gemini available" for routing/fallback = AI-Studio key OR Vertex Gemini.
+        self.gemini_enabled = self.google_fallback_enabled or self.gemini_use_vertex
+
         # Phase 3.4 (2026-05-22): DeepSeek-R1 support for reasoning chains.
         self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
         self.deepseek_endpoint = os.getenv(
@@ -653,7 +668,7 @@ class JarvisLLMClient:
         # Falls through to the Anthropic retry loop on any Gemini failure.
         if (
             self.provider != "ollama"
-            and self.google_fallback_enabled
+            and self.gemini_enabled
             and agent_name in self.GEMINI_PRIMARY_AGENTS
         ):
             google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
@@ -843,8 +858,9 @@ class JarvisLLMClient:
                     # Gemini fallback before declaring the call failed. The
                     # fallback preserves quality tier (Opus/Sonnet -> 2.5-flash,
                     # Haiku -> 2.0-flash) and returns a normal LLMCallResult so
-                    # call sites are provider-agnostic.
-                    if self.google_fallback_enabled:
+                    # call sites are provider-agnostic. Served via Vertex when
+                    # JARVIS_GEMINI_USE_VERTEX=1, else the AI-Studio endpoint.
+                    if self.gemini_enabled:
                         google_model = self.GOOGLE_FAILOVER_MAP.get(
                             current_model, "gemini-2.5-flash"
                         )
@@ -1071,6 +1087,12 @@ class JarvisLLMClient:
           - tool/cache/extra fields are not forwarded; this is the minimum
             shape needed by the trading agents that go through call().
         """
+        # Task 6: prefer Vertex Gemini when enabled (no AI-Studio key needed).
+        if self.gemini_use_vertex:
+            return await self._call_vertex_gemini(
+                system, messages, max_tokens, temperature, model
+            )
+
         if not self.google_api_key:
             raise RuntimeError("google_api_key not configured")
 
@@ -1109,6 +1131,61 @@ class JarvisLLMClient:
         usage = data.get("usage") or {}
         input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
         output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
+
+    async def _call_vertex_gemini(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str,
+    ):
+        """Single Gemini call via Vertex AI (google-genai, vertexai=True).
+
+        Returns the Anthropic-shaped SimpleNamespace like _call_google, so the
+        success/cost path stays provider-agnostic. google-genai's client is sync,
+        so it runs in a worker thread to avoid blocking the event loop. Auth is
+        via ADC; no AI-Studio key is used. Gemini on Vertex lives in
+        GOOGLE_CLOUD_LOCATION (us-central1 by default) — distinct from the
+        Claude-on-Vertex region.
+        """
+
+        def _sync_call():
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(
+                vertexai=True,
+                project=self.gemini_vertex_project,
+                location=self.gemini_vertex_location,
+            )
+            parts: list[str] = []
+            for m in messages:
+                content = m.get("content", "")
+                if not isinstance(content, str):
+                    content = str(content)
+                parts.append(f"{m.get('role', 'user')}: {content}")
+            prompt = "\n\n".join(parts) if parts else ""
+            config = types.GenerateContentConfig(
+                system_instruction=system or None,
+                max_output_tokens=max_tokens,
+                temperature=temperature,
+            )
+            return client.models.generate_content(model=model, contents=prompt, config=config)
+
+        resp = await asyncio.to_thread(_sync_call)
+        text = getattr(resp, "text", "") or ""
+        usage_meta = getattr(resp, "usage_metadata", None)
+        input_tokens = int(
+            getattr(usage_meta, "prompt_token_count", 0) or self._estimate_tokens(system, messages)
+        )
+        output_tokens = int(
+            getattr(usage_meta, "candidates_token_count", 0) or max(1, len(text) // 4)
+        )
         return SimpleNamespace(
             usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
             content=[SimpleNamespace(text=text)],
