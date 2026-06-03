@@ -25,15 +25,21 @@ export default function MasterPage() {
         Mission control · updated {new Date(data.ts).toLocaleTimeString()}
       </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tiles.map((s) =>
-          s.domain === "finances" ? (
-            <Link key={s.domain} href="/master/finances" className="block">
+        {tiles.map((s) => {
+          const href =
+            s.domain === "finances"
+              ? "/master/finances"
+              : s.domain === "trading"
+                ? "/master/trading"
+                : null;
+          return href ? (
+            <Link key={s.domain} href={href} className="block">
               <DomainTile s={s} />
             </Link>
           ) : (
             <DomainTile key={s.domain} s={s} />
-          ),
-        )}
+          );
+        })}
       </div>
       <SchedulerPanel />
       <CommandChat />
