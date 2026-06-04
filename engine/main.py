@@ -101,6 +101,7 @@ from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.paper_validation_router import router as paper_validation_router
 from routers.proactive_validation_router import router as proactive_validation_router
+from routers.execution_status_router import router as execution_status_router
 from routers.webhook_router import router as webhook_router
 from routers.whatsapp_router import router as whatsapp_router
 from routers.whatsapp_router import inject_dependencies as inject_whatsapp_deps
@@ -2867,6 +2868,7 @@ app.include_router(strategies_router)
 app.include_router(validation_router)
 app.include_router(paper_validation_router)
 app.include_router(proactive_validation_router)
+app.include_router(execution_status_router)
 app.include_router(webhook_router)
 app.include_router(whatsapp_router)
 inject_whatsapp_deps(db_manager, paper_tracker, safety_layer, data_manager)
