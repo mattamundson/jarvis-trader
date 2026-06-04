@@ -45,11 +45,11 @@ class DriftDetector:
             files = list(VERDICTS_DIR.glob(f"{symbol.upper()}_*.json"))
             if not files:
                 return 1.2 # Default floor
-            
+
             # Sort by modification time to get latest
             latest_file = max(files, key=os.path.getmtime)
             data = json.loads(latest_file.read_text(encoding="utf-8"))
-            
+
             # Try to get fixed_params_min_pf or similar
             metrics = data.get("gate_v2_metrics", {})
             return float(metrics.get("fixed_params_min_pf", 1.2))
@@ -62,13 +62,13 @@ class DriftDetector:
         Evaluate PF drift for the given symbol over the last 7 days.
         """
         logger.info(f"[Drift] Checking performance drift for {symbol}")
-        
+
         baseline_pf = self._get_baseline_pf(symbol)
         threshold_pf = baseline_pf * 0.60
-        
+
         # 1. Calculate Live PF for last 7 days
         seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        
+
         sql = """
             SELECT 
                 SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) as gross_profit,
@@ -77,40 +77,40 @@ class DriftDetector:
             FROM paper_trades
             WHERE symbol = ? AND exit_time >= ? AND status = 'closed'
         """
-        
+
         try:
             row = self.db.fetch_one(sql, (symbol.upper(), seven_days_ago))
-            
+
             if not row or row["trade_count"] < 3:
                 return {"status": "insufficient_data", "symbol": symbol}
 
             gross_profit = float(row["gross_profit"] or 0.0)
             gross_loss = float(row["gross_loss"] or 0.0)
             live_pf = gross_profit / gross_loss if gross_loss > 0 else (10.0 if gross_profit > 0 else 1.0)
-            
+
             # 2. Update Drift State
             state = self._load_state()
             sym_state = state.get(symbol, {"consecutive_weeks": 0, "history": []})
-            
+
             is_drifting = live_pf < threshold_pf
-            
+
             if is_drifting:
                 sym_state["consecutive_weeks"] += 1
             else:
                 sym_state["consecutive_weeks"] = 0
-            
+
             sym_state["history"].append({
                 "date": datetime.now(timezone.utc).isoformat(),
                 "pf": round(live_pf, 3),
                 "baseline": baseline_pf,
                 "is_below_60pct": is_drifting
             })
-            
+
             # Keep history manageable
             sym_state["history"] = sym_state["history"][-12:]
             state[symbol] = sym_state
             self._save_state(state)
-            
+
             # 3. Decision
             alert = False
             if sym_state["consecutive_weeks"] >= 3:
@@ -119,7 +119,7 @@ class DriftDetector:
                     f"🚨 [DRIFT ALERT] {symbol} PF ({live_pf:.2f}) < 60% of baseline ({baseline_pf:.2f}) "
                     f"for 3 consecutive weeks! Strategy eligible for demotion."
                 )
-            
+
             return {
                 "symbol": symbol,
                 "live_pf": round(live_pf, 3),

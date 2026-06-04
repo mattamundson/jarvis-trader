@@ -9,9 +9,10 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Callable
+from typing import Callable, Dict, List, Optional
 
 import redis.asyncio as redis
+
 from config import settings
 
 logger = logging.getLogger("jarvis_trader.redis_listener")
@@ -33,14 +34,14 @@ class RedisSignalTrigger:
         """Start the listener loop."""
         if self._running:
             return
-        
+
         self._running = True
         self.redis_client = redis.from_url(
             settings.REDIS_URL or "redis://localhost:6379/0",
             encoding="utf-8",
             decode_responses=True
         )
-        
+
         logger.info(f"📡 RedisListener: Subscribing to ticks for {self.symbols}")
         self._task = asyncio.create_task(self._listen())
 
@@ -62,7 +63,7 @@ class RedisSignalTrigger:
         async for message in pubsub.listen():
             if not self._running:
                 break
-            
+
             if message["type"] != "message":
                 continue
 
@@ -70,14 +71,14 @@ class RedisSignalTrigger:
                 data = json.loads(message["data"])
                 symbol = data.get("symbol", "").split(":")[-1]
                 timestamp_sec = data.get("time") # Unix timestamp from TradingView
-                
+
                 if not symbol or not timestamp_sec:
                     continue
 
                 # ── Bar-Close Detection (1h) ──────────────────────────────
                 dt = datetime.fromtimestamp(timestamp_sec, tz=timezone.utc)
                 hour = dt.hour
-                
+
                 if self._last_bar_hour[symbol] != -1 and hour != self._last_bar_hour[symbol]:
                     logger.info(f"🔔 [BarClose] {symbol} 1h bar closed at {dt.isoformat()}")
                     # Trigger the full pipeline analysis

@@ -139,7 +139,7 @@ def _pearson_r(xs: list[float], ys: list[float]) -> float | None:
     n = len(xs)
     mx = sum(xs) / n
     my = sum(ys) / n
-    cov = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / n
+    cov = sum((x - mx) * (y - my) for x, y in zip(xs, ys, strict=False)) / n
     sx = (sum((x - mx) ** 2 for x in xs) / n) ** 0.5
     sy = (sum((y - my) ** 2 for y in ys) / n) ** 0.5
     if sx == 0 or sy == 0:
@@ -254,7 +254,7 @@ def build_report(mes_verdict: dict, mgc_verdict: dict) -> str:
     lines.append("")
     mes_cp = mes_verdict.get("champion_params") or {}
     mgc_cp = mgc_verdict.get("champion_params") or {}
-    lines.append(f"| Strategy | Symbol | Verdict | Champion Params | Windows |")
+    lines.append("| Strategy | Symbol | Verdict | Champion Params | Windows |")
     lines.append("|---|---|---|---|---|")
     lines.append(
         f"| MES trend R11 | MES | {mes_verdict.get('verdict')} via {mes_verdict.get('passed_via')} "

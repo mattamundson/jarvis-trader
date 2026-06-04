@@ -127,10 +127,10 @@ def build_scoreboard(verdicts_dir: Path) -> str:
 
     now_utc = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     lines = [
-        f"# Strategy Scoreboard",
-        f"",
+        "# Strategy Scoreboard",
+        "",
         f"_Generated {now_utc} from {len(rows)} active verdict(s). Archive: {len(list((verdicts_dir / 'archive').glob('*.json') if (verdicts_dir / 'archive').exists() else []))} files._",
-        f"",
+        "",
         "| Strategy | Verdict | Path | pf_ci_lower | p_edge | mc_dd% | DSR | WFO | Cost survives | Updated |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]

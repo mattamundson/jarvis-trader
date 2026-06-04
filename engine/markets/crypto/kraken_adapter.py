@@ -78,12 +78,12 @@ class KrakenAdapter:
         """Cached check: is the kraken binary available (native or WSL)?"""
         if self._available is not None:
             return self._available
-        
+
         # 1. Check native PATH
         if shutil.which(self._binary) is not None:
             self._available = True
             return True
-            
+
         # 2. Check WSL fallback (Phase 6 requirement)
         import sys
         if sys.platform == "win32":
@@ -225,7 +225,7 @@ class KrakenAdapter:
                 return result
             if isinstance(result, dict) and isinstance(result.get("positions"), list):
                 return result["positions"]
-            
+
             # Fallback to balance
             result = await self._run(["balance", "-o", "json"])
             if isinstance(result, dict):

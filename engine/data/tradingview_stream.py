@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import redis.asyncio as redis
+
 from config import settings
 
 logger = logging.getLogger("jarvis_trader.tv_stream")
@@ -58,7 +59,7 @@ class TVStreamer:
             payload = json.dumps(data)
             await self.redis_client.publish(f"market:ticks:{symbol}", payload)
             await self.redis_client.set(f"market:latest:{symbol}", payload)
-            
+
             # Freshness tracking (Phase 2.6)
             now_ts = datetime.now(timezone.utc).isoformat()
             await self.redis_client.set(f"datasource:ticks:{symbol}:last_update", now_ts)
@@ -79,11 +80,11 @@ class TVStreamer:
                 payload = json.dumps(greeks)
                 await self.redis_client.publish(f"market:greeks:{symbol}", payload)
                 await self.redis_client.set(f"market:greeks:latest:{symbol}", payload)
-                
+
                 # Freshness tracking (Phase 2.6)
                 now_ts = datetime.now(timezone.utc).isoformat()
                 await self.redis_client.set(f"datasource:greeks:{symbol}:last_update", now_ts)
-                
+
                 logger.debug(f"[TVStreamer] Streamed Greeks for {symbol}")
         except Exception as e:
             logger.debug(f"[TVStreamer] Greeks stream error for {symbol}: {e}")
@@ -96,12 +97,12 @@ class TVStreamer:
         """
         try:
             from questdb.ingress import Sender, TimestampNanos
-            
+
             host = settings.QUESTDB_HOST or "localhost"
-            # ILP typically uses 9009, but config says 9000. 
+            # ILP typically uses 9009, but config says 9000.
             # We'll try 9009 first as it's the standard for ILP.
-            port = 9009 
-            
+            port = 9009
+
             with Sender(host, port) as sender:
                 sender.row(
                     "market_ticks",
@@ -167,7 +168,7 @@ class TVStreamer:
         # Multi-symbol stream using 'tv stream all'
         base_dir = Path(__file__).parent.parent.parent
         cli_path = base_dir / "tradingview-mcp" / "src" / "cli" / "index.js"
-        
+
         if not cli_path.exists():
             logger.error(f"[TVStreamer] CLI not found at {cli_path}")
             return
@@ -197,10 +198,10 @@ class TVStreamer:
                     line = await proc.stdout.readline()
                     if not line:
                         break
-                    
+
                     try:
                         data = json.loads(line.decode().strip())
-                        
+
                         # Handle multi-pane format (stream all)
                         if "panes" in data:
                             for pane in data["panes"]:
@@ -209,7 +210,7 @@ class TVStreamer:
                                     clean_sym = symbol.split(":")[-1]
                                     await self._stream_to_redis(clean_sym, pane)
                                     await self._persist_to_questdb(clean_sym, pane)
-                        
+
                         # Handle single quote format (stream quote)
                         elif "symbol" in data:
                             symbol = data["symbol"]
@@ -225,7 +226,7 @@ class TVStreamer:
                 if proc.returncode is None:
                     proc.terminate()
                     await proc.wait()
-                
+
                 logger.warning("[TVStreamer] Stream process exited, restarting in 5s...")
                 await asyncio.sleep(5)
 
