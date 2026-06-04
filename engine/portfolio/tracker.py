@@ -498,10 +498,14 @@ class PortfolioTracker:
             worst_trade      : lowest single-trade P&L
         """
         # B9 fix: prefer SQLite as single source of truth (Sprint 17 US-1703)
-        # Fall back to in-memory _closed if db_manager not available
-        if getattr(self, "db_manager", None) is not None:
+        # Fall back to in-memory _closed if the DB handle isn't available.
+        # The handle is stored as self._db (set in __init__); the prior
+        # getattr(self, "db_manager", ...) checked a non-existent attribute, so
+        # this branch never ran and get_performance() always used the in-memory
+        # _closed list (empty after every restart) — silently wrong metrics.
+        if self._db is not None:
             try:
-                rows = self.db_manager.get_closed_trades(limit=10000)
+                rows = self._db.get_closed_trades(limit=10000)
                 closed = []
                 for row in rows:
                     t = PaperTrade.__new__(PaperTrade)
