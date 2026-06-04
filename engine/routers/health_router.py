@@ -369,6 +369,23 @@ async def _health_inner() -> dict:
     except Exception:
         pass
 
+    # Futures-sentiment freshness: Corey #market-updates is the SOLE sanctioned
+    # futures-sentiment source; its feed has silently frozen before (revoked
+    # Discord token). Surface age + quality so a stale feed is observable.
+    futures_sentiment = {"quality": "unknown", "age_days": None}
+    try:
+        from discord.commentary_processor import get_futures_sentiment_staleness
+
+        st = get_futures_sentiment_staleness()
+        futures_sentiment = {
+            "quality": st.get("quality", "unknown"),
+            "age_days": st.get("age_days"),
+            "latest_timestamp": st.get("latest_timestamp"),
+            "threshold_days": st.get("threshold_days"),
+        }
+    except Exception:
+        pass
+
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
 
     response = {
@@ -392,6 +409,7 @@ async def _health_inner() -> dict:
         "tv_mcp_status": tv_mcp_status,
         "brier_30d_rolling": _compute_brier_30d_rolling(),
         "pending_approvals": pending_approvals,
+        "futures_sentiment": futures_sentiment,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
