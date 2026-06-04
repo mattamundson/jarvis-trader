@@ -116,7 +116,17 @@ class PortfolioAllocator:
             try:
                 params = json.loads(params_json) if params_json else {}
                 return params.get("strategy_name", "unknown")
-            except Exception:
+            except (json.JSONDecodeError, TypeError, AttributeError) as exc:
+                # Malformed strategy_params must not be silently bucketed as
+                # "unknown" — that corrupts the correlation matrix and the
+                # correlation-adjusted allocations with no trace. Log, then
+                # apply the safe fallback.
+                logger.warning(
+                    "[Allocator] Malformed strategy_params in covariance pivot "
+                    "(%r) — bucketing as 'unknown': %s",
+                    params_json,
+                    exc,
+                )
                 return "unknown"
 
         df_trades["cell"] = df_trades.apply(
@@ -160,8 +170,18 @@ class PortfolioAllocator:
             if isinstance(params, str):
                 try:
                     params = json.loads(params)
-                except Exception:
+                except (json.JSONDecodeError, TypeError) as exc:
+                    logger.warning(
+                        "[Allocator] Malformed strategy_params for trade id=%s "
+                        "— bucketing as 'unknown': %s",
+                        t.get("id"),
+                        exc,
+                    )
                     params = {}
+            if not isinstance(params, dict):
+                # NULL or non-dict strategy_params (e.g. JSON that parsed to a
+                # list) would crash params.get below; coerce to the safe default.
+                params = {}
 
             strategy = params.get("strategy_name") or t.get("regime") or "unknown"
             symbol = t.get("symbol", "unknown")
