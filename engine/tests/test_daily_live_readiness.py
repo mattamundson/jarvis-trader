@@ -116,6 +116,12 @@ def test_all_pass_returns_green(tmp_path):
         patch("backtest.roi_readiness._pair_trades_to_roundtrips", return_value=roundtrips),
         patch("backtest.roi_readiness._VERDICTS_DIR", tmp_path),
         patch("backtest.roi_readiness._fetch_engine_health", return_value={"status": "ok"}),
+        # G6 now reads real 5-min health_snapshots via compute_uptime — supply a
+        # fully-healthy, sufficiently-sampled window so G6 passes in this scenario.
+        patch(
+            "scripts.health_uptime.compute_uptime",
+            return_value={"polls_total": 2000, "polls_reachable": 2000, "uptime_pct": 100.0},
+        ),
     ):
         # Write fresh verdict files so G7 passes
         for fname, vdata in fresh_verdicts.items():
@@ -163,6 +169,12 @@ def test_5_pass_returns_yellow(tmp_path):
         patch("backtest.roi_readiness._pair_trades_to_roundtrips", return_value=roundtrips),
         patch("backtest.roi_readiness._VERDICTS_DIR", tmp_path),
         patch("backtest.roi_readiness._fetch_engine_health", return_value={"status": "ok"}),
+        # G6 now reads real 5-min health_snapshots via compute_uptime — supply a
+        # fully-healthy, sufficiently-sampled window so G6 passes in this scenario.
+        patch(
+            "scripts.health_uptime.compute_uptime",
+            return_value={"polls_total": 2000, "polls_reachable": 2000, "uptime_pct": 100.0},
+        ),
     ):
         for fname, vdata in fresh_verdicts.items():
             (tmp_path / fname).write_text(json.dumps(vdata), encoding="utf-8")
@@ -270,6 +282,12 @@ def test_consecutive_pass_streak_correctly_counted(tmp_path):
     with (
         patch("backtest.roi_readiness._VERDICTS_DIR", tmp_path),
         patch("backtest.roi_readiness._fetch_engine_health", return_value={"status": "ok"}),
+        # G6 reads real health_snapshots via compute_uptime — supply a healthy,
+        # sufficiently-sampled window so G6 passes on each evaluated day.
+        patch(
+            "scripts.health_uptime.compute_uptime",
+            return_value={"polls_total": 2000, "polls_reachable": 2000, "uptime_pct": 100.0},
+        ),
     ):
         for fname, vdata in fresh_verdicts.items():
             (tmp_path / fname).write_text(json.dumps(vdata), encoding="utf-8")
