@@ -542,6 +542,52 @@ def _parse_date(ts_str: str) -> Optional[date]:
         return None
 
 
+def get_futures_sentiment_staleness(db_path: Optional[str] = None) -> dict:
+    """Freshness of the Corey #market-updates futures-sentiment feed.
+
+    Corey's Discord commentary is the SOLE sanctioned futures-sentiment source
+    (social_analyst gates Reddit/Twitter off for futures). Its DCE import has
+    silently frozen before — the user token was revoked and nothing flagged it,
+    so every MES/MNQ/MCL/MGC decision ran on stale sentiment undetected. This
+    reads MAX(timestamp) from discord_corey_commentary and reports age + quality
+    against ``CoreyCommentaryProcessor.STALE_DAYS`` so a frozen feed is
+    observable in /health and to the analyst.
+
+    Read-only + resilient: returns quality="unknown" (never raises) if the table
+    is absent or empty.
+    """
+    path = db_path or _default_db_path()
+    threshold = CoreyCommentaryProcessor.STALE_DAYS
+    result = {
+        "latest_timestamp": None,
+        "age_days": None,
+        "quality": "unknown",
+        "threshold_days": threshold,
+    }
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+            row = conn.execute(
+                "SELECT MAX(timestamp) FROM discord_corey_commentary "
+                "WHERE channel = 'market-updates'"
+            ).fetchone()
+    except Exception as exc:  # missing table / unreadable DB
+        logger.debug("get_futures_sentiment_staleness: %s", exc)
+        return result
+
+    latest = row[0] if row else None
+    if not latest:
+        return result
+    latest_date = _parse_date(latest)
+    if latest_date is None:
+        return result
+
+    age_days = (date.today() - latest_date).days
+    result["latest_timestamp"] = latest
+    result["age_days"] = age_days
+    result["quality"] = "fresh" if age_days <= threshold else "stale"
+    return result
+
+
 def _clamp(val, lo, hi):
     try:
         return max(lo, min(hi, float(val)))
