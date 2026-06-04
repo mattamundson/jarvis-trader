@@ -7,7 +7,8 @@ session (RTH vs. Overnight) and trade type.
 
 import logging
 from datetime import datetime, time, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("jarvis_trader.risk.approval_timeout")
 
@@ -17,15 +18,35 @@ logger = logging.getLogger("jarvis_trader.risk.approval_timeout")
 TIMEOUT_RTH = 5
 TIMEOUT_OVERNIGHT = 10
 
-def is_rth() -> bool:
+# NYSE Regular Trading Hours, in Exchange (Eastern) wall-clock.
+_ET = ZoneInfo("America/New_York")
+_RTH_OPEN = time(9, 30)
+_RTH_CLOSE = time(16, 0)
+
+
+def is_rth(now: Optional[datetime] = None) -> bool:
     """
-    Check if currently in Regular Trading Hours (NYSE: 09:30 - 16:00 ET).
-    For simplicity, we use UTC offset for ET (currently -4 or -5).
+    Check if a moment falls in Regular Trading Hours (NYSE: 09:30 - 16:00 ET,
+    Mon-Fri).
+
+    Converts to America/New_York so the window is correct year-round. The prior
+    heuristic hardcoded the SUMMER UTC offset (13:30 - 20:00 UTC) and therefore
+    mis-classified 13:30 - 14:30 UTC as RTH for the ~4 winter months (US EST,
+    when RTH is 14:30 - 21:00 UTC) — giving genuinely pre-market approvals the
+    shorter RTH timeout tier. zoneinfo handles the DST transition automatically.
+
+    ``now`` (tz-aware; naive treated as UTC) is injectable for testing; defaults
+    to the current UTC time.
     """
-    # TODO: Use a proper market calendar for robust RTH detection
-    # For now, heuristic: 13:30 - 20:00 UTC (9:30 - 16:00 ET in Summer)
-    now_utc = datetime.now(timezone.utc).time()
-    return time(13, 30) <= now_utc <= time(20, 0)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+
+    et = now.astimezone(_ET)
+    if et.weekday() >= 5:  # Saturday/Sunday — equity session closed
+        return False
+    return _RTH_OPEN <= et.time() <= _RTH_CLOSE
 
 def get_timeout_for_trade(approval_row: Dict[str, Any]) -> int:
     """
