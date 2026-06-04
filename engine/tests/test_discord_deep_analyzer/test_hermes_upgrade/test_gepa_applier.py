@@ -1,15 +1,15 @@
-"""Tests for engine.discord.hermes_upgrade.appliers.gepa_applier."""
+"""Tests for discord.hermes_upgrade.appliers.gepa_applier."""
 
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import yaml
-from engine.discord.hermes_upgrade.appliers.gepa_applier import (
+from discord.hermes_upgrade.appliers.gepa_applier import (
     GEPA_TARGETS_DIR,
     GepaApplier,
 )
-from engine.discord.hermes_upgrade.models import BacklogEntry
+from discord.hermes_upgrade.models import BacklogEntry
 
 
 def _entry(
@@ -141,7 +141,7 @@ async def test_apply_short_circuits_when_file_exists():
     check_proc.communicate = AsyncMock(return_value=(b"EXISTS\n", b""))
 
     with patch(
-        "engine.discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
+        "discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
         AsyncMock(return_value=check_proc),
     ) as mock_exec:
         result = await applier.apply(entry)
@@ -174,7 +174,7 @@ async def test_apply_writes_yaml_via_heredoc_when_missing():
         return check_proc if len(calls) == 1 else write_proc
 
     with patch(
-        "engine.discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
+        "discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
         side_effect=fake_exec,
     ):
         result = await applier.apply(entry)
@@ -217,7 +217,7 @@ async def test_apply_reports_failure_on_nonzero_exit():
         return check_proc if calls["n"] == 1 else write_proc
 
     with patch(
-        "engine.discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
+        "discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
         side_effect=fake_exec,
     ):
         result = await applier.apply(entry)
@@ -245,7 +245,7 @@ async def test_rollback_invokes_rm_f_command():
     )
 
     with patch(
-        "engine.discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
+        "discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
         AsyncMock(return_value=rm_proc),
     ) as mock_exec:
         ok = await applier.rollback(entry, fake_result)
@@ -280,7 +280,7 @@ async def test_verify_true_when_file_exists():
     proc.communicate = AsyncMock(return_value=(b"OK\n", b""))
 
     with patch(
-        "engine.discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
+        "discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
         AsyncMock(return_value=proc),
     ):
         ok = await applier.verify(entry, MagicMock())
@@ -296,7 +296,7 @@ async def test_verify_false_when_file_missing():
     proc.communicate = AsyncMock(return_value=(b"MISSING\n", b""))
 
     with patch(
-        "engine.discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
+        "discord.hermes_upgrade.appliers.gepa_applier.asyncio.create_subprocess_exec",
         AsyncMock(return_value=proc),
     ):
         ok = await applier.verify(entry, MagicMock())
