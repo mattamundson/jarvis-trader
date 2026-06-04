@@ -28,6 +28,8 @@ Grid (3 combos, identical to rank11 and rank1):
     slow_period:    [200]
     atr_trail_mult: [2.0]
 
+Writes: engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank2.json
+
 Usage (from engine/ directory):
     .venv/Scripts/python backtest/run_mes_trend_rv_filter_rank2.py
 """
@@ -221,10 +223,12 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_MC_DD_CORE,
     GATE_P_EDGE,
     GATE_PF_CI_LOWER,
-)  # noqa: E402
+    MIN_OOS_TRADES_TOTAL,
+    sample_adequacy_enforced,
+)
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
-    classify_wfo_consistency as _classify_wfo_consistency,
+    classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
 )
 
 # ---------------------------------------------------------------------------
@@ -335,27 +339,30 @@ def _compute_gate_v2(
     fixed_params_metrics: dict,
     cost_sweep_metrics: dict,
 ) -> dict:
-    from backtest.deflated_sharpe import deflated_sharpe_ratio
+    """Compute all gate v2 metrics including ALT-specific checks."""
+    from backtest._gate_v2_trade_metrics import (
+        trade_level_dsr,
+        trade_level_mc_95th_dd,
+        trade_level_win_rate_ci_lower,
+    )
 
     oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     oos_dds = [r.max_drawdown_pct for r in oos_results]
-    oos_sharpes = [
-        r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW
-    ]
     all_trades = sum(r.total_trades for r in oos_results)
+    sample_adequate = all_trades >= MIN_OOS_TRADES_TOTAL
 
     pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
     p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
-    mc_95th_dd = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 
-    mean_sharpe = float(np.mean(oos_sharpes)) if oos_sharpes else 0.0
-    n_obs = max(all_trades, 30)
-    dsr_result = deflated_sharpe_ratio(
-        sharpe=mean_sharpe,
-        n_trials=n_grid_combos,
-        n_obs=n_obs,
-    )
-    dsr = dsr_result.get("dsr", 0.0) if isinstance(dsr_result, dict) else float(dsr_result)
+    # Trade-level risk metrics (correct). mc_95th_dd is a real permutation Monte
+    # Carlo on the concatenated OOS trade list; dsr is the Deflated Sharpe from the
+    # actual per-trade return series. The legacy window-level DD is retained under
+    # mc_95th_dd_window_legacy for before/after transparency only and is NOT used
+    # for the gate decision. See _gate_v2_trade_metrics for the rationale.
+    mc_95th_dd = trade_level_mc_95th_dd(oos_results, initial_capital=CAPITAL)
+    dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
+    win_rate_ci_lower = trade_level_win_rate_ci_lower(oos_results)  # Init 2C (shadow; not gated)
+    mc_95th_dd_window_legacy = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 
     wfo_consistency = _classify_wfo_consistency(oos_pfs)
     fixed_params_min_pf = fixed_params_metrics.get("fixed_params_min_pf", 0.0)
@@ -428,7 +435,13 @@ def _compute_gate_v2(
     n_core_passed = sum(1 for r in core_reasons if not r.startswith("FAIL"))
     n_alt_passed = sum(1 for r in alt_reasons if not r.startswith("FAIL"))
 
-    if core_pass:
+    if sample_adequacy_enforced() and not sample_adequate:
+        # Init 2B: too few total OOS trades to certify — refuse rather than
+        # certify an edge on a thin (luck-dominated) sample. Shadow by default;
+        # enforced only when GATE_V2_ENFORCE_SAMPLE_ADEQUACY=1.
+        verdict = "INSUFFICIENT_SAMPLE"
+        passed_via = None
+    elif core_pass:
         verdict = "PASS"
         passed_via = "core"
     elif alt_pass:
@@ -449,6 +462,7 @@ def _compute_gate_v2(
         "p_edge": round(p_edge, 4),
         "mc_95th_dd": round(mc_95th_dd, 6),
         "mc_95th_dd_pct": round(mc_95th_dd * 100, 4),
+        "mc_95th_dd_window_legacy": round(mc_95th_dd_window_legacy, 6),
         "dsr": round(dsr, 6),
         "wfo_consistency": wfo_consistency,
         "fixed_params_min_pf": fixed_params_min_pf,
@@ -458,6 +472,9 @@ def _compute_gate_v2(
         "n_oos_windows": len(oos_results),
         "n_oos_windows_with_trades": len(oos_pfs),
         "total_oos_trades": all_trades,
+        "min_oos_trades_total": MIN_OOS_TRADES_TOTAL,
+        "sample_adequate": sample_adequate,
+        "win_rate_ci_lower": round(win_rate_ci_lower, 4),
         "core_reasons": core_reasons,
         "alt_reasons": alt_reasons,
         "reasons": core_reasons + alt_reasons,
