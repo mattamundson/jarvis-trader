@@ -91,6 +91,41 @@ def _get_active_symbols() -> list[str]:
     return [s.strip().upper() for s in raw.split(",") if s.strip()]
 
 
+def _warn_blocked_active_symbols(symbols: list[str]) -> list[str]:
+    """Return the subset of ``symbols`` that are in DO_NOT_TRADE_SYMBOLS, after
+    logging a loud WARNING for each.
+
+    Background: the gate at signals.py rejects any symbol in DO_NOT_TRADE_SYMBOLS
+    before a candidate can be produced, so configuring AUTONOMOUS_ACTIVE_SYMBOLS
+    entirely from that blocked set (e.g. the historical default "MCL,MNQ" — both
+    blocked) makes the autonomous loop a silent no-op: it scans, every symbol is
+    HOLD/blocked, nothing ever enqueues, and there is no signal that the config
+    is self-defeating. This surfaces that condition explicitly.
+
+    Imported lazily so the scheduler stays decoupled from the backtest package
+    (and so tests can mock backtest.signals, as the readiness tests already do).
+    """
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except Exception as exc:  # pragma: no cover - defensive; never block the tick
+        logger.debug("[AutonomousTick] DO_NOT_TRADE_SYMBOLS unavailable: %s", exc)
+        return []
+
+    blocked = [s for s in symbols if s in DO_NOT_TRADE_SYMBOLS]
+    if blocked:
+        logger.warning(
+            "[AutonomousTick] %d of %d active symbol(s) are in DO_NOT_TRADE_SYMBOLS "
+            "(%s) — these can NEVER enqueue a candidate (the signals gate rejects "
+            "them first). Autonomous evaluation on them is a silent no-op. Set "
+            "%s to validated tradeable symbols (e.g. MES,MGC).",
+            len(blocked),
+            len(symbols),
+            ",".join(blocked),
+            _SYMBOLS_NAME,
+        )
+    return blocked
+
+
 def _get_tick_seconds() -> int:
     raw = os.environ.get(_TICK_NAME, "").strip()
     try:
@@ -331,6 +366,7 @@ async def autonomous_tick() -> dict:
     threshold = _get_confidence_threshold()
     ttl = _get_ttl_seconds()
     symbols = _get_active_symbols()
+    _warn_blocked_active_symbols(symbols)
 
     logger.info(
         "[AutonomousTick] starting — symbols=%s confidence_threshold=%.2f ttl=%ds",
