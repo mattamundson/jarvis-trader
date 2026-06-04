@@ -31,7 +31,7 @@ _engine_dir = Path(__file__).parent.parent
 if str(_engine_dir) not in sys.path:
     sys.path.insert(0, str(_engine_dir))
 
-from risk.regime_detector import RegimeStatus, evaluate_regime
+from risk.regime_detector import RegimeStatus, evaluate_regime  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("regime_alert")

@@ -85,9 +85,12 @@ class PortfolioHedger:
 
         # Simple grouping check
         group = None
-        if symbol in EQUITY_GROUP: group = EQUITY_GROUP
-        elif symbol in CRYPTO_GROUP: group = CRYPTO_GROUP
-        elif symbol in INFLATION_GROUP: group = INFLATION_GROUP
+        if symbol in EQUITY_GROUP:
+            group = EQUITY_GROUP
+        elif symbol in CRYPTO_GROUP:
+            group = CRYPTO_GROUP
+        elif symbol in INFLATION_GROUP:
+            group = INFLATION_GROUP
 
         if not group:
             return 1.0

@@ -116,7 +116,7 @@ class PortfolioAllocator:
             try:
                 params = json.loads(params_json) if params_json else {}
                 return params.get("strategy_name", "unknown")
-            except:
+            except Exception:
                 return "unknown"
 
         df_trades["cell"] = df_trades.apply(
@@ -160,7 +160,7 @@ class PortfolioAllocator:
             if isinstance(params, str):
                 try:
                     params = json.loads(params)
-                except:
+                except Exception:
                     params = {}
 
             strategy = params.get("strategy_name") or t.get("regime") or "unknown"
