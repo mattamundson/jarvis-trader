@@ -9,14 +9,14 @@ Constraints:
   - Per-family cap: 50% (e.g. all 'trend' strategies)
 """
 
-import logging
 import json
-import math
+import logging
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+
 from database.manager import DatabaseManager
 
 logger = logging.getLogger("jarvis_trader.execution.allocator")
@@ -116,7 +116,7 @@ class PortfolioAllocator:
             try:
                 params = json.loads(params_json) if params_json else {}
                 return params.get("strategy_name", "unknown")
-            except:
+            except Exception:
                 return "unknown"
 
         df_trades["cell"] = df_trades.apply(
@@ -160,19 +160,19 @@ class PortfolioAllocator:
             if isinstance(params, str):
                 try:
                     params = json.loads(params)
-                except:
+                except Exception:
                     params = {}
-            
+
             strategy = params.get("strategy_name") or t.get("regime") or "unknown"
             symbol = t.get("symbol", "unknown")
-            
+
             key = (strategy, symbol)
             if key not in cells:
                 cells[key] = []
-            
+
             if t.get("pnl") is not None:
                 cells[key].append(float(t["pnl"]))
-                
+
         return cells
 
     def get_risk_pct(self, strategy_name: str, symbol: str) -> float:

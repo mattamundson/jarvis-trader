@@ -18,7 +18,8 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
-from engine.analytics.agent_feedback import AgentFeedbackTracker
+
+from analytics.agent_feedback import AgentFeedbackTracker
 
 # Patch the module the class actually lives in (robust to engine.* vs bare alias).
 _AF_MOD = sys.modules[AgentFeedbackTracker.__module__]

@@ -184,16 +184,16 @@ def _write_trade(
     sig = inspect.signature(db_manager.insert_trade)
     has_account_id = "account_id" in sig.parameters
 
-    kwargs: Dict[str, Any] = dict(
-        trade_id=trade_id,
-        symbol=symbol,
-        side=side,
-        quantity=quantity,
-        entry_price=entry_price,
-        entry_time=entry_time,
-        status="open",
-        notes="",
-    )
+    kwargs: Dict[str, Any] = {
+        "trade_id": trade_id,
+        "symbol": symbol,
+        "side": side,
+        "quantity": quantity,
+        "entry_price": entry_price,
+        "entry_time": entry_time,
+        "status": "open",
+        "notes": "",
+    }
 
     # Merge stop_loss / take_profit into strategy_params for storage.
     merged: Dict[str, Any] = dict(strategy_params or {})

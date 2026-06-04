@@ -1,5 +1,5 @@
 """
-Tests for engine.journal — daily trading journal generator.
+Tests for journal — daily trading journal generator.
 
 All tests use in-memory or temp SQLite DBs + temp JSONL log files.
 No writes to jarvis_trader.db or real vault paths.
@@ -14,7 +14,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
-from engine.journal.builder import (
+
+from journal.builder import (
     _parse_ask_log,
     build_journal_entry,
     render_markdown,

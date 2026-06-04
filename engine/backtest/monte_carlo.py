@@ -420,6 +420,52 @@ def bootstrap_sharpe(
     }
 
 
+def bootstrap_win_rate(
+    pnls: list[float] | np.ndarray,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Bootstrap a 95% confidence interval on win rate (fraction of trades with PnL > 0).
+
+    Complement to the Deflated Sharpe: DSR is a risk-adjusted-RETURN statistic, so
+    a strategy carried by a few large outlier wins can still pass it. The win-rate
+    CI lower bound binds exactly there — it measures how *reliably* the strategy
+    wins, independent of win size. Resamples the per-trade win/loss outcomes WITH
+    REPLACEMENT and reports the 2.5th percentile as the lower bound.
+
+    Args:
+        pnls: per-trade PnL values (USD); a "win" is pnl > 0 (breakeven is not a win)
+        n_resamples: bootstrap iterations
+        seed: RNG seed
+
+    Returns:
+        {win_rate, win_rate_ci_95_low, win_rate_ci_95_high, n_trades}
+        Fail-safe (all 0.0) when fewer than 2 trades exist.
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n < 2:
+        return {
+            "win_rate": 0.0,
+            "win_rate_ci_95_low": 0.0,
+            "win_rate_ci_95_high": 0.0,
+            "n_trades": n,
+        }
+
+    wins = (pnls_arr > 0.0).astype(float)
+    rng = np.random.default_rng(seed)
+    rates = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        rates[i] = float(np.mean(wins[rng.integers(0, n, size=n)]))
+
+    return {
+        "win_rate": round(float(np.mean(wins)), 4),
+        "win_rate_ci_95_low": round(float(np.percentile(rates, 2.5)), 4),
+        "win_rate_ci_95_high": round(float(np.percentile(rates, 97.5)), 4),
+        "n_trades": n,
+    }
+
+
 def bootstrap_max_dd(
     pnls: list[float] | np.ndarray,
     initial_capital: float = 10_000.0,

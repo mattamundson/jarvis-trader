@@ -359,17 +359,21 @@ class TestGetPeakBalance:
     # ── Contamination sanity bound (incident 2026-06-02, 92.61% false drawdown) ──
 
     def test_contaminated_db_peak_rejected_falls_to_paper(self):
-        # A $113K ending_balance against a $10K paper book is IB-demo/cumulative
-        # contamination (>5x). It must be rejected so it can't trip a false halt.
+        # When EVERY daily_pnl row is IB-demo/cumulative contamination (all above
+        # the 10x plausibility ceiling), the DB yields no usable peak and the read
+        # path falls through to the clean in-memory session tracker rather than
+        # trusting a corrupt source. (A single contaminated row mixed with good
+        # rows is instead dropped per-row, salvaging the good max — see
+        # test_risk_pnl_monitor_peak_isolation.py.)
         db = MagicMock()
         db.get_daily_pnl.return_value = [
-            {"ending_balance": 9800.0},
-            {"ending_balance": 113482.0},  # contaminated row
+            {"ending_balance": 113482.0},  # contaminated
+            {"ending_balance": 250000.0},  # contaminated
         ]
         paper = MagicMock()
         paper.get_performance.return_value = {"equity_curve": [10000.0, 9500.0]}
         monitor = _monitor(db=db, paper=paper, starting_balance=10000.0)
-        # Falls through to the clean session tracker peak, not the $113K row.
+        # All DB rows rejected → falls through to the clean session tracker peak.
         assert monitor.get_peak_balance() == pytest.approx(10000.0)
 
     def test_contaminated_db_peak_no_tracker_returns_zero(self):

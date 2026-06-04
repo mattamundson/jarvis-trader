@@ -552,23 +552,25 @@ const FALLBACK_REGIME: Record<string, RegimeStatusEntry> = {
 };
 
 function WFEStatusCard() {
-  const { data: paperData, error: paperError } = useSWR<
-    Record<string, PaperStatusEntry>
-  >("/backtest/paper-status", fetcher, {
-    refreshInterval: 30_000,
-    shouldRetryOnError: false,
-  });
+  const {
+    data: paperData,
+    error: paperErr,
+    isLoading: paperLoading,
+  } = useSWR<Record<string, PaperStatusEntry>>(
+    "/backtest/paper-status",
+    fetcher,
+    { refreshInterval: 30_000, shouldRetryOnError: false }
+  );
   const { data: regimeData } = useSWR<Record<string, RegimeStatusEntry>>(
     "/backtest/regime-status",
     fetcher,
     { refreshInterval: 30_000, shouldRetryOnError: false }
   );
 
-  // No fallbackData: until the engine returns live paper-status, paperData is
-  // undefined. We still render the static reference values so the card keeps
-  // its shape, but flag it loudly as NOT LIVE — the frozen numbers (e.g. the
-  // cleared_date stamps) must never be mistaken for current state.
-  const usingFallback = !paperData;
+  // When the engine is unreachable SWR has no live data. The fallback snapshot
+  // is frozen at 2026-05-31, so it must only render behind a loud STALE badge —
+  // never as if it were live status (the bug this card used to have).
+  const isStale = !!paperErr || (!paperLoading && paperData === undefined);
   const paper = paperData ?? FALLBACK_PAPER;
   const regime = regimeData ?? FALLBACK_REGIME;
 
@@ -597,37 +599,25 @@ function WFEStatusCard() {
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: "#00ff88" }}>
+          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: isStale ? "#f59e0b" : "#00ff88" }}>
             PAPER TRADING STATUS
           </span>
           <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border" style={{ borderColor: "#00d4ff33", backgroundColor: "#00d4ff10", color: "#00d4ff" }}>
             WFE
           </span>
-          {usingFallback && (
-            <span
-              className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
-              style={{
-                borderColor: paperError ? "#ff444455" : "#ffcc0055",
-                backgroundColor: paperError ? "#ff444415" : "#ffcc0015",
-                color: paperError ? "#ff6666" : "#ffcc00",
-              }}
-              title={
-                paperError
-                  ? "Engine unreachable — showing static reference values, not live data"
-                  : "Awaiting live engine data — showing static reference values"
-              }
-            >
-              {paperError ? "⚠ REFERENCE · ENGINE UNREACHABLE" : "REFERENCE · NOT LIVE"}
+          {isStale && (
+            <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border animate-pulse" style={{ borderColor: "#f59e0b66", backgroundColor: "#f59e0b1a", color: "#f59e0b" }}>
+              STALE · ENGINE UNREACHABLE
             </span>
           )}
         </div>
-        <span className="font-mono text-[9px]" style={{ color: "#555" }}>
-          Walk-Forward Efficiency
+        <span className="font-mono text-[9px]" style={{ color: isStale ? "#f59e0b" : "#555" }}>
+          {isStale ? "Last known 2026-05-31 — not live" : "Walk-Forward Efficiency"}
         </span>
       </div>
 
       {/* Table */}
-      <div className="font-mono text-xs">
+      <div className="font-mono text-xs" style={{ opacity: isStale ? 0.5 : 1 }}>
         {/* Header row */}
         <div className="grid grid-cols-4 gap-2 pb-2 mb-2" style={{ borderBottom: "1px solid #1a1a2e" }}>
           <span className="text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Symbol</span>

@@ -158,12 +158,10 @@ export default function TradingDetailPage() {
           </div>
           {ib.top_unrealized_position && (
             <p className="mt-3 text-xs text-zinc-400">
-              {ib.unrealized_total !== 0
-                ? `${Math.round(
-                    (ib.top_unrealized_position.unrealized_pnl / ib.unrealized_total) * 100,
-                  )}% of`
-                : "Part of"}{" "}
-              unrealized gains is one demo-seed position:{" "}
+              {Math.round(
+                (ib.top_unrealized_position.unrealized_pnl / ib.unrealized_total) * 100,
+              )}
+              % of unrealized gains is one demo-seed position:{" "}
               <span className="font-medium text-zinc-200">
                 {ib.top_unrealized_position.symbol}
               </span>{" "}

@@ -205,7 +205,6 @@ def evaluate(
     cutoff_90d = as_of - timedelta(days=125)  # ~90 trading days in 125 calendar days
 
     pnl_21d = pnl_df[pnl_df["date"] >= cutoff_21d]
-    pnl_90d = pnl_df[pnl_df["date"] >= cutoff_90d]
     trades_21d = trade_df[trade_df["_date"] >= cutoff_21d]
     trades_90d = trade_df[trade_df["_date"] >= cutoff_90d]
 

@@ -1,11 +1,11 @@
-"""Tests for engine.discord.hermes_upgrade.appliers.skill_installer."""
+"""Tests for discord.hermes_upgrade.appliers.skill_installer."""
 
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from engine.discord.hermes_upgrade.appliers.skill_installer import SkillInstaller
-from engine.discord.hermes_upgrade.models import BacklogEntry
+from discord.hermes_upgrade.appliers.skill_installer import SkillInstaller
+from discord.hermes_upgrade.models import BacklogEntry
 
 
 def _entry(
@@ -285,7 +285,7 @@ async def test_apply_invokes_wsl_subprocess_when_not_installed():
     with (
         patch.object(installer, "_list_installed_skills", side_effect=fake_list),
         patch(
-            "engine.discord.hermes_upgrade.appliers.skill_installer.asyncio.create_subprocess_exec",
+            "discord.hermes_upgrade.appliers.skill_installer.asyncio.create_subprocess_exec",
             AsyncMock(return_value=fake_proc),
         ) as mock_exec,
     ):
@@ -317,7 +317,7 @@ async def test_apply_records_failure_on_nonzero_exit():
     with (
         patch.object(installer, "_list_installed_skills", side_effect=fake_list),
         patch(
-            "engine.discord.hermes_upgrade.appliers.skill_installer.asyncio.create_subprocess_exec",
+            "discord.hermes_upgrade.appliers.skill_installer.asyncio.create_subprocess_exec",
             AsyncMock(return_value=fake_proc),
         ),
     ):
@@ -340,11 +340,11 @@ async def test_apply_handles_timeout():
     with (
         patch.object(installer, "_list_installed_skills", side_effect=fake_list),
         patch(
-            "engine.discord.hermes_upgrade.appliers.skill_installer.asyncio.create_subprocess_exec",
+            "discord.hermes_upgrade.appliers.skill_installer.asyncio.create_subprocess_exec",
             AsyncMock(return_value=fake_proc),
         ),
         patch(
-            "engine.discord.hermes_upgrade.appliers.skill_installer.asyncio.wait_for",
+            "discord.hermes_upgrade.appliers.skill_installer.asyncio.wait_for",
             AsyncMock(side_effect=__import__("asyncio").TimeoutError()),
         ),
     ):
@@ -404,7 +404,7 @@ async def test_rollback_invokes_uninstall():
     fake_proc.communicate = AsyncMock(return_value=(b"uninstalled\n", b""))
 
     with patch(
-        "engine.discord.hermes_upgrade.appliers.skill_installer.asyncio.create_subprocess_exec",
+        "discord.hermes_upgrade.appliers.skill_installer.asyncio.create_subprocess_exec",
         AsyncMock(return_value=fake_proc),
     ) as mock_exec:
         ok = await installer.rollback(entry, MagicMock())

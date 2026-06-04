@@ -984,8 +984,8 @@ class DebateOrchestrator:
         direction: "BULL", "BEAR", or "INCONCLUSIVE"
         scores_dict: {"trend": 0.8, "mean_rev": 0.2, ...} (0-1 scale)
         """
-        from llm.model_router import route_task
         from llm.client import JarvisLLMClient
+        from llm.model_router import route_task
 
         model = route_task("debate_orchestrator")
         client = JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
@@ -1034,10 +1034,7 @@ class DebateOrchestrator:
             return direction, clean_scores
         except Exception as exc:
             logger.error("[Debate] _score_confluence failed: %s", exc)
-            return "INCONCLUSIVE", {
-                dim: 0.0
-                for dim in ["trend", "mean_rev", "breakout", "volatility", "macro", "sentiment"]
-            }
+            return "INCONCLUSIVE", dict.fromkeys(["trend", "mean_rev", "breakout", "volatility", "macro", "sentiment"], 0.0)
 
 
 # ── Module-level LLM helpers (stateless, reuse agent's LLM client) ───────────

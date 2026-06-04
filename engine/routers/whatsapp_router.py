@@ -1,25 +1,23 @@
 """
 JARVIS TRADER — WhatsApp Interactive Router (Phase 4.1)
 ========================================================
-Receives inbound WhatsApp messages from Twilio and processes interactive 
+Receives inbound WhatsApp messages from Twilio and processes interactive
 commands (Y/N/S/KILL).
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from fastapi import APIRouter, Form, Request, HTTPException
+from fastapi import APIRouter, Form, Request
 from twilio.twiml.messaging_response import MessagingResponse
 
 from approval.service import (
-    get_latest_pending_approval_row,
-    approve_pending_trade,
-    reject_pending_trade,
     ApprovalFlowError,
+    approve_pending_trade,
+    get_latest_pending_approval_row,
+    reject_pending_trade,
 )
-from notifications.whatsapp import get_notifier
 
 logger = logging.getLogger("jarvis_trader.whatsapp_router")
 
@@ -60,7 +58,7 @@ async def receive_whatsapp_reply(
     """
     command = Body.strip().upper()
     sender = From.replace("whatsapp:", "")
-    
+
     logger.info(f"[WhatsApp] Inbound command from {sender}: {command}")
 
     twiml = MessagingResponse()
@@ -93,7 +91,7 @@ async def receive_whatsapp_reply(
             # If they typed something else, clear their pending kill if any
             if sender in _pending_kill_confirm:
                 _pending_kill_confirm.remove(sender)
-                
+
             twiml.message(
                 "🤖 *JARVIS Interactive Commands:*\n"
                 "- *Y*: Approve latest trade\n"
@@ -101,7 +99,7 @@ async def receive_whatsapp_reply(
                 "- *KILL*: Emergency stop\n"
                 "- *STATUS*: System health"
             )
-            
+
     except Exception as e:
         logger.error(f"[WhatsApp] Processing error: {e}", exc_info=True)
         twiml.message(f"❌ Error processing command: {str(e)}")
@@ -158,8 +156,8 @@ def _handle_reject() -> str:
 async def _handle_kill() -> str:
     if not _safety_layer:
         return "❌ Safety layer not initialized."
-    
-    # We require a two-step kill for safety in the roadmap, 
+
+    # We require a two-step kill for safety in the roadmap,
     # but for P4.1 we'll implement the direct trigger.
     await _safety_layer.activate_kill_switch(reason="Emergency stop via WhatsApp")
     return "🚨 *KILL SWITCH ACTIVATED* 🚨\nAll trading halted system-wide."
@@ -167,11 +165,11 @@ async def _handle_kill() -> str:
 def _handle_status() -> str:
     if not _safety_layer:
         return "❌ Status unavailable."
-    
+
     status = _safety_layer.get_status()
     ks = "ACTIVE 🔴" if status.get("kill_switch_active") else "OFF 🟢"
     pnl = status.get("daily_pnl", 0.0)
-    
+
     return (
         f"🤖 *JARVIS System Status*\n"
         f"Kill Switch: {ks}\n"

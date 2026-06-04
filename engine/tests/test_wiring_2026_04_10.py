@@ -369,38 +369,46 @@ class TestICWeightedEnsembleEqualWeightFallbackNonexistent:
 
 
 class TestPaperTradesTableExists:
-    """Verify paper_trades table exists in engine/data/jarvis_trader.db."""
+    """Verify the migration-defined schema produces a paper_trades table.
+
+    Builds a fresh DB via ``database.migrations.run_migrations`` rather than
+    inspecting ``engine/data/jarvis_trader.db`` (which is a developer/runtime
+    artifact absent — or only partially initialized — in CI). This asserts the
+    real schema contract and is environment-independent.
+    """
 
     def test_paper_trades_table_exists(self):
-        """Open engine/data/jarvis_trader.db; verify paper_trades table and columns."""
-        db_path = Path(__file__).resolve().parent.parent / "data" / "jarvis_trader.db"
+        """run_migrations on a fresh DB creates paper_trades with required cols."""
+        from database.migrations import run_migrations
 
-        if not db_path.exists():
-            pytest.skip(f"Database not found at {db_path}")
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "schema_check.db"
+            conn = sqlite3.connect(str(db_path))
+            try:
+                run_migrations(conn)
+                cursor = conn.cursor()
 
-        conn = sqlite3.connect(str(db_path))
-        try:
-            cursor = conn.cursor()
+                # Check paper_trades table exists
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='paper_trades'"
+                )
+                result = cursor.fetchone()
+                assert result is not None, "paper_trades table must exist after migrations"
 
-            # Check paper_trades table exists
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='paper_trades'"
-            )
-            result = cursor.fetchone()
-            assert result is not None, "paper_trades table must exist"
+                # Check required columns via PRAGMA
+                cursor.execute("PRAGMA table_info(paper_trades)")
+                columns = {row[1]: row for row in cursor.fetchall()}
 
-            # Check required columns via PRAGMA
-            cursor.execute("PRAGMA table_info(paper_trades)")
-            columns = {row[1]: row for row in cursor.fetchall()}
-
-            required_columns = {
-                "entry_price",
-                "stop_loss",
-                "symbol",
-                "side",
-                "status",
-            }
-            for col in required_columns:
-                assert col in columns, f"paper_trades.{col} must exist; found: {list(columns.keys())}"
-        finally:
-            conn.close()
+                required_columns = {
+                    "entry_price",
+                    "stop_loss",
+                    "symbol",
+                    "side",
+                    "status",
+                }
+                for col in required_columns:
+                    assert (
+                        col in columns
+                    ), f"paper_trades.{col} must exist; found: {list(columns.keys())}"
+            finally:
+                conn.close()

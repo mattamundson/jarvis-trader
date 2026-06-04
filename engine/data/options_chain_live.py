@@ -5,13 +5,13 @@ Polls Interactive Brokers for live option chains, Greeks, and IV.
 Supports defined-risk spread analysis for SPY, QQQ, and IWM.
 """
 
-import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
 
-from ib_async import Contract, Option, Stock
+from ib_async import Option, Stock
+
 from execution.ib_gateway_connector import IBGatewayConnector
 
 logger = logging.getLogger("jarvis_trader.data.options")
@@ -39,9 +39,9 @@ class OptionsChainService:
         self._last_update: Dict[str, datetime] = {}
 
     async def get_chain(
-        self, 
-        symbol: str, 
-        min_dte: int = 7, 
+        self,
+        symbol: str,
+        min_dte: int = 7,
         max_dte: int = 45,
         strike_count: int = 10
     ) -> List[OptionStrike]:
@@ -53,24 +53,24 @@ class OptionsChainService:
             return []
 
         logger.info(f"[Options] Fetching chain for {symbol} (DTE: {min_dte}-{max_dte})...")
-        
+
         try:
             # 1. Resolve Underlying
             underlying = Stock(symbol, 'SMART', 'USD')
             [underlying] = await self.ib._ib.qualifyContractsAsync(underlying)
-            
+
             # 2. Get Expirations
             chains = await self.ib._ib.reqSecDefOptParamsAsync(
                 underlying.symbol, '', underlying.secType, underlying.conId
             )
-            
+
             if not chains:
                 return []
-            
+
             # Use SMART chain
             chain = next(c for c in chains if c.exchange == 'SMART')
             expirations = sorted(chain.expirations)
-            
+
             # Filter by DTE
             now = datetime.now(timezone.utc)
             valid_expiries = []
@@ -79,18 +79,18 @@ class OptionsChainService:
                 dte = (exp_dt - now).days
                 if min_dte <= dte <= max_dte:
                     valid_expiries.append(exp)
-            
+
             if not valid_expiries:
                 return []
-            
+
             target_expiry = valid_expiries[0] # Focus on nearest valid expiry
-            
+
             # 3. Request Market Price of Underlying
             [ticker] = await self.ib._ib.reqTickersAsync(underlying)
             underlying_price = ticker.marketPrice()
             if underlying_price != underlying_price: # NaN check
                 underlying_price = ticker.close
-            
+
             # 4. Filter Strikes
             strikes = sorted(chain.strikes)
             # Find strikes closest to price
@@ -104,18 +104,18 @@ class OptionsChainService:
             for strike in target_strikes:
                 for right in ['C', 'P']:
                     contracts.append(Option(symbol, target_expiry, strike, right, 'SMART'))
-            
+
             contracts = await self.ib._ib.qualifyContractsAsync(*contracts)
-            
+
             # 6. Request Tickers (Greeks)
             tickers = await self.ib._ib.reqTickersAsync(*contracts)
-            
+
             results = []
             for t in tickers:
                 greeks = t.modelGreeks
                 if not greeks:
                     continue
-                
+
                 results.append(OptionStrike(
                     strike=t.contract.strike,
                     right=t.contract.right,
@@ -131,10 +131,10 @@ class OptionsChainService:
                     volume=t.volume,
                     open_interest=0 # reqTickers doesn't always provide OI
                 ))
-            
+
             self._cache[symbol] = results
             self._last_update[symbol] = datetime.now()
-            
+
             return results
 
         except Exception as e:

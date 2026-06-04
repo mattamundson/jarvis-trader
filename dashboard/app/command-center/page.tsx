@@ -24,17 +24,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import {
-  fetchEngine,
-  fetchJournalStats,
-  toggleKillSwitch,
-  type JournalTradeStats,
-} from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { fetchEngine, fetchJournalStats, toggleKillSwitch, type JournalTradeStats } from "@/lib/api";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { useToast } from "@/lib/toast-context";
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -385,28 +380,41 @@ export default function CommandCenterPage() {
   const ordersProgress = Math.min((ordersPerMin / 40) * 100, 100);
 
   const handleKillSwitch = useCallback(async () => {
-    const isActive = health?.kill_switch_active ?? false;
-    const action = isActive ? "deactivate" : "activate";
-    const confirmMsg = isActive
-      ? "Deactivate KILL SWITCH? Trading controls will be re-armed."
-      : "Activate KILL SWITCH? This will halt all trading immediately.";
-    if (!confirm(confirmMsg)) return;
+    const activating = !killSwitchActive;
+    if (
+      !confirm(
+        activating
+          ? "Activate KILL SWITCH? This will halt all trading immediately."
+          : "Deactivate the kill switch and allow trading to resume?"
+      )
+    )
+      return;
     try {
-      await toggleKillSwitch(action, isActive ? undefined : "manual: command-center");
-      await mutateHealth();
-      addToast(
-        isActive ? "Kill switch deactivated" : "Kill switch ACTIVATED — trading halted",
-        isActive ? "info" : "warning"
+      // Use the verified helper — it hits /safety/kill-switch/activate +
+      // /deactivate (the bare /safety/kill-switch route is a 404).
+      await toggleKillSwitch(
+        activating ? "activate" : "deactivate",
+        activating ? "Manual kill from command center" : undefined
       );
-    } catch (err) {
-      // A safety control must fail LOUDLY — never swallow.
       addToast(
-        `Kill switch ${action} FAILED — ${err instanceof Error ? err.message : "unknown error"}. Verify engine state manually.`,
+        activating
+          ? "Kill switch ACTIVATED — all trading halted."
+          : "Kill switch deactivated — trading re-armed.",
+        activating ? "warning" : "success"
+      );
+      mutateHealth();
+    } catch (err) {
+      // A safety control that fails must fail LOUDLY — never swallow.
+      addToast(
+        `Kill switch ${
+          activating ? "activation" : "deactivation"
+        } FAILED — trading may NOT be halted. ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
         "error"
       );
-      await mutateHealth();
     }
-  }, [health?.kill_switch_active, mutateHealth, addToast]);
+  }, [killSwitchActive, addToast, mutateHealth]);
 
   return (
     <div

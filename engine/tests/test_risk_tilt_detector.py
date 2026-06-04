@@ -148,10 +148,10 @@ class TestDrawdownAcceleration:
     def test_accelerating_drawdown_triggers_indicator(self):
         td = _td()
         # First half: mild drawdown
-        for i in range(4):
+        for _i in range(4):
             td.update_drawdown(1.0)
         # Second half: accelerating (>20% worse)
-        for i in range(4):
+        for _i in range(4):
             td.update_drawdown(5.0)
         state = td.check()
         assert "drawdown_accelerating" in state.tilt_indicators
