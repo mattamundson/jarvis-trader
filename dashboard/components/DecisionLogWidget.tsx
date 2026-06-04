@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Activity, Clock, Cpu } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -173,7 +173,7 @@ export function DecisionLogWidget() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     let decErr: string | null = null;
     try {
       const raw = await fetchEngine<unknown>(`/decisions/recent?limit=10`, {
@@ -199,14 +199,13 @@ export function DecisionLogWidget() {
       setLoading(false);
       setLastRefresh(new Date());
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 15_000);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchData]);
 
   const decisionCount = status?.decision_count ?? decisions.length;
   const pipelineAvailable = status?.available ?? true;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
@@ -235,7 +235,7 @@ export function SymbolSignalWidget() {
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const [tick, setTick] = useState(0);
 
-  const fetchSignals = async () => {
+  const fetchSignals = useCallback(async () => {
     // MCL + MNQ from paper runner status endpoint
     try {
       const json = await fetchEngine<Record<string, SignalData>>("/paper/runner-status");
@@ -263,15 +263,14 @@ export function SymbolSignalWidget() {
     }
 
     setLastFetch(new Date());
-  };
+  }, []);
 
   // Initial fetch + 15-second interval
   useEffect(() => {
     fetchSignals();
     const id = setInterval(fetchSignals, 15_000);
     return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchSignals]);
 
   // Tick every second for relative time display
   useEffect(() => {

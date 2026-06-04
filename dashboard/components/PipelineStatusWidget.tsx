@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Activity, CheckCircle, XCircle, AlertCircle, RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -82,7 +82,7 @@ export function PipelineStatusWidget() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchStatus() {
+  const fetchStatus = useCallback(async () => {
     try {
       const data = await fetchEngine<PipelineStatusResponse>("/pipeline/status");
       setStatus(data);
@@ -94,14 +94,13 @@ export function PipelineStatusWidget() {
       setLoading(false);
       setLastRefresh(new Date());
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchStatus();
     const interval = setInterval(fetchStatus, 15_000);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchStatus]);
 
   const available = fetchError ? null : (status?.available ?? null);
 
