@@ -68,6 +68,7 @@ Usage (from engine/ directory):
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -75,6 +76,8 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
+
+logger = logging.getLogger("jarvis_trader.backtest.roi_readiness")
 
 # ---------------------------------------------------------------------------
 # Paths & constants
@@ -504,6 +507,39 @@ def _eval_g5_no_donottrade(
     )
 
 
+def _shadow_real_uptime(days: list[date]) -> dict | None:
+    """SHADOW: poll-level uptime from health_snapshots over the gate window.
+
+    Returns scripts.health_uptime.compute_uptime()'s dict (polls_total,
+    polls_reachable, uptime_pct) for the window spanning ``days``, or None if the
+    computation is unavailable or the window has insufficient poll coverage.
+
+    This is advisory only — it is logged and surfaced in G6's notes for an A/B
+    against the day-level proxy, but does NOT gate readiness yet. Once the
+    divergence is understood and health_snapshots has full coverage, the gating
+    value can be flipped from the proxy to this metric.
+    """
+    if not days:
+        return None
+    try:
+        from scripts.health_uptime import compute_uptime
+
+        start_utc = datetime.combine(min(days), datetime.min.time(), tzinfo=timezone.utc)
+        end_utc = datetime.combine(
+            max(days) + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc
+        )
+        result = compute_uptime(start_utc, end_utc, db_path=_DB_PATH)
+    except Exception as exc:  # never let the shadow break the gate
+        logger.debug("[G6-shadow] compute_uptime unavailable: %s", exc)
+        return None
+
+    # No polls in the window → not enough data to be meaningful (e.g.
+    # health_snapshots / migration_025 postdates the window). Treat as absent.
+    if not result or result.get("polls_total", 0) <= 0:
+        return None
+    return result
+
+
 def _eval_g6_engine_uptime(
     snapshots: dict[date, dict],
     days: list[date],
@@ -511,13 +547,15 @@ def _eval_g6_engine_uptime(
     """
     G6: engine /health reported ≥ 95% of trading days.
 
-    Proxy: pnl_snapshots has a row for ≥ 95% of the 14 trading days.
-    If today is in the window and has no snapshot yet, falls back to a live
-    /health call to determine whether the engine is currently healthy.
+    Authoritative metric (proxy): pnl_snapshots has a row for ≥ 95% of the 14
+    trading days. If today is in the window and has no snapshot yet, falls back
+    to a live /health call to determine whether the engine is currently healthy.
 
-    TODO: refactor to use scripts.health_uptime.compute_uptime() once
-    health_snapshots has accumulated enough intraday data (migration_025).
-    That will give 5-min granularity uptime instead of day-level proxy.
+    SHADOW: additionally computes poll-level uptime via
+    scripts.health_uptime.compute_uptime() (5-min granularity, migration_025
+    health_snapshots) and logs the divergence + surfaces it in notes. The proxy
+    remains the gating value until the A/B is trusted; only then flip the gate to
+    the poll-level metric. This keeps the change risk-free (no verdict can move).
     """
     today = date.today()
     expected = len(days)
@@ -530,7 +568,31 @@ def _eval_g6_engine_uptime(
             present += 1  # count today as healthy
 
     uptime_pct = (present / expected * 100.0) if expected > 0 else 0.0
-    passed = uptime_pct >= ENGINE_UPTIME_MIN_PCT
+    passed = uptime_pct >= ENGINE_UPTIME_MIN_PCT  # proxy stays authoritative
+
+    notes = (
+        "Proxy: pnl_snapshots row presence = engine was healthy that day. "
+        "Does not detect intraday outages."
+    )
+
+    shadow = _shadow_real_uptime(days)
+    if shadow is not None:
+        real_pct = shadow["uptime_pct"]
+        delta = real_pct - uptime_pct
+        notes += (
+            f" | SHADOW poll-level uptime={real_pct:.1f}% "
+            f"({shadow['polls_reachable']}/{shadow['polls_total']} polls, "
+            f"Δ vs proxy={delta:+.1f}pp, advisory-only)"
+        )
+        logger.info(
+            "[G6-shadow] proxy=%.1f%% real=%.1f%% delta=%+.1fpp "
+            "(polls=%d reachable=%d) — proxy still authoritative",
+            uptime_pct,
+            real_pct,
+            delta,
+            shadow["polls_total"],
+            shadow["polls_reachable"],
+        )
 
     return GateResult(
         gate_id="G6",
@@ -538,10 +600,7 @@ def _eval_g6_engine_uptime(
         passed=passed,
         observed=f"{uptime_pct:.1f}% ({present}/{expected} days with snapshot or live health=ok)",
         threshold=f"≥ {ENGINE_UPTIME_MIN_PCT:.0f}%",
-        notes=(
-            "Proxy: pnl_snapshots row presence = engine was healthy that day. "
-            "Does not detect intraday outages."
-        ),
+        notes=notes,
     )
 
 
