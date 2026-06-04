@@ -30,7 +30,7 @@ class TrailingStopManager:
         """Start the monitoring loop."""
         if self._running:
             return
-        
+
         self._running = True
         logger.info(f"🛡️ TrailingStopManager: Monitoring active trades every {self.interval}s")
         self._task = asyncio.create_task(self._run_loop())
@@ -49,7 +49,7 @@ class TrailingStopManager:
                 await self._process_active_trades()
             except Exception as e:
                 logger.error(f"[TrailingStop] Loop error: {e}")
-            
+
             await asyncio.sleep(self.interval)
 
     async def _process_active_trades(self):
@@ -63,7 +63,7 @@ class TrailingStopManager:
         for trade in active_trades:
             if trade.status.value != "active":
                 continue
-            
+
             # 1. Get latest price
             tick = await self.data.get_tick_price(trade.symbol)
             current_price = tick.get("last_price")
@@ -75,12 +75,12 @@ class TrailingStopManager:
             # but for now we'll use a conservative estimate or prior ATR.
             # TODO: Link to TechnicalAnalystAgent.last_report
             atr = current_price * 0.005 # 0.5% ATR proxy for now
-            
+
             # 3. Calculate new trail
             # Logic: move stop UP for longs, DOWN for shorts
             # Params from trend_signals.py: atr_trail_mult = 2.0
-            mult = 2.0 
-            
+            mult = 2.0
+
             if trade.quantity > 0: # LONG
                 new_stop = current_price - (mult * atr)
                 if trade.stop_loss_price is None or new_stop > trade.stop_loss_price:

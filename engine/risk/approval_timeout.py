@@ -7,7 +7,7 @@ session (RTH vs. Overnight) and trade type.
 
 import logging
 from datetime import datetime, time, timezone
-from typing import Dict, Any
+from typing import Any, Dict
 
 logger = logging.getLogger("jarvis_trader.risk.approval_timeout")
 
@@ -33,13 +33,13 @@ def get_timeout_for_trade(approval_row: Dict[str, Any]) -> int:
     """
     # 1. Check if we're in RTH
     rth = is_rth()
-    
+
     # 2. Base timeout
     timeout = TIMEOUT_RTH if rth else TIMEOUT_OVERNIGHT
-    
+
     # 3. (Future) Trade-specific overrides
     # e.g. symbol-based or strategy-based adjustments
-    
+
     return timeout
 
 def is_expired(approval_row: Dict[str, Any]) -> bool:
@@ -49,28 +49,28 @@ def is_expired(approval_row: Dict[str, Any]) -> bool:
     created_at_str = approval_row.get("created_at")
     if not created_at_str:
         return False
-        
+
     try:
         if isinstance(created_at_str, datetime):
             created_at = created_at_str
         else:
             created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
-            
+
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
-        
+
         now = datetime.now(timezone.utc)
         age_mins = (now - created_at).total_seconds() / 60
-        
+
         timeout = get_timeout_for_trade(approval_row)
-        
+
         if age_mins > timeout:
             logger.info(
                 "[Timeout] %s expired: age=%.1fm, limit=%dm (rth=%s)",
                 approval_row.get("symbol"), age_mins, timeout, is_rth()
             )
             return True
-            
+
         return False
     except Exception as e:
         logger.error(f"[Timeout] Error evaluating expiry: {e}")

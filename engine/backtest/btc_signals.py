@@ -9,12 +9,13 @@ Architecture mirrors MES (trend) and MCL (mean-rev) validated logic.
 
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
 from typing import Optional
 
-from backtest.trend_signals import generate_sma_trend_signals
+import numpy as np
+import pandas as pd
+
 from backtest.meanrev_signals import generate_bollinger_rsi_signals
+from backtest.trend_signals import generate_sma_trend_signals
 
 # Baseline BTC Parameters (to be refined via Gate v2)
 BTC_TREND_PARAMS = {

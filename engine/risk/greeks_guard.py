@@ -7,7 +7,7 @@ Blocks trades that push the portfolio outside defined risk bounds.
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Any, Dict
 
 logger = logging.getLogger("jarvis_trader.risk.greeks")
 
@@ -20,8 +20,8 @@ class PortfolioGreeks:
 
 class GreeksGuard:
     def __init__(
-        self, 
-        max_delta: float = 100.0, 
+        self,
+        max_delta: float = 100.0,
         max_gamma: float = 10.0,
         max_vega: float = 50.0,
         min_theta: float = -20.0
@@ -39,7 +39,7 @@ class GreeksGuard:
         new_gamma = current_greeks.gamma + trade_greeks.gamma
         new_vega = current_greeks.vega + trade_greeks.vega
         new_theta = current_greeks.theta + trade_greeks.theta
-        
+
         reasons = []
         if abs(new_delta) > self.max_delta:
             reasons.append(f"Delta ({new_delta:.2f}) exceeds limit ({self.max_delta})")
@@ -49,7 +49,7 @@ class GreeksGuard:
             reasons.append(f"Vega ({new_vega:.2f}) exceeds limit ({self.max_vega})")
         if new_theta < self.min_theta:
             reasons.append(f"Theta ({new_theta:.2f}) below limit ({self.min_theta})")
-            
+
         return {
             "allowed": len(reasons) == 0,
             "reasons": reasons,

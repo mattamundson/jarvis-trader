@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("jarvis_trader.oms")
 
@@ -32,23 +32,23 @@ class BracketOrder:
     trade_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     symbol: str = ""
     quantity: int = 0
-    
+
     # Order IDs from the broker
     entry_order_id: Optional[str] = None
     stop_loss_id: Optional[str] = None
     take_profit_id: Optional[str] = None
-    
+
     # Target prices
     entry_price: float = 0.0
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
-    
+
     status: TradeState = TradeState.PENDING_ENTRY
     opened_at: datetime = field(default_factory=datetime.utcnow)
     closed_at: Optional[datetime] = None
-    
+
     exit_reason: Optional[str] = None # "tp", "sl", "manual", "flatten"
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "trade_id": self.trade_id,
@@ -251,7 +251,7 @@ class OMSManager:
         trade.status = TradeState.CLOSED
         trade.closed_at = datetime.utcnow()
         trade.exit_reason = reason
-        
+
         # OCO: Cancel the other leg
         other_id = trade.take_profit_id if reason == "sl" else trade.stop_loss_id
         if other_id:
@@ -260,7 +260,7 @@ class OMSManager:
                 logger.info("[OMS] OCO cancelled other leg: %s", other_id)
             except Exception as e:
                 logger.warning("[OMS] Failed to cancel OCO leg %s: %s", other_id, e)
-        
+
         # Cleanup
         # In a real system, we'd persist to DB first
         # del self.active_trades[trade.trade_id]
@@ -279,21 +279,21 @@ class OMSManager:
                 logger.warning("[OMS] Cannot update SL: Trade %s has no SL order ID", trade_id)
                 return
 
-            logger.info("[OMS] Updating SL for %s: %.2f -> %.2f", 
+            logger.info("[OMS] Updating SL for %s: %.2f -> %.2f",
                         trade.symbol, trade.stop_loss_price or 0.0, new_stop_price)
-            
+
             try:
                 # Dispatch to router for modification
                 result = await self.router.modify_order(
                     order_id=trade.stop_loss_id,
                     new_price=new_stop_price
                 )
-                
+
                 if result.get("status") == "modified":
                     trade.stop_loss_price = new_stop_price
                     logger.info("[OMS] SL updated successfully for %s", trade.symbol)
                 else:
-                    logger.error("[OMS] Failed to update SL for %s: %s", 
+                    logger.error("[OMS] Failed to update SL for %s: %s",
                                  trade.symbol, result.get("error"))
             except Exception as e:
                 logger.error("[OMS] Exception during SL update for %s: %s", trade.symbol, e)
@@ -301,8 +301,8 @@ class OMSManager:
     def get_active_trades(self) -> List[Dict[str, Any]]:
         return [t.to_dict() for t in self.active_trades.values() if t.status == TradeState.ACTIVE]
 
-    async def adopt_existing_trade(self, symbol: str, quantity: int, entry_price: float, 
-                                 stop_loss_id: Optional[str] = None, 
+    async def adopt_existing_trade(self, symbol: str, quantity: int, entry_price: float,
+                                 stop_loss_id: Optional[str] = None,
                                  take_profit_id: Optional[str] = None) -> str:
         """
         Adopt an existing position (e.g. found during reconciliation) into the OMS.
@@ -317,7 +317,7 @@ class OMSManager:
                 take_profit_id=take_profit_id
             )
             self.active_trades[trade.trade_id] = trade
-            logger.info("[OMS] Adopted existing position: %s Qty: %d ID: %s", 
+            logger.info("[OMS] Adopted existing position: %s Qty: %d ID: %s",
                         symbol, quantity, trade.trade_id)
             return trade.trade_id
 
@@ -328,7 +328,7 @@ class OMSManager:
         """
         if not db_manager:
             return
-        
+
         try:
             # Query for open paper trades
             # SQLite query against paper_trades table
@@ -350,7 +350,7 @@ class OMSManager:
                     )
                     # We might need to find SL/TP IDs from the broker if not in DB
                     self.active_trades[trade.trade_id] = trade
-                
+
                 logger.info("[OMS] Reloaded %d active trades from DB", len(rows))
         except Exception as e:
             logger.error("[OMS] Failed to reload trades from DB: %s", e)
