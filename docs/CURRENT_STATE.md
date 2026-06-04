@@ -1,6 +1,16 @@
 # JARVIS TRADER — Current System State
 
-**Status:** Hardening Phase | **Mode:** Paper Trading Validation | **Last Updated:** April 10, 2026
+**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** June 4, 2026
+
+> **Current reality (2026-06-04, verified against live `/health`):** Engine healthy on
+> 8010 — `status=ok`, `ibkr_connected/data_connected=true`, `ibgateway_alive=true` (4002),
+> `llm_path_healthy=true`, `tv_mcp=healthy`. Dashboard on 3010. `brier_30d_rolling` is still
+> null (calibration populates as paper trades accrue). Approved paper instruments changed since
+> the April snapshot below — **MES + MGC are active (Tier-3 2026-05-24); MCL + MNQ are HALTED
+> (`DO_NOT_TRADE`)**. A dashboard honesty/safety + Stark-enhancement branch
+> (`worktree-dashboard-honesty-safety`) is staged but not yet pushed/merged; its `[safety-review]`
+> equity-peak clamp activates on the next `restart_engine.ps1`. For live instrument status always
+> prefer the `/validation` scorecard over the static table below.
 
 **See also:** [Strategic command center (index)](strategic/README.md) — executive brief, system map, risk register, execution spine, and analysis passes.
 
@@ -27,12 +37,15 @@
 
 ## Approved Instruments
 
-| Symbol | Timeframe | WFE | Status | Notes |
-|--------|-----------|-----|--------|-------|
-| **MCL** | 1h | 0.82 | APPROVED | Paper trading active |
-| **MNQ** | 1h | 0.57 | APPROVED | Paper trading active |
-| MGC | 1d | 0.14 | HALTED | Overfit / insufficient sample |
-| MES | 1h | 0.09 | **PAPER (canon)** | WFE poor — paper-authorized only; see [.claude/imports/validated-instruments.md](../.claude/imports/validated-instruments.md) |
+_Updated 2026-06-04 from `engine/CLAUDE.md` canon (Tier-3 auth 2026-05-24). Live status: `/validation`._
+
+| Symbol | Timeframe | Edge | Status | Notes |
+|--------|-----------|------|--------|-------|
+| **MGC** | 1h | p_edge 0.6842 | **APPROVED — paper active** | SMA(50,120) trend, atr_trail_mult=2.0; ALT gate-v2 PASS |
+| **MES** | 1h | p_edge 0.75 | **APPROVED — paper active** | SMA(60,200) trend, atr_trail_mult=2.0; ALT gate-v2 PASS |
+| MCL | 1h | WFE 0.82 | HALTED | `DO_NOT_TRADE` — hypotheses A–E exhausted 2026-05-07 |
+| MNQ | 1h | WFE 0.57 | HALTED | `DO_NOT_TRADE` — trend/breakout/ORB all fail gate-v2 |
+| M2K | 1h | — | REJECTED | SMA/ORB/Donchian rank-1 all FAIL 2026-05-24 |
 
 ---
 
