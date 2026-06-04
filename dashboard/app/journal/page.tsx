@@ -347,6 +347,15 @@ export default function JournalPage() {
           icon={<BookOpen className="h-4 w-4 text-cyan-400" />}
           accentColor="#00d4ff"
         >
+          <div
+            className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+            style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+          >
+            <span style={{ fontWeight: 700 }}>Static log</span>
+            <span style={{ color: "#9a8030" }}>
+              frozen snapshot, last updated 2026-03-29 — &ldquo;active&rdquo; reflects status as of then, not today
+            </span>
+          </div>
           <div className="overflow-x-auto">
             {/* Table header */}
             <div
