@@ -1,9 +1,12 @@
 """RL train adapter — bridges jarvis-trader RL metrics to n-autoresearch val_bpb format.
 
-PLUMBING ONLY — reads rl_overrides.json, runs a minimal training stub, prints val_bpb line.
-Not wired to RLTrainer yet (requires paper trading validation of composite_score).
+PLUMBING ONLY — reads rl_overrides.json and prints the baseline val_bpb line.
+The real training path (RLTrainer().train_walkforward()) is NOT wired yet
+(requires paper-trading validation of composite_score), so only --baseline is
+functional; the non-baseline path raises NotImplementedError rather than
+emitting a stub that masquerades as real training.
 
-Usage: python engine/autoresearch/rl_train_adapter.py [--baseline]
+Usage: python engine/autoresearch/rl_train_adapter.py --baseline
 """
 from __future__ import annotations
 
@@ -45,8 +48,18 @@ def main() -> int:
     if args.baseline:
         val_bpb = compute_baseline_val_bpb()
     else:
-        # TODO: wire to RLTrainer().train_walkforward() after paper validation
-        val_bpb = compute_baseline_val_bpb()
+        # The real walk-forward training path is NOT wired — RLTrainer().
+        # train_walkforward() is gated on paper validation of composite_score
+        # (see module docstring). Returning the baseline value here would
+        # silently contaminate an RL hyperparameter sweep with stub
+        # mfu=0.0 / peak_vram_gb=0.0 metrics that masquerade as real training.
+        # Fail loudly instead.
+        raise NotImplementedError(
+            "RL walk-forward training is not wired "
+            "(RLTrainer().train_walkforward() is pending paper validation of "
+            "composite_score). Re-run with --baseline for the baseline metric, "
+            "or wire the trainer before launching a sweep."
+        )
 
     # n-autoresearch expects this exact line format on stdout
     print(f"val_bpb={val_bpb:.4f} peak_vram_gb=0.0 mfu=0.0 total_tokens={args.timesteps} param_count=1000000")
