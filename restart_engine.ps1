@@ -25,7 +25,19 @@ if ($pm2Managed) {
         Write-Host "Using IBKR client ID: $clientId"
     }
 
-    pm2 restart jarvis-engine | Out-Host
+    # Load .env into current shell so PM2 --update-env picks up any changes
+    # (e.g. ALLOW_PAPER_SIMULATED_ORDERS, READINESS_EDGE_MODE).  Without this,
+    # plain 'pm2 restart' serves PM2's cached env from the original pm2 start.
+    if (Test-Path $envFile) {
+        Get-Content $envFile | ForEach-Object {
+            if ($_ -match '^([A-Z][A-Z0-9_]*)=(.*)$') {
+                $k = $matches[1]; $v = $matches[2].Trim('"').Trim("'")
+                Set-Item -Path "Env:\$k" -Value $v
+            }
+        }
+    }
+
+    pm2 restart jarvis-engine --update-env | Out-Host
     Write-Host "Waiting for engine to come up..."
     # Poll /health with a 480s ceiling. Full startup (SafetyLayer, PnL,
     # RL model load, scheduler, IB init, scanner first-pass retry cascade)
