@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Literal, Optional
 
+import anthropic
 import httpx
 from anthropic import APIConnectionError, APIStatusError, RateLimitError
 from tenacity import (
@@ -33,7 +34,6 @@ from tenacity import (
 )
 
 from .cost_tracker import CostTracker
-from .provider_factory import get_anthropic_client, to_vertex_model_id
 
 try:
     from utils.token_proxy import get_token_proxy
@@ -139,13 +139,6 @@ class JarvisLLMClient:
         "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
         "deepseek-reasoner": {"input": 0.55, "output": 2.19},
         "hermes3:latest": {"input": 0.0, "output": 0.0},
-        # Claude-on-Vertex @-pinned ids — same list price as direct Anthropic.
-        # [UNVERIFIED] confirm against the live catalog (Vertex integration
-        # Task 1). Cost is normally keyed on the direct alias (see call()), so
-        # these are defensive: a translated id never trips "Unknown model".
-        "claude-opus-4-1@20250805": {"input": 15.0, "output": 75.0},
-        "claude-sonnet-4-5@20250929": {"input": 3.0, "output": 15.0},
-        "claude-haiku-4-5@20251001": {"input": 0.80, "output": 4.0},
     }
 
     # Model fallback chain when overloaded
@@ -251,13 +244,73 @@ class JarvisLLMClient:
                     logger.warning(
                         f"OLLAMA_NUM_CTX_PER_AGENT: invalid value '{ctx_str}' for agent '{agent}' — skipped"
                     )
-        # Provider-aware client construction (Vertex integration 2026-06-02):
-        #   ollama -> None; "vertex" -> AsyncAnthropicVertex (ADC auth, no key);
-        #   else -> AsyncAnthropic. The Vertex client exposes the identical
-        #   .messages.create() interface, so the downstream call path is
-        #   unchanged — only the model id is translated at the wire (see
-        #   _call_with_retry).
-        self.client = get_anthropic_client(api_key=api_key, provider=self.provider)
+        # Phase 3.5 (2026-06-03): Claude-on-Vertex transport (default OFF).
+        # When JARVIS_CLAUDE_USE_VERTEX is truthy and provider != ollama, route
+        # Claude through Vertex AI (AsyncAnthropicVertex) instead of the Anthropic
+        # direct API — billing consolidation + a Vertex failover leg. Vertex model
+        # IDs use the publisher @version form; JARVIS_VERTEX_MODEL_MAP translates
+        # direct names -> Vertex IDs at the single wire point (_call_with_retry).
+        # Unmapped names pass through unchanged. Absent flag => byte-identical to
+        # the direct path.
+        self.use_vertex = (
+            self.provider != "ollama"
+            and os.getenv("JARVIS_CLAUDE_USE_VERTEX", "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        self.vertex_project = os.getenv("ANTHROPIC_VERTEX_PROJECT_ID", "").strip()
+        self.vertex_region = os.getenv("ANTHROPIC_VERTEX_REGION", "").strip()
+        self.vertex_model_map: dict[str, str] = {}
+        _vmap_raw = os.getenv("JARVIS_VERTEX_MODEL_MAP", "").strip()
+        if _vmap_raw:
+            for spec in _vmap_raw.split(","):
+                spec = spec.strip()
+                if not spec or "=" not in spec:
+                    continue
+                direct, vertex_id = spec.split("=", 1)
+                direct, vertex_id = direct.strip(), vertex_id.strip()
+                if direct and vertex_id:
+                    self.vertex_model_map[direct] = vertex_id
+
+        if self.provider == "ollama":
+            self.client = None
+        elif self.use_vertex:
+            self.client = self._build_vertex_client()
+            logger.info(
+                "🔵 Claude-on-Vertex transport active "
+                f"(project={self.vertex_project or 'ADC-default'}, "
+                f"region={self.vertex_region or 'ADC-default'})"
+            )
+        else:
+            self.client = anthropic.AsyncAnthropic(api_key=api_key)
+
+        # Phase 3.5 failover (default OFF): on Anthropic credit-exhaustion, retry
+        # the call via Claude-on-Vertex BEFORE the Gemini fallback. Same model
+        # family = best output continuity, and GCP-billed so unaffected by the
+        # Anthropic credit outage. Only meaningful when the primary is direct
+        # Anthropic (not ollama, not already Vertex-primary). Silently disables
+        # if the Vertex client can't be built (e.g. ADC not configured yet), so
+        # it is safe to leave wired; flipping JARVIS_LLM_VERTEX_FAILOVER arms it.
+        self.vertex_failover_enabled = (
+            self.provider != "ollama"
+            and not self.use_vertex
+            and os.getenv("JARVIS_LLM_VERTEX_FAILOVER", "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        self.vertex_failover_count = 0
+        self._failover_vertex_client = None
+        if self.vertex_failover_enabled:
+            try:
+                self._failover_vertex_client = self._build_vertex_client()
+                logger.info(
+                    "🔵 Claude-on-Vertex credit-exhaustion failover armed "
+                    f"(project={self.vertex_project or 'ADC-default'}, "
+                    f"region={self.vertex_region or 'ADC-default'})"
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "vertex failover disabled — could not build Vertex client: %s", exc
+                )
+                self.vertex_failover_enabled = False
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
         self.fast_model = (
@@ -283,67 +336,11 @@ class JarvisLLMClient:
         ).strip().lower() not in {"0", "false", "no", "off"}
         self.google_fallback_count = 0  # incremented on each successful fallback
 
-        # Task 6 (Vertex integration 2026-06-02): route Gemini through Vertex AI
-        # (google-genai vertexai=True) instead of the AI-Studio key. Gated by
-        # JARVIS_GEMINI_USE_VERTEX (default off) so it only activates post-ADC.
-        # When on, the analyst-tier agents and the credit-exhaustion Gemini
-        # fallback are served via Vertex, with NO AI-Studio key required.
-        self.gemini_use_vertex = os.getenv(
-            "JARVIS_GEMINI_USE_VERTEX", "0"
-        ).strip().lower() in {"1", "true", "yes", "on"}
-        self.gemini_vertex_project = (
-            os.getenv("GOOGLE_CLOUD_PROJECT") or "jarvis-trading-493009"
-        ).strip()
-        self.gemini_vertex_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
-        # "Gemini available" for routing/fallback = AI-Studio key OR Vertex Gemini.
-        self.gemini_enabled = self.google_fallback_enabled or self.gemini_use_vertex
-
         # Phase 3.4 (2026-05-22): DeepSeek-R1 support for reasoning chains.
         self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
         self.deepseek_endpoint = os.getenv(
             "DEEPSEEK_ENDPOINT", "https://api.deepseek.com/v1/chat/completions"
         ).strip()
-
-        # Vertex shadow + failover (Vertex integration 2026-06-02). Both ride a
-        # single auxiliary Vertex client, built only when the primary provider
-        # is direct Anthropic — shadow/failover are meaningless under ollama and
-        # redundant when vertex is already primary.
-        #   - JARVIS_LLM_VERTEX_SHADOW=1: fire a parallel Vertex call after each
-        #     successful direct call to log a latency/length A/B. Never affects
-        #     the returned result.
-        #   - JARVIS_LLM_VERTEX_FAILOVER=1: on Anthropic credit-exhaustion, serve
-        #     the call from Claude-on-Vertex (same model family, GCP-billed so
-        #     unaffected by the credit outage) BEFORE the Gemini fallback.
-        # Failover defaults OFF (gated-flip pattern): flip to 1 once ADC is set
-        # up. Both silently disable if the Vertex client can't be built (e.g. ADC
-        # not configured yet), so they're safe to leave wired.
-        _truthy = {"1", "true", "yes", "on"}
-        _primary_is_direct = self.provider not in {"ollama", "vertex"}
-        self.vertex_shadow_enabled = (
-            os.getenv("JARVIS_LLM_VERTEX_SHADOW", "0").strip().lower() in _truthy
-            and _primary_is_direct
-        )
-        self.vertex_failover_enabled = (
-            os.getenv("JARVIS_LLM_VERTEX_FAILOVER", "0").strip().lower() in _truthy
-            and _primary_is_direct
-        )
-        self.vertex_shadow_count = 0
-        self.vertex_failover_count = 0
-        self._aux_vertex_client = None
-        if self.vertex_shadow_enabled or self.vertex_failover_enabled:
-            try:
-                self._aux_vertex_client = get_anthropic_client(provider="vertex")
-            except Exception as exc:
-                logger.warning(
-                    "vertex shadow/failover disabled — could not build Vertex client: %s",
-                    exc,
-                )
-                self.vertex_shadow_enabled = False
-                self.vertex_failover_enabled = False
-        # Back-compat alias used by the shadow helper (same underlying client).
-        self._shadow_vertex_client = (
-            self._aux_vertex_client if self.vertex_shadow_enabled else None
-        )
 
         google_status = (
             "enabled"
@@ -356,10 +353,6 @@ class JarvisLLMClient:
             f"(provider={self.provider}, google_fallback={google_status}, deepseek={deepseek_status})"
         )
 
-    def _gemini_provider_label(self) -> str:
-        """Provider tag for a Gemini-served call: Vertex when configured, else AI-Studio."""
-        return "vertex-gemini" if self.gemini_use_vertex else "google"
-
     async def _handle_success(
         self,
         result,
@@ -371,13 +364,8 @@ class JarvisLLMClient:
         proxy=None,
         compressed_key=None,
         cache_salt: str = "",
-        provider: str | None = None,
     ) -> LLMCallResult:
-        """Handle successful API call.
-
-        ``provider`` records the serving provider for the Task 9 cost A/B; when
-        omitted it defaults to the client's configured provider (the direct path).
-        """
+        """Handle successful API call."""
         # Any success clears the credit-exhaustion health flag (transient recovery)
         if not _LLM_PATH_STATE["healthy"]:
             _LLM_PATH_STATE["healthy"] = True
@@ -389,7 +377,6 @@ class JarvisLLMClient:
         input_tokens = result.usage.input_tokens
         output_tokens = result.usage.output_tokens
         cost = self._calculate_cost(current_model, input_tokens, output_tokens)
-        serving_provider = provider or self.provider
 
         # Log to database
         await self.cost_tracker.log_call(
@@ -401,7 +388,6 @@ class JarvisLLMClient:
             latency_ms=latency_ms,
             agent_name=agent_name,
             success=True,
-            provider=serving_provider,
         )
 
         # Log to console
@@ -441,7 +427,6 @@ class JarvisLLMClient:
         retries: int,
         agent_name: str,
         tier: str = "default",
-        provider: str | None = None,
     ) -> LLMCallResult:
         """Handle failed API call after retries exhausted."""
         latency_ms = int((time.time() - start_time) * 1000)
@@ -457,7 +442,6 @@ class JarvisLLMClient:
             latency_ms=latency_ms,
             agent_name=agent_name,
             success=False,
-            provider=provider or self.provider,
         )
 
         logger.error(
@@ -681,7 +665,7 @@ class JarvisLLMClient:
         # Falls through to the Anthropic retry loop on any Gemini failure.
         if (
             self.provider != "ollama"
-            and self.gemini_enabled
+            and self.google_fallback_enabled
             and agent_name in self.GEMINI_PRIMARY_AGENTS
         ):
             google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
@@ -704,7 +688,6 @@ class JarvisLLMClient:
                     proxy=proxy,
                     compressed_key=compressed_key,
                     cache_salt=cache_salt,
-                    provider=self._gemini_provider_label(),
                 )
             except Exception as gex:
                 logger.warning(
@@ -725,7 +708,7 @@ class JarvisLLMClient:
                     temperature=temperature,
                     agent_name=agent_name,
                 )
-                primary = await self._handle_success(
+                return await self._handle_success(
                     result,
                     current_model,
                     start_time,
@@ -736,18 +719,6 @@ class JarvisLLMClient:
                     compressed_key=compressed_key,
                     cache_salt=cache_salt,
                 )
-                # Shadow only the real direct-Claude path (not Gemini-primary or
-                # cache hits) so the A/B compares like-for-like.
-                self._maybe_fire_vertex_shadow(
-                    current_model,
-                    system,
-                    working_messages,
-                    max_tokens,
-                    temperature,
-                    agent_name,
-                    primary,
-                )
-                return primary
 
             except RateLimitError as e:
                 last_error = e
@@ -819,11 +790,18 @@ class JarvisLLMClient:
                     logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
 
                 if _is_credit_exhaustion(body_str):
-                    # Task 5: Claude-on-Vertex failover FIRST — same model family
-                    # (best output continuity) and GCP-billed, so it is unaffected
-                    # by the Anthropic credit outage. Falls through to the Gemini
-                    # fallback below if Vertex is unavailable or also fails.
-                    if self.vertex_failover_enabled and self._aux_vertex_client is not None:
+                    # Phase 3.5: Claude-on-Vertex failover FIRST — same model
+                    # family (best output continuity) and GCP-billed, so it is
+                    # unaffected by the Anthropic credit outage. Falls through to
+                    # the Gemini fallback below if Vertex is disabled or also fails.
+                    if (
+                        self.vertex_failover_enabled
+                        and self._failover_vertex_client is not None
+                    ):
+                        logger.warning(
+                            f"[{current_model}] credit-exhaustion for {agent_name} -- "
+                            f"attempting Claude-on-Vertex failover"
+                        )
                         try:
                             vertex_result = await self._call_vertex_failover(
                                 current_model,
@@ -842,13 +820,6 @@ class JarvisLLMClient:
                                 f"(count: {self.vertex_failover_count})"
                             )
                             _LLM_PATH_STATE["last_failure_agent"] = agent_name
-                            logger.warning(
-                                "[%s] credit-exhaustion for %s -- served via "
-                                "Claude-on-Vertex failover (count: %d)",
-                                current_model,
-                                agent_name,
-                                self.vertex_failover_count,
-                            )
                             return await self._handle_success(
                                 vertex_result,
                                 current_model,
@@ -859,23 +830,20 @@ class JarvisLLMClient:
                                 proxy=proxy,
                                 compressed_key=compressed_key,
                                 cache_salt=cache_salt,
-                                provider="vertex",
                             )
                         except Exception as vex:
                             logger.warning(
-                                "[%s] Vertex failover failed for %s -- trying Gemini next: %s",
-                                current_model,
-                                agent_name,
-                                vex,
+                                f"[{current_model}] Vertex failover failed for "
+                                f"{agent_name} -- trying Gemini next: {vex}"
                             )
+                            # fall through to the Gemini fallback below
 
                     # Phase 3: Anthropic credits exhausted — try transparent
                     # Gemini fallback before declaring the call failed. The
                     # fallback preserves quality tier (Opus/Sonnet -> 2.5-flash,
                     # Haiku -> 2.0-flash) and returns a normal LLMCallResult so
-                    # call sites are provider-agnostic. Served via Vertex when
-                    # JARVIS_GEMINI_USE_VERTEX=1, else the AI-Studio endpoint.
-                    if self.gemini_enabled:
+                    # call sites are provider-agnostic.
+                    if self.google_fallback_enabled:
                         google_model = self.GOOGLE_FAILOVER_MAP.get(
                             current_model, "gemini-2.5-flash"
                         )
@@ -912,7 +880,6 @@ class JarvisLLMClient:
                                 proxy=proxy,
                                 compressed_key=compressed_key,
                                 cache_salt=cache_salt,
-                                provider=self._gemini_provider_label(),
                             )
                         except Exception as gex:
                             logger.error(
@@ -937,103 +904,6 @@ class JarvisLLMClient:
         return await self._handle_failure(
             last_error, current_model, start_time, retries, agent_name, tier=tier
         )
-
-    def _maybe_fire_vertex_shadow(
-        self,
-        model: str,
-        system: str,
-        messages: list[dict],
-        max_tokens: int,
-        temperature: float,
-        agent_name: str,
-        primary_result: LLMCallResult,
-    ) -> None:
-        """Fire-and-forget a parallel Vertex call for A/B comparison (shadow mode).
-
-        Non-blocking and fully isolated: scheduled as a background task and any
-        failure is swallowed, so the live (direct) path and the returned result
-        are never affected. No-op unless shadow mode built a Vertex client.
-        """
-        if self._shadow_vertex_client is None:
-            return
-        try:
-            asyncio.create_task(
-                self._run_vertex_shadow(
-                    model, system, messages, max_tokens, temperature, agent_name, primary_result
-                )
-            )
-        except RuntimeError:
-            # No running event loop (e.g. called from a sync context) — skip.
-            pass
-
-    async def _run_vertex_shadow(
-        self,
-        model: str,
-        system: str,
-        messages: list[dict],
-        max_tokens: int,
-        temperature: float,
-        agent_name: str,
-        primary_result: LLMCallResult,
-    ) -> None:
-        """Execute the shadow Vertex call and log a divergence comparison line."""
-        try:
-            t0 = time.time()
-            vertex_model = to_vertex_model_id(model)
-            kwargs = {
-                "model": vertex_model,
-                "system": system,
-                "messages": messages,
-                "max_tokens": max_tokens,
-            }
-            if not _temperature_deprecated(model):
-                kwargs["temperature"] = temperature
-            vresult = await self._shadow_vertex_client.messages.create(**kwargs)
-            latency_ms = int((time.time() - t0) * 1000)
-            shadow_text = vresult.content[0].text if vresult.content else ""
-            primary_text = primary_result.content or ""
-            self.vertex_shadow_count += 1
-            logger.info(
-                "vertex_shadow agent=%s model=%s->%s primary_len=%d shadow_len=%d "
-                "primary_lat=%dms shadow_lat=%dms shadow_in=%d shadow_out=%d (n=%d)",
-                agent_name,
-                model,
-                vertex_model,
-                len(primary_text),
-                len(shadow_text),
-                primary_result.latency_ms,
-                latency_ms,
-                vresult.usage.input_tokens,
-                vresult.usage.output_tokens,
-                self.vertex_shadow_count,
-            )
-        except Exception as exc:
-            logger.warning("vertex_shadow failed agent=%s: %s", agent_name, exc)
-
-    async def _call_vertex_failover(
-        self,
-        model: str,
-        system: str,
-        messages: list[dict],
-        max_tokens: int,
-        temperature: float,
-    ):
-        """Single Claude-on-Vertex call used as a credit-exhaustion failover.
-
-        Uses the auxiliary Vertex client and the translated model id, and returns
-        the native Anthropic Message shape so the normal success/cost path stays
-        provider-agnostic (cost is keyed on the original alias by the caller).
-        """
-        vertex_model = to_vertex_model_id(model)
-        kwargs = {
-            "model": vertex_model,
-            "system": system,
-            "messages": messages,
-            "max_tokens": max_tokens,
-        }
-        if not _temperature_deprecated(model):
-            kwargs["temperature"] = temperature
-        return await self._aux_vertex_client.messages.create(**kwargs)
 
     def _messages_to_ollama_prompt(self, system: str, messages: list[dict]) -> str:
         parts: list[str] = []
@@ -1103,12 +973,6 @@ class JarvisLLMClient:
           - tool/cache/extra fields are not forwarded; this is the minimum
             shape needed by the trading agents that go through call().
         """
-        # Task 6: prefer Vertex Gemini when enabled (no AI-Studio key needed).
-        if self.gemini_use_vertex:
-            return await self._call_vertex_gemini(
-                system, messages, max_tokens, temperature, model
-            )
-
         if not self.google_api_key:
             raise RuntimeError("google_api_key not configured")
 
@@ -1147,61 +1011,6 @@ class JarvisLLMClient:
         usage = data.get("usage") or {}
         input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
         output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
-        return SimpleNamespace(
-            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
-            content=[SimpleNamespace(text=text)],
-        )
-
-    async def _call_vertex_gemini(
-        self,
-        system: str,
-        messages: list[dict],
-        max_tokens: int,
-        temperature: float,
-        model: str,
-    ):
-        """Single Gemini call via Vertex AI (google-genai, vertexai=True).
-
-        Returns the Anthropic-shaped SimpleNamespace like _call_google, so the
-        success/cost path stays provider-agnostic. google-genai's client is sync,
-        so it runs in a worker thread to avoid blocking the event loop. Auth is
-        via ADC; no AI-Studio key is used. Gemini on Vertex lives in
-        GOOGLE_CLOUD_LOCATION (us-central1 by default) — distinct from the
-        Claude-on-Vertex region.
-        """
-
-        def _sync_call():
-            from google import genai
-            from google.genai import types
-
-            client = genai.Client(
-                vertexai=True,
-                project=self.gemini_vertex_project,
-                location=self.gemini_vertex_location,
-            )
-            parts: list[str] = []
-            for m in messages:
-                content = m.get("content", "")
-                if not isinstance(content, str):
-                    content = str(content)
-                parts.append(f"{m.get('role', 'user')}: {content}")
-            prompt = "\n\n".join(parts) if parts else ""
-            config = types.GenerateContentConfig(
-                system_instruction=system or None,
-                max_output_tokens=max_tokens,
-                temperature=temperature,
-            )
-            return client.models.generate_content(model=model, contents=prompt, config=config)
-
-        resp = await asyncio.to_thread(_sync_call)
-        text = getattr(resp, "text", "") or ""
-        usage_meta = getattr(resp, "usage_metadata", None)
-        input_tokens = int(
-            getattr(usage_meta, "prompt_token_count", 0) or self._estimate_tokens(system, messages)
-        )
-        output_tokens = int(
-            getattr(usage_meta, "candidates_token_count", 0) or max(1, len(text) // 4)
-        )
         return SimpleNamespace(
             usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
             content=[SimpleNamespace(text=text)],
@@ -1309,12 +1118,18 @@ class JarvisLLMClient:
                 model=model,
             )
 
-        # Claude-on-Vertex serves under version-pinned model ids; translate the
-        # direct alias just for the wire call. Cost/logging stay keyed on the
-        # original alias (see call()), so provider switching is transparent.
-        api_model = to_vertex_model_id(model) if self.provider == "vertex" else model
+        # Vertex uses publisher @version model IDs; translate at the wire only.
+        # Cost tracking, health, and logging keep the direct name (current_model).
+        # Defensive getattr: low-level callers (and some tests) construct the
+        # client via __new__ without running __init__, so use_vertex /
+        # vertex_model_map may be unset — default to the direct (non-Vertex) path.
+        call_model = (
+            getattr(self, "vertex_model_map", {}).get(model, model)
+            if getattr(self, "use_vertex", False)
+            else model
+        )
         kwargs = {
-            "model": api_model,
+            "model": call_model,
             "system": system,
             "messages": messages,
             "max_tokens": max_tokens,
@@ -1322,6 +1137,45 @@ class JarvisLLMClient:
         if not _temperature_deprecated(model):
             kwargs["temperature"] = temperature
         return await self.client.messages.create(**kwargs)
+
+    def _build_vertex_client(self):
+        """Construct an AsyncAnthropicVertex client from the configured project/
+        region (ADC auth; no API key). Shared by the Vertex primary transport
+        and the credit-exhaustion failover leg so they stay in lock-step."""
+        from anthropic import AsyncAnthropicVertex
+
+        _vx_kwargs = {}
+        if self.vertex_project:
+            _vx_kwargs["project_id"] = self.vertex_project
+        if self.vertex_region:
+            _vx_kwargs["region"] = self.vertex_region
+        return AsyncAnthropicVertex(**_vx_kwargs)
+
+    async def _call_vertex_failover(
+        self,
+        model: str,
+        system: str,
+        messages: list,
+        max_tokens: int,
+        temperature: float,
+    ):
+        """One Claude-on-Vertex call used as a credit-exhaustion failover.
+
+        Returns the native Anthropic Message shape so the success/cost path stays
+        provider-agnostic — cost is keyed on the original alias (``model``) by the
+        caller. Translates the alias to the Vertex publisher @version id via the
+        same ``vertex_model_map`` the primary transport uses.
+        """
+        vertex_model = self.vertex_model_map.get(model, model)
+        kwargs = {
+            "model": vertex_model,
+            "system": system,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+        if not _temperature_deprecated(model):
+            kwargs["temperature"] = temperature
+        return await self._failover_vertex_client.messages.create(**kwargs)
 
     def _calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate USD cost for a single API call."""
@@ -1342,7 +1196,6 @@ class JarvisLLMClient:
         latency_ms: int,
         agent_name: str = "unknown",
         success: bool = True,
-        provider: str = "external",
     ) -> None:
         """
         Record cost metrics for an LLM call made via raw HTTP (not via .call()).
@@ -1357,8 +1210,6 @@ class JarvisLLMClient:
             latency_ms: Elapsed wall-clock milliseconds for the HTTP round-trip
             agent_name: Calling agent identifier (for per-agent cost breakdown)
             success: True if the HTTP call returned a 2xx status
-            provider: Serving provider tag (default 'external' — these bypass the
-                central routing, so they are neither direct nor Vertex by default)
         """
         cost = self._calculate_cost(model, input_tokens, output_tokens)
         await self.cost_tracker.log_call(
@@ -1370,7 +1221,6 @@ class JarvisLLMClient:
             latency_ms=latency_ms,
             agent_name=agent_name,
             success=success,
-            provider=provider,
         )
 
     async def get_daily_stats(self) -> dict:
