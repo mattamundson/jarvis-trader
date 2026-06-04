@@ -34,7 +34,7 @@ export default function MasterPage() {
                 : null;
           return href ? (
             <Link key={s.domain} href={href} className="block">
-              <DomainTile s={s} />
+              <DomainTile s={s} interactive />
             </Link>
           ) : (
             <DomainTile key={s.domain} s={s} />
