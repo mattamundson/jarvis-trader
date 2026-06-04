@@ -12,8 +12,7 @@ import logging
 import re
 from typing import Optional, Tuple
 
-from llm.client import JarvisLLMClient, LLMCallResult
-from llm.model_router import route_task
+from llm.client import JarvisLLMClient
 
 logger = logging.getLogger("jarvis_trader.reasoning_client")
 

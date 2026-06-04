@@ -9,9 +9,6 @@ Architecture mirrors MES (trend) and MCL (mean-rev) validated logic.
 
 from __future__ import annotations
 
-from typing import Optional
-
-import numpy as np
 import pandas as pd
 
 from backtest.meanrev_signals import generate_bollinger_rsi_signals
