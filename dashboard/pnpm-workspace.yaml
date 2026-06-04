@@ -1,0 +1,6 @@
+# pnpm 10.16+ moved per-project settings here (the package.json "pnpm" field
+# is no longer read). Approve native build scripts so `pnpm install` does not
+# fail with ERR_PNPM_IGNORED_BUILDS in CI.
+onlyBuiltDependencies:
+  - sharp
+  - unrs-resolver

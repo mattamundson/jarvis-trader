@@ -11,7 +11,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
-from engine.discord.digest_generator import _calibration_integrity
+from discord.digest_generator import _calibration_integrity
 
 
 def _make_feedback_db(path, rows):
