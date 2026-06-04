@@ -127,11 +127,17 @@ def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> 
     """
     import logging
 
-    candidates = sorted(data_dir.glob(f"{prefix}*{suffix}"))
+    # Anchor the symbol on a trailing underscore so a prefix like "MES" matches
+    # "MES_2024-..._1h.csv" but NOT a longer symbol that merely starts with it
+    # ("MESXX_..._1h.csv"). The filename contract is <SYMBOL>_<START>_<END>_<INTERVAL>,
+    # so a "_" always follows the symbol. Without the anchor, glob "MES*" leaks
+    # MESXX files into MES's candidate set and a same-end-date tie can silently
+    # select the wrong symbol's cache.
+    candidates = sorted(data_dir.glob(f"{prefix}_*{suffix}"))
     if not candidates:
         raise FileNotFoundError(
             f"No {prefix} {suffix.lstrip('_').rstrip('.csv')} data found in "
-            f"{data_dir} (looked for '{prefix}*{suffix}')"
+            f"{data_dir} (looked for '{prefix}_*{suffix}')"
         )
 
     def _end_date(p: Path) -> str:

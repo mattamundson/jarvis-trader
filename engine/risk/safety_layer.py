@@ -952,7 +952,10 @@ class SafetyLayer:
 
     def _check_gating_conditions(self) -> RiskCheckResult:
         """Check live trading enabled and human approval conditions."""
-        if not self._config.LIVE_TRADING_ENABLED:
+        # Defensive read (matches the getattr pattern at line ~1705 and the
+        # ALLOW_PAPER_SIMULATED_ORDERS read below): a config missing this flag
+        # must NEVER enable live trading — default to False (paper / disabled).
+        if not getattr(self._config, "LIVE_TRADING_ENABLED", False):
             if getattr(self._config, "ALLOW_PAPER_SIMULATED_ORDERS", False):
                 # Explicit opt-in: route through simulated paper path, skip all gating
                 return RiskCheckResult(approved=True)
