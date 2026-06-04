@@ -984,8 +984,8 @@ class DebateOrchestrator:
         direction: "BULL", "BEAR", or "INCONCLUSIVE"
         scores_dict: {"trend": 0.8, "mean_rev": 0.2, ...} (0-1 scale)
         """
-        from llm.model_router import route_task
         from llm.client import JarvisLLMClient
+        from llm.model_router import route_task
 
         model = route_task("debate_orchestrator")
         client = JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""))

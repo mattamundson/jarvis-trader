@@ -277,7 +277,7 @@ class TradeReviewService:
             if match:
                 data = json.loads(match.group())
             else:
-                raise ValueError(f"No JSON found in response: {text[:200]}")
+                raise ValueError(f"No JSON found in response: {text[:200]}") from None
 
         # Validate grade
         valid_grades = {"A", "B", "C", "D", "F"}

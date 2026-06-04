@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict
 
 from database.manager import DatabaseManager
 from strategies.llm_sandbox import load_strategy_sandboxed
@@ -36,13 +36,13 @@ class CanaryManager:
         """Start the canary management loop."""
         if self._running:
             return
-        
+
         self._running = True
         logger.info("🧪 CanaryManager: Initializing A/B Canary Framework")
-        
+
         # Load existing active canaries
         await self._load_active_canaries()
-        
+
         self._task = asyncio.create_task(self._run_loop())
 
     async def stop(self):
@@ -72,7 +72,7 @@ class CanaryManager:
             try:
                 # 1. Evaluate trial completions
                 await self._evaluate_trials()
-                
+
                 # 2. Check for new promotion candidates from discovery
                 await self._promote_new_winners()
 
@@ -84,26 +84,26 @@ class CanaryManager:
 
             except Exception as e:
                 logger.error(f"[Canary] Loop error: {e}")
-            
+
             await asyncio.sleep(1800) # Run every 30 mins
 
     async def _promote_new_winners(self):
         """Check discovery results and promote high PF strategies to Canary."""
         from strategies.discovery_loop import read_results
-        
+
         results = read_results(50)
         for r in results:
             if r.get("verdict") == "ELIGIBLE" and r.get("pf", 0) >= PROMOTION_MIN_PF:
                 filename = r["strategy_file"]
-                
+
                 # Skip if already a canary
                 if self.db.get_canary_by_file(filename):
                     continue
-                
+
                 # Promote to Canary
                 start_time = datetime.now(timezone.utc)
                 end_time = start_time + timedelta(days=CANARY_TRIAL_DAYS)
-                
+
                 canary_data = {
                     "strategy_file": filename,
                     "symbol": r["symbol"],
@@ -117,10 +117,10 @@ class CanaryManager:
                         "thoughts": r.get("thoughts")
                     }
                 }
-                
+
                 self.db.insert_canary_strategy(canary_data)
                 logger.info(f"🚀 [Canary] PROMOTED strategy {filename} to live trial (PF={r['pf']:.2f})")
-                
+
                 # Instantiate
                 await self._load_active_canaries()
 
@@ -128,7 +128,8 @@ class CanaryManager:
         """Run each active canary against latest data and record signals."""
         for filename, strategy in self._active_strategies.items():
             canary = self.db.get_canary_by_file(filename)
-            if not canary: continue
+            if not canary:
+                continue
 
             symbol = canary["symbol"]
             interval = canary["interval"]
@@ -138,17 +139,18 @@ class CanaryManager:
                 df = await self.data.get_bars(
                     symbol, lookback_days=10, timeframe=interval, is_futures=True
                 )
-                if df.empty: continue
+                if df.empty:
+                    continue
 
                 # Generate signals
                 signals_df = strategy.generate_signals(df)
                 last_row = signals_df.iloc[-1]
-                
+
                 signal = last_row.get("signal", 0)
                 if signal != 0:
                     logger.info(f"📈 [Canary] {filename} signal for {symbol}: {signal}")
                     await self._record_shadow_trade(canary, signal, last_row)
-            
+
             except Exception as e:
                 logger.error(f"[Canary] Signal generation failed for {filename}: {e}")
 
@@ -156,15 +158,15 @@ class CanaryManager:
         """Record a shadow trade in paper_trades with account_id='CANARY'."""
         symbol = canary["symbol"]
         filename = canary["strategy_file"]
-        
+
         # Check if we already have an open position for this canary
         # Note: We'd need a more robust way to track per-strategy positions.
         # For now, we'll check if a trade exists with this filename in notes/params.
-        
+
         try:
             # We'll use a unique trade_id prefixed with CANARY
             trade_id = f"CANARY-{filename}-{int(asyncio.get_event_loop().time())}"
-            
+
             trade_data = {
                 "trade_id": trade_id,
                 "symbol": symbol,
@@ -181,7 +183,7 @@ class CanaryManager:
                 }),
                 "idempotency_key": f"canary-{trade_id}"
             }
-            
+
             self.db.insert_paper_trade(trade_data)
             logger.info(f"📝 [Canary] Recorded shadow {trade_data['side']} for {filename}")
         except Exception as e:
@@ -191,13 +193,13 @@ class CanaryManager:
         """Check if any trials have ended and decide pass/fail."""
         active = self.db.get_active_canaries()
         now = datetime.now(timezone.utc)
-        
+
         for c in active:
             # Handle potential offset-naive strings from DB
             end_str = c["end_time"]
             if end_str.endswith("Z"):
                 end_str = end_str[:-1] + "+00:00"
-            
+
             end_time = datetime.fromisoformat(end_str)
             if end_time.tzinfo is None:
                 end_time = end_time.replace(tzinfo=timezone.utc)
@@ -205,23 +207,23 @@ class CanaryManager:
             if now >= end_time:
                 # 1. Compute Live PF from paper_trades (account_id='CANARY')
                 # (Assuming we have trade data)
-                # For this implementation, we'll use a placeholder or 
+                # For this implementation, we'll use a placeholder or
                 # fetch from paper_trades if account_id is wired.
-                
+
                 live_pf = 1.4 # Placeholder for demo
                 num_trades = 10 # Placeholder
-                
+
                 status = "passed" if live_pf >= CANARY_PASS_PF and num_trades >= CANARY_MIN_TRADES else "failed"
-                
+
                 self.db.close_canary_trial(c["id"], status, now.isoformat())
-                
+
                 if status == "passed":
                     logger.critical(f"🏆 [Canary] Strategy {c['strategy_file']} PASSED trial! PF={live_pf:.2f}")
                     # Notify via WhatsApp (Phase 4 bridge)
                     self._send_promotion_alert(c, live_pf)
                 else:
                     logger.warning(f"❌ [Canary] Strategy {c['strategy_file']} FAILED trial (PF={live_pf:.2f})")
-                    
+
                 # Remove from active memory
                 if c["strategy_file"] in self._active_strategies:
                     del self._active_strategies[c["strategy_file"]]

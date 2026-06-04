@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import yaml
+
 from discord.hermes_upgrade.appliers.gepa_applier import (
     GEPA_TARGETS_DIR,
     GepaApplier,

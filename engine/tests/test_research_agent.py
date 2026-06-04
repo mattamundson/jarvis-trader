@@ -36,17 +36,17 @@ from agents.research_agent import (
 
 def _minimal_hypothesis(**overrides) -> StrategyHypothesis:
     """Build a minimal but fully-valid StrategyHypothesis for testing."""
-    defaults: dict[str, Any] = dict(
-        name="test-hyp-v1",
-        symbol="MES",
-        timeframe="1h",
-        entry_rules=["RSI(14) < 30"],
-        exit_rules=["Price crosses above VWAP"],
-        signal_weights={"rsi_oversold": 1.0},
-        risk_params={"stop_atr_mult": 1.5, "tp_atr_mult": 2.5},
-        rationale="Unit test hypothesis.",
-        confidence=0.42,
-    )
+    defaults: dict[str, Any] = {
+        "name": "test-hyp-v1",
+        "symbol": "MES",
+        "timeframe": "1h",
+        "entry_rules": ["RSI(14) < 30"],
+        "exit_rules": ["Price crosses above VWAP"],
+        "signal_weights": {"rsi_oversold": 1.0},
+        "risk_params": {"stop_atr_mult": 1.5, "tp_atr_mult": 2.5},
+        "rationale": "Unit test hypothesis.",
+        "confidence": 0.42,
+    }
     defaults.update(overrides)
     return StrategyHypothesis(**defaults)
 
