@@ -180,8 +180,6 @@ export async function fetchMasterSchedulerRuns(
   return res.json();
 }
 
-const BASE2 = process.env.NEXT_PUBLIC_MASTER_API_URL ?? "http://127.0.0.1:8030";
-
 export type CommandEvent =
   | { type: "tool"; name: string }
   | { type: "text"; text: string }
@@ -192,7 +190,7 @@ export function streamCommand(
   onEvent: (e: CommandEvent) => void,
   onClose: () => void,
 ): () => void {
-  const es = new EventSource(`${BASE2}/master/command/stream?text=${encodeURIComponent(text)}`);
+  const es = new EventSource(`${BASE}/master/command/stream?text=${encodeURIComponent(text)}`);
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data) as CommandEvent;
     onEvent(ev);
