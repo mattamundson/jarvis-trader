@@ -14,6 +14,8 @@ Usage:
 
 from __future__ import annotations
 
+from typing import Optional
+
 import pandas as pd
 
 
@@ -95,7 +97,7 @@ class MTFFilter:
         # 1. Daily Regime Check (Phase 6.6)
         if df_1d is not None:
             # Reindex daily onto 1h
-            from backtest.regime_classifier import RegimeClassifierV2, MarketRegime
+            from backtest.regime_classifier import RegimeClassifierV2
             classifier = RegimeClassifierV2()
             daily_regime = classifier.classify(df_1d)["regime_v2"]
             daily_aligned = daily_regime.reindex(df_1h.index, method="ffill")

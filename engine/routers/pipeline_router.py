@@ -930,7 +930,7 @@ async def get_pipeline_history(limit: int = 50, symbol: str = ""):
 
 
 @router.post("/run")
-async def run_pipeline(req: PipelineRunRequest):
+async def run_pipeline_sync(req: PipelineRunRequest):
     """Run the full 5-stage AI trading pipeline for a symbol"""
     import asyncio
 

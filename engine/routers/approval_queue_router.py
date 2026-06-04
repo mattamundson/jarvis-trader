@@ -336,7 +336,9 @@ async def get_candidate(candidate_id: int) -> dict[str, Any]:
 
 
 @router.post("/{candidate_id}/approve", summary="Approve candidate — submits paper order")
-async def approve_candidate(candidate_id: int, body: ApproveBody = ApproveBody()) -> dict[str, Any]:
+async def approve_candidate(
+    candidate_id: int, body: ApproveBody = ApproveBody()  # noqa: B008 (FastAPI default body)
+) -> dict[str, Any]:
     db = _require_db()
 
     # Re-check safety gates (live-trading + kill-switch) every time
@@ -489,7 +491,9 @@ async def approve_candidate(candidate_id: int, body: ApproveBody = ApproveBody()
 
 
 @router.post("/{candidate_id}/reject", summary="Reject a pending candidate")
-async def reject_candidate(candidate_id: int, body: RejectBody = RejectBody()) -> dict[str, Any]:
+async def reject_candidate(
+    candidate_id: int, body: RejectBody = RejectBody()  # noqa: B008 (FastAPI default body)
+) -> dict[str, Any]:
     db = _require_db()
     row = _get_candidate(db, candidate_id)
     if row is None:

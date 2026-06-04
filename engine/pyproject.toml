@@ -154,6 +154,17 @@ extend-exclude = '''
 # Linting
 target-version = "py310"
 line-length = 100
+# Never lint discarded LLM-generated strategy dumps: they are saved verbatim
+# (markdown code fences included), so they are not valid Python and produce
+# spurious syntax-errors + undefined-name cascades. They are not source.
+extend-exclude = [
+    "strategies/.trash",
+    "**/.trash",
+    # Experimental per-strategy backtest run-scripts (run_<sym>_<strat>_rank<N>.py):
+    # one-off research drivers with late sys.path/noqa imports ruff can't resolve
+    # (~500 F821). Not production engine code; core backtest modules stay linted.
+    "backtest/run_*.py",
+]
 
 [tool.ruff.lint]
 select = [

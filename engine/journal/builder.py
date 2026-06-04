@@ -278,7 +278,6 @@ def build_journal_entry(
     # Compute frontmatter fields
     trade_count = len(trades)
     wins = sum(1 for t in trades if (t.get("pnl") or 0) > 0)
-    losses = sum(1 for t in trades if (t.get("pnl") or 0) < 0)
     win_rate = round(wins / trade_count, 4) if trade_count > 0 else None
     daily_pnl = pnl_snap["daily_pnl"] if pnl_snap else None
 

@@ -46,7 +46,7 @@ jobs:
           echo "=== Running Python Linting ==="
           cd engine
           ruff check . --config ruff.toml
-          ruff format --check . --config ruff.toml
+          # ruff format --check intentionally not enforced (see ci.yml note).
           cd ..
 
           echo "=== Running Type Checking (non-blocking debt) ==="

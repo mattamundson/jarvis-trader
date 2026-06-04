@@ -369,7 +369,7 @@ def test_attention_items_engine_degraded():
         regime_map={},
         briefing_date=_TODAY,
     )
-    assert any("DEGRADED" in i for i in items or "UNREACHABLE" in i for i in items)
+    assert any(("DEGRADED" in i) or ("UNREACHABLE" in i) for i in items)
 
 
 def test_attention_items_nothing_flagged_nominal():

@@ -14,6 +14,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
+
 from journal.builder import (
     _parse_ask_log,
     build_journal_entry,
