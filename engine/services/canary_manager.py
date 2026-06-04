@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from database.manager import DatabaseManager
 from strategies.llm_sandbox import load_strategy_sandboxed

@@ -5,13 +5,12 @@ Polls Interactive Brokers for live option chains, Greeks, and IV.
 Supports defined-risk spread analysis for SPY, QQQ, and IWM.
 """
 
-import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
 
-from ib_async import Contract, Option, Stock
+from ib_async import Option, Stock
 
 from execution.ib_gateway_connector import IBGatewayConnector
 

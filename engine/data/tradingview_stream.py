@@ -10,10 +10,9 @@ Implements Roadmap P2.1 (Real-Time Data Fabric).
 import asyncio
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis
 

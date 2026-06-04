@@ -10,8 +10,6 @@ Implements Roadmap P7.4.
 
 import logging
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, Dict
 
 from backtest.bayesian_optimizer import BayesianOptimizer
 from backtest.paper_config import PAPER_CONFIGS
