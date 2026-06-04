@@ -272,6 +272,15 @@ function BacktestMatrix() {
         title="Corrected Performance -- In Sample (Jun 2024 - Mar 2026)"
         subtitle="STC + ATR Stops/Targets | All returns gross of commissions ($2.50/contract + 1 tick slippage)"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical backtest</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen in-sample research benchmark as of 2026-03-30 — not live trading results
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
@@ -348,6 +357,15 @@ function WalkForwardChart() {
         title="Walk-Forward Efficiency -- Static vs Adaptive"
         subtitle="Regime-adaptive mode: RegimeClassifier switches STC params per market regime | Bars scale to WFE 1.0 = 100%"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical backtest</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen WFE study as of 2026-03-30 — not live trading results
+        </span>
+      </div>
 
       {/* Threshold reference lines */}
       <div className="relative mb-6">
@@ -706,7 +724,7 @@ export default function PerformancePage() {
               className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded"
               style={{ backgroundColor: "#ffcc0018", border: "1px solid #ffcc0040", color: "#ffcc00" }}
             >
-              VERDICT: 2 APPROVED — MCL 1h + MNQ 1h PAPER TRADING
+              2026-03-30 BACKTEST VERDICT (historical) — live status differs, see /validation
             </span>
             <span
               className="font-mono text-[10px] tracking-wider px-2 py-1 rounded"
