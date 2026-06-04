@@ -423,10 +423,13 @@ function MGCDetailsCard({ mgcSignal }: { mgcSignal: MGCSignalResponse | null }) 
             </div>
           </div>
 
-          {/* Paper Trading Config */}
+          {/* Paper Trading Config — STATIC reference snapshot, not live engine state */}
           <div className="space-y-2">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1.5">
               Paper Trading Configuration
+              <span className="rounded border border-muted-foreground/30 bg-muted/20 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-widest text-muted-foreground/70">
+                Static reference
+              </span>
             </p>
             <div className="space-y-1.5">
               {[
