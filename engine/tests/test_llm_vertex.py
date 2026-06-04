@@ -28,6 +28,7 @@ def _make_client(tmp_path, monkeypatch, **env):
         "JARVIS_VERTEX_MODEL_MAP",
         "ANTHROPIC_VERTEX_PROJECT_ID",
         "ANTHROPIC_VERTEX_REGION",
+        "JARVIS_LLM_VERTEX_FAILOVER",
     ):
         monkeypatch.delenv(key, raising=False)
     for key, val in env.items():
@@ -192,3 +193,126 @@ class TestWirePointTranslation:
         )
 
         assert create.await_args.kwargs["model"] == "claude-sonnet-4-6"
+
+
+class TestVertexFailover:
+    """Phase 3.5 credit-exhaustion failover (JARVIS_LLM_VERTEX_FAILOVER).
+
+    Default OFF; when armed it builds a SECOND Vertex client while the primary
+    transport stays direct AsyncAnthropic. Off/ollama/Vertex-primary all leave
+    it disarmed.
+    """
+
+    def test_failover_off_by_default(self, tmp_path, monkeypatch):
+        client = _make_client(tmp_path, monkeypatch)
+        assert client.vertex_failover_enabled is False
+        assert client._failover_vertex_client is None
+        assert client.vertex_failover_count == 0
+        # Primary transport is unchanged (direct Anthropic).
+        assert isinstance(client.client, anthropic.AsyncAnthropic)
+
+    def test_failover_flag_false_stays_disarmed(self, tmp_path, monkeypatch):
+        client = _make_client(
+            tmp_path, monkeypatch, JARVIS_LLM_VERTEX_FAILOVER="false"
+        )
+        assert client.vertex_failover_enabled is False
+        assert client._failover_vertex_client is None
+
+    def test_failover_on_builds_aux_client_primary_stays_direct(
+        self, tmp_path, monkeypatch
+    ):
+        sentinel = MagicMock(name="AsyncAnthropicVertexFailover")
+        fake_ctor = MagicMock(return_value=sentinel)
+        monkeypatch.setattr(anthropic, "AsyncAnthropicVertex", fake_ctor)
+
+        client = _make_client(
+            tmp_path,
+            monkeypatch,
+            JARVIS_LLM_VERTEX_FAILOVER="1",
+            ANTHROPIC_VERTEX_PROJECT_ID="jarvis-trading-493009",
+            ANTHROPIC_VERTEX_REGION="us-east5",
+        )
+
+        # Primary is still the direct API; failover is a SEPARATE Vertex client.
+        assert client.use_vertex is False
+        assert isinstance(client.client, anthropic.AsyncAnthropic)
+        assert client.vertex_failover_enabled is True
+        assert client._failover_vertex_client is sentinel
+        fake_ctor.assert_called_once_with(
+            project_id="jarvis-trading-493009", region="us-east5"
+        )
+
+    def test_failover_not_armed_when_vertex_is_primary(self, tmp_path, monkeypatch):
+        # Vertex-primary already routes everything through Vertex; a second
+        # failover client would be redundant, so it must stay disarmed.
+        fake_ctor = MagicMock(return_value=MagicMock())
+        monkeypatch.setattr(anthropic, "AsyncAnthropicVertex", fake_ctor)
+        client = _make_client(
+            tmp_path,
+            monkeypatch,
+            JARVIS_CLAUDE_USE_VERTEX="1",
+            JARVIS_LLM_VERTEX_FAILOVER="1",
+        )
+        assert client.use_vertex is True
+        assert client.vertex_failover_enabled is False
+        assert client._failover_vertex_client is None
+
+    def test_failover_disabled_for_ollama(self, tmp_path, monkeypatch):
+        client = _make_client(
+            tmp_path,
+            monkeypatch,
+            JARVIS_LLM_PROVIDER="ollama",
+            JARVIS_LLM_VERTEX_FAILOVER="1",
+        )
+        assert client.vertex_failover_enabled is False
+        assert client._failover_vertex_client is None
+
+    @pytest.mark.asyncio
+    async def test_call_vertex_failover_translates_model(self, tmp_path, monkeypatch):
+        fake_ctor = MagicMock(return_value=MagicMock())
+        monkeypatch.setattr(anthropic, "AsyncAnthropicVertex", fake_ctor)
+        client = _make_client(
+            tmp_path,
+            monkeypatch,
+            JARVIS_LLM_VERTEX_FAILOVER="1",
+            JARVIS_VERTEX_MODEL_MAP="claude-sonnet-4-6=claude-sonnet-4-5@20250929",
+        )
+        create = AsyncMock(return_value=MagicMock())
+        client._failover_vertex_client = MagicMock()
+        client._failover_vertex_client.messages.create = create
+
+        await client._call_vertex_failover(
+            "claude-sonnet-4-6",
+            "s",
+            [{"role": "user", "content": "hi"}],
+            8,
+            0.3,
+        )
+
+        assert create.await_count == 1
+        # Alias is translated to the Vertex publisher id for the wire call.
+        assert create.await_args.kwargs["model"] == "claude-sonnet-4-5@20250929"
+        assert create.await_args.kwargs["temperature"] == 0.3
+
+    @pytest.mark.asyncio
+    async def test_call_vertex_failover_unmapped_passes_through(
+        self, tmp_path, monkeypatch
+    ):
+        fake_ctor = MagicMock(return_value=MagicMock())
+        monkeypatch.setattr(anthropic, "AsyncAnthropicVertex", fake_ctor)
+        client = _make_client(
+            tmp_path, monkeypatch, JARVIS_LLM_VERTEX_FAILOVER="1"
+        )
+        create = AsyncMock(return_value=MagicMock())
+        client._failover_vertex_client = MagicMock()
+        client._failover_vertex_client.messages.create = create
+
+        await client._call_vertex_failover(
+            "claude-opus-4-8",
+            "s",
+            [{"role": "user", "content": "hi"}],
+            8,
+            0.3,
+        )
+
+        assert create.await_args.kwargs["model"] == "claude-opus-4-8"
