@@ -14,8 +14,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
-from llm.model_router import route_task, MODEL_OPUS
 from llm.client import JarvisLLMClient
+from llm.model_router import MODEL_OPUS, route_task
 
 logger = logging.getLogger("jarvis_trader.agents.self_audit")
 
@@ -67,10 +67,10 @@ class WeeklySelfAuditAgent:
         Perform the weekly performance audit.
         """
         logger.info("[SelfAudit] Starting weekly meta-analysis")
-        
+
         # 1. Fetch data from last 7 days
         seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        
+
         try:
             # Stats
             stats_sql = """
@@ -84,7 +84,7 @@ class WeeklySelfAuditAgent:
                 WHERE exit_time >= ? AND status = 'closed'
             """
             stats = self.db.fetch_one(stats_sql, (seven_days_ago,))
-            
+
             if not stats or stats["total"] == 0:
                 logger.info("[SelfAudit] No trades found in the last 7 days. Skipping audit.")
                 return {"message": "No trades found"}
@@ -98,7 +98,7 @@ class WeeklySelfAuditAgent:
                 LIMIT 20
             """
             post_mortems = self.db.fetch_all(pm_sql, (seven_days_ago,))
-            
+
             pm_text = ""
             for pm in post_mortems:
                 pm_text += f"--- {pm['symbol']} ({pm['created_at'][:10]}) ---\n"
@@ -128,22 +128,22 @@ class WeeklySelfAuditAgent:
                 raise RuntimeError(llm_result.error)
 
             result_text = llm_result.content.strip()
-            
+
             # Extract JSON block
             start = result_text.find("{")
             end = result_text.rfind("}") + 1
             if start != -1 and end > start:
                 parsed = json.loads(result_text[start:end])
                 report_md = parsed.get("report_md", "")
-                
+
                 # 3. Save report to disk
                 report_path = self.audit_dir / f"weekly_audit_{datetime.now().strftime('%Y-%m-%d')}.md"
                 report_path.write_text(report_md, encoding="utf-8")
-                
+
                 # Update symlink or main file
                 latest_path = Path("docs/weekly_audit.md")
                 latest_path.write_text(report_md, encoding="utf-8")
-                
+
                 logger.info(f"[SelfAudit] Successfully generated audit at {report_path}")
                 return parsed
             else:

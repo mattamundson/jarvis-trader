@@ -107,8 +107,8 @@ class BearResearcherAgent:
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self._memory = memory_bridge
         # Phase 3.4: Optional reasoning chains
-        from llm.reasoning_client import ReasoningChainClient
         from llm.client import JarvisLLMClient
+        from llm.reasoning_client import ReasoningChainClient
 
         self._reasoning_client = ReasoningChainClient(
             llm_client=JarvisLLMClient(api_key=self._api_key)

@@ -12,8 +12,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from llm.model_router import route_task, MODEL_OPUS
 from llm.client import JarvisLLMClient
+from llm.model_router import MODEL_OPUS, route_task
 
 logger = logging.getLogger("jarvis_trader.agents.fed_nlp")
 
@@ -59,7 +59,7 @@ class FedNLPAgent:
         Analyze a new FOMC statement against the historical baseline.
         """
         logger.info("[FedNLP] Starting analysis of new FOMC statement")
-        
+
         # 1. Fetch latest historical statement
         old_statement = ""
         if self.db:
@@ -85,18 +85,18 @@ class FedNLPAgent:
                 max_tokens=1500,
                 agent_name="fed_nlp"
             )
-            
+
             if not llm_result.success:
                 raise RuntimeError(llm_result.error)
 
             result_text = llm_result.content.strip()
-            
+
             # Extract JSON block
             start = result_text.find("{")
             end = result_text.rfind("}") + 1
             if start != -1 and end > start:
                 parsed = json.loads(result_text[start:end])
-                
+
                 # 3. Persist new statement to history
                 if self.db:
                     try:
@@ -112,7 +112,7 @@ class FedNLPAgent:
                         )
                     except Exception as e:
                         logger.error(f"[FedNLP] Failed to persist history: {e}")
-                
+
                 logger.info("[FedNLP] Successfully analyzed and persisted FOMC statement")
                 return parsed
             else:

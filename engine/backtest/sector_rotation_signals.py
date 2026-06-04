@@ -9,9 +9,10 @@ Implements the absolute momentum relative rotation thesis.
 
 from __future__ import annotations
 
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
 
 # The 11 S&P 500 Sector SPDRs
 SECTOR_ETFS = [
@@ -66,11 +67,11 @@ def generate_sector_rotation_signals(
         if row.isna().any():
             signals.append({})
             continue
-            
+
         ranked = row.sort_values(ascending=False)
         top = ranked.head(top_n).index.tolist()
         bottom = ranked.tail(bottom_n).index.tolist()
-        
+
         signals.append({
             "top_sectors": top,
             "bottom_sectors": bottom,
@@ -78,18 +79,18 @@ def generate_sector_rotation_signals(
         })
 
     result_df = pd.DataFrame(signals, index=rsi_matrix.index)
-    
+
     # 3. Flatten into per-sector signal column for easier backtesting
     for symbol in sector_dfs.keys():
         col_name = f"{symbol}_signal"
         result_df[col_name] = "HOLD"
-        
+
         # Long top N
         mask_long = result_df["top_sectors"].apply(lambda x: symbol in x if isinstance(x, list) else False)
         result_df.loc[mask_long, col_name] = "LONG"
-        
+
         # Short bottom N
         mask_short = result_df["bottom_sectors"].apply(lambda x: symbol in x if isinstance(x, list) else False)
         result_df.loc[mask_short, col_name] = "SHORT"
-        
+
     return result_df

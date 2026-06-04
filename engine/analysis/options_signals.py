@@ -6,7 +6,8 @@ based on underlying trend and Greeks (Delta/IV).
 """
 
 import logging
-from typing import List, Dict, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from data.options_chain_live import OptionStrike
 
 logger = logging.getLogger("jarvis_trader.analysis.options_signals")
@@ -30,7 +31,7 @@ class OptionsSpreadSignals:
                 # Find the long put (spread_width points below)
                 long_strike = short_put.strike - spread_width
                 long_put = next((p for p in puts if p.strike == long_strike), None)
-                
+
                 if long_put:
                     net_credit = short_put.mid - long_put.mid
                     if net_credit >= self.min_credit:
@@ -43,7 +44,7 @@ class OptionsSpreadSignals:
                             "delta": short_put.delta + long_put.delta,
                             "expiry": short_put.expiry
                         })
-        
+
         return sorted(spreads, key=lambda x: x["net_credit"], reverse=True)
 
     def find_bear_call_spreads(self, chain: List[OptionStrike], spread_width: float = 5.0) -> List[Dict]:
@@ -58,7 +59,7 @@ class OptionsSpreadSignals:
             if 0.20 <= abs(short_call.delta) <= 0.40:
                 long_strike = short_call.strike + spread_width
                 long_call = next((c for c in calls if c.strike == long_strike), None)
-                
+
                 if long_call:
                     net_credit = short_call.mid - long_call.mid
                     if net_credit >= self.min_credit:
@@ -71,5 +72,5 @@ class OptionsSpreadSignals:
                             "delta": short_call.delta + long_call.delta,
                             "expiry": short_call.expiry
                         })
-        
+
         return sorted(spreads, key=lambda x: x["net_credit"], reverse=True)
