@@ -709,8 +709,8 @@ class SchwabConnector:
     async def submit_options_spread_order(self, order: dict, portfolio_equity: float) -> dict:
         """
         Submit a two-leg vertical spread order (Credit/Debit).
-        order keys: symbol, type (BULL_PUT_SPREAD|BEAR_CALL_SPREAD), 
-                    short_option_symbol, long_option_symbol, 
+        order keys: symbol, type (BULL_PUT_SPREAD|BEAR_CALL_SPREAD),
+                    short_option_symbol, long_option_symbol,
                     quantity, limit_price.
         """
         symbol = order.get("symbol", "UNKNOWN")
@@ -732,8 +732,8 @@ class SchwabConnector:
             return {"status": "error", "reason": "Schwab not connected"}
 
         try:
-            from schwab.orders.options import OptionSymbol  # noqa: PLC0415
             from schwab.orders.generic import OrderBuilder  # noqa: PLC0415
+            from schwab.orders.options import OptionSymbol  # noqa: PLC0415
 
             short_opt_sym = OptionSymbol.parse_symbol(short_opt_sym_str)
             long_opt_sym = OptionSymbol.parse_symbol(long_opt_sym_str)
@@ -937,7 +937,7 @@ class SchwabConnector:
             # This is a bit complex for a stateless connector, so we'll start
             # by noting that 'modify' is a 'replace' in Schwab.
             # In a real production run, we'd pull order details from get_orders.
-            
+
             logger.warning("SchwabConnector: modify_order (replace) requires full spec. Not fully implemented.")
             return {"status": "error", "reason": "Full-spec replace not yet implemented"}
         except Exception as e:

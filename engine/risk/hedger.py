@@ -8,8 +8,8 @@ Implements Roadmap P8.3.
 """
 
 import logging
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from typing import Any, Dict, List
 
 logger = logging.getLogger("jarvis_trader.risk.hedger")
 
@@ -31,8 +31,8 @@ class PortfolioHedger:
         self.db = db_manager
 
     def evaluate_hedging(
-        self, 
-        portfolio: Dict[str, Any], 
+        self,
+        portfolio: Dict[str, Any],
         analyst_reports: Dict[str, Any]
     ) -> List[HedgingAction]:
         """
@@ -46,20 +46,20 @@ class PortfolioHedger:
         # 1. Detect High-Beta Overlap (Equity + Crypto)
         equity_exposure = sum(p.get("unrealized_pnl", 0) for p in positions if p["symbol"] in EQUITY_GROUP)
         crypto_exposure = sum(p.get("unrealized_pnl", 0) for p in positions if p["symbol"] in CRYPTO_GROUP)
-        
+
         # 2. Check Macro Threats (Fed NLP)
         news = analyst_reports.get("news", {})
         is_hawkish = "HAWKISH" in str(news.get("summary", "")).upper() or "FED" in str(news.get("event_type", "")).upper()
-        
+
         # 3. Check Visual Reversals (Vision Analyst)
         vision = analyst_reports.get("vision", {})
         is_reversal = vision.get("visual_verdict") == "REJECTED" or "Double Top" in str(vision.get("patterns_detected", ""))
-        
+
         # 4. Logic: High Beta + Macro Threat -> Scale Down
         if (equity_exposure > 0 or crypto_exposure > 0) and (is_hawkish or is_reversal):
             reason = "High-Beta Correlation Spike + "
             reason += "Hawkish Fed detected" if is_hawkish else "Visual Reversal detected"
-            
+
             # Recommendation: Scale down the largest correlated long
             correlated_longs = [p for p in positions if p["symbol"] in (EQUITY_GROUP + CRYPTO_GROUP) and p.get("quantity", 0) > 0]
             if correlated_longs:
@@ -85,18 +85,21 @@ class PortfolioHedger:
 
         # Simple grouping check
         group = None
-        if symbol in EQUITY_GROUP: group = EQUITY_GROUP
-        elif symbol in CRYPTO_GROUP: group = CRYPTO_GROUP
-        elif symbol in INFLATION_GROUP: group = INFLATION_GROUP
-        
+        if symbol in EQUITY_GROUP:
+            group = EQUITY_GROUP
+        elif symbol in CRYPTO_GROUP:
+            group = CRYPTO_GROUP
+        elif symbol in INFLATION_GROUP:
+            group = INFLATION_GROUP
+
         if not group:
             return 1.0
-            
+
         # Count existing positions in same group
         group_count = sum(1 for p in positions if p["symbol"] in group)
-        
+
         if group_count >= 2:
             # Already 2+ positions in group, scale down new entries by 50%
             return 0.5
-            
+
         return 1.0

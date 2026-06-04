@@ -6,13 +6,13 @@ what fired, what worked, what didn't.
 Stored in the trade_post_mortem table for weekly meta-learning.
 """
 
+import json
 import logging
 import os
 from datetime import datetime, timezone
-import json
 
-from llm.model_router import route_task, MODEL_OPUS
 from llm.client import JarvisLLMClient
+from llm.model_router import MODEL_OPUS, route_task
 
 logger = logging.getLogger("jarvis_trader.post_mortem")
 

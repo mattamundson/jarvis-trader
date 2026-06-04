@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pytest
+
 from discord.bookmark_synthesizer import (  # noqa: E402
     BookmarkRow,
     _extract_github_repo,
