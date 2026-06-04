@@ -274,14 +274,7 @@ class JarvisLLMClient:
         if self.provider == "ollama":
             self.client = None
         elif self.use_vertex:
-            from anthropic import AsyncAnthropicVertex
-
-            _vx_kwargs = {}
-            if self.vertex_project:
-                _vx_kwargs["project_id"] = self.vertex_project
-            if self.vertex_region:
-                _vx_kwargs["region"] = self.vertex_region
-            self.client = AsyncAnthropicVertex(**_vx_kwargs)
+            self.client = self._build_vertex_client()
             logger.info(
                 "🔵 Claude-on-Vertex transport active "
                 f"(project={self.vertex_project or 'ADC-default'}, "
@@ -289,6 +282,35 @@ class JarvisLLMClient:
             )
         else:
             self.client = anthropic.AsyncAnthropic(api_key=api_key)
+
+        # Phase 3.5 failover (default OFF): on Anthropic credit-exhaustion, retry
+        # the call via Claude-on-Vertex BEFORE the Gemini fallback. Same model
+        # family = best output continuity, and GCP-billed so unaffected by the
+        # Anthropic credit outage. Only meaningful when the primary is direct
+        # Anthropic (not ollama, not already Vertex-primary). Silently disables
+        # if the Vertex client can't be built (e.g. ADC not configured yet), so
+        # it is safe to leave wired; flipping JARVIS_LLM_VERTEX_FAILOVER arms it.
+        self.vertex_failover_enabled = (
+            self.provider != "ollama"
+            and not self.use_vertex
+            and os.getenv("JARVIS_LLM_VERTEX_FAILOVER", "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        self.vertex_failover_count = 0
+        self._failover_vertex_client = None
+        if self.vertex_failover_enabled:
+            try:
+                self._failover_vertex_client = self._build_vertex_client()
+                logger.info(
+                    "🔵 Claude-on-Vertex credit-exhaustion failover armed "
+                    f"(project={self.vertex_project or 'ADC-default'}, "
+                    f"region={self.vertex_region or 'ADC-default'})"
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "vertex failover disabled — could not build Vertex client: %s", exc
+                )
+                self.vertex_failover_enabled = False
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
         self.fast_model = (
@@ -768,6 +790,54 @@ class JarvisLLMClient:
                     logger.error(f"[{current_model}] Unexpected error for {agent_name}: {e}")
 
                 if _is_credit_exhaustion(body_str):
+                    # Phase 3.5: Claude-on-Vertex failover FIRST — same model
+                    # family (best output continuity) and GCP-billed, so it is
+                    # unaffected by the Anthropic credit outage. Falls through to
+                    # the Gemini fallback below if Vertex is disabled or also fails.
+                    if (
+                        self.vertex_failover_enabled
+                        and self._failover_vertex_client is not None
+                    ):
+                        logger.warning(
+                            f"[{current_model}] credit-exhaustion for {agent_name} -- "
+                            f"attempting Claude-on-Vertex failover"
+                        )
+                        try:
+                            vertex_result = await self._call_vertex_failover(
+                                current_model,
+                                system,
+                                working_messages,
+                                max_tokens,
+                                temperature,
+                            )
+                            self.vertex_failover_count += 1
+                            _LLM_PATH_STATE["healthy"] = True
+                            _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
+                                timezone.utc
+                            ).isoformat()
+                            _LLM_PATH_STATE["last_failure_reason"] = (
+                                f"anthropic credit-exhaustion -> vertex failover ok "
+                                f"(count: {self.vertex_failover_count})"
+                            )
+                            _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                            return await self._handle_success(
+                                vertex_result,
+                                current_model,
+                                start_time,
+                                retries,
+                                agent_name,
+                                tier=tier,
+                                proxy=proxy,
+                                compressed_key=compressed_key,
+                                cache_salt=cache_salt,
+                            )
+                        except Exception as vex:
+                            logger.warning(
+                                f"[{current_model}] Vertex failover failed for "
+                                f"{agent_name} -- trying Gemini next: {vex}"
+                            )
+                            # fall through to the Gemini fallback below
+
                     # Phase 3: Anthropic credits exhausted — try transparent
                     # Gemini fallback before declaring the call failed. The
                     # fallback preserves quality tier (Opus/Sonnet -> 2.5-flash,
@@ -1060,6 +1130,45 @@ class JarvisLLMClient:
         if not _temperature_deprecated(model):
             kwargs["temperature"] = temperature
         return await self.client.messages.create(**kwargs)
+
+    def _build_vertex_client(self):
+        """Construct an AsyncAnthropicVertex client from the configured project/
+        region (ADC auth; no API key). Shared by the Vertex primary transport
+        and the credit-exhaustion failover leg so they stay in lock-step."""
+        from anthropic import AsyncAnthropicVertex
+
+        _vx_kwargs = {}
+        if self.vertex_project:
+            _vx_kwargs["project_id"] = self.vertex_project
+        if self.vertex_region:
+            _vx_kwargs["region"] = self.vertex_region
+        return AsyncAnthropicVertex(**_vx_kwargs)
+
+    async def _call_vertex_failover(
+        self,
+        model: str,
+        system: str,
+        messages: list,
+        max_tokens: int,
+        temperature: float,
+    ):
+        """One Claude-on-Vertex call used as a credit-exhaustion failover.
+
+        Returns the native Anthropic Message shape so the success/cost path stays
+        provider-agnostic — cost is keyed on the original alias (``model``) by the
+        caller. Translates the alias to the Vertex publisher @version id via the
+        same ``vertex_model_map`` the primary transport uses.
+        """
+        vertex_model = self.vertex_model_map.get(model, model)
+        kwargs = {
+            "model": vertex_model,
+            "system": system,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+        if not _temperature_deprecated(model):
+            kwargs["temperature"] = temperature
+        return await self._failover_vertex_client.messages.create(**kwargs)
 
     def _calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate USD cost for a single API call."""
