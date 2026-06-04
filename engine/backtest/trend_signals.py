@@ -18,10 +18,10 @@ import numpy as np
 import pandas as pd
 
 # Walk-forward champion parameters
-# MES: trend_rv_filter_rank2 champion (2026-05-24) -- gate v2 ALT PASS (PASS)
-#      RV filter activated via MES_MIN_RV_ANNUALIZED=9.0 env var (see engine/.env)
-#      rank11 verdict is INSUFFICIENT_SAMPLE (16 OOS < 30 floor); rank2 PASS is the authorizing verdict
-#      rank2 expires 2026-06-07 (14-day window) -- must re-run run_mes_trend_rv_filter_rank2.py before then
+# MES: trend_rv_filter_rank2 (2026-06-04) -- verdict INSUFFICIENT_SAMPLE (16 OOS < 30 floor)
+#      Gate blocks trades at runtime; re-authorize by collecting 30+ OOS trades OR flip
+#      GATE_V2_ENFORCE_SAMPLE_ADEQUACY=False in engine/.env (Amo-gated decision).
+#      RV filter: MES_MIN_RV_ANNUALIZED=9.0 env var (see engine/.env and signals.py)
 # MNQ: rank1 baseline (2026-05-06) -- inherited from MES champion; pending rank1 verdict
 SMA_TREND_PARAMS: dict[str, dict] = {
     "MES": {"fast": 50, "slow": 200, "atr_trail_mult": 2.0},
