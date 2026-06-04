@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
@@ -127,7 +127,7 @@ export function RiskConfigDisplayWidget() {
   const [isLoading, setIsLoading] = useState(true);
   const [usingDefaults, setUsingDefaults] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     const result = await fetchConfig();
     if (result) {
       setConfig(result.config);
@@ -137,7 +137,7 @@ export function RiskConfigDisplayWidget() {
       setUsingDefaults(true);
     }
     setIsLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     void load();
@@ -147,7 +147,7 @@ export function RiskConfigDisplayWidget() {
     }, 300_000); // 5 minutes
 
     return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [load]);
 
   // ── Derived display values ───────────────────────────────────────────────
 

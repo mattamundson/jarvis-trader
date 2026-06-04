@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -43,7 +43,7 @@ export function ConnectionHealthCard() {
   const [ibConnected, setIbConnected] = useState(DEFAULT_IB_CONNECTED);
   const [ibError, setIbError] = useState<string | null>(null);
 
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     const [healthResult, ibResult] = await Promise.allSettled([
       fetchEngine(`/health`),
       fetchEngine(`/ib/connection-test`).then(
@@ -74,13 +74,13 @@ export function ConnectionHealthCard() {
       setIbConnected(false);
       setIbError("Network error");
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchAll();
     const interval = setInterval(fetchAll, 30_000);
     return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchAll]);
 
   // ── Derived values ───────────────────────────────────────────────────────────
 
