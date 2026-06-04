@@ -1050,7 +1050,14 @@ class JarvisLLMClient:
 
         # Vertex uses publisher @version model IDs; translate at the wire only.
         # Cost tracking, health, and logging keep the direct name (current_model).
-        call_model = self.vertex_model_map.get(model, model) if self.use_vertex else model
+        # Defensive getattr: low-level callers (and some tests) construct the
+        # client via __new__ without running __init__, so use_vertex /
+        # vertex_model_map may be unset — default to the direct (non-Vertex) path.
+        call_model = (
+            getattr(self, "vertex_model_map", {}).get(model, model)
+            if getattr(self, "use_vertex", False)
+            else model
+        )
         kwargs = {
             "model": call_model,
             "system": system,
