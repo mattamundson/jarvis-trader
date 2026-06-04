@@ -1,7 +1,7 @@
 """
 JARVIS TRADER — WhatsApp Interactive Router (Phase 4.1)
 ========================================================
-Receives inbound WhatsApp messages from Twilio and processes interactive 
+Receives inbound WhatsApp messages from Twilio and processes interactive
 commands (Y/N/S/KILL).
 """
 

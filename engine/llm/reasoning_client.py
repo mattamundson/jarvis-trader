@@ -18,7 +18,7 @@ logger = logging.getLogger("jarvis_trader.reasoning_client")
 
 class ReasoningChainClient:
     """
-    Client that pipes reasoning from a specialized reasoning model 
+    Client that pipes reasoning from a specialized reasoning model
     into a decision model.
     """
 

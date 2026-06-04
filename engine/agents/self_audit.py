@@ -19,7 +19,7 @@ from llm.model_router import MODEL_OPUS, route_task
 logger = logging.getLogger("jarvis_trader.agents.self_audit")
 
 _AUDIT_PROMPT = """
-You are the JARVIS Meta-Auditor. Your task is to perform a deep-learning review of the 
+You are the JARVIS Meta-Auditor. Your task is to perform a deep-learning review of the
 past week's trading performance.
 
 WEEKLY PERFORMANCE SUMMARY:
@@ -33,7 +33,7 @@ TRADE POST-MORTEMS (LAST 10):
 {post_mortems}
 
 Your goal is to identify common failure modes and winning signatures.
-Review the lessons learned and look for cross-trade patterns (e.g. "We consistently 
+Review the lessons learned and look for cross-trade patterns (e.g. "We consistently
 lose on MNQ when the daily regime is VOLATILE").
 
 Write a rigorous weekly audit report in Markdown format.
@@ -73,7 +73,7 @@ class WeeklySelfAuditAgent:
         try:
             # Stats
             stats_sql = """
-                SELECT 
+                SELECT
                     COUNT(*) as total,
                     SUM(pnl) as pnl,
                     SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,

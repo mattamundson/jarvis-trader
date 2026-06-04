@@ -234,7 +234,7 @@ class KrakenAdapter:
 
     async def get_daily_pnl(self) -> float:
         """
-        Best-effort daily P&L. 
+        Best-effort daily P&L.
         In paper mode, uses 'paper status'.
         """
         if self.paper_mode:

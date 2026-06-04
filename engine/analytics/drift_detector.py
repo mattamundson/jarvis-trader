@@ -69,7 +69,7 @@ class DriftDetector:
         seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
         sql = """
-            SELECT 
+            SELECT
                 SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) as gross_profit,
                 SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END) as gross_loss,
                 COUNT(*) as trade_count

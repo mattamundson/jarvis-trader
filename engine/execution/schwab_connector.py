@@ -709,8 +709,8 @@ class SchwabConnector:
     async def submit_options_spread_order(self, order: dict, portfolio_equity: float) -> dict:
         """
         Submit a two-leg vertical spread order (Credit/Debit).
-        order keys: symbol, type (BULL_PUT_SPREAD|BEAR_CALL_SPREAD), 
-                    short_option_symbol, long_option_symbol, 
+        order keys: symbol, type (BULL_PUT_SPREAD|BEAR_CALL_SPREAD),
+                    short_option_symbol, long_option_symbol,
                     quantity, limit_price.
         """
         symbol = order.get("symbol", "UNKNOWN")

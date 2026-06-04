@@ -49,13 +49,13 @@ def _live_settings(base):
 
 def _make_tracker(**kwargs) -> ConsecutiveLossTracker:
     tmpdir = tempfile.mkdtemp()
-    defaults = dict(
-        data_dir=tmpdir,
-        consecutive_loss_half_size=3,
-        consecutive_loss_quarter_size=5,
-        consecutive_loss_halt=7,
-        consecutive_loss_halt_hours=24,
-    )
+    defaults = {
+        "data_dir": tmpdir,
+        "consecutive_loss_half_size": 3,
+        "consecutive_loss_quarter_size": 5,
+        "consecutive_loss_halt": 7,
+        "consecutive_loss_halt_hours": 24,
+    }
     defaults.update(kwargs)
     return ConsecutiveLossTracker(**defaults)
 

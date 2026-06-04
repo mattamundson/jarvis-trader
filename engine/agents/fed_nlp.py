@@ -1,7 +1,7 @@
 """
 JARVIS TRADER — Fed NLP Agent (Phase 6.5)
 =========================================
-Analyzes FOMC statements and dot plots to identify shifts in monetary 
+Analyzes FOMC statements and dot plots to identify shifts in monetary
 policy stance (Hawkish/Dovish).
 
 Implements Roadmap P6.5.
@@ -17,8 +17,8 @@ from llm.model_router import MODEL_OPUS, route_task
 logger = logging.getLogger("jarvis_trader.agents.fed_nlp")
 
 _FED_NLP_PROMPT = """
-You are a central bank policy analyst. Review the new FOMC statement and compare it to 
-the previous statement and dot plot. Identify the 5 most significant changes in 
+You are a central bank policy analyst. Review the new FOMC statement and compare it to
+the previous statement and dot plot. Identify the 5 most significant changes in
 language or outlook.
 
 New Statement:
