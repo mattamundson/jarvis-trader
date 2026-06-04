@@ -64,6 +64,7 @@ twilio==9.10.9            # WhatsApp approval webhook + outbound alerts (whatsap
 # ── Sentiment & News ───────────────────────────────────────────────────────
 finnhub-python==2.4.22    # Finnhub — free tier: 60 req/min
 praw==7.8.1               # Reddit API (for WSB/r/stocks)
+readability-lxml==0.8.4.1 # Article extraction (from readability import Document) — discord/deep_analyzer/handlers/url.py
 
 # ── Economic Data ──────────────────────────────────────────────────────────
 fredapi==0.5.2            # FRED — Federal Reserve data, free, no key needed
