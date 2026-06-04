@@ -154,6 +154,13 @@ extend-exclude = '''
 # Linting
 target-version = "py310"
 line-length = 100
+# Never lint discarded LLM-generated strategy dumps: they are saved verbatim
+# (markdown code fences included), so they are not valid Python and produce
+# spurious syntax-errors + undefined-name cascades. They are not source.
+extend-exclude = [
+    "strategies/.trash",
+    "**/.trash",
+]
 
 [tool.ruff.lint]
 select = [
