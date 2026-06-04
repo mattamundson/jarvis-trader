@@ -80,6 +80,26 @@ class PendingApprovalsMixin:
             finally:
                 conn.close()
 
+    def get_pending_approval_stats(self) -> Dict[str, Any]:
+        """Lightweight aggregate for /health: number of pending approvals and the
+        created_at of the oldest one (status='pending'). A growing count / age
+        means candidates are queued but not being approved (e.g. outbound
+        notifications are failing) — the live-fill path is stalled."""
+        sql = """
+            SELECT COUNT(*), MIN(created_at)
+            FROM pending_trade_approvals
+            WHERE status = 'pending'
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql).fetchone()
+            finally:
+                conn.close()
+        if not row:
+            return {"count": 0, "oldest_created_at": None}
+        return {"count": int(row[0] or 0), "oldest_created_at": row[1]}
+
     def get_recent_approvals_all_statuses(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Return recent pipeline decisions (all statuses) ordered by created_at DESC."""
         limit = min(max(1, limit), 50)
