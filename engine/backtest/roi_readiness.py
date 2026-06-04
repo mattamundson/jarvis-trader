@@ -93,7 +93,10 @@ DAILY_PNL_TARGET = 250.0          # G1: ≥ $250/day avg
 WIN_RATE_MIN = 0.35               # G2: ≥ 35%
 MAX_SINGLE_DAY_DD_PCT = 5.0       # G3: ≤ 5% of account
 MAX_CONSEC_LOSS_DAYS = 3          # G4: ≤ 3 consecutive loss days
-ENGINE_UPTIME_MIN_PCT = 95.0      # G6: ≥ 95% of trading days have a snapshot
+ENGINE_UPTIME_MIN_PCT = 95.0      # G6: ≥ 95% of polled trading-hours samples reachable
+# health_watchdog polls every 5 min during the 6.5h RTH session ≈ 78 polls/day.
+# Used to judge whether health_snapshots has enough samples to assert uptime.
+_RTH_POLLS_PER_DAY = 78
 VERDICT_TTL_DAYS = 30             # G7: verdict age limit
 STREAK_TARGET = 14                # days_to_live = max(0, target - streak)
 
@@ -509,39 +512,82 @@ def _eval_g6_engine_uptime(
     days: list[date],
 ) -> GateResult:
     """
-    G6: engine /health reported ≥ 95% of trading days.
+    G6: engine /health reachable ≥ 95% of polled trading-hours samples.
 
-    Proxy: pnl_snapshots has a row for ≥ 95% of the 14 trading days.
-    If today is in the window and has no snapshot yet, falls back to a live
-    /health call to determine whether the engine is currently healthy.
+    Source of truth: scripts.health_uptime.compute_uptime() over the window,
+    which reads the 5-minute health_snapshots table (health_watchdog polls every
+    5 min during trading hours). The legacy day-level pnl_snapshots proxy (a row
+    exists for the day ⇒ "healthy") is intentionally NOT used to PASS this gate:
+    a snapshot row can exist for a day the engine was up only minutes, producing
+    a false green. When the intraday data is too sparse to judge (health_snapshots
+    not yet populated / pre-migration_025), the gate reports insufficient
+    granularity and does NOT pass — readiness cannot be asserted on uptime that
+    was never measured.
 
-    TODO: refactor to use scripts.health_uptime.compute_uptime() once
-    health_snapshots has accumulated enough intraday data (migration_025).
-    That will give 5-min granularity uptime instead of day-level proxy.
+    `snapshots` (the day-level proxy data) is accepted for caller compatibility
+    but deliberately not consulted for the pass/fail decision.
     """
-    today = date.today()
-    expected = len(days)
-    present = sum(1 for d in days if d in snapshots)
+    expected_days = len(days)
+    if expected_days == 0:
+        return GateResult(
+            gate_id="G6",
+            name="Engine /health ≥ 95% of trading hours",
+            passed=False,
+            observed="no trading days in window",
+            threshold=f"≥ {ENGINE_UPTIME_MIN_PCT:.0f}%",
+            notes="Empty evaluation window.",
+        )
 
-    # If today is missing from snapshots, do a live check
-    if today in days and today not in snapshots:
-        health = _fetch_engine_health()
-        if health and health.get("status") == "ok":
-            present += 1  # count today as healthy
+    # Query the real 5-min health_snapshots over the window. The watchdog only
+    # writes rows during trading hours, so the full-day UTC range captures
+    # exactly the RTH samples.
+    up = {"polls_total": 0, "polls_reachable": 0, "uptime_pct": 0.0}
+    try:
+        from scripts.health_uptime import compute_uptime
 
-    uptime_pct = (present / expected * 100.0) if expected > 0 else 0.0
+        first, last = days[0], days[-1] + timedelta(days=1)
+        window_start = datetime(first.year, first.month, first.day, tzinfo=timezone.utc)
+        window_end = datetime(last.year, last.month, last.day, tzinfo=timezone.utc)
+        up = compute_uptime(window_start, window_end)
+    except (ImportError, sqlite3.Error, OSError, ValueError):
+        # Degrade to insufficient-granularity below rather than a misleading pass.
+        pass
+
+    total_polls = up.get("polls_total", 0)
+    reachable = up.get("polls_reachable", 0)
+
+    # Require at least half the expected samples to trust the number; fewer means
+    # the watchdog wasn't running (not that the engine was up) — the exact case
+    # the old day-level proxy would have silently passed.
+    min_sufficient = max(1, (_RTH_POLLS_PER_DAY * expected_days) // 2)
+    if total_polls < min_sufficient:
+        return GateResult(
+            gate_id="G6",
+            name="Engine /health ≥ 95% of trading hours",
+            passed=False,
+            observed=(
+                f"insufficient granularity: {total_polls} health polls "
+                f"(< {min_sufficient} needed over {expected_days} trading days)"
+            ),
+            threshold=f"≥ {ENGINE_UPTIME_MIN_PCT:.0f}%",
+            notes=(
+                "health_snapshots too sparse to verify intraday uptime; gate "
+                "cannot PASS until the 5-min watchdog data accumulates "
+                "(migration_025). Day-level pnl_snapshots presence is NOT used "
+                "as a pass proxy — it false-greens on minutes-only uptime."
+            ),
+        )
+
+    uptime_pct = (reachable / total_polls * 100.0) if total_polls > 0 else 0.0
     passed = uptime_pct >= ENGINE_UPTIME_MIN_PCT
 
     return GateResult(
         gate_id="G6",
-        name="Engine /health ≥ 95% of trading days",
+        name="Engine /health ≥ 95% of trading hours",
         passed=passed,
-        observed=f"{uptime_pct:.1f}% ({present}/{expected} days with snapshot or live health=ok)",
+        observed=f"{uptime_pct:.1f}% ({reachable}/{total_polls} health polls reachable)",
         threshold=f"≥ {ENGINE_UPTIME_MIN_PCT:.0f}%",
-        notes=(
-            "Proxy: pnl_snapshots row presence = engine was healthy that day. "
-            "Does not detect intraday outages."
-        ),
+        notes="Intraday uptime from health_snapshots (5-min watchdog polls).",
     )
 
 
