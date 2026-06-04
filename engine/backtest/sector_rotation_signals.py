@@ -47,7 +47,7 @@ def generate_sector_rotation_signals(
     """
     Generate rotation signals across multiple sector DataFrames.
     Expected sector_dfs: { "XLK": df_weekly, ... }
-    
+
     Returns a unified signals DataFrame.
     """
     # 1. Calculate RSI for all sectors

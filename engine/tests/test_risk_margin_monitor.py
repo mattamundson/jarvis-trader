@@ -16,11 +16,11 @@ from risk.margin_monitor import MarginMonitorAgent
 
 
 def _monitor(connector=None, **kwargs) -> MarginMonitorAgent:
-    defaults = dict(
-        utilization_warning=0.25,
-        utilization_halt=0.35,
-        max_drawdown_pct=8.0,
-    )
+    defaults = {
+        "utilization_warning": 0.25,
+        "utilization_halt": 0.35,
+        "max_drawdown_pct": 8.0,
+    }
     defaults.update(kwargs)
     return MarginMonitorAgent(connector=connector, **defaults)
 

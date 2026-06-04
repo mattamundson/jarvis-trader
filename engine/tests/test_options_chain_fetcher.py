@@ -391,7 +391,7 @@ def test_cache_hit_within_ttl():
     def _mock_polygon_get(path, params=None):
         polygon_call_count[0] += 1
         if "snapshot" in path:
-            return {"results": [c for c in _synthetic_chain()]}
+            return {"results": list(_synthetic_chain())}
         if "prev" in path:
             return {"results": [{"c": 500.0}]}
         # expiry reference endpoint
