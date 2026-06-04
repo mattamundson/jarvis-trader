@@ -1,7 +1,7 @@
 """
 JARVIS TRADER — Trailing Stop Manager (Phase 5.3)
 ================================================
-Background service that monitors active trades and adjusts broker-side 
+Background service that monitors active trades and adjusts broker-side
 stop-loss orders as price moves in favor of the trade.
 
 Uses ATR-based trailing logic from the backtester.

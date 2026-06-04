@@ -1,7 +1,7 @@
 """
 JARVIS TRADER — Approval Timeouts (Phase 4.4)
 ============================================
-Logic for determining if a pending approval has expired based on market 
+Logic for determining if a pending approval has expired based on market
 session (RTH vs. Overnight) and trade type.
 """
 

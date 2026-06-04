@@ -234,7 +234,7 @@ class OMSManager:
         Implements OCO logic: if TP fills, cancel SL.
         """
         async with self._lock:
-            for trade_id, trade in self.active_trades.items():
+            for _trade_id, trade in self.active_trades.items():
                 # Check if this order belongs to this trade
                 if broker_order_id == trade.stop_loss_id and status == "filled":
                     await self._handle_exit(trade, "sl", fill_price)

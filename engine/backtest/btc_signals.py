@@ -1,7 +1,7 @@
 """
 BTCUSD Signal Generator for JARVIS TRADER (Phase 6.2)
 =====================================================
-Implements both Trend-Following (SMA) and Mean-Reversion (Bollinger) 
+Implements both Trend-Following (SMA) and Mean-Reversion (Bollinger)
 signal families for Bitcoin spot/futures on Kraken.
 
 Architecture mirrors MES (trend) and MCL (mean-rev) validated logic.

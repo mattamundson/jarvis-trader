@@ -195,13 +195,13 @@ async def test_same_threshold_fires_only_once_per_day():
     am, msgs = _make_am()
     am.start()
 
-    kwargs = dict(
-        daily_pnl=-150.0,
-        daily_pnl_pct=ALERT_THRESHOLDS["daily_loss_75pct"] - 0.001,
-        drawdown_pct=-0.01,
-        consecutive_losses=0,
-        portfolio_equity=10_000.0,
-    )
+    kwargs = {
+        "daily_pnl": -150.0,
+        "daily_pnl_pct": ALERT_THRESHOLDS["daily_loss_75pct"] - 0.001,
+        "drawdown_pct": -0.01,
+        "consecutive_losses": 0,
+        "portfolio_equity": 10_000.0,
+    }
     am.check_and_alert(**kwargs)
     am.check_and_alert(**kwargs)  # same state — should NOT fire again
     await _drain(am)

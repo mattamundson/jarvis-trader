@@ -1,7 +1,7 @@
 """
 JARVIS TRADER — Model Router (Phase 3.1)
 ========================================
-Dynamically routes tasks to the most appropriate Claude model based on 
+Dynamically routes tasks to the most appropriate Claude model based on
 capability and cost-efficiency.
 
 Routing Matrix:
