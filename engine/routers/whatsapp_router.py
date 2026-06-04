@@ -8,9 +8,8 @@ commands (Y/N/S/KILL).
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from twilio.twiml.messaging_response import MessagingResponse
 
 from approval.service import (
@@ -19,7 +18,6 @@ from approval.service import (
     get_latest_pending_approval_row,
     reject_pending_trade,
 )
-from notifications.whatsapp import get_notifier
 
 logger = logging.getLogger("jarvis_trader.whatsapp_router")
 

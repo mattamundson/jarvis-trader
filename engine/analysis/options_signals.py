@@ -6,7 +6,7 @@ based on underlying trend and Greeks (Delta/IV).
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 from data.options_chain_live import OptionStrike
 

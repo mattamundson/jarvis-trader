@@ -9,8 +9,6 @@ Uses ATR-based trailing logic from the backtester.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Optional
 
 logger = logging.getLogger("jarvis_trader.trailing_stop")
 

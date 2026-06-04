@@ -10,7 +10,6 @@ Implements Roadmap P6.5.
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
 
 from llm.client import JarvisLLMClient
 from llm.model_router import MODEL_OPUS, route_task

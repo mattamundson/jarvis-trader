@@ -6,9 +6,8 @@ working memory snippets. This bridges the gap between discrete pipeline
 sessions and persistent agent learning.
 """
 
-import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger("jarvis_trader.llm.memory_bridge")
 
