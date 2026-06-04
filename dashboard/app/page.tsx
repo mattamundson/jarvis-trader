@@ -28,6 +28,7 @@ import { EODSummaryWidget } from "@/components/EODSummaryWidget";
 import { EventsFeedWidget } from '@/components/EventsFeedWidget';
 import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
 import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidget";
+import { ExecutionCockpitWidget } from "@/components/ExecutionCockpitWidget";
 import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
@@ -211,6 +212,9 @@ export default function DashboardPage() {
 
         {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
         <ProactiveValidationWidget />
+
+        {/* Execution Cockpit — live fills, fidelity, slippage, pending approvals */}
+        <ExecutionCockpitWidget />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Signal Flow — per-instrument STC values and pipeline block stage */}
