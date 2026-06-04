@@ -348,6 +348,27 @@ async def _health_inner() -> dict:
     tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
     ibgateway_alive, ibgateway_port = _check_ibgateway_alive()
 
+    # Approval-queue visibility: a candidate that queues but is never approved
+    # (e.g. because outbound notifications are silently failing) stalls the whole
+    # live-fill path. Surface count + oldest age so a stuck queue is observable.
+    pending_approvals = {"count": 0, "oldest_age_min": None}
+    try:
+        if db_manager:
+            stats = db_manager.get_pending_approval_stats()
+            oldest = stats.get("oldest_created_at")
+            age_min = None
+            if oldest:
+                try:
+                    ots = datetime.fromisoformat(str(oldest).replace("Z", "+00:00"))
+                    if ots.tzinfo is None:
+                        ots = ots.replace(tzinfo=timezone.utc)
+                    age_min = round((now - ots).total_seconds() / 60.0, 1)
+                except Exception:
+                    age_min = None
+            pending_approvals = {"count": int(stats.get("count", 0)), "oldest_age_min": age_min}
+    except Exception:
+        pass
+
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
 
     # Defensive read: a config missing this flag must never report live trading
@@ -375,6 +396,7 @@ async def _health_inner() -> dict:
         "tradingview_mcp_healthy": tv_mcp_healthy,
         "tv_mcp_status": tv_mcp_status,
         "brier_30d_rolling": _compute_brier_30d_rolling(),
+        "pending_approvals": pending_approvals,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
