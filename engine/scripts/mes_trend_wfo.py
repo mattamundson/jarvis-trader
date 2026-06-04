@@ -46,8 +46,11 @@ GRID = {
 }
 
 
+_MES_SPEC = mt.SYMBOL_SPECS["MES"]
+
+
 def _metrics(df, fast, slow, trail):
-    r = mt._run(df, fast=fast, slow=slow, atr_trail_mult=trail)
+    r = mt._run(df, fast=fast, slow=slow, atr_trail_mult=trail, spec=_MES_SPEC)
     return r
 
 
