@@ -18,10 +18,13 @@ import numpy as np
 import pandas as pd
 
 # Walk-forward champion parameters
-# MES: rank11 champion (2026-05-06) — gate v2 ALT PASS
-# MNQ: rank1 baseline (2026-05-06) — inherited from MES champion; pending rank1 verdict
+# MES: trend_rv_filter_rank2 (2026-06-04) -- verdict INSUFFICIENT_SAMPLE (16 OOS < 30 floor)
+#      Gate blocks trades at runtime; re-authorize by collecting 30+ OOS trades OR flip
+#      GATE_V2_ENFORCE_SAMPLE_ADEQUACY=False in engine/.env (Amo-gated decision).
+#      RV filter: MES_MIN_RV_ANNUALIZED=9.0 env var (see engine/.env and signals.py)
+# MNQ: rank1 baseline (2026-05-06) -- inherited from MES champion; pending rank1 verdict
 SMA_TREND_PARAMS: dict[str, dict] = {
-    "MES": {"fast": 60, "slow": 200, "atr_trail_mult": 2.0},
+    "MES": {"fast": 50, "slow": 200, "atr_trail_mult": 2.0},
     # MNQ baseline: MES champion params as starting point.
     # point_value=$2 (vs MES $5), tick_size=0.25, commission=$0.62/contract.
     # ATR in dollar terms differs from MES — trail_mult grid [1.8, 2.0, 2.2]

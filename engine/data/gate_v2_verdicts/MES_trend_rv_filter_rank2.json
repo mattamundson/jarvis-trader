@@ -2,13 +2,13 @@
   "symbol": "MES",
   "family": "trend_rv_filter",
   "rank": 2,
-  "verdict": "PASS",
-  "passed_via": "alt",
+  "verdict": "INSUFFICIENT_SAMPLE",
+  "passed_via": null,
   "core_verdict": "FAIL",
   "alt_verdict": "PASS",
   "n_core_passed": 3,
   "n_alt_passed": 5,
-  "created_at": "2026-05-24T19:12:49.186901+00:00",
+  "created_at": "2026-06-04T09:40:55.872728+00:00",
   "rv_filter_config": {
     "min_rv_annualized": 9.0,
     "empirical_basis": "36 live champion trades from rank11 paper data",
@@ -19,13 +19,13 @@
     "empirical_rv13_trades": 13
   },
   "aux_freshness": {
-    "rolling_wfo": "2026-05-24T19:12:49.186901+00:00",
-    "fixed_params": "2026-05-24T19:12:49.186901+00:00",
-    "cost_sweep": "2026-05-24T19:12:49.186901+00:00"
+    "rolling_wfo": "2026-06-04T09:40:55.872728+00:00",
+    "fixed_params": "2026-06-04T09:40:55.872728+00:00",
+    "cost_sweep": "2026-06-04T09:40:55.872728+00:00"
   },
   "gate_v2": {
-    "verdict": "PASS",
-    "passed_via": "alt",
+    "verdict": "INSUFFICIENT_SAMPLE",
+    "passed_via": null,
     "core_verdict": "FAIL",
     "alt_verdict": "PASS",
     "n_core_passed": 3,
@@ -35,7 +35,7 @@
     "core_reasons": [
       "mbb_pf_ci_lower=1.9050 >= 1.1",
       "FAIL p_positive_edge=0.8333 < 0.95",
-      "mc_95th_dd_pct=1.5272 <= 5.0",
+      "mc_95th_dd_pct=2.6461 <= 5.0",
       "dsr=1.000000 >= 0.1 (not selection-bias)"
     ],
     "alt_reasons": [
@@ -43,18 +43,18 @@
       "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
       "fixed_params_min_pf=1.456 >= 1.2",
       "cost_survives_through=realistic >= realistic",
-      "mc_95th_dd_pct=1.5272 <= 4.0 (alt ceiling)"
+      "mc_95th_dd_pct=2.6461 <= 4.0 (alt ceiling)"
     ],
     "reasons": [
       "mbb_pf_ci_lower=1.9050 >= 1.1",
       "FAIL p_positive_edge=0.8333 < 0.95",
-      "mc_95th_dd_pct=1.5272 <= 5.0",
+      "mc_95th_dd_pct=2.6461 <= 5.0",
       "dsr=1.000000 >= 0.1 (not selection-bias)",
       "dsr=1.000000 >= 0.3 (alt floor)",
       "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
       "fixed_params_min_pf=1.456 >= 1.2",
       "cost_survives_through=realistic >= realistic",
-      "mc_95th_dd_pct=1.5272 <= 4.0 (alt ceiling)"
+      "mc_95th_dd_pct=2.6461 <= 4.0 (alt ceiling)"
     ],
     "n_passed": 3,
     "n_criteria": 4
@@ -84,8 +84,8 @@
   "gate_v2_metrics": {
     "pf_ci_lower": 1.905,
     "p_edge": 0.8333,
-    "mc_95th_dd": 0.015272,
-    "mc_95th_dd_pct": 1.5272,
+    "mc_95th_dd": 0.026461,
+    "mc_95th_dd_pct": 2.6461,
     "dsr": 1.0,
     "wfo_consistency": "STRONG",
     "fixed_params_min_pf": 1.4555,

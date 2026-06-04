@@ -89,7 +89,7 @@ def test_regime_trending_bull_when_above():
 def test_get_sma_trend_params_mes():
     params = get_sma_trend_params("MES")
     assert params is not None
-    assert params["fast"] == 60
+    assert params["fast"] == 50  # rank2 champion (updated 2026-06-04 from rank11's 60)
     assert params["slow"] == 200
     assert params["atr_trail_mult"] == 2.0
 
@@ -106,8 +106,10 @@ def test_no_nan_in_entry_signal():
 def test_generate_instrument_signals_routes_mes_to_trend():
     from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
     assert "MES" in TREND_INSTRUMENTS
-    # Use 700 bars: champion SMA(60,200) needs 200-bar warmup + decline + rise for golden cross
-    df = generate_instrument_signals(_make_trending_df(n=700), symbol="MES")
+    # Use 700 bars: SMA(50,200) needs 200-bar warmup + decline + rise for golden cross.
+    # Pass min_rv_annualized=0.0 explicitly to disable the RV filter (which would suppress
+    # entries on the zero-noise linear test data regardless of MES_MIN_RV_ANNUALIZED env var).
+    df = generate_instrument_signals(_make_trending_df(n=700), symbol="MES", min_rv_annualized=0.0)
     assert "entry_signal" in df.columns
     assert "bias" in df.columns
     # Should have at least one ENTRY_NOW on trending data
