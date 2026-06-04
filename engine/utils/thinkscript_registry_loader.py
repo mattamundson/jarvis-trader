@@ -9,7 +9,13 @@ import yaml
 
 from schemas.thinkscript_registry import ScriptRegistry
 
-DEFAULT_REGISTRY_PATH = Path("C:/Users/mattm/ThinkorSwim/jarvis-trader/thinkorswim-scripts/registry.yaml")
+# Repo root = two levels up from this file (.../engine/utils/loader.py: parents[0]
+# = engine/utils, parents[1] = engine, parents[2] = repo root). thinkorswim-scripts/
+# lives at the repo root, a sibling of engine/. Resolving relative to __file__ keeps
+# the loader portable across machines and CI (the previous hardcoded Windows path
+# broke every non-Windows checkout).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_REGISTRY_PATH = _REPO_ROOT / "thinkorswim-scripts" / "registry.yaml"
 
 
 def _resolve_path() -> Path:

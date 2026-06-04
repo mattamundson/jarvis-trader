@@ -13,14 +13,14 @@ import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-# rerank lives in engine.discord.reranker; conftest adds engine/, but importing
-# via the engine. namespace keeps patch targets unambiguous (mirrors the
+# rerank lives in discord.reranker; conftest adds engine/, but importing
+# via the top-level namespace keeps patch targets unambiguous (mirrors the
 # search_knowledge test).
 _ROOT = Path(__file__).resolve().parents[2]  # .../jarvis-trader
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from engine.discord import reranker  # noqa: E402
+from discord import reranker  # noqa: E402
 
 
 def _cands() -> list[dict]:
