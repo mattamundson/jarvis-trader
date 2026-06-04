@@ -244,9 +244,51 @@ class JarvisLLMClient:
                     logger.warning(
                         f"OLLAMA_NUM_CTX_PER_AGENT: invalid value '{ctx_str}' for agent '{agent}' — skipped"
                     )
-        self.client = (
-            None if self.provider == "ollama" else anthropic.AsyncAnthropic(api_key=api_key)
+        # Phase 3.5 (2026-06-03): Claude-on-Vertex transport (default OFF).
+        # When JARVIS_CLAUDE_USE_VERTEX is truthy and provider != ollama, route
+        # Claude through Vertex AI (AsyncAnthropicVertex) instead of the Anthropic
+        # direct API — billing consolidation + a Vertex failover leg. Vertex model
+        # IDs use the publisher @version form; JARVIS_VERTEX_MODEL_MAP translates
+        # direct names -> Vertex IDs at the single wire point (_call_with_retry).
+        # Unmapped names pass through unchanged. Absent flag => byte-identical to
+        # the direct path.
+        self.use_vertex = (
+            self.provider != "ollama"
+            and os.getenv("JARVIS_CLAUDE_USE_VERTEX", "0").strip().lower()
+            in {"1", "true", "yes", "on"}
         )
+        self.vertex_project = os.getenv("ANTHROPIC_VERTEX_PROJECT_ID", "").strip()
+        self.vertex_region = os.getenv("ANTHROPIC_VERTEX_REGION", "").strip()
+        self.vertex_model_map: dict[str, str] = {}
+        _vmap_raw = os.getenv("JARVIS_VERTEX_MODEL_MAP", "").strip()
+        if _vmap_raw:
+            for spec in _vmap_raw.split(","):
+                spec = spec.strip()
+                if not spec or "=" not in spec:
+                    continue
+                direct, vertex_id = spec.split("=", 1)
+                direct, vertex_id = direct.strip(), vertex_id.strip()
+                if direct and vertex_id:
+                    self.vertex_model_map[direct] = vertex_id
+
+        if self.provider == "ollama":
+            self.client = None
+        elif self.use_vertex:
+            from anthropic import AsyncAnthropicVertex
+
+            _vx_kwargs = {}
+            if self.vertex_project:
+                _vx_kwargs["project_id"] = self.vertex_project
+            if self.vertex_region:
+                _vx_kwargs["region"] = self.vertex_region
+            self.client = AsyncAnthropicVertex(**_vx_kwargs)
+            logger.info(
+                "🔵 Claude-on-Vertex transport active "
+                f"(project={self.vertex_project or 'ADC-default'}, "
+                f"region={self.vertex_region or 'ADC-default'})"
+            )
+        else:
+            self.client = anthropic.AsyncAnthropic(api_key=api_key)
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
         self.fast_model = (
@@ -1006,8 +1048,18 @@ class JarvisLLMClient:
                 model=model,
             )
 
+        # Vertex uses publisher @version model IDs; translate at the wire only.
+        # Cost tracking, health, and logging keep the direct name (current_model).
+        # Defensive getattr: low-level callers (and some tests) construct the
+        # client via __new__ without running __init__, so use_vertex /
+        # vertex_model_map may be unset — default to the direct (non-Vertex) path.
+        call_model = (
+            getattr(self, "vertex_model_map", {}).get(model, model)
+            if getattr(self, "use_vertex", False)
+            else model
+        )
         kwargs = {
-            "model": model,
+            "model": call_model,
             "system": system,
             "messages": messages,
             "max_tokens": max_tokens,
