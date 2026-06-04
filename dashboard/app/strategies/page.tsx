@@ -718,7 +718,9 @@ function WalkForwardResultsPanel({ models, latestResult }: { models: SavedModel[
 
 // ── RL vs STC Comparison ──────────────────────────────────────────────────────
 
-// Static STC backtest benchmarks from validated walk-forward (performance page data)
+// HARDCODED STC backtest benchmarks captured from a prior validated walk-forward.
+// These are static constants, NOT recomputed live — keep them clearly labelled as
+// such wherever they render next to live RL OOS metrics (no implied parity).
 const STC_BENCHMARKS: Record<string, { pf: number; sharpe: number; wr: number; symbol: string; tf: string }> = {
   MNQ: { pf: 1.46, sharpe: 0.19, wr: 47.7, symbol: "MNQ", tf: "1h" },
   MCL: { pf: 1.83, sharpe: 0.15, wr: 60.0, symbol: "MCL", tf: "1h" },
@@ -735,7 +737,7 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
           subtitle="Side-by-side: RL agent OOS metrics vs existing STC pipeline backtest benchmarks."
         />
         <p className="font-mono text-xs" style={{ color: "#333" }}>
-          Train a symbol to see RL vs STC comparison. STC benchmarks loaded from validated walk-forward.
+          Train a symbol to see RL vs STC comparison. STC benchmarks are static constants from a prior validated walk-forward (not recomputed live).
         </p>
       </section>
     );
@@ -817,7 +819,7 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
         <table className="w-full font-mono text-xs">
           <thead>
             <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
-              {["Metric", "RL Agent (OOS)", "STC Pipeline (BT)", "Delta"].map((h) => (
+              {["Metric", "RL Agent (OOS)", "STC Pipeline (static BT)", "Delta"].map((h) => (
                 <th
                   key={h}
                   className={`pb-2 px-3 font-semibold uppercase tracking-wider ${h === "Metric" ? "text-left" : "text-center"}`}

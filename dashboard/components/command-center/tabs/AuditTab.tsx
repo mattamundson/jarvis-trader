@@ -371,7 +371,9 @@ const CAT_COLORS: Record<AuditCategory, string> = {
 };
 
 // ── Score Ring Data ────────────────────────────────────────────────────────
-
+// STATIC, manually-maintained audit snapshot — NOT live system health. The pass
+// rate / pie below is frozen to whenever AUDIT_ITEMS was last hand-updated; it
+// must render behind a "manual snapshot" badge so it never reads as current.
 const SCORE_DATA = [
   { name: "PASS", value: 25, color: "#00ff88" },
   { name: "WARN", value: 1, color: "#fbbf24" },
@@ -482,7 +484,17 @@ function ScoreRing() {
         border: "1px solid rgba(0,212,255,0.12)",
       }}
     >
-      <PanelHead>Audit Score Ring</PanelHead>
+      <PanelHead>
+        <span className="inline-flex items-center gap-2">
+          Audit Score Ring
+          <span
+            className="rounded px-1.5 py-0.5 text-[8px] font-bold"
+            style={{ background: "rgba(148,163,184,0.12)", border: "1px solid rgba(148,163,184,0.25)", color: "#94a3b8" }}
+          >
+            MANUAL SNAPSHOT
+          </span>
+        </span>
+      </PanelHead>
 
       <div className="flex items-center gap-6">
         <div style={{ width: 200, height: 200, flexShrink: 0 }}>
