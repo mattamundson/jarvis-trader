@@ -800,7 +800,7 @@ def main() -> int:
                 # First run or status change: print full table
                 if changed:
                     print(f"\n[monitor] {now_str} -- STATUS CHANGE DETECTED:")
-                    for name, (was, now_val) in changed.items():
+                    for name, (was, _now_val) in changed.items():
                         direction = "PASS→FAIL" if was else "FAIL→PASS"
                         symbol = "⚠" if was else "✓"
                         print(f"  {symbol} {name}: {direction}")

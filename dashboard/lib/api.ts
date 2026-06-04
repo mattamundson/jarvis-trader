@@ -1309,7 +1309,7 @@ export interface HourlyStatsResponse {
 export interface AgentAnalystReport {
   regime?: string;
   stc_val?: number;
-  signal?: string;
+  signal?: number | string; // numeric score (~ -1..1); string is legacy/fallback
   confidence?: number;
   reasoning?: string;
   sentiment?: string;

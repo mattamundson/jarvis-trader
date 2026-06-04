@@ -1,5 +1,5 @@
 """
-Tests for `engine.discord.bookmark_synthesizer`.
+Tests for `discord.bookmark_synthesizer`.
 
 These tests use a temporary on-disk SQLite database (NOT the real
 `engine/data/jarvis_trader.db`) seeded with mocked rows. Per spec:
@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import List, Tuple
 
 import pytest
-from engine.discord.bookmark_synthesizer import (  # noqa: E402
+
+from discord.bookmark_synthesizer import (  # noqa: E402
     BookmarkRow,
     _extract_github_repo,
     _extract_xcom_author,

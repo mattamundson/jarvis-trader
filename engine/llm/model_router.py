@@ -1,7 +1,7 @@
 """
 JARVIS TRADER — Model Router (Phase 3.1)
 ========================================
-Dynamically routes tasks to the most appropriate Claude model based on 
+Dynamically routes tasks to the most appropriate Claude model based on
 capability and cost-efficiency.
 
 Routing Matrix:
@@ -55,7 +55,7 @@ def route_task(task_type: str, default_model: str = MODEL_SONNET, use_local: boo
     """
     if use_local:
         return MODEL_LOCAL
-        
+
     model = TASK_CATEGORIES.get(task_type, default_model)
     logger.debug(f"[ModelRouter] Routed task '{task_type}' to model '{model}'")
     return model

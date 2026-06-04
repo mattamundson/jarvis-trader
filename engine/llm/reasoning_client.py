@@ -12,14 +12,13 @@ import logging
 import re
 from typing import Optional, Tuple
 
-from llm.client import JarvisLLMClient, LLMCallResult
-from llm.model_router import route_task
+from llm.client import JarvisLLMClient
 
 logger = logging.getLogger("jarvis_trader.reasoning_client")
 
 class ReasoningChainClient:
     """
-    Client that pipes reasoning from a specialized reasoning model 
+    Client that pipes reasoning from a specialized reasoning model
     into a decision model.
     """
 
@@ -46,7 +45,7 @@ class ReasoningChainClient:
         reasoning_messages = [
             {"role": "user", "content": f"Context:\n{context}\n\nQuestion:\n{question}\n\nPlease think through this situation step-by-step."}
         ]
-        
+
         reasoning_result = await self.client.call(
             model=self.reasoning_model,
             system="You are a quantitative trading reasoning engine. Focus on identifying risks, hidden patterns, and confluence.",

@@ -138,11 +138,11 @@ class RegimeClassifierV2:
 
         classified = self.classify(df)
         last_row = classified.iloc[-1]
-        
+
         # Calculate some extra context for the prompt
         atr_median = classified["atr"].tail(50).median()
         atr_norm = last_row["atr"] / atr_median if atr_median > 0 else 1.0
-        
+
         return {
             "regime": last_row["regime_v2"],
             "description": f"Market state: {last_row['regime_v2']} | ATR Norm: {atr_norm:.2f}",

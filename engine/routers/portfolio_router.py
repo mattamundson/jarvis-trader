@@ -1784,7 +1784,7 @@ async def submit_paper_trade(req: PaperTradeRequest):
 
 
 @router.get("/history/daily-pnl", response_model=DailyPnLResponse)
-async def get_daily_pnl(days: int = 30):
+async def get_history_daily_pnl(days: int = 30):
     """Return daily P&L snapshots for the last N days."""
     if not db_manager:
         return {"daily_pnl": [], "days": days, "note": "db_manager not initialized"}

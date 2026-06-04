@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { AnomalySentinel } from "@/components/AnomalySentinel";
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
-import { JarvisCommandBar } from "@/components/JarvisCommandBar";
+import { AnomalySentinelStrip } from "@/components/AnomalySentinelStrip";
+import { CommandPalette } from "@/components/CommandPalette";
 import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
 import { SafetyEventListener } from "@/components/SafetyEventListener";
 import { EngineWebSocketProvider } from "@/lib/engine-websocket-context";
@@ -40,9 +40,9 @@ export default function RootLayout({
           <EngineWebSocketProvider>
             <PendingApprovalToastListener />
             <SafetyEventListener />
+            <CommandPalette />
+            <AnomalySentinelStrip />
             <EngineAvailabilityHint />
-            <AnomalySentinel />
-            <JarvisCommandBar />
             <div className="flex min-h-screen">
               <Sidebar />
               <main className="flex-1 min-w-0 overflow-x-hidden">

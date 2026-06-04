@@ -1211,7 +1211,7 @@ Signal: {analyst_reports.get("breakout", {}).get("signal", 0.0)} (weight: HIGH f
 === HARMONIC VISION ENRICHMENT (PHASE 4) ===
 Patterns: {analyst_reports.get("harmonic", {}).get("summary", "None detected")}
 Active Patterns: {analyst_reports.get("harmonic", {}).get("patterns", [])}
-Signal: {analyst_reports.get("harmonic", {}).get("signal", 0.0)} (weight: HIGH for reversal confluence)    
+Signal: {analyst_reports.get("harmonic", {}).get("signal", 0.0)} (weight: HIGH for reversal confluence)
 
 === OPTIONS YIELD OVERLAY (PHASE 5) ===
 Options Signal: {analyst_reports.get("options", {}).get("signal", 0.0)}

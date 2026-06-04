@@ -355,10 +355,10 @@ class SDKTradingPipeline:
     def _build_agent_definitions(self) -> dict[str, sdk.AgentDefinition]:
         """Build the 10 AgentDefinition objects for the pipeline stages."""
         from llm.model_router import route_task
-        
+
         # Check if local inference mode is active
         use_local = os.getenv("OLLAMA_ENABLED", "False").lower() == "true"
-        
+
         return {
             # Stage 1 — Parallel analysts
             "technical-analyst": sdk.AgentDefinition(

@@ -18,21 +18,6 @@ from typing import Optional, Tuple
 logger = logging.getLogger("jarvis_trader.pnl_monitor")
 
 
-# Peak-equity sanity bound for the drawdown circuit breaker.
-#
-# The daily_pnl history has historically been contaminated by IB-demo / cumulative
-# rows (e.g. a $113K ending_balance against a real $8K paper balance) that inflate
-# the equity peak and trip a FALSE -10% drawdown halt (incident 2026-06-02, 92.61%).
-# A real paper book ($5K-$10K, 2 micro contracts, 40% max margin) cannot plausibly
-# grow past a small multiple of its starting balance over the validation horizon, so
-# any DB peak beyond this multiple is treated as corrupt and rejected.
-#
-# Safety note: this can only ever REMOVE a false breach, never mask a real one — a
-# genuine drawdown requires current < true_peak, and a true peak never approaches
-# this bound, so the clamp never fires on legitimate data.
-_PEAK_SANITY_MULTIPLE: float = 5.0
-
-
 # ── State container ────────────────────────────────────────────────────────────
 
 
@@ -329,35 +314,56 @@ class PnLMonitor:
             logger.error(f"[PnLMonitor] record_eod_snapshot DB write failed: {exc}")
             return False
 
+    # A paper account 10x-ing its starting capital during forward validation is
+    # already wildly implausible; a demo / IB-contaminated daily_pnl row (e.g. a
+    # $3.97M IB NAV against a $10k paper book — ~400x) is far beyond that. The
+    # daily_pnl table carries no source column, so we cannot filter by source on
+    # the read path — instead we exclude rows whose ending_balance exceeds this
+    # plausibility ceiling. This stops a single contaminated row from re-inflating
+    # the equity peak and falsely tripping (or, inverted, masking) the max-drawdown
+    # kill switch. Excluding a row biases the peak DOWN (smaller drawdown), the
+    # fail-safe direction; the multiple is kept generous to avoid masking a real
+    # breach from genuine (if improbable) gains.
+    PLAUSIBLE_PEAK_MULTIPLE = 10.0
+
+    def _plausible_peak_ceiling(self) -> float:
+        """Upper bound on a believable paper equity peak, or 0.0 if no anchor."""
+        if self._starting_balance and self._starting_balance > 0:
+            return self._starting_balance * self.PLAUSIBLE_PEAK_MULTIPLE
+        return 0.0
+
     def get_peak_balance(self) -> float:
         """
         Return the highest account balance recorded in the SQLite daily_pnl
         history.  Falls back to the in-memory paper tracker equity peak if the
         DB has no rows, or to zero if neither is available.
+
+        Rows whose ending_balance exceeds the plausibility ceiling (see
+        ``PLAUSIBLE_PEAK_MULTIPLE``) are treated as demo/IB contamination and
+        excluded so they cannot inflate the peak used by the drawdown breaker.
         """
         # Try SQLite history first
         if self._db is not None:
             try:
                 rows = self._db.get_daily_pnl()
                 if rows:
-                    peak = max(r.get("ending_balance", 0.0) or 0.0 for r in rows)
-                    if peak > 0:
-                        # Reject an implausibly large peak as daily_pnl contamination
-                        # (IB-demo / cumulative rows) rather than let it trip a false
-                        # drawdown halt.  Fall through to the clean session tracker.
-                        sane_ceiling = self._starting_balance * _PEAK_SANITY_MULTIPLE
-                        if self._starting_balance > 0 and peak > sane_ceiling:
+                    balances = [r.get("ending_balance", 0.0) or 0.0 for r in rows]
+                    ceiling = self._plausible_peak_ceiling()
+                    if ceiling > 0:
+                        plausible = [b for b in balances if b <= ceiling]
+                        dropped = len(balances) - len(plausible)
+                        if dropped:
                             logger.warning(
-                                "[PnLMonitor] Rejecting contaminated daily_pnl peak "
-                                "%.2f (> %.1fx starting balance %.2f) for drawdown "
-                                "calc — falling back to session tracker. Audit "
-                                "daily_pnl for IB-demo/cumulative rows.",
-                                peak,
-                                _PEAK_SANITY_MULTIPLE,
-                                self._starting_balance,
+                                "[PnLMonitor] get_peak_balance excluded %d implausible "
+                                "daily_pnl row(s) above ceiling %.2f "
+                                "(demo/IB contamination guard)",
+                                dropped,
+                                ceiling,
                             )
-                        else:
-                            return peak
+                        balances = plausible
+                    peak = max(balances, default=0.0)
+                    if peak > 0:
+                        return peak
             except Exception as exc:
                 logger.warning(f"[PnLMonitor] get_peak_balance DB read failed: {exc}")
 

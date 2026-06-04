@@ -39,7 +39,7 @@ class MemoryMixin:
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """
         params = (memory_id, agent_name, symbol, topic, content, meta_json, ts)
-        
+
         # self.execute is provided by DatabaseManager
         self.execute(sql, params)
         return memory_id
@@ -60,7 +60,7 @@ class MemoryMixin:
         if symbol:
             sql += " AND (symbol = ? OR symbol IS NULL)"
             params.append(symbol)
-        
+
         if topic:
             sql += " AND topic = ?"
             params.append(topic)

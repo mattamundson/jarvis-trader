@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Import module under test
-from engine.scripts.tv_cdp_watchdog import (
+from scripts.tv_cdp_watchdog import (
     _check_port,
     _trigger_recovery,
     poll_once,
@@ -52,7 +52,7 @@ def test_check_port_returns_false_when_nothing_listening() -> None:
 
 
 def test_trigger_recovery_dry_run_does_not_call_subprocess() -> None:
-    with patch("engine.scripts.tv_cdp_watchdog.subprocess.run") as mock_run:
+    with patch("scripts.tv_cdp_watchdog.subprocess.run") as mock_run:
         action = _trigger_recovery(dry_run=True)
     mock_run.assert_not_called()
     assert action == "schtasks_skipped_dry_run"
@@ -65,9 +65,9 @@ def test_trigger_recovery_dry_run_does_not_call_subprocess() -> None:
 
 def test_poll_once_dry_run_does_not_call_schtasks() -> None:
     with (
-        patch("engine.scripts.tv_cdp_watchdog._check_port", return_value=False),
-        patch("engine.scripts.tv_cdp_watchdog.subprocess.run") as mock_run,
-        patch("engine.scripts.tv_cdp_watchdog._log_csv"),
+        patch("scripts.tv_cdp_watchdog._check_port", return_value=False),
+        patch("scripts.tv_cdp_watchdog.subprocess.run") as mock_run,
+        patch("scripts.tv_cdp_watchdog._log_csv"),
     ):
         result = poll_once(dry_run=True, no_discord=True)
 
@@ -83,9 +83,9 @@ def test_poll_once_dry_run_does_not_call_schtasks() -> None:
 
 def test_poll_once_sends_discord_on_recovery() -> None:
     with (
-        patch("engine.scripts.tv_cdp_watchdog._check_port", return_value=True),
-        patch("engine.scripts.tv_cdp_watchdog._send_discord_alert") as mock_alert,
-        patch("engine.scripts.tv_cdp_watchdog._log_csv"),
+        patch("scripts.tv_cdp_watchdog._check_port", return_value=True),
+        patch("scripts.tv_cdp_watchdog._send_discord_alert") as mock_alert,
+        patch("scripts.tv_cdp_watchdog._log_csv"),
     ):
         result = poll_once(
             dry_run=False,
@@ -113,9 +113,9 @@ def test_poll_once_debounced_recovery_skips_discord() -> None:
     recent_ts = time.monotonic() - 10  # 10 seconds ago (within 3600s debounce)
 
     with (
-        patch("engine.scripts.tv_cdp_watchdog._check_port", return_value=True),
-        patch("engine.scripts.tv_cdp_watchdog._send_discord_alert") as mock_alert,
-        patch("engine.scripts.tv_cdp_watchdog._log_csv"),
+        patch("scripts.tv_cdp_watchdog._check_port", return_value=True),
+        patch("scripts.tv_cdp_watchdog._send_discord_alert") as mock_alert,
+        patch("scripts.tv_cdp_watchdog._log_csv"),
     ):
         result = poll_once(
             dry_run=False,

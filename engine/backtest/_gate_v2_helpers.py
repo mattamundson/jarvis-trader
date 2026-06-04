@@ -9,7 +9,7 @@ Import these into runner files instead of re-defining them locally:
         GATE_DSR, GATE_DSR_ALT, N_BOOTSTRAP,
         # WFO window defaults
         WFO_TRAIN_MONTHS, WFO_TEST_MONTHS, WFO_STEP_MONTHS,
-        MIN_OOS_TRADES_PER_WINDOW,
+        MIN_OOS_TRADES_PER_WINDOW, MIN_OOS_TRADES_TOTAL,
         # Cost sweep tiers
         COST_SWEEP_TIERS, COST_TIER_ORDER,
     )
@@ -20,6 +20,7 @@ files need to change.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -48,6 +49,16 @@ GATE_DSR: float = 0.10
 #: Deflated Sharpe ratio floor — ALT path (trend strategies on daily bars).
 GATE_DSR_ALT: float = 0.30
 
+#: Bootstrap win-rate CI lower-bound floor (Init 2C). Complements DSR — which a
+#: few large outlier wins can carry — by binding on win RELIABILITY. SHADOW /
+#: NOT YET ENFORCED: the runners record ``win_rate_ci_lower`` into gate_v2_metrics,
+#: but this threshold stays ``None`` until calibrated empirically against the
+#: historical PASS set (one refresh cycle of recorded values). Guessing a value
+#: would be exactly the selection bias the gate exists to prevent. Wiring it into
+#: the ALT ``alt_pass`` conjunction is the explicit enforce step that follows
+#: calibration.
+GATE_WIN_RATE_CI_LOWER: float | None = None
+
 #: Bootstrap sample count for PF CI estimation.
 N_BOOTSTRAP: int = 2000
 
@@ -66,6 +77,39 @@ WFO_STEP_MONTHS: int = 1
 
 #: Minimum OOS trades required for a window to count toward gate v2.
 MIN_OOS_TRADES_PER_WINDOW: int = 5
+
+#: Minimum TOTAL out-of-sample trades (summed across ALL walk-forward windows)
+#: for a gate verdict to be statistically defensible. 30 is the conventional
+#: small-sample floor. Below this the per-trade DSR / Monte-Carlo drawdown are
+#: estimated from too few points to trust — e.g. a 16-trade series can yield a
+#: DSR ~ 1.0 that reflects luck, not a durable edge. Enforced ONLY when
+#: ``sample_adequacy_enforced()`` returns True (Init 2B; see that function).
+MIN_OOS_TRADES_TOTAL: int = 30
+
+
+def sample_adequacy_enforced() -> bool:
+    """Shadow -> enforce switch for the sample-adequacy floor (Init 2B).
+
+    Default OFF (shadow mode): runners still compute and record the floor's
+    inputs (``total_oos_trades`` / ``sample_adequate``) into the verdict
+    metrics, but the verdict itself is unchanged — so live paper authorization
+    is unaffected. Set the environment variable
+    ``GATE_V2_ENFORCE_SAMPLE_ADEQUACY=1`` to enforce: a strategy with fewer
+    than ``MIN_OOS_TRADES_TOTAL`` total OOS trades returns verdict
+    ``INSUFFICIENT_SAMPLE`` and is de-authorized (gate_v2_policy default-deny).
+
+    Env-gated rather than a code constant to match the existing house
+    ``GATE_V2_ENFORCE_*`` convention (cf. ``GATE_V2_ENFORCE_ROUTING``) so the
+    shadow->enforce flip is a one-line, fully reversible ``.env`` change with no
+    code edit. Evaluated at call time so it can be toggled without re-import.
+    """
+    return os.getenv("GATE_V2_ENFORCE_SAMPLE_ADEQUACY", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
 
 # ---------------------------------------------------------------------------
 # Cost sweep tiers — canonical; do not redefine per-runner
@@ -127,11 +171,17 @@ def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> 
     """
     import logging
 
-    candidates = sorted(data_dir.glob(f"{prefix}*{suffix}"))
+    # Anchor the symbol on a trailing underscore so a prefix like "MES" matches
+    # "MES_2024-..._1h.csv" but NOT a longer symbol that merely starts with it
+    # ("MESXX_..._1h.csv"). The filename contract is <SYMBOL>_<START>_<END>_<INTERVAL>,
+    # so a "_" always follows the symbol. Without the anchor, glob "MES*" leaks
+    # MESXX files into MES's candidate set and a same-end-date tie can silently
+    # select the wrong symbol's cache.
+    candidates = sorted(data_dir.glob(f"{prefix}_*{suffix}"))
     if not candidates:
         raise FileNotFoundError(
             f"No {prefix} {suffix.lstrip('_').rstrip('.csv')} data found in "
-            f"{data_dir} (looked for '{prefix}*{suffix}')"
+            f"{data_dir} (looked for '{prefix}_*{suffix}')"
         )
 
     def _end_date(p: Path) -> str:

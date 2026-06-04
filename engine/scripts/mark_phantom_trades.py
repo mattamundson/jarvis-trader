@@ -115,7 +115,6 @@ def _print_dry_run(current: list[dict]) -> None:
     )
     print("-" * 75)
     total_pnl = 0.0
-    found_ids = {r["id"] for r in current}
     for tid, reason in PHANTOM_TRADE_IDS:
         matching = [r for r in current if r["id"] == tid]
         if matching:

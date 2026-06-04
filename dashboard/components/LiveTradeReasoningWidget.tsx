@@ -21,11 +21,30 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(diff / 3600)}h ago`;
 }
 
-function actionColor(action: string): string {
-  const a = action?.toLowerCase();
+function actionColor(action: unknown): string {
+  // Coerce defensively — the engine sometimes sends non-string enum-ish values.
+  const a = String(action ?? "").toLowerCase();
   if (a === "buy" || a === "long") return "text-emerald-400";
   if (a === "sell" || a === "short") return "text-red-400";
   return "text-slate-400";
+}
+
+// Analyst `signal` is a numeric score (~ -1..1), NOT a string action enum.
+// Treating it as a string (.toLowerCase/.toUpperCase) crashes the whole page.
+function signalColor(signal: unknown): string {
+  const n = typeof signal === "number" ? signal : Number(signal);
+  if (Number.isFinite(n)) {
+    if (n > 0.05) return "text-emerald-400";
+    if (n < -0.05) return "text-red-400";
+    return "text-slate-400";
+  }
+  return actionColor(signal); // legacy string signals ("buy"/"sell")
+}
+
+function formatSignal(signal: unknown): string {
+  const n = typeof signal === "number" ? signal : Number(signal);
+  if (Number.isFinite(n)) return n > 0 ? `+${n.toFixed(2)}` : n.toFixed(2);
+  return String(signal ?? "").toUpperCase();
 }
 
 function verdictColor(verdict?: string): string {
@@ -85,8 +104,8 @@ function AnalystRow({ name, report }: { name: string; report?: AgentAnalystRepor
       {report.stc_val != null && (
         <span className="text-slate-300 font-mono">STC {report.stc_val.toFixed(1)}</span>
       )}
-      {report.signal && (
-        <span className={actionColor(report.signal)}>{report.signal.toUpperCase()}</span>
+      {report.signal != null && (
+        <span className={signalColor(report.signal)}>{formatSignal(report.signal)}</span>
       )}
       {report.sentiment && (
         <span className="text-slate-400">{report.sentiment}</span>

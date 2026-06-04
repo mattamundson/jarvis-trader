@@ -50,7 +50,7 @@ def client(app):
 
 def test_connection_requires_api_key(client):
     """Connecting without api_key must be rejected (close 1008)."""
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 (any error = connection correctly rejected)
         # TestClient raises when the server closes the connection immediately
         with client.websocket_connect("/ws/pipeline") as ws:
             ws.receive_json()
@@ -58,7 +58,7 @@ def test_connection_requires_api_key(client):
 
 def test_connection_with_wrong_api_key_rejected(client):
     """Wrong api_key must be rejected."""
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 (any error = connection correctly rejected)
         with client.websocket_connect("/ws/pipeline?api_key=wrong-key") as ws:
             ws.receive_json()
 
