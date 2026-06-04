@@ -101,10 +101,10 @@ class MemoryBridge:
                 if lessons:
                     mem_found = True
                     lines.append("\n### HISTORICAL LESSONS FROM RECENT TRADES ###")
-                    for l in lessons:
-                        ts = l["created_at"][:10]
-                        outcome = "WIN" if l["pnl"] > 0 else "LOSS"
-                        lines.append(f"- [{ts}] {outcome}: {l['lesson']}")
+                    for entry in lessons:
+                        ts = entry["created_at"][:10]
+                        outcome = "WIN" if entry["pnl"] > 0 else "LOSS"
+                        lines.append(f"- [{ts}] {outcome}: {entry['lesson']}")
 
             if not mem_found:
                 return ""

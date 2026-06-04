@@ -86,11 +86,15 @@ def generate_sector_rotation_signals(
         result_df[col_name] = "HOLD"
 
         # Long top N
-        mask_long = result_df["top_sectors"].apply(lambda x: symbol in x if isinstance(x, list) else False)
+        mask_long = result_df["top_sectors"].apply(
+            lambda x, symbol=symbol: symbol in x if isinstance(x, list) else False
+        )
         result_df.loc[mask_long, col_name] = "LONG"
 
         # Short bottom N
-        mask_short = result_df["bottom_sectors"].apply(lambda x: symbol in x if isinstance(x, list) else False)
+        mask_short = result_df["bottom_sectors"].apply(
+            lambda x, symbol=symbol: symbol in x if isinstance(x, list) else False
+        )
         result_df.loc[mask_short, col_name] = "SHORT"
 
     return result_df

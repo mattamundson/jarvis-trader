@@ -22,7 +22,8 @@ class OptionsSpreadSignals:
         Find Bull Put Credit Spreads (Bullish / Mean-Rev setup).
         """
         puts = [s for s in chain if s.right == 'P']
-        if not puts: return []
+        if not puts:
+            return []
 
         spreads = []
         for short_put in puts:
@@ -52,7 +53,8 @@ class OptionsSpreadSignals:
         Find Bear Call Credit Spreads (Bearish setup).
         """
         calls = [s for s in chain if s.right == 'C']
-        if not calls: return []
+        if not calls:
+            return []
 
         spreads = []
         for short_call in calls:

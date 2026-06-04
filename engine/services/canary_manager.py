@@ -128,7 +128,8 @@ class CanaryManager:
         """Run each active canary against latest data and record signals."""
         for filename, strategy in self._active_strategies.items():
             canary = self.db.get_canary_by_file(filename)
-            if not canary: continue
+            if not canary:
+                continue
 
             symbol = canary["symbol"]
             interval = canary["interval"]
@@ -138,7 +139,8 @@ class CanaryManager:
                 df = await self.data.get_bars(
                     symbol, lookback_days=10, timeframe=interval, is_futures=True
                 )
-                if df.empty: continue
+                if df.empty:
+                    continue
 
                 # Generate signals
                 signals_df = strategy.generate_signals(df)

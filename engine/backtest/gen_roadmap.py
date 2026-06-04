@@ -269,9 +269,9 @@ def main() -> None:
         _run_once()
         # Print abbreviated summary (ASCII-safe for Windows console)
         lines = [
-            l
-            for l in _OUTPUT.read_text(encoding="utf-8").splitlines()
-            if l.startswith("| ") or l.startswith("## ")
+            ln
+            for ln in _OUTPUT.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("| ") or ln.startswith("## ")
         ]
         for line in lines[:30]:
             print(line.encode("ascii", errors="replace").decode("ascii"))
