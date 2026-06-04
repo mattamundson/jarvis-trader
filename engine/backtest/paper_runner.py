@@ -866,12 +866,16 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
                 # the TREND_INSTRUMENTS set. This also applies DO_NOT_TRADE and gate v2
                 # enforcement layers automatically.
                 sma_params = cfg.get("sma_params", {})
+                rv_kwargs = {}
+                if "min_rv_annualized" in sma_params:
+                    rv_kwargs["min_rv_annualized"] = sma_params["min_rv_annualized"]
                 df_signals = generate_instrument_signals(
                     df,
                     symbol=symbol,
                     fast=sma_params.get("fast", 50),
                     slow=sma_params.get("slow", 200),
                     atr_trail_mult=sma_params.get("atr_trail_mult", 2.0),
+                    **rv_kwargs,
                 )
             else:
                 params = cfg["stc_params"]
