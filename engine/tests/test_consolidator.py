@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from engine.learning.consolidator import TradingMemoryConsolidator
+from learning.consolidator import TradingMemoryConsolidator
 
 
 class TestConsolidator:
