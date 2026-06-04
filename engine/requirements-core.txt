@@ -64,6 +64,7 @@ twilio==9.10.9            # WhatsApp approval webhook + outbound alerts (whatsap
 # ── Sentiment & News ───────────────────────────────────────────────────────
 finnhub-python==2.4.22    # Finnhub — free tier: 60 req/min
 praw==7.8.1               # Reddit API (for WSB/r/stocks)
+readability-lxml==0.8.4.1 # Article extraction (from readability import Document) — discord/deep_analyzer/handlers/url.py
 
 # ── Economic Data ──────────────────────────────────────────────────────────
 fredapi==0.5.2            # FRED — Federal Reserve data, free, no key needed
@@ -94,3 +95,5 @@ pytest-asyncio==0.26.0
 pytest-timeout==2.3.1
 pytest-cov==5.0.0  # tier-1 CI uses --cov=engine
 hypothesis==6.152.4  # property-based tests (test_gate_v2_properties, etc.)
+respx==0.23.1        # HTTP mocking for httpx — required by test_discord_deep_analyzer/* (CI collection)
+pypdf==6.11.0        # PDF parsing — imported by discord deep-analyzer document handler + its tests

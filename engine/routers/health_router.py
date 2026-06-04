@@ -350,13 +350,18 @@ async def _health_inner() -> dict:
 
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
 
+    # Defensive read: a config missing this flag must never report live trading
+    # (default False = paper). Also keeps /health resilient to a settings object
+    # of an unexpected shape rather than 503-ing the whole endpoint.
+    live_trading = bool(getattr(settings, "LIVE_TRADING_ENABLED", False))
+
     response = {
         "status": status,
         "version": "1.1.0",
         "timestamp": now.isoformat(),
-        "live_trading": settings.LIVE_TRADING_ENABLED,
+        "live_trading": live_trading,
         "kill_switch_active": safety.get("kill_switch_active", False),
-        "paper_mode": not settings.LIVE_TRADING_ENABLED,
+        "paper_mode": not live_trading,
         "database": "connected" if db_ok else "error",
         "ibkr_connected": ib_health.get("status") == "connected",
         "ibkr_execution_connected": ib_health.get("execution_connected", False),

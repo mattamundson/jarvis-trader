@@ -68,8 +68,25 @@ def _find_db() -> Path:
     )
 
 
-DB_PATH = _find_db()
-DEFAULT_OUTPUT = DB_PATH.parent / "discord_correlation_study.csv"
+_OUTPUT_FILENAME = "discord_correlation_study.csv"
+
+# Lazy DB resolution: don't touch the filesystem at import time, so this module
+# (and the test conftest chain that transitively imports it) loads even when no
+# jarvis_trader.db exists yet — e.g. CI or a fresh checkout. Resolved on first
+# use and cached. Eager resolution here previously broke pytest collection with a
+# FileNotFoundError raised from _find_db() at import.
+_DB_PATH_CACHE: Optional[Path] = None
+
+
+def _db_path() -> Path:
+    global _DB_PATH_CACHE
+    if _DB_PATH_CACHE is None:
+        _DB_PATH_CACHE = _find_db()
+    return _DB_PATH_CACHE
+
+
+def _default_output() -> Path:
+    return _db_path().parent / _OUTPUT_FILENAME
 
 # ── Confidence thresholds (calibrated to this dataset's win-rate scale) ──────
 CONF_HIGH_THRESHOLD = 80.0  # win_rate >= 80 → HIGH_CONFIDENCE
@@ -267,7 +284,7 @@ def analyze_signal_alignment(
 
     Returns DataFrame with per-signal rows and enriched columns.
     """
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(_db_path()) as conn:
         df = _fetch_signals(conn, symbols=[symbol], date_range=date_range, limit=limit)
         nq_map = _build_nq_hourly_direction(conn)
 
@@ -477,7 +494,7 @@ def _compute_cross_market_alignment(conn: sqlite3.Connection) -> pd.DataFrame:
 # quantifying whether Corey's LLM-extracted directional bias compounds with
 # bot signal win rate. Require the commentary processor to have run at least
 # once (corey_session_bias table populated). All accept db_path for FastAPI
-# compatibility; default falls back to DB_PATH resolved at module load.
+# compatibility; default falls back to _db_path() resolved lazily on first use.
 
 
 def _is_aligned(corey_bias: str, signal_direction: str) -> Optional[bool]:
@@ -516,7 +533,7 @@ def analyze_corey_alignment_win_rate(
         signal_count, avg_win_rate (0.0–1.0), avg_rr
     """
     if db_path is None:
-        db_path = str(DB_PATH)
+        db_path = str(_db_path())
     cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -579,7 +596,7 @@ def analyze_session_type_performance(
     Returns list of dicts: session_type, signal_count, avg_win_rate, avg_rr, avg_gain
     """
     if db_path is None:
-        db_path = str(DB_PATH)
+        db_path = str(_db_path())
     cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -650,7 +667,7 @@ def analyze_conviction_threshold(
         ("high",   CONVICTION_BUCKET_HIGH, 1.01),
     ]
     if db_path is None:
-        db_path = str(DB_PATH)
+        db_path = str(_db_path())
     cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%S")
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
@@ -793,10 +810,10 @@ def run_correlation_study(
 
     Returns the per-symbol category summary DataFrame.
     """
-    output_file = Path(output_path) if output_path else DEFAULT_OUTPUT
+    output_file = Path(output_path) if output_path else _default_output()
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(_db_path()) as conn:
         # Determine available symbols if not provided
         if symbols is None:
             cur = conn.cursor()
@@ -813,7 +830,7 @@ def run_correlation_study(
 
         print(f"\n{'='*70}")
         print("JARVIS TRADER — Discord Signal Correlation Study")
-        print(f"DB: {DB_PATH}")
+        print(f"DB: {_db_path()}")
         print(f"Symbols: {symbols}")
         print(f"{'='*70}\n")
 
@@ -992,7 +1009,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         default=None,
-        help=f"CSV output path (default: {DEFAULT_OUTPUT})",
+        help=f"CSV output path (default: {_default_output()})",
     )
     parser.add_argument(
         "--limit",
