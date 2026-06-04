@@ -160,6 +160,10 @@ line-length = 100
 extend-exclude = [
     "strategies/.trash",
     "**/.trash",
+    # Experimental per-strategy backtest run-scripts (run_<sym>_<strat>_rank<N>.py):
+    # one-off research drivers with late sys.path/noqa imports ruff can't resolve
+    # (~500 F821). Not production engine code; core backtest modules stay linted.
+    "backtest/run_*.py",
 ]
 
 [tool.ruff.lint]
