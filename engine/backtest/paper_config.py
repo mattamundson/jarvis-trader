@@ -218,18 +218,19 @@ MNQ_15M_CONFIG = {
 
 MES_TREND_PAPER_CONFIG = {
     #  Instrument — SMA(50,200)+RV9 trend-following, 1h bars
-    #  Gate v2 verdict: PASS via ALT (dsr=1.0, rolling_wfo=STRONG, fixed_params_min_pf=1.4555)
-    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank2.json (created 2026-05-24)
-    #  NOTE: rank11 verdict is now INSUFFICIENT_SAMPLE (16 OOS < 30 floor); rank2 is authorizing verdict
-    #  IMPORTANT: rank2 verdict expires 2026-06-07 -- re-run run_mes_trend_rv_filter_rank2.py before then
+    #  Gate v2 verdict: INSUFFICIENT_SAMPLE (2026-06-04) -- rank2 re-run with correct trade-level
+    #  metrics shows mc_95th_dd=2.65% (was 1.53% on window-level), alt gate PASSES on all 5 criteria
+    #  but GATE_V2_ENFORCE_SAMPLE_ADEQUACY=True in .env triggers INSUFFICIENT_SAMPLE (16 OOS < 30 floor).
+    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank2.json
+    #  To re-authorize: collect 30+ OOS trades OR set GATE_V2_ENFORCE_SAMPLE_ADEQUACY=False (Amo-gated).
+    #  rank11 verdict also INSUFFICIENT_SAMPLE (same 16 OOS < 30 floor).
     #  WFO champion params: SMA(fast=50, slow=200, atr_trail_mult=2.0, min_rv_annualized=9.0)
     #  rank2 grid [50,55,60]x[200]x[2.0] with RV>=9% filter: PF=[1.46,1.86,2.32] (22/22/16 trades)
-    #  ALT routing applies: mc_95th_dd=1.53% <= 7.0% ceiling (requires $50K+ account sizing)
     #  RV filter: activated via MES_MIN_RV_ANNUALIZED=9.0 in engine/.env (env var path in signals.py)
     "symbol": "MES",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() -> trend_signals path
-    "enabled": True,  # Gate v2 ALT PASS via rank2 -- authorized for paper trading
+    "enabled": True,  # gate_v2_policy blocks trades (INSUFFICIENT_SAMPLE); runner still polls for data
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
