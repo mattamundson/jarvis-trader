@@ -91,6 +91,29 @@ def _get_active_symbols() -> list[str]:
     return [s.strip().upper() for s in raw.split(",") if s.strip()]
 
 
+def _warn_blocked_active_symbols() -> None:
+    """Loud WARN if any AUTONOMOUS_ACTIVE_SYMBOLS member is in
+    DO_NOT_TRADE_SYMBOLS. Such a config can never trade (the gate forces
+    NO_TRADE), so the autonomous loop silently no-ops on it — exactly the
+    MCL,MNQ default, where both symbols are blocked and the loop is
+    dead-configured. Fired once at injection so it can't recur silently."""
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except Exception:
+        return
+    active = _get_active_symbols()
+    blocked = [s for s in active if s in DO_NOT_TRADE_SYMBOLS]
+    if blocked:
+        logger.warning(
+            "AUTONOMOUS_ACTIVE_SYMBOLS contains DO_NOT_TRADE symbols %s — the "
+            "autonomous loop can never trade these (gated to NO_TRADE). Active "
+            "set=%s. Set %s to tradeable symbols (e.g. MES,MGC) to activate.",
+            blocked,
+            active,
+            _SYMBOLS_NAME,
+        )
+
+
 def _get_tick_seconds() -> int:
     raw = os.environ.get(_TICK_NAME, "").strip()
     try:
@@ -134,6 +157,7 @@ def inject_autonomous_deps(trading_pipeline, safety_layer, db_path: str, data_ma
         _db_path,
         type(_data_manager).__name__ if _data_manager is not None else "None",
     )
+    _warn_blocked_active_symbols()
 
 
 # ---------------------------------------------------------------------------
