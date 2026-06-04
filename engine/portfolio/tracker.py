@@ -502,10 +502,15 @@ class PortfolioTracker:
             worst_trade      : lowest single-trade P&L
         """
         # B9 fix: prefer SQLite as single source of truth (Sprint 17 US-1703)
-        # Fall back to in-memory _closed if db_manager not available
-        if getattr(self, "db_manager", None) is not None:
+        # Fall back to in-memory _closed if db_manager not available.
+        # NOTE: the handle is self._db (set from the db_manager ctor arg at
+        # __init__); there is no self.db_manager attribute, so the previous
+        # getattr(self, "db_manager", ...) check was always None and this method
+        # silently never read SQLite. Match the self._db pattern used everywhere
+        # else in this class (e.g. _get_starting_balance).
+        if self._db is not None:
             try:
-                rows = self.db_manager.get_closed_trades(limit=10000)
+                rows = self._db.get_closed_trades(limit=10000)
                 closed = []
                 for row in rows:
                     t = PaperTrade.__new__(PaperTrade)
