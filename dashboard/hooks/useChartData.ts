@@ -85,18 +85,27 @@ export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
 
   // Parse bars into lightweight-charts format.
   // The engine returns BarsResponse {symbol, timeframe, bars: [...], count, vwap_current, vwap_trend}.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawBarsArray: any[] = Array.isArray(rawBars)
-    ? rawBars
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    : Array.isArray((rawBars as any)?.bars)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ? (rawBars as any).bars
+  // The SWR type says OHLCVBar[], but the runtime payload can be either a bare
+  // array or that wrapper object, so parse defensively against a loose RawBar.
+  type RawBar = {
+    time: string | number;
+    open: number | string;
+    high: number | string;
+    low: number | string;
+    close: number | string;
+    volume?: number | string | null;
+    vwap?: number | string | null;
+    stc?: number | string | null;
+  };
+  const rawValue = rawBars as unknown;
+  const rawBarsArray: RawBar[] = Array.isArray(rawValue)
+    ? (rawValue as RawBar[])
+    : Array.isArray((rawValue as { bars?: RawBar[] })?.bars)
+    ? ((rawValue as { bars?: RawBar[] }).bars as RawBar[])
     : [];
 
   const bars: OHLCVBar[] = rawBarsArray
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((b: any) => ({
+    .map((b: RawBar) => ({
       time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
       open: Number(b.open),
       high: Number(b.high),
