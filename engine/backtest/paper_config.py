@@ -217,16 +217,19 @@ MNQ_15M_CONFIG = {
 }
 
 MES_TREND_PAPER_CONFIG = {
-    #  Instrument — SMA(60,200) trend-following, 1h bars
-    #  Gate v2 verdict: PASS via ALT (dsr=1.0, rolling_wfo=STRONG, fixed_params_min_pf=1.3506)
-    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rank11.json (created 2026-05-06)
-    #  WFO champion params: SMA(fast=60, slow=200, atr_trail_mult=2.0)  — fixed_params PF=2.156
-    #  rank11 grid [50,55,60]×[200]×[2.0]: PF=[1.35,1.72,2.16]; fast=60 is the champion
-    #  ALT routing applies: mc_95th_dd=0.81% ≤ 7.0% ceiling (requires $50K+ account sizing)
+    #  Instrument — SMA(50,200)+RV9 trend-following, 1h bars
+    #  Gate v2 verdict: PASS via ALT (dsr=1.0, rolling_wfo=STRONG, fixed_params_min_pf=1.4555)
+    #  Verdict file: engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank2.json (created 2026-05-24)
+    #  NOTE: rank11 verdict is now INSUFFICIENT_SAMPLE (16 OOS < 30 floor); rank2 is authorizing verdict
+    #  IMPORTANT: rank2 verdict expires 2026-06-07 -- re-run run_mes_trend_rv_filter_rank2.py before then
+    #  WFO champion params: SMA(fast=50, slow=200, atr_trail_mult=2.0, min_rv_annualized=9.0)
+    #  rank2 grid [50,55,60]x[200]x[2.0] with RV>=9% filter: PF=[1.46,1.86,2.32] (22/22/16 trades)
+    #  ALT routing applies: mc_95th_dd=1.53% <= 7.0% ceiling (requires $50K+ account sizing)
+    #  RV filter: activated via MES_MIN_RV_ANNUALIZED=9.0 in engine/.env (env var path in signals.py)
     "symbol": "MES",
     "interval": "1h",
-    "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
-    "enabled": True,  # Gate v2 ALT PASS — authorized for paper trading 2026-05-05
+    "strategy": "sma_trend",  # Routes to generate_instrument_signals() -> trend_signals path
+    "enabled": True,  # Gate v2 ALT PASS via rank2 -- authorized for paper trading
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
@@ -236,15 +239,16 @@ MES_TREND_PAPER_CONFIG = {
     "composite": False,
     "volume_filter": False,
     "mtf_filter": False,
-    #  SMA Trend Parameters (walk-forward champion from WFO rank11)
+    #  SMA Trend Parameters (walk-forward champion from WFO rank2 rv_filter)
     "sma_params": {
-        "fast": 60,
+        "fast": 50,
         "slow": 200,
         "atr_trail_mult": 2.0,
+        "min_rv_annualized": 9.0,  # active via MES_MIN_RV_ANNUALIZED env var; validated in rank2
     },
-    #  Kill Thresholds — calibrated to ALT routing 7% MC DD ceiling
+    #  Kill Thresholds -- calibrated to ALT routing 7% MC DD ceiling
     "kill_threshold": {
-        "consecutive_losses": 4,       # SMA trend has lower win rate (~44%) — allow longer runs
+        "consecutive_losses": 4,       # SMA trend has lower win rate (~44%) -- allow longer runs
         "consecutive_months_underperform": 2,
         "monthly_loss_pct": -0.04,     # Slightly wider than STC strategies (higher R:R profile)
         "max_daily_loss": -0.02,
