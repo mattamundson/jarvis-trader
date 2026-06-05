@@ -16,7 +16,6 @@ Human approval gate:
   logged and surfaced to Matt but NOT forwarded to execution automatically.
 """
 
-import json
 import logging
 import os
 import time
@@ -26,6 +25,7 @@ from datetime import datetime
 import httpx
 
 from config import settings
+from utils.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -264,13 +264,9 @@ class FundManagerAgent:
 
             response_text = payload["content"][0]["text"].strip()
 
-            # Strip markdown code fences if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-
-            result = json.loads(response_text)
+            # Tolerant extraction (fences, prose, trailing commas) — see
+            # utils.llm_json (2026-06-04 synthesis-failure wave).
+            result = parse_llm_json(response_text)
             return self._parse_fund_decision(result, trade, risk)
 
         except Exception as e:

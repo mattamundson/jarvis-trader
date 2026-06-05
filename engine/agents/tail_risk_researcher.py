@@ -45,6 +45,8 @@ from typing import Optional
 
 import httpx
 
+from utils.llm_json import LLMJsonError, parse_llm_json
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["TailRiskReport", "TailRiskResearcherAgent"]
@@ -262,14 +264,9 @@ Respond with valid JSON in exactly this format (no text outside the JSON):
 
     @staticmethod
     def _parse_json(text: str) -> dict:
-        if text.startswith("```"):
-            parts = text.split("```")
-            text = parts[1] if len(parts) > 1 else text
-            if text.startswith("json"):
-                text = text[4:]
         try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
+            return parse_llm_json(text)
+        except LLMJsonError as exc:
             logger.warning(
                 f"TailRiskResearcher JSON parse error: {exc} — raw: {text[:200]}"
             )

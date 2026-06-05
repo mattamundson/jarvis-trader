@@ -39,8 +39,18 @@ from typing import Any
 __all__ = ["parse_llm_json", "LLMJsonError"]
 
 
-class LLMJsonError(ValueError):
-    """Raised when no JSON object can be extracted from an LLM response."""
+class LLMJsonError(json.JSONDecodeError):
+    """Raised when no JSON object can be extracted from an LLM response.
+
+    Subclasses ``json.JSONDecodeError`` (itself a ``ValueError``) so that every
+    adopter — whether its except clause catches ``json.JSONDecodeError``,
+    ``ValueError``, or ``Exception`` — handles this exactly as it handled the
+    ``json.loads()`` call this util replaces. ``doc``/``pos`` are best-effort
+    context, not a meaningful decode position.
+    """
+
+    def __init__(self, msg: str, doc: str = "", pos: int = 0):
+        super().__init__(msg, doc, pos)
 
 
 # ```json ... ```  or  ``` ... ```  — non-greedy, anywhere in the text.
