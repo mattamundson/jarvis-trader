@@ -27,7 +27,6 @@ Safety invariants (non-negotiable)
 - No IB Gateway access from the SDK pipeline — order routing stays in /pipeline/run
 """
 
-import json
 import logging
 import os
 from datetime import datetime
@@ -38,6 +37,7 @@ from backtest.regime_classifier import MarketRegime, RegimeClassifierV2
 from orchestrator.sentiment_bridge import SentimentBridge
 from orchestrator.strategy_router import StrategyRouter
 from tools.market_mcp_server import create_market_mcp_server
+from utils.llm_json import LLMJsonError, parse_llm_json
 from validation.shadow_mode import ShadowModeTracker
 
 logger = logging.getLogger(__name__)
@@ -567,29 +567,17 @@ class SDKTradingPipeline:
                 **self._hold_result(reason="SDK orchestrator returned no result"),
             }
 
-        # Strip markdown fences if the model wrapped its JSON
-        text = result_text.strip()
-        if text.startswith("```"):
-            parts = text.split("```")
-            text = parts[1] if len(parts) > 1 else text
-            if text.startswith("json"):
-                text = text[4:]
-
+        # Tolerant extraction (fences, surrounding prose, trailing commas) via
+        # utils.llm_json — supersedes the prior fence-strip + manual brace fallback.
         try:
-            parsed = json.loads(text.strip())
-        except json.JSONDecodeError as exc:
+            parsed = parse_llm_json(result_text)
+        except LLMJsonError as exc:
             logger.warning("[SDKPipeline] JSON parse failed for %s: %s", symbol, exc)
             errors.append(f"JSON parse error: {exc}")
-            # Try to extract a JSON object from the text if there's surrounding prose
-            try:
-                start = text.index("{")
-                end = text.rindex("}") + 1
-                parsed = json.loads(text[start:end])
-            except (ValueError, json.JSONDecodeError):
-                return {
-                    **base,
-                    **self._hold_result(reason=f"Could not parse orchestrator output: {exc}"),
-                }
+            return {
+                **base,
+                **self._hold_result(reason=f"Could not parse orchestrator output: {exc}"),
+            }
 
         # Merge parsed result into base (parsed keys take precedence)
         result = {**base, **parsed}
