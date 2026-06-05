@@ -8,7 +8,7 @@ Endpoints:
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -66,9 +66,19 @@ def _compute_days_from_trades(trades: list[dict]) -> int:
         if not raw:
             continue
         try:
-            parsed.append(datetime.fromisoformat(str(raw).replace("Z", "+00:00")))
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             logger.debug("Could not parse trade timestamp: %s", raw)
+            continue
+        # Normalize to tz-aware UTC. The DB holds a mix of tz-naive timestamps
+        # (older rows, "...T10:00:00") and tz-aware ones ("...+00:00"/"Z");
+        # max()/min() over a mixed list raises "can't compare offset-naive and
+        # offset-aware datetimes" — the bug that 503'd GET /analytics/performance.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        parsed.append(dt)
     if not parsed:
         return 0
     return (max(parsed) - min(parsed)).days + 1
