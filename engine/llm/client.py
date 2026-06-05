@@ -1000,6 +1000,22 @@ class JarvisLLMClient:
         }
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(self.google_endpoint, json=payload, headers=headers)
+            if response.status_code >= 400:
+                # The HTTPStatusError string form omits the response body, so the
+                # caller's "%s"/"{gex}" logging only ever shows "404 Not Found" —
+                # which can't distinguish a revoked/invalid API key from an
+                # unknown model id. Surface the body (truncated) at the source so
+                # the dominant Gemini-fallback failure is diagnosable in one look.
+                try:
+                    body = response.text[:500]
+                except Exception:  # pragma: no cover - defensive
+                    body = "<unreadable>"
+                logger.warning(
+                    "[%s] Gemini endpoint returned HTTP %d: %s",
+                    model,
+                    response.status_code,
+                    body,
+                )
             response.raise_for_status()
             data = response.json()
 
