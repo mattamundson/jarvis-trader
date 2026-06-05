@@ -198,7 +198,11 @@ class RLExecutor:
         if self._data_manager is not None:
             try:
                 ibkr = getattr(self._data_manager, "ibkr", None)
-                if ibkr is not None and ibkr.isConnected():
+                # IBKRDataConnector exposes is_connected() (snake_case); the
+                # camelCase isConnected() is ib_insync's raw IB API and does NOT
+                # exist on our wrapper — calling it raised AttributeError every
+                # cycle, so the IBKR bar path was dead and always fell to Polygon.
+                if ibkr is not None and ibkr.is_connected():
                     # Run the async IB fetch in a fresh event loop slice;
                     # the executor runs in a BackgroundScheduler thread.
                     loop = _get_or_create_event_loop()
