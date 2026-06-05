@@ -44,19 +44,39 @@ function Trim-Log {
     } catch {}
 }
 
-# Check health
+# Check health.
+#
+# IMPORTANT: a SINGLE failed probe is NOT sufficient to declare the engine dead.
+# The engine's async event loop saturates for several seconds at a time during
+# heavy pipeline bursts (scanner pass, LLM debate, IB reconciliation) and a
+# normal /health can momentarily exceed a short timeout while the process is
+# perfectly alive and working. A single-probe watchdog interprets that spike as
+# "dead" and restarts mid-work -- which, when several restarts stack up, races
+# multiple engine instances onto the cost-tracker SQLite DB and produces a
+# "database is locked" startup crash-loop (forensic: 2026-06-05 incident).
+#
+# So: require THREE consecutive failures, each with a generous timeout, spaced a
+# few seconds apart (~45-75s of *sustained* unresponsiveness) before acting.
+# Transient saturation recovers within one or two probes; a genuine hang fails
+# all three. One success at any point clears the alarm.
+$ProbeTimeoutSec   = 15
+$ProbeCount        = 3
+$ProbeGapSec       = 8
 $healthy = $false
-try {
-    $resp = Invoke-WebRequest -Uri $EngineUrl -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
-    if ($resp.StatusCode -eq 200) { $healthy = $true }
-} catch {}
+for ($probe = 1; $probe -le $ProbeCount; $probe++) {
+    try {
+        $resp = Invoke-WebRequest -Uri $EngineUrl -TimeoutSec $ProbeTimeoutSec -UseBasicParsing -ErrorAction Stop
+        if ($resp.StatusCode -eq 200) { $healthy = $true; break }
+    } catch {}
+    if ($probe -lt $ProbeCount) { Start-Sleep -Seconds $ProbeGapSec }
+}
 
 if ($healthy) {
     # Silent on success -- log would fill up every 5 min
     exit 0
 }
 
-Write-Log "FAIL: /health unresponsive -- checking port $Port"
+Write-Log "FAIL: /health unresponsive after $ProbeCount consecutive probes (${ProbeTimeoutSec}s each) -- checking port $Port"
 
 # Find PID(s) listening on port 8010
 $holders = netstat -ano -p TCP 2>$null |
