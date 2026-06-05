@@ -152,6 +152,14 @@ class HealthResponse(BaseModel):
         True,
         description="Whether the last-observed LLM call succeeded (false = credits/auth outage)",
     )
+    vertex_failover_count: int = Field(
+        0,
+        description="Cumulative count (process lifetime) of Anthropic credit-exhaustion failovers routed to Claude-on-Vertex.",
+    )
+    google_fallback_count: int = Field(
+        0,
+        description="Cumulative count (process lifetime) of LLM calls served by the Gemini fallback (proactive routing + credit-exhaustion fallback).",
+    )
     llm_path_details: Optional[Dict[str, Any]] = Field(
         None, description="Populated only when llm_path_healthy=false"
     )
