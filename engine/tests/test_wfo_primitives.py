@@ -102,6 +102,38 @@ class TestGenerateWindows:
         nums = [w["window_num"] for w in windows]
         assert nums == list(range(1, len(windows) + 1))
 
+    def test_window_nums_gapless_when_early_window_filtered(self):
+        """window_num must stay [1,2,3..] with no gap even when the EARLY
+        cursors are skipped by the min_bars filter.
+
+        wnum increments only when a window is appended, so a filtered leading
+        window must NOT consume a number — the first surviving window is #1.
+        Build sparse data (10 daily bars in Jan, nothing in Feb/Mar) followed
+        by dense hourly data from April so the first two cursors fail min_bars
+        and the third is the first to pass.
+        """
+        sparse = pd.date_range(start="2024-01-01", periods=10, freq="D", tz="UTC")
+        dense = pd.date_range(start="2024-04-01", periods=18 * 30 * 24, freq="h", tz="UTC")
+        idx = sparse.union(dense)
+        close = 2000.0 + pd.Series(range(len(idx)), index=idx, dtype=float)
+        df = pd.DataFrame(
+            {"open": close, "high": close + 1.0, "low": close - 1.0, "close": close},
+            index=idx,
+        )
+
+        windows = generate_windows(
+            df, train_months=2, test_months=1, step_months=1, min_bars=200
+        )
+
+        assert len(windows) > 0, "expected some surviving windows after the sparse gap"
+        nums = [w["window_num"] for w in windows]
+        # Gapless and 1-based despite the skipped leading cursors.
+        assert nums == list(range(1, len(windows) + 1))
+        # Prove a skip actually happened: the first surviving window does not
+        # start at the data's first timestamp (early cursors were filtered).
+        assert windows[0]["window_num"] == 1
+        assert windows[0]["train_start"] > df.index.min()
+
     def test_train_end_equals_test_start(self):
         df = _make_df(24)
         for win in generate_windows(df, train_months=6, test_months=2, step_months=1):
