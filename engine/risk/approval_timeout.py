@@ -8,6 +8,7 @@ session (RTH vs. Overnight) and trade type.
 import logging
 from datetime import datetime, time, timezone
 from typing import Any, Dict
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger("jarvis_trader.risk.approval_timeout")
 
@@ -17,15 +18,29 @@ logger = logging.getLogger("jarvis_trader.risk.approval_timeout")
 TIMEOUT_RTH = 5
 TIMEOUT_OVERNIGHT = 10
 
+# NYSE local zone — handles the EDT/EST transition automatically.
+_ET = ZoneInfo("America/New_York")
+
+
+def _is_rth_at(now_et: datetime) -> bool:
+    """RTH = NYSE 09:30–16:00 ET on a weekday. `now_et` must be ET-localized."""
+    if now_et.weekday() >= 5:  # Saturday / Sunday
+        return False
+    return time(9, 30) <= now_et.time() <= time(16, 0)
+
+
 def is_rth() -> bool:
     """
-    Check if currently in Regular Trading Hours (NYSE: 09:30 - 16:00 ET).
-    For simplicity, we use UTC offset for ET (currently -4 or -5).
+    Check if currently in Regular Trading Hours (NYSE: 09:30 - 16:00 ET, Mon-Fri).
+
+    Converts to America/New_York so the ET window tracks DST correctly. The old
+    hardcoded 13:30-20:00 UTC window was right only in EDT; in EST it was an hour
+    off — misclassifying 08:30-09:30 ET as RTH and the real 15:00-16:00 ET hour
+    as overnight. Holidays are NOT modelled (no market calendar dependency); on a
+    holiday this returns the RTH window, which only tightens the approval timeout
+    (5m vs 10m), never loosens it.
     """
-    # TODO: Use a proper market calendar for robust RTH detection
-    # For now, heuristic: 13:30 - 20:00 UTC (9:30 - 16:00 ET in Summer)
-    now_utc = datetime.now(timezone.utc).time()
-    return time(13, 30) <= now_utc <= time(20, 0)
+    return _is_rth_at(datetime.now(_ET))
 
 def get_timeout_for_trade(approval_row: Dict[str, Any]) -> int:
     """
