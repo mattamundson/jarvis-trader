@@ -171,13 +171,22 @@ class JarvisLLMClient:
 
     # Phase 3 (2026-05-20): Anthropic → Gemini failover map. Used when an
     # Anthropic call hits credit-exhaustion or persistent 5xx and a Google
-    # API key is configured. Quality tiering is preserved across providers:
-    # Opus/Sonnet → gemini-2.5-flash (best Gemini), Haiku → gemini-2.0-flash.
+    # API key is configured. All tiers map to gemini-2.5-flash.
+    #
+    # 2026-06-04: Haiku previously mapped to gemini-2.0-flash, which 404s at the
+    # OpenAI-compat endpoint (resource-not-found — not a transient 5xx) while
+    # gemini-2.5-flash returns 200 with the same key/endpoint. With Anthropic
+    # credit-exhausted, that broke the failover for every Haiku-tier agent
+    # (news_analyst, social_analyst) — they 404'd on both the proactive Gemini
+    # primary path and the credit-exhaustion fallback. Route Haiku to the
+    # known-good 2.5-flash; still ~10x cheaper than Sonnet. (Cost-table and
+    # context-limit entries for 2.0-flash are retained so it can be restored via
+    # config if Google re-enables it.)
     GOOGLE_FAILOVER_MAP = {
         "claude-opus-4-7": "gemini-2.5-flash",
         "claude-opus-4-6": "gemini-2.5-flash",
         "claude-sonnet-4-6": "gemini-2.5-flash",
-        "claude-haiku-4-5-20251001": "gemini-2.0-flash",
+        "claude-haiku-4-5-20251001": "gemini-2.5-flash",
     }
 
     # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
