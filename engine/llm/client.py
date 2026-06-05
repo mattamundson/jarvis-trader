@@ -60,6 +60,11 @@ _LLM_PATH_STATE: dict = {
     "last_failure_ts": None,
     "last_failure_reason": None,
     "last_failure_agent": None,
+    # Cumulative resilience counters (process lifetime). Mirrored from the
+    # active client's instance counters at each failover/fallback so /health
+    # can surface them without a handle on the client singleton.
+    "vertex_failover_count": 0,
+    "google_fallback_count": 0,
 }
 
 
@@ -678,6 +683,7 @@ class JarvisLLMClient:
                     model=google_model,
                 )
                 self.google_fallback_count += 1
+                _LLM_PATH_STATE["google_fallback_count"] = self.google_fallback_count
                 return await self._handle_success(
                     google_result,
                     google_model,
@@ -811,6 +817,7 @@ class JarvisLLMClient:
                                 temperature,
                             )
                             self.vertex_failover_count += 1
+                            _LLM_PATH_STATE["vertex_failover_count"] = self.vertex_failover_count
                             _LLM_PATH_STATE["healthy"] = True
                             _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
                                 timezone.utc
@@ -860,6 +867,7 @@ class JarvisLLMClient:
                                 model=google_model,
                             )
                             self.google_fallback_count += 1
+                            _LLM_PATH_STATE["google_fallback_count"] = self.google_fallback_count
                             # Successful failover -- mark path healthy with note
                             _LLM_PATH_STATE["healthy"] = True
                             _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
