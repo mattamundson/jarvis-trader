@@ -7,9 +7,27 @@ prose, trailing commas, braces inside strings) now parse, while genuinely
 unparseable input still raises so callers keep their safe-fallback behavior.
 """
 
+import json
+
 import pytest
 
 from utils.llm_json import LLMJsonError, parse_llm_json
+
+
+class TestExceptionHierarchy:
+    """LLMJsonError must be catchable by every adopter's existing except clause."""
+
+    def test_is_json_decode_error(self):
+        # Adopters that catch json.JSONDecodeError specifically still handle it.
+        assert issubclass(LLMJsonError, json.JSONDecodeError)
+
+    def test_is_value_error(self):
+        # JSONDecodeError is a ValueError; adopters catching ValueError still work.
+        assert issubclass(LLMJsonError, ValueError)
+
+    def test_caught_as_json_decode_error(self):
+        with pytest.raises(json.JSONDecodeError):
+            parse_llm_json("no json here")
 
 
 class TestRecoverable:

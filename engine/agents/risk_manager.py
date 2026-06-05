@@ -18,7 +18,6 @@ This two-layer design keeps critical safety checks deterministic while still
 giving the pipeline sophisticated contextual risk reasoning.
 """
 
-import json
 import logging
 import os
 import time
@@ -29,6 +28,7 @@ from typing import Optional
 import httpx
 
 from config import settings
+from utils.llm_json import parse_llm_json
 
 try:
     from orchestrator.correlation_monitor import CorrelationMonitor
@@ -450,13 +450,9 @@ class RiskManagerAgent:
 
             response_text = payload["content"][0]["text"].strip()
 
-            # Strip markdown code fences if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-
-            result = json.loads(response_text)
+            # Tolerant extraction (fences, prose, trailing commas) — see
+            # utils.llm_json (2026-06-04 synthesis-failure wave).
+            result = parse_llm_json(response_text)
             decision = self._parse_risk_decision(result)
             decision.hard_checks_passed = True
             decision.hard_checks_detail = hard_checks_detail or []
