@@ -9,7 +9,6 @@ Refresh interval: every 5 minutes during market hours.
 Model: Claude Sonnet 4.6
 """
 
-import json
 import logging
 import os
 import time
@@ -18,6 +17,8 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
+
+from utils.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -346,13 +347,10 @@ Respond with JSON in exactly this format:
                     )
                 response_text = payload["content"][0]["text"].strip()
 
-            # Strip markdown code blocks if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-
-            result = json.loads(response_text)
+            # Tolerant extraction: markdown fences, leading/trailing prose, and
+            # trailing commas now recover instead of failing to a zero-signal
+            # report (see utils.llm_json — 2026-06-04 synthesis-failure wave).
+            result = parse_llm_json(response_text)
 
             return NewsReport(
                 symbol=symbol,
