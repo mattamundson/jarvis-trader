@@ -127,7 +127,7 @@ async def test_kill_switch_blocks_paper_order(tmp_path: Path) -> None:
         safety.attach_ib_gateway(gateway)
 
         # Engage kill switch BEFORE submitting
-        safety.activate_kill_switch(reason="TEST", details="kill-switch E2E regression")
+        safety.activate_kill_switch(reason="TEST", message="kill-switch E2E regression")
 
         out = await safety.submit_paper_order(
             symbol="MCL",
