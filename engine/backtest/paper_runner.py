@@ -478,6 +478,13 @@ def _latest_mgmt_bar(
     df_5m = fetch_bars(symbol, futures_map, timeframe="5m")
     if df_5m is not None and not df_5m.empty:
         return df_5m.iloc[-1], str(df_5m.index[-1])
+    if df_1h_signals is None or df_1h_signals.empty:
+        # Both feeds dry: raise a clear error instead of letting an empty-frame
+        # .iloc[-1] surface as a bare IndexError far from the cause. The caller
+        # guards the per-symbol cycle, so this skips management for this poll.
+        raise ValueError(
+            f"_latest_mgmt_bar({symbol}): no 5m feed and empty 1h frame — cannot manage position"
+        )
     return df_1h_signals.iloc[-1], str(df_1h_signals.index[-1])
 
 
@@ -891,6 +898,14 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
         except Exception as exc:
             log.error(f"{symbol}: signal generation failed: {exc}", exc_info=True)
             summary[symbol] = {"action": "signal_error"}
+            continue
+
+        # An empty signal frame (all bars filtered, or a starved feed) would make
+        # the .iloc[-1] reads below raise IndexError and crash the whole poll
+        # cycle for every symbol. Skip this symbol's cycle instead.
+        if df_signals is None or df_signals.empty:
+            log.warning(f"{symbol}: empty signal frame — skipping management/entry this cycle")
+            summary[symbol] = {"action": "no_signal_data"}
             continue
 
         last_bar = df_signals.iloc[-1]
