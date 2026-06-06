@@ -134,6 +134,16 @@ class TestFlagDefaults:
         """ENABLE_KAIROS defaults to False (from config and FLAG_DEFINITIONS)."""
         assert flags.is_enabled("ENABLE_KAIROS") is False
 
+    def test_rl_trading_default_disabled(self, flags):
+        """ENABLE_RL_TRADING defaults to False.
+
+        Guards the main.py RL-executor autostart gate: the experimental RL
+        executor must NOT start unless this flag is explicitly enabled. It
+        tracks its own in-memory position and co-trading the MES paper account
+        alongside the LLM pipeline contaminates execution-fidelity data.
+        """
+        assert flags.is_enabled("ENABLE_RL_TRADING") is False
+
     def test_unknown_flag_returns_false(self, flags):
         """Unknown flag names return False without raising."""
         assert flags.is_enabled("ENABLE_NONEXISTENT_FLAG") is False
