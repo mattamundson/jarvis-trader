@@ -1315,6 +1315,8 @@ class IBGatewayManager:
           open_orders     (int)
           last_error      (str | None)
           ib_library      (str)
+          broker_probe_ok (bool)        — socket up AND all RPC probes responded
+          degraded_reason (str | None)  — which probe(s) failed, when degraded
         """
         start = time.monotonic()
 
@@ -1322,6 +1324,11 @@ class IBGatewayManager:
         latency_ms: Optional[float] = None
         net_liq: float = 0.0
         open_order_count: int = 0
+        # Honesty signal: a socket that is "connected" can still have every RPC
+        # probe time out / auth-fail. Narrow the excepts so a degraded broker is
+        # surfaced (broker_probe_ok=False) rather than masquerading as healthy
+        # with latency_ms=null / net_liq=0 behind connected=True.
+        probe_errors: list[str] = []
 
         if connected:
             # Measure round-trip latency with a lightweight reqCurrentTime call.
@@ -1336,20 +1343,29 @@ class IBGatewayManager:
                 t0 = time.monotonic()
                 await asyncio.wait_for(self._ib.reqCurrentTimeAsync(), timeout=5.0)
                 latency_ms = (time.monotonic() - t0) * 1000
-            except Exception:
+            except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
                 latency_ms = None
-                connected = False
+                probe_errors.append(f"latency:{type(exc).__name__}")
+                logger.warning("health_check latency probe failed: %s", exc)
+                # NOTE: `connected` stays the shallow socket flag (is_connected());
+                # probe failure is surfaced via broker_probe_ok/degraded_reason so
+                # /health can flip to "degraded" while still distinguishing a
+                # socket-up broker from a fully disconnected one (A2). Master's
+                # 2026-08-15 data-leg incident fix lives on the data-connector
+                # path (data/market_data.py + health_router round-trip probe).
 
             try:
                 net_liq = await self.get_portfolio_value()
-            except Exception:
-                pass
+            except (asyncio.TimeoutError, ConnectionError, OSError, AttributeError) as exc:
+                probe_errors.append(f"net_liq:{type(exc).__name__}")
+                logger.warning("health_check portfolio_value probe failed: %s", exc)
 
             try:
                 orders = await self.get_open_orders()
                 open_order_count = len(orders)
-            except Exception:
-                pass
+            except (asyncio.TimeoutError, ConnectionError, OSError, AttributeError) as exc:
+                probe_errors.append(f"open_orders:{type(exc).__name__}")
+                logger.warning("health_check open_orders probe failed: %s", exc)
 
         uptime: Optional[float] = None
         if self._connect_time is not None:
@@ -1371,6 +1387,8 @@ class IBGatewayManager:
             "last_error": self._last_error,
             "ib_library": lib_name,
             "paper_trading_only": True,  # SAFETY: always True — port 4001 is disabled
+            "broker_probe_ok": connected and not probe_errors,
+            "degraded_reason": ("; ".join(probe_errors) or None),
         }
 
         elapsed = (time.monotonic() - start) * 1000

@@ -149,6 +149,14 @@ class HealthResponse(BaseModel):
     ibgateway_port: Optional[int] = Field(
         None, description="The IB port probed for ibgateway_alive (4002 paper / 4001 live)"
     )
+    ibkr_broker_probe_ok: Optional[bool] = Field(
+        True,
+        description="Whether the IBKR health-check RPC probes (latency/net_liq/open_orders) all responded. False = socket up but RPCs failing (degraded broker); distinct from ibkr_*_connected which is socket-level only.",
+    )
+    ibkr_degraded_reason: Optional[str] = Field(
+        None,
+        description="Which broker probe(s) failed (e.g. 'latency:TimeoutError'), populated only when ibkr_broker_probe_ok=false",
+    )
     schwab_connected: bool = Field(False, description="Whether Schwab is connected")
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
