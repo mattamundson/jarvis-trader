@@ -178,22 +178,24 @@ class TestLayer1WriteGuard:
 class TestLayer2ReadCeiling:
     """get_peak_balance() ceiling blocks extreme contaminated rows on the read path."""
 
-    def test_plausible_peak_multiple_is_10(self):
+    def test_plausible_peak_multiple_is_5(self):
         """
-        PLAUSIBLE_PEAK_MULTIPLE must stay at 10.0.
+        PLAUSIBLE_PEAK_MULTIPLE must stay at 5.0.
 
-        Reducing it (e.g. to 3.0) would flag legitimate equity peaks as
-        contamination. Increasing it lets larger contaminated rows through.
-        Any change requires a deliberate Tier 3 decision.
+        5× = $50k ceiling on a $10k paper book. Any single-day gain above
+        500% is not a real forward-validation result. Reducing it below 3×
+        could flag legitimate equity peaks; increasing it lets more
+        contaminated rows through. Any change requires a deliberate Tier 3
+        decision and must update this test to pin the new value.
         """
         monitor = _make_monitor(starting_balance=10_000.0)
-        assert monitor.PLAUSIBLE_PEAK_MULTIPLE == 10.0, (
-            "PLAUSIBLE_PEAK_MULTIPLE changed from 10.0. Verify the new value "
+        assert monitor.PLAUSIBLE_PEAK_MULTIPLE == 5.0, (
+            "PLAUSIBLE_PEAK_MULTIPLE changed from 5.0. Verify the new value "
             "is safe before landing — see comment block in pnl_monitor.py."
         )
 
-    def test_row_above_10x_ceiling_excluded(self):
-        """$113,482 on a $10k book (11.35×) is excluded from peak."""
+    def test_row_above_5x_ceiling_excluded(self):
+        """$113,482 on a $10k book (11.35×) is excluded from peak (above 5× = $50k)."""
         rows = [
             {"ending_balance": 10_000.0},
             {"ending_balance": 10_330.0},
@@ -222,17 +224,20 @@ class TestLayer2ReadCeiling:
     def test_mid_range_contamination_is_not_caught_by_ceiling(self):
         """
         DOCUMENTED LIMITATION: the $31,507 incident row (3.15×) falls within
-        the 10× ceiling and is kept. The write guard (Layer 1) is the primary
-        defense against mid-range contamination.
+        the 5× ceiling ($50k) and is kept. The write guard (Layer 1) is the
+        primary defense against mid-range contamination; the ceiling only catches
+        extreme contamination (above 5×). Catching this case via the ceiling
+        would require lowering the multiple below 3.15, risking false-positives
+        on legitimate early gains.
 
-        If this test fails because the constant was tightened, update the
-        PLAUSIBLE_PEAK_MULTIPLE assertion in test_plausible_peak_multiple_is_10.
+        If this test fails because the constant was tightened below 3.15, update
+        the PLAUSIBLE_PEAK_MULTIPLE assertion in test_plausible_peak_multiple_is_5.
         """
-        ceiling_10x = 10_000.0 * 10.0  # $100,000
+        ceiling_5x = 10_000.0 * 5.0  # $50,000
         incident_row = 31_507.50
-        assert incident_row < ceiling_10x, (
-            "Test precondition: incident row is within the 10× ceiling. "
-            f"{incident_row} < {ceiling_10x}"
+        assert incident_row < ceiling_5x, (
+            "Test precondition: incident row is within the 5× ceiling. "
+            f"{incident_row} < {ceiling_5x}"
         )
         rows = [
             {"ending_balance": 10_000.0},
