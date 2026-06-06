@@ -25,7 +25,7 @@
         "ruff clean; pytest green"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -38,7 +38,7 @@
         "Findings appended to progress.txt"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Trades 178/179/180 NOT backfillable (signals never captured at open). Forward-looking fix; state honestly."
     },
     {
@@ -51,8 +51,9 @@
         "Concrete options surfaced; no edits to engine/config.py or engine/risk/"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Plan item B; safety files off-limits without [safety-review]."
     }
   ]
 }
+
