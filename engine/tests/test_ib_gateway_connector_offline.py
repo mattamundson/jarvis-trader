@@ -90,3 +90,17 @@ async def test_ib_order_manager_with_connector(tmp_path) -> None:
     assert res["routed_to_ib"] is True
     st = om.get_status()
     assert st["ib_gateway_connected"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_options_greeks_returns_unavailable_not_attribute_error() -> None:
+    """Regression: _gateway is never assigned on the connector, so a bare
+    `if self._gateway:` raised AttributeError on every call instead of the
+    intended graceful 'Gateway unavailable' error. Must return the error dict."""
+    cfg = _offline_simulated_cfg()
+    safety = SafetyLayer(cfg, pnl_monitor=None)
+    conn = IBGatewayConnector(cfg, safety)
+    assert await conn.connect() is True
+
+    out = await conn.get_options_greeks("MES")  # must not raise AttributeError
+    assert out == {"error": "Gateway unavailable"}

@@ -37,11 +37,16 @@ MAX_DRAWDOWN_PCT discrepancy (documented intentionally):
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from risk.pnl_monitor import PnLMonitor, PnLState
+
+# engine/.env (the runtime override source) is gitignored and absent in CI,
+# so the .env-presence guard below only executes where it actually exists.
+_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -351,6 +356,10 @@ class TestMaxDrawdownPctDiscrepancy:
     If either value changes, this test fails as a mandatory review gate.
     """
 
+    @pytest.mark.skipif(
+        not _ENV_FILE.exists(),
+        reason="guards the engine/.env runtime override (0.20); .env is gitignored/absent in CI",
+    )
     def test_runtime_max_drawdown_is_20pct(self):
         """
         The runtime MAX_DRAWDOWN_PCT is 0.20 (20%), loaded from engine/.env.
