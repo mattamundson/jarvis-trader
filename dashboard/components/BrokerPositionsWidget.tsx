@@ -225,7 +225,12 @@ export function BrokerPositionsWidget() {
             <p className="font-mono text-[10px] text-muted-foreground/70 leading-relaxed">
               <span className="text-accent font-semibold">PAPER:</span>{" "}
               {paper.positions
-                .map((p) => `${p.symbol} ${p.direction.toUpperCase()} @ ${p.entry_price.toFixed(2)}`)
+                .map(
+                  (p) =>
+                    `${p.symbol} ${String(p.direction ?? "?").toUpperCase()} @ ${
+                      p.entry_price != null ? p.entry_price.toFixed(2) : "\u2014"
+                    }`
+                )
                 .join(" \u00b7 ")}
             </p>
           </div>

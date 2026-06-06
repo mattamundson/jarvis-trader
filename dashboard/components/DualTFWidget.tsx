@@ -62,7 +62,7 @@ function SymbolRow({ row }: { row: DualTFSymbol }) {
                 : "bg-red-500/20 text-red-400 border border-red-500/30"
             }`}
           >
-            CONFIRMED {row.direction.toUpperCase()}
+            CONFIRMED {String(row.direction ?? "").toUpperCase()}
           </span>
         ) : (
           <span className="rounded px-2 py-0.5 text-[10px] font-bold tracking-wider bg-white/5 text-muted-foreground border border-border/40">
