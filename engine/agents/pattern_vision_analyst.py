@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
+from utils.llm_json import parse_llm_json
+
 logger = logging.getLogger(__name__)
 
 # Known pattern types the classifier is allowed to emit. Kept as a frozenset
@@ -277,14 +279,11 @@ def parse_vision_json(raw: str) -> VisionClassification:
     ``_safe_classify`` wrapper then routes that into the standard abstention
     path so partial failures never surface as false signals.
     """
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("```", 2)[1]
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-        cleaned = cleaned.strip()
+    # Tolerant extraction (fences, prose, trailing commas) via utils.llm_json.
+    # LLMJsonError subclasses json.JSONDecodeError, so the abstention path below
+    # still catches a genuinely unparseable response.
     try:
-        data: Any = json.loads(cleaned)
+        data: Any = parse_llm_json(raw)
     except json.JSONDecodeError:
         return VisionClassification(
             pattern_type="no_clear_pattern",

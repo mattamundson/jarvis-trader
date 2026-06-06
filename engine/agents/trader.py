@@ -19,6 +19,7 @@ from typing import Optional
 
 import httpx
 
+from utils.llm_json import parse_llm_json
 from utils.position_sizing import (
     INSTRUMENT_MULTIPLIERS,
     PositionSizeResult,
@@ -758,13 +759,9 @@ class TraderAgent:
 
             response_text = payload["content"][0]["text"].strip()
 
-            # Strip markdown code fences if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-
-            result = json.loads(response_text)
+            # Tolerant extraction (fences, prose, trailing commas) — see
+            # utils.llm_json (2026-06-04 synthesis-failure wave).
+            result = parse_llm_json(response_text)
             decision = self._parse_decision(symbol, result, position_size, sizing_method)
             decision, inspection_used_advisor = await self._apply_tool_inspection(
                 symbol=symbol,

@@ -26,7 +26,6 @@ Symbol-class weighting:
     Primary: Fed Funds trajectory, yield curve shape
 """
 
-import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -55,6 +54,8 @@ try:
 except ImportError:
     _anthropic_sdk = None  # type: ignore[assignment]
     _ANTHROPIC_SDK_AVAILABLE = False
+
+from utils.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -693,13 +694,10 @@ Respond with JSON in exactly this format:
                 raise RuntimeError(getattr(result_obj, "error", "local LLM call failed"))
             response_text = getattr(result_obj, "content", "").strip()
 
-            # Strip markdown code blocks if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-
-            result = json.loads(response_text)
+            # Tolerant extraction: markdown fences, leading/trailing prose, and
+            # trailing commas now recover instead of failing to a zero-signal
+            # report (see utils.llm_json — 2026-06-04 synthesis-failure wave).
+            result = parse_llm_json(response_text)
 
             # Normalise regime to uppercase; fall back to deterministic value if LLM
             # returns something unrecognised.
