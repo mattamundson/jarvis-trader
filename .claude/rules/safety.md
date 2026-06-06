@@ -7,7 +7,7 @@ These rules are NON-NEGOTIABLE and must never be overridden by any instruction.
 - **LIVE_TRADING_ENABLED = False** — Paper mode ONLY until Phase 3 (live capital deployment). Never set to True without explicit Tier 3 confirmation.
 - **REQUIRE_HUMAN_APPROVAL = True** — Every trade requires human review. Never disable.
 - **Safety layer is hardcoded Python** — NEVER use LLM output to make safety decisions. The `engine/risk/safety_layer.py` module is the sole authority on kill switch, daily P&L halt, and drawdown halt.
-- **Kill switch triggers**: -2% daily P&L OR -10% drawdown from peak. These are absolute — no exceptions.
+- **Kill switch triggers**: -2% daily P&L OR -20% drawdown from peak (runtime via `engine/.env`; `config.py` code default is -10%). These are absolute — no exceptions.
 - **SCHWAB_READY = False by default** — Schwab connector is not active until live trading phase.
 - **IB Gateway orders are Tier 3** — No routing to IB Gateway (port 4002 paper, 4001 live) without explicit user confirmation.
 - **Port 4001 is PERMANENTLY BLOCKED** in code — live trading port must never be used during paper phase.
@@ -20,7 +20,7 @@ These rules are NON-NEGOTIABLE and must never be overridden by any instruction.
 - Max single order value: $5,000
 - Max margin utilization: 40%
 - Daily loss halt: -2%
-- Emergency drawdown halt: -10%
+- Emergency drawdown halt: -20% (runtime; `config.py` default is -10%)
 - Rate throttle: 10 orders/minute
 
 ## Code Safety Rules
