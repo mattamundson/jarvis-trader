@@ -82,7 +82,7 @@ class LLMHardTimeoutError(Exception):
     """Raised when one provider call exceeds the hard wall-clock ceiling.
 
     Treated by call()'s except blocks like any other provider failure, so the
-    normal fallback chain (Vertex -> Gemini -> unhealthy) still fires. The point
+    normal fallback chain (Vertex -> Gemini -> OpenAI -> unhealthy) still fires. The point
     is bounding: a hung call fails fast instead of freezing the event loop.
     """
 
@@ -156,6 +156,8 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
         "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
         "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+        "gpt-4o": {"input": 5.0, "output": 15.0},
+        "gpt-4o-mini": {"input": 0.15, "output": 0.60},
         "deepseek-reasoner": {"input": 0.55, "output": 2.19},
         "hermes3:latest": {"input": 0.0, "output": 0.0},
     }
@@ -189,6 +191,16 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": "gemini-2.5-flash",
     }
 
+    # Phase 3.6 (2026-06-06): OpenAI is the last-resort fallback when both
+    # Anthropic and Gemini are unavailable. Opus/Sonnet → gpt-4o (equivalent
+    # capability tier); Haiku → gpt-4o-mini (fast/cheap tier).
+    OPENAI_FAILOVER_MAP = {
+        "claude-opus-4-7": "gpt-4o",
+        "claude-opus-4-6": "gpt-4o",
+        "claude-sonnet-4-6": "gpt-4o-mini",
+        "claude-haiku-4-5-20251001": "gpt-4o-mini",
+    }
+
     # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
     # These are context-enrichment / classification tasks — not trade decisions.
     # Keeps credit consumption on cost-efficient Gemini; Anthropic reserved for
@@ -213,6 +225,8 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": 200_000,
         "gemini-2.5-flash": 1_000_000,
         "gemini-2.0-flash": 1_000_000,
+        "gpt-4o": 128_000,
+        "gpt-4o-mini": 128_000,
         "deepseek-reasoner": 64_000,
         "hermes3:latest": 4_096,
     }
@@ -380,15 +394,35 @@ class JarvisLLMClient:
             "DEEPSEEK_ENDPOINT", "https://api.deepseek.com/v1/chat/completions"
         ).strip()
 
+        # Phase 3.6 (2026-06-06): OpenAI last-resort fallback — fires when both
+        # Anthropic and Gemini fail (credit-exhaustion or 5xx). Uses the standard
+        # OpenAI chat completions endpoint. Silently disabled when OPENAI_API_KEY
+        # is absent. Override endpoint via OPENAI_ENDPOINT for Azure OpenAI.
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        self.openai_endpoint = os.getenv(
+            "OPENAI_ENDPOINT",
+            "https://api.openai.com/v1/chat/completions",
+        ).strip()
+        self.openai_fallback_enabled = self.openai_api_key != "" and os.getenv(
+            "JARVIS_LLM_OPENAI_FALLBACK", "1"
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        self.openai_fallback_count = 0
+
         google_status = (
             "enabled"
             if self.google_fallback_enabled
             else ("disabled (no key)" if not self.google_api_key else "disabled (env flag)")
         )
+        openai_status = (
+            "enabled"
+            if self.openai_fallback_enabled
+            else ("disabled (no key)" if not self.openai_api_key else "disabled (env flag)")
+        )
         deepseek_status = "enabled" if self.deepseek_api_key else "disabled (no key)"
         logger.info(
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
-            f"(provider={self.provider}, google_fallback={google_status}, deepseek={deepseek_status})"
+            f"(provider={self.provider}, google_fallback={google_status}, "
+            f"openai_fallback={openai_status}, deepseek={deepseek_status})"
         )
 
     async def _bounded(self, coro, *, what: str, model: str, agent_name: str):
@@ -979,7 +1013,58 @@ class JarvisLLMClient:
                             logger.error(
                                 f"[{google_model}] Gemini fallback also failed for {agent_name}: {gex}"
                             )
-                            # fall through to the unhealthy-path handling below
+                            # fall through to OpenAI fallback below
+
+                    # Phase 3.6: both Anthropic and Gemini failed (or Gemini is
+                    # disabled) — last-resort OpenAI before declaring the path
+                    # unhealthy. Opus/Sonnet → gpt-4o, Haiku → gpt-4o-mini.
+                    if self.openai_fallback_enabled:
+                        openai_model = self.OPENAI_FAILOVER_MAP.get(
+                            current_model, "gpt-4o-mini"
+                        )
+                        logger.warning(
+                            f"[{current_model}] Anthropic+Gemini both failed for {agent_name} -- "
+                            f"attempting OpenAI fallback ({openai_model})"
+                        )
+                        try:
+                            openai_result = await self._bounded(
+                                self._call_openai(
+                                    system=system,
+                                    messages=working_messages,
+                                    max_tokens=max_tokens,
+                                    temperature=temperature,
+                                    model=openai_model,
+                                ),
+                                what="openai fallback call",
+                                model=openai_model,
+                                agent_name=agent_name,
+                            )
+                            self.openai_fallback_count += 1
+                            _LLM_PATH_STATE["healthy"] = True
+                            _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
+                                timezone.utc
+                            ).isoformat()
+                            _LLM_PATH_STATE["last_failure_reason"] = (
+                                f"anthropic+gemini failed -> openai fallback ok "
+                                f"(count: {self.openai_fallback_count})"
+                            )
+                            _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                            return await self._handle_success(
+                                openai_result,
+                                openai_model,
+                                start_time,
+                                retries,
+                                agent_name,
+                                tier=tier,
+                                proxy=proxy,
+                                compressed_key=compressed_key,
+                                cache_salt=cache_salt,
+                            )
+                        except Exception as oex:
+                            logger.error(
+                                f"[{openai_model}] OpenAI fallback also failed for {agent_name}: {oex}"
+                            )
+                            # fall through to unhealthy-path handling below
 
                     _LLM_PATH_STATE["healthy"] = False
                     _LLM_PATH_STATE["last_failure_ts"] = datetime.now(timezone.utc).isoformat()
@@ -1153,6 +1238,78 @@ class JarvisLLMClient:
             content=[SimpleNamespace(text=text)],
         )
 
+    async def _call_openai(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str,
+    ):
+        """Single call to OpenAI via the chat completions endpoint.
+
+        Returns a SimpleNamespace shaped like an Anthropic response so the
+        rest of the success/cost-tracking path is provider-agnostic. Modeled
+        on _call_google() — both use the OpenAI messages/choices shape.
+        Supports Azure OpenAI via OPENAI_ENDPOINT override.
+        """
+        if not self.openai_api_key:
+            raise RuntimeError("openai_api_key not configured")
+
+        openai_messages: list[dict] = []
+        if system:
+            openai_messages.append({"role": "system", "content": system})
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            openai_messages.append({"role": role, "content": content})
+
+        payload: dict = {
+            "model": model,
+            "messages": openai_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        timeout = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
+        headers = {
+            "Authorization": f"Bearer {self.openai_api_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=timeout) as http_client:
+            response = await http_client.post(
+                self.openai_endpoint, json=payload, headers=headers
+            )
+            if response.status_code >= 400:
+                try:
+                    body = response.text[:500]
+                except Exception:  # pragma: no cover - defensive
+                    body = "<unreadable>"
+                logger.warning(
+                    "[%s] OpenAI endpoint returned HTTP %d: %s",
+                    model,
+                    response.status_code,
+                    body,
+                )
+            response.raise_for_status()
+            data = response.json()
+
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"OpenAI response missing choices: {str(data)[:300]}")
+        text = (choices[0].get("message") or {}).get("content", "")
+        usage = data.get("usage") or {}
+        input_tokens = int(
+            usage.get("prompt_tokens") or self._estimate_tokens(system, messages)
+        )
+        output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
+
     async def _call_deepseek(
         self,
         system: str,
@@ -1273,7 +1430,17 @@ class JarvisLLMClient:
         }
         if not _temperature_deprecated(model):
             kwargs["temperature"] = temperature
-        return await self.client.messages.create(**kwargs)
+        try:
+            return await self.client.messages.create(**kwargs)
+        except APIStatusError as e:
+            body = getattr(e, "body", None)
+            if _is_credit_exhaustion(str(body or e)):
+                # Re-raise as plain Exception so call()'s except Exception block
+                # triggers the Vertex → Gemini → OpenAI fallback chain. Leaving
+                # it as APIStatusError would land in the retry handler, burning
+                # 6 round-trips (3 retries + tier downgrade) on a permanent error.
+                raise Exception(str(body or e)) from e
+            raise
 
     def _build_vertex_client(self):
         """Construct an AsyncAnthropicVertex client from the configured project/
