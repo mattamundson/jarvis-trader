@@ -14,6 +14,7 @@ import pytest
 from startup_checks import (
     CheckResult,
     _check_api_key,
+    _check_autonomous_active_symbols,
     _check_database,
     _check_disk_space,
     _check_fred_key,
@@ -191,7 +192,7 @@ class TestRunAllStartupChecks:
             FRED_API_KEY="test-key",
         )
         results = run_startup_checks(config)
-        assert len(results) == 9  # updated: +1 for _check_paper_config_do_not_trade_sync (2026-05-07)
+        assert len(results) == 10  # +1 _check_autonomous_active_symbols (2026-06-06)
         assert all(isinstance(r, CheckResult) for r in results)
 
     def test_run_all_checks_detects_failures(self):
@@ -208,3 +209,33 @@ class TestRunAllStartupChecks:
         results = run_startup_checks(config)
         failures = [r for r in results if r.status == "fail"]
         assert len(failures) >= 4  # API, port, live, approval
+
+
+class TestAutonomousActiveSymbolsCheck:
+    """Autonomous dead-path guard: WARN when active symbols are all DO_NOT_TRADE."""
+
+    def test_disabled_pipeline_skips_check(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_AUTONOMOUS_PIPELINE", raising=False)
+        result = _check_autonomous_active_symbols()
+        assert result.status == "pass"
+        assert "disabled" in result.message.lower()
+
+    def test_all_blocked_symbols_warns(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_AUTONOMOUS_PIPELINE", "1")
+        monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MCL,MNQ")  # both DO_NOT_TRADE
+        result = _check_autonomous_active_symbols()
+        assert result.status == "warn"
+        assert "NEVER" in result.message
+
+    def test_partial_block_warns(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_AUTONOMOUS_PIPELINE", "1")
+        monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MES,MCL")  # MES ok, MCL blocked
+        result = _check_autonomous_active_symbols()
+        assert result.status == "warn"
+        assert "MCL" in result.message
+
+    def test_all_tradeable_passes(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_AUTONOMOUS_PIPELINE", "1")
+        monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MES,MGC")  # both tradeable
+        result = _check_autonomous_active_symbols()
+        assert result.status == "pass"
