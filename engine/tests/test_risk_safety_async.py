@@ -61,7 +61,12 @@ class TestSubmitPaperOrder:
         real fill. Live-money execution is gated separately.
         """
         sl = mock_safety_layer
-        # mock_settings has LIVE_TRADING_ENABLED=False; no IB gateway attached.
+        # mock_settings has LIVE_TRADING_ENABLED=False; the paper-sim flip
+        # (ALLOW_PAPER_SIMULATED_ORDERS=True) is what lets a live-disabled order
+        # pass the gate as a dry-run. Without it, check_order() rejects outright
+        # ("Live trading is disabled") — see safety_layer.py:958-964. No IB
+        # gateway attached, so it resolves to a dry-run, never a live fill.
+        mock_settings.ALLOW_PAPER_SIMULATED_ORDERS = True
         result = await sl.submit_paper_order(symbol="MES", action="BUY", quantity=1, price=5800.0)
         assert result["approved"] is True  # paper order passes safety checks
         assert result["routed_to_ib"] is False  # but is NOT routed to a live broker
