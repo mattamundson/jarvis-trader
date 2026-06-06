@@ -4,9 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import EngineWidget from "@/components/EngineWidget";
 
-const STARTING_BALANCE = 10_000;
+// Fallback only — the real figure comes from the API's starting_balance
+// (settings.INITIAL_CAPITAL). Hardcoding it made ROI%, P&L and the displayed
+// "starting capital" wrong whenever the configured account size wasn't $10k.
+const STARTING_BALANCE_FALLBACK = 10_000;
 
 interface PaperPhaseSummary {
+  starting_balance?: number;
   current_balance?: number;
   balance?: number;
   total_pnl?: number;
@@ -15,6 +19,7 @@ interface PaperPhaseSummary {
 }
 
 interface ROIState {
+  startingBalance: number;
   currentBalance: number;
   totalPnl: number;
   roi: number;
@@ -66,18 +71,21 @@ function StatCell({
 
 export function AccountROIWidget() {
   const transformData = (json: PaperPhaseSummary): ROIState => {
+    const startingBalance = json.starting_balance ?? STARTING_BALANCE_FALLBACK;
     const currentBalance =
       json.current_balance ??
       json.balance ??
-      STARTING_BALANCE + (json.total_pnl ?? 0);
+      startingBalance + (json.total_pnl ?? 0);
 
-    const totalPnl = json.total_pnl ?? currentBalance - STARTING_BALANCE;
-    const roi = (totalPnl / STARTING_BALANCE) * 100;
+    const totalPnl = json.total_pnl ?? currentBalance - startingBalance;
+    const roi = startingBalance ? (totalPnl / startingBalance) * 100 : 0;
     const tradingDays = Math.max(json.trading_days ?? json.days_traded ?? 1, 1);
     const dailyAvgPnl = totalPnl / tradingDays;
-    const annualizedROI = (dailyAvgPnl * 252) / STARTING_BALANCE * 100;
+    const annualizedROI = startingBalance
+      ? ((dailyAvgPnl * 252) / startingBalance) * 100
+      : 0;
 
-    return { currentBalance, totalPnl, roi, tradingDays, dailyAvgPnl, annualizedROI };
+    return { startingBalance, currentBalance, totalPnl, roi, tradingDays, dailyAvgPnl, annualizedROI };
   };
 
   return (
@@ -114,7 +122,7 @@ export function AccountROIWidget() {
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <StatCell
                   label="Starting Balance"
-                  value={`$${STARTING_BALANCE.toLocaleString()}`}
+                  value={`$${data.startingBalance.toLocaleString()}`}
                   valueColor="#888"
                 />
                 <StatCell
@@ -146,7 +154,7 @@ export function AccountROIWidget() {
 
               {/* Note */}
               <p className="font-mono text-[10px]" style={{ color: "#444" }}>
-                Paper account · {STARTING_BALANCE.toLocaleString()} starting capital
+                Paper account · ${data.startingBalance.toLocaleString()} starting capital
                 {data.tradingDays < 5 && " · Annualized projection available after 5 trading days"}
               </p>
             </CardContent>
