@@ -163,6 +163,10 @@ class HealthResponse(BaseModel):
     llm_path_details: Optional[Dict[str, Any]] = Field(
         None, description="Populated only when llm_path_healthy=false"
     )
+    llm_providers: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Provider-redundancy summary: active leg, providers_available count, and single_leg_warning (true when the serving leg has no backup behind it). Added in 94e9e5b; response dict populated it but this response_model field was missing, so FastAPI stripped it from /health until 2026-06-06.",
+    )
     tradingview_mcp_healthy: Optional[bool] = Field(
         True,
         description="Whether TradingView Desktop CDP port 9222 responds (false = TV MCP bar source unavailable)",
