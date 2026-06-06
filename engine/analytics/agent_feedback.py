@@ -47,6 +47,28 @@ DEFAULT_WEIGHT = 1.00
 AGENT_NAMES = ["technical", "news", "social", "fundamental", "corey", "breakout", "harmonic"]
 
 
+def build_analyst_signals_map(analyst_reports) -> Dict[str, float]:
+    """Extract {agent_name: signal} from Stage-1 analyst_reports for the 7
+    calibration agents.
+
+    Persisted into strategy_params['analyst_signals'] at trade open so
+    _record_agent_feedback can write a trade_outcomes row when the trade
+    closes. Returns {} for missing/empty reports (caller treats as a
+    legacy no-op). Single source of truth for the open-path extraction
+    shared by the scanner and pipeline router.
+    """
+    if not isinstance(analyst_reports, dict):
+        return {}
+    out: Dict[str, float] = {}
+    for name, rep in analyst_reports.items():
+        if name in AGENT_NAMES and isinstance(rep, dict):
+            try:
+                out[name] = float(rep.get("signal", 0.0))
+            except (TypeError, ValueError):
+                out[name] = 0.0
+    return out
+
+
 class AgentFeedbackTracker:
     """Track Stage 1 analyst accuracy and compute debate weight adjustments."""
 
