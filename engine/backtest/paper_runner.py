@@ -407,9 +407,22 @@ def _load_entry_eval() -> Dict[str, str]:
         return {}
 
 
+def _atomic_write_json(path: Path, obj: Any) -> None:
+    """Write JSON atomically (temp file + os.replace) so a torn write can never
+    leave a half-written file. A corrupt state file is silently read back as {}
+    by the loaders below — for entry_eval that wipes the crossover-bar dedup and
+    re-enables a double entry. The standalone Jarvis-PaperCollect task and the
+    in-process engine can both write these files, so torn writes are reachable.
+    os.replace is atomic on the same filesystem (incl. Windows NTFS).
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(obj), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _save_entry_eval(state: Dict[str, str]) -> None:
     try:
-        _entry_eval_path().write_text(json.dumps(state), encoding="utf-8")
+        _atomic_write_json(_entry_eval_path(), state)
     except Exception:  # noqa: BLE001
         pass
 
@@ -440,7 +453,7 @@ def _load_data_error_state() -> Dict[str, int]:
 
 def _save_data_error_state(state: Dict[str, int]) -> None:
     try:
-        _data_error_path().write_text(json.dumps(state), encoding="utf-8")
+        _atomic_write_json(_data_error_path(), state)
     except Exception:  # noqa: BLE001
         pass
 
