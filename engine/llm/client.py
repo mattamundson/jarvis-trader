@@ -68,6 +68,25 @@ def get_llm_path_state() -> dict:
     return dict(_LLM_PATH_STATE)
 
 
+# Hard wall-clock ceiling for a SINGLE provider call. This is a defensive
+# backstop ABOVE each provider's own httpx/SDK read timeout: on 2026-06-04 a
+# single technical_analyst Gemini call ran ~3.9h (logged latency 13981666ms)
+# and froze the entire async pipeline for ~13h of wall-clock — no scans, no
+# decisions, no trades — because the per-read httpx timeout never tripped on a
+# stalled connection. asyncio.wait_for guarantees no single call can exceed the
+# ceiling regardless of how the transport stalls. Override via env.
+_DEFAULT_LLM_HARD_TIMEOUT_SECONDS = 120.0
+
+
+class LLMHardTimeoutError(Exception):
+    """Raised when one provider call exceeds the hard wall-clock ceiling.
+
+    Treated by call()'s except blocks like any other provider failure, so the
+    normal fallback chain (Vertex -> Gemini -> unhealthy) still fires. The point
+    is bounding: a hung call fails fast instead of freezing the event loop.
+    """
+
+
 def _is_credit_exhaustion(body_or_text: object) -> bool:
     """Detect Anthropic credit-balance-too-low signature in an error body/string."""
     if body_or_text is None:
@@ -152,13 +171,22 @@ class JarvisLLMClient:
 
     # Phase 3 (2026-05-20): Anthropic → Gemini failover map. Used when an
     # Anthropic call hits credit-exhaustion or persistent 5xx and a Google
-    # API key is configured. Quality tiering is preserved across providers:
-    # Opus/Sonnet → gemini-2.5-flash (best Gemini), Haiku → gemini-2.0-flash.
+    # API key is configured. All tiers map to gemini-2.5-flash.
+    #
+    # 2026-06-04: Haiku previously mapped to gemini-2.0-flash, which 404s at the
+    # OpenAI-compat endpoint (resource-not-found — not a transient 5xx) while
+    # gemini-2.5-flash returns 200 with the same key/endpoint. With Anthropic
+    # credit-exhausted, that broke the failover for every Haiku-tier agent
+    # (news_analyst, social_analyst) — they 404'd on both the proactive Gemini
+    # primary path and the credit-exhaustion fallback. Route Haiku to the
+    # known-good 2.5-flash; still ~10x cheaper than Sonnet. (Cost-table and
+    # context-limit entries for 2.0-flash are retained so it can be restored via
+    # config if Google re-enables it.)
     GOOGLE_FAILOVER_MAP = {
         "claude-opus-4-7": "gemini-2.5-flash",
         "claude-opus-4-6": "gemini-2.5-flash",
         "claude-sonnet-4-6": "gemini-2.5-flash",
-        "claude-haiku-4-5-20251001": "gemini-2.0-flash",
+        "claude-haiku-4-5-20251001": "gemini-2.5-flash",
     }
 
     # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
@@ -204,6 +232,16 @@ class JarvisLLMClient:
         """
         self.provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
         self.api_key = "" if self.provider == "ollama" else (api_key or "")
+        # Hard wall-clock ceiling for any single provider call (see module note).
+        # Bounds transport stalls that slip past the per-read httpx/SDK timeout.
+        try:
+            self._llm_hard_timeout_seconds = float(
+                os.getenv("LLM_CALL_HARD_TIMEOUT_SECONDS", str(_DEFAULT_LLM_HARD_TIMEOUT_SECONDS))
+            )
+        except (TypeError, ValueError):
+            self._llm_hard_timeout_seconds = _DEFAULT_LLM_HARD_TIMEOUT_SECONDS
+        if self._llm_hard_timeout_seconds <= 0:
+            self._llm_hard_timeout_seconds = _DEFAULT_LLM_HARD_TIMEOUT_SECONDS
         self.ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
         self.ollama_model = os.getenv("OLLAMA_MODEL", "hermes3:latest")
         self.ollama_num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
@@ -352,6 +390,37 @@ class JarvisLLMClient:
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
             f"(provider={self.provider}, google_fallback={google_status}, deepseek={deepseek_status})"
         )
+
+    async def _bounded(self, coro, *, what: str, model: str, agent_name: str):
+        """Run a provider coroutine under a hard wall-clock ceiling.
+
+        ``asyncio.wait_for`` cancels the coroutine — closing the underlying HTTP
+        request — if it exceeds ``LLM_CALL_HARD_TIMEOUT_SECONDS``. This is the
+        backstop that the 2026-06-04 13h freeze needed: it does not depend on the
+        provider's own timeout firing. Raises ``LLMHardTimeoutError`` on breach so
+        the caller's existing fallback / failure handling treats it like any other
+        provider error.
+
+        Defensive getattr: some tests build the client via ``__new__`` without
+        running ``__init__``, so fall back to the module default ceiling.
+        """
+        ceiling = getattr(
+            self, "_llm_hard_timeout_seconds", _DEFAULT_LLM_HARD_TIMEOUT_SECONDS
+        )
+        try:
+            return await asyncio.wait_for(coro, timeout=ceiling)
+        except (asyncio.TimeoutError, TimeoutError) as exc:
+            logger.error(
+                "[%s] %s for %s exceeded hard ceiling %.0fs -- cancelled to protect "
+                "the event loop (no single LLM call may freeze the pipeline)",
+                model,
+                what,
+                agent_name,
+                ceiling,
+            )
+            raise LLMHardTimeoutError(
+                f"{what} for {agent_name} exceeded {ceiling:.0f}s hard ceiling"
+            ) from exc
 
     async def _handle_success(
         self,
@@ -519,16 +588,21 @@ class JarvisLLMClient:
             return f"{len(middle_messages)} messages summarized for context compaction."
 
         try:
-            summary_result = await self._call_with_retry(
-                model=self.fast_model,
-                system=(
-                    "Summarize the prior conversation context for a trading agent. "
-                    "Preserve the important decisions, constraints, market state, and unresolved risks. "
-                    "Return plain text only in under 120 words."
+            summary_result = await self._bounded(
+                self._call_with_retry(
+                    model=self.fast_model,
+                    system=(
+                        "Summarize the prior conversation context for a trading agent. "
+                        "Preserve the important decisions, constraints, market state, and unresolved risks. "
+                        "Return plain text only in under 120 words."
+                    ),
+                    messages=[{"role": "user", "content": middle_text}],
+                    max_tokens=220,
+                    temperature=0.2,
                 ),
-                messages=[{"role": "user", "content": middle_text}],
-                max_tokens=220,
-                temperature=0.2,
+                what="compaction summary",
+                model=self.fast_model,
+                agent_name=agent_name,
             )
             return summary_result.content[0].text.strip()
         except Exception as exc:
@@ -670,12 +744,17 @@ class JarvisLLMClient:
         ):
             google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
             try:
-                google_result = await self._call_google(
-                    system=system,
-                    messages=working_messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
+                google_result = await self._bounded(
+                    self._call_google(
+                        system=system,
+                        messages=working_messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        model=google_model,
+                    ),
+                    what="gemini primary call",
                     model=google_model,
+                    agent_name=agent_name,
                 )
                 self.google_fallback_count += 1
                 return await self._handle_success(
@@ -700,12 +779,17 @@ class JarvisLLMClient:
         # Retry loop with exponential backoff
         while True:
             try:
-                result = await self._call_with_retry(
+                result = await self._bounded(
+                    self._call_with_retry(
+                        model=current_model,
+                        system=system,
+                        messages=working_messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        agent_name=agent_name,
+                    ),
+                    what="primary provider call",
                     model=current_model,
-                    system=system,
-                    messages=working_messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
                     agent_name=agent_name,
                 )
                 return await self._handle_success(
@@ -803,12 +887,17 @@ class JarvisLLMClient:
                             f"attempting Claude-on-Vertex failover"
                         )
                         try:
-                            vertex_result = await self._call_vertex_failover(
-                                current_model,
-                                system,
-                                working_messages,
-                                max_tokens,
-                                temperature,
+                            vertex_result = await self._bounded(
+                                self._call_vertex_failover(
+                                    current_model,
+                                    system,
+                                    working_messages,
+                                    max_tokens,
+                                    temperature,
+                                ),
+                                what="vertex failover call",
+                                model=current_model,
+                                agent_name=agent_name,
                             )
                             self.vertex_failover_count += 1
                             _LLM_PATH_STATE["healthy"] = True
@@ -852,12 +941,17 @@ class JarvisLLMClient:
                             f"attempting Gemini fallback ({google_model})"
                         )
                         try:
-                            google_result = await self._call_google(
-                                system=system,
-                                messages=working_messages,
-                                max_tokens=max_tokens,
-                                temperature=temperature,
+                            google_result = await self._bounded(
+                                self._call_google(
+                                    system=system,
+                                    messages=working_messages,
+                                    max_tokens=max_tokens,
+                                    temperature=temperature,
+                                    model=google_model,
+                                ),
+                                what="gemini fallback call",
                                 model=google_model,
+                                agent_name=agent_name,
                             )
                             self.google_fallback_count += 1
                             # Successful failover -- mark path healthy with note

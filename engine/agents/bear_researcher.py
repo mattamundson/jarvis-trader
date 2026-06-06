@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from utils.llm_json import LLMJsonError, parse_llm_json
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["BearReport", "BearResearcherAgent"]
@@ -341,15 +343,10 @@ Respond with valid JSON in exactly this format (no text outside the JSON):
 
     @staticmethod
     def _parse_json(text: str) -> dict:
-        """Strip markdown fences if present, then parse JSON."""
-        if text.startswith("```"):
-            parts = text.split("```")
-            text = parts[1]
-            if text.startswith("json"):
-                text = text[4:]
+        """Tolerant JSON extraction (fences, prose, trailing commas)."""
         try:
-            return json.loads(text)
-        except json.JSONDecodeError as e:
+            return parse_llm_json(text)
+        except LLMJsonError as e:
             logger.warning(f"BearResearcher JSON parse error: {e} — raw: {text[:200]}")
             return {}
 
