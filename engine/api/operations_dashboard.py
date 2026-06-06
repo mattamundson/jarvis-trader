@@ -229,9 +229,9 @@ def _get_uptime_7d() -> List[bool]:
         try:
             rows = conn.execute(
                 """
-                SELECT DISTINCT date(recorded_at) AS d
+                SELECT DISTINCT date("date") AS d
                 FROM pnl_snapshots
-                WHERE date(recorded_at) >= date('now', '-7 days')
+                WHERE date("date") >= date('now', '-7 days')
                 """
             ).fetchall()
             known_days = {r[0] for r in rows}
