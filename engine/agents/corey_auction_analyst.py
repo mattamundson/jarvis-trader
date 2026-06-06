@@ -70,6 +70,13 @@ class CoreyAuctionReport:
     summary: str               # one-line description for debate researchers
     reasoning: str             # detailed reasoning
     data_quality: str          # "full" | "commentary_only" | "signals_only" | "stale" | "none"
+    # Decision-time staleness flag for the SOLE sanctioned futures-sentiment
+    # feed. data_quality only sees "stale" within the 7-day fetch window; a feed
+    # dark >7 days collapses to "none" (neutral) and hides that the source has
+    # gone silent. sentiment_stale uses the true MAX(timestamp) age so a long
+    # outage stays visible in the decision trace even when the bias is neutral.
+    sentiment_stale: bool = False
+    sentiment_age_days: Optional[int] = None
 
     def to_dict(self) -> dict:
         return {
@@ -88,6 +95,8 @@ class CoreyAuctionReport:
             "summary": self.summary,
             "reasoning": self.reasoning,
             "data_quality": self.data_quality,
+            "sentiment_stale": self.sentiment_stale,
+            "sentiment_age_days": self.sentiment_age_days,
         }
 
 
@@ -162,6 +171,34 @@ class CoreyAuctionAnalystAgent:
             logger.error("[CoreyAuction] Commentary processor failed for %s: %s", symbol, e)
             return self._neutral_report(symbol, now, reason=f"commentary processor error: {e}")
 
+        # --- Step 1b: True-age staleness of the sole futures-sentiment feed --
+        # session_bias.data_quality only labels "stale" within the 7-day fetch
+        # window; a feed dark >7 days collapses to "none" and the silence is
+        # invisible at decision time. Query MAX(timestamp) age so a long outage
+        # stays flagged in the decision trace even when the bias is neutral.
+        sentiment_stale = False
+        sentiment_age_days: Optional[int] = None
+        try:
+            from discord.commentary_processor import get_futures_sentiment_staleness
+
+            _st = get_futures_sentiment_staleness()
+            sentiment_age_days = _st.get("age_days")
+            sentiment_stale = _st.get("quality") == "stale" or (
+                sentiment_age_days is not None
+                and sentiment_age_days > self._processor.STALE_DAYS
+            )
+            if sentiment_stale:
+                logger.warning(
+                    "[CoreyAuction] futures sentiment STALE for %s — Corey feed is "
+                    "%s days old (sole sanctioned source); confidence capped, signal "
+                    "down-weighted to neutral lean",
+                    symbol,
+                    sentiment_age_days,
+                )
+        except Exception:
+            # Never let the staleness probe break scoring — annotate-first.
+            pass
+
         # --- Step 2: Get active bot signals for symbol ---------------------
         bot_signal = self._get_active_bot_signal(discord_symbol)
         bot_win_rate = self._get_rolling_win_rate(discord_symbol)
@@ -216,8 +253,9 @@ class CoreyAuctionAnalystAgent:
         win_rate_multiplier = 0.7 + 0.6 * max(0.0, (bot_win_rate - 0.5) / 0.5)
         confidence = float(min(1.0, session_bias.conviction * win_rate_multiplier))
 
-        # Stale cap
-        if session_bias.data_quality == "stale":
+        # Stale cap — fire on either the in-window "stale" label or the true-age
+        # staleness (catches the >7-day silent-neutral case the label misses).
+        if session_bias.data_quality == "stale" or sentiment_stale:
             confidence = min(confidence, self.STALE_CONFIDENCE_CAP)
 
         # --- Step 5: Determine data_quality label --------------------------
@@ -267,6 +305,8 @@ class CoreyAuctionAnalystAgent:
             summary=summary,
             reasoning=reasoning,
             data_quality=data_quality,
+            sentiment_stale=sentiment_stale,
+            sentiment_age_days=sentiment_age_days,
         )
 
     # ── Bot Signal Queries ─────────────────────────────────────────────────

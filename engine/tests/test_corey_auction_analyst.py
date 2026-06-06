@@ -111,3 +111,65 @@ async def test_corey_hp_conflict_no_boost():
 
     # alignment_score unchanged at 0.3 — bearish branch requires alignment < -0.2
     assert report.alignment_score == pytest.approx(0.3)
+
+
+# --- Decision-time futures-sentiment staleness flag (Task 3) ----------------
+# The /health helper already reports feed age; this surfaces the staleness IN
+# the analyst output so a >7-day-dark feed (collapses to neutral "none", which
+# the in-window data_quality=="stale" label misses) stays visible in the
+# decision trace and caps confidence.
+
+
+def _make_agent_with_stale_days(stale_days: int = 2):
+    agent = _make_agent()
+    agent._processor.STALE_DAYS = stale_days  # type: ignore[attr-defined]
+    return agent
+
+
+@pytest.mark.asyncio
+async def test_stale_feed_flags_report_and_caps_confidence():
+    agent = _make_agent_with_stale_days()
+    with patch(
+        "discord.commentary_processor.get_futures_sentiment_staleness",
+        return_value={"quality": "stale", "age_days": 14},
+    ), patch.object(
+        agent, "_get_active_bot_signal", return_value={"side": "LONG", "price": 100.0}
+    ), patch.object(
+        agent, "_get_rolling_win_rate", return_value=0.9
+    ), patch.object(
+        agent, "_compute_bot_boost", return_value=(0.3, 0.3)
+    ), patch.object(
+        agent, "_build_summary", return_value="s"
+    ), patch.object(
+        agent, "_build_reasoning", return_value="r"
+    ):
+        report = await agent.analyze(symbol="MES", current_price=5000.0, atr=10.0)
+
+    assert report.sentiment_stale is True
+    assert report.sentiment_age_days == 14
+    # Even with a strong session bias + 0.9 win-rate, a stale feed caps conf ≤ 0.4.
+    assert report.confidence <= agent.STALE_CONFIDENCE_CAP
+    assert report.to_dict()["sentiment_stale"] is True
+
+
+@pytest.mark.asyncio
+async def test_fresh_feed_no_stale_flag():
+    agent = _make_agent_with_stale_days()
+    with patch(
+        "discord.commentary_processor.get_futures_sentiment_staleness",
+        return_value={"quality": "fresh", "age_days": 0},
+    ), patch.object(
+        agent, "_get_active_bot_signal", return_value={"side": "LONG", "price": 100.0}
+    ), patch.object(
+        agent, "_get_rolling_win_rate", return_value=0.6
+    ), patch.object(
+        agent, "_compute_bot_boost", return_value=(0.3, 0.3)
+    ), patch.object(
+        agent, "_build_summary", return_value="s"
+    ), patch.object(
+        agent, "_build_reasoning", return_value="r"
+    ):
+        report = await agent.analyze(symbol="MES", current_price=5000.0, atr=10.0)
+
+    assert report.sentiment_stale is False
+    assert report.sentiment_age_days == 0
