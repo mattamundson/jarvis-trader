@@ -364,7 +364,11 @@ async def _health_inner() -> dict:
         "version": "1.1.0",
         "timestamp": now.isoformat(),
         "live_trading": live_trading,
-        "kill_switch_active": safety.get("kill_switch_active", False),
+        # SafetyLayer.get_status() exposes the kill-switch state under "is_killed";
+        # there is no "kill_switch_active" key, so the old read silently defaulted to
+        # False ALWAYS — /health reported the switch OFF even when trading was halted,
+        # and every dashboard widget reading health.kill_switch_active showed green.
+        "kill_switch_active": safety.get("is_killed", False),
         "paper_mode": not live_trading,
         "database": "connected" if db_ok else "error",
         "ibkr_connected": ib_health.get("status") == "connected",
