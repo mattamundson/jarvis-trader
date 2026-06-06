@@ -13,9 +13,8 @@ import logging
 
 import pytest
 
-from portfolio.tracker import PortfolioTracker
 import scheduler.pipeline_autonomous as pa
-
+from portfolio.tracker import PortfolioTracker
 
 # --- Bug A: get_performance reads from self._db ---------------------------
 
