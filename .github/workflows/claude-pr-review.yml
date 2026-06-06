@@ -37,19 +37,22 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Model tiering per ~/.claude/rules/workflow.md (sonnet for implementation review).
-          model: claude-sonnet-4-6
-          # Review the diff only; do not let the action modify repo state.
-          direct_prompt: |
+          # v1 schema: review instructions go under `prompt` (not the removed `direct_prompt`).
+          prompt: |
             You are reviewing a pull request for jarvis-trader, an AI-powered futures trading engine.
 
             Focus areas (in priority order):
             1. SAFETY: Any change to engine/config.py hardcoded limits, kill switch logic,
-               position sizing, or stop-loss handling — call out explicitly.
+               position sizing, or stop-loss handling -- call out explicitly.
             2. CORRECTNESS: Logic bugs, off-by-ones, missing error handling, unhandled async exceptions.
             3. SECRETS: Any hardcoded API keys, tokens, or credentials (flag even if they look like placeholders).
             4. TESTS: Does the change include or update tests? If it touches engine/, it should.
             5. STYLE: Ruff/mypy-worthy issues the CI might miss.
 
             Keep comments actionable. Skip nitpicks. Do NOT rubber-stamp safety-adjacent code.
-          allowed_tools: "Read,Grep,Glob"
+          # v1 schema: model + tool restriction move into claude_args as CLI flags
+          # (the removed `model` and `allowed_tools` inputs are no longer accepted).
+          # Read-only review: restrict to read tools so the action cannot mutate repo state.
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools Read,Grep,Glob
