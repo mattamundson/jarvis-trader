@@ -1081,10 +1081,25 @@ class JarvisLLMClient:
             # Gemini OpenAI endpoint accepts the same role names as OpenAI.
             openai_messages.append({"role": role, "content": content})
 
+        # gemini-2.5* are *thinking* models: over the OpenAI-compat endpoint the
+        # max_tokens budget is shared between internal reasoning and the visible
+        # answer, so a small budget (the analysts pass 256-1024) gets consumed by
+        # thinking and the JSON response truncates mid-object (observed: cut at
+        # '"confidence":'). Floor the output budget for thinking models so content
+        # survives the reasoning spend. Non-thinking models (gemini-2.0-flash) keep
+        # the caller's value. Tunable via GEMINI_MIN_OUTPUT_TOKENS; only ever raises.
+        effective_max_tokens = max_tokens
+        if model.startswith("gemini-2.5"):
+            try:
+                floor = int(os.getenv("GEMINI_MIN_OUTPUT_TOKENS", "2048"))
+            except (TypeError, ValueError):
+                floor = 2048
+            effective_max_tokens = max(max_tokens, floor)
+
         payload: dict = {
             "model": model,
             "messages": openai_messages,
-            "max_tokens": max_tokens,
+            "max_tokens": effective_max_tokens,
             "temperature": temperature,
         }
         timeout = float(os.getenv("GOOGLE_TIMEOUT_SECONDS", "60"))
