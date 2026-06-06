@@ -7,7 +7,7 @@ tracker.py:_record_agent_feedback and trade_outcomes never filled.
 
 from __future__ import annotations
 
-from engine.analytics.agent_feedback import build_analyst_signals_map
+from analytics.agent_feedback import build_analyst_signals_map
 
 
 def test_extracts_seven_agents_as_floats():
