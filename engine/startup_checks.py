@@ -42,6 +42,7 @@ def run_startup_checks(config) -> list[CheckResult]:
     results.append(_check_fred_key(config))
     results.append(_check_disk_space())
     results.append(_check_paper_config_do_not_trade_sync())
+    results.append(_check_autonomous_active_symbols())
 
     for r in results:
         if r.status == "fail":
@@ -271,6 +272,71 @@ def _check_paper_config_do_not_trade_sync() -> CheckResult:
             f"All {len(all_configs)} paper configs are consistent with "
             f"DO_NOT_TRADE_SYMBOLS ({set(DO_NOT_TRADE_SYMBOLS)})"
         ),
+    )
+
+
+def _check_autonomous_active_symbols() -> CheckResult:
+    """
+    WARN if AUTONOMOUS_ACTIVE_SYMBOLS members are in DO_NOT_TRADE_SYMBOLS.
+
+    Such symbols are gated to NO_TRADE, so the autonomous loop silently no-ops
+    on them — the MCL,MNQ default is exactly this dead config (both blocked, the
+    loop can never fire). The scheduler already WARNs at injection time
+    (pipeline_autonomous._warn_blocked_active_symbols), but that runs after the
+    boot orchestrator; promoting the check here makes the dead config loud at
+    cold-start alongside the rest of startup validation. Only meaningful when the
+    autonomous pipeline is enabled.
+    """
+    name = "Autonomous Active Symbols"
+    enabled = os.getenv("ENABLE_AUTONOMOUS_PIPELINE", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not enabled:
+        return CheckResult(
+            name=name,
+            status="pass",
+            message="autonomous pipeline disabled — active-symbol check skipped",
+        )
+
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except ImportError as exc:
+        return CheckResult(
+            name=name, status="warn", message=f"Could not import signals: {exc}"
+        )
+
+    raw = os.getenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MCL,MNQ").strip()
+    active = [s.strip().upper() for s in raw.split(",") if s.strip()]
+    blocked = [s for s in active if s in DO_NOT_TRADE_SYMBOLS]
+    tradeable = [s for s in active if s not in DO_NOT_TRADE_SYMBOLS]
+
+    if blocked and not tradeable:
+        return CheckResult(
+            name=name,
+            status="warn",
+            message=(
+                f"ALL active symbols {active} are in DO_NOT_TRADE_SYMBOLS "
+                f"({set(DO_NOT_TRADE_SYMBOLS)}) — the autonomous loop can NEVER "
+                "trade (every candidate is gated to NO_TRADE). Set "
+                "AUTONOMOUS_ACTIVE_SYMBOLS to tradeable symbols (e.g. MES,MGC)."
+            ),
+        )
+    if blocked:
+        return CheckResult(
+            name=name,
+            status="warn",
+            message=(
+                f"Active symbols {blocked} are in DO_NOT_TRADE_SYMBOLS and will "
+                f"never trade; tradeable subset that can fire: {tradeable}."
+            ),
+        )
+    return CheckResult(
+        name=name,
+        status="pass",
+        message=f"All active symbols {active} are tradeable (not in DO_NOT_TRADE_SYMBOLS)",
     )
 
 
