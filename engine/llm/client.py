@@ -60,12 +60,68 @@ _LLM_PATH_STATE: dict = {
     "last_failure_ts": None,
     "last_failure_reason": None,
     "last_failure_agent": None,
+    # Provider observability (2026-06-06): which leg is actually serving and how
+    # many legs are wired. The boolean `healthy` alone hides the real fragility —
+    # e.g. running on the Gemini fallback with the Anthropic primary credit-dead
+    # and nothing behind Gemini is "healthy" but one failure from dark.
+    "active_provider": None,  # last provider that served a successful call
+    "primary_provider": None,  # the configured primary (anthropic|ollama|vertex)
+    "providers_configured": [],  # wired legs, primary-first then failover order
 }
 
 
 def get_llm_path_state() -> dict:
     """Returns a copy of the current LLM-path health snapshot."""
     return dict(_LLM_PATH_STATE)
+
+
+def _provider_from_model(model: str) -> str:
+    """Map a served model id to its provider family for active-leg reporting."""
+    m = (model or "").lower()
+    if m.startswith("gemini"):
+        return "gemini"
+    if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"):
+        return "openai"
+    if m.startswith("deepseek"):
+        return "deepseek"
+    if "ollama" in m or m.startswith("llama") or m.startswith("qwen"):
+        return "ollama"
+    return "anthropic"  # claude-* (direct or via Vertex — Vertex passes served_by)
+
+
+def get_llm_provider_summary() -> dict:
+    """Provider-redundancy snapshot for /health.
+
+    Returns which leg is serving now, how many legs are wired, and a
+    `single_leg_warning` that fires when the pipeline is one provider-failure
+    from going dark — either only one leg is configured, or the primary is
+    degraded and the active fallback is the last one with nothing behind it.
+    """
+    s = _LLM_PATH_STATE
+    configured = list(s.get("providers_configured") or [])
+    active = s.get("active_provider")
+    primary = s.get("primary_provider")
+    healthy = bool(s.get("healthy", True))
+    # primary_healthy: the configured primary is the active server (not failing over)
+    primary_healthy = healthy and (active is None or active == primary)
+
+    single_leg = len(configured) <= 1
+    if not single_leg and active is not None and active != primary:
+        # Running on a fallback — is there another wired leg behind the active one?
+        try:
+            idx = configured.index(active)
+            single_leg = idx >= len(configured) - 1
+        except ValueError:
+            single_leg = False
+
+    return {
+        "active_provider": active,
+        "primary_provider": primary,
+        "providers_configured": configured,
+        "providers_available": len(configured),
+        "primary_healthy": primary_healthy,
+        "single_leg_warning": single_leg,
+    }
 
 
 # Hard wall-clock ceiling for a SINGLE provider call. This is a defensive
@@ -425,6 +481,21 @@ class JarvisLLMClient:
             f"openai_fallback={openai_status}, deepseek={deepseek_status})"
         )
 
+        # Snapshot the wired legs for /health provider-redundancy reporting.
+        # Order matters: primary first, then the credit-exhaustion failover order
+        # (vertex -> gemini -> openai), so get_llm_provider_summary can tell
+        # whether the active leg has another behind it.
+        primary_provider = "vertex" if self.use_vertex else self.provider
+        configured = [primary_provider]
+        if self.vertex_failover_enabled:
+            configured.append("vertex")
+        if self.google_fallback_enabled:
+            configured.append("gemini")
+        if self.openai_fallback_enabled:
+            configured.append("openai")
+        _LLM_PATH_STATE["primary_provider"] = primary_provider
+        _LLM_PATH_STATE["providers_configured"] = configured
+
     async def _bounded(self, coro, *, what: str, model: str, agent_name: str):
         """Run a provider coroutine under a hard wall-clock ceiling.
 
@@ -467,8 +538,13 @@ class JarvisLLMClient:
         proxy=None,
         compressed_key=None,
         cache_salt: str = "",
+        served_by: str | None = None,
     ) -> LLMCallResult:
         """Handle successful API call."""
+        # Record which leg actually served so /health can report the active
+        # provider. Most paths self-identify by model name; the Vertex failover
+        # passes a claude-* model so it sets served_by="vertex" explicitly.
+        _LLM_PATH_STATE["active_provider"] = served_by or _provider_from_model(current_model)
         # Any success clears the credit-exhaustion health flag (transient recovery)
         if not _LLM_PATH_STATE["healthy"]:
             _LLM_PATH_STATE["healthy"] = True
@@ -953,6 +1029,7 @@ class JarvisLLMClient:
                                 proxy=proxy,
                                 compressed_key=compressed_key,
                                 cache_salt=cache_salt,
+                                served_by="vertex",
                             )
                         except Exception as vex:
                             logger.warning(

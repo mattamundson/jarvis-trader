@@ -330,8 +330,9 @@ async def _health_inner() -> dict:
 
     llm_path_healthy = True
     llm_path_details: dict = {}
+    llm_providers: dict = {}
     try:
-        from llm.client import get_llm_path_state
+        from llm.client import get_llm_path_state, get_llm_provider_summary
 
         llm_state = get_llm_path_state()
         llm_path_healthy = bool(llm_state.get("healthy", True))
@@ -341,6 +342,8 @@ async def _health_inner() -> dict:
                 "last_failure_agent": llm_state.get("last_failure_agent"),
                 "last_failure_reason": llm_state.get("last_failure_reason"),
             }
+        # Provider-redundancy: which leg is serving + whether one failure goes dark.
+        llm_providers = get_llm_provider_summary()
     except Exception:
         # If the client module hasn't been imported yet, assume healthy
         pass
@@ -410,6 +413,7 @@ async def _health_inner() -> dict:
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
         "llm_path_healthy": llm_path_healthy,
+        "llm_providers": llm_providers,
         "tradingview_mcp_healthy": tv_mcp_healthy,
         "tv_mcp_status": tv_mcp_status,
         "brier_30d_rolling": _compute_brier_30d_rolling(),
