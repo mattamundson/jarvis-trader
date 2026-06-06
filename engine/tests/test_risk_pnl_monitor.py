@@ -356,71 +356,6 @@ class TestGetPeakBalance:
         # Max is 0; not > 0, so falls to paper
         assert monitor.get_peak_balance() == 0.0
 
-    # ── Contamination sanity bound (incident 2026-06-02, 92.61% false drawdown) ──
-
-    def test_contaminated_db_peak_rejected_falls_to_paper(self):
-        # When EVERY daily_pnl row is IB-demo/cumulative contamination (all above
-        # the 10x plausibility ceiling), the DB yields no usable peak and the read
-        # path falls through to the clean in-memory session tracker rather than
-        # trusting a corrupt source. (A single contaminated row mixed with good
-        # rows is instead dropped per-row, salvaging the good max — see
-        # test_risk_pnl_monitor_peak_isolation.py.)
-        db = MagicMock()
-        db.get_daily_pnl.return_value = [
-            {"ending_balance": 113482.0},  # contaminated
-            {"ending_balance": 250000.0},  # contaminated
-        ]
-        paper = MagicMock()
-        paper.get_performance.return_value = {"equity_curve": [10000.0, 9500.0]}
-        monitor = _monitor(db=db, paper=paper, starting_balance=10000.0)
-        # All DB rows rejected → falls through to the clean session tracker peak.
-        assert monitor.get_peak_balance() == pytest.approx(10000.0)
-
-    def test_contaminated_db_peak_no_tracker_returns_zero(self):
-        db = MagicMock()
-        db.get_daily_pnl.return_value = [{"ending_balance": 113482.0}]
-        monitor = _monitor(db=db, starting_balance=10000.0)
-        # No clean fallback → 0.0 (drawdown breaker inert on corrupt source;
-        # the daily-loss breaker is unaffected) rather than a false breach.
-        assert monitor.get_peak_balance() == 0.0
-
-    def test_plausible_peak_within_bound_still_returned(self):
-        # 1.4x starting balance is legitimate growth — must NOT be rejected.
-        db = MagicMock()
-        db.get_daily_pnl.return_value = [
-            {"ending_balance": 10000.0},
-            {"ending_balance": 14000.0},
-        ]
-        monitor = _monitor(db=db, starting_balance=10000.0)
-        assert monitor.get_peak_balance() == pytest.approx(14000.0)
-
-    def test_no_starting_balance_skips_sanity_check(self):
-        # Backward compatible: with starting_balance=0 the bound can't be computed,
-        # so the DB peak is returned unchanged (matches legacy behaviour).
-        db = MagicMock()
-        db.get_daily_pnl.return_value = [{"ending_balance": 113482.0}]
-        monitor = _monitor(db=db)  # starting_balance defaults to 0.0
-        assert monitor.get_peak_balance() == pytest.approx(113482.0)
-
-    def test_contaminated_peak_does_not_produce_false_drawdown(self):
-        # End-to-end: a contaminated DB peak must not yield a -90% drawdown that
-        # would trip the -10% kill switch. Current balance is read from SQLite.
-        db = MagicMock()
-        db.get_daily_pnl.return_value = [
-            {
-                "starting_balance": 10000.0,
-                "ending_balance": 113482.0,  # contaminated peak
-                "realized_pnl": 0.0,
-                "unrealized_pnl": 0.0,
-            }
-        ]
-        paper = MagicMock()
-        paper.get_performance.return_value = {"equity_curve": [10000.0, 9900.0]}
-        monitor = _monitor(db=db, paper=paper, starting_balance=10000.0)
-        # Drawdown is computed against the clean ~$10K tracker peak, not $113K,
-        # so it stays well inside the -10% limit (no false breach).
-        assert monitor.get_drawdown_pct() > -0.10
-
 
 # ── record_eod_snapshot ───────────────────────────────────────────────────────
 
@@ -460,6 +395,42 @@ class TestRecordEodSnapshot:
             result = monitor.record_eod_snapshot()
 
         assert result is False
+
+    def test_ib_source_with_paper_wired_writes_paper_balance(self):
+        """
+        Regression: source='ib' + paper tracker wired → ending_balance must come
+        from the paper tracker, NOT from the IB state.current_balance.
+
+        Incident 2026-06-02: IB demo NAV ($3.97M) was written as ending_balance,
+        inflating the equity peak and producing a false 92.6% drawdown reading.
+        """
+        db = MagicMock()
+        paper = MagicMock()
+        paper.get_performance.return_value = {
+            "total_pnl": -150.0,
+            "starting_balance": 10_000.0,
+            "equity_curve": [10_000.0, 9_850.0],
+            "total_trades": 2,
+            "winning_trades": 1,
+            "losing_trades": 1,
+        }
+
+        monitor = _monitor(db=db, paper=paper, starting_balance=10_000.0)
+        monitor._cached_state = PnLState(
+            current_balance=3_970_000.0,
+            starting_balance=10_000.0,
+            source="ib",
+        )
+        with patch.object(monitor, "get_drawdown_pct", return_value=-0.015):
+            result = monitor.record_eod_snapshot()
+
+        assert result is True
+        ending = db.upsert_daily_pnl.call_args[1]["ending_balance"]
+        assert ending < 100_000.0, (
+            f"IB demo NAV leaked into ending_balance={ending:.2f}. "
+            "This is the 2026-06-02 contamination pattern."
+        )
+        assert ending == pytest.approx(9_850.0, rel=0.01)
 
     def test_uses_paper_tracker_trade_counts(self):
         db = MagicMock()

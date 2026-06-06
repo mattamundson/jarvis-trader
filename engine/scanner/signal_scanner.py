@@ -453,6 +453,22 @@ class SignalScanner:
                         _indicators = technical_report.get("indicators") or {}
                         stc_val = _indicators.get("stc_value")
                         rv_at_entry = _indicators.get("rv_20_ann_pct")
+                        # Persist per-analyst signals so the close path
+                        # (_record_agent_feedback) writes a trade_outcomes row
+                        # for Brier/IC calibration. Without this the scanner
+                        # path silently no-ops at close (tracker.py:880) and
+                        # calibration starves.
+                        try:
+                            from engine.analytics.agent_feedback import (
+                                build_analyst_signals_map,
+                            )
+                        except ImportError:  # pragma: no cover
+                            from analytics.agent_feedback import (
+                                build_analyst_signals_map,
+                            )
+                        _scanner_analyst_signals = build_analyst_signals_map(
+                            result.get("analyst_reports")
+                        )
                         trade_id_inner = self._paper_tracker.add_paper_trade(
                             symbol=symbol,
                             side=final_action,
@@ -480,6 +496,7 @@ class SignalScanner:
                                     if rv_at_entry is not None
                                     else None
                                 ),
+                                "analyst_signals": _scanner_analyst_signals,
                             },
                         )
                         logger.info(

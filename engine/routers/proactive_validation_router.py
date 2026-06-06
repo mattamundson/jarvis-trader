@@ -838,3 +838,83 @@ async def get_execution_fidelity(
         summary=summary,
         advisory_note=advisory_note,
     )
+
+
+# ---------------------------------------------------------------------------
+# Slippage analytics — per-symbol distribution of persisted entry slippage
+# ---------------------------------------------------------------------------
+# Reads paper_trades.slippage_ticks (migration 038), populated on reconcile() by
+# execution.ibkr_reconciler.persist_entry_slippage from matched real IB fills.
+# Read-only + advisory; gates nothing.
+
+
+class SlippageAnalyticsReport(BaseModel):
+    symbol: str
+    generated_at: str
+    measuring_real_fills: bool
+    n: int  # closed trades carrying a persisted slippage_ticks value
+    mean_abs_slippage_ticks: Optional[float]
+    p95_abs_slippage_ticks: Optional[float]
+    max_abs_slippage_ticks: Optional[float]
+    note: str
+
+
+@router.get("/slippage-analytics", response_model=SlippageAnalyticsReport)
+async def get_slippage_analytics(
+    symbol: str = Query(default="MES", description="Instrument symbol (MCL, MNQ, MES, MGC)"),
+) -> SlippageAnalyticsReport:
+    """ADVISORY per-symbol entry-slippage distribution from real IB fills.
+
+    Slippage is persisted onto paper_trades.slippage_ticks at reconcile time
+    (persist_entry_slippage). Until ALLOW_PAPER_SIMULATED_ORDERS=True and a
+    reconcile cycle has matched JARVIS fills, this reports n=0. Gates nothing.
+    """
+    sym = symbol.upper()
+    generated_at = datetime.now(tz=timezone.utc).isoformat()
+
+    try:
+        from config import settings
+
+        measuring_real_fills = bool(getattr(settings, "ALLOW_PAPER_SIMULATED_ORDERS", False))
+    except Exception:
+        measuring_real_fills = False
+
+    rows = _load_closed_trades(sym)
+    ticks = sorted(
+        abs(float(r["slippage_ticks"])) for r in rows if r["slippage_ticks"] is not None
+    )
+    n = len(ticks)
+
+    if n:
+        mean_ = round(sum(ticks) / n, 4)
+        # Nearest-rank p95 (advisory; small-n robust, no interpolation).
+        p95_idx = max(0, min(n - 1, int(round(0.95 * (n - 1)))))
+        p95 = round(ticks[p95_idx], 4)
+        mx = round(ticks[-1], 4)
+        note = (
+            f"{n} closed {sym} trades with persisted slippage; "
+            f"mean|slip|={mean_} ticks, p95={p95}, max={mx}."
+        )
+    else:
+        mean_ = p95 = mx = None
+        if not measuring_real_fills:
+            note = (
+                "No persisted slippage — ALLOW_PAPER_SIMULATED_ORDERS=False, so no real "
+                "IB fills are reconciled. Enable the IBKR order path to populate slippage."
+            )
+        else:
+            note = (
+                "No persisted slippage yet — run POST /brokers/reconcile once JARVIS-tagged "
+                "real fills exist for this symbol; persist_entry_slippage fills slippage_ticks."
+            )
+
+    return SlippageAnalyticsReport(
+        symbol=sym,
+        generated_at=generated_at,
+        measuring_real_fills=measuring_real_fills,
+        n=n,
+        mean_abs_slippage_ticks=mean_,
+        p95_abs_slippage_ticks=p95,
+        max_abs_slippage_ticks=mx,
+        note=note,
+    )
