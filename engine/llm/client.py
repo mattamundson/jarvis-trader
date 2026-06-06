@@ -1102,6 +1102,18 @@ class JarvisLLMClient:
             "max_tokens": effective_max_tokens,
             "temperature": temperature,
         }
+        # The token floor alone is not enough under heavy reasoning load: a real
+        # analyst prompt (in:~1200, many output fields) makes gemini-2.5-flash
+        # spend ~1900+ of a 2048 budget on internal thinking, leaving ~80 tokens
+        # for the visible JSON, which truncates mid-object (live 2026-06-06:
+        # out:80, cut at '"volat'). Disable thinking on 2.5 models via the
+        # OpenAI-compat reasoning_effort knob so the whole budget goes to the
+        # answer. Tunable/escape-hatch via GEMINI_REASONING_EFFORT (none|low|
+        # medium|high); "none" disables thinking. Non-2.5 models are unaffected.
+        if model.startswith("gemini-2.5"):
+            effort = os.getenv("GEMINI_REASONING_EFFORT", "none").strip().lower()
+            if effort:
+                payload["reasoning_effort"] = effort
         timeout = float(os.getenv("GOOGLE_TIMEOUT_SECONDS", "60"))
         headers = {
             "Authorization": f"Bearer {self.google_api_key}",
