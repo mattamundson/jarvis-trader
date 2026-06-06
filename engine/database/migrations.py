@@ -1706,6 +1706,30 @@ def migration_037(conn: sqlite3.Connection) -> None:
     logger.info("Migration 037 applied — ibkr_fills order_ref/parent_order_id columns.")
 
 
+def migration_038(conn: sqlite3.Connection) -> None:
+    """
+    038 — paper_trades.slippage_ticks column.
+
+    Adds the slippage_ticks column that _load_closed_trades()
+    (proactive_validation_router.py) and paper_trade_pairing.py already SELECT
+    but which no migration ever created. Before this, that SELECT raised
+    `sqlite3.OperationalError: no such column: slippage_ticks`, was swallowed,
+    and the execution-fidelity validation silently saw zero closed trades —
+    reporting INSUFFICIENT_DATA regardless of real fills. The column is
+    populated on trade close from the matched real IB fill (NULL when no real
+    fill is matched, e.g. simulated mode).
+
+    Idempotent: skips the column if it already exists (manually-altered DBs).
+    """
+    try:
+        conn.execute("ALTER TABLE paper_trades ADD COLUMN slippage_ticks REAL")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column name" not in str(exc).lower():
+            raise
+    conn.commit()
+    logger.info("Migration 038 applied — paper_trades.slippage_ticks column.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1747,6 +1771,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_035,  # version 35
     migration_036,  # version 36
     migration_037,  # version 37
+    migration_038,  # version 38
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1787,6 +1812,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Canary strategies: canary_strategies table for Phase 7.3 A/B canary framework.",
     "IBKR fills import: ibkr_fills table for raw execution fills from IB, keyed by exec_id.",
     "IBKR fills order provenance: order_ref + parent_order_id columns on ibkr_fills for JARVIS-tagged fill reconciliation (execution-fidelity forward-test).",
+    "Paper trades slippage: slippage_ticks column on paper_trades (queried by execution-fidelity validation + paper_trade_pairing but never created); populated on close from matched real IB fill.",
 ]
 
 

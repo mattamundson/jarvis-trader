@@ -13,6 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 logger = logging.getLogger(__name__)
 
+try:  # dual-path import (engine.* package vs bare under engine/ cwd)
+    from engine.analytics.agent_feedback import build_analyst_signals_map
+except ImportError:  # pragma: no cover
+    from analytics.agent_feedback import build_analyst_signals_map
+
 # ── Signal Debug Log ──────────────────────────────────────────────────────────
 # Rolling log of the last 50 pipeline filter decisions (pre-filter + pass-through).
 # Populated by record_signal_debug() called from agents/pipeline.py.
@@ -662,21 +667,7 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
 
                 # Persist per-analyst signals so AgentFeedbackTracker.record_outcome
                 # can compute Brier/IC calibration when this trade closes (Novel #2).
-                _analyst_signals = {
-                    name: float(rep.get("signal", 0.0))
-                    for name, rep in (analyst_reports or {}).items()
-                    if isinstance(rep, dict)
-                    and name
-                    in (
-                        "technical",
-                        "news",
-                        "social",
-                        "fundamental",
-                        "corey",
-                        "breakout",
-                        "harmonic",
-                    )
-                }
+                _analyst_signals = build_analyst_signals_map(analyst_reports)
                 trade_id = _paper_tracker.add_paper_trade(
                     symbol=symbol,
                     side=final_action,
@@ -1024,13 +1015,7 @@ async def run_pipeline_sync(req: PipelineRunRequest):
                 except Exception as _oc_exc:
                     logger.warning("[PAPER] OpenClaw approval notify failed: %s", _oc_exc)
             elif _paper_tracker and entry_price:
-                _analyst_reports = result.get("analyst_reports") or {}
-                _analyst_signals = {
-                    name: float(rep.get("signal", 0.0))
-                    for name, rep in _analyst_reports.items()
-                    if isinstance(rep, dict)
-                    and name in ("technical", "news", "social", "fundamental", "corey")
-                }
+                _analyst_signals = build_analyst_signals_map(result.get("analyst_reports"))
                 trade_id = _paper_tracker.add_paper_trade(
                     symbol=req.symbol,
                     side=final_action,
@@ -1080,6 +1065,9 @@ async def run_pipeline_sync(req: PipelineRunRequest):
                     quantity=float(final_qty),
                     price=float(entry_price),
                     notes=result.get("summary", ""),
+                    analyst_signals=build_analyst_signals_map(
+                        result.get("analyst_reports")
+                    ),
                 )
                 result["paper_trade_id"] = trade_id
                 logger.info(

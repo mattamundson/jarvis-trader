@@ -155,6 +155,7 @@ class PortfolioTracker:
         notes: str = "",
         atr_value: Optional[float] = None,
         rv_at_entry: Optional[float] = None,
+        analyst_signals: Optional[Dict[str, float]] = None,
     ) -> str:
         """
         Log a new simulated entry.
@@ -204,6 +205,11 @@ class PortfolioTracker:
         _sp: dict = {"notes": notes}
         if rv_at_entry is not None:
             _sp["rv_at_entry"] = round(float(rv_at_entry), 4)
+        # Persist per-analyst signals so close-time _record_agent_feedback
+        # writes a trade_outcomes row for calibration. No-op for callers that
+        # carry no pipeline reports (manual / broker-reconcile opens).
+        if analyst_signals:
+            _sp["analyst_signals"] = {k: float(v) for k, v in analyst_signals.items()}
         if self._db is not None:
             row_id = self._db.insert_paper_trade(
                 trade_id,
@@ -498,10 +504,14 @@ class PortfolioTracker:
             worst_trade      : lowest single-trade P&L
         """
         # B9 fix: prefer SQLite as single source of truth (Sprint 17 US-1703)
-        # Fall back to in-memory _closed if db_manager not available
-        if getattr(self, "db_manager", None) is not None:
+        # Fall back to in-memory _closed if the DB handle isn't available.
+        # The handle is stored as self._db (set in __init__); the prior
+        # getattr(self, "db_manager", ...) checked a non-existent attribute, so
+        # this branch never ran and get_performance() always used the in-memory
+        # _closed list (empty after every restart) — silently wrong metrics.
+        if self._db is not None:
             try:
-                rows = self.db_manager.get_closed_trades(limit=10000)
+                rows = self._db.get_closed_trades(limit=10000)
                 closed = []
                 for row in rows:
                     t = PaperTrade.__new__(PaperTrade)

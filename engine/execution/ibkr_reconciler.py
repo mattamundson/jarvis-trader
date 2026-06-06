@@ -141,6 +141,15 @@ class IBKRReconciler:
             except Exception as exc:
                 logger.error("IBKRReconciler DB write failed: %s", exc)
 
+            # Write-side: persist entry slippage onto matched paper_trades rows.
+            # Idempotent + resilient (no-op pre-migration-038); never breaks reconcile.
+            symbols = {str(f.get("symbol", "")).upper() for f in fills if f.get("symbol")}
+            for sym in symbols:
+                try:
+                    persist_entry_slippage(self._db_path, sym)
+                except Exception as exc:
+                    logger.warning("persist_entry_slippage(%s) failed: %s", sym, exc)
+
         return self._summary(fills, imported=imported, skipped=skipped, connected=connected)
 
     def get_fills(
@@ -495,4 +504,116 @@ def compare_fills_to_trades(
     if slippages:
         result["avg_abs_slippage_pts"] = round(sum(slippages) / len(slippages), 6)
         result["max_abs_slippage_pts"] = round(max(slippages), 6)
+    return result
+
+
+def persist_entry_slippage(
+    db_path: str | Path,
+    symbol: str,
+    match_window_sec: int = 3600,
+) -> dict:
+    """Write-side counterpart to compare_fills_to_trades: persist entry slippage
+    (in ticks) onto matched paper_trades rows (paper_trades.slippage_ticks,
+    migration 038).
+
+    Uses the same side+nearest-time matching as compare_fills_to_trades but
+    carries the paper_trades row id so the signed entry slippage can be written
+    back. ``slippage_ticks = (real_fill_price - intended_entry_price) /
+    tick_size`` (signed, REAL; tick_size from contract_specs).
+
+    Invoked after reconcile() imports fills — the only point at which fresh real
+    fills exist. Idempotent: re-running recomputes and overwrites slippage_ticks
+    for matched rows (unmatched rows are left untouched / NULL). Resilient:
+    returns ``{"n_persisted": 0, ...}`` and never raises if the column/table is
+    absent (pre-migration-038) or the symbol has no contract spec.
+    """
+    sym = symbol.upper()
+    result: dict[str, Any] = {"symbol": sym, "n_matched": 0, "n_persisted": 0}
+
+    try:
+        from backtest.contract_specs import get_spec
+
+        tick_size = float(get_spec(sym).tick_size)
+    except Exception as exc:
+        logger.debug("persist_entry_slippage: no contract spec for %s: %s", sym, exc)
+        result["skipped"] = f"no contract spec for {sym}"
+        return result
+    if tick_size <= 0:
+        result["skipped"] = "non-positive tick_size"
+        return result
+
+    try:
+        with closing(sqlite3.connect(str(db_path))) as conn:
+            conn.row_factory = sqlite3.Row
+            real_fills = conn.execute(
+                """
+                SELECT side, price, fill_time
+                FROM   ibkr_fills
+                WHERE  UPPER(symbol) = ? AND order_ref LIKE 'JARVIS-%'
+                ORDER  BY fill_time ASC
+                """,
+                (sym,),
+            ).fetchall()
+            trades = conn.execute(
+                """
+                SELECT id, side, entry_price, entry_time
+                FROM   paper_trades
+                WHERE  UPPER(symbol) = ? AND entry_price IS NOT NULL
+                ORDER  BY entry_time ASC
+                """,
+                (sym,),
+            ).fetchall()
+
+            consumed: set[int] = set()
+            updates: list[tuple[float, int]] = []
+            for tr in trades:
+                want_side = _TRADE_TO_FILL_SIDE.get(str(tr["side"]).lower())
+                t_ts = _parse_ts(tr["entry_time"])
+                if want_side is None or t_ts is None:
+                    continue
+                best_idx: Optional[int] = None
+                best_gap: Optional[float] = None
+                for i, fl in enumerate(real_fills):
+                    if i in consumed or str(fl["side"]).upper() != want_side:
+                        continue
+                    f_ts = _parse_ts(fl["fill_time"])
+                    if f_ts is None:
+                        continue
+                    gap = abs((f_ts - t_ts).total_seconds())
+                    if gap > match_window_sec:
+                        continue
+                    if best_gap is None or gap < best_gap:
+                        best_gap, best_idx = gap, i
+                if best_idx is None:
+                    continue
+                consumed.add(best_idx)
+                fill = real_fills[best_idx]
+                try:
+                    slip_pts = float(fill["price"]) - float(tr["entry_price"])
+                except (TypeError, ValueError):
+                    continue
+                updates.append((round(slip_pts / tick_size, 4), int(tr["id"])))
+
+            result["n_matched"] = len(updates)
+            for slip_ticks, trade_id in updates:
+                conn.execute(
+                    "UPDATE paper_trades SET slippage_ticks = ? WHERE id = ?",
+                    (slip_ticks, trade_id),
+                )
+            conn.commit()
+            result["n_persisted"] = len(updates)
+    except sqlite3.OperationalError as exc:
+        # Missing slippage_ticks column/table (pre-migration-038) — no-op.
+        logger.debug("persist_entry_slippage: %s", exc)
+        return result
+    except Exception as exc:
+        logger.warning("persist_entry_slippage failed: %s", exc)
+        return result
+
+    if result["n_persisted"]:
+        logger.info(
+            "persist_entry_slippage: %s — wrote slippage_ticks to %d paper_trades rows",
+            sym,
+            result["n_persisted"],
+        )
     return result

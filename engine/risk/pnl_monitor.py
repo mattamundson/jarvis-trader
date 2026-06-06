@@ -314,7 +314,7 @@ class PnLMonitor:
             logger.error(f"[PnLMonitor] record_eod_snapshot DB write failed: {exc}")
             return False
 
-    # A paper account 10x-ing its starting capital during forward validation is
+    # A paper account 5x-ing its starting capital during forward validation is
     # already wildly implausible; a demo / IB-contaminated daily_pnl row (e.g. a
     # $3.97M IB NAV against a $10k paper book — ~400x) is far beyond that. The
     # daily_pnl table carries no source column, so we cannot filter by source on
@@ -322,9 +322,9 @@ class PnLMonitor:
     # plausibility ceiling. This stops a single contaminated row from re-inflating
     # the equity peak and falsely tripping (or, inverted, masking) the max-drawdown
     # kill switch. Excluding a row biases the peak DOWN (smaller drawdown), the
-    # fail-safe direction; the multiple is kept generous to avoid masking a real
-    # breach from genuine (if improbable) gains.
-    PLAUSIBLE_PEAK_MULTIPLE = 10.0
+    # fail-safe direction; 5x ($50k on a $10k book) is the tightest multiple that
+    # leaves no false-positive risk for a real forward-validation run.
+    PLAUSIBLE_PEAK_MULTIPLE = 5.0
 
     def _plausible_peak_ceiling(self) -> float:
         """Upper bound on a believable paper equity peak, or 0.0 if no anchor."""

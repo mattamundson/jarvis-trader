@@ -57,6 +57,8 @@ class ShadowModeTracker:
         """Log a shadow entry and return the shadow_trade_id."""
         shadow_id = f"shadow_{uuid.uuid4().hex[:8]}"
 
+        # Intentionally NO analyst_signals: shadow/validation trades must not
+        # feed the live Brier/IC calibration surface (they are counterfactual).
         strategy_params = {
             "strategy_name": strategy_name,
             "is_shadow": True,
