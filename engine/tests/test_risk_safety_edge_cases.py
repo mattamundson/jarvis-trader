@@ -27,6 +27,10 @@ def _live_settings(base):
     base.MAX_SINGLE_ORDER_VALUE = 9_999_999.0
     base.MAX_ORDERS_PER_MINUTE = 10_000
     base.MAX_CONTRACTS_PER_INSTRUMENT = 100
+    # Bypass the overnight contract cap (default 1) so these edge-case tests stay
+    # wall-clock-independent — otherwise an MES qty>1 order is rejected for the
+    # overnight reason after 15:00 CT instead of the path under test.
+    base.MAX_OVERNIGHT_CONTRACTS = 100
     base.MAX_FUTURES_MARGIN_PCT = 0.99
     base.MAX_MARGIN_UTILIZATION = 0.99
     base.MAX_DAILY_LOSS_USD = 999_999.0

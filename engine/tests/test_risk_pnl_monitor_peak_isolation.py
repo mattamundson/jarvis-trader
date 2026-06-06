@@ -66,9 +66,14 @@ def test_no_anchor_preserves_legacy_max():
 
 
 def test_ceiling_boundary_inclusive():
-    """A row exactly at the 10x ceiling is kept; just above it is excluded."""
-    kept = _monitor([_row(10000.0), _row(100000.0)], starting_balance=10000.0)
-    assert kept.get_peak_balance() == pytest.approx(100000.0)
+    """A row exactly at the Nx ceiling is kept; just above it is excluded.
 
-    excluded = _monitor([_row(10000.0), _row(100000.01)], starting_balance=10000.0)
+    Reads PLAUSIBLE_PEAK_MULTIPLE from the monitor so the boundary tracks the
+    configured multiple (tightened 10x -> 5x in 340ecbb) instead of going stale.
+    """
+    ceiling = 10000.0 * PnLMonitor.PLAUSIBLE_PEAK_MULTIPLE
+    kept = _monitor([_row(10000.0), _row(ceiling)], starting_balance=10000.0)
+    assert kept.get_peak_balance() == pytest.approx(ceiling)
+
+    excluded = _monitor([_row(10000.0), _row(ceiling + 0.01)], starting_balance=10000.0)
     assert excluded.get_peak_balance() == pytest.approx(10000.0)

@@ -229,7 +229,12 @@ class AlertManager:
 
     def get_history(self, limit: int = 50) -> list[dict]:
         """Return the most recent alerts, newest first. Called by /safety/alerts/history."""
-        today = date.today().isoformat()
+        # "Today" must be computed in the SAME zone the timestamps are stamped in
+        # (_record_history uses datetime.now(_CT)). Using a naive date.today() here
+        # silently dropped every alert whenever the host's local date ran ahead of
+        # CT — e.g. a UTC host between 00:00–05:59 UTC (18:00–23:59 CT) saw an empty
+        # history for ~6h nightly even though alerts had fired.
+        today = datetime.now(_CT).date().isoformat()
         today_alerts = [h for h in self._history if h["ts"].startswith(today)]
         return today_alerts[:limit]
 

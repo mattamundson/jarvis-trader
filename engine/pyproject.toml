@@ -37,6 +37,10 @@ addopts = [
     "--strict-markers",
     "--tb=short",
     "-ra",
+    # 'manual' tests need a live IB Gateway and hang the asyncio loop (no timeout
+    # can interrupt the tick subscription), so exclude them by default. Opt back
+    # in explicitly with `pytest -m manual` (a CLI -m overrides this addopts -m).
+    "-m", "not manual",
 ]
 markers = [
     "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",

@@ -217,7 +217,12 @@ class PerformanceCalculator:
         variance = sum((x - mean) ** 2 for x in daily_pnl_list) / (n - 1)
         std = math.sqrt(variance)
 
-        if std == 0.0:
+        # A flat series can leave `std` as float dust (~1e-18) rather than exactly
+        # 0.0, from cancellation in the sum-of-squares above (e.g. [0.1, 0.1, 0.1]
+        # -> std ~3e-18). An `== 0.0` check misses that and blows Sharpe up to
+        # ~1e17 — which would falsely clear SHARPE_TARGET in the validation gate.
+        # Any sub-nanodollar std is a flat curve.
+        if std < 1e-9:
             return 0.0
 
         return math.sqrt(252) * mean / std
