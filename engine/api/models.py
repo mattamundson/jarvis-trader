@@ -256,6 +256,17 @@ class SafetyStatusResponse(BaseModel):
     )
     equity_peak: Optional[float] = Field(None, description="Peak equity from safety snapshot")
     daily_realized_pnl: Optional[float] = Field(None, description="Daily realized P&L component")
+    last_kill_switch_ts: Optional[str] = Field(
+        None,
+        description="ISO-8601 UTC timestamp of the most recent kill-switch activation. Survives deactivate + restart. None if it has never fired.",
+    )
+    last_kill_switch_reason_value: Optional[str] = Field(
+        None, description="Reason value of the most recent kill-switch activation (history)"
+    )
+    time_since_kill_switch_sec: Optional[float] = Field(
+        None,
+        description="Seconds since the last kill-switch activation, or None if it has never fired. Lets a consumer tell a just-recovered-from-halt system from one running clean for hours.",
+    )
 
 
 class CircuitBreakerStatus(BaseModel):
