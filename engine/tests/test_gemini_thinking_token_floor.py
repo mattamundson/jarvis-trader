@@ -45,13 +45,13 @@ def _ok():
     )
 
 
-async def _captured_max_tokens(llm_client, model, requested):
+async def _captured_payload(llm_client, model, requested):
     captured = {}
 
     def _handler(request):
         import json
 
-        captured["max_tokens"] = json.loads(request.content)["max_tokens"]
+        captured["payload"] = json.loads(request.content)
         return _ok()
 
     with respx.mock:
@@ -63,7 +63,11 @@ async def _captured_max_tokens(llm_client, model, requested):
             temperature=0.0,
             model=model,
         )
-    return captured["max_tokens"]
+    return captured["payload"]
+
+
+async def _captured_max_tokens(llm_client, model, requested):
+    return (await _captured_payload(llm_client, model, requested))["max_tokens"]
 
 
 @pytest.mark.asyncio
@@ -88,3 +92,37 @@ async def test_20_flash_not_floored(llm_client):
 async def test_floor_is_env_tunable(llm_client, monkeypatch):
     monkeypatch.setenv("GEMINI_MIN_OUTPUT_TOKENS", "1500")
     assert await _captured_max_tokens(llm_client, "gemini-2.5-flash", 500) == 1500
+
+
+# --- reasoning_effort: disable thinking on 2.5 so the budget feeds the answer ---
+# Bug (2026-06-06, live log): even with the 2048 floor, a heavy analyst prompt
+# made gemini-2.5-flash spend ~1900 tokens thinking and truncate the JSON at
+# out:80. Disabling thinking via reasoning_effort frees the whole budget.
+
+
+@pytest.mark.asyncio
+async def test_25_flash_disables_thinking_by_default(llm_client):
+    payload = await _captured_payload(llm_client, "gemini-2.5-flash", 500)
+    assert payload["reasoning_effort"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_20_flash_no_reasoning_effort(llm_client):
+    # Non-thinking model must not get the knob at all.
+    payload = await _captured_payload(llm_client, "gemini-2.0-flash", 500)
+    assert "reasoning_effort" not in payload
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_is_env_tunable(llm_client, monkeypatch):
+    monkeypatch.setenv("GEMINI_REASONING_EFFORT", "low")
+    payload = await _captured_payload(llm_client, "gemini-2.5-flash", 500)
+    assert payload["reasoning_effort"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_blank_omits_knob(llm_client, monkeypatch):
+    # Escape hatch: empty value omits the field (fall back to model default).
+    monkeypatch.setenv("GEMINI_REASONING_EFFORT", "")
+    payload = await _captured_payload(llm_client, "gemini-2.5-flash", 500)
+    assert "reasoning_effort" not in payload
