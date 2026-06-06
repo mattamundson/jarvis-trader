@@ -50,13 +50,22 @@ class TestSubmitPaperOrder:
         assert result["routed_to_ib"] is False
         assert "kill switch" in result["reason"].lower() or "Kill switch" in result["reason"]
 
-    async def test_live_trading_disabled_blocks(self, mock_settings, mock_safety_layer):
-        """LIVE_TRADING_ENABLED=False causes rejection at safety gate."""
+    async def test_live_trading_disabled_allows_paper_dryrun(self, mock_settings, mock_safety_layer):
+        """LIVE_TRADING_ENABLED=False no longer *blocks* a paper order.
+
+        Since the ALLOW_PAPER_SIMULATED_ORDERS flip, submit_paper_order is a
+        PAPER path: a live-disabled order passes safety checks and proceeds as a
+        dry-run rather than being rejected. The safety property preserved here is
+        that it is NEVER routed to a live broker — approved as a dry-run
+        (no IB gateway attached → routed_to_ib False, order_id None), never a
+        real fill. Live-money execution is gated separately.
+        """
         sl = mock_safety_layer
-        # mock_settings has LIVE_TRADING_ENABLED=False by default
+        # mock_settings has LIVE_TRADING_ENABLED=False; no IB gateway attached.
         result = await sl.submit_paper_order(symbol="MES", action="BUY", quantity=1, price=5800.0)
-        assert result["approved"] is False
-        assert result["routed_to_ib"] is False
+        assert result["approved"] is True  # paper order passes safety checks
+        assert result["routed_to_ib"] is False  # but is NOT routed to a live broker
+        assert result["order_id"] is None  # dry-run — no real fill
 
     async def test_dry_run_no_ib_gateway_returns_approved(self, mock_settings):
         """Safety checks pass but no IB gateway → dry-run response."""
