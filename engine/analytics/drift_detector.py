@@ -37,6 +37,28 @@ class DriftDetector:
     def _save_state(self, state: dict):
         self.drift_state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
+    @staticmethod
+    def _verdict_created_at(file: Path) -> datetime:
+        """Parse a verdict's own created_at; fall back to file mtime.
+
+        mtime is unreliable as a recency key — re-syncing (OneDrive), archiving,
+        or a plain `touch` rewrites it without the verdict actually being newer.
+        The verdict JSON stamps its own created_at at generation time, so prefer
+        that as the authoritative ordering key.
+        """
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+            raw = data.get("created_at")
+            if raw:
+                dt = datetime.fromisoformat(raw)
+                # Normalise to aware UTC so naive/aware verdicts compare safely.
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+        except Exception:
+            pass
+        return datetime.fromtimestamp(os.path.getmtime(file), tz=timezone.utc)
+
     def _get_baseline_pf(self, symbol: str) -> float:
         """Fetch baseline min_pf from the latest Gate v2 verdict."""
         try:
@@ -45,8 +67,8 @@ class DriftDetector:
             if not files:
                 return 1.2 # Default floor
 
-            # Sort by modification time to get latest
-            latest_file = max(files, key=os.path.getmtime)
+            # Pick by the verdict's own created_at, not mutable file mtime.
+            latest_file = max(files, key=self._verdict_created_at)
             data = json.loads(latest_file.read_text(encoding="utf-8"))
 
             # Try to get fixed_params_min_pf or similar
@@ -89,14 +111,26 @@ class DriftDetector:
 
             # 2. Update Drift State
             state = self._load_state()
-            sym_state = state.get(symbol, {"consecutive_weeks": 0, "history": []})
+            sym_state = state.get(
+                symbol, {"consecutive_weeks": 0, "history": [], "last_drift_week": None}
+            )
 
             is_drifting = live_pf < threshold_pf
 
+            # ISO (year, week) key so multiple checks in the SAME calendar week
+            # count once. The detector is meant to demote after 3 consecutive
+            # *weeks*; without this gate, running it daily inflates the counter
+            # ~7x and trips a false demotion alert in under a week.
+            iso = datetime.now(timezone.utc).isocalendar()
+            current_week = f"{iso[0]}-W{iso[1]:02d}"
+
             if is_drifting:
-                sym_state["consecutive_weeks"] += 1
+                if sym_state.get("last_drift_week") != current_week:
+                    sym_state["consecutive_weeks"] += 1
+                    sym_state["last_drift_week"] = current_week
             else:
                 sym_state["consecutive_weeks"] = 0
+                sym_state["last_drift_week"] = None
 
             sym_state["history"].append({
                 "date": datetime.now(timezone.utc).isoformat(),

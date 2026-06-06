@@ -330,11 +330,15 @@ async def _health_inner() -> dict:
 
     llm_path_healthy = True
     llm_path_details: dict = {}
+    vertex_failover_count = 0
+    google_fallback_count = 0
     try:
         from llm.client import get_llm_path_state
 
         llm_state = get_llm_path_state()
         llm_path_healthy = bool(llm_state.get("healthy", True))
+        vertex_failover_count = int(llm_state.get("vertex_failover_count", 0) or 0)
+        google_fallback_count = int(llm_state.get("google_fallback_count", 0) or 0)
         if not llm_path_healthy:
             llm_path_details = {
                 "last_failure_ts": llm_state.get("last_failure_ts"),
@@ -398,7 +402,11 @@ async def _health_inner() -> dict:
         "version": "1.1.0",
         "timestamp": now.isoformat(),
         "live_trading": live_trading,
-        "kill_switch_active": safety.get("kill_switch_active", False),
+        # SafetyLayer.get_status() exposes the kill-switch state under "is_killed";
+        # there is no "kill_switch_active" key, so the old read silently defaulted to
+        # False ALWAYS — /health reported the switch OFF even when trading was halted,
+        # and every dashboard widget reading health.kill_switch_active showed green.
+        "kill_switch_active": safety.get("is_killed", False),
         "paper_mode": not live_trading,
         "database": "connected" if db_ok else "error",
         "ibkr_connected": ib_health.get("status") == "connected",
@@ -410,6 +418,8 @@ async def _health_inner() -> dict:
         "uptime_seconds": (now - _start_time).total_seconds() if _start_time else 0.0,
         "llm_available": True,
         "llm_path_healthy": llm_path_healthy,
+        "vertex_failover_count": vertex_failover_count,
+        "google_fallback_count": google_fallback_count,
         "tradingview_mcp_healthy": tv_mcp_healthy,
         "tv_mcp_status": tv_mcp_status,
         "brier_30d_rolling": _compute_brier_30d_rolling(),

@@ -158,14 +158,18 @@ class TestPaperTradingFlow:
             assert risk_decision.get("approved") is False or "approved" in risk_decision
 
     def test_kill_switch_triggers_at_minus_2_percent_daily_loss(self):
-        """Kill switch activates when daily loss reaches -2%."""
+        """Kill switch activates when daily loss reaches -2% via broker sync."""
         from risk.safety_layer import OrderRequest, SafetyLayer
 
         safety_layer = SafetyLayer(self.config)
 
-        # Simulate trades totaling -$200 (exactly -2% of 10k)
-        safety_layer.daily_pnl = -200.0
-        safety_layer.daily_loss_triggered = True
+        # Ground-truth broker sync is the ONLY path that mutates P&L state and
+        # auto-triggers the daily-loss kill switch (sync_from_broker). A -$200
+        # loss on $9,800 equity breaches MAX_DAILY_LOSS_PCT (0.02 -> -$196).
+        portfolio_equity = 9800.0
+        safety_layer.sync_from_broker(equity=portfolio_equity, daily_pnl=-200.0)
+
+        assert safety_layer.is_killed, "daily -2% loss did not engage the kill switch"
 
         order = OrderRequest(
             symbol="MES",
@@ -174,12 +178,8 @@ class TestPaperTradingFlow:
             is_futures=True,
             estimated_value=5800.0,
         )
-
-        portfolio_equity = 9800.0
         result = safety_layer.check_order(order, portfolio_equity)
-
-        if safety_layer.daily_loss_triggered:
-            assert result.approved is False or safety_layer.is_kill_switch_active
+        assert result.approved is False, "kill switch active but order was approved"
 
     def test_kill_switch_triggers_at_minus_10_percent_drawdown(self):
         """Kill switch activates when drawdown reaches -10%."""
@@ -376,7 +376,7 @@ class TestPaperTradingFlow:
             if result.approved:
                 checked += 1
 
-        assert checked <= 10 or safety_layer.is_kill_switch_active
+        assert checked <= 10 or safety_layer.is_killed
 
 
 class TestPaperTradingIntegration(unittest.TestCase):
