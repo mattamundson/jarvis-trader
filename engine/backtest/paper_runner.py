@@ -919,10 +919,21 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             # Entries stay on the validated 1h edge, but exits are checked at 5m
             # granularity so an intrabar stop/target fill isn't missed or mispriced
             # the way an hourly-only check would.
-            mgmt_bar, mgmt_time = _latest_mgmt_bar(symbol, FUTURES_MAP, df_signals)
-            updated_pos, closed_record = manage_open_position(
-                symbol, positions[symbol], mgmt_bar, mgmt_time, cfg, tracker
-            )
+            try:
+                mgmt_bar, mgmt_time = _latest_mgmt_bar(symbol, FUTURES_MAP, df_signals)
+                updated_pos, closed_record = manage_open_position(
+                    symbol, positions[symbol], mgmt_bar, mgmt_time, cfg, tracker
+                )
+            except Exception as exc:
+                # A transient 5m feed error inside _latest_mgmt_bar, or a malformed
+                # position row (e.g. a NULL stop → float(None) in manage_open_position),
+                # must NOT escape the per-symbol loop. Unguarded, it would abort every
+                # REMAINING symbol's management this cycle — leaving their open positions'
+                # stops unevaluated (money risk). Log loudly, flag, and move on; the
+                # position stays tracked and is retried next poll.
+                log.error(f"{symbol}: position management failed: {exc}", exc_info=True)
+                summary[symbol] = {"action": "mgmt_error", "position": positions.get(symbol)}
+                continue
             if updated_pos is None:
                 # Position closed
                 del positions[symbol]
