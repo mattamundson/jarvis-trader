@@ -159,6 +159,14 @@ class FundamentalReport:
     summary: str = ""
     reasoning: str = ""
 
+    # Silent-default guard: when the keyless FRED CSV fetch fails (network /
+    # rate-limit / maintenance), _fetch_fred_macro substitutes hardcoded
+    # FRED_DEFAULTS so analysis is never blocked — but that means the macro
+    # regime is computed from stale constants, not live data. These flags make
+    # that visible in the decision trace instead of degrading silently.
+    macro_data_is_default: bool = False
+    macro_defaulted_keys: list[str] = field(default_factory=list)
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -170,6 +178,8 @@ class FundamentalReport:
             "key_metrics": self.key_metrics,
             "summary": self.summary,
             "reasoning": self.reasoning,
+            "macro_data_is_default": self.macro_data_is_default,
+            "macro_defaulted_keys": self.macro_defaulted_keys,
         }
 
 
@@ -243,6 +253,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         """
         self._llm = llm_client
         self._data = data_manager
+        # Populated by _fetch_fred_macro: FRED series that fell back to hardcoded
+        # FRED_DEFAULTS this cycle. Empty when all series fetched live.
+        self._macro_defaulted_keys: list[str] = []
 
     @staticmethod
     def classify_macro_regime(metrics: dict[str, float]) -> tuple[str, bool]:
@@ -344,6 +357,20 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             cot_bias=cot_bias,
             sector_ctx=sector_ctx,
         )
+        # Surface FRED silent-default fallback in the decision trace. When the
+        # keyless CSV fetch failed for one or more series this cycle, the macro
+        # regime was computed partly from hardcoded constants — flag it so the
+        # aggregator / dashboard can down-weight or annotate rather than treating
+        # stale defaults as live macro data.
+        defaulted = list(self._macro_defaulted_keys)
+        if defaulted:
+            report.macro_data_is_default = True
+            report.macro_defaulted_keys = defaulted
+            logger.warning(
+                "%s fundamental report computed with %d defaulted FRED series: %s "
+                "(macro regime partly from hardcoded FRED_DEFAULTS, not live data)",
+                symbol, len(defaulted), defaulted,
+            )
         return report
 
     async def _fetch_fred_macro(self) -> dict[str, float]:
@@ -402,6 +429,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
 
         # Apply defaults for any series that failed to fetch so analysis is never blocked.
         missing = [k for k in FRED_SERIES if k not in metrics]
+        # Record which series fell back to hardcoded constants so the report can
+        # flag that the macro regime is computed from stale defaults, not live data.
+        self._macro_defaulted_keys = list(missing)
         if missing:
             for key in missing:
                 default_val = FRED_DEFAULTS.get(key)
