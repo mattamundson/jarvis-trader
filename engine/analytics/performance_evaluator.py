@@ -15,9 +15,8 @@ import os
 import sys
 
 try:
-    from database.db_manager import DatabaseManager
-
     from config import settings  # noqa: F401  (presence-check only)
+    from database.db_manager import DatabaseManager
 except ImportError as e:
     print(f"Must run from engine root: {e}")
     sys.exit(1)
