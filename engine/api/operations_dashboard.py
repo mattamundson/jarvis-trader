@@ -60,6 +60,30 @@ def _today_et() -> date:
         return datetime.utcnow().date()
 
 
+def _trade_on_et_date(timestamp: Optional[str], target: date) -> bool:
+    """True if a UTC-stamped trade timestamp falls on `target` in Eastern time.
+
+    Trade timestamps are written in UTC (paper_trade_logger / IB fill_time use
+    datetime.utcnow().isoformat()+"Z"). Comparing them to an ET date with a raw
+    string startswith() silently dropped every evening trade: a 21:00 ET fill is
+    01:00 UTC the NEXT day, so its "2026-06-07T01:00Z" stamp failed to match the
+    ET day "2026-06-06" and vanished from the dashboard's daily P&L. Convert to ET
+    before comparing the calendar date.
+    """
+    if not timestamp:
+        return False
+    try:
+        from zoneinfo import ZoneInfo
+
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo("America/New_York")).date() == target
+    except Exception:
+        # Last-resort fallback: naive prefix match (pre-fix behaviour).
+        return timestamp.startswith(target.isoformat())
+
+
 def _load_paper_trades_today(target_date: Optional[date] = None) -> List[Dict[str, Any]]:
     """Load trades from paper_trades.json for the given date (default: today ET)."""
     if target_date is None:
@@ -69,11 +93,10 @@ def _load_paper_trades_today(target_date: Optional[date] = None) -> List[Dict[st
     try:
         data = json.loads(_PAPER_TRADES_JSON.read_text(encoding="utf-8"))
         trades = data if isinstance(data, list) else data.get("trades", [])
-        day_str = target_date.isoformat()
         return [
             t
             for t in trades
-            if isinstance(t, dict) and (t.get("timestamp") or "").startswith(day_str)
+            if isinstance(t, dict) and _trade_on_et_date(t.get("timestamp"), target_date)
         ]
     except Exception as exc:
         logger.warning("paper_trades.json load failed: %s", exc)
