@@ -13,6 +13,10 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  # Required by claude-code-action@v1: it exchanges an OIDC token during
+  # setupGitHubToken(). Without id-token:write the action fails every run with
+  # "Could not fetch an OIDC token. Did you remember to add id-token: write...".
+  id-token: write
 
 concurrency:
   group: claude-pr-review-${{ github.workflow }}-${{ github.ref }}
