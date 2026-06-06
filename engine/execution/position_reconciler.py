@@ -12,7 +12,38 @@ try:
 except ImportError:
     pass
 
+try:
+    from backtest.contract_specs import CONTRACT_SPECS
+except ImportError:  # pragma: no cover - keep the reconciler importable if specs move
+    CONTRACT_SPECS = {}
+
 logger = logging.getLogger(__name__)
+
+# Fallback tick when a symbol has no registered ContractSpec. 0.25 is the CME
+# equity-micro grid (MES/MNQ); it is only a last resort so the emergency stop
+# still rounds to *something* placeable rather than crashing the reconciler.
+_DEFAULT_TICK = 0.25
+
+
+def round_to_tick(price: float, symbol: str) -> float:
+    """Snap a price to the symbol's real tick grid.
+
+    The emergency-stop path previously hardcoded a 0.25 tick for every symbol,
+    which produces an INVALID price for instruments on a finer grid -- MGC (0.10)
+    and MCL (0.01) -- so IB can reject the emergency stop and the orphaned
+    position is left unprotected. Use the canonical per-symbol tick; fall back to
+    0.25 only for unregistered symbols. Never raises (orphan-recovery path).
+    """
+    spec = CONTRACT_SPECS.get(symbol.upper()) if symbol else None
+    tick = spec.tick_size if spec else _DEFAULT_TICK
+    if not spec:
+        logger.warning(
+            "[RECONCILER] No contract spec for %s; using %.2f tick fallback for emergency stop",
+            symbol,
+            _DEFAULT_TICK,
+        )
+    # round(.., 4) strips float-division noise; all registered ticks are >= 0.01.
+    return round(round(price / tick) * tick, 4)
 
 
 class PositionReconciler:
@@ -81,8 +112,10 @@ class PositionReconciler:
             stop_price = avg_cost * (1 + emergency_pct)
             action = "BUY"
 
-        # Tick size rounding (assume minimum 0.25 tick size for CME micros)
-        stop_price = round(stop_price / 0.25) * 0.25
+        # Snap to the symbol's real tick grid (MGC=0.10, MCL=0.01, MES/MNQ=0.25).
+        # Hardcoding 0.25 produced invalid prices on finer grids -> IB rejection
+        # -> orphaned position left unprotected.
+        stop_price = round_to_tick(stop_price, symbol)
 
         logger.info(f"[RECONCILER] Attaching emergency Stop Loss for {symbol} at {stop_price}")
         try:
