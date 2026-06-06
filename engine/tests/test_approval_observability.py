@@ -16,7 +16,6 @@ import notifications.telegram as telegram_mod
 from database._mixins_pending_approvals import PendingApprovalsMixin
 from database.migrations import run_migrations
 
-
 # --- TelegramNotifier chat_id validation ----------------------------------
 
 @pytest.mark.parametrize(
