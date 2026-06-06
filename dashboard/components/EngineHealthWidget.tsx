@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, ArrowUpRight, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import {
+  Activity,
+  ArrowUpRight,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import type { HealthResponse } from "@/lib/api";
+import { EngineWebSocketContext } from "@/lib/engine-websocket-context";
 
 function formatUptime(s: number): string {
   if (s < 60) return `${Math.floor(s)}s`;
@@ -42,6 +51,11 @@ function Dot({ state, label }: { state: StatusDot; label: string }) {
 export function EngineHealthWidget() {
   const [data, setData] = useState<HealthResponse | null>(null);
   const [error, setError] = useState(false);
+  // Non-throwing read: null when rendered outside the provider — degrades to
+  // "Polling" rather than crashing. Honest about whether the 15s poll below
+  // is being shadowed by a live WS push stream or is the sole data path.
+  const wsCtx = useContext(EngineWebSocketContext);
+  const wsLive = wsCtx?.isConnected ?? false;
 
   async function refresh() {
     try {
@@ -123,6 +137,27 @@ export function EngineHealthWidget() {
           <span className="text-sm font-semibold text-foreground">Engine Health</span>
         </div>
         <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-1"
+            title={
+              wsLive
+                ? "Live WebSocket stream connected"
+                : "WebSocket disconnected — falling back to 15s polling"
+            }
+          >
+            {wsLive ? (
+              <Wifi className="h-3.5 w-3.5 text-bull" />
+            ) : (
+              <WifiOff className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <span
+              className={`text-[11px] font-medium ${
+                wsLive ? "text-bull" : "text-muted-foreground"
+              }`}
+            >
+              {wsLive ? "Live" : "Polling"}
+            </span>
+          </div>
           {data && (
             <span className="text-xs text-muted-foreground font-mono">
               up {formatUptime(data.uptime_seconds)}

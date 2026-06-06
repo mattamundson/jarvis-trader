@@ -119,13 +119,16 @@ class _FakeDB:
 
 
 class _FakeData:
-    def __init__(self, price):
+    def __init__(self, price, source="ibkr"):
+        # source defaults to a LIVE tick tier so existing breach tests act as
+        # before; the stale-data tests pass a non-live source explicitly.
         self._price = price
+        self._source = source
 
     async def get_current_price(self, symbol, is_futures=False):
         if self._price is None:
             return {}
-        return {"last_price": self._price, "source": "test"}
+        return {"last_price": self._price, "source": self._source}
 
 
 def _trade(**kw):
@@ -191,6 +194,39 @@ def test_check_once_empty_book():
     db = _FakeDB([])
     mon = PaperStopMonitor(db, _FakeData(4490.0))
     assert asyncio.run(mon.check_once()) == 0
+
+
+# ── Stale-data guard: a feed-independent backstop must not act on a frozen price ──
+
+def test_check_once_skips_stale_csv_cache_source_even_when_breached():
+    # Dark feed → get_current_price falls through to Tier 5 csv_cache (day-old
+    # close). The price (4490) breaches the 4497.51 stop, but it is STALE, so the
+    # monitor must NOT close — it defers to the A1 feed-dark alert instead of
+    # firing/holding a stop on a frozen price (the #178 failure mode in reverse).
+    db = _FakeDB([_trade()])
+    mon = PaperStopMonitor(db, _FakeData(4490.0, source="csv_cache"))
+    fired = asyncio.run(mon.check_once())
+    assert fired == 0
+    assert db.close_calls == []
+
+
+def test_check_once_skips_ibkr_historical_source():
+    # Tier 1 can return a historical last-close (source='ibkr_historical') with a
+    # non-None price — also stale; must be skipped.
+    db = _FakeDB([_trade()])
+    mon = PaperStopMonitor(db, _FakeData(4490.0, source="ibkr_historical"))
+    assert asyncio.run(mon.check_once()) == 0
+    assert db.close_calls == []
+
+
+def test_check_once_acts_on_each_live_source():
+    # Every live tick tier the monitor's docstring promises must still enforce.
+    for live in ("ibkr", "schwab", "tradingview", "polygon_stream"):
+        db = _FakeDB([_trade()])
+        mon = PaperStopMonitor(db, _FakeData(4490.0, source=live))
+        fired = asyncio.run(mon.check_once())
+        assert fired == 1, f"live source {live!r} must enforce the stop"
+        assert len(db.close_calls) == 1
 
 
 if __name__ == "__main__":  # allow plain `python test_paper_stop_monitor.py`

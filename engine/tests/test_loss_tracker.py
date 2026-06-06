@@ -24,6 +24,12 @@ def loss_tracker_settings(mock_settings):
     mock_settings.CONSECUTIVE_LOSS_QUARTER_SIZE = 5
     mock_settings.CONSECUTIVE_LOSS_HALT = 7
     mock_settings.CONSECUTIVE_LOSS_HALT_HOURS = 24
+    # Bypass the overnight contract cap so these consecutive-loss / position-
+    # sizing tests are wall-clock-independent. The default MAX_OVERNIGHT_CONTRACTS=1
+    # rejects the qty=2 MES orders below whenever the suite runs after 15:00 CT,
+    # masking the consecutive-loss reason the assertions expect. Same idiom as
+    # test_safety_layer.py (TestContractLimits bypass at MAX_OVERNIGHT_CONTRACTS=5).
+    mock_settings.MAX_OVERNIGHT_CONTRACTS = 5
     return mock_settings
 
 
