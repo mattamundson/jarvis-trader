@@ -203,6 +203,10 @@ ignore = [
     "I001",  # import block unsorted — 4100-line file with sprints of appended router imports
     "E402",  # late websocket imports are intentional (circular import avoidance)
 ]
+"analytics/performance_evaluator.py" = [
+    "I001",  # conditional try/except presence-check import; isort grouping differs
+             # irreconcilably between ruff 0.8.0 (CI) and 0.15.12 (local pre-commit)
+]
 "backtest/backtester.py" = [
     "B023",  # false positive: nested functions in loops used as closures
 ]
