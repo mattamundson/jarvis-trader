@@ -155,6 +155,7 @@ class PortfolioTracker:
         notes: str = "",
         atr_value: Optional[float] = None,
         rv_at_entry: Optional[float] = None,
+        analyst_signals: Optional[Dict[str, float]] = None,
     ) -> str:
         """
         Log a new simulated entry.
@@ -204,6 +205,11 @@ class PortfolioTracker:
         _sp: dict = {"notes": notes}
         if rv_at_entry is not None:
             _sp["rv_at_entry"] = round(float(rv_at_entry), 4)
+        # Persist per-analyst signals so close-time _record_agent_feedback
+        # writes a trade_outcomes row for calibration. No-op for callers that
+        # carry no pipeline reports (manual / broker-reconcile opens).
+        if analyst_signals:
+            _sp["analyst_signals"] = {k: float(v) for k, v in analyst_signals.items()}
         if self._db is not None:
             row_id = self._db.insert_paper_trade(
                 trade_id,
