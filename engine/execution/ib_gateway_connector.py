@@ -1032,8 +1032,13 @@ class IBGatewayConnector:
         if not self.is_connected():
             return {"error": "Not connected"}
 
-        if self._gateway:
-            return await self._gateway.get_options_greeks(symbol)
+        # _gateway is never set on this connector (only _ib_client is). A bare
+        # `if self._gateway:` therefore raised AttributeError on every call instead
+        # of returning the intended "unavailable" error below. getattr restores the
+        # author's clear fall-through intent.
+        gateway = getattr(self, "_gateway", None)
+        if gateway:
+            return await gateway.get_options_greeks(symbol)
 
         return {"error": "Gateway unavailable"}
 

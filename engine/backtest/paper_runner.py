@@ -407,9 +407,22 @@ def _load_entry_eval() -> Dict[str, str]:
         return {}
 
 
+def _atomic_write_json(path: Path, obj: Any) -> None:
+    """Write JSON atomically (temp file + os.replace) so a torn write can never
+    leave a half-written file. A corrupt state file is silently read back as {}
+    by the loaders below — for entry_eval that wipes the crossover-bar dedup and
+    re-enables a double entry. The standalone Jarvis-PaperCollect task and the
+    in-process engine can both write these files, so torn writes are reachable.
+    os.replace is atomic on the same filesystem (incl. Windows NTFS).
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(obj), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _save_entry_eval(state: Dict[str, str]) -> None:
     try:
-        _entry_eval_path().write_text(json.dumps(state), encoding="utf-8")
+        _atomic_write_json(_entry_eval_path(), state)
     except Exception:  # noqa: BLE001
         pass
 
@@ -440,7 +453,7 @@ def _load_data_error_state() -> Dict[str, int]:
 
 def _save_data_error_state(state: Dict[str, int]) -> None:
     try:
-        _data_error_path().write_text(json.dumps(state), encoding="utf-8")
+        _atomic_write_json(_data_error_path(), state)
     except Exception:  # noqa: BLE001
         pass
 
@@ -478,6 +491,13 @@ def _latest_mgmt_bar(
     df_5m = fetch_bars(symbol, futures_map, timeframe="5m")
     if df_5m is not None and not df_5m.empty:
         return df_5m.iloc[-1], str(df_5m.index[-1])
+    if df_1h_signals is None or df_1h_signals.empty:
+        # Both feeds dry: raise a clear error instead of letting an empty-frame
+        # .iloc[-1] surface as a bare IndexError far from the cause. The caller
+        # guards the per-symbol cycle, so this skips management for this poll.
+        raise ValueError(
+            f"_latest_mgmt_bar({symbol}): no 5m feed and empty 1h frame — cannot manage position"
+        )
     return df_1h_signals.iloc[-1], str(df_1h_signals.index[-1])
 
 
@@ -893,6 +913,14 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             summary[symbol] = {"action": "signal_error"}
             continue
 
+        # An empty signal frame (all bars filtered, or a starved feed) would make
+        # the .iloc[-1] reads below raise IndexError and crash the whole poll
+        # cycle for every symbol. Skip this symbol's cycle instead.
+        if df_signals is None or df_signals.empty:
+            log.warning(f"{symbol}: empty signal frame — skipping management/entry this cycle")
+            summary[symbol] = {"action": "no_signal_data"}
+            continue
+
         last_bar = df_signals.iloc[-1]
         current_time = str(df_signals.index[-1])
 
@@ -904,10 +932,21 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             # Entries stay on the validated 1h edge, but exits are checked at 5m
             # granularity so an intrabar stop/target fill isn't missed or mispriced
             # the way an hourly-only check would.
-            mgmt_bar, mgmt_time = _latest_mgmt_bar(symbol, FUTURES_MAP, df_signals)
-            updated_pos, closed_record = manage_open_position(
-                symbol, positions[symbol], mgmt_bar, mgmt_time, cfg, tracker
-            )
+            try:
+                mgmt_bar, mgmt_time = _latest_mgmt_bar(symbol, FUTURES_MAP, df_signals)
+                updated_pos, closed_record = manage_open_position(
+                    symbol, positions[symbol], mgmt_bar, mgmt_time, cfg, tracker
+                )
+            except Exception as exc:
+                # A transient 5m feed error inside _latest_mgmt_bar, or a malformed
+                # position row (e.g. a NULL stop → float(None) in manage_open_position),
+                # must NOT escape the per-symbol loop. Unguarded, it would abort every
+                # REMAINING symbol's management this cycle — leaving their open positions'
+                # stops unevaluated (money risk). Log loudly, flag, and move on; the
+                # position stays tracked and is retried next poll.
+                log.error(f"{symbol}: position management failed: {exc}", exc_info=True)
+                summary[symbol] = {"action": "mgmt_error", "position": positions.get(symbol)}
+                continue
             if updated_pos is None:
                 # Position closed
                 del positions[symbol]
