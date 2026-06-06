@@ -120,6 +120,7 @@ class TestGetCurrentPnlState:
         }
 
         monitor = _monitor(db=db, paper=paper)
+        monitor._session_start_pnl = 0.0  # simulate fresh session start
         state = monitor.get_current_pnl_state()
         assert state.source == "memory"
         assert state.daily_realized_pnl == 150.0
@@ -529,6 +530,7 @@ class TestReadMemory:
             "equity_curve": [10000.0, 10100.0, 10250.0],
         }
         monitor = _monitor(paper=paper)
+        monitor._session_start_pnl = 0.0  # simulate fresh session start
         state = monitor._read_memory()
         assert state is not None
         assert state.source == "memory"
