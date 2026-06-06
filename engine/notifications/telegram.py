@@ -21,6 +21,18 @@ class TelegramNotifier:
 
     BASE_URL = "https://api.telegram.org/bot{token}/{method}"
 
+    @staticmethod
+    def _is_valid_chat_id(chat_id) -> bool:
+        """Telegram chat_id must be an integer (optionally negative for groups /
+        channels, e.g. -100…). A bot username like 'HermesAmoBot' is NOT valid
+        here — sendMessage returns HTTP 400 for it."""
+        if chat_id is None:
+            return False
+        s = str(chat_id).strip()
+        if s.startswith("-"):
+            s = s[1:]
+        return s.isdigit()
+
     def __init__(self):
         self.token = settings.TELEGRAM_BOT_TOKEN
         self.chat_id = settings.TELEGRAM_CHAT_ID
@@ -30,13 +42,24 @@ class TelegramNotifier:
             and self.token != "your_bot_token_here"
             and self.chat_id != "your_chat_id_here"
         )
+        # A configured-but-malformed chat_id (e.g. a bot username instead of the
+        # numeric id) passes `enabled` but makes every sendMessage 400. Surface
+        # it loudly so approval/alert DMs don't fail silently.
+        self.config_valid = self.enabled and self._is_valid_chat_id(self.chat_id)
 
-        if self.enabled:
-            logger.info("Telegram notifications enabled")
-        else:
+        if not self.enabled:
             logger.info(
                 "Telegram not configured — add TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID to .env"
             )
+        elif not self.config_valid:
+            logger.warning(
+                "Telegram chat_id %r is not numeric — sendMessage will return HTTP 400 "
+                "and every alert/approval DM will be dropped. Set TELEGRAM_CHAT_ID to the "
+                "numeric chat id (not a bot username).",
+                self.chat_id,
+            )
+        else:
+            logger.info("Telegram notifications enabled")
 
     async def send(
         self,

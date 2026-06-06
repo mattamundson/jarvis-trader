@@ -96,9 +96,18 @@ async def notify_pending_approval_queued(
                 f"ID: <code>{approval_id[:8]}…</code>\n\n"
                 f'<a href="{approve_url}">Pending Approvals</a>'
             )
-            await tg.send(html_msg)
+            ok = await tg.send(html_msg)
+            # A *configured* channel that fails to deliver is a real problem —
+            # the approval is queued but nobody is told. Escalate (was debug).
+            if not ok:
+                logger.warning(
+                    "[APPROVAL-NOTIFY] Telegram send failed for approval %s "
+                    "(config_valid=%s) — candidate is queued but the DM did not go out",
+                    approval_id[:8],
+                    getattr(tg, "config_valid", None),
+                )
     except Exception as e:
-        logger.debug("Telegram pending_approval skipped or failed: %s", e)
+        logger.warning("[APPROVAL-NOTIFY] Telegram pending_approval failed: %s", e)
 
     wh_url = (os.environ.get("JARVIS_DISCORD_APPROVAL_WEBHOOK") or "").strip()
     if wh_url:
