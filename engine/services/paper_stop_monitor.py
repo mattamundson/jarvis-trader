@@ -63,6 +63,17 @@ _FALLBACK_MULTIPLIERS: Dict[str, float] = {
 _LONG_ALIASES = {"long", "buy", "b", "bull", "1"}
 _SHORT_ALIASES = {"short", "sell", "s", "bear", "-1"}
 
+# Stop enforcement must act ONLY on live tick data. get_current_price()'s waterfall
+# can fall through to STALE fallback tiers — Polygon REST cache, the CSV daily-close
+# (Tier 5), and an IBKR historical last-close — each tagged with a non-live `source`.
+# Enforcing a stop against a day-old price is the #178 failure mode in reverse: on a
+# dark feed the backstop would read a frozen price, see "no breach", and stay quiet
+# (or fire at a mispriced level) — exactly the false-comfort this monitor exists to
+# prevent. So any non-live source is treated as "can't act this tick" and we defer to
+# the paper_runner A1 "feed dark" CRITICAL alert. These are the live tick tiers named
+# in this module's docstring (IBKR snapshot → Schwab → TradingView 2.5 → Polygon stream).
+_LIVE_PRICE_SOURCES = frozenset({"ibkr", "schwab", "tradingview", "polygon_stream"})
+
 
 # ── Pure helpers (no engine deps — unit-tested in tests/test_paper_stop_monitor.py)
 
@@ -259,6 +270,18 @@ class PaperStopMonitor:
             if not price:
                 # Genuinely unavailable — the paper_runner A1 guard owns the
                 # "feed is dark" alerting; the monitor simply can't act this tick.
+                continue
+
+            source = (quote or {}).get("source")
+            if source not in _LIVE_PRICE_SOURCES:
+                # Stale-data guard: get_current_price fell through to a non-live
+                # tier (csv_cache daily close, ibkr_historical, *_expired). Acting
+                # on a frozen price would defeat the whole point of a feed-
+                # independent backstop — defer to the A1 "feed dark" alert.
+                logger.debug(
+                    f"[PaperStopMonitor] {symbol}: skipping non-live price "
+                    f"source {source!r} (stale-data guard)"
+                )
                 continue
 
             if not is_stop_breached(side, stop, price):
