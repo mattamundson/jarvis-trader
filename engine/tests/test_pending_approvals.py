@@ -73,6 +73,10 @@ def test_approval_router_approve_flow(tmp_db: Path):
     cfg = TradingConfig()
     cfg.FUTURES_WATCHLIST = ["MES", "MGC"]
     cfg.ALLOW_PAPER_SIMULATED_ORDERS = True
+    # Bypass the overnight contract cap so this approval-flow test is wall-clock-
+    # independent (default MAX_OVERNIGHT_CONTRACTS=1 rejects the MES qty=2 below
+    # after 15:00 CT). Same idiom as test_safety_layer.py.
+    cfg.MAX_OVERNIGHT_CONTRACTS = 5
     safety = SafetyLayer(cfg)
 
     inject_dependencies(safety, mock_pt, dbm)
