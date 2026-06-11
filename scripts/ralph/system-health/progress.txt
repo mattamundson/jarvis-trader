@@ -112,3 +112,17 @@
   - mypy pre-commit advisory about analytics/sepa_trend_template.py dual module name
     is pre-existing noise, not caused by current changes.
 ---
+
+## 2026-06-11 - I4
+- Task-health rollup in digest shipped (commit 46e5d1e): parses task-health-latest.txt
+  from the existing Jarvis-TaskHealth-Daily monitor; alerts on failing enabled tasks
+  AND on a stale report.
+- **Learnings for future iterations:**
+  - The digest module is the established alert-lift channel (calibration I-, LLM I1,
+    tasks I4): pure _assess_* fn + best-effort reader + digest field + WARNING in main().
+  - Live smoke surfaced 4 NON-FinanceSync failing tasks needing end-of-loop triage:
+    Jarvis-DailyLiveReadiness 0x2, Jarvis-DailyPostTradeReport 0x1,
+    Jarvis-PaperCollect 0x1, Jarvis-VerdictRefresh-Weekly 0x1.
+  - check-task-health.ps1 report format is stable ASCII; regex-parse the
+    "--- ENABLED tasks" section only (disabled section is informational).
+---

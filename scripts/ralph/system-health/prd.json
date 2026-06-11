@@ -148,8 +148,8 @@
         "Runs daily without elevation"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": "Check Jarvis-TaskHealth-Daily first - extend, do not duplicate."
+      "passes": true,
+      "notes": "Commit 46e5d1e. Jarvis-TaskHealth-Daily already collects (check-task-health.ps1 -> task-health-latest.txt); digest now lifts that report into digest['task_health'] with failing names + hex codes, WARNs in run log, and alerts on a stale (>26h) report. 7 tests; live smoke flagged 5 currently-failing enabled tasks: Jarvis-DailyLiveReadiness 0x2, Jarvis-DailyPostTradeReport 0x1, Jarvis-FinanceSync 0x1 (pre-B5-fix run; should clear next 07:00 run), Jarvis-PaperCollect 0x1, Jarvis-VerdictRefresh-Weekly 0x1. FOLLOW-UP: triage the other 4 at end of loop."
     },
     {
       "id": "I5",
