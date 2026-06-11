@@ -96,3 +96,19 @@
   - This .tsx tree is LF with occasional stray CRLF lines -- patcher must try both
     variants per replacement, not whole-file detection.
 ---
+
+## 2026-06-11 - I3
+- Post-init invariant self-check shipped (commit 22923ee): one INFO block + per-item
+  WARNINGs at the end of heavy background init.
+- Files: engine/startup_checks.py (+6 _selfcheck_* fns), engine/main.py (hook),
+  engine/tests/test_startup_selfcheck.py (11 tests).
+- **Learnings for future iterations:**
+  - startup_checks.py already had the CheckResult pass/warn/fail pattern -- extend it,
+    never add a parallel checks module.
+  - FeatureFlags singleton: flags.registry._instance; tests monkeypatch that attr
+    directly with a fake exposing list_flags()/is_enabled().
+  - No LLM-client singleton exists (each agent constructs JarvisLLMClient) -- boot
+    checks must be keys/flags-only; live provider health belongs to /health + digest.
+  - mypy pre-commit advisory about analytics/sepa_trend_template.py dual module name
+    is pre-existing noise, not caused by current changes.
+---
