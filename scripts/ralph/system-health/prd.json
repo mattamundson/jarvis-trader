@@ -43,8 +43,8 @@
         "test_feature_flags suite passes + cold-DB test"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Fixed 2026-06-11. _ensure_table() in FeatureFlags.__init__ (defensive, non-fatal). 4 real-SQLite cold-DB tests. Live verify after restart: no warning at boot."
     },
     {
       "id": "B4",

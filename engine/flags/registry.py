@@ -150,7 +150,37 @@ class FeatureFlags:
     def __init__(self, config: Any, db: Any) -> None:
         self._config = config
         self._db = db
+        self._ensure_table()
         logger.info("FeatureFlags initialised with %d flag definitions", len(FLAG_DEFINITIONS))
+
+    def _ensure_table(self) -> None:
+        """Create the feature_flags table if it does not exist.
+
+        Nothing else in the schema bootstrap owns this table (B3, 2026-06-11:
+        the engine logged 'no such table: feature_flags' at every boot and the
+        RL autostart gate could only fail-safe instead of reading the flag).
+        Failures are logged, not raised, so a degraded DB cannot block engine
+        startup -- the first real flag operation will still surface the error.
+        """
+        try:
+            with self._db._lock:
+                conn = self._db._connect()
+                try:
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS feature_flags (
+                            name       TEXT PRIMARY KEY,
+                            enabled    INTEGER NOT NULL,
+                            updated_at TEXT,
+                            updated_by TEXT
+                        )
+                        """
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+        except Exception as exc:  # pragma: no cover - defensive boot path
+            logger.warning("feature_flags table ensure failed (non-fatal): %s", exc)
 
     # ------------------------------------------------------------------
     # Public API
