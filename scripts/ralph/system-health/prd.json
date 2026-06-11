@@ -95,8 +95,8 @@
         "Log shows a real run (not early import death)"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Heavy backtest job - poll with patience."
+      "passes": true,
+      "notes": "Verified 2026-06-11: LastTaskResult=0x0, rd-2026-06-11.log 15.7KB with real gate evaluations (PASS mc_95th_dd 1.78). SAC heal confirmed on heavy backtest job."
     },
     {
       "id": "I1",
