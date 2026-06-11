@@ -90,7 +90,7 @@ def fetch_paper_returns(lookback_days: int = 90) -> pd.Series:
     the series itself comes from the engine DB. We reuse the engine's own
     loader by querying the DB directly when run on the same machine.
     """
-    db_path = ENGINE_DIR / "data" / "jarvis.db"
+    db_path = Path(os.environ.get("DB_PATH", "")) if os.environ.get("DB_PATH") else ENGINE_DIR / "data" / "jarvis_trader.db"
     if db_path.exists():
         from reports.quantstats_metrics import _load_pnl_series
 
