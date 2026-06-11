@@ -294,6 +294,11 @@ def get_options(symbol: str = Query("SPY"), expiry: str = Query("nearest")):
 
 @app.get("/api/pnl")
 def get_pnl():
+    # DEMO ONLY — these are hardcoded, long-expired SPY option legs from an early
+    # prototype. This endpoint is NOT wired to any real position ledger and is not
+    # consumed by the dashboard. The response is tagged is_demo=True so nothing
+    # can mistake it for live P&L. (See handoff: archive / resolve the jarvis_api
+    # duplication is still open; this just stops it lying in the meantime.)
     positions = [
         {"symbol": "SPY", "type": "call", "strike": 715, "expiry": "2026-04-23", "qty": 1, "cost": 78},
         {"symbol": "SPY", "type": "put", "strike": 700, "expiry": "2026-04-24", "qty": 1, "cost": 65},
@@ -351,6 +356,8 @@ def get_pnl():
     total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else 0.0
 
     return {
+        "is_demo": True,
+        "_warning": "DEMO data — hardcoded expired SPY option legs, not a real position. Not live P&L.",
         "total_value": round(total_value, 4),
         "total_cost": round(total_cost, 4),
         "total_pnl": round(total_pnl, 4),
