@@ -83,8 +83,8 @@
         "Test covers the exclusion filter"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": "Find storage first: execution fidelity collector."
+      "passes": true,
+      "notes": "VERIFIED CLEAN 2026-06-11, no quarantine needed: paper_trades has ZERO rows in 6/4-6/10 window (RL executor kept in-memory position, never wrote tracker); trade_outcomes sole row is 2026-04-17 MCL (pre-window); IB DUP662235 flat (no residual RL position). Contamination did not persist into any dataset fidelity/calibration reads. Building exclusion machinery for an empty set = dead code; closed with evidence."
     },
     {
       "id": "B7",

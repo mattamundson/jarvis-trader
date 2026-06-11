@@ -53,3 +53,9 @@
 - Verified under powershell.exe (PS 5.1, as the task runs): exit=1 + "simplefin exit=1" log line written. Before: failures left zero log lines.
 - **Learnings:** ~/scripts is outside the repo - archive originals before editing; keep .ps1 pure ASCII for PS 5.1.
 ---
+
+## 2026-06-11 ~01:25 - B6 (MES fidelity quarantine) - closed VERIFIED-CLEAN
+- Checked all 3 surfaces: paper_trades (0 rows in window), trade_outcomes (1 row, April MCL, pre-window), IB positions (flat - no residual RL MES).
+- RL executor never persisted to the tracker; engine was also down 6/8-6/10. Nothing to exclude -> no dead machinery built.
+- **Learnings:** verify the contamination actually LANDED before building quarantine plumbing. /brokers/positions needs X-API-Key (env var name is API_KEY in engine/.env).
+---
