@@ -368,3 +368,203 @@ def _check_disk_space() -> CheckResult:
             status="warn",
             message=f"Could not check disk space: {e}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Post-init self-check (I3) -- runs at the END of heavy background init.
+# run_startup_checks() above validates config BEFORE subsystems exist; this
+# block re-asserts live state AFTER they are up so silent degradation (flags
+# table missing, RL gate flipped, fidelity collector off, provider chain
+# unkeyed) is visible at every boot.
+# ---------------------------------------------------------------------------
+
+
+def run_post_init_selfcheck(config) -> list[CheckResult]:
+    """Run post-initialization invariant checks against live engine state."""
+    return [
+        _selfcheck_flags_table(),
+        _selfcheck_rl_gate(),
+        _selfcheck_fidelity_collector(config),
+        _selfcheck_do_not_trade(),
+        _selfcheck_trading_mode(config),
+        _selfcheck_llm_provider_chain(config),
+    ]
+
+
+def log_post_init_selfcheck(config) -> list[CheckResult]:
+    """Run the post-init self-check and emit one structured log block.
+
+    Every result appears in a single INFO block; each warn/fail additionally
+    gets its own WARNING line so log scanners catch the specific item.
+    """
+    results = run_post_init_selfcheck(config)
+    logger.info(
+        "STARTUP SELF-CHECK (post-init invariants)\n    %s",
+        "\n    ".join(str(r) for r in results),
+    )
+    for r in results:
+        if r.status in ("warn", "fail"):
+            logger.warning("[SELF-CHECK %s] %s: %s", r.status.upper(), r.name, r.message)
+    return results
+
+
+def _selfcheck_flags_table() -> CheckResult:
+    """WARN if the feature_flags registry/table is not readable."""
+    name = "Flags Table"
+    try:
+        from flags.registry import get_flags
+
+        listed = get_flags().list_flags()
+        return CheckResult(
+            name=name,
+            status="pass",
+            message=f"feature_flags registry readable ({len(listed)} flags)",
+        )
+    except Exception as exc:
+        return CheckResult(
+            name=name,
+            status="warn",
+            message=f"feature_flags registry not readable: {exc}",
+        )
+
+
+def _selfcheck_rl_gate() -> CheckResult:
+    """WARN if ENABLE_RL_TRADING is ON (expected OFF during paper phase)."""
+    name = "RL Gate"
+    try:
+        from flags.registry import get_flags
+
+        enabled = get_flags().is_enabled("ENABLE_RL_TRADING")
+    except Exception as exc:
+        return CheckResult(
+            name=name,
+            status="warn",
+            message=f"could not read ENABLE_RL_TRADING: {exc}",
+        )
+    if enabled:
+        return CheckResult(
+            name=name,
+            status="warn",
+            message=(
+                "ENABLE_RL_TRADING is ON -- RL executor can influence paper "
+                "decisions; confirm this is intentional (expected OFF)"
+            ),
+        )
+    return CheckResult(
+        name=name,
+        status="pass",
+        message="ENABLE_RL_TRADING=False (RL executor gated off, expected)",
+    )
+
+
+def _selfcheck_fidelity_collector(config) -> CheckResult:
+    """WARN if ALLOW_PAPER_SIMULATED_ORDERS reverted to False.
+
+    The flag was deliberately flipped True on 2026-06-04 so approved paper
+    trades route to real IB paper fills and the execution-fidelity collector
+    measures real fill quality. A silent revert (e.g. .env loss) starves the
+    fidelity harness without any other symptom.
+    """
+    name = "Fidelity Collector"
+    allow_sim = bool(getattr(config, "ALLOW_PAPER_SIMULATED_ORDERS", False))
+    if allow_sim:
+        return CheckResult(
+            name=name,
+            status="pass",
+            message=(
+                "ALLOW_PAPER_SIMULATED_ORDERS=True -- approved paper trades "
+                "route to real IB paper fills (fidelity collector measuring real fills)"
+            ),
+        )
+    return CheckResult(
+        name=name,
+        status="warn",
+        message=(
+            "ALLOW_PAPER_SIMULATED_ORDERS=False -- fills are internally "
+            "simulated; execution-fidelity collector receives NO real-fill "
+            "data (deliberately True since 2026-06-04; investigate if unexpected)"
+        ),
+    )
+
+
+def _selfcheck_do_not_trade() -> CheckResult:
+    """Report the active DO_NOT_TRADE_SYMBOLS blocklist."""
+    name = "DO_NOT_TRADE List"
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except ImportError as exc:
+        return CheckResult(
+            name=name, status="warn", message=f"could not import signals: {exc}"
+        )
+    return CheckResult(
+        name=name,
+        status="pass",
+        message=f"DO_NOT_TRADE_SYMBOLS={sorted(DO_NOT_TRADE_SYMBOLS)}",
+    )
+
+
+def _selfcheck_trading_mode(config) -> CheckResult:
+    """WARN if live trading is enabled or human approval is disabled.
+
+    run_startup_checks() hard-fails boot on these, but this re-asserts from
+    the live settings object after all init completed.
+    """
+    name = "Trading Mode"
+    live = bool(getattr(config, "LIVE_TRADING_ENABLED", False))
+    approval = bool(getattr(config, "REQUIRE_HUMAN_APPROVAL", True))
+    problems = []
+    if live:
+        problems.append("LIVE_TRADING_ENABLED=True (must be False in paper phase)")
+    if not approval:
+        problems.append("REQUIRE_HUMAN_APPROVAL=False (must be True)")
+    if problems:
+        return CheckResult(name=name, status="warn", message="; ".join(problems))
+    return CheckResult(
+        name=name,
+        status="pass",
+        message="paper mode, human approval required for all trades",
+    )
+
+
+def _selfcheck_llm_provider_chain(config) -> CheckResult:
+    """Summarize the configured LLM fallback chain; WARN on 0-1 usable legs.
+
+    Boot-time check is keys/flags only -- credit exhaustion is a runtime
+    condition surfaced by /health (llm_path_healthy) and the daily digest's
+    llm_provider_health block.
+    """
+    name = "LLM Provider Chain"
+
+    def _key_present(var: str) -> bool:
+        value = getattr(config, var, None) or os.getenv(var) or ""
+        return bool(str(value).strip())
+
+    anthropic = _key_present("ANTHROPIC_API_KEY")
+    google = _key_present("GOOGLE_API_KEY")
+    openai_key = _key_present("OPENAI_API_KEY")
+    vertex = os.getenv("JARVIS_LLM_VERTEX_FAILOVER", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    chain = (
+        f"anthropic(key={'yes' if anthropic else 'NO'}) -> "
+        f"vertex(failover={'armed' if vertex else 'off'}) -> "
+        f"gemini(key={'yes' if google else 'NO'}) -> "
+        f"openai(key={'yes' if openai_key else 'NO'})"
+    )
+    legs = sum([anthropic, vertex, google, openai_key])
+    if legs == 0:
+        return CheckResult(
+            name=name,
+            status="warn",
+            message=f"NO LLM provider configured -- every pipeline decision will fail. {chain}",
+        )
+    if legs == 1:
+        return CheckResult(
+            name=name,
+            status="warn",
+            message=f"single-leg LLM chain -- one provider outage stops all decisions. {chain}",
+        )
+    return CheckResult(name=name, status="pass", message=chain)
