@@ -135,8 +135,8 @@
         "Test covers the check function"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Commit 22923ee. Extended startup_checks.py (existing CheckResult pattern) with run_post_init_selfcheck/log_post_init_selfcheck: flags table, RL gate, fidelity collector (ALLOW_PAPER_SIMULATED_ORDERS revert detection), DO_NOT_TRADE list, trading mode, LLM provider chain legs. Hooked at end of _complete_background_init in main.py (try/except non-fatal). 11 new tests + 25 pre-existing green; ruff clean. Provider check is keys/flags only by design -- live credit health is /health + I1 digest."
     },
     {
       "id": "I4",
