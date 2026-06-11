@@ -167,3 +167,15 @@
   - Check for attribute-style submodule consumers (pkg.submodule.X) before going
     lazy; here all consumers import submodules directly, so zero risk.
 ---
+
+## 2026-06-11 - I8
+- Architecture regression test live: URL-literal scan over engine/agents/** +
+  engine/discord/** with documented 7-file allowlist + guard-presence checks.
+- **Learnings for future iterations:**
+  - Scan for the URL LITERAL (https://api.anthropic.com), not the bare host --
+    comments and error-string parsers mention the host legitimately.
+  - news_analyst/social_analyst have client-first guarded fallbacks (NOT live
+    bypasses): raw POST only when injected client lacks .call(). Do not "fix" them.
+  - Run a new invariant test BEFORE allowlisting -- its first failures both prove
+    detection works and enumerate the candidate allowlist.
+---
