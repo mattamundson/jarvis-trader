@@ -179,3 +179,14 @@
   - Run a new invariant test BEFORE allowlisting -- its first failures both prove
     detection works and enumerate the candidate allowlist.
 ---
+
+## 2026-06-11 - I9
+- Verdict freshness monitor in digest shipped; live: MES 0.0d / MGC 2.6d, no alert.
+- **Learnings for future iterations:**
+  - gate_v2_verdicts/*.json files are GIT-TRACKED: use the created_at JSON field for
+    age, never file mtime (checkout refreshes mtimes and fakes freshness).
+  - Verdict JSON schema: symbol/verdict/created_at(ISO with offset)/passed_via etc.
+  - When a pure assessor takes now but the reader uses real datetime.now(), write
+    test fixtures relative to REAL now for reader tests (pinned NOW only works for
+    the pure function).
+---
