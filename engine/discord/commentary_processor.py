@@ -169,9 +169,17 @@ class CoreyCommentaryProcessor:
     MAX_TOKENS = 600
     STALE_DAYS = 2  # data older than this gets data_quality="stale"
 
-    def __init__(self, db_path: Optional[str] = None, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        api_key: Optional[str] = None,
+        llm_client: Optional[object] = None,
+    ):
         self.db_path = db_path or _default_db_path()
         self._api_key = api_key or os.getenv("ANTHROPIC_API_KEY", "")
+        # Optional JarvisLLMClient: when provided, _llm_extract routes through
+        # its provider-fallback chain instead of a direct Anthropic POST (B4).
+        self._llm = llm_client
         self._ensure_cache_table()
 
     def _ensure_cache_table(self) -> None:
@@ -289,7 +297,7 @@ class CoreyCommentaryProcessor:
 
     async def _llm_extract(self, for_date: date, rows: list[dict]) -> CoreySessionBias:
         """Call Claude Haiku to extract structured bias from commentary rows."""
-        if not self._api_key:
+        if not self._api_key and not (self._llm is not None and hasattr(self._llm, "call")):
             logger.warning("[CoreyProcessor] No API key — returning neutral bias")
             return _neutral_bias(for_date, message_count=len(rows))
 
@@ -307,25 +315,45 @@ class CoreyCommentaryProcessor:
         )
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": self._api_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": self.MODEL,
-                        "max_tokens": self.MAX_TOKENS,
-                        "system": _LLM_SYSTEM,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
+            if self._llm is not None and hasattr(self._llm, "call"):
+                # Live engine path (B4, 2026-06-11): JarvisLLMClient owns the
+                # Vertex->Gemini->OpenAI fallback chain, so credit exhaustion on
+                # the primary no longer kills daily Corey bias extraction. The
+                # direct POST below remains ONLY for standalone contexts (CLI,
+                # MCP server, briefing) constructed without an engine client.
+                llm_result = await self._llm.call(
+                    model=self.MODEL,
+                    system=_LLM_SYSTEM,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=self.MAX_TOKENS,
+                    agent_name="corey_commentary",
                 )
-                resp.raise_for_status()
-                payload = resp.json()
+                if not getattr(llm_result, "success", False):
+                    raise RuntimeError(
+                        f"corey_commentary LLM call failed: "
+                        f"{getattr(llm_result, 'error', 'unknown')}"
+                    )
+                raw = (llm_result.content or "").strip()
+            else:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": self._api_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": self.MODEL,
+                            "max_tokens": self.MAX_TOKENS,
+                            "system": _LLM_SYSTEM,
+                            "messages": [{"role": "user", "content": prompt}],
+                        },
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
 
-            raw = payload["content"][0]["text"].strip()
+                raw = payload["content"][0]["text"].strip()
             # Strip markdown code fences if present
             if raw.startswith("```"):
                 raw = raw.split("```")[1]

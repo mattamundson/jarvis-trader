@@ -56,8 +56,8 @@
         "Tests pass, ruff clean"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "bull/bear comments at line 113 may indicate already-fixed; verify."
+      "passes": true,
+      "notes": "Done 2026-06-11. commentary_processor: optional llm_client routed when present (live path via corey_auction_analyst injection); direct POST documented for standalone CLI/MCP/briefing. news/social already conditional-route. bull/bear already fixed. tail_risk + managed_bridge DARK by default (env-gated off) - documented, deferred. 71 corey tests + 4 new transport tests."
     },
     {
       "id": "B5",
