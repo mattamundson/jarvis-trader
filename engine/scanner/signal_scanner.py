@@ -432,6 +432,17 @@ class SignalScanner:
                     technical_report = (result.get("analyst_reports") or {}).get("technical") or {}
                     fund_decision = result.get("fund_decision") or {}
                     stop_price = trade_dec.get("stop_price") or None
+                    # Dedup guard (2026-06-11 incident): the hourly scan re-emits a
+                    # persisting trend signal every cycle; without this check the
+                    # bypass auto-logged identical duplicate open positions (MES +
+                    # MGC entered twice, 00:04 and 01:04). One open paper position
+                    # per symbol — skip the auto-log while one exists. The pending
+                    # approval above is still created for audit visibility.
+                    _open_for_symbol = [
+                        p
+                        for p in (self._paper_tracker.get_open_positions() or [])
+                        if str(p.get("symbol") or "").upper() == str(symbol).upper()
+                    ]
                     # Safety gate: never auto-execute a paper trade without a stop.
                     # A position with no stop has undefined risk — refuse it.
                     if stop_price is None:
@@ -442,6 +453,18 @@ class SignalScanner:
                             symbol,
                             final_action,
                             trade_dec,
+                        )
+                    elif _open_for_symbol:
+                        logger.info(
+                            "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                            "executed=False reason=paper_position_already_open "
+                            "open_trade_id=%s approval_id=%s",
+                            symbol,
+                            final_action,
+                            _confidence,
+                            0.0,
+                            str(_open_for_symbol[0].get("trade_id") or "")[:8],
+                            approval_id[:8],
                         )
                     else:
                         target_price = (
