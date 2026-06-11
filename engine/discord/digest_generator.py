@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone
 from pathlib import Path
 
 try:  # dual-path import (engine.* package vs bare under engine/ cwd)
@@ -207,6 +207,103 @@ def _task_health(report_path: "Path | None" = None) -> dict:
     return _assess_task_health(text, age_hours)
 
 
+def _assess_verdict_freshness(
+    records: list,
+    now,
+    active_symbols,
+    max_age_days: float = 7.0,
+) -> dict:
+    """Pure assessment of gate-v2 verdict freshness (I9, 2026-06-11).
+
+    ``records`` are dicts with symbol/created_at(datetime)/verdict, one per
+    verdict file. Per symbol, only the NEWEST verdict counts. alert=True when
+    an ACTIVE symbol's newest verdict is older than ``max_age_days`` or has no
+    verdict at all -- trading on a stale edge estimate is silent risk drift.
+    Non-active symbols are reported informationally, never alerted.
+    """
+    active = [s.upper() for s in active_symbols]
+    newest: dict = {}
+    for rec in records:
+        sym = str(rec.get("symbol", "")).upper()
+        created = rec.get("created_at")
+        if not sym or created is None:
+            continue
+        prev = newest.get(sym)
+        if prev is None or created > prev["created_at"]:
+            newest[sym] = {
+                "created_at": created,
+                "verdict": rec.get("verdict"),
+                "files": 1 if prev is None else prev["files"] + 1,
+            }
+        else:
+            prev["files"] += 1
+
+    symbols = {}
+    for sym, info in sorted(newest.items()):
+        age_days = (now - info["created_at"]).total_seconds() / 86400.0
+        symbols[sym] = {
+            "age_days": round(age_days, 1),
+            "newest": info["created_at"].isoformat(),
+            "files": info["files"],
+            "latest_verdict": info["verdict"],
+            "active": sym in active,
+        }
+
+    stale_active = [
+        s for s in active if s in symbols and symbols[s]["age_days"] > max_age_days
+    ]
+    missing_active = [s for s in active if s not in symbols]
+    return {
+        "active_symbols": active,
+        "max_age_days": max_age_days,
+        "symbols": symbols,
+        "stale_active": stale_active,
+        "missing_active": missing_active,
+        "alert": bool(stale_active or missing_active),
+    }
+
+
+def _verdict_freshness(verdict_dir: "Path | None" = None, active_symbols=None) -> dict:
+    """Read engine/data/gate_v2_verdicts/*.json (top level only -- archive/
+    holds retired verdicts) and assess freshness. created_at comes from the
+    JSON body, NOT file mtime: the verdict files are git-tracked, so a
+    checkout refreshes every mtime and would fake freshness.
+
+    Active symbols default to the approved paper traders; override with
+    JARVIS_ACTIVE_PAPER_SYMBOLS (comma-separated) when promotions change.
+    """
+    from datetime import datetime as _dt
+
+    if active_symbols is None:
+        raw = os.getenv("JARVIS_ACTIVE_PAPER_SYMBOLS", "MES,MGC")
+        active_symbols = [s.strip() for s in raw.split(",") if s.strip()]
+    if verdict_dir is None:
+        engine_root = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        verdict_dir = engine_root / "data" / "gate_v2_verdicts"
+
+    records = []
+    if verdict_dir.exists():
+        for path in verdict_dir.glob("*.json"):
+            try:
+                body = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+                created = _dt.fromisoformat(str(body.get("created_at")))
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                records.append(
+                    {
+                        "symbol": body.get("symbol"),
+                        "created_at": created,
+                        "verdict": body.get("verdict"),
+                    }
+                )
+            except (OSError, ValueError, TypeError):
+                continue  # malformed verdict file -- skip, never crash the digest
+
+    return _assess_verdict_freshness(
+        records, now=_dt.now(timezone.utc), active_symbols=active_symbols
+    )
+
+
 def generate_digest(for_date: date, db_path: str) -> dict:
     """
     Build the daily digest dict for *for_date*.
@@ -311,6 +408,11 @@ def generate_digest(for_date: date, db_path: str) -> dict:
     # 4 days because the local monitor only toasts. Lift its latest report
     # into the digest so failing Jarvis-* tasks reach the alert channel.
     digest["task_health"] = _task_health()
+
+    # Gate-v2 verdict freshness (I9, 2026-06-11): a stale verdict means the
+    # active symbols trade on outdated edge estimates. WARN when an active
+    # symbol's newest verdict exceeds the freshness window.
+    digest["gate_verdict_freshness"] = _verdict_freshness()
 
     return digest
 
@@ -430,6 +532,27 @@ def main() -> int:
             th.get("scanned"),
             th.get("age_hours") or -1.0,
         )
+    vf = digest.get("gate_verdict_freshness") or {}
+    if vf.get("alert"):
+        details = []
+        for sym in vf.get("stale_active", []):
+            info = (vf.get("symbols") or {}).get(sym) or {}
+            details.append(f"{sym} {info.get('age_days', '?')}d old")
+        for sym in vf.get("missing_active", []):
+            details.append(f"{sym} NO VERDICT")
+        logger.warning(
+            "  GATE VERDICT FRESHNESS ALERT: active symbol(s) on stale edge "
+            "estimates (> %sd): %s -- rerun gate v2 validation",
+            vf.get("max_age_days"),
+            "; ".join(details),
+        )
+    else:
+        ages = ", ".join(
+            f"{s}={i['age_days']}d"
+            for s, i in (vf.get("symbols") or {}).items()
+            if i.get("active")
+        )
+        logger.info("  gate verdicts: active symbols fresh (%s)", ages or "none found")
     return 0
 
 
