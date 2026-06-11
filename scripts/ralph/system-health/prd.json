@@ -166,16 +166,16 @@
     },
     {
       "id": "I6",
-      "title": "Wire brier_30d_rolling in /health to real trade_outcomes",
-      "description": "/health returns brier_30d_rolling: null. trade_outcomes now writes. Wire the rolling Brier so calibration quality is observable.",
+      "title": "Verify brier_30d_rolling wiring + lock writer/reader DB-path seam",
+      "description": "Original premise (field unwired) was STALE: /health -> _compute_brier_30d_rolling -> BrierCalibrationTracker.compute_rolling_brier is fully wired (30d window, cached, None-vs-0.0 semantics) with seeded-DB tests already in test_brier_calibration.py. Revised scope: live verification + regression test for the one untested seam (writer/reader agreeing on agent_feedback.db).",
       "acceptanceCriteria": [
         "/health returns numeric brier_30d_rolling when scored outcomes exist",
         "Computation windowed 30d, cheap",
         "Unit test with seeded outcomes"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Commit ff8519c. Live /health: field present, null -- honest scarcity (0 trade_outcomes rows in 30d window, 1 total from April; min_trades=5/agent). Becomes numeric automatically as closed paper trades accrue post-B1. Added test_writer_and_reader_share_db_path (the 2026-06-03 stale-DB bug class). 18/18 brier tests green."
     },
     {
       "id": "I7",
