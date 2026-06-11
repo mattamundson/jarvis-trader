@@ -108,8 +108,8 @@
         "Unit test with mocked health payload"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": "Follow digest_generator.py _calibration_integrity pattern (e567785)."
+      "passes": true,
+      "notes": "Done 2026-06-11. _assess_llm_health (pure) + _llm_provider_health (urllib fetch, best-effort) + llm_provider_health digest field + SINGLE-LEG WARNING. 4 unit tests. LIVE verified: real digest run emitted the alert against the degraded engine."
     },
     {
       "id": "I2",

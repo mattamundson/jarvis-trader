@@ -69,3 +69,8 @@
 ## 2026-06-11 ~01:45 - B7 (StrategyRD heal verify) - PHASE 1 COMPLETE (8/8)
 - StrategyRD 0x0 with real 15.7KB run log (gate evals present). All B-stories pass.
 ---
+
+## 2026-06-11 ~01:55 - I1 (LLM single-leg digest alarm)
+- digest_generator: _assess_llm_health pure parser + _llm_provider_health stdlib-urllib fetch (engine-down -> engine_reachable=false, alert=false: liveness is the watchdogs job). WARNING log on alert. Live-verified against the real single-leg engine (gemini_fallbacks=32).
+- **Learnings:** digest task runs `-m engine.discord.digest_generator` from REPO ROOT (engine. namespace); running the file directly breaks the dual-path imports. Keep digest deps stdlib-only.
+---

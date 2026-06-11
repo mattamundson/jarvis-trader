@@ -69,6 +69,55 @@ def _calibration_integrity(db_path: str, for_date: date, window_days: int = 30) 
     return report
 
 
+def _assess_llm_health(payload: dict) -> dict:
+    """Pure assessment of /health llm fields -> digest block (I1, 2026-06-11).
+
+    alert=True when the primary provider is unhealthy (single-leg operation:
+    one fallback hiccup away from a dark LLM path). Kept pure for unit tests.
+    """
+    providers = payload.get("llm_providers") or {}
+    primary_healthy = bool(providers.get("primary_healthy", True))
+    report = {
+        "engine_reachable": True,
+        "active_provider": providers.get("active_provider"),
+        "primary_provider": providers.get("primary_provider"),
+        "primary_healthy": primary_healthy,
+        "providers_available": providers.get("providers_available"),
+        "google_fallback_count": payload.get("google_fallback_count", 0),
+        "vertex_failover_count": payload.get("vertex_failover_count", 0),
+        "llm_path_healthy": bool(payload.get("llm_path_healthy", False)),
+        "alert": not primary_healthy,
+    }
+    return report
+
+
+def _llm_provider_health(timeout_s: float = 5.0) -> dict:
+    """Fetch /health and assess LLM provider state. Best-effort: when the
+    engine is unreachable returns engine_reachable=False with alert=False
+    (engine liveness is the watchdogs' job, not the digest's)."""
+    import urllib.request
+
+    fallback = {
+        "engine_reachable": False,
+        "active_provider": None,
+        "primary_provider": None,
+        "primary_healthy": None,
+        "providers_available": None,
+        "google_fallback_count": None,
+        "vertex_failover_count": None,
+        "llm_path_healthy": None,
+        "alert": False,
+    }
+    try:
+        with urllib.request.urlopen(
+            "http://127.0.0.1:8010/health", timeout=timeout_s
+        ) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        return _assess_llm_health(payload)
+    except Exception:
+        return fallback
+
+
 def generate_digest(for_date: date, db_path: str) -> dict:
     """
     Build the daily digest dict for *for_date*.
@@ -164,6 +213,11 @@ def generate_digest(for_date: date, db_path: str) -> dict:
     # rows are present so the daily digest surfaces it without a manual audit.
     digest["calibration_integrity"] = _calibration_integrity(db_path, for_date)
 
+    # LLM provider health (I1, 2026-06-11): primary_healthy=false ran silent
+    # for days while the system operated single-leg on the Gemini fallback.
+    # Surface provider state in the daily digest so degradation reaches Amo.
+    digest["llm_provider_health"] = _llm_provider_health()
+
     return digest
 
 
@@ -241,6 +295,23 @@ def main() -> int:
             "  calibration integrity: clean (%d outcomes, last %dd)",
             ci.get("total_outcomes", 0),
             ci.get("window_days", 30),
+        )
+    lh = digest.get("llm_provider_health") or {}
+    if lh.get("alert"):
+        logger.warning(
+            "  LLM SINGLE-LEG ALERT: primary provider %r unhealthy -- active=%r "
+            "(gemini_fallbacks=%s, vertex_failovers=%s). One fallback hiccup from "
+            "a dark LLM path; restore the primary.",
+            lh.get("primary_provider"),
+            lh.get("active_provider"),
+            lh.get("google_fallback_count"),
+            lh.get("vertex_failover_count"),
+        )
+    elif lh.get("engine_reachable"):
+        logger.info(
+            "  llm providers: primary=%r healthy, active=%r",
+            lh.get("primary_provider"),
+            lh.get("active_provider"),
         )
     return 0
 
