@@ -118,6 +118,95 @@ def _llm_provider_health(timeout_s: float = 5.0) -> dict:
         return fallback
 
 
+def _assess_task_health(report_text: str, age_hours: float) -> dict:
+    """Pure assessment of check-task-health.ps1 report text (I4, 2026-06-11).
+
+    The Jarvis-TaskHealth-Daily monitor (~/scripts/check-task-health.ps1)
+    already enumerates every Jarvis-*/JARVIS-*/Hermes-*/DP600-* task and
+    writes task-health-latest.txt; this parser lifts its findings into the
+    digest so failures reach the existing alert channel, not just a local
+    toast. alert=True when enabled tasks are failing OR the report is stale
+    (a dead monitor is itself silent degradation). Kept pure for unit tests.
+    """
+    import re
+
+    report = {
+        "present": True,
+        "stale": age_hours > 26.0,
+        "age_hours": round(age_hours, 1),
+        "scanned": None,
+        "failing_enabled": None,
+        "failing_disabled": None,
+        "failing_tasks": [],
+        "alert": False,
+    }
+    m = re.search(r"Scanned (\d+) task", report_text)
+    if m:
+        report["scanned"] = int(m.group(1))
+    m = re.search(
+        r"Failing \(enabled\): (\d+)\s+Failing \(disabled, informational\): (\d+)",
+        report_text,
+    )
+    if m:
+        report["failing_enabled"] = int(m.group(1))
+        report["failing_disabled"] = int(m.group(2))
+
+    in_enabled_section = False
+    for line in report_text.splitlines():
+        if line.startswith("--- ENABLED tasks"):
+            in_enabled_section = True
+            continue
+        if line.startswith("--- DISABLED tasks"):
+            in_enabled_section = False
+            continue
+        if in_enabled_section:
+            m = re.match(r"\s{2}(\S+)\s+(0x[0-9A-Fa-f]+)", line)
+            if m:
+                report["failing_tasks"].append(
+                    {"name": m.group(1), "result": m.group(2)}
+                )
+
+    report["alert"] = bool(report["failing_enabled"]) or report["stale"]
+    return report
+
+
+def _task_health(report_path: "Path | None" = None) -> dict:
+    """Read the latest task-health report and assess it. Best-effort: when the
+    monitor has never written a report (file absent) returns present=False with
+    alert=False so machines without the monitor (CI) stay quiet."""
+    import time
+
+    path = report_path or (
+        Path.home() / ".claude" / "logs" / "task-health-latest.txt"
+    )
+    if not path.exists():
+        return {
+            "present": False,
+            "stale": None,
+            "age_hours": None,
+            "scanned": None,
+            "failing_enabled": None,
+            "failing_disabled": None,
+            "failing_tasks": [],
+            "alert": False,
+        }
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        age_hours = (time.time() - path.stat().st_mtime) / 3600.0
+    except OSError:
+        return {
+            "present": False,
+            "stale": None,
+            "age_hours": None,
+            "scanned": None,
+            "failing_enabled": None,
+            "failing_disabled": None,
+            "failing_tasks": [],
+            "alert": False,
+        }
+    return _assess_task_health(text, age_hours)
+
+
 def generate_digest(for_date: date, db_path: str) -> dict:
     """
     Build the daily digest dict for *for_date*.
@@ -218,6 +307,11 @@ def generate_digest(for_date: date, db_path: str) -> dict:
     # Surface provider state in the daily digest so degradation reaches Amo.
     digest["llm_provider_health"] = _llm_provider_health()
 
+    # Scheduled-task health (I4, 2026-06-11): FinanceSync failed silently for
+    # 4 days because the local monitor only toasts. Lift its latest report
+    # into the digest so failing Jarvis-* tasks reach the alert channel.
+    digest["task_health"] = _task_health()
+
     return digest
 
 
@@ -312,6 +406,29 @@ def main() -> int:
             "  llm providers: primary=%r healthy, active=%r",
             lh.get("primary_provider"),
             lh.get("active_provider"),
+        )
+    th = digest.get("task_health") or {}
+    if th.get("alert"):
+        if th.get("stale"):
+            logger.warning(
+                "  TASK HEALTH ALERT: monitor report is STALE (%.1fh old) -- "
+                "Jarvis-TaskHealth-Daily itself may have stopped running",
+                th.get("age_hours") or -1.0,
+            )
+        if th.get("failing_enabled"):
+            failing = "; ".join(
+                f"{t['name']} {t['result']}" for t in th.get("failing_tasks", [])
+            )
+            logger.warning(
+                "  TASK HEALTH ALERT: %d enabled scheduled task(s) failing: %s",
+                th.get("failing_enabled"),
+                failing or "(names unparsed -- see task-health-latest.txt)",
+            )
+    elif th.get("present"):
+        logger.info(
+            "  scheduled tasks: %s scanned, all enabled tasks healthy (report %.1fh old)",
+            th.get("scanned"),
+            th.get("age_hours") or -1.0,
         )
     return 0
 
