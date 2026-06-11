@@ -2476,7 +2476,17 @@ async def lifespan(app: FastAPI):
 
         _rl_model_dir = _RLPath(__file__).parent / "data" / "rl_models"
         _mes_models = sorted(_rl_model_dir.glob("MES_*.zip"))
-        if _mes_models:
+        # Gate on the existing ENABLE_RL_TRADING feature flag (default False).
+        # Previously this block autostarted whenever a MES_*.zip existed,
+        # bypassing the flag entirely -- so the experimental RL executor ran
+        # uncoordinated alongside the LLM pipeline on the same MES paper account,
+        # tracking its own in-memory _paper_position and contaminating
+        # execution-fidelity data. is_enabled honors a runtime override, so RL
+        # can be toggled on for isolated eval without a code change.
+        from flags import get_flags as _get_flags
+
+        _rl_enabled = _get_flags().is_enabled("ENABLE_RL_TRADING")
+        if _mes_models and _rl_enabled:
             _latest_mes_model = str(_mes_models[-1]).removesuffix(".zip")
             _rl_executor = RLExecutor(
                 symbol="MES",
@@ -2488,6 +2498,12 @@ async def lifespan(app: FastAPI):
             logger.info(
                 "RL executor started — MES paper validation running (model: %s)",
                 _mes_models[-1].name,
+            )
+        elif not _rl_enabled:
+            logger.info(
+                "[RL Executor] Disabled (ENABLE_RL_TRADING=False) -- experimental "
+                "MES RL executor not started; enable via the feature-flags API "
+                "for isolated evaluation"
             )
         else:
             logger.warning("[RL Executor] No MES model found in data/rl_models/ — skipping")
