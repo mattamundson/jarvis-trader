@@ -477,10 +477,8 @@ class TestDecideOrchestrator:
 
     @pytest.mark.asyncio
     async def test_llm_exception_falls_back_to_hold(self, trader):
-        with patch("agents.trader.httpx.AsyncClient") as mock_client_cls:
-            mock_instance = mock_client_cls.return_value.__aenter__.return_value
-            mock_instance.post = AsyncMock(side_effect=RuntimeError("network down"))
-
+        trader._llm.call = AsyncMock(side_effect=RuntimeError("network down"))
+        if True:
             decision = await trader.decide(
                 symbol="MES",
                 debate_result=_make_debate_result(),
@@ -493,12 +491,10 @@ class TestDecideOrchestrator:
     @pytest.mark.asyncio
     async def test_zero_atr_warns_but_continues(self, trader):
         """ATR=0 logs a warning but doesn't raise — trader still calls LLM."""
-        with patch("agents.trader.httpx.AsyncClient") as mock_client_cls:
-            mock_instance = mock_client_cls.return_value.__aenter__.return_value
+        trader._llm.call = AsyncMock(side_effect=RuntimeError("forced"))
+        if True:
             # Force LLM to raise so we land in the fallback HOLD; we just want to
             # confirm decide() doesn't crash on missing ATR.
-            mock_instance.post = AsyncMock(side_effect=RuntimeError("forced"))
-
             reports = _make_analyst_reports(atr=0.0)
             decision = await trader.decide(
                 symbol="MES",
@@ -511,10 +507,8 @@ class TestDecideOrchestrator:
     @pytest.mark.asyncio
     async def test_missing_equity_falls_back_to_default_10k(self, trader):
         """current_equity=None → default $10K; trader still proceeds (LLM mocked to fail)."""
-        with patch("agents.trader.httpx.AsyncClient") as mock_client_cls:
-            mock_instance = mock_client_cls.return_value.__aenter__.return_value
-            mock_instance.post = AsyncMock(side_effect=RuntimeError("forced"))
-
+        trader._llm.call = AsyncMock(side_effect=RuntimeError("forced"))
+        if True:
             status = {"kill_switch_active": False}  # no current_equity key at all
             decision = await trader.decide(
                 symbol="MES",
@@ -524,6 +518,90 @@ class TestDecideOrchestrator:
             )
             # Should still produce a HOLD via the LLM-failure fallback, not crash
             assert decision.action == "hold"
+
+
+class TestDecideLLMTransport:
+    """B1 regression (2026-06-10): the decision call MUST route through
+    JarvisLLMClient.call() so the Vertex->Gemini->OpenAI fallback chain applies.
+    A raw httpx POST to api.anthropic.com here meant every decision failed 400
+    while Anthropic credits were exhausted."""
+
+    def _success_result(self):
+        from llm.client import LLMCallResult
+
+        content = (
+            '{"action": "buy", "quantity": 1, "order_type": "market", '
+            '"time_in_force": "day", "entry_price": 5800.0, "stop_price": 5750.0, '
+            '"target_1": 5850.0, "confidence": 0.8, "signal_score": 0.6, '
+            '"reasoning": "test path"}'
+        )
+        return LLMCallResult(
+            success=True,
+            model="gemini-2.5-flash",
+            input_tokens=10,
+            output_tokens=10,
+            cost_usd=0.0,
+            latency_ms=5,
+            retries=0,
+            content=content,
+        )
+
+    @pytest.mark.asyncio
+    async def test_decision_routes_through_llm_client(self, trader):
+        """decide() must invoke self._llm.call (fallback-owning client), not raw httpx."""
+        trader._llm.call = AsyncMock(return_value=self._success_result())
+        trader._apply_tool_inspection = AsyncMock(
+            side_effect=lambda **kw: (kw["decision"], False)
+        )
+        with patch("agents.trader._get_advisor", return_value=None):
+            decision = await trader.decide(
+                symbol="MES",
+                debate_result=_make_debate_result(),
+                analyst_reports=_make_analyst_reports(),
+                safety_status=_make_safety_status(),
+            )
+        assert trader._llm.call.await_count == 1
+        kwargs = trader._llm.call.await_args.kwargs
+        assert kwargs["agent_name"] == "trader"
+        assert kwargs["model"] == TraderAgent.MODEL
+        # A successful (fallback-served) call must NOT degrade to LLM-failure HOLD
+        assert "Trader LLM call failed" not in decision.reasoning
+
+    @pytest.mark.asyncio
+    async def test_llm_result_failure_falls_back_to_hold(self, trader):
+        """result.success=False (all providers down) -> fail-safe HOLD preserved."""
+        from llm.client import LLMCallResult
+
+        failed = LLMCallResult(
+            success=False,
+            model="claude-sonnet-4-6",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            latency_ms=5,
+            retries=2,
+            content="",
+            error="credit balance is too low",
+        )
+        trader._llm.call = AsyncMock(return_value=failed)
+        decision = await trader.decide(
+            symbol="MES",
+            debate_result=_make_debate_result(),
+            analyst_reports=_make_analyst_reports(),
+            safety_status=_make_safety_status(),
+        )
+        assert decision.action == "hold"
+        assert decision.quantity == 0
+        assert "failed" in decision.reasoning.lower()
+
+    def test_no_direct_anthropic_post_in_trader_source(self):
+        """Source-level guard: trader.py must not POST api.anthropic.com directly."""
+        import inspect
+
+        import agents.trader as trader_mod
+
+        source = inspect.getsource(trader_mod)
+        assert "api.anthropic.com" not in source
 
 
 # ─────────────────────────────────────────────────────────────────────────────
