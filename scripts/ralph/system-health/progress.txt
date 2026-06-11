@@ -34,3 +34,9 @@
 - DISCOVERY: 3 test_safety_layer.py failures are PRE-EXISTING env leakage (verified via stash+rerun on clean tree) -> filed as B8. 211/214 pass there regardless of my diff.
 - **Learnings:** before blaming your diff for a failing suite, stash and rerun - the 3 failures reproduced on clean tree in 0.9s.
 ---
+
+## 2026-06-11 ~00:35 - B3 (feature_flags table self-creation)
+- _ensure_table() in FeatureFlags.__init__: CREATE TABLE IF NOT EXISTS (name PK to satisfy existing ON CONFLICT(name)); try/except->warning so degraded DB cannot block boot.
+- tests/test_feature_flags_cold_db.py: 4 tests on a REAL cold sqlite file (existing suite uses _MockDB which falls through unknown SQL - harmless).
+- **Learnings:** registry.py is CRLF - patchers must detect line endings (src contains \r\n -> convert old/new strings). trader.py was LF. Check before exact-match replace.
+---
