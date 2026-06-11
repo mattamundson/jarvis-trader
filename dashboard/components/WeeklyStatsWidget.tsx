@@ -26,7 +26,8 @@ function pnlVariant(value: number): "bull" | "bear" | "neutral" {
   return "neutral";
 }
 
-function formatPnl(value: number): string {
+function formatPnl(value: number | null | undefined): string {
+  if (value == null) return "—";
   const sign = value >= 0 ? "+" : "";
   return `${sign}$${value.toFixed(2)}`;
 }
@@ -98,7 +99,7 @@ export function WeeklyStatsWidget() {
       label: "Win Rate",
       value: (
         <span className="font-mono font-medium">
-          {data.win_rate.toFixed(1)}%
+          {data.win_rate != null ? data.win_rate.toFixed(1) : "—"}%
         </span>
       ),
     },

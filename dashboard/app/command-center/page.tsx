@@ -1345,7 +1345,7 @@ export default function CommandCenterPage() {
                           : "text-red-400"
                       }`}
                     >
-                      {(journalStats.win_rate * 100).toFixed(0)}%
+                      {journalStats.win_rate != null ? (journalStats.win_rate * 100).toFixed(0) : "—"}%
                     </div>
                   </div>
                   <div>
@@ -1358,7 +1358,7 @@ export default function CommandCenterPage() {
                       }`}
                     >
                       {journalStats.expected_value_usd >= 0 ? "+" : ""}
-                      {journalStats.expected_value_usd.toFixed(0)}
+                      {journalStats.expected_value_usd != null ? journalStats.expected_value_usd.toFixed(0) : "—"}
                     </div>
                   </div>
                   <div>

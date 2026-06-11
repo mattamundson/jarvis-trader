@@ -121,8 +121,8 @@ function fmt(v: number | undefined, decimals = 2): string {
   return v.toFixed(decimals);
 }
 
-function shortDate(iso: string): string {
-  return iso.slice(0, 10);
+function shortDate(iso: string | null | undefined): string {
+  return iso != null ? iso.slice(0, 10) : "—";
 }
 
 // Build a downsample equity curve from the full_metrics or trades_list
