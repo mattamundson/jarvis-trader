@@ -14,7 +14,9 @@ const nextConfig: NextConfig = {
     const engineUrl = (
       process.env.ENGINE_INTERNAL_URL ??
       process.env.ENGINE_URL_INTERNAL ??
-      "http://localhost:8010"
+      // 127.0.0.1, not localhost: Windows resolves localhost to ::1 first
+      // and the engine binds IPv4 only.
+      "http://127.0.0.1:8010"
     ).replace(/\/$/, "");
 
     return [

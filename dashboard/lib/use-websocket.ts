@@ -51,11 +51,14 @@ interface WebSocketManagerConfig {
 function resolveEngineHttpUrl(): string {
   if (process.env.NEXT_PUBLIC_ENGINE_URL) return process.env.NEXT_PUBLIC_ENGINE_URL;
   if (typeof window !== "undefined") {
-    // In the browser we connect back to the dashboard origin and let the
-    // Next.js /ws rewrite proxy the upgrade to the engine.
+    // Fallback only: the Next.js /ws rewrite proxies WebSocket upgrades in
+    // `next dev` but NOT in production (`next start`), so NEXT_PUBLIC_ENGINE_URL
+    // must be set at build time for WS to work in prod.
     return window.location.origin;
   }
-  return "http://localhost:8010";
+  // 127.0.0.1, not localhost: Windows resolves localhost to ::1 first and the
+  // engine binds IPv4 only.
+  return "http://127.0.0.1:8010";
 }
 
 function defaultWsUrl(): string {
