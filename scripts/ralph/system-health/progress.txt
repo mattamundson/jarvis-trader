@@ -143,3 +143,15 @@
   - Nested Start-Process quoting mangles args reliably -- spawn via a temp -File script.
   - PS5.1 parse-validate with [Parser]::ParseFile via -File (inline -Command strips $).
 ---
+
+## 2026-06-11 - I6
+- Premise stale (wiring exists + tested); verified live, locked the writer/reader
+  agent_feedback.db path seam with a regression test (commit ff8519c).
+- **Learnings for future iterations:**
+  - brier_30d_rolling=null means <5 scored outcomes/agent in 30d, NOT unwired. The
+    distinction None (no data) vs 0.0 (perfect) is deliberate -- never "fix" null to 0.
+  - Pattern confirmed twice now (I2, I6): pre-loop audit findings can be fixed by the
+    time a story runs -- ALWAYS re-verify the premise live before implementing.
+  - Brier numbers arrive automatically once B1's trader fix produces closed paper
+    trades (writer: analytics/agent_feedback.py on trade close).
+---
