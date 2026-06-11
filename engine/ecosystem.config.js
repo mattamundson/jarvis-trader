@@ -21,6 +21,7 @@
  *
  * Ports:
  *   jarvis-engine:           8010 (FastAPI)
+ *   jarvis-bridge-api:       8020 (FastAPI quotes/options bridge)
  *   jarvis-rolling-wfe:      cron (no port — scheduler only)
  *   jarvis-paper-runner:     cron (no port — scheduler only)
  *   jarvis-health-check:     cron (no port — health monitoring)
@@ -241,6 +242,39 @@ module.exports = {
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: path.join(ENGINE_DIR, "logs", "discord-export-error.log"),
       out_file: path.join(ENGINE_DIR, "logs", "discord-export-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── API Bridge (port 8020) ────────────────────────────────────────────────
+    // yFinance quotes/regime/options/pnl bridge consumed by the Strategy C+
+    // Command Center (dashboard/static/strategy_c_dashboard.html). Was previously
+    // unmanaged (audit finding F-9): the Command Center ibkr/options/pnl tabs were
+    // dead whenever nobody started it by hand. Bound to 127.0.0.1, no --reload.
+    {
+      name: "jarvis-bridge-api",
+      script: PYTHON,
+      args: "-m uvicorn main:app --host 127.0.0.1 --port 8020",
+      cwd: path.join(ENGINE_DIR, "api"),
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 20,
+      min_uptime: "10s",
+      restart_delay: 5000,
+
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "bridge-api-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "bridge-api-out.log"),
       merge_logs: true,
 
       exec_interpreter: "none",
