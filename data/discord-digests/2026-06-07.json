@@ -1,0 +1,73 @@
+{
+  "date": "2026-06-07",
+  "session_bias": null,
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": null,
+  "commentary_health": [
+    {
+      "date": "2026-06-08",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-06",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-05",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-04",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-03",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-02",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-01",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-05-31",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 0,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  }
+}
