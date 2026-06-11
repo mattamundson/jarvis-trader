@@ -271,3 +271,72 @@ def test_rolling_sharpe_30d_short_series_returns_list():
     returns = _make_returns(n=10)
     result = _rolling_sharpe_30d(returns)
     assert isinstance(result, list)  # must not raise
+
+
+# ── Extended suite (audit F-13, 2026-06-11) ──────────────────────────────────
+
+
+class TestExtendedSuite:
+    """The 22-metric extension must be additive and fully nullable."""
+
+    EXTENDED_KEYS = (
+        "ulcer_index", "ulcer_perf_index", "gain_to_pain", "common_sense_ratio",
+        "tail_ratio", "skew", "kurtosis", "recovery_factor", "cpc_index",
+        "r_squared", "cagr", "exposure", "consecutive_losses",
+        "outlier_loss_ratio", "avg_win", "avg_loss", "volatility_ann",
+        "var_95", "cvar_95", "kelly_criterion", "risk_of_ruin",
+    )
+
+    def _returns(self, n=90, seed=7):
+        import numpy as np
+        import pandas as pd
+
+        rng = np.random.default_rng(seed)
+        idx = pd.bdate_range("2026-01-02", periods=n)
+        return pd.Series(rng.normal(0.0005, 0.01, n), index=idx)
+
+    def test_extended_keys_present_and_finite(self):
+        from reports.quantstats_metrics import compute_quantstats_metrics
+
+        m = compute_quantstats_metrics(self._returns(), source="pnl_snapshots")
+        for k in self.EXTENDED_KEYS:
+            assert k in m, f"missing extended key {k}"
+            assert m[k] is not None, f"extended key {k} unexpectedly null on real data"
+
+    def test_extended_keys_null_on_empty(self):
+        import pandas as pd
+
+        from reports.quantstats_metrics import compute_quantstats_metrics
+
+        m = compute_quantstats_metrics(pd.Series(dtype=float), source="paper_trades")
+        for k in self.EXTENDED_KEYS:
+            assert k in m, f"null shell missing {k}"
+            assert m[k] is None
+
+    def test_original_shape_unchanged(self):
+        """Pre-extension consumers must see the exact same keys + types."""
+        from reports.quantstats_metrics import compute_quantstats_metrics
+
+        m = compute_quantstats_metrics(self._returns(), source="pnl_snapshots")
+        for k in ("sortino", "sharpe", "calmar", "max_dd", "win_rate", "profit_factor"):
+            assert isinstance(m[k], float)
+        assert isinstance(m["monthly_returns"], dict)
+        assert isinstance(m["rolling_sharpe_30d"], list)
+
+    def test_r_squared_high_for_linear_curve(self):
+        import numpy as np
+        import pandas as pd
+
+        from reports.quantstats_metrics import compute_quantstats_metrics
+
+        idx = pd.bdate_range("2026-01-02", periods=60)
+        m = compute_quantstats_metrics(
+            pd.Series(np.full(60, 0.002), index=idx), source="pnl_snapshots"
+        )
+        assert m["r_squared"] is not None and m["r_squared"] > 0.97
+
+    def test_consecutive_losses_integer(self):
+        from reports.quantstats_metrics import compute_quantstats_metrics
+
+        m = compute_quantstats_metrics(self._returns(), source="pnl_snapshots")
+        assert isinstance(m["consecutive_losses"], int)

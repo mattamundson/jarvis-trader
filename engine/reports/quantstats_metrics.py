@@ -31,6 +31,28 @@ _REQUIRED_KEYS = (
     "profit_factor",
     "monthly_returns",
     "rolling_sharpe_30d",
+    # Extended suite (audit F-13, 2026-06-11) — additive, all nullable
+    "ulcer_index",
+    "ulcer_perf_index",
+    "gain_to_pain",
+    "common_sense_ratio",
+    "tail_ratio",
+    "skew",
+    "kurtosis",
+    "recovery_factor",
+    "cpc_index",
+    "r_squared",
+    "cagr",
+    "exposure",
+    "consecutive_losses",
+    "outlier_loss_ratio",
+    "avg_win",
+    "avg_loss",
+    "volatility_ann",
+    "var_95",
+    "cvar_95",
+    "kelly_criterion",
+    "risk_of_ruin",
 )
 
 
@@ -52,6 +74,27 @@ def _null_shell(
         "profit_factor": None,
         "monthly_returns": {},
         "rolling_sharpe_30d": [],
+        "ulcer_index": None,
+        "ulcer_perf_index": None,
+        "gain_to_pain": None,
+        "common_sense_ratio": None,
+        "tail_ratio": None,
+        "skew": None,
+        "kurtosis": None,
+        "recovery_factor": None,
+        "cpc_index": None,
+        "r_squared": None,
+        "cagr": None,
+        "exposure": None,
+        "consecutive_losses": None,
+        "outlier_loss_ratio": None,
+        "avg_win": None,
+        "avg_loss": None,
+        "volatility_ann": None,
+        "var_95": None,
+        "cvar_95": None,
+        "kelly_criterion": None,
+        "risk_of_ruin": None,
     }
 
 
@@ -181,6 +224,27 @@ def _load_pnl_series(
         return returns, "paper_trades", n_trades, start, end
 
 
+
+def _equity_curve_r_squared(returns: pd.Series) -> float | None:
+    """R-squared of the cumulative equity curve against a linear time trend.
+
+    High value = systematic drift (smooth equity curve); low = erratic.
+    Manual implementation: qs.stats.r_squared requires a benchmark series,
+    which is not what the linear-consistency diagnostic wants.
+    """
+    try:
+        if len(returns) < 3:
+            return None
+        curve = (1 + returns).cumprod().to_numpy(dtype=float)
+        x = np.arange(len(curve), dtype=float)
+        corr = np.corrcoef(x, curve)[0, 1]
+        if not np.isfinite(corr):
+            return None
+        return float(corr**2)
+    except Exception:
+        return None
+
+
 def compute_quantstats_metrics(
     daily_returns: pd.Series,
     *,
@@ -270,6 +334,43 @@ def compute_quantstats_metrics(
     except Exception:
         max_dd_duration_days = None
 
+    # Extended suite (audit F-13): tail risk, drawdown quality, RL diagnostics,
+    # signal quality. All additive + nullable so existing consumers are unaffected
+    # (frontend guards must use != null, never !== undefined).
+    consecutive_losses = None
+    try:
+        cl = qs.stats.consecutive_losses(returns)
+        if cl is not None and np.isfinite(float(cl)):
+            consecutive_losses = int(cl)
+    except Exception:
+        pass
+
+    extended = {
+        "ulcer_index": _safe(qs.stats.ulcer_index, returns),
+        "ulcer_perf_index": _safe(qs.stats.ulcer_performance_index, returns, rf=0.0),
+        "gain_to_pain": _safe(qs.stats.gain_to_pain_ratio, returns),
+        "common_sense_ratio": _safe(qs.stats.common_sense_ratio, returns),
+        "tail_ratio": _safe(qs.stats.tail_ratio, returns),
+        "skew": _safe(qs.stats.skew, returns),
+        "kurtosis": _safe(qs.stats.kurtosis, returns),
+        "recovery_factor": _safe(qs.stats.recovery_factor, returns),
+        "cpc_index": _safe(qs.stats.cpc_index, returns),
+        "r_squared": _equity_curve_r_squared(returns),
+        "cagr": _safe(qs.stats.cagr, returns, rf=0.0, periods=_PERIODS_PER_YEAR),
+        "exposure": _safe(qs.stats.exposure, returns),
+        "consecutive_losses": consecutive_losses,
+        "outlier_loss_ratio": _safe(qs.stats.outlier_loss_ratio, returns),
+        "avg_win": _safe(qs.stats.avg_win, returns),
+        "avg_loss": _safe(qs.stats.avg_loss, returns),
+        "volatility_ann": _safe(
+            qs.stats.volatility, returns, periods=_PERIODS_PER_YEAR, annualize=True
+        ),
+        "var_95": _safe(qs.stats.value_at_risk, returns),
+        "cvar_95": _safe(qs.stats.expected_shortfall, returns),
+        "kelly_criterion": _safe(qs.stats.kelly_criterion, returns),
+        "risk_of_ruin": _safe(qs.stats.risk_of_ruin, returns),
+    }
+
     return {
         "n_trades": n_trades,  # caller overwrites
         "start_date": start_date,  # caller overwrites
@@ -284,4 +385,5 @@ def compute_quantstats_metrics(
         "profit_factor": profit_factor,
         "monthly_returns": _monthly_returns(returns),
         "rolling_sharpe_30d": _rolling_sharpe_30d(returns),
+        **extended,
     }
