@@ -114,6 +114,9 @@ def _build_reconciliation(
     A discrepancy is raised when:
     - A paper position exists for a symbol but neither live broker reports it.
     - A live broker position exists but no corresponding paper position is open.
+    - A symbol is present on BOTH sides but the signed quantities differ
+      (qty_mismatch) — e.g. paper believes LONG 2 while the broker is SHORT 3.
+      Without this check a same-symbol sign/size divergence reads as "in sync".
     - Neither broker is queryable (blind state — empty discrepancy lists are NOT
       a clean state, they are a no-data state, surfaced explicitly).
 
@@ -144,13 +147,32 @@ def _build_reconciliation(
             "last_checked": last_checked,
         }
 
-    live_symbols: set[str] = set()
-    for p in ibkr_positions:
-        live_symbols.add(p["symbol"].upper())
-    for p in schwab_positions:
-        live_symbols.add(p["symbol"].upper())
+    # Signed-quantity maps so a same-symbol size/sign divergence is detectable.
+    # IBKR `quantity` is already signed (long +, short -); paper carries an
+    # unsigned `quantity` plus a LONG/SHORT `direction`, so we sign it here.
+    def _to_float(v) -> float:
+        try:
+            return float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
 
-    paper_symbols: set[str] = {p["symbol"].upper() for p in paper_positions}
+    live_qty: dict[str, float] = {}
+    for p in ibkr_positions:
+        sym = p["symbol"].upper()
+        live_qty[sym] = live_qty.get(sym, 0.0) + _to_float(p.get("quantity"))
+    for p in schwab_positions:
+        sym = p["symbol"].upper()
+        live_qty[sym] = live_qty.get(sym, 0.0) + _to_float(p.get("quantity"))
+
+    paper_qty: dict[str, float] = {}
+    for p in paper_positions:
+        sym = p["symbol"].upper()
+        qty = abs(_to_float(p.get("quantity")))
+        signed = qty if str(p.get("direction", "LONG")).upper() == "LONG" else -qty
+        paper_qty[sym] = paper_qty.get(sym, 0.0) + signed
+
+    live_symbols: set[str] = set(live_qty)
+    paper_symbols: set[str] = set(paper_qty)
 
     discrepancies = []
 
@@ -171,6 +193,26 @@ def _build_reconciliation(
                 "detail": "Live broker position found but no corresponding paper record.",
             }
         )
+
+    # Symbol present on BOTH sides but signed quantities diverge.
+    for sym in paper_symbols & live_symbols:
+        p_qty = paper_qty[sym]
+        l_qty = live_qty[sym]
+        if abs(p_qty - l_qty) > 1e-9:
+            discrepancies.append(
+                {
+                    "symbol": sym,
+                    "type": "qty_mismatch",
+                    "paper_qty": p_qty,
+                    "live_qty": l_qty,
+                    "delta": p_qty - l_qty,
+                    "detail": (
+                        "Paper and live broker positions differ in signed quantity "
+                        f"(paper={p_qty:+g}, live={l_qty:+g}). Possible missed fill, "
+                        "double-count, or sign error."
+                    ),
+                }
+            )
 
     health = "ok" if (ibkr_connected and schwab_connected) else "partial"
 
