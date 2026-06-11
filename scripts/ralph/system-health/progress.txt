@@ -190,3 +190,17 @@
     test fixtures relative to REAL now for reader tests (pinned NOW only works for
     the pure function).
 ---
+
+## 2026-06-11 - I10
+- pm2 crashloop alarm REPAIRED (not built new): existing watcher had a dead Telegram
+  channel (nonexistent op item), threshold 5, and exit-2-on-alert turning its own
+  task red. Fixed all three; channel verified with a real delivered DM.
+- **Learnings for future iterations:**
+  - "Alert configured" != "alert deliverable": the watcher logged "telegram skipped
+    (no creds)" for its ENTIRE life. Always verify the last hop with a real send.
+  - Telegram refs that WORK: token = engine/.env TELEGRAM_BOT_TOKEN (or 1P
+    Telegram-Bot-Jarvis/password); chat = numeric 8676240038. engine/.env
+    TELEGRAM_CHAT_ID is a USERNAME -- Bot API rejects it for DMs.
+  - Monitors must exit 0 when they successfully deliver a finding (exit codes are
+    for infra errors only) or the task-health rollup flags the monitor itself.
+---

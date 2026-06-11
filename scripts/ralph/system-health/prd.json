@@ -226,8 +226,8 @@
         "Installed task runs without elevation, battery-safe flags"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": "Jarvis-PM2RestartWatch-15min had LastResult 0x2 - may need its own fix first."
+      "passes": true,
+      "notes": "Watcher already existed (~/scripts/pm2-restart-watch.ps1, 15-min task) but its alert channel was DEAD: op item 'Telegram-Hermes-Bot' does not exist -> every alert silently skipped. Fixed creds resolution (engine/.env TELEGRAM_BOT_TOKEN -> 1P Telegram-Bot-Jarvis/password -> env; numeric chat 8676240038 -- the engine .env chat_id is a username the Bot API rejects), threshold 5->3/hr, and alert path now exits 0 (the old exit-2 is what put 0x2 in task history and tripped the I4 rollup). Original archived ~/Archive/2026/pm2-restart-watch/. Verified: simulated +4 delta fired ALERT (exit 0); real labeled test DM delivered (message_id 6171); task Limited + battery-safe; state reset for clean re-baseline. Script is outside the repo -- archive is the rollback."
     },
     {
       "id": "B8",
