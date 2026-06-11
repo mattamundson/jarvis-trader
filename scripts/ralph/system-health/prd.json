@@ -213,8 +213,8 @@
         "Unit test with synthetic verdict files"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Commit 5b8d50c. digest['gate_verdict_freshness']: per-symbol newest-verdict age from JSON created_at (NOT mtime -- files are git-tracked), archive/ excluded, WARN on active symbol >7d or missing; actives env-overridable (JARVIS_ACTIVE_PAPER_SYMBOLS, default MES,MGC). Live smoke: MES 0.0d / MGC 2.6d fresh, alert=false; MCL/MNQ/M2K informational. 9 tests green."
     },
     {
       "id": "I10",
