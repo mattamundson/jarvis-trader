@@ -74,3 +74,25 @@
 - digest_generator: _assess_llm_health pure parser + _llm_provider_health stdlib-urllib fetch (engine-down -> engine_reachable=false, alert=false: liveness is the watchdogs job). WARNING log on alert. Live-verified against the real single-leg engine (gemini_fallbacks=32).
 - **Learnings:** digest task runs `-m engine.discord.digest_generator` from REPO ROOT (engine. namespace); running the file directly breaks the dual-path imports. Keep digest deps stdlib-only.
 ---
+
+## 2026-06-11 - I2
+- Verified the dashboard real-time WS path end-to-end and hardened latent traps (commit 3a42030).
+- KEY FINDING: the I2 premise (WS 403 -> polling fallback) was STALE. PR #24 fixed it;
+  APIKeyMiddleware is BaseHTTPMiddleware so WS upgrades were never auth-gated. Live proof:
+  headless Chrome on :3010 -> engine /ws/status connections: 1 at t+4s.
+- Files changed: dashboard/lib/engine-websocket-context.tsx, dashboard/next.config.ts,
+  dashboard/lib/use-websocket.ts (localhost->127.0.0.1 fallbacks + corrected proxy comments).
+- **Learnings for future iterations:**
+  - /ws/status connections: 0 does NOT mean WS is broken -- it means no browser tab is open.
+    Always e2e-test with a real browser before declaring a WS defect.
+  - Next.js rewrites proxy WS upgrades in `next dev` only, NOT `next start`. Prod WS requires
+    NEXT_PUBLIC_ENGINE_URL baked at build time (it is: chunk layout-71bb4ef has 127.0.0.1:8010).
+  - TV CDP Chrome on :9222 is Electron-ish -- Target.createTarget returns "Not supported".
+    Use real Chrome headless: & "C:\Program Files\Google\Chrome\Application\chrome.exe"
+    --headless=new --user-data-dir=<tmp> <url>. Clean up forked chrome.exe pids by
+    matching CommandLine on the user-data-dir.
+  - lib/use-websocket.ts and lib/websocket-example.tsx are DEAD CODE; live path is
+    hooks/useWebSocket -> EngineWebSocketProvider (mounted in app/layout.tsx).
+  - This .tsx tree is LF with occasional stray CRLF lines -- patcher must try both
+    variants per replacement, not whole-file detection.
+---

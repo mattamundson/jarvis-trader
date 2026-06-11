@@ -113,17 +113,17 @@
     },
     {
       "id": "I2",
-      "title": "Fix /ws/events 403 - dashboard real-time instead of 5s polling",
-      "description": "Dashboard connects without the API key; server 403s; silent polling fallback. Accept the key on the WS upgrade and send it from dashboard lib.",
+      "title": "Verify + harden dashboard WS real-time path (403 premise was stale)",
+      "description": "Original premise (WS upgrade 403s without API key -> dashboard stuck on 5s polling) was STALE: PR #24 (fix/ws-events-403) already fixed it, and APIKeyMiddleware is BaseHTTPMiddleware (http scopes only) so the upgrade is keyless by design. Revised scope: live end-to-end verification + harden the remaining latent traps (localhost IPv6 fallbacks, misleading proxy comments).",
       "acceptanceCriteria": [
-        "WS endpoint authenticates via query param using existing API key semantics",
-        "Dashboard sends the key; connection upgrades 101 (verified live)",
-        "Unauthenticated WS still rejected",
-        "Engine tests + pnpm build pass"
+        "Live e2e proof: real browser on :3010 -> engine /ws/status connections >= 1",
+        "No localhost:8010 fallback anywhere in the dashboard WS path (IPv6 pitfall)",
+        "Comments no longer claim next start proxies WS upgrades (it does not)",
+        "pnpm run build passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Verified 2026-06-11: headless Chrome on http://127.0.0.1:3010/ -> /ws/status connections: 1 at t+4s; ws://127.0.0.1:8010/ws/events upgrades 101 keyless with 30s pings. The 06-03 'connections: 0' observation just meant no browser tab was open. Hardening commit 3a42030 (3 files, build green). lib/use-websocket.ts + lib/websocket-example.tsx are dead code (live consumers use hooks/useWebSocket via EngineWebSocketProvider in layout.tsx) -- surfaced for human removal, not deleted."
     },
     {
       "id": "I3",
