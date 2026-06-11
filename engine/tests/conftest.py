@@ -87,6 +87,12 @@ def mock_settings():
     # Override with test-safe defaults
     config.LIVE_TRADING_ENABLED = False
     config.REQUIRE_HUMAN_APPROVAL = True
+    # B8 (2026-06-11): TradingConfig() reads the LIVE engine/.env, so the
+    # machine's ALLOW_PAPER_SIMULATED_ORDERS=True leaked in and silently
+    # bypassed the live-trading gate in 3 SACRED safety tests (the sim path
+    # short-circuits _check_gating_conditions to approved). Pin False here;
+    # tests exercising the sim path opt in explicitly.
+    config.ALLOW_PAPER_SIMULATED_ORDERS = False
     config.MAX_DAILY_LOSS_PCT = 0.02  # -2%
     config.MAX_DRAWDOWN_PCT = 0.10  # -10%
     config.MAX_POSITION_SIZE_PCT = 0.05  # 5% per position

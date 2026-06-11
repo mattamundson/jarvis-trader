@@ -239,8 +239,8 @@
         "Full test_safety_layer.py green locally"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Verified pre-existing via stash test 2026-06-11. Do NOT touch safety_layer.py itself."
+      "passes": true,
+      "notes": "Fixed 2026-06-11. Root cause: conftest mock_settings = TradingConfig() reads LIVE engine/.env -> ALLOW_PAPER_SIMULATED_ORDERS=True leaked in -> sim path short-circuits _check_gating_conditions to approved -> 3 live-gate tests flip. Pinned False in conftest (sim tests opt in explicitly). 333/333 across all affected families. safety_layer.py untouched."
     }
   ]
 }
