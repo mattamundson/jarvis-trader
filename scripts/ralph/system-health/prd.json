@@ -29,8 +29,8 @@
         "ruff clean, [safety-review] tag"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Fixed 2026-06-11. Both route through self._llm.call; fail-safe semantics kept (risk: approve+0.8 score; fund: qty<=1+human). 6 new tests in test_b2_llm_transport.py."
     },
     {
       "id": "B3",
@@ -228,6 +228,19 @@
       "priority": 17,
       "passes": false,
       "notes": "Jarvis-PM2RestartWatch-15min had LastResult 0x2 - may need its own fix first."
+    },
+    {
+      "id": "B8",
+      "title": "Safety-layer test suite env leakage (3 pre-existing failures)",
+      "description": "tests/test_safety_layer.py has 3 failures on a clean tree (TestLiveTrading::test_live_trading_disabled_blocks, TestMultipleRuleInteraction::test_first_failure_stops_subsequent_checks, TestSubmitPaperOrder::test_safety_check_rejected_propagates) - live engine/.env leaks into test config so LIVE_TRADING gating asserts flip. Known since PR #13 (~15 env-dependent fails). The SACRED suite must be green to be trustworthy.",
+      "acceptanceCriteria": [
+        "The 3 named tests pass on this machine with the live engine/.env present",
+        "Fix is test-isolation (monkeypatch/env override), NOT changes to safety_layer.py logic",
+        "Full test_safety_layer.py green locally"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Verified pre-existing via stash test 2026-06-11. Do NOT touch safety_layer.py itself."
     }
   ]
 }

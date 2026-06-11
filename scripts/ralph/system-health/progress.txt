@@ -27,3 +27,10 @@
   - Source-guard tests catch the URL in YOUR OWN comments - word comments carefully.
   - _apply_tool_inspection mocked via side_effect=lambda **kw: (kw["decision"], False).
 ---
+
+## 2026-06-11 ~00:20 - B2 (fund_manager + risk_manager fallback routing)
+- Same patch shape as B1 in both files; result var named result_llm (fund_manager already had a local result). 5 orphan imports autofixed.
+- New tests: engine/tests/test_b2_llm_transport.py (6: routing kwargs, fail-safe semantics, source guards).
+- DISCOVERY: 3 test_safety_layer.py failures are PRE-EXISTING env leakage (verified via stash+rerun on clean tree) -> filed as B8. 211/214 pass there regardless of my diff.
+- **Learnings:** before blaming your diff for a failing suite, stash and rerun - the 3 failures reproduced on clean tree in 0.9s.
+---
