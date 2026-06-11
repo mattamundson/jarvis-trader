@@ -9,6 +9,7 @@ Endpoints:
 """
 
 import logging
+import os
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Annotated, Optional
@@ -193,11 +194,20 @@ async def post_wfe_snapshot(
         if symbol:
             symbols = [symbol]
         else:
-            # Get first two symbols from watchlist (MCL + MNQ)
+            # Snapshot the full watchlist PLUS the autonomously traded symbols.
+            # Audit F-6 (2026-06-11): the old watchlist[:2] slice pinned this to
+            # MCL+MNQ — both DO_NOT_TRADE — so the WFE monitor was vacuously
+            # green while the actively traded symbols (MES, MGC) went untracked.
             watchlist = settings.FUTURES_WATCHLIST
             if isinstance(watchlist, str):
                 watchlist = [s.strip() for s in watchlist.split(",")]
-            symbols = watchlist[:2] if len(watchlist) >= 2 else watchlist
+            active = os.environ.get("AUTONOMOUS_ACTIVE_SYMBOLS", "")
+            active_symbols = [s.strip().upper() for s in active.split(",") if s.strip()]
+            seen: set[str] = set()
+            symbols = [
+                s for s in list(watchlist) + active_symbols
+                if not (s in seen or seen.add(s))
+            ]
 
         week_start = _get_week_start()
         created_snapshots = []
