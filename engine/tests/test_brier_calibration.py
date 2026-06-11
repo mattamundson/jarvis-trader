@@ -357,3 +357,19 @@ def test_describe_reports_per_agent_brier(tmp_db):
     assert "weights" in snapshot
     assert "technical" in snapshot["briers"]
     assert snapshot["db_exists"] is True
+
+
+def test_writer_and_reader_share_db_path():
+    """Regression for the two-DBs bug class (2026-06-03: a stale repo-root
+    data/jarvis_trader.db silently diverged from engine/data). The
+    trade_outcomes writer (analytics/agent_feedback.py) and the rolling-Brier
+    reader (analytics/ic_ensemble.py) must resolve to the SAME file, or
+    /health brier_30d_rolling reads a database nobody writes."""
+    try:
+        from engine.analytics.agent_feedback import DB_PATH as writer_path
+        from engine.analytics.ic_ensemble import _DEFAULT_DB_PATH as reader_path
+    except ImportError:
+        from analytics.agent_feedback import DB_PATH as writer_path
+        from analytics.ic_ensemble import _DEFAULT_DB_PATH as reader_path
+
+    assert writer_path.resolve() == reader_path.resolve()
