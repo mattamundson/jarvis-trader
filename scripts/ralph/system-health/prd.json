@@ -69,8 +69,8 @@
         "Verified by running the script (current 403 IS the failure fixture) and seeing the failure line in finance-sync.log"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Script outside repo (~/scripts); record patch in progress.txt."
+      "passes": true,
+      "notes": "Fixed 2026-06-11. Invoke-SyncModule helper: EAP=Continue around python calls, judge by LASTEXITCODE, bounded 600-char error tail, top-level FATAL catch. Verified live: simplefin exit=1 line written (was silent). Original archived to ~/Archive/2026/finance-sync-script/. SimpleFIN re-auth itself stays Amo-gated."
     },
     {
       "id": "B6",

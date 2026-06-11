@@ -47,3 +47,9 @@
 - LIVE VERIFY (after restart with B1+B2+B3): MGC pipeline run completed end-to-end 61.1s errors=0; [Trader] decision action=buy conf=0.80 (vs "LLM decision failed" before); BUY qty=1 queued for human approval 005f9f51; RL gate logs honest "Disabled (ENABLE_RL_TRADING=False)"; flags API 200 with 9 flags.
 - **Learnings:** managed_agent_bridge hardcodes /v1/messages despite the /v1/agents constant; if ever lit up it needs custom handling (no client equivalent for managed agents API).
 ---
+
+## 2026-06-11 ~01:10 - B5 (finance-sync silent logging)
+- ~/scripts/run-finance-sync.ps1: Invoke-SyncModule wraps python calls with EAP=Continue (stderr=data not terminating), judges by $LASTEXITCODE, logs bounded tail; top-level catch logs FATAL. Original archived (~/Archive/2026/finance-sync-script/).
+- Verified under powershell.exe (PS 5.1, as the task runs): exit=1 + "simplefin exit=1" log line written. Before: failures left zero log lines.
+- **Learnings:** ~/scripts is outside the repo - archive originals before editing; keep .ps1 pure ASCII for PS 5.1.
+---
