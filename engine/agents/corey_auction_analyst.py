@@ -138,7 +138,11 @@ class CoreyAuctionAnalystAgent:
         self._db_path = db_path
 
         from discord.commentary_processor import CoreyCommentaryProcessor
-        self._processor = CoreyCommentaryProcessor(db_path=db_path, api_key=api_key)
+        # Pass the engine LLM client through so bias extraction inherits the
+        # provider-fallback chain (B4, 2026-06-11).
+        self._processor = CoreyCommentaryProcessor(
+            db_path=db_path, api_key=api_key, llm_client=llm_client
+        )
 
     async def analyze(
         self,

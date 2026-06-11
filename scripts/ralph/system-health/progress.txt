@@ -40,3 +40,10 @@
 - tests/test_feature_flags_cold_db.py: 4 tests on a REAL cold sqlite file (existing suite uses _MockDB which falls through unknown SQL - harmless).
 - **Learnings:** registry.py is CRLF - patchers must detect line endings (src contains \r\n -> convert old/new strings). trader.py was LF. Check before exact-match replace.
 ---
+
+## 2026-06-11 ~00:55 - B4 (remaining direct-Anthropic agents) + B1/B3 LIVE VERIFY
+- Audit (Explore agent): bull/bear ALREADY client-routed (2026-06-02 migration); news/social have conditional self._llm.call routing (else-branch dead in prod since boot validates .call); tail_risk_researcher + managed_agent_bridge are DARK by default (TAIL_RISK_RESEARCHER_ENABLED / USE_MANAGED_AGENTS env-gated off) -> documented + deferred; commentary_processor was the only LIVE direct POST.
+- commentary_processor: optional llm_client param; routes via .call(agent_name="corey_commentary") when injected; direct POST kept ONLY for standalone contexts (cli.py, mcp_server.py, briefing.py construct without client). corey_auction_analyst passes engine client down.
+- LIVE VERIFY (after restart with B1+B2+B3): MGC pipeline run completed end-to-end 61.1s errors=0; [Trader] decision action=buy conf=0.80 (vs "LLM decision failed" before); BUY qty=1 queued for human approval 005f9f51; RL gate logs honest "Disabled (ENABLE_RL_TRADING=False)"; flags API 200 with 9 flags.
+- **Learnings:** managed_agent_bridge hardcodes /v1/messages despite the /v1/agents constant; if ever lit up it needs custom handling (no client equivalent for managed agents API).
+---
