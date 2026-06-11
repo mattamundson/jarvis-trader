@@ -6,7 +6,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, WebSocket
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def inject_dependencies(wsm):
 
 
 @router.websocket("/ws/events")
-async def websocket_endpoint(websocket):
+async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for real-time trading events.
 
