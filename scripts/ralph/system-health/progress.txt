@@ -155,3 +155,15 @@
   - Brier numbers arrive automatically once B1's trader fix produces closed paper
     trades (writer: analytics/agent_feedback.py on trade close).
 ---
+
+## 2026-06-11 - I7
+- analytics package converted to PEP 562 lazy exports; stdlib-only consumers survive
+  a pandas/native-DLL block (the SAC failure mode).
+- **Learnings for future iterations:**
+  - Test lazy-import contracts with FRESH-INTERPRETER subprocesses (sys.modules
+    assertions are meaningless in the warm pytest process).
+  - Simulate a blocked native package with a sys.meta_path finder that RAISES
+    ImportError in find_spec for the target name -- cleaner than uninstalling.
+  - Check for attribute-style submodule consumers (pkg.submodule.X) before going
+    lazy; here all consumers import submodules directly, so zero risk.
+---
