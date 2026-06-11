@@ -161,8 +161,8 @@
         "Allowlist prevents touching legit processes - tested"
       ],
       "priority": 12,
-      "passes": false,
-      "notes": "Sweep changes need PROPOSING_DESTRUCTIVE_OP + dry-run mode."
+      "passes": true,
+      "notes": "Classified all 31 python procs with parent-liveness evidence: 16 = live claude-session MCP pairs (venv-launcher shim -> real interpreter child), rest = services (sentinel/uvicorn/hermes/port_guardian/ollama-router parent-child shim pairs). Zero current MCP orphans. Extended ~/scripts/sweep-orphan-claude-procs.ps1 (hourly -Apply task Jarvis-OrphanProcSweep) with an opt-in python stray rule: cmdline must match engine discord mcp_server.py/personal_mcp_server.py, never-kill guard (uvicorn/port_guardian/sentinel/hermes_cli/ollama/main.py/pipeline/backtest), TCP-LISTEN holders skipped, dead-parent/PID-recycle + age rules unchanged. Original archived to ~/Archive/2026/orphan-sweep-script/. Tested: synthetic orphan flagged, live MCP/services untouched, PS5.1 parse OK, steady-state dry-run 0 python victims. Known cascade: venv-shim child reaped one pass after the shim (acceptable)."
     },
     {
       "id": "I6",
