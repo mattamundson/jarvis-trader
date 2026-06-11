@@ -94,7 +94,7 @@ export function StreakTrackerWidget() {
         </div>
       )}
 
-      {!isLoading && !error && data && (
+      {!isLoading && !error && data != null && data.current_streak != null && (
         <div className="space-y-4">
           {/* Current streak + max stats */}
           <div className="grid grid-cols-3 gap-3">
@@ -129,26 +129,26 @@ export function StreakTrackerWidget() {
           </div>
 
           {/* Streak history */}
-          {data.streak_history.length > 0 && (
+          {(data.streak_history ?? []).length > 0 && (
             <div>
               <span
                 className="font-mono text-[9px] uppercase tracking-widest block mb-2"
                 style={{ color: "#444" }}
               >
-                Recent Streak History (last {data.streak_history.length})
+                Recent Streak History (last {(data.streak_history ?? []).length})
               </span>
               <div
                 className="rounded-lg overflow-hidden"
                 style={{ border: "1px solid #1a1a2e" }}
               >
-                {[...data.streak_history].reverse().map((s, i) => (
+                {[...(data.streak_history ?? [])].reverse().map((s, i) => (
                   <StreakHistoryRow key={i} streak={s} index={i} />
                 ))}
               </div>
             </div>
           )}
 
-          {data.streak_history.length === 0 && (
+          {(data.streak_history ?? []).length === 0 && (
             <div
               className="font-mono text-[11px] text-center py-4"
               style={{ color: "#555" }}

@@ -43,8 +43,8 @@ const REFRESH_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmt(v: number, decimals = 2): string {
-  return v.toFixed(decimals);
+function fmt(v: number | null | undefined, decimals = 2): string {
+  return v != null ? v.toFixed(decimals) : "—";
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -120,38 +120,39 @@ export function BacktestComparisonCard() {
     badgeLabel: string;
   }
 
-  const metricRows: MetricRowDef[] = data
-    ? [
-        {
-          label: "Profit Factor",
-          paperValue: fmt(paper!.profit_factor),
-          targetValue: `≥ ${fmt(thresholds!.min_profit_factor)}`,
-          badgeVariant: pfPass ? "bull" : "bear",
-          badgeLabel: pfPass ? "PASS" : "FAIL",
-        },
-        {
-          label: "Sharpe Ratio",
-          paperValue: fmt(paper!.sharpe_ratio),
-          targetValue: `≥ ${fmt(thresholds!.min_sharpe)}`,
-          badgeVariant: sharpePass ? "bull" : "bear",
-          badgeLabel: sharpePass ? "PASS" : "FAIL",
-        },
-        {
-          label: "Win Rate %",
-          paperValue: `${fmt(paper!.win_rate, 1)}%`,
-          targetValue: `≥ ${fmt(thresholds!.min_win_rate, 1)}%`,
-          badgeVariant: winRatePass ? "bull" : "bear",
-          badgeLabel: winRatePass ? "PASS" : "FAIL",
-        },
-        {
-          label: "Total Trades",
-          paperValue: String(paper!.total_trades),
-          targetValue: `≥ ${thresholds!.min_trades}`,
-          badgeVariant: tradesPass ? "bull" : "warn",
-          badgeLabel: tradesPass ? "PASS" : "IN PROGRESS",
-        },
-      ]
-    : [];
+  const metricRows: MetricRowDef[] =
+    paper != null && thresholds != null
+      ? [
+          {
+            label: "Profit Factor",
+            paperValue: fmt(paper.profit_factor),
+            targetValue: `≥ ${fmt(thresholds.min_profit_factor)}`,
+            badgeVariant: pfPass ? "bull" : "bear",
+            badgeLabel: pfPass ? "PASS" : "FAIL",
+          },
+          {
+            label: "Sharpe Ratio",
+            paperValue: fmt(paper.sharpe_ratio),
+            targetValue: `≥ ${fmt(thresholds.min_sharpe)}`,
+            badgeVariant: sharpePass ? "bull" : "bear",
+            badgeLabel: sharpePass ? "PASS" : "FAIL",
+          },
+          {
+            label: "Win Rate %",
+            paperValue: `${fmt(paper.win_rate, 1)}%`,
+            targetValue: `≥ ${fmt(thresholds.min_win_rate, 1)}%`,
+            badgeVariant: winRatePass ? "bull" : "bear",
+            badgeLabel: winRatePass ? "PASS" : "FAIL",
+          },
+          {
+            label: "Total Trades",
+            paperValue: String(paper.total_trades ?? "—"),
+            targetValue: `≥ ${thresholds.min_trades ?? "—"}`,
+            badgeVariant: tradesPass ? "bull" : "warn",
+            badgeLabel: tradesPass ? "PASS" : "IN PROGRESS",
+          },
+        ]
+      : [];
 
   const degradationPct = data
     ? (data.degradation_factor * 100).toFixed(1)

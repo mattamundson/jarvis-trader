@@ -39,7 +39,12 @@ function relativeTime(isoString: string): string {
   return `${diffDay}d ago`;
 }
 
-function convictionBar(score: number): JSX.Element {
+function convictionBar(score: number | null | undefined): JSX.Element {
+  if (score == null) {
+    return (
+      <span className="font-mono text-[10px] text-zinc-500 min-w-[72px]">—</span>
+    );
+  }
   const pct = Math.min(100, Math.max(0, (score / 10) * 100));
   const color =
     score >= 7
