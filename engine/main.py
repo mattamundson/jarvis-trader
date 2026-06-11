@@ -516,6 +516,16 @@ async def lifespan(app: FastAPI):
 
         logger.info("✨ Heavy background initialization FINISHED")
 
+        # I3: post-init invariant self-check -- one structured block per boot.
+        # Re-asserts live state (flags table, RL gate, fidelity collector,
+        # DO_NOT_TRADE, mode, LLM chain) so silent degradation is loud.
+        try:
+            from startup_checks import log_post_init_selfcheck
+
+            log_post_init_selfcheck(settings)
+        except Exception as _selfcheck_err:
+            logger.warning("Post-init self-check failed (non-fatal): %s", _selfcheck_err)
+
     logger.info(
         f"   Live trading: {'ENABLED ⚠️' if settings.LIVE_TRADING_ENABLED else 'DISABLED (paper mode)'}"
     )
