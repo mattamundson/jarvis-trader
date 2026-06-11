@@ -200,8 +200,8 @@
         "Runs in normal pytest suite"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Commit fee0239. tests/test_no_direct_anthropic_posts.py: 4 invariants (unallowlisted URL literals fail; allowlist hygiene; guarded fallbacks keep hasattr(self._llm, 'call') guard; decision agents trader/risk/fund may not mention the host at all). Allowlist: news_analyst + social_analyst + commentary_processor (guarded fallbacks), tail_risk_researcher + managed_agent_bridge (B4 dark paths), pipeline.py + hermes config_patcher (doc-only mentions). Detection proven live: first run caught the 2 doc-only files before allowlisting. AUDIT FINDING: news/social analysts were already client-first guarded -- no live bypass remained."
     },
     {
       "id": "I9",
