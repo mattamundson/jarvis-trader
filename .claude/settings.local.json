@@ -21,7 +21,8 @@
       "Bash(echo 'NO settings.json at C:/Users/mattm/ThinkorSwim/jarvis-trader/.claude/settings.json')",
       "Bash(cd \"C:/Users/mattm/ThinkorSwim/jarvis-trader/engine\")",
       "Bash(exit)",
-      "Bash(grep -n \"async def _call_google\" llm/client.py)"
+      "Bash(grep -n \"async def _call_google\" llm/client.py)",
+      "Bash(git push origin master)"
     ]
   },
   "enableAllProjectMcpServers": true,
