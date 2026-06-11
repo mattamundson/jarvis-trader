@@ -126,3 +126,20 @@
   - check-task-health.ps1 report format is stable ASCII; regex-parse the
     "--- ENABLED tasks" section only (disabled section is informational).
 ---
+
+## 2026-06-11 - I5
+- Python orphan hygiene shipped: classified 31 live python procs (16 = claude-session
+  MCP pairs, rest services); extended ~/scripts/sweep-orphan-claude-procs.ps1 with an
+  opt-in MCP-stray rule (hourly Jarvis-OrphanProcSweep task runs it with -Apply).
+- Original script archived: ~/Archive/2026/orphan-sweep-script/ (script is OUTSIDE the
+  repo -- no git history; archive is the rollback).
+- **Learnings for future iterations:**
+  - Windows venv python.exe is a LAUNCHER SHIM that spawns the base interpreter as a
+    child -- every venv process shows as a pair. Dead-parent sweeps reap the shim first,
+    the real interpreter one pass later (cascade is self-healing).
+  - Dead parent ALONE is NOT an orphan signal: pid 4092 amo-arbitrage uvicorn had a dead
+    parent but owns the :8000 LISTEN socket. Triple guard: opt-in patterns + never-kill
+    regex + skip TCP-LISTEN holders.
+  - Nested Start-Process quoting mangles args reliably -- spawn via a temp -File script.
+  - PS5.1 parse-validate with [Parser]::ParseFile via -File (inline -Command strips $).
+---
