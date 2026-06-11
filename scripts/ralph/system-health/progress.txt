@@ -204,3 +204,27 @@
   - Monitors must exit 0 when they successfully deliver a finding (exit codes are
     for infra errors only) or the task-health rollup flags the monitor itself.
 ---
+
+## 2026-06-11 01:40 - POST-LOOP: scanner duplicate-entry fix (359539e)
+- Final verification surfaced a live defect OUTSIDE the 18 stories: the
+  paper_mode_bypass in scanner/signal_scanner.py had no open-position
+  check, so the hourly scan re-entered the persisting trend signal every
+  cycle (MES+MGC duplicated at 00:04 and 01:04, identical entry prices,
+  conf=0.00). Duplicates leak past paper_runner's symbol-keyed dict as
+  zombie-open rows -> fidelity/Brier contamination (B6/B8 class).
+- Fix: dedup guard before add_paper_trade (get_open_positions() filtered
+  by symbol; skip with executed=False reason=paper_position_already_open;
+  pending approval still created). 5 new tests in
+  tests/test_scanner_position_dedup.py; sacred safety 192/192 green.
+- **Learnings for future iterations:**
+  - "All stories pass" is not the same as "system verified" - the final
+    end-to-end sweep (live DB vs logs vs IB) is what caught this.
+  - Engine hourly scans anchor to process start time, so a duplicate-pair
+    cadence that tracks the pm2 restart timestamp fingerprints the scanner
+    (not the runner) as the writer.
+  - restart_engine.ps1 is per-op Amo-gated even inside an autonomous loop;
+    fixes land in code immediately but activation waits for the restart.
+  - OPEN: 2 duplicate rows (c4f1d10b MES, 12885bb0 MGC @ 01:04) need an
+    Amo cleanup decision; conf=0.00-executes (no confidence floor in the
+    bypass) is a separate design question.
+---
