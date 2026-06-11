@@ -87,6 +87,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Intelligence",
     items: [
       { label: "Command Center", href: "/command-center", icon: <Cpu className="h-3.5 w-3.5" /> },
+      { label: "Strategy C+ Center", href: "/strategy-c-command", icon: <Activity className="h-3.5 w-3.5" /> },
       { label: "Strategies", href: "/strategies", icon: <LineChart className="h-3.5 w-3.5" /> },
       { label: "Learning", href: "/learning", icon: <Rss className="h-3.5 w-3.5" /> },
       { label: "Discord", href: "/discord", icon: <MessageSquare className="h-3.5 w-3.5" /> },
