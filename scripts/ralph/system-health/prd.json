@@ -1,0 +1,233 @@
+{
+  "project": "System Health: Fix Everything Broken + Top 10 Improvements",
+  "branchName": "master",
+  "description": "Full-system audit findings (2026-06-10). Phase 1: fix all broken items (B-stories). Phase 2: implement top-10 improvements (I-stories). Amo-gated items excluded: Anthropic credit top-up, SimpleFIN re-auth, Discord user token, GCP Marketplace enable.",
+  "userStories": [
+    {
+      "id": "B1",
+      "title": "Trader decision LLM call bypasses fallback chain (CRITICAL)",
+      "description": "engine/agents/trader.py:725-745 makes a raw httpx POST to api.anthropic.com, bypassing JarvisLLMClient Vertex->Gemini->OpenAI fallback. With Anthropic credits exhausted, EVERY trade decision fails 400 -> forced HOLD.",
+      "acceptanceCriteria": [
+        "Trader routes its decision call through self._llm.call() (JarvisLLMClient) with agent_name='trader'",
+        "Failure path still returns fail-safe HOLD (existing except preserved)",
+        "Existing trader tests pass; new test proves decision succeeds when anthropic raises credit-exhaustion and fallback returns content",
+        "ruff clean",
+        "Commit tagged [safety-review]"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Fixed 2026-06-10. trader.py:725 now self._llm.call(agent_name=trader). 85/85 trader tests. Source-guard test added."
+    },
+    {
+      "id": "B2",
+      "title": "fund_manager + risk_manager direct Anthropic POSTs bypass fallback",
+      "description": "engine/agents/fund_manager.py:236 and engine/agents/risk_manager.py:422 POST api.anthropic.com directly. Pipeline stages 4-5; same failure mode as B1.",
+      "acceptanceCriteria": [
+        "Both agents route through JarvisLLMClient.call() with proper agent_name",
+        "Fail-safe behavior on total LLM failure preserved",
+        "Existing tests pass + regression test for fallback routing",
+        "ruff clean, [safety-review] tag"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "B3",
+      "title": "feature_flags table missing - flags registry broken at runtime",
+      "description": "Engine logs 'no such table: feature_flags' at startup. engine/flags/registry.py reads a table nothing creates. RL gate fails safe, but runtime flag toggling is broken.",
+      "acceptanceCriteria": [
+        "Registry ensures its table exists on first access",
+        "Engine startup no longer logs the no-such-table warning",
+        "RL gate evaluates the flag cleanly (still default-off)",
+        "test_feature_flags suite passes + cold-DB test"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "B4",
+      "title": "Audit remaining direct-Anthropic agents; route live paths through client",
+      "description": "news_analyst.py:324, social_analyst.py:610, tail_risk_researcher.py:116, commentary_processor.py:312, managed_agent_bridge.py:310, bull/bear researchers reference direct POSTs. Route live pipeline paths through JarvisLLMClient; document intentional exceptions.",
+      "acceptanceCriteria": [
+        "Each direct POST either routed through client or documented in-code why direct",
+        "Graceful-fallback semantics kept",
+        "Tests pass, ruff clean"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "bull/bear comments at line 113 may indicate already-fixed; verify."
+    },
+    {
+      "id": "B5",
+      "title": "finance-sync failures are silent in its own log",
+      "description": "~/scripts/run-finance-sync.ps1: under ErrorActionPreference=Stop, 2>&1 capture of failing python raises NativeCommandError BEFORE Write-Log - failed runs leave no log line. SimpleFIN 403 itself is Amo-gated, but failures must be loudly logged.",
+      "acceptanceCriteria": [
+        "Failing sync writes a log line with exit code + redacted error",
+        "Successful sync logging unchanged",
+        "Verified by running the script (current 403 IS the failure fixture) and seeing the failure line in finance-sync.log"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Script outside repo (~/scripts); record patch in progress.txt."
+    },
+    {
+      "id": "B6",
+      "title": "Quarantine RL-contaminated MES fidelity data (6/4-6/10)",
+      "description": "The ungated RL executor ran uncoordinated MES orders 2026-06-04 -> 06-10, contaminating execution-fidelity data. Mark/exclude that window so fidelity + calibration metrics do not train on poisoned samples.",
+      "acceptanceCriteria": [
+        "Locate fidelity sample storage; add exclusion for MES samples in the window",
+        "Exclusion is data-driven, not deletion - archive never delete",
+        "Fidelity metrics reflect the exclusion",
+        "Test covers the exclusion filter"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Find storage first: execution fidelity collector."
+    },
+    {
+      "id": "B7",
+      "title": "Verify StrategyRD task healed post-SAC",
+      "description": "Jarvis-Trader-StrategyRD failed 0x1 on the SAC pandas DLL block. SAC off; import chain clean. Trigger once, confirm 0x0.",
+      "acceptanceCriteria": [
+        "Task triggered, completes, LastTaskResult=0x0",
+        "Log shows a real run (not early import death)"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Heavy backtest job - poll with patience."
+    },
+    {
+      "id": "I1",
+      "title": "LLM single-leg alarm in Discord digest",
+      "description": "primary_healthy=false ran silent for days. Add llm provider health to the daily Discord digest: active provider, primary health, fallback counts. WARN when single-leg.",
+      "acceptanceCriteria": [
+        "Digest payload includes llm provider block",
+        "WARNING log + digest flag when primary_healthy=false",
+        "Unit test with mocked health payload"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Follow digest_generator.py _calibration_integrity pattern (e567785)."
+    },
+    {
+      "id": "I2",
+      "title": "Fix /ws/events 403 - dashboard real-time instead of 5s polling",
+      "description": "Dashboard connects without the API key; server 403s; silent polling fallback. Accept the key on the WS upgrade and send it from dashboard lib.",
+      "acceptanceCriteria": [
+        "WS endpoint authenticates via query param using existing API key semantics",
+        "Dashboard sends the key; connection upgrades 101 (verified live)",
+        "Unauthenticated WS still rejected",
+        "Engine tests + pnpm build pass"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "I3",
+      "title": "Engine startup invariant self-check",
+      "description": "One INFO block after lifespan boot: flags table OK, RL gate state, fidelity collector active, DO_NOT_TRADE list, paper/live mode, provider health. Makes silent-degradation visible at every boot.",
+      "acceptanceCriteria": [
+        "Self-check runs at end of lifespan startup, logs structured block",
+        "Failed invariant logs WARNING with specific item",
+        "Test covers the check function"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "I4",
+      "title": "Scheduled-task health rollup to Discord",
+      "description": "FinanceSync failed silently for 4 days. Daily rollup listing any Jarvis-* task with nonzero LastTaskResult so failures always reach Amo.",
+      "acceptanceCriteria": [
+        "Rollup enumerates failing enabled tasks with hex codes",
+        "Delivered via existing digest/alert channel",
+        "Runs daily without elevation"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Check Jarvis-TaskHealth-Daily first - extend, do not duplicate."
+    },
+    {
+      "id": "I5",
+      "title": "Python orphan process hygiene",
+      "description": "35 python processes alive; history of 70+ orphans and rogue uvicorns squatting 8010. Classify current set, extend sweep rules for engine-venv strays.",
+      "acceptanceCriteria": [
+        "Current processes classified with evidence",
+        "Sweep covers the stray classes found",
+        "Allowlist prevents touching legit processes - tested"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Sweep changes need PROPOSING_DESTRUCTIVE_OP + dry-run mode."
+    },
+    {
+      "id": "I6",
+      "title": "Wire brier_30d_rolling in /health to real trade_outcomes",
+      "description": "/health returns brier_30d_rolling: null. trade_outcomes now writes. Wire the rolling Brier so calibration quality is observable.",
+      "acceptanceCriteria": [
+        "/health returns numeric brier_30d_rolling when scored outcomes exist",
+        "Computation windowed 30d, cheap",
+        "Unit test with seeded outcomes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "I7",
+      "title": "Decouple analytics package from eager pandas import",
+      "description": "engine/analytics/__init__.py eagerly imports gate_v2_calibrator which imports pandas at module load - the calibration alarm died on the SAC block because of this. Lazy-load so stdlib-only consumers never depend on native DLLs.",
+      "acceptanceCriteria": [
+        "import engine.analytics.outcome_hygiene works where pandas import would fail (simulated via test)",
+        "No behavior change for pandas-dependent consumers",
+        "Tests pass, ruff clean"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "I8",
+      "title": "Architecture regression test: no direct Anthropic POSTs",
+      "description": "Prevent B1/B2/B4 recurrence: test fails if engine/agents/** contains direct api.anthropic.com POSTs outside an allowlist.",
+      "acceptanceCriteria": [
+        "Test fails when a new direct POST is added to a non-allowlisted file",
+        "Allowlist documents intentional exceptions from B4",
+        "Runs in normal pytest suite"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "I9",
+      "title": "Gate-v2 verdict freshness monitor",
+      "description": "Stale verdicts mean trading on outdated edge estimates. Verdict age in daily digest; WARN when active symbol verdict older than 7 days.",
+      "acceptanceCriteria": [
+        "Digest reports per-symbol verdict age from engine/data/gate_v2_verdicts/*.json",
+        "WARN flag when age > 7d for an active symbol",
+        "Unit test with synthetic verdict files"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "I10",
+      "title": "pm2 crashloop alarm",
+      "description": "47x crash-loop went unnoticed. Alert via existing channel when jarvis-engine restart count climbs >3 in an hour.",
+      "acceptanceCriteria": [
+        "Watcher compares restart counts across runs and alerts on threshold",
+        "Alert verified by simulated counter delta",
+        "Installed task runs without elevation, battery-safe flags"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Jarvis-PM2RestartWatch-15min had LastResult 0x2 - may need its own fix first."
+    }
+  ]
+}

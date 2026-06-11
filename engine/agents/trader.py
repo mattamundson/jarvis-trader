@@ -11,13 +11,9 @@ critical decision point where all analysis converges into an actionable order.
 
 import json
 import logging
-import os
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
-
-import httpx
 
 from utils.llm_json import parse_llm_json
 from utils.position_sizing import (
@@ -723,41 +719,24 @@ class TraderAgent:
         )
 
         try:
-            api_key = getattr(self._llm, "api_key", None) or os.getenv("ANTHROPIC_API_KEY", "")
-            _t0 = time.time()
-
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": self.MODEL,
-                        "max_tokens": self.MAX_TOKENS,
-                        "system": system_prompt,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
-                payload = resp.json()
-
-            _latency_ms = int((time.time() - _t0) * 1000)
-
-            # Track cost via JarvisLLMClient if available
-            usage = payload.get("usage", {})
-            if hasattr(self._llm, "track_raw_call"):
-                await self._llm.track_raw_call(
-                    model=self.MODEL,
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
-                    latency_ms=_latency_ms,
-                    agent_name="trader",
+            # Route through JarvisLLMClient so the Vertex->Gemini->OpenAI
+            # fallback chain applies to the decision stage. A raw httpx POST
+            # straight at the Anthropic REST endpoint here meant every decision
+            # failed 400 while Anthropic credits were exhausted, even though
+            # client-routed analysts were falling back fine (2026-06-10).
+            result = await self._llm.call(
+                model=self.MODEL,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self.MAX_TOKENS,
+                agent_name="trader",
+            )
+            if not getattr(result, "success", False):
+                raise RuntimeError(
+                    f"trader LLM call failed: {getattr(result, 'error', 'unknown')}"
                 )
 
-            response_text = payload["content"][0]["text"].strip()
+            response_text = (result.content or "").strip()
 
             # Tolerant extraction (fences, prose, trailing commas) — see
             # utils.llm_json (2026-06-04 synthesis-failure wave).

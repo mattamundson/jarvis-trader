@@ -1,0 +1,29 @@
+# Ralph Progress - System Health Loop (started 2026-06-10)
+
+## Codebase Patterns
+- LLM calls MUST route through JarvisLLMClient.call() (engine/llm/client.py) - it owns the Vertex->Gemini->OpenAI fallback chain. Direct httpx POSTs to api.anthropic.com bypass it (B1/B2/B4 root cause).
+- Credit-exhaustion detection: _is_credit_exhaustion() llm/client.py:151; fallback chain at :992-1130.
+- Engine venv: engine/.venv/Scripts/python.exe. pytest from repo root with engine. namespace.
+- Worktree guard caches at session start: author files via PowerShell Set-Content (bgIsolation:none is set in both settings files).
+- Pathspec commits ALWAYS (peer sessions): git commit -m "msg" -- path1 path2; new files: git add <paths> && git commit -- <paths>.
+- [safety-review] tag required: engine/config.py, engine/risk/, kill_switch, trader.py sizing/decision paths.
+- Verify engine after restart: /health status=ok AND tradingview_mcp_healthy AND llm_path_healthy (rules/verification.md).
+- Amo-gated (do NOT attempt): Anthropic credits, SimpleFIN re-auth, Discord user token, GCP Marketplace, push needs allowlisted command only.
+
+## Audit evidence (2026-06-10 23:44)
+- Trader/MGC+MES decisions failing: agents.trader "LLM decision failed" - raw httpx 400 from api.anthropic.com (trader.py:729).
+- google_fallback_count=4 proves client-routed agents fall back fine.
+- feature_flags: "no such table" warning at boot; registry at engine/flags/registry.py.
+- finance-sync log silent since 6/6 while task failed daily (NativeCommandError pre-empts Write-Log).
+- 35 python processes; port 8010 single LISTEN owner (clean).
+- Disk C: 226GB free. Tasks otherwise 0x0 after SAC heal.
+---
+
+## 2026-06-11 ~00:05 - B1 (CRITICAL trader fallback)
+- Replaced raw httpx POST (trader.py:725-760) with self._llm.call(model, system, messages, max_tokens, agent_name="trader"); fail-safe HOLD kept (success=False -> RuntimeError -> except -> _hold_decision).
+- Removed orphaned imports (os, time, httpx). Updated 3 tests that patched agents.trader.httpx.AsyncClient -> now mock trader._llm.call. Added TestDecideLLMTransport: routing assert (agent_name/model kwargs), success=False -> HOLD, source guard (no api.anthropic.com literal in trader.py - including comments!).
+- **Learnings:**
+  - trader fixture llm is MagicMock; set trader._llm.call = AsyncMock(...) directly, no patch() needed.
+  - Source-guard tests catch the URL in YOUR OWN comments - word comments carefully.
+  - _apply_tool_inspection mocked via side_effect=lambda **kw: (kw["decision"], False).
+---
