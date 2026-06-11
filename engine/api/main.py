@@ -27,15 +27,14 @@ app.add_middleware(
 )
 
 # ─────────────────────────────────────────────
-# Paths
+# Paths — repo-relative (this file lives at engine/api/main.py)
 # ─────────────────────────────────────────────
-SIGNAL_PATH = (
-    "/home/user/workspace/jarvis-trader/jarvis-trader/engine/strategy_c/"
-    "output/strategy_c_plus_live_signal.json"
+_ENGINE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SIGNAL_PATH = os.path.join(
+    _ENGINE_DIR, "strategy_c", "output", "strategy_c_plus_live_signal.json"
 )
-EXEC_LOG_PATH = (
-    "/home/user/workspace/jarvis-trader/jarvis-trader/engine/strategy_c/"
-    "output/execution_log.json"
+EXEC_LOG_PATH = os.path.join(
+    _ENGINE_DIR, "strategy_c", "output", "execution_log.json"
 )
 
 # ─────────────────────────────────────────────
