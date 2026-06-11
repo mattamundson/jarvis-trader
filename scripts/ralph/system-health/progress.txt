@@ -65,3 +65,7 @@
 - 333/333 green: safety_layer, sim-gating, risk_safety x3, phase3_edge_mode, pending_approvals, order_ref_tagging, fill_reconciliation, risk_coverage.
 - **Learnings:** TradingConfig() in fixtures = live .env leakage; pin every behavior-gating flag the fixture relies on. The "env-dependent failures" bucket from PR #13 traces to exactly this class.
 ---
+
+## 2026-06-11 ~01:45 - B7 (StrategyRD heal verify) - PHASE 1 COMPLETE (8/8)
+- StrategyRD 0x0 with real 15.7KB run log (gate evals present). All B-stories pass.
+---
