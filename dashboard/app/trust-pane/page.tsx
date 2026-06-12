@@ -49,6 +49,17 @@ interface BrokersPositionsResponse {
   reconciliation?: { health?: string; discrepancies?: { symbol: string; detail: string }[] };
 }
 
+// ── Bar-quality gate observability (/analytics/bar-quality) ───────────────────
+interface BarQualityResponse {
+  window_hours: number;
+  total_rejections: number;
+  by_reason: { reason: string; count: number }[];
+  by_symbol: { symbol: string; count: number }[];
+  by_path: { sanity: number; gate: number };
+  recent: { ts_utc: string; symbol: string; source: string; path: string; reason: string; detail: string; count: number }[];
+  gate_active: boolean;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function money(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -131,6 +142,9 @@ export default function TrustPanePage() {
   );
   const pnl = useSWR<DailyAttributionResponse>("attr-daily", () => fetchDailyAttribution(), { refreshInterval: 30_000 });
   const trades = useSWR<TradeJournalEntry[]>("trades-journal", () => fetchTradeJournal(undefined, undefined, 12), { refreshInterval: 30_000 });
+  const barQuality = useSWR<BarQualityResponse>(
+    "/analytics/bar-quality?hours=168", (p: string) => fetchEngine<BarQualityResponse>(p), { refreshInterval: 60_000 },
+  );
   const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: 30_000 });
 
   const [secondsSince, setSecondsSince] = useState(0);
@@ -142,8 +156,8 @@ export default function TrustPanePage() {
   }, [lastUpdated]);
 
   const refreshAll = useCallback(() => {
-    health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate(); amo.mutate();
-  }, [health, positions, pnl, trades, amo]);
+    health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate(); barQuality.mutate(); amo.mutate();
+  }, [health, positions, pnl, trades, barQuality, amo]);
 
   // ── jarvis derived ──
   const h = health.data;
@@ -151,6 +165,8 @@ export default function TrustPanePage() {
   const dataLegDown = h?.ibkr_data_connected === false;
   const openPaper = positions.data?.paper?.positions ?? [];
   const suspectCount = openPaper.filter((p) => suspectPrice(p.symbol, p.entry_price)).length;
+  const bq = barQuality.data;
+  const bqTotal = bq?.total_rejections ?? 0;
 
   // ── amo derived ──
   const a = amo.data;
@@ -275,6 +291,41 @@ export default function TrustPanePage() {
               )}
               {positions.data?.reconciliation?.health && (
                 <p className="text-[11px] text-muted-foreground mt-2">Reconciliation: {positions.data.reconciliation.health}</p>
+              )}
+            </Card>
+
+            {/* 5. Data-quality gate — proves the write-time bar gate is working */}
+            <Card>
+              <PanelHeader title="Data-Quality Gate · 7d" provenance="live" />
+              {barQuality.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /analytics/bar-quality.</p>
+              ) : bqTotal === 0 ? (
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-bull mt-0.5 shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    <span className="text-bull font-medium">Gate active · data clean.</span> 0 contaminated bars
+                    rejected in the last 7 days — the healthy steady state. The write-time gate screens every
+                    persisted bar (IB sentinel ticks, price-band breaks, &gt;50% neighbour jumps).
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Stat label="Rejected (7d)" value={String(bqTotal)} tone="bear" />
+                    <Stat label="Sanity / Gate" value={`${bq?.by_path.sanity ?? 0} / ${bq?.by_path.gate ?? 0}`} />
+                    <Stat label="Top reason" value={bq?.by_reason[0]?.reason ?? "—"} tone="muted" />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {bq?.by_reason.slice(0, 5).map((r) => (
+                      <Badge key={r.reason} variant="warn">{r.reason} ×{r.count}</Badge>
+                    ))}
+                  </div>
+                  {(bq?.by_symbol.length ?? 0) > 0 && (
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      By symbol: {bq!.by_symbol.map((s) => `${s.symbol} (${s.count})`).join(" · ")}
+                    </p>
+                  )}
+                </>
               )}
             </Card>
 
