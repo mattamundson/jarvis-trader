@@ -251,20 +251,24 @@ function RollingSharpeSpark({ data }: { data: RollingSharpPoint[] }) {
   const showZero = minV < 0 && maxV > 0;
 
   // Polyline
-  const points = data.map((d, i) => `${xPos(i).toFixed(1)},${yPos(d.value).toFixed(1)}`).join(" ");
+  const safeY = (v: number): number => {
+    const y = yPos(Number.isFinite(v) ? v : minV);
+    return Number.isFinite(y) ? y : H - PAD.bottom;
+  };
+  const points = data.map((d, i) => `${xPos(i).toFixed(1)},${safeY(d.value).toFixed(1)}`).join(" ");
 
   // Fill path (closed polygon for gradient effect)
   const firstX = xPos(0).toFixed(1);
   const lastX = xPos(data.length - 1).toFixed(1);
   const baseY = (H - PAD.bottom).toFixed(1);
   const fillPath = `M${firstX},${baseY} ` +
-    data.map((d, i) => `L${xPos(i).toFixed(1)},${yPos(d.value).toFixed(1)}`).join(" ") +
+    data.map((d, i) => `L${xPos(i).toFixed(1)},${safeY(d.value).toFixed(1)}`).join(" ") +
     ` L${lastX},${baseY} Z`;
 
   // Tooltip state — simplified: just show last value as a label
   const lastPoint = data[data.length - 1];
   const lastX2 = xPos(data.length - 1);
-  const lastY2 = yPos(lastPoint.value);
+  const lastY2 = safeY(lastPoint.value);
   const lastColor = lastPoint.value >= 0 ? "#34d399" : "#f87171";
 
   return (
@@ -320,7 +324,7 @@ function RollingSharpeSpark({ data }: { data: RollingSharpPoint[] }) {
           fill="#52525b"
           fontFamily="monospace"
         >
-          {data[0].date.slice(5)}
+          {(data[0]?.date ?? "").slice(5)}
         </text>
         <text
           x={W - PAD.right}
@@ -330,7 +334,7 @@ function RollingSharpeSpark({ data }: { data: RollingSharpPoint[] }) {
           fontFamily="monospace"
           textAnchor="end"
         >
-          {lastPoint.date.slice(5)}
+          {(lastPoint?.date ?? "").slice(5)}
         </text>
       </svg>
 

@@ -492,45 +492,117 @@ class SignalScanner:
                         _scanner_analyst_signals = build_analyst_signals_map(
                             result.get("analyst_reports")
                         )
-                        trade_id_inner = self._paper_tracker.add_paper_trade(
-                            symbol=symbol,
-                            side=final_action,
-                            quantity=float(quantity) if quantity else 1.0,
-                            entry_price=float(entry_price),
-                            stop_loss=float(stop_price),
-                            take_profit=float(target_price) if target_price else None,
-                            strategy_params={
-                                "source": "scanner",
-                                "approval_id": approval_id,
-                                "conviction": round(float(conviction), 4),
-                                "direction": final_action.upper(),
-                                "summary": result.get("summary", ""),
-                                "regime": technical_report.get("regime") or "unknown",
-                                "bias": technical_report.get("trend")
-                                or technical_report.get("bias")
-                                or "unknown",
-                                "entry_stc_value": (
-                                    round(float(stc_val), 2) if stc_val is not None else None
-                                ),
-                                "pipeline_conviction": round(float(conviction), 4),
-                                "predicted_direction": final_action.upper(),
-                                "rv_at_entry": (
-                                    round(float(rv_at_entry), 4)
-                                    if rv_at_entry is not None
-                                    else None
-                                ),
-                                "analyst_signals": _scanner_analyst_signals,
-                            },
-                        )
-                        logger.info(
-                            "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
-                            "executed=True reason=paper_mode_bypass trade_id=%s",
-                            symbol,
-                            final_action,
-                            _confidence,
-                            0.0,
-                            trade_id_inner[:8],
-                        )
+                        # Entry-price sanity gate (2026-06-12 phantom-price
+                        # incident: an MES auto-paper trade was logged at
+                        # entry_price=100.5 — an STC oscillator value, 0-100,
+                        # had leaked into the price field). The human-approval
+                        # path validates entry prices via check_entry_price_sanity
+                        # (approval/service.py), but this scanner auto-paper
+                        # bypass wrote unchecked. Validate against the SAME
+                        # technical-report indicators the decision used
+                        # (current_price + ATR) with the pure predicate — no
+                        # extra I/O and no data_manager dependency. A definitive
+                        # insane verdict BLOCKS the write; an unexpected error in
+                        # the check itself fails open (mirrors the approval path)
+                        # but logs loudly. Disable via ENABLE_ENTRY_PRICE_SANITY=0.
+                        _entry_sane = True
+                        try:
+                            try:
+                                from engine.risk.entry_price_sanity import (
+                                    is_entry_price_sane,
+                                    is_entry_price_sanity_enabled,
+                                )
+                            except ImportError:  # pragma: no cover
+                                from risk.entry_price_sanity import (
+                                    is_entry_price_sane,
+                                    is_entry_price_sanity_enabled,
+                                )
+                            _mkt_ref = _indicators.get("current_price")
+                            _atr_ref = _indicators.get("atr")
+                            if not is_entry_price_sanity_enabled():
+                                pass
+                            elif _mkt_ref is None or _atr_ref is None:
+                                # No reference to validate against. Fail OPEN
+                                # (don't silently halt all auto-paper trades when
+                                # an indicator is momentarily absent) but log so
+                                # the unvalidated write is visible. In production
+                                # current_price + atr are always populated, so the
+                                # phantom-price case still gets validated below.
+                                logger.warning(
+                                    "[ENTRY_PRICE_SANITY] no market/atr reference for %s "
+                                    "(current_price=%r atr=%r) — entry %s written "
+                                    "UNVALIDATED",
+                                    symbol,
+                                    _mkt_ref,
+                                    _atr_ref,
+                                    entry_price,
+                                )
+                            else:
+                                _entry_sane, _sane_reason = is_entry_price_sane(
+                                    symbol=symbol,
+                                    entry_price=float(entry_price),
+                                    market_price=_mkt_ref,
+                                    atr=_atr_ref,
+                                )
+                                if not _entry_sane:
+                                    logger.critical(
+                                        "[SAFETY] paper_mode_bypass BLOCKED for %s %s — "
+                                        "entry-price sanity failed: %s",
+                                        symbol,
+                                        final_action,
+                                        _sane_reason,
+                                    )
+                        except Exception as _sane_exc:  # pragma: no cover
+                            # Unexpected error in the check must not crash the
+                            # scan loop; fail open so a check-machinery bug can't
+                            # silently halt all auto-paper trades — but log it.
+                            logger.error(
+                                "[ENTRY_PRICE_SANITY] scanner check errored for %s: %s "
+                                "— allowing write",
+                                symbol,
+                                _sane_exc,
+                            )
+                            _entry_sane = True
+                        if _entry_sane:
+                            trade_id_inner = self._paper_tracker.add_paper_trade(
+                                symbol=symbol,
+                                side=final_action,
+                                quantity=float(quantity) if quantity else 1.0,
+                                entry_price=float(entry_price),
+                                stop_loss=float(stop_price),
+                                take_profit=float(target_price) if target_price else None,
+                                strategy_params={
+                                    "source": "scanner",
+                                    "approval_id": approval_id,
+                                    "conviction": round(float(conviction), 4),
+                                    "direction": final_action.upper(),
+                                    "summary": result.get("summary", ""),
+                                    "regime": technical_report.get("regime") or "unknown",
+                                    "bias": technical_report.get("trend")
+                                    or technical_report.get("bias")
+                                    or "unknown",
+                                    "entry_stc_value": (
+                                        round(float(stc_val), 2) if stc_val is not None else None
+                                    ),
+                                    "pipeline_conviction": round(float(conviction), 4),
+                                    "predicted_direction": final_action.upper(),
+                                    "rv_at_entry": (
+                                        round(float(rv_at_entry), 4)
+                                        if rv_at_entry is not None
+                                        else None
+                                    ),
+                                    "analyst_signals": _scanner_analyst_signals,
+                                },
+                            )
+                            logger.info(
+                                "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                                "executed=True reason=paper_mode_bypass trade_id=%s",
+                                symbol,
+                                final_action,
+                                _confidence,
+                                0.0,
+                                trade_id_inner[:8],
+                            )
                 except Exception as _paper_exc:
                     logger.error(
                         "[Scanner] Paper trade auto-log failed for %s: %s", symbol, _paper_exc
