@@ -199,6 +199,53 @@ export interface OHLCVBar {
   ema_34?: number;
 }
 
+/** Fetch OHLCV bars for any symbol from GET /analyze/bars/{symbol} and normalize
+ * to OHLCVBar[] (unix-second time, numeric fields). The engine returns a
+ * BarsResponse {symbol, timeframe, bars: [...]} but may also return a bare
+ * array, so parse defensively. Returns [] on any failure (caller shows empty
+ * state). */
+export async function fetchBars(
+  symbol: string,
+  opts: { timeframe?: string; days?: number; limit?: number; futures?: boolean } = {}
+): Promise<OHLCVBar[]> {
+  const { timeframe = "5m", days = 7, limit = 500, futures = true } = opts;
+  const qs = `timeframe=${encodeURIComponent(timeframe)}&days=${days}&limit=${limit}&futures=${futures}`;
+  let raw: unknown;
+  try {
+    raw = await fetchEngine<unknown>(`/analyze/bars/${encodeURIComponent(symbol)}?${qs}`);
+  } catch {
+    return [];
+  }
+  type RawBar = {
+    time: string | number;
+    open: number | string;
+    high: number | string;
+    low: number | string;
+    close: number | string;
+    volume?: number | string | null;
+    vwap?: number | string | null;
+    stc?: number | string | null;
+  };
+  const arr: RawBar[] = Array.isArray(raw)
+    ? (raw as RawBar[])
+    : Array.isArray((raw as { bars?: RawBar[] })?.bars)
+      ? ((raw as { bars?: RawBar[] }).bars as RawBar[])
+      : [];
+  return arr
+    .map((b) => ({
+      time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
+      open: Number(b.open),
+      high: Number(b.high),
+      low: Number(b.low),
+      close: Number(b.close),
+      volume: b.volume != null ? Number(b.volume) : undefined,
+      vwap: b.vwap != null ? Number(b.vwap) : undefined,
+      stc: b.stc != null ? Number(b.stc) : undefined,
+    }))
+    .filter((b) => Number.isFinite(b.time) && Number.isFinite(b.close))
+    .sort((a, b) => a.time - b.time);
+}
+
 /** POST /analyze/technical — engine nested payload plus optional flattened fields for chart overlays. */
 export interface TechnicalAnalysisResult {
   symbol?: string;
