@@ -75,8 +75,8 @@
         "Unit test on a known trade"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a0d582a). NEW engine/analytics/scenario.py (pure compute_entry_timing_scenarios; offset 0 == actual sanity anchor) + scenario_backfill.py (reuses excursion bar-fetch). GET /analytics/entry-timing (?offsets=, per-trade rows + aggregate avg_delta_by_offset + systematic_bias EARLY/LATE/NEUTRAL). engine/tests/test_scenario.py = 22 PASS, ruff clean. UI skipped (gated dashboard rebuild); no schema migration needed."
     },
     {
       "id": "US-006",
