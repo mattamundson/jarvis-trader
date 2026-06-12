@@ -76,3 +76,8 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - ruff: All checks passed!
 - Files: engine/risk/alert_manager.py, engine/scripts/liveness_watchdog.py, engine/tests/test_liveness_watchdog.py
 ---
+
+## 2026-06-12 - US-007 (QuantStats Run-12 gates) — PASS
+- Verify-don-t-redo: most gates pre-existing. ADDED skew>=-1.5 (was diagnostic-only) + exposure>=0.15 to eval_run ITERATION/PRODUCTION gates. test_eval_run_gates.py 22 PASS, ruff clean. Fail-safe intact, no thresholds loosened.
+- Files: scripts/eval_run.py, engine/tests/test_eval_run_gates.py, scripts/ralph/GATE_COVERAGE.md
+---
