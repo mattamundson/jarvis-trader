@@ -21,8 +21,8 @@
         "No code changes — verification only"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a187e7d). GAP_MAP.md written. Auth=X-API-Key/settings.API_KEY. Working: session-today, /paper/validation/summary/eod, /reports/quantstats, jarvis_tearsheet (488KB HTML), gate v2 (4 PASS: 3xMGC+1xMES). Broken: /reports/performance?format=html 503; MAE/MFE absent on paper_trades; edge_ledger only in worktree. Already-done: US-007. Partial: US-003,US-006,US-009. Real builds: US-004,US-005,US-008,US-010."
     },
     {
       "id": "US-002",

@@ -20,3 +20,11 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - Plaintext GitHub PAT file at C:\Users\mattm\ (github_pat_*.txt) — Amo must revoke on GitHub, then archive the file. Do NOT echo its value.
 
 ---
+
+## 2026-06-12 - US-001 (Ground-truth verification) — PASS
+- Verified live: auth=X-API-Key/settings.API_KEY; /portfolio/stats/session-today, /paper/validation/summary/eod, /reports/quantstats?days=90, jarvis_tearsheet.py (488KB HTML) all WORK.
+- Gate v2: 4 PASS (3x MGC, 1x MES), 27 FAIL. ibkr_data_connected=false (US-002).
+- Broken: /reports/performance?format=html -> 503 DB-not-initialized. MAE/MFE only on discord_bot_signals, not paper_trades. edge_ledger.py only in an uncommitted worktree.
+- **Learnings:** Most QuantStats/tearsheet machinery already shipped — US-007 already done. Real builds are US-004 (MAE/MFE), US-005 (scenario), US-008 (regime), US-010 (edge ledger port). US-003/006/009 are partial/reconcile.
+- Files: scripts/ralph/GAP_MAP.md
+---
