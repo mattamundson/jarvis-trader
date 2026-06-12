@@ -698,6 +698,12 @@ async def paper_hold_time_stats():
             exit_dt = datetime.fromisoformat(str(exit_str).replace("Z", "+00:00"))
         except (ValueError, TypeError):
             continue
+        # Mixed-provenance rows: some timestamps carry tzinfo, some are naive
+        # UTC — naive minus aware raises TypeError, so normalize both to UTC.
+        if entry_dt.tzinfo is None:
+            entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+        if exit_dt.tzinfo is None:
+            exit_dt = exit_dt.replace(tzinfo=timezone.utc)
         mins = (exit_dt - entry_dt).total_seconds() / 60.0
         if mins < 0:
             continue
@@ -1794,6 +1800,27 @@ async def get_history_daily_pnl(days: int = 30):
     except Exception as exc:
         logger.error(f"[DB] get_daily_pnl failed: {exc}")
         return {"daily_pnl": [], "days": days, "error": str(exc)}
+
+
+@router.get("/history/equity-curve")
+async def get_history_equity_curve(days: int = 90):
+    """Equity-curve points derived from daily P&L snapshots.
+
+    Shape consumed by the dashboard PerformancePanel: {points: [{date, equity}]}.
+    """
+    if not db_manager:
+        return {"points": [], "days": days, "note": "db_manager not initialized"}
+    try:
+        records = db_manager.get_daily_pnl(days=days)
+        points = [
+            {"date": r.get("date"), "equity": r.get("ending_balance")}
+            for r in sorted(records, key=lambda r: str(r.get("date", "")))
+            if r.get("date") is not None and r.get("ending_balance") is not None
+        ]
+        return {"points": points, "days": days, "count": len(points)}
+    except Exception as exc:
+        logger.error(f"[DB] get_history_equity_curve failed: {exc}")
+        return {"points": [], "days": days, "error": str(exc)}
 
 
 @router.get("/history/decisions", response_model=DecisionHistoryResponse)

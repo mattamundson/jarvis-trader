@@ -80,10 +80,11 @@ export function RecentSignalsWidget() {
 
   const fetchData = useCallback(async () => {
     try {
-      const payload = await fetchEngine(`/signals/recent?limit=10`, {
+      const payload = await fetchEngine(`/scanner/signals/latest?limit=10`, {
         cache: "no-store",
       });
-      setData(payload);
+      // Scanner route reports `count`; normalize to the widget's `total`.
+      setData({ ...payload, total: payload?.total ?? payload?.count });
       setError(null);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (e) {

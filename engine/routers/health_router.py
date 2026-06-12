@@ -1221,3 +1221,50 @@ async def live_readiness_endpoint(strict: bool = False):
     }
     status_code = 200 if authorized else 503
     return JSONResponse(status_code=status_code, content=body)
+
+
+@router.get("/ib/connection-test")
+async def ib_connection_test():
+    """Live IB connection probe for the dashboard connection cards.
+
+    Shape consumed by ConnectionHealthCard / IbGatewayDetailCard /
+    IBGatewayStatus: {connected, port, mode, latency_ms, account_id, error}.
+    """
+    import time as _time
+
+    start = _time.perf_counter()
+    try:
+        health = await _get_ib_gateway_health()
+    except Exception as exc:
+        return {
+            "connected": False, "port": None, "mode": "unknown",
+            "latency_ms": None, "account_id": None, "error": str(exc),
+        }
+    latency_ms = round((_time.perf_counter() - start) * 1000.0, 1)
+    connected = bool(health.get("execution_connected") or health.get("data_connected"))
+
+    execution_ib = getattr(safety_layer, "_ib_gateway", None) if safety_layer else None
+    data_ib = data_manager.ibkr if data_manager else None
+    ib_gw = execution_ib or data_ib
+
+    port = next(
+        (v for v in (getattr(ib_gw, a, None) for a in ("port", "_port")) if isinstance(v, int)),
+        None,
+    )
+    account_id = next(
+        (
+            v
+            for v in (getattr(ib_gw, a, None) for a in ("account_id", "_account_id", "account"))
+            if isinstance(v, str) and v
+        ),
+        None,
+    )
+    mode = "paper" if port == 4002 else "live" if port == 4001 else str(health.get("mode", "unknown"))
+    return {
+        "connected": connected,
+        "port": port,
+        "mode": mode,
+        "latency_ms": latency_ms,
+        "account_id": account_id,
+        "error": None if connected else str(health.get("status", "disconnected")),
+    }
