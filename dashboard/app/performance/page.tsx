@@ -720,12 +720,13 @@ export default function PerformancePage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span
-              className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded"
+            <Link
+              href="/strategy-ledger"
+              className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded hover:opacity-80 transition-opacity"
               style={{ backgroundColor: "#ffcc0018", border: "1px solid #ffcc0040", color: "#ffcc00" }}
             >
-              2026-03-30 BACKTEST VERDICT (historical) — live status differs, see /validation
-            </span>
+              2026-03-30 SNAPSHOT (historical) — see live gate-v2 verdicts in Strategy Ledger →
+            </Link>
             <span
               className="font-mono text-[10px] tracking-wider px-2 py-1 rounded"
               style={{ backgroundColor: "#00d4ff10", border: "1px solid #00d4ff33", color: "#00d4ff" }}
