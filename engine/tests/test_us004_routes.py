@@ -93,3 +93,15 @@ class TestHoldTimeTZFix:
         # Both rows must survive the mixed naive/aware subtraction.
         assert out is not None
         assert (out.get("overall_avg_minutes") or 0) > 0
+
+
+class TestSafetyStatusRateLimit:
+    """US-005: /safety/status must sit in the read tier, not the 10/min trading tier."""
+
+    def test_status_limit_is_read_tier(self):
+        import inspect
+
+        from routers import safety_router
+
+        src = inspect.getsource(safety_router.get_safety_status)
+        assert '120/minute' in src, "GET /safety/status must allow dashboard polling (120/minute)"
