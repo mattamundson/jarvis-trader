@@ -731,12 +731,15 @@ async def _run_pipeline_and_log(symbol: str, is_futures: bool) -> None:
             final_action.upper(),
         )
 
-    # Send Telegram alert for non-HOLD decisions
+    # Multi-channel signal broadcast for non-HOLD decisions (Telegram/Discord/
+    # WhatsApp/Windows toast). Shared cooldown dedupes vs the in-pipeline send.
     if final_action not in ("hold", "HOLD"):
         try:
-            await _send_signal_alert(symbol, final_action, result)
+            from notifications.signal_broadcast import broadcast_signal
+
+            await broadcast_signal(symbol, result, source="router")
         except Exception as exc:
-            logger.error("[PIPELINE] Telegram alert failed for %s: %s", symbol, exc)
+            logger.error("[PIPELINE] Signal broadcast failed for %s: %s", symbol, exc)
 
 
 @router.post("/run/background")
@@ -1082,10 +1085,9 @@ async def run_pipeline_sync(req: PipelineRunRequest):
         except Exception as exc:
             logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
 
-    from notifications.whatsapp import get_notifier
+    from notifications.signal_broadcast import broadcast_signal
 
-    notifier = get_notifier()
-    asyncio.create_task(notifier.alert_pipeline_result(req.symbol, result))
+    asyncio.create_task(broadcast_signal(req.symbol, result, source="router_sync"))
 
     return result
 
