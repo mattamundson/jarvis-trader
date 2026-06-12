@@ -16,6 +16,46 @@ logger = logging.getLogger("jarvis_trader.database")
 class DailyPnLMixin:
     """Methods for the ``daily_pnl`` table."""
 
+    # Write-time plausibility guard (2026-06-12). The daily_pnl table was
+    # corrupted by writers with mismatched balance bases (a $10k-anchored
+    # writer vs a ~$50k monitor-state writer), producing phantom ±$40k
+    # "realized" days and stale rows where ending != starting + realized.
+    # A refused snapshot is recoverable (rewritten next run / backfilled);
+    # a poisoned row chains into every later row via starting-balance
+    # lookups, so refusing is the fail-safe direction.
+
+    # No strategy in paper validation risks more than a few percent per day;
+    # a single-day realized move beyond half the book is a basis flip or
+    # contaminated mark, not trading.
+    MAX_DAILY_REALIZED_FRACTION = 0.5
+    # ending must equal starting + realized (values arrive rounded to 4dp).
+    BALANCE_IDENTITY_TOLERANCE = 0.01
+
+    def _daily_pnl_rejection(
+        self,
+        starting_balance: float,
+        ending_balance: float,
+        realized_pnl: float,
+    ) -> Optional[str]:
+        """Return a rejection reason for an implausible snapshot, or None."""
+        if starting_balance <= 0 or ending_balance <= 0:
+            return (
+                f"non-positive balance (starting={starting_balance}, "
+                f"ending={ending_balance})"
+            )
+        if abs(realized_pnl) > self.MAX_DAILY_REALIZED_FRACTION * starting_balance:
+            return (
+                f"|realized_pnl|={abs(realized_pnl):.2f} exceeds "
+                f"{self.MAX_DAILY_REALIZED_FRACTION:.0%} of starting balance "
+                f"{starting_balance:.2f} — basis flip or contaminated mark"
+            )
+        if abs((starting_balance + realized_pnl) - ending_balance) > self.BALANCE_IDENTITY_TOLERANCE:
+            return (
+                f"balance identity violated: starting {starting_balance:.2f} "
+                f"+ realized {realized_pnl:.2f} != ending {ending_balance:.2f}"
+            )
+        return None
+
     def upsert_daily_pnl(
         self,
         *,
@@ -28,13 +68,27 @@ class DailyPnLMixin:
         winning_trades: int,
         losing_trades: int,
         max_drawdown: float,
-    ) -> None:
+    ) -> bool:
         """
         Insert or replace the P&L snapshot for the given date (YYYY-MM-DD).
 
         Uses INSERT OR REPLACE so repeated end-of-day snapshots overwrite
         the previous row for the same date.
+
+        Implausible snapshots (basis flips, balance-identity violations) are
+        REFUSED and logged instead of written — returns False in that case,
+        True when the row was persisted.
         """
+        reason = self._daily_pnl_rejection(starting_balance, ending_balance, realized_pnl)
+        if reason:
+            logger.error(
+                "[DB] upsert_daily_pnl REFUSED for %s — %s "
+                "(start=%.2f end=%.2f realized=%+.2f trades=%d)",
+                date, reason, starting_balance, ending_balance,
+                realized_pnl, total_trades,
+            )
+            return False
+
         sql = """
             INSERT OR REPLACE INTO daily_pnl
                 (date, starting_balance, ending_balance, realized_pnl,
@@ -61,6 +115,7 @@ class DailyPnLMixin:
                 logger.debug(f"[DB] upsert_daily_pnl date={date} realized={realized_pnl:+.2f}")
             finally:
                 conn.close()
+        return True
 
     def get_daily_pnl(
         self,
