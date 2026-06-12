@@ -180,7 +180,7 @@ def main():
     spec = _spec_dict(symbol)
     print(f"Fixed-params temporal validation: {symbol} {args.family}", flush=True)
     print(f"  params={params}", flush=True)
-    print(f"  segments={args.n_segments}, range={args.start} → {args.end}", flush=True)
+    print(f"  segments={args.n_segments}, range={args.start} -> {args.end}", flush=True)
 
     t0 = time.time()
     loader = BacktestDataLoader()
