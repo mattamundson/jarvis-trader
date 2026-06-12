@@ -32,12 +32,32 @@ jobs:
       github.event.pull_request.draft == false &&
       github.actor != 'dependabot[bot]'
     steps:
+      # Self-healing gate: when ANTHROPIC_API_KEY is absent (no repo secret) or
+      # credits are exhausted, the review action used to fail every run, turning
+      # "Claude Code Review: red" into permanent noise that trains alarm fatigue
+      # (master sat red for days while real failures hid behind it). Detect the
+      # missing key and skip the review steps so the job passes green. The moment
+      # the secret is added back, the gate flips and the review runs unchanged.
+      - name: Check for Anthropic API key
+        id: keycheck
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Claude review skipped::ANTHROPIC_API_KEY is not configured — skipping the Claude PR review. This is intentional, not a failure. Add the repo secret to re-enable."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.keycheck.outputs.available == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Claude Code Review
+        if: steps.keycheck.outputs.available == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
