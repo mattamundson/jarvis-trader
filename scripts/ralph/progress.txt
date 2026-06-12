@@ -28,3 +28,8 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - **Learnings:** Most QuantStats/tearsheet machinery already shipped — US-007 already done. Real builds are US-004 (MAE/MFE), US-005 (scenario), US-008 (regime), US-010 (edge ledger port). US-003/006/009 are partial/reconcile.
 - Files: scripts/ralph/GAP_MAP.md
 ---
+
+## 2026-06-12 - US-002 (data-feed diagnosis) — PASS
+- Port 4002 OPEN, gateway alive, execution leg connected; only the IB market-data leg is down. NOT blind — TV MCP healthy (Tier-0 bars). Operational, not a code bug; reconnect Amo-gated. LLM recovered to Anthropic primary.
+- Files: scripts/ralph/GAP_MAP.md (US-002 section)
+---

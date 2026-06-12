@@ -65,3 +65,13 @@ Read-only. No source changed. No engine restart. No commit/push.
 - **US-010 Edge ledger across instruments — build needed: YES (port).** `edge_ledger.py` exists only in an uncommitted worktree, not in the live engine tree. Needs to be brought onto the branch + wired to a route/dashboard.
 
 **Already substantially done:** US-007 (gates/QuantStats verified working). **Partial/reconcile:** US-003, US-006, US-009. **Real builds:** US-004, US-005, US-008, US-010.
+
+---
+
+## US-002 — Market-data feed diagnosis (2026-06-12)
+- Port 4002 OPEN; gateway alive; ibkr_connected=true; ibkr_execution_connected=true; **ibkr_data_connected=FALSE**.
+- Derivation: `health_router.py:417` → `ib_health.get("data_connected")`. `health_router.py:71` documents: gateway alive + data_connected=false ⇒ connector up but the IB market-data subscription/leg isn't established.
+- **Not blind:** `tradingview_mcp_healthy=true` (Tier 0 for bars). `MarketDataManager.get_bars()` is TV-first, so bar data flows. The IB data leg only affects live tick-price / latency-sensitive paths.
+- LLM recovered: active_provider=anthropic, primary_healthy=true (no longer on Gemini fallback).
+- **Root cause (likely):** IB market-data farm/subscription not initialized for the paper account this session (common outside RTH or after a data-farm drop). **Fix (Amo-gated):** reconnect IB data / verify market-data subscription, or run the engine restart helper to re-establish the data leg. Bars remain covered by TV MCP meanwhile.
+- **Verdict:** Operational, not a code bug. No autonomous restart. Bar-driven edge/backtests trustworthy; live tick pricing degraded until the data leg reconnects.

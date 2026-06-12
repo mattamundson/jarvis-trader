@@ -34,8 +34,8 @@
         "Write root-cause + exact fix steps to GAP_MAP.md; flag any restart as Amo-gated"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12. Port 4002 OPEN, gateway alive, execution leg up; only IB market-data leg down. NOT blind: TV MCP healthy = Tier-0 bars flow. Operational not code bug; reconnect is Amo-gated. LLM recovered to Anthropic. See GAP_MAP.md US-002."
     },
     {
       "id": "US-003",
