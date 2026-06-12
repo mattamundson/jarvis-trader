@@ -112,6 +112,17 @@ class TestNoEnabledConfigForDoNotTradeSymbol:
         if not os.path.isdir(VERDICTS_DIR):
             pytest.skip("gate_v2_verdicts/ not on disk — skipping verdict-file check")
 
+        # Verdict JSONs are untracked engine runtime state (commit e484574), so
+        # CI checks out the directory (archive/ stays tracked) with no verdict
+        # files in it. Only enforce the per-symbol check where runtime verdicts
+        # actually exist — this stays a drift detector on dev machines.
+        all_verdicts = [f for f in os.listdir(VERDICTS_DIR) if f.endswith(".json")]
+        if not all_verdicts:
+            pytest.skip(
+                "gate_v2_verdicts/ has no verdict JSONs (untracked runtime "
+                "state, e.g. CI checkout) — skipping verdict-file check"
+            )
+
         for sym in enabled_symbols:
             # Look for any JSON verdict file starting with the symbol name
             matching = [
