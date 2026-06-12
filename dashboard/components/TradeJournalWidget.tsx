@@ -33,7 +33,7 @@ export function TradeJournalWidget() {
   }
   queryParams.append("limit", "50");
 
-  const endpoint = `/paper/trade-journal?${queryParams.toString()}`;
+  const endpoint = `/journal/trade-journal?${queryParams.toString()}`;
 
   const { data: trades, isLoading, error } = useSWR<TradeJournalEntry[]>(
     endpoint,

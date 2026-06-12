@@ -1095,3 +1095,84 @@ async def get_mtf_analysis(symbol: str = "MES"):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ─── Market-regime endpoints (US-004, 2026-06-12) ────────────────────────────
+# Consumed by dashboard RegimeDisplay (overview) and the jarvis page (per
+# symbol). Honest-data contract: layers the engine has no live detector for
+# report status="stub"; the overview regime derives only from the persistent-
+# regime alert detector (VIX / RSI streaks), never from fabricated signals.
+
+
+@router.get("/regime")
+async def get_regime_overview():
+    """Market-regime overview card.
+
+    regime: BEARISH when the persistent-regime alert (high-VIX / persistent-
+    oversold streaks) is firing, NEUTRAL when checks ran clean, UNKNOWN when
+    the detector has no data. Only the vix layer is live; the rest are stubs.
+    """
+    regime, confidence, note = "UNKNOWN", 0.0, None
+    vix_layer: dict = {"status": "stub"}
+    trade_filter = "unknown"
+    try:
+        from analytics.regime_detector import VIX_ALERT_THRESHOLD, check_regime_alerts
+
+        report = check_regime_alerts()
+        alerts = getattr(report, "alerts", []) or []
+        vix_val = getattr(report, "vix_current", None)
+        if vix_val is not None:
+            vix_layer = {
+                "status": "active",
+                "value": vix_val,
+                "classification": "ELEVATED" if vix_val > VIX_ALERT_THRESHOLD else "NORMAL",
+            }
+        if alerts:
+            regime, confidence = "BEARISH", 0.6
+            trade_filter = "block"
+            note = "; ".join(str(getattr(a, "condition", a)) for a in alerts)
+        elif vix_val is not None:
+            regime, confidence = "NEUTRAL", 0.4
+            trade_filter = "pass"
+            note = "no persistent-regime alerts; directional layers not yet wired"
+    except Exception as exc:
+        note = f"regime detector unavailable: {exc}"
+
+    stub = {"status": "stub"}
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "regime": regime,
+        "confidence": confidence,
+        "layers": {
+            "vix": vix_layer,
+            "mtf": dict(stub),
+            "stc": dict(stub),
+            "ema_trend": dict(stub),
+            "volume": dict(stub),
+        },
+        "note": note,
+        "trade_filter": trade_filter,
+    }
+
+
+@router.get("/regime/{symbol}")
+async def get_regime_for_symbol(symbol: str):
+    """Per-symbol regime classification (TRENDING / RANGING / VOLATILE).
+
+    Same classifier the backtester uses; UNKNOWN when bar data is missing
+    rather than a fabricated default.
+    """
+    sym = symbol.strip().upper()
+    try:
+        from backtest.regime import RegimeClassifier
+
+        bars = None
+        if _data_mgr is not None:
+            bars = await _data_mgr.get_bars(sym, lookback_days=10, timeframe="1h")
+        if bars is None or len(bars) < 20:
+            return {"symbol": sym, "regime": "UNKNOWN", "note": "insufficient bar data"}
+        classified = RegimeClassifier().classify(bars)
+        regime = str(classified["regime_type"].iloc[-1]) if len(classified) else "UNKNOWN"
+        return {"symbol": sym, "regime": regime, "current_regime": regime}
+    except Exception as exc:
+        return {"symbol": sym, "regime": "UNKNOWN", "error": str(exc)}

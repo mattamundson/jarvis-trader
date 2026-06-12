@@ -40,7 +40,10 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  // 25s: cold-cache engine endpoints (TV/yfinance-backed prices, mtf,
+  // discord intelligence) exceed 5s on first hit and were 502ing every page
+  // load right after an engine restart.
+  const timeout = setTimeout(() => controller.abort(), 25_000);
 
   let upstream: Response;
   try {

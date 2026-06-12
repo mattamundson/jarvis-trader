@@ -101,15 +101,20 @@ export function DailyPnLCalendarWidget() {
   const [error, setError] = useState(false);
 
   async function fetchData() {
-    // 1. Try primary endpoint
+    // 1. Primary: daily P&L snapshots (array) → {YYYY-MM-DD: realized_pnl} map
     try {
-      const data = await fetchEngine<unknown>(`/analytics/daily-pnl`);
-      if (
-        data !== null &&
-        typeof data === "object" &&
-        !Array.isArray(data)
-      ) {
-        setDailyPnl(data as DailyPnLMap);
+      const data = await fetchEngine<{
+        daily_pnl?: { date?: string; realized_pnl?: number }[];
+      }>(`/portfolio/history/daily-pnl?days=35`);
+      const records = data?.daily_pnl;
+      if (Array.isArray(records) && records.length > 0) {
+        const map: DailyPnLMap = {};
+        for (const r of records) {
+          if (r.date != null && r.realized_pnl != null) {
+            map[r.date.slice(0, 10)] = (map[r.date.slice(0, 10)] ?? 0) + r.realized_pnl;
+          }
+        }
+        setDailyPnl(map);
         setLoading(false);
         setError(false);
         return;
