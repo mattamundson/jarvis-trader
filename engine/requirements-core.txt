@@ -61,6 +61,7 @@ aiohttp==3.11.14
 
 # ── Messaging / Alerts ─────────────────────────────────────────────────────
 twilio==9.10.9            # WhatsApp approval webhook + outbound alerts (whatsapp_router.py)
+winotify==1.1.0           # Windows desktop toast for signal broadcast (notifications/windows_toast.py); opt-in WINDOWS_TOAST_ENABLED
 
 # ── Sentiment & News ───────────────────────────────────────────────────────
 finnhub-python==2.4.22    # Finnhub — free tier: 60 req/min
