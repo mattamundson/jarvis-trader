@@ -81,6 +81,17 @@ class WhatsAppNotifier:
                     sid_status = "HIDDEN" if self.account_sid and self.account_sid.startswith("AC") else "INVALID_OR_MISSING_AC_PREFIX"
                     token_status = "PRESENT" if self.auth_token else "MISSING"
                     error_msg += f" | SID Status: {sid_status} | Token Status: {token_status}"
+                    # Dead credential: retrying every alert floods the log
+                    # (66x 401s in the 2026-06-11 audit). Latch the channel
+                    # off for this process; rotation + restart re-enables it.
+                    self.enabled = False
+                    logger.error(
+                        "WhatsApp channel DISABLED for this process — Twilio auth "
+                        "rejected (401). Rotate the Twilio credentials (1Password "
+                        "'Twilio' item), update engine/.env, restart the engine. %s",
+                        error_msg,
+                    )
+                    return False
 
                 logger.warning(error_msg)
                 return False
