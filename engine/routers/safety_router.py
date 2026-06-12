@@ -112,7 +112,9 @@ async def calculate_position_sizing(
     response_model=SafetyStatusResponse,
     description="Aggregated safety status and PnL snapshot including kill switch, circuit breakers, daily limits, drawdown, and portfolio equity.",
 )
-@limiter.limit("10/minute")
+@limiter.limit("120/minute")  # read-only status; >=5 dashboard widgets poll it
+# through one proxy IP (shared bucket), so the 10/min trading tier 429'd
+# normal page loads. Mutating safety endpoints keep their strict limits.
 async def get_safety_status(request: Request) -> dict[str, Any]:
     """Aggregated safety + PnL snapshot for dashboards and scripts."""
     if _safety_layer is None:
