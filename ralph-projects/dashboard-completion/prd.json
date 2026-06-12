@@ -44,8 +44,8 @@
         "tsc --noEmit clean"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "May split into per-page sub-iterations; log each in progress.txt."
+      "passes": true,
+      "notes": "Done (c48c06f). Audited all 12 unexamined pages via parallel agents. 3 real crash risks fixed (kairos severity_counts/top_watchers, parallel-paper EquitySparkline, strategy-c layer/holdings destructure shape-guard). Other 9 clean. tsc clean. Static-as-live items routed to US-004."
     },
     {
       "id": "US-004",
@@ -57,8 +57,8 @@
         "tsc --noEmit clean"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Done (f06100f). data-integrity fake-green infra card → CONFIGURED + /health link; discord frozen 281,838 count removed. Performance already snapshot-labelled w/ live link; scorecard already fully live. tsc clean."
     },
     {
       "id": "US-005",
@@ -70,8 +70,8 @@
         "tsc --noEmit clean"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Done (b88def1). 15m live CandlestickChart on /analysis after pipeline run, keyed on result symbol + futures flag, honest empty state. tsc clean."
     },
     {
       "id": "US-006",
@@ -84,8 +84,8 @@
         "Stopped 'jarvis-weekly-tearsheet' explained (cron, expected) or fixed"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": "Some steps AMO-GATED (admin / pm2 startup). Claude verifies + documents; flags admin steps."
+      "passes": true,
+      "notes": "Verified+documented in RELIABILITY.md. 4 services online (engine restarts=4 sane), pm2 save done (dump.pm2 exists), tearsheet stopped=expected (weekly one-shot). Gap: no logon `pm2 resurrect` task → won't survive reboot; pm2 startup unsupported on Windows. Ready Amo command provided (Jarvis-PM2-Resurrect logon task, LIMITED, battery flags). Registration AMO-GATED."
     },
     {
       "id": "US-007",
@@ -97,11 +97,8 @@
         "Surface any silently-failing monitor"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-008",
+      "passes": true,
+      "notes": "Verified. Watchdogs present+recent (LLMWatchdog/SystemStatus/HealthWatchdog/EngineWatchdog result=0 today). /health page renders IB honestly (Disconnected/error, not false-green; app/health/page.tsx:166-171,225). Cross-checked /brokers/positions: IB dark (known PR#34 clientId issue, Amo restart pending). Surfaced for Amo: Jarvis-DataIntegritySentinel FAILING (result=1), TV-CDP-Watchdog Disabled. See RELIABILITY.md."
       "title": "Remote access for phone (Tailscale serve)",
       "description": "As Amo, I want to view the live dashboard from my phone on the private tailnet so liveness is truly anywhere/24-7.",
       "acceptanceCriteria": [
