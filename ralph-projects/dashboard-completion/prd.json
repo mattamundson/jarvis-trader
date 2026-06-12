@@ -106,9 +106,9 @@
         "Confirm dashboard binds correctly for proxying",
         "Fallback (Cloudflare Tunnel) documented"
       ],
+      "passes": true,
       "priority": 8,
-      "passes": false,
-      "notes": "AMO-GATED — Amo runs the tailscale command. Claude preps + documents."
+      "notes": "Verified+documented in REMOTE-ACCESS.md. Tailscale UP (amoszn=100.68.247.106); dashboard binds 0.0.0.0:3010 → ALREADY reachable from phone at http://100.68.247.106:3010 (no setup). Optional HTTPS `tailscale serve --bg 3010` + Cloudflare fallback documented (AMO-run). Binding confirmed correct."
     },
     {
       "id": "US-009",
