@@ -66,3 +66,13 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - **Learnings:** Reused excursion_backfill _parse_utc/_filter_bars_to_window (DRY). Query already imported from US-004. Run ruff check --fix BEFORE returning to avoid the pre-commit block.
 - Files: engine/analytics/scenario.py, engine/analytics/scenario_backfill.py, engine/routers/analytics_router.py, engine/tests/test_scenario.py
 ---
+
+## 2026-06-12 - US-006 (Multi-channel alerting + liveness watchdog) — PASS
+- MODIFIED engine/risk/alert_manager.py: added Telegram + Discord fan-out to _alert_worker. Each channel independently best-effort (asyncio.gather + return_exceptions=True). enable_telegram/enable_discord constructor flags. No engine restart needed.
+- NEW engine/scripts/liveness_watchdog.py: standalone poller (no engine restart). Polls /health, fires multi-channel alert on: N consecutive misses (DOWN), status!=ok (state-change), ibkr_data_connected flip True→False, kill_switch_active True. Debounced (state-change only). --once, --self-test modes. Loads engine/.env via python-dotenv before importing notifiers.
+- NEW engine/tests/test_liveness_watchdog.py: 23 tests, 23 passed. Covers miss threshold, debounce, recovery, status change, IBKR flip, kill-switch, combined conditions.
+- **Learnings:** Notifiers call `from config import settings` at init time → requires API_KEY. Load engine/.env via dotenv in watchdog bootstrap BEFORE any notification import. discord_notifier._WEBHOOK_URL is module-level (read at import time); _send() uses it directly so config reloads correctly.
+- **Live test:** --self-test delivered to Telegram HTTP 200 + Discord HTTP 204 (both channels confirmed).
+- ruff: All checks passed!
+- Files: engine/risk/alert_manager.py, engine/scripts/liveness_watchdog.py, engine/tests/test_liveness_watchdog.py
+---
