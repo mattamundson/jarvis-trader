@@ -99,6 +99,9 @@
       "priority": 7,
       "passes": true,
       "notes": "Verified. Watchdogs present+recent (LLMWatchdog/SystemStatus/HealthWatchdog/EngineWatchdog result=0 today). /health page renders IB honestly (Disconnected/error, not false-green; app/health/page.tsx:166-171,225). Cross-checked /brokers/positions: IB dark (known PR#34 clientId issue, Amo restart pending). Surfaced for Amo: Jarvis-DataIntegritySentinel FAILING (result=1), TV-CDP-Watchdog Disabled. See RELIABILITY.md."
+    },
+    {
+      "id": "US-008",
       "title": "Remote access for phone (Tailscale serve)",
       "description": "As Amo, I want to view the live dashboard from my phone on the private tailnet so liveness is truly anywhere/24-7.",
       "acceptanceCriteria": [
