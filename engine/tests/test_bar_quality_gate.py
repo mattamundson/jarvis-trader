@@ -207,9 +207,15 @@ def test_save_bars_shadow_persists_all(tmp_path, monkeypatch):
     monkeypatch.setenv("BAR_QUALITY_GATE_ENABLED", "1")
     monkeypatch.setenv("BAR_QUALITY_GATE_ENFORCE", "0")
     db = _make_db(tmp_path)
+    # Range-explosion bar: (high-low)/low = (9000-5295)/5295 = 0.70 > MAX_RANGE_FRAC,
+    # so the quality gate flags it — but it has coherent OHLC and a near-neighbour
+    # close, so the hard _row_rejection prefilter in save_bars passes it through.
+    # That lets this test exercise the quality gate's SHADOW behavior (log, don't
+    # block) without colliding with the unconditional impossible-bar drop. A
+    # low=0.0 bar would be hard-dropped by _row_rejection before the gate runs.
     df = _bars_df([
         (9, 5300, 5310, 5295, 5305),
-        (10, 5305, 5315, 0.0, 5308),   # bad, but shadow mode writes it anyway
+        (10, 5305, 9000, 5295, 5308),   # range explosion: shadow mode writes it anyway
     ])
     saved = save_bars(df, "MES", "1h", "ibkr", db_path=db)
     assert saved == 2  # shadow: logged but not blocked
