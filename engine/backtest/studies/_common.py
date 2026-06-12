@@ -83,6 +83,38 @@ def attach_session_anchors(
     return out
 
 
+def clamp_stop_for_rr(
+    close: float, target: float, stop: float, direction: str, min_rr: float = 1.3
+) -> float:
+    """Pull a level-based stop in (never out) so the trade clears the
+    Backtester's R:R>=1.2 floor by construction. Returns the adjusted stop.
+
+    A wider stop than ``target_dist / min_rr`` is tightened to exactly that
+    distance; a tighter stop is left untouched. Direction-aware so longs keep
+    the stop below entry and shorts above.
+    """
+    target_dist = abs(target - close)
+    if target_dist <= 0:
+        return stop
+    max_risk = target_dist / min_rr
+    if direction == "long":
+        floor = close - max_risk
+        return max(stop, floor)  # not further below than floor
+    upper = close + max_risk
+    return min(stop, upper)      # not further above than upper
+
+
+def sides_ok(close: float, target: float, stop: float, direction: str) -> bool:
+    """True when target/stop sit on the correct sides of entry for *direction*.
+    Filters degenerate level setups (e.g. a prior-session VPOC above price on a
+    'long', which produces a stop above entry)."""
+    if not (np.isfinite(close) and np.isfinite(target) and np.isfinite(stop)):
+        return False
+    if direction == "long":
+        return stop < close < target
+    return target < close < stop
+
+
 def empty_contract(rth: pd.DataFrame) -> pd.DataFrame:
     """Finalize a frame that produced no entries (all NO_TRADE)."""
     out = rth.copy()
