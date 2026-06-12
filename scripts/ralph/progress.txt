@@ -33,3 +33,9 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - Port 4002 OPEN, gateway alive, execution leg connected; only the IB market-data leg is down. NOT blind — TV MCP healthy (Tier-0 bars). Operational, not a code bug; reconnect Amo-gated. LLM recovered to Anthropic primary.
 - Files: scripts/ralph/GAP_MAP.md (US-002 section)
 ---
+
+## 2026-06-12 - US-003 (Today-at-a-glance tile) — PASS (build), browser-verify gated
+- NEW dashboard/app/today/page.tsx (route /today) + Sidebar.tsx nav link. Typecheck clean, prod build OK (35 routes incl /today). Wires /health + session-today + summary/eod + paper/positions via server-side proxy (no client key). Status banner + 4 cards + 6 health badges + 30s refresh.
+- **Learnings:** Dashboard runs as next start via a process manager; a NEW route needs build + process reload to serve. Reload is a GATED service restart (denied by auto-mode/shared-resource-guard) — surfaced to Amo, not auto-run. lib/api.ts HealthResponse lacks llm_providers (extended locally in the page).
+- Files: dashboard/app/today/page.tsx, dashboard/components/Sidebar.tsx
+---

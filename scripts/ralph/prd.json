@@ -48,8 +48,8 @@
         "Typecheck/lint pass on the dashboard"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a2bd3e6). NEW dashboard/app/today/page.tsx + Sidebar.tsx nav link. Route /today. Typecheck PASS (tsc --noEmit clean), prod build PASS (35 routes incl /today, 6.45kB). Wires /health + /portfolio/stats/session-today + /paper/validation/summary/eod + /portfolio/paper/positions via server-side proxy (no client key). Status banner + 4 cards + 6-badge health checklist + 30s auto-refresh. CAVEAT: live browser-verify pending a GATED dashboard process reload (Amo-authorized; dashboard-only, not the engine)."
     },
     {
       "id": "US-004",
