@@ -137,7 +137,7 @@ def main():
     if df is None or df.empty:
         print(f"[ERROR] No data loaded for {symbol}", flush=True)
         return 1
-    print(f"Loaded {len(df)} bars ({args.start} → {args.end})\n", flush=True)
+    print(f"Loaded {len(df)} bars ({args.start} -> {args.end})\n", flush=True)
 
     scenario_results = []
     for label, mult in COST_SCENARIOS:
