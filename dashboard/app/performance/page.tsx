@@ -23,6 +23,7 @@ import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
 import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
 import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 // ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
@@ -683,7 +684,9 @@ export default function PerformancePage() {
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         {/* Portfolio Tearsheet — QuantStats institutional metrics */}
-        <QuantStatsPanel />
+        <WidgetErrorBoundary name="Tearsheet">
+          <QuantStatsPanel />
+        </WidgetErrorBoundary>
 
         {/* Account ROI */}
         <AccountROIWidget />
