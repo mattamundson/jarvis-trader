@@ -35,6 +35,68 @@ _INSERT_SQL = """
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
+# ── Write-time sanity gate ────────────────────────────────────────────────────
+# Added after the 2026-06 contamination incident: 2,550 MCL rows at the IB
+# snapshot-initialization sentinel price (100.5) and 100 MES placeholder rows
+# (close < 1000 vs a real ~6-7k market) sat in this table for ~3 months and
+# poisoned every backtest that touched them ("PF 22" bad-tick harvesting).
+# Every production writer funnels through save_bars, so this is the one choke
+# point where implausible rows can be refused before they exist.
+
+# IB snapshot paths emit O=H=L=C=100.5 flat bars while the quote is still
+# initializing. 100.5 is the literal sentinel constant observed in all 2,550
+# contaminated rows — a real flat bar at exactly this price across all four
+# OHLC fields is vanishingly unlikely for any traded future.
+_IB_SNAPSHOT_SENTINEL = 100.5
+
+# Per-symbol plausible close bands, ~10x wide in both directions from 2026
+# price levels so they never false-positive on real moves, while catching
+# wrong-instrument / wrong-scale writes outright. Unknown symbols only get the
+# generic checks.
+_SANE_PRICE_BANDS: dict[str, tuple[float, float]] = {
+    "MES": (500.0, 50_000.0),
+    "ES": (500.0, 50_000.0),
+    "MNQ": (1_000.0, 200_000.0),
+    "NQ": (1_000.0, 200_000.0),
+    "MGC": (400.0, 30_000.0),
+    "GC": (400.0, 30_000.0),
+    "MCL": (3.0, 500.0),
+    "CL": (3.0, 500.0),
+    "M2K": (200.0, 20_000.0),
+}
+
+# A close-to-close move beyond this fraction between consecutive bars in one
+# batch (or vs the latest persisted bar when appending) is treated as a bad
+# tick. Index/metal/energy futures do not move 50% bar-over-bar; the MCL
+# 65 → 100.5 sentinel jump (+54%) and the MES 7,400 → 100.5 collapse (-98%)
+# both trip this.
+_MAX_CONSECUTIVE_JUMP = 0.50
+
+
+def _row_rejection(symbol: str, o: float, h: float, l: float, c: float,
+                   ref_close: Optional[float]) -> Optional[str]:
+    """Return a rejection reason for an implausible bar, or None if sane."""
+    for name, v in (("open", o), ("high", h), ("low", l), ("close", c)):
+        if not (v == v) or v in (float("inf"), float("-inf")) or v <= 0:
+            return f"non-positive/non-finite {name}={v}"
+    if h < l:
+        return f"high {h} < low {l}"
+    if not (l <= o <= h) or not (l <= c <= h):
+        return f"open/close outside [low, high] ({o}/{c} vs [{l}, {h}])"
+    if o == h == l == c == _IB_SNAPSHOT_SENTINEL:
+        return f"IB snapshot sentinel flat bar at {_IB_SNAPSHOT_SENTINEL}"
+    band = _SANE_PRICE_BANDS.get(symbol)
+    if band and not (band[0] <= c <= band[1]):
+        return f"close {c} outside plausible band {band} for {symbol}"
+    if ref_close is not None and ref_close > 0:
+        jump = abs(c - ref_close) / ref_close
+        if jump > _MAX_CONSECUTIVE_JUMP:
+            return (
+                f"close {c} is a {jump:.0%} jump vs reference {ref_close} "
+                f"(max {_MAX_CONSECUTIVE_JUMP:.0%})"
+            )
+    return None
+
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
@@ -71,29 +133,60 @@ def save_bars(
     db = db_path or _DEFAULT_DB_PATH
     interval = _INTERVAL_ALIASES.get(interval, interval)
     fetched_at = _utcnow_iso()
+    sym = symbol.upper()
 
-    rows = []
+    parsed = []
     for _, row in df.iterrows():
         try:
             ts = pd.to_datetime(row["timestamp"])
             if ts.tzinfo is None:
                 ts = ts.tz_localize("UTC")
             ts_iso = ts.strftime("%Y-%m-%dT%H:%M:%S")
-            rows.append((
-                symbol.upper(),
-                interval,
+            vol = float(row["volume"]) if "volume" in df.columns and row["volume"] == row["volume"] else None
+            parsed.append((
                 ts_iso,
                 float(row["open"]),
                 float(row["high"]),
                 float(row["low"]),
                 float(row["close"]),
-                float(row["volume"]) if "volume" in df.columns and row["volume"] == row["volume"] else None,
-                source,
-                fetched_at,
+                vol,
             ))
         except Exception as exc:
             logger.debug("[bars_repo] skipping malformed row: %s", exc)
             continue
+
+    # Sanity gate: validate in timestamp order so the consecutive-jump check
+    # compares true neighbours. The DB's latest bar only anchors the first row
+    # when this batch appends after it — for backfills older than the latest
+    # persisted bar there is no valid neighbour in the DB.
+    parsed.sort(key=lambda r: r[0])
+    ref_close: Optional[float] = None
+    if parsed:
+        prev = latest_bar(sym, interval, db_path=db)
+        if prev and str(prev.get("timestamp", "")) < parsed[0][0]:
+            try:
+                ref_close = float(prev["close"])
+            except (TypeError, ValueError):
+                ref_close = None
+
+    rows = []
+    rejected: list[str] = []
+    for ts_iso, o, h, l, c, vol in parsed:
+        reason = _row_rejection(sym, o, h, l, c, ref_close)
+        if reason:
+            rejected.append(f"{ts_iso}: {reason}")
+            continue
+        rows.append((sym, interval, ts_iso, o, h, l, c, vol, source, fetched_at))
+        ref_close = c
+
+    if rejected:
+        logger.warning(
+            "[bars_repo] sanity gate REJECTED %d/%d %s %s bar(s) from source=%s — "
+            "first: %s%s",
+            len(rejected), len(parsed), sym, interval, source,
+            rejected[0],
+            f" (+{len(rejected) - 1} more)" if len(rejected) > 1 else "",
+        )
 
     if not rows:
         return 0
