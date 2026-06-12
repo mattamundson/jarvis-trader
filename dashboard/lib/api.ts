@@ -119,6 +119,18 @@ export interface HealthResponse {
   tradingview_mcp_details?: string | null;
   llm_path_healthy?: boolean | null;
   llm_available?: boolean | null;
+  // Provider-redundancy snapshot (engine get_llm_provider_summary). Present when
+  // the engine wires it; absent on older builds (callers must guard).
+  llm_providers?: LLMProviderSummary | null;
+  vertex_failover_count?: number | null;
+  google_fallback_count?: number | null;
+}
+
+export interface LLMProviderSummary {
+  active_provider?: string | null;
+  primary_provider?: string | null;
+  primary_healthy?: boolean | null;
+  single_leg_warning?: boolean | null;
 }
 
 export interface SafetyStatus {
