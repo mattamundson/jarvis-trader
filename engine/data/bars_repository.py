@@ -73,17 +73,17 @@ _SANE_PRICE_BANDS: dict[str, tuple[float, float]] = {
 _MAX_CONSECUTIVE_JUMP = 0.50
 
 
-def _row_rejection(symbol: str, o: float, h: float, l: float, c: float,
+def _row_rejection(symbol: str, o: float, h: float, low: float, c: float,
                    ref_close: Optional[float]) -> Optional[str]:
     """Return a rejection reason for an implausible bar, or None if sane."""
-    for name, v in (("open", o), ("high", h), ("low", l), ("close", c)):
+    for name, v in (("open", o), ("high", h), ("low", low), ("close", c)):
         if not (v == v) or v in (float("inf"), float("-inf")) or v <= 0:
             return f"non-positive/non-finite {name}={v}"
-    if h < l:
-        return f"high {h} < low {l}"
-    if not (l <= o <= h) or not (l <= c <= h):
-        return f"open/close outside [low, high] ({o}/{c} vs [{l}, {h}])"
-    if o == h == l == c == _IB_SNAPSHOT_SENTINEL:
+    if h < low:
+        return f"high {h} < low {low}"
+    if not (low <= o <= h) or not (low <= c <= h):
+        return f"open/close outside [low, high] ({o}/{c} vs [{low}, {h}])"
+    if o == h == low == c == _IB_SNAPSHOT_SENTINEL:
         return f"IB snapshot sentinel flat bar at {_IB_SNAPSHOT_SENTINEL}"
     band = _SANE_PRICE_BANDS.get(symbol)
     if band and not (band[0] <= c <= band[1]):
@@ -171,12 +171,12 @@ def save_bars(
 
     rows = []
     rejected: list[str] = []
-    for ts_iso, o, h, l, c, vol in parsed:
-        reason = _row_rejection(sym, o, h, l, c, ref_close)
+    for ts_iso, o, h, low, c, vol in parsed:
+        reason = _row_rejection(sym, o, h, low, c, ref_close)
         if reason:
             rejected.append(f"{ts_iso}: {reason}")
             continue
-        rows.append((sym, interval, ts_iso, o, h, l, c, vol, source, fetched_at))
+        rows.append((sym, interval, ts_iso, o, h, low, c, vol, source, fetched_at))
         ref_close = c
 
     if rejected:
