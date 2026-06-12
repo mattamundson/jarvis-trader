@@ -149,7 +149,7 @@ def main():
     )
     windows = wfv.generate_windows(df, symbol)
     if not windows:
-        print("[ERROR] No windows generated — check date range vs train/test months", flush=True)
+        print("[ERROR] No windows generated -- check date range vs train/test months", flush=True)
         return 1
     print(f"  Generated {len(windows)} windows\n", flush=True)
 
