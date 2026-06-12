@@ -1730,6 +1730,50 @@ def migration_038(conn: sqlite3.Connection) -> None:
     logger.info("Migration 038 applied — paper_trades.slippage_ticks column.")
 
 
+def migration_039(conn: sqlite3.Connection) -> None:
+    """
+    039 — bar_quality_rejections table (observability for the write-time gate).
+
+    Both contamination defenses (bars_repository._row_rejection sanity checks and
+    bar_quality_gate.apply_gate) refuse implausible bars at save_bars but, before
+    this, the rejection fact existed only as an ephemeral log line — nothing
+    surfaced "the gate is working" to the dashboard. This table records one row
+    per (batch, path, reason category) with a count, so /analytics/bar-quality
+    can show per-symbol/source/reason rejection activity. Zero rows = clean data
+    (the honest steady state), not a broken gate.
+
+    path: 'sanity' (row-level _row_rejection) | 'gate' (apply_gate screen).
+    reason: machine category (IB_SENTINEL, PRICE_BAND, NEIGHBOR_JUMP,
+    RANGE_EXPLOSION, OHLC_LOGIC, NONFINITE, NONPOSITIVE, BLOCKED_SOURCE).
+
+    Idempotent: CREATE TABLE / INDEX IF NOT EXISTS.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bar_quality_rejections (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts_utc    TEXT    NOT NULL,
+            symbol    TEXT    NOT NULL,
+            interval  TEXT    NOT NULL,
+            source    TEXT    NOT NULL DEFAULT '',
+            path      TEXT    NOT NULL,
+            reason    TEXT    NOT NULL,
+            detail    TEXT,
+            count     INTEGER NOT NULL DEFAULT 1
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bqr_ts ON bar_quality_rejections(ts_utc DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bqr_symbol_ts "
+        "ON bar_quality_rejections(symbol, ts_utc DESC)"
+    )
+    conn.commit()
+    logger.info("Migration 039 applied — bar_quality_rejections observability table.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1772,6 +1816,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_036,  # version 36
     migration_037,  # version 37
     migration_038,  # version 38
+    migration_039,  # version 39
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
