@@ -120,8 +120,8 @@
         "tsc --noEmit clean; auto-refresh"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Done (989e3ca). /command-center already aggregated health/P&L/positions/signals/WFE + auto-refresh; added the missing live CandlestickChart (15m, per-instrument selector, 60s refresh). tsc clean."
     },
     {
       "id": "US-010",
@@ -134,8 +134,8 @@
         "All non-AMO-gated stories pass"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Done. pnpm build (Next.js 15.5) Compiled successfully in 27.0s, 0 errors, BUILD_ID written. tsc --noEmit 0 errors. STATUS.md enumerates all 36 routes (LIVE/static-shell/embed) + per-story state. All non-AMO-gated stories pass; only US-001 deploy remains (Amo safety-review tag)."
     }
   ]
 }
