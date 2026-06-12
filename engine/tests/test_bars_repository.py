@@ -136,3 +136,57 @@ def test_save_bars_skips_empty_df(tmp_path):
 
     loaded = load_bars("MES", "1h", db_path=db)
     assert loaded.empty
+
+
+# ---------------------------------------------------------------------------
+# test_default_db_path_is_isolated_from_production
+# ---------------------------------------------------------------------------
+
+
+def test_default_db_path_is_isolated_from_production():
+    """Regression guard for the 2026-06 bar-store contamination.
+
+    The autouse _isolate_bars_db fixture must redirect the repository's
+    default DB away from engine/data/jarvis_trader.db for every test, so a
+    save_bars(db_path=None) call can never write fixture bars into the
+    production table again.
+    """
+    import sqlite3
+
+    from data import bars_repository
+
+    default = Path(bars_repository._DEFAULT_DB_PATH)
+    assert "jarvis_trader.db" not in default.name, (
+        "tests must never default to the production bar store"
+    )
+
+    # A default-path write must land in the redirected location, not prod.
+    conn = sqlite3.connect(str(default))
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_data_bars (
+            symbol TEXT, interval TEXT, ts_utc TEXT,
+            open REAL, high REAL, low REAL, close REAL, volume REAL,
+            source TEXT, fetched_at TEXT,
+            UNIQUE(symbol, interval, ts_utc)
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    df = pd.DataFrame(
+        {
+            "timestamp": [datetime(2026, 1, 1, 9, tzinfo=timezone.utc)],
+            "open": [100.0],
+            "high": [100.5],
+            "low": [99.5],
+            "close": [100.5],
+            "volume": [1.0],
+        }
+    )
+    inserted = save_bars(df, "MCL", "1h", "smoke_test")  # db_path=None on purpose
+    assert inserted == 1
+
+    loaded = load_bars("MCL", "1h")  # default path again
+    assert len(loaded) == 1

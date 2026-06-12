@@ -80,6 +80,26 @@ from config import TradingConfig
 from risk.safety_layer import SafetyLayer
 
 
+@pytest.fixture(autouse=True)
+def _isolate_bars_db(tmp_path, monkeypatch):
+    """Redirect the bars repository's default DB to a per-test temp file.
+
+    save_bars()/load_bars() fall back to the PRODUCTION engine/data/
+    jarvis_trader.db when db_path is None. Tests that exercise
+    MarketDataManager paths with fixture data (closes ~100.5, source
+    'ibkr'/'tv'/'smoke_test') were silently inserting those fixtures into
+    the live market_data_bars table — the 2026-06 bar-store contamination
+    that poisoned MCL/MES backtests. Forcing the default into tmp_path
+    makes the whole class of leaks impossible regardless of which code
+    path reaches the repository.
+    """
+    from data import bars_repository
+
+    monkeypatch.setattr(
+        bars_repository, "_DEFAULT_DB_PATH", tmp_path / "test_bars.db"
+    )
+
+
 @pytest.fixture
 def mock_settings():
     """Safe test configuration with conservative limits."""
