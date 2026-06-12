@@ -103,8 +103,8 @@
         "Run against MES/MNQ/MCL; record gate verdicts"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent ae46340). Verify-don't-redo: most Run-12 gates pre-existing (sortino/calmar/tail_ratio/gain_to_pain/consecutive_losses in eval_run.py). ADDED 2 genuinely-missing: skew>=-1.5 (was diagnostic-only) + exposure>=0.15 to eval_run ITERATION/PRODUCTION gates. Fail-safe NO_TRADE intact, no thresholds loosened. engine/tests/test_eval_run_gates.py 22 PASS, ruff clean. See scripts/ralph/GATE_COVERAGE.md."
     },
     {
       "id": "US-008",
