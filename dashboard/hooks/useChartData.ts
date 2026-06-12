@@ -9,7 +9,7 @@ import type {
   PipelineHistoryEntry,
 } from "@/lib/api";
 
-export type ChartSymbol = "MCL" | "MNQ" | "MGC";
+export type ChartSymbol = "MES" | "MCL" | "MNQ" | "MGC";
 export type ChartTimeframe = "5m" | "15m" | "1h" | "4h" | "1d";
 
 // Aliases used by stub components
