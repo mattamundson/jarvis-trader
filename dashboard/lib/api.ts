@@ -732,6 +732,78 @@ export async function fetchClosedPaperTrades(): Promise<ClosedPaperTradesRespons
   return fetchEngine<ClosedPaperTradesResponse>("/paper/validation/trades/closed");
 }
 
+// ── Strategy ledger (gate-v2 backtest verdicts) ──────────────────────────────
+
+export interface LedgerEntry {
+  symbol: string | null;
+  family: string | null;
+  rank: number | null;
+  verdict: string | null; // PASS | FAIL
+  passed_via: string | null;
+  core_verdict: string | null;
+  alt_verdict: string | null;
+  created_at: string | null;
+  pf_ci_lower: number | null;
+  p_edge: number | null;
+  mc_95th_dd_pct: number | null;
+  dsr: number | null;
+  wfo_consistency: string | null;
+  fixed_params_min_pf: number | null;
+  cost_survives_through: string | null;
+  oos_trades: number | null;
+  source_file: string | null;
+}
+
+export interface LedgerResponse {
+  entries: LedgerEntry[];
+  total: number;
+  n_pass: number;
+  n_fail: number;
+  generated_at: string;
+}
+
+/** GET /strategy/ledger — gate-v2 backtest verdict ledger. */
+export async function fetchStrategyLedger(): Promise<LedgerResponse> {
+  return fetchEngine<LedgerResponse>("/strategy/ledger");
+}
+
+// ── Per-trade full review (closed loop) ──────────────────────────────────────
+
+export interface TradeFullReview {
+  trade: Record<string, any>;
+  attribution: Record<string, any>;
+  why: {
+    decision_id: number | null;
+    matched_by: string;
+    match_delta_seconds: number | null;
+    timestamp: string | null;
+    action: string | null;
+    confidence: number | null;
+    regime: string | null;
+    reasoning: string | null;
+    pipeline: Record<string, any> | null;
+  } | null;
+  backtest: LedgerEntry | null;
+  forward: {
+    profit_factor: number;
+    sharpe_ratio: number;
+    win_rate: number;
+    avg_win: number;
+    avg_loss: number;
+    max_drawdown: number;
+    total_trades: number;
+    total_pnl: number;
+    meets_paper_threshold: boolean;
+    period_days: number;
+  } | null;
+  review: Record<string, any> | null;
+}
+
+/** GET /trades/{id}/full-review — the closed-loop join for one placed trade. */
+export async function fetchTradeFullReview(tradeId: string): Promise<TradeFullReview> {
+  return fetchEngine<TradeFullReview>(`/trades/${encodeURIComponent(tradeId)}/full-review`);
+}
+
 // ── Approval / Trade Gating API ──────────────────────────────────────────────
 
 export interface PendingApproval {
