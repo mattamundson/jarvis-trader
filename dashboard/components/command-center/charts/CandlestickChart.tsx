@@ -3,6 +3,7 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import {
   createChart,
+  createSeriesMarkers,
   ColorType,
   CrosshairMode,
   LineStyle,
@@ -11,6 +12,8 @@ import {
   LineSeries,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
   type SeriesType,
   type Time,
 } from "lightweight-charts";
@@ -21,6 +24,8 @@ interface CandlestickChartProps {
   technical?: TechnicalAnalysisResult | null;
   height?: number;
   livePrice?: number | null;
+  /** Optional trade/signal markers overlaid on the candle series. */
+  markers?: SeriesMarker<Time>[];
 }
 
 export function CandlestickChart({
@@ -28,6 +33,7 @@ export function CandlestickChart({
   technical,
   height = 420,
   livePrice,
+  markers,
 }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -40,6 +46,8 @@ export function CandlestickChart({
   // VWAP overlay and STC subpanel
   const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const stcSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  // Trade/signal markers plugin (v5: createSeriesMarkers on the candle series)
+  const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
   // ── Initialize chart on mount ─────────────────────────────────────────────
   useEffect(() => {
@@ -161,6 +169,9 @@ export function CandlestickChart({
       axisLabelVisible: true,
     });
 
+    // Markers plugin bound to the candle series (updated in the markers effect)
+    markersPluginRef.current = createSeriesMarkers(candleSeries, []);
+
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
@@ -189,8 +200,15 @@ export function CandlestickChart({
       ema34Ref.current = null;
       vwapSeriesRef.current = null;
       stcSeriesRef.current = null;
+      markersPluginRef.current = null;
     };
   }, [height]);
+
+  // ── Update trade/signal markers when they change ─────────────────────────
+  useEffect(() => {
+    if (!markersPluginRef.current) return;
+    markersPluginRef.current.setMarkers(markers ?? []);
+  }, [markers]);
 
   // ── Update candle + volume data when bars change ──────────────────────────
   useEffect(() => {
