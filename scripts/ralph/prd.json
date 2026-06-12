@@ -62,8 +62,8 @@
         "Unit test for the MAE/MFE computation"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent ab86bb6). NEW engine/analytics/excursion.py (pure compute) + excursion_backfill.py; migration_039 adds nullable mae_pct/mfe_pct/mae_usd/mfe_usd to paper_trades (idempotent, applies next restart); GET /analytics/excursion endpoint (per-trade + aggregates); engine/tests/test_excursion.py = 23 PASS. CAVEATS: migration applies on next (gated) restart; backfill needs 1m bar history (older trades stay null); UI column surfacing skipped (gated dashboard rebuild)."
     },
     {
       "id": "US-005",

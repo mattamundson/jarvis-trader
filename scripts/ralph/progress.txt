@@ -39,3 +39,14 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - **Learnings:** Dashboard runs as next start via a process manager; a NEW route needs build + process reload to serve. Reload is a GATED service restart (denied by auto-mode/shared-resource-guard) — surfaced to Amo, not auto-run. lib/api.ts HealthResponse lacks llm_providers (extended locally in the page).
 - Files: dashboard/app/today/page.tsx, dashboard/components/Sidebar.tsx
 ---
+
+## 2026-06-12 - US-004 (MAE/MFE excursion capture) — PASS (build), engine-restart/backfill gated
+- Schema: migration_039 adds nullable mae_pct, mfe_pct, mae_usd, mfe_usd REAL columns to paper_trades via try/except idempotent ADD COLUMN pattern (same as migration_038).
+- Compute module: NEW engine/analytics/excursion.py — pure compute_excursion(side, entry_price, bars_df, multiplier, qty) + mfe_capture_ratio(). No I/O. LONG/SHORT mirror definitions per spec. Dollar amounts = pct * entry_price * multiplier * qty.
+- Backfill callable: NEW engine/analytics/excursion_backfill.py — async run_backfill(db_manager, data_manager, limit=200). Fetches 1m bars via get_bars() waterfall, filters to entry->exit window, writes 4 columns. Guard: missing bars → skip (leave NULL), never crash. Also runnable as __main__ script.
+- Endpoint: GET /analytics/excursion (added to engine/routers/analytics_router.py). Returns per-trade ExcursionTradeItem list + ExcursionAggregates (avg_mae_pct, avg_mfe_pct, avg_mfe_capture_ratio). Supports ?limit= and ?symbol= filters.
+- Tests: NEW engine/tests/test_excursion.py — 23 tests, 23 passed (1.71s). Covers LONG exact MAE/MFE/USD, SHORT exact MAE/MFE/USD, side-label aliases, empty/None/bad-cols/zero-price edge cases, mfe_capture_ratio.
+- UI: SKIPPED — trades table is Next.js server component requiring dashboard rebuild + gated restart. Endpoint is the priority (per spec).
+- Caveats: (1) migration_039 applies on next engine restart (additive, safe). (2) Backfill requires bars availability — TV MCP/IBKR may not have 1m history for older trades; those stay NULL. (3) Backfill not auto-wired on engine start — call run_backfill() explicitly or via the analytics endpoint once bars are available.
+- Files: engine/analytics/excursion.py, engine/analytics/excursion_backfill.py, engine/database/migrations.py, engine/routers/analytics_router.py, engine/tests/test_excursion.py
+---
