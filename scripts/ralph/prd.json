@@ -156,8 +156,8 @@
         "Migration is non-destructive/idempotent; Amo runs prod DDL"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "Repo: C:/Users/mattm/Code/amo-arbitrage"
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a4901819). Repo amo-arbitrage, branch feat/signal-outcome-tracking (7 commits 81f7bf2..22500f3, NOT pushed). backend/migrations/phase7_signal_outcomes.sql (idempotent, Amo runs in Supabase). backend/pipelines/signal_outcomes.py (snapshot + evaluate price_1/3/5/10d, MFE/MAE, hit detection target1/target2/stop dir-aware, hypothetical PnL) wired into scheduler @4am CT. backend/routers/signal_outcomes.py: GET /api/signal-outcomes/{outcomes,aggregate} + POST /run. UI page /signal-outcomes + nav + api client. backend/tests/test_signal_outcomes.py 23 PASS. CAVEATS: frontend typecheck not explicitly confirmed; ruff not installed in backend venv; Amo runs migration + pushes."
     },
     {
       "id": "US-012",
