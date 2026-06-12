@@ -21,7 +21,6 @@ os.environ.setdefault("API_KEY", "test-dummy-key-not-a-secret-0000")
 
 from routers import strategy_ledger_router as L  # noqa: E402
 
-
 # ── verdict ledger fixtures ─────────────────────────────────────────────────────
 
 
@@ -83,6 +82,12 @@ def test_find_verdict_prefers_pass_then_rank(tmp_path, monkeypatch):
 @pytest.fixture
 def seeded_db():
     from database.manager import DatabaseManager
+    from routers import trades_router as T
+
+    # Capture the trades_router module globals so the inject_dependencies() the
+    # tests do is fully reverted on teardown — otherwise a temp DB (deleted
+    # below) leaks into later tests in the full suite and breaks them.
+    _saved = (T._db_manager, T._llm_client)
 
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         path = f.name
@@ -122,6 +127,8 @@ def seeded_db():
         grade="B", review_status="complete", conviction=0.65,
     )
     yield db, path
+    # restore module globals so this test never pollutes the rest of the suite
+    T._db_manager, T._llm_client = _saved
     try:
         Path(path).unlink(missing_ok=True)
     except PermissionError:
