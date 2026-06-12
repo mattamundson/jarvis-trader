@@ -101,3 +101,9 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - Ledger: 4 CLEARED (MGC trend_rv_filter best DSR1.0/PF-CI3.18 CORE), 2 insufficient, 29 fail. No contradiction with gate_v2_verdicts.
 - Files: engine/generation/__init__.py, engine/generation/edge_ledger.py, engine/routers/reports_router.py, engine/tests/test_edge_ledger.py, scripts/ralph/EDGE_LEDGER.md
 ---
+
+## 2026-06-12 - US-011 (amo-arb signal-outcome tracking) — PASS
+- Repo amo-arbitrage, branch feat/signal-outcome-tracking (7 commits, NOT pushed). phase7_signal_outcomes.sql (idempotent; Amo runs in Supabase) + signal_outcomes.py pipeline @4am CT + router GET outcomes/aggregate + UI /signal-outcomes. backend tests 23 PASS.
+- **Learnings:** Cross-repo story — work + commits live in amo-arbitrage, tracked here in prd. Amo must run the Supabase DDL + push the branch. Frontend typecheck unconfirmed; ruff absent in backend venv.
+- Files: (amo-arbitrage repo) backend/migrations/phase7_signal_outcomes.sql, backend/pipelines/signal_outcomes.py, backend/routers/signal_outcomes.py, backend/main.py, backend/tests/test_signal_outcomes.py, frontend SignalOutcomesPage.tsx + api.ts + App.tsx + AppLayout.tsx
+---
