@@ -363,3 +363,47 @@ async def get_regime_conditional(
         "end_date": end,
         "meta": meta,
     }
+
+
+@router.get("/edge-ledger")
+async def get_edge_ledger(
+    rebuild: bool = Query(False, description="Re-mine verdict files before returning rows"),
+) -> dict[str, Any]:
+    """Return the ranked edge ledger across all gate v2 verdicts.
+
+    PASS rows appear first (sorted by DSR descending), followed by INSUFFICIENT_SAMPLE,
+    then FAIL rows (sorted by primary_block, then nearest-to-pass pf_ci_lower first).
+    Each row carries the full gate_v2_metrics subset plus alt_failures and primary_block.
+
+    Pass ``?rebuild=true`` to re-mine the verdict JSON files and append new rows
+    before returning (idempotent -- duplicate rows are never written).
+    """
+    try:
+        import sys
+        from pathlib import Path as _Path
+
+        _engine_root = _Path(__file__).resolve().parents[1]
+        if str(_engine_root) not in sys.path:
+            sys.path.insert(0, str(_engine_root))
+
+        from generation.edge_ledger import build, ranked_ledger
+
+        if rebuild:
+            n_new, n_total = build()
+            logger.info("[REPORTS] edge-ledger rebuild: +%d new rows, %d total", n_new, n_total)
+
+        rows = ranked_ledger()
+        n_pass = sum(1 for r in rows if r.get("verdict") == "PASS")
+        n_fail = sum(1 for r in rows if r.get("verdict") == "FAIL")
+        n_other = len(rows) - n_pass - n_fail
+
+        return {
+            "total": len(rows),
+            "n_pass": n_pass,
+            "n_fail": n_fail,
+            "n_other": n_other,
+            "rows": rows,
+        }
+    except Exception as exc:
+        logger.error("[REPORTS] edge-ledger error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
