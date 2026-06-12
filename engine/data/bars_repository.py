@@ -98,6 +98,15 @@ def save_bars(
     if not rows:
         return 0
 
+    # Write-time quality gate: screen out contaminated ticks (impossible bars,
+    # range explosions, lone neighbour jumps, blocked sources) before persist.
+    # Shadow by default (logs only); BAR_QUALITY_GATE_ENFORCE=1 drops the rows.
+    from data.bar_quality_gate import apply_gate
+
+    rows, _rejects = apply_gate(rows, symbol=symbol, interval=interval)
+    if not rows:
+        return 0
+
     try:
         conn = _connect(db)
         cur = conn.executemany(_INSERT_SQL, rows)
