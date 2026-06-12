@@ -1058,14 +1058,11 @@ async def lifespan(app: FastAPI):
                                 "[Scheduler] OMS execution failed for %s: %s", symbol, oms_exc
                             )
 
-                    await _deliver_pipeline_whatsapp_if_eligible(
-                        symbol=symbol,
-                        action=action,
-                        qty=qty,
-                        price_info=price_info,
-                        reasoning=reasoning,
-                        confidence=float(confidence),
-                    )
+                    # Multi-channel fan-out (Telegram/Discord/WhatsApp/toast).
+                    # Shared cooldown dedupes vs the in-pipeline broadcast.
+                    from notifications.signal_broadcast import broadcast_signal
+
+                    await broadcast_signal(symbol, result, source="scheduler")
                 else:
                     logger.debug(f"{symbol}: hold — no alert sent")
 
