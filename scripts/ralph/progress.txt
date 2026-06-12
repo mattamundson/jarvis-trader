@@ -81,3 +81,12 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - Verify-don-t-redo: most gates pre-existing. ADDED skew>=-1.5 (was diagnostic-only) + exposure>=0.15 to eval_run ITERATION/PRODUCTION gates. test_eval_run_gates.py 22 PASS, ruff clean. Fail-safe intact, no thresholds loosened.
 - Files: scripts/eval_run.py, engine/tests/test_eval_run_gates.py, scripts/ralph/GATE_COVERAGE.md
 ---
+
+## 2026-06-12 - US-008 (Regime-conditional Sharpe slicing) — PASS (build), regime feed wiring gated
+- Pure module: NEW engine/analytics/regime_analysis.py — regime_conditional_analysis(returns, regime_labels) -> dict. Slices by RISK_ON/RISK_OFF/NORMAL; computes sharpe/sortino/max_dd/win_rate/tail_ratio/skew/calmar/n_days per regime. Regimes <5 obs return {n_days, note:"insufficient data"}. Pure: Series in, dict out. Handles empty/None/NaN/misaligned indices/lowercase labels. All qs.stats funcs confirmed present.
+- Endpoint: GET /reports/regime-conditional added to engine/routers/reports_router.py. Uses same _load_pnl_series as /reports/quantstats. Tries to load regime labels from a macro_regime_log table (date, regime); if absent, returns full per-regime skeleton with note:"no data" + wiring_gap explanation string.
+- Tests: NEW engine/tests/test_regime_analysis.py — 18 tests, 18 passed. Covers all 3 regimes, insufficient-data regime, absent regime, known sharpe sign, max_dd sign, empty/None/NaN inputs, lowercase normalisation, index misalignment.
+- Ruff: All checks passed!
+- **Wiring gap:** No engine process persists per-day RISK_ON/RISK_OFF/NORMAL labels. fundamental_analyst.py computes macro_regime on demand (not stored); fred_data.py returns a spot label without a time series. Endpoint is functional; to activate real metrics, add an async daily task that calls FundamentalAnalyst.assess_macro_conditions() and inserts (date, macro_regime) into macro_regime_log table.
+- Files: engine/analytics/regime_analysis.py, engine/tests/test_regime_analysis.py, engine/routers/reports_router.py
+---
