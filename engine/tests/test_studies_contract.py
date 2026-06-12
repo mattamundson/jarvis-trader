@@ -37,11 +37,10 @@ def _synth_sessions(n_days: int = 30, bars_per_day: int = 40, seed: int = 7) -> 
     rng = np.random.default_rng(seed)
     rows, idx = [], []
     price = 5000.0
-    day = pd.Timestamp("2025-01-06 09:30", tz="America/New_York")
-    for d in range(n_days):
-        start = day + pd.Timedelta(days=d)
-        while start.dayofweek >= 5:
-            start = start + pd.Timedelta(days=1)
+    # Unique business days (no Sat/Sun collapsing onto the same Monday).
+    bdays = pd.bdate_range("2025-01-06", periods=n_days, tz="America/New_York")
+    for d, bday in enumerate(bdays):
+        start = bday + pd.Timedelta(hours=9, minutes=30)
         trend = 1.2 if d % 2 == 0 else -1.2
         for b in range(bars_per_day):
             ts = start + pd.Timedelta(minutes=5 * b)
@@ -66,7 +65,7 @@ def test_study_emits_contract_columns(study_name):
     df = _synth_sessions()
     for mode in study.MODES:
         params = study.grid(mode)[0]
-        sig = study.generate(df, mode=mode, **{k: v for k, v in params.items()})
+        sig = study.generate(df, mode=mode, **dict(params))
         for col in CONTRACT_COLS:
             assert col in sig.columns, f"{study_name}/{mode} missing {col}"
         # atr column must be finite and positive where entries fire
