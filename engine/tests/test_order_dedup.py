@@ -399,7 +399,11 @@ class TestMay11Regression:
         """
         db = _TestDBManager(str(tmp_path / "regression_timing.db"))
 
-        now_epoch = time.time()
+        # Anchor to a 5s-bucket boundary (+0.5s margin) so each pair's two
+        # timestamps deterministically share a bucket. With raw time.time() the
+        # fractional offset occasionally straddles a 5s boundary (~5% of runs),
+        # splitting a pair into two rows and flaking this assertion (got 4 != 3).
+        now_epoch = math.floor(time.time() / 5) * 5 + 0.5
         # Pair timestamps mimicking the incident (relative seconds)
         pair_offsets = [0.0, 0.046, 21.469, 21.603, 41.356, 41.407]
 
