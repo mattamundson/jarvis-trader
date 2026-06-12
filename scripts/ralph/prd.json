@@ -89,8 +89,8 @@
         "Secrets via 1Password/env, never echoed/committed"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a2ffb4a). alert_manager.py fan-out to Telegram+Discord (best-effort, env-driven, no-op without creds); NEW engine/scripts/liveness_watchdog.py (triggers: data-leg flip true->false, kill-switch, /health unreachable N misses, status!=ok; debounced; --self-test). test_liveness_watchdog.py 23 PASS, ruff clean. LIVE TEST DELIVERED: Telegram 200, Discord 204. Env: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID, DISCORD_WEBHOOK_URL. CAVEAT: watchdog needs registering as a persistent task (scheduled task/pm2) for 24/7 — Amo-gated deployment step."
     },
     {
       "id": "US-007",
