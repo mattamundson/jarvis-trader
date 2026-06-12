@@ -17,7 +17,10 @@ from routers import analytics_router, health_router, portfolio_router
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # asyncio.run, not get_event_loop().run_until_complete: after any earlier
+    # test tears down with set_event_loop(None), get_event_loop() raises
+    # "There is no current event loop" — making these tests order-dependent.
+    return asyncio.run(coro)
 
 
 class _FakeDB:
