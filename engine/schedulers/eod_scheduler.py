@@ -238,6 +238,55 @@ class EODScheduler:
             "max_drawdown": round(perf.get("max_dd", 0.0), 4),
         }
 
+    def _collect_db_trade_metrics(self, today: str) -> Optional[Dict[str, Any]]:
+        """
+        Derive daily P&L metrics from CLOSED ``paper_trades`` rows — the
+        round-trip source of truth — instead of in-memory tracker lifetime
+        aggregates.
+
+        Anchoring every balance to initial capital + cumulative closed P&L
+        means a corrupted daily_pnl row can never chain into later rows (the
+        2026-06 corruption propagated through yesterday's-ending lookups
+        after a single basis-flipped write).
+
+        Returns None when the DB or query is unavailable so callers can fall
+        back to the legacy tracker path.
+        """
+        if self._db is None or not hasattr(self._db, "get_trade_history"):
+            return None
+        try:
+            closed = self._db.get_trade_history(limit=5000, status="closed")
+        except Exception as exc:
+            logger.error("[EOD] get_trade_history failed: %s", exc)
+            return None
+
+        cum_before = 0.0
+        cum_through = 0.0
+        day_trades = day_wins = day_losses = 0
+        for t in closed:
+            exit_date = str(t.get("exit_time") or "")[:10]
+            if not exit_date:
+                continue
+            pnl = float(t.get("pnl") or 0.0)
+            if exit_date < today:
+                cum_before += pnl
+            if exit_date <= today:
+                cum_through += pnl
+            if exit_date == today:
+                day_trades += 1
+                if pnl > 0:
+                    day_wins += 1
+                elif pnl < 0:
+                    day_losses += 1
+
+        return {
+            "cum_realized_before": round(cum_before, 4),
+            "cum_realized_through": round(cum_through, 4),
+            "total_trades": day_trades,
+            "winning_trades": day_wins,
+            "losing_trades": day_losses,
+        }
+
     def _build_paper_performance_by_symbol(self) -> Dict[str, Dict[str, float]]:
         """
         Build {symbol: {"sharpe": float, "current_allocation": float}} from
@@ -294,18 +343,37 @@ class EODScheduler:
         today = self._today_date_str()
         logger.info("[EOD] Running end-of-day snapshot for %s", today)
 
-        starting_balance = self._get_starting_balance(today)
         metrics = self._collect_tracker_metrics(today)
-
-        # Bug #1 fix: metrics["realized_pnl"] is the LIFETIME cumulative from
-        # get_performance().  Use it as an absolute equity anchor so ending_balance
-        # is always _DEFAULT_STARTING_BALANCE + lifetime_pnl, then compute the
-        # true daily delta as ending - starting.  Without this fix, the cumulative
-        # was re-added to yesterday's ending every day, ballooning equity.
-        lifetime_pnl: float = metrics["realized_pnl"]
         unrealized_pnl: float = metrics["unrealized_pnl"]
-        ending_balance = round(_DEFAULT_STARTING_BALANCE + lifetime_pnl, 4)
-        realized_pnl = round(ending_balance - starting_balance, 4)  # true daily delta
+
+        # 2026-06-12 corruption fix: anchor balances to initial capital +
+        # cumulative CLOSED paper_trades P&L (the round-trip source of truth)
+        # instead of chaining off yesterday's daily_pnl row and lifetime
+        # tracker aggregates. A single basis-flipped row used to propagate
+        # phantom ±$40k "realized" days through the starting-balance lookup;
+        # with absolute anchoring the table is a pure derivation and cannot
+        # drift even if a bad row exists.
+        db_metrics = self._collect_db_trade_metrics(today)
+        if db_metrics is not None:
+            starting_balance = round(
+                _DEFAULT_STARTING_BALANCE + db_metrics["cum_realized_before"], 4
+            )
+            ending_balance = round(
+                _DEFAULT_STARTING_BALANCE + db_metrics["cum_realized_through"], 4
+            )
+            realized_pnl = round(ending_balance - starting_balance, 4)
+            total_trades = db_metrics["total_trades"]
+            winning_trades = db_metrics["winning_trades"]
+            losing_trades = db_metrics["losing_trades"]
+        else:
+            # Legacy fallback (no DB): lifetime tracker anchor + daily delta.
+            starting_balance = self._get_starting_balance(today)
+            lifetime_pnl: float = metrics["realized_pnl"]
+            ending_balance = round(_DEFAULT_STARTING_BALANCE + lifetime_pnl, 4)
+            realized_pnl = round(ending_balance - starting_balance, 4)
+            total_trades = metrics["total_trades"]
+            winning_trades = metrics["winning_trades"]
+            losing_trades = metrics["losing_trades"]
 
         snapshot = {
             "date": today,
@@ -313,16 +381,16 @@ class EODScheduler:
             "ending_balance": ending_balance,
             "realized_pnl": realized_pnl,
             "unrealized_pnl": unrealized_pnl,
-            "total_trades": metrics["total_trades"],
-            "winning_trades": metrics["winning_trades"],
-            "losing_trades": metrics["losing_trades"],
+            "total_trades": total_trades,
+            "winning_trades": winning_trades,
+            "losing_trades": losing_trades,
             "max_drawdown": metrics["max_drawdown"],
         }
 
         # Persist to database
         if self._db is not None:
             try:
-                self._db.upsert_daily_pnl(
+                written = self._db.upsert_daily_pnl(
                     date=snapshot["date"],
                     starting_balance=snapshot["starting_balance"],
                     ending_balance=snapshot["ending_balance"],
@@ -333,12 +401,17 @@ class EODScheduler:
                     losing_trades=snapshot["losing_trades"],
                     max_drawdown=snapshot["max_drawdown"],
                 )
+                if written is False:
+                    # Plausibility guard refused the row — surface loudly.
+                    logger.error("[EOD] Snapshot REFUSED by daily_pnl write guard")
+                    snapshot["status"] = "refused"
+                    return snapshot
                 logger.info(
                     "[EOD] Snapshot saved — date=%s realized=%+.2f unrealized=%+.2f trades=%d",
                     today,
                     realized_pnl,
                     unrealized_pnl,
-                    metrics["total_trades"],
+                    snapshot["total_trades"],
                 )
                 snapshot["status"] = "ok"
             except Exception as exc:
@@ -507,15 +580,30 @@ class EODScheduler:
         no database side effects.
         """
         today = self._today_date_str()
-        starting_balance = self._get_starting_balance(today)
         metrics = self._collect_tracker_metrics(today)
-
-        # Same Bug #1 fix as run_eod_snapshot: compute absolute equity from
-        # initial capital + lifetime pnl, then derive daily delta.
-        lifetime_pnl: float = metrics["realized_pnl"]
         unrealized_pnl: float = metrics["unrealized_pnl"]
-        ending_balance = round(_DEFAULT_STARTING_BALANCE + lifetime_pnl, 4)
-        realized_pnl = round(ending_balance - starting_balance, 4)
+
+        # Same paper_trades anchoring as run_eod_snapshot (2026-06-12 fix).
+        db_metrics = self._collect_db_trade_metrics(today)
+        if db_metrics is not None:
+            starting_balance = round(
+                _DEFAULT_STARTING_BALANCE + db_metrics["cum_realized_before"], 4
+            )
+            ending_balance = round(
+                _DEFAULT_STARTING_BALANCE + db_metrics["cum_realized_through"], 4
+            )
+            realized_pnl = round(ending_balance - starting_balance, 4)
+            total_trades = db_metrics["total_trades"]
+            winning_trades = db_metrics["winning_trades"]
+            losing_trades = db_metrics["losing_trades"]
+        else:
+            starting_balance = self._get_starting_balance(today)
+            lifetime_pnl: float = metrics["realized_pnl"]
+            ending_balance = round(_DEFAULT_STARTING_BALANCE + lifetime_pnl, 4)
+            realized_pnl = round(ending_balance - starting_balance, 4)
+            total_trades = metrics["total_trades"]
+            winning_trades = metrics["winning_trades"]
+            losing_trades = metrics["losing_trades"]
 
         return {
             "date": today,
@@ -524,9 +612,9 @@ class EODScheduler:
             "realized_pnl": realized_pnl,
             "unrealized_pnl": unrealized_pnl,
             "total_pnl": round(realized_pnl + unrealized_pnl, 4),
-            "total_trades": metrics["total_trades"],
-            "winning_trades": metrics["winning_trades"],
-            "losing_trades": metrics["losing_trades"],
+            "total_trades": total_trades,
+            "winning_trades": winning_trades,
+            "losing_trades": losing_trades,
             "max_drawdown": metrics["max_drawdown"],
             "status": "intraday",
         }
