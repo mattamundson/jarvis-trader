@@ -50,3 +50,19 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - Caveats: (1) migration_039 applies on next engine restart (additive, safe). (2) Backfill requires bars availability — TV MCP/IBKR may not have 1m history for older trades; those stay NULL. (3) Backfill not auto-wired on engine start — call run_backfill() explicitly or via the analytics endpoint once bars are available.
 - Files: engine/analytics/excursion.py, engine/analytics/excursion_backfill.py, engine/database/migrations.py, engine/routers/analytics_router.py, engine/tests/test_excursion.py
 ---
+
+## 2026-06-12 - US-005 (Entry-timing scenario analysis) — PASS (build), engine-restart gated
+- Pure module: NEW engine/analytics/scenario.py — compute_entry_timing_scenarios(side, actual_entry_price, exit_price, bars_df, entry_bar_index, offsets, multiplier, qty) -> list[dict]. Each dict: {offset_bars, hypothetical_entry, pnl_usd, pnl_pct, delta_vs_actual_usd}. offset=0 uses actual_entry_price (sanity anchor). All other offsets use bar open at entry_bar_index+offset (clamped). Pure: bars_df in, no I/O.
+- Wiring helper: NEW engine/analytics/scenario_backfill.py — run_scenarios_for_trade(trade, data_manager, offsets) async. Reuses _parse_utc() + _filter_bars_to_window() from excursion_backfill (DRY). _locate_entry_bar() finds bar index from timestamps. Guard: missing bars/invalid prices → None, never crash. Also runnable as __main__.
+- Endpoint: GET /analytics/entry-timing added to engine/routers/analytics_router.py. Query params: limit, symbol, offsets (comma-separated). Returns per-trade EntryTimingTradeItem list + EntryTimingAggregates (avg_delta_by_offset, best_avg_offset, systematic_bias: EARLY|LATE|NEUTRAL). Auth via existing _get_db() pattern. Query() already imported — no duplicate.
+- Tests: NEW engine/tests/test_scenario.py — 22 tests, 22 passed (1.33s). Covers LONG exact deltas (offset -3/-2/-1/0/+1), SHORT exact deltas, side aliases, edge cases (None/empty/missing-open/zero-price/out-of-range clamping/empty-offsets).
+- Ruff: All checks passed! (6 auto-fixed: unused Optional import, duplicate timedelta imports).
+- UI: SKIPPED — gated dashboard rebuild per spec.
+- Files: engine/analytics/scenario.py, engine/analytics/scenario_backfill.py, engine/routers/analytics_router.py, engine/tests/test_scenario.py
+---
+
+## 2026-06-12 - US-005 (Entry-timing scenario analysis) — PASS
+- NEW engine/analytics/scenario.py (pure) + scenario_backfill.py (reuses excursion bar-fetch). GET /analytics/entry-timing (?offsets=, per-trade + aggregate systematic_bias EARLY/LATE/NEUTRAL). test_scenario.py 22 PASS, ruff clean. No migration.
+- **Learnings:** Reused excursion_backfill _parse_utc/_filter_bars_to_window (DRY). Query already imported from US-004. Run ruff check --fix BEFORE returning to avoid the pre-commit block.
+- Files: engine/analytics/scenario.py, engine/analytics/scenario_backfill.py, engine/routers/analytics_router.py, engine/tests/test_scenario.py
+---
