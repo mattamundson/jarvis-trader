@@ -286,6 +286,68 @@ def ema_ribbon(close: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
     return ema_8, ema_21, ema_34
 
 
+# Saty's standard fib-ATR ratios (faithful to the AA Saty ATR Levels ThinkScript).
+# 0.236 is the directional trigger; 1.0 is the full-ATR target; >1.0 are extensions.
+SATY_ATR_RATIOS: Tuple[float, ...] = (0.236, 0.382, 0.618, 0.786, 1.0, 1.236, 1.618, 2.0)
+SATY_TRIGGER_RATIO = 0.236
+
+
+def saty_atr_levels(prior_close: float, atr: float) -> dict:
+    """Saty ATR Levels: fib-ATR price levels anchored to the prior session close.
+
+    Ported from the AA Saty ATR Levels ThinkScript study (master-jarvis/
+    thinkorswim-scripts). Unlike the engine's existing ATR-multiple targets
+    (which anchor to the *entry*), these anchor to the prior close, so the same
+    levels hold for every entry on the day — a cleaner, less path-dependent
+    target/SR framework.
+
+    Returns a dict with:
+        prior_close, atr
+        call_trigger / put_trigger : +/- 0.236 ATR directional pivots
+        upper / lower : {ratio: price} for every SATY_ATR_RATIOS level
+    Returns an empty-ish dict (levels present but flat at prior_close) if atr<=0.
+    """
+    pc = float(prior_close)
+    a = float(atr) if atr and atr > 0 else 0.0
+    upper = {r: pc + r * a for r in SATY_ATR_RATIOS}
+    lower = {r: pc - r * a for r in SATY_ATR_RATIOS}
+    return {
+        "prior_close": pc,
+        "atr": a,
+        "call_trigger": upper[SATY_TRIGGER_RATIO],
+        "put_trigger": lower[SATY_TRIGGER_RATIO],
+        "upper": upper,
+        "lower": lower,
+    }
+
+
+def saty_bias(price: float, levels: dict) -> str:
+    """Saty directional bias: 'long' above the call trigger, 'short' below the
+    put trigger, else 'neutral' (price inside the trigger band = no edge)."""
+    if not levels or levels.get("atr", 0) <= 0:
+        return "neutral"
+    if price > levels["call_trigger"]:
+        return "long"
+    if price < levels["put_trigger"]:
+        return "short"
+    return "neutral"
+
+
+def saty_nearest_target(price: float, side: str, levels: dict) -> Optional[float]:
+    """Nearest Saty ATR level *beyond* ``price`` in the trade direction — i.e.
+    the next overhead level for a long, next level below for a short. Returns
+    None if no level lies beyond price (price already past the +/-2 ATR band)."""
+    if not levels or levels.get("atr", 0) <= 0:
+        return None
+    if side in ("long", "buy"):
+        above = sorted(p for p in levels["upper"].values() if p > price)
+        return above[0] if above else None
+    if side in ("short", "sell"):
+        below = sorted((p for p in levels["lower"].values() if p < price), reverse=True)
+        return below[0] if below else None
+    return None
+
+
 # ─── AutoTrade-derived indicators (Phase 1) ───────────────────────────
 
 
