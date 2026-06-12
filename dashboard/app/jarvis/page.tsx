@@ -6,6 +6,7 @@ import { Activity, Cpu, Radio, Shield, ShieldOff, Zap } from "lucide-react";
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
 import { BookmarkFeedPanel } from "@/components/BookmarkFeedPanel";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { RiskAttributionPanel } from "@/components/RiskAttributionPanel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -609,7 +610,9 @@ export default function JarvisCommandPage() {
 
         {/* Column 2 — Market intelligence */}
         <div className="space-y-4">
-          <QuantStatsPanel />
+          <WidgetErrorBoundary name="Tearsheet">
+            <QuantStatsPanel />
+          </WidgetErrorBoundary>
           <RiskAttributionPanel />
           <DiscordBriefingPanel />
         </div>
