@@ -457,12 +457,12 @@ async def reconnect_data_connector():
         except Exception:
             pass
 
-    from data.market_data import IBKRDataConnector
+    from data.market_data import IBKRDataConnector, resolve_data_client_id
 
     data_manager.ibkr = IBKRDataConnector(
         host=data_manager._config.IBKR_HOST,
         port=data_manager._config.IBKR_PORT,
-        client_id=data_manager._config.IBKR_CLIENT_ID,
+        client_id=resolve_data_client_id(data_manager._config),
         # Use a more generous timeout than startup (15s vs 5s) since this is manual recovery
         connect_timeout=max(
             getattr(data_manager._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0), 15.0
