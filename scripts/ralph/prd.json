@@ -129,8 +129,8 @@
         "Document what it monitors"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent ae7237f). Verify-don't-redo: zip = SUPERSEDED pre-fix prototype (index.html dated 06-02). Live dashboard/public/strategy-c-command-center.html (06-11, served via iframe in app/strategy-c-command/page.tsx) is canonical — only diff is the 11-line localhost->127.0.0.1 IPv6 fix already applied live. No zip features missing. No code change. See scripts/ralph/STRATEGY_C_RECONCILE.md."
     },
     {
       "id": "US-010",

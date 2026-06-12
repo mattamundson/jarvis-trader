@@ -90,3 +90,8 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - **Wiring gap:** No engine process persists per-day RISK_ON/RISK_OFF/NORMAL labels. fundamental_analyst.py computes macro_regime on demand (not stored); fred_data.py returns a spot label without a time series. Endpoint is functional; to activate real metrics, add an async daily task that calls FundamentalAnalyst.assess_macro_conditions() and inserts (date, macro_regime) into macro_regime_log table.
 - Files: engine/analytics/regime_analysis.py, engine/tests/test_regime_analysis.py, engine/routers/reports_router.py
 ---
+
+## 2026-06-12 - US-009 (Strategy C+ Command Center reconcile) — PASS
+- Verify-dont-redo: zip is SUPERSEDED (pre-IPv6-fix prototype). Live strategy-c-command-center.html (iframe in app/strategy-c-command/page.tsx) canonical; only drift = 11-line localhost->127.0.0.1 fix already applied. No code change.
+- Files: scripts/ralph/STRATEGY_C_RECONCILE.md
+---
