@@ -161,6 +161,24 @@ class MarketDataBar:
         self.source = source
 
 
+def resolve_data_client_id(config) -> int:
+    """Distinct IB clientId for the DATA leg.
+
+    IB Gateway refuses a second connection that reuses a clientId already held by
+    a live connection. The execution leg (``execution/ibkr_executor.py``) connects
+    with ``IBKR_CLIENT_ID``, so the data connector MUST NOT reuse it — sharing the
+    id made the data leg collide with the executor and fail to connect. Honor an
+    explicit ``IBKR_DATA_CLIENT_ID`` when set (non-zero), else offset the executor
+    id by +1, matching the smoke/scanner convention elsewhere in the engine.
+    """
+    explicit = getattr(config, "IBKR_DATA_CLIENT_ID", 0) or 0
+    try:
+        explicit = int(explicit)
+    except (TypeError, ValueError):
+        explicit = 0
+    return explicit if explicit > 0 else int(config.IBKR_CLIENT_ID) + 1
+
+
 class IBKRDataConnector:
     """
     Connects to IB Gateway via ib_async.
@@ -182,34 +200,72 @@ class IBKRDataConnector:
         self._ib = None
         self._connected = False
 
-    async def connect(self) -> bool:
-        # ib_async's connectAsync has no built-in timeout on the TCP handshake
-        # and will block the FastAPI lifespan 30-120s when IB Gateway isn't
-        # listening. Wrap in asyncio.wait_for so dev-mode restarts (paper mode
-        # with Gateway stopped) bind port 8010 within seconds instead of minutes.
+    async def connect(self, retries: int = 2, retry_backoff: float = 2.0) -> bool:
+        """Connect to IB Gateway, with a bounded retry on transient failures.
+
+        ib_async's connectAsync has no built-in timeout on the TCP handshake and
+        will block the FastAPI lifespan 30-120s when IB Gateway isn't listening,
+        so each attempt is wrapped in asyncio.wait_for.
+
+        A *timeout* means the Gateway isn't listening — we fail fast (no retry) so
+        dev restarts with the Gateway stopped still bind port 8010 in seconds.
+        A *non-timeout* failure (e.g. the Gateway momentarily rejecting a fresh
+        connection while it settles the execution leg) is the kind that used to
+        leave the data leg dead for the whole session, so those are retried a
+        small bounded number of times with linear backoff. Each retry rebuilds
+        the IB client and drops any half-open socket first so the clientId frees.
+        ImportError (ib_async missing) is terminal and never retried.
+        """
         try:
             from ib_async import IB
-
-            self._ib = IB()
-            await asyncio.wait_for(
-                self._ib.connectAsync(self._host, self._port, clientId=self._client_id),
-                timeout=self._connect_timeout,
-            )
-            self._connected = True
-            logger.info(f"IBKR connected {self._host}:{self._port} (paper={self._port == 4002})")
-            return True
         except ImportError:
             logger.warning("ib_async not installed. Run: pip install ib_async")
             return False
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"IBKR connection timed out after {self._connect_timeout}s "
-                f"({self._host}:{self._port}) — start IB Gateway or bump IBKR_CONNECT_TIMEOUT_SECONDS."
-            )
-            return False
-        except Exception as e:
-            logger.warning(f"IBKR connection failed: {e} — start IB Gateway on port {self._port}")
-            return False
+
+        attempts = max(1, retries + 1)
+        for attempt in range(1, attempts + 1):
+            self._ib = IB()
+            try:
+                await asyncio.wait_for(
+                    self._ib.connectAsync(self._host, self._port, clientId=self._client_id),
+                    timeout=self._connect_timeout,
+                )
+                self._connected = True
+                logger.info(
+                    f"IBKR connected {self._host}:{self._port} "
+                    f"(clientId={self._client_id}, paper={self._port == 4002})"
+                )
+                return True
+            except asyncio.TimeoutError:
+                # Gateway not listening — fail fast, retrying would only stall startup.
+                logger.warning(
+                    f"IBKR connection timed out after {self._connect_timeout}s "
+                    f"({self._host}:{self._port}, clientId={self._client_id}) — start IB "
+                    f"Gateway or bump IBKR_CONNECT_TIMEOUT_SECONDS."
+                )
+                self._connected = False
+                return False
+            except Exception as e:
+                # Drop any half-open socket so the clientId is released before retrying.
+                try:
+                    self._ib.disconnect()
+                except Exception:
+                    pass
+                if attempt < attempts:
+                    logger.warning(
+                        f"IBKR connect attempt {attempt}/{attempts} failed "
+                        f"({self._host}:{self._port}, clientId={self._client_id}): {e} "
+                        f"— retrying in {retry_backoff:.0f}s"
+                    )
+                    await asyncio.sleep(retry_backoff)
+                else:
+                    logger.warning(
+                        f"IBKR connection failed after {attempts} attempt(s) "
+                        f"({self._host}:{self._port}, clientId={self._client_id}): {e} "
+                        f"— start IB Gateway on port {self._port}."
+                    )
+        self._connected = False
+        return False
 
     async def disconnect(self):
         if self._ib and self._connected:
@@ -779,7 +835,7 @@ class MarketDataManager:
         self.ibkr = IBKRDataConnector(
             host=self._config.IBKR_HOST,
             port=self._config.IBKR_PORT,
-            client_id=self._config.IBKR_CLIENT_ID,
+            client_id=resolve_data_client_id(self._config),
             connect_timeout=max(30.0, getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 30.0)),
         )
         ibkr_connected = await self.ibkr.connect()
