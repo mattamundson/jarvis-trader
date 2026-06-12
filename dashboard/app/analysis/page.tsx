@@ -12,7 +12,12 @@ import {
   type JarvisQuickAnalysisResponse,
 } from "@/lib/api";
 import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
+import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
+import { PriceTerrain3D } from "@/components/charts/PriceTerrain3D";
+import { SymbolTimeframeSelector } from "@/components/command-center/charts/SymbolTimeframeSelector";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
+
+type ChartView = "jarvis" | "tradingview" | "terrain3d";
 
 interface PipelineResult {
   symbol: string;
@@ -46,6 +51,7 @@ export default function AnalysisPage() {
   const [quickResult, setQuickResult] = useState<JarvisQuickAnalysisResponse | null>(null);
   const [chartSymbol, setChartSymbol] = useState<ChartSymbol>("MES");
   const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("1h");
+  const [chartView, setChartView] = useState<ChartView>("jarvis");
 
   const normalizedSymbol = normalizeJarvisSymbolInput(symbol);
 
@@ -123,13 +129,67 @@ export default function AnalysisPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-6">
-        {/* Live price chart — candles + EMA/VWAP/STC + closed-trade markers */}
-        <PriceChartPanel
-          symbol={chartSymbol}
-          timeframe={chartTimeframe}
-          onSymbolChange={setChartSymbol}
-          onTimeframeChange={setChartTimeframe}
-        />
+        {/* Market view — JARVIS candles, TradingView embed, or 3D terrain */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-1.5">
+            {(
+              [
+                ["jarvis", "JARVIS Chart"],
+                ["tradingview", "TradingView"],
+                ["terrain3d", "3D Terrain"],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => setChartView(mode)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-colors ${
+                  chartView === mode
+                    ? "bg-accent/20 text-accent"
+                    : "bg-background border border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {chartView === "jarvis" && (
+            <PriceChartPanel
+              symbol={chartSymbol}
+              timeframe={chartTimeframe}
+              onSymbolChange={setChartSymbol}
+              onTimeframeChange={setChartTimeframe}
+            />
+          )}
+
+          {chartView === "tradingview" && (
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <SymbolTimeframeSelector
+                symbol={chartSymbol}
+                timeframe={chartTimeframe}
+                onSymbol={setChartSymbol}
+                onTimeframe={setChartTimeframe}
+              />
+              <div className="p-3">
+                <TradingViewWidget symbol={chartSymbol} timeframe={chartTimeframe} />
+              </div>
+            </div>
+          )}
+
+          {chartView === "terrain3d" && (
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <SymbolTimeframeSelector
+                symbol={chartSymbol}
+                timeframe={chartTimeframe}
+                onSymbol={setChartSymbol}
+                onTimeframe={setChartTimeframe}
+              />
+              <div className="p-3">
+                <PriceTerrain3D symbol={chartSymbol} />
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="rounded-xl border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
