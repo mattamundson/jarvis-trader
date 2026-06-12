@@ -142,8 +142,8 @@
         "Cross-check against existing gate_v2_verdicts (no contradiction)"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a79f859). Ported engine/generation/edge_ledger.py (+__init__) from worktree to live tree; added ranked_ledger() (PASS-first, DSR-desc); GET /reports/edge-ledger?rebuild=. test_edge_ledger.py 25 PASS, ruff clean. EDGE_LEDGER.md: 4 CLEARED (MGC trend_rv_filter DSR1.0/PF-CI3.18 CORE best; MGC trend_rank4 + trend_adx_filter alt; MES trend_rank7 alt), 2 INSUFFICIENT (MES rank11/rv_filter_rank2 downgraded from May PASS), 29 FAIL (79% wfo_weak). No contradiction with gate_v2_verdicts (PASS count=4 exact match)."
     },
     {
       "id": "US-011",

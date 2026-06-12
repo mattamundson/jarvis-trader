@@ -95,3 +95,9 @@ Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
 - Verify-dont-redo: zip is SUPERSEDED (pre-IPv6-fix prototype). Live strategy-c-command-center.html (iframe in app/strategy-c-command/page.tsx) canonical; only drift = 11-line localhost->127.0.0.1 fix already applied. No code change.
 - Files: scripts/ralph/STRATEGY_C_RECONCILE.md
 ---
+
+## 2026-06-12 - US-010 (Edge ledger port + ranking) — PASS
+- Ported engine/generation/edge_ledger.py (+__init__) from worktree to live tree; added ranked_ledger() + GET /reports/edge-ledger. test_edge_ledger.py 25 PASS, ruff clean.
+- Ledger: 4 CLEARED (MGC trend_rv_filter best DSR1.0/PF-CI3.18 CORE), 2 insufficient, 29 fail. No contradiction with gate_v2_verdicts.
+- Files: engine/generation/__init__.py, engine/generation/edge_ledger.py, engine/routers/reports_router.py, engine/tests/test_edge_ledger.py, scripts/ralph/EDGE_LEDGER.md
+---
