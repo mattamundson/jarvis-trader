@@ -11,6 +11,8 @@ import {
   type JarvisQuickAnalysisPeriod,
   type JarvisQuickAnalysisResponse,
 } from "@/lib/api";
+import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
+import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 
 interface PipelineResult {
   symbol: string;
@@ -42,6 +44,8 @@ export default function AnalysisPage() {
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickError, setQuickError] = useState<string | null>(null);
   const [quickResult, setQuickResult] = useState<JarvisQuickAnalysisResponse | null>(null);
+  const [chartSymbol, setChartSymbol] = useState<ChartSymbol>("MES");
+  const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("1h");
 
   const normalizedSymbol = normalizeJarvisSymbolInput(symbol);
 
@@ -119,6 +123,14 @@ export default function AnalysisPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-6">
+        {/* Live price chart — candles + EMA/VWAP/STC + closed-trade markers */}
+        <PriceChartPanel
+          symbol={chartSymbol}
+          timeframe={chartTimeframe}
+          onSymbolChange={setChartSymbol}
+          onTimeframeChange={setChartTimeframe}
+        />
+
         <div className="rounded-xl border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
             Quick Gemini Snapshot
