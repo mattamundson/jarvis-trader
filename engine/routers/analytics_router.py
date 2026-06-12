@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 
 from database.schema import DatabaseManager
@@ -1176,3 +1176,147 @@ async def get_regime_for_symbol(symbol: str):
         return {"symbol": sym, "regime": regime, "current_regime": regime}
     except Exception as exc:
         return {"symbol": sym, "regime": "UNKNOWN", "error": str(exc)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /analytics/excursion   —   MAE/MFE post-trade excursion analytics
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ExcursionTradeItem(BaseModel):
+    """Per-trade MAE/MFE summary."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_id: str
+    symbol: str
+    side: str
+    entry_price: float
+    exit_price: Optional[float] = None
+    pnl: Optional[float] = None
+    entry_time: str
+    exit_time: Optional[str] = None
+    mae_pct: Optional[float] = None
+    mfe_pct: Optional[float] = None
+    mae_usd: Optional[float] = None
+    mfe_usd: Optional[float] = None
+    mfe_capture_ratio: Optional[float] = None
+
+
+class ExcursionAggregates(BaseModel):
+    """Aggregate MAE/MFE statistics across the returned trade set."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_count: int
+    populated_count: int  # trades with non-NULL mae/mfe
+    avg_mae_pct: Optional[float] = None
+    avg_mfe_pct: Optional[float] = None
+    avg_mae_usd: Optional[float] = None
+    avg_mfe_usd: Optional[float] = None
+    avg_mfe_capture_ratio: Optional[float] = None  # avg over trades where mfe_pct > 0
+
+
+class ExcursionResponse(BaseModel):
+    """Full excursion analytics response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trades: list[ExcursionTradeItem]
+    aggregates: ExcursionAggregates
+    timestamp: str
+
+
+@router.get(
+    "/excursion",
+    response_model=ExcursionResponse,
+    summary="MAE/MFE post-trade excursion analytics for closed paper trades",
+)
+def get_excursion_analytics(
+    limit: int = Query(100, ge=1, le=500, description="Max trades to return"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol (case-insensitive)"),
+) -> ExcursionResponse:
+    """
+    Return per-trade MAE/MFE excursion data and aggregate stats.
+
+    Columns mae_pct / mfe_pct / mae_usd / mfe_usd are populated
+    asynchronously after close; NULL values mean the backfill has not
+    run yet for that trade.
+
+    Aggregates include:
+    - avg_mae_pct / avg_mfe_pct  (average excursion fractions)
+    - avg_mfe_capture_ratio      = avg((mfe - mae) / mfe) over trades where mfe > 0
+      (closer to 1.0 = exits near peak; closer to 0 = leaving money on the table)
+    """
+    from datetime import datetime as _dt
+
+    from analytics.excursion import mfe_capture_ratio as _mfe_capture_ratio
+
+    db = _get_db()
+
+    sql_parts = ["SELECT * FROM paper_trades WHERE status = 'closed'"]
+    params: list = []
+
+    if symbol:
+        sql_parts.append("AND symbol = ?")
+        params.append(symbol.strip().upper())
+
+    sql_parts.append("ORDER BY exit_time DESC LIMIT ?")
+    params.append(limit)
+
+    sql = " ".join(sql_parts)
+
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            rows = conn.execute(sql, params).fetchall()
+            raw_trades = [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    trade_items: list[ExcursionTradeItem] = []
+    for t in raw_trades:
+        capture = _mfe_capture_ratio(t.get("mae_pct"), t.get("mfe_pct"))
+        trade_items.append(
+            ExcursionTradeItem(
+                trade_id=str(t.get("trade_id", "")),
+                symbol=str(t.get("symbol", "")),
+                side=str(t.get("side", "")),
+                entry_price=float(t.get("entry_price") or 0),
+                exit_price=float(t["exit_price"]) if t.get("exit_price") is not None else None,
+                pnl=float(t["pnl"]) if t.get("pnl") is not None else None,
+                entry_time=str(t.get("entry_time", "")),
+                exit_time=str(t["exit_time"]) if t.get("exit_time") else None,
+                mae_pct=t.get("mae_pct"),
+                mfe_pct=t.get("mfe_pct"),
+                mae_usd=t.get("mae_usd"),
+                mfe_usd=t.get("mfe_usd"),
+                mfe_capture_ratio=capture,
+            )
+        )
+
+    # Aggregates over trades with populated excursion data
+    populated = [t for t in trade_items if t.mae_pct is not None]
+    n = len(populated)
+
+    def _avg(vals):
+        clean = [v for v in vals if v is not None]
+        return round(sum(clean) / len(clean), 6) if clean else None
+
+    capture_vals = [t.mfe_capture_ratio for t in populated if t.mfe_pct and t.mfe_pct > 0]
+
+    agg = ExcursionAggregates(
+        trade_count=len(trade_items),
+        populated_count=n,
+        avg_mae_pct=_avg([t.mae_pct for t in populated]),
+        avg_mfe_pct=_avg([t.mfe_pct for t in populated]),
+        avg_mae_usd=_avg([t.mae_usd for t in populated]),
+        avg_mfe_usd=_avg([t.mfe_usd for t in populated]),
+        avg_mfe_capture_ratio=_avg(capture_vals),
+    )
+
+    return ExcursionResponse(
+        trades=trade_items,
+        aggregates=agg,
+        timestamp=_dt.utcnow().isoformat() + "Z",
+    )
