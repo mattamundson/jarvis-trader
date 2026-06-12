@@ -517,6 +517,7 @@ class PortfolioTracker:
                     t = PaperTrade.__new__(PaperTrade)
                     t.trade_id = row.get("trade_id", "")
                     t.pnl = row.get("pnl") or row.get("realized_pnl")
+                    t.exit_time = row.get("exit_time")
                     closed.append(t)
             except Exception as exc:
                 logger.warning(
@@ -528,6 +529,7 @@ class PortfolioTracker:
         if not closed:
             return {
                 "total_pnl": 0.0,
+                "today_pnl": 0.0,
                 "win_rate": 0.0,
                 "profit_factor": None,
                 "num_trades": 0,
@@ -540,6 +542,21 @@ class PortfolioTracker:
             }
 
         pnls = [t.pnl for t in closed if t.pnl is not None]
+
+        # today_pnl: realized P&L from trades CLOSED today (UTC), as distinct from
+        # total_pnl (the all-time closed sum). Callers that want "today" -- e.g.
+        # FuturesModule.get_daily_pnl(), which feeds /portfolio/summary -- previously
+        # fell back to total_pnl because this key did not exist, so a "daily" number
+        # was silently reporting lifetime P&L. exit_time is stored as ISO-8601 UTC, so
+        # the YYYY-MM-DD prefix is the UTC close date.
+        _today = datetime.now(timezone.utc).date().isoformat()
+        today_pnl = sum(
+            t.pnl
+            for t in closed
+            if t.pnl is not None
+            and getattr(t, "exit_time", None)
+            and str(t.exit_time)[:10] == _today
+        )
 
         wins = [p for p in pnls if p > 0]
         losses = [p for p in pnls if p <= 0]
@@ -563,6 +580,7 @@ class PortfolioTracker:
 
         return {
             "total_pnl": round(sum(pnls), 4),
+            "today_pnl": round(today_pnl, 4),
             "win_rate": round(len(wins) / len(pnls), 4) if pnls else 0.0,
             "profit_factor": round(profit_factor, 4) if profit_factor is not None else None,
             "num_trades": len(pnls),
