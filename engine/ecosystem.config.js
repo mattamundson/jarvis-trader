@@ -114,6 +114,30 @@ module.exports = {
       exec_mode: "fork",
     },
 
+    // ── Weekly Paper Tearsheet (US-007, 2026-06-12) ───────────────────────────
+    // QuantStats tearsheet + METRICS_SNAPSHOT.json for the paper account so QS
+    // history accumulates without manual runs. Saturday 07:00 (after Friday close).
+    {
+      name: "jarvis-weekly-tearsheet",
+      script: PYTHON,
+      args: path.join(ENGINE_DIR, "..", "scripts", "jarvis_tearsheet.py") + " --source paper",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "0 7 * * 6",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "weekly-tearsheet-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "weekly-tearsheet-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
     // ── Daily Health Check ─────────────────────────────────────────────────────
     // Validates engine health, safety status, and portfolio equity.
     // Runs every 30 minutes during market hours (8:00am–5:00pm CT Mon–Fri).
