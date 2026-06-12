@@ -104,7 +104,8 @@ def _get_tracker():
 
 
 @router.get("/progress")
-async def get_validation_progress(instrument: str = "MCL"):
+# Default was retired MCL (DO_NOT_TRADE), which masked the live MES/MGC windows.
+async def get_validation_progress(instrument: str = "MES"):
     """Get current validation metrics vs thresholds."""
     try:
         tracker = _get_tracker()
@@ -116,7 +117,7 @@ async def get_validation_progress(instrument: str = "MCL"):
 
 
 @router.get("/trades")
-async def get_validation_trades(instrument: str = "MCL"):
+async def get_validation_trades(instrument: str = "MES"):
     """Get all recorded trades for an instrument."""
     try:
         tracker = _get_tracker()
