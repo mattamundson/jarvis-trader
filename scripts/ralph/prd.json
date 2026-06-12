@@ -116,8 +116,8 @@
         "Unit test on synthetic regimes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent ab8494d). NEW engine/analytics/regime_analysis.py (pure; sharpe/sortino/max_dd/win_rate/tail_ratio/skew/calmar per RISK_ON/OFF/NORMAL; <5 obs -> insufficient). GET /reports/regime-conditional?days=90. test_regime_analysis.py 18 PASS, ruff clean. CAVEAT: no engine persists per-day regime labels yet (macro_regime computed on-demand, never logged) -> endpoint returns skeleton+wiring_gap until a daily task logs (date,regime) into macro_regime_log. Function/endpoint/test complete; feed activation is a follow-on (Amo-gated scheduled task)."
     },
     {
       "id": "US-009",
