@@ -97,6 +97,10 @@ class SignalScanner:
         self._paper_tracker = None  # injected post-construction via set_paper_tracker()
         self._safety_layer = None  # injected via set_safety_layer() — kill-switch gate
         self._data_manager = None  # injected via set_data_manager() — entry-price sanity
+        # Asset-class map: which scanned symbols are futures. Defaults to ALL
+        # symbols (backward-compatible — original callers passed futures only).
+        # main.py overrides via set_futures_symbols() once equities are added.
+        self._futures_symbols = {str(sym).upper() for sym in self.symbols}
 
         self._active = False
         self._last_scan_at: Optional[datetime] = None
@@ -123,6 +127,15 @@ class SignalScanner:
         entry-price sanity check (phantom-price guard) before booking a trade."""
         self._data_manager = data_manager
 
+    def set_futures_symbols(self, futures_symbols) -> None:
+        """Declare which scanned symbols are futures contracts. Symbols not in
+        this set are treated as equities (OPTIONS_WATCHLIST) and priced /
+        analyzed with is_futures=False."""
+        self._futures_symbols = {str(sym).upper() for sym in (futures_symbols or [])}
+
+    def _is_futures_symbol(self, symbol: str) -> bool:
+        return str(symbol).upper() in self._futures_symbols
+
     def _kill_switch_active(self) -> bool:
         """Return True if trading is halted. Fails CLOSED: if the safety layer is
         injected but its status cannot be read, treat as halted (refuse to open)."""
@@ -136,7 +149,9 @@ class SignalScanner:
             )
             return True
 
-    async def _entry_price_is_sane(self, symbol: str, entry_price: float) -> tuple[bool, str]:
+    async def _entry_price_is_sane(
+        self, symbol: str, entry_price: float, is_futures: bool = True
+    ) -> tuple[bool, str]:
         """Phantom-price guard for the live opener. Fails CLOSED under autonomy:
         any error verifying the price rejects the trade rather than letting a
         possibly-corrupted entry through (the 2026-05-09 stop-into-entry incident).
@@ -162,6 +177,7 @@ class SignalScanner:
                 symbol=symbol,
                 entry_price=entry_price,
                 data_manager=self._data_manager,
+                is_futures=is_futures,
             )
         except Exception as exc:
             logger.critical(
@@ -371,13 +387,15 @@ class SignalScanner:
                 )
                 return
 
-        logger.debug(f"[Scanner] Analyzing {symbol}")
+        _is_fut = self._is_futures_symbol(symbol)
+
+        logger.debug(f"[Scanner] Analyzing {symbol} (is_futures={_is_fut})")
 
         try:
             _t0 = _time_module.monotonic()
             result = await self.trading_pipeline.analyze_and_decide(
                 symbol=symbol,
-                is_futures=True,
+                is_futures=_is_fut,
                 timeframe="1h",
             )
             _duration_ms = (_time_module.monotonic() - _t0) * 1000.0
@@ -544,7 +562,7 @@ class SignalScanner:
                         )
                     elif not (
                         _sanity := await self._entry_price_is_sane(
-                            symbol, float(entry_price)
+                            symbol, float(entry_price), _is_fut
                         )
                     )[0]:
                         # Fail-closed phantom-price guard on the LIVE path (the
