@@ -1751,6 +1751,16 @@ async def lifespan(app: FastAPI):
         if paper_tracker is not None:
             signal_scanner.set_paper_tracker(paper_tracker)
             logger.info("Signal scanner: paper_tracker injected")
+        # Inject safety layer (kill-switch gate) + data manager (entry-price
+        # sanity / phantom-price guard) so the autonomous live opener enforces
+        # both before booking a paper trade. Without these the scanner loop had
+        # no kill-switch check and no price-sanity gate.
+        if safety_layer is not None:
+            signal_scanner.set_safety_layer(safety_layer)
+            logger.info("Signal scanner: safety_layer injected (kill-switch gate)")
+        if data_manager is not None:
+            signal_scanner.set_data_manager(data_manager)
+            logger.info("Signal scanner: data_manager injected (entry-price sanity)")
         inject_scanner_deps(signal_scanner)
         if settings.WATCHLIST_SCAN_ENABLED:
             asyncio.create_task(signal_scanner.start())
