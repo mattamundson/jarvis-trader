@@ -151,7 +151,7 @@ def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
 
     symbol = str(approval_row["symbol"]).upper()
 
-    if safety_layer and safety_layer.get_status().get("kill_switch_active"):
+    if safety_layer and safety_layer.get_status().get("is_killed"):
         raise ApprovalFlowError(409, "Kill switch active — cannot approve")
 
     if symbol not in approved_watchlist_symbols():

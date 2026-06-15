@@ -90,7 +90,7 @@ def _guard_direct_paper_open(symbol: str) -> None:
     if settings.LIVE_TRADING_ENABLED:
         raise HTTPException(status_code=409, detail="Direct paper-trade open disabled in live mode")
 
-    if _safety_layer is not None and _safety_layer.get_status().get("kill_switch_active"):
+    if _safety_layer is not None and _safety_layer.get_status().get("is_killed"):
         raise HTTPException(
             status_code=409, detail="Kill switch active — cannot open direct paper trade"
         )
@@ -1759,7 +1759,7 @@ async def submit_paper_trade(req: PaperTradeRequest):
     else:
         if settings.LIVE_TRADING_ENABLED:
             raise HTTPException(409, "Direct paper-trade open disabled in live mode")
-        if _safety_layer and _safety_layer.get_status().get("kill_switch_active"):
+        if _safety_layer and _safety_layer.get_status().get("is_killed"):
             raise HTTPException(409, "Kill switch active — cannot open direct paper trade")
         if (
             req.symbol.upper() in FUTURES_SYMBOLS

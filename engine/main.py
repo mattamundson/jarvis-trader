@@ -1496,7 +1496,7 @@ async def lifespan(app: FastAPI):
             from backtest.signals import compute_all_indicators, generate_signals
             from routers.scanner_router import record_signal
 
-            if safety_layer and safety_layer.get_status().get("kill_switch_active"):
+            if safety_layer and safety_layer.get_status().get("is_killed"):
                 logger.info("[INTRADAY_15M] Skipping — kill switch active")
                 return
 
