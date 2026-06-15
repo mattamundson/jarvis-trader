@@ -242,3 +242,51 @@ async def test_equity_symbol_executes_with_is_futures_false():
     assert skwargs.get("is_futures") is False
     # And the equity paper trade was booked.
     pt.add_paper_trade.assert_called_once()
+
+
+# -- Approval-row gating (no more "approve a trade that never happens" noise) --
+
+
+@pytest.mark.asyncio
+async def test_autonomous_mode_skips_pending_approval_row():
+    """REQUIRE_HUMAN_APPROVAL=False -> NO pending_trade_approvals row is created
+    (those only time out and auto-reject, spamming the user); the executed paper
+    trade is the record of record."""
+    pt = _flat_tracker()
+    scanner = _build_scanner(pt, data_manager=MagicMock())
+    with (
+        patch("scanner.signal_scanner._is_futures_market_hours", return_value=True),
+        patch("config.settings") as mock_settings,
+        patch(
+            "risk.entry_price_sanity.check_entry_price_sanity",
+            new=AsyncMock(return_value=(True, "")),
+        ),
+        patch("notifications.openclaw_notifier.notify_trade_opened", new=AsyncMock()),
+    ):
+        mock_settings.LIVE_TRADING_ENABLED = False
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        await scanner._scan_symbol("MES")
+
+    scanner.db_manager.insert_pending_approval.assert_not_called()
+    pt.add_paper_trade.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_human_mode_still_creates_pending_approval_row():
+    """REQUIRE_HUMAN_APPROVAL=True -> the approval row IS still created."""
+    pt = _flat_tracker()
+    scanner = _build_scanner(pt, data_manager=MagicMock())
+    with (
+        patch("scanner.signal_scanner._is_futures_market_hours", return_value=True),
+        patch("config.settings") as mock_settings,
+        patch(
+            "risk.entry_price_sanity.check_entry_price_sanity",
+            new=AsyncMock(return_value=(True, "")),
+        ),
+        patch("notifications.openclaw_notifier.notify_trade_opened", new=AsyncMock()),
+    ):
+        mock_settings.LIVE_TRADING_ENABLED = False
+        mock_settings.REQUIRE_HUMAN_APPROVAL = True
+        await scanner._scan_symbol("MES")
+
+    scanner.db_manager.insert_pending_approval.assert_called_once()
