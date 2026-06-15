@@ -8765,8 +8765,10 @@ var data = { ...FALLBACK };
 function renderHoldings(d) {
   var container = document.getElementById('holdingsContainer');
   container.innerHTML = '';
+  if (!d || !d.target) return;
+  var current = d.current || {};
   Object.entries(d.target).forEach(([ticker, tgt]) => {
-    var cur = d.current[ticker] || 0;
+    var cur = current[ticker] || 0;
     var delta = (tgt - cur) * 100;
     const isBuy = delta > 0.01;
     const isSell = delta < -0.01;
