@@ -3,7 +3,9 @@
 import useSWR from "swr";
 import {
   fetchClosedPaperTrades,
+  fetchExecutionOpenTrades,
   type ClosedPaperTradesResponse,
+  type ExecutionFidelityStatus,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -58,7 +60,14 @@ export default function TradesPage() {
     { refreshInterval: 30000 }
   );
 
+  const { data: openData } = useSWR<ExecutionFidelityStatus>(
+    "execution-open-trades",
+    fetchExecutionOpenTrades,
+    { refreshInterval: 15000 }
+  );
+
   const trades = data?.trades || [];
+  const openTrades = openData?.open_trades || [];
 
   if (isLoading) {
     return (
@@ -87,7 +96,65 @@ export default function TradesPage() {
         </p>
       </div>
 
-      {/* Table */}
+      {/* Open Positions (live, 15s refresh) */}
+      <div className="flex-shrink-0 px-6 py-4 border-b border-border">
+        <h2 className="font-mono text-sm font-bold text-foreground mb-2">
+          Open Positions{" "}
+          <span className="text-xs font-normal text-muted-foreground">
+            ({openTrades.length} live • refreshes 15s)
+          </span>
+        </h2>
+        {openTrades.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No open positions</p>
+        ) : (
+          <div className="border border-border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="font-mono text-xs">Symbol</TableHead>
+                  <TableHead className="font-mono text-xs">Direction</TableHead>
+                  <TableHead className="font-mono text-xs text-right">Qty</TableHead>
+                  <TableHead className="font-mono text-xs text-right">Entry Price</TableHead>
+                  <TableHead className="font-mono text-xs">Opened At</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {openTrades.map((t, i) => {
+                  const isLong = String(t.side).toLowerCase() === "buy";
+                  return (
+                    <TableRow
+                      key={`${t.symbol}-${t.entry_time}-${i}`}
+                      className="hover:bg-muted/30 transition-colors"
+                    >
+                      <TableCell className="font-mono font-semibold text-sm">
+                        {t.symbol}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {isLong ? (
+                          <span className="text-green-500">LONG</span>
+                        ) : (
+                          <span className="text-red-500">SHORT</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm text-right">
+                        {t.quantity}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm text-right">
+                        {formatPrice(t.entry_price)}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {formatTime(t.entry_time)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* Closed Trades Table */}
       <div className="flex-1 overflow-auto px-6 py-4">
         {trades.length === 0 ? (
           <div className="flex items-center justify-center h-40">

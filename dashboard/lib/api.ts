@@ -1455,6 +1455,30 @@ export async function fetchOpenPositions(): Promise<OpenPositionsResponse> {
   return fetchEngine<OpenPositionsResponse>("/portfolio/paper/positions");
 }
 
+// ── Live open paper trades (truthful: reads paper_trades WHERE status='open') ──
+// /portfolio/paper/positions reads OMS/broker state and can be empty while the
+// paper_trades table holds open rows; /execution/fidelity-status reads the table
+// directly, so it is the canonical "what is open right now" source for the UI.
+export interface ExecutionOpenTrade {
+  symbol: string;
+  side: string;
+  quantity: number;
+  entry_price: number;
+  entry_time: string;
+  slippage_ticks?: number | null;
+}
+
+export interface ExecutionFidelityStatus {
+  generated_at: string;
+  measuring_real_fills: boolean;
+  open_trades: ExecutionOpenTrade[];
+  pending_approvals: { count: number; oldest_age_min: number | null };
+}
+
+export async function fetchExecutionOpenTrades(): Promise<ExecutionFidelityStatus> {
+  return fetchEngine<ExecutionFidelityStatus>("/execution/fidelity-status");
+}
+
 // ── Discord Bookmark Feed (recent + search) ──────────────────────────────────
 
 export interface BookmarkRow {
