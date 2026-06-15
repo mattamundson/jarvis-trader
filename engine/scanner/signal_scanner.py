@@ -449,29 +449,51 @@ class SignalScanner:
                 logger.debug(f"[Scanner] {symbol} signal: {final_action}, no action needed")
                 return
 
-            # Signal fired! Create pending approval
+            # Signal fired.
             quantity = result.get("final_quantity", 1)
             entry_price = result.get("trade_decision", {}).get("entry_price", None)
             snapshot = result
 
-            approval_id = self.db_manager.insert_pending_approval(
-                symbol=symbol,
-                action=final_action,
-                quantity=quantity,
-                entry_price=entry_price,
-                pipeline_snapshot=snapshot,
-                timeframe=snapshot.get("timeframe", "1h"),
-            )
+            # Human-approval gate. When approval is OFF (autonomous paper mode),
+            # do NOT create a pending_trade_approvals row: nobody approves these,
+            # so they only time out and auto-reject, generating misleading
+            # "APPROVAL REQUIRED" DMs for trades that never happen. The executed
+            # paper trade below is the record of record. Use an ephemeral ref so
+            # downstream logging/correlation still works without a DB row.
+            try:
+                from config import settings as _cfg_appr
 
-            self._approval_count += 1
-            logger.info(
-                f"[Scanner] {symbol} signal: {final_action} {quantity} "
-                f"(approval_id={approval_id[:8]})"
-            )
+                _require_human = bool(_cfg_appr.REQUIRE_HUMAN_APPROVAL)
+            except Exception:
+                _require_human = True
+
+            if _require_human:
+                approval_id = self.db_manager.insert_pending_approval(
+                    symbol=symbol,
+                    action=final_action,
+                    quantity=quantity,
+                    entry_price=entry_price,
+                    pipeline_snapshot=snapshot,
+                    timeframe=snapshot.get("timeframe", "1h"),
+                )
+                self._approval_count += 1
+                logger.info(
+                    f"[Scanner] {symbol} signal: {final_action} {quantity} "
+                    f"(approval_id={approval_id[:8]})"
+                )
+            else:
+                import uuid as _uuid_auto
+
+                approval_id = f"auto-{_uuid_auto.uuid4().hex[:8]}"
+                logger.info(
+                    f"[Scanner] {symbol} signal: {final_action} {quantity} "
+                    f"(autonomous — no approval row, ref={approval_id})"
+                )
 
             # ── Paper mode bypass: auto-log paper trade without waiting for human approval ──
-            # The pending approval is still created for audit/UI purposes, but in paper mode
-            # the trade is also immediately written to the DB so validation data exists.
+            # In paper mode the trade is written to the DB immediately so validation data
+            # exists. A pending_trade_approvals row is created ONLY when human approval is
+            # required (see gate above); under autonomy the executed trade is the record.
             try:
                 from config import settings as _cfg
 
@@ -723,18 +745,23 @@ class SignalScanner:
                     except Exception as _pa_err:
                         logger.debug("pending-approval notify skipped: %s", _pa_err)
 
-                try:
-                    from notifications.openclaw_notifier import notify_signal as _oc_signal
+                    # Legacy "JARVIS SIGNAL ... Approve at localhost:3010" alert —
+                    # only meaningful when a human actually approves. Under autonomy
+                    # a not-executed signal is a safety-gate block or a dedup/no-stop
+                    # skip; those are logged, not DM'd, so the hourly persisting
+                    # signal no longer spams "approve a trade that never happens".
+                    try:
+                        from notifications.openclaw_notifier import notify_signal as _oc_signal
 
-                    await _oc_signal(
-                        symbol=symbol,
-                        action=final_action,
-                        confidence=float(result.get("confidence", 0.0)),
-                        reason=str(result.get("reason", "")),
-                        market="futures",
-                    )
-                except Exception as _oc_err:
-                    logger.debug(f"OpenClaw signal notification skipped: {_oc_err}")
+                        await _oc_signal(
+                            symbol=symbol,
+                            action=final_action,
+                            confidence=float(result.get("confidence", 0.0)),
+                            reason=str(result.get("reason", "")),
+                            market="futures" if _is_fut else "equity",
+                        )
+                    except Exception as _oc_err:
+                        logger.debug(f"OpenClaw signal notification skipped: {_oc_err}")
 
         except Exception as e:
             logger.error(f"[Scanner] Pipeline error for {symbol}: {e}", exc_info=True)
