@@ -517,6 +517,7 @@ class PortfolioTracker:
                     t = PaperTrade.__new__(PaperTrade)
                     t.trade_id = row.get("trade_id", "")
                     t.pnl = row.get("pnl") or row.get("realized_pnl")
+                    t.exit_time = row.get("exit_time")
                     closed.append(t)
             except Exception as exc:
                 logger.warning(
@@ -528,6 +529,7 @@ class PortfolioTracker:
         if not closed:
             return {
                 "total_pnl": 0.0,
+                "today_pnl": 0.0,
                 "win_rate": 0.0,
                 "profit_factor": None,
                 "num_trades": 0,
@@ -540,6 +542,21 @@ class PortfolioTracker:
             }
 
         pnls = [t.pnl for t in closed if t.pnl is not None]
+
+        # today_pnl: realized P&L from trades CLOSED today (UTC), as distinct from
+        # total_pnl (the all-time closed sum). Callers that want "today" -- e.g.
+        # FuturesModule.get_daily_pnl(), which feeds /portfolio/summary -- previously
+        # fell back to total_pnl because this key did not exist, so a "daily" number
+        # was silently reporting lifetime P&L. exit_time is stored as ISO-8601 UTC, so
+        # the YYYY-MM-DD prefix is the UTC close date.
+        _today = datetime.now(timezone.utc).date().isoformat()
+        today_pnl = sum(
+            t.pnl
+            for t in closed
+            if t.pnl is not None
+            and getattr(t, "exit_time", None)
+            and str(t.exit_time)[:10] == _today
+        )
 
         wins = [p for p in pnls if p > 0]
         losses = [p for p in pnls if p <= 0]
@@ -563,6 +580,7 @@ class PortfolioTracker:
 
         return {
             "total_pnl": round(sum(pnls), 4),
+            "today_pnl": round(today_pnl, 4),
             "win_rate": round(len(wins) / len(pnls), 4) if pnls else 0.0,
             "profit_factor": round(profit_factor, 4) if profit_factor is not None else None,
             "num_trades": len(pnls),
@@ -808,6 +826,32 @@ class PortfolioTracker:
             trade.pnl,
             trade_id[:8],
         )
+
+        # OpenClaw/Discord alert on trade close (non-blocking, best-effort).
+        # close_paper_trade is the broker-confirmed-pnl close path used by the
+        # 5-min stop monitor (main.py:_monitor_open_stops); it previously closed
+        # SILENTLY. Mirror close_trade so every close fans out an alert with P&L.
+        try:
+            import asyncio as _asyncio
+            import os as _os
+
+            from notifications.openclaw_notifier import notify_trade_closed as _oc_close
+
+            if not _os.getenv("TESTING"):
+                _loop = _asyncio.get_event_loop()
+                if _loop.is_running():
+                    _loop.create_task(
+                        _oc_close(
+                            symbol=trade.symbol,
+                            action=trade.action,
+                            entry_price=trade.entry_price,
+                            exit_price=float(exit_price),
+                            pnl=trade.pnl or 0.0,
+                            quantity=trade.quantity,
+                        )
+                    )
+        except Exception as _oc_exc:
+            logger.debug("[PAPER] OpenClaw trade-close notify skipped: %s", _oc_exc)
 
         # Record outcome for Brier/IC calibration (Novel #2, Tracks F+H).
         self._record_agent_feedback(trade_id, trade)

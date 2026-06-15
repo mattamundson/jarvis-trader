@@ -95,6 +95,8 @@ class SignalScanner:
         self.scan_interval_minutes = scan_interval_minutes
         self.initial_delay_seconds = max(0, int(initial_delay_seconds))
         self._paper_tracker = None  # injected post-construction via set_paper_tracker()
+        self._safety_layer = None  # injected via set_safety_layer() — kill-switch gate
+        self._data_manager = None  # injected via set_data_manager() — entry-price sanity
 
         self._active = False
         self._last_scan_at: Optional[datetime] = None
@@ -107,6 +109,67 @@ class SignalScanner:
     def set_paper_tracker(self, tracker) -> None:
         """Inject paper tracker for breakeven stop management."""
         self._paper_tracker = tracker
+
+    def set_safety_layer(self, safety_layer) -> None:
+        """Inject the safety layer so the live opener honors the kill switch.
+
+        Without this, the autonomous paper-mode bypass would auto-execute even
+        while the kill switch is active (the scanner loop had no kill-switch gate
+        — the APScheduler jobs did, but this background loop did not)."""
+        self._safety_layer = safety_layer
+
+    def set_data_manager(self, data_manager) -> None:
+        """Inject the market data manager so the live opener can run the
+        entry-price sanity check (phantom-price guard) before booking a trade."""
+        self._data_manager = data_manager
+
+    def _kill_switch_active(self) -> bool:
+        """Return True if trading is halted. Fails CLOSED: if the safety layer is
+        injected but its status cannot be read, treat as halted (refuse to open)."""
+        if self._safety_layer is None:
+            return False
+        try:
+            return bool(self._safety_layer.get_status().get("kill_switch_active"))
+        except Exception as exc:
+            logger.error(
+                "[SAFETY] kill-switch status unavailable (%s) — fail-closed (halting)", exc
+            )
+            return True
+
+    async def _entry_price_is_sane(self, symbol: str, entry_price: float) -> tuple[bool, str]:
+        """Phantom-price guard for the live opener. Fails CLOSED under autonomy:
+        any error verifying the price rejects the trade rather than letting a
+        possibly-corrupted entry through (the 2026-05-09 stop-into-entry incident).
+
+        Returns (True, "") when the check is disabled by feature flag, or when no
+        data_manager is injected (cannot verify — logged, allowed for test/bootstrap
+        parity). Returns (False, reason) on a failed check OR on an exception."""
+        from risk.entry_price_sanity import (
+            check_entry_price_sanity,
+            is_entry_price_sanity_enabled,
+        )
+
+        if not is_entry_price_sanity_enabled():
+            return True, ""
+        if self._data_manager is None:
+            logger.warning(
+                "[ENTRY_PRICE_SANITY] %s: no data_manager injected — cannot verify; allowing",
+                symbol,
+            )
+            return True, "no_data_manager"
+        try:
+            return await check_entry_price_sanity(
+                symbol=symbol,
+                entry_price=entry_price,
+                data_manager=self._data_manager,
+            )
+        except Exception as exc:
+            logger.critical(
+                "[ENTRY_PRICE_SANITY] %s check raised (%s) — rejecting (fail-closed)",
+                symbol,
+                exc,
+            )
+            return False, f"sanity_check_error: {exc}"
 
     async def start(self) -> None:
         """Start the background scanner task."""
@@ -426,6 +489,8 @@ class SignalScanner:
                 )
                 _is_paper_mode = False  # short-circuit the bypass block below
 
+            _executed = False
+            _exec_details: dict | None = None
             if _is_paper_mode and self._paper_tracker is not None and entry_price is not None:
                 try:
                     trade_dec = result.get("trade_decision") or {}
@@ -464,6 +529,34 @@ class SignalScanner:
                             _confidence,
                             0.0,
                             str(_open_for_symbol[0].get("trade_id") or "")[:8],
+                            approval_id[:8],
+                        )
+                    elif self._kill_switch_active():
+                        # Autonomy hardening: the live opener now honors the kill
+                        # switch. Previously only the APScheduler jobs gated on it;
+                        # this background loop would auto-execute regardless.
+                        logger.warning(
+                            "[EXECUTION] symbol=%s action=%s executed=False "
+                            "reason=kill_switch_active approval_id=%s",
+                            symbol,
+                            final_action,
+                            approval_id[:8],
+                        )
+                    elif not (
+                        _sanity := await self._entry_price_is_sane(
+                            symbol, float(entry_price)
+                        )
+                    )[0]:
+                        # Fail-closed phantom-price guard on the LIVE path (the
+                        # sanity check previously existed only in the enqueue and
+                        # manual-approval paths, never here). Computed once via the
+                        # walrus binding; _sanity[1] carries the rejection reason.
+                        logger.critical(
+                            "[EXECUTION] symbol=%s action=%s executed=False "
+                            "reason=entry_price_sanity detail=%s approval_id=%s",
+                            symbol,
+                            final_action,
+                            _sanity[1],
                             approval_id[:8],
                         )
                     else:
@@ -531,6 +624,14 @@ class SignalScanner:
                             0.0,
                             trade_id_inner[:8],
                         )
+                        _executed = True
+                        _exec_details = {
+                            "trade_id": trade_id_inner,
+                            "quantity": float(quantity) if quantity else 1.0,
+                            "entry_price": float(entry_price),
+                            "stop_price": float(stop_price),
+                            "target_price": float(target_price) if target_price else None,
+                        }
                 except Exception as _paper_exc:
                     logger.error(
                         "[Scanner] Paper trade auto-log failed for %s: %s", symbol, _paper_exc
@@ -555,31 +656,67 @@ class SignalScanner:
                     0.0,
                 )
 
-            from notifications.pending_approval_notify import (
-                notify_pending_approval_queued,
-            )
+            # ── Alerting (full visibility) ─────────────────────────────────
+            # When the trade actually executed under autonomy, fire a TRUE
+            # "trade opened" confirmation (entry/stop/target) — not the legacy
+            # "APPROVAL REQUIRED / approve at localhost:3010" prompt, which is
+            # misleading when no human approval is in the loop.
+            if _executed:
+                try:
+                    from notifications.openclaw_notifier import notify_trade_opened
 
-            await notify_pending_approval_queued(
-                approval_id=approval_id,
-                symbol=symbol,
-                action=final_action,
-                quantity=float(quantity) if quantity is not None else None,
-                entry_price=float(entry_price) if entry_price is not None else None,
-            )
+                    _d = _exec_details or {}
+                    await notify_trade_opened(
+                        symbol=symbol,
+                        action=final_action,
+                        quantity=_d.get("quantity", float(quantity) if quantity else 1.0),
+                        entry_price=_d.get("entry_price", float(entry_price)),
+                        stop_price=_d.get("stop_price"),
+                        target_price=_d.get("target_price"),
+                        source="scanner",
+                    )
+                except Exception as _open_err:
+                    logger.warning("trade-opened alert failed for %s: %s", symbol, _open_err)
+            else:
+                # Not executed. Only show the human-approval prompt when approval
+                # is actually required; otherwise (blocked by a safety gate under
+                # autonomy) emit a plain signal alert for visibility without the
+                # spurious "approve" call-to-action.
+                try:
+                    from config import settings as _cfg_n
 
-            # OpenClaw WhatsApp alert for non-HOLD signals
-            try:
-                from notifications.openclaw_notifier import notify_signal as _oc_signal
+                    _require_human = bool(_cfg_n.REQUIRE_HUMAN_APPROVAL)
+                except Exception:
+                    _require_human = True
 
-                await _oc_signal(
-                    symbol=symbol,
-                    action=final_action,
-                    confidence=float(result.get("confidence", 0.0)),
-                    reason=str(result.get("reason", "")),
-                    market="futures",
-                )
-            except Exception as _oc_err:
-                logger.debug(f"OpenClaw signal notification skipped: {_oc_err}")
+                if _require_human:
+                    try:
+                        from notifications.pending_approval_notify import (
+                            notify_pending_approval_queued,
+                        )
+
+                        await notify_pending_approval_queued(
+                            approval_id=approval_id,
+                            symbol=symbol,
+                            action=final_action,
+                            quantity=float(quantity) if quantity is not None else None,
+                            entry_price=float(entry_price) if entry_price is not None else None,
+                        )
+                    except Exception as _pa_err:
+                        logger.debug("pending-approval notify skipped: %s", _pa_err)
+
+                try:
+                    from notifications.openclaw_notifier import notify_signal as _oc_signal
+
+                    await _oc_signal(
+                        symbol=symbol,
+                        action=final_action,
+                        confidence=float(result.get("confidence", 0.0)),
+                        reason=str(result.get("reason", "")),
+                        market="futures",
+                    )
+                except Exception as _oc_err:
+                    logger.debug(f"OpenClaw signal notification skipped: {_oc_err}")
 
         except Exception as e:
             logger.error(f"[Scanner] Pipeline error for {symbol}: {e}", exc_info=True)
