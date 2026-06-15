@@ -225,6 +225,7 @@ async def check_entry_price_sanity(
     symbol: str,
     entry_price: float,
     data_manager,
+    is_futures: bool = True,
 ) -> Tuple[bool, str]:
     """Async wrapper that fetches market price and ATR from the data manager.
 
@@ -240,6 +241,10 @@ async def check_entry_price_sanity(
     data_manager:
         MarketDataManager instance (engine/data/market_data.py).
         Must support get_current_price(symbol) and get_bars(symbol, ...).
+    is_futures:
+        Whether ``symbol`` is a futures contract. Routed to the data manager so
+        equities (OPTIONS_WATCHLIST) are priced on the correct feed. Defaults to
+        True to preserve the original futures-only behavior for existing callers.
 
     Returns
     -------
@@ -251,7 +256,7 @@ async def check_entry_price_sanity(
     # -- Fetch market price --
     market_price: Optional[float] = None
     try:
-        price_result = await data_manager.get_current_price(symbol, is_futures=True)
+        price_result = await data_manager.get_current_price(symbol, is_futures=is_futures)
         market_price = price_result.get("last_price")
     except Exception as exc:
         logger.warning("[ENTRY_PRICE_SANITY] get_current_price failed for %s: %s", symbol, exc)
@@ -260,7 +265,7 @@ async def check_entry_price_sanity(
     atr: Optional[float] = None
     try:
         bars = await data_manager.get_bars(
-            symbol, lookback_days=30, timeframe="1h", is_futures=True
+            symbol, lookback_days=30, timeframe="1h", is_futures=is_futures
         )
         atr = _compute_atr_from_bars(bars, period=_ATR_PERIOD)
     except Exception as exc:

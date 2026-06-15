@@ -210,3 +210,35 @@ async def test_sane_entry_price_allows_open_and_alerts():
     _, kwargs = opened.call_args
     assert kwargs.get("symbol") == "MES"
     assert kwargs.get("source") == "scanner"
+
+
+# -- Equity execution (OPTIONS_WATCHLIST symbols become paper trades) --------
+
+
+@pytest.mark.asyncio
+async def test_equity_symbol_executes_with_is_futures_false():
+    """A symbol NOT in the futures set is analyzed + priced as an equity and
+    still opens a paper trade through the same safety-gated path."""
+    pt = _flat_tracker()
+    scanner = _build_scanner(pt, data_manager=MagicMock())
+    # Declare only MES as futures -> QQQ is treated as an equity.
+    scanner.set_futures_symbols(["MES"])
+
+    sanity = AsyncMock(return_value=(True, ""))
+    with (
+        patch("scanner.signal_scanner._is_futures_market_hours", return_value=True),
+        patch("config.settings") as mock_settings,
+        patch("risk.entry_price_sanity.check_entry_price_sanity", new=sanity),
+        patch("notifications.openclaw_notifier.notify_trade_opened", new=AsyncMock()),
+    ):
+        mock_settings.LIVE_TRADING_ENABLED = False
+        await scanner._scan_symbol("QQQ")
+
+    # Pipeline analyzed QQQ as an equity.
+    _, akwargs = scanner.trading_pipeline.analyze_and_decide.call_args
+    assert akwargs.get("is_futures") is False
+    # Sanity check ran with is_futures=False.
+    _, skwargs = sanity.call_args
+    assert skwargs.get("is_futures") is False
+    # And the equity paper trade was booked.
+    pt.add_paper_trade.assert_called_once()
