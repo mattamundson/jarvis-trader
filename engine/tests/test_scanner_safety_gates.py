@@ -91,7 +91,11 @@ def _flat_tracker() -> MagicMock:
 async def test_kill_switch_active_blocks_open(caplog):
     pt = _flat_tracker()
     safety = MagicMock()
-    safety.get_status = MagicMock(return_value={"kill_switch_active": True})
+    # Mirror the REAL SafetyLayer.get_status() contract: the latched flag is
+    # exposed as "is_killed" (safety_router maps it to public kill_switch_active).
+    # A mock keyed on "kill_switch_active" masked the 2026-06-15 wrong-key bug
+    # where the live opener read a non-existent key and bypassed the switch.
+    safety.get_status = MagicMock(return_value={"is_killed": True})
     scanner = _build_scanner(pt, safety_layer=safety)
 
     with (
@@ -128,7 +132,7 @@ async def test_kill_switch_status_error_fails_closed():
 async def test_kill_switch_inactive_allows_open():
     pt = _flat_tracker()
     safety = MagicMock()
-    safety.get_status = MagicMock(return_value={"kill_switch_active": False})
+    safety.get_status = MagicMock(return_value={"is_killed": False})
     scanner = _build_scanner(pt, safety_layer=safety)
 
     with (

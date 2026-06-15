@@ -142,7 +142,12 @@ class SignalScanner:
         if self._safety_layer is None:
             return False
         try:
-            return bool(self._safety_layer.get_status().get("kill_switch_active"))
+            # SafetyLayer.get_status() exposes the latched flag under "is_killed"
+            # (safety_router maps it to the public "kill_switch_active" field).
+            # Reading the wrong key here silently returned None→False, so the
+            # live opener bypassed an active kill switch (TSLA opened 2026-06-15
+            # 23:04 UTC under an active switch). Read the canonical key.
+            return bool(self._safety_layer.get_status().get("is_killed"))
         except Exception as exc:
             logger.error(
                 "[SAFETY] kill-switch status unavailable (%s) — fail-closed (halting)", exc
