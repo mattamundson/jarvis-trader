@@ -72,7 +72,7 @@ export default function TradesPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Loading trades...</p>
       </div>
     );
@@ -80,7 +80,7 @@ export default function TradesPage() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-2">
+      <div className="flex flex-col items-center justify-center h-64 gap-2">
         <p className="text-destructive font-semibold">Error loading trades</p>
         <p className="text-sm text-muted-foreground">{String(error)}</p>
       </div>
