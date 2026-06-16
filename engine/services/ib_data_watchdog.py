@@ -19,6 +19,12 @@ outside the safety-invariant CI gate, matching ``resolve_data_client_id``:
   IBKR_DATA_WATCHDOG_INTERVAL     default 30     poll seconds (floored at 5)
   IBKR_DATA_WATCHDOG_MAX_BACKOFF  default 300    reconnect-spacing cap seconds
   IBKR_DATA_STALE_SECONDS         default 180    stale-data → reconnect (0 disables)
+  IBKR_GATEWAY_RESTART_WINDOW     default blank  daily Gateway restart window
+                                                 "HH:MM-HH:MM" (local time). Inside
+                                                 it: alerts suppressed + reconnect
+                                                 spacing tightened (the Gateway is
+                                                 expected down and returns in minutes).
+                                                 Blank/invalid disables.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ import asyncio
 import logging
 import os
 import time
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +52,35 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _parse_restart_window(raw: str | None) -> tuple[int, int] | None:
+    """Parse "HH:MM-HH:MM" into (start_min, end_min) minutes-since-midnight.
+
+    Returns None when blank, malformed, or zero-width (start == end). A window
+    whose end precedes its start is treated as wrapping past midnight.
+    """
+    if not raw or not raw.strip():
+        return None
+
+    def _to_min(s: str) -> int:
+        hh, mm = s.strip().split(":", 1)
+        h, m = int(hh), int(mm)
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError(f"out-of-range time {s!r}")
+        return h * 60 + m
+
+    try:
+        start_s, end_s = raw.strip().split("-", 1)
+        start, end = _to_min(start_s), _to_min(end_s)
+    except (ValueError, AttributeError):
+        logger.warning(
+            "[IBDataWatchdog] invalid IBKR_GATEWAY_RESTART_WINDOW=%r — ignoring", raw
+        )
+        return None
+    if start == end:
+        return None
+    return (start, end)
+
+
 class IBDataWatchdog:
     """Background task that keeps the market-data IB leg connected."""
 
@@ -56,6 +92,8 @@ class IBDataWatchdog:
             self.interval, _env_float("IBKR_DATA_WATCHDOG_MAX_BACKOFF", 300.0)
         )
         self.stale_seconds = _env_float("IBKR_DATA_STALE_SECONDS", 180.0)
+        self._restart_window_raw = (os.getenv("IBKR_GATEWAY_RESTART_WINDOW") or "").strip()
+        self.restart_window = _parse_restart_window(self._restart_window_raw)
 
         self._running = False
         self._task: asyncio.Task | None = None
@@ -109,6 +147,19 @@ class IBDataWatchdog:
             except asyncio.CancelledError:
                 break
 
+    def _in_restart_window(self, now_minutes: int | None = None) -> bool:
+        """True when local wall-clock falls inside the configured Gateway restart
+        window. Handles windows that wrap past midnight (start > end)."""
+        if self.restart_window is None:
+            return False
+        if now_minutes is None:
+            n = datetime.now()  # local time — the Gateway restart is configured local
+            now_minutes = n.hour * 60 + n.minute
+        start, end = self.restart_window
+        if start <= end:
+            return start <= now_minutes < end
+        return now_minutes >= start or now_minutes < end
+
     def _is_stale(self) -> bool:
         """Connected socket but no fresh IBKR data within the window during RTH."""
         if self.stale_seconds <= 0:
@@ -136,9 +187,11 @@ class IBDataWatchdog:
                 self._next_eligible = 0.0
             return
 
-        # Respect backoff spacing after repeated failures (don't hammer IB during
-        # the daily Gateway-restart window).
-        if time.monotonic() < self._next_eligible:
+        in_window = self._in_restart_window()
+        # Outside the restart window, respect exponential backoff spacing so we
+        # don't hammer IB. INSIDE the window the Gateway is expected down and
+        # returns within minutes, so retry every interval (skip the backoff gate).
+        if not in_window and time.monotonic() < self._next_eligible:
             return
 
         reason = "drop" if not connected else "stale-data"
@@ -157,11 +210,19 @@ class IBDataWatchdog:
             logger.info("[IBDataWatchdog] data leg reconnected")
         else:
             self.consecutive_failures += 1
-            backoff = min(self._max_backoff, self.interval * (2 ** self.consecutive_failures))
+            if in_window:
+                # Tight, fixed spacing during the expected restart — no escalation.
+                backoff = self.interval
+            else:
+                backoff = min(
+                    self._max_backoff, self.interval * (2 ** self.consecutive_failures)
+                )
             self._next_eligible = time.monotonic() + backoff
             logger.warning(
-                "[IBDataWatchdog] reconnect failed (#%d) — next attempt in %.0fs",
-                self.consecutive_failures, backoff,
+                "[IBDataWatchdog] reconnect failed (#%d%s) — next attempt in %.0fs",
+                self.consecutive_failures,
+                ", restart-window" if in_window else "",
+                backoff,
             )
             if self.consecutive_failures >= 3:
                 self._maybe_alert()
@@ -170,6 +231,10 @@ class IBDataWatchdog:
         """Best-effort, cooldown- and market-hours-gated reuse of the existing notifier."""
         now = time.time()
         if now - self._last_alert < self._alert_cooldown:
+            return
+        # Suppress alerts during the expected daily Gateway restart — a drop here
+        # is routine, not an incident.
+        if self._in_restart_window():
             return
         try:
             from health.ib_monitor import is_market_hours
@@ -194,4 +259,6 @@ class IBDataWatchdog:
             "last_reconnect_ts": self.last_success_ts,
             "interval_s": self.interval,
             "stale_seconds": self.stale_seconds,
+            "restart_window": self._restart_window_raw or None,
+            "in_restart_window": self._in_restart_window(),
         }

@@ -129,6 +129,7 @@ from routers.scheduler_router import inject_scheduler as inject_scheduler_router
 from routers.trades_router import router as trades_router
 from routers.trades_router import inject_dependencies as inject_trades_deps
 from routers.strategy_ledger_router import router as strategy_ledger_router
+from routers.forward_test_router import router as forward_test_router
 from routers.validation_analytics_router import router as validation_analytics_router
 from routers.wfe_router import router as wfe_router
 from routers.discovery_router import router as discovery_router
@@ -2923,6 +2924,7 @@ app.include_router(journal_review_router, prefix="/journal", tags=["journal-revi
 app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(strategy_ledger_router)
+app.include_router(forward_test_router)
 app.include_router(validation_analytics_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
