@@ -218,7 +218,9 @@ def check_pnl_snapshots() -> tuple[str, str, str]:
 def check_engine_health() -> tuple[str, str, str]:
     title = "Engine /health (port 8010)"
     try:
-        req = Request(HEALTH_URL, headers={"X-API-Key": "xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc"})
+        # API key from the environment (the API_KEY the engine validates); never
+        # hardcode the credential in source.
+        req = Request(HEALTH_URL, headers={"X-API-Key": os.environ.get("API_KEY", "")})
         with urlopen(req, timeout=5) as resp:
             body_bytes = resp.read()
         health = json.loads(body_bytes.decode("utf-8"))

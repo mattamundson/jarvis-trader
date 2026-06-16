@@ -44,7 +44,10 @@ logger = logging.getLogger("strategy_c_executor")
 
 ENGINE_HOST = os.environ.get("ENGINE_HOST", "localhost")
 ENGINE_PORT = int(os.environ.get("ENGINE_PORT", "8010"))
-ENGINE_API_KEY = os.environ.get("JARVIS_API_KEY", "xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc")
+# Resolve from the environment only; never embed the credential in source.
+# Honors JARVIS_API_KEY (legacy var) then falls back to API_KEY (the var the
+# engine validates against). Empty string if unset -> engine returns 401.
+ENGINE_API_KEY = os.environ.get("JARVIS_API_KEY") or os.environ.get("API_KEY", "")
 ENGINE_BASE_URL = f"http://{ENGINE_HOST}:{ENGINE_PORT}"
 
 IBKR_PAPER_PORT = 4002
