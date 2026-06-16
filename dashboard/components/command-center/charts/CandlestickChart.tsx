@@ -26,6 +26,8 @@ interface CandlestickChartProps {
   livePrice?: number | null;
   /** Optional trade/signal markers overlaid on the candle series. */
   markers?: SeriesMarker<Time>[];
+  /** Optional horizontal price lines (e.g. stop / target) drawn on the candle series. */
+  priceLines?: Array<{ price: number; color: string; title: string }>;
 }
 
 export function CandlestickChart({
@@ -34,6 +36,7 @@ export function CandlestickChart({
   height = 420,
   livePrice,
   markers,
+  priceLines,
 }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -48,6 +51,8 @@ export function CandlestickChart({
   const stcSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   // Trade/signal markers plugin (v5: createSeriesMarkers on the candle series)
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  // Trade price lines (stop/target) overlaid on the candle series
+  const priceLineRefs = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
 
   // ── Initialize chart on mount ─────────────────────────────────────────────
   useEffect(() => {
@@ -201,6 +206,7 @@ export function CandlestickChart({
       vwapSeriesRef.current = null;
       stcSeriesRef.current = null;
       markersPluginRef.current = null;
+      priceLineRefs.current = [];
     };
   }, [height]);
 
@@ -283,6 +289,34 @@ export function CandlestickChart({
 
     chartRef.current?.timeScale().fitContent();
   }, [bars]);
+
+  // ── Apply trade price lines (stop / target) ───────────────────────────────
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+    // clear previous lines
+    for (const pl of priceLineRefs.current) {
+      try {
+        series.removePriceLine(pl);
+      } catch {
+        /* series may already be disposed */
+      }
+    }
+    priceLineRefs.current = [];
+    for (const pl of priceLines ?? []) {
+      if (pl.price == null || !Number.isFinite(pl.price)) continue;
+      priceLineRefs.current.push(
+        series.createPriceLine({
+          price: pl.price,
+          color: pl.color,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: pl.title,
+        })
+      );
+    }
+  }, [priceLines, bars]);
 
   // ── Update indicator price lines when technical data changes ─────────────
   useEffect(() => {
