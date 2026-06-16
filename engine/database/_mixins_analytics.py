@@ -119,12 +119,19 @@ class AnalyticsMixin:
 
         Returns
         -------
-        dict with keys:
-            current_drawdown          -- float, dollars below peak (>= 0)
-            peak_balance              -- float, highest ending_balance ever recorded
-            max_historical_drawdown   -- float, worst peak-to-trough drop ever
-            drawdown_pct              -- float, current_drawdown / peak_balance * 100
-                                         (0.0 if peak_balance is zero)
+        dict carrying both the ``DrawdownResponse`` (api/models.py) API field
+        names and the legacy dollar-denominated keys. The API field names were
+        previously absent, so ``/portfolio/stats/drawdown`` silently served 0.0
+        for all four (peak_equity / current_equity / *_pct) over a real curve.
+
+            current_drawdown_pct      -- float, current_drawdown / peak_equity * 100
+            max_drawdown_pct          -- float, max_dd / (peak at that trough) * 100
+            peak_equity               -- float, highest ending_balance ever recorded
+            current_equity            -- float, latest ending_balance
+            current_drawdown          -- float, dollars below peak (>= 0) [legacy]
+            peak_balance              -- float, == peak_equity [legacy]
+            max_historical_drawdown   -- float, worst peak-to-trough drop, $ [legacy]
+            drawdown_pct              -- float, == current_drawdown_pct [legacy]
         """
         sql = "SELECT ending_balance FROM daily_pnl ORDER BY date ASC"
         with self._lock:
@@ -136,6 +143,11 @@ class AnalyticsMixin:
 
         if not rows:
             return {
+                "current_drawdown_pct": 0.0,
+                "max_drawdown_pct": 0.0,
+                "peak_equity": 0.0,
+                "current_equity": 0.0,
+                # Legacy keys (backward compatibility).
                 "current_drawdown": 0.0,
                 "peak_balance": 0.0,
                 "max_historical_drawdown": 0.0,
@@ -144,6 +156,7 @@ class AnalyticsMixin:
 
         peak: float = 0.0
         max_dd: float = 0.0
+        max_dd_peak: float = 0.0
         latest_balance: float = 0.0
 
         for row in rows:
@@ -154,13 +167,25 @@ class AnalyticsMixin:
             dd = peak - balance
             if dd > max_dd:
                 max_dd = dd
+                max_dd_peak = peak
 
         current_dd = max(0.0, peak - latest_balance)
-        dd_pct = (current_dd / peak * 100.0) if peak > 0 else 0.0
+        current_dd_pct = (current_dd / peak * 100.0) if peak > 0 else 0.0
+        # Percentage relative to the peak in force at the worst trough, not the
+        # global peak, so a later-recovered curve still reports its true max DD.
+        max_dd_pct = (max_dd / max_dd_peak * 100.0) if max_dd_peak > 0 else 0.0
 
         return {
+            # Fields declared by DrawdownResponse (api/models.py) -- previously
+            # absent from this dict, so /portfolio/stats/drawdown served 0.0 for
+            # all four over a real equity curve.
+            "current_drawdown_pct": round(current_dd_pct, 4),
+            "max_drawdown_pct": round(max_dd_pct, 4),
+            "peak_equity": round(peak, 4),
+            "current_equity": round(latest_balance, 4),
+            # Legacy dollar-denominated keys retained for backward compatibility.
             "current_drawdown": round(current_dd, 4),
             "peak_balance": round(peak, 4),
             "max_historical_drawdown": round(max_dd, 4),
-            "drawdown_pct": round(dd_pct, 4),
+            "drawdown_pct": round(current_dd_pct, 4),
         }

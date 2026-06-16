@@ -104,3 +104,53 @@ class TestStatsSummaryDerivedMetrics:
         assert s["profit_factor"] == 0.0
         assert s["best_trade"] == pytest.approx(100.0)
         assert s["worst_trade"] == pytest.approx(50.0)  # MIN over the two wins
+
+
+class TestDrawdownDerivedMetrics:
+    """get_drawdown must populate the DrawdownResponse API field names.
+
+    Bug (2026-06-16): the method returned current_drawdown / peak_balance /
+    max_historical_drawdown / drawdown_pct, but DrawdownResponse declares
+    current_drawdown_pct / max_drawdown_pct / peak_equity / current_equity, so
+    /portfolio/stats/drawdown silently served 0.0 for all four.
+    """
+
+    def _curve(self, db):
+        # Equity curve: 10000 -> 11000 (peak) -> 9000 (trough) -> 9500 (current).
+        rows = [
+            ("2026-06-01", 10000.0, 11000.0, 1000.0),
+            ("2026-06-02", 11000.0, 9000.0, -2000.0),
+            ("2026-06-03", 9000.0, 9500.0, 500.0),
+        ]
+        for date, start, end, realized in rows:
+            written = db.upsert_daily_pnl(
+                date=date,
+                starting_balance=start,
+                ending_balance=end,
+                realized_pnl=realized,
+                unrealized_pnl=0.0,
+                total_trades=1,
+                winning_trades=1 if realized > 0 else 0,
+                losing_trades=1 if realized < 0 else 0,
+                max_drawdown=0.0,
+            )
+            assert written is True, f"daily_pnl write guard rejected {date}"
+
+    def test_empty_db_populates_api_fields_as_zero(self, db):
+        d = db.get_drawdown()
+        for k in ("current_drawdown_pct", "max_drawdown_pct", "peak_equity", "current_equity"):
+            assert k in d and d[k] == 0.0
+
+    def test_drawdown_pcts_and_equity(self, db):
+        self._curve(db)
+        d = db.get_drawdown()
+        assert d["peak_equity"] == pytest.approx(11000.0)
+        assert d["current_equity"] == pytest.approx(9500.0)
+        # max DD = (11000 - 9000) / 11000 * 100
+        assert d["max_drawdown_pct"] == pytest.approx(18.1818, abs=1e-3)
+        # current DD = (11000 - 9500) / 11000 * 100
+        assert d["current_drawdown_pct"] == pytest.approx(13.6364, abs=1e-3)
+        # legacy keys preserved
+        assert d["peak_balance"] == pytest.approx(11000.0)
+        assert d["current_drawdown"] == pytest.approx(1500.0)
+        assert d["max_historical_drawdown"] == pytest.approx(2000.0)
