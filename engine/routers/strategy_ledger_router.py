@@ -111,6 +111,7 @@ def _parse_verdict(path: Path) -> Optional[Dict[str, Any]]:
         "p_edge": metrics.get("p_edge"),
         "mc_95th_dd_pct": metrics.get("mc_95th_dd_pct"),
         "dsr": metrics.get("dsr"),
+        "win_rate_ci_lower": metrics.get("win_rate_ci_lower"),
         "wfo_consistency": metrics.get("wfo_consistency"),
         "fixed_params_min_pf": metrics.get("fixed_params_min_pf"),
         "cost_survives_through": metrics.get("cost_survives_through"),
@@ -199,3 +200,138 @@ def get_strategy_verdict(symbol: str, family: str) -> LedgerEntry:
     if row is None:
         raise HTTPException(status_code=404, detail=f"No verdict for {symbol}/{family}")
     return LedgerEntry(**row)
+
+
+# ── Production-gate scorecard ────────────────────────────────────────────────
+
+
+class GateResult(BaseModel):
+    """One of the gate-v2 production gates, judged against its canonical threshold."""
+
+    key: str
+    label: str
+    value: Optional[float] = None
+    threshold: Optional[float] = None
+    comparator: str  # ">=" | "<="
+    unit: Optional[str] = None  # e.g. "%"
+    passed: Optional[bool] = None  # None => not evaluable (missing value or shadow gate)
+    enforced: bool = True
+    note: Optional[str] = None
+
+
+class GatesResponse(BaseModel):
+    symbol: str
+    family: Optional[str] = None
+    verdict: Optional[str] = None
+    created_at: Optional[str] = None
+    n_pass: int
+    n_evaluated: int
+    n_total: int
+    gates: List[GateResult]
+    generated_at: str
+
+
+def build_gate_scorecard(symbol: str, family: Optional[str] = None) -> GatesResponse:
+    """Build the 6-gate production scorecard for a symbol from its gate-v2 verdict.
+
+    Reads metrics via ``find_verdict`` and thresholds from
+    ``backtest._gate_v2_helpers`` (the single source of truth) — no recompute,
+    no new thresholds. A missing verdict yields every gate ``value=None``,
+    ``passed=None`` (not "fail" — absence is unknown, not a failure).
+    """
+    from backtest._gate_v2_helpers import (
+        GATE_DSR,
+        GATE_MC_DD_CORE,
+        GATE_P_EDGE,
+        GATE_PF_CI_LOWER,
+        GATE_WIN_RATE_CI_LOWER,
+        MIN_OOS_TRADES_TOTAL,
+        sample_adequacy_enforced,
+    )
+
+    row = find_verdict(symbol, family) or {}
+
+    def _f(key: str) -> Optional[float]:
+        v = row.get(key)
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _ge(value: Optional[float], thr: Optional[float]) -> Optional[bool]:
+        if value is None or thr is None:
+            return None
+        return value >= thr
+
+    def _le(value: Optional[float], thr: Optional[float]) -> Optional[bool]:
+        if value is None or thr is None:
+            return None
+        return value <= thr
+
+    # MC drawdown is stored in PERCENT units (mc_95th_dd_pct, e.g. 0.81 = 0.81%);
+    # the helper threshold is a fraction (0.05) — convert to percent to compare.
+    dd_value = _f("mc_95th_dd_pct")
+    dd_threshold_pct = GATE_MC_DD_CORE * 100.0
+    oos = _f("oos_trades")
+    win_ci = _f("win_rate_ci_lower")
+    sample_enforced = sample_adequacy_enforced()
+
+    gates = [
+        GateResult(
+            key="pf_ci_lower", label="PF CI lower bound",
+            value=_f("pf_ci_lower"), threshold=GATE_PF_CI_LOWER, comparator=">=",
+            passed=_ge(_f("pf_ci_lower"), GATE_PF_CI_LOWER),
+        ),
+        GateResult(
+            key="p_edge", label="P(edge)",
+            value=_f("p_edge"), threshold=GATE_P_EDGE, comparator=">=",
+            passed=_ge(_f("p_edge"), GATE_P_EDGE),
+        ),
+        GateResult(
+            key="mc_95th_dd", label="MC 95th DD", unit="%",
+            value=dd_value, threshold=dd_threshold_pct, comparator="<=",
+            passed=_le(dd_value, dd_threshold_pct),
+        ),
+        GateResult(
+            key="dsr", label="Deflated Sharpe",
+            value=_f("dsr"), threshold=GATE_DSR, comparator=">=",
+            passed=_ge(_f("dsr"), GATE_DSR),
+        ),
+        GateResult(
+            key="sample", label="OOS trades",
+            value=oos, threshold=float(MIN_OOS_TRADES_TOTAL), comparator=">=",
+            enforced=sample_enforced,
+            passed=_ge(oos, float(MIN_OOS_TRADES_TOTAL)),
+            note=None if sample_enforced else "shadow (not enforced)",
+        ),
+        GateResult(
+            key="win_rate_ci_lower", label="Win-rate CI lower",
+            value=win_ci, threshold=GATE_WIN_RATE_CI_LOWER, comparator=">=",
+            enforced=GATE_WIN_RATE_CI_LOWER is not None,
+            passed=_ge(win_ci, GATE_WIN_RATE_CI_LOWER),
+            note="shadow — threshold not yet calibrated" if GATE_WIN_RATE_CI_LOWER is None else None,
+        ),
+    ]
+
+    n_pass = sum(1 for g in gates if g.passed is True)
+    n_evaluated = sum(1 for g in gates if g.passed is not None)
+    return GatesResponse(
+        symbol=symbol.upper(),
+        family=row.get("family"),
+        verdict=row.get("verdict"),
+        created_at=row.get("created_at"),
+        n_pass=n_pass,
+        n_evaluated=n_evaluated,
+        n_total=len(gates),
+        gates=gates,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@router.get(
+    "/gates/{symbol}",
+    response_model=GatesResponse,
+    summary="Gate-v2 production scorecard (6 gates, pass/fail + values) for a symbol",
+)
+def get_strategy_gates(symbol: str, family: Optional[str] = Query(None)) -> GatesResponse:
+    return build_gate_scorecard(symbol, family)

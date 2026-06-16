@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetchStrategyLedger, type LedgerEntry, type LedgerResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { ProdGateScorecard } from "@/components/ProdGateScorecard";
 import {
   Table,
   TableBody,
@@ -40,6 +41,17 @@ export default function StrategyLedgerPage() {
   );
   const [sortKey, setSortKey] = useState<SortKey>("verdict");
   const [asc, setAsc] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>("");
+
+  // Distinct symbols present in the ledger, PASS-first order preserved enough
+  // for a sensible default (the first sorted row's symbol).
+  const symbols = useMemo(() => {
+    const seen = new Set<string>();
+    for (const e of data?.entries ?? []) {
+      if (e.symbol) seen.add(e.symbol);
+    }
+    return Array.from(seen);
+  }, [data]);
 
   const rows = useMemo(() => {
     const entries: LedgerEntry[] = data?.entries ? [...data.entries] : [];
@@ -103,6 +115,33 @@ export default function StrategyLedgerPage() {
           {data?.total ?? 0} • thresholds: PF-CI ≥ 1.10, p_edge ≥ 0.95, MC-DD ≤ 5%, DSR ≥ 0.10
         </p>
       </div>
+
+      {symbols.length > 0 && (
+        <div className="flex-shrink-0 px-6 pt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-mono text-xs text-muted-foreground">Gate scorecard:</span>
+            <div className="flex flex-wrap gap-1">
+              {symbols.map((sym) => {
+                const active = (selectedSymbol || symbols[0]) === sym;
+                return (
+                  <button
+                    key={sym}
+                    onClick={() => setSelectedSymbol(sym)}
+                    className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
+                      active
+                        ? "bg-primary/15 border-primary text-foreground"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {sym}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <ProdGateScorecard symbol={selectedSymbol || symbols[0]} />
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto px-6 py-4">
         {rows.length === 0 ? (
