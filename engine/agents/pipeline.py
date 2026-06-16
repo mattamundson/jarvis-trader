@@ -1499,19 +1499,24 @@ class TradingPipeline:
             "reasoning": "Technical-only fallback — risk auto-approved at minimum size",
             "timestamp": datetime.now().isoformat(),
         }
+        # Human-approval gate honors the REQUIRE_HUMAN_APPROVAL flag even in
+        # degraded technical-only mode (owner directive 2026-06-15).
+        from config import settings as _cfg
+
+        _require_human = bool(_cfg.REQUIRE_HUMAN_APPROVAL)
         fund_decision = {
             "approved": True,
             "final_quantity": quantity,
             "priority": "immediate",
-            "portfolio_impact": "Technical-only fallback — minimum size, requires human approval",
+            "portfolio_impact": "Technical-only fallback — minimum size",
             "reasoning": f"Technical-only mode: STC={stc_val:.1f} {stc_signal} conviction={conviction}/10",
-            "requires_human_approval": True,
+            "requires_human_approval": _require_human,
             "timestamp": datetime.now().isoformat(),
         }
         return {
             "final_action": stc_action,
             "final_quantity": quantity,
-            "requires_human": True,
+            "requires_human": _require_human,
             "technical_only_mode": True,
             "technical_only_stc": round(stc_val, 2),
             "technical_only_signal": stc_signal,
@@ -1522,7 +1527,7 @@ class TradingPipeline:
             "summary": (
                 f"{symbol} | technical-only mode | STC={stc_val:.1f} {stc_signal} | "
                 f"action={stc_action.upper()} qty={quantity} | conviction={conviction}/10 "
-                f"human=True"
+                f"human={_require_human}"
             ),
         }
 
@@ -2018,13 +2023,15 @@ class TradingPipeline:
             if fund_manager is None:
                 logger.warning("[Pipeline] Fund Manager not configured — auto-approving")
                 qty = risk_decision.get("modified_quantity") or trade_decision.get("quantity", 0)
+                from config import settings as _cfg
+
                 return {
                     "approved": True,
                     "final_quantity": int(qty),
                     "priority": "immediate",
                     "portfolio_impact": "Fund Manager not configured — passed without portfolio review",
                     "reasoning": "Fund Manager not configured.",
-                    "requires_human_approval": True,
+                    "requires_human_approval": bool(_cfg.REQUIRE_HUMAN_APPROVAL),
                     "timestamp": datetime.now().isoformat(),
                 }
 
@@ -2038,13 +2045,15 @@ class TradingPipeline:
             logger.error(f"[Pipeline] {err}")
             errors.append(err)
             qty = risk_decision.get("modified_quantity") or trade_decision.get("quantity", 1)
+            from config import settings as _cfg
+
             return {
                 "approved": True,
                 "final_quantity": min(int(qty), 1),
                 "priority": "immediate",
                 "portfolio_impact": "Fund Manager failed — conservative fallback approval",
-                "reasoning": f"Fund Manager exception: {e}. Approved at min size with human approval required.",
-                "requires_human_approval": True,
+                "reasoning": f"Fund Manager exception: {e}. Approved at min size (approval per REQUIRE_HUMAN_APPROVAL flag).",
+                "requires_human_approval": bool(_cfg.REQUIRE_HUMAN_APPROVAL),
                 "timestamp": datetime.now().isoformat(),
             }
 

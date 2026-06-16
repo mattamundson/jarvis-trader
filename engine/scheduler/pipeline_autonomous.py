@@ -461,11 +461,21 @@ async def autonomous_tick() -> dict:
                             )
                             continue
                 except Exception as _sanity_exc:
-                    logger.warning(
-                        "[AutonomousTick][ENTRY_PRICE_SANITY] check raised for %s: %s — allowing",
+                    # Fail CLOSED: an error verifying the entry price must not let a
+                    # possibly-corrupted candidate through to the approval queue.
+                    logger.critical(
+                        "[AutonomousTick][ENTRY_PRICE_SANITY] check raised for %s: %s — "
+                        "rejecting candidate (fail-closed)",
                         symbol,
                         _sanity_exc,
                     )
+                    summary["errors"].append(
+                        {
+                            "symbol": symbol,
+                            "error": f"entry_price_sanity_error: {_sanity_exc}",
+                        }
+                    )
+                    continue
 
             row_id = _insert_candidate(
                 db_path=_db_path,
