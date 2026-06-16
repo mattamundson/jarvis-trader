@@ -1778,6 +1778,60 @@ export async function fetchExcursion(
   return fetchEngine<ExcursionResponse>(`/analytics/excursion${suffix}`);
 }
 
+// ── Entry-timing scenarios (/analytics/entry-timing) ─────────────────────────
+// Per-closed-trade what-if: PnL if entry had occurred N bars earlier/later
+// (exit held constant). offset 0 reproduces the actual trade. Bars are fetched
+// server-side; trades with no bars return bars_available=false + empty scenarios.
+
+export interface EntryTimingScenarioRow {
+  offset_bars: number;
+  hypothetical_entry: number;
+  pnl_usd: number;
+  pnl_pct: number;
+  delta_vs_actual_usd: number;
+}
+
+export interface EntryTimingTrade {
+  trade_id: string;
+  symbol: string;
+  side: string;
+  entry_price: number;
+  exit_price: number | null;
+  pnl: number | null;
+  entry_time: string;
+  exit_time: string | null;
+  scenarios: EntryTimingScenarioRow[];
+  entry_bar_index: number | null;
+  bars_available: boolean;
+}
+
+export interface EntryTimingAggregates {
+  trade_count: number;
+  computed_count: number;
+  avg_delta_by_offset: Record<string, number>;
+  best_avg_offset: number | null;
+  worst_avg_offset: number | null;
+  systematic_bias: string | null;
+}
+
+export interface EntryTimingResponse {
+  trades: EntryTimingTrade[];
+  aggregates: EntryTimingAggregates;
+  offsets_evaluated: number[];
+  timestamp: string;
+}
+
+export async function fetchEntryTiming(
+  opts?: { symbol?: string; limit?: number; offsets?: string }
+): Promise<EntryTimingResponse> {
+  const qs = new URLSearchParams();
+  if (opts?.symbol) qs.set("symbol", opts.symbol);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  if (opts?.offsets) qs.set("offsets", opts.offsets);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return fetchEngine<EntryTimingResponse>(`/analytics/entry-timing${suffix}`);
+}
+
 // ── Discord Briefing (command-center /discord/briefing) ──────────────────────
 
 export interface BriefingIBLevels {
