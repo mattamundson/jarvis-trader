@@ -405,7 +405,11 @@ class TestPaperTradingIntegration(unittest.TestCase):
         assert config.MAX_POSITION_SIZE_PCT == 0.05
         assert config.MAX_CONTRACTS_PER_INSTRUMENT == 2
         assert config.LIVE_TRADING_ENABLED is False
-        assert config.REQUIRE_HUMAN_APPROVAL is True
+        # Autonomous paper mode (2026-06-15 owner directive): human approval is
+        # disabled so trades execute without a confirmation step. LIVE_TRADING_ENABLED
+        # is False remains the real capital backstop -- no live IB orders route, and
+        # the live opener now enforces the kill-switch + entry-price-sanity gates.
+        assert config.REQUIRE_HUMAN_APPROVAL is False
         assert config.PAPER_TRADING is True
 
     def test_paper_tracker_persistence(self):

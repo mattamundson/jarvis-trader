@@ -170,8 +170,11 @@ interface SessionTodayData {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function MarketSessionStatusCard() {
-  const [ctTime, setCTTime] = useState<string>(getCTTimeString());
-  const [session, setSession] = useState<SessionInfo>(getCurrentSession());
+  // Initialize with stable, SSR-safe values — no new Date() during render — so the
+  // server-rendered markup matches the client's first paint. Real values are filled
+  // in the mount effect (tick()). Prevents React hydration error #418.
+  const [ctTime, setCTTime] = useState<string>("");
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const [nextEvent, setNextEvent] = useState<string>("");
   const [sessionData, setSessionData] = useState<SessionTodayData | null>(null);
   const [fetchError, setFetchError] = useState<boolean>(false);
@@ -206,8 +209,8 @@ export function MarketSessionStatusCard() {
     };
   }, []);
 
-  const badgeVariant = sessionBadgeVariant(session.name);
-  const label = sessionLabel(session);
+  const badgeVariant = sessionBadgeVariant(session?.name ?? "");
+  const label = session ? sessionLabel(session) : "—";
 
   return (
     <Card className="border-[#1a1a2e] bg-[#0a0a0a]">
@@ -217,7 +220,7 @@ export function MarketSessionStatusCard() {
             Market Session
           </CardTitle>
           {/* Live pulse dot when market open */}
-          {session.isOpen && (
+          {session?.isOpen && (
             <span className="relative flex h-2.5 w-2.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
@@ -236,7 +239,7 @@ export function MarketSessionStatusCard() {
 
         {/* Description */}
         <p className="font-mono text-xs text-neutral-500 leading-relaxed">
-          {session.description}
+          {session?.description ?? ""}
         </p>
 
         {/* CT clock */}
@@ -245,7 +248,7 @@ export function MarketSessionStatusCard() {
             CT Time
           </span>
           <span className="font-mono text-sm text-neutral-200 tabular-nums">
-            {ctTime}
+            {ctTime || "—"}
           </span>
         </div>
 

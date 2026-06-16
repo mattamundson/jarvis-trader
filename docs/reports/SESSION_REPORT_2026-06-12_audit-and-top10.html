@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS — Audit Closeout + Top-10 ROI Loop · 2026-06-11/12</title>
+<style>
+  :root{--bg:#07070b;--card:#0d0d14;--border:#1c1c2e;--text:#e4e4e7;--dim:#71717a;
+        --gold:#c9993f;--green:#00ff88;--red:#ff4444;--cyan:#00d4ff;--yellow:#ffcc00;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:15px/1.6 "Segoe UI",system-ui,sans-serif;padding:40px 20px;}
+  .wrap{max-width:1060px;margin:0 auto}
+  h1{font-size:26px;letter-spacing:.04em} h2{font-size:17px;color:var(--gold);
+     text-transform:uppercase;letter-spacing:.12em;margin:42px 0 14px;border-bottom:1px solid var(--border);padding-bottom:8px}
+  .sub{color:var(--dim);margin-top:6px;font-size:13px}
+  .verdict{margin-top:26px;background:linear-gradient(135deg,#0d1f14,#0d0d14);border:1px solid #1f4030;
+           border-radius:14px;padding:22px 26px}
+  .verdict b{color:var(--green);font-size:18px}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);text-align:left;padding:10px 14px;border-bottom:1px solid var(--border)}
+  td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;font-size:13.5px}
+  tr:last-child td{border-bottom:none}
+  .ok{color:var(--green);font-weight:600;white-space:nowrap} .warn{color:var(--yellow);font-weight:600;white-space:nowrap}
+  .bad{color:var(--red);font-weight:600;white-space:nowrap}
+  code{font-family:"JetBrains Mono",Consolas,monospace;font-size:12px;color:var(--cyan);background:#11111a;padding:1px 5px;border-radius:4px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px;letter-spacing:.06em}
+  .pill.g{background:#00ff8818;color:var(--green);border:1px solid #00ff8840}
+  .pill.y{background:#ffcc0018;color:var(--yellow);border:1px solid #ffcc0040}
+  ul{margin:8px 0 0 20px} li{margin:5px 0;font-size:13.5px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+  .card h3{font-size:13px;color:var(--cyan);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+  .dim{color:var(--dim)} .footer{margin-top:48px;color:var(--dim);font-size:12px;text-align:center}
+  a{color:var(--cyan)}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>JARVIS TRADER — Full-System Audit Closeout + Top-10 ROI Loop</h1>
+<p class="sub">Session 2026-06-11 → 2026-06-12 · Claude Fable 5 · every claim below re-verified live at report time (engine uptime 5 min post-final-restart)</p>
+
+<div class="verdict">
+  <b>VERDICT: System verified working — green that can't lie.</b>
+  <p style="margin-top:8px">Engine <span class="ok">status=ok</span> with TradingView MCP + LLM path healthy and both IB legs connected · 8020 bridge <span class="ok">ok</span> · dashboard <span class="ok">200</span> · all six audit-fixed endpoint classes return <span class="ok">200</span> · alert loop proven on the real notify path (Telegram <span class="ok">200</span>, Discord <span class="ok">204</span>) · 36 regression tests green · 3 engine restarts under resource lock, full health gate each time.
+  <br><span class="dim">Honest limits of the claim are listed at the bottom — infrastructure is Stark-grade; the paper trading <i>edge</i> is measured honestly and is still young/weak (that's the system telling the truth, not failing).</span></p>
+</div>
+
+<h2>Phase 1 — Audit (16 findings, all artifact-backed)</h2>
+<p class="dim" style="font-size:13px">Full report: <code>~/.claude/handoffs/AUDIT_2026-06-11_jarvis-system.md</code>. Top findings: all 4 approval-alert channels dead (each differently), Strategy C+ signal silently clobbered by a git checkout, WFE snapshots only covering blocked symbols, paper QS coverage 6/28 metrics, 8020 bridge unmanaged.</p>
+
+<h2>Phase 2/3 — Audit closeout (merged: 360becc, fa8ae65 + follow-ups)</h2>
+<table>
+<tr><th>Area</th><th>What was done</th><th>Verified by</th></tr>
+<tr><td><b>Approval alerts</b></td><td>Telegram fixed (numeric chat id, was bot-name) + Discord approval webhook repointed to the working URL; Twilio left for rotation</td><td class="ok">TG 200 / Discord 204 live</td></tr>
+<tr><td><b>One Jarvis</b></td><td>Strategy C+ Command Center (newest 344KB build) unified INTO the dashboard at <code>/strategy-c-command</code>, sidebar-linked; no second standalone object</td><td class="ok">iframe renders, 0 failed requests</td></tr>
+<tr><td><b>8020 bridge</b></td><td>Brought under pm2 as <code>jarvis-bridge-api</code> (was unmanaged, dies on reboot)</td><td class="ok">/health ok, pm2 saved</td></tr>
+<tr><td><b>QuantStats</b></td><td>+21 metrics live on <code>/reports/quantstats</code>; <code>jarvis_tearsheet.py</code> + <code>eval_run.py</code> (Run-12 gates) shipped</td><td class="ok">real values at n=15</td></tr>
+<tr><td><b>WFE</b></td><td><code>POST /wfe/snapshot</code> now covers active MES/MGC (was only blocked MCL/MNQ)</td><td class="ok">snapshots 1040/1041</td></tr>
+<tr><td><b>Runtime-state hazard</b></td><td>Gate-v2 verdicts + Strategy C+ outputs untracked from git (checkout-clobber class killed); live 6/05 signal restored</td><td class="ok">git ls-files + signal served</td></tr>
+</table>
+
+<h2>Top-10 ROI loop — 10/10 stories complete</h2>
+<table>
+<tr><th>#</th><th>Story</th><th>Root cause / what shipped</th><th>Commit</th><th>Proof</th></tr>
+<tr><td>1</td><td>Reconcile master with origin</td><td>Merged peer's 7 commits (CI repair, brokers drift detection, tick rounding) — zero conflicts</td><td><code>e758925</code>+merge</td><td class="ok">26 tests, health gate</td></tr>
+<tr><td>2</td><td>Dashboard crash pages</td><td>/command-center, /backtest, /performance crashed on partial payloads — TS <code>!</code> assertions &amp; unguarded fields; found via minified-chunk offsets</td><td><code>0fa0608</code></td><td class="ok">0 error-boundary catches</td></tr>
+<tr><td>3</td><td>Command Center signal 404</td><td>Route existed — <code>SIGNAL_PATH</code> hardcoded to <code>/home/user/workspace/…</code> (foreign Linux path) → repo-relative</td><td><code>435b047</code></td><td class="ok">RISK_ON signal served</td></tr>
+<tr><td>4</td><td>Data plane 404/500/502</td><td>+equity-curve, +/analytics/regime (honest-stub), +/ib/connection-test, hold-time tz-500 fix; 3 widget repoints; proxy abort 5s→25s (the entire 502 class)</td><td><code>2c6fa0c</code></td><td class="ok">8 endpoints 200, sweep clean</td></tr>
+<tr><td>5</td><td>/safety/status 429s</td><td>Read-only endpoint on the 10/min trading tier; all widgets share ONE proxy-IP bucket → 120/min read tier</td><td><code>3869ee9</code></td><td class="ok">double-pass sweep: 0×429</td></tr>
+<tr><td>6</td><td>Alert loop end-to-end</td><td>Real <code>notify_pending_approval_queued</code> fired with TEST payload</td><td>—</td><td class="ok">TG 200 + Discord 204</td></tr>
+<tr><td>7</td><td>Weekly tearsheet</td><td><code>jarvis-weekly-tearsheet</code> pm2 cron Sat 07:00; manual run wrote tearsheet + snapshot</td><td><code>8160a28</code></td><td class="ok">pm2 jlist + files</td></tr>
+<tr><td>8</td><td>Paper validation "restart"</td><td><b>Finding:</b> nothing to restart — state is derived; "not_started" was the retired-MCL default masking live MES/MGC windows (MGC 4 trades/11 days)</td><td><code>1454fa9</code></td><td class="ok">default=MES live</td></tr>
+<tr><td>9</td><td>Vertex failover prep</td><td>Verified already armed by peer session — flag set, 21 tests pass; remaining lever is GCP/credits (yours)</td><td>—</td><td class="ok">21 tests green</td></tr>
+<tr><td>10</td><td>Twilio dead channel</td><td>401 now latches the channel off per-process with ONE loud rotation-steps error (was 66× retry spam)</td><td><code>804e0ad</code></td><td class="ok">3 tests green</td></tr>
+</table>
+
+<h2>Live verification at report time</h2>
+<div class="grid">
+<div class="card"><h3>Services</h3><ul>
+<li>Engine 8010: <span class="ok">ok</span> — TV MCP ✓ · LLM ✓ (gemini active) · IB exec+data ✓ (4002)</li>
+<li>Bridge 8020: <span class="ok">ok</span> · Dashboard 3010: <span class="ok">200</span></li>
+<li>pm2: engine, dashboard, bridge-api, weekly-tearsheet, master-api — all online, saved</li></ul></div>
+<div class="card"><h3>Quality gates</h3><ul>
+<li>36 tests green across all touched files · <code>tsc --noEmit</code> clean</li>
+<li>Playwright: 8 routes, zero 404/500/502/429, zero crashes</li>
+<li>3 engine restarts under resource lock — full health gate each time</li></ul></div>
+</div>
+
+<h2>Honest limits — what this report does NOT claim</h2>
+<table>
+<tr><td><span class="pill y">EDGE</span></td><td>Paper trading performance is honestly weak: 1/10 production QS gates pass at n=15 (gain-to-pain 0.06, CAGR −22%). The <i>measurement layer</i> is now Stark-grade; the edge itself needs the validation window to mature (60 trades / 30 days floors).</td></tr>
+<tr><td><span class="pill y">PUSH</span></td><td>master is <b>ahead 7</b> of origin — <code>git push origin master</code> is yours.</td></tr>
+<tr><td><span class="pill y">TWILIO</span></td><td>Credential still dead (channel now self-silences). Rotate: 1Password 'Twilio' → engine/.env → restart.</td></tr>
+<tr><td><span class="pill y">LLM</span></td><td>Primary Anthropic still credit-exhausted; running healthy on Gemini. Vertex failover armed, awaits your GCP Marketplace enable / credit top-up.</td></tr>
+<tr><td><span class="pill y">OPENCLAW</span></td><td>Hermes/OpenClaw gateway flapping — deferred (runbook-gated restart), non-critical with TG+Discord live.</td></tr>
+</table>
+
+<p class="footer">Generated 2026-06-12 · handoffs: HANDOFF_2026-06-11_jarvis-audit-closeout.md · HANDOFF_2026-06-12_top10-roi-loop.md · PRD: scripts/ralph/prd.json (10/10)</p>
+</div></body>
+</html>
