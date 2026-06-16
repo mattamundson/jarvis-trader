@@ -1,12 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import useSWR from "swr";
-import { fetchTradeFullReview, type TradeFullReview } from "@/lib/api";
+import { fetchTradeFullReview, fetchBars, type TradeFullReview, type OHLCVBar } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
+import type { SeriesMarker, Time } from "lightweight-charts";
+
+/** Pick a bar timeframe + lookback window sized to how old the trade is. */
+function chartWindow(entryTime: string | null | undefined): { timeframe: string; days: number } {
+  if (!entryTime) return { timeframe: "15m", days: 14 };
+  const ageDays = (Date.now() - new Date(entryTime).getTime()) / 86_400_000;
+  if (!Number.isFinite(ageDays) || ageDays < 2) return { timeframe: "5m", days: 3 };
+  if (ageDays < 10) return { timeframe: "15m", days: 14 };
+  if (ageDays < 45) return { timeframe: "1h", days: 60 };
+  return { timeframe: "1d", days: 365 };
+}
+
+function toUnix(ts: string | null | undefined): number | null {
+  if (!ts) return null;
+  const ms = new Date(ts).getTime();
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
+
+function num(v: unknown): number | null {
+  const n = typeof v === "string" ? Number(v) : (v as number);
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
+}
 
 function fmt(v: any, digits = 2): string {
   return typeof v === "number" && Number.isFinite(v) ? v.toFixed(digits) : "—";
@@ -48,6 +71,59 @@ export default function TradeReviewPage() {
     { refreshInterval: 30000 }
   );
   const [showPipeline, setShowPipeline] = useState(false);
+
+  // Live bars for the trade window — sized to the trade's age.
+  const tradeSym = (data?.trade?.symbol as string | undefined) ?? "";
+  const entryTime = (data?.trade?.entry_time as string | undefined) ?? null;
+  const win = chartWindow(entryTime);
+  const { data: bars } = useSWR<OHLCVBar[]>(
+    tradeSym ? `bars-${tradeSym}-${win.timeframe}-${win.days}` : null,
+    () => fetchBars(tradeSym, { timeframe: win.timeframe, days: win.days, futures: true }),
+    { refreshInterval: 60000, revalidateOnFocus: false }
+  );
+
+  const markers = useMemo<SeriesMarker<Time>[]>(() => {
+    const tr = data?.trade;
+    if (!tr) return [];
+    const out: SeriesMarker<Time>[] = [];
+    const side = String(tr.side ?? tr.direction ?? "").toLowerCase();
+    const isBuy = side.includes("buy") || side.includes("long");
+    const entryT = toUnix(tr.entry_time);
+    if (entryT != null) {
+      out.push({
+        time: entryT as Time,
+        position: isBuy ? "belowBar" : "aboveBar",
+        color: isBuy ? "#00ff88" : "#ff4466",
+        shape: isBuy ? "arrowUp" : "arrowDown",
+        text: `ENTRY ${num(tr.entry_price) ?? ""}`.trim(),
+      });
+    }
+    const exitT = toUnix(tr.exit_time);
+    if (exitT != null) {
+      out.push({
+        time: exitT as Time,
+        position: isBuy ? "aboveBar" : "belowBar",
+        color: "#00d4ff",
+        shape: isBuy ? "arrowDown" : "arrowUp",
+        text: `EXIT ${num(tr.exit_price) ?? ""}`.trim(),
+      });
+    }
+    return out.sort((x, y) => (x.time as number) - (y.time as number));
+  }, [data?.trade]);
+
+  const priceLines = useMemo(() => {
+    const tr = data?.trade;
+    const at = data?.attribution;
+    if (!tr) return [];
+    const lines: Array<{ price: number; color: string; title: string }> = [];
+    const entry = num(tr.entry_price);
+    const stop = num(tr.stop_loss ?? tr.stop_price ?? at?.stop_loss ?? at?.stop);
+    const target = num(tr.take_profit ?? tr.target_1 ?? tr.target_price ?? at?.take_profit ?? at?.target);
+    if (entry != null) lines.push({ price: entry, color: "#9ca3af", title: "entry" });
+    if (stop != null) lines.push({ price: stop, color: "#ff4466", title: "stop" });
+    if (target != null) lines.push({ price: target, color: "#00ff88", title: "target" });
+    return lines;
+  }, [data?.trade, data?.attribution]);
 
   if (isLoading) {
     return (
@@ -97,6 +173,24 @@ export default function TradeReviewPage() {
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {/* PRICE CHART — entry/exit markers + stop/target lines */}
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle>
+              Price action <span className="text-muted-foreground">· {t.symbol ?? "—"} · {win.timeframe}</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {bars && bars.length ? (
+              <CandlestickChart bars={bars} markers={markers} priceLines={priceLines} height={420} />
+            ) : (
+              <p className="text-xs text-muted-foreground py-8 text-center">
+                No bar data available for {String(t.symbol ?? "this symbol")} in the trade window.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* WHY IT FIRED */}
         <Card className="xl:col-span-2">
           <CardHeader>
