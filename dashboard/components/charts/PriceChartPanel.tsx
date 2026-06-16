@@ -148,6 +148,14 @@ export function PriceChartPanel({
         >
           Failed to load bars for {symbol}
         </div>
+      ) : bars.length === 0 ? (
+        <div
+          className="flex flex-col items-center justify-center gap-1 text-center text-muted-foreground"
+          style={{ height }}
+        >
+          <p className="text-sm font-mono">No bar data for {symbol} ({timeframe})</p>
+          <p className="text-xs">No price history returned for this window yet.</p>
+        </div>
       ) : (
         <CandlestickChart
           bars={bars}
