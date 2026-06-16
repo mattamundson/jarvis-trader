@@ -9,6 +9,7 @@ import {
   type ChartSymbol,
   type ChartTimeframe,
 } from "@/hooks/useChartData";
+import { useLiveLastPrice } from "@/hooks/useLiveLastPrice";
 import { fetchEngine, type TradeRecord } from "@/lib/api";
 
 const SYMBOLS: ChartSymbol[] = ["MES", "MGC", "MNQ", "MCL"];
@@ -88,6 +89,7 @@ export function PriceChartPanel({
   showTrades = true,
 }: PriceChartPanelProps) {
   const { bars, technical, barsError } = useChartData(symbol, timeframe);
+  const livePrice = useLiveLastPrice(symbol);
 
   const { data: trades } = useSWR<TradeRecord[]>(
     showTrades ? ["/portfolio/history/trades", "CLOSED"] : null,
@@ -153,6 +155,7 @@ export function PriceChartPanel({
           bars={bars}
           technical={technical}
           markers={markers}
+          livePrice={livePrice}
           height={height}
         />
       )}

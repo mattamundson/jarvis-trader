@@ -18,6 +18,8 @@ import {
   BarChart3,
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { MarketChart } from "@/components/charts/MarketChart";
+import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -265,6 +267,11 @@ export default function TodayPage() {
   const tradesToday = session ? session.closed_trades + session.open_trades : null;
   const openCount = positions?.count ?? session?.open_trades ?? null;
 
+  // Lead symbol for the live chart: first open position, else first traded symbol,
+  // else MES. MarketChart routes futures → our real-time bars, equities → TradingView.
+  const leadSymbol =
+    positions?.positions?.[0]?.symbol ?? session?.symbols_traded?.[0] ?? "MES";
+
   // LLM provider display
   const llmProvider = health?.llm_providers?.active_provider ?? null;
   const llmHealthy = health?.llm_path_healthy ?? null;
@@ -401,6 +408,17 @@ export default function TodayPage() {
           )}
         </div>
 
+        {/* ── Live Chart ─────────────────────────────────────────────────────── */}
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-muted-foreground/60" />
+            <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Live Chart — {leadSymbol}
+            </p>
+          </div>
+          <MarketChart symbol={leadSymbol} timeframe="15m" height={320} />
+        </div>
+
         {/* ── System Health Checklist ────────────────────────────────────────── */}
         <div className="rounded-xl border border-border bg-card p-4 space-y-4">
           <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -518,6 +536,9 @@ export default function TodayPage() {
             </div>
           </div>
         )}
+
+        {/* ── Market Context (TradingView — equities/indices/macro/crypto) ────── */}
+        <MarketContextStrip />
 
       </main>
     </div>
