@@ -165,6 +165,90 @@ class DailyPnLMixin:
             finally:
                 conn.close()
 
+    def reconcile_daily_pnl(self, *, epsilon: float = 0.01) -> Dict:
+        """Recompute realized P&L from closed paper_trades and flag drift.
+
+        Detective control for the phantom-P&L class (2026-06-15). The stored
+        ``daily_pnl.realized_pnl`` is written by the EOD snapshot; this method
+        independently re-derives realized P&L per UTC date directly from the
+        source of truth — ``SUM(pnl)`` over ``status='closed'`` paper_trades —
+        and reports any date where the stored figure disagrees with the
+        recomputed figure by more than ``epsilon`` dollars.
+
+        Returns a dict::
+
+            {
+              "ok": bool,                  # True when no drift beyond epsilon
+              "epsilon": float,
+              "checked_dates": int,
+              "drift_count": int,
+              "total_recomputed_realized": float,
+              "total_stored_realized": float,
+              "drifts": [                  # only dates that disagree
+                 {"date", "stored_realized", "recomputed_realized",
+                  "delta", "stored_trades", "recomputed_trades"}
+              ],
+            }
+        """
+        recompute_sql = """
+            SELECT date(exit_time) AS d,
+                   COALESCE(SUM(pnl), 0.0) AS realized,
+                   COUNT(*) AS n
+            FROM paper_trades
+            WHERE status = 'closed' AND exit_time IS NOT NULL
+            GROUP BY date(exit_time)
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                recomputed = {
+                    r["d"]: {"realized": float(r["realized"]), "n": int(r["n"])}
+                    for r in conn.execute(recompute_sql).fetchall()
+                    if r["d"] is not None
+                }
+                stored_rows = conn.execute(
+                    "SELECT date, realized_pnl, total_trades FROM daily_pnl"
+                ).fetchall()
+            finally:
+                conn.close()
+
+        stored = {
+            r["date"]: {
+                "realized": float(r["realized_pnl"] or 0.0),
+                "n": int(r["total_trades"] or 0),
+            }
+            for r in stored_rows
+        }
+
+        drifts: List[Dict] = []
+        for date in sorted(set(stored) | set(recomputed)):
+            s = stored.get(date, {"realized": 0.0, "n": 0})
+            c = recomputed.get(date, {"realized": 0.0, "n": 0})
+            delta = s["realized"] - c["realized"]
+            if abs(delta) > epsilon:
+                drifts.append(
+                    {
+                        "date": date,
+                        "stored_realized": round(s["realized"], 2),
+                        "recomputed_realized": round(c["realized"], 2),
+                        "delta": round(delta, 2),
+                        "stored_trades": s["n"],
+                        "recomputed_trades": c["n"],
+                    }
+                )
+
+        total_recomputed = sum(v["realized"] for v in recomputed.values())
+        total_stored = sum(v["realized"] for v in stored.values())
+        return {
+            "ok": len(drifts) == 0,
+            "epsilon": epsilon,
+            "checked_dates": len(set(stored) | set(recomputed)),
+            "drift_count": len(drifts),
+            "total_recomputed_realized": round(total_recomputed, 2),
+            "total_stored_realized": round(total_stored, 2),
+            "drifts": drifts,
+        }
+
     # ── P&L Snapshots (safety layer persistence) ──────────────────────────────────────
 
     def upsert_pnl_snapshot(
