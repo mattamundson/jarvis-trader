@@ -9,7 +9,11 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
-import type { ForwardTestReport, ForwardTestCandidate } from "@/lib/api";
+import type {
+  ForwardTestReport,
+  ForwardTestCandidate,
+  ForwardTestLineage,
+} from "@/lib/api";
 
 const POLL_MS = 60_000; // forward-test verdict changes at most daily; 60s is plenty
 
@@ -68,6 +72,58 @@ function CandidateRow({ c }: { c: ForwardTestCandidate }) {
   );
 }
 
+/**
+ * Per-lineage verdict glyph. A decision lineage is the LLM identity that
+ * actually trades live (P4). Graduation is the loud win; a pre-registered
+ * lineage that has not graduated is "tracking"; a default-material
+ * (unregistered) lineage is context only — it can clear the stats but can never
+ * graduate, so it renders muted and is labelled so it never reads as an edge.
+ */
+function LineageRow({ l }: { l: ForwardTestLineage }) {
+  const Icon = l.graduated
+    ? CheckCircle2
+    : l.pre_registered
+    ? TrendingUp
+    : AlertTriangle;
+  const color = l.graduated
+    ? "text-bull"
+    : l.pre_registered
+    ? "text-accent"
+    : "text-muted-foreground";
+
+  const f = l.forward;
+  return (
+    <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40 last:border-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+        <div className="min-w-0">
+          <p className="text-xs font-mono text-foreground truncate">
+            {l.lineage}
+          </p>
+          <p className="text-[10px] text-muted-foreground truncate">
+            {l.graduated
+              ? "GRADUATED"
+              : l.pre_registered
+              ? "tracking (pre-registered)"
+              : "context only — unregistered"}
+            {" · "}
+            {f.n_oos_windows} OOS win · {f.total_trades} trades
+          </p>
+        </div>
+      </div>
+      <div className="text-right shrink-0">
+        <p className={`text-xs font-mono ${pnlColor(f.total_pnl)}`}>
+          {f.total_pnl >= 0 ? "+" : ""}
+          {f.total_pnl.toFixed(0)}
+        </p>
+        <p className="text-[10px] text-muted-foreground font-mono">
+          PF-CI {f.pf_ci_lower.toFixed(2)} · p {f.p_edge.toFixed(2)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function ForwardTestPanel() {
   const [data, setData] = useState<ForwardTestReport | null>(null);
   const [error, setError] = useState(false);
@@ -92,9 +148,15 @@ export function ForwardTestPanel() {
     return () => clearInterval(id);
   }, []);
 
+  const lineages = data?.lineages ?? [];
+  const lineagesGraduated = data?.n_lineages_graduated ?? 0;
   const insufficient =
-    !!data && (data.status === "INSUFFICIENT_DATA" || data.candidates.length === 0);
-  const graduated = data?.n_graduated ?? 0;
+    !!data &&
+    (data.status === "INSUFFICIENT_DATA" ||
+      (data.candidates.length === 0 && lineages.length === 0));
+  // Lineages are the unit that actually trades live, so a graduated lineage is
+  // the real headline; candidate graduations fold in behind it.
+  const graduated = (data?.n_graduated ?? 0) + lineagesGraduated;
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -133,11 +195,23 @@ export function ForwardTestPanel() {
         </div>
       ) : (
         <>
-          <div className="space-y-0">
-            {data.candidates.map((c) => (
-              <CandidateRow key={c.id} c={c} />
-            ))}
-          </div>
+          {data.candidates.length > 0 && (
+            <div className="space-y-0">
+              {data.candidates.map((c) => (
+                <CandidateRow key={c.id} c={c} />
+              ))}
+            </div>
+          )}
+          {lineages.length > 0 && (
+            <div className="space-y-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 pt-1 pb-0.5">
+                Decision lineages · LLM path (trades live)
+              </p>
+              {lineages.map((l) => (
+                <LineageRow key={l.lineage} l={l} />
+              ))}
+            </div>
+          )}
           {data.note && (
             <p className="text-[10px] text-muted-foreground/80 leading-snug pt-1">
               {data.note}
