@@ -513,16 +513,38 @@ class SafetyLayer:
     # â”€â”€ Kill Switch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def activate_kill_switch(self, reason: KillSwitchReason | str, message: str = "") -> None:
-        """Halt all trading. Requires human re-authorization to resume."""
-        self._kill_switch_active = True
-        # Convert string to enum if needed (for backward compatibility with tests)
+        """Halt all trading. Requires human re-authorization to resume.
+
+        State-transition-only side effects: the breach checks (drawdown, daily
+        loss) call this on EVERY scan while a breach persists. Without a guard
+        each call re-fired the OpenClaw alert, re-logged CRITICAL, and
+        re-scheduled the bracket cancel — the ~10/min kill-switch alert spam.
+        We now run the notify/persist/cancel side effects only on a real
+        transition (inactive→active) or a change of reason; a re-activation on
+        the same reason is a no-op beyond a debug line. The latch itself still
+        requires a manual deactivate to clear (unchanged).
+        """
+        # Normalize reason first so the transition comparison is reliable.
         if isinstance(reason, str):
             try:
                 reason = KillSwitchReason[reason]
             except KeyError:
                 logger.warning(f"Unknown kill switch reason: {reason}")
                 reason = KillSwitchReason.MANUAL
+
+        already_active = self._kill_switch_active
+        same_reason = already_active and self._kill_switch_reason == reason
+        self._kill_switch_active = True
         self._kill_switch_reason = reason
+
+        if same_reason:
+            logger.debug(
+                "Kill switch re-activation suppressed (already active: %s) — "
+                "no duplicate alert/persist/cancel.",
+                reason.value,
+            )
+            return
+
         logger.critical(f"KILL SWITCH ACTIVATED: {reason.value}. {message}")
         # Persist state to SQLite (non-fatal if DB unavailable)
         self._persist_kill_switch_state(True, reason)
