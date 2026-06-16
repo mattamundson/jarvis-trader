@@ -36,7 +36,6 @@ engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
-from backtest.saty_atr_signals import TRIGGER_RATIO  # noqa: E402
 from backtest._constants import (  # noqa: E402
     COST_TIER_ORDER,
     GATE_FIXED_PARAMS_MIN_PF,
@@ -52,6 +51,7 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     bootstrap_pf_ci_lower,
     classify_wfo_consistency,
 )
+from backtest.saty_atr_signals import TRIGGER_RATIO  # noqa: E402
 
 SPECS = {
     "MES": {
