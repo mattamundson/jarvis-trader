@@ -244,6 +244,21 @@ class PaperTradeLogger:
                         sym,
                         _cid_err,
                     )
+                # Decision-identity (P2): fingerprint of the running LLM decision
+                # config that produced this trade, resolved to a per-symbol lineage.
+                # config_hash is a property of the running config, so computing it
+                # at open time == the config that just decided. Fail-open.
+                decision_identity = None
+                try:
+                    from agents.decision_identity import current_decision_identity
+
+                    decision_identity = current_decision_identity(sym)
+                except Exception as _did_err:  # pragma: no cover - defensive
+                    logger.debug(
+                        "PaperTradeLogger: decision_identity failed for %s (non-fatal): %s",
+                        sym,
+                        _did_err,
+                    )
                 tid = self._portfolio_tracker.open_trade(
                     sym,
                     action,
@@ -251,6 +266,7 @@ class PaperTradeLogger:
                     filled_price,
                     notes=notes,
                     candidate_id=candidate_id,
+                    decision_identity=decision_identity,
                 )
                 self._open_trade_id_by_symbol[sym] = tid
             elif prev != 0.0 and new == 0.0:
