@@ -73,12 +73,17 @@ CRUDE_DAILY_VOL_FLOOR = 0.012  # 1.2% daily stdev is the ceiling for Colgate,
 def symbol_from_filename(name: str) -> str:
     # Filenames look like ``MES_2024-01-01_2026-03-27_1h.csv`` or
     # ``MNQ_1h_730d.csv``. Symbol is the leading token before the first
-    # underscore (with special-case for ``ES_F``).
+    # underscore (with special-case for ``ES_F``). Dry-run backtests prefix
+    # the name with ``_dryrun_`` (e.g. ``_dryrun_MES_2026-06-05_..._cont.csv``),
+    # which yields an empty leading token — drop empty tokens and skip the
+    # ``dryrun`` marker so the real symbol is still validated.
     stem = Path(name).stem
-    parts = stem.split("_")
+    parts = [p for p in stem.split("_") if p]
+    while parts and parts[0] == "dryrun":
+        parts.pop(0)
     if len(parts) >= 2 and parts[0] == "ES" and parts[1] == "F":
         return "ES_F"
-    return parts[0]
+    return parts[0] if parts else ""
 
 
 def read_closes(csv_path: Path) -> tuple[list[float], list[str]]:
