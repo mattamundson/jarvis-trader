@@ -383,7 +383,16 @@ class _KillSwitchSafetyLayer(_FakeSafetyLayer):
     """Safety layer with kill switch ON — should block approvals."""
 
     def get_status(self) -> dict:
-        return {"kill_switch": True, "kill_switch_active": True, "circuit_breakers": {}}
+        # ensure_approval_allowed reads the `is_killed` key (family-fdr dual-key
+        # contract); keep the legacy keys too so every consumer sees a consistent
+        # status. Without is_killed the kill-switch branch never fires and the
+        # approval falls through to the symbol-authorization gate.
+        return {
+            "is_killed": True,
+            "kill_switch": True,
+            "kill_switch_active": True,
+            "circuit_breakers": {},
+        }
 
 
 # ---------------------------------------------------------------------------
