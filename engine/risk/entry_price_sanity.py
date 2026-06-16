@@ -33,7 +33,26 @@ _ENV_THRESHOLD = "ENTRY_PRICE_SANITY_MAX_ATR_DELTA"
 _ENV_MIN_ATR = "ENTRY_PRICE_SANITY_MIN_ATR"
 _ENV_REF_ENABLE = "ENABLE_PRICE_REF_CONTAMINATION_CHECK"
 _ENV_REF_DEVIATION = "ENTRY_PRICE_SANITY_MAX_REF_DEVIATION_PCT"
+_ENV_REQUIRE_LIVE = "ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE"
 _DEFAULT_MAX_ATR_DELTA = 1.0
+
+# Price-source provenance: the relative entry-sanity checks (ATR delta + recent
+# reference) all go BLIND when the *entire* feed is degraded — when IBKR/Schwab/
+# TradingView are all down, get_current_price + get_bars fall through to the
+# offline CSV cache and can serve a self-consistent WRONG-ERA quote (e.g. a 2024
+# MES ~5300 while the real market is ~7500). Entry≈market≈bars-median, so every
+# relative check passes and a phantom trade is enqueued (the 2026-06-16 MES short
+# @5299 vs a 7520 market). The provenance check is the absolute anchor those
+# checks structurally cannot be: a price whose source is the offline fallback (or
+# is unavailable) is refused for live trading outright — fail-safe NO_TRADE —
+# regardless of how plausible the number looks. `source` strings come from
+# MarketDataManager.get_current_price/get_tick_price.
+#
+# Only EXPLICIT offline-fallback sources are rejected. An unknown / missing source
+# (e.g. an IBKR snapshot that doesn't tag itself) is treated as live and left to
+# the relative checks — so this anchor never blocks a genuine live fill, it only
+# trips on the data manager's own "I had to use the offline cache" admission.
+_OFFLINE_FALLBACK_SOURCES = frozenset({"csv_cache", "unavailable", "error"})
 _DEFAULT_MIN_ATR_FLOOR = 0.0  # 0 = no floor (backward compatible default)
 # Era-aware reference deviation: a candidate (or the spot quote itself) more
 # than this fraction away from the robust median of recent bar closes is treated
@@ -116,6 +135,29 @@ def _get_max_ref_deviation_pct() -> float:
     except (TypeError, ValueError):
         pass
     return _DEFAULT_MAX_REF_DEVIATION_PCT
+
+
+def is_require_live_source_enabled() -> bool:
+    """Return True unless ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE is set to 0/false/no/off.
+
+    Opt-out semantics (safe-by-default), read fresh each call so it can be toggled
+    at runtime. When enabled, an entry whose market price was sourced from the
+    offline CSV fallback (or is unavailable) is rejected for live trading — the
+    absolute provenance anchor that the relative ATR/reference checks cannot be.
+    """
+    raw = os.environ.get(_ENV_REQUIRE_LIVE, "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def is_offline_fallback_source(source: Optional[str]) -> bool:
+    """True when ``source`` is an EXPLICIT offline-fallback / unavailable marker.
+
+    Pure predicate over the ``source`` string returned by
+    MarketDataManager.get_current_price/get_tick_price. Only ``csv_cache``,
+    ``unavailable`` and ``error`` count — an unknown/missing source returns False
+    (treated as live) so the anchor never blocks a genuine live fill.
+    """
+    return (source or "").strip().lower() in _OFFLINE_FALLBACK_SOURCES
 
 
 # ---------------------------------------------------------------------------
@@ -341,13 +383,31 @@ async def check_entry_price_sanity(
     max_atr_delta = _get_max_atr_delta()
     min_atr_floor = _get_min_atr_floor()
 
-    # -- Fetch market price --
+    # -- Fetch market price (+ provenance) --
     market_price: Optional[float] = None
+    price_source: Optional[str] = None
     try:
         price_result = await data_manager.get_current_price(symbol, is_futures=is_futures)
         market_price = price_result.get("last_price")
+        price_source = price_result.get("source")
     except Exception as exc:
         logger.warning("[ENTRY_PRICE_SANITY] get_current_price failed for %s: %s", symbol, exc)
+
+    # -- Provenance anchor (absolute, source-of-truth) --
+    # If the quote came from the offline CSV fallback (or no source at all), the
+    # live feed is degraded and EVERY relative check below is validating the entry
+    # against the same possibly-contaminated source. Refuse outright — this is the
+    # only check that catches a fully-self-consistent wrong-era feed.
+    if is_require_live_source_enabled() and is_offline_fallback_source(price_source):
+        reason = (
+            f"[{symbol}] entry_price={entry_price} validated against the OFFLINE price "
+            f"source '{price_source}' (live feeds degraded/down — fell through to the "
+            f"CSV cache / unavailable). Refusing to trade on stale/offline data — "
+            f"fail-safe NO_TRADE. The relative price checks cannot see wrong-era "
+            f"contamination when the whole feed agrees with itself."
+        )
+        logger.error("[ENTRY_PRICE_SANITY] rejected (provenance): %s", reason)
+        return False, reason
 
     # -- Fetch ATR + robust recent-price reference via bars (one fetch) --
     atr: Optional[float] = None
