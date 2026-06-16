@@ -1700,16 +1700,20 @@ async def get_paper_account_stats(
         cumulative += equity_curve_map[day]
         equity_curve.append({"date": day, "equity": round(cumulative, 4)})
 
-    # Max drawdown from peak equity
+    # Max drawdown as a fraction of the running peak. The equity curve here is
+    # cumulative P&L (starts at 0), so a % drawdown is only meaningful once a
+    # positive peak exists — guarding on peak > 0 avoids the divide-by-1e-9
+    # blowup that produced nonsense like -1.46e14 when P&L was always negative.
     peak = 0.0
     max_dd: float | None = None
     for pt in equity_curve:
         eq = pt["equity"]
         if eq > peak:
             peak = eq
-        dd = (eq - peak) / max(abs(peak), 1e-9)
-        if max_dd is None or dd < max_dd:
-            max_dd = dd
+        if peak > 0:
+            dd = (eq - peak) / peak
+            if max_dd is None or dd < max_dd:
+                max_dd = dd
 
     # Sortino (downside deviation; annualised assuming daily returns)
     mean_pnl = sum(pnls) / n_trades
