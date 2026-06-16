@@ -607,6 +607,16 @@ class TradingPipeline:
             "errors": errors,
         }
 
+        # Decision-identity fingerprint (P1): stamp WHICH decision configuration
+        # produced this result, on every return path. Best-effort and fail-open --
+        # a fingerprint failure must never affect the decision itself.
+        try:
+            from agents.decision_identity import current_decision_identity
+
+            pipeline_result["decision_identity"] = current_decision_identity(symbol)
+        except Exception as _did_err:  # pragma: no cover - defensive
+            logger.debug("[Pipeline] decision_identity stamp failed: %s", _did_err)
+
         logger.info(f"[Pipeline] Starting analysis for {symbol} (futures={is_futures})")
 
         active_recipe = None

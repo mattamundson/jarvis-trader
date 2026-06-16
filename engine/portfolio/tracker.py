@@ -157,6 +157,7 @@ class PortfolioTracker:
         rv_at_entry: Optional[float] = None,
         analyst_signals: Optional[Dict[str, float]] = None,
         candidate_id: Optional[str] = None,
+        decision_identity: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Log a new simulated entry.
@@ -230,6 +231,11 @@ class PortfolioTracker:
                     "[TRACKER] candidate_id tag failed (non-fatal): %s", _tag_err
                 )
                 _sp["candidate_id"] = candidate_id
+        # Decision-identity tag (P2): stamp WHICH live decision configuration
+        # produced this trade so the forward-test loop can attribute it to a
+        # decision lineage. Additive and fail-open.
+        if decision_identity:
+            _sp["decision_identity"] = decision_identity
         if self._db is not None:
             row_id = self._db.insert_paper_trade(
                 trade_id,
