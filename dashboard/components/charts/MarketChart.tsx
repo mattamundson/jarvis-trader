@@ -91,13 +91,25 @@ function FuturesMarketChart({
 
   return (
     <div className={className}>
-      <CandlestickChart
-        bars={bars}
-        technical={technical}
-        markers={markers}
-        livePrice={livePrice}
-        height={height}
-      />
+      {bars.length ? (
+        // Mount only once bars exist — CandlestickChart inits its chart in a
+        // mount effect, so mounting with empty bars yields a dead container that
+        // never re-inits when bars arrive (matches the command-center gate).
+        <CandlestickChart
+          bars={bars}
+          technical={technical}
+          markers={markers}
+          livePrice={livePrice}
+          height={height}
+        />
+      ) : (
+        <div
+          className="flex items-center justify-center text-sm text-muted-foreground font-mono"
+          style={{ height }}
+        >
+          Loading {symbol} bars…
+        </div>
+      )}
     </div>
   );
 }

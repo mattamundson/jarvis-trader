@@ -150,7 +150,10 @@ export function PriceChartPanel({
         >
           Failed to load bars for {symbol}
         </div>
-      ) : (
+      ) : bars.length ? (
+        // Mount only once bars exist: CandlestickChart creates its chart in a
+        // mount effect, so mounting it with empty bars leaves a dead container
+        // that never re-inits when bars arrive (matches the command-center gate).
         <CandlestickChart
           bars={bars}
           technical={technical}
@@ -158,6 +161,13 @@ export function PriceChartPanel({
           livePrice={livePrice}
           height={height}
         />
+      ) : (
+        <div
+          className="flex items-center justify-center text-sm text-muted-foreground font-mono"
+          style={{ height }}
+        >
+          Loading {symbol} bars…
+        </div>
       )}
 
       {showTrades && (
