@@ -1440,8 +1440,32 @@ class UnrealizedPositionResponse(BaseModel):
     target_distance: float | None
     entry_time: str
     direction: str
+    entry_suspect: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Contaminated-entry guard (2026-06-12 phantom-aggregate fix). A paper position
+# can be recorded at the IB snapshot sentinel (100.5) or another non-fill price;
+# trusting it makes unrealized P&L explode and poison /portfolio/summary (one MES
+# position at 100.5 vs a real ~7414 mark fabricated +$36,568). Mirror the
+# bars_repository sentinel and reject an implausible entry before computing P&L.
+_IB_SNAPSHOT_SENTINEL = 100.5
+#: Entry/mark ratio beyond this is contamination, not a real move (symbol-agnostic).
+_EXTREME_ENTRY_DIVERGENCE = 5.0
+
+
+def _entry_is_suspect(entry_price: float, current_price: float | None) -> bool:
+    """True if an entry price is implausible and must not drive unrealized P&L."""
+    if entry_price <= 0:
+        return True
+    if entry_price == _IB_SNAPSHOT_SENTINEL:
+        return True
+    if current_price is not None and current_price > 0:
+        hi, lo = max(entry_price, current_price), min(entry_price, current_price)
+        if lo > 0 and hi / lo > _EXTREME_ENTRY_DIVERGENCE:
+            return True
+    return False
 
 
 def _compute_unrealized(pos: dict, current_price: float | None, point_values: dict) -> dict:
@@ -1465,10 +1489,14 @@ def _compute_unrealized(pos: dict, current_price: float | None, point_values: di
 
     point_value = point_values.get(symbol, point_values.get("DEFAULT", 1.0))
 
+    # Reject contaminated entries (sentinel / non-positive / extreme divergence)
+    # so one corrupt position can't fabricate a phantom portfolio aggregate.
+    entry_suspect = _entry_is_suspect(entry_price, current_price)
+
     # Unrealized P&L
     unrealized_pnl: float | None = None
     unrealized_pnl_pct: float | None = None
-    if current_price is not None:
+    if current_price is not None and not entry_suspect:
         if direction == "LONG":
             unrealized_pnl = (current_price - entry_price) * point_value * quantity
         else:
@@ -1506,6 +1534,7 @@ def _compute_unrealized(pos: dict, current_price: float | None, point_values: di
         "target_distance": target_distance,
         "entry_time": entry_time,
         "direction": direction,
+        "entry_suspect": entry_suspect,
     }
 
 

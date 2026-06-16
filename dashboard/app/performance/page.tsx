@@ -23,6 +23,7 @@ import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
 import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
 import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 // ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
@@ -683,7 +684,9 @@ export default function PerformancePage() {
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         {/* Portfolio Tearsheet — QuantStats institutional metrics */}
-        <QuantStatsPanel />
+        <WidgetErrorBoundary name="Tearsheet">
+          <QuantStatsPanel />
+        </WidgetErrorBoundary>
 
         {/* Account ROI */}
         <AccountROIWidget />
@@ -720,12 +723,13 @@ export default function PerformancePage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span
-              className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded"
+            <Link
+              href="/strategy-ledger"
+              className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded hover:opacity-80 transition-opacity"
               style={{ backgroundColor: "#ffcc0018", border: "1px solid #ffcc0040", color: "#ffcc00" }}
             >
-              2026-03-30 BACKTEST VERDICT (historical) — live status differs, see /validation
-            </span>
+              2026-03-30 SNAPSHOT (historical) — see live gate-v2 verdicts in Strategy Ledger →
+            </Link>
             <span
               className="font-mono text-[10px] tracking-wider px-2 py-1 rounded"
               style={{ backgroundColor: "#00d4ff10", border: "1px solid #00d4ff33", color: "#00d4ff" }}

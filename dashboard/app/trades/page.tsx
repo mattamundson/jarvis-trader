@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import useSWR from "swr";
 import {
   fetchClosedPaperTrades,
@@ -173,6 +174,7 @@ export default function TradesPage() {
                   <TableHead className="font-mono text-xs">Duration</TableHead>
                   <TableHead className="font-mono text-xs">Closed At</TableHead>
                   <TableHead className="font-mono text-xs">Result</TableHead>
+                  <TableHead className="font-mono text-xs">Review</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -229,6 +231,14 @@ export default function TradesPage() {
                         <Badge variant={badgeVariant}>
                           {pnl > 0 ? "WIN" : pnl < 0 ? "LOSS" : "BREAK"}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/trades/${trade.trade_id}/review`}
+                          className="text-xs text-blue-400 underline hover:text-blue-300"
+                        >
+                          Review →
+                        </Link>
                       </TableCell>
                     </TableRow>
                   );

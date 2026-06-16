@@ -40,7 +40,7 @@ function EquitySparkline({
   data: EquityCurvePoint[];
   color: string;
 }) {
-  if (data.length < 2) {
+  if (!data || data.length < 2) {
     return (
       <div className="h-24 flex items-center justify-center text-xs text-muted-foreground">
         No equity data
