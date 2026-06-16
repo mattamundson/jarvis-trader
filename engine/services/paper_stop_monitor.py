@@ -261,7 +261,17 @@ class PaperStopMonitor:
                 continue
 
             try:
-                quote = await self.data.get_current_price(symbol, is_futures=True)
+                # Per-symbol asset class: equities (OPTIONS_WATCHLIST) must be
+                # priced with is_futures=False or the quote/source is wrong.
+                try:
+                    from config import settings as _cfg_sm
+
+                    _is_fut = str(symbol).upper() in {
+                        str(x).upper() for x in (_cfg_sm.FUTURES_WATCHLIST or [])
+                    }
+                except Exception:
+                    _is_fut = True
+                quote = await self.data.get_current_price(symbol, is_futures=_is_fut)
             except Exception as exc:  # noqa: BLE001
                 logger.debug(f"[PaperStopMonitor] price fetch failed for {symbol}: {exc}")
                 continue

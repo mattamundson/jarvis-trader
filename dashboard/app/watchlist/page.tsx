@@ -90,7 +90,7 @@ const INSTRUMENT_SPECS: InstrumentSpec[] = [
     exchange: "CME Globex",
     multiplier: 5,
     tick: 0.25,
-    status: "DO NOT TRADE",
+    status: "ACTIVE",
   },
   {
     symbol: "MCL",
@@ -124,11 +124,11 @@ const MGC_DETAILS = {
   marginMaintenance: "~$950 (subject to change)",
   monthlyExpiry: "Feb, Apr, Jun, Aug, Oct, Dec (even months)",
   paperConfig: {
-    strategy: "STC adaptive regime + ATR stops",
-    wfe: "0.88 (EXCELLENT)",
+    strategy: "gate-v2 trend rank4",
+    wfe: "1.0 (PASS via alt)",
     riskPerTrade: "0.25% of account",
     adaptiveRegime: "ON",
-    clearedDate: "2026-03-29",
+    clearedDate: "2026-05-31",
     contracts: "1 MGC per signal",
   },
 };
