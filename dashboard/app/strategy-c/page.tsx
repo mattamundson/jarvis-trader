@@ -255,6 +255,25 @@ export default function StrategyCPage() {
 
   if (!signal) return null;
 
+  // Guard against a partial /v1/strategy_c/signal payload — every panel below
+  // destructures these nested layers, so a missing one would crash the page.
+  if (
+    !signal.layers ||
+    !signal.holdings ||
+    !signal.layers.momentum_signal ||
+    !signal.layers.vol_targeting ||
+    !signal.layers.vix_composite ||
+    !signal.layers.macro_filter
+  ) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 m-4 text-sm text-slate-400">
+        Strategy-C signal payload is incomplete — the engine returned a partial
+        response (missing layer or holdings data). Showing nothing rather than
+        crashing; retry after the next refresh.
+      </div>
+    );
+  }
+
   const layers = signal.layers;
   const mom = layers.momentum_signal;
   const vol = layers.vol_targeting;

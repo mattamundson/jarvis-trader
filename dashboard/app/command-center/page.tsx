@@ -24,7 +24,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { fetchEngine, fetchJournalStats, toggleKillSwitch, type JournalTradeStats } from "@/lib/api";
+import { fetchEngine, fetchJournalStats, fetchBars, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
+import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
@@ -276,6 +277,14 @@ export default function CommandCenterPage() {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Live price chart symbol (defaults to the first tracked instrument)
+  const [chartSym, setChartSym] = useState<string>(INSTRUMENTS[0]?.symbol ?? "MES");
+  const { data: ccBars } = useSWR<OHLCVBar[]>(
+    `cc-bars-${chartSym}`,
+    () => fetchBars(chartSym, { timeframe: "15m", days: 14, futures: true }),
+    { refreshInterval: 60_000, revalidateOnFocus: false }
+  );
 
   const { addToast } = useToast();
 
@@ -603,6 +612,42 @@ export default function CommandCenterPage() {
                 </Badge>
               </div>
             ))}
+          </CardContent>
+        </Card>
+
+        {/* Live Price Chart */}
+        <Card className="bg-slate-900/60 border border-cyan-900/50 xl:col-span-2">
+          <CardHeader className="pb-1.5 pt-3 px-4">
+            <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center justify-between gap-1.5">
+              <span className="flex items-center gap-1.5">
+                <TrendingUp className="w-3 h-3" />
+                PRICE ACTION · {chartSym} · 15m
+              </span>
+              <span className="flex gap-1">
+                {INSTRUMENTS.map((inst) => (
+                  <button
+                    key={inst.symbol}
+                    onClick={() => setChartSym(inst.symbol)}
+                    className={`px-1.5 py-0.5 rounded font-mono text-[10px] border transition-colors ${
+                      chartSym === inst.symbol
+                        ? "bg-cyan-950 text-cyan-300 border-cyan-700"
+                        : "bg-slate-900 text-slate-500 border-slate-700 hover:text-slate-300"
+                    }`}
+                  >
+                    {inst.symbol}
+                  </button>
+                ))}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            {ccBars && ccBars.length ? (
+              <CandlestickChart bars={ccBars} height={360} />
+            ) : (
+              <p className="text-xs text-slate-500 font-mono py-8 text-center">
+                No bar data available for {chartSym}.
+              </p>
+            )}
           </CardContent>
         </Card>
 

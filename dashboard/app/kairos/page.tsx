@@ -215,19 +215,19 @@ function DreamAccordion({
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="rounded-lg bg-info/10 border border-info/20 py-2">
                     <p className="text-info font-semibold text-base font-mono">
-                      {dream.severity_counts.info}
+                      {dream.severity_counts?.info ?? 0}
                     </p>
                     <p className="text-muted-foreground">Info</p>
                   </div>
                   <div className="rounded-lg bg-warn/10 border border-warn/20 py-2">
                     <p className="text-warn font-semibold text-base font-mono">
-                      {dream.severity_counts.warning}
+                      {dream.severity_counts?.warning ?? 0}
                     </p>
                     <p className="text-muted-foreground">Warning</p>
                   </div>
                   <div className="rounded-lg bg-bear/10 border border-bear/20 py-2">
                     <p className="text-bear font-semibold text-base font-mono">
-                      {dream.severity_counts.critical}
+                      {dream.severity_counts?.critical ?? 0}
                     </p>
                     <p className="text-muted-foreground">Critical</p>
                   </div>
@@ -235,13 +235,13 @@ function DreamAccordion({
               </div>
 
               {/* Top watchers */}
-              {dream.top_watchers.length > 0 && (
+              {(dream.top_watchers?.length ?? 0) > 0 && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
                     Top Watchers
                   </p>
                   <div className="space-y-1">
-                    {dream.top_watchers.map((tw) => (
+                    {(dream.top_watchers ?? []).map((tw) => (
                       <div
                         key={tw.watcher}
                         className="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0"
