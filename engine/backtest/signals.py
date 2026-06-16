@@ -124,6 +124,24 @@ def _is_gate_v2_routing_enforced() -> bool:
     return os.environ.get("GATE_V2_ENFORCE_ROUTING", "").strip().lower() in _GATE_V2_ROUTING_TRUTHY
 
 
+# Env-var feature flag for the Layer-2 TPO score (Corey TScore v2 port).
+# Default OFF — ships dormant. When enabled it adds OBSERVABILITY columns only
+# (tpo_score, tpo_score_label, price_zone_label); it does NOT alter entry/exit
+# routing. A separate routing change is gated behind gate-v2 validation and is
+# intentionally NOT wired yet (no edge claim without a PASS verdict).
+# See: engine/backtest/tpo_score.py, memory/project_tos_scripts_harvest_gap_2026_06_12.md
+_TPO_SCORE_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _is_tpo_score_enabled() -> bool:
+    """Check `ENABLE_TPO_SCORE` env var (case-insensitive truthy set).
+
+    Default OFF so the live signal path is byte-for-byte unchanged. Enable
+    for backtests / gate-v2 validation to surface the TPO score as columns.
+    """
+    return os.environ.get("ENABLE_TPO_SCORE", "").strip().lower() in _TPO_SCORE_TRUTHY
+
+
 def _force_no_trade(result):
     """Override entry/exit columns to NO_TRADE / NO_EXIT while preserving
     all other columns + the index. Shared by DO_NOT_TRADE and gate_v2
@@ -374,6 +392,25 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["below_val"] = df["close"] < df["va_low"]
     df["above_ib_high"] = df["close"] > df["ib_high"]
     df["below_ib_low"] = df["close"] < df["ib_low"]
+
+    # ── Layer 2 — TPO Score (Corey TScore v2, observability-only) ─────────
+    # Default OFF (ENABLE_TPO_SCORE). When on, adds three additive columns:
+    #   tpo_score        — continuous -1..+1 (buyers vs sellers in control)
+    #   tpo_score_label  — BUYERS_CONTROL / BUYERS_LEAN / NEUTRAL / SELLERS_*
+    #   price_zone_label — ABOVE_VALUE / AT_UPPER_VA / IN_VALUE / AT_LOWER_VA / BELOW_VALUE
+    # These are NOT read by any entry/exit routing — pure observability so the
+    # score can be surfaced + gate-v2-validated before any routing change.
+    # Wrapped so a malformed value never breaks signal generation.
+    if _is_tpo_score_enabled():
+        try:
+            from .tpo_score import compute_tpo_score as _compute_tpo_score
+
+            df = _compute_tpo_score(df)
+        except Exception as exc:  # pragma: no cover — defensive: never break signals
+            logger.warning("[TPO_SCORE] observability columns skipped: %s", exc)
+            df["tpo_score"] = float("nan")
+            df["tpo_score_label"] = None
+            df["price_zone_label"] = None
 
     # ── RSI (period=14) for consensus module ─────────────────────────────
     from .indicators import rsi as _rsi
