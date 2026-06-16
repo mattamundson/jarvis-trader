@@ -770,6 +770,11 @@ class SafetyLayerTestCoverageCriterion(Phase3Criterion):
 
 VERDICT_TTL_DAYS = 30
 
+# Max age of the latest health_snapshots row that may certify execution fidelity.
+# A days-old "broker up" snapshot must not vouch for current broker/kill-switch
+# state on the live-readiness path.
+HEALTH_SNAPSHOT_TTL_MIN = 15
+
 EDGE_MODE_PAPER_ACCRUAL = "paper_accrual"
 EDGE_MODE_WFO_FIDELITY = "wfo_plus_fidelity"
 _VALID_EDGE_MODES = (EDGE_MODE_PAPER_ACCRUAL, EDGE_MODE_WFO_FIDELITY)
@@ -914,9 +919,10 @@ class ExecutionFidelityCriterion(Phase3Criterion):
 
     name: str = "execution_fidelity"
     description: str = (
-        "Execution fidelity on REAL IB paper fills: >= 15 fills, avg slippage "
-        "<= 1.5 ticks, broker connected, kill switch inactive, realized PF >= 1.0 "
-        "(sign-check). Requires ALLOW_PAPER_SIMULATED_ORDERS=True; inert otherwise."
+        "Execution fidelity on REAL IB paper fills: >= 15 fills with MEASURED "
+        "slippage, avg slippage <= 1.5 ticks, broker connected on a FRESH health "
+        "snapshot, kill switch inactive, realized PF >= 1.0 (sign-check). Requires "
+        "ALLOW_PAPER_SIMULATED_ORDERS=True; inert otherwise."
     )
     severity: Literal["blocker", "warning", "info"] = "info"
 
@@ -946,8 +952,8 @@ class ExecutionFidelityCriterion(Phase3Criterion):
                     "WHERE status = 'closed' AND pnl IS NOT NULL"
                 ).fetchall()
                 health = conn.execute(
-                    "SELECT ibkr_data, ibkr_exec, kill_switch FROM health_snapshots "
-                    "ORDER BY ts_utc DESC LIMIT 1"
+                    "SELECT ts_utc, ibkr_data, ibkr_exec, kill_switch "
+                    "FROM health_snapshots ORDER BY ts_utc DESC LIMIT 1"
                 ).fetchone()
             finally:
                 conn.close()
@@ -961,8 +967,20 @@ class ExecutionFidelityCriterion(Phase3Criterion):
         slips = [
             float(r["slippage_ticks"]) for r in trade_rows if r["slippage_ticks"] is not None
         ]
-        avg_slip = (sum(slips) / len(slips)) if slips else 0.0
-        if slips and avg_slip > max_slip:
+        # Hardening 1: intent rows with NULL slippage are not fidelity evidence.
+        # Require >= min_fills rows that carry a MEASURED slippage_ticks value
+        # before the slippage bound can be trusted; otherwise 15 unmatched rows
+        # would pass while the slippage check is silently skipped (the old
+        # `if slips and ...` guard short-circuited when every row was NULL).
+        if len(slips) < min_fills:
+            return (
+                False,
+                f"Only {len(slips)}/{n} fills carry measured slippage; reconcile "
+                f"real IB fills (>= {min_fills} with slippage_ticks) before relying "
+                "on execution fidelity",
+            )
+        avg_slip = sum(slips) / len(slips)
+        if avg_slip > max_slip:
             return False, f"Avg slippage {avg_slip:.2f}t > {max_slip}t threshold"
 
         pnls = [float(r["pnl"]) for r in trade_rows]
@@ -974,6 +992,21 @@ class ExecutionFidelityCriterion(Phase3Criterion):
 
         if health is None:
             return False, "No health snapshot for broker/kill-switch state"
+        # Hardening 2: a stale snapshot cannot certify the broker is up NOW.
+        # Reject anything older than HEALTH_SNAPSHOT_TTL_MIN minutes (or an
+        # unparseable / missing timestamp) so a days-old "all green" row can't
+        # vouch for a link that may have dropped since it was written.
+        ts_raw = health["ts_utc"]
+        try:
+            age_min = (_now_utc() - _parse_iso(str(ts_raw))).total_seconds() / 60.0
+        except (ValueError, TypeError):
+            return False, f"Unparseable health snapshot timestamp: {ts_raw!r}"
+        if age_min > HEALTH_SNAPSHOT_TTL_MIN:
+            return (
+                False,
+                f"Health snapshot stale ({age_min:.1f} min old > "
+                f"{HEALTH_SNAPSHOT_TTL_MIN} min TTL); cannot certify broker is up now",
+            )
         data_ok = bool(health["ibkr_data"]) if health["ibkr_data"] is not None else False
         exec_ok = bool(health["ibkr_exec"]) if health["ibkr_exec"] is not None else False
         ks_active = bool(health["kill_switch"]) if health["kill_switch"] is not None else False
