@@ -264,6 +264,14 @@ async def _get_ib_gateway_health() -> dict:
     if data_manager is not None:
         health["data_source"] = getattr(data_manager, "_last_bar_source", None)
         health["last_ibkr_data_ts"] = getattr(data_manager, "_last_ibkr_data_ts", None)
+        # Per-symbol staleness: {symbol: seconds_since_last_served}. Empty until
+        # the first serve; absent only on an older engine build (defensive read).
+        freshness_fn = getattr(data_manager, "symbol_freshness", None)
+        if callable(freshness_fn):
+            try:
+                health["per_symbol_freshness"] = freshness_fn()
+            except Exception:
+                pass
         wd = getattr(data_manager, "_watchdog", None)
         if wd is not None:
             try:
