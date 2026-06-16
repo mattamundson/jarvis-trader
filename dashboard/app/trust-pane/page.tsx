@@ -39,6 +39,7 @@ import {
   type AmoEdgeVerdictResponse,
   type AmoCommodity,
 } from "@/lib/amo-api";
+import { PostTradeExecutionWidget } from "@/components/PostTradeExecutionWidget";
 
 // ── Brokers/positions response (subset we render) ─────────────────────────────
 interface PaperOpenPosition {
@@ -489,6 +490,9 @@ export default function TrustPanePage() {
                 </div>
               )}
             </Card>
+
+            {/* 5. Post-trade execution quality (WS4B endpoints — PR #78) */}
+            <PostTradeExecutionWidget />
           </section>
 
           {/* ───────── AMO-ARBITRAGE column ───────── */}
