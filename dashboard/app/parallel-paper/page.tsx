@@ -22,6 +22,10 @@ function fmt(val: number | null | undefined, decimals = 2, suffix = ""): string 
 
 function fmtPct(val: number | null | undefined): string {
   if (val == null) return "—";
+  if (!isFinite(val) || isNaN(val)) return "—";
+  // Guard against values that are clearly already in percent form or corrupted
+  // (a valid 0–1 fraction drawdown can't exceed ±2 in absolute value)
+  if (Math.abs(val) > 2) return `${val.toFixed(1)}%`;
   return `${(val * 100).toFixed(1)}%`;
 }
 
