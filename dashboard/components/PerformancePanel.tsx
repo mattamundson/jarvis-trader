@@ -2,17 +2,10 @@
 
 import { useMemo } from "react";
 import useSWR from "swr";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { formatCurrency, formatPercent, formatNumber } from "@/lib/utils";
 import { fetchEngine } from "@/lib/api";
+import { LightweightSeriesChart, type SeriesPoint } from "@/components/charts/LightweightSeriesChart";
 
 interface PerformanceMetrics {
   sharpe_ratio: number;
@@ -54,6 +47,12 @@ export function PerformancePanel({ metrics, equityCurve }: PerformancePanelProps
     if (equityCurve && equityCurve.length > 0) return equityCurve;
     return fetchedCurveData?.points ?? [];
   }, [equityCurve, fetchedCurveData]);
+
+  // Same equity points, handed to the TradingView renderer as an area series.
+  const series: SeriesPoint[] = useMemo(
+    () => curve.map((p) => ({ time: p.date, value: p.equity })),
+    [curve],
+  );
   return (
     <Card>
       <CardHeader>
@@ -62,37 +61,15 @@ export function PerformancePanel({ metrics, equityCurve }: PerformancePanelProps
       <CardContent className="space-y-4">
         {/* Equity curve */}
         {curve.length > 1 && (
-          <div className="h-32">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={curve} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="date" hide />
-                <YAxis domain={["auto", "auto"]} hide />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(222 47% 9%)",
-                    border: "1px solid hsl(222 47% 14%)",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                  formatter={(v: number) => [formatCurrency(v), "Equity"]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="equity"
-                  stroke="#22c55e"
-                  strokeWidth={1.5}
-                  fill="url(#equityGrad)"
-                  dot={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <LightweightSeriesChart
+            data={series}
+            type="area"
+            color="#22c55e"
+            topColor="rgba(34,197,94,0.30)"
+            bottomColor="rgba(34,197,94,0.00)"
+            height={128}
+            valueFormat="dollar"
+          />
         )}
 
         {/* Metrics grid */}

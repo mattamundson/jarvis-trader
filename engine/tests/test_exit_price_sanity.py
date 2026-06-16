@@ -18,7 +18,6 @@ from risk.exit_price_sanity import (
     check_exit_price_sanity,
 )
 
-
 # ----------------------------- predicate ----------------------------------
 
 def test_sane_exit_passes():

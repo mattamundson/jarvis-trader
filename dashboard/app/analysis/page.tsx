@@ -12,12 +12,12 @@ import {
   type JarvisQuickAnalysisResponse,
 } from "@/lib/api";
 import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
-import { TradingViewWidget } from "@/components/charts/TradingViewWidget";
+import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
 import { PriceTerrain3D } from "@/components/charts/PriceTerrain3D";
 import { SymbolTimeframeSelector } from "@/components/command-center/charts/SymbolTimeframeSelector";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 
-type ChartView = "jarvis" | "tradingview" | "terrain3d";
+type ChartView = "jarvis" | "terrain3d";
 
 interface PipelineResult {
   symbol: string;
@@ -129,13 +129,15 @@ export default function AnalysisPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-6">
-        {/* Market view — JARVIS candles, TradingView embed, or 3D terrain */}
+        {/* Market view — JARVIS real-time candles (our bars) or 3D terrain.
+            Futures are charted from our own data; TradingView's delayed CME embed
+            is intentionally NOT offered here (see the Market Context strip below
+            for where TradingView's hosted data is appropriate). */}
         <div className="space-y-3">
           <div className="flex items-center gap-1.5">
             {(
               [
                 ["jarvis", "JARVIS Chart"],
-                ["tradingview", "TradingView"],
                 ["terrain3d", "3D Terrain"],
               ] as const
             ).map(([mode, label]) => (
@@ -162,20 +164,6 @@ export default function AnalysisPage() {
             />
           )}
 
-          {chartView === "tradingview" && (
-            <div className="rounded-xl border border-border bg-card overflow-hidden">
-              <SymbolTimeframeSelector
-                symbol={chartSymbol}
-                timeframe={chartTimeframe}
-                onSymbol={setChartSymbol}
-                onTimeframe={setChartTimeframe}
-              />
-              <div className="p-3">
-                <TradingViewWidget symbol={chartSymbol} timeframe={chartTimeframe} />
-              </div>
-            </div>
-          )}
-
           {chartView === "terrain3d" && (
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <SymbolTimeframeSelector
@@ -190,6 +178,10 @@ export default function AnalysisPage() {
             </div>
           )}
         </div>
+
+        {/* TradingView "where it makes sense": macro/market context (equities,
+            indices, macro, crypto) where TV's hosted data is real-time enough. */}
+        <MarketContextStrip />
 
         <div className="rounded-xl border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">

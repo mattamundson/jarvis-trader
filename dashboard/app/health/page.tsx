@@ -28,6 +28,7 @@ import { ConnectionHealthCard } from "@/components/ConnectionHealthCard";
 import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
+import { SystemLivenessCard } from "@/components/SystemLivenessCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -432,6 +433,9 @@ export default function HealthPage() {
 
       {/* Page content */}
       <main className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] px-6 py-6 space-y-6">
+        {/* Both-systems liveness (C5) — engine + data + watchdog + LLM at a glance */}
+        <SystemLivenessCard />
+
         {/* Connection health — most critical info at the top */}
         <ConnectionHealthCard />
 

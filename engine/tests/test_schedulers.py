@@ -145,7 +145,7 @@ class TestSchedulerJobRegistration:
 
         mock_scheduler = MagicMock()
         EODScheduler().register_with_scheduler(mock_scheduler)
-        assert mock_scheduler.add_job.call_count == 5  # 4 original + session_flatten (Sprint 14)
+        assert mock_scheduler.add_job.call_count == 6  # 4 original + session_flatten (Sprint 14) + forward_test_snapshot (forward-test stack)
 
     def test_eod_snapshot_job_registered(self):
         """EOD snapshot job is registered with APScheduler."""

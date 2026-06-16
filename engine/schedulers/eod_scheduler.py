@@ -713,6 +713,55 @@ class EODScheduler:
         except Exception as e:
             logging.getLogger(__name__).error(f"VIX alert check failed: {e}")
 
+    async def run_forward_test_snapshot(self) -> Dict[str, Any]:
+        """Run the read-only forward-test loop over the locked candidate registry.
+
+        Read-only: reads closed trades and writes only the forward-test report
+        files (gitignored runtime output). It does NOT touch execution, orders,
+        or scheduler state — it answers "is any held candidate graduating on its
+        forward paper record yet?" once per day so the cockpit pane and any
+        alerting have a fresh verdict. A graduation is surfaced via the notifier
+        (best-effort); everything else is logged.
+        """
+        logger.info("[ForwardTest] Running daily forward-test snapshot")
+        try:
+            from backtest.forward_test import run_forward_test
+
+            report = run_forward_test(db=self._db, persist=True)
+        except Exception as exc:
+            logger.error("[ForwardTest] snapshot failed: %s", exc, exc_info=True)
+            return {"status": "error", "error": str(exc)}
+
+        n_active = report.get("n_active_candidates", 0)
+        n_grad = report.get("n_graduated", 0)
+        logger.info(
+            "[ForwardTest] snapshot ok — %d active candidate(s), %d graduated",
+            n_active,
+            n_grad,
+        )
+
+        # Surface a graduation loudly — it is the whole point of the loop and is
+        # rare. Best-effort; a notifier failure must not fail the job.
+        if n_grad > 0 and self._notifier is not None and getattr(
+            self._notifier, "enabled", False
+        ):
+            try:
+                grads = [
+                    c.get("id", "?")
+                    for c in report.get("candidates", [])
+                    if c.get("graduated")
+                ]
+                msg = (
+                    "JARVIS forward-test: "
+                    f"{n_grad} candidate(s) GRADUATED -> {', '.join(grads)}\n"
+                    "A held candidate now clears the registry forward rule."
+                )
+                await self._notifier.send(msg)
+            except Exception as exc:
+                logger.warning("[ForwardTest] graduation notify failed: %s", exc)
+
+        return {"status": "ok", "n_active_candidates": n_active, "n_graduated": n_grad}
+
     async def run_session_flatten(self) -> None:
         """Flatten all open positions at end of session (3:45 PM ET = 20:45 UTC)."""
         logger.info("[EODScheduler] Session flatten triggered — closing all open positions")
@@ -802,6 +851,7 @@ class EODScheduler:
         * ``eod_snapshot``      — Mon–Fri 3:05 PM CT (20:05 UTC)
         * ``weekly_review``     — Friday  3:30 PM CT (20:30 UTC)
         * ``vix_alert_check``   — Mon–Fri hourly 8 AM–5 PM CT
+        * ``forward_test_snapshot`` — Mon–Fri 20:10 UTC (read-only)
 
         Parameters
         ----------
@@ -884,12 +934,25 @@ class EODScheduler:
         )
         logger.info("[EODScheduler] Session flatten job registered: Mon-Fri 20:45 UTC (3:45 PM ET)")
 
+        # Forward-test snapshot — Mon-Fri 20:10 UTC, just after the EOD snapshot
+        # so it scores the day's freshly-closed trades. Read-only.
+        scheduler.add_job(
+            self.run_forward_test_snapshot,
+            CronTrigger(day_of_week="mon-fri", hour=20, minute=10, timezone="UTC"),
+            id="forward_test_snapshot",
+            name="Forward-Test Candidate Snapshot",
+            max_instances=1,
+            misfire_grace_time=600,
+            replace_existing=True,
+        )
+
         logger.info(
-            "EODScheduler registered 5 APScheduler jobs: "
+            "EODScheduler registered 6 APScheduler jobs: "
             "morning_briefing (Mon-Fri 08:25 CT) | "
             "eod_snapshot (Mon-Fri 20:05 UTC) | weekly_review (Fri 20:30 UTC) | "
             "vix_alert_check (Mon-Fri 08:00-17:00 CT hourly) | "
-            "session_flatten (Mon-Fri 20:45 UTC)"
+            "session_flatten (Mon-Fri 20:45 UTC) | "
+            "forward_test_snapshot (Mon-Fri 20:10 UTC)"
         )
 
     # ── Private WhatsApp formatters ───────────────────────────────────────────

@@ -129,6 +129,7 @@ from routers.scheduler_router import inject_scheduler as inject_scheduler_router
 from routers.trades_router import router as trades_router
 from routers.trades_router import inject_dependencies as inject_trades_deps
 from routers.strategy_ledger_router import router as strategy_ledger_router
+from routers.forward_test_router import router as forward_test_router
 from routers.validation_analytics_router import router as validation_analytics_router
 from routers.wfe_router import router as wfe_router
 from routers.discovery_router import router as discovery_router
@@ -305,6 +306,7 @@ redis_trigger: "RedisSignalTrigger | None" = None  # noqa: F821
 trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
 portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
 canary_manager: "CanaryManager | None" = None  # noqa: F821
+ib_data_watchdog: "IBDataWatchdog | None" = None  # noqa: F821
 paper_stop_monitor: "PaperStopMonitor | None" = None  # noqa: F821
 
 
@@ -418,7 +420,7 @@ async def lifespan(app: FastAPI):
         """Heavy lifting moved here to enable <10s server binding."""
         global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
         global tv_streamer, redis_trigger, trailing_stop_manager, canary_manager
-        global paper_stop_monitor
+        global paper_stop_monitor, ib_data_watchdog
 
         logger.info("⏳ Starting heavy background initialization...")
 
@@ -502,6 +504,17 @@ async def lifespan(app: FastAPI):
             logger.info("🚀 A/B Canary Framework activated (Shadow Testing loop)")
         except Exception as e:
             logger.warning(f"⚠️ CanaryManager background failed: {e}")
+
+        # 5.5. IB data-leg auto-reconnect watchdog (mid-session self-healing).
+        # The execution leg already self-heals via its heartbeat; this gives the
+        # market-data leg the same, plus stale-data detection + silent-degrade alerts.
+        try:
+            from services.ib_data_watchdog import IBDataWatchdog
+
+            ib_data_watchdog = IBDataWatchdog(data_manager)
+            await ib_data_watchdog.start()
+        except Exception as e:
+            logger.warning(f"⚠️ IBDataWatchdog failed to start: {e}")
 
         # 6. Paper Stop-Loss Monitor (Initiative 1, Track A2)
         # Feed-independent backstop: enforces open paper stops via the tick-price
@@ -2797,6 +2810,10 @@ async def lifespan(app: FastAPI):
     if canary_manager:
         await canary_manager.stop()
 
+    # Stop IB data-leg watchdog
+    if ib_data_watchdog:
+        await ib_data_watchdog.stop()
+
     # Stop Paper stop-loss monitor
     if paper_stop_monitor:
         await paper_stop_monitor.stop()
@@ -2907,6 +2924,7 @@ app.include_router(journal_review_router, prefix="/journal", tags=["journal-revi
 app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(strategy_ledger_router)
+app.include_router(forward_test_router)
 app.include_router(validation_analytics_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])

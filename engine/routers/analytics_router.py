@@ -8,7 +8,7 @@ Endpoints:
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -521,6 +521,44 @@ async def get_performance_compare(request: Request) -> dict:
 
 
 @router.get(
+    "/forward-test",
+    response_model=None,
+    description=(
+        "Forward-test status for the pre-registered candidate set: per-candidate "
+        "out-of-sample windows, family-FDR survival, and graduation verdict "
+        "(read-only; never mutates execution or scheduler state)."
+    ),
+)
+@limiter.limit("60/minute")
+async def get_forward_test(request: Request) -> dict:
+    """Read-only forward-test loop result for the cockpit / dashboard.
+
+    Surfaces ``run_forward_test`` over the locked candidate registry so the
+    north-star liveness pane can show whether any held candidate is graduating
+    on its forward (paper) record. ``persist=False`` -- this endpoint only reads
+    closed trades; it writes nothing.
+    """
+    try:
+        db = _get_db()
+    except HTTPException:
+        return {
+            "status": "INSUFFICIENT_DATA",
+            "recommendation": "Database not initialized.",
+            "n_active_candidates": 0,
+            "n_graduated": 0,
+            "candidates": [],
+        }
+
+    try:
+        from backtest.forward_test import run_forward_test
+
+        return run_forward_test(db=db, persist=False)
+    except Exception as exc:
+        logger.error(f"[Analytics] forward_test failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
+
+
+@router.get(
     "/validation-report",
     response_model=None,
     description=(
@@ -608,6 +646,102 @@ async def get_trades_by_day(request: Request, days: int = 30) -> dict:
     except Exception as exc:
         logger.error(f"Trades by day error: {exc}")
         raise HTTPException(500, str(exc)) from exc
+
+
+@router.get(
+    "/bar-quality",
+    response_model=None,
+    description=(
+        "Bar-quality gate rejection activity — how many contaminated bars the "
+        "write-time gate refused, grouped by reason / symbol / path. "
+        "total_rejections=0 with gate_active=true is the healthy steady state "
+        "(the gate is wired and the data is clean), not an error."
+    ),
+)
+@limiter.limit("120/minute")
+async def get_bar_quality(request: Request, hours: int = 168) -> dict:
+    """
+    Rejection activity from the write-time bar-quality gate (migration 039).
+
+    Args:
+        hours: lookback window in hours (default 168 = 7 days, max 720 = 30 days).
+
+    A missing table (DB predating the migration) or empty result returns
+    total_rejections=0 / gate_active=true — the honest "clean data" state.
+    """
+    window = max(1, min(hours, 720))
+    empty: dict = {
+        "window_hours": window,
+        "total_rejections": 0,
+        "by_reason": [],
+        "by_symbol": [],
+        "by_path": {"sanity": 0, "gate": 0},
+        "recent": [],
+        "gate_active": True,
+    }
+    try:
+        db = _get_db()
+        since = (datetime.now(timezone.utc) - timedelta(hours=window)).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
+        with db._lock:
+            conn = db._connect()
+            try:
+                rows = conn.execute(
+                    "SELECT ts_utc, symbol, interval, source, path, reason, detail, count "
+                    "FROM bar_quality_rejections WHERE ts_utc >= ? ORDER BY ts_utc DESC",
+                    (since,),
+                ).fetchall()
+            finally:
+                conn.close()
+    except HTTPException:
+        raise
+    except Exception as exc:  # table missing (pre-migration) or read error
+        logger.debug("bar-quality read skipped: %s", exc)
+        return empty
+
+    by_reason: dict[str, int] = {}
+    by_symbol: dict[str, int] = {}
+    by_path = {"sanity": 0, "gate": 0}
+    total = 0
+    recent: list[dict] = []
+    for r in rows:
+        cnt = int(r["count"])
+        total += cnt
+        by_reason[r["reason"]] = by_reason.get(r["reason"], 0) + cnt
+        by_symbol[r["symbol"]] = by_symbol.get(r["symbol"], 0) + cnt
+        if r["path"] in by_path:
+            by_path[r["path"]] += cnt
+        if len(recent) < 25:
+            recent.append(
+                {
+                    "ts_utc": r["ts_utc"],
+                    "symbol": r["symbol"],
+                    "interval": r["interval"],
+                    "source": r["source"],
+                    "path": r["path"],
+                    "reason": r["reason"],
+                    "detail": r["detail"],
+                    "count": cnt,
+                }
+            )
+    return {
+        "window_hours": window,
+        "total_rejections": total,
+        "by_reason": sorted(
+            [{"reason": k, "count": v} for k, v in by_reason.items()],
+            key=lambda x: x["count"],
+            reverse=True,
+        ),
+        "by_symbol": sorted(
+            [{"symbol": k, "count": v} for k, v in by_symbol.items()],
+            key=lambda x: x["count"],
+            reverse=True,
+        ),
+        "by_path": by_path,
+        "recent": recent,
+        "gate_active": True,
+    }
 
 
 @router.get(
