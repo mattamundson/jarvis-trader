@@ -655,6 +655,10 @@ async def paper_trade(req: PaperTradeSyncRequest):
             closed = paper_tracker.close_trade(req.trade_id, float(req.exit_price))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            # ExitPriceSanityError (phantom-price guard) subclasses ValueError —
+            # reject a corrupt exit with 422 rather than letting it 500.
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {
             "status": "closed",
             "trade_id": closed.trade_id,
@@ -1755,6 +1759,9 @@ async def submit_paper_trade(req: PaperTradeRequest):
             trade = paper_tracker.close_trade(req.close_trade_id, req.price)
         except KeyError as e:
             raise HTTPException(404, f"No open trade with id={req.close_trade_id!r}") from e
+        except ValueError as e:
+            # ExitPriceSanityError (phantom-price guard) subclasses ValueError.
+            raise HTTPException(422, str(e)) from e
 
         try:
             from notifications.whatsapp import format_trade_closed_alert, send_whatsapp_message

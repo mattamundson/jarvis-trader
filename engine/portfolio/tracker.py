@@ -39,6 +39,15 @@ except ImportError:
     except ImportError:
         _compute_idem_key = None  # type: ignore[assignment]
 
+try:
+    from risk.exit_price_sanity import assert_exit_price_sane
+except ImportError:
+    try:
+        from engine.risk.exit_price_sanity import assert_exit_price_sane
+    except ImportError:  # pragma: no cover - guard is additive; never hard-fail import
+        def assert_exit_price_sane(symbol, entry_price, exit_price):  # type: ignore[misc]
+            return None
+
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
 
@@ -293,6 +302,11 @@ class PortfolioTracker:
         trade = self._open.get(trade_id)
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
+
+        # Phantom-price guard (2026-06-15): reject a corrupt exit BEFORE any P&L
+        # compute or DB write, so a wrong-era/non-finite price can never write a
+        # phantom realized-P&L row. Fail-closed; raises ExitPriceSanityError.
+        assert_exit_price_sane(trade.symbol, trade.entry_price, exit_price)
 
         # Compute close fields on a local copy before any writes
         exit_time = datetime.now(timezone.utc).isoformat()
@@ -786,6 +800,11 @@ class PortfolioTracker:
         trade = self._open.get(trade_id)
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
+
+        # Phantom-price guard (2026-06-15): reject a corrupt exit before any
+        # write — even when an explicit pnl is supplied, the bad exit_price is
+        # still persisted and would poison reconciliation. Fail-closed.
+        assert_exit_price_sane(trade.symbol, trade.entry_price, exit_price)
 
         # Compute all close fields before any writes
         resolved_exit_time = exit_time or datetime.now(timezone.utc).isoformat()
