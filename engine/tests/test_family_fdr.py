@@ -132,6 +132,9 @@ def test_run_counts_consistent(monkeypatch):
 
 def test_run_on_real_verdicts_smoke():
     # Runs against the live verdict dir; must not crash and must shrink-only.
+    # The verdict dir is runtime-generated (empty in a fresh checkout / CI), so
+    # assert robustness + the shrink-only invariant, not a minimum count.
     report = ff.run(q=0.10)
-    assert report["n_verdicts_total"] >= 1
+    assert report["n_verdicts_total"] >= 0
+    assert report["n_robust_edge"] <= report["n_gate_pass"]
     assert set(report["robust_edge_ids"]).issubset(set(report["gate_pass_ids"]))

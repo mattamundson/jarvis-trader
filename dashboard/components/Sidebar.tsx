@@ -13,6 +13,7 @@ import {
   FileText,
   Flame,
   FlaskConical,
+  Gauge,
   Globe,
   Hash,
   HeartPulse,
@@ -91,6 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Command Center", href: "/command-center", icon: <Cpu className="h-3.5 w-3.5" /> },
       { label: "Strategy C+ Center", href: "/strategy-c-command", icon: <Activity className="h-3.5 w-3.5" /> },
       { label: "Strategies", href: "/strategies", icon: <LineChart className="h-3.5 w-3.5" /> },
+      { label: "Strategy Ledger", href: "/strategy-ledger", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "Learning", href: "/learning", icon: <Rss className="h-3.5 w-3.5" /> },
       { label: "Discord", href: "/discord", icon: <MessageSquare className="h-3.5 w-3.5" /> },
     ],
@@ -98,6 +100,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "System",
     items: [
+      { label: "Trust Pane", href: "/trust-pane", icon: <Gauge className="h-3.5 w-3.5" /> },
       { label: "Master", href: "/master", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { label: "Health", href: "/health", icon: <HeartPulse className="h-3.5 w-3.5" /> },
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },

@@ -17,9 +17,9 @@ from routers import analytics_router, health_router, portfolio_router
 
 
 def _run(coro):
-    # asyncio.run, not get_event_loop(): earlier pytest-asyncio tests in the
-    # full suite unset the current loop, making get_event_loop() raise
-    # RuntimeError ("no current event loop") — ordering-dependent CI failure.
+    # asyncio.run, not get_event_loop().run_until_complete: after any earlier
+    # test tears down with set_event_loop(None), get_event_loop() raises
+    # "There is no current event loop" — making these tests order-dependent.
     return asyncio.run(coro)
 
 

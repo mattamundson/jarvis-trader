@@ -107,10 +107,18 @@ class TestIsTradingHours:
 
 @pytest.mark.asyncio
 async def test_skips_outside_trading_hours():
-    """Outside trading hours, _run exits 0 without calling get_bars."""
-    saturday_noon_utc = _et(5, 12, 0)  # Saturday
+    """Outside trading hours, _run exits 0 without calling get_bars.
 
-    with patch("scripts.intraday_bar_persist.MarketDataManager") as mock_cls:
+    is_trading_hours is patched False so the test is deterministic regardless of
+    the wall-clock — mirroring the sibling tests below. (Previously this test
+    built a Saturday datetime but never injected it, so _run read the real clock
+    and the test failed in CI whenever it happened to run during live trading
+    hours: "Expected 'MarketDataManager' to not have been called. Called 1 times.")
+    """
+    with (
+        patch("scripts.intraday_bar_persist.is_trading_hours", return_value=False),
+        patch("scripts.intraday_bar_persist.MarketDataManager") as mock_cls,
+    ):
         mock_mgr = MagicMock()
         mock_mgr.initialize = AsyncMock()
         mock_mgr.get_bars = AsyncMock()

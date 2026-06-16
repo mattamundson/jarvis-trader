@@ -31,9 +31,20 @@ logger = logging.getLogger("jarvis_trader.risk.entry_price_sanity")
 _ENV_ENABLE = "ENABLE_ENTRY_PRICE_SANITY"
 _ENV_THRESHOLD = "ENTRY_PRICE_SANITY_MAX_ATR_DELTA"
 _ENV_MIN_ATR = "ENTRY_PRICE_SANITY_MIN_ATR"
+_ENV_REF_ENABLE = "ENABLE_PRICE_REF_CONTAMINATION_CHECK"
+_ENV_REF_DEVIATION = "ENTRY_PRICE_SANITY_MAX_REF_DEVIATION_PCT"
 _DEFAULT_MAX_ATR_DELTA = 1.0
 _DEFAULT_MIN_ATR_FLOOR = 0.0  # 0 = no floor (backward compatible default)
+# Era-aware reference deviation: a candidate (or the spot quote itself) more
+# than this fraction away from the robust median of recent bar closes is treated
+# as a wrong-era / stale-cache contamination. 0.15 = 15%. Index futures never
+# move 15% in an hour (daily limit-down halts kick in at 7/13/20%), so this is a
+# safe corruption threshold while leaving real intraday moves untouched.
+_DEFAULT_MAX_REF_DEVIATION_PCT = 0.15
 _ATR_PERIOD = 14
+# Bars sampled for the robust recent-price reference (median is outlier-robust,
+# so a handful of contaminated bars among mostly-good ones does not move it).
+_REF_RECENT_BARS = 48
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +94,30 @@ def _get_min_atr_floor() -> float:
     return _DEFAULT_MIN_ATR_FLOOR
 
 
+def is_price_ref_check_enabled() -> bool:
+    """Return True unless ENABLE_PRICE_REF_CONTAMINATION_CHECK is set to 0/false/no/off.
+
+    Opt-out semantics (safe-by-default), read fresh each call so it can be
+    toggled at runtime. Gates the era-aware reference-deviation check that
+    catches wrong-era-but-band-valid prices (e.g. an MES 5300 bar in a 7400
+    market — within the static futures band, so the band check misses it).
+    """
+    raw = os.environ.get(_ENV_REF_ENABLE, "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def _get_max_ref_deviation_pct() -> float:
+    """Read ENTRY_PRICE_SANITY_MAX_REF_DEVIATION_PCT from env, default 0.15."""
+    raw = os.environ.get(_ENV_REF_DEVIATION, "").strip()
+    try:
+        val = float(raw)
+        if val > 0:
+            return val
+    except (TypeError, ValueError):
+        pass
+    return _DEFAULT_MAX_REF_DEVIATION_PCT
+
+
 # ---------------------------------------------------------------------------
 # Pure predicate — no I/O
 # ---------------------------------------------------------------------------
@@ -95,6 +130,8 @@ def is_entry_price_sane(
     atr: float,
     max_atr_delta: float = _DEFAULT_MAX_ATR_DELTA,
     min_atr_floor: float = _DEFAULT_MIN_ATR_FLOOR,
+    recent_ref: Optional[float] = None,
+    max_ref_deviation_pct: float = _DEFAULT_MAX_REF_DEVIATION_PCT,
 ) -> Tuple[bool, str]:
     """Check whether an entry price is plausible relative to market + ATR.
 
@@ -167,7 +204,58 @@ def is_entry_price_sane(
             "possible field corruption (stop_loss copied into entry_price?)",
         )
 
+    # Era-aware reference cross-check — catches the failure mode the ATR check
+    # above structurally CANNOT: when the spot quote itself is contaminated
+    # (e.g. a stale-cache MES bar at 5300 in a 7400 market), entry≈market so
+    # delta_atr≈0 and the ATR check passes. A static futures price band also
+    # misses it (5300 is a valid *2024* MES price, inside the 3000-8500 band).
+    # The robust median of recent bar closes stays ~7400 through a few bad
+    # bars, so deviation-from-reference flags both the corrupted quote and the
+    # corrupted entry. Only runs when a reference is supplied.
+    if recent_ref is not None:
+        try:
+            ref = float(recent_ref)
+        except (TypeError, ValueError):
+            ref = 0.0
+        if ref > 0 and max_ref_deviation_pct > 0:
+            mkt_dev = abs(mkt - ref) / ref
+            if mkt_dev > max_ref_deviation_pct:
+                return (
+                    False,
+                    f"[{symbol}] market price={mkt} deviates {mkt_dev:.1%} from the recent "
+                    f"price reference={ref:.4f} (max {max_ref_deviation_pct:.1%}) — the spot "
+                    "quote itself looks stale/contaminated; refusing to validate against an "
+                    "unreliable reference (fail-safe NO_TRADE).",
+                )
+            entry_dev = abs(float(entry_price) - ref) / ref
+            if entry_dev > max_ref_deviation_pct:
+                return (
+                    False,
+                    f"[{symbol}] entry_price={entry_price} deviates {entry_dev:.1%} from the "
+                    f"recent price reference={ref:.4f} (max {max_ref_deviation_pct:.1%}) — "
+                    "wrong-era / stale-cache price (band-valid but not current).",
+                )
+
     return True, ""
+
+
+def robust_recent_reference(df: "pd.DataFrame", n_bars: int = _REF_RECENT_BARS) -> Optional[float]:
+    """Median close of the most recent ``n_bars`` bars — an outlier-robust price
+    reference. The median (not mean) is deliberate: a handful of contaminated
+    bars among mostly-good ones does not move it, so it stays a trustworthy
+    anchor for the era-aware deviation check. Returns None if unavailable."""
+    if df is None or getattr(df, "empty", True):
+        return None
+    if "close" not in df.columns:
+        return None
+    closes = df["close"].astype(float).dropna()
+    if closes.empty:
+        return None
+    recent = closes.iloc[-n_bars:] if len(closes) > n_bars else closes
+    try:
+        return float(recent.median())
+    except (TypeError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -261,13 +349,16 @@ async def check_entry_price_sanity(
     except Exception as exc:
         logger.warning("[ENTRY_PRICE_SANITY] get_current_price failed for %s: %s", symbol, exc)
 
-    # -- Fetch ATR via bars --
+    # -- Fetch ATR + robust recent-price reference via bars (one fetch) --
     atr: Optional[float] = None
+    recent_ref: Optional[float] = None
     try:
         bars = await data_manager.get_bars(
             symbol, lookback_days=30, timeframe="1h", is_futures=is_futures
         )
         atr = _compute_atr_from_bars(bars, period=_ATR_PERIOD)
+        if is_price_ref_check_enabled():
+            recent_ref = robust_recent_reference(bars)
     except Exception as exc:
         logger.warning("[ENTRY_PRICE_SANITY] get_bars/atr failed for %s: %s", symbol, exc)
 
@@ -278,6 +369,8 @@ async def check_entry_price_sanity(
         atr=atr,
         max_atr_delta=max_atr_delta,
         min_atr_floor=min_atr_floor,
+        recent_ref=recent_ref,
+        max_ref_deviation_pct=_get_max_ref_deviation_pct(),
     )
 
     if not is_sane:
