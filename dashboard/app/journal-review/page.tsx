@@ -313,33 +313,33 @@ export default function JournalReviewPage() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <StatCard
                 label="Win Rate"
-                value={pct(stats.win_rate)}
-                trend={stats.win_rate >= 0.5 ? "up" : "down"}
+                value={pct(stats.win_rate ?? 0)}
+                trend={(stats.win_rate ?? 0) >= 0.5 ? "up" : "down"}
               />
               <StatCard
                 label="Avg Win"
-                value={`$${stats.avg_win_usd.toFixed(0)}`}
+                value={`$${(stats.avg_win_usd ?? 0).toFixed(0)}`}
                 trend="up"
               />
               <StatCard
                 label="Avg Loss"
-                value={`$${stats.avg_loss_usd.toFixed(0)}`}
+                value={`$${(stats.avg_loss_usd ?? 0).toFixed(0)}`}
                 trend="down"
               />
               <StatCard
                 label="R:R Ratio"
-                value={stats.risk_reward_ratio.toFixed(2)}
+                value={(stats.risk_reward_ratio ?? 0).toFixed(2)}
                 sub="win / loss"
-                trend={stats.risk_reward_ratio >= 1.5 ? "up" : "neutral"}
+                trend={(stats.risk_reward_ratio ?? 0) >= 1.5 ? "up" : "neutral"}
               />
               <StatCard
                 label="EV / Trade"
-                value={usd(stats.expected_value_usd)}
-                trend={stats.expected_value_usd >= 0 ? "up" : "down"}
+                value={usd(stats.expected_value_usd ?? 0)}
+                trend={(stats.expected_value_usd ?? 0) >= 0 ? "up" : "down"}
               />
               <StatCard
                 label="Trades / Wk"
-                value={stats.trades_per_week.toFixed(1)}
+                value={(stats.trades_per_week ?? 0).toFixed(1)}
               />
             </div>
           </>
