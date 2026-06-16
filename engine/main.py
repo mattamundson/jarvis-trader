@@ -305,7 +305,6 @@ redis_trigger: "RedisSignalTrigger | None" = None  # noqa: F821
 trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
 portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
 canary_manager: "CanaryManager | None" = None  # noqa: F821
-ib_data_watchdog: "IBDataWatchdog | None" = None  # noqa: F821
 paper_stop_monitor: "PaperStopMonitor | None" = None  # noqa: F821
 
 
@@ -419,7 +418,7 @@ async def lifespan(app: FastAPI):
         """Heavy lifting moved here to enable <10s server binding."""
         global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
         global tv_streamer, redis_trigger, trailing_stop_manager, canary_manager
-        global paper_stop_monitor, ib_data_watchdog
+        global paper_stop_monitor
 
         logger.info("⏳ Starting heavy background initialization...")
 
@@ -503,17 +502,6 @@ async def lifespan(app: FastAPI):
             logger.info("🚀 A/B Canary Framework activated (Shadow Testing loop)")
         except Exception as e:
             logger.warning(f"⚠️ CanaryManager background failed: {e}")
-
-        # 5.5. IB data-leg auto-reconnect watchdog (mid-session self-healing).
-        # The execution leg already self-heals via its heartbeat; this gives the
-        # market-data leg the same, plus stale-data detection + silent-degrade alerts.
-        try:
-            from services.ib_data_watchdog import IBDataWatchdog
-
-            ib_data_watchdog = IBDataWatchdog(data_manager)
-            await ib_data_watchdog.start()
-        except Exception as e:
-            logger.warning(f"⚠️ IBDataWatchdog failed to start: {e}")
 
         # 6. Paper Stop-Loss Monitor (Initiative 1, Track A2)
         # Feed-independent backstop: enforces open paper stops via the tick-price
@@ -2808,10 +2796,6 @@ async def lifespan(app: FastAPI):
     # Stop Canary manager
     if canary_manager:
         await canary_manager.stop()
-
-    # Stop IB data-leg watchdog
-    if ib_data_watchdog:
-        await ib_data_watchdog.stop()
 
     # Stop Paper stop-loss monitor
     if paper_stop_monitor:
