@@ -914,6 +914,36 @@ export async function fetchStrategyLedger(): Promise<LedgerResponse> {
   return fetchEngine<LedgerResponse>("/strategy/ledger");
 }
 
+// ── Production-gate scorecard (GET /strategy/gates/{symbol}, US-005) ──────────
+export interface GateResult {
+  key: string;
+  label: string;
+  value: number | null;
+  threshold: number | null;
+  comparator: string; // ">=" | "<="
+  unit: string | null;
+  passed: boolean | null; // null => not evaluable (missing value or shadow gate)
+  enforced: boolean;
+  note: string | null;
+}
+
+export interface GatesResponse {
+  symbol: string;
+  family: string | null;
+  verdict: string | null;
+  created_at: string | null;
+  n_pass: number;
+  n_evaluated: number;
+  n_total: number;
+  gates: GateResult[];
+  generated_at: string;
+}
+
+/** GET /strategy/gates/{symbol} — 6-gate production scorecard for one symbol. */
+export async function fetchStrategyGates(symbol: string): Promise<GatesResponse> {
+  return fetchEngine<GatesResponse>(`/strategy/gates/${encodeURIComponent(symbol)}`);
+}
+
 // ── Per-trade full review (closed loop) ──────────────────────────────────────
 
 export interface TradeFullReview {
