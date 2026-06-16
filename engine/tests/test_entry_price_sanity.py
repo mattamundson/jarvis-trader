@@ -19,9 +19,12 @@ import pytest
 
 from risk.entry_price_sanity import (
     _compute_atr_from_bars,
+    _get_max_ref_deviation_pct,
     check_entry_price_sanity,
     is_entry_price_sane,
     is_entry_price_sanity_enabled,
+    is_price_ref_check_enabled,
+    robust_recent_reference,
 )
 
 # ---------------------------------------------------------------------------
@@ -201,6 +204,11 @@ class TestEnvThresholdOverride:
     async def test_env_threshold_2_passes_1_5_ratio(self, monkeypatch):
         """ENTRY_PRICE_SANITY_MAX_ATR_DELTA=2.0: ratio=1.5 → passes."""
         monkeypatch.setenv("ENTRY_PRICE_SANITY_MAX_ATR_DELTA", "2.0")
+        # Isolate the ATR-delta path: this fixture's spot (85) sits far from its
+        # synthetic bars (~95-124), which the era-aware reference check would
+        # (correctly) flag. Disable that check so this test exercises only the
+        # ATR threshold it is asserting on.
+        monkeypatch.setenv("ENABLE_PRICE_REF_CONTAMINATION_CHECK", "0")
 
         mock_dm = MagicMock()
         mock_dm.get_current_price = AsyncMock(return_value={"last_price": 85.0})
@@ -499,3 +507,148 @@ class TestMinAtrFloor:
             data_manager=mock_dm,
         )
         assert is_sane is True, f"Expected floor=1.5 to allow MGC low-vol entry but got: {reason}"
+
+
+# ---------------------------------------------------------------------------
+# Era-aware reference contamination check (2026-06-12 MES 5300 incident)
+# ---------------------------------------------------------------------------
+
+
+def _mes_bars(closes):
+    """Build a minimal OHLCV frame from a list of closes (high/low padded)."""
+    return pd.DataFrame(
+        {
+            "high": [c + 1.0 for c in closes],
+            "low": [c - 1.0 for c in closes],
+            "close": list(closes),
+        }
+    )
+
+
+class TestRobustRecentReference:
+    def test_median_is_outlier_robust(self):
+        # mostly-7400 with two contaminated 5300 bars → median stays ~7400
+        closes = [7400.0] * 46 + [5300.0, 5300.1]
+        ref = robust_recent_reference(_mes_bars(closes))
+        assert ref is not None and 7390 <= ref <= 7410
+
+    def test_empty_returns_none(self):
+        assert robust_recent_reference(pd.DataFrame()) is None
+        assert robust_recent_reference(None) is None
+
+
+class TestEraAwareReferenceCheck:
+    """The ATR check compares entry vs the spot quote; when BOTH come from the
+    same contaminated source they agree and it passes. The reference check is
+    the second line of defense."""
+
+    def test_wrong_era_entry_rejected_against_reference(self):
+        # entry 5300 (band-valid 2024 MES price) vs recent reference 7400
+        is_sane, reason = is_entry_price_sane(
+            symbol="MES",
+            entry_price=5300.375,
+            market_price=5300.1,  # contaminated spot agrees with entry → ATR check blind
+            atr=12.0,
+            recent_ref=7400.0,
+        )
+        assert is_sane is False
+        assert "reference" in reason.lower()
+
+    def test_contaminated_spot_quote_rejected(self):
+        # spot quote itself is stale (5300) vs reference 7400 → fail-safe NO_TRADE
+        is_sane, reason = is_entry_price_sane(
+            symbol="MES",
+            entry_price=5300.0,
+            market_price=5300.0,
+            atr=12.0,
+            recent_ref=7400.0,
+        )
+        assert is_sane is False
+        assert "stale" in reason.lower() or "unreliable" in reason.lower()
+
+    def test_clean_current_price_passes_reference(self):
+        is_sane, reason = is_entry_price_sane(
+            symbol="MES",
+            entry_price=7423.75,
+            market_price=7423.5,
+            atr=12.0,
+            recent_ref=7400.0,
+        )
+        assert is_sane is True, reason
+
+    def test_no_reference_is_backward_compatible(self):
+        # recent_ref=None → reference check skipped entirely (old behavior)
+        is_sane, _ = is_entry_price_sane(
+            symbol="MES",
+            entry_price=5300.0,
+            market_price=5300.0,
+            atr=12.0,
+            recent_ref=None,
+        )
+        assert is_sane is True
+
+    def test_legit_move_within_threshold_passes(self):
+        # a real ~5% move from the reference is allowed (not corruption)
+        is_sane, _ = is_entry_price_sane(
+            symbol="MES",
+            entry_price=7770.0,
+            market_price=7770.0,
+            atr=12.0,
+            recent_ref=7400.0,
+            max_ref_deviation_pct=0.15,
+        )
+        assert is_sane is True
+
+
+class TestPriceRefFlags:
+    def test_ref_check_default_enabled(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_PRICE_REF_CONTAMINATION_CHECK", raising=False)
+        assert is_price_ref_check_enabled() is True
+
+    def test_ref_check_disable(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_PRICE_REF_CONTAMINATION_CHECK", "0")
+        assert is_price_ref_check_enabled() is False
+
+    def test_ref_deviation_default(self, monkeypatch):
+        monkeypatch.delenv("ENTRY_PRICE_SANITY_MAX_REF_DEVIATION_PCT", raising=False)
+        assert _get_max_ref_deviation_pct() == 0.15
+
+    def test_ref_deviation_env_override(self, monkeypatch):
+        monkeypatch.setenv("ENTRY_PRICE_SANITY_MAX_REF_DEVIATION_PCT", "0.25")
+        assert _get_max_ref_deviation_pct() == 0.25
+
+
+class TestEraAwareAsyncRegression:
+    @pytest.mark.asyncio
+    async def test_2026_06_12_mes_5300_incident_rejected(self, monkeypatch):
+        """Reproduce the live incident end-to-end: a stale 5300 spot quote, but
+        the recent bars are mostly 7400 → the reference check must reject."""
+        monkeypatch.delenv("ENABLE_PRICE_REF_CONTAMINATION_CHECK", raising=False)
+        mock_dm = MagicMock()
+        # contaminated spot quote
+        mock_dm.get_current_price = AsyncMock(return_value={"last_price": 5300.1})
+        # 30d of mostly-clean 7400 bars with the two contaminated tail bars
+        closes = [7400.0 + (i % 5) for i in range(60)] + [5300.0, 5300.1]
+        mock_dm.get_bars = AsyncMock(return_value=_mes_bars(closes))
+
+        is_sane, reason = await check_entry_price_sanity(
+            symbol="MES",
+            entry_price=5300.375,
+            data_manager=mock_dm,
+        )
+        assert is_sane is False, "stale-cache 5300 MES trade must be rejected"
+        assert "reference" in reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_clean_mes_trade_still_passes(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_PRICE_REF_CONTAMINATION_CHECK", raising=False)
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(return_value={"last_price": 7423.5})
+        closes = [7400.0 + (i % 8) for i in range(60)]
+        mock_dm.get_bars = AsyncMock(return_value=_mes_bars(closes))
+        is_sane, reason = await check_entry_price_sanity(
+            symbol="MES",
+            entry_price=7423.75,
+            data_manager=mock_dm,
+        )
+        assert is_sane is True, f"clean MES trade should pass: {reason}"
