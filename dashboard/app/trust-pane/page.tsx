@@ -67,6 +67,33 @@ interface BarQualityResponse {
   gate_active: boolean;
 }
 
+// ── jarvis gate-v2 edge ledger (/reports/edge-ledger) — the validated-edge truth ─
+interface EdgeLedgerRow {
+  source_file: string;
+  is_archived: boolean;
+  symbol: string;
+  base_family: string;
+  conditioning: string;
+  rank: number;
+  verdict: string; // PASS | FAIL | NO_TRADE | …
+  passed_via: string | null; // core | alt
+  design: { total_oos_trades: number; n_oos_windows: number };
+  metrics: {
+    pf_ci_lower: number | null;
+    p_edge: number | null;
+    mc_95th_dd_pct: number | null;
+    dsr: number | null;
+    wfo_consistency: string | null;
+  };
+}
+interface EdgeLedgerResponse {
+  total: number;
+  n_pass: number;
+  n_fail: number;
+  n_other: number;
+  rows: EdgeLedgerRow[];
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function money(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -222,6 +249,9 @@ export default function TrustPanePage() {
   const barQuality = useSWR<BarQualityResponse>(
     "/analytics/bar-quality?hours=168", (p: string) => fetchEngine<BarQualityResponse>(p), { refreshInterval: 60_000 },
   );
+  const edgeLedger = useSWR<EdgeLedgerResponse>(
+    "/reports/edge-ledger", (p: string) => fetchEngine<EdgeLedgerResponse>(p), { refreshInterval: 120_000 },
+  );
   const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: 30_000 });
   const verdict = useSWR<AmoEdgeVerdictResponse>("amo-edge-verdict", () => fetchAmoEdgeVerdict(), { refreshInterval: 60_000 });
   // Commodities rarely change — refresh slowly, just enough to pick up a new listing.
@@ -238,8 +268,8 @@ export default function TrustPanePage() {
 
   const refreshAll = useCallback(() => {
     health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate();
-    barQuality.mutate(); amo.mutate(); verdict.mutate(); commodities.mutate();
-  }, [health, positions, pnl, trades, barQuality, amo, verdict, commodities]);
+    barQuality.mutate(); edgeLedger.mutate(); amo.mutate(); verdict.mutate(); commodities.mutate();
+  }, [health, positions, pnl, trades, barQuality, edgeLedger, amo, verdict, commodities]);
 
   // ── jarvis derived ──
   const h = health.data;
@@ -249,6 +279,11 @@ export default function TrustPanePage() {
   const suspectCount = openPaper.filter((p) => suspectPrice(p.symbol, p.entry_price)).length;
   const bq = barQuality.data;
   const bqTotal = bq?.total_rejections ?? 0;
+  // gate-v2 validated edge: live PASS rows, strongest pf_ci_lower first.
+  const el = edgeLedger.data;
+  const passRows = (el?.rows ?? [])
+    .filter((r) => r.verdict === "PASS" && !r.is_archived)
+    .sort((a, b) => (b.metrics.pf_ci_lower ?? 0) - (a.metrics.pf_ci_lower ?? 0));
   // Chart symbols: distinct open-position symbols that have a TV mapping; else a sane default.
   const chartSymbols = (() => {
     const fromOpen = Array.from(
@@ -448,6 +483,57 @@ export default function TrustPanePage() {
                     <p className="text-[11px] text-muted-foreground mt-2">
                       By symbol: {bq!.by_symbol.map((s) => `${s.symbol} (${s.count})`).join(" · ")}
                     </p>
+                  )}
+                </>
+              )}
+            </Card>
+
+            {/* 4b. Validated edge — which candidates clear gate-v2 right now */}
+            <Card>
+              <PanelHeader title="Validated Edge · gate-v2" provenance="live" />
+              {edgeLedger.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /reports/edge-ledger.</p>
+              ) : !el ? (
+                <p className="text-xs text-muted-foreground">Loading edge ledger…</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Stat label="PASS" value={String(el.n_pass)} tone={el.n_pass > 0 ? "bull" : "muted"} />
+                    <Stat label="FAIL" value={String(el.n_fail)} tone="muted" />
+                    <Stat label="Candidates" value={String(el.total)} tone="muted" />
+                  </div>
+                  {passRows.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground mt-3">
+                      No candidate currently clears gate-v2 (pf_ci_lower ≥ 1.10, p_edge ≥ 0.95, MC-DD ≤ 5%,
+                      DSR ≥ 0.10, ≥ 30 OOS trades). NO_TRADE is the honest verdict.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 mt-3">
+                      {passRows.slice(0, 6).map((r) => (
+                        <div
+                          key={r.source_file}
+                          className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-sm font-semibold text-foreground">{r.symbol}</span>
+                            <span className="text-[11px] uppercase text-muted-foreground truncate">
+                              {r.base_family}{r.conditioning && r.conditioning !== "none" ? ` · ${r.conditioning}` : ""}
+                            </span>
+                            <Badge variant={r.passed_via === "alt" ? "warn" : "live"}>
+                              {r.passed_via === "alt" ? "ALT" : "CORE"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 text-[11px] font-mono text-muted-foreground">
+                            <span title="profit-factor CI lower bound">PF {num(r.metrics.pf_ci_lower)}</span>
+                            <span title="deflated Sharpe">DSR {num(r.metrics.dsr)}</span>
+                            <span title="out-of-sample trades">{r.design.total_oos_trades}t</span>
+                          </div>
+                        </div>
+                      ))}
+                      {passRows.length > 6 && (
+                        <p className="text-[11px] text-muted-foreground">+{passRows.length - 6} more passing</p>
+                      )}
+                    </div>
                   )}
                 </>
               )}
