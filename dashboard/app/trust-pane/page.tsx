@@ -31,7 +31,14 @@ import {
   type DailyAttributionResponse,
   type TradeJournalEntry,
 } from "@/lib/api";
-import { fetchAmoHealth, type AmoHealthResponse } from "@/lib/amo-api";
+import {
+  fetchAmoHealth,
+  fetchAmoEdgeVerdict,
+  fetchAmoCommodities,
+  type AmoHealthResponse,
+  type AmoEdgeVerdictResponse,
+  type AmoCommodity,
+} from "@/lib/amo-api";
 
 // ── Brokers/positions response (subset we render) ─────────────────────────────
 interface PaperOpenPosition {
@@ -70,6 +77,20 @@ function fmtTime(iso?: string): string {
   } catch {
     return iso;
   }
+}
+function fmtDate(iso?: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+function pct(n: number | null | undefined): string {
+  return n == null || Number.isNaN(n) ? "—" : `${Math.round(n * 100)}%`;
+}
+function num(n: number | null | undefined, digits = 2): string {
+  return n == null || Number.isNaN(n) ? "—" : n.toFixed(digits);
 }
 
 // Per-symbol lower price floors. A futures entry below its floor is almost
@@ -132,6 +153,9 @@ export default function TrustPanePage() {
   const pnl = useSWR<DailyAttributionResponse>("attr-daily", () => fetchDailyAttribution(), { refreshInterval: 30_000 });
   const trades = useSWR<TradeJournalEntry[]>("trades-journal", () => fetchTradeJournal(undefined, undefined, 12), { refreshInterval: 30_000 });
   const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: 30_000 });
+  const verdict = useSWR<AmoEdgeVerdictResponse>("amo-edge-verdict", () => fetchAmoEdgeVerdict(), { refreshInterval: 60_000 });
+  // Commodities rarely change — refresh slowly, just enough to pick up a new listing.
+  const commodities = useSWR<AmoCommodity[]>("amo-commodities", () => fetchAmoCommodities(), { refreshInterval: 600_000 });
 
   const [secondsSince, setSecondsSince] = useState(0);
   useEffect(() => {
@@ -142,8 +166,9 @@ export default function TrustPanePage() {
   }, [lastUpdated]);
 
   const refreshAll = useCallback(() => {
-    health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate(); amo.mutate();
-  }, [health, positions, pnl, trades, amo]);
+    health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate();
+    amo.mutate(); verdict.mutate(); commodities.mutate();
+  }, [health, positions, pnl, trades, amo, verdict, commodities]);
 
   // ── jarvis derived ──
   const h = health.data;
@@ -155,6 +180,13 @@ export default function TrustPanePage() {
   // ── amo derived ──
   const a = amo.data;
   const amoLive = !!a && a.status === "ok";
+  const v = verdict.data;
+  const verdictOk = !!v && v.status === "ok" && v.n_total > 0;
+  const commodityById = new Map<number, AmoCommodity>((commodities.data ?? []).map((c) => [c.id, c]));
+  const commodityLabel = (id: number | null): string => {
+    if (id == null) return "—";
+    return commodityById.get(id)?.symbol ?? `#${id}`;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -339,6 +371,66 @@ export default function TrustPanePage() {
                 <Stat label="Jobs" value={String(a?.scheduled_jobs ?? 0)} />
               </div>
               {a?.version && <p className="text-[11px] text-muted-foreground mt-2">v{a.version}</p>}
+            </Card>
+
+            {/* Edge verdict — which backtests survive the family-wide BH-FDR gate.
+                The honest answer to "is any of this edge real?", straight from the
+                same correction that gates Kelly sizing. */}
+            <Card>
+              <PanelHeader title="Edge Verdict — BH-FDR" provenance="live" />
+              {verdict.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /api/edge-verdict.</p>
+              ) : !v ? (
+                <p className="text-xs text-muted-foreground">{verdict.isLoading ? "Loading verdict…" : "No verdict."}</p>
+              ) : !verdictOk ? (
+                <div className="flex items-start gap-2">
+                  <XCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    No verdict available yet — the backtests table is empty or unreachable.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Stat
+                      label="Validated"
+                      value={`${v.n_validated} / ${v.n_total}`}
+                      tone={v.n_validated > 0 ? "bull" : "bear"}
+                    />
+                    <Stat label="FDR q" value={num(v.fdr_q)} tone="muted" />
+                    <Stat label="As of" value={fmtDate(v.as_of)} tone="muted" />
+                  </div>
+                  {v.validated.length === 0 ? (
+                    <p className="text-xs text-muted-foreground mt-3">
+                      0 of {v.n_total} strategies survive whole-campaign correction — none are
+                      validated for sizing. That is the honest result, not a data gap.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 mt-3">
+                      {v.validated.map((s) => (
+                        <div
+                          key={String(s.backtest_id)}
+                          className="flex items-center justify-between rounded-lg border border-bull/30 bg-bull/5 px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-sm font-semibold text-foreground">
+                              {commodityLabel(s.commodity_id)}
+                            </span>
+                            <Badge variant="bull">{s.strategy}</Badge>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono shrink-0">
+                            <span>PF {num(s.profit_factor)}</span>
+                            <span>p {num(s.p_value, 3)}</span>
+                            <span>{s.total_trades ?? "—"}t</span>
+                            <span>{pct(s.win_rate)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-2">{v.methodology}</p>
+                </>
+              )}
             </Card>
 
             {/* Scheduled jobs */}
