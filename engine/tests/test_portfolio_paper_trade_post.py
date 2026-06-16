@@ -66,7 +66,8 @@ def test_paper_trade_open_blocked_by_kill_switch() -> None:
     tmp = Path(tempfile.mkdtemp()) / "paper_trade_blocked.jsonl"
     tracker = PortfolioTracker(store_path=tmp)
     safety = MagicMock()
-    safety.get_status.return_value = {"kill_switch_active": True}
+    # router reads is_killed (safety_layer dual-key contract); keep kill_switch_active too
+    safety.get_status.return_value = {"is_killed": True, "kill_switch_active": True}
     pr_mod.inject_dependencies(tracker, None, None, safety)
 
     app.include_router(pr_mod.router, prefix="/portfolio")
