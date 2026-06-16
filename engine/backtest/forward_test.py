@@ -96,6 +96,34 @@ def attributable_trades(trades: list[dict], candidate: dict) -> tuple[Optional[s
     return None, []
 
 
+# ── decision-lineage attribution (P4) ───────────────────────────────────────────
+#
+# The live entry path is LLM-driven, not mechanical, so registry candidates never
+# fire live and only ever attribute at symbol level (never graduate). P2 stamps a
+# ``decision_identity`` onto each live paper entry; this track groups trades by that
+# identity's per-symbol ``lineage`` -- the unit that actually trades -- and graduates
+# it against the decision_registry on the same statistical bar.
+
+def trade_lineage(trade: dict) -> Optional[str]:
+    """The per-symbol decision lineage stamped on a paper trade (P2), or None."""
+    sp = _parse_params(trade.get("strategy_params"))
+    did = sp.get("decision_identity")
+    if isinstance(did, dict):
+        lin = did.get("lineage")
+        return str(lin) if lin else None
+    return None
+
+
+def lineage_buckets(trades: list[dict]) -> dict[str, list[dict]]:
+    """Group closed trades by their stamped decision lineage (untagged dropped)."""
+    out: dict[str, list[dict]] = {}
+    for t in trades:
+        lin = trade_lineage(t)
+        if lin:
+            out.setdefault(lin, []).append(t)
+    return out
+
+
 # ── windows + stats ────────────────────────────────────────────────────────────
 
 def _window_pf(gross_win: float, gross_loss: float) -> float:
@@ -192,6 +220,64 @@ def tag_strategy_params(strategy_params: Any, candidate_id: str) -> dict:
     return sp
 
 
+def run_lineage_track(
+    closed: list[dict],
+    decision_registry: Optional[dict] = None,
+    window_days: int = DEFAULT_WINDOW_DAYS,
+) -> list[dict[str, Any]]:
+    """Forward-test the LLM decision lineages stamped on live paper trades (P4).
+
+    Mirrors the candidate loop: per-lineage windows + stats, a family-wide BH-FDR
+    across every lineage with >=1 window, then graduation against the decision
+    registry rule -- but only ``pre_registered`` lineages are eligible to graduate
+    (default-material ``unregistered:*`` singletons can clear the stats yet never
+    graduate, by design). One bar, both tracks.
+    """
+    from backtest import decision_registry as dr
+
+    reg = decision_registry or dr.load_registry()
+    buckets = lineage_buckets(closed)
+
+    rows: list[dict] = []
+    for lineage in sorted(buckets):
+        windows = build_windows(buckets[lineage], window_days)
+        rows.append({"lineage": lineage, "stats": forward_stats(windows)})
+
+    # Family-wide BH-FDR across all lineages with >=1 forward window.
+    fdr_inputs = [(i, r["stats"]["binom_p"]) for i, r in enumerate(rows)
+                  if r["stats"]["n_oos_windows"] > 0]
+    survives = dict.fromkeys(range(len(rows)), False)
+    if fdr_inputs:
+        flags = bh_fdr([p for _, p in fdr_inputs])
+        for (i, _), ok in zip(fdr_inputs, flags, strict=True):
+            survives[i] = bool(ok)
+
+    out: list[dict] = []
+    for i, r in enumerate(rows):
+        lineage, stats = r["lineage"], r["stats"]
+        pre_reg = dr.is_pre_registered(lineage)
+        grad_stats = {**stats, "survives_family_fdr": survives[i]}
+        graduated = pre_reg and dr.meets_graduation(grad_stats, reg)
+        if not pre_reg:
+            reason = (
+                "default-material (unregistered) lineage -- pre-register it before "
+                "its forward window is counted to enable graduation"
+            )
+        elif graduated:
+            reason = "graduated: forward OOS record clears the decision-registry rule"
+        else:
+            reason = "not yet graduated: forward record does not clear the rule"
+        out.append({
+            "lineage": lineage,
+            "pre_registered": pre_reg,
+            "forward": stats,
+            "survives_family_fdr": survives[i],
+            "graduated": graduated,
+            "reason": reason,
+        })
+    return out
+
+
 def run_forward_test(
     registry: Optional[dict] = None,
     db: Any = None,
@@ -263,6 +349,12 @@ def run_forward_test(
         sym_trs = [t for t in closed if str(t.get("symbol", "")).upper() == sym.upper()]
         symbol_context[sym] = forward_stats(build_windows(sym_trs, window_days))
 
+    # Decision-lineage track (P4): graduates the LLM path that actually trades live.
+    try:
+        lineages_out = run_lineage_track(closed, window_days=window_days)
+    except Exception:  # pragma: no cover - never let the lineage track break the report
+        lineages_out = []
+
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "window_days": window_days,
@@ -270,13 +362,18 @@ def run_forward_test(
         "n_active_candidates": len(active),
         "n_graduated": sum(1 for c in candidates_out if c["graduated"]),
         "candidates": candidates_out,
+        "lineages": lineages_out,
+        "n_lineages": len(lineages_out),
+        "n_lineages_graduated": sum(1 for lin in lineages_out if lin["graduated"]),
         "symbol_context": symbol_context,
         "note": (
-            "Live paper trades are currently scanner-sourced and untagged, so "
-            "candidates attribute at symbol level (context only, never graduates). "
-            "Wire tag_strategy_params(strategy_params, candidate_id) into the "
-            "scanner/executor when a registry candidate fires to enable per-candidate "
-            "forward-testing and graduation."
+            "Two tracks. CANDIDATES are mechanical gate-v2 strategies; the live entry "
+            "path is LLM-driven so they never fire live and attribute at symbol level "
+            "(context only, never graduates). LINEAGES are the LLM decision identities "
+            "stamped on live paper entries (P2) -- the unit that actually trades; they "
+            "graduate against the decision_registry. Default-material (unregistered:*) "
+            "lineages can clear the stats but never graduate -- pre-register a lineage "
+            "before its forward window counts."
         ),
     }
     if persist:  # pragma: no cover - file IO exercised live
@@ -307,6 +404,22 @@ def _markdown(report: dict[str, Any]) -> str:
             f"{'Y' if c['survives_family_fdr'] else '.'} | "
             f"{'YES' if c['graduated'] else 'no'} |"
         )
+    lineages = report.get("lineages") or []
+    lines += ["", "## Decision lineages (LLM path -- the unit that trades live)", "",
+              f"- lineages: {report.get('n_lineages', 0)}  |  "
+              f"graduated: **{report.get('n_lineages_graduated', 0)}**", "",
+              "| lineage | pre-reg | n_oos | p_edge | pf_ci_lo | fdr | graduated |",
+              "|---|---|---|---|---|---|---|"]
+    for lin in lineages:
+        f = lin["forward"]
+        lines.append(
+            f"| {lin['lineage']} | {'Y' if lin['pre_registered'] else '.'} | "
+            f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
+            f"{'Y' if lin['survives_family_fdr'] else '.'} | "
+            f"{'YES' if lin['graduated'] else 'no'} |"
+        )
+    if not lineages:
+        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |")
     lines += ["", "## Symbol context (all closed trades per symbol)", "",
               "| symbol | n_oos | p_edge | pf_ci_lo | trades | pnl |",
               "|---|---|---|---|---|---|"]

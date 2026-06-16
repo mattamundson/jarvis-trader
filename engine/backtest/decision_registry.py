@@ -75,3 +75,34 @@ def lineage_for_config_hash(
         if config_hash in (lin.get("member_config_hashes") or []):
             return str(lin.get("id"))
     return None
+
+
+# ── graduation (P4) ─────────────────────────────────────────────────────────────
+
+UNREGISTERED_PREFIX = "unregistered:"
+
+
+def is_pre_registered(lineage: str) -> bool:
+    """A lineage may graduate only if it was pre-registered (honesty guard).
+
+    Default-material singletons carry the ``unregistered:`` prefix; they were
+    never asserted as an edge hypothesis *before* their forward window, so they
+    can never graduate -- this is what stops post-hoc cherry-picking of whichever
+    config happened to print money.
+    """
+    return bool(lineage) and not str(lineage).startswith(UNREGISTERED_PREFIX)
+
+
+def meets_graduation(
+    forward_stats: dict[str, Any], registry: Optional[dict[str, Any]] = None
+) -> bool:
+    """True when a lineage's forward (paper) OOS stats clear the graduation rule.
+
+    Reuses the candidate-registry rule evaluator (identical ``graduation_rule``
+    schema) so the mechanical and LLM tracks graduate on exactly the same bar.
+    Missing stat keys default to the conservative (fail) value.
+    """
+    from backtest.candidate_registry import meets_graduation as _meets  # acyclic
+
+    reg = registry or load_registry()
+    return _meets(forward_stats, reg)
