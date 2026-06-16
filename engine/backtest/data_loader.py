@@ -185,7 +185,7 @@ class BacktestDataLoader:
         rows = [
             (symbol, interval, t, o, h, low, c, v, "backtest_cache", "")
             for t, o, h, low, c, v in zip(
-                list(ts), df["open"], df["high"], df["low"], df["close"], list(vol)
+                list(ts), df["open"], df["high"], df["low"], df["close"], list(vol), strict=True
             )
         ]
         rejects = screen_bars(rows)
