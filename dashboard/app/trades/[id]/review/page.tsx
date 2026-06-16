@@ -127,14 +127,14 @@ export default function TradeReviewPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Loading trade review…</p>
       </div>
     );
   }
   if (error || !data) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-2">
+      <div className="flex flex-col items-center justify-center h-64 gap-2">
         <p className="text-destructive font-semibold">Error loading trade review</p>
         <p className="text-sm text-muted-foreground">{String(error ?? "not found")}</p>
         <Link href="/trades" className="text-xs text-blue-400 underline mt-2">← back to Trade History</Link>
