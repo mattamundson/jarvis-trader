@@ -497,3 +497,110 @@ async def options_module_status():
             "status": "error",
             "message": str(exc),
         }
+
+
+def _scan_candidate_to_dict(c: Any) -> dict:
+    """Map a scan candidate (dict or object) to the dashboard ScanResult shape."""
+
+    def _get(key: str, default: Any = None) -> Any:
+        if isinstance(c, dict):
+            return c.get(key, default)
+        return getattr(c, key, default)
+
+    expiry = _get("expiry_date") or _get("expiry")
+    if isinstance(expiry, (date, datetime)):
+        expiry = expiry.isoformat()
+    return {
+        "symbol": _get("symbol", "") or "",
+        "strategy_type": _get("strategy_type") or _get("strategy") or "",
+        "iv_rank": float(_get("iv_rank", 0.0) or 0.0),
+        "expiry_date": expiry or "",
+        "estimated_premium": float(_get("estimated_premium") or _get("premium") or 0.0),
+    }
+
+
+@router.get("/module/scan", tags=["options", "multi-market"])
+async def options_module_scan():
+    """Return the most recent options scan candidates for the dashboard.
+
+    Backed by the OptionsMarketModule's last scan (via the orchestrator). Falls
+    back to an empty candidate list with the live VIX regime / selected strategy
+    so the dashboard renders a clean empty state rather than a 404.
+    """
+    vix_regime = "normal"
+    strategy_selected = "—"
+    scan_results: list[dict] = []
+    try:
+        from orchestrator import get_orchestrator
+
+        orch = get_orchestrator()
+        module = orch.get_module("options") if orch else None
+        if module is not None:
+            try:
+                health = module.health_check()
+                vix_regime = getattr(health, "vix_regime", None) or vix_regime
+                strategy_selected = getattr(health, "current_strategy", None) or strategy_selected
+            except Exception:  # noqa: BLE001 — health is best-effort metadata
+                pass
+            raw = getattr(module, "last_scan_results", None) or getattr(
+                module, "scan_candidates", None
+            )
+            if raw:
+                scan_results = [_scan_candidate_to_dict(c) for c in raw]
+    except Exception as exc:  # noqa: BLE001 — never 500 a dashboard poll
+        logger.error("[options_router] module_scan error: %s", exc)
+    return {
+        "scan_results": scan_results,
+        "vix_regime": vix_regime,
+        "strategy_selected": strategy_selected,
+    }
+
+
+@router.get("/module/pnl", tags=["options", "multi-market"])
+async def options_module_pnl():
+    """Return open options positions and aggregate P&L for the dashboard.
+
+    open_positions are mapped from the SQLite position store; daily_pnl is taken
+    from the orchestrator options module when available, otherwise it mirrors the
+    summed unrealised P&L. Never raises — returns a typed-empty payload on error.
+    """
+    open_positions: list[dict] = []
+    total_pnl = 0.0
+    try:
+        from options.position_manager import OptionsPositionManager
+
+        mgr = OptionsPositionManager()
+        for pos in mgr.get_positions(status="OPEN"):
+            pnl = float(pos.unrealised_pnl or 0.0)
+            total_pnl += pnl
+            open_positions.append(
+                {
+                    "symbol": pos.symbol,
+                    "strategy": pos.strategy,
+                    "entry_price": float(pos.entry_premium or 0.0),
+                    "current_price": float(pos.current_premium or 0.0),
+                    "pnl": pnl,
+                    "dte": pos.dte,
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — never 500 a dashboard poll
+        logger.error("[options_router] module_pnl positions error: %s", exc)
+
+    daily_pnl = total_pnl
+    try:
+        from orchestrator import get_orchestrator
+
+        orch = get_orchestrator()
+        module = orch.get_module("options") if orch else None
+        if module is not None:
+            health = module.health_check()
+            if health is not None and getattr(health, "daily_pnl", None) is not None:
+                daily_pnl = float(health.daily_pnl)
+    except Exception:  # noqa: BLE001 — daily_pnl falls back to summed unrealised
+        pass
+
+    return {
+        "daily_pnl": round(daily_pnl, 2),
+        "total_pnl": round(total_pnl, 2),
+        "open_positions": open_positions,
+    }

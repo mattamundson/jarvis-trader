@@ -267,6 +267,53 @@ async def portfolio_health():
     }
 
 
+@router.get(
+    "/capital",
+    description="Per-market capital allocation and daily targets across registered modules.",
+)
+async def portfolio_capital():
+    """Capital allocation by market for the portfolio dashboard."""
+    orch = _get_orchestrator()
+    if not orch:
+        return {
+            "markets": {},
+            "total_capital": float(settings.INITIAL_CAPITAL),
+            "daily_target": 500.0,
+            "enabled_markets": [],
+            "message": "Orchestrator not initialized",
+        }
+
+    markets: dict[str, dict] = {}
+    total_capital = 0.0
+    for name in orch.list_modules():
+        module = orch.get_module(name)
+        if module is None:
+            continue
+        cap = float(getattr(module, "capital_allocated", 0.0) or 0.0)
+        tgt = float(getattr(module, "daily_target", 0.0) or 0.0)
+        markets[name] = {"capital": cap, "daily_target": tgt}
+        total_capital += cap
+
+    enabled_markets: list[str] = []
+    try:
+        for h in orch.get_all_health():
+            status_val = h.status.value if hasattr(h.status, "value") else str(h.status)
+            if status_val not in ("disabled", "error", "not_registered"):
+                enabled_markets.append(h.market)
+    except Exception as exc:  # noqa: BLE001 — enabled flag is best-effort
+        logger.warning("portfolio_capital: health enumerate failed: %s", exc)
+
+    if total_capital <= 0:
+        total_capital = float(settings.INITIAL_CAPITAL)
+
+    return {
+        "markets": markets,
+        "total_capital": round(total_capital, 2),
+        "daily_target": float(getattr(orch, "daily_target", 500.0) or 500.0),
+        "enabled_markets": enabled_markets,
+    }
+
+
 @router.post(
     "/halt",
     description="Emergency halt all market modules with optional reason parameter.",
