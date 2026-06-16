@@ -259,18 +259,6 @@ async def _get_ib_gateway_health() -> dict:
     health["execution_connected"] = execution_connected
     health["data_connected"] = data_connected
 
-    # Data-leg observability — which tier is actually serving data, and the
-    # auto-reconnect watchdog state, so silent degrade is visible (north-star).
-    if data_manager is not None:
-        health["data_source"] = getattr(data_manager, "_last_bar_source", None)
-        health["last_ibkr_data_ts"] = getattr(data_manager, "_last_ibkr_data_ts", None)
-        wd = getattr(data_manager, "_watchdog", None)
-        if wd is not None:
-            try:
-                health["watchdog"] = wd.status()
-            except Exception:
-                pass
-
     return health
 
 
@@ -462,9 +450,25 @@ async def reconnect_data_connector():
     if data_manager.ibkr is not None and data_manager.ibkr.is_connected:
         return {"reconnected": False, "message": "already connected"}
 
-    # Delegate to the shared, lock-guarded reconnect so this route and the
-    # IBDataWatchdog never rebuild two IB() sockets on the same clientId at once.
-    connected = await data_manager.reconnect_ibkr(timeout=15.0)
+    # Clean up stale connector before replacing it
+    if data_manager.ibkr is not None:
+        try:
+            await data_manager.ibkr.disconnect()
+        except Exception:
+            pass
+
+    from data.market_data import IBKRDataConnector, resolve_data_client_id
+
+    data_manager.ibkr = IBKRDataConnector(
+        host=data_manager._config.IBKR_HOST,
+        port=data_manager._config.IBKR_PORT,
+        client_id=resolve_data_client_id(data_manager._config),
+        # Use a more generous timeout than startup (15s vs 5s) since this is manual recovery
+        connect_timeout=max(
+            getattr(data_manager._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0), 15.0
+        ),
+    )
+    connected = await data_manager.ibkr.connect()
 
     if not connected:
         raise HTTPException(
