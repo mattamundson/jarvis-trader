@@ -44,8 +44,8 @@ pandas-ta==0.4.67b0       # 150+ indicators. Windows: requires alligator.py:6 pa
 xgboost==3.2.0            # Used by engine/learning/model_drawer.py — Win amd64 wheel (101.7 MB)
 
 # ── Data Processing ────────────────────────────────────────────────────────
-pandas>=2.2.3
-numpy>=2.2.6
+pandas==3.0.2            # pin exact: floor `>=2.2.3` lets a CI cache-miss resolve to pandas 3.0.3, which breaks the scanner suite (entry-price gate / signal short-circuit). 3.0.2 = known-good local set.
+numpy==2.2.6             # pin exact: floor `>=2.2.6` resolves to numpy 2.4.6 on a CI fresh-install, also breaking the scanner suite. 2.2.6 = known-good (scanner tests 35/35 green locally).
 scipy>=1.15.2
 quantstats==0.0.81        # Portfolio analytics (Sortino/Calmar/max-DD/monthly returns). Used by engine/backtest/stark_forge.py + engine/reports/quantstats_metrics.py.
 
