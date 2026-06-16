@@ -24,6 +24,7 @@ Status tracking:
 
 import asyncio
 import logging
+import os
 import time as _time_module
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -62,6 +63,31 @@ def _is_futures_market_hours() -> bool:
         return h < 16
     # Monday–Thursday: open except 4:00–5:00 PM CT maintenance break
     return not (h == 16)
+
+
+def _is_equity_market_hours() -> bool:
+    """True during US equity Regular Trading Hours (9:30 AM–4:00 PM ET, Mon–Fri).
+
+    The scan loop gates only on *futures* hours (≈23h/day), so without this an
+    equity symbol (SPY/QQQ/AAPL) can be auto-submitted long after the cash
+    market closed — the 20:24 off-hours stale-price fill class. DST-aware.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
+
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    if now_et.weekday() >= 5:  # Sat/Sun
+        return False
+    return time(9, 30) <= now_et.time() < time(16, 0)
+
+
+def _market_hours_submission_guard_enabled() -> bool:
+    """Opt-out flag for the equity market-hours submission guard. Default ON."""
+    return os.getenv("ENABLE_MARKET_HOURS_SUBMISSION_GUARD", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
 
 
 class SignalScanner:
@@ -506,6 +532,11 @@ class SignalScanner:
             except Exception:
                 _is_paper_mode = True
 
+            # Distinct skip reasons so the final log is accurate (not all
+            # not-executed paths are "live mode requires human").
+            _validation_only_skip = False
+            _submission_blocked_reason: str | None = None
+
             _confidence = float(result.get("confidence", 0.0))
 
             # ── Validation-only strategy gate ──────────────────────────────────
@@ -533,6 +564,22 @@ class SignalScanner:
                     approval_id[:8],
                 )
                 _is_paper_mode = False  # short-circuit the bypass block below
+                _validation_only_skip = True
+
+            # Market-hours submission guard: the scan loop only checks futures
+            # hours, so an equity signal can reach here after the cash market
+            # closed. Hard-gate the auto-submission for equities outside RTH
+            # (the 20:24 off-hours stale-fill class). Futures are already
+            # covered by the loop-level _is_futures_market_hours() gate.
+            if (
+                _is_paper_mode
+                and not _validation_only_skip
+                and _market_hours_submission_guard_enabled()
+                and not _is_fut
+                and not _is_equity_market_hours()
+            ):
+                _is_paper_mode = False
+                _submission_blocked_reason = "equity_market_closed"
 
             _executed = False
             _exec_details: dict | None = None
@@ -753,6 +800,27 @@ class SignalScanner:
                     logger.error(
                         "[Scanner] Paper trade auto-log failed for %s: %s", symbol, _paper_exc
                     )
+            elif _submission_blocked_reason is not None:
+                logger.info(
+                    "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                    "executed=False reason=%s approval_id=%s",
+                    symbol,
+                    final_action,
+                    _confidence,
+                    0.0,
+                    _submission_blocked_reason,
+                    approval_id[:8],
+                )
+            elif _validation_only_skip:
+                logger.info(
+                    "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                    "executed=False reason=validation_only_strategy_skipped approval_id=%s",
+                    symbol,
+                    final_action,
+                    _confidence,
+                    0.0,
+                    approval_id[:8],
+                )
             elif not _is_paper_mode:
                 logger.info(
                     "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "

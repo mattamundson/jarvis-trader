@@ -427,11 +427,23 @@ class PaperTradeSyncRequest(BaseModel):
 
 @router.get("/paper/positions")
 async def paper_positions():
-    """Open paper positions (SQLite + in-memory tracker)."""
+    """Open paper positions — DB-authoritative, reconciled against the tracker.
+
+    The returned ``positions``/``count`` reflect ``paper_trades WHERE
+    status='open'`` (the durable source of truth) when a DB is wired, so the UI
+    can no longer show "no positions" while a row is open. ``reconciliation``
+    surfaces any drift between the DB and the in-memory tracker.
+    """
     if not paper_tracker:
-        return {"positions": [], "count": 0}
-    raw = paper_tracker.get_open_positions()
-    return {"positions": raw, "count": len(raw)}
+        return {"positions": [], "count": 0, "reconciliation": {"source": "none", "reconciled": True}}
+    # Prefer the authoritative reconciled read; fall back to in-memory if the
+    # tracker predates the method (defensive — never 500 this endpoint).
+    if hasattr(paper_tracker, "get_open_positions_authoritative"):
+        positions, recon = paper_tracker.get_open_positions_authoritative()
+    else:  # pragma: no cover - legacy tracker
+        positions = paper_tracker.get_open_positions()
+        recon = {"source": "memory", "reconciled": True, "count": len(positions)}
+    return {"positions": positions, "count": len(positions), "reconciliation": recon}
 
 
 class UpdatePositionRequest(BaseModel):
@@ -655,6 +667,10 @@ async def paper_trade(req: PaperTradeSyncRequest):
             closed = paper_tracker.close_trade(req.trade_id, float(req.exit_price))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            # ExitPriceSanityError (phantom-price guard) subclasses ValueError —
+            # reject a corrupt exit with 422 rather than letting it 500.
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {
             "status": "closed",
             "trade_id": closed.trade_id,
@@ -1755,6 +1771,9 @@ async def submit_paper_trade(req: PaperTradeRequest):
             trade = paper_tracker.close_trade(req.close_trade_id, req.price)
         except KeyError as e:
             raise HTTPException(404, f"No open trade with id={req.close_trade_id!r}") from e
+        except ValueError as e:
+            # ExitPriceSanityError (phantom-price guard) subclasses ValueError.
+            raise HTTPException(422, str(e)) from e
 
         try:
             from notifications.whatsapp import format_trade_closed_alert, send_whatsapp_message
