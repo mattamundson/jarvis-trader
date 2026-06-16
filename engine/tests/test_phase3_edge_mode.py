@@ -235,7 +235,11 @@ def _good_fill_db(tmp_path, n=15):
         {"symbol": "MES", "status": "closed", "pnl": (5.0 if i % 3 else -2.0), "slippage_ticks": 0.5}
         for i in range(n)
     ]
-    health = [{"ts_utc": "2026-06-01T19:00:00Z", "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 0}]
+    # Health snapshot must be FRESH (<= HEALTH_SNAPSHOT_TTL_MIN) or Hardening 2
+    # rejects it. Use "now" so the fidelity check exercises the real pass path.
+    health = [
+        {"ts_utc": p3._now_utc().isoformat(), "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 0}
+    ]
     return _make_db(tmp_path, trades=trades, health=health)
 
 
@@ -265,7 +269,9 @@ def test_fidelity_insufficient_fills_fails(tmp_path, monkeypatch):
 def test_fidelity_kill_switch_active_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(p3, "_paper_sim_enabled", lambda: True)
     trades = [{"symbol": "MES", "status": "closed", "pnl": 5.0, "slippage_ticks": 0.5} for _ in range(20)]
-    health = [{"ts_utc": "2026-06-01T19:00:00Z", "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 1}]
+    health = [
+        {"ts_utc": p3._now_utc().isoformat(), "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 1}
+    ]
     db = _make_db(tmp_path, trades=trades, health=health)
     passed, evidence = ExecutionFidelityCriterion().check(db)
     assert passed is False
@@ -274,12 +280,81 @@ def test_fidelity_kill_switch_active_fails(tmp_path, monkeypatch):
 
 def test_fidelity_losing_pf_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(p3, "_paper_sim_enabled", lambda: True)
+    # PF is checked before health, so the stale-but-irrelevant timestamp is fine:
+    # this fails at the realized-PF floor regardless of the health snapshot.
     trades = [{"symbol": "MES", "status": "closed", "pnl": -5.0, "slippage_ticks": 0.5} for _ in range(20)]
     health = [{"ts_utc": "2026-06-01T19:00:00Z", "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 0}]
     db = _make_db(tmp_path, trades=trades, health=health)
     passed, evidence = ExecutionFidelityCriterion().check(db)
     assert passed is False
     assert "PF" in evidence
+
+
+def test_fidelity_null_slippage_coverage_fails(tmp_path, monkeypatch):
+    """Hardening 1: enough rows but NONE carry measured slippage -> FAIL.
+
+    Closes the loophole where 15+ intent rows with NULL slippage_ticks passed
+    while the slippage bound was silently skipped.
+    """
+    monkeypatch.setattr(p3, "_paper_sim_enabled", lambda: True)
+    trades = [
+        {"symbol": "MES", "status": "closed", "pnl": 5.0, "slippage_ticks": None} for _ in range(20)
+    ]
+    health = [
+        {"ts_utc": p3._now_utc().isoformat(), "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 0}
+    ]
+    db = _make_db(tmp_path, trades=trades, health=health)
+    passed, evidence = ExecutionFidelityCriterion().check(db)
+    assert passed is False
+    assert "measured slippage" in evidence
+
+
+def test_fidelity_partial_slippage_coverage_fails(tmp_path, monkeypatch):
+    """Hardening 1: 20 fills but only 10 with measured slippage -> still FAIL."""
+    monkeypatch.setattr(p3, "_paper_sim_enabled", lambda: True)
+    trades = [
+        {
+            "symbol": "MES",
+            "status": "closed",
+            "pnl": 5.0,
+            "slippage_ticks": (0.5 if i < 10 else None),
+        }
+        for i in range(20)
+    ]
+    health = [
+        {"ts_utc": p3._now_utc().isoformat(), "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 0}
+    ]
+    db = _make_db(tmp_path, trades=trades, health=health)
+    passed, evidence = ExecutionFidelityCriterion().check(db)
+    assert passed is False
+    assert "10/20" in evidence
+
+
+def test_fidelity_stale_health_fails(tmp_path, monkeypatch):
+    """Hardening 2: a stale health snapshot cannot certify the broker is up now."""
+    monkeypatch.setattr(p3, "_paper_sim_enabled", lambda: True)
+    trades = [{"symbol": "MES", "status": "closed", "pnl": 5.0, "slippage_ticks": 0.5} for _ in range(20)]
+    stale_ts = (
+        p3._now_utc() - timedelta(minutes=p3.HEALTH_SNAPSHOT_TTL_MIN + 30)
+    ).isoformat()
+    health = [{"ts_utc": stale_ts, "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 0}]
+    db = _make_db(tmp_path, trades=trades, health=health)
+    passed, evidence = ExecutionFidelityCriterion().check(db)
+    assert passed is False
+    assert "stale" in evidence.lower()
+
+
+def test_fidelity_high_slippage_fails(tmp_path, monkeypatch):
+    """Avg slippage above the tick bound fails even with full measured coverage."""
+    monkeypatch.setattr(p3, "_paper_sim_enabled", lambda: True)
+    trades = [{"symbol": "MES", "status": "closed", "pnl": 5.0, "slippage_ticks": 3.0} for _ in range(20)]
+    health = [
+        {"ts_utc": p3._now_utc().isoformat(), "ibkr_data": 1, "ibkr_exec": 1, "kill_switch": 0}
+    ]
+    db = _make_db(tmp_path, trades=trades, health=health)
+    passed, evidence = ExecutionFidelityCriterion().check(db)
+    assert passed is False
+    assert "slippage" in evidence.lower()
 
 
 # ---------------------------------------------------------------------------
