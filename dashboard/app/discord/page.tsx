@@ -77,7 +77,7 @@ export default function DiscordPage() {
               Discord Intelligence
             </h2>
             <p className="font-mono text-[11px] text-muted-foreground mt-0.5">
-              281,838 signals from Corey Auction Tools server
+              Signals & commentary from the Corey Auction Tools server
             </p>
           </div>
         </div>

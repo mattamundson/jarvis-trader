@@ -409,3 +409,78 @@ class TestMaxDrawdownPctDiscrepancy:
         assert halt_relaxed is False, (
             "At -19% drawdown with 20% limit, halt must NOT fire"
         )
+
+
+# ── Layer 2b: trailing-window high-water mark ────────────────────────────────────
+
+
+class _WindowDb:
+    """Fake db whose get_daily_pnl honors the days= cutoff like the real mixin
+    (rows with date >= today-UTC - days). Lets us prove the temporal guard
+    end-to-end rather than against an arg-ignoring MagicMock."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def get_daily_pnl(self, days=None, start_date=None, end_date=None):
+        if days is None:
+            return list(self._rows)
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=int(days))).date().isoformat()
+        return [r for r in self._rows if str(r.get("date", "")) >= cutoff]
+
+
+class _NoDaysDb:
+    """Fake db that predates the days= cutoff: raises TypeError if days is passed."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def get_daily_pnl(self, *args, **kwargs):
+        if "days" in kwargs:
+            raise TypeError("get_daily_pnl() got an unexpected keyword argument 'days'")
+        return list(self._rows)
+
+
+class TestLayer2bTrailingWindow:
+    """A plausible-but-STALE high row must not set the peak (it would mask a real
+    current drawdown). 90-day trailing window excludes it."""
+
+    def _rows_fresh_plus_stale(self):
+        from datetime import date, timedelta
+        today = date.today().isoformat()
+        stale = (date.today() - timedelta(days=120)).isoformat()
+        # Both rows are WITHIN the 5x plausibility ceiling ($50k on a $10k book),
+        # so only the temporal window can exclude the stale one.
+        return [
+            {"date": stale, "ending_balance": 11_800.0},  # months-old peak
+            {"date": today, "ending_balance": 11_200.0},  # current
+        ]
+
+    def test_stale_high_row_excluded_by_window(self):
+        rows = self._rows_fresh_plus_stale()
+        monitor = PnLMonitor(
+            db_manager=_WindowDb(rows), paper_tracker=None, starting_balance=10_000.0
+        )
+        # Window applied: stale $11,800 dropped -> peak is the current $11,200.
+        assert monitor.get_peak_balance() == pytest.approx(11_200.0)
+
+    def test_scenario_is_real_without_window(self):
+        # Sanity: unbounded read would pick the stale $11,800 (the masking bug).
+        rows = self._rows_fresh_plus_stale()
+        assert max(r["ending_balance"] for r in rows) == pytest.approx(11_800.0)
+
+    def test_requests_trailing_window(self):
+        db = MagicMock()
+        db.get_daily_pnl.return_value = [{"date": "2026-06-12", "ending_balance": 11_000.0}]
+        monitor = PnLMonitor(db_manager=db, paper_tracker=None, starting_balance=10_000.0)
+        monitor.get_peak_balance()
+        db.get_daily_pnl.assert_called_once_with(days=PnLMonitor.PEAK_LOOKBACK_DAYS)
+
+    def test_falls_back_when_days_unsupported(self):
+        rows = [{"date": "2026-06-12", "ending_balance": 11_000.0}]
+        monitor = PnLMonitor(
+            db_manager=_NoDaysDb(rows), paper_tracker=None, starting_balance=10_000.0
+        )
+        # TypeError on days= must fall back to the unbounded read, not crash.
+        assert monitor.get_peak_balance() == pytest.approx(11_000.0)

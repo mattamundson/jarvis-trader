@@ -119,6 +119,53 @@ export interface HealthResponse {
   tradingview_mcp_details?: string | null;
   llm_path_healthy?: boolean | null;
   llm_available?: boolean | null;
+  // Provider-redundancy snapshot (engine get_llm_provider_summary). Present when
+  // the engine wires it; absent on older builds (callers must guard).
+  llm_providers?: LLMProviderSummary | null;
+  vertex_failover_count?: number | null;
+  google_fallback_count?: number | null;
+}
+
+export interface LLMProviderSummary {
+  active_provider?: string | null;
+  primary_provider?: string | null;
+  primary_healthy?: boolean | null;
+  single_leg_warning?: boolean | null;
+}
+
+// ── Forward-test loop (engine /analytics/forward-test) ───────────────────────
+// Mirrors engine backtest.forward_test.run_forward_test. The endpoint also
+// returns a {status:"INSUFFICIENT_DATA", ...} body when the DB is not wired,
+// so every field below is treated as optional by the panel.
+export interface ForwardStats {
+  n_oos_windows: number;
+  p_edge: number;
+  pf_ci_lower: number;
+  binom_p: number;
+  total_trades: number;
+  total_pnl: number;
+}
+
+export interface ForwardTestCandidate {
+  id: string;
+  symbol: string;
+  attribution_level: string | null;
+  precise_attribution: boolean;
+  forward: ForwardStats;
+  survives_family_fdr: boolean;
+  graduated: boolean;
+  reason: string;
+}
+
+export interface ForwardTestReport {
+  status?: string;
+  recommendation?: string;
+  generated_at?: string;
+  window_days?: number;
+  n_active_candidates: number;
+  n_graduated: number;
+  candidates: ForwardTestCandidate[];
+  note?: string;
 }
 
 export interface SafetyStatus {
@@ -197,6 +244,53 @@ export interface OHLCVBar {
   ema_8?: number;
   ema_21?: number;
   ema_34?: number;
+}
+
+/** Fetch OHLCV bars for any symbol from GET /analyze/bars/{symbol} and normalize
+ * to OHLCVBar[] (unix-second time, numeric fields). The engine returns a
+ * BarsResponse {symbol, timeframe, bars: [...]} but may also return a bare
+ * array, so parse defensively. Returns [] on any failure (caller shows empty
+ * state). */
+export async function fetchBars(
+  symbol: string,
+  opts: { timeframe?: string; days?: number; limit?: number; futures?: boolean } = {}
+): Promise<OHLCVBar[]> {
+  const { timeframe = "5m", days = 7, limit = 500, futures = true } = opts;
+  const qs = `timeframe=${encodeURIComponent(timeframe)}&days=${days}&limit=${limit}&futures=${futures}`;
+  let raw: unknown;
+  try {
+    raw = await fetchEngine<unknown>(`/analyze/bars/${encodeURIComponent(symbol)}?${qs}`);
+  } catch {
+    return [];
+  }
+  type RawBar = {
+    time: string | number;
+    open: number | string;
+    high: number | string;
+    low: number | string;
+    close: number | string;
+    volume?: number | string | null;
+    vwap?: number | string | null;
+    stc?: number | string | null;
+  };
+  const arr: RawBar[] = Array.isArray(raw)
+    ? (raw as RawBar[])
+    : Array.isArray((raw as { bars?: RawBar[] })?.bars)
+      ? ((raw as { bars?: RawBar[] }).bars as RawBar[])
+      : [];
+  return arr
+    .map((b) => ({
+      time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
+      open: Number(b.open),
+      high: Number(b.high),
+      low: Number(b.low),
+      close: Number(b.close),
+      volume: b.volume != null ? Number(b.volume) : undefined,
+      vwap: b.vwap != null ? Number(b.vwap) : undefined,
+      stc: b.stc != null ? Number(b.stc) : undefined,
+    }))
+    .filter((b) => Number.isFinite(b.time) && Number.isFinite(b.close))
+    .sort((a, b) => a.time - b.time);
 }
 
 /** POST /analyze/technical — engine nested payload plus optional flattened fields for chart overlays. */
@@ -730,6 +824,78 @@ export interface ClosedPaperTradesResponse {
 /** Canonical: GET /paper/validation/trades/closed */
 export async function fetchClosedPaperTrades(): Promise<ClosedPaperTradesResponse> {
   return fetchEngine<ClosedPaperTradesResponse>("/paper/validation/trades/closed");
+}
+
+// ── Strategy ledger (gate-v2 backtest verdicts) ──────────────────────────────
+
+export interface LedgerEntry {
+  symbol: string | null;
+  family: string | null;
+  rank: number | null;
+  verdict: string | null; // PASS | FAIL
+  passed_via: string | null;
+  core_verdict: string | null;
+  alt_verdict: string | null;
+  created_at: string | null;
+  pf_ci_lower: number | null;
+  p_edge: number | null;
+  mc_95th_dd_pct: number | null;
+  dsr: number | null;
+  wfo_consistency: string | null;
+  fixed_params_min_pf: number | null;
+  cost_survives_through: string | null;
+  oos_trades: number | null;
+  source_file: string | null;
+}
+
+export interface LedgerResponse {
+  entries: LedgerEntry[];
+  total: number;
+  n_pass: number;
+  n_fail: number;
+  generated_at: string;
+}
+
+/** GET /strategy/ledger — gate-v2 backtest verdict ledger. */
+export async function fetchStrategyLedger(): Promise<LedgerResponse> {
+  return fetchEngine<LedgerResponse>("/strategy/ledger");
+}
+
+// ── Per-trade full review (closed loop) ──────────────────────────────────────
+
+export interface TradeFullReview {
+  trade: Record<string, any>;
+  attribution: Record<string, any>;
+  why: {
+    decision_id: number | null;
+    matched_by: string;
+    match_delta_seconds: number | null;
+    timestamp: string | null;
+    action: string | null;
+    confidence: number | null;
+    regime: string | null;
+    reasoning: string | null;
+    pipeline: Record<string, any> | null;
+  } | null;
+  backtest: LedgerEntry | null;
+  forward: {
+    profit_factor: number;
+    sharpe_ratio: number;
+    win_rate: number;
+    avg_win: number;
+    avg_loss: number;
+    max_drawdown: number;
+    total_trades: number;
+    total_pnl: number;
+    meets_paper_threshold: boolean;
+    period_days: number;
+  } | null;
+  review: Record<string, any> | null;
+}
+
+/** GET /trades/{id}/full-review — the closed-loop join for one placed trade. */
+export async function fetchTradeFullReview(tradeId: string): Promise<TradeFullReview> {
+  return fetchEngine<TradeFullReview>(`/trades/${encodeURIComponent(tradeId)}/full-review`);
 }
 
 // ── Approval / Trade Gating API ──────────────────────────────────────────────
