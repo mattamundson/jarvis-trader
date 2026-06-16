@@ -110,6 +110,65 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _categorize_sanity_reason(reason: str) -> str:
+    """Map a free-text _row_rejection reason to a machine category that lines up
+    with bar_quality_gate's BarReject.reason values where the checks overlap."""
+    r = reason.lower()
+    if "sentinel" in r:
+        return "IB_SENTINEL"
+    if "plausible band" in r:
+        return "PRICE_BAND"
+    if "jump vs reference" in r:
+        return "NEIGHBOR_JUMP"
+    if "outside [low, high]" in r or "high" in r and "< low" in r:
+        return "OHLC_LOGIC"
+    if "non-positive" in r or "non-finite" in r:
+        return "NONFINITE"
+    return "OTHER"
+
+
+def _record_rejections(
+    symbol: str,
+    interval: str,
+    source: str,
+    path: str,
+    items: list[tuple[str, str]],
+    db_path: Path,
+) -> None:
+    """Best-effort persist of rejection counts for dashboard observability.
+
+    ``items`` is a list of (reason_category, sample_detail). Aggregates by
+    category into one row per category with a count + first-seen sample. Never
+    raises — a missing table (DB predating migration 039) or any write error is
+    swallowed so the gate's primary job (refusing bad bars) is never affected.
+    """
+    if not items:
+        return
+    try:
+        agg: dict[str, list] = {}
+        for category, detail in items:
+            slot = agg.setdefault(category, [0, detail])
+            slot[0] += 1
+        ts = _utcnow_iso()
+        records = [
+            (ts, symbol, interval, source, path, category, detail, count)
+            for category, (count, detail) in agg.items()
+        ]
+        conn = _connect(db_path)
+        try:
+            conn.executemany(
+                "INSERT INTO bar_quality_rejections "
+                "(ts_utc, symbol, interval, source, path, reason, detail, count) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                records,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001 — observability must never break writes
+        logger.debug("[bars_repo] rejection recording skipped: %s", exc)
+
+
 def save_bars(
     df: pd.DataFrame,
     symbol: str,
@@ -171,10 +230,12 @@ def save_bars(
 
     rows = []
     rejected: list[str] = []
+    sanity_items: list[tuple[str, str]] = []
     for ts_iso, o, h, low, c, vol in parsed:
         reason = _row_rejection(sym, o, h, low, c, ref_close)
         if reason:
             rejected.append(f"{ts_iso}: {reason}")
+            sanity_items.append((_categorize_sanity_reason(reason), reason))
             continue
         rows.append((sym, interval, ts_iso, o, h, low, c, vol, source, fetched_at))
         ref_close = c
@@ -187,6 +248,7 @@ def save_bars(
             rejected[0],
             f" (+{len(rejected) - 1} more)" if len(rejected) > 1 else "",
         )
+        _record_rejections(sym, interval, source, "sanity", sanity_items, db)
 
     if not rows:
         return 0
@@ -197,6 +259,11 @@ def save_bars(
     from data.bar_quality_gate import apply_gate
 
     rows, _rejects = apply_gate(rows, symbol=symbol, interval=interval)
+    if _rejects:
+        _record_rejections(
+            sym, interval, source, "gate",
+            [(rj.reason, rj.detail) for rj in _rejects], db,
+        )
     if not rows:
         return 0
 
