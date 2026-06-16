@@ -32,6 +32,7 @@ import {
   type TradeJournalEntry,
 } from "@/lib/api";
 import { fetchAmoHealth, type AmoHealthResponse } from "@/lib/amo-api";
+import { BarDepthCard } from "@/components/BarDepthCard";
 
 // ── Brokers/positions response (subset we render) ─────────────────────────────
 interface PaperOpenPosition {
@@ -314,6 +315,9 @@ export default function TrustPanePage() {
                 </div>
               )}
             </Card>
+
+            {/* 5. Data integrity — bar coverage/health (live after engine restart) */}
+            <BarDepthCard />
           </section>
 
           {/* ───────── AMO-ARBITRAGE column ───────── */}
