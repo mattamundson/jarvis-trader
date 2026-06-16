@@ -226,6 +226,9 @@ export async function fetchBars(
     volume?: number | string | null;
     vwap?: number | string | null;
     stc?: number | string | null;
+    ema_8?: number | string | null;
+    ema_21?: number | string | null;
+    ema_34?: number | string | null;
   };
   const arr: RawBar[] = Array.isArray(raw)
     ? (raw as RawBar[])
@@ -250,6 +253,9 @@ export async function fetchBars(
         volume: b.volume != null ? Number(b.volume) : undefined,
         vwap: b.vwap != null ? Number(b.vwap) : undefined,
         stc: b.stc != null ? Number(b.stc) : undefined,
+        ema_8: b.ema_8 != null ? Number(b.ema_8) : undefined,
+        ema_21: b.ema_21 != null ? Number(b.ema_21) : undefined,
+        ema_34: b.ema_34 != null ? Number(b.ema_34) : undefined,
       };
     })
     .filter((b) => Number.isFinite(b.time) && Number.isFinite(b.close))
