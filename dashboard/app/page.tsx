@@ -28,6 +28,7 @@ import { EODSummaryWidget } from "@/components/EODSummaryWidget";
 import { EventsFeedWidget } from '@/components/EventsFeedWidget';
 import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
 import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidget";
+import { ForwardTestPanel } from "@/components/ForwardTestPanel";
 import { ExecutionCockpitWidget } from "@/components/ExecutionCockpitWidget";
 import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
@@ -219,6 +220,10 @@ export default function DashboardPage() {
 
         {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
         <ProactiveValidationWidget />
+
+        {/* Forward-Test loop — per-candidate OOS record + graduation verdict
+            (honest-edge spine: registry -> forward-test -> graduation) */}
+        <ForwardTestPanel />
 
         {/* Execution Cockpit — live fills, fidelity, slippage, pending approvals */}
         <ExecutionCockpitWidget />

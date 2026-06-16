@@ -137,7 +137,7 @@ export function DiscordWinRateChart() {
             <XAxis
               type="number"
               domain={[0, 100]}
-              tick={{ fontSize: 10, fontFamily: "monospace", fill: "#666" }}
+              tick={{ fontSize: 10, fontFamily: "monospace", fill: "#475569" }}
               tickFormatter={(v) => `${v}%`}
               axisLine={false}
               tickLine={false}
@@ -145,14 +145,14 @@ export function DiscordWinRateChart() {
             <YAxis
               type="category"
               dataKey="symbol"
-              tick={{ fontSize: 11, fontFamily: "monospace", fill: "#aaa" }}
+              tick={{ fontSize: 11, fontFamily: "monospace", fill: "#94a3b8" }}
               axisLine={false}
               tickLine={false}
               width={32}
             />
             <Tooltip
               content={<CustomTooltip />}
-              cursor={{ fill: "rgba(255,255,255,0.03)" }}
+              cursor={{ fill: "rgba(0,212,255,0.06)" }}
             />
             <Bar dataKey="win_rate_pct" radius={[0, 4, 4, 0]} maxBarSize={20}>
               {displayData.map((entry) => (

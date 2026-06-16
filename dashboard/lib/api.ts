@@ -119,6 +119,53 @@ export interface HealthResponse {
   tradingview_mcp_details?: string | null;
   llm_path_healthy?: boolean | null;
   llm_available?: boolean | null;
+  // Provider-redundancy snapshot (engine get_llm_provider_summary). Present when
+  // the engine wires it; absent on older builds (callers must guard).
+  llm_providers?: LLMProviderSummary | null;
+  vertex_failover_count?: number | null;
+  google_fallback_count?: number | null;
+}
+
+export interface LLMProviderSummary {
+  active_provider?: string | null;
+  primary_provider?: string | null;
+  primary_healthy?: boolean | null;
+  single_leg_warning?: boolean | null;
+}
+
+// ── Forward-test loop (engine /analytics/forward-test) ───────────────────────
+// Mirrors engine backtest.forward_test.run_forward_test. The endpoint also
+// returns a {status:"INSUFFICIENT_DATA", ...} body when the DB is not wired,
+// so every field below is treated as optional by the panel.
+export interface ForwardStats {
+  n_oos_windows: number;
+  p_edge: number;
+  pf_ci_lower: number;
+  binom_p: number;
+  total_trades: number;
+  total_pnl: number;
+}
+
+export interface ForwardTestCandidate {
+  id: string;
+  symbol: string;
+  attribution_level: string | null;
+  precise_attribution: boolean;
+  forward: ForwardStats;
+  survives_family_fdr: boolean;
+  graduated: boolean;
+  reason: string;
+}
+
+export interface ForwardTestReport {
+  status?: string;
+  recommendation?: string;
+  generated_at?: string;
+  window_days?: number;
+  n_active_candidates: number;
+  n_graduated: number;
+  candidates: ForwardTestCandidate[];
+  note?: string;
 }
 
 export interface SafetyStatus {

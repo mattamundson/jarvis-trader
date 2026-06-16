@@ -92,14 +92,30 @@ export function EngineHealthWidget() {
       ? "error"
       : "unknown";
 
+  // LLM status is NOT just "is the path alive" — a request served by a fallback
+  // provider (anthropic primary down -> gemini active) still has llm_path_healthy
+  // === true, which would otherwise show green and hide the degradation. Fold the
+  // provider-redundancy snapshot in so a fallback or one-leg-from-dark state is
+  // surfaced as a warning, and a dead path as an error.
+  const llmProv = data?.llm_providers ?? null;
+  const llmOnFallback =
+    !!llmProv && llmProv.primary_healthy === false;
+  const llmSingleLeg = !!llmProv && llmProv.single_leg_warning === true;
   const llm: StatusDot =
     data == null
       ? "unknown"
-      : data.llm_path_healthy === true
-      ? "ok"
       : data.llm_path_healthy === false
       ? "error"
+      : llmOnFallback || llmSingleLeg
+      ? "warn"
+      : data.llm_path_healthy === true
+      ? "ok"
       : "unknown";
+  const llmLabel = llmOnFallback
+    ? `LLM fallback${llmProv?.active_provider ? ` (${llmProv.active_provider})` : ""}`
+    : llmSingleLeg
+    ? "LLM single-leg"
+    : "LLM path";
 
   const ibkrExec: StatusDot =
     data == null
@@ -202,7 +218,7 @@ export function EngineHealthWidget() {
       {/* 4 subsystem checks */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <Dot state={tv} label="TV MCP" />
-        <Dot state={llm} label="LLM path" />
+        <Dot state={llm} label={llmLabel} />
         <Dot state={ibkrExec} label="IBKR exec" />
         <Dot state={ibkrData} label="IBKR data" />
       </div>
@@ -211,6 +227,20 @@ export function EngineHealthWidget() {
       {data?.tradingview_mcp_healthy === false && data.tradingview_mcp_details && (
         <p className="text-[11px] text-bear/80 font-mono truncate">
           {data.tradingview_mcp_details}
+        </p>
+      )}
+
+      {/* LLM degradation detail — loud when running on a fallback or one leg from dark */}
+      {(llmOnFallback || llmSingleLeg) && (
+        <p className="text-[11px] text-warn/90 font-mono truncate">
+          {llmOnFallback
+            ? `LLM on fallback: ${llmProv?.active_provider ?? "?"} (primary ${
+                llmProv?.primary_provider ?? "?"
+              } unhealthy)`
+            : "LLM one provider-failure from dark (single leg)"}
+          {typeof data?.vertex_failover_count === "number" &&
+            data.vertex_failover_count > 0 &&
+            ` · vertex failovers: ${data.vertex_failover_count}`}
         </p>
       )}
     </div>
