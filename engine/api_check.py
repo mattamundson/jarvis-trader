@@ -1,7 +1,11 @@
 
+import os
+
 import requests
 
-h = {'X-API-Key': 'xPRdYjkyUP20r29jrhAlgefneE1oYGSvFn3ri5C1OGc'}
+# Engine API key comes from the environment (same API_KEY the engine validates).
+# Never hardcode the credential in source -- it ends up in git history.
+h = {'X-API-Key': os.environ.get('API_KEY', '')}
 base = 'http://localhost:8010'
 
 for label, method, url, body in [
