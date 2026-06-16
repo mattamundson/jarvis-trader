@@ -326,6 +326,15 @@ class PnLMonitor:
     # leaves no false-positive risk for a real forward-validation run.
     PLAUSIBLE_PEAK_MULTIPLE = 5.0
 
+    # The plausibility ceiling above stops an implausibly-LARGE row from inflating
+    # the peak, but a *plausible-but-stale* high row (e.g. an $11.5k peak from
+    # months ago on an $11k book) would still mask a genuine current drawdown and
+    # under-fire the breaker. Bound the high-water mark to a trailing window so only
+    # recent history can set the peak. 90d comfortably covers an active forward test
+    # while discarding ancient snapshots. Reuses the DB layer's existing `days=`
+    # cutoff (get_daily_pnl), so no date parsing lives here.
+    PEAK_LOOKBACK_DAYS = 90
+
     def _plausible_peak_ceiling(self) -> float:
         """Upper bound on a believable paper equity peak, or 0.0 if no anchor."""
         if self._starting_balance and self._starting_balance > 0:
@@ -338,14 +347,22 @@ class PnLMonitor:
         history.  Falls back to the in-memory paper tracker equity peak if the
         DB has no rows, or to zero if neither is available.
 
-        Rows whose ending_balance exceeds the plausibility ceiling (see
+        Two guards keep a bad row from masking a real drawdown: rows older than
+        ``PEAK_LOOKBACK_DAYS`` are excluded (a stale high row can't set the peak),
+        and rows whose ending_balance exceeds the plausibility ceiling (see
         ``PLAUSIBLE_PEAK_MULTIPLE``) are treated as demo/IB contamination and
         excluded so they cannot inflate the peak used by the drawdown breaker.
         """
         # Try SQLite history first
         if self._db is not None:
             try:
-                rows = self._db.get_daily_pnl()
+                # Trailing-window high-water mark: only recent rows may set the
+                # peak. Falls back to the unbounded read if this DB impl predates
+                # the days= cutoff.
+                try:
+                    rows = self._db.get_daily_pnl(days=self.PEAK_LOOKBACK_DAYS)
+                except TypeError:
+                    rows = self._db.get_daily_pnl()
                 if rows:
                     balances = [r.get("ending_balance", 0.0) or 0.0 for r in rows]
                     ceiling = self._plausible_peak_ceiling()

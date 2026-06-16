@@ -103,7 +103,6 @@ def extract_signal_fields(symbol: str, result: dict) -> SignalFields:
 
     trade = result.get("trade_decision") or {}
     fund = result.get("fund_decision") or {}
-    risk = result.get("risk_decision") or {}
 
     entry_price = _f(
         trade.get("entry_price")
@@ -358,7 +357,7 @@ async def broadcast_signal(symbol: str, result: dict, *, source: str = "pipeline
         )
         channels = ("telegram", "discord", "whatsapp", "windows_toast")
         any_sent = False
-        for name, res in zip(channels, results):
+        for name, res in zip(channels, results, strict=False):
             if isinstance(res, Exception) or res is False:
                 summary["failed"].append(name)
             elif res is None:
