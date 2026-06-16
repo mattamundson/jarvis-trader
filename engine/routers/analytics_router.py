@@ -491,6 +491,44 @@ async def get_performance_compare(request: Request) -> dict:
 
 
 @router.get(
+    "/forward-test",
+    response_model=None,
+    description=(
+        "Forward-test status for the pre-registered candidate set: per-candidate "
+        "out-of-sample windows, family-FDR survival, and graduation verdict "
+        "(read-only; never mutates execution or scheduler state)."
+    ),
+)
+@limiter.limit("60/minute")
+async def get_forward_test(request: Request) -> dict:
+    """Read-only forward-test loop result for the cockpit / dashboard.
+
+    Surfaces ``run_forward_test`` over the locked candidate registry so the
+    north-star liveness pane can show whether any held candidate is graduating
+    on its forward (paper) record. ``persist=False`` -- this endpoint only reads
+    closed trades; it writes nothing.
+    """
+    try:
+        db = _get_db()
+    except HTTPException:
+        return {
+            "status": "INSUFFICIENT_DATA",
+            "recommendation": "Database not initialized.",
+            "n_active_candidates": 0,
+            "n_graduated": 0,
+            "candidates": [],
+        }
+
+    try:
+        from backtest.forward_test import run_forward_test
+
+        return run_forward_test(db=db, persist=False)
+    except Exception as exc:
+        logger.error(f"[Analytics] forward_test failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
+
+
+@router.get(
     "/validation-report",
     response_model=None,
     description=(
