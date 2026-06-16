@@ -217,7 +217,8 @@ export async function fetchBars(
     return [];
   }
   type RawBar = {
-    time: string | number;
+    time?: string | number;
+    timestamp?: string | number;
     open: number | string;
     high: number | string;
     low: number | string;
@@ -232,16 +233,25 @@ export async function fetchBars(
       ? ((raw as { bars?: RawBar[] }).bars as RawBar[])
       : [];
   return arr
-    .map((b) => ({
-      time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
-      open: Number(b.open),
-      high: Number(b.high),
-      low: Number(b.low),
-      close: Number(b.close),
-      volume: b.volume != null ? Number(b.volume) : undefined,
-      vwap: b.vwap != null ? Number(b.vwap) : undefined,
-      stc: b.stc != null ? Number(b.stc) : undefined,
-    }))
+    .map((b) => {
+      // The engine's BarsResponse names the time field `timestamp`; bare-array
+      // fallbacks may use `time`. Accept either so the chart isn't silently
+      // emptied by a field-name mismatch (every bar would fail the finite filter).
+      const rawTime = b.time ?? b.timestamp;
+      return {
+        time:
+          typeof rawTime === "string"
+            ? Math.floor(new Date(rawTime).getTime() / 1000)
+            : (rawTime as number),
+        open: Number(b.open),
+        high: Number(b.high),
+        low: Number(b.low),
+        close: Number(b.close),
+        volume: b.volume != null ? Number(b.volume) : undefined,
+        vwap: b.vwap != null ? Number(b.vwap) : undefined,
+        stc: b.stc != null ? Number(b.stc) : undefined,
+      };
+    })
     .filter((b) => Number.isFinite(b.time) && Number.isFinite(b.close))
     .sort((a, b) => a.time - b.time);
 }
