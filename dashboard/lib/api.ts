@@ -145,6 +145,18 @@ export interface ForwardTestCandidate {
   reason: string;
 }
 
+// A decision lineage is the LLM identity stamped on live paper entries (P4) --
+// the unit that actually trades. Only pre_registered lineages may graduate;
+// default-material "unregistered:*" singletons render as context only.
+export interface ForwardTestLineage {
+  lineage: string;
+  pre_registered: boolean;
+  forward: ForwardStats;
+  survives_family_fdr: boolean;
+  graduated: boolean;
+  reason: string;
+}
+
 export interface ForwardTestReport {
   status?: string;
   recommendation?: string;
@@ -153,6 +165,11 @@ export interface ForwardTestReport {
   n_active_candidates: number;
   n_graduated: number;
   candidates: ForwardTestCandidate[];
+  // P4 lineage track -- optional so the panel degrades gracefully against an
+  // engine that predates the lineage block.
+  lineages?: ForwardTestLineage[];
+  n_lineages?: number;
+  n_lineages_graduated?: number;
   note?: string;
 }
 
