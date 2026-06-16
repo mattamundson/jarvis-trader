@@ -316,7 +316,8 @@ export async function fetchBars(
     return [];
   }
   type RawBar = {
-    time: string | number;
+    time?: string | number;
+    timestamp?: string | number;
     open: number | string;
     high: number | string;
     low: number | string;
@@ -324,6 +325,9 @@ export async function fetchBars(
     volume?: number | string | null;
     vwap?: number | string | null;
     stc?: number | string | null;
+    ema_8?: number | string | null;
+    ema_21?: number | string | null;
+    ema_34?: number | string | null;
   };
   const arr: RawBar[] = Array.isArray(raw)
     ? (raw as RawBar[])
@@ -331,16 +335,28 @@ export async function fetchBars(
       ? ((raw as { bars?: RawBar[] }).bars as RawBar[])
       : [];
   return arr
-    .map((b) => ({
-      time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
-      open: Number(b.open),
-      high: Number(b.high),
-      low: Number(b.low),
-      close: Number(b.close),
-      volume: b.volume != null ? Number(b.volume) : undefined,
-      vwap: b.vwap != null ? Number(b.vwap) : undefined,
-      stc: b.stc != null ? Number(b.stc) : undefined,
-    }))
+    .map((b) => {
+      // The engine's BarsResponse names the time field `timestamp`; bare-array
+      // fallbacks may use `time`. Accept either so the chart isn't silently
+      // emptied by a field-name mismatch (every bar would fail the finite filter).
+      const rawTime = b.time ?? b.timestamp;
+      return {
+        time:
+          typeof rawTime === "string"
+            ? Math.floor(new Date(rawTime).getTime() / 1000)
+            : (rawTime as number),
+        open: Number(b.open),
+        high: Number(b.high),
+        low: Number(b.low),
+        close: Number(b.close),
+        volume: b.volume != null ? Number(b.volume) : undefined,
+        vwap: b.vwap != null ? Number(b.vwap) : undefined,
+        stc: b.stc != null ? Number(b.stc) : undefined,
+        ema_8: b.ema_8 != null ? Number(b.ema_8) : undefined,
+        ema_21: b.ema_21 != null ? Number(b.ema_21) : undefined,
+        ema_34: b.ema_34 != null ? Number(b.ema_34) : undefined,
+      };
+    })
     .filter((b) => Number.isFinite(b.time) && Number.isFinite(b.close))
     .sort((a, b) => a.time - b.time);
 }
@@ -1671,6 +1687,30 @@ export interface OpenPositionsResponse {
 
 export async function fetchOpenPositions(): Promise<OpenPositionsResponse> {
   return fetchEngine<OpenPositionsResponse>("/portfolio/paper/positions");
+}
+
+// ── Live open paper trades (truthful: reads paper_trades WHERE status='open') ──
+// /portfolio/paper/positions reads OMS/broker state and can be empty while the
+// paper_trades table holds open rows; /execution/fidelity-status reads the table
+// directly, so it is the canonical "what is open right now" source for the UI.
+export interface ExecutionOpenTrade {
+  symbol: string;
+  side: string;
+  quantity: number;
+  entry_price: number;
+  entry_time: string;
+  slippage_ticks?: number | null;
+}
+
+export interface ExecutionFidelityStatus {
+  generated_at: string;
+  measuring_real_fills: boolean;
+  open_trades: ExecutionOpenTrade[];
+  pending_approvals: { count: number; oldest_age_min: number | null };
+}
+
+export async function fetchExecutionOpenTrades(): Promise<ExecutionFidelityStatus> {
+  return fetchEngine<ExecutionFidelityStatus>("/execution/fidelity-status");
 }
 
 // ── Discord Bookmark Feed (recent + search) ──────────────────────────────────

@@ -272,8 +272,11 @@ export default function CommandCenterPage() {
   const session = getMarketSession();
   const refreshInterval = session.isActive ? 30_000 : 5 * 60_000;
 
-  const [now, setNow] = useState(new Date());
+  // Start null so SSR and the client's first paint match (no new Date() during
+  // render); the real clock starts after mount. Prevents React hydration error #418.
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
+    setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -462,15 +465,17 @@ export default function CommandCenterPage() {
           {/* Live clock */}
           <div className="text-right">
             <div className="text-xl font-mono text-cyan-300 tabular-nums tracking-widest">
-              {now.toLocaleTimeString("en-US", { hour12: false })}
+              {now ? now.toLocaleTimeString("en-US", { hour12: false }) : "--:--:--"}
             </div>
             <div className="text-xs text-slate-500 font-mono">
-              {now.toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+              {now
+                ? now.toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : ""}
             </div>
           </div>
 

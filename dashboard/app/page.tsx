@@ -45,6 +45,8 @@ import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWid
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
 import { MESSprintGate } from "@/components/MESSprintGate";
 import PendingApprovals from "@/components/PendingApprovals";
+import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
+import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -122,6 +124,9 @@ export default function DashboardPage() {
   const [analysisSymbol, setAnalysisSymbol] = React.useState("SPY");
   const [isRunning, setIsRunning] = React.useState(false);
   const [lastResult, setLastResult] = React.useState<Record<string, unknown> | null>(null);
+  // Cockpit live chart — our own real-time futures bars (never TradingView's delayed embed).
+  const [chartSymbol, setChartSymbol] = React.useState<ChartSymbol>("MES");
+  const [chartTimeframe, setChartTimeframe] = React.useState<ChartTimeframe>("1h");
 
   const runAnalysis = useCallback(async () => {
     if (!engineReachable || isRunning) return;
@@ -222,6 +227,16 @@ export default function DashboardPage() {
 
         {/* Execution Cockpit — live fills, fidelity, slippage, pending approvals */}
         <ExecutionCockpitWidget />
+
+        {/* Live market chart — our own real-time futures bars (TradingView's free
+            embed delays CME futures, so futures are charted from our data here). */}
+        <PriceChartPanel
+          symbol={chartSymbol}
+          timeframe={chartTimeframe}
+          onSymbolChange={setChartSymbol}
+          onTimeframeChange={setChartTimeframe}
+          height={360}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Signal Flow — per-instrument STC values and pipeline block stage */}

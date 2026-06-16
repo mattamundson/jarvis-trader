@@ -1509,7 +1509,7 @@ async def lifespan(app: FastAPI):
             from backtest.signals import compute_all_indicators, generate_signals
             from routers.scanner_router import record_signal
 
-            if safety_layer and safety_layer.get_status().get("kill_switch_active"):
+            if safety_layer and safety_layer.get_status().get("is_killed"):
                 logger.info("[INTRADAY_15M] Skipping — kill switch active")
                 return
 
@@ -1747,11 +1747,15 @@ async def lifespan(app: FastAPI):
     try:
         from scanner.signal_scanner import SignalScanner
 
-        # Use FUTURES_WATCHLIST from settings so MCL, MNQ, MES are all included.
-        # Fallback to ["MCL", "MNQ"] if setting is empty.
-        _scan_symbols = (
+        # Use FUTURES_WATCHLIST from settings so MES, MGC are included, and add
+        # OPTIONS_WATCHLIST equities (QQQ, AAPL, SPY, TSLA) so equity signals
+        # become real paper trades too. The scanner prices/analyzes each symbol
+        # with the correct asset class via set_futures_symbols() below.
+        _futures_syms = (
             list(settings.FUTURES_WATCHLIST) if settings.FUTURES_WATCHLIST else ["MCL", "MNQ"]
         )
+        _equity_syms = list(getattr(settings, "OPTIONS_WATCHLIST", []) or [])
+        _scan_symbols = _futures_syms + _equity_syms
         _scanner_initial_delay = int(getattr(settings, "SCANNER_INITIAL_DELAY_SECONDS", 60))
         signal_scanner = SignalScanner(
             trading_pipeline=trading_pipeline,
@@ -1764,6 +1768,22 @@ async def lifespan(app: FastAPI):
         if paper_tracker is not None:
             signal_scanner.set_paper_tracker(paper_tracker)
             logger.info("Signal scanner: paper_tracker injected")
+        # Inject safety layer (kill-switch gate) + data manager (entry-price
+        # sanity / phantom-price guard) so the autonomous live opener enforces
+        # both before booking a paper trade. Without these the scanner loop had
+        # no kill-switch check and no price-sanity gate.
+        if safety_layer is not None:
+            signal_scanner.set_safety_layer(safety_layer)
+            logger.info("Signal scanner: safety_layer injected (kill-switch gate)")
+        if data_manager is not None:
+            signal_scanner.set_data_manager(data_manager)
+            logger.info("Signal scanner: data_manager injected (entry-price sanity)")
+        # Declare which scanned symbols are futures; the rest are priced as equities.
+        signal_scanner.set_futures_symbols(_futures_syms)
+        if _equity_syms:
+            logger.info(
+                "Signal scanner: equity execution enabled for %s", _equity_syms
+            )
         inject_scanner_deps(signal_scanner)
         if settings.WATCHLIST_SCAN_ENABLED:
             asyncio.create_task(signal_scanner.start())
@@ -2421,8 +2441,11 @@ async def lifespan(app: FastAPI):
                     _side = (_trade.get("side") or "buy").lower()
                     _entry = float(_trade.get("entry_price") or 0.0)
                     _tid = _trade.get("trade_id", "")
+                    _is_fut_sm = _sym in {
+                        str(x).upper() for x in (settings.FUTURES_WATCHLIST or [])
+                    }
                     try:
-                        _pd = await data_manager.get_current_price(_sym, is_futures=True)
+                        _pd = await data_manager.get_current_price(_sym, is_futures=_is_fut_sm)
                         _cur = float(
                             _pd.get("last_price")
                             or _pd.get("price")
