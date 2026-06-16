@@ -264,6 +264,14 @@ async def _get_ib_gateway_health() -> dict:
     if data_manager is not None:
         health["data_source"] = getattr(data_manager, "_last_bar_source", None)
         health["last_ibkr_data_ts"] = getattr(data_manager, "_last_ibkr_data_ts", None)
+        # Per-symbol staleness: {symbol: seconds_since_last_served}. Empty until
+        # the first serve; absent only on an older engine build (defensive read).
+        freshness_fn = getattr(data_manager, "symbol_freshness", None)
+        if callable(freshness_fn):
+            try:
+                health["per_symbol_freshness"] = freshness_fn()
+            except Exception:
+                pass
         wd = getattr(data_manager, "_watchdog", None)
         if wd is not None:
             try:
@@ -579,6 +587,39 @@ async def _full_health_inner() -> dict:
             status["pnl_monitor"] = {"status": "not_initialized"}
     except Exception as e:
         status["pnl_monitor"] = {"status": "error", "error": str(e)}
+
+    # 7. LLM path — which provider is serving + whether we're on a fallback leg.
+    # Sustained gemini/openai fallback has been a recurring silent degrade, so
+    # surface provider + fallback_active here for the dashboard badge. Reuses the
+    # existing llm.client snapshot helpers (no new LLM logic). Defensive: any
+    # failure yields status "unknown" rather than degrading the whole endpoint.
+    try:
+        from llm.client import get_llm_path_state, get_llm_provider_summary
+
+        path_state = get_llm_path_state()
+        summary = get_llm_provider_summary()
+        healthy = bool(path_state.get("healthy", True))
+        active = summary.get("active_provider")
+        primary = summary.get("primary_provider")
+        provider = active or primary
+        fallback_active = active is not None and primary is not None and active != primary
+        llm_status = "degraded" if (not healthy or fallback_active) else "ok"
+        status["llm"] = {
+            "status": llm_status,
+            "provider": provider,
+            "fallback_active": fallback_active,
+            "healthy": healthy,
+            "primary_provider": primary,
+            "active_provider": active,
+            "providers_available": summary.get("providers_available"),
+            "single_leg_warning": summary.get("single_leg_warning", False),
+            "google_fallback_count": int(path_state.get("google_fallback_count", 0) or 0),
+            "vertex_failover_count": int(path_state.get("vertex_failover_count", 0) or 0),
+        }
+        if llm_status == "degraded" and overall == "healthy":
+            overall = "degraded"
+    except Exception as e:
+        status["llm"] = {"status": "unknown", "error": str(e)}
 
     return {
         "overall": overall,

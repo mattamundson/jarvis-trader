@@ -870,6 +870,10 @@ class MarketDataManager:
         self._last_bar_source: Optional[str] = None
         self._last_price_source: Optional[str] = None
         self._last_ibkr_data_ts: Optional[float] = None
+        # Per-symbol wall-clock timestamp of the last successful bar/price serve,
+        # so /health/full can expose per-instrument staleness (not just the global
+        # last source). Recorded at the public get_bars/get_current_price exits.
+        self._symbol_last_ts: dict[str, float] = {}
         # Set by IBDataWatchdog.start() so /health/full can read its status.
         self._watchdog = None
 
@@ -877,6 +881,32 @@ class MarketDataManager:
         """Wire in a SchwabConnector at startup (called from main.py after Schwab connects)."""
         self.schwab = connector
         logger.info("MarketDataManager: SchwabConnector injected as Tier 2 data source")
+
+    def _mark_symbol_fresh(self, symbol: str) -> None:
+        """Record the wall-clock time we last served data for `symbol` (any tier).
+
+        Powers /health/full per_symbol_freshness so per-instrument staleness is
+        visible. Defensive and ~nanosecond cost — never raises into the hot path.
+        """
+        try:
+            self._symbol_last_ts[symbol.upper()] = time.time()
+        except Exception:
+            pass
+
+    def symbol_freshness(self) -> dict[str, float]:
+        """Map of symbol -> seconds since data was last served for it.
+
+        Read by /health/full. Cheap, defensive, and snapshot-consistent (one
+        `now` for the whole map).
+        """
+        now = time.time()
+        out: dict[str, float] = {}
+        for sym, ts in list(self._symbol_last_ts.items()):
+            try:
+                out[sym] = round(now - ts, 1)
+            except Exception:
+                continue
+        return out
 
     async def initialize(self):
         """Connect to all available data sources."""
@@ -946,6 +976,29 @@ class MarketDataManager:
             return ok
 
     async def get_bars(
+        self,
+        symbol: str,
+        lookback_days: int = 30,
+        timeframe: str = "5m",
+        is_futures: bool = False,
+    ) -> pd.DataFrame:
+        """
+        Get OHLCV bars. Waterfall: TradingView MCP → IBKR → Polygon → CSV cache.
+        Returns empty DataFrame if all sources unavailable.
+
+        Thin public wrapper over ``_get_bars_impl`` that records per-symbol
+        freshness on any non-empty serve (powers /health/full per_symbol_freshness).
+        The waterfall + source-tracking logic is unchanged in the impl.
+        """
+        df = await self._get_bars_impl(symbol, lookback_days, timeframe, is_futures)
+        try:
+            if df is not None and not df.empty:
+                self._mark_symbol_fresh(symbol)
+        except Exception:
+            pass
+        return df
+
+    async def _get_bars_impl(
         self,
         symbol: str,
         lookback_days: int = 30,
@@ -1098,6 +1151,23 @@ class MarketDataManager:
         return empty
 
     async def get_current_price(self, symbol: str, is_futures: bool = False) -> dict:
+        """
+        Get latest price. Returns {last_price, prev_close, change_pct, source}.
+        Never returns silent 0.0 — None means genuinely unavailable.
+
+        Thin public wrapper over ``_get_current_price_impl`` that records per-symbol
+        freshness whenever a real price is served (powers /health/full
+        per_symbol_freshness). Waterfall logic is unchanged in the impl.
+        """
+        result = await self._get_current_price_impl(symbol, is_futures)
+        try:
+            if isinstance(result, dict) and result.get("last_price") is not None:
+                self._mark_symbol_fresh(symbol)
+        except Exception:
+            pass
+        return result
+
+    async def _get_current_price_impl(self, symbol: str, is_futures: bool = False) -> dict:
         """
         Get latest price. Returns {last_price, prev_close, change_pct, source}.
         Never returns silent 0.0 — None means genuinely unavailable.
