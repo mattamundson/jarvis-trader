@@ -133,6 +133,41 @@ export interface LLMProviderSummary {
   single_leg_warning?: boolean | null;
 }
 
+// Full health (/health/full). Subsystems carry free-form detail; we type the
+// ib_gateway data-leg observability fields shipped in PR #68 (auto-reconnect
+// watchdog + silent-degrade visibility). All optional — older engines omit them,
+// so every consumer must guard.
+export type DataSourceTier = "ibkr" | "sqlite_cache" | "polygon" | "csv_cache" | "none";
+
+export interface IBDataWatchdogStatus {
+  enabled?: boolean | null;
+  running?: boolean | null;
+  consecutive_failures?: number | null;
+  last_attempt_ts?: number | null;
+  last_reconnect_ts?: number | null;
+}
+
+export interface IBGatewayHealth {
+  status?: string | null;
+  execution_connected?: boolean | null;
+  data_connected?: boolean | null;
+  data_source?: DataSourceTier | string | null;
+  last_ibkr_data_ts?: number | null;
+  watchdog?: IBDataWatchdogStatus | null;
+}
+
+export interface FullHealthResponse {
+  overall: string;
+  timestamp: string;
+  uptime_seconds: number;
+  version: string;
+  phase: string;
+  subsystems: {
+    ib_gateway?: IBGatewayHealth;
+    [key: string]: unknown;
+  };
+}
+
 // ── Forward-test loop (engine /analytics/forward-test) ───────────────────────
 // Mirrors engine backtest.forward_test.run_forward_test. The endpoint also
 // returns a {status:"INSUFFICIENT_DATA", ...} body when the DB is not wired,
