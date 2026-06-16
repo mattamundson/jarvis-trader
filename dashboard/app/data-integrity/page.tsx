@@ -125,23 +125,27 @@ export default function DataIntegrityPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="p-6 border rounded-xl bg-card">
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-2">
             <Server className="w-6 h-6 text-primary" />
             <h2 className="text-xl font-semibold">Infrastructure Status</h2>
           </div>
+          <p className="text-[11px] text-muted-foreground italic mb-4">
+            Configured endpoints (not live-probed here) — see{" "}
+            <a href="/health" className="text-blue-400 underline">/health</a> for live subsystem state.
+          </p>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm">Redis Pub/Sub</span>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-sm font-medium">CONNECTED</span>
+                <div className="w-2 h-2 rounded-full bg-slate-500" />
+                <span className="text-sm font-medium text-muted-foreground">CONFIGURED</span>
               </div>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm">QuestDB ILP (port 9009)</span>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-sm font-medium">ACTIVE</span>
+                <div className="w-2 h-2 rounded-full bg-slate-500" />
+                <span className="text-sm font-medium text-muted-foreground">CONFIGURED</span>
               </div>
             </div>
           </div>
