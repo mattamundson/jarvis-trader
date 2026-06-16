@@ -39,6 +39,15 @@ except ImportError:
     except ImportError:
         _compute_idem_key = None  # type: ignore[assignment]
 
+try:
+    from risk.exit_price_sanity import assert_exit_price_sane
+except ImportError:
+    try:
+        from engine.risk.exit_price_sanity import assert_exit_price_sane
+    except ImportError:  # pragma: no cover - guard is additive; never hard-fail import
+        def assert_exit_price_sane(symbol, entry_price, exit_price):  # type: ignore[misc]
+            return None
+
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
 
@@ -294,6 +303,11 @@ class PortfolioTracker:
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
 
+        # Phantom-price guard (2026-06-15): reject a corrupt exit BEFORE any P&L
+        # compute or DB write, so a wrong-era/non-finite price can never write a
+        # phantom realized-P&L row. Fail-closed; raises ExitPriceSanityError.
+        assert_exit_price_sane(trade.symbol, trade.entry_price, exit_price)
+
         # Compute close fields on a local copy before any writes
         exit_time = datetime.now(timezone.utc).isoformat()
         action_lower = trade.action.lower()
@@ -484,6 +498,88 @@ class PortfolioTracker:
             self._open.pop(tid, None)
 
         return [t.to_dict() for t in sorted(valid, key=lambda t: t.entry_time, reverse=True)]
+
+    def get_open_positions_authoritative(self) -> Tuple[List[dict], dict]:
+        """Return open positions anchored to the DB (source of truth) + a recon report.
+
+        ``get_open_positions`` reads only the in-memory ``_open`` map, which can
+        drift from ``paper_trades`` whenever a row is written by a path that
+        bypasses the tracker (e.g. the stop-monitor's ``db_manager.close_trade``
+        fallback, or a peer process). That drift is the root of the
+        "dashboard shows no positions while one is open" trust bug.
+
+        This method makes the DB authoritative: when a db_manager is present the
+        returned list is the set of ``status='open'`` paper_trades, each rendered
+        in the position-dict shape consumers expect (``action`` aliased from the
+        DB ``side`` column). The in-memory dict is preferred when both agree so
+        the richer runtime shape is kept. Divergence is surfaced (never silent)
+        in the recon report and logged at WARNING.
+
+        Returns ``(positions, recon)`` where recon is::
+
+            {"source", "reconciled", "count", "in_memory_count", "db_count",
+             "only_in_db": [trade_id...], "only_in_memory": [trade_id...]}
+        """
+        mem = self.get_open_positions()
+        mem_by_id = {str(p.get("trade_id")): p for p in mem if p.get("trade_id")}
+
+        if self._db is None:
+            return mem, {
+                "source": "memory",
+                "reconciled": True,
+                "count": len(mem),
+                "in_memory_count": len(mem),
+                "db_count": None,
+                "only_in_db": [],
+                "only_in_memory": [],
+            }
+
+        try:
+            db_rows = self._db.get_open_trades()
+        except Exception as exc:  # DB error must never break the read
+            logger.error("[TRACKER] authoritative read: get_open_trades failed: %s", exc)
+            return mem, {
+                "source": "memory_db_error",
+                "reconciled": False,
+                "count": len(mem),
+                "in_memory_count": len(mem),
+                "db_count": None,
+                "only_in_db": [],
+                "only_in_memory": [],
+            }
+
+        db_by_id = {str(r.get("trade_id")): r for r in db_rows if r.get("trade_id")}
+
+        positions: List[dict] = []
+        for tid, row in db_by_id.items():
+            if tid in mem_by_id:
+                positions.append(mem_by_id[tid])
+            else:
+                norm = dict(row)
+                # Consumers read `action`; the DB column is `side`.
+                norm.setdefault("action", row.get("side"))
+                positions.append(norm)
+
+        only_in_db = sorted(set(db_by_id) - set(mem_by_id))
+        only_in_memory = sorted(set(mem_by_id) - set(db_by_id))
+        reconciled = not only_in_db and not only_in_memory
+        if not reconciled:
+            logger.warning(
+                "[TRACKER] open-position drift: only_in_db=%s only_in_memory=%s "
+                "(DB is authoritative; returning DB set)",
+                only_in_db,
+                only_in_memory,
+            )
+
+        return positions, {
+            "source": "db_authoritative",
+            "reconciled": reconciled,
+            "count": len(positions),
+            "in_memory_count": len(mem),
+            "db_count": len(db_by_id),
+            "only_in_db": only_in_db,
+            "only_in_memory": only_in_memory,
+        }
 
     def get_performance(self) -> dict:
         """
@@ -786,6 +882,11 @@ class PortfolioTracker:
         trade = self._open.get(trade_id)
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
+
+        # Phantom-price guard (2026-06-15): reject a corrupt exit before any
+        # write — even when an explicit pnl is supplied, the bad exit_price is
+        # still persisted and would poison reconciliation. Fail-closed.
+        assert_exit_price_sane(trade.symbol, trade.entry_price, exit_price)
 
         # Compute all close fields before any writes
         resolved_exit_time = exit_time or datetime.now(timezone.utc).isoformat()

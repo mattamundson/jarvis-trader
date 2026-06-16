@@ -275,6 +275,36 @@ async def get_trade_analytics(request: Request) -> TradeAnalyticsResponse:
 
 
 @router.get(
+    "/pnl-reconciliation",
+    description="Recompute realized P&L from closed paper_trades and flag any "
+    "date where the stored daily_pnl snapshot disagrees (phantom-P&L detector).",
+)
+@limiter.limit("60/minute")
+async def get_pnl_reconciliation(request: Request, epsilon: float = 0.01) -> dict:
+    """Detective control for the phantom-P&L class (2026-06-15).
+
+    Independently re-derives per-date realized P&L from the source of truth
+    (``SUM(pnl)`` over ``status='closed'`` paper_trades) and compares it to the
+    stored ``daily_pnl.realized_pnl``. ``ok=false`` with a non-empty ``drifts``
+    list means a stored figure has drifted from the trades that back it — the
+    exact signature of a phantom or mis-written P&L row.
+    """
+    db = _get_db()
+    try:
+        report = db.reconcile_daily_pnl(epsilon=float(epsilon))
+    except Exception as exc:
+        logger.error(f"P&L reconciliation error: {exc}")
+        raise HTTPException(500, str(exc)) from exc
+    if not report.get("ok"):
+        logger.warning(
+            "[pnl_reconciliation] %d date(s) drifted from paper_trades: %s",
+            report.get("drift_count"),
+            [d["date"] for d in report.get("drifts", [])],
+        )
+    return report
+
+
+@router.get(
     "/signal-quality",
     response_model=SignalQualityResponse,
     description="Analyze signal quality metrics across filtered trades with optional symbol and date range filters.",

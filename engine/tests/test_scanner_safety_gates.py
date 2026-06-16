@@ -231,6 +231,8 @@ async def test_equity_symbol_executes_with_is_futures_false():
     sanity = AsyncMock(return_value=(True, ""))
     with (
         patch("scanner.signal_scanner._is_futures_market_hours", return_value=True),
+        # Equity RTH open — the market-hours submission guard must allow booking.
+        patch("scanner.signal_scanner._is_equity_market_hours", return_value=True),
         patch("config.settings") as mock_settings,
         patch("risk.entry_price_sanity.check_entry_price_sanity", new=sanity),
         patch("notifications.openclaw_notifier.notify_trade_opened", new=AsyncMock()),
@@ -245,6 +247,54 @@ async def test_equity_symbol_executes_with_is_futures_false():
     _, skwargs = sanity.call_args
     assert skwargs.get("is_futures") is False
     # And the equity paper trade was booked.
+    pt.add_paper_trade.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_equity_submission_blocked_outside_rth():
+    """An equity signal outside Regular Trading Hours must NOT auto-book a paper
+    trade (the 20:24 off-hours stale-fill class). Futures are unaffected."""
+    pt = _flat_tracker()
+    scanner = _build_scanner(pt, data_manager=MagicMock())
+    scanner.set_futures_symbols(["MES"])  # QQQ -> equity
+
+    sanity = AsyncMock(return_value=(True, ""))
+    with (
+        patch("scanner.signal_scanner._is_futures_market_hours", return_value=True),
+        # Equity market CLOSED → guard blocks submission.
+        patch("scanner.signal_scanner._is_equity_market_hours", return_value=False),
+        patch("config.settings") as mock_settings,
+        patch("risk.entry_price_sanity.check_entry_price_sanity", new=sanity),
+        patch("notifications.openclaw_notifier.notify_trade_opened", new=AsyncMock()),
+    ):
+        mock_settings.LIVE_TRADING_ENABLED = False
+        await scanner._scan_symbol("QQQ")
+
+    # No paper trade booked; the entry-sanity gate was never even reached.
+    pt.add_paper_trade.assert_not_called()
+    sanity.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_equity_guard_can_be_disabled_by_env(monkeypatch):
+    """ENABLE_MARKET_HOURS_SUBMISSION_GUARD=0 restores pre-guard behavior."""
+    monkeypatch.setenv("ENABLE_MARKET_HOURS_SUBMISSION_GUARD", "0")
+    pt = _flat_tracker()
+    scanner = _build_scanner(pt, data_manager=MagicMock())
+    scanner.set_futures_symbols(["MES"])  # QQQ -> equity
+
+    sanity = AsyncMock(return_value=(True, ""))
+    with (
+        patch("scanner.signal_scanner._is_futures_market_hours", return_value=True),
+        patch("scanner.signal_scanner._is_equity_market_hours", return_value=False),
+        patch("config.settings") as mock_settings,
+        patch("risk.entry_price_sanity.check_entry_price_sanity", new=sanity),
+        patch("notifications.openclaw_notifier.notify_trade_opened", new=AsyncMock()),
+    ):
+        mock_settings.LIVE_TRADING_ENABLED = False
+        await scanner._scan_symbol("QQQ")
+
+    # Guard disabled → equity books even though _is_equity_market_hours is False.
     pt.add_paper_trade.assert_called_once()
 
 
