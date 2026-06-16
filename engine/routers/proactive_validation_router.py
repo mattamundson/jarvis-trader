@@ -9,7 +9,7 @@ Checks run (in order):
   1. Validation gates  — PF, Sharpe, WR, max DD via ValidationTracker
   2. Trade count       — N vs 60-trade minimum
   3. Time elapsed      — days vs 30-day minimum
-  4. WFE status        — latest wfe_snapshots entry vs 0.50 threshold
+  4. Recent weekly PF  — latest wfe_snapshots weekly profit factor vs PF floor
   5. MC edge test      — bootstrap p-value: is the paper edge real?
   6. Consecutive loss  — current streak vs 5-trade threshold
   7. Win rate trend    — last-20 WR vs lifetime WR (decline > 10pp = warn)
@@ -54,14 +54,25 @@ _MULTIPLIERS: dict[str, float] = {
     "GC": 100.0,
 }
 
-# WFE baselines from Sprint 21 PRD (same as wfe_router.py)
+# Static backtest WFE-efficiency baselines (gate-v2 / walk_forward.py:
+# mean_oos_return / mean_is_return, a 0–1 ratio). INFORMATIONAL CONTEXT ONLY —
+# these are computed offline and are NOT the live comparator for Check 4.
 _WFE_BASELINES: dict[str, float] = {
     "MCL": 0.82,
     "MNQ": 0.57,
     "MES": 0.09,  # OVERFIT — caution
 }
-_WFE_WARN_THRESHOLD = 0.50
-_WFE_FAIL_THRESHOLD = 0.30
+
+# Check 4 thresholds operate on the RECENT WEEKLY PROFIT FACTOR.
+# The wfe_snapshots table stores weekly PF/Sharpe snapshots (Sprint 21 PRD:
+# "WFE live tracking: store weekly PF/Sharpe snapshots to DB"), NOT a rolling
+# walk-forward-efficiency ratio — the table has no WFE-ratio column at all.
+# A profit factor is gross_profit / gross_loss: 1.0 = breakeven, <1.0 = a losing
+# week. Prior bug: the weekly PF was compared against the 0.50/0.30 WFE-ratio
+# thresholds, which coincidentally rubber-stamped losing weeks (e.g. PF 0.55 ≥
+# 0.50 read "healthy"). These thresholds are on the correct PF scale.
+_WEEKLY_PF_HEALTHY = 1.3      # recent week solidly profitable -> pass
+_WEEKLY_PF_BREAKEVEN = 1.0    # PF < 1.0 -> losing -> fail; 1.0–1.3 -> warn
 
 # MC minimum trades for a reliable bootstrap test
 _MC_MIN_TRADES = 10
@@ -146,8 +157,13 @@ def _load_closed_trades(symbol: str) -> list[sqlite3.Row]:
         return []
 
 
-def _load_wfe_latest(symbol: str) -> Optional[float]:
-    """Return the most recent WFE profit_factor for symbol from wfe_snapshots."""
+def _load_latest_weekly_pf(symbol: str) -> Optional[float]:
+    """Return the most recent weekly PROFIT FACTOR for symbol from wfe_snapshots.
+
+    NOTE: wfe_snapshots.profit_factor is a raw weekly profit factor
+    (gross_profit / gross_loss), NOT a walk-forward-efficiency ratio. The table
+    stores weekly PF/Sharpe performance snapshots; it has no WFE-ratio column.
+    """
     conn = _db_conn()
     if not conn:
         return None
@@ -260,7 +276,11 @@ def _check_validation_gates(progress: dict) -> ValidationCheck:
         )
     pf = progress.get("pass_fail", {})
     gates = PAPER_VALIDATION_GATES
-    passing = sum(1 for v in pf.values() if v) if pf else 0
+    # Each pass_fail value is a dict {"value", "threshold", "passes"} — a non-empty
+    # dict is ALWAYS truthy, so the prior `if v` counted every gate as passing
+    # regardless of its actual `passes` flag (a losing PF still read "6/6 passing").
+    # Read the boolean explicitly.
+    passing = sum(1 for v in pf.values() if isinstance(v, dict) and v.get("passes")) if pf else 0
     total_gates = len(gates)
 
     pf_val = progress.get("profit_factor", 0.0)
@@ -270,9 +290,12 @@ def _check_validation_gates(progress: dict) -> ValidationCheck:
 
     status: Literal["pass", "warn", "fail", "insufficient_data"] = "pass"
     if passing < total_gates:
-        failed = [k for k, v in pf.items() if not v]
-        # Any hard metric fail = fail; count/days shortfalls = warn
-        hard_fails = [f for f in failed if f not in ("min_trades", "min_days")]
+        failed = [k for k, v in pf.items() if not (isinstance(v, dict) and v.get("passes"))]
+        # Any hard metric fail = fail; count/days shortfalls (normal accrual) = warn.
+        # NB: pass_fail uses the keys total_trades/days_active (not the gate-config
+        # keys min_trades/min_days) — the prior exclusion list never matched, so a
+        # pure trade-count/days shortfall was wrongly escalated to a blocking fail.
+        hard_fails = [f for f in failed if f not in ("total_trades", "days_active")]
         status = "fail" if hard_fails else "warn"
 
     return ValidationCheck(
@@ -328,36 +351,43 @@ def _check_time_elapsed(days_active: int) -> ValidationCheck:
     )
 
 
-def _check_wfe(symbol: str) -> ValidationCheck:
-    """Check 4: Latest WFE snapshot vs threshold."""
-    wfe_val = _load_wfe_latest(symbol)
-    baseline = _WFE_BASELINES.get(symbol)
+def _check_recent_weekly_pf(symbol: str) -> ValidationCheck:
+    """Check 4: Latest weekly profit factor from wfe_snapshots vs a PF floor.
 
-    if wfe_val is None:
+    Historically labeled "WFE Status", but the stored value is a weekly PROFIT
+    FACTOR, not a walk-forward-efficiency ratio (the table has no WFE column).
+    Comparing the PF against WFE-ratio thresholds (0.50/0.30) was a scale error
+    that rubber-stamped losing weeks. This checks recent paper profitability on
+    the correct PF scale; the static backtest WFE baseline is shown for context.
+    """
+    weekly_pf = _load_latest_weekly_pf(symbol)
+    baseline = _WFE_BASELINES.get(symbol)
+    baseline_str = f" | backtest WFE baseline {baseline:.2f}" if baseline else ""
+
+    if weekly_pf is None:
         return ValidationCheck(
-            name="WFE Status",
+            name="Recent Weekly PF",
             status="insufficient_data",
-            value="No WFE snapshots",
-            threshold=f"≥{_WFE_WARN_THRESHOLD}",
-            message="No WFE snapshots yet — POST /wfe/snapshot to generate",
+            value="No weekly snapshots",
+            threshold=f"PF≥{_WEEKLY_PF_HEALTHY}",
+            message="No weekly PF/Sharpe snapshots yet — POST /wfe/snapshot to generate",
         )
 
-    if wfe_val >= _WFE_WARN_THRESHOLD:
+    if weekly_pf >= _WEEKLY_PF_HEALTHY:
         status: Literal["pass", "warn", "fail", "insufficient_data"] = "pass"
-        msg = f"WFE healthy ({wfe_val:.3f})"
-    elif wfe_val >= _WFE_FAIL_THRESHOLD:
+        msg = f"Recent weekly PF healthy ({weekly_pf:.2f} ≥ {_WEEKLY_PF_HEALTHY})"
+    elif weekly_pf >= _WEEKLY_PF_BREAKEVEN:
         status = "warn"
-        msg = f"WFE below warn threshold ({wfe_val:.3f} < {_WFE_WARN_THRESHOLD})"
+        msg = f"Recent weekly PF marginal ({weekly_pf:.2f}, breakeven {_WEEKLY_PF_BREAKEVEN}–{_WEEKLY_PF_HEALTHY})"
     else:
         status = "fail"
-        msg = f"WFE critically low ({wfe_val:.3f} < {_WFE_FAIL_THRESHOLD}) — strategy may be overfitting"
+        msg = f"Recent weekly PF below breakeven ({weekly_pf:.2f} < {_WEEKLY_PF_BREAKEVEN}) — losing in recent paper"
 
-    baseline_str = f" (backtest baseline {baseline:.2f})" if baseline else ""
     return ValidationCheck(
-        name="WFE Status",
+        name="Recent Weekly PF",
         status=status,
-        value=f"WFE: {wfe_val:.3f}{baseline_str}",
-        threshold=f"warn<{_WFE_WARN_THRESHOLD} fail<{_WFE_FAIL_THRESHOLD}",
+        value=f"weekly PF: {weekly_pf:.2f}{baseline_str}",
+        threshold=f"pass≥{_WEEKLY_PF_HEALTHY} warn≥{_WEEKLY_PF_BREAKEVEN} fail<{_WEEKLY_PF_BREAKEVEN}",
         message=msg,
     )
 
@@ -557,7 +587,7 @@ async def get_proactive_validation(
         _check_validation_gates(progress),
         _check_trade_count(total_trades),
         _check_time_elapsed(days_active),
-        _check_wfe(sym),
+        _check_recent_weekly_pf(sym),
         _check_mc_edge(rows, sym),
         _check_consecutive_losses(consecutive_losses),
         _check_wr_trend(rows, lifetime_wr),
