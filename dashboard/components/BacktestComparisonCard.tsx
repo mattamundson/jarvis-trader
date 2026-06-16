@@ -154,9 +154,10 @@ export function BacktestComparisonCard() {
         ]
       : [];
 
-  const degradationPct = data
-    ? (data.degradation_factor * 100).toFixed(1)
-    : null;
+  const degradationPct =
+    data && Number.isFinite(data.degradation_factor)
+      ? (data.degradation_factor * 100).toFixed(1)
+      : null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -250,7 +251,7 @@ export function BacktestComparisonCard() {
             <p className="text-xs text-muted-foreground">
               Degradation factor:{" "}
               <span className="font-mono font-medium text-foreground">
-                {degradationPct}%
+                {degradationPct ?? "—"}{degradationPct != null ? "%" : ""}
               </span>{" "}
               of backtest performance achieved in live paper trading
             </p>
