@@ -119,6 +119,158 @@ export interface HealthResponse {
   tradingview_mcp_details?: string | null;
   llm_path_healthy?: boolean | null;
   llm_available?: boolean | null;
+  // Provider-redundancy snapshot (engine get_llm_provider_summary). Present when
+  // the engine wires it; absent on older builds (callers must guard).
+  llm_providers?: LLMProviderSummary | null;
+  vertex_failover_count?: number | null;
+  google_fallback_count?: number | null;
+}
+
+export interface LLMProviderSummary {
+  active_provider?: string | null;
+  primary_provider?: string | null;
+  primary_healthy?: boolean | null;
+  single_leg_warning?: boolean | null;
+}
+
+// Full health (/health/full). Subsystems carry free-form detail; we type the
+// ib_gateway data-leg observability fields shipped in PR #68 (auto-reconnect
+// watchdog + silent-degrade visibility). All optional — older engines omit them,
+// so every consumer must guard.
+export type DataSourceTier = "ibkr" | "sqlite_cache" | "polygon" | "csv_cache" | "none";
+
+export interface IBDataWatchdogStatus {
+  enabled?: boolean | null;
+  running?: boolean | null;
+  consecutive_failures?: number | null;
+  last_attempt_ts?: number | null;
+  last_reconnect_ts?: number | null;
+}
+
+export interface IBGatewayHealth {
+  status?: string | null;
+  execution_connected?: boolean | null;
+  data_connected?: boolean | null;
+  data_source?: DataSourceTier | string | null;
+  last_ibkr_data_ts?: number | null;
+  watchdog?: IBDataWatchdogStatus | null;
+  // Per-symbol staleness {symbol: seconds_since_last_serve} (US-002).
+  per_symbol_freshness?: Record<string, number> | null;
+}
+
+// LLM path subsystem (/health/full -> subsystems.llm, US-004). `provider` is the
+// leg actually serving; `fallback_active` is true when we're not on the primary.
+export interface LLMSubsystemHealth {
+  status?: string | null; // ok | degraded | unknown
+  provider?: string | null;
+  fallback_active?: boolean | null;
+  healthy?: boolean | null;
+  primary_provider?: string | null;
+  active_provider?: string | null;
+  providers_available?: number | null;
+  single_leg_warning?: boolean | null;
+  google_fallback_count?: number | null;
+  vertex_failover_count?: number | null;
+}
+
+export interface FullHealthResponse {
+  overall: string;
+  timestamp: string;
+  uptime_seconds: number;
+  version: string;
+  phase: string;
+  subsystems: {
+    ib_gateway?: IBGatewayHealth;
+    llm?: LLMSubsystemHealth;
+    [key: string]: unknown;
+  };
+}
+
+// ── Forward-test loop (engine /analytics/forward-test) ───────────────────────
+// Mirrors engine backtest.forward_test.run_forward_test. The endpoint also
+// returns a {status:"INSUFFICIENT_DATA", ...} body when the DB is not wired,
+// so every field below is treated as optional by the panel.
+export interface ForwardStats {
+  n_oos_windows: number;
+  p_edge: number;
+  pf_ci_lower: number;
+  binom_p: number;
+  total_trades: number;
+  total_pnl: number;
+}
+
+export interface ForwardTestCandidate {
+  id: string;
+  symbol: string;
+  attribution_level: string | null;
+  precise_attribution: boolean;
+  forward: ForwardStats;
+  survives_family_fdr: boolean;
+  graduated: boolean;
+  reason: string;
+}
+
+export interface ForwardTestReport {
+  status?: string;
+  recommendation?: string;
+  generated_at?: string;
+  window_days?: number;
+  n_active_candidates: number;
+  n_graduated: number;
+  candidates: ForwardTestCandidate[];
+  note?: string;
+}
+
+// ── Forward-test loop (engine /analytics/forward-test) ───────────────────────
+// Mirrors engine backtest.forward_test.run_forward_test. The endpoint also
+// returns a {status:"INSUFFICIENT_DATA", ...} body when the DB is not wired,
+// so every field below is treated as optional by the panel.
+export interface ForwardStats {
+  n_oos_windows: number;
+  p_edge: number;
+  pf_ci_lower: number;
+  binom_p: number;
+  total_trades: number;
+  total_pnl: number;
+}
+
+export interface ForwardTestCandidate {
+  id: string;
+  symbol: string;
+  attribution_level: string | null;
+  precise_attribution: boolean;
+  forward: ForwardStats;
+  survives_family_fdr: boolean;
+  graduated: boolean;
+  reason: string;
+}
+
+// A decision lineage is the LLM identity stamped on live paper entries (P4) --
+// the unit that actually trades. Only pre_registered lineages may graduate;
+// default-material "unregistered:*" singletons render as context only.
+export interface ForwardTestLineage {
+  lineage: string;
+  pre_registered: boolean;
+  forward: ForwardStats;
+  survives_family_fdr: boolean;
+  graduated: boolean;
+  reason: string;
+}
+
+export interface ForwardTestReport {
+  status?: string;
+  recommendation?: string;
+  generated_at?: string;
+  window_days?: number;
+  n_active_candidates: number;
+  n_graduated: number;
+  candidates: ForwardTestCandidate[];
+  // P4 lineage track -- optional so the panel degrades gracefully against an
+  // engine that predates the lineage block.
+  lineages?: ForwardTestLineage[];
+  n_lineages?: number;
+  n_lineages_graduated?: number;
+  note?: string;
 }
 
 export interface SafetyStatus {
@@ -226,6 +378,9 @@ export async function fetchBars(
     volume?: number | string | null;
     vwap?: number | string | null;
     stc?: number | string | null;
+    ema_8?: number | string | null;
+    ema_21?: number | string | null;
+    ema_34?: number | string | null;
   };
   const arr: RawBar[] = Array.isArray(raw)
     ? (raw as RawBar[])
@@ -250,6 +405,9 @@ export async function fetchBars(
         volume: b.volume != null ? Number(b.volume) : undefined,
         vwap: b.vwap != null ? Number(b.vwap) : undefined,
         stc: b.stc != null ? Number(b.stc) : undefined,
+        ema_8: b.ema_8 != null ? Number(b.ema_8) : undefined,
+        ema_21: b.ema_21 != null ? Number(b.ema_21) : undefined,
+        ema_34: b.ema_34 != null ? Number(b.ema_34) : undefined,
       };
     })
     .filter((b) => Number.isFinite(b.time) && Number.isFinite(b.close))
@@ -822,6 +980,36 @@ export interface LedgerResponse {
 /** GET /strategy/ledger — gate-v2 backtest verdict ledger. */
 export async function fetchStrategyLedger(): Promise<LedgerResponse> {
   return fetchEngine<LedgerResponse>("/strategy/ledger");
+}
+
+// ── Production-gate scorecard (GET /strategy/gates/{symbol}, US-005) ──────────
+export interface GateResult {
+  key: string;
+  label: string;
+  value: number | null;
+  threshold: number | null;
+  comparator: string; // ">=" | "<="
+  unit: string | null;
+  passed: boolean | null; // null => not evaluable (missing value or shadow gate)
+  enforced: boolean;
+  note: string | null;
+}
+
+export interface GatesResponse {
+  symbol: string;
+  family: string | null;
+  verdict: string | null;
+  created_at: string | null;
+  n_pass: number;
+  n_evaluated: number;
+  n_total: number;
+  gates: GateResult[];
+  generated_at: string;
+}
+
+/** GET /strategy/gates/{symbol} — 6-gate production scorecard for one symbol. */
+export async function fetchStrategyGates(symbol: string): Promise<GatesResponse> {
+  return fetchEngine<GatesResponse>(`/strategy/gates/${encodeURIComponent(symbol)}`);
 }
 
 // ── Per-trade full review (closed loop) ──────────────────────────────────────
@@ -1582,6 +1770,36 @@ export interface OpenPositionsResponse {
 
 export async function fetchOpenPositions(): Promise<OpenPositionsResponse> {
   return fetchEngine<OpenPositionsResponse>("/portfolio/paper/positions");
+}
+
+// ── Same-day P&L reconciliation (US-007) ─────────────────────────────────────
+// /portfolio/summary computes total_daily_pnl = realized_pnl + (clean) unrealized;
+// /portfolio/pnl-snapshot is an INDEPENDENTLY-computed same-day number (SafetyLayer
+// sync, survives restart). Reconciliation compares the two writers — the phantom-day
+// failure was drift between them.
+export interface PortfolioSummary {
+  total_daily_pnl?: number;
+  realized_pnl?: number;
+  unrealized_pnl?: number;
+  total_pnl?: number;
+  daily_target?: number;
+  target_progress_pct?: number;
+}
+
+export interface PnlSnapshot {
+  date?: string;
+  daily_pnl?: number;
+  portfolio_equity?: number;
+  last_updated?: string | null;
+  source?: string; // sqlite | no_db | no_snapshot
+}
+
+export async function fetchPortfolioSummary(): Promise<PortfolioSummary> {
+  return fetchEngine<PortfolioSummary>("/portfolio/summary");
+}
+
+export async function fetchPnlSnapshot(): Promise<PnlSnapshot> {
+  return fetchEngine<PnlSnapshot>("/portfolio/pnl-snapshot");
 }
 
 // ── Live open paper trades (truthful: reads paper_trades WHERE status='open') ──

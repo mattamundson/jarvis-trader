@@ -184,9 +184,15 @@ class HealthResponse(BaseModel):
 
 
 class SubsystemStatus(BaseModel):
-    """Individual subsystem status — accepts any extra fields from subsystem dicts."""
+    """Individual subsystem status — accepts any extra fields from subsystem dicts.
 
-    model_config = ConfigDict(extra="ignore")
+    `extra="allow"` is load-bearing: subsystems attach observability fields the
+    dashboard reads (ib_gateway.data_source / watchdog / per_symbol_freshness,
+    llm.provider / fallback_active). With `extra="ignore"` those were silently
+    dropped by the response model and never reached the client.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     status: str = Field(..., description="Subsystem status")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional details")
