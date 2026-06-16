@@ -246,3 +246,163 @@ async def regenerate_review(trade_id: str) -> Dict[str, str]:
     asyncio.create_task(svc.review_trade(t))
 
     return {"status": "queued", "trade_id": trade_id}
+
+
+# ── Full review (closed-loop) ──────────────────────────────────────────────────
+# One endpoint that joins, for a single placed trade, everything needed to answer
+# "was this trade placed, WHY did the strategy fire, WHEN, what does its backtest
+# say, and how is it doing live" — the trade-review loop, on one screen.
+
+
+class FullReviewResponse(BaseModel):
+    trade: Dict[str, Any]
+    attribution: Dict[str, Any]  # parsed strategy_params (which strategy/signal fired)
+    why: Optional[Dict[str, Any]] = None  # matched decision + full 5-stage pipeline
+    backtest: Optional[Dict[str, Any]] = None  # gate-v2 verdict for the symbol
+    forward: Optional[Dict[str, Any]] = None  # live/paper performance for the symbol
+    review: Optional[Dict[str, Any]] = None  # A–F LLM grade, if any
+
+
+def _parse_dt(value: Any) -> Optional["Any"]:
+    """Parse an ISO timestamp to a tz-aware UTC datetime. decisions.timestamp is
+    naive ISO; paper_trades.entry_time carries +00:00. Treat naive as UTC."""
+    from datetime import datetime, timezone
+
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _match_decision(symbol: str, entry_time: Any) -> Optional[Dict[str, Any]]:
+    """Find the decision that best explains a trade: same symbol, nearest in time
+    to entry (preferring at/just-before entry), within a 24h window. There is no
+    FK between paper_trades and decisions, so this is time-proximity matching."""
+    if _db_manager is None or not symbol:
+        return None
+    et = _parse_dt(entry_time)
+    try:
+        candidates = _db_manager.get_decisions(symbol=symbol, limit=400)
+    except Exception:  # pragma: no cover - defensive
+        return None
+    if not candidates:
+        return None
+    if et is None:
+        return candidates[0]  # already ordered timestamp DESC
+
+    best = None
+    best_delta = None
+    for d in candidates:
+        dt = _parse_dt(d.get("timestamp"))
+        if dt is None:
+            continue
+        delta = abs((et - dt).total_seconds())
+        # prefer decisions at/before entry by lightly penalising future ones
+        if dt > et:
+            delta += 1800  # 30-min penalty so a slightly-earlier match wins ties
+        if best_delta is None or delta < best_delta:
+            best, best_delta = d, delta
+    if best is None or best_delta is None or best_delta > 86400:
+        return None
+    best["_match_delta_seconds"] = best_delta
+    return best
+
+
+@router.get(
+    "/{trade_id}/full-review",
+    response_model=FullReviewResponse,
+    summary="Closed-loop review: trade + why it fired + backtest verdict + forward stats",
+)
+def get_trade_full_review(trade_id: str) -> FullReviewResponse:
+    if _db_manager is None:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    trade = _db_manager.fetch_one(
+        "SELECT * FROM paper_trades WHERE trade_id = ?", (trade_id,)
+    )
+    if not trade:
+        raise HTTPException(status_code=404, detail=f"Trade {trade_id} not found")
+
+    symbol = trade.get("symbol")
+
+    # ── Attribution: which strategy/signal fired (parse strategy_params JSON) ──
+    import json as _json
+
+    attribution: Dict[str, Any] = {}
+    raw_sp = trade.get("strategy_params")
+    if raw_sp:
+        try:
+            attribution = _json.loads(raw_sp) if isinstance(raw_sp, str) else dict(raw_sp)
+        except (ValueError, TypeError):
+            attribution = {"_raw": str(raw_sp)}
+    # surface the structured attribution columns too (US-2130 provenance)
+    for col in (
+        "regime", "bias", "structure_position", "composite_score",
+        "stc_contrib", "orb_contrib", "vwap_contrib",
+    ):
+        if trade.get(col) is not None:
+            attribution.setdefault(col, trade.get(col))
+
+    # ── Why: the matched decision + full 5-stage pipeline transcript ──────────
+    why: Optional[Dict[str, Any]] = None
+    match = _match_decision(symbol, trade.get("entry_time"))
+    if match is not None:
+        full = None
+        try:
+            detail = _db_manager.get_decision_by_id(int(match.get("id")))
+            full = detail.get("full_pipeline_json") if detail else None
+        except Exception:  # pragma: no cover - defensive
+            full = None
+        why = {
+            "decision_id": match.get("id"),
+            "matched_by": "symbol+time_proximity",
+            "match_delta_seconds": match.get("_match_delta_seconds"),
+            "timestamp": match.get("timestamp"),
+            "action": match.get("action"),
+            "confidence": match.get("confidence"),
+            "regime": match.get("regime"),
+            "reasoning": match.get("reasoning"),
+            "pipeline": full,  # the full 5-stage dict (7 analysts → debate → trader → risk → fund mgr)
+        }
+
+    # ── Backtest verdict: the symbol's gate-v2 ledger entry ───────────────────
+    backtest: Optional[Dict[str, Any]] = None
+    if symbol:
+        try:
+            from routers.strategy_ledger_router import find_verdict
+
+            backtest = find_verdict(symbol, attribution.get("family"))
+        except Exception:  # pragma: no cover - defensive
+            backtest = None
+
+    # ── Forward test: live/paper performance for the symbol ───────────────────
+    forward: Optional[Dict[str, Any]] = None
+    if symbol:
+        try:
+            from analytics.performance import PerformanceCalculator
+
+            metrics = PerformanceCalculator(_db_manager).calculate(symbol=symbol)
+            forward = metrics.as_dict()
+        except Exception:  # pragma: no cover - defensive
+            forward = None
+
+    # ── Review: A–F grade, if one exists ──────────────────────────────────────
+    review: Optional[Dict[str, Any]] = None
+    try:
+        review = _db_manager.get_trade_review(trade_id)
+    except Exception:  # pragma: no cover - defensive
+        review = None
+
+    return FullReviewResponse(
+        trade=trade,
+        attribution=attribution,
+        why=why,
+        backtest=backtest,
+        forward=forward,
+        review=review,
+    )
