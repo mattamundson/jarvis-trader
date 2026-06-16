@@ -89,6 +89,22 @@ MIN_TRADES_FOR_IC = 5
 DEFAULT_WINDOW_DAYS = 30
 
 
+def _directional_return(pnl: float, direction: Optional[str]) -> float:
+    """Signed realized return aligned to price direction, not trade-P&L sign.
+
+    An analyst signal expresses a *price-direction* view (>0 bullish, <0
+    bearish), but ``pnl_usd`` already folds in the executed LONG/SHORT side --
+    so on a SHORT trade a correct directional call inverts relative to pnl
+    (e.g. a bullish call on a SHORT that lost means price rose, which is exactly
+    what the analyst predicted). Flipping the sign for SHORT recovers the
+    realized price direction, so both the IC correlation and the Brier
+    correctness label measure the analyst against where price actually went --
+    not whether the executed trade happened to make money. LONG and
+    unknown/blank directions pass through unchanged (preserving prior behavior
+    for legacy rows that predate the ``direction`` column).
+    """
+    return -pnl if (direction or "").strip().upper() == "SHORT" else pnl
+
 
 class ICWeightedEnsemble:
     """
@@ -143,7 +159,7 @@ class ICWeightedEnsemble:
 
                 cur = conn.execute(
                     f"""
-                    SELECT {signal_col}, pnl_usd, timestamp
+                    SELECT {signal_col}, pnl_usd, direction, timestamp
                     FROM trade_outcomes
                     WHERE timestamp >= ?
                       AND {signal_col} IS NOT NULL
@@ -151,13 +167,20 @@ class ICWeightedEnsemble:
                     """,
                     (cutoff_iso,),
                 )
-                rows: List[Tuple[float, float, Optional[str]]] = []
-                for signal, pnl, ts in cur.fetchall():
+                rows: List[Tuple[float, float, Optional[str], Optional[str]]] = []
+                for signal, pnl, direction, ts in cur.fetchall():
                     try:
-                        rows.append((float(signal), float(pnl), ts))
+                        rows.append((float(signal), float(pnl), direction, ts))
                     except (TypeError, ValueError):
                         continue
-                return [(sig, pnl) for sig, pnl, _ in sanitize_outcome_rows(rows, context=f"IC/{agent_name}")]
+                # Correlate signal against the realized *price* direction, not the
+                # executed-side pnl (ts now at index 3; direction at index 2).
+                return [
+                    (sig, _directional_return(pnl, direction))
+                    for sig, pnl, direction, _ in sanitize_outcome_rows(
+                        rows, context=f"IC/{agent_name}", ts_idx=3
+                    )
+                ]
         except sqlite3.DatabaseError as e:
             logger.warning("ICWeightedEnsemble DB error for %s: %s", agent_name, e)
             return []
@@ -398,7 +421,7 @@ class BrierCalibrationTracker:
 
                 cur = conn.execute(
                     f"""
-                    SELECT {signal_col}, pnl_usd, timestamp
+                    SELECT {signal_col}, pnl_usd, direction, timestamp
                     FROM trade_outcomes
                     WHERE timestamp >= ?
                       AND {signal_col} IS NOT NULL
@@ -408,13 +431,20 @@ class BrierCalibrationTracker:
                     """,
                     (cutoff_iso,),
                 )
-                rows: List[Tuple[float, float, Optional[str]]] = []
-                for signal, pnl, ts in cur.fetchall():
+                rows: List[Tuple[float, float, Optional[str], Optional[str]]] = []
+                for signal, pnl, direction, ts in cur.fetchall():
                     try:
-                        rows.append((float(signal), float(pnl), ts))
+                        rows.append((float(signal), float(pnl), direction, ts))
                     except (TypeError, ValueError):
                         continue
-                return [(sig, pnl) for sig, pnl, _ in sanitize_outcome_rows(rows, context=f"Brier/{agent_name}")]
+                # Score correctness against the realized *price* direction, not
+                # the executed-side pnl (ts now at index 3; direction at index 2).
+                return [
+                    (sig, _directional_return(pnl, direction))
+                    for sig, pnl, direction, _ in sanitize_outcome_rows(
+                        rows, context=f"Brier/{agent_name}", ts_idx=3
+                    )
+                ]
         except sqlite3.DatabaseError as e:
             logger.warning("BrierCalibrationTracker DB error for %s: %s", agent_name, e)
             return []
