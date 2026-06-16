@@ -1,0 +1,140 @@
+{
+  "project": "JARVIS Trader â€” Audit Closeout Top-10 ROI (2026-06-11)",
+  "branchName": "master",
+  "description": "Execute the 10 highest-ROI tasks identified at the end of the 2026-06-11 full-system audit. Fix work happens on fix/audit-followups off master; merges to master per story group. Push to origin remains Amo-gated throughout.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Reconcile master with origin (ahead 9 / behind 7)",
+      "description": "As Amo, I want master merged with origin/master so the audit work can be pushed without losing the peer's 7 commits.",
+      "acceptanceCriteria": [
+        "Inspect the 7 behind commits before merging; conflicts resolved by HUNK, never whole-file ours/theirs",
+        "Runtime files (gate_v2_verdicts, strategy_c/output) backed up before merge and intact after",
+        "git status clean post-merge; git diff --stat sanity sweep done",
+        "Engine still healthy after merge (no code path broken): /health full gate",
+        "Push itself NOT executed (Amo-gated) â€” surface ready-to-push state"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Merged 7ecc1be..f75bb5e clean (ort, zero conflicts, disjoint files). master ahead 11 / behind 0. Runtime files intact. 26 tests pass incl peer 2 new files. Engine /health full gate ok. NOTE: running engine predates peer reconciler/brokers code — picks up on next restart. Push remains Amo-gated."
+    },
+    {
+      "id": "US-002",
+      "title": "Dashboard null-guard pass on crashing pages",
+      "description": "As a dashboard user, I want /command-center, /backtest, /performance to render instead of crashing into error boundaries when API data is missing.",
+      "acceptanceCriteria": [
+        "Root-cause each crash (.toFixed, .slice, .length on undefined) in the page sources",
+        "Guards use != null pattern (amo-arbitrage lesson), nullable TS types where touched",
+        "pnpm build passes; Playwright shows all three pages render with zero unhandled error-boundary catches"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Commit 0fa0608 on fix/audit-followups. Real crash sites (found via minified-chunk offset inspection, NOT static review): BacktestComparisonCard paper!/thresholds! assertions, StreakTrackerWidget current_streak/streak_history, backtest shortDate(undefined), SignalFeedWidget convictionBar(undefined), WeeklyStatsWidget win_rate/total_pnl, command-center journalStats. Playwright: 0 error-boundary catches on all 3 routes."
+    },
+    {
+      "id": "US-003",
+      "title": "Fix Command Center signal fetch (8020 -> 8010)",
+      "description": "As a Command Center user, I want the signal tab live; it currently fetches /api/signal on the 8020 bridge where the route does not exist.",
+      "acceptanceCriteria": [
+        "Determine correct source for /api/signal (8010 engine or add route to 8020 bridge) by reading both APIs",
+        "Fix the fetch in dashboard/public/strategy-c-command-center.html (and source if generated)",
+        "Playwright: /strategy-c-command iframe shows zero 404s"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Commit 435b047. Root cause was NOT a wrong port: the 8020 bridge HAS /api/signal, but SIGNAL_PATH/EXEC_LOG_PATH were hardcoded to /home/user/workspace/... (foreign Linux path) so the handler 404d. Fixed repo-relative via __file__. Bridge restarted (lock claimed); /api/signal serves the 06-05 RISK_ON signal; iframe zero failed requests."
+    },
+    {
+      "id": "US-004",
+      "title": "Add/repair the missing engine routes the dashboard calls",
+      "description": "As a dashboard user, I want the 404/500 engine endpoints fixed: /portfolio/history/equity-curve, /analytics/regime, /paper/trade-journal, /ib/connection-test, /signals/recent, /analytics/daily-pnl (404s) and /portfolio/paper/hold-time-stats (500).",
+      "acceptanceCriteria": [
+        "For each: decide implement vs repoint-dashboard-to-existing-route (read engine routers first; some may exist under different paths)",
+        "Each fixed endpoint returns 200 with sane JSON against the live engine",
+        "Regression tests added for new/changed routes; pytest green on touched modules",
+        "Playwright: dashboard home + /paper + /performance show zero 404/500 engine calls"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Commit 2c6fa0c. Implemented: equity-curve, /analytics/regime(+/{symbol}) honest-stub, /ib/connection-test, hold-time tz fix. Repointed: trade-journal->journal, signals/recent->scanner/latest, daily-pnl->portfolio/history. Bonus root-cause: home-page 502s were the dashboard proxy 5s abort vs cold-cache endpoints -> raised to 25s. All 8 endpoints 200; /, /paper, /performance, /health sweep zero 404/500/502; 6 new tests green; engine restarted under lock, full health gate pass."
+    },
+    {
+      "id": "US-005",
+      "title": "Loosen /safety/status rate limit for dashboard polling",
+      "description": "As a dashboard user, I want /safety/status to stop 429ing under normal page loads.",
+      "acceptanceCriteria": [
+        "Find the limiter config on safety router; raise limit or exempt the dashboard proxy appropriately",
+        "Playwright multi-page sweep shows zero 429s",
+        "Test covering the new limit behavior if testable"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Commit 3869ee9. /safety/status had the 10/min TRADING-tier limit despite being read-only and polled by 5+ widgets through one proxy IP (shared slowapi bucket keyed on remote address). Moved to 120/min read tier; mutating endpoints untouched. Engine restarted under lock, health gate pass; double-pass Playwright sweep over /, /backtest, /performance, /command-center: zero 429s. Regression test added."
+    },
+    {
+      "id": "US-006",
+      "title": "Verify approval-alert loop end-to-end",
+      "description": "As Amo, I want proof the repaired Telegram + Discord channels fire on a real approval candidate so candidates never expire unseen again.",
+      "acceptanceCriteria": [
+        "Trigger or await one approval-candidate notify (test path acceptable if it cannot be mistaken for a real signal)",
+        "Engine logs show Telegram 200 + Discord 2xx for the notify",
+        "Finding documented with log artifact paths"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Fired notify_pending_approval_queued via engine venv with TEST payload (symbol=TEST, action=ALERT-TEST (NOT A TRADE)): Telegram 200 OK + Discord 204 No Content on the REAL approval-notify code path with engine/.env creds. Engine-process sends post-fix also confirmed in logs/jarvis.log 01:33-01:34Z. Twilio 401 expected (rotation=Amo, US-010 silences). No candidate had been enqueued since fix (market hours), hence synthetic trigger. Script: CLAUDE_JOB_DIR/tmp/test_approval_notify.py."
+    },
+    {
+      "id": "US-007",
+      "title": "Schedule weekly paper tearsheet",
+      "description": "As Amo, I want jarvis_tearsheet.py --source paper running weekly under pm2 cron so QS snapshots accumulate without manual runs.",
+      "acceptanceCriteria": [
+        "pm2 cron entry added to ecosystem.config.js (pattern: jarvis-rolling-wfe), engine venv python, DB_PATH correct",
+        "One manual run via the exact pm2 command path succeeds and writes tearsheet + METRICS_SNAPSHOT.json",
+        "pm2 save executed (pm2 changes were authorized in this audit scope)"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Commit 8160a28. jarvis-weekly-tearsheet pm2 cron Sat 07:00, registered+saved (cron_restart verified in pm2 jlist). Manual run wrote tearsheet HTML + METRICS_SNAPSHOT.json (1/10 gates pass, honest n=15 baseline)."
+    },
+    {
+      "id": "US-008",
+      "title": "Restart 30-day paper validation on MES/MGC",
+      "description": "As Amo, I want the formal 30-day validation window restarted on the active symbols with the new 10-gate QS layer, replacing the abandoned MCL window.",
+      "acceptanceCriteria": [
+        "Read the paper-validation subsystem; document exactly what restarting entails and any state it resets",
+        "If restart is non-destructive: execute and verify /paper/validation/progress shows a fresh MES/MGC window",
+        "If it resets/destroys trading state: STOP and surface as Amo decision with the exact command â€” do not execute"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Commit 1454fa9. NO RESTART EXISTS OR NEEDED: validation state is derived from recorded paper trades per instrument (router is read-only). The not_started finding was the default instrument=MCL (retired) masking live windows: MES n=1, MGC n=4/11 days (PF 2.163, Sharpe 3.535 passing at tiny n; 60-trade/30-day floors unmet honestly). Default flipped MCL->MES."
+    },
+    {
+      "id": "US-009",
+      "title": "Primary LLM restoration â€” prep the Vertex lever",
+      "description": "As Amo, I want everything short of the gated flip done so restoring the primary LLM is one action: verify Vertex failover code path readiness and document the exact steps.",
+      "acceptanceCriteria": [
+        "Confirm JARVIS_LLM_VERTEX_FAILOVER code path present and tests green",
+        "Document exact flip procedure (env edit + restart) and the GCP prerequisite state",
+        "Flag clearly: flip itself NOT executed (Amo-gated)"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "VERIFIED (peer session armed it during stale-session triage, memory project_vertex_failover_armed_2026_06_11): flag set in engine/.env, engine restarted since, 21 vertex tests pass, chain anthropic->vertex(armed)->gemini->openai. Remaining = Amo: GCP Marketplace enable and/or Anthropic credit top-up. Flip NOT needed - already done."
+    },
+    {
+      "id": "US-010",
+      "title": "Twilio dead-channel remediation (non-gated half)",
+      "description": "As Amo, I want the Twilio channel to stop silently failing 66x: gate it behind a config check so a dead credential logs ONE clear warning instead of repeated 401 noise, with rotation remaining my action.",
+      "acceptanceCriteria": [
+        "Notifier degrades gracefully: on auth failure, disable channel for the process lifetime + single loud warning log",
+        "No behavior change when creds are valid (test both paths)",
+        "Rotation steps documented for Amo (1Password Twilio item)"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Commit 804e0ad. 401 now latches channel off for process lifetime + ONE loud error with rotation steps; success and transient-5xx paths unchanged. 3 tests green. Rotation = Amo (1Password Twilio item)."
+    }
+  ]
+}
