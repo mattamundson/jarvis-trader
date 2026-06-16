@@ -9,7 +9,7 @@
 // flagged so a corrupted price (e.g. the 2026-06-12 MES@100.5 incident) shows up
 // here loudly instead of hiding. No engine changes — reuses the existing proxies.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import {
   Activity,
@@ -49,6 +49,17 @@ interface BrokersPositionsResponse {
   reconciliation?: { health?: string; discrepancies?: { symbol: string; detail: string }[] };
 }
 
+// ── Bar-quality gate observability (/analytics/bar-quality) ───────────────────
+interface BarQualityResponse {
+  window_hours: number;
+  total_rejections: number;
+  by_reason: { reason: string; count: number }[];
+  by_symbol: { symbol: string; count: number }[];
+  by_path: { sanity: number; gate: number };
+  recent: { ts_utc: string; symbol: string; source: string; path: string; reason: string; detail: string; count: number }[];
+  gate_active: boolean;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function money(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -81,6 +92,62 @@ const PRICE_FLOORS: Record<string, number> = {
 function suspectPrice(symbol: string, price: number): boolean {
   const floor = PRICE_FLOORS[(symbol || "").toUpperCase()];
   return floor != null && price > 0 && price < floor;
+}
+
+// ── TradingView embed (TV-hosted data, no API key, no engine dependency) ──────
+// Self-contained on this page on purpose: the reusable charts/TradingViewWidget
+// component lives on the in-flight feat/dashboard-tv-widget-3d branch — keeping
+// this inline avoids colliding/duplicating a shared file before that lands. Maps
+// internal futures symbols to TV front-month continuous tickers.
+const TV_SYMBOL: Record<string, string> = {
+  MES: "CME_MINI:MES1!", ES: "CME_MINI:ES1!",
+  MNQ: "CME_MINI:MNQ1!", NQ: "CME_MINI:NQ1!",
+  M2K: "CME_MINI:M2K1!",
+  MGC: "COMEX:MGC1!", GC: "COMEX:GC1!",
+  MCL: "NYMEX:MCL1!", CL: "NYMEX:CL1!",
+};
+function tvTicker(symbol: string): string | null {
+  return TV_SYMBOL[(symbol || "").toUpperCase()] ?? null;
+}
+
+function TradingViewMini({ symbol, height = 360 }: { symbol: string; height?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const ticker = tvTicker(symbol);
+  useEffect(() => {
+    const container = ref.current;
+    if (!container || !ticker) return;
+    container.innerHTML = "";
+    const script = document.createElement("script");
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.type = "text/javascript";
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      autosize: true,
+      symbol: ticker,
+      interval: "60",
+      timezone: "America/Chicago",
+      theme: "dark",
+      style: "1",
+      locale: "en",
+      backgroundColor: "rgba(6, 13, 26, 1)",
+      gridColor: "rgba(0, 212, 255, 0.06)",
+      hide_side_toolbar: true,
+      allow_symbol_change: false,
+      studies: ["STD;EMA", "STD;VWAP"],
+      support_host: "https://www.tradingview.com",
+    });
+    container.appendChild(script);
+    return () => { container.innerHTML = ""; };
+  }, [ticker]);
+
+  if (!ticker) {
+    return <p className="text-xs text-muted-foreground">No TradingView mapping for {symbol}.</p>;
+  }
+  return (
+    <div style={{ height }} className="w-full overflow-hidden rounded-lg border border-border">
+      <div ref={ref} className="tradingview-widget-container h-full w-full" />
+    </div>
+  );
 }
 
 // ── Small presentational pieces ───────────────────────────────────────────────
@@ -131,9 +198,13 @@ export default function TrustPanePage() {
   );
   const pnl = useSWR<DailyAttributionResponse>("attr-daily", () => fetchDailyAttribution(), { refreshInterval: 30_000 });
   const trades = useSWR<TradeJournalEntry[]>("trades-journal", () => fetchTradeJournal(undefined, undefined, 12), { refreshInterval: 30_000 });
+  const barQuality = useSWR<BarQualityResponse>(
+    "/analytics/bar-quality?hours=168", (p: string) => fetchEngine<BarQualityResponse>(p), { refreshInterval: 60_000 },
+  );
   const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: 30_000 });
 
   const [secondsSince, setSecondsSince] = useState(0);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>("");
   useEffect(() => {
     const i = setInterval(() => {
       if (lastUpdated) setSecondsSince(Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
@@ -142,8 +213,8 @@ export default function TrustPanePage() {
   }, [lastUpdated]);
 
   const refreshAll = useCallback(() => {
-    health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate(); amo.mutate();
-  }, [health, positions, pnl, trades, amo]);
+    health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate(); barQuality.mutate(); amo.mutate();
+  }, [health, positions, pnl, trades, barQuality, amo]);
 
   // ── jarvis derived ──
   const h = health.data;
@@ -151,6 +222,16 @@ export default function TrustPanePage() {
   const dataLegDown = h?.ibkr_data_connected === false;
   const openPaper = positions.data?.paper?.positions ?? [];
   const suspectCount = openPaper.filter((p) => suspectPrice(p.symbol, p.entry_price)).length;
+  const bq = barQuality.data;
+  const bqTotal = bq?.total_rejections ?? 0;
+  // Chart symbols: distinct open-position symbols that have a TV mapping; else a sane default.
+  const chartSymbols = (() => {
+    const fromOpen = Array.from(
+      new Set(openPaper.map((p) => (p.symbol || "").toUpperCase()).filter((s) => s && tvTicker(s))),
+    );
+    return fromOpen.length > 0 ? fromOpen : ["MES", "MGC"];
+  })();
+  const activeSymbol = selectedSymbol && chartSymbols.includes(selectedSymbol) ? selectedSymbol : chartSymbols[0];
 
   // ── amo derived ──
   const a = amo.data;
@@ -275,6 +356,68 @@ export default function TrustPanePage() {
               )}
               {positions.data?.reconciliation?.health && (
                 <p className="text-[11px] text-muted-foreground mt-2">Reconciliation: {positions.data.reconciliation.health}</p>
+              )}
+            </Card>
+
+            {/* Market chart — TradingView-quality price context for open positions */}
+            <Card>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-foreground tracking-wide">Market Chart</h3>
+                <div className="flex items-center gap-1">
+                  {chartSymbols.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setSelectedSymbol(s)}
+                      className={`rounded-md px-2 py-0.5 text-xs font-mono transition-colors ${
+                        s === activeSymbol
+                          ? "bg-accent/15 text-accent border border-accent/30"
+                          : "text-muted-foreground border border-border hover:text-foreground"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <TradingViewMini symbol={activeSymbol} />
+              <p className="text-[11px] text-muted-foreground mt-2">
+                TradingView-hosted data (1h, EMA + VWAP). Market context only — fills/markers are in
+                the position + trade panels.
+              </p>
+            </Card>
+
+            {/* 5. Data-quality gate — proves the write-time bar gate is working */}
+            <Card>
+              <PanelHeader title="Data-Quality Gate · 7d" provenance="live" />
+              {barQuality.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /analytics/bar-quality.</p>
+              ) : bqTotal === 0 ? (
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-bull mt-0.5 shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    <span className="text-bull font-medium">Gate active · data clean.</span> 0 contaminated bars
+                    rejected in the last 7 days — the healthy steady state. The write-time gate screens every
+                    persisted bar (IB sentinel ticks, price-band breaks, &gt;50% neighbour jumps).
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Stat label="Rejected (7d)" value={String(bqTotal)} tone="bear" />
+                    <Stat label="Sanity / Gate" value={`${bq?.by_path.sanity ?? 0} / ${bq?.by_path.gate ?? 0}`} />
+                    <Stat label="Top reason" value={bq?.by_reason[0]?.reason ?? "—"} tone="muted" />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {bq?.by_reason.slice(0, 5).map((r) => (
+                      <Badge key={r.reason} variant="warn">{r.reason} ×{r.count}</Badge>
+                    ))}
+                  </div>
+                  {(bq?.by_symbol.length ?? 0) > 0 && (
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      By symbol: {bq!.by_symbol.map((s) => `${s.symbol} (${s.count})`).join(" · ")}
+                    </p>
+                  )}
+                </>
               )}
             </Card>
 
