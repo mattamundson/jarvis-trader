@@ -824,6 +824,9 @@ class MarketDataManager:
         self.polygon_streamer: Optional[PolygonStreamer] = None
         self.finnhub: Optional[FinnhubConnector] = None
         self.reddit = RedditSentimentConnector()
+        # Epoch (time.time()) of the last successful IB *data* serve. Read by the
+        # data-leg health watchdog to detect connected-but-stale conditions.
+        self.ib_data_last_ok: Optional[float] = None
 
     def inject_schwab(self, connector: "SchwabConnector") -> None:
         """Wire in a SchwabConnector at startup (called from main.py after Schwab connects)."""
@@ -917,6 +920,7 @@ class MarketDataManager:
             df = await self.ibkr.get_historical_bars(symbol, duration, bar_size, is_futures)
             if not df.empty:
                 logger.info(f"IBKR returned {len(df)} bars for {symbol}")
+                self.ib_data_last_ok = time.time()
                 df.attrs["source"] = "ibkr"
                 df.attrs["symbol"] = symbol
                 if _save_bars is not None:

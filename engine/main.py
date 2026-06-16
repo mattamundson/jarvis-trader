@@ -2755,6 +2755,21 @@ async def lifespan(app: FastAPI):
     except Exception as _pm_err:
         logger.warning("Predictive maintenance monitor init failed (non-fatal): %s", _pm_err)
 
+    # ── Data-leg health watchdog (default ON) ─────────────────────────────────
+    # Detects a mid-session IB *data* connection drop (which otherwise silently
+    # falls back to Polygon/CSV with no alarm), attempts one bounded reconnect,
+    # and emits a throttled alert. Disable with JARVIS_DATA_WATCHDOG=0.
+    try:
+        from data.data_health_watchdog import DataHealthWatchdog, watchdog_enabled
+
+        if watchdog_enabled() and data_manager is not None:
+            asyncio.create_task(DataHealthWatchdog(data_manager).monitor_loop())
+            logger.info("Data-leg health watchdog started (JARVIS_DATA_WATCHDOG=1)")
+        else:
+            logger.info("Data-leg health watchdog: DISABLED (JARVIS_DATA_WATCHDOG=0)")
+    except Exception as _dw_err:
+        logger.warning("Data-leg health watchdog init failed (non-fatal): %s", _dw_err)
+
     # ── Final yield to bind FastAPI server ───────────────────────────────
     # HB-3: schedule heavy init BEFORE the yield. Post-yield code in a
     # lifespan context manager runs at SHUTDOWN, so a post-yield create_task
