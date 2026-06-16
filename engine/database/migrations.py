@@ -1858,6 +1858,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "IBKR fills import: ibkr_fills table for raw execution fills from IB, keyed by exec_id.",
     "IBKR fills order provenance: order_ref + parent_order_id columns on ibkr_fills for JARVIS-tagged fill reconciliation (execution-fidelity forward-test).",
     "Paper trades slippage: slippage_ticks column on paper_trades (queried by execution-fidelity validation + paper_trade_pairing but never created); populated on close from matched real IB fill.",
+    "Bar quality observability: bar_quality_rejections table recording bars rejected by the write-time bar-quality gate (symbol, ts_utc, reason) for the Trust Pane observability surface.",
 ]
 
 
