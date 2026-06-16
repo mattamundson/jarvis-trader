@@ -199,6 +199,10 @@ class IBKRDataConnector:
         self._connect_timeout = connect_timeout
         self._ib = None
         self._connected = False
+        # Real-time bar subscriptions, replayed after a reconnect rebuilds the IB
+        # client. No callers today (subscribe_real_time is unused) — kept so a
+        # future streaming feed survives a watchdog reconnect.
+        self._realtime_subs: list = []
 
     async def connect(self, retries: int = 2, retry_backoff: float = 2.0) -> bool:
         """Connect to IB Gateway, with a bounded retry on transient failures.
@@ -231,6 +235,12 @@ class IBKRDataConnector:
                     timeout=self._connect_timeout,
                 )
                 self._connected = True
+                # Keep _connected honest on a mid-session drop so the per-call data
+                # waterfall fails over immediately and the watchdog detects the drop.
+                try:
+                    self._ib.disconnectedEvent += self._on_disconnected
+                except Exception:
+                    pass
                 logger.info(
                     f"IBKR connected {self._host}:{self._port} "
                     f"(clientId={self._client_id}, paper={self._port == 4002})"
@@ -458,6 +468,9 @@ class IBKRDataConnector:
         if not self._connected:
             logger.error("Not connected to IBKR")
             return
+        # Record the sub so it can be replayed if a reconnect rebuilds the IB client.
+        self._realtime_subs = [s for s in self._realtime_subs if s[0] != symbol]
+        self._realtime_subs.append((symbol, callback, is_futures))
         try:
             contract = await self._qualified_contract(symbol, is_futures)
             bars = self._ib.reqRealTimeBars(contract, 5, "TRADES", False)
@@ -482,7 +495,32 @@ class IBKRDataConnector:
 
     @property
     def is_connected(self) -> bool:
-        return self._connected
+        # Consult the live socket, not just the cached flag. ib_async.IB.isConnected()
+        # is a local socket-state check (no network round-trip), so this stays cheap
+        # on the hot path (get_bars / get_current_price read it on every call).
+        if not self._connected or self._ib is None:
+            return False
+        try:
+            return bool(self._ib.isConnected())
+        except Exception:
+            return False
+
+    def _on_disconnected(self) -> None:
+        """ib_async disconnectedEvent handler — flip the flag the moment IB drops."""
+        if self._connected:
+            logger.warning("IBKR data leg disconnected (event) — marking offline")
+        self._connected = False
+
+    async def resubscribe_all(self) -> None:
+        """Replay real-time bar subscriptions after a reconnect. No-op today
+        (nothing calls subscribe_real_time), but keeps a future feed alive."""
+        subs = list(self._realtime_subs)
+        self._realtime_subs = []
+        for symbol, callback, is_futures in subs:
+            try:
+                await self.subscribe_real_time(symbol, callback, is_futures)
+            except Exception as e:
+                logger.warning(f"IBKR resubscribe failed for {symbol}: {e}")
 
     async def get_executions(self) -> list[dict]:
         """
@@ -824,6 +862,16 @@ class MarketDataManager:
         self.polygon_streamer: Optional[PolygonStreamer] = None
         self.finnhub: Optional[FinnhubConnector] = None
         self.reddit = RedditSentimentConnector()
+        # Serialize IBKR reconnects so the watchdog and a manual POST /data/reconnect
+        # never rebuild two IB() sockets on the same (data-leg) clientId concurrently.
+        self._ibkr_lock = asyncio.Lock()
+        # Observability: which data tier last served, and when IBKR last gave data —
+        # surfaced in /health/full so degrade is never silent.
+        self._last_bar_source: Optional[str] = None
+        self._last_price_source: Optional[str] = None
+        self._last_ibkr_data_ts: Optional[float] = None
+        # Set by IBDataWatchdog.start() so /health/full can read its status.
+        self._watchdog = None
 
     def inject_schwab(self, connector: "SchwabConnector") -> None:
         """Wire in a SchwabConnector at startup (called from main.py after Schwab connects)."""
@@ -865,6 +913,37 @@ class MarketDataManager:
             f"Market data initialized: IBKR={'connected' if ibkr_connected else 'offline'}, "
             f"Polygon={'connected' if self.polygon else 'not configured'}"
         )
+
+    async def reconnect_ibkr(self, timeout: float = 15.0) -> bool:
+        """Idempotent IBKR data-leg reconnect, safe under concurrent callers.
+
+        Shared by the IBDataWatchdog and POST /data/reconnect. The lock guarantees
+        only one rebuild happens at a time, so two IB() sockets never race on the
+        same data-leg clientId.
+        """
+        async with self._ibkr_lock:
+            if self.ibkr is not None and self.ibkr.is_connected:
+                return True
+            if self.ibkr is not None:
+                try:
+                    await self.ibkr.disconnect()
+                except Exception:
+                    pass
+            self.ibkr = IBKRDataConnector(
+                host=self._config.IBKR_HOST,
+                port=self._config.IBKR_PORT,
+                client_id=resolve_data_client_id(self._config),
+                connect_timeout=max(
+                    getattr(self._config, "IBKR_CONNECT_TIMEOUT_SECONDS", 5.0), timeout
+                ),
+            )
+            ok = await self.ibkr.connect()
+            if ok:
+                try:
+                    await self.ibkr.resubscribe_all()
+                except Exception as e:
+                    logger.warning(f"IBKR resubscribe after reconnect failed: {e}")
+            return ok
 
     async def get_bars(
         self,
@@ -919,6 +998,8 @@ class MarketDataManager:
                 logger.info(f"IBKR returned {len(df)} bars for {symbol}")
                 df.attrs["source"] = "ibkr"
                 df.attrs["symbol"] = symbol
+                self._last_bar_source = "ibkr"
+                self._last_ibkr_data_ts = time.time()
                 if _save_bars is not None:
                     _save_bars(df, symbol, timeframe, "ibkr")
                 return df
@@ -948,6 +1029,7 @@ class MarketDataManager:
                         )
                         cached_df.attrs["source"] = "sqlite_cache"
                         cached_df.attrs["symbol"] = symbol
+                        self._last_bar_source = "sqlite_cache"
                         return cached_df
                     logger.debug(
                         f"[{symbol}] SQLite cache stale ({age_hours:.1f}h) — falling through"
@@ -978,6 +1060,7 @@ class MarketDataManager:
                 logger.info(f"Polygon returned {len(df)} bars for {symbol}")
                 df.attrs["source"] = "polygon"
                 df.attrs["symbol"] = symbol
+                self._last_bar_source = "polygon"
                 if _save_bars is not None:
                     _save_bars(df, symbol, timeframe, "polygon")
                 return df
@@ -1002,6 +1085,7 @@ class MarketDataManager:
             if not df.empty:
                 df.attrs["source"] = "csv_cache"
                 df.attrs["symbol"] = symbol
+                self._last_bar_source = "csv_cache"
                 return df
 
         logger.error(
@@ -1010,6 +1094,7 @@ class MarketDataManager:
         empty = pd.DataFrame()
         empty.attrs["source"] = "none"
         empty.attrs["symbol"] = symbol
+        self._last_bar_source = "none"
         return empty
 
     async def get_current_price(self, symbol: str, is_futures: bool = False) -> dict:
@@ -1023,6 +1108,8 @@ class MarketDataManager:
         if self.ibkr and self.ibkr.is_connected:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
             if result.get("last_price"):
+                self._last_price_source = "ibkr"
+                self._last_ibkr_data_ts = time.time()
                 return result
 
         # Tier 2: Schwab (real-time quotes, no historical bars)
@@ -1152,6 +1239,8 @@ class MarketDataManager:
         if self.ibkr and self.ibkr.is_connected:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
             if result.get("last_price"):
+                self._last_price_source = "ibkr"
+                self._last_ibkr_data_ts = time.time()
                 return result
 
         # Tier 2: Schwab quotes
