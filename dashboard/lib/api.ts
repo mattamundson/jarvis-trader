@@ -1832,6 +1832,42 @@ export async function fetchEntryTiming(
   return fetchEngine<EntryTimingResponse>(`/analytics/entry-timing${suffix}`);
 }
 
+// ── Bar-depth / data-coverage health (/analytics/bar-depth) ──────────────────
+// Per symbol×interval coverage: rows, calendar span, gap structure, and the
+// fraction the bar-quality gate would reject. Endpoint is additive and only
+// goes live after an engine restart, so callers must tolerate a 404.
+
+export interface BarDepthPair {
+  symbol: string;
+  interval: string;
+  rows: number;
+  first_ts: string | null;
+  last_ts: string | null;
+  span_days: number;
+  gap_count: number;
+  max_gap_hours: number;
+  contaminated_pct: number;
+  enforce_safe: boolean;
+}
+
+export interface BarDepthSummary {
+  pair_count: number;
+  symbol_count: number;
+  total_rows: number;
+  total_rejects: number;
+  contaminated_pct: number;
+}
+
+export interface BarDepthResponse {
+  pairs: BarDepthPair[];
+  summary: BarDepthSummary;
+  timestamp: string;
+}
+
+export async function fetchBarDepth(): Promise<BarDepthResponse> {
+  return fetchEngine<BarDepthResponse>("/analytics/bar-depth");
+}
+
 // ── Discord Briefing (command-center /discord/briefing) ──────────────────────
 
 export interface BriefingIBLevels {
