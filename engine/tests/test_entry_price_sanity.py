@@ -23,7 +23,9 @@ from risk.entry_price_sanity import (
     check_entry_price_sanity,
     is_entry_price_sane,
     is_entry_price_sanity_enabled,
+    is_offline_fallback_source,
     is_price_ref_check_enabled,
+    is_require_live_source_enabled,
     robust_recent_reference,
 )
 
@@ -652,3 +654,101 @@ class TestEraAwareAsyncRegression:
             data_manager=mock_dm,
         )
         assert is_sane is True, f"clean MES trade should pass: {reason}"
+
+
+# ---------------------------------------------------------------------------
+# Offline-fallback provenance anchor (2026-06-16 MES 5299 short incident)
+# ---------------------------------------------------------------------------
+
+
+class TestOfflineFallbackProvenance:
+    """The absolute anchor: when the live feed is fully degraded, get_current_price
+    returns source='csv_cache'/'unavailable'. The relative ATR + reference checks
+    are blind in that case (entry≈market≈bars all from the same offline cache), so
+    the entry MUST be rejected on provenance alone — the failure mode that let the
+    MES short @5299 enqueue against a real ~7520 market on 2026-06-16."""
+
+    def test_predicate_flags_offline_sources(self):
+        assert is_offline_fallback_source("csv_cache") is True
+        assert is_offline_fallback_source("unavailable") is True
+        assert is_offline_fallback_source("error") is True
+        assert is_offline_fallback_source("CSV_CACHE") is True  # case-insensitive
+
+    def test_predicate_passes_live_and_unknown_sources(self):
+        # live feeds — never blocked
+        for src in ("ibkr", "schwab", "tradingview", "polygon_stream", "redis_fabric"):
+            assert is_offline_fallback_source(src) is False, src
+        # unknown / missing → treated as live (don't block a genuine fill)
+        assert is_offline_fallback_source(None) is False
+        assert is_offline_fallback_source("") is False
+
+    def test_require_live_default_enabled(self, monkeypatch):
+        monkeypatch.delenv("ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE", raising=False)
+        assert is_require_live_source_enabled() is True
+
+    def test_require_live_can_be_disabled(self, monkeypatch):
+        monkeypatch.setenv("ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE", "0")
+        assert is_require_live_source_enabled() is False
+
+    @pytest.mark.asyncio
+    async def test_offline_sourced_entry_rejected_even_when_plausible(self, monkeypatch):
+        """Reproduce 2026-06-16: a plausible-looking number, but it came from the
+        offline cache because IB was down → must be refused, not traded."""
+        monkeypatch.delenv("ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE", raising=False)
+        mock_dm = MagicMock()
+        # entry, spot, AND bars all self-consistently wrong-era (5300) — the exact
+        # case the relative checks cannot catch. Source admits it's the cache.
+        mock_dm.get_current_price = AsyncMock(
+            return_value={"last_price": 5299.875, "source": "csv_cache"}
+        )
+        mock_dm.get_bars = AsyncMock(return_value=_mes_bars([5300.0 + (i % 4) for i in range(60)]))
+        is_sane, reason = await check_entry_price_sanity(
+            symbol="MES",
+            entry_price=5299.875,
+            data_manager=mock_dm,
+        )
+        assert is_sane is False, "offline-sourced entry must be rejected on provenance"
+        assert "offline" in reason.lower() or "no_trade" in reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_unavailable_source_rejected(self, monkeypatch):
+        monkeypatch.delenv("ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE", raising=False)
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(
+            return_value={"last_price": None, "source": "unavailable"}
+        )
+        mock_dm.get_bars = AsyncMock(return_value=_mes_bars([7400.0] * 30))
+        is_sane, _ = await check_entry_price_sanity(
+            symbol="MES", entry_price=7423.0, data_manager=mock_dm
+        )
+        assert is_sane is False
+
+    @pytest.mark.asyncio
+    async def test_offline_source_allowed_when_anchor_disabled(self, monkeypatch):
+        """Opt-out: with the anchor disabled, an offline-sourced but otherwise-clean
+        price falls through to the relative checks (backward-compatible escape hatch)."""
+        monkeypatch.setenv("ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE", "0")
+        monkeypatch.delenv("ENABLE_PRICE_REF_CONTAMINATION_CHECK", raising=False)
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(
+            return_value={"last_price": 7423.5, "source": "csv_cache"}
+        )
+        mock_dm.get_bars = AsyncMock(return_value=_mes_bars([7400.0 + (i % 8) for i in range(60)]))
+        is_sane, reason = await check_entry_price_sanity(
+            symbol="MES", entry_price=7423.75, data_manager=mock_dm
+        )
+        assert is_sane is True, f"anchor disabled → clean numbers should pass: {reason}"
+
+    @pytest.mark.asyncio
+    async def test_live_source_passes(self, monkeypatch):
+        monkeypatch.delenv("ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE", raising=False)
+        monkeypatch.delenv("ENABLE_PRICE_REF_CONTAMINATION_CHECK", raising=False)
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(
+            return_value={"last_price": 7423.5, "source": "ibkr"}
+        )
+        mock_dm.get_bars = AsyncMock(return_value=_mes_bars([7400.0 + (i % 8) for i in range(60)]))
+        is_sane, reason = await check_entry_price_sanity(
+            symbol="MES", entry_price=7423.75, data_manager=mock_dm
+        )
+        assert is_sane is True, f"live-sourced clean trade should pass: {reason}"
