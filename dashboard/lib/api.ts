@@ -1732,6 +1732,52 @@ export async function fetchCalibration(): Promise<CalibrationDiagnostics> {
   return fetchEngine<CalibrationDiagnostics>("/analytics/calibration");
 }
 
+// ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
+// Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
+// mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.
+
+export interface ExcursionTrade {
+  trade_id: string;
+  symbol: string;
+  side: string;
+  entry_price: number;
+  exit_price: number | null;
+  pnl: number | null;
+  entry_time: string;
+  exit_time: string | null;
+  mae_pct: number | null;
+  mfe_pct: number | null;
+  mae_usd: number | null;
+  mfe_usd: number | null;
+  mfe_capture_ratio: number | null;
+}
+
+export interface ExcursionAggregates {
+  trade_count: number;
+  populated_count: number;
+  avg_mae_pct: number | null;
+  avg_mfe_pct: number | null;
+  avg_mae_usd: number | null;
+  avg_mfe_usd: number | null;
+  avg_mfe_capture_ratio: number | null;
+}
+
+export interface ExcursionResponse {
+  trades: ExcursionTrade[];
+  aggregates: ExcursionAggregates;
+  timestamp: string;
+}
+
+export async function fetchExcursion(
+  opts?: { symbol?: string; limit?: number }
+): Promise<ExcursionResponse> {
+  const qs = new URLSearchParams();
+  if (opts?.symbol) qs.set("symbol", opts.symbol);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return fetchEngine<ExcursionResponse>(`/analytics/excursion${suffix}`);
+}
+
 // ── Discord Briefing (command-center /discord/briefing) ──────────────────────
 
 export interface BriefingIBLevels {
