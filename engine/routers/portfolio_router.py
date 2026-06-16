@@ -427,11 +427,23 @@ class PaperTradeSyncRequest(BaseModel):
 
 @router.get("/paper/positions")
 async def paper_positions():
-    """Open paper positions (SQLite + in-memory tracker)."""
+    """Open paper positions — DB-authoritative, reconciled against the tracker.
+
+    The returned ``positions``/``count`` reflect ``paper_trades WHERE
+    status='open'`` (the durable source of truth) when a DB is wired, so the UI
+    can no longer show "no positions" while a row is open. ``reconciliation``
+    surfaces any drift between the DB and the in-memory tracker.
+    """
     if not paper_tracker:
-        return {"positions": [], "count": 0}
-    raw = paper_tracker.get_open_positions()
-    return {"positions": raw, "count": len(raw)}
+        return {"positions": [], "count": 0, "reconciliation": {"source": "none", "reconciled": True}}
+    # Prefer the authoritative reconciled read; fall back to in-memory if the
+    # tracker predates the method (defensive — never 500 this endpoint).
+    if hasattr(paper_tracker, "get_open_positions_authoritative"):
+        positions, recon = paper_tracker.get_open_positions_authoritative()
+    else:  # pragma: no cover - legacy tracker
+        positions = paper_tracker.get_open_positions()
+        recon = {"source": "memory", "reconciled": True, "count": len(positions)}
+    return {"positions": positions, "count": len(positions), "reconciliation": recon}
 
 
 class UpdatePositionRequest(BaseModel):
