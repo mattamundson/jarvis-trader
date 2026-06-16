@@ -33,6 +33,7 @@ import {
 } from "@/lib/api";
 import { fetchAmoHealth, type AmoHealthResponse } from "@/lib/amo-api";
 import { BarDepthCard } from "@/components/BarDepthCard";
+import { PostTradeSnippet } from "@/components/PostTradeSnippet";
 
 // ── Brokers/positions response (subset we render) ─────────────────────────────
 interface PaperOpenPosition {
@@ -316,7 +317,10 @@ export default function TrustPanePage() {
               )}
             </Card>
 
-            {/* 5. Data integrity — bar coverage/health (live after engine restart) */}
+            {/* 5. Post-trade quality — book-wide MAE/MFE + entry-timing regret (J1/J2) */}
+            <PostTradeSnippet />
+
+            {/* 6. Data integrity — bar coverage/health (live after engine restart) */}
             <BarDepthCard />
           </section>
 
