@@ -857,9 +857,21 @@ class SafetyLayer:
         return bool(state.get("active", False))
 
     def get_status(self) -> dict:
-        """Return safety layer status for agents."""
+        """Return safety layer status for agents.
+
+        CONTRACT — both ``is_killed`` and ``kill_switch_active`` are emitted and
+        MUST always carry the SAME value. The two names exist because callers
+        historically read one or the other; emitting only one silently bypassed
+        every gate that read the other (the 2026-06-15 inert-kill-switch defect
+        spanned 12+ in-process gates: scanner, schedulers, pipeline_router,
+        approval_queue, autonomous enqueue, agents). Do NOT "dedup" these keys —
+        the redundancy is load-bearing. ``test_kill_switch_status_contract``
+        enforces it; removing a key fails that test.
+        """
+        killed = self._kill_switch_active
         return {
-            "is_killed": self._kill_switch_active,
+            "is_killed": killed,
+            "kill_switch_active": killed,  # alias — see contract note above; keep in lock-step
             "kill_switch_reason": (
                 self._kill_switch_reason.value if self._kill_switch_reason else None
             ),
