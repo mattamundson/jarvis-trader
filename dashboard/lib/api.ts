@@ -154,6 +154,23 @@ export interface IBGatewayHealth {
   data_source?: DataSourceTier | string | null;
   last_ibkr_data_ts?: number | null;
   watchdog?: IBDataWatchdogStatus | null;
+  // Per-symbol staleness {symbol: seconds_since_last_serve} (US-002).
+  per_symbol_freshness?: Record<string, number> | null;
+}
+
+// LLM path subsystem (/health/full -> subsystems.llm, US-004). `provider` is the
+// leg actually serving; `fallback_active` is true when we're not on the primary.
+export interface LLMSubsystemHealth {
+  status?: string | null; // ok | degraded | unknown
+  provider?: string | null;
+  fallback_active?: boolean | null;
+  healthy?: boolean | null;
+  primary_provider?: string | null;
+  active_provider?: string | null;
+  providers_available?: number | null;
+  single_leg_warning?: boolean | null;
+  google_fallback_count?: number | null;
+  vertex_failover_count?: number | null;
 }
 
 export interface FullHealthResponse {
@@ -164,6 +181,7 @@ export interface FullHealthResponse {
   phase: string;
   subsystems: {
     ib_gateway?: IBGatewayHealth;
+    llm?: LLMSubsystemHealth;
     [key: string]: unknown;
   };
 }

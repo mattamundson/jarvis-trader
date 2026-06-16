@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
 import { IBDataDegradedBanner } from "@/components/IBDataDegradedBanner";
+import { LLMProviderBadge } from "@/components/LLMProviderBadge";
 import { AnomalySentinelStrip } from "@/components/AnomalySentinelStrip";
 import { CommandPalette } from "@/components/CommandPalette";
 import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
@@ -45,6 +46,7 @@ export default function RootLayout({
             <AnomalySentinelStrip />
             <EngineAvailabilityHint />
             <IBDataDegradedBanner />
+            <LLMProviderBadge />
             <div className="flex min-h-screen">
               <Sidebar />
               <main className="flex-1 min-w-0 overflow-x-hidden">
