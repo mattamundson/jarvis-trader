@@ -1464,7 +1464,21 @@ class MarketDataManager:
             matches = sorted(cache_dir.glob(f"{symbol}_*_{timeframe}.csv"))
             if not matches:
                 return pd.DataFrame()
-            df = pd.read_csv(matches[-1])
+            # Pick the file with the freshest DATA (latest end-date parsed from the
+            # `{symbol}_{start}_{end}_{tf}.csv` name), not the lexicographically-last
+            # filename. sorted()[-1] orders by START date, so an older-but-longer
+            # slice could shadow a fresher one and serve wrong-era bars/prices.
+            import re as _re
+
+            def _end_date(p) -> str:
+                m = _re.search(rf"_(\d{{4}}-\d{{2}}-\d{{2}})_{_re.escape(timeframe)}\.csv$", p.name)
+                if m:
+                    return m.group(1)
+                dates = _re.findall(r"\d{4}-\d{2}-\d{2}", p.name)
+                return dates[-1] if dates else ""
+
+            chosen = max(matches, key=lambda p: (_end_date(p), p.name))
+            df = pd.read_csv(chosen)
             if "timestamp" in df.columns:
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
                 df = df.sort_values("timestamp")
@@ -1473,7 +1487,7 @@ class MarketDataManager:
             )
             df = df.tail(lookback_days * bars_per_day).copy()
             if not df.empty:
-                logger.warning(f"[{symbol}] Using CSV cache: {matches[-1].name} ({len(df)} bars)")
+                logger.warning(f"[{symbol}] Using CSV cache: {chosen.name} ({len(df)} bars)")
             cols = [
                 c
                 for c in ["timestamp", "open", "high", "low", "close", "volume"]
