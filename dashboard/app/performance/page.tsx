@@ -488,6 +488,15 @@ function ImprovementTracker() {
         title="Signal Improvement Tracker"
         subtitle="Each improvement tested via walk-forward validation before acceptance"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical snapshot</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen improvement audit as of 2026-03-30 — not live results
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
@@ -552,6 +561,15 @@ function DoNotTradeList() {
         title="Do Not Trade -- Permanently Removed"
         subtitle="Instruments that failed walk-forward validation or show structural unsuitability for STC strategy"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical snapshot</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen DNT list as of 2026-03-30 — see gate-v2 verdicts in Strategy Ledger for current status
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
