@@ -117,6 +117,34 @@ def get_candidate(
     return None
 
 
+def live_candidate_for_symbol(
+    symbol: str, registry: Optional[dict[str, Any]] = None
+) -> Optional[str]:
+    """The candidate_id whose EXACT params the live scanner trades for ``symbol``.
+
+    Returns the id of the single ``deployed_live: true`` candidate for the symbol,
+    used by the paper-entry path to tag new trades so forward-testing attributes
+    them at the precise (graduating) level.
+
+    Fail-safe: returns None when zero candidates are deployed for the symbol OR
+    when more than one is (ambiguous) -- a wrong tag corrupts attribution, so the
+    ambiguous case must stay untagged (symbol-level context only), never guessed.
+    """
+    if not symbol:
+        return None
+    reg = registry or load_registry()
+    sym = symbol.upper()
+    deployed = [
+        c
+        for c in reg["candidates"]
+        if c.get("deployed_live") is True
+        and str(c.get("symbol", "")).upper() == sym
+    ]
+    if len(deployed) != 1:
+        return None
+    return deployed[0].get("id")
+
+
 def meets_graduation(
     forward_stats: dict[str, Any], registry: Optional[dict[str, Any]] = None
 ) -> bool:

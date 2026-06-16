@@ -156,6 +156,8 @@ class PortfolioTracker:
         atr_value: Optional[float] = None,
         rv_at_entry: Optional[float] = None,
         analyst_signals: Optional[Dict[str, float]] = None,
+        candidate_id: Optional[str] = None,
+        decision_identity: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Log a new simulated entry.
@@ -168,6 +170,12 @@ class PortfolioTracker:
         atr_value : float, optional
             ATR at entry time.  Stored on the trade for later use by
             check_and_move_breakeven().
+        candidate_id : str, optional
+            Forward-test registry candidate that fired this entry. When supplied,
+            the candidate id is stamped into ``strategy_params`` so the
+            forward-test loop can attribute the trade at the precise
+            candidate_id level and let it count toward graduation.
+            Purely additive -- omit it and behaviour is unchanged.
         """
         # ── Idempotency key: compute before generating trade_id so that a
         # duplicate call within the same 5-second window can be collapsed to
@@ -210,6 +218,24 @@ class PortfolioTracker:
         # carry no pipeline reports (manual / broker-reconcile opens).
         if analyst_signals:
             _sp["analyst_signals"] = {k: float(v) for k, v in analyst_signals.items()}
+        # Forward-test attribution tag: stamp candidate_id + champion params so the
+        # forward-test loop can attribute this trade at the precise level. Best-effort
+        # and fail-open — a bad/unknown candidate_id must never block a real entry.
+        if candidate_id:
+            try:
+                from backtest.forward_test import tag_strategy_params
+
+                _sp = tag_strategy_params(_sp, candidate_id)
+            except Exception as _tag_err:
+                logger.debug(
+                    "[TRACKER] candidate_id tag failed (non-fatal): %s", _tag_err
+                )
+                _sp["candidate_id"] = candidate_id
+        # Decision-identity tag (P2): stamp WHICH live decision configuration
+        # produced this trade so the forward-test loop can attribute it to a
+        # decision lineage. Additive and fail-open.
+        if decision_identity:
+            _sp["decision_identity"] = decision_identity
         if self._db is not None:
             row_id = self._db.insert_paper_trade(
                 trade_id,
