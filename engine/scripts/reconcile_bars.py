@@ -63,12 +63,12 @@ logger = logging.getLogger("reconcile_bars")
 
 # Reuse the backfill module's symbol->cache mapping and CSV loader so the two
 # jobs can never disagree about which CSV is canonical for a symbol.
+from data.bars_repository import load_bars  # noqa: E402
 from scripts.backfill_market_data_bars import (  # noqa: E402
     ALL_SYMBOLS,
     _find_all_csvs,
     _load_csv,
 )
-from data.bars_repository import load_bars  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Tolerances

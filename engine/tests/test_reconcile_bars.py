@@ -53,11 +53,11 @@ def _make_db(tmp_path: Path) -> Path:
 
 
 def _insert(db: Path, ts: str, ohlc: tuple, source: str) -> None:
-    o, h, l, c = ohlc
+    o, h, lo, c = ohlc
     conn = sqlite3.connect(str(db))
     conn.execute(
         "INSERT INTO market_data_bars VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (SYM, "1h", ts, o, h, l, c, 1.0, source, "2026-05-07T00:00:00"),
+        (SYM, "1h", ts, o, h, lo, c, 1.0, source, "2026-05-07T00:00:00"),
     )
     conn.commit()
     conn.close()
