@@ -3,15 +3,6 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import type { LucideIcon } from "lucide-react";
 import { Activity, TrendingUp, Award, BarChart2, Percent } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
@@ -21,6 +12,7 @@ import { StrategyParamsCard } from "@/components/StrategyParamsCard";
 import { SignalAccuracyWidget } from "@/components/SignalAccuracyWidget";
 import { LongShortBalanceWidget } from "@/components/LongShortBalanceWidget";
 import { DecisionBreakdownCard } from "@/components/DecisionBreakdownCard";
+import { EquityCurveChart } from "@/components/charts/EquityCurveChart";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -150,6 +142,24 @@ function buildEquityCurve(result: BacktestResult): { idx: number; value: number 
   return [];
 }
 
+// Map the equity curve onto the tested window's timeline so Lightweight-Charts can
+// render it with real (ascending) timestamps. Evenly spaces points across
+// [start, end]; the equity_curve array carries no per-point dates, so the spacing
+// is synthetic but the values and window are the real backtest data.
+function buildEquityCurveTimed(result: BacktestResult): { time: number; value: number }[] {
+  const pts = buildEquityCurve(result);
+  if (pts.length < 2) return [];
+  const startUnix = Math.floor(new Date(result.start).getTime() / 1000) || 0;
+  const endParsed = Math.floor(new Date(result.end).getTime() / 1000);
+  const endUnix = Number.isFinite(endParsed) && endParsed > startUnix ? endParsed : startUnix + pts.length * 86400;
+  const span = Math.max(endUnix - startUnix, pts.length - 1); // ≥1s/step → strictly ascending
+  const n = pts.length;
+  return pts.map((p, i) => ({
+    time: startUnix + Math.round((span * i) / (n - 1)),
+    value: p.value,
+  }));
+}
+
 // ── Stat Card ────────────────────────────────────────────────────────────────
 
 function StatCard({
@@ -176,60 +186,6 @@ function StatCard({
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
     </div>
-  );
-}
-
-// ── Equity Mini-Chart ─────────────────────────────────────────────────────────
-
-function EquityMiniChart({ result }: { result: BacktestResult }) {
-  const data = useMemo(() => buildEquityCurve(result), [result]);
-  if (data.length < 2) {
-    return (
-      <div className="flex h-20 items-center justify-center text-xs text-muted-foreground">
-        No curve data
-      </div>
-    );
-  }
-
-  const isPositive =
-    (result.full_metrics?.total_return_pct ?? result.total_return ?? 0) >= 0;
-  const strokeColor = isPositive ? "#22c55e" : "#ef4444";
-  const fillColor = isPositive ? "#22c55e" : "#ef4444";
-
-  return (
-    <ResponsiveContainer width="100%" height={80}>
-      <AreaChart data={data} margin={{ top: 4, right: 2, bottom: 0, left: 2 }}>
-        <defs>
-          <linearGradient id={`grad-${result._filename}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={fillColor} stopOpacity={0.3} />
-            <stop offset="95%" stopColor={fillColor} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis dataKey="idx" hide />
-        <YAxis domain={["auto", "auto"]} hide />
-        <Tooltip
-          contentStyle={{
-            background: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "8px",
-            fontSize: "11px",
-            color: "hsl(var(--foreground))",
-          }}
-          formatter={(v: number) => [`$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, "Equity"]}
-          labelFormatter={() => ""}
-        />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke={strokeColor}
-          strokeWidth={1.5}
-          fill={`url(#grad-${result._filename})`}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
   );
 }
 
@@ -306,6 +262,8 @@ function ResultRow({ result, isSelected, onSelect }: {
 
 function DetailPanel({ result }: { result: BacktestResult }) {
   const m = result.full_metrics;
+  const curvePoints = useMemo(() => buildEquityCurveTimed(result), [result]);
+  const curvePositive = (m?.total_return_pct ?? result.total_return ?? 0) >= 0;
   if (!m) return null;
 
   const rows: { label: string; value: string }[] = [
@@ -335,10 +293,15 @@ function DetailPanel({ result }: { result: BacktestResult }) {
         {result.symbol} {result.interval} — Full Metrics
       </p>
 
-      {/* Equity Curve */}
+      {/* Equity Curve — TradingView Lightweight-Charts on real backtest data */}
       <div className="mb-5">
-        <p className="text-xs text-muted-foreground mb-2">Equity Curve</p>
-        <EquityMiniChart result={result} />
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Equity Curve</p>
+          <span className="font-mono text-[10px] text-muted-foreground/70">
+            TradingView · backtest data
+          </span>
+        </div>
+        <EquityCurveChart points={curvePoints} positive={curvePositive} height={240} />
       </div>
 
       {/* Metrics grid */}
