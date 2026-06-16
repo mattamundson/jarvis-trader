@@ -1764,7 +1764,10 @@ export interface KnowledgeContextHit {
 export interface BriefingResponse {
   symbol: string;
   headline?: string | null;
-  corey_bias?: string | null;
+  // engine returns either a plain string or a structured object
+  // ({date, session_type, directional_bias, ...}) — accept both so consumers
+  // coerce/extract rather than crashing (e.g. .toLowerCase on an object).
+  corey_bias?: string | Record<string, unknown> | null;
   ib_levels?: BriefingIBLevels | null;
   recent_signal?: BriefingRecentSignal | null;
   /** Advisory curated-knowledge hits — present ONLY when fetched with enriched:true. */
