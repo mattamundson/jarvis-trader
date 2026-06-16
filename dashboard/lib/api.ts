@@ -168,6 +168,58 @@ export interface ForwardTestReport {
   note?: string;
 }
 
+// ── Forward-test loop (engine /analytics/forward-test) ───────────────────────
+// Mirrors engine backtest.forward_test.run_forward_test. The endpoint also
+// returns a {status:"INSUFFICIENT_DATA", ...} body when the DB is not wired,
+// so every field below is treated as optional by the panel.
+export interface ForwardStats {
+  n_oos_windows: number;
+  p_edge: number;
+  pf_ci_lower: number;
+  binom_p: number;
+  total_trades: number;
+  total_pnl: number;
+}
+
+export interface ForwardTestCandidate {
+  id: string;
+  symbol: string;
+  attribution_level: string | null;
+  precise_attribution: boolean;
+  forward: ForwardStats;
+  survives_family_fdr: boolean;
+  graduated: boolean;
+  reason: string;
+}
+
+// A decision lineage is the LLM identity stamped on live paper entries (P4) --
+// the unit that actually trades. Only pre_registered lineages may graduate;
+// default-material "unregistered:*" singletons render as context only.
+export interface ForwardTestLineage {
+  lineage: string;
+  pre_registered: boolean;
+  forward: ForwardStats;
+  survives_family_fdr: boolean;
+  graduated: boolean;
+  reason: string;
+}
+
+export interface ForwardTestReport {
+  status?: string;
+  recommendation?: string;
+  generated_at?: string;
+  window_days?: number;
+  n_active_candidates: number;
+  n_graduated: number;
+  candidates: ForwardTestCandidate[];
+  // P4 lineage track -- optional so the panel degrades gracefully against an
+  // engine that predates the lineage block.
+  lineages?: ForwardTestLineage[];
+  n_lineages?: number;
+  n_lineages_graduated?: number;
+  note?: string;
+}
+
 export interface SafetyStatus {
   kill_switch_active: boolean;
   kill_switch_reason: string | null;
