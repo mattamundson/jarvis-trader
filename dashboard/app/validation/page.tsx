@@ -68,6 +68,78 @@ function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
+// ── Performance adapter ───────────────────────────────────────────────────────
+// GET /analytics/performance returns a FLAT object
+// ({profit_factor, sharpe_ratio, win_rate, max_drawdown, total_trades, days, ...})
+// where win_rate / max_drawdown are PERCENTAGES — not the nested ValidationReport
+// ({status, metrics, recommendation}) this page renders. Adapt it here so the page
+// shows real data and derives PASS/FAIL/INSUFFICIENT from the gate-v2 thresholds,
+// instead of crashing on `report.metrics` being undefined.
+interface RawPerformance {
+  status?: string;
+  profit_factor?: number | null;
+  sharpe_ratio?: number | null;
+  win_rate?: number | null; // percent, e.g. 31.58
+  max_drawdown?: number | null; // percent, e.g. 34.28
+  total_pnl?: number | null;
+  total_trades?: number | null;
+  expectancy?: number | null;
+  avg_win?: number | null;
+  avg_loss?: number | null;
+  days?: number | null;
+  period_days?: number | null;
+}
+
+async function performanceFetcher(path: string): Promise<ValidationReport> {
+  const raw = await fetchEngine<RawPerformance>(path);
+
+  const pf = raw.profit_factor ?? null;
+  const sharpe = raw.sharpe_ratio ?? null;
+  // Normalize percent → fraction for the nested consumers (they multiply by 100).
+  const winRate = raw.win_rate != null ? raw.win_rate / 100 : null;
+  const maxDd = raw.max_drawdown != null ? raw.max_drawdown / 100 : 0;
+  const trades = raw.total_trades ?? 0;
+
+  let status: ValidationReport["status"];
+  let recommendation: string;
+  if (trades < THRESHOLDS.minTrades) {
+    status = "INSUFFICIENT_DATA";
+    recommendation = `Collecting data — ${trades}/${THRESHOLDS.minTrades} trades before validation gates apply.`;
+  } else {
+    const pfPass = pf != null && pf >= THRESHOLDS.profitFactor;
+    const sharpePass = sharpe != null && sharpe >= THRESHOLDS.sharpeRatio;
+    const ddPass = Math.abs(maxDd) < THRESHOLDS.maxDrawdown;
+    const allPass = pfPass && sharpePass && ddPass;
+    status = allPass ? "PASS" : "FAIL";
+    recommendation = allPass
+      ? "All validation gates passing."
+      : [
+          !pfPass ? "profit factor" : null,
+          !sharpePass ? "Sharpe" : null,
+          !ddPass ? "max drawdown" : null,
+        ]
+          .filter(Boolean)
+          .join(", ")
+          .replace(/^(.)/, (c) => c.toUpperCase()) + " below threshold.";
+  }
+
+  return {
+    status,
+    recommendation,
+    metrics: {
+      profit_factor: pf,
+      sharpe_ratio: sharpe,
+      win_rate: winRate,
+      max_drawdown: maxDd,
+      total_trades: trades,
+      period_days: raw.period_days ?? raw.days ?? 0,
+      total_pnl: raw.total_pnl ?? 0,
+      avg_win: raw.avg_win ?? 0,
+      avg_loss: raw.avg_loss ?? 0,
+    },
+  };
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -697,7 +769,19 @@ function BacktestReferenceCard({ baseline }: { baseline: ScorecardBacktestBaseli
 // ── Live Paper Performance Card ───────────────────────────────────────────────
 
 function LivePerformanceCard({ report }: { report: ValidationReport }) {
-  const m = report.metrics;
+  const m = report?.metrics;
+  // Defense-in-depth: if the engine ever returns a report without metrics,
+  // show an honest "unavailable" state instead of crashing the whole page.
+  if (!m) {
+    return (
+      <Card className="border-border">
+        <CardContent className="pt-5 pb-5 flex items-center gap-2 text-xs text-muted-foreground">
+          <AlertCircle className="h-3.5 w-3.5 text-warn shrink-0" />
+          Live paper metrics unavailable — engine returned no performance data.
+        </CardContent>
+      </Card>
+    );
+  }
   const isInsufficient = report.status === "INSUFFICIENT_DATA";
   const isPass = report.status === "PASS";
   const isFail = report.status === "FAIL";
@@ -1356,7 +1440,7 @@ export default function ValidationPage() {
     data: report,
     error: reportError,
     isLoading: reportLoading,
-  } = useSWR<ValidationReport>("/analytics/performance", fetcher, {
+  } = useSWR<ValidationReport>("/analytics/performance", performanceFetcher, {
     refreshInterval: REFRESH_MS,
   });
 
