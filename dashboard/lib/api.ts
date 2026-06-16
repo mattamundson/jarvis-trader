@@ -1704,6 +1704,36 @@ export async function fetchOpenPositions(): Promise<OpenPositionsResponse> {
   return fetchEngine<OpenPositionsResponse>("/portfolio/paper/positions");
 }
 
+// ── Same-day P&L reconciliation (US-007) ─────────────────────────────────────
+// /portfolio/summary computes total_daily_pnl = realized_pnl + (clean) unrealized;
+// /portfolio/pnl-snapshot is an INDEPENDENTLY-computed same-day number (SafetyLayer
+// sync, survives restart). Reconciliation compares the two writers — the phantom-day
+// failure was drift between them.
+export interface PortfolioSummary {
+  total_daily_pnl?: number;
+  realized_pnl?: number;
+  unrealized_pnl?: number;
+  total_pnl?: number;
+  daily_target?: number;
+  target_progress_pct?: number;
+}
+
+export interface PnlSnapshot {
+  date?: string;
+  daily_pnl?: number;
+  portfolio_equity?: number;
+  last_updated?: string | null;
+  source?: string; // sqlite | no_db | no_snapshot
+}
+
+export async function fetchPortfolioSummary(): Promise<PortfolioSummary> {
+  return fetchEngine<PortfolioSummary>("/portfolio/summary");
+}
+
+export async function fetchPnlSnapshot(): Promise<PnlSnapshot> {
+  return fetchEngine<PnlSnapshot>("/portfolio/pnl-snapshot");
+}
+
 // ── Discord Bookmark Feed (recent + search) ──────────────────────────────────
 
 export interface BookmarkRow {
