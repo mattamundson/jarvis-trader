@@ -5,11 +5,13 @@ indicator breakdown, and score history, computed from OHLCV bars by the pure
 analytics module (no LLM). Powers the dashboard Intraday Market Regime view.
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException
 
 from analytics.intraday_regime import build_regime_snapshot
+from analytics.options_flow import get_options_flow
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +54,17 @@ async def get_intraday_regime(symbol: str = "SPY", futures: bool = False) -> dic
     if not bars_by_tf:
         raise HTTPException(404, f"No bar data available for {sym}")
 
+    # Best-effort dealer-GEX; runs off the event loop and returns None when no
+    # options source is wired (current paper-phase state).
+    options_flow = None
+    if not futures:
+        try:
+            options_flow = await asyncio.to_thread(get_options_flow, sym)
+        except Exception as e:  # noqa: BLE001 — options flow is never fatal
+            logger.warning("[REGIME] %s options flow unavailable: %s", sym, e)
+
     try:
-        return build_regime_snapshot(sym, bars_by_tf)
+        return build_regime_snapshot(sym, bars_by_tf, options_flow=options_flow)
     except Exception as e:
         logger.error("[REGIME] snapshot failed for %s: %s", sym, e)
         raise HTTPException(500, f"Regime snapshot failed: {e}") from e
