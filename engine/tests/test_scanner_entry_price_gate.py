@@ -18,9 +18,45 @@ Harness mirrors test_scanner_position_dedup.py.
 """
 
 import logging
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# ── Deterministic clock ──────────────────────────────────────────────────────
+# A fixed instant: Tuesday 2026-06-16 17:00 UTC == 12:00 ET. Chosen so the
+# scanner's wall-clock gates in _scan_symbol() all resolve to "scan allowed":
+#   - not in the 9:30-9:35 / 15:45-16:00 ET banned session windows,
+#   - not Wednesday (so the MCL 10:15-11:00 ET EIA blackout never triggers),
+#   - inside equity Regular Trading Hours.
+# Without this, the outcome depends on the wall-clock time CI runs at (flaky).
+_FROZEN_UTC = datetime(2026, 6, 16, 17, 0, 0, tzinfo=timezone.utc)
+
+
+class _FrozenDateTime(datetime):
+    """datetime subclass whose now() is pinned to _FROZEN_UTC."""
+
+    @classmethod
+    def now(cls, tz=None):
+        if tz is not None:
+            return _FROZEN_UTC.astimezone(tz)
+        return _FROZEN_UTC.replace(tzinfo=None)
+
+
+@pytest.fixture(autouse=True)
+def _freeze_scanner_clock():
+    """Pin all wall-clock-dependent scanner gates to a deterministic instant.
+
+    Covers the _scan_symbol() session-timing / EIA-blackout gates plus both
+    market-hours helpers so a test never depends on when CI runs.
+    """
+    with (
+        patch("scanner.signal_scanner.datetime", _FrozenDateTime),
+        patch("scanner.signal_scanner._is_futures_market_hours", return_value=True),
+        patch("scanner.signal_scanner._is_equity_market_hours", return_value=True),
+    ):
+        yield
+
 
 # ── Harness ──────────────────────────────────────────────────────────────────
 
