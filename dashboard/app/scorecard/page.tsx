@@ -424,6 +424,7 @@ export default function ScorecardPage() {
               href="/api/engine/reports/performance?format=download"
               target="_blank"
               rel="noopener noreferrer"
+              prefetch={false}
               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-accent"
             >
               <FileDown className="h-4 w-4" />

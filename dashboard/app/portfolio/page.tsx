@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { Activity, TrendingUp, TrendingDown, Circle } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, Circle, AlertCircle } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 
 const REFRESH_MS = 5000;
@@ -211,7 +211,7 @@ function MarketHealthCard({ market, mod, capital }: {
 export default function PortfolioPage() {
   const { data: summary } = useSWR<PortfolioSummary>("/portfolio/summary", fetcher, { refreshInterval: REFRESH_MS });
   const { data: health } = useSWR<PortfolioHealth>("/portfolio/health", fetcher, { refreshInterval: REFRESH_MS });
-  const { data: capital } = useSWR<CapitalAllocation>("/portfolio/capital", fetcher, { refreshInterval: 30_000 });
+  const { data: capital, error: capitalError } = useSWR<CapitalAllocation>("/portfolio/capital", fetcher, { refreshInterval: 30_000 });
 
   const moduleMap: Record<string, ModuleHealth> = {};
   for (const m of health?.modules ?? []) moduleMap[m.market] = m;
@@ -346,7 +346,17 @@ export default function PortfolioPage() {
         </div>
 
         {/* Capital allocation */}
-        {capital && (
+        {capitalError && !capital ? (
+          <div className="rounded-xl border border-border bg-muted/40 p-4 flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-mono text-[11px] font-semibold text-amber-500">Capital Allocation — unavailable</p>
+              <p className="font-mono text-[10px] text-muted-foreground mt-0.5">
+                Endpoint <code className="bg-muted px-1 rounded">/portfolio/capital</code> is not available on the engine. Capital figures will not be shown.
+              </p>
+            </div>
+          </div>
+        ) : capital ? (
           <div className="rounded-xl border border-border bg-card p-4 space-y-3">
             <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Capital Allocation — ${capital.total_capital.toLocaleString()} total
@@ -387,7 +397,7 @@ export default function PortfolioPage() {
               })}
             </div>
           </div>
-        )}
+        ) : null}
       </main>
     </div>
   );
