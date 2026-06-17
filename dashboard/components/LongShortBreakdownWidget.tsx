@@ -4,29 +4,14 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, ArrowUp, ArrowDown } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
-
+import {
+  fetchHonestTrades,
+  dedupCaveat,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: string;
-  quantity: number;
-  entry_price: number;
-  exit_price: number;
-  realized_pnl: number;
-  status: string;
-  entry_time: string;
-  exit_time: string | null;
-  notes: string | null;
-}
-
-interface TradesResponse {
-  trades: TradeRecord[];
-  count: number;
-}
 
 interface DirectionStats {
   count: number;
@@ -37,14 +22,15 @@ interface DirectionStats {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function isLong(side: string): boolean {
-  const s = side.toLowerCase();
-  return s.includes("buy") || s === "long";
-}
-
-function isShort(side: string): boolean {
-  const s = side.toLowerCase();
-  return s.includes("sell") || s === "short";
+function buildStats(trades: HonestTrade[]): DirectionStats {
+  const wins = trades.filter((t) => t.pnl > 0).length;
+  const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);
+  return {
+    count: trades.length,
+    wins,
+    totalPnl,
+    winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
+  };
 }
 
 function winRateClass(wr: number): string {
@@ -209,45 +195,19 @@ export function LongShortBreakdownWidget() {
     totalPnl: 0,
     winRate: 0,
   });
+  const [set, setSet] = useState<HonestTradeSet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTrades = useCallback(async () => {
     try {
-      const raw: unknown = await fetchEngine(
-        `/portfolio/history/trades?status=CLOSED&limit=200`
-      );
-      const trades: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
-
-      // Filter: exit_time non-null, status CLOSED
-      const closed = trades.filter(
-        (t: TradeRecord) => t.exit_time !== null && t.status === "CLOSED"
-      );
-
-      const newLong: DirectionStats = { count: 0, wins: 0, totalPnl: 0, winRate: 0 };
-      const newShort: DirectionStats = { count: 0, wins: 0, totalPnl: 0, winRate: 0 };
-
-      for (const trade of closed) {
-        const pnl = trade.realized_pnl ?? 0;
-
-        if (isLong(trade.side)) {
-          newLong.count++;
-          newLong.totalPnl += pnl;
-          if (pnl > 0) newLong.wins++;
-        } else if (isShort(trade.side)) {
-          newShort.count++;
-          newShort.totalPnl += pnl;
-          if (pnl > 0) newShort.wins++;
-        }
-      }
-
-      newLong.winRate = newLong.count > 0 ? (newLong.wins / newLong.count) * 100 : 0;
-      newShort.winRate = newShort.count > 0 ? (newShort.wins / newShort.count) * 100 : 0;
-
-      setLongStats(newLong);
-      setShortStats(newShort);
+      const honest = await fetchHonestTrades();
+      setSet(honest);
+      // Split by direction field ("LONG" | "SHORT") from deduped record
+      const longs = honest.trades.filter((t) => t.direction === "LONG");
+      const shorts = honest.trades.filter((t) => t.direction === "SHORT");
+      setLongStats(buildStats(longs));
+      setShortStats(buildStats(shorts));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load trades");
@@ -352,6 +312,13 @@ export function LongShortBreakdownWidget() {
                 </p>
               )}
             </div>
+
+            {/* Dedup caveat */}
+            {set && (
+              <p className="text-[10px] text-muted-foreground border-t border-border/30 pt-2">
+                {dedupCaveat(set)} · Refreshes every 60s
+              </p>
+            )}
           </div>
         )}
       </CardContent>

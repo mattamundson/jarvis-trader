@@ -2,26 +2,19 @@
 
 import React, { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
 import {
   Card,
   CardHeader,
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: "BUY" | "SELL";
-  realized_pnl: number | null;
-  status: string;
-  entry_time: string;
-  exit_time: string | null;
-}
+import {
+  fetchHonestTrades,
+  equityCurve,
+  type HonestTradeSet,
+  type EquityPoint,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,39 +51,17 @@ const PLOT_H = VB_H - PAD_TOP - PAD_BOTTOM;
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EquityCurveWidget() {
-  const [trades, setTrades] = useState<TradeRecord[]>([]);
+  const [honestSet, setHonestSet] = useState<HonestTradeSet | null>(null);
+  const [curve, setCurve] = useState<EquityPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchTrades() {
+  async function loadHonest() {
     try {
       setError(null);
-      const raw: unknown = await fetchEngine(`/portfolio/history/trades?status=CLOSED&limit=500`);
-
-      let list: TradeRecord[];
-      if (Array.isArray(raw)) {
-        list = raw as TradeRecord[];
-      } else if (
-        raw !== null &&
-        typeof raw === "object" &&
-        "trades" in raw &&
-        Array.isArray((raw as { trades: unknown }).trades)
-      ) {
-        list = (raw as { trades: TradeRecord[] }).trades;
-      } else {
-        list = [];
-      }
-
-      // Sort by exit_time ascending, keep only trades with an exit_time
-      const closed = list
-        .filter((t) => t.exit_time !== null && t.exit_time !== undefined)
-        .sort((a, b) => {
-          const ta = new Date(a.exit_time as string).getTime();
-          const tb = new Date(b.exit_time as string).getTime();
-          return ta - tb;
-        });
-
-      setTrades(closed);
+      const set = await fetchHonestTrades();
+      setHonestSet(set);
+      setCurve(equityCurve(set.trades));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -99,23 +70,18 @@ export function EquityCurveWidget() {
   }
 
   useEffect(() => {
-    fetchTrades();
-    const id = setInterval(fetchTrades, 120_000);
+    loadHonest();
+    const id = setInterval(loadHonest, 120_000);
     return () => clearInterval(id);
   }, []);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
-  // Running cumulative P&L starting at $0
-  const cumulative: number[] = [];
-  let running = 0;
-  for (const t of trades) {
-    running += t.realized_pnl ?? 0;
-    cumulative.push(running);
-  }
+  // Equity values for chart (cumulative P&L per close)
+  const cumulative: number[] = curve.map((p) => p.equity);
 
-  const totalPnl = cumulative.length > 0 ? cumulative[cumulative.length - 1] : 0;
-  const peakPnl = cumulative.length > 0 ? Math.max(...cumulative) : 0;
+  const totalPnl = curve.length > 0 ? curve[curve.length - 1].equity : 0;
+  const peakPnl = curve.length > 0 ? Math.max(...cumulative) : 0;
   const fromPeak = totalPnl - peakPnl;
 
   const minCum = cumulative.length > 0 ? Math.min(0, ...cumulative) : 0;
@@ -319,7 +285,7 @@ export function EquityCurveWidget() {
           <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">
             Equity curve unavailable
           </div>
-        ) : trades.length === 0 ? (
+        ) : curve.length === 0 ? (
           <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground text-center px-4">
             No closed trades yet — equity curve will appear here
           </div>
@@ -338,54 +304,61 @@ export function EquityCurveWidget() {
 
         {/* Stats row */}
         {!loading && !error && (
-          <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-border">
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
-                Starting Capital
-              </p>
-              <p className="text-sm font-bold font-mono text-foreground">
-                $25,000
-              </p>
+          <div className="mt-4 pt-4 border-t border-border space-y-3">
+            <div className="grid grid-cols-4 gap-4">
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                  Starting Capital
+                </p>
+                <p className="text-sm font-bold font-mono text-foreground">
+                  $25,000
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                  Current P&amp;L
+                </p>
+                <p
+                  className={`text-sm font-bold font-mono ${
+                    totalPnl > 0
+                      ? "text-green-500"
+                      : totalPnl < 0
+                      ? "text-red-500"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {totalPnl >= 0 ? "+" : ""}
+                  {fmtCurrencyFull(totalPnl)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                  Peak P&amp;L
+                </p>
+                <p className="text-sm font-bold font-mono text-foreground">
+                  {peakPnl >= 0 ? "+" : ""}
+                  {fmtCurrencyFull(peakPnl)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
+                  From Peak
+                </p>
+                <p
+                  className={`text-sm font-bold font-mono ${
+                    fromPeak < 0 ? "text-red-500" : "text-muted-foreground"
+                  }`}
+                >
+                  {fromPeak > 0 ? "+" : ""}
+                  {fmtCurrencyFull(fromPeak)}
+                </p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
-                Current P&amp;L
+            {honestSet && (
+              <p className="text-[10px] text-muted-foreground">
+                {dedupCaveat(honestSet)}
               </p>
-              <p
-                className={`text-sm font-bold font-mono ${
-                  totalPnl > 0
-                    ? "text-green-500"
-                    : totalPnl < 0
-                    ? "text-red-500"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {totalPnl >= 0 ? "+" : ""}
-                {fmtCurrencyFull(totalPnl)}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
-                Peak P&amp;L
-              </p>
-              <p className="text-sm font-bold font-mono text-foreground">
-                {peakPnl >= 0 ? "+" : ""}
-                {fmtCurrencyFull(peakPnl)}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
-                From Peak
-              </p>
-              <p
-                className={`text-sm font-bold font-mono ${
-                  fromPeak < 0 ? "text-red-500" : "text-muted-foreground"
-                }`}
-              >
-                {fromPeak > 0 ? "+" : ""}
-                {fmtCurrencyFull(fromPeak)}
-              </p>
-            </div>
+            )}
           </div>
         )}
       </CardContent>
