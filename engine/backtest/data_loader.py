@@ -152,6 +152,58 @@ class BacktestDataLoader:
             print(f"[DataLoader] Polygon failed: {exc}")
             return pd.DataFrame()
 
+    def _screen_bar_quality(
+        self, df: Optional[pd.DataFrame], symbol: str, interval: str
+    ) -> Optional[pd.DataFrame]:
+        """Drop contaminated bars before the backtester ever sees them.
+
+        Reuses the pure ``bar_quality_gate.screen_bars`` screen (the same logic
+        that guards live storage) to catch the impossible-OHLC / range-explosion
+        / lone-tick classes that produced the fake "PF 22" backtest edges.
+
+        Unlike the live storage path — which defaults to *shadow* mode so prod
+        rows are never silently dropped during rollout — backtests **always**
+        drop rejected rows: a backtest computed on a known-poison tick is
+        meaningless, so cleaning is non-negotiable. The drop is loud (printed),
+        never silent. Honour the same ``BAR_QUALITY_GATE_ENABLED`` kill-switch.
+
+        Screens on every load (not just on write) because cache files predate
+        the gate and may already hold contamination from before it existed.
+        """
+        if df is None or df.empty:
+            return df
+        try:
+            from data.bar_quality_gate import gate_enabled, screen_bars
+        except Exception:
+            return df
+        if not gate_enabled():
+            return df
+
+        ts = df["timestamp"] if "timestamp" in df.columns else df.index
+        vol = df["volume"] if "volume" in df.columns else [0] * len(df)
+        # Row layout expected by screen_bars: (sym, interval, ts, o, h, l, c, vol, source, fetched_at)
+        rows = [
+            (symbol, interval, t, o, h, low, c, v, "backtest_cache", "")
+            for t, o, h, low, c, v in zip(
+                list(ts), df["open"], df["high"], df["low"], df["close"], list(vol), strict=True
+            )
+        ]
+        rejects = screen_bars(rows)
+        if not rejects:
+            return df
+
+        by_reason: Dict[str, int] = {}
+        for rj in rejects:
+            by_reason[rj.reason] = by_reason.get(rj.reason, 0) + 1
+        summary = ", ".join(f"{k}={v}" for k, v in sorted(by_reason.items()))
+        print(
+            f"[DataLoader][bar_quality] {symbol} {interval} - DROPPED "
+            f"{len(rejects)}/{len(df)} contaminated bars ({summary})"
+        )
+        bad = {rj.index for rj in rejects}
+        keep_pos = [i for i in range(len(df)) if i not in bad]
+        return df.iloc[keep_pos]
+
     def load(
         self, symbol: str, start: str, end: str, interval: str = "1d"
     ) -> Optional[pd.DataFrame]:
@@ -160,6 +212,7 @@ class BacktestDataLoader:
         Maps futures symbols via FUTURES_MAP automatically.
         Returns DataFrame with lowercase columns: open, high, low, close, volume, timestamp.
         Caches results to disk to avoid API rate limits on repeated runs.
+        Every returned frame is screened by the bar-quality gate first.
         """
         cache_file = self._cache_path(symbol, start, end, interval)
 
@@ -194,7 +247,7 @@ class BacktestDataLoader:
                         print(f"[DataLoader] Saved canonical cache: {cache_file.name}")
                     except Exception:
                         pass
-                return df
+                return self._screen_bar_quality(df, symbol, interval)
             except Exception as e:
                 print(f"[DataLoader] Cache read failed ({e}), re-fetching...")
 
@@ -239,6 +292,7 @@ class BacktestDataLoader:
         df.index = pd.to_datetime(df.index)
         df["timestamp"] = df.index
         df = df.dropna(subset=["open", "high", "low", "close"])
+        df = self._screen_bar_quality(df, symbol, interval)
 
         print(f"[DataLoader] Loaded {len(df)} bars for {symbol} ({ticker})")
 

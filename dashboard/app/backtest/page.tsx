@@ -3,15 +3,6 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import type { LucideIcon } from "lucide-react";
 import { Activity, TrendingUp, Award, BarChart2, Percent } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
@@ -21,6 +12,7 @@ import { StrategyParamsCard } from "@/components/StrategyParamsCard";
 import { SignalAccuracyWidget } from "@/components/SignalAccuracyWidget";
 import { LongShortBalanceWidget } from "@/components/LongShortBalanceWidget";
 import { DecisionBreakdownCard } from "@/components/DecisionBreakdownCard";
+import { LightweightSeriesChart, type SeriesPoint } from "@/components/charts/LightweightSeriesChart";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -194,42 +186,26 @@ function EquityMiniChart({ result }: { result: BacktestResult }) {
   const isPositive =
     (result.full_metrics?.total_return_pct ?? result.total_return ?? 0) >= 0;
   const strokeColor = isPositive ? "#22c55e" : "#ef4444";
-  const fillColor = isPositive ? "#22c55e" : "#ef4444";
+
+  // Same equity values; idx → synthetic ascending daily timestamps so the
+  // TradingView renderer accepts an index-based (non-dated) curve. Time axis
+  // is hidden because the X axis is trade-index, not a calendar.
+  const series: SeriesPoint[] = data.map((p) => ({
+    time: (Date.UTC(2000, 0, 1) / 1000 + p.idx * 86400) as SeriesPoint["time"],
+    value: p.value,
+  }));
 
   return (
-    <ResponsiveContainer width="100%" height={80}>
-      <AreaChart data={data} margin={{ top: 4, right: 2, bottom: 0, left: 2 }}>
-        <defs>
-          <linearGradient id={`grad-${result._filename}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={fillColor} stopOpacity={0.3} />
-            <stop offset="95%" stopColor={fillColor} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis dataKey="idx" hide />
-        <YAxis domain={["auto", "auto"]} hide />
-        <Tooltip
-          contentStyle={{
-            background: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "8px",
-            fontSize: "11px",
-            color: "hsl(var(--foreground))",
-          }}
-          formatter={(v: number) => [`$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, "Equity"]}
-          labelFormatter={() => ""}
-        />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke={strokeColor}
-          strokeWidth={1.5}
-          fill={`url(#grad-${result._filename})`}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
+    <LightweightSeriesChart
+      data={series}
+      type="area"
+      color={strokeColor}
+      topColor={`${strokeColor}4D`}
+      bottomColor={`${strokeColor}00`}
+      height={80}
+      valueFormat="dollar"
+      hideTimeAxis
+    />
   );
 }
 

@@ -24,6 +24,8 @@ import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
 import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
+import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 
 // ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
@@ -621,6 +623,44 @@ function DoNotTradeList() {
   );
 }
 
+// ── Live Price (per-symbol, our real-time bars) ───────────────────────────────
+
+function LivePriceSection() {
+  const [open, setOpen] = useState(true);
+  const [sym, setSym] = useState<ChartSymbol>("MES");
+  const [tf, setTf] = useState<ChartTimeframe>("1h");
+
+  return (
+    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <SectionHeader
+          title="Live Price -- Per Symbol"
+          subtitle="Real-time JARVIS bars (our data, not TradingView's delayed futures embed) with closed-trade markers"
+        />
+        {open ? (
+          <ChevronUp className="h-4 w-4" style={{ color: "#555" }} />
+        ) : (
+          <ChevronDown className="h-4 w-4" style={{ color: "#555" }} />
+        )}
+      </button>
+      {open && (
+        <div className="mt-2">
+          <PriceChartPanel
+            symbol={sym}
+            timeframe={tf}
+            onSymbolChange={setSym}
+            onTimeframeChange={setTf}
+            height={380}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PerformancePage() {
@@ -764,6 +804,9 @@ export default function PerformancePage() {
           <SummaryCard label="Do Not Trade" value="8" sub="Failed walk-forward" color="#ff4444" />
           <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
         </div>
+
+        {/* Live per-symbol price chart — our own real-time futures bars */}
+        <LivePriceSection />
 
         {/* Hold time analytics */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

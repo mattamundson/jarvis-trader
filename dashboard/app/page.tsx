@@ -28,6 +28,7 @@ import { EODSummaryWidget } from "@/components/EODSummaryWidget";
 import { EventsFeedWidget } from '@/components/EventsFeedWidget';
 import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
 import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidget";
+import { ForwardTestPanel } from "@/components/ForwardTestPanel";
 import { ExecutionCockpitWidget } from "@/components/ExecutionCockpitWidget";
 import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
@@ -39,11 +40,14 @@ import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import { EngineHealthWidget } from "@/components/EngineHealthWidget";
 import { ConfidenceGauge } from "@/components/ConfidenceGauge";
 import { HonestPnlCard } from "@/components/HonestPnlCard";
+import { SameDayPnLBadge } from "@/components/SameDayPnLBadge";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
 import { MESSprintGate } from "@/components/MESSprintGate";
 import PendingApprovals from "@/components/PendingApprovals";
+import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
+import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, getPendingApprovals } from "@/lib/api";
 import type {
@@ -121,6 +125,9 @@ export default function DashboardPage() {
   const [analysisSymbol, setAnalysisSymbol] = React.useState("SPY");
   const [isRunning, setIsRunning] = React.useState(false);
   const [lastResult, setLastResult] = React.useState<Record<string, unknown> | null>(null);
+  // Cockpit live chart — our own real-time futures bars (never TradingView's delayed embed).
+  const [chartSymbol, setChartSymbol] = React.useState<ChartSymbol>("MES");
+  const [chartTimeframe, setChartTimeframe] = React.useState<ChartTimeframe>("1h");
 
   const runAnalysis = useCallback(async () => {
     if (!engineReachable || isRunning) return;
@@ -215,8 +222,22 @@ export default function DashboardPage() {
         {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
         <ProactiveValidationWidget />
 
+        {/* Forward-Test loop — per-candidate OOS record + graduation verdict
+            (honest-edge spine: registry -> forward-test -> graduation) */}
+        <ForwardTestPanel />
+
         {/* Execution Cockpit — live fills, fidelity, slippage, pending approvals */}
         <ExecutionCockpitWidget />
+
+        {/* Live market chart — our own real-time futures bars (TradingView's free
+            embed delays CME futures, so futures are charted from our data here). */}
+        <PriceChartPanel
+          symbol={chartSymbol}
+          timeframe={chartTimeframe}
+          onSymbolChange={setChartSymbol}
+          onTimeframeChange={setChartTimeframe}
+          height={360}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Signal Flow — per-instrument STC values and pipeline block stage */}
@@ -233,6 +254,9 @@ export default function DashboardPage() {
 
           {/* Deduped realized record via the honest-metrics layer (not raw tables) */}
           <HonestPnlCard />
+
+          {/* Same-day P&L reconciliation (C3): aggregate vs independent snapshot */}
+          <SameDayPnLBadge />
 
           {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
           <Pm2StabilityWidget />
