@@ -2,14 +2,21 @@
 SMA trend-following signal generator for JARVIS TRADER.
 
 Validated on MES 1h via walk-forward optimization — rank11 champion (2026-05-06):
-    SMA(60, 200) + 2.0×ATR trailing stop
-    fixed_params PF: fast=60→2.156, fast=55→1.722, fast=50→1.351
+    SMA(60, 200) + 2.0xATR trailing stop
+    fixed_params PF: fast=60->2.156, fast=55->1.722, fast=50->1.351
     gate v2 ALT PASS: dsr=1.0, wfo=STRONG, mc_dd=0.81%, fixed_params_min_pf=1.351
 
-Entry : fast SMA crosses above slow SMA (Golden Cross) — LONG only.
+Entry : fast SMA crosses above slow SMA (Golden Cross) -- LONG only.
 Exit  : fast SMA crosses below slow SMA  OR  ATR trailing stop hit.
-Stop  : initial stop = entry - trail_mult × ATR(14) at entry bar.
+Stop  : initial stop = entry - trail_mult x ATR(14) at entry bar.
         (Static at entry; full trailing stop requires Backtester enhancement.)
+
+ADX conditioning (2026-06-17):
+    adx_threshold parameter added to generate_sma_trend_signals.
+    When None (default) behavior is byte-identical to the pre-ADX version.
+    When set, suppresses ENTRY_NOW on bars where ADX(adx_period) < adx_threshold
+    or ADX is NaN (insufficient data). Exits are never affected.
+    Reference: run_discovery_adx_fixed.py commit 0b713a2 (bug-fixed version).
 """
 
 from __future__ import annotations
@@ -68,6 +75,8 @@ def generate_sma_trend_signals(
     vix_df: pd.DataFrame | None = None,
     vix_min: float = 0.0,
     vix_max: float = 999.0,
+    adx_threshold: float | None = None,
+    adx_period: int = 14,
 ) -> pd.DataFrame:
     """
     Generate SMA trend-following signals compatible with the JARVIS Backtester.
@@ -75,7 +84,7 @@ def generate_sma_trend_signals(
     Args:
         min_rv_annualized: If > 0, suppress ENTRY_NOW when 20-bar realized
             vol (annualized %) at entry bar < threshold. Empirically the
-            SMA trend edge concentrates at RV ≥ 9% (36-trade sample).
+            SMA trend edge concentrates at RV >= 9% (36-trade sample).
             0.0 (default) = filter disabled.
         rv_annual_factor: Bars-per-year for RV annualization. Default None uses
             _RV_ANNUAL_FACTOR (252*24 for 1h bars). Pass 252 for daily bars.
@@ -85,11 +94,19 @@ def generate_sma_trend_signals(
             No-op when None (default, backward-compatible).
         vix_min: Lower bound for VIX filter (inclusive). 0.0 = no lower bound.
         vix_max: Upper bound for VIX filter (inclusive). 999.0 = no upper bound.
+        adx_threshold: When set to a float, suppress ENTRY_NOW on bars where
+            ADX(adx_period) < adx_threshold or ADX is NaN. Exits are never
+            affected. None (default) = filter disabled, identical behavior to
+            the pre-ADX version. Validated: MGC 1h fast=50/slow=120/atr=2.0,
+            adx_threshold=18 -> PASS-ALT pf_ci_lower~2.62, mc_95th_dd~1.83%,
+            ~40 OOS trades (2026-06-17).
+        adx_period: Period for ADX computation. Default 14 (Wilder standard).
+            Only used when adx_threshold is not None.
 
     Returns df with columns:
         entry_signal  : "ENTRY_NOW" | "NO_TRADE"
-        stop_level    : entry − trail_mult × ATR  (set at signal bar)
-        target_1/2/3  : entry + N × ATR
+        stop_level    : entry - trail_mult x ATR  (set at signal bar)
+        target_1/2/3  : entry + N x ATR
         bias          : "STRONG_BULL" | "STRONG_BEAR" | "NEUTRAL"
         regime        : "TRENDING_BULL" | "RANGE_BOUND"
         atr           : ATR(14) series
@@ -193,6 +210,18 @@ def generate_sma_trend_signals(
     df["atr"] = atr
     df["rv_20_ann_pct"] = rv_ann
     df["vix_level"] = _vix_series if _vix_series is not None else np.nan
+
+    # ADX entry filter (2026-06-17): suppress ENTRY_NOW where ADX < threshold.
+    # Applied POST-loop so exits are never affected.
+    # adx_threshold=None (default) -> no change, identical output to pre-ADX code.
+    if adx_threshold is not None:
+        from backtest.indicators import compute_adx
+        adx_df = compute_adx(df, period=adx_period)
+        adx_vals = adx_df["adx"]
+        entry_mask = df["entry_signal"] == "ENTRY_NOW"
+        adx_weak = (adx_vals < adx_threshold) | adx_vals.isna()
+        suppress = entry_mask & adx_weak
+        df.loc[suppress, "entry_signal"] = "NO_TRADE"
 
     df["bias"] = "NEUTRAL"
     df.loc[above, "bias"] = "STRONG_BULL"

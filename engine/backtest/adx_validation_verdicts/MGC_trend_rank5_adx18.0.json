@@ -1,0 +1,228 @@
+{
+  "symbol": "MGC",
+  "rank": "rank5_adx_conditioning",
+  "adx_threshold": 18.0,
+  "adx_period": 14,
+  "champion_params": {
+    "fast": 50,
+    "slow": 120,
+    "atr_trail_mult": 2.0,
+    "adx_threshold": 18.0,
+    "adx_period": 14
+  },
+  "verdict": "PASS",
+  "passed_via": "alt",
+  "created_at": "2026-06-17T09:38:06.959076+00:00",
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 2,
+    "step_months": 1,
+    "n_windows": 19,
+    "n_oos_windows": 19,
+    "n_oos_windows_with_trades": 18,
+    "total_oos_trades": 40,
+    "grid_combos": 1
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 2.6005,
+    "p_edge": 0.7778,
+    "mc_95th_dd": 0.018251,
+    "mc_95th_dd_pct": 1.8251,
+    "dsr": 1.0,
+    "wfo_consistency": "STRONG",
+    "fixed_params_min_pf": 2.5489,
+    "cost_survives_through": "catastrophic",
+    "cost_tier_results": {
+      "optimistic": {
+        "pf": 2.5951,
+        "trades": 37,
+        "passes": true
+      },
+      "realistic": {
+        "pf": 2.5489,
+        "trades": 37,
+        "passes": true
+      },
+      "pessimistic": {
+        "pf": 2.5206,
+        "trades": 37,
+        "passes": true
+      },
+      "catastrophic": {
+        "pf": 2.3939,
+        "trades": 37,
+        "passes": true
+      }
+    },
+    "total_oos_trades": 40,
+    "sample_adequate": true,
+    "win_rate_ci_lower": 0.55
+  },
+  "core_reasons": [
+    "mbb_pf_ci_lower=2.6005 >= 1.1",
+    "FAIL p_positive_edge=0.7778 >= 0.95",
+    "mc_95th_dd_pct=1.8251 <= 5.0",
+    "dsr=1.000000 >= 0.1 (not selection-bias)"
+  ],
+  "alt_reasons": [
+    "dsr=1.000000 >= 0.3 (alt floor)",
+    "rolling_wfo=STRONG in ['MODERATE', 'STRONG']",
+    "fixed_params_min_pf=2.549 >= 1.2",
+    "cost_survives_through=catastrophic >= realistic",
+    "mc_95th_dd_pct=1.8251 <= 4.0 (alt ceiling)"
+  ],
+  "windows": [
+    {
+      "window": 1,
+      "oos_period": "2024-10 -> 2024-12",
+      "oos_pf": 3.403,
+      "oos_dd": 0.0021,
+      "oos_sharpe": 6.126,
+      "oos_trades": 2
+    },
+    {
+      "window": 2,
+      "oos_period": "2024-11 -> 2025-01",
+      "oos_pf": 4.329,
+      "oos_dd": 0.0048,
+      "oos_sharpe": 8.922,
+      "oos_trades": 3
+    },
+    {
+      "window": 3,
+      "oos_period": "2024-12 -> 2025-02",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0001,
+      "oos_sharpe": 17.28,
+      "oos_trades": 3
+    },
+    {
+      "window": 4,
+      "oos_period": "2025-01 -> 2025-03",
+      "oos_pf": 6.063,
+      "oos_dd": 0.0032,
+      "oos_sharpe": 7.374,
+      "oos_trades": 3
+    },
+    {
+      "window": 5,
+      "oos_period": "2025-02 -> 2025-04",
+      "oos_pf": 2.146,
+      "oos_dd": 0.0084,
+      "oos_sharpe": 4.089,
+      "oos_trades": 2
+    },
+    {
+      "window": 6,
+      "oos_period": "2025-03 -> 2025-05",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 7,
+      "oos_period": "2025-04 -> 2025-06",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 54.733,
+      "oos_trades": 2
+    },
+    {
+      "window": 8,
+      "oos_period": "2025-05 -> 2025-07",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 27.872,
+      "oos_trades": 4
+    },
+    {
+      "window": 9,
+      "oos_period": "2025-06 -> 2025-08",
+      "oos_pf": 1.928,
+      "oos_dd": 0.0054,
+      "oos_sharpe": 3.65,
+      "oos_trades": 3
+    },
+    {
+      "window": 10,
+      "oos_period": "2025-07 -> 2025-09",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0001,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 11,
+      "oos_period": "2025-08 -> 2025-10",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0001,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 12,
+      "oos_period": "2025-09 -> 2025-11",
+      "oos_pf": 5.485,
+      "oos_dd": 0.0028,
+      "oos_sharpe": 8.239,
+      "oos_trades": 3
+    },
+    {
+      "window": 13,
+      "oos_period": "2025-10 -> 2025-12",
+      "oos_pf": 7.876,
+      "oos_dd": 0.0029,
+      "oos_sharpe": 11.694,
+      "oos_trades": 4
+    },
+    {
+      "window": 14,
+      "oos_period": "2025-11 -> 2026-01",
+      "oos_pf": 4.54,
+      "oos_dd": 0.0029,
+      "oos_sharpe": 9.678,
+      "oos_trades": 3
+    },
+    {
+      "window": 15,
+      "oos_period": "2025-12 -> 2026-02",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 16,
+      "oos_period": "2026-01 -> 2026-03",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 17,
+      "oos_period": "2026-02 -> 2026-04",
+      "oos_pf": 0.0,
+      "oos_dd": 0.0056,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 18,
+      "oos_period": "2026-03 -> 2026-05",
+      "oos_pf": 0.171,
+      "oos_dd": 0.0056,
+      "oos_sharpe": -7.954,
+      "oos_trades": 2
+    },
+    {
+      "window": 19,
+      "oos_period": "2026-04 -> 2026-05",
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    }
+  ]
+}

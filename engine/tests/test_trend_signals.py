@@ -147,3 +147,56 @@ def test_rv_filter_zero_matches_unfiltered():
     n_off = (df_off["entry_signal"] == "ENTRY_NOW").sum()
     n_on = (df_on["entry_signal"] == "ENTRY_NOW").sum()
     assert n_on <= n_off, f"Filter should never INCREASE entries: off={n_off} on={n_on}"
+
+
+# ── ADX entry filter (2026-06-17 promotion) ──────────────────────────────
+
+
+def test_adx_none_identical_to_unset():
+    """adx_threshold=None must produce byte-identical entry_signal to not passing the param."""
+    df_in = _make_trending_df()
+    df_default = generate_sma_trend_signals(df_in, fast=20, slow=100)
+    df_none = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_threshold=None)
+    pd.testing.assert_series_equal(
+        df_default["entry_signal"],
+        df_none["entry_signal"],
+        check_names=False,
+        obj="entry_signal with adx_threshold=None vs default",
+    )
+
+
+def test_adx_filter_never_increases_entries():
+    """adx_threshold set to any value must return <= entries compared to no filter."""
+    df_in = _make_trending_df()
+    df_base = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_threshold=None)
+    n_base = (df_base["entry_signal"] == "ENTRY_NOW").sum()
+
+    for thresh in [10, 18, 25, 50]:
+        df_adx = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_threshold=float(thresh))
+        n_adx = (df_adx["entry_signal"] == "ENTRY_NOW").sum()
+        assert n_adx <= n_base, (
+            f"adx_threshold={thresh} produced more entries ({n_adx}) than baseline ({n_base})"
+        )
+
+
+def test_adx_very_high_threshold_suppresses_all_entries():
+    """adx_threshold=999 (unreachable) must suppress every ENTRY_NOW."""
+    df_in = _make_trending_df()
+    df_adx = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_threshold=999.0)
+    n = (df_adx["entry_signal"] == "ENTRY_NOW").sum()
+    assert n == 0, f"Expected 0 entries with adx_threshold=999 but got {n}"
+
+
+def test_adx_filter_does_not_affect_exits():
+    """ADX filter must only suppress entries; exits are not modified."""
+    df_in = _make_trending_df()
+    df_base = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_threshold=None)
+    # Use a moderate threshold that suppresses some entries
+    df_adx = generate_sma_trend_signals(df_in, fast=20, slow=100, adx_threshold=18.0)
+    # Both should have the same exit_signal series (exits driven purely by SMA crossover/trail)
+    pd.testing.assert_series_equal(
+        df_base["exit_signal"],
+        df_adx["exit_signal"],
+        check_names=False,
+        obj="exit_signal with and without ADX filter",
+    )
