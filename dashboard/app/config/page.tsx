@@ -285,61 +285,6 @@ export default function ConfigPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
-        <div className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-              <Activity className="h-5 w-5 text-accent" />
-            </div>
-            <div>
-              <h1 className="font-bold text-zinc-100 tracking-tight">JARVIS TRADER</h1>
-              <p className="text-xs text-zinc-500">IBKR Futures + Schwab Options</p>
-            </div>
-            <nav className="hidden lg:flex items-center gap-4 ml-6">
-              {[
-                ["/", "Dashboard"],
-                ["/analysis", "Analysis"],
-                ["/backtest", "Backtest"],
-                ["/performance", "Performance"],
-                ["/validation", "Validation"],
-                ["/journal", "Journal"],
-                ["/settings", "Settings"],
-                ["/health", "Health"],
-                ["/config", "Config"],
-              ].map(([href, label]) => (
-                <a
-                  key={href}
-                  href={href}
-                  className={`text-xs transition-colors ${
-                    href === "/config"
-                      ? "text-zinc-100 font-semibold border-b border-accent pb-0.5"
-                      : "text-zinc-500 hover:text-zinc-200"
-                  }`}
-                >
-                  {label}
-                </a>
-              ))}
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {lastRefresh && (
-              <span className="text-[11px] text-zinc-600">
-                {lastRefresh.toLocaleTimeString()}
-              </span>
-            )}
-            <button
-              onClick={loadData}
-              disabled={loading}
-              className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
-        </div>
-      </header>
-
       {/* Page content */}
       <main className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] px-6 py-6 space-y-6">
         {/* Page title */}

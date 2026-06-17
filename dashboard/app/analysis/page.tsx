@@ -103,21 +103,6 @@ export default function AnalysisPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-5xl flex items-center gap-3 px-6 py-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-            <Activity className="h-5 w-5 text-accent" />
-          </div>
-          <div>
-            <h1 className="font-bold text-foreground tracking-tight">JARVIS TRADER — Analysis</h1>
-            <p className="text-xs text-muted-foreground">5-stage AI pipeline</p>
-          </div>
-          <span className="text-xs text-muted-foreground ml-auto">
-            <Link href="/" className="hover:text-foreground transition-colors">← Dashboard</Link>
-          </span>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-5xl px-6 py-6 space-y-6">
         <div className="rounded-xl border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">

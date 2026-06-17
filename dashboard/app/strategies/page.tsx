@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Brain, ArrowLeft, Play, RefreshCw, CheckCircle, XCircle, Clock, Zap, Activity, Cpu, StopCircle } from "lucide-react";
+import { Brain, Play, RefreshCw, CheckCircle, XCircle, Clock, Zap, Activity, Cpu, StopCircle } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
 import { SectionHeader } from "./SectionHeader";
 import { HowItWorksPanel } from "./HowItWorksPanel";
@@ -2086,62 +2086,6 @@ export default function StrategiesPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#050505" }}>
       {/* Header */}
-      <header
-        className="sticky top-0 z-50 backdrop-blur"
-        style={{ backgroundColor: "rgba(5,5,5,0.95)", borderBottom: "1px solid #1a1a2e" }}
-      >
-        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-lg"
-              style={{ backgroundColor: "#00d4ff15" }}
-            >
-              <Brain className="h-5 w-5" style={{ color: "#00d4ff" }} />
-            </div>
-            <div>
-              <h1 className="font-bold tracking-tight" style={{ color: "#e0e0e0" }}>
-                JARVIS TRADER
-              </h1>
-              <p className="text-xs" style={{ color: "#555" }}>
-                IBKR Futures + Schwab Options
-              </p>
-            </div>
-            <nav className="hidden lg:flex items-center gap-4 ml-6">
-              {NAV_LINKS.map(({ href, label }) => (
-                <a
-                  key={href}
-                  href={href}
-                  className="text-xs transition-colors"
-                  style={
-                    href === "/strategies"
-                      ? { color: "#e0e0e0", borderBottom: "1px solid #00d4ff", paddingBottom: "2px", fontWeight: 600 }
-                      : href === "/paper"
-                        ? { color: "#00ff88", fontWeight: 600 }
-                        : { color: "#888" }
-                  }
-                >
-                  {label}
-                </a>
-              ))}
-            </nav>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={fetchAll}
-              className="flex items-center gap-1.5 font-mono text-xs transition-colors"
-              style={{ color: "#555" }}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Refresh
-            </button>
-            <Link href="/" className="flex items-center gap-1.5 text-xs transition-colors" style={{ color: "#888" }}>
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back
-            </Link>
-          </div>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
         {/* Page title */}

@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
 import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload, KillSwitchStatus } from "@/lib/api";
 import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
@@ -67,52 +67,6 @@ export default function PaperTradingPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-              <Activity className="h-5 w-5 text-accent" />
-            </div>
-            <div>
-              <h1 className="font-bold text-foreground tracking-tight">
-                JARVIS TRADER
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                MGC Daily Paper Trading — SUSPENDED
-              </p>
-            </div>
-            <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-                <ArrowLeft className="h-3 w-3" />
-                Dashboard
-              </Link>
-              <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Analysis
-              </Link>
-              <Link href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Backtest
-              </Link>
-              <Link href="/paper" className="text-xs text-accent font-semibold transition-colors">
-                Paper Trading
-              </Link>
-            </nav>
-          </div>
-          <div className="flex items-center gap-2">
-            <span
-              className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
-              style={engineHealthStyle}
-              title="GET /health — same check as WORKING_TODAY smoke"
-            >
-              {engineHealthLabel}
-            </span>
-            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
-              style={{ borderColor: "#00ff8833", backgroundColor: "#00ff8810", color: "#00ff88" }}>
-              PAPER MODE
-            </span>
-          </div>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-4 space-y-4">
         {/* WFE Halt Banner */}
         <div className="rounded-xl p-4 font-mono"

@@ -13,18 +13,22 @@ export default function ValidationCheckpointWidget() {
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Validation Progress</h2>
-        <p className="text-gray-500">Loading...</p>
+      <div className="rounded-lg border border-[#1a1a2e] bg-[#0a0a0a] p-6">
+        <h2 className="text-sm font-mono font-bold tracking-[0.15em] uppercase" style={{ color: "#00ff88" }}>
+          Validation Progress
+        </h2>
+        <p className="text-xs font-mono mt-2" style={{ color: "#555" }}>Loading...</p>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Validation Progress</h2>
-        <p className="text-red-500">Error loading validation data</p>
+      <div className="rounded-lg border border-[#1a1a2e] bg-[#0a0a0a] p-6">
+        <h2 className="text-sm font-mono font-bold tracking-[0.15em] uppercase" style={{ color: "#00ff88" }}>
+          Validation Progress
+        </h2>
+        <p className="text-xs font-mono mt-2" style={{ color: "#ff4444" }}>Error loading validation data</p>
       </div>
     );
   }
@@ -46,37 +50,39 @@ export default function ValidationCheckpointWidget() {
   ];
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className="rounded-lg border border-[#1a1a2e] bg-[#0a0a0a] p-6">
       {/* Title and Overall Status */}
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Validation Progress</h2>
+        <h2 className="text-sm font-mono font-bold tracking-[0.15em] uppercase" style={{ color: "#00ff88" }}>
+          Validation Progress
+        </h2>
         <Badge variant={overallVariant}>{data.overall_status}</Badge>
       </div>
 
       {/* Trade Count */}
       <div className="mb-6 text-center">
-        <p className="text-3xl font-bold text-gray-900">{data.trade_count}</p>
-        <p className="text-gray-600">/ 60 trades</p>
+        <p className="text-3xl font-bold font-mono" style={{ color: "#e0e0e0" }}>{data.trade_count}</p>
+        <p className="text-xs font-mono" style={{ color: "#555" }}>/ 60 trades</p>
       </div>
 
       {/* Days Progress Bar */}
       <div className="mb-6">
         <div className="mb-2 flex justify-between">
-          <span className="text-sm font-medium text-gray-700">30-Day Validation Window</span>
-          <span className="text-sm text-gray-600">
+          <span className="text-xs font-mono" style={{ color: "#888" }}>30-Day Validation Window</span>
+          <span className="text-xs font-mono" style={{ color: "#555" }}>
             {data.days_elapsed} / 30 days
           </span>
         </div>
-        <div className="h-2 w-full rounded-full bg-gray-200">
+        <div className="h-1.5 w-full rounded-full" style={{ backgroundColor: "#1a1a2e" }}>
           <div
-            className="h-2 rounded-full bg-blue-500 transition-all duration-300"
-            style={{ width: `${progressPercent}%` }}
+            className="h-1.5 rounded-full transition-all duration-300"
+            style={{ width: `${progressPercent}%`, backgroundColor: "#00ff88" }}
           />
         </div>
       </div>
 
       {/* Gates Grid */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {gates.map((gate) => {
           const gateData = data.gates[gate.key];
           if (!gateData) return null;
@@ -86,33 +92,33 @@ export default function ValidationCheckpointWidget() {
           const formattedTarget = gate.format(gateData.target_value);
 
           return (
-            <div key={gate.key} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+            <div key={gate.key} className="rounded-lg p-3" style={{ backgroundColor: "#0d0d1a", border: "1px solid #1a1a2e" }}>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-700">{gate.label}</p>
+                <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#888" }}>{gate.label}</p>
                 <Badge variant={badgeVariant}>{gateData.status}</Badge>
               </div>
-              <p className="text-xl font-semibold text-gray-900">{formattedValue}</p>
-              <p className="text-xs text-gray-600">Target: {formattedTarget}</p>
+              <p className="text-lg font-bold font-mono" style={{ color: "#e0e0e0" }}>{formattedValue}</p>
+              <p className="text-[10px] font-mono" style={{ color: "#555" }}>Target: {formattedTarget}</p>
             </div>
           );
         })}
       </div>
 
       {/* Additional Info */}
-      <div className="mt-6 border-t border-gray-200 pt-4">
-        <div className="grid grid-cols-2 gap-4 text-sm">
+      <div className="mt-6 pt-4" style={{ borderTop: "1px solid #1a1a2e" }}>
+        <div className="grid grid-cols-2 gap-4 text-xs font-mono">
           <div>
-            <p className="text-gray-600">Trading Days</p>
-            <p className="font-semibold text-gray-900">{data.trading_days}</p>
+            <p style={{ color: "#555" }}>Trading Days</p>
+            <p className="font-semibold" style={{ color: "#e0e0e0" }}>{data.trading_days}</p>
           </div>
           <div>
-            <p className="text-gray-600">Days Remaining</p>
-            <p className="font-semibold text-gray-900">{data.days_remaining}</p>
+            <p style={{ color: "#555" }}>Days Remaining</p>
+            <p className="font-semibold" style={{ color: "#e0e0e0" }}>{data.days_remaining}</p>
           </div>
           {data.validation_start && (
             <div className="col-span-2">
-              <p className="text-gray-600">Validation Started</p>
-              <p className="font-semibold text-gray-900">
+              <p style={{ color: "#555" }}>Validation Started</p>
+              <p className="font-semibold" style={{ color: "#e0e0e0" }}>
                 {new Date(data.validation_start).toLocaleDateString()}
               </p>
             </div>

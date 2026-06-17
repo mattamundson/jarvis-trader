@@ -33,34 +33,6 @@ export default function StatsPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Sticky header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-              <BarChart3 className="h-5 w-5 text-accent" />
-            </div>
-            <div>
-              <h1 className="font-bold text-foreground tracking-tight">
-                JARVIS TRADER — Statistics
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Full trading performance analytics
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-muted-foreground hidden sm:block">
-              Auto-refresh per widget
-            </span>
-            <div className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground">
-              <RefreshCw className="h-3 w-3" />
-              Live
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* Page content */}
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 

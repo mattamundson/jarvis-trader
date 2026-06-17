@@ -147,7 +147,7 @@ export default function DashboardPage() {
                 JARVIS TRADER
               </h1>
               <p className="text-xs text-muted-foreground">
-                IBKR Futures + Schwab Options
+                Legacy EOD View · IBKR Futures + Schwab Options
               </p>
             </div>
             

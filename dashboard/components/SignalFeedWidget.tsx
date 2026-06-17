@@ -161,7 +161,7 @@ export function SignalFeedWidget() {
               ENGINE UNREACHABLE
             </span>
             <span className="font-mono text-[9px] text-zinc-700">
-              /decisions/recent
+              engine offline
             </span>
           </div>
         )}
@@ -225,7 +225,7 @@ export function SignalFeedWidget() {
       {/* Footer */}
       <div className="px-3 py-1.5 border-t border-zinc-800/60 bg-zinc-900/60">
         <span className="font-mono text-[9px] text-zinc-700 tracking-wider">
-          POLL 30s &middot; GET /decisions/recent
+          POLL 30s
         </span>
       </div>
     </div>

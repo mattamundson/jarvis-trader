@@ -588,7 +588,7 @@ function RecentSignalsCard({
       <CardContent className="px-4 pb-3">
         {!decisions || decisions.length === 0 ? (
           <div className="text-xs text-slate-500 font-mono py-6 text-center">
-            No recent decisions from /decisions/recent
+            No recent signals
           </div>
         ) : (
           <div className="space-y-2.5">

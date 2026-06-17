@@ -492,7 +492,15 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          ROW 1 — STATUS OVERVIEW (5 columns)
+          ROW 1 — STRATEGY INTELLIGENCE (System 2 + Strategy C+)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <System2StatusWidget />
+        <StrategyCPlusCard />
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ROW 2 — STATUS OVERVIEW (5 columns)
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-5 gap-3 mb-4">
         {/* Portfolio */}
@@ -599,7 +607,7 @@ export default function CommandCenterPage() {
                     : "bg-green-950 text-green-400 border border-green-800"
                 }`}
               >
-                {killSwitchActive ? "⚠ ACTIVE" : "ARMED"}
+                {killSwitchActive ? "⚠ ACTIVE" : "STANDBY"}
               </Badge>
             </div>
             <div className="flex justify-between items-baseline">
@@ -727,9 +735,9 @@ export default function CommandCenterPage() {
                     TRADING HALTED
                   </span>
                   <span className="font-mono text-xs text-slate-500 text-center">
-                    WFE={inst.wfe} — OVERFIT DETECTED
+                    WFE={inst.wfe} (3-window) — OVERFIT DETECTED
                     <br />
-                    Regime-adaptive boost insufficient
+                    Corrected WFE=0.14 (15-window) — below 0.30 threshold
                   </span>
                 </div>
               ) : (
@@ -881,7 +889,7 @@ export default function CommandCenterPage() {
           <CardContent className="px-4 pb-3">
             {!decisions || decisions.length === 0 ? (
               <div className="text-xs text-slate-500 font-mono py-6 text-center">
-                No recent decisions from /decisions/recent
+                No recent signals
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -1279,14 +1287,6 @@ export default function CommandCenterPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════
-          ROW 6 — SYSTEM 2 + STRATEGY C+ (two columns)
-      ═══════════════════════════════════════════════════════ */}
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <System2StatusWidget />
-        <StrategyCPlusCard />
       </div>
 
       {/* ═══════════════════════════════════════════════════════

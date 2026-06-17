@@ -209,9 +209,11 @@ function MarketHealthCard({ market, mod, capital }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
-  const { data: summary } = useSWR<PortfolioSummary>("/portfolio/summary", fetcher, { refreshInterval: REFRESH_MS });
+  const { data: summary, error: summaryError } = useSWR<PortfolioSummary>("/portfolio/summary", fetcher, { refreshInterval: REFRESH_MS });
   const { data: health } = useSWR<PortfolioHealth>("/portfolio/health", fetcher, { refreshInterval: REFRESH_MS });
   const { data: capital } = useSWR<CapitalAllocation>("/portfolio/capital", fetcher, { refreshInterval: 30_000 });
+
+  const engineOffline = !!summaryError;
 
   const moduleMap: Record<string, ModuleHealth> = {};
   for (const m of health?.modules ?? []) moduleMap[m.market] = m;
@@ -221,6 +223,12 @@ export default function PortfolioPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {engineOffline && (
+        <div className="px-6 py-2 flex items-center gap-2 border-b border-[#1a1a2e]" style={{ backgroundColor: "#0d0d1a" }}>
+          <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#555" }} />
+          <span className="text-[10px] font-mono" style={{ color: "#555" }}>Engine offline — showing last known state</span>
+        </div>
+      )}
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
         {/* Daily target progress */}
