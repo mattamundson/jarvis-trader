@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "registered_at": "2026-06-15",
+  "purpose": "Pre-registers LLM DECISION LINEAGES for forward-test attribution -- the live analogue of candidate_registry.json (which registers mechanical strategies). A lineage is a per-symbol semantic family of decision configurations asserted to be the SAME edge hypothesis. Graduation is evaluated per (lineage x symbol). See docs/design/llm-decision-identity-attribution.md.",
+  "methodology": "DEFAULT-MATERIAL: any config_hash not listed under a lineage's member_config_hashes is its own singleton lineage (unregistered:<hash8>::<SYMBOL>) and never inherits a registered lineage's forward record. Folding a hash into a lineage is an explicit, dated edit governed by that lineage's material_change_policy -- a material change (model major version, analyst add/remove, gate move, prompt-intent change) MUST start a new lineage with a zero forward record. Lineages must be pre-registered BEFORE their forward window is counted; all active lineages form one BH-FDR family (q=0.10).",
+  "graduation_rule": {
+    "min_forward_oos_windows": 6,
+    "min_forward_pf_ci_lower": 1.10,
+    "min_forward_p_edge": 0.95,
+    "must_survive_family_fdr": true,
+    "q": 0.10,
+    "note": "Per (lineage x symbol). Necessary, not sufficient, for live sizing -- gate-v2 routing still governs."
+  },
+  "allowed_status": ["forward_testing", "graduated", "rejected", "paused"],
+  "lineages": []
+}

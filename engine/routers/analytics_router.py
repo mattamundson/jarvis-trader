@@ -8,7 +8,7 @@ Endpoints:
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -521,6 +521,44 @@ async def get_performance_compare(request: Request) -> dict:
 
 
 @router.get(
+    "/forward-test",
+    response_model=None,
+    description=(
+        "Forward-test status for the pre-registered candidate set: per-candidate "
+        "out-of-sample windows, family-FDR survival, and graduation verdict "
+        "(read-only; never mutates execution or scheduler state)."
+    ),
+)
+@limiter.limit("60/minute")
+async def get_forward_test(request: Request) -> dict:
+    """Read-only forward-test loop result for the cockpit / dashboard.
+
+    Surfaces ``run_forward_test`` over the locked candidate registry so the
+    north-star liveness pane can show whether any held candidate is graduating
+    on its forward (paper) record. ``persist=False`` -- this endpoint only reads
+    closed trades; it writes nothing.
+    """
+    try:
+        db = _get_db()
+    except HTTPException:
+        return {
+            "status": "INSUFFICIENT_DATA",
+            "recommendation": "Database not initialized.",
+            "n_active_candidates": 0,
+            "n_graduated": 0,
+            "candidates": [],
+        }
+
+    try:
+        from backtest.forward_test import run_forward_test
+
+        return run_forward_test(db=db, persist=False)
+    except Exception as exc:
+        logger.error(f"[Analytics] forward_test failed: {exc}")
+        raise HTTPException(500, f"Analytics error: {exc}") from exc
+
+
+@router.get(
     "/validation-report",
     response_model=None,
     description=(
@@ -608,6 +646,102 @@ async def get_trades_by_day(request: Request, days: int = 30) -> dict:
     except Exception as exc:
         logger.error(f"Trades by day error: {exc}")
         raise HTTPException(500, str(exc)) from exc
+
+
+@router.get(
+    "/bar-quality",
+    response_model=None,
+    description=(
+        "Bar-quality gate rejection activity — how many contaminated bars the "
+        "write-time gate refused, grouped by reason / symbol / path. "
+        "total_rejections=0 with gate_active=true is the healthy steady state "
+        "(the gate is wired and the data is clean), not an error."
+    ),
+)
+@limiter.limit("120/minute")
+async def get_bar_quality(request: Request, hours: int = 168) -> dict:
+    """
+    Rejection activity from the write-time bar-quality gate (migration 039).
+
+    Args:
+        hours: lookback window in hours (default 168 = 7 days, max 720 = 30 days).
+
+    A missing table (DB predating the migration) or empty result returns
+    total_rejections=0 / gate_active=true — the honest "clean data" state.
+    """
+    window = max(1, min(hours, 720))
+    empty: dict = {
+        "window_hours": window,
+        "total_rejections": 0,
+        "by_reason": [],
+        "by_symbol": [],
+        "by_path": {"sanity": 0, "gate": 0},
+        "recent": [],
+        "gate_active": True,
+    }
+    try:
+        db = _get_db()
+        since = (datetime.now(timezone.utc) - timedelta(hours=window)).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
+        with db._lock:
+            conn = db._connect()
+            try:
+                rows = conn.execute(
+                    "SELECT ts_utc, symbol, interval, source, path, reason, detail, count "
+                    "FROM bar_quality_rejections WHERE ts_utc >= ? ORDER BY ts_utc DESC",
+                    (since,),
+                ).fetchall()
+            finally:
+                conn.close()
+    except HTTPException:
+        raise
+    except Exception as exc:  # table missing (pre-migration) or read error
+        logger.debug("bar-quality read skipped: %s", exc)
+        return empty
+
+    by_reason: dict[str, int] = {}
+    by_symbol: dict[str, int] = {}
+    by_path = {"sanity": 0, "gate": 0}
+    total = 0
+    recent: list[dict] = []
+    for r in rows:
+        cnt = int(r["count"])
+        total += cnt
+        by_reason[r["reason"]] = by_reason.get(r["reason"], 0) + cnt
+        by_symbol[r["symbol"]] = by_symbol.get(r["symbol"], 0) + cnt
+        if r["path"] in by_path:
+            by_path[r["path"]] += cnt
+        if len(recent) < 25:
+            recent.append(
+                {
+                    "ts_utc": r["ts_utc"],
+                    "symbol": r["symbol"],
+                    "interval": r["interval"],
+                    "source": r["source"],
+                    "path": r["path"],
+                    "reason": r["reason"],
+                    "detail": r["detail"],
+                    "count": cnt,
+                }
+            )
+    return {
+        "window_hours": window,
+        "total_rejections": total,
+        "by_reason": sorted(
+            [{"reason": k, "count": v} for k, v in by_reason.items()],
+            key=lambda x: x["count"],
+            reverse=True,
+        ),
+        "by_symbol": sorted(
+            [{"symbol": k, "count": v} for k, v in by_symbol.items()],
+            key=lambda x: x["count"],
+            reverse=True,
+        ),
+        "by_path": by_path,
+        "recent": recent,
+        "gate_active": True,
+    }
 
 
 @router.get(
@@ -1630,3 +1764,193 @@ async def get_entry_timing(
         offsets_evaluated=parsed_offsets,
         timestamp=_dt.utcnow().isoformat() + "Z",
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /analytics/bar-depth   —   data-coverage / health per symbol × interval
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class BarDepthPair(BaseModel):
+    """Coverage record for one (symbol, interval) in market_data_bars."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    symbol: str
+    interval: str
+    rows: int
+    first_ts: Optional[str] = None
+    last_ts: Optional[str] = None
+    span_days: float
+    gap_count: int          # consecutive bars spaced > 2× the median step
+    max_gap_hours: float
+    contaminated_pct: float  # % rejected by the live bar-quality predicate
+    enforce_safe: bool       # True when zero rows would be rejected
+
+
+class BarDepthSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pair_count: int
+    symbol_count: int
+    total_rows: int
+    total_rejects: int
+    contaminated_pct: float
+
+
+class BarDepthResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pairs: list[BarDepthPair]
+    summary: BarDepthSummary
+    timestamp: str
+
+
+@router.get(
+    "/bar-depth",
+    response_model=BarDepthResponse,
+    summary="Bar-data coverage/health per symbol × interval (rows, span, gaps, contaminated%)",
+)
+def get_bar_depth() -> BarDepthResponse:
+    """
+    Expose the data-coverage picture that was previously CLI-only
+    (``scripts/bar_quality_fp_audit.py``): per (symbol, interval), the row count,
+    calendar span, gap structure, and the fraction the write-time bar-quality gate
+    would reject (same ``screen_bars`` predicate, so the number is consistent).
+
+    Read-only and additive — no behaviour change to ingestion or the gate.
+    """
+    from analytics.bar_depth import compute_bar_depth
+
+    data = compute_bar_depth()
+    return BarDepthResponse(
+        pairs=[BarDepthPair(**p) for p in data["pairs"]],
+        summary=BarDepthSummary(**data["summary"]),
+        timestamp=data["timestamp"],
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WS4B post-trade / scenario analytics (exit-reason, slippage, losing-streak,
+# P&L waterfall, regime attribution). All read-only over existing paper_trades
+# columns; the compute lives in analytics.post_trade as pure functions so it is
+# unit-tested offline. No new migration: exit_reason is DERIVED, never stored.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _post_trade_spec_lookup(symbol: str):
+    """Adapter: backtest.contract_specs.get_spec, returning None for unknowns
+    so analytics.post_trade stays dollar-agnostic when a symbol has no spec."""
+    try:
+        from backtest.contract_specs import get_spec
+
+        return get_spec(symbol)
+    except Exception:
+        return None
+
+
+def _fetch_closed_trades(symbol: Optional[str], limit: int) -> list[dict]:
+    """Closed paper_trades as plain dicts, newest first. Mirrors /excursion."""
+    db = _get_db()
+    sql_parts = ["SELECT * FROM paper_trades WHERE status = 'closed'"]
+    params: list = []
+    if symbol:
+        sql_parts.append("AND symbol = ?")
+        params.append(symbol.strip().upper())
+    sql_parts.append("ORDER BY exit_time DESC LIMIT ?")
+    params.append(limit)
+    sql = " ".join(sql_parts)
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            rows = conn.execute(sql, params).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+@router.get(
+    "/exit-attribution",
+    summary="Closed-trade P&L grouped by derived exit reason (target/stop/manual)",
+)
+def get_exit_attribution(
+    limit: int = Query(500, ge=1, le=2000),
+    symbol: Optional[str] = Query(None),
+) -> dict:
+    from analytics.post_trade import exit_attribution
+
+    trades = _fetch_closed_trades(symbol, limit)
+    out = exit_attribution(trades)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@router.get(
+    "/slippage-attribution",
+    summary="Execution-quality breakdown of recorded slippage_ticks by symbol",
+)
+def get_slippage_attribution(
+    limit: int = Query(500, ge=1, le=2000),
+    symbol: Optional[str] = Query(None),
+) -> dict:
+    from analytics.post_trade import slippage_attribution
+
+    trades = _fetch_closed_trades(symbol, limit)
+    out = slippage_attribution(trades, _post_trade_spec_lookup)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@router.get(
+    "/losing-streak",
+    summary="Consecutive win/loss runs and streak-local drawdown over closed trades",
+)
+def get_losing_streak(
+    limit: int = Query(1000, ge=1, le=5000),
+    symbol: Optional[str] = Query(None),
+) -> dict:
+    from analytics.post_trade import losing_streak
+
+    trades = _fetch_closed_trades(symbol, limit)
+    out = losing_streak(trades)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@router.get(
+    "/trades/by-regime",
+    summary="Closed-trade P&L grouped by the regime each trade was entered in",
+)
+def get_trades_by_regime(
+    limit: int = Query(1000, ge=1, le=5000),
+    symbol: Optional[str] = Query(None),
+) -> dict:
+    from analytics.post_trade import regime_attribution
+
+    trades = _fetch_closed_trades(symbol, limit)
+    out = regime_attribution(trades)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@router.get(
+    "/trades/{trade_id}/pnl-breakdown",
+    summary="Per-trade P&L waterfall (peak MFE -> given back -> realized)",
+)
+def get_trade_pnl_breakdown(trade_id: str) -> dict:
+    from analytics.post_trade import pnl_waterfall
+
+    db = _get_db()
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            row = conn.execute(
+                "SELECT * FROM paper_trades WHERE trade_id = ?", (trade_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No trade with id {trade_id!r}")
+    out = pnl_waterfall(dict(row), _post_trade_spec_lookup)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out

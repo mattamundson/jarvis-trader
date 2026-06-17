@@ -228,12 +228,45 @@ class PaperTradeLogger:
         try:
             if prev == 0.0 and new != 0.0:
                 action = "buy" if signed_qty > 0 else "sell"
+                # Forward-test attribution: if the live scanner is trading a
+                # deployed registry candidate for this symbol, tag the trade with
+                # its candidate_id so the forward-test loop can attribute it at
+                # the precise (graduating) level. Fail-open and tag-only -- this
+                # never changes whether/how the trade opens.
+                candidate_id = None
+                try:
+                    from backtest.candidate_registry import live_candidate_for_symbol
+
+                    candidate_id = live_candidate_for_symbol(sym)
+                except Exception as _cid_err:  # pragma: no cover - defensive
+                    logger.debug(
+                        "PaperTradeLogger: candidate resolve failed for %s (non-fatal): %s",
+                        sym,
+                        _cid_err,
+                    )
+                # Decision-identity (P2): fingerprint of the running LLM decision
+                # config that produced this trade, resolved to a per-symbol lineage.
+                # config_hash is a property of the running config, so computing it
+                # at open time == the config that just decided. Fail-open.
+                decision_identity = None
+                try:
+                    from agents.decision_identity import current_decision_identity
+
+                    decision_identity = current_decision_identity(sym)
+                except Exception as _did_err:  # pragma: no cover - defensive
+                    logger.debug(
+                        "PaperTradeLogger: decision_identity failed for %s (non-fatal): %s",
+                        sym,
+                        _did_err,
+                    )
                 tid = self._portfolio_tracker.open_trade(
                     sym,
                     action,
                     abs(signed_qty),
                     filled_price,
                     notes=notes,
+                    candidate_id=candidate_id,
+                    decision_identity=decision_identity,
                 )
                 self._open_trade_id_by_symbol[sym] = tid
             elif prev != 0.0 and new == 0.0:

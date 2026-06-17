@@ -107,12 +107,17 @@ class TestLiveTradingCheck:
 
 
 class TestHumanApprovalCheck:
-    """Human approval required — FAIL if disabled."""
+    """Human approval required — WARN (non-blocking) if disabled.
 
-    def test_human_approval_disabled_fails(self):
-        """REQUIRE_HUMAN_APPROVAL=False returns FAIL."""
+    Updated during the family-fdr-campaign integration: disabling
+    REQUIRE_HUMAN_APPROVAL is now a loud WARN (autonomous paper mode boots)
+    rather than a boot-blocking FAIL. See engine/startup_checks.py.
+    """
+
+    def test_human_approval_disabled_warns(self):
+        """REQUIRE_HUMAN_APPROVAL=False returns WARN (non-blocking autonomous boot)."""
         result = _check_human_approval(SimpleNamespace(REQUIRE_HUMAN_APPROVAL=False))
-        assert result.status == "fail"
+        assert result.status == "warn"
 
     def test_human_approval_enabled_passes(self):
         """REQUIRE_HUMAN_APPROVAL=True returns PASS."""
@@ -208,7 +213,9 @@ class TestRunAllStartupChecks:
         )
         results = run_startup_checks(config)
         failures = [r for r in results if r.status == "fail"]
-        assert len(failures) >= 4  # API, port, live, approval
+        # human-approval downgraded fail->warn in family-fdr integration, so the
+        # critical FAILs are now API, port, live (approval emits WARN instead).
+        assert len(failures) >= 3  # API, port, live
 
 
 class TestAutonomousActiveSymbolsCheck:
