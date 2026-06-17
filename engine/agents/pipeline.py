@@ -101,9 +101,14 @@ _TIME_OF_DAY_MIN_CONVICTION: float = 0.35  # hours below this win_rate are skipp
 #   2. Gate v2 PASS (pf_ci_lower>=1.10, p_edge>=0.95, mc_95th_dd<=5%, dsr>=0.10)
 #   3. Explicit Tier 3 authorization from Amo
 #
-# This constant is checked in approval/service.py:ensure_approval_allowed() — a
-# second layer above the safety layer's DO_NOT_TRADE_SYMBOLS blocklist. The safety
-# layer is canonical; any conflict resolves in favor of safety.
+# This constant is checked in approval/service.py:ensure_approval_allowed().
+# NOTE: DO_NOT_TRADE_SYMBOLS is NOT enforced in the risk safety layer's
+# check_order -- that layer is intentionally symbol-agnostic (see
+# test_safety_layer.py, which submits MCL/MNQ orders to exercise the margin
+# gate and expects them approved). DO_NOT_TRADE is enforced UPSTREAM: at signal
+# generation (backtest/signals.py forces NO_TRADE) and in this pipeline
+# (see the DO_NOT_TRADE_SYMBOLS check below). Any conflict resolves in favor of
+# the most restrictive layer.
 VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset()
 # MES promoted 2026-05-24 (Tier 3 auth, p_edge=0.75 ALT PASS, SMA(60,200))
 # MGC promoted 2026-05-24 (Tier 3 auth, p_edge=0.6842 ALT PASS, SMA(50,120))
