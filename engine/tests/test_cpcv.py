@@ -32,7 +32,6 @@ from backtest.cpcv import (
     purge_embargo,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -123,7 +122,7 @@ def test_no_leakage_in_any_fold():
         block_starts = np.concatenate([[test_sorted[0]], test_sorted[gaps + 1]])
         block_ends   = np.concatenate([test_sorted[gaps], [test_sorted[-1]]])
 
-        for start, end in zip(block_starts, block_ends):
+        for start, end in zip(block_starts, block_ends, strict=False):
             # 1. No train bar INSIDE the test block
             for pos in range(start, end + 1):
                 assert pos not in train_set, (
@@ -168,7 +167,7 @@ def test_each_group_appears_in_test_set_expected_times():
                                  embargo_sessions=0, purge_sessions=0)
     # Each group appears in C(n_groups-1, n_test-1) = C(5,1) = 5 folds
     expected_per_group = math.comb(n_groups - 1, n_test - 1)
-    counts = {g: 0 for g in range(n_groups)}
+    counts = dict.fromkeys(range(n_groups), 0)
     for fold in folds:
         for g in fold.test_group_ids:
             counts[g] += 1
