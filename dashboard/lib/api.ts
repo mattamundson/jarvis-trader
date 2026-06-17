@@ -1349,3 +1349,71 @@ export interface RecentPipelineReasoningResponse {
   decisions: RecentPipelineDecision[];
   count: number;
 }
+
+// ── Journal Review ─────────────────────────────────────────────────────────
+
+export interface JournalStats {
+  total_entries: number;
+  win_rate: number;
+  avg_pnl: number;
+  best_day: string | null;
+  worst_day: string | null;
+}
+
+export interface JournalBreakdownRow {
+  group_value: string;
+  count: number;
+  pnl: number;
+  win_rate: number;
+}
+
+export interface JournalBreakdown {
+  by_symbol: JournalBreakdownRow[];
+  by_session: JournalBreakdownRow[];
+}
+
+export interface JournalPattern {
+  pattern: string;
+  frequency: number;
+  impact: string;
+}
+
+export interface JournalFormalizeResult {
+  formalized: string;
+  tags: string[];
+  confidence: number;
+}
+
+export interface JournalTradeStats {
+  total_trades: number;
+  win_rate: number;
+  avg_win: number;
+  avg_loss: number;
+  profit_factor: number;
+  sharpe: number;
+}
+
+export interface JournalInsight {
+  insight: string;
+  formalized: string;
+}
+
+export async function fetchJournalStats(): Promise<JournalTradeStats> {
+  return fetchEngine<JournalTradeStats>("/journal/stats");
+}
+
+export async function fetchJournalBreakdown(groupBy: string = "symbol"): Promise<JournalBreakdownRow[]> {
+  return fetchEngine<JournalBreakdownRow[]>(`/journal/breakdown?group_by=${groupBy}`);
+}
+
+export async function analyzeJournalPatterns(): Promise<JournalPattern[]> {
+  return fetchEngine<JournalPattern[]>("/journal/patterns");
+}
+
+export async function formalizeInsight(insight: string): Promise<JournalFormalizeResult> {
+  return fetchEngine<JournalFormalizeResult>("/journal/formalize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ insight }),
+  });
+}
