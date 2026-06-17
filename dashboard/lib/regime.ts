@@ -1,11 +1,12 @@
-// Intraday Market Regime — typed data model + a deterministic sample snapshot.
+// Intraday Market Regime — typed data model, live engine wiring, and a
+// deterministic sample snapshot used as a fallback.
 //
-// The engine does not yet expose an intraday-regime endpoint, so this module
-// ships a SAMPLE snapshot to drive the UI. The interfaces below are the contract
-// a future endpoint should satisfy: swap `buildSampleRegime()` for
-// `fetchEngine<IntradayRegime>("/regime/intraday?symbol=...")` when the backend
-// lands. Until then the page renders a `static` provenance badge so the data is
-// never mistaken for live (Trust Pane convention).
+// `fetchIntradayRegime()` calls GET /regime/intraday (engine analytics, no LLM).
+// When the engine is unavailable the page falls back to `buildSampleRegime()` and
+// renders a `sample` provenance badge so the data is never mistaken for live
+// (Trust Pane convention).
+
+import { fetchEngine } from "./api";
 
 export type RegimeDirection = "BULLISH" | "BEARISH" | "NEUTRAL";
 export type TimeframeBias = "BULL" | "BEAR" | "NEUTRAL";
@@ -63,7 +64,10 @@ export interface IntradayRegime {
   indicators: IndicatorReading[];
   history: RegimeHistoryPoint[];
   snapshotCount: number;
-  optionsFlow: OptionsFlow;
+  /** Null when the engine has no options/GEX source wired. */
+  optionsFlow: OptionsFlow | null;
+  /** "live" = computed by the engine; "sample" = deterministic local fallback. */
+  source: "live" | "sample";
   updatedAt: string;
 }
 
@@ -161,6 +165,85 @@ export function buildSampleRegime(symbol = "SPY"): IntradayRegime {
       netGex: 42_400_000,
       gexFlipLevel: 752,
     },
+    source: "sample",
     updatedAt: new Date().toISOString(),
   };
+}
+
+// ── Live engine wiring ─────────────────────────────────────────────────────────
+
+/** Snake_case payload from GET /regime/intraday (mirror of build_regime_snapshot). */
+interface RawRegimeResponse {
+  symbol: string;
+  price: number;
+  score: number;
+  direction: RegimeDirection;
+  direction_pct: number;
+  guidance: string;
+  conviction: Conviction;
+  indicator_timeframe: string;
+  timeframe_scores: Array<{ label: string; score: number; bias: TimeframeBias }>;
+  indicators: Array<{
+    label: string;
+    value: string;
+    detail: string;
+    tone: IndicatorTone;
+    arrow?: "up" | "down";
+    fill: number;
+  }>;
+  history: Array<{
+    time: string;
+    score: number;
+    short_ema: number;
+    long_ema: number;
+    extra_ema: number;
+  }>;
+  snapshot_count: number;
+  options_flow: { flow_signal: RegimeDirection; net_gex: number; gex_flip_level: number } | null;
+  updated_at: string;
+}
+
+function mapRawRegime(raw: RawRegimeResponse): IntradayRegime {
+  return {
+    symbol: raw.symbol,
+    price: raw.price,
+    direction: raw.direction,
+    score: raw.score,
+    directionPct: raw.direction_pct,
+    guidance: raw.guidance,
+    conviction: raw.conviction,
+    // Real-time refresh flag is a UI concern; the live endpoint is request/response.
+    liveTimeDilation: false,
+    timeframeScores: raw.timeframe_scores,
+    indicatorTimeframe: raw.indicator_timeframe,
+    indicators: raw.indicators,
+    history: raw.history.map((p) => ({
+      time: p.time,
+      score: p.score,
+      shortEma: p.short_ema,
+      longEma: p.long_ema,
+      extraEma: p.extra_ema,
+    })),
+    snapshotCount: raw.snapshot_count,
+    optionsFlow: raw.options_flow
+      ? {
+          flowSignal: raw.options_flow.flow_signal,
+          netGex: raw.options_flow.net_gex,
+          gexFlipLevel: raw.options_flow.gex_flip_level,
+        }
+      : null,
+    source: "live",
+    updatedAt: raw.updated_at,
+  };
+}
+
+/** Fetch the live intraday regime from the engine; mapper normalizes to IntradayRegime. */
+export async function fetchIntradayRegime(
+  symbol: string,
+  futures = false
+): Promise<IntradayRegime> {
+  const raw = await fetchEngine<RawRegimeResponse>(
+    `/regime/intraday?symbol=${encodeURIComponent(symbol)}&futures=${futures}`
+  );
+  return mapRawRegime(raw);
 }
