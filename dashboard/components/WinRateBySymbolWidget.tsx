@@ -4,26 +4,23 @@ import { useEffect, useState } from "react";
 import { RefreshCw, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
-
+import {
+  fetchHonestTrades,
+  bySymbolStats,
+  dedupCaveat,
+  type HonestTradeSet,
+  type SymbolStat,
+} from "@/lib/honestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: "BUY" | "SELL";
-  realized_pnl: number | null;
-  status: "OPEN" | "CLOSED" | "CANCELLED";
-  entry_time: string;
-  exit_time: string | null;
-}
-
-interface SymbolStats {
+/** Internal shape used by the render layer — win_rate in 0..100 */
+interface SymbolStatsDisplay {
   symbol: string;
   total_trades: number;
   wins: number;
   losses: number;
+  /** 0..100 percentage */
   win_rate: number;
   total_pnl: number;
   avg_pnl: number;
@@ -58,42 +55,17 @@ function winRateBadgeVariant(winRate: number): "bull" | "warn" | "bear" {
   return "bear";
 }
 
-function aggregateBySymbol(trades: TradeRecord[]): SymbolStats[] {
-  const map = new Map<
-    string,
-    { wins: number; losses: number; total_pnl: number; count: number }
-  >();
-
-  for (const t of trades) {
-    const sym = (t.symbol ?? "UNKNOWN").toUpperCase();
-    const pnl = typeof t.realized_pnl === "number" ? t.realized_pnl : 0;
-    const existing = map.get(sym) ?? {
-      wins: 0,
-      losses: 0,
-      total_pnl: 0,
-      count: 0,
-    };
-    existing.count += 1;
-    existing.total_pnl += pnl;
-    if (pnl > 0) {
-      existing.wins += 1;
-    } else {
-      existing.losses += 1;
-    }
-    map.set(sym, existing);
-  }
-
-  return Array.from(map.entries())
-    .map(([symbol, v]) => ({
-      symbol,
-      total_trades: v.count,
-      wins: v.wins,
-      losses: v.losses,
-      win_rate: v.count > 0 ? (v.wins / v.count) * 100 : 0,
-      total_pnl: v.total_pnl,
-      avg_pnl: v.count > 0 ? v.total_pnl / v.count : 0,
-    }))
-    .sort((a, b) => b.total_trades - a.total_trades);
+/** Map a SymbolStat (0..1 winRate) -> SymbolStatsDisplay (0..100 win_rate) */
+function toDisplay(s: SymbolStat): SymbolStatsDisplay {
+  return {
+    symbol: s.symbol,
+    total_trades: s.trades,
+    wins: s.wins,
+    losses: s.losses,
+    win_rate: s.winRate * 100,
+    total_pnl: s.net,
+    avg_pnl: s.trades > 0 ? s.net / s.trades : 0,
+  };
 }
 
 // ── Loading skeleton ──────────────────────────────────────────────────────────
@@ -115,7 +87,7 @@ function SkeletonRow() {
 
 // ── Symbol row ────────────────────────────────────────────────────────────────
 
-function SymbolRow({ row }: { row: SymbolStats }) {
+function SymbolRow({ row }: { row: SymbolStatsDisplay }) {
   const color = barColor(row.win_rate);
   return (
     <div
@@ -181,7 +153,8 @@ function SymbolRow({ row }: { row: SymbolStats }) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function WinRateBySymbolWidget() {
-  const [stats, setStats] = useState<SymbolStats[]>([]);
+  const [stats, setStats] = useState<SymbolStatsDisplay[]>([]);
+  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -189,26 +162,9 @@ export function WinRateBySymbolWidget() {
   async function fetchData() {
     setError(null);
     try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?status=CLOSED&limit=500`
-      );
-
-      // Handle both array and { trades: [...] } shapes
-      let trades: TradeRecord[];
-      if (Array.isArray(raw)) {
-        trades = raw as TradeRecord[];
-      } else if (
-        raw !== null &&
-        typeof raw === "object" &&
-        "trades" in (raw as object) &&
-        Array.isArray((raw as { trades: unknown }).trades)
-      ) {
-        trades = (raw as { trades: TradeRecord[] }).trades;
-      } else {
-        trades = [];
-      }
-
-      setStats(aggregateBySymbol(trades));
+      const set = await fetchHonestTrades();
+      setTradeSet(set);
+      setStats(bySymbolStats(set.trades).map(toDisplay));
       setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -418,7 +374,7 @@ export function WinRateBySymbolWidget() {
             >
               <span className="font-mono text-[10px]" style={{ color: "#555" }}>
                 {stats.length} symbol{stats.length !== 1 ? "s" : ""} &bull;{" "}
-                {overallTrades} closed trade{overallTrades !== 1 ? "s" : ""} &bull; refreshes every 2 min
+                {tradeSet ? dedupCaveat(tradeSet) : `${overallTrades} trades`} &bull; refreshes every 2 min
               </span>
               <span className="font-mono text-[10px]" style={{ color: "#555" }}>
                 avg/trade:{" "}

@@ -80,12 +80,24 @@ export function CommissionTrackerWidget() {
   return (
     <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm">Commission Tracker</CardTitle>
+        <div className="flex items-center gap-2 flex-wrap">
+          <CardTitle className="text-sm">Commission Tracker</CardTitle>
+          {/* Honest-data caveat badge */}
+          <Badge variant="warn" className="text-[10px] font-normal">
+            Raw record &middot; not deduped
+          </Badge>
+        </div>
         <Badge variant={headerBadgeVariant}>
           ${totalCommissions.toFixed(2)} Total
         </Badge>
       </CardHeader>
       <CardContent>
+        {/* Caveat note */}
+        <p className="text-[11px] text-muted-foreground border border-warn/30 bg-warn/5 rounded px-2 py-1.5 mb-3 leading-snug">
+          Commission figures are from the un-deduped engine record and may be over-counted.
+          The deduped trade record does not include commission fields.
+        </p>
+
         {/* 3-column stats grid */}
         <div className="grid grid-cols-3 gap-3 text-center">
           <div className="rounded bg-muted p-3">

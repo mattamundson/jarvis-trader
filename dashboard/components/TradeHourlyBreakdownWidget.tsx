@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchHonestTrades, type HonestTrade } from "@/lib/honestTrades";
 
 
 // RTH hours to display (8 AM through 3 PM CT)
@@ -20,18 +20,6 @@ const HOUR_LABELS: Record<number, string> = {
   15: "3P",
 };
 
-interface TradeRecord {
-  id: string | number;
-  entry_time: string;
-  status: string;
-  realized_pnl?: number | null;
-  pnl?: number | null;
-}
-
-interface TradesResponse {
-  trades: TradeRecord[];
-}
-
 interface HourBucket {
   count: number;
   wins: number;
@@ -40,19 +28,18 @@ interface HourBucket {
 
 type HourMap = Map<number, HourBucket>;
 
-function buildHourMap(trades: TradeRecord[]): HourMap {
+function buildHourMap(trades: HonestTrade[]): HourMap {
   const map: HourMap = new Map();
 
   for (const trade of trades) {
-    if (trade.status !== "CLOSED") continue;
-    const pnl = trade.realized_pnl ?? trade.pnl ?? null;
-    if (pnl === null || pnl === undefined) continue;
+    // Guard null entry_time
+    if (!trade.entry_time) continue;
 
-    const hour = new Date(trade.entry_time).getUTCHours();
+    const hour = new Date(trade.entry_time).getHours();
     const existing = map.get(hour) ?? { count: 0, wins: 0, totalPnl: 0 };
     existing.count++;
-    if (pnl > 0) existing.wins++;
-    existing.totalPnl += pnl;
+    if (trade.pnl > 0) existing.wins++;
+    existing.totalPnl += trade.pnl;
     map.set(hour, existing);
   }
 
@@ -172,14 +159,8 @@ export function TradeHourlyBreakdownWidget() {
 
   const fetchTrades = useCallback(async () => {
     try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?limit=500&status=CLOSED`
-      );
-      const tradesArr: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as TradesResponse).trades ?? []);
-
-      const map = buildHourMap(tradesArr);
+      const set = await fetchHonestTrades();
+      const map = buildHourMap(set.trades);
       setHourMap(map);
 
       // Compute RTH aggregates
