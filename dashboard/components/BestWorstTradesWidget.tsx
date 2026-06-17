@@ -4,29 +4,16 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { fetchEngine } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  dedupCaveat,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 
 
-interface TradeRecord {
-  id: string | number;
-  symbol: string;
-  action: string;
-  entry_price: number;
-  exit_price: number | null;
-  quantity: number;
-  entry_time: string;
-  exit_time: string | null;
-  pnl: number | null;
-  commission: number | null;
-  status: string;
-}
-
-interface TradesResponse {
-  trades: TradeRecord[];
-}
-
-function TradeRow({ trade }: { trade: TradeRecord }) {
-  const pnl = trade.pnl as number;
+function TradeRow({ trade }: { trade: HonestTrade }) {
+  const pnl = trade.pnl;
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-border/40 last:border-0">
       <div className="flex items-center min-w-0">
@@ -51,32 +38,25 @@ function TradeRow({ trade }: { trade: TradeRecord }) {
 }
 
 export function BestWorstTradesWidget() {
-  const [best5, setBest5] = useState<TradeRecord[]>([]);
-  const [worst5, setWorst5] = useState<TradeRecord[]>([]);
+  const [best5, setBest5] = useState<HonestTrade[]>([]);
+  const [worst5, setWorst5] = useState<HonestTrade[]>([]);
+  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
   const [insufficient, setInsufficient] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTrades = useCallback(async () => {
     try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?limit=500&status=CLOSED`
-      );
-      const rows: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
+      const set = await fetchHonestTrades();
+      setTradeSet(set);
 
-      const closed = rows.filter(
-        (t) => t.status === "CLOSED" && t.pnl !== null && t.pnl !== undefined
-      );
-
-      if (closed.length < 2) {
+      if (set.trades.length < 2) {
         setInsufficient(true);
         setBest5([]);
         setWorst5([]);
       } else {
         setInsufficient(false);
-        const sorted = [...closed].sort((a, b) => (b.pnl as number) - (a.pnl as number));
+        const sorted = [...set.trades].sort((a, b) => b.pnl - a.pnl);
         setBest5(sorted.slice(0, 5));
         setWorst5([...sorted].reverse().slice(0, 5));
       }
@@ -137,7 +117,7 @@ export function BestWorstTradesWidget() {
             </div>
 
             <p className="text-xs text-muted-foreground mt-3">
-              From last 500 closed trades &bull; Refreshes every 5m
+              {tradeSet ? dedupCaveat(tradeSet) : "Deduped trade record"} &bull; Refreshes every 5m
             </p>
           </>
         )}

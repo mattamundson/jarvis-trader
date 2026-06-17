@@ -3,14 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchHonestTrades, durationMinutes, type HonestTrade } from "@/lib/honestTrades";
 
-
-interface Trade {
-  entry_time?: string | null;
-  exit_time?: string | null;
-  [key: string]: unknown;
-}
 
 interface DurationData {
   avgDuration: number;
@@ -30,26 +24,14 @@ function formatDuration(minutes: number): string {
   return mins > 0 ? `${hrs}hr ${mins}m` : `${hrs}hr`;
 }
 
-function computeDurationData(trades: Trade[]): DurationData | null {
+function computeDurationData(trades: HonestTrade[]): DurationData | null {
   const durations: number[] = [];
 
   for (const trade of trades) {
-    const entryStr = trade.entry_time;
-    const exitStr = trade.exit_time;
-
-    if (!entryStr || !exitStr || typeof entryStr !== "string" || typeof exitStr !== "string") {
-      continue;
-    }
-
-    const entryMs = new Date(entryStr).getTime();
-    const exitMs = new Date(exitStr).getTime();
-    const durationMin = (exitMs - entryMs) / 60000;
-
-    if (isNaN(durationMin) || durationMin <= 0) {
-      continue;
-    }
-
-    durations.push(durationMin);
+    // Use the honestTrades helper — guards both null timestamps and NaN
+    const mins = durationMinutes(trade);
+    if (mins === null || mins <= 0) continue;
+    durations.push(mins);
   }
 
   if (durations.length < 3) return null;
@@ -79,13 +61,8 @@ export function TradeDurationWidget() {
   useEffect(() => {
     const load = async () => {
       try {
-        const body: unknown = await fetchEngine<unknown>(
-          `/portfolio/history/trades?limit=500&status=CLOSED`
-        );
-        const trades: Trade[] = Array.isArray(body)
-          ? body
-          : ((body as { trades?: Trade[] }).trades ?? []);
-        const computed = computeDurationData(trades);
+        const set = await fetchHonestTrades();
+        const computed = computeDurationData(set.trades);
         setData(computed);
         setError(false);
       } catch {
@@ -240,7 +217,7 @@ export function TradeDurationWidget() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">Refreshes every 5m</p>
+        <p className="text-xs text-muted-foreground">Deduped trade record &bull; Refreshes every 5m</p>
       </CardContent>
     </Card>
   );

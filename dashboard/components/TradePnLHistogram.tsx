@@ -8,29 +8,8 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
-import { fetchEngine } from "@/lib/api";
+import { fetchHonestTrades, type HonestTrade } from "@/lib/honestTrades";
 
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface Trade {
-  id: string;
-  symbol: string;
-  action: string;
-  entry_price: number;
-  exit_price: number | null;
-  quantity: number;
-  entry_time: string;
-  exit_time: string | null;
-  pnl: number | null;
-  commission: number | null;
-  status: string;
-}
-
-interface TradesResponse {
-  trades: Trade[];
-}
 
 // ── Bucket config ─────────────────────────────────────────────────────────────
 
@@ -64,19 +43,14 @@ function getBucketIndex(pnl: number): number {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function TradePnLHistogram() {
-  const [trades, setTrades] = useState<Trade[]>([]);
+  const [trades, setTrades] = useState<HonestTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTrades = async () => {
     try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?limit=200&status=CLOSED`
-      );
-      const list: Trade[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: Trade[] }).trades ?? []);
-      setTrades(list);
+      const set = await fetchHonestTrades();
+      setTrades(set.trades);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch trades");
@@ -91,31 +65,29 @@ export function TradePnLHistogram() {
     return () => clearInterval(interval);
   }, []);
 
-  // Filter to CLOSED trades with non-null pnl
-  const closedTrades = trades.filter(
-    (t) => t.status === "CLOSED" && t.pnl !== null && t.pnl !== undefined
-  );
+  // All honest trades have a valid pnl — no status/null filter needed
+  const closedTrades = trades;
 
   // Bucket counts
   const counts = new Array(BUCKETS.length).fill(0);
   for (const t of closedTrades) {
-    const idx = getBucketIndex(t.pnl as number);
+    const idx = getBucketIndex(t.pnl);
     counts[idx]++;
   }
 
   // Win/loss stats
-  const winTrades = closedTrades.filter((t) => (t.pnl as number) >= 0);
-  const lossTrades = closedTrades.filter((t) => (t.pnl as number) < 0);
+  const winTrades = closedTrades.filter((t) => t.pnl >= 0);
+  const lossTrades = closedTrades.filter((t) => t.pnl < 0);
   const winCount = winTrades.length;
   const lossCount = lossTrades.length;
 
   const avgWin =
     winCount > 0
-      ? winTrades.reduce((s, t) => s + (t.pnl as number), 0) / winCount
+      ? winTrades.reduce((s, t) => s + t.pnl, 0) / winCount
       : 0;
   const avgLoss =
     lossCount > 0
-      ? lossTrades.reduce((s, t) => s + (t.pnl as number), 0) / lossCount
+      ? lossTrades.reduce((s, t) => s + t.pnl, 0) / lossCount
       : 0;
 
   const ratio =
@@ -238,7 +210,7 @@ export function TradePnLHistogram() {
         )}
 
         <p className="text-xs text-muted-foreground mt-2">
-          Based on last 200 closed trades &bull; Refreshes every 5m
+          Deduped trade record &bull; Refreshes every 5m
         </p>
       </CardContent>
     </Card>
