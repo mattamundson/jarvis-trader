@@ -40,6 +40,8 @@ import {
   type AmoCommodity,
 } from "@/lib/amo-api";
 import { PostTradeExecutionWidget } from "@/components/PostTradeExecutionWidget";
+import { BarDepthCard } from "@/components/BarDepthCard";
+import { PostTradeSnippet } from "@/components/PostTradeSnippet";
 
 // ── Brokers/positions response (subset we render) ─────────────────────────────
 interface PaperOpenPosition {
@@ -579,6 +581,12 @@ export default function TrustPanePage() {
 
             {/* 5. Post-trade execution quality (WS4B endpoints — PR #78) */}
             <PostTradeExecutionWidget />
+
+            {/* 6. Post-trade quality — book-wide MAE/MFE + entry-timing regret (J1/J2) */}
+            <PostTradeSnippet />
+
+            {/* 7. Data integrity — bar coverage/health (live after engine restart) */}
+            <BarDepthCard />
           </section>
 
           {/* ───────── AMO-ARBITRAGE column ───────── */}

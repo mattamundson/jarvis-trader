@@ -1767,6 +1767,70 @@ async def get_entry_timing(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /analytics/bar-depth   —   data-coverage / health per symbol × interval
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class BarDepthPair(BaseModel):
+    """Coverage record for one (symbol, interval) in market_data_bars."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    symbol: str
+    interval: str
+    rows: int
+    first_ts: Optional[str] = None
+    last_ts: Optional[str] = None
+    span_days: float
+    gap_count: int          # consecutive bars spaced > 2× the median step
+    max_gap_hours: float
+    contaminated_pct: float  # % rejected by the live bar-quality predicate
+    enforce_safe: bool       # True when zero rows would be rejected
+
+
+class BarDepthSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pair_count: int
+    symbol_count: int
+    total_rows: int
+    total_rejects: int
+    contaminated_pct: float
+
+
+class BarDepthResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pairs: list[BarDepthPair]
+    summary: BarDepthSummary
+    timestamp: str
+
+
+@router.get(
+    "/bar-depth",
+    response_model=BarDepthResponse,
+    summary="Bar-data coverage/health per symbol × interval (rows, span, gaps, contaminated%)",
+)
+def get_bar_depth() -> BarDepthResponse:
+    """
+    Expose the data-coverage picture that was previously CLI-only
+    (``scripts/bar_quality_fp_audit.py``): per (symbol, interval), the row count,
+    calendar span, gap structure, and the fraction the write-time bar-quality gate
+    would reject (same ``screen_bars`` predicate, so the number is consistent).
+
+    Read-only and additive — no behaviour change to ingestion or the gate.
+    """
+    from analytics.bar_depth import compute_bar_depth
+
+    data = compute_bar_depth()
+    return BarDepthResponse(
+        pairs=[BarDepthPair(**p) for p in data["pairs"]],
+        summary=BarDepthSummary(**data["summary"]),
+        timestamp=data["timestamp"],
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # WS4B post-trade / scenario analytics (exit-reason, slippage, losing-streak,
 # P&L waterfall, regime attribution). All read-only over existing paper_trades
 # columns; the compute lives in analytics.post_trade as pure functions so it is
