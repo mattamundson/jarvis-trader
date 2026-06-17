@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState, useCallback } from "react";
 import { ShieldOff, ShieldCheck, AlertTriangle } from "lucide-react";

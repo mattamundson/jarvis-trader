@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -134,7 +135,7 @@ export function CurrentSignalWidget({ symbol = "MES" }: { symbol?: string }) {
 
       <CardContent>
         {error && (
-          <p className="text-xs text-bear py-2">{error}</p>
+          <OfflineFallback variant="inline" />
         )}
 
         {!data && !error && loading && (

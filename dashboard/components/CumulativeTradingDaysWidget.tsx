@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useState, useEffect } from "react";
 import { Calendar, Target, TrendingUp } from "lucide-react";
@@ -267,7 +268,7 @@ export function CumulativeTradingDaysWidget() {
         {error && (
           <div className="rounded-lg bg-destructive/10 border border-destructive/25 p-4 flex flex-col gap-1">
             <p className="text-xs font-medium text-destructive">Error</p>
-            <p className="text-xs text-destructive/80">{error}</p>
+            <OfflineFallback variant="inline" />
           </div>
         )}
 

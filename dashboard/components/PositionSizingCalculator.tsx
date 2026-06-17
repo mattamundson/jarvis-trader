@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useState } from "react";
 import { DollarSign } from "lucide-react";
@@ -170,7 +171,7 @@ export function PositionSizingCalculator() {
             <p className="text-xs font-semibold text-bear uppercase tracking-wider mb-1">
               Error
             </p>
-            <p className="text-xs text-foreground">{error}</p>
+            <OfflineFallback variant="inline" />
           </div>
         )}
 

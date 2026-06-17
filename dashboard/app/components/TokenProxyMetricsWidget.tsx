@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { fetchEngine } from "@/lib/api";
@@ -89,7 +90,7 @@ export default function TokenProxyMetricsWidget() {
         <h3 className="text-sm font-semibold text-zinc-300 mb-2">
           Token Proxy Metrics
         </h3>
-        <Badge variant="bear">Error: {error}</Badge>
+        <OfflineFallback variant="inline" />
       </div>
     );
   }
@@ -159,7 +160,7 @@ export default function TokenProxyMetricsWidget() {
       </div>
 
       {error && (
-        <div className="text-xs text-amber-400">Last fetch error: {error}</div>
+        <OfflineFallback variant="inline" />
       )}
     </div>
   );

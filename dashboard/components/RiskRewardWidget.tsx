@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useEffect, useState, useCallback } from "react";
 import { TrendingUp, Target, RefreshCw, Scale } from "lucide-react";
@@ -172,7 +173,7 @@ export function RiskRewardWidget() {
             <div className="h-8 bg-muted rounded" />
           </div>
         ) : error ? (
-          <p className="text-sm text-bear">Error: {error}</p>
+          <OfflineFallback variant="inline" />
         ) : (
           <>
             {/* ── Large R:R number ─────────────────────────────────────── */}

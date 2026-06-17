@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,7 +57,7 @@ export function MESRevalidationTracker() {
         <CardHeader className="py-3">
           <CardTitle className="text-sm font-medium text-zinc-300">MES revalidation</CardTitle>
         </CardHeader>
-        <CardContent className="pb-3 text-xs text-red-400/90">{error}</CardContent>
+        <CardContent className="pb-3"><OfflineFallback variant="inline" /></CardContent>
       </Card>
     );
   }

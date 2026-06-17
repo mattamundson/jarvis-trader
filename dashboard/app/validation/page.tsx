@@ -1341,7 +1341,7 @@ function SimulateTradePanel() {
         {error && (
           <div className="mt-4 rounded-lg border border-bear/20 bg-bear/5 px-4 py-3 flex items-start gap-2">
             <XCircle className="h-4 w-4 text-bear shrink-0 mt-0.5" />
-            <p className="text-xs text-bear">{error}</p>
+            <OfflineFallback variant="inline" />
           </div>
         )}
       </CardContent>

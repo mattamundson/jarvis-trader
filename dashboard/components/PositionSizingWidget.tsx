@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";

@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useState, useEffect } from "react";
 import { TrendingUp, RefreshCw, Target, AlertTriangle } from "lucide-react";
@@ -229,7 +230,7 @@ export function SharpeRatioWidget() {
             <AlertTriangle className="h-4 w-4 text-bear shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-semibold text-bear">Engine unavailable</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{error}</p>
+              <OfflineFallback variant="inline" />
               <p className="text-xs text-muted-foreground mt-1">
                 Ensure the JARVIS engine is running and reachable through the dashboard proxy. Retrying every 30s.
               </p>

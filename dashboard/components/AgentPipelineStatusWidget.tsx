@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -279,7 +280,7 @@ export function AgentPipelineStatusWidget() {
         {!loading && error && (
           <div className="rounded-lg border border-bear/30 bg-bear/5 px-4 py-5 text-center space-y-1">
             <p className="text-sm font-semibold text-bear">Pipeline status unavailable</p>
-            <p className="text-xs text-muted-foreground">{error}</p>
+            <OfflineFallback variant="inline" />
           </div>
         )}
 

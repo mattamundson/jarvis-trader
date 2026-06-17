@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState, useCallback } from "react";
 import { Clock, TrendingUp, TrendingDown, Activity, Info } from "lucide-react";
@@ -237,7 +238,7 @@ export function TradingHoursWidget() {
         )}
 
         {!loading && error && (
-          <p className="text-xs text-red-400 py-2">Error: {error}</p>
+          <OfflineFallback variant="inline" />
         )}
 
         {!loading && !error && insufficient && (

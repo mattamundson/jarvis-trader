@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useEffect, useState } from "react";
 import { RefreshCw, Globe } from "lucide-react";

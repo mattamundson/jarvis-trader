@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useEffect, useState, useCallback } from "react";
 import { RefreshCw, TrendingDown, AlertTriangle, ShieldCheck } from "lucide-react";
@@ -165,7 +166,7 @@ export function MaxDrawdownTrackerWidget() {
             </div>
           </div>
         ) : error ? (
-          <p className="text-sm text-bear">Error: {error}</p>
+          <OfflineFallback variant="inline" />
         ) : (
           <>
             {/* ── Large drawdown number ───────────────────────────────── */}

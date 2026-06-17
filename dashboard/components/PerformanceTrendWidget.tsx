@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -75,7 +76,7 @@ export function PerformanceTrendWidget() {
           <CardTitle>Performance Trend</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">Error: {error}</p>
+          <OfflineFallback variant="inline" />
         </CardContent>
       </Card>
     );

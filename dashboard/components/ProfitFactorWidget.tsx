@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useState, useEffect } from "react";
 import { BarChart3, RefreshCw, TrendingUp, TrendingDown, Hash, Trophy } from "lucide-react";

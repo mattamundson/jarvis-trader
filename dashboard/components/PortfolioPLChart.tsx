@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,7 +67,7 @@ export function PortfolioPLChart() {
         {loading ? (
           <div className="h-[120px] animate-pulse rounded bg-zinc-800/80" />
         ) : error ? (
-          <p className="text-xs text-red-400/90">{error}</p>
+          <OfflineFallback variant="inline" />
         ) : rows.length === 0 ? (
           <div className="flex h-[120px] items-center justify-center text-xs text-zinc-600">
             No daily P&amp;L rows yet

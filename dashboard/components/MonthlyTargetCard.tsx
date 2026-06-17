@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
@@ -136,7 +137,7 @@ export function MonthlyTargetCard() {
             <div className="h-3 w-48 bg-muted rounded" />
           </div>
         ) : error ? (
-          <p className="text-sm text-bear">Error: {error}</p>
+          <OfflineFallback variant="inline" />
         ) : tradingDays === 0 ? (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">No trades this month yet.</p>

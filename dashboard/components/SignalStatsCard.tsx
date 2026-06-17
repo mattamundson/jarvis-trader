@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import useSWR from "swr";
 import { BarChart2 } from "lucide-react";

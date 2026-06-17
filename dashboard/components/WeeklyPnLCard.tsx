@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
@@ -136,7 +137,7 @@ export function WeeklyPnLCard() {
 
       <CardContent className="space-y-4">
         {error ? (
-          <p className="font-mono text-xs text-red-400">{error}</p>
+          <OfflineFallback variant="inline" />
         ) : (
           <>
             {/* Big total + badge */}

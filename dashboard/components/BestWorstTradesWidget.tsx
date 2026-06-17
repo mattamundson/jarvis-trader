@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -105,7 +106,7 @@ export function BestWorstTradesWidget() {
         )}
 
         {!loading && error && (
-          <p className="text-xs text-red-400">Error: {error}</p>
+          <OfflineFallback variant="inline" />
         )}
 
         {!loading && !error && insufficient && (

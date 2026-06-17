@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -98,7 +99,7 @@ export function TodaySummaryWidget() {
 
       <CardContent>
         {error && (
-          <p className="text-xs text-destructive mb-3">{error}</p>
+          <OfflineFallback variant="inline" />
         )}
 
         {!data && !error && (

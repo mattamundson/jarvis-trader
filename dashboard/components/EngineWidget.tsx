@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchEngine } from "@/lib/api";

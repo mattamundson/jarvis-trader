@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -238,7 +239,7 @@ export default function StrategyCPage() {
         <div className="max-w-md text-center">
           <AlertTriangle className="w-12 h-12 text-rose-400 mx-auto mb-4" />
           <h2 className="text-white font-semibold mb-2">Signal Unavailable</h2>
-          <p className="text-slate-400 text-sm mb-4">{error}</p>
+          <OfflineFallback variant="inline" />
           <p className="text-slate-500 text-xs">
             Run: <code className="text-violet-400">python -m engine.strategy_c.live_signal</code>
           </p>

@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -159,7 +160,7 @@ export function VIXRegimeCard() {
         <CardContent>
           <div className="flex items-center gap-2">
             <Badge variant="warn">WARN</Badge>
-            <span className="text-xs text-muted-foreground truncate">{error}</span>
+            <OfflineFallback variant="inline" />
           </div>
         </CardContent>
       </Card>

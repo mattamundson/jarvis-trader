@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState, useCallback } from "react";
 import { AlertTriangle, TrendingUp } from "lucide-react";
@@ -158,9 +159,7 @@ export function MarketRegimeWidget() {
           >
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
             Market analysis unavailable
-            {error && (
-              <span className="text-[10px] opacity-70">— {error}</span>
-            )}
+
           </div>
           <p className="text-xs text-muted-foreground mt-3">
             Refreshes every 5m

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { fetchPortfolioRisk, type PortfolioRiskResponse } from "@/lib/api";
 
 const REFRESH_MS = 30_000;
@@ -49,7 +50,7 @@ export function PortfolioCorrelationWidget() {
         <CardHeader className="py-3">
           <CardTitle className="text-sm font-medium text-zinc-300">Portfolio correlation</CardTitle>
         </CardHeader>
-        <CardContent className="pb-3 text-xs text-red-400/90">{error ?? "No data"}</CardContent>
+        <CardContent className="pb-3"><OfflineFallback variant="inline" /></CardContent>
       </Card>
     );
   }

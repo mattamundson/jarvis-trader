@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { Activity, Clock, Cpu } from "lucide-react";
@@ -248,7 +249,7 @@ export function DecisionLogWidget() {
         {!loading && error && (
           <div className="rounded-lg border border-bear/20 bg-bear/5 px-4 py-3 text-center space-y-1">
             <p className="text-xs font-semibold text-bear">Unable to load decisions</p>
-            <p className="text-[11px] text-muted-foreground">{error}</p>
+            <OfflineFallback variant="inline" />
           </div>
         )}
 

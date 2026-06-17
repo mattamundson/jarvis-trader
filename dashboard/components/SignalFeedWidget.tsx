@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import type { JSX } from "react";
 import useSWR from "swr";

@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -108,7 +109,7 @@ export function RecentDecisionsWidget() {
       </CardHeader>
       <CardContent>
         {error && (
-          <p className="text-xs text-destructive mb-2">{error}</p>
+          <OfflineFallback variant="inline" />
         )}
         {decisions.length === 0 && !error ? (
           <p className="text-sm text-muted-foreground text-center py-6">

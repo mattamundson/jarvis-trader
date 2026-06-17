@@ -168,7 +168,7 @@ export function EngineUptimeCard() {
               </Badge>
             ) : (
               <Badge variant="bear">
-                {error ?? "Unreachable"}
+                Unreachable
               </Badge>
             )}
           </div>

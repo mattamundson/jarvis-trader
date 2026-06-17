@@ -1,4 +1,5 @@
 "use client";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 import React, { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
@@ -200,7 +201,7 @@ export function PnLStreakWidget() {
             </div>
           </div>
         ) : error ? (
-          <p className="text-sm text-bear">Error: {error}</p>
+          <OfflineFallback variant="inline" />
         ) : !hasData ? (
           <p className="text-sm text-muted-foreground">No daily P&L data available.</p>
         ) : (
