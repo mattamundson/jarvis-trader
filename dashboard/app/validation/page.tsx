@@ -25,6 +25,11 @@ import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  equityCurve,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 import { simulateTrade } from "@/lib/settings-api";
 import type { SimulateTradePayload, SimulateTradeResult } from "@/lib/settings-api";
 import { PipelineRunHistory } from "@/components/PipelineRunHistory";
@@ -68,59 +73,69 @@ function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
-// ── Performance adapter ───────────────────────────────────────────────────────
-// GET /analytics/performance returns a FLAT object
-// ({profit_factor, sharpe_ratio, win_rate, max_drawdown, total_trades, days, ...})
-// where win_rate / max_drawdown are PERCENTAGES — not the nested ValidationReport
-// ({status, metrics, recommendation}) this page renders. Adapt it here so the page
-// shows real data and derives PASS/FAIL/INSUFFICIENT from the gate-v2 thresholds,
-// instead of crashing on `report.metrics` being undefined.
-interface RawPerformance {
-  status?: string;
-  profit_factor?: number | null;
-  sharpe_ratio?: number | null;
-  win_rate?: number | null; // percent, e.g. 31.58
-  max_drawdown?: number | null; // percent, e.g. 34.28
-  total_pnl?: number | null;
-  total_trades?: number | null;
-  expectancy?: number | null;
-  avg_win?: number | null;
-  avg_loss?: number | null;
-  days?: number | null;
-  period_days?: number | null;
+// ── Honest performance adapter ────────────────────────────────────────────────
+// Replaces the former /analytics/performance fetcher that returned the inflated
+// raw-engine counts (~29 rows → fabricated +$3,899 / PF 2.95 / 19 trades).
+// Now sources everything from fetchHonestTrades() which applies the dedup
+// (18 real trades, -$8,188, PF 0.66). Sharpe is NOT in the deduped record
+// (only symbol/direction/entry_time/exit_time/pnl_usd/grade are available),
+// so it is surfaced as null / "not computed" — no fabricated PASS.
+
+function computeHonestMaxDrawdownPct(trades: Parameters<typeof equityCurve>[0]): number {
+  const curve = equityCurve(trades);
+  let maxDDPct = 0;
+  for (const pt of curve) {
+    const peak = pt.equity - pt.drawdown;
+    if (peak > 0) {
+      const ddPct = Math.abs(pt.drawdown) / peak;
+      if (ddPct > maxDDPct) maxDDPct = ddPct;
+    }
+  }
+  return maxDDPct; // fraction (not percent)
 }
 
-async function performanceFetcher(path: string): Promise<ValidationReport> {
-  const raw = await fetchEngine<RawPerformance>(path);
+async function honestPerformanceFetcher(): Promise<ValidationReport> {
+  const set = await fetchHonestTrades();
 
-  const pf = raw.profit_factor ?? null;
-  const sharpe = raw.sharpe_ratio ?? null;
-  // Normalize percent → fraction for the nested consumers (they multiply by 100).
-  const winRate = raw.win_rate != null ? raw.win_rate / 100 : null;
-  const maxDd = raw.max_drawdown != null ? raw.max_drawdown / 100 : 0;
-  const trades = raw.total_trades ?? 0;
+  const pf = set.profitFactor;
+  // sharpe_ratio is intentionally null — annualized Sharpe cannot be derived
+  // from the deduped record (no timestamps granular enough, no risk-free rate).
+  const sharpe: null = null;
+  const winRate = set.winRate; // already 0..1
+  const maxDd = computeHonestMaxDrawdownPct(set.trades); // fraction
+  const trades = set.trades.length;
+
+  // Avg win/loss from the deduped set
+  const winners = set.trades.filter((t) => t.pnl > 0);
+  const losers = set.trades.filter((t) => t.pnl < 0);
+  const avgWin = winners.length > 0
+    ? winners.reduce((s, t) => s + t.pnl, 0) / winners.length
+    : 0;
+  const avgLoss = losers.length > 0
+    ? losers.reduce((s, t) => s + t.pnl, 0) / losers.length
+    : 0;
 
   let status: ValidationReport["status"];
   let recommendation: string;
   if (trades < THRESHOLDS.minTrades) {
     status = "INSUFFICIENT_DATA";
-    recommendation = `Collecting data — ${trades}/${THRESHOLDS.minTrades} trades before validation gates apply.`;
+    recommendation = `Collecting data — ${trades}/${THRESHOLDS.minTrades} trades before validation gates apply. ${dedupCaveat(set)}.`;
   } else {
     const pfPass = pf != null && pf >= THRESHOLDS.profitFactor;
-    const sharpePass = sharpe != null && sharpe >= THRESHOLDS.sharpeRatio;
-    const ddPass = Math.abs(maxDd) < THRESHOLDS.maxDrawdown;
-    const allPass = pfPass && sharpePass && ddPass;
+    // Sharpe gate is SUSPENDED — cannot fabricate a PASS from the deduped record.
+    const ddPass = maxDd < THRESHOLDS.maxDrawdown;
+    const allPass = pfPass && ddPass; // sharpe intentionally excluded
     status = allPass ? "PASS" : "FAIL";
     recommendation = allPass
-      ? "All validation gates passing."
+      ? `All computable validation gates passing. Sharpe not computed from deduped record. ${dedupCaveat(set)}.`
       : [
           !pfPass ? "profit factor" : null,
-          !sharpePass ? "Sharpe" : null,
           !ddPass ? "max drawdown" : null,
+          "Sharpe not computed from deduped record",
         ]
           .filter(Boolean)
-          .join(", ")
-          .replace(/^(.)/, (c) => c.toUpperCase()) + " below threshold.";
+          .join("; ")
+          .replace(/^(.)/, (c) => c.toUpperCase()) + `. ${dedupCaveat(set)}.`;
   }
 
   return {
@@ -132,10 +147,10 @@ async function performanceFetcher(path: string): Promise<ValidationReport> {
       win_rate: winRate,
       max_drawdown: maxDd,
       total_trades: trades,
-      period_days: raw.period_days ?? raw.days ?? 0,
-      total_pnl: raw.total_pnl ?? 0,
-      avg_win: raw.avg_win ?? 0,
-      avg_loss: raw.avg_loss ?? 0,
+      period_days: 0, // not in deduped record
+      total_pnl: set.net,
+      avg_win: avgWin,
+      avg_loss: avgLoss,
     },
   };
 }
@@ -879,26 +894,11 @@ function LivePerformanceCard({ report }: { report: ValidationReport }) {
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">
               Sharpe Ratio
             </p>
-            <p
-              className={`tabular-nums text-lg font-bold font-mono ${
-                isInsufficient
-                  ? "text-muted-foreground"
-                  : sharpePass
-                  ? "text-bull"
-                  : "text-bear"
-              }`}
-            >
-              {m.sharpe_ratio !== null ? m.sharpe_ratio.toFixed(2) : "—"}
+            <p className="tabular-nums text-lg font-bold font-mono text-muted-foreground">
+              —
             </p>
-            <p className="text-[10px] mt-0.5">
-              {!isInsufficient && (
-                <span className={sharpePass ? "text-bull" : "text-bear"}>
-                  {sharpePass ? "PASS" : "FAIL"} (need &gt;{THRESHOLDS.sharpeRatio})
-                </span>
-              )}
-              {isInsufficient && (
-                <span className="text-muted-foreground">need more daily data</span>
-              )}
+            <p className="text-[10px] mt-0.5 text-muted-foreground leading-tight">
+              not computed from deduped record
             </p>
           </div>
 
@@ -1015,15 +1015,14 @@ function ComparisonTable({
         : null,
     },
     {
+      // Sharpe is intentionally null in the honest deduped record — annualized
+      // Sharpe cannot be derived from symbol/direction/entry_time/exit_time/pnl_usd.
+      // pass=null prevents a fabricated PASS; the "—" label makes the gap visible.
       metric: "Sharpe Ratio",
       backtest: fmtBaselineNum(baseline?.sharpeRatio ?? null),
-      live: m.sharpe_ratio !== null ? m.sharpe_ratio.toFixed(2) : "—",
+      live: "— (not computed from deduped record)",
       threshold: `> ${THRESHOLDS.sharpeRatio}`,
-      pass: isInsufficient
-        ? null
-        : m.sharpe_ratio !== null
-        ? m.sharpe_ratio >= THRESHOLDS.sharpeRatio
-        : null,
+      pass: null,
     },
     {
       metric: "Win Rate",
@@ -1440,7 +1439,9 @@ export default function ValidationPage() {
     data: report,
     error: reportError,
     isLoading: reportLoading,
-  } = useSWR<ValidationReport>("/analytics/performance", performanceFetcher, {
+    // Key is a stable string; honestPerformanceFetcher ignores the key and fetches
+    // from fetchHonestTrades() which calls the deduped /master/trading/realized endpoint.
+  } = useSWR<ValidationReport>("honest-performance", honestPerformanceFetcher, {
     refreshInterval: REFRESH_MS,
   });
 
@@ -1583,10 +1584,10 @@ export default function ValidationPage() {
           <div className="rounded-xl border border-bear/20 bg-bear/5 p-5 flex items-center gap-3">
             <WifiOff className="h-5 w-5 text-bear shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-bear">Engine offline or analytics unavailable</p>
+              <p className="text-sm font-semibold text-bear">Engine offline or honest trade record unavailable</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Ensure the JARVIS engine is running and reachable through the dashboard proxy, and{" "}
-                <code className="font-mono">/analytics/performance</code> is responding.
+                <code className="font-mono">/master/trading/realized</code> is responding (the deduped trade source).
                 Backtest baseline pills need <code className="font-mono">/backtest/results</code> when the engine is up.
               </p>
             </div>
