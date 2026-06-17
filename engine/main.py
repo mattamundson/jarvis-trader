@@ -2127,9 +2127,23 @@ v1_router = APIRouter(prefix="/v1", tags=["v1"])
 
 
 app.add_middleware(GlobalExceptionHandler)
+# Build CORS origins from env so Railway/Vercel deployments work without code changes.
+# CORS_ALLOWED_ORIGINS env var accepts comma-separated URLs (no trailing slashes).
+# Falls back to localhost-only for local dev when env var is not set.
+_cors_env = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+_cors_origins: list[str] = (
+    [o.strip() for o in _cors_env.split(",") if o.strip()]
+    if _cors_env
+    else [
+        "http://localhost:3010",
+        "http://localhost:3000",
+        "http://localhost:3004",
+    ]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3010", "http://localhost:3000", "http://localhost:3004"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

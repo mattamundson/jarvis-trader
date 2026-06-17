@@ -1,0 +1,15 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# JARVIS TRADER — Railway Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "engine/Dockerfile"
+buildCommand = ""
+
+[deploy]
+startCommand = ""           # Dockerfile CMD handles this
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
