@@ -1549,20 +1549,21 @@ class PortfolioTracker:
 
         return moved
 
-    # ── Persistence — JSONL (always on) ───────────────────────────────────────
+    # ── Persistence — JSONL (fallback only; retired when SQLite is active) ─────
 
     def _append_record(self, trade: PaperTrade) -> None:
-        """Append a single trade record to the JSONL store (append-only audit log).
+        """Append a single trade record to the JSONL store (fallback audit log).
 
-        TODO Sprint 17 US-1703: Remove this JSON write path after migration completes.
-        JSON write path marked for removal — SQLite will be canonical after migration.
+        US-1703: When a SQLite db_manager is active, SQLite is the sole source of
+        truth and this deprecated JSON write is skipped entirely — the DB insert
+        upstream of every caller already persisted the trade, so the jsonl append
+        only duplicated it (and, being append-only with no status field, never
+        reflected later curation, accreting an unbounded contaminated superset).
+        The jsonl path stays live ONLY in the no-DB fallback mode (e.g. tests /
+        degraded startup). The existing jsonl file is left untouched on disk.
         """
-        logger.warning(
-            "[DEPRECATED] Writing paper trade to JSON at %s — "
-            "JSON storage is deprecated; SQLite is the source of truth. "
-            "This path will be removed in a future release.",
-            self._store,
-        )
+        if self._db is not None:
+            return
         try:
             with self._store.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(trade.to_dict()) + "\n")
@@ -1571,15 +1572,23 @@ class PortfolioTracker:
 
     def _load_history(self) -> None:
         """
-        Replay trades.jsonl on startup.
+        Replay trades.jsonl on startup (no-DB fallback mode only).
 
         Strategy: for each trade_id, keep the LAST record written (which has
         the most complete data — the closed record supersedes the open record).
         After replay, separate into open vs closed buckets.
 
-        If db_manager is active this is a secondary reconciliation pass; DB
-        state loaded by _load_from_db() takes precedence for open trades.
+        US-1703: When a SQLite db_manager is active, SQLite is the authoritative
+        store — open positions are rebuilt from the DB by
+        reload_open_positions_from_db() and closed history by
+        initialize_closed_trades_from_db(), both called from the main.py
+        lifespan. Replaying the deprecated jsonl here only re-introduced its
+        uncurated superset (phantom/cancelled/bootstrap rows the DB had already
+        voided) into in-memory state, so it is skipped. The jsonl file is left
+        untouched on disk; this path runs only in the no-DB fallback.
         """
+        if self._db is not None:
+            return
         if not self._store.exists():
             return
 
