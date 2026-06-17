@@ -1,0 +1,119 @@
+{
+  "SPY": {
+    "label": "SPY",
+    "n_trades": 256,
+    "win_rate": 54.69,
+    "profit_factor": 1.681,
+    "sharpe": 1.752,
+    "avg_win": 278.43,
+    "avg_loss": -199.92,
+    "rr_ratio": 1.393,
+    "t1_hit_rate": 50.4,
+    "t2_hit_rate": 52.7,
+    "total_pnl": 15788.45,
+    "final_equity": 25788.45,
+    "max_dd": -9.3,
+    "exit_breakdown": {
+      "STOP": 114,
+      "T1_T2": 68,
+      "T1_THEN_BE_STOP": 43,
+      "T1_RUNNER_BACKSTOP": 14,
+      "BACKSTOP": 13,
+      "T1_THEN_BACKSTOP": 4
+    },
+    "session_breakdown": {
+      "MID": {
+        "n": 71,
+        "win_rate": 47.9,
+        "pf": 1.104,
+        "avg_pnl": 10.92,
+        "total_pnl": 775.15
+      },
+      "CLOSE": {
+        "n": 71,
+        "win_rate": 50.7,
+        "pf": 1.462,
+        "avg_pnl": 44.6,
+        "total_pnl": 3166.64
+      }
+    }
+  },
+  "QQQ": {
+    "label": "QQQ",
+    "n_trades": 235,
+    "win_rate": 52.34,
+    "profit_factor": 1.603,
+    "sharpe": 1.575,
+    "avg_win": 282.14,
+    "avg_loss": -193.27,
+    "rr_ratio": 1.46,
+    "t1_hit_rate": 48.9,
+    "t2_hit_rate": 54.8,
+    "total_pnl": 13056.78,
+    "final_equity": 23056.78,
+    "max_dd": -12.29,
+    "exit_breakdown": {
+      "STOP": 107,
+      "T1_T2": 63,
+      "T1_THEN_BE_STOP": 37,
+      "T1_RUNNER_BACKSTOP": 13,
+      "BACKSTOP": 13,
+      "T1_THEN_BACKSTOP": 2
+    },
+    "session_breakdown": {
+      "MID": {
+        "n": 76,
+        "win_rate": 51.3,
+        "pf": 1.401,
+        "avg_pnl": 38.17,
+        "total_pnl": 2901.28
+      },
+      "CLOSE": {
+        "n": 65,
+        "win_rate": 50.8,
+        "pf": 1.555,
+        "avg_pnl": 53.31,
+        "total_pnl": 3465.22
+      }
+    }
+  },
+  "COMBINED": {
+    "label": "COMBINED",
+    "n_trades": 491,
+    "win_rate": 53.56,
+    "profit_factor": 1.643,
+    "sharpe": 1.857,
+    "avg_win": 280.16,
+    "avg_loss": -196.65,
+    "rr_ratio": 1.425,
+    "t1_hit_rate": 49.7,
+    "t2_hit_rate": 53.7,
+    "total_pnl": 28845.23,
+    "final_equity": 38845.23,
+    "max_dd": -9.3,
+    "exit_breakdown": {
+      "STOP": 221,
+      "T1_T2": 131,
+      "T1_THEN_BE_STOP": 80,
+      "T1_RUNNER_BACKSTOP": 27,
+      "BACKSTOP": 26,
+      "T1_THEN_BACKSTOP": 6
+    },
+    "session_breakdown": {
+      "MID": {
+        "n": 147,
+        "win_rate": 49.7,
+        "pf": 1.25,
+        "avg_pnl": 25.01,
+        "total_pnl": 3676.43
+      },
+      "CLOSE": {
+        "n": 136,
+        "win_rate": 50.7,
+        "pf": 1.506,
+        "avg_pnl": 48.76,
+        "total_pnl": 6631.86
+      }
+    }
+  }
+}

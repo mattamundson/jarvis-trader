@@ -1,0 +1,225 @@
+{
+  "ES": {
+    "all": {
+      "label": "ES All",
+      "n": 251,
+      "wr": 62.15,
+      "pf": 1.873,
+      "sh": 2.402,
+      "rr": 1.141,
+      "t1r": 57.4,
+      "t2r": 45.1,
+      "pnl": 49343.21,
+      "mdd": -5.21,
+      "aw": 678.55,
+      "al": -594.85,
+      "exits": {
+        "STOP": 90,
+        "T1_T2": 65,
+        "T1_THEN_BE_STOP": 61,
+        "BACKSTOP": 17,
+        "T1_RUNNER_BACKSTOP": 13,
+        "T1_THEN_BACKSTOP": 5
+      }
+    },
+    "ah": {
+      "label": "ES AH",
+      "n": 47,
+      "wr": 68.09,
+      "pf": 2.143,
+      "sh": 1.352,
+      "rr": 1.005,
+      "t1r": 55.3,
+      "t2r": 11.5,
+      "pnl": 9919.74,
+      "mdd": -3.36,
+      "aw": 581.19,
+      "al": -578.56,
+      "exits": {
+        "T1_THEN_BE_STOP": 16,
+        "STOP": 13,
+        "BACKSTOP": 8,
+        "T1_RUNNER_BACKSTOP": 4,
+        "T1_T2": 3,
+        "T1_THEN_BACKSTOP": 3
+      }
+    },
+    "overnight": {
+      "label": "ES Overnight",
+      "n": 107,
+      "wr": 68.22,
+      "pf": 2.187,
+      "sh": 2.058,
+      "rr": 1.019,
+      "t1r": 67.3,
+      "t2r": 54.2,
+      "pnl": 23109.73,
+      "mdd": -3.65,
+      "aw": 583.18,
+      "al": -572.43,
+      "exits": {
+        "T1_T2": 39,
+        "STOP": 34,
+        "T1_THEN_BE_STOP": 32,
+        "T1_THEN_BACKSTOP": 1,
+        "BACKSTOP": 1
+      }
+    },
+    "extended": {
+      "label": "ES Extended",
+      "n": 154,
+      "wr": 68.18,
+      "pf": 2.174,
+      "sh": 2.483,
+      "rr": 1.014,
+      "t1r": 63.6,
+      "t2r": 42.9,
+      "pnl": 33029.47,
+      "mdd": -4.08,
+      "aw": 582.58,
+      "al": -574.31,
+      "exits": {
+        "T1_THEN_BE_STOP": 48,
+        "STOP": 47,
+        "T1_T2": 42,
+        "BACKSTOP": 9,
+        "T1_RUNNER_BACKSTOP": 4,
+        "T1_THEN_BACKSTOP": 4
+      }
+    },
+    "rth": {
+      "label": "ES RTH",
+      "n": 97,
+      "wr": 52.58,
+      "pf": 1.575,
+      "sh": 1.053,
+      "rr": 1.421,
+      "t1r": 47.4,
+      "t2r": 50.0,
+      "pnl": 16313.74,
+      "mdd": -7.7,
+      "aw": 876.14,
+      "al": -616.73,
+      "exits": {
+        "STOP": 43,
+        "T1_T2": 23,
+        "T1_THEN_BE_STOP": 13,
+        "T1_RUNNER_BACKSTOP": 9,
+        "BACKSTOP": 8,
+        "T1_THEN_BACKSTOP": 1
+      }
+    }
+  },
+  "NQ": {
+    "all": {
+      "label": "NQ All",
+      "n": 264,
+      "wr": 62.12,
+      "pf": 1.827,
+      "sh": 2.473,
+      "rr": 1.114,
+      "t1r": 55.7,
+      "t2r": 41.5,
+      "pnl": 99308.33,
+      "mdd": -7.44,
+      "aw": 1338.02,
+      "al": -1201.26,
+      "exits": {
+        "STOP": 96,
+        "T1_THEN_BE_STOP": 66,
+        "T1_T2": 61,
+        "BACKSTOP": 21,
+        "T1_RUNNER_BACKSTOP": 14,
+        "T1_THEN_BACKSTOP": 6
+      }
+    },
+    "ah": {
+      "label": "NQ AH",
+      "n": 49,
+      "wr": 69.39,
+      "pf": 2.74,
+      "sh": 1.85,
+      "rr": 1.209,
+      "t1r": 57.1,
+      "t2r": 17.9,
+      "pnl": 26037.01,
+      "mdd": -3.57,
+      "aw": 1205.93,
+      "al": -997.65,
+      "exits": {
+        "T1_THEN_BE_STOP": 14,
+        "STOP": 12,
+        "BACKSTOP": 9,
+        "T1_RUNNER_BACKSTOP": 5,
+        "T1_T2": 5,
+        "T1_THEN_BACKSTOP": 4
+      }
+    },
+    "overnight": {
+      "label": "NQ Overnight",
+      "n": 114,
+      "wr": 67.54,
+      "pf": 2.199,
+      "sh": 2.136,
+      "rr": 1.057,
+      "t1r": 66.7,
+      "t2r": 44.7,
+      "pnl": 49337.67,
+      "mdd": -6.31,
+      "aw": 1175.25,
+      "al": -1112.33,
+      "exits": {
+        "T1_THEN_BE_STOP": 40,
+        "STOP": 37,
+        "T1_T2": 34,
+        "T1_THEN_BACKSTOP": 1,
+        "T1_RUNNER_BACKSTOP": 1,
+        "BACKSTOP": 1
+      }
+    },
+    "extended": {
+      "label": "NQ Extended",
+      "n": 163,
+      "wr": 68.1,
+      "pf": 2.343,
+      "sh": 2.707,
+      "rr": 1.098,
+      "t1r": 63.8,
+      "t2r": 37.5,
+      "pnl": 75374.68,
+      "mdd": -5.81,
+      "aw": 1184.65,
+      "al": -1079.25,
+      "exits": {
+        "T1_THEN_BE_STOP": 54,
+        "STOP": 49,
+        "T1_T2": 39,
+        "BACKSTOP": 10,
+        "T1_RUNNER_BACKSTOP": 6,
+        "T1_THEN_BACKSTOP": 5
+      }
+    },
+    "rth": {
+      "label": "NQ RTH",
+      "n": 101,
+      "wr": 52.48,
+      "pf": 1.374,
+      "sh": 0.899,
+      "rr": 1.244,
+      "t1r": 42.6,
+      "t2r": 51.2,
+      "pnl": 23933.65,
+      "mdd": -15.34,
+      "aw": 1659.23,
+      "al": -1333.45,
+      "exits": {
+        "STOP": 47,
+        "T1_T2": 22,
+        "T1_THEN_BE_STOP": 12,
+        "BACKSTOP": 11,
+        "T1_RUNNER_BACKSTOP": 8,
+        "T1_THEN_BACKSTOP": 1
+      }
+    }
+  }
+}
