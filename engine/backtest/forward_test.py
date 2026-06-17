@@ -180,8 +180,32 @@ def build_windows(trades: list[dict], window_days: int = DEFAULT_WINDOW_DAYS) ->
     return out
 
 
-def forward_stats(windows: list[dict]) -> dict[str, Any]:
-    """Compute the forward OOS statistics the graduation rule consumes."""
+def _perm_sign_p(trades: list[dict] | None) -> float | None:
+    """SHADOW-ONLY directional-edge significance (trade-sign permutation test).
+
+    Returns the one-sided p-value from ``permutation_test`` over the raw realized
+    trade P&Ls, or None when no trades were supplied. This is OBSERVE-ONLY: it is
+    recorded in the forward stats and surfaced in reports, but it does NOT feed
+    ``meets_graduation`` / any NO_TRADE decision. Enforcement (``p < 0.05`` as a
+    graduation requirement) is intentionally deferred until explicitly authorized,
+    per the module's own "shadow today; enforce when authorized" design.
+    """
+    if not trades:
+        return None
+    try:
+        from backtest.permutation_test import permute_and_score
+        return round(float(permute_and_score(trades, n_iters=1000)), 6)
+    except Exception:  # pragma: no cover - shadow metric must never break the report
+        return None
+
+
+def forward_stats(windows: list[dict], trades: list[dict] | None = None) -> dict[str, Any]:
+    """Compute the forward OOS statistics the graduation rule consumes.
+
+    ``trades`` (optional) are the raw closed trades the windows were built from;
+    when supplied, a SHADOW ``perm_sign_p`` directional-significance p-value is
+    added. It is observe-only and never affects graduation (see ``_perm_sign_p``).
+    """
     n = len(windows)
     if n == 0:
         return {
@@ -191,6 +215,7 @@ def forward_stats(windows: list[dict]) -> dict[str, Any]:
             "binom_p": 1.0,
             "total_trades": 0,
             "total_pnl": 0.0,
+            "perm_sign_p": _perm_sign_p(trades),
         }
     profitable = sum(1 for w in windows if w["profitable"])
     p_edge = profitable / n
@@ -203,6 +228,7 @@ def forward_stats(windows: list[dict]) -> dict[str, Any]:
         "binom_p": round(binomial_oos_pvalue(p_edge, n), 6),
         "total_trades": sum(w["n_trades"] for w in windows),
         "total_pnl": round(sum(w["pnl"] for w in windows), 4),
+        "perm_sign_p": _perm_sign_p(trades),
     }
 
 
@@ -240,8 +266,9 @@ def run_lineage_track(
 
     rows: list[dict] = []
     for lineage in sorted(buckets):
-        windows = build_windows(buckets[lineage], window_days)
-        rows.append({"lineage": lineage, "stats": forward_stats(windows)})
+        lin_trs = buckets[lineage]
+        windows = build_windows(lin_trs, window_days)
+        rows.append({"lineage": lineage, "stats": forward_stats(windows, lin_trs)})
 
     # Family-wide BH-FDR across all lineages with >=1 forward window.
     fdr_inputs = [(i, r["stats"]["binom_p"]) for i, r in enumerate(rows)
@@ -303,7 +330,7 @@ def run_forward_test(
     for cand in active:
         level, trs = attributable_trades(closed, cand)
         windows = build_windows(trs, window_days)
-        stats = forward_stats(windows)
+        stats = forward_stats(windows, trs)
         rows.append({"cand": cand, "level": level, "stats": stats})
 
     # Family-wide BH-FDR across candidates that have >=1 forward window.
@@ -347,7 +374,7 @@ def run_forward_test(
     symbol_context = {}
     for sym in symbols:
         sym_trs = [t for t in closed if str(t.get("symbol", "")).upper() == sym.upper()]
-        symbol_context[sym] = forward_stats(build_windows(sym_trs, window_days))
+        symbol_context[sym] = forward_stats(build_windows(sym_trs, window_days), sym_trs)
 
     # Decision-lineage track (P4): graduates the LLM path that actually trades live.
     try:
