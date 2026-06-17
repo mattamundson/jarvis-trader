@@ -7,6 +7,7 @@ the aggregated pass/fail logic that determines exit code.
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -47,24 +48,55 @@ def _write_verdict(
     return path
 
 
+def _make_paper_trades_db(path: Path) -> None:
+    """Create an empty paper_trades table mirroring the engine schema columns
+    that live_readiness reads."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                trade_id TEXT,
+                symbol TEXT,
+                side TEXT,
+                quantity REAL,
+                entry_price REAL,
+                exit_price REAL,
+                entry_time TEXT,
+                exit_time TEXT,
+                pnl REAL,
+                status TEXT,
+                notes TEXT
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @pytest.fixture
 def tmp_verdicts_dir(tmp_path, monkeypatch):
-    """Isolate live_readiness.VERDICTS_DIR + PAPER_TRADES_PATH to tmp dirs.
+    """Isolate live_readiness.VERDICTS_DIR + PAPER_TRADES_DB_PATH to tmp dirs.
 
-    By default the paper-trades store points at a non-existent path so tests
+    By default the paper-trades store points at a non-existent DB path so tests
     exercise the verdict-date-proxy fallback. Tests that need real paper-trade
-    data should write to the path returned via the `paper_trades_path` fixture.
+    data should write via the `paper_trades_path` fixture.
     """
     monkeypatch.setattr(lr, "VERDICTS_DIR", tmp_path)
-    monkeypatch.setattr(lr, "PAPER_TRADES_PATH", tmp_path / "trades.jsonl")
+    monkeypatch.setattr(lr, "PAPER_TRADES_DB_PATH", tmp_path / "jarvis_trader.db")
     return tmp_path
 
 
 @pytest.fixture
 def paper_trades_path(tmp_path, monkeypatch):
-    """Isolate live_readiness.PAPER_TRADES_PATH so tests can write trade records."""
-    p = tmp_path / "trades_isolated.jsonl"
-    monkeypatch.setattr(lr, "PAPER_TRADES_PATH", p)
+    """Isolate live_readiness.PAPER_TRADES_DB_PATH to a fresh temp SQLite DB so
+    tests can write curated paper_trades rows. Returns the DB Path."""
+    p = tmp_path / "jarvis_trader.db"
+    _make_paper_trades_db(p)
+    monkeypatch.setattr(lr, "PAPER_TRADES_DB_PATH", p)
     monkeypatch.setattr(lr, "VERDICTS_DIR", tmp_path / "verdicts")
     return p
 
@@ -76,25 +108,42 @@ def _write_trade(
     is_open: bool = False,
     entry_age_days: float = 1.0,
     pnl: float | None = 0.0,
+    status: str | None = None,
 ) -> None:
-    """Append a paper-trade record to the JSONL store."""
+    """Insert one paper_trades row into the curated SQLite store.
+
+    status defaults to 'open' when is_open else 'closed'. Pass an explicit
+    status (e.g. 'phantom', 'cancelled_duplicate') to exercise the
+    curated-out-exclusion path.
+    """
+    if status is None:
+        status = "open" if is_open else "closed"
     entry_dt = datetime.now(tz=timezone.utc) - timedelta(days=entry_age_days)
-    rec = {
-        "trade_id": f"test-{symbol}-{entry_age_days}",
-        "symbol": symbol,
-        "action": "buy",
-        "quantity": 1.0,
-        "entry_price": 5800.0,
-        "entry_time": entry_dt.isoformat(),
-        "exit_price": None if is_open else 5810.0,
-        "exit_time": None if is_open else (entry_dt + timedelta(hours=2)).isoformat(),
-        "pnl": None if is_open else pnl,
-        "notes": "test",
-        "is_open": is_open,
-    }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(rec) + "\n")
+    if not path.exists():
+        _make_paper_trades_db(path)
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute(
+            "INSERT INTO paper_trades (trade_id, symbol, side, quantity, "
+            "entry_price, exit_price, entry_time, exit_time, pnl, status, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                f"test-{symbol}-{entry_age_days}-{status}",
+                symbol,
+                "buy",
+                1.0,
+                5800.0,
+                None if is_open else 5810.0,
+                entry_dt.isoformat(),
+                None if is_open else (entry_dt + timedelta(hours=2)).isoformat(),
+                None if is_open else pnl,
+                status,
+                "test",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 @pytest.fixture
@@ -223,6 +272,46 @@ def test_c1_filters_by_symbol(paper_trades_path):
     result = lr.check_c1_mes_paper_validation()
     assert result.passed is False
     assert "no mes paper trades" in result.detail.lower()
+
+
+def test_query_stats_excludes_curated_out_statuses(paper_trades_path):
+    """Regression (2026-06-16): the forward-test reads the curated paper_trades
+    DB, so voided/duplicate/contaminated rows must NOT count as live.
+
+    Reproduces the bug where the raw jsonl reader reported a phantom MES
+    "+$30,918 / 43 open" book: rows the live engine had cancelled/voided still
+    showed as open. Here genuine rows count; phantom/cancelled rows are dropped.
+    """
+    # 3 genuine closed winners + 1 genuine open
+    for _ in range(3):
+        _write_trade(paper_trades_path, symbol="MES", entry_age_days=10, pnl=100.0)
+    _write_trade(paper_trades_path, symbol="MES", is_open=True, entry_age_days=5)
+    # Curated-out noise that must be excluded
+    _write_trade(paper_trades_path, symbol="MES", entry_age_days=8, pnl=9999.0, status="phantom")
+    _write_trade(
+        paper_trades_path, symbol="MES", is_open=True, entry_age_days=7, status="cancelled_duplicate"
+    )
+    _write_trade(
+        paper_trades_path,
+        symbol="MES",
+        is_open=True,
+        entry_age_days=6,
+        status="cancelled_contaminated",
+    )
+
+    stats = lr._query_paper_trade_stats("MES")
+    assert stats["available"] is True
+    assert stats["n_closed"] == 3  # phantom closer excluded
+    assert stats["n_open"] == 1  # both cancelled opens excluded
+    assert stats["total_pnl"] == pytest.approx(300.0)  # 9999 phantom not summed
+
+
+def test_query_stats_available_false_when_db_missing(tmp_verdicts_dir):
+    """No curated DB on disk → available False (drives the verdict-proxy fallback)."""
+    stats = lr._query_paper_trade_stats("MES")
+    assert stats["available"] is False
+    assert stats["n_closed"] == 0
+    assert stats["n_open"] == 0
 
 
 # ---------------------------------------------------------- #
