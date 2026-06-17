@@ -208,11 +208,17 @@ def build_history(df: pd.DataFrame, max_points: int = _HISTORY_MAX_POINTS) -> li
     return history
 
 
-def build_regime_snapshot(symbol: str, bars_by_tf: dict[str, pd.DataFrame]) -> dict:
+def build_regime_snapshot(
+    symbol: str,
+    bars_by_tf: dict[str, pd.DataFrame],
+    options_flow: Optional[dict] = None,
+) -> dict:
     """Assemble the full intraday-regime payload from per-timeframe bar frames.
 
     `bars_by_tf` maps timeframe label ("5m"/"15m"/"1h") to its OHLCV DataFrame
-    (DatetimeIndex; columns open/high/low/close/volume).
+    (DatetimeIndex; columns open/high/low/close/volume). `options_flow` is an
+    optional dealer-GEX reading (kept as a param so this function stays pure and
+    deterministic — the router fetches it and passes it through).
     """
     tf_scores = []
     for label, key in (("5-MINUTE", "5m"), ("15-MINUTE", "15m"), ("1-HOUR", "1h")):
@@ -262,8 +268,9 @@ def build_regime_snapshot(symbol: str, bars_by_tf: dict[str, pd.DataFrame]) -> d
         "indicators": indicators,
         "history": history,
         "snapshot_count": len(history),
-        # No engine-side gamma/GEX source yet — surfaced as unavailable, not faked.
-        "options_flow": None,
+        # Dealer-GEX reading when an options source is wired; None (not faked)
+        # otherwise — the dashboard renders a "Not wired" state for null.
+        "options_flow": options_flow,
         "data_quality": "live",
         "updated_at": datetime.utcnow().isoformat() + "Z",
     }
