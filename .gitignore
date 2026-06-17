@@ -116,6 +116,7 @@ engine/data/*.jsonl
 engine/data/*.db
 engine/data/*.backup_*
 engine/data/backups/
+engine/data/forward_test_report.md
 engine/jarvis_trader.db
 engine/jarvis.db
 data/*.db
