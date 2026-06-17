@@ -203,7 +203,7 @@ export default function JournalReviewPage() {
   } = useSWR<JournalTradeStats>(
     `journal-stats-${limit}`,
     () => fetchJournalStats(limit),
-    { shouldRetryOnError: false }
+    { shouldRetryOnError: false, errorRetryCount: 0 }
   );
 
   const {
@@ -294,9 +294,11 @@ export default function JournalReviewPage() {
           </div>
         )}
 
-        {statsError && (
+        {!statsLoading && (statsError || !stats) && (
           <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
-            Failed to load stats — is the engine running?
+            {statsError
+              ? `Failed to load stats — ${statsError instanceof Error ? statsError.message : String(statsError)}`
+              : "No stats returned — /api/engine/journal/review/stats may not be available yet."}
           </div>
         )}
 
