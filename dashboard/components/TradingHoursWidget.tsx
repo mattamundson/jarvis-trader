@@ -4,35 +4,22 @@ import { useEffect, useState, useCallback } from "react";
 import { Clock, TrendingUp, TrendingDown, Activity, Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  dedupCaveat,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: string;
-  quantity: number;
-  entry_price: number;
-  exit_price: number | null;
-  realized_pnl: number | null;
-  status: string;
-  entry_time: string;
-  exit_time: string | null;
-  notes: string | null;
-}
-
-interface TradesResponse {
-  trades: TradeRecord[];
-  count: number;
-}
 
 interface HourStats {
   hour: number;
   count: number;
   wins: number;
   totalPnl: number;
+  avgPnl: number;
   winRate: number;
 }
 
@@ -54,19 +41,20 @@ function formatPnl(pnl: number): string {
   return pnl >= 0 ? `+${formatted}` : `-${formatted}`;
 }
 
-function buildHourStats(trades: TradeRecord[]): HourStats[] {
+function buildHourStats(trades: HonestTrade[]): HourStats[] {
   const map = new Map<number, { count: number; wins: number; totalPnl: number }>();
 
   for (const trade of trades) {
-    if (trade.status !== "CLOSED" || trade.exit_time === null) continue;
-    const pnl = trade.realized_pnl;
-    if (pnl === null) continue;
+    // guard null entry_time
+    if (!trade.entry_time) continue;
+    const parsedMs = Date.parse(trade.entry_time);
+    if (Number.isNaN(parsedMs)) continue;
 
-    const hour = new Date(trade.entry_time).getHours();
+    const hour = new Date(parsedMs).getHours();
     const existing = map.get(hour) ?? { count: 0, wins: 0, totalPnl: 0 };
     existing.count++;
-    if (pnl > 0) existing.wins++;
-    existing.totalPnl += pnl;
+    if (trade.pnl > 0) existing.wins++;
+    existing.totalPnl += trade.pnl;
     map.set(hour, existing);
   }
 
@@ -76,6 +64,7 @@ function buildHourStats(trades: TradeRecord[]): HourStats[] {
       count: data.count,
       wins: data.wins,
       totalPnl: data.totalPnl,
+      avgPnl: data.count > 0 ? data.totalPnl / data.count : 0,
       winRate: data.count > 0 ? data.wins / data.count : 0,
     }))
     .sort((a, b) => a.hour - b.hour);
@@ -105,11 +94,14 @@ function HourBar({ stat, maxAbsPnl, isBest, isWorst }: HourBarProps) {
     >
       {/* Hover tooltip */}
       {hovered && (
-        <div className="absolute bottom-full mb-2 z-20 w-36 rounded-lg border border-border bg-card shadow-lg p-2.5 text-xs pointer-events-none">
+        <div className="absolute bottom-full mb-2 z-20 w-40 rounded-lg border border-border bg-card shadow-lg p-2.5 text-xs pointer-events-none">
           <p className="font-semibold text-foreground mb-1">{formatHour(stat.hour)}</p>
           <p className="text-muted-foreground">{stat.count} trade{stat.count !== 1 ? "s" : ""}</p>
           <p className={isPositive ? "text-bull" : "text-bear"}>
-            P&L: {formatPnl(stat.totalPnl)}
+            Total P&L: {formatPnl(stat.totalPnl)}
+          </p>
+          <p className="text-muted-foreground">
+            Avg P&L: {formatPnl(stat.avgPnl)}
           </p>
           <p className="text-muted-foreground">
             WR: {(stat.winRate * 100).toFixed(0)}%
@@ -142,37 +134,32 @@ function HourBar({ stat, maxAbsPnl, isBest, isWorst }: HourBarProps) {
 export function TradingHoursWidget() {
   const [hourStats, setHourStats] = useState<HourStats[]>([]);
   const [totalTrades, setTotalTrades] = useState(0);
+  const [caveat, setCaveat] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fetchTrades = useCallback(async () => {
+  const loadTrades = useCallback(async () => {
     try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?status=CLOSED&limit=500`
-      );
-      const trades: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
-      const stats = buildHourStats(trades);
+      const set: HonestTradeSet = await fetchHonestTrades();
+      const stats = buildHourStats(set.trades);
       setHourStats(stats);
-      setTotalTrades(
-        trades.filter((t: TradeRecord) => t.status === "CLOSED" && t.exit_time !== null).length,
-      );
+      setTotalTrades(set.trades.length);
+      setCaveat(dedupCaveat(set));
       setError(null);
       setLastUpdated(new Date());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
+      setError(err instanceof Error ? err.message : "Failed to load honest trades");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 60_000);
+    loadTrades();
+    const interval = setInterval(loadTrades, 60_000);
     return () => clearInterval(interval);
-  }, [fetchTrades]);
+  }, [loadTrades]);
 
   // Derived stats
   const insufficient = totalTrades < 5;
@@ -375,6 +362,9 @@ export function TradingHoursWidget() {
                       Win Rate
                     </th>
                     <th className="px-3 py-2 text-muted-foreground font-medium uppercase tracking-wider text-right">
+                      Avg P&L
+                    </th>
+                    <th className="px-3 py-2 text-muted-foreground font-medium uppercase tracking-wider text-right">
                       Total P&L
                     </th>
                   </tr>
@@ -422,6 +412,13 @@ export function TradingHoursWidget() {
                           {(stat.winRate * 100).toFixed(0)}%
                         </td>
                         <td
+                          className={`px-3 py-2 text-right tabular-nums font-mono ${
+                            stat.avgPnl >= 0 ? "text-bull" : "text-bear"
+                          }`}
+                        >
+                          {formatPnl(stat.avgPnl)}
+                        </td>
+                        <td
                           className={`px-3 py-2 text-right tabular-nums font-mono font-semibold ${
                             stat.totalPnl >= 0 ? "text-bull" : "text-bear"
                           }`}
@@ -434,6 +431,14 @@ export function TradingHoursWidget() {
                 </tbody>
               </table>
             </div>
+
+            {/* Dedup caveat */}
+            {caveat && (
+              <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Info className="h-3 w-3 shrink-0" />
+                {caveat}
+              </p>
+            )}
           </div>
         )}
       </CardContent>

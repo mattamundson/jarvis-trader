@@ -25,6 +25,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { fetchEngine, fetchJournalStats, fetchBars, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  type HonestTradeSet,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
@@ -356,6 +361,15 @@ export default function CommandCenterPage() {
     "/journal/review/stats?limit=30",
     fetcher,
     { refreshInterval: 60_000, shouldRetryOnError: false }
+  );
+
+  // Honest deduped set for the journal HUD row (win_rate + EV/trade).
+  // /journal/review/stats over-counts re-logged winners; fetchHonestTrades
+  // applies dedup at read time. All other command-center cards are LEGIT.
+  const { data: honestSet } = useSWR<HonestTradeSet>(
+    "honest-trades-cc",
+    fetchHonestTrades,
+    { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
   );
 
   const engineOnline = !healthErr && !!health;
@@ -1381,6 +1395,8 @@ export default function CommandCenterPage() {
 
       {/* ═══════════════════════════════════════════════════════
           ROW 6 — JOURNAL REVIEW STATS
+          Win Rate + EV/Trade: migrated to honest deduped source.
+          Trades count + Diagnosis: kept from journalStats (LEGIT — not P&L aggregates).
       ═══════════════════════════════════════════════════════ */}
       <div className="mt-3 mb-3">
         <a href="/journal-review" className="block">
@@ -1395,55 +1411,74 @@ export default function CommandCenterPage() {
               {!journalStats ? (
                 <span className="text-xs text-slate-500 font-mono">Loading…</span>
               ) : (
-                <div className="grid grid-cols-4 gap-4">
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Trades</div>
-                    <div className="font-mono text-sm text-white font-bold">
-                      {journalStats.total_trades}
+                <>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div>
+                      {/* Trades count from journalStats — LEGIT (not a P&L aggregate) */}
+                      <div className="text-xs text-slate-500 mb-0.5">Trades</div>
+                      <div className="font-mono text-sm text-white font-bold">
+                        {journalStats.total_trades}
+                      </div>
+                    </div>
+                    <div>
+                      {/* Win Rate — migrated to honest deduped source */}
+                      <div className="text-xs text-slate-500 mb-0.5">Win Rate</div>
+                      {honestSet ? (
+                        <div
+                          className={`font-mono text-sm font-bold ${
+                            honestSet.winRate >= 0.5
+                              ? "text-green-400"
+                              : honestSet.winRate >= 0.35
+                              ? "text-yellow-400"
+                              : "text-red-400"
+                          }`}
+                        >
+                          {(honestSet.winRate * 100).toFixed(0)}%
+                        </div>
+                      ) : (
+                        <div className="font-mono text-sm text-slate-500">—</div>
+                      )}
+                    </div>
+                    <div>
+                      {/* EV / Trade — migrated to honest deduped source (net / trade count) */}
+                      <div className="text-xs text-slate-500 mb-0.5">EV / Trade</div>
+                      {honestSet && honestSet.trades.length > 0 ? (
+                        <div
+                          className={`font-mono text-sm font-bold ${
+                            honestSet.net / honestSet.trades.length >= 0
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }`}
+                        >
+                          {honestSet.net / honestSet.trades.length >= 0 ? "+" : ""}
+                          {(honestSet.net / honestSet.trades.length).toFixed(0)}
+                        </div>
+                      ) : (
+                        <div className="font-mono text-sm text-slate-500">—</div>
+                      )}
+                    </div>
+                    <div>
+                      {/* Diagnosis from journalStats — LEGIT (categorical field, not a P&L aggregate) */}
+                      <div className="text-xs text-slate-500 mb-0.5">Diagnosis</div>
+                      <Badge
+                        className={`text-xs font-mono py-0 border ${
+                          journalStats.diagnosis === "solid"
+                            ? "bg-green-950 text-green-400 border-green-800"
+                            : journalStats.diagnosis === "insufficient_data"
+                            ? "bg-slate-800 text-slate-400 border-slate-700"
+                            : "bg-red-950 text-red-400 border-red-800"
+                        }`}
+                      >
+                        {journalStats.diagnosis.replace("_", " ").toUpperCase()}
+                      </Badge>
                     </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Win Rate</div>
-                    <div
-                      className={`font-mono text-sm font-bold ${
-                        journalStats.win_rate >= 0.5
-                          ? "text-green-400"
-                          : journalStats.win_rate >= 0.35
-                          ? "text-yellow-400"
-                          : "text-red-400"
-                      }`}
-                    >
-                      {journalStats.win_rate != null ? (journalStats.win_rate * 100).toFixed(0) : "—"}%
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">EV / Trade</div>
-                    <div
-                      className={`font-mono text-sm font-bold ${
-                        journalStats.expected_value_usd >= 0
-                          ? "text-green-400"
-                          : "text-red-400"
-                      }`}
-                    >
-                      {journalStats.expected_value_usd >= 0 ? "+" : ""}
-                      {journalStats.expected_value_usd != null ? journalStats.expected_value_usd.toFixed(0) : "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Diagnosis</div>
-                    <Badge
-                      className={`text-xs font-mono py-0 border ${
-                        journalStats.diagnosis === "solid"
-                          ? "bg-green-950 text-green-400 border-green-800"
-                          : journalStats.diagnosis === "insufficient_data"
-                          ? "bg-slate-800 text-slate-400 border-slate-700"
-                          : "bg-red-950 text-red-400 border-red-800"
-                      }`}
-                    >
-                      {journalStats.diagnosis.replace("_", " ").toUpperCase()}
-                    </Badge>
-                  </div>
-                </div>
+                  {honestSet && (
+                    <p className="mt-2 text-[10px] text-slate-600 font-mono">
+                      {dedupCaveat(honestSet)} · win rate + EV sourced from deduped record
+                    </p>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

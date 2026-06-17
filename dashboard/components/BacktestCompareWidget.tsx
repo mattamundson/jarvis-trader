@@ -3,10 +3,12 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchHonestTrades, dedupCaveat, type HonestTradeSet } from "@/lib/honestTrades";
 
 
-// ── Backtest benchmarks ────────────────────────────────────────────────────────
+// ── Backtest benchmarks (static saved-backtest reference — NOT live) ──────────
+// Source: MES 1h gate-v2 backtest run (historical). These are fixed constants
+// from the best historical backtest; they do NOT update with live data.
 
 const BACKTEST = {
   profit_factor: 5.27,
@@ -16,24 +18,50 @@ const BACKTEST = {
   max_drawdown: -0.031,
   total_pnl: 47200.0,
   avg_trade_pnl: 151.28,
-  label: "MES 1h Backtest (Best)",
+  label: "MES 1h Backtest (Best) — static reference",
   period: "Historical",
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface PerformanceData {
-  profit_factor: number;
-  sharpe_ratio: number;
+/** Live/paper column — derived from the honest deduped trade set. */
+interface LiveData {
+  profit_factor: number | null;
+  /** Sharpe is not computable from the deduped record (no timestamps for annualisation). */
+  sharpe_ratio: null;
   win_rate: number;
   total_trades: number;
-  trading_days: number;
   max_drawdown: number;
   total_pnl: number;
   avg_trade_pnl: number;
 }
 
 type RowColor = "green" | "orange" | "red" | "neutral";
+
+function liveFromHonest(set: HonestTradeSet): LiveData {
+  const avgTrade = set.trades.length > 0 ? set.net / set.trades.length : 0;
+  // Max drawdown from equity curve: compute running peak and trough
+  let equity = 0;
+  let peak = 0;
+  let maxDD = 0;
+  for (const t of set.trades) {
+    equity += t.pnl;
+    if (equity > peak) peak = equity;
+    const dd = equity - peak;
+    if (dd < maxDD) maxDD = dd;
+  }
+  // Express as fraction relative to peak (or 0 if no peak)
+  const maxDDFrac = peak > 0 ? maxDD / peak : 0;
+  return {
+    profit_factor: set.profitFactor,
+    sharpe_ratio: null,
+    win_rate: set.winRate,
+    total_trades: set.trades.length,
+    max_drawdown: maxDDFrac,
+    total_pnl: set.net,
+    avg_trade_pnl: avgTrade,
+  };
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -76,10 +104,9 @@ function fmtDD(n: number): string {
   return `${(Math.abs(n) * 100).toFixed(1)}%`;
 }
 
-function isAllZeros(data: PerformanceData): boolean {
+function isAllZeros(data: LiveData): boolean {
   return (
-    data.profit_factor === 0 &&
-    data.sharpe_ratio === 0 &&
+    (data.profit_factor ?? 0) === 0 &&
     data.win_rate === 0 &&
     data.total_trades === 0 &&
     data.total_pnl === 0
@@ -105,26 +132,16 @@ function Skeleton() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function BacktestCompareWidget() {
-  const [data, setData] = useState<PerformanceData | null>(null);
+  const [data, setData] = useState<LiveData | null>(null);
+  const [caveat, setCaveat] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   function fetchData() {
-    fetchEngine(`/analytics/performance`)
-      .then((res) => {
-        return res.json();
-      })
-      .then((json: Partial<PerformanceData>) => {
-        setData({
-          profit_factor: json.profit_factor ?? 0,
-          sharpe_ratio: json.sharpe_ratio ?? 0,
-          win_rate: json.win_rate ?? 0,
-          total_trades: json.total_trades ?? 0,
-          trading_days: json.trading_days ?? 0,
-          max_drawdown: json.max_drawdown ?? 0,
-          total_pnl: json.total_pnl ?? 0,
-          avg_trade_pnl: json.avg_trade_pnl ?? 0,
-        });
+    fetchHonestTrades()
+      .then((set: HonestTradeSet) => {
+        setData(liveFromHonest(set));
+        setCaveat(dedupCaveat(set));
         setError(false);
         setLoading(false);
       })
@@ -138,6 +155,7 @@ export function BacktestCompareWidget() {
     fetchData();
     const id = setInterval(fetchData, 60_000);
     return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Overall badge ──────────────────────────────────────────────────────────
@@ -146,11 +164,12 @@ export function BacktestCompareWidget() {
 
   function overallBadge(): { variant: BadgeVariant; label: string } {
     if (!data || isAllZeros(data)) return { variant: "neutral", label: "NO DATA" };
-    const pf = data.profit_factor;
-    const sr = data.sharpe_ratio;
-    if (pf >= 2.0 && sr >= 1.5) return { variant: "bull", label: "ON TARGET" };
-    if (pf >= 1.5 || sr >= 1.2) return { variant: "info", label: "PROGRESSING" };
-    return { variant: "warn", label: "BELOW TARGET" };
+    const pf = data.profit_factor ?? 0;
+    // Sharpe is not computable from the deduped record; gate on PF only
+    if (pf >= 2.0) return { variant: "bull", label: "ON TARGET" };
+    if (pf >= 1.5) return { variant: "info", label: "PROGRESSING" };
+    if (pf >= 1.0) return { variant: "warn", label: "BELOW TARGET" };
+    return { variant: "bear", label: "BELOW BREAKEVEN" };
   }
 
   const badge = overallBadge();
@@ -169,15 +188,18 @@ export function BacktestCompareWidget() {
     return [
       {
         metric: "Profit Factor",
-        live: data.profit_factor.toFixed(2),
+        live: data.profit_factor != null ? data.profit_factor.toFixed(2) : "—",
         backtest: BACKTEST.profit_factor.toFixed(2),
-        color: positiveColor(data.profit_factor, BACKTEST.profit_factor),
+        color: data.profit_factor != null
+          ? positiveColor(data.profit_factor, BACKTEST.profit_factor)
+          : "neutral",
       },
       {
+        // Sharpe cannot be computed from the deduped record (no annualisation baseline)
         metric: "Sharpe Ratio",
-        live: data.sharpe_ratio.toFixed(2),
+        live: "—",
         backtest: BACKTEST.sharpe_ratio.toFixed(2),
-        color: positiveColor(data.sharpe_ratio, BACKTEST.sharpe_ratio),
+        color: "neutral",
       },
       {
         metric: "Win Rate",
@@ -217,7 +239,7 @@ export function BacktestCompareWidget() {
           <div>
             <CardTitle>Live vs Backtest Comparison</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Best backtest: MES 1h &nbsp;|&nbsp; PF 5.27 &nbsp;|&nbsp; Sharpe 4.16 &nbsp;|&nbsp; +47.2%
+              Static backtest ref: MES 1h &nbsp;|&nbsp; PF 5.27 &nbsp;|&nbsp; Sharpe 4.16 &nbsp;|&nbsp; +47.2%
             </p>
           </div>
           <Badge variant={badge.variant}>{badge.label}</Badge>
@@ -271,7 +293,8 @@ export function BacktestCompareWidget() {
             </table>
 
             <p className="mt-4 text-[11px] text-muted-foreground leading-relaxed border-t border-border pt-3">
-              Note: Live paper trading expected to underperform backtests. Targets: PF &ge; 2.0, Sharpe &ge; 1.5
+              Live: {caveat || "deduped trades"}. Sharpe not computed (requires annualisation baseline).
+              Backtest column = saved static reference, not live. Targets: PF &ge; 2.0.
             </p>
           </div>
         )}

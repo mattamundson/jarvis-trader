@@ -23,6 +23,13 @@ import {
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import type { WatchlistItem, MGCSignalResponse } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  type HonestTradeSet,
+  bySymbolStats,
+  type SymbolStat as HonestSymbolStat,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // WatchlistScanWidget and SymbolPerformanceWidget are inlined below with the
@@ -164,23 +171,10 @@ function WatchlistScanWidget({ symbols = "MES,MNQ,MCL,MGC" }: { symbols?: string
 }
 
 // ── Inline: SymbolPerformanceWidget ────────────────────────────────────────
-// Fixed: fetchEngine already returns parsed JSON; removed double .json() call.
-
-interface SymbolStat {
-  symbol: string;
-  count: number;
-  wins: number;
-  losses: number;
-  win_rate: number;
-  total_pnl: number;
-  avg_pnl: number;
-  best_trade: number;
-  worst_trade: number;
-}
-interface BySymbolResponse {
-  symbols: SymbolStat[];
-  total_symbols: number;
-}
+// Migrated from /analytics/trades/by-symbol (over-counted re-logged winners)
+// to bySymbolStats(honestSet.trades) — deduped at read time via master-api.
+// Best/Worst per-trade fields are not in the honest record; those columns are
+// omitted rather than fabricated.
 
 function spPnlVariant(value: number): "bull" | "bear" | "neutral" {
   if (value > 0) return "bull";
@@ -192,13 +186,14 @@ function spFormatPnl(value: number): string {
   return value >= 0 ? `+$${abs}` : `-$${abs}`;
 }
 function spWinRateClass(rate: number): string {
-  if (rate >= 55) return "text-bull";
-  if (rate < 45) return "text-bear";
+  // rate is 0..1 from honestTrades
+  if (rate >= 0.55) return "text-bull";
+  if (rate < 0.45) return "text-bear";
   return "text-muted-foreground";
 }
 
 function SymbolPerformanceWidget() {
-  const [spData, setSpData] = useState<BySymbolResponse | null>(null);
+  const [spHonest, setSpHonest] = useState<HonestTradeSet | null>(null);
   const [spLoading, setSpLoading] = useState(false);
   const [spError, setSpError] = useState<string | null>(null);
   const [spLastUpdated, setSpLastUpdated] = useState<string | null>(null);
@@ -206,13 +201,9 @@ function SymbolPerformanceWidget() {
   const fetchSpData = useCallback(() => {
     setSpLoading(true);
     setSpError(null);
-    fetchEngine<BySymbolResponse>("/analytics/trades/by-symbol")
-      .then((d) => {
-        const sorted: BySymbolResponse = {
-          ...d,
-          symbols: [...d.symbols].sort((a, b) => b.total_pnl - a.total_pnl),
-        };
-        setSpData(sorted);
+    fetchHonestTrades()
+      .then((set) => {
+        setSpHonest(set);
         setSpLastUpdated(
           new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         );
@@ -229,15 +220,17 @@ function SymbolPerformanceWidget() {
     return () => clearInterval(id);
   }, [fetchSpData]);
 
+  const symbolRows: HonestSymbolStat[] = spHonest ? bySymbolStats(spHonest.trades) : [];
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Symbol Performance</CardTitle>
           <div className="flex items-center gap-2">
-            {spData && (
+            {spHonest && (
               <span className="text-xs text-muted-foreground">
-                {spData.total_symbols} symbol{spData.total_symbols !== 1 ? "s" : ""}
+                {symbolRows.length} symbol{symbolRows.length !== 1 ? "s" : ""}
               </span>
             )}
             <button
@@ -256,66 +249,70 @@ function SymbolPerformanceWidget() {
         )}
       </CardHeader>
       <CardContent className="p-0">
-        {spLoading && !spData ? (
+        {spLoading && !spHonest ? (
           <div className="px-4 pb-4 space-y-2">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="h-10 rounded bg-muted animate-pulse" />
             ))}
           </div>
-        ) : spError && !spData ? (
+        ) : spError && !spHonest ? (
           <div className="px-4 pb-4 flex items-center gap-2 text-xs text-muted-foreground">
             <AlertCircle className="h-4 w-4 text-bear/70 shrink-0" />
             Symbol performance unavailable
           </div>
-        ) : !spData || spData.symbols.length === 0 ? (
+        ) : !spHonest || symbolRows.length === 0 ? (
           <div className="px-4 pb-4 text-sm text-muted-foreground">
             No symbol data yet.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Symbol</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Trades</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">W/L</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Win Rate</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Total P&amp;L</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Avg P&amp;L</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Best</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Worst</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {spData.symbols.map((s) => (
-                  <tr key={s.symbol} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-2.5 font-mono font-semibold">{s.symbol}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{s.count}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">
-                      <span className="text-bull">{s.wins}</span>
-                      <span className="text-muted-foreground mx-0.5">/</span>
-                      <span className="text-bear">{s.losses}</span>
-                    </td>
-                    <td className={`px-4 py-2.5 text-right tabular-nums ${spWinRateClass(s.win_rate)}`}>
-                      {s.win_rate.toFixed(1)}%
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <Badge variant={spPnlVariant(s.total_pnl)}>{spFormatPnl(s.total_pnl)}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <Badge variant={spPnlVariant(s.avg_pnl)}>{spFormatPnl(s.avg_pnl)}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <Badge variant="bull">{spFormatPnl(s.best_trade)}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <Badge variant="bear">{spFormatPnl(s.worst_trade)}</Badge>
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="px-4 py-2 text-left font-medium text-muted-foreground">Symbol</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground">Trades</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground">W/L</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground">Win Rate</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground">Total P&amp;L</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground">Avg P&amp;L</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground">Profit Factor</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {symbolRows.map((s) => {
+                    const avgPnl = s.trades > 0 ? s.net / s.trades : 0;
+                    return (
+                      <tr key={s.symbol} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-2.5 font-mono font-semibold">{s.symbol}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{s.trades}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          <span className="text-bull">{s.wins}</span>
+                          <span className="text-muted-foreground mx-0.5">/</span>
+                          <span className="text-bear">{s.losses}</span>
+                        </td>
+                        <td className={`px-4 py-2.5 text-right tabular-nums ${spWinRateClass(s.winRate)}`}>
+                          {(s.winRate * 100).toFixed(1)}%
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <Badge variant={spPnlVariant(s.net)}>{spFormatPnl(s.net)}</Badge>
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <Badge variant={spPnlVariant(avgPnl)}>{spFormatPnl(avgPnl)}</Badge>
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                          {s.profitFactor != null ? s.profitFactor.toFixed(2) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground">
+              {dedupCaveat(spHonest)} · sourced from deduped record
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

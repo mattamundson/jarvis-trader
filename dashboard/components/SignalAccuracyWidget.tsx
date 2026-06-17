@@ -4,58 +4,49 @@ import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { fetchEngine } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  dedupCaveat,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 
+// ── Per-direction stat shape ──────────────────────────────────────────────────
 
-interface ClosedTrade {
-  id: string;
-  symbol: string;
-  action: string;
-  entry_price: number;
-  exit_price: number;
-  quantity: number;
-  entry_time: string;
-  exit_time: string;
-  pnl: number;
-  commission: number;
-  status: string;
+interface DirectionStats {
+  total: number;
+  wins: number;
+  losses: number;
+  winRate: number; // 0..100
+  avgWin: number;
+  avgLoss: number; // <= 0
 }
 
-interface TradesResponse {
-  trades: ClosedTrade[];
-}
-
-function calcStats(trades: ClosedTrade[]) {
+function calcDirectionStats(trades: HonestTrade[]): DirectionStats {
   const wins = trades.filter((t) => t.pnl > 0);
-  const losses = trades.filter((t) => t.pnl <= 0);
+  const losses = trades.filter((t) => t.pnl < 0);
   const total = trades.length;
   const winRate = total > 0 ? (wins.length / total) * 100 : 0;
   const avgWin =
-    wins.length > 0 ? wins.reduce((sum, t) => sum + t.pnl, 0) / wins.length : 0;
+    wins.length > 0 ? wins.reduce((s, t) => s + t.pnl, 0) / wins.length : 0;
   const avgLoss =
     losses.length > 0
-      ? losses.reduce((sum, t) => sum + t.pnl, 0) / losses.length
+      ? losses.reduce((s, t) => s + t.pnl, 0) / losses.length
       : 0;
   return { total, wins: wins.length, losses: losses.length, winRate, avgWin, avgLoss };
 }
 
+// ── Main widget ───────────────────────────────────────────────────────────────
+
 export function SignalAccuracyWidget() {
-  const [trades, setTrades] = useState<ClosedTrade[]>([]);
+  const [set, setSet] = useState<HonestTradeSet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  async function fetchTrades() {
+  async function load() {
     try {
-      const raw: unknown = await fetchEngine(
-        `/portfolio/history/trades?limit=500&status=CLOSED`
-      );
-      const rows: ClosedTrade[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: ClosedTrade[] }).trades ?? []);
-      const closed = rows.filter(
-        (t: ClosedTrade) => t.status === "CLOSED" && t.pnl != null
-      );
-      setTrades(closed);
+      const s = await fetchHonestTrades();
+      setSet(s);
       setError(false);
     } catch {
       setError(true);
@@ -65,35 +56,42 @@ export function SignalAccuracyWidget() {
   }
 
   useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 5 * 60 * 1000);
+    load();
+    const interval = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const longTrades = trades.filter(
-    (t) => t.action === "BUY" || t.action === "LONG"
-  );
-  const shortTrades = trades.filter(
-    (t) => t.action === "SELL" || t.action === "SHORT"
-  );
+  // Derive per-direction stats from deduped trades
+  const longTrades = set?.trades.filter(
+    (t) => t.direction === "LONG" || t.action === "BUY" || t.action === "LONG"
+  ) ?? [];
+  const shortTrades = set?.trades.filter(
+    (t) => t.direction === "SHORT" || t.action === "SELL" || t.action === "SHORT"
+  ) ?? [];
 
-  const long = calcStats(longTrades);
-  const short = calcStats(shortTrades);
+  const long = calcDirectionStats(longTrades);
+  const short = calcDirectionStats(shortTrades);
 
-  const totalWins = long.wins + short.wins;
   const totalAll = long.total + short.total;
+  const totalWins = long.wins + short.wins;
   const overallWinRate = totalAll > 0 ? (totalWins / totalAll) * 100 : 0;
 
   const overallVariant: "bull" | "warn" | "bear" =
     overallWinRate >= 55 ? "bull" : overallWinRate >= 45 ? "warn" : "bear";
 
+  const caveat = set ? dedupCaveat(set) : "";
+
   return (
     <Card>
       <CardHeader className="flex flex-row justify-between items-center">
         <CardTitle>Signal Accuracy</CardTitle>
-        <Badge variant={overallVariant}>
-          {overallWinRate.toFixed(1)}% Overall
-        </Badge>
+        {!loading && !error && set && (
+          <Badge variant={overallVariant}>
+            {overallWinRate.toFixed(1)}% Overall
+          </Badge>
+        )}
+        {loading && !set && <Badge variant="neutral">LOADING…</Badge>}
+        {error && <Badge variant="bear">ERROR</Badge>}
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -132,7 +130,7 @@ export function SignalAccuracyWidget() {
                           : ""
                       )}
                     >
-                      {long.winRate.toFixed(1)}%
+                      {long.total > 0 ? long.winRate.toFixed(1) + "%" : "N/A"}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -144,13 +142,13 @@ export function SignalAccuracyWidget() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Avg Win</span>
                     <span className="font-mono text-green-400">
-                      +${long.avgWin.toFixed(2)}
+                      {long.wins > 0 ? `+$${long.avgWin.toFixed(2)}` : "—"}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Avg Loss</span>
                     <span className="font-mono text-red-400">
-                      -${Math.abs(long.avgLoss).toFixed(2)}
+                      {long.losses > 0 ? `-$${Math.abs(long.avgLoss).toFixed(2)}` : "—"}
                     </span>
                   </div>
                 </div>
@@ -189,13 +187,13 @@ export function SignalAccuracyWidget() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Avg Win</span>
                     <span className="font-mono text-green-400">
-                      {short.total > 0 ? `+$${short.avgWin.toFixed(2)}` : "—"}
+                      {short.wins > 0 ? `+$${short.avgWin.toFixed(2)}` : "—"}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Avg Loss</span>
                     <span className="font-mono text-red-400">
-                      {short.total > 0
+                      {short.losses > 0
                         ? `-$${Math.abs(short.avgLoss).toFixed(2)}`
                         : "—"}
                     </span>
@@ -205,7 +203,7 @@ export function SignalAccuracyWidget() {
             </div>
 
             <p className="text-xs text-muted-foreground mt-3">
-              From last 500 closed trades • Refreshes every 5m
+              {caveat} · Refreshes every 5m
             </p>
           </>
         )}
