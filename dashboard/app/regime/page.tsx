@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import useSWR from "swr";
 import {
   Bell,
   ChevronDown,
@@ -12,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { RegimeScoreHistoryChart } from "@/components/regime/RegimeScoreHistoryChart";
 import {
   buildSampleRegime,
+  fetchIntradayRegime,
   REGIME_SCALE_MAX,
   type IndicatorReading,
   type IntradayRegime,
@@ -20,6 +22,7 @@ import {
 } from "@/lib/regime";
 
 const SYMBOLS = ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA"];
+const REFRESH_MS = 30_000;
 
 // ── Tone → tailwind helpers ──────────────────────────────────────────────────
 
@@ -58,14 +61,23 @@ function formatGex(value: number): string {
 export default function IntradayRegimePage() {
   const [symbol, setSymbol] = useState("SPY");
   const [showEma, setShowEma] = useState(true);
-  const data: IntradayRegime = useMemo(() => buildSampleRegime(symbol), [symbol]);
+
+  // Live engine data; fall back to the deterministic sample when the engine is
+  // unavailable so the page always renders (and is honest about provenance).
+  const sample = useMemo(() => buildSampleRegime(symbol), [symbol]);
+  const { data: live, isLoading } = useSWR<IntradayRegime>(
+    ["regime", symbol],
+    () => fetchIntradayRegime(symbol),
+    { refreshInterval: REFRESH_MS, shouldRetryOnError: false }
+  );
+  const data: IntradayRegime = live ?? sample;
 
   return (
     <div className="min-h-screen bg-background">
       <RegimeBanner />
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-5 lg:px-6">
-        <TabsRow liveTimeDilation={data.liveTimeDilation} />
+        <TabsRow source={data.source} isLoading={isLoading && !live} />
 
         {/* Symbol + price + analyze */}
         <div className="flex flex-wrap items-center gap-3">
@@ -139,7 +151,14 @@ function RegimeBanner() {
 
 // ── Tabs row ─────────────────────────────────────────────────────────────────
 
-function TabsRow({ liveTimeDilation }: { liveTimeDilation: boolean }) {
+function TabsRow({
+  source,
+  isLoading,
+}: {
+  source: IntradayRegime["source"];
+  isLoading: boolean;
+}) {
+  const live = source === "live";
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button className="rounded-lg border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground">
@@ -148,12 +167,16 @@ function TabsRow({ liveTimeDilation }: { liveTimeDilation: boolean }) {
       <button className="rounded-lg bg-violet-500/20 px-4 py-2 text-xs font-semibold text-violet-300">
         Ticker Intraday Market Regime
       </button>
-      {liveTimeDilation && (
-        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-bull/30 bg-bull/10 px-3 py-1 text-[11px] font-medium text-bull">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-bull" />
-          Live Time Dilation Enabled
-        </span>
-      )}
+      <span className="ml-auto">
+        <Badge variant={live ? "bull" : "static"} className="gap-1.5">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              live ? "animate-pulse bg-bull" : "bg-muted-foreground"
+            }`}
+          />
+          {isLoading ? "Loading…" : live ? "Live Engine Data" : "Sample Data"}
+        </Badge>
+      </span>
     </div>
   );
 }
@@ -390,6 +413,25 @@ function OptionsFlow({
 }: {
   flow: IntradayRegime["optionsFlow"];
 }) {
+  if (!flow) {
+    return (
+      <div className="space-y-2">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          Options Flow
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {["Flow Signal", "Net GEX", "GEX Flip Level"].map((label) => (
+            <div key={label} className="rounded-xl border border-dashed border-border bg-card p-4">
+              <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                {label}
+              </p>
+              <p className="mt-1.5 text-sm text-muted-foreground/60">Not wired</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   const cards: Array<{ label: string; value: string; tone: string }> = [
     {
       label: "Flow Signal",
