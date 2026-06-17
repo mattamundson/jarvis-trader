@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import sqlite3
 import statistics
-from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Optional, Sequence
