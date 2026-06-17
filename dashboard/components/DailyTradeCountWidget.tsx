@@ -3,29 +3,15 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { RefreshCw, BarChart2, Calendar, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  dailyPnl,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: "BUY" | "SELL";
-  quantity: number;
-  entry_price: number;
-  exit_price: number | null;
-  realized_pnl: number | null;
-  status: "OPEN" | "CLOSED" | "CANCELLED";
-  entry_time: string;
-  exit_time: string | null;
-  notes: string | null;
-}
-
-interface TradeHistoryResponse {
-  trades: TradeRecord[];
-  count: number;
-}
 
 interface DayBucket {
   dateKey: string; // "2026-03-29"
@@ -71,6 +57,7 @@ function buildBuckets(days: number): DayBucket[] {
 
 export function DailyTradeCountWidget() {
   const [buckets, setBuckets] = useState<DayBucket[]>([]);
+  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -79,30 +66,22 @@ export function DailyTradeCountWidget() {
     setLoading(true);
     setError(null);
     try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?status=CLOSED&limit=500`
+      const set = await fetchHonestTrades();
+      setTradeSet(set);
+
+      // dailyPnl returns {date, pnl, count}[] keyed by YYYY-MM-DD (UTC exit date)
+      const byDay = dailyPnl(set.trades);
+      const dailyMap = new Map<string, { pnl: number; count: number }>(
+        byDay.map((d) => [d.date, { pnl: d.pnl, count: d.count }])
       );
-      const trades: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
 
-      // Build 14-day buckets
+      // Build 14-day buckets and merge deduped daily data
       const dayBuckets = buildBuckets(14);
-      const bucketMap = new Map<string, DayBucket>();
-      for (const b of dayBuckets) {
-        bucketMap.set(b.dateKey, b);
-      }
-
-      // Populate from closed trades using exit_time
-      for (const trade of trades) {
-        if (trade.status !== "CLOSED" || !trade.exit_time) continue;
-        // Parse exit_time and extract date key in local time
-        const exitDate = new Date(trade.exit_time);
-        const dateKey = toDateKey(exitDate);
-        const bucket = bucketMap.get(dateKey);
-        if (bucket) {
-          bucket.count += 1;
-          bucket.totalPnl += trade.realized_pnl ?? 0;
+      for (const bucket of dayBuckets) {
+        const dayData = dailyMap.get(bucket.dateKey);
+        if (dayData) {
+          bucket.count = dayData.count;
+          bucket.totalPnl = dayData.pnl;
         }
       }
 
@@ -317,6 +296,13 @@ export function DailyTradeCountWidget() {
             </p>
           </div>
         </div>
+      )}
+
+      {/* Dedup caveat footer */}
+      {!error && tradeSet && tradeSet.relogged > 0 && (
+        <p className="text-[10px] text-muted-foreground/70 border-t border-border pt-1">
+          {dedupCaveat(tradeSet)}
+        </p>
       )}
 
       {/* Last updated */}
