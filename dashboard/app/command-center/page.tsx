@@ -268,18 +268,36 @@ function fetcher<T>(path: string): Promise<T> {
 
 // ── Page Component ────────────────────────────────────────────────────────
 
-export default function CommandCenterPage() {
-  const session = getMarketSession();
-  const refreshInterval = session.isActive ? 30_000 : 5 * 60_000;
+// Stable placeholder session used on the server and the first client paint so
+// that both renders produce identical HTML (no React hydration error #418).
+// getMarketSession() calls new Date() which differs between server (UTC) and
+// client (local timezone + a few ms clock drift), causing a text-content mismatch.
+const SESSION_PLACEHOLDER: SessionInfo = {
+  label: "LOADING…",
+  color: "text-slate-500",
+  badge: "bg-slate-800 text-slate-400 border-slate-700",
+  isActive: false,
+};
 
+export default function CommandCenterPage() {
   // Start null so SSR and the client's first paint match (no new Date() during
   // render); the real clock starts after mount. Prevents React hydration error #418.
   const [now, setNow] = useState<Date | null>(null);
+  // session is also deferred to post-mount: getMarketSession() reads new Date()
+  // which differs server (UTC) vs client (local tz) → hydration mismatch.
+  const [session, setSession] = useState<SessionInfo>(SESSION_PLACEHOLDER);
   useEffect(() => {
-    setNow(new Date());
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    // Initialise both clock and session together so they are always in sync.
+    const tick = () => {
+      setNow(new Date());
+      setSession(getMarketSession());
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const refreshInterval = session.isActive ? 30_000 : 5 * 60_000;
 
   // Live price chart symbol (defaults to the first tracked instrument)
   const [chartSym, setChartSym] = useState<string>(INSTRUMENTS[0]?.symbol ?? "MES");
