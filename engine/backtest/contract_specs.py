@@ -61,6 +61,21 @@ CONTRACT_SPECS: Dict[str, ContractSpec] = {
     # Metals
     "MGC": ContractSpec(multiplier=10.0,  tick_size=0.10, commission=0.85, slippage_ticks=1),
     "GC":  ContractSpec(multiplier=100.0, tick_size=0.10, commission=1.49, slippage_ticks=1),
+    # Rates (CBOT Treasury futures) -- B1 trend diversifiers, gold-uncorrelated.
+    # Full-size, liquid, clean trending price series. tick_size is the decimal
+    # form of the fractional minimum tick (ZN = 1/64 = 0.015625, ZB = 1/32 =
+    # 0.03125). [ASSUMPTION] commission is an IB tiered-rate estimate pending
+    # live-fill confirmation; the cost sweep stresses 0.5x..4x so the gate verdict
+    # is robust to this value. If the edge validates, the micro-yield products
+    # (10Y/30Y) are the small-account-tradeable equivalents.
+    "ZN":  ContractSpec(multiplier=1000.0, tick_size=0.015625, commission=1.20, slippage_ticks=1),
+    "ZB":  ContractSpec(multiplier=1000.0, tick_size=0.03125,  commission=1.20, slippage_ticks=1),
+    # FX micros (CME Micro FX) -- B1 trend diversifiers, gold-uncorrelated.
+    # M6E = 1/10 of 6E (EUR12,500); M6B = 1/10 of 6B (GBP6,250). Priced USD per
+    # unit, tick 0.0001. [ASSUMPTION] commission is an IB micro-FX estimate
+    # pending live-fill confirmation; cost sweep stresses it.
+    "M6E": ContractSpec(multiplier=12500.0, tick_size=0.0001, commission=0.25, slippage_ticks=1),
+    "M6B": ContractSpec(multiplier=6250.0,  tick_size=0.0001, commission=0.25, slippage_ticks=1),
     # ETFs (no futures multiplier; commission tier varies by broker — assume 0 for IB tiered commissions)
     "SPY": ContractSpec(multiplier=1.0, tick_size=0.01, commission=0.00, slippage_ticks=1),
     "QQQ": ContractSpec(multiplier=1.0, tick_size=0.01, commission=0.00, slippage_ticks=1),
