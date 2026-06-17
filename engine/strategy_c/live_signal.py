@@ -7,6 +7,11 @@ Runs every Friday at 4:05pm CT via the cron job.
 Usage:
     python -m engine.strategy_c.live_signal
     python engine/strategy_c/live_signal.py
+
+CHANGELOG:
+  2026-06-17 — Promoted engine_v2 (StrategyCEngineV2) to production.
+               Replaces engine.py (v1). 9/10 gates, Sharpe 1.423, OOS CAGR retention 98.6%.
+               v1 still importable via from .engine import StrategyCEngine (fallback).
 """
 from __future__ import annotations
 
@@ -41,33 +46,79 @@ def run_live_signal(
     -------
     dict : Complete live signal
     """
-    from .engine import StrategyCEngine, StrategyCConfig
+    # ── v2 engine (production as of 2026-06-17) ───────────────────────────
+    from .engine_v2 import StrategyCEngineV2, StrategyCConfigV2
 
     logger.info("=" * 60)
-    logger.info("STRATEGY C+ WEEKLY SIGNAL — %s", datetime.now().strftime("%Y-%m-%d %H:%M CT"))
+    logger.info("STRATEGY C+ v2 WEEKLY SIGNAL — %s", datetime.now().strftime("%Y-%m-%d %H:%M CT"))
+    logger.info("Engine: StrategyCEngineV2 (9/10 gates, Sharpe 1.423, OOS retention 98.6%)")
     logger.info("=" * 60)
 
-    config = StrategyCConfig(
-        vol_target=8.0,
+    config = StrategyCConfigV2(
+        # Vol targeting
+        vol_target=7.0,
         vol_lookback_days=10,
+        lookback_long_days=21,
+        blend_fast_weight=0.40,
         vol_floor=6.0,
+        winsorize_sigma=3.0,
+        # VIX composite
         vix_ma_period=26,
         vix_mom_period=4,
         vix_weights=(0.40, 0.25, 0.20, 0.15),
+        # Momentum
         mom_lookback_primary=52,
         top_n=2,
         use_factor_tilt=True,
-        use_macro_filter=True,
-        use_cot=True,
+        # T2-6: Enhanced abs mom gate
+        use_abs_mom_ma_gate=True,
+        ma_breach_weeks=3,
+        abs_mom_threshold_bear=0.02,
+        # T2-7: Drawdown circuit breaker
+        use_drawdown_cb=True,
+        dd_tiers=[(0.08, 0.50), (0.15, 0.25)],
+        # T3-10: Kalman regime (replaces MTF)
+        use_kalman_mtf=True,
+        kalman_process_noise=0.5,
+        kalman_obs_noise=2.0,
+        # T3-11: Min hold
+        use_min_hold=True,
+        min_hold_weeks=2,
+        # T3-12: Risk parity
+        use_risk_parity=True,
+        risk_parity_lookback=21,
+        # Transaction costs
+        use_transaction_costs=True,
+        execution_mode="moc_friday",
+        # Universe (GLD added per T3-13 validation)
+        risk_on=["QQQ", "SPY", "EFA", "USMV", "MTUM", "XLK", "XLV", "GLD"],
+        risk_off=["IEF", "SHY"],
     )
 
-    engine = StrategyCEngine(config=config)
+    engine = StrategyCEngineV2(config=config)
 
     try:
         signal = engine.get_live_signal()
     except Exception as e:
-        logger.error("Signal generation failed: %s", e, exc_info=True)
-        return {"error": str(e), "generated_at": datetime.now().isoformat()}
+        logger.error("Signal generation failed (v2): %s", e, exc_info=True)
+        # Fallback to v1 on hard failure
+        logger.warning("Falling back to v1 engine...")
+        try:
+            from .engine import StrategyCEngine, StrategyCConfig
+            v1_config = StrategyCConfig(
+                vol_target=8.0, vol_lookback_days=10, vol_floor=6.0,
+                vix_ma_period=26, vix_mom_period=4,
+                vix_weights=(0.40, 0.25, 0.20, 0.15),
+                mom_lookback_primary=52, top_n=2, use_factor_tilt=True,
+                use_macro_filter=True, use_cot=True,
+            )
+            signal = StrategyCEngine(config=v1_config).get_live_signal()
+            signal["_fallback"] = "v1_engine"
+            signal["_fallback_reason"] = str(e)
+        except Exception as e2:
+            logger.error("v1 fallback also failed: %s", e2, exc_info=True)
+            return {"error": str(e), "v1_fallback_error": str(e2),
+                    "generated_at": datetime.now().isoformat()}
 
     # Save signal
     output_dir = Path(__file__).parent / "output"

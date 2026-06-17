@@ -38,8 +38,15 @@ from typing import Optional
 _ENGINE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ENGINE_ROOT))
 
-from system2.signal_monitor import System2SignalMonitor, System2Signal
-from system2.order_manager  import System2OrderManager, PositionRecord
+from system2.signal_monitor    import System2SignalMonitor, System2Signal
+from system2.order_manager     import System2OrderManager, PositionRecord
+from system2.kill_switch       import KillSwitch, PositionReconciler, DeadMansSwitch
+from system2.portfolio_allocator import PortfolioAllocator
+try:
+    from system2.fill_callbacks import wire_fill_callbacks
+    _FILL_CALLBACKS_AVAILABLE = True
+except ImportError:
+    _FILL_CALLBACKS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -167,11 +174,22 @@ class System2Executor:
         # Build IBKR executor (None = dry run)
         self._ibkr = None if dry_run else _build_ibkr_executor(paper=paper)
 
+        # Safety + allocation
+        self._kill_switch = KillSwitch()
+        self._dead_mans   = DeadMansSwitch(ibkr_port=self.PAPER_PORT if paper else 4001)
+
         # Order manager
         self._order_mgr = System2OrderManager(
             ibkr_executor      = self._ibkr,
             paper              = paper,
             on_position_closed = self._on_position_closed,
+        )
+
+        # Portfolio allocator
+        self._allocator = PortfolioAllocator(
+            ibkr_executor = self._ibkr,
+            order_manager = self._order_mgr,
+            account_size  = 50_000.0,
         )
 
         # Signal monitor
@@ -207,12 +225,38 @@ class System2Executor:
         else:
             logger.info("[System2Executor] No IBKR connection — DRY RUN mode")
 
+        # Position reconciliation before accepting any signals
+        if self._ibkr is not None:
+            reconciler = PositionReconciler(
+                order_manager   = self._order_mgr,
+                ibkr_executor   = self._ibkr,
+                flatten_orphans = False,  # conservative: log only, don't auto-flatten
+            )
+            report = await reconciler.reconcile()
+            logger.info("[System2Executor] Reconciliation: %s", report["status"])
+            if report["discrepancies"]:
+                logger.warning(
+                    "[System2Executor] %d discrepancies found — review reconcile_log.jsonl",
+                    len(report["discrepancies"])
+                )
+
+        # Wire real-time fill callbacks to ib_async events
+        if self._ibkr is not None and _FILL_CALLBACKS_AVAILABLE:
+            try:
+                ib_instance = getattr(self._ibkr, '_ib', None)
+                if ib_instance is not None:
+                    wire_fill_callbacks(ib_instance, self._order_mgr)
+                    logger.info("[System2Executor] Fill callbacks wired")
+            except Exception as e:
+                logger.warning("[System2Executor] Fill callback wire failed: %s", e)
+
         self._running = True
 
-        # Run signal monitor + bar advance loop concurrently
+        # Run signal monitor + bar advance loop + heartbeat concurrently
         await asyncio.gather(
             self._monitor.run(),
             self._bar_advance_loop(),
+            self._dead_mans.beat_loop(),
         )
 
     async def stop(self):
@@ -242,6 +286,20 @@ class System2Executor:
         """Called by signal monitor when a setup completes."""
         logger.info(f"[System2Executor] Signal received: {sig.summary()}")
         _log_signal(sig)
+
+        # Portfolio allocation check before submitting
+        check = await self._allocator.check_new_order(
+            symbol       = sig.symbol,
+            contracts    = 2,  # estimate; order manager will size precisely
+            side         = sig.direction,
+            current_price = sig.entry_price,
+        )
+        if not check.approved:
+            logger.warning(
+                f"[System2Executor] Signal BLOCKED by allocator: {check.reason}"
+            )
+            return
+
         pos = await self._order_mgr.on_signal(sig)
         if pos:
             logger.info(

@@ -534,3 +534,194 @@ class StrategyCEngineV2:
             print(f"     Annual drag: {tcm.get('annual_drag_bps', 0):.1f} bps "
                   f"({tcm.get('annual_drag_pct', 0):.2f}%)")
         print("=" * 70 + "\n")
+
+    def get_live_signal(self) -> dict:
+        """
+        Generate the live signal for the current week using v2 layer stack.
+
+        Layer stack:
+          L1: Dual momentum + AbsoluteMomentumGate (T2-6)
+          L2: Blended vol targeting (T2-8)
+          L3: VIX composite
+          L4: DrawdownCircuitBreaker (T2-7) × KalmanVolRegimeDetector (T3-10)
+          L5: RiskParitySizer (T3-12)
+
+        Returns a signal dict compatible with the cron notification format.
+        Note: DrawdownCircuitBreaker requires a running equity NAV — on live
+        signal we bootstrap from the last known equity level stored in
+        engine_v2_state.json, defaulting to full scale (1.0) if not available.
+        """
+        self.load_data()
+        c = self.config
+        wp = self._weekly_prices
+        dp = self._daily_prices
+
+        # ── L1: Momentum signal ───────────────────────────────────────────────
+        signal = self.signals.get_current_signal(wp)
+        raw_holdings = signal.get("holdings", {})
+        risk_regime   = signal.get("risk_regime", "UNKNOWN")
+
+        # AbsoluteMomentumGate override
+        if self.abs_mom_gate is not None:
+            spy_daily = dp.get("SPY") if dp is not None else None
+            try:
+                abs_gate_df = self.abs_mom_gate.compute_gate_series(
+                    wp.tail(60), spy_daily
+                )
+                if len(abs_gate_df) > 0 and not abs_gate_df.iloc[-1]["abs_mom_pass"]:
+                    if "RISK_ON" in risk_regime:
+                        risk_regime  = "RISK_OFF_MA"
+                        raw_holdings = {"SHY": 1.0}
+            except Exception as e:
+                logger.warning("AbsMomGate live error: %s", e)
+
+        # ── L2: Vol targeting ─────────────────────────────────────────────────
+        es_daily = dp.get("SPY") if dp is not None else None
+        nq_daily = dp.get("QQQ") if dp is not None else None
+        if es_daily is not None and nq_daily is not None:
+            vol_scale, realized_vol = self.vol_targeter.compute_scale(es_daily, nq_daily)
+            vol_regime = self.vol_targeter.vol_regime(realized_vol)
+        else:
+            vol_scale, realized_vol, vol_regime = 1.0, 15.0, "UNKNOWN"
+
+        # ── L3: VIX composite ─────────────────────────────────────────────────
+        if self._weekly_vix is not None and len(self._weekly_vix.dropna()) > 10:
+            rv_series = None
+            if es_daily is not None and nq_daily is not None:
+                vol_df_full = self.vol_targeter.build_scale_series(
+                    es_daily, nq_daily, self._weekly_vix.index
+                )
+                rv_series = vol_df_full["realized_vol"]
+            vix_signal = self.vix_composite.get_current_signal(
+                self._weekly_vix.dropna(), rv_series
+            )
+        else:
+            vix_signal = {"vix": 18.0, "vix_regime": "NORMAL", "position_multiplier": 1.0,
+                          "composite_score": 0.0}
+
+        # ── L4a: Drawdown circuit breaker ─────────────────────────────────────
+        cb_mult = 1.0
+        cb_detail = {"active": False, "multiplier": 1.0, "drawdown_pct": 0.0}
+        if self.dd_circuit is not None:
+            try:
+                state_path = OUTPUT_DIR / "engine_v2_state.json"
+                if state_path.exists():
+                    with open(state_path) as f:
+                        state = json.load(f)
+                    last_equity = float(state.get("last_equity", 100_000))
+                else:
+                    last_equity = 100_000.0
+                cb_mult, cb_detail = self.dd_circuit.update_and_get_multiplier(last_equity)
+            except Exception as e:
+                logger.warning("DrawdownCB live error: %s", e)
+
+        # ── L4b: Kalman vol regime ─────────────────────────────────────────────
+        kalman_mult   = 1.0
+        kalman_regime = "NORMAL"
+        if self.kalman_detector is not None and es_daily is not None and nq_daily is not None:
+            try:
+                vol_df_k = self.vol_targeter.build_scale_series(
+                    es_daily, nq_daily, wp.index
+                )
+                kal_df = self.kalman_detector.build_regime_series(vol_df_k["realized_vol"])
+                if len(kal_df) > 0:
+                    kalman_regime = str(kal_df.iloc[-1]["regime"])
+                    kalman_mult   = self.kalman_detector.get_regime_multiplier(kalman_regime)
+            except Exception as e:
+                logger.warning("Kalman live error: %s", e)
+
+        # ── L5: Risk parity sizer ─────────────────────────────────────────────
+        risk_on_assets = [a for a in raw_holdings if a not in ("IEF", "SHY")]
+        if self.rp_sizer is not None and risk_on_assets and risk_regime not in ("RISK_OFF", "RISK_OFF_MA"):
+            try:
+                rp_weights = self.rp_sizer.compute_weights(risk_on_assets, dp)
+                if rp_weights:
+                    total_risk_on = sum(raw_holdings.get(a, 0) for a in risk_on_assets)
+                    raw_holdings = {a: rp_weights.get(a, 0) * total_risk_on for a in risk_on_assets}
+                    for a, w in signal.get("holdings", {}).items():
+                        if a in ("IEF", "SHY"):
+                            raw_holdings[a] = w
+            except Exception as e:
+                logger.warning("RiskParity live error: %s", e)
+
+        # ── Combine scales ────────────────────────────────────────────────────
+        pre_cb_scale = vol_scale * vix_signal.get("position_multiplier", 1.0) * kalman_mult
+        combined_scale = min(1.0, pre_cb_scale * cb_mult)
+
+        # Scale holdings, remainder to SHY
+        scaled_holdings: dict = {k: v * combined_scale for k, v in raw_holdings.items()}
+        cash_weight = max(0.0, 1.0 - combined_scale)
+        if cash_weight > 0.005:
+            scaled_holdings["SHY"] = scaled_holdings.get("SHY", 0.0) + cash_weight
+        scaled_holdings = {k: round(v, 4) for k, v in scaled_holdings.items() if v > 0.001}
+
+        live_signal = {
+            "generated_at": datetime.now().isoformat(),
+            "strategy": "Strategy_C_Plus_v2",
+            "effective_date": datetime.now().strftime("%Y-%m-%d"),
+            "execution_note": "T+1 lag: execute Monday open after Friday signal",
+            "holdings": scaled_holdings,
+            "combined_scale": round(combined_scale, 4),
+            "pre_mtf_scale": round(pre_cb_scale, 4),
+            "layers": {
+                "momentum_signal": {
+                    "raw_holdings": raw_holdings,
+                    "risk_regime": risk_regime,
+                    "absolute_mom_pass": signal.get("absolute_mom_pass", False),
+                },
+                "vol_targeting": {
+                    "scale": round(vol_scale, 4),
+                    "realized_vol_pct": round(realized_vol, 2),
+                    "vol_target_pct": c.vol_target,
+                    "vol_regime": vol_regime,
+                },
+                "vix_composite": vix_signal,
+                "kalman_regime": {
+                    "regime": kalman_regime,
+                    "multiplier": round(kalman_mult, 4),
+                },
+                "drawdown_circuit_breaker": cb_detail,
+                "macro_filter": {"multiplier": 1.0, "note": "replaced by DrawdownCB in v2"},
+                # Cron-compat keys (v1 cron reads these)
+                "mtf_signal": {
+                    "mtf_scale": round(kalman_mult, 4),
+                    "weekly_momentum": kalman_regime,
+                    "monthly_momentum": kalman_regime,
+                    "daily_confirmation": kalman_regime,
+                    "breadth": "N/A",
+                    "votes_bull": int(kalman_mult >= 1.0) * 3,
+                    "confidence": "HIGH" if kalman_mult >= 1.0 else "LOW",
+                },
+            },
+            "ibkr_instructions": self._generate_ibkr_instructions(scaled_holdings),
+        }
+
+        # Persist signal
+        output_dir = OUTPUT_DIR
+        output_dir.mkdir(exist_ok=True)
+        with open(output_dir / "strategy_c_plus_live_signal.json", "w") as f:
+            json.dump(live_signal, f, indent=2, default=str)
+
+        return live_signal
+
+    def _generate_ibkr_instructions(self, scaled_holdings: dict) -> dict:
+        orders = []
+        for ticker, weight in scaled_holdings.items():
+            if weight < 0.005:
+                continue
+            orders.append({
+                "symbol": ticker,
+                "action": "BUY",
+                "weight_pct": round(weight * 100, 2),
+                "order_type": "MKT",
+                "tif": "OPG",
+                "note": f"Strategy C+ v2 allocation: {weight:.1%}",
+            })
+        return {
+            "account": "DUP662235",
+            "mode": "PAPER",
+            "gateway_port": 4002,
+            "execution_timing": "MOO (Market On Open) — Monday morning",
+            "orders": orders,
+            "rebalance_required": len(orders) > 0,
+        }
