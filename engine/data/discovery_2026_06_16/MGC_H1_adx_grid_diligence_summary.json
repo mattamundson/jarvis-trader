@@ -1,0 +1,95 @@
+{
+  "diligence_type": "adx_wider_grid_sweep",
+  "symbol": "MGC",
+  "hypothesis": "H1_adx_sma_trend",
+  "fixed_params": {
+    "fast": 50,
+    "slow": 120,
+    "atr_trail_mult": 2.0
+  },
+  "adx_thresholds_tested": [
+    14.0,
+    18.0,
+    22.0,
+    25.0,
+    28.0,
+    32.0
+  ],
+  "results_summary": [
+    {
+      "adx_threshold": 14.0,
+      "verdict": "PASS",
+      "passed_via": "alt",
+      "primary_block": null,
+      "pf_ci_lower": 3.7596,
+      "p_edge": 0.8947,
+      "mc_95th_dd_pct": 1.632,
+      "dsr": 1.0,
+      "n_oos_trades": 58,
+      "wfo_consistency": "STRONG"
+    },
+    {
+      "adx_threshold": 18.0,
+      "verdict": "PASS",
+      "passed_via": "alt",
+      "primary_block": null,
+      "pf_ci_lower": 3.7596,
+      "p_edge": 0.8947,
+      "mc_95th_dd_pct": 1.632,
+      "dsr": 1.0,
+      "n_oos_trades": 58,
+      "wfo_consistency": "STRONG"
+    },
+    {
+      "adx_threshold": 22.0,
+      "verdict": "PASS",
+      "passed_via": "alt",
+      "primary_block": null,
+      "pf_ci_lower": 3.7596,
+      "p_edge": 0.8947,
+      "mc_95th_dd_pct": 1.632,
+      "dsr": 1.0,
+      "n_oos_trades": 58,
+      "wfo_consistency": "STRONG"
+    },
+    {
+      "adx_threshold": 25.0,
+      "verdict": "PASS",
+      "passed_via": "alt",
+      "primary_block": null,
+      "pf_ci_lower": 3.7596,
+      "p_edge": 0.8947,
+      "mc_95th_dd_pct": 1.632,
+      "dsr": 1.0,
+      "n_oos_trades": 58,
+      "wfo_consistency": "STRONG"
+    },
+    {
+      "adx_threshold": 28.0,
+      "verdict": "PASS",
+      "passed_via": "alt",
+      "primary_block": null,
+      "pf_ci_lower": 3.7596,
+      "p_edge": 0.8947,
+      "mc_95th_dd_pct": 1.632,
+      "dsr": 1.0,
+      "n_oos_trades": 58,
+      "wfo_consistency": "STRONG"
+    },
+    {
+      "adx_threshold": 32.0,
+      "verdict": "PASS",
+      "passed_via": "alt",
+      "primary_block": null,
+      "pf_ci_lower": 3.7596,
+      "p_edge": 0.8947,
+      "mc_95th_dd_pct": 1.632,
+      "dsr": 1.0,
+      "n_oos_trades": 58,
+      "wfo_consistency": "STRONG"
+    }
+  ],
+  "robustness_verdict": "ROBUST \u2014 edge persists across ALL tested ADX thresholds.",
+  "n_pass": 6,
+  "n_fail": 0
+}

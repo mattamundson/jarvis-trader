@@ -1,0 +1,8 @@
+{
+  "symbol": "MES",
+  "hypothesis": "H4_rsi2_meanrev",
+  "verdict": "FAIL",
+  "passed_via": null,
+  "primary_block": "no_oos_trades",
+  "gate_v2_metrics": {}
+}
