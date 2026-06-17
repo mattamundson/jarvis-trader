@@ -24,6 +24,11 @@ import {
   type JournalFormalizeResult,
   type JournalTradeStats,
 } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -215,6 +220,34 @@ export default function JournalReviewPage() {
     { shouldRetryOnError: false }
   );
 
+  // Honest deduped aggregates — source of truth for all P&L-derived numbers.
+  const { data: honestSet } = useSWR<HonestTradeSet>(
+    "honest-trades",
+    fetchHonestTrades,
+    { shouldRetryOnError: false, errorRetryCount: 0 },
+  );
+
+  // Derived honest metrics (undefined while loading, shown as "—" in the UI).
+  const honestWinRate: number | undefined =
+    honestSet ? honestSet.winRate * 100 : undefined;
+  const honestEV: number | undefined =
+    honestSet && honestSet.trades.length > 0
+      ? honestSet.net / honestSet.trades.length
+      : undefined;
+  const honestNet: number | undefined = honestSet?.net;
+  const honestAvgWin: number | undefined =
+    honestSet && honestSet.wins > 0
+      ? honestSet.grossWin / honestSet.wins
+      : undefined;
+  const honestAvgLoss: number | undefined =
+    honestSet && honestSet.losses > 0
+      ? honestSet.grossLoss / honestSet.losses
+      : undefined;
+  const honestRR: number | undefined =
+    honestAvgWin !== undefined && honestAvgLoss !== undefined && honestAvgLoss > 0
+      ? honestAvgWin / honestAvgLoss
+      : undefined;
+
   async function runAnalysis() {
     setAnalyzing(true);
     setAnalyzeError(null);
@@ -308,40 +341,65 @@ export default function JournalReviewPage() {
             <div
               className={`rounded-lg border px-4 py-2.5 text-sm font-medium ${DIAGNOSIS_STYLES[diagKey]}`}
             >
-              {DIAGNOSIS_LABELS[diagKey]} — {stats.total_trades} trades analysed
+              {DIAGNOSIS_LABELS[diagKey]}
+              {honestSet
+                ? ` — ${honestSet.trades.length} real trades (${honestSet.rawRows} rows)`
+                : ` — ${stats.total_trades} trades analysed`}
             </div>
+
+            {/* Dedup caveat */}
+            {honestSet && (
+              <div className="text-xs text-neutral-500 -mt-3">
+                {dedupCaveat(honestSet)}
+                {honestSet.relogged > 0 && (
+                  <span className="ml-1 text-amber-500/70">
+                    · raw endpoint over-counts re-logged winners
+                  </span>
+                )}
+                {honestNet !== undefined && (
+                  <span className={`ml-1 font-mono ${honestNet >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    · net {usd(honestNet)}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Stat grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <StatCard
                 label="Win Rate"
-                value={pct(stats.win_rate)}
-                trend={stats.win_rate >= 0.5 ? "up" : "down"}
+                value={honestWinRate !== undefined ? `${honestWinRate.toFixed(1)}%` : "—"}
+                trend={
+                  honestWinRate !== undefined
+                    ? honestWinRate >= 50 ? "up" : "down"
+                    : "neutral"
+                }
               />
               <StatCard
                 label="Avg Win"
-                value={`$${stats.avg_win_usd.toFixed(0)}`}
+                value={honestAvgWin !== undefined ? `$${honestAvgWin.toFixed(0)}` : "—"}
                 trend="up"
               />
               <StatCard
                 label="Avg Loss"
-                value={`$${stats.avg_loss_usd.toFixed(0)}`}
+                value={honestAvgLoss !== undefined ? `$${honestAvgLoss.toFixed(0)}` : "—"}
                 trend="down"
               />
               <StatCard
                 label="R:R Ratio"
-                value={stats.risk_reward_ratio.toFixed(2)}
+                value={honestRR !== undefined ? honestRR.toFixed(2) : "—"}
                 sub="win / loss"
-                trend={stats.risk_reward_ratio >= 1.5 ? "up" : "neutral"}
+                trend={honestRR !== undefined ? (honestRR >= 1.5 ? "up" : "neutral") : "neutral"}
               />
               <StatCard
                 label="EV / Trade"
-                value={usd(stats.expected_value_usd)}
-                trend={stats.expected_value_usd >= 0 ? "up" : "down"}
+                value={honestEV !== undefined ? usd(honestEV) : "—"}
+                trend={honestEV !== undefined ? (honestEV >= 0 ? "up" : "down") : "neutral"}
               />
               <StatCard
                 label="Trades / Wk"
-                value={stats.trades_per_week.toFixed(1)}
+                value={stats.trades_per_week !== undefined ? stats.trades_per_week.toFixed(1) : "—"}
+                sub="journal cadence"
               />
             </div>
           </>
