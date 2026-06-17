@@ -658,7 +658,7 @@ function PerformanceMetricsPanel() {
             backgroundColor: killActive ? "#ff444415" : "#00ff8815",
             color: killActive ? "#ff4444" : "#00ff88",
           }}>
-          KILL SWITCH: {killActive ? "TRIGGERED" : "ACTIVE"}
+          KILL SWITCH: {killActive ? "TRIGGERED" : "INACTIVE"}
         </span>
       </div>
 

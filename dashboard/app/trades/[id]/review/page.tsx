@@ -8,6 +8,8 @@ import { fetchTradeFullReview, fetchBars, type TradeFullReview, type OHLCVBar } 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
+import { ExcursionPanel } from "@/components/ExcursionPanel";
+import { EntryTimingScenarios } from "@/components/EntryTimingScenarios";
 import type { SeriesMarker, Time } from "lightweight-charts";
 
 /** Pick a bar timeframe + lookback window sized to how old the trade is. */
@@ -315,6 +317,16 @@ export default function TradeReviewPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* MAE/MFE POST-TRADE EXCURSION — how far adverse vs favorable it ran */}
+        {t.symbol && (
+          <ExcursionPanel tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+        )}
+
+        {/* ENTRY-TIMING WHAT-IF — PnL if entered ±N bars (exit held constant) */}
+        {t.symbol && (
+          <EntryTimingScenarios tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+        )}
       </div>
     </div>
   );
