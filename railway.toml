@@ -7,6 +7,8 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 buildCommand = ""
 
+# Root directory is the repo root — Dockerfile at root copies engine/ in
+
 [deploy]
 startCommand = ""           # Dockerfile CMD handles this
 healthcheckPath = "/health"
