@@ -124,9 +124,9 @@ def _make_db(tmp_path) -> str:
         "close REAL, volume REAL, source TEXT, fetched_at TEXT)"
     )
     rows = []
-    for i, ts in enumerate(_iso_series("2026-06-01T00:00:00", 6, step_minutes=60)):
+    for ts in _iso_series("2026-06-01T00:00:00", 6, step_minutes=60):
         rows.append(("MES", "1h", ts, 100.0, 101.0, 99.0, 100.5, 1000, "tv", ts))
-    for i, ts in enumerate(_iso_series("2026-06-01T00:00:00", 3, step_minutes=60)):
+    for ts in _iso_series("2026-06-01T00:00:00", 3, step_minutes=60):
         rows.append(("MGC", "1h", ts, 2000.0, 2001.0, 1999.0, 2000.5, 50, "tv", ts))
     conn.executemany(
         "INSERT INTO market_data_bars VALUES (?,?,?,?,?,?,?,?,?,?)", rows
