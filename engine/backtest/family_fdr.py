@@ -39,6 +39,7 @@ import glob
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -49,6 +50,7 @@ logger = logging.getLogger("jarvis_trader.backtest.family_fdr")
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _VERDICT_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "data", "gate_v2_verdicts"))
 _REPORT_DIR = os.path.normpath(os.path.join(_THIS_DIR, "..", "data"))
+_HISTORY_PATH = os.path.join(_REPORT_DIR, "family_fdr_history.jsonl")
 
 DEFAULT_Q = 0.10
 
@@ -193,6 +195,33 @@ def run(q: float = DEFAULT_Q, verdict_dir: str = _VERDICT_DIR) -> dict[str, Any]
     }
 
 
+def append_history(
+    report: dict[str, Any],
+    path: str = _HISTORY_PATH,
+    ts: str | None = None,
+) -> dict[str, Any]:
+    """Append one compact JSONL record of this FDR run to a history ledger.
+
+    Lets `robust_edge` drift be tracked across the standing WFO-refresh cadence
+    (a single overwriting report hides whether the validated set is shrinking or
+    holding). One line per run; never rewrites prior lines. ``ts`` is injectable
+    for deterministic tests; defaults to the current UTC timestamp.
+    """
+    record = {
+        "ts": ts or datetime.now(timezone.utc).isoformat(),
+        "q": report.get("q"),
+        "n_verdicts_total": report.get("n_verdicts_total"),
+        "n_family": report.get("n_family"),
+        "n_gate_pass": report.get("n_gate_pass"),
+        "n_robust_edge": report.get("n_robust_edge"),
+        "robust_edge_ids": report.get("robust_edge_ids", []),
+    }
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, default=str) + "\n")
+    return record
+
+
 def _markdown(report: dict[str, Any]) -> str:
     q = report["q"]
     lines = [
@@ -252,6 +281,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Family-wide BH-FDR over gate-v2 verdicts")
     parser.add_argument("--q", type=float, default=DEFAULT_Q, help="FDR level (default 0.10)")
     parser.add_argument("--json", action="store_true", help="print full JSON report")
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help="append a compact record of this run to family_fdr_history.jsonl",
+    )
+    parser.add_argument(
+        "--history-path",
+        default=_HISTORY_PATH,
+        help="override the history-ledger path (default data/family_fdr_history.jsonl)",
+    )
     args = parser.parse_args()
 
     report = run(q=args.q)
@@ -261,6 +300,10 @@ def main() -> None:
         fh.write(_markdown(report))
     with open(json_path, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2, default=str)
+
+    if args.history:
+        rec = append_history(report, path=args.history_path)
+        print(f"[history] n_robust_edge={rec['n_robust_edge']} -> {args.history_path}")
 
     if args.json:
         print(json.dumps(report, indent=2, default=str))
