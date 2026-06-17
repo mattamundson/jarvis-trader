@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchEngine } from "@/lib/api";
+import { fetchHonestTrades } from "@/lib/honestTrades";
 
 
 interface TradingDaysStats {
@@ -33,15 +34,17 @@ export function TradingDaysCountdownCard() {
 
   async function fetchData() {
     try {
-      const [daysRes, summaryRes] = await Promise.allSettled([
+      const [daysRes, summaryRes, honestRes] = await Promise.allSettled([
         fetchEngine<TradingDaysStats>(`/portfolio/stats/trading-days`),
         fetchEngine<PaperPhaseSummary>(`/portfolio/stats/paper-phase-summary`),
+        fetchHonestTrades(),
       ]);
 
       const daysOk = daysRes.status === "fulfilled";
       const summaryOk = summaryRes.status === "fulfilled";
+      const honestOk = honestRes.status === "fulfilled";
 
-      if (!daysOk && !summaryOk) {
+      if (!daysOk && !summaryOk && !honestOk) {
         const msg =
           daysRes.status === "rejected" && daysRes.reason instanceof Error
             ? daysRes.reason.message
@@ -57,11 +60,29 @@ export function TradingDaysCountdownCard() {
         setThreshold(data.threshold ?? 30);
       }
 
+      // P&L / return come from the HONEST deduped record, not the over-counted
+      // paper-phase-summary (which fabricated +$3,899 / +39%). The account base
+      // is recovered from the summary's own pnl/return ratio (inflation cancels
+      // in that ratio) and the honest net is applied to it for a true return %.
+      if (honestOk) {
+        const honestNet = honestRes.value.net;
+        setTotalPnl(honestNet);
+        let base: number | null = null;
+        if (summaryOk) {
+          const s = summaryRes.value;
+          if (s.total_return_pct && s.total_pnl != null && s.total_return_pct !== 0) {
+            base = s.total_pnl / (s.total_return_pct / 100);
+          }
+        }
+        setReturnPct(base && base > 0 ? (honestNet / base) * 100 : null);
+      } else {
+        // No honest record -> show "—" rather than the inflated summary figures.
+        setTotalPnl(null);
+        setReturnPct(null);
+      }
+
       if (summaryOk) {
-        const data = summaryRes.value;
-        setReturnPct(data.total_return_pct ?? 0);
-        setTotalPnl(data.total_pnl ?? 0);
-        setValidationStatus(data.validation_status ?? "in_progress");
+        setValidationStatus(summaryRes.value.validation_status ?? "in_progress");
       }
 
       setStatus("ok");
@@ -213,7 +234,7 @@ export function TradingDaysCountdownCard() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground mt-4">Target: 30 trading days with PF≥2.0, Sharpe≥1.5 • Refreshes every 5m</p>
+        <p className="text-xs text-muted-foreground mt-4">Target: 30 trading days with PF≥2.0, Sharpe≥1.5 • P&amp;L from deduped record • Refreshes every 5m</p>
       </CardContent>
     </Card>
   );
