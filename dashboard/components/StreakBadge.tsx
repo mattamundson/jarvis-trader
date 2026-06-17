@@ -3,27 +3,56 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Flame, TrendingDown } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
+import { fetchHonestTrades, type HonestTrade } from "@/lib/honestTrades";
 
-interface StreakData {
-  current_streak: number;
-  current_type: "win" | "loss" | "none";
-  max_win_streak: number;
-  max_loss_streak: number;
-  total_trades: number;
-  recent_results: string[];
+interface DerivedStreakData {
+  currentStreak: number;
+  currentType: "win" | "loss" | "none";
+  totalTrades: number;
+  recentResults: string[]; // "W" | "L", last 10 in close order
+}
+
+function deriveStreakData(trades: HonestTrade[]): DerivedStreakData {
+  // Sort ascending by exit_time so we walk trades in close order
+  const sorted = [...trades]
+    .filter((t) => t.exit_time)
+    .sort((a, b) => Date.parse(a.exit_time!) - Date.parse(b.exit_time!));
+
+  if (sorted.length === 0) {
+    return { currentStreak: 0, currentType: "none", totalTrades: 0, recentResults: [] };
+  }
+
+  let runWin = 0;
+  let runLoss = 0;
+  for (const t of sorted) {
+    if (t.pnl > 0) {
+      runWin++;
+      runLoss = 0;
+    } else {
+      runLoss++;
+      runWin = 0;
+    }
+  }
+
+  const currentStreak = runWin > 0 ? runWin : runLoss;
+  const currentType: "win" | "loss" | "none" = runWin > 0 ? "win" : runLoss > 0 ? "loss" : "none";
+
+  // Recent results: last 10 trades
+  const recentResults = sorted.slice(-10).map((t) => (t.pnl > 0 ? "W" : "L"));
+
+  return { currentStreak, currentType, totalTrades: sorted.length, recentResults };
 }
 
 export function StreakBadge() {
-  const [data, setData] = useState<StreakData | null>(null);
+  const [streakData, setStreakData] = useState<DerivedStreakData | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const payload = await fetchEngine("/portfolio/stats/streaks");
-        setData(payload);
+        const set = await fetchHonestTrades();
+        setStreakData(deriveStreakData(set.trades));
       } catch {
-        setData(null);
+        setStreakData(null);
       }
     };
     load();
@@ -31,11 +60,11 @@ export function StreakBadge() {
     return () => clearInterval(id);
   }, []);
 
-  if (!data || data.total_trades === 0) return null;
+  if (!streakData || streakData.totalTrades === 0) return null;
 
-  const isWin = data.current_type === "win";
+  const isWin = streakData.currentType === "win";
   const variant =
-    data.current_streak >= 3
+    streakData.currentStreak >= 3
       ? isWin
         ? "bull"
         : "bear"
@@ -51,10 +80,10 @@ export function StreakBadge() {
         ) : (
           <TrendingDown className="h-3 w-3" />
         )}
-        {data.current_streak} {data.current_type} streak
+        {streakData.currentStreak} {streakData.currentType} streak
       </Badge>
       <div className="flex gap-0.5">
-        {data.recent_results.map((r, i) => (
+        {streakData.recentResults.map((r, i) => (
           <div
             key={i}
             className={`h-4 w-2 rounded-sm ${r === "W" ? "bg-green-500" : "bg-red-400"}`}
