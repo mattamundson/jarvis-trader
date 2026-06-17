@@ -48,7 +48,7 @@ def generate_groups(index: pd.DatetimeIndex, n_groups: int) -> list[np.ndarray]:
         )
     all_pos = np.arange(n_bars)
     # np.array_split distributes remainder to FRONT groups — contiguous & covers all bars
-    return [arr for arr in np.array_split(all_pos, n_groups)]
+    return list(np.array_split(all_pos, n_groups))
 
 
 def _session_bars(index: pd.DatetimeIndex) -> int:
@@ -98,7 +98,7 @@ def purge_embargo(
 
     forbidden = set()
     n = len(index)
-    for start, end in zip(block_starts, block_ends):
+    for start, end in zip(block_starts, block_ends, strict=False):
         if purge_bars > 0:
             for pos in range(max(0, start - purge_bars), start):
                 forbidden.add(pos)
