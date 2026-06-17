@@ -58,17 +58,22 @@ function directionLabel(qty: number): string {
 // ── Sub-components ─────────────────────────────────────────────────────────
 
 function PositionRow({ pos }: { pos: BrokerPosition }) {
-  const dir = directionLabel(pos.quantity);
-  const dirColor = pos.quantity > 0 ? "text-bull" : pos.quantity < 0 ? "text-bear" : "text-muted-foreground";
+  // Defensive: the broker feed can return null quantity / unrealized_pnl for a
+  // position mid-update; coerce to 0 so a single null field can't crash the
+  // whole home-page (was: null.toFixed -> error boundary took down the page).
+  const qty = pos.quantity ?? 0;
+  const upnl = pos.unrealized_pnl ?? 0;
+  const dir = directionLabel(qty);
+  const dirColor = qty > 0 ? "text-bull" : qty < 0 ? "text-bear" : "text-muted-foreground";
   return (
     <div className="flex items-center justify-between py-0.5 font-mono text-[11px]">
       <span className="text-foreground font-semibold w-14 shrink-0">{pos.symbol}</span>
-      <span className={`w-6 text-center tabular-nums ${pos.quantity > 0 ? "text-bull" : "text-bear"}`}>
-        {pos.quantity > 0 ? `+${pos.quantity}` : pos.quantity}
+      <span className={`w-6 text-center tabular-nums ${qty > 0 ? "text-bull" : "text-bear"}`}>
+        {qty > 0 ? `+${qty}` : qty}
       </span>
       <span className={`w-10 text-center ${dirColor}`}>{dir}</span>
-      <span className={`text-right tabular-nums ${pnlColor(pos.unrealized_pnl)}`}>
-        {pos.unrealized_pnl >= 0 ? "+" : ""}${pos.unrealized_pnl.toFixed(2)}
+      <span className={`text-right tabular-nums ${pnlColor(upnl)}`}>
+        {upnl >= 0 ? "+" : ""}${upnl.toFixed(2)}
       </span>
     </div>
   );
