@@ -9,20 +9,13 @@ import { SchedulerPanel } from "@/components/master/SchedulerPanel";
 const ORDER = ["personal", "trading", "finances", "career", "health", "knowledge", "system"];
 
 export default function MasterPage() {
-  const { data, error } = useSWR("master-status", fetchMasterStatus, {
+  const { data, error, isLoading } = useSWR("master-status", fetchMasterStatus, {
     refreshInterval: 15000,
+    shouldRetryOnError: false,
+    errorRetryCount: 0,
   });
 
-  if (error) return (
-    <main className="p-6 space-y-3">
-      <h1 className="text-2xl font-bold text-zinc-100">Master Jarvis</h1>
-      <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-4">
-        <p className="font-mono text-sm text-red-400">Master API unreachable — is the master-api service running on :8030?</p>
-        <p className="font-mono text-xs text-zinc-500 mt-1">Expected: http://127.0.0.1:8030/master/status</p>
-      </div>
-    </main>
-  );
-  if (!data) return (
+  if (isLoading) return (
     <main className="p-6 space-y-4">
       <h1 className="text-2xl font-bold text-zinc-100">Master Jarvis</h1>
       <p className="text-xs text-zinc-500">Loading mission control…</p>
@@ -30,6 +23,22 @@ export default function MasterPage() {
         {[1,2,3,4,5,6].map((i) => (
           <div key={i} className="h-32 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/60" />
         ))}
+      </div>
+    </main>
+  );
+
+  if (error || !data) return (
+    <main className="p-6 space-y-3">
+      <h1 className="text-2xl font-bold text-zinc-100">Master Jarvis</h1>
+      <div className="rounded-xl border border-red-800/40 bg-red-950/20 p-4">
+        <p className="font-mono text-sm text-red-400">
+          {error
+            ? `Master API error — ${error instanceof Error ? error.message : String(error)}`
+            : "Master API returned no data"}
+        </p>
+        <p className="font-mono text-xs text-zinc-500 mt-1">
+          Expected: http://127.0.0.1:8030/master/status — is the master-api service running on :8030?
+        </p>
       </div>
     </main>
   );

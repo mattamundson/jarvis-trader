@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import useSWR from "swr";
 import {
   Activity,
@@ -19,17 +19,308 @@ import {
   Info,
   Crosshair,
   Clock,
+  AlertCircle,
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import type { WatchlistItem, MGCSignalResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { WatchlistScanWidget } from "@/components/WatchlistScanWidget";
-import { SymbolPerformanceWidget } from "@/components/SymbolPerformanceWidget";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+// WatchlistScanWidget and SymbolPerformanceWidget are inlined below with the
+// double-json bug fixed (those components called fetchEngine().then(r=>r.json())
+// but fetchEngine already returns parsed JSON, so r.json() threw TypeError and
+// data stayed null → permanent skeleton).
 import { PerformanceTrendWidget } from "@/components/PerformanceTrendWidget";
 import { VIXRegimeCard } from "@/components/VIXRegimeCard";
 import { CurrentSignalWidget } from "@/components/CurrentSignalWidget";
 import { MesContractSpecCard } from "@/components/MesContractSpecCard";
+
+// ── Inline: WatchlistScanWidget ────────────────────────────────────────────
+// Fixed: fetchEngine already returns parsed JSON; removed double .json() call
+// that caused TypeError → data stayed null → permanent skeleton.
+
+type TFResult = { alignment: string; stc_value: number; signal: string };
+type SymbolResult = {
+  symbol: string;
+  recommendation: "BUY" | "SELL" | "WAIT";
+  alignment: string;
+  timeframes: Record<string, TFResult>;
+  error?: string | null;
+};
+type ScanData = {
+  symbols: SymbolResult[];
+  market_bias: "BULLISH" | "BEARISH" | "NEUTRAL";
+  buy_count: number;
+  sell_count: number;
+  wait_count: number;
+  scanned_at: string;
+};
+
+const REC_VARIANT_SCAN: Record<string, "bull" | "bear" | "warn" | "info" | "neutral"> = {
+  BUY: "bull",
+  SELL: "bear",
+  WAIT: "neutral",
+};
+const BIAS_VARIANT_SCAN: Record<string, "bull" | "bear" | "neutral"> = {
+  BULLISH: "bull",
+  BEARISH: "bear",
+  NEUTRAL: "neutral",
+};
+
+function WatchlistScanWidget({ symbols = "MES,MNQ,MCL,MGC" }: { symbols?: string }) {
+  const [scanData, setScanData] = useState<ScanData | null>(null);
+  const [scanWidgetLoading, setScanWidgetLoading] = useState(false);
+  const [scanWidgetError, setScanWidgetError] = useState<string | null>(null);
+  const [lastScan, setLastScan] = useState<string | null>(null);
+
+  const runScan = useCallback(() => {
+    setScanWidgetLoading(true);
+    setScanWidgetError(null);
+    fetchEngine<ScanData>(`/watchlist/scan?symbols=${encodeURIComponent(symbols)}`)
+      .then((d) => {
+        setScanData(d);
+        setLastScan(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      })
+      .catch((err: unknown) => {
+        setScanWidgetError(err instanceof Error ? err.message : "Scan unavailable");
+      })
+      .finally(() => setScanWidgetLoading(false));
+  }, [symbols]);
+
+  useEffect(() => {
+    runScan();
+    const id = setInterval(runScan, 300_000);
+    return () => clearInterval(id);
+  }, [runScan]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Watchlist Scan</CardTitle>
+          <div className="flex items-center gap-2">
+            {scanData && (
+              <Badge variant={BIAS_VARIANT_SCAN[scanData.market_bias] ?? "neutral"}>
+                {scanData.market_bias}
+              </Badge>
+            )}
+            <button
+              type="button"
+              onClick={runScan}
+              disabled={scanWidgetLoading}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="Re-scan"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${scanWidgetLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+        </div>
+        {lastScan && (
+          <p className="text-xs text-muted-foreground">Last scan: {lastScan}</p>
+        )}
+      </CardHeader>
+      <CardContent className="p-0">
+        {scanWidgetLoading && !scanData ? (
+          <div className="px-4 pb-4 space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-12 rounded bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : scanWidgetError && !scanData ? (
+          <div className="px-4 pb-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <AlertCircle className="h-4 w-4 text-bear/70 shrink-0" />
+            Scan unavailable — engine may not support this endpoint
+          </div>
+        ) : !scanData ? (
+          <div className="px-4 pb-4 text-xs text-muted-foreground">No scan data yet.</div>
+        ) : (
+          <>
+            <div className="divide-y divide-border">
+              {scanData.symbols.map((s) => (
+                <div key={s.symbol} className="px-4 py-2.5 flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-mono font-semibold">{s.symbol}</span>
+                    {s.error ? (
+                      <p className="text-xs text-muted-foreground">{s.error}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">{s.alignment}</p>
+                    )}
+                  </div>
+                  <Badge variant={REC_VARIANT_SCAN[s.recommendation] ?? "neutral"}>
+                    {s.recommendation}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-2 border-t border-border bg-muted/30 flex gap-3 text-xs text-muted-foreground">
+              <span className="text-bull">{scanData.buy_count} BUY</span>
+              <span className="text-bear">{scanData.sell_count} SELL</span>
+              <span>{scanData.wait_count} WAIT</span>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Inline: SymbolPerformanceWidget ────────────────────────────────────────
+// Fixed: fetchEngine already returns parsed JSON; removed double .json() call.
+
+interface SymbolStat {
+  symbol: string;
+  count: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  total_pnl: number;
+  avg_pnl: number;
+  best_trade: number;
+  worst_trade: number;
+}
+interface BySymbolResponse {
+  symbols: SymbolStat[];
+  total_symbols: number;
+}
+
+function spPnlVariant(value: number): "bull" | "bear" | "neutral" {
+  if (value > 0) return "bull";
+  if (value < 0) return "bear";
+  return "neutral";
+}
+function spFormatPnl(value: number): string {
+  const abs = Math.abs(value).toFixed(2);
+  return value >= 0 ? `+$${abs}` : `-$${abs}`;
+}
+function spWinRateClass(rate: number): string {
+  if (rate >= 55) return "text-bull";
+  if (rate < 45) return "text-bear";
+  return "text-muted-foreground";
+}
+
+function SymbolPerformanceWidget() {
+  const [spData, setSpData] = useState<BySymbolResponse | null>(null);
+  const [spLoading, setSpLoading] = useState(false);
+  const [spError, setSpError] = useState<string | null>(null);
+  const [spLastUpdated, setSpLastUpdated] = useState<string | null>(null);
+
+  const fetchSpData = useCallback(() => {
+    setSpLoading(true);
+    setSpError(null);
+    fetchEngine<BySymbolResponse>("/analytics/trades/by-symbol")
+      .then((d) => {
+        const sorted: BySymbolResponse = {
+          ...d,
+          symbols: [...d.symbols].sort((a, b) => b.total_pnl - a.total_pnl),
+        };
+        setSpData(sorted);
+        setSpLastUpdated(
+          new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        );
+      })
+      .catch((err: unknown) => {
+        setSpError(err instanceof Error ? err.message : "Unavailable");
+      })
+      .finally(() => setSpLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchSpData();
+    const id = setInterval(fetchSpData, 300_000);
+    return () => clearInterval(id);
+  }, [fetchSpData]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Symbol Performance</CardTitle>
+          <div className="flex items-center gap-2">
+            {spData && (
+              <span className="text-xs text-muted-foreground">
+                {spData.total_symbols} symbol{spData.total_symbols !== 1 ? "s" : ""}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={fetchSpData}
+              disabled={spLoading}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${spLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+        </div>
+        {spLastUpdated && (
+          <p className="text-xs text-muted-foreground">Updated: {spLastUpdated}</p>
+        )}
+      </CardHeader>
+      <CardContent className="p-0">
+        {spLoading && !spData ? (
+          <div className="px-4 pb-4 space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-10 rounded bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : spError && !spData ? (
+          <div className="px-4 pb-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <AlertCircle className="h-4 w-4 text-bear/70 shrink-0" />
+            Symbol performance unavailable
+          </div>
+        ) : !spData || spData.symbols.length === 0 ? (
+          <div className="px-4 pb-4 text-sm text-muted-foreground">
+            No symbol data yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Symbol</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Trades</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">W/L</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Win Rate</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Total P&amp;L</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Avg P&amp;L</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Best</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Worst</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {spData.symbols.map((s) => (
+                  <tr key={s.symbol} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-2.5 font-mono font-semibold">{s.symbol}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{s.count}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      <span className="text-bull">{s.wins}</span>
+                      <span className="text-muted-foreground mx-0.5">/</span>
+                      <span className="text-bear">{s.losses}</span>
+                    </td>
+                    <td className={`px-4 py-2.5 text-right tabular-nums ${spWinRateClass(s.win_rate)}`}>
+                      {s.win_rate.toFixed(1)}%
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Badge variant={spPnlVariant(s.total_pnl)}>{spFormatPnl(s.total_pnl)}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Badge variant={spPnlVariant(s.avg_pnl)}>{spFormatPnl(s.avg_pnl)}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Badge variant="bull">{spFormatPnl(s.best_trade)}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Badge variant="bear">{spFormatPnl(s.worst_trade)}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

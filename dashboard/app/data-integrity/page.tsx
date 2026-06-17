@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import useSWR from "swr";
 import {
   Activity,
+  AlertCircle,
   CheckCircle2,
   Clock,
   Database,
@@ -12,7 +13,6 @@ import {
   Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,8 +31,26 @@ interface DataIntegrityResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fetcher<T>(url: string): Promise<T> {
-  return fetchEngine<T>(url);
+// 10s timeout so the panel resolves (error or data) well within normal page load,
+// instead of waiting for fetchEngine's 30s + retry cycle.
+const PANEL_TIMEOUT_MS = 10_000;
+
+async function fetcher<T>(path: string): Promise<T> {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), PANEL_TIMEOUT_MS);
+  try {
+    const res = await fetch(`/api/engine${path}`, {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        "X-API-Key": process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "jarvis-dev-key-change-me",
+      },
+    });
+    if (!res.ok) throw new Error(`Engine ${res.status}: ${path}`);
+    return res.json() as Promise<T>;
+  } finally {
+    clearTimeout(tid);
+  }
 }
 
 function formatLatency(seconds: number): string {
@@ -73,18 +91,24 @@ export default function DataIntegrityPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-destructive/10 border border-destructive text-destructive rounded-lg">
-          Failed to fetch data integrity metrics: {error.message}
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-border bg-muted">
+          <AlertCircle className="w-5 h-5 shrink-0 text-muted-foreground mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Data integrity endpoint unavailable</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              <code>/system/data-integrity</code>: {(error as Error).message ?? String(error)}
+            </p>
+          </div>
         </div>
       )}
 
-      {isLoading && !data && (
+      {isLoading && !data && !error && (
         <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
           <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading data-integrity metrics…
         </div>
       )}
 
-      {data && (data.sources?.length ?? 0) === 0 && !error && (
+      {!isLoading && !error && data && (data.sources?.length ?? 0) === 0 && (
         <div className="p-6 border border-border rounded-xl text-center text-sm text-muted-foreground">
           No data sources reported by the engine.
         </div>
