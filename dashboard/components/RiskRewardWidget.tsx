@@ -4,30 +4,11 @@ import React, { useEffect, useState, useCallback } from "react";
 import { TrendingUp, Target, RefreshCw, Scale } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
-
-
-// ── API response shape ────────────────────────────────────────────────────────
-
-interface PerformanceMetrics {
-  profit_factor: number;
-  sharpe_ratio: number;
-  win_rate: number;       // 0-1 fraction
-  total_trades: number;
-  period_days: number;
-  max_drawdown: number;   // negative fraction
-  total_pnl: number;
-  avg_win: number;        // average winning trade P&L (positive)
-  avg_loss: number;       // average losing trade P&L (negative)
-  meets_paper_threshold: boolean;
-}
-
-interface AnalyticsPerformanceResponse {
-  status: string;
-  metrics: PerformanceMetrics;
-  thresholds: unknown;
-  recommendation: string;
-}
+import {
+  fetchHonestTrades,
+  type HonestTradeSet,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -89,10 +70,35 @@ function fmtCurrency(n: number): string {
   return `${sign}$${abs.toFixed(2)}`;
 }
 
+/** Derive avg win / avg loss from honest deduped trades. */
+function deriveRR(set: HonestTradeSet): {
+  avgWin: number;
+  avgLoss: number;
+  rrRatio: number | null;
+} {
+  const winners = set.trades.filter((t) => t.pnl > 0);
+  const losers = set.trades.filter((t) => t.pnl < 0);
+
+  const avgWin =
+    winners.length > 0
+      ? winners.reduce((s, t) => s + t.pnl, 0) / winners.length
+      : 0;
+
+  const avgLoss =
+    losers.length > 0
+      ? Math.abs(losers.reduce((s, t) => s + t.pnl, 0) / losers.length)
+      : 0;
+
+  const rrRatio: number | null =
+    avgLoss < 0.01 ? null : avgWin === 0 ? 0 : avgWin / avgLoss;
+
+  return { avgWin, avgLoss, rrRatio };
+}
+
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 export function RiskRewardWidget() {
-  const [data, setData] = useState<AnalyticsPerformanceResponse | null>(null);
+  const [set, setSet] = useState<HonestTradeSet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,11 +106,11 @@ export function RiskRewardWidget() {
     setLoading(true);
     setError(null);
     try {
-      const json = await fetchEngine(`/analytics/performance`);
-      setData(json);
+      const result = await fetchHonestTrades();
+      setSet(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch");
-      setData(null);
+      setSet(null);
     } finally {
       setLoading(false);
     }
@@ -118,25 +124,14 @@ export function RiskRewardWidget() {
 
   // ── Derived values ────────────────────────────────────────────────────────
 
-  const avgWin = data?.metrics?.avg_win ?? 0;
-  const avgLoss = data?.metrics?.avg_loss ?? 0;
-  const winRate = (data?.metrics?.win_rate ?? 0) * 100;
-  const profitFactor = data?.metrics?.profit_factor ?? 0;
+  const { avgWin, avgLoss, rrRatio } = set
+    ? deriveRR(set)
+    : { avgWin: 0, avgLoss: 0, rrRatio: null };
 
-  /**
-   * R:R = |avg_win| / |avg_loss|
-   * Only valid when |avg_loss| >= 0.01. When avg_win is 0, R:R = 0.
-   * When avg_loss is too small, show null (insufficient data).
-   */
-  const absLoss = Math.abs(avgLoss);
-  const absWin = Math.abs(avgWin);
-  const rrRatio: number | null =
-    absLoss < 0.01 ? null : avgWin === 0 ? 0 : absWin / absLoss;
-
+  const winRate = set ? set.winRate * 100 : 0;
+  const profitFactor = set?.profitFactor ?? 0;
   const level = getRRLevel(rrRatio);
-
-  const rrDisplay =
-    rrRatio === null ? "—" : `${rrRatio.toFixed(2)}:1`;
+  const rrDisplay = rrRatio === null ? "—" : `${rrRatio.toFixed(2)}:1`;
 
   return (
     <Card>
@@ -157,7 +152,7 @@ export function RiskRewardWidget() {
           </button>
         </div>
         <p className="text-xs text-muted-foreground pt-0.5">
-          Average risk:reward from closed trades — MES/MGC futures
+          Average risk:reward from deduped closed trades — MES/MGC futures
         </p>
       </CardHeader>
 
@@ -203,9 +198,9 @@ export function RiskRewardWidget() {
                 Avg Trade Outcome
               </p>
               <p className="text-sm font-mono font-medium text-foreground">
-                <span className="text-bull">Win: {fmtCurrency(absWin)}</span>
+                <span className="text-bull">Win: {fmtCurrency(avgWin)}</span>
                 <span className="text-muted-foreground mx-2">|</span>
-                <span className="text-bear">Loss: -{`$${absLoss.toFixed(2)}`}</span>
+                <span className="text-bear">Loss: -${avgLoss.toFixed(2)}</span>
               </p>
             </div>
 
@@ -226,7 +221,7 @@ export function RiskRewardWidget() {
                       : "text-bear"
                   }`}
                 >
-                  {profitFactor.toFixed(2)}
+                  {profitFactor === null ? "—" : profitFactor.toFixed(2)}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
                   gross profit / gross loss
@@ -251,7 +246,7 @@ export function RiskRewardWidget() {
                     ? "High WR, low R:R — fragile"
                     : rrRatio !== null && rrRatio >= 2.0 && winRate >= 50
                     ? "WR + R:R both healthy"
-                    : "target \u2265 50%"}
+                    : "target ≥ 50%"}
                 </p>
               </div>
             </div>
@@ -264,6 +259,13 @@ export function RiskRewardWidget() {
                 {" "}(ATR 1.5x / 0.7x strategy — theoretical R:R &#8776; 2.14)
               </p>
             </div>
+
+            {/* ── Dedup caveat ─────────────────────────────────────────── */}
+            {set && (
+              <p className="text-[10px] text-muted-foreground text-center">
+                {dedupCaveat(set)}
+              </p>
+            )}
           </>
         )}
       </CardContent>
