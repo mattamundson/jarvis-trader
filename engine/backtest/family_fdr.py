@@ -127,6 +127,23 @@ def build_family(verdicts: list[dict]) -> tuple[list[dict], list[dict]]:
     family: list[dict] = []
     excluded: list[dict] = []
     for v in verdicts:
+        # CPCV (combinatorial purged CV) verdicts report len(folds) OOS "windows",
+        # but those folds OVERLAP (they resample from a handful of contiguous
+        # groups), so they are NOT independent Bernoulli windows. Feeding them
+        # into the binomial sign-test -- which assumes independence -- would
+        # overstate significance. Per the CPCV design they are additive,
+        # non-authorizing evidence, so exclude them from the sign-test family.
+        wfo = v.get("wfo_config") or {}
+        if str(wfo.get("cv_method") or "").lower() == "cpcv":
+            excluded.append(
+                {
+                    "id": v["_id"],
+                    "gate_verdict": v.get("verdict"),
+                    "reason": "CPCV folds overlap (not independent OOS windows); "
+                    "additive evidence only -- excluded from the sign-test family",
+                }
+            )
+            continue
         m = v.get("gate_v2_metrics") or {}
         n = _n_oos(v)
         p_edge = m.get("p_edge")
