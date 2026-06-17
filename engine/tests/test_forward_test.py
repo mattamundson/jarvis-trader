@@ -111,6 +111,35 @@ def test_forward_stats_empty():
     assert s["binom_p"] == 1.0
 
 
+# ── shadow perm_sign_p (directional-significance, observe-only) ───────────────
+
+def test_perm_sign_p_absent_without_trades():
+    # No raw trades supplied -> shadow p-value is None (key present, not computed).
+    s = ft.forward_stats(ft.build_windows([_trade("MGC", 100.0, d * 31)
+                                           for d in range(6)], 30))
+    assert s["perm_sign_p"] is None
+
+
+def test_perm_sign_p_computed_when_trades_supplied():
+    # A clean all-wins record -> strong directional edge -> small permutation p.
+    trades = [_trade("MGC", 100.0, d) for d in range(40)]
+    s = ft.forward_stats(ft.build_windows(trades, 30), trades)
+    assert s["perm_sign_p"] is not None
+    assert 0.0 < s["perm_sign_p"] < 0.05  # significant
+
+
+def test_perm_sign_p_is_shadow_only_not_in_graduation():
+    # The shadow field must NOT be consumed by the graduation rule: a record that
+    # otherwise fails graduation stays failed regardless of a tiny perm_sign_p.
+    from backtest import decision_registry as dr
+    weak = {
+        "n_oos_windows": 1, "p_edge": 0.0, "pf_ci_lower": 0.0,
+        "binom_p": 1.0, "total_trades": 1, "total_pnl": -5.0,
+        "perm_sign_p": 0.0001, "survives_family_fdr": True,
+    }
+    assert dr.meets_graduation(weak, dr.load_registry()) is False
+
+
 # ── tagging contract ─────────────────────────────────────────────────────────
 
 def test_tag_strategy_params_stamps_candidate_id():
