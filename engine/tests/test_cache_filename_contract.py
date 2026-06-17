@@ -44,6 +44,8 @@ from backtest.export_ibkr_history import CACHE_FILENAME_CONTRACT  # noqa: E402
         "MNQ_2024-06-01_2026-03-27_4h.csv",
         "MCL_2023-12-31_2026-01-01_1d.csv",
         "M2K_2024-01-01_2026-05-07_1h.csv",  # symbol with embedded digit
+        "MES_2021-01-01_2026-01-01_5m.csv",  # intraday 5m (enabled 2026-06-16)
+        "MNQ_2021-01-01_2026-01-01_15m.csv",  # intraday 15m
     ],
 )
 def test_valid_filenames_match_contract(filename: str) -> None:
@@ -57,7 +59,9 @@ def test_valid_filenames_match_contract(filename: str) -> None:
         ("MES_20240101_2026-05-07_1h.csv", "non-ISO date format"),
         ("MES_2024-01-01_2026-05-07_1h_dec.csv", "contract-month suffix drift"),
         ("mes_2024-01-01_2026-05-07_1h.csv", "lowercase symbol"),
-        ("MES_2024-01-01_2026-05-07_60m.csv", "non-h/d interval suffix"),
+        # NB: 'm' is a VALID unit since 2026-06-16 (5m/15m intraday). Interval
+        # *support* (only 5m/15m/1h/1d) is enforced by argparse choices, not this
+        # structural shape regex -- so '60m' is shape-valid and no longer rejected.
         ("MES_2024-01-01_2026-05-07.csv", "missing interval"),
         ("MES-2024-01-01-2026-05-07-1h.csv", "wrong separator"),
         ("MES_2024-01-01_2026-05-07_1h.parquet", "wrong extension"),
@@ -119,8 +123,6 @@ def test_find_latest_cache_respects_suffix_filter(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "filename,reason",
     [
-        # Invalid interval character — 'm' not in [hd]
-        ("MES_2024-01-01_2026-05-07_1m.csv", "interval suffix 'm' not in [hd]"),
         # Symbol starts with lowercase
         ("mes_2024-01-01_2026-05-07_1h.csv", "non-uppercase first char"),
         # Symbol too long (5+ chars)

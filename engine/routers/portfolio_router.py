@@ -180,6 +180,7 @@ async def portfolio_summary():
 
     # ── Unrealized P&L from open positions ───────────────────────────────────
     unrealized_pnl = 0.0
+    unrealized_marks_stale = 0
     if paper_tracker is not None:
         try:
             open_positions: list[dict] = paper_tracker.get_open_positions()
@@ -193,23 +194,29 @@ async def portfolio_summary():
                         *[_data_manager.get_tick_price(sym) for sym in symbols],
                         return_exceptions=True,
                     )
-                    current_prices = [
+                    # Keep the (price, source) pair so a stale CSV-cache mark can
+                    # be excluded from the headline rather than fabricating P&L.
+                    marks: list[tuple[float | None, str | None]] = [
                         (
-                            (
-                                r.get("last_price")
-                                if isinstance(r, dict)
-                                else (float(r) if isinstance(r, (int, float)) else None)
-                            )
-                            if not isinstance(r, Exception) and r is not None
-                            else None
+                            (r.get("last_price"), r.get("source"))
+                            if isinstance(r, dict)
+                            else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
                         )
+                        if not isinstance(r, Exception) and r is not None
+                        else (None, None)
                         for r in results
                     ]
                 else:
-                    current_prices = [None] * len(open_positions)
+                    marks = [(None, None)] * len(open_positions)
 
-                for pos, current_price in zip(open_positions, current_prices, strict=True):
-                    computed = _compute_unrealized(pos, current_price, INSTRUMENT_POINT_VALUES)
+                for pos, (current_price, mark_source) in zip(
+                    open_positions, marks, strict=True
+                ):
+                    computed = _compute_unrealized(
+                        pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                    )
+                    if computed.get("mark_stale"):
+                        unrealized_marks_stale += 1
                     upnl = computed.get("unrealized_pnl") or 0.0
                     unrealized_pnl += upnl
         except Exception as exc:
@@ -223,6 +230,7 @@ async def portfolio_summary():
             "total_pnl": round(unrealized_pnl, 4),
             "daily_target": 500.0,
             "target_progress_pct": 0.0,
+            "unrealized_marks_stale": unrealized_marks_stale,
             "markets": {},
             "message": "Orchestrator not initialized",
         }
@@ -236,6 +244,9 @@ async def portfolio_summary():
     summary["unrealized_pnl"] = round(unrealized_pnl, 4)
     summary["total_pnl"] = round(total_pnl, 4)
     summary["total_daily_pnl"] = round(total_pnl, 4)
+    # >0 means some open positions were marked from a stale/unavailable feed and
+    # excluded from unrealized — the degraded-state surface reads this.
+    summary["unrealized_marks_stale"] = unrealized_marks_stale
     if daily_target:
         summary["target_progress_pct"] = round(total_pnl / daily_target * 100, 2)
     return summary
@@ -552,7 +563,12 @@ async def paper_performance():
                 current_price = (
                     price_result.get("last_price") if isinstance(price_result, dict) else None
                 )
-                computed = _compute_unrealized(pos, current_price, INSTRUMENT_POINT_VALUES)
+                mark_source = (
+                    price_result.get("source") if isinstance(price_result, dict) else None
+                )
+                computed = _compute_unrealized(
+                    pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                )
                 upnl = computed.get("unrealized_pnl") or 0.0
                 unrealized_pnl += upnl
                 open_positions_detail.append(
@@ -1457,6 +1473,8 @@ class UnrealizedPositionResponse(BaseModel):
     entry_time: str
     direction: str
     entry_suspect: bool = False
+    mark_stale: bool = False
+    mark_source: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1469,6 +1487,17 @@ class UnrealizedPositionResponse(BaseModel):
 _IB_SNAPSHOT_SENTINEL = 100.5
 #: Entry/mark ratio beyond this is contamination, not a real move (symbol-agnostic).
 _EXTREME_ENTRY_DIVERGENCE = 5.0
+
+#: get_tick_price() sources that are NOT a live quote — a stale daily close
+#: (CSV cache fallback) or no data at all. A position marked from one of these
+#: must not drive the live unrealized P&L headline: while the IBKR data leg was
+#: degraded on 2026-06-16, get_tick_price fell through to the Tier-5 csv_cache
+#: last-daily-close (MGC ~3757 vs a real ~4311 mark), fabricating a -$11,076
+#: unrealized that poisoned /portfolio/summary.total_daily_pnl. Realized P&L and
+#: the risk/kill-switch path are unaffected (separate date-filtered DB source).
+_STALE_MARK_SOURCES = frozenset(
+    {"csv_cache", "unavailable", "polygon_cache_expired", "ibkr_historical"}
+)
 
 
 def _entry_is_suspect(entry_price: float, current_price: float | None) -> bool:
@@ -1484,8 +1513,19 @@ def _entry_is_suspect(entry_price: float, current_price: float | None) -> bool:
     return False
 
 
-def _compute_unrealized(pos: dict, current_price: float | None, point_values: dict) -> dict:
-    """Compute unrealized P&L fields for one position."""
+def _compute_unrealized(
+    pos: dict,
+    current_price: float | None,
+    point_values: dict,
+    mark_source: str | None = None,
+) -> dict:
+    """Compute unrealized P&L fields for one position.
+
+    ``mark_source`` is the get_tick_price() source tag for ``current_price``. A
+    stale mark (CSV-cache daily close / no data) is flagged ``mark_stale`` and
+    does NOT produce an unrealized_pnl number, so it cannot poison the portfolio
+    aggregate when the live data leg is degraded.
+    """
     symbol = str(pos.get("symbol", "")).upper()
     action = str(pos.get("action", "") or pos.get("side", "") or "").lower()
     quantity = float(pos.get("quantity", 1) or 1)
@@ -1508,11 +1548,14 @@ def _compute_unrealized(pos: dict, current_price: float | None, point_values: di
     # Reject contaminated entries (sentinel / non-positive / extreme divergence)
     # so one corrupt position can't fabricate a phantom portfolio aggregate.
     entry_suspect = _entry_is_suspect(entry_price, current_price)
+    # Reject stale marks (CSV-cache daily close / no data) for the same reason —
+    # a weeks-old close is not a live mark and must not drive unrealized P&L.
+    mark_stale = mark_source in _STALE_MARK_SOURCES
 
     # Unrealized P&L
     unrealized_pnl: float | None = None
     unrealized_pnl_pct: float | None = None
-    if current_price is not None and not entry_suspect:
+    if current_price is not None and not entry_suspect and not mark_stale:
         if direction == "LONG":
             unrealized_pnl = (current_price - entry_price) * point_value * quantity
         else:
@@ -1551,6 +1594,8 @@ def _compute_unrealized(pos: dict, current_price: float | None, point_values: di
         "entry_time": entry_time,
         "direction": direction,
         "entry_suspect": entry_suspect,
+        "mark_stale": mark_stale,
+        "mark_source": mark_source,
     }
 
 
@@ -1575,24 +1620,24 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
                 *[_data_manager.get_current_price(sym) for sym in symbols],
                 return_exceptions=True,
             )
-            current_prices = [
+            marks = [
                 (
-                    (
-                        r.get("last_price")
-                        if isinstance(r, dict)
-                        else (float(r) if isinstance(r, (int, float)) else None)
-                    )
-                    if not isinstance(r, Exception) and r is not None
-                    else None
+                    (r.get("last_price"), r.get("source"))
+                    if isinstance(r, dict)
+                    else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
                 )
+                if not isinstance(r, Exception) and r is not None
+                else (None, None)
                 for r in results
             ]
         else:
-            current_prices = [None] * len(positions)
+            marks = [(None, None)] * len(positions)
 
         enriched = []
-        for pos, current_price in zip(positions, current_prices, strict=True):
-            computed = _compute_unrealized(pos, current_price, INSTRUMENT_POINT_VALUES)
+        for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
+            computed = _compute_unrealized(
+                pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+            )
             enriched.append(UnrealizedPositionResponse(**computed))
 
         return enriched
