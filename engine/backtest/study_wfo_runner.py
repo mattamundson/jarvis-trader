@@ -224,6 +224,82 @@ def _cost_sweep(study, df, symbol, mode, champion, base_comm):
     return {"cost_survives_through": last or "none", "tier_results": results}
 
 
+def _compute_regime_conditional(oos_window_data: list) -> dict:
+    """POST-HOC regime-conditional breakdown. NEVER affects gate verdicts.
+
+    Args:
+        oos_window_data: list of (BacktestResult, df_test) from the OOS loop.
+
+    Returns:
+        A dict with keys: classifier, by_regime_vol, by_regime, by_vol, note.
+        On any error returns {"error": <str>} so callers can always proceed.
+    """
+    try:
+        from backtest.regime_conditional import (
+            assign_vol_terciles,
+            bucket_trades,
+            tag_regime_vol,
+        )
+
+        all_trades = []
+        regime_by_entry: dict = {}
+        rv_by_entry: dict = {}
+        all_rv_values = []
+
+        for oos_result, df_test in oos_window_data:
+            if df_test is None or df_test.empty:
+                continue
+            try:
+                df_tagged = tag_regime_vol(df_test)
+            except Exception:
+                continue
+
+            # Build per-entry-timestamp lookups from this window's tagged bars.
+            for trade in oos_result.trades:
+                key = trade.entry_date
+                # Find the nearest bar at or after entry_date (index lookup).
+                idx = df_tagged.index
+                matches = idx[idx >= key]
+                if len(matches) == 0:
+                    # Entry is beyond the window; use last bar's values.
+                    bar_ts = idx[-1]
+                else:
+                    bar_ts = matches[0]
+                regime_by_entry[key] = df_tagged.loc[bar_ts, "rc_regime"]
+                rv_val = df_tagged.loc[bar_ts, "rc_rv_ann_pct"]
+                rv_by_entry[key] = float(rv_val) if pd.notna(rv_val) else float("nan")
+                all_rv_values.append(rv_by_entry[key])
+
+            all_trades.extend(oos_result.trades)
+
+        if not all_trades:
+            return {
+                "classifier": "adx>=25 trending; rv tercile per-window",
+                "note": "DIAGNOSTIC ONLY - does not affect gate verdict",
+                "by_regime_vol": {},
+                "by_regime": {},
+                "by_vol": {},
+                "total_trades_classified": 0,
+            }
+
+        import pandas as _pd
+        rv_series = _pd.Series([v for v in all_rv_values if v == v])  # drop NaN
+        p33, p67 = assign_vol_terciles(rv_series)
+        breakdown = bucket_trades(all_trades, regime_by_entry, rv_by_entry, (p33, p67))
+
+        return {
+            "classifier": "adx>=25 trending; rv tercile per-window",
+            "vol_edges": {"p33": round(p33, 4), "p67": round(p67, 4)},
+            "by_regime_vol": breakdown["by_regime_vol"],
+            "by_regime": breakdown["by_regime"],
+            "by_vol": breakdown["by_vol"],
+            "total_trades_classified": len(all_trades),
+            "note": "DIAGNOSTIC ONLY - does not affect gate verdict",
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 def _compute_gate_v2(oos_results, n_grid, fixed_metrics, cost_metrics):
     from backtest.deflated_sharpe import deflated_sharpe_ratio
     oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
@@ -398,6 +474,9 @@ def run_one(study_name: str, symbol: str, mode: str, *,
     print(f"[{study_name.upper()}-{symbol}-{mode}] {len(windows)} windows | grid {n_combos} combos")
 
     oos_results, window_records = [], []
+    # Collect (oos_result, df_test) pairs for the post-hoc regime-conditional pass.
+    # df_test is cheap to keep — it's already in memory during this loop.
+    _oos_window_data: list[tuple] = []  # list of (BacktestResult, pd.DataFrame)
     for win in windows:
         ts, te = win["train_start"], win["train_end"]
         os_, oe = win["test_start"], win["test_end"]
@@ -414,6 +493,7 @@ def run_one(study_name: str, symbol: str, mode: str, *,
             print(f"  W{win['window_num']}: OOS error {exc}")
             continue
         oos_results.append(oos)
+        _oos_window_data.append((oos, df_test))
         window_records.append({
             "window": win["window_num"],
             "is_period": f"{ts.strftime('%Y-%m')} -> {te.strftime('%Y-%m')}",
@@ -446,6 +526,12 @@ def run_one(study_name: str, symbol: str, mode: str, *,
         cost = _cost_sweep(study, df, symbol, mode, champion, base_comm)
         gate = _compute_gate_v2(oos_results, n_combos, fixed, cost)
         gate["champion"] = champion
+
+    # ------------------------------------------------------------------
+    # POST-HOC regime-conditional breakdown (ADDITIVE, never gates verdict)
+    # Wrapped in try/except: a failure here MUST NOT affect verdict generation.
+    # ------------------------------------------------------------------
+    regime_conditional = _compute_regime_conditional(_oos_window_data)
 
     print(f"[{study_name.upper()}-{symbol}-{mode}] VERDICT {gate['verdict']} "
           f"(via {gate['passed_via'] or 'NONE'}) | pf_ci_lower={gate['pf_ci_lower']} "
@@ -488,6 +574,7 @@ def run_one(study_name: str, symbol: str, mode: str, *,
         },
         "champion_params": {**gate.get("champion", {}), "mode": mode},
         "windows": window_records,
+        "regime_conditional": regime_conditional,
         "lineage": {
             "experiment": "ThinkScript strategy sweep (generic study_wfo_runner)",
             "study": study_name, "mechanical_rule": mode,
