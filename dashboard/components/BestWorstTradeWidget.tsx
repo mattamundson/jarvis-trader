@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, Trophy, AlertTriangle } from "lucide-react";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -244,7 +245,7 @@ export function BestWorstTradeWidget() {
 
       <CardContent>
         {error && (
-          <p className="mb-4 text-sm text-bear">Engine error: {error}</p>
+          <OfflineFallback variant="card" message="Trade data unavailable — engine offline" className="mb-4" />
         )}
 
         {loading ? (

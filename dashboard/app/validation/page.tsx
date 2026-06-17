@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import useSWR from "swr";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import {
   Activity,
   CheckCircle2,
@@ -1403,17 +1404,7 @@ export default function ValidationPage() {
 
         {/* Engine offline error */}
         {reportError && !reportLoading && (
-          <div className="rounded-xl border border-bear/20 bg-bear/5 p-5 flex items-center gap-3">
-            <WifiOff className="h-5 w-5 text-bear shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-bear">Engine offline or analytics unavailable</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Ensure the JARVIS engine is running and reachable through the dashboard proxy, and{" "}
-                <code className="font-mono">/analytics/performance</code> is responding.
-                Backtest baseline pills need <code className="font-mono">/backtest/results</code> when the engine is up.
-              </p>
-            </div>
-          </div>
+          <OfflineFallback variant="card" message="Engine offline or analytics unavailable" />
         )}
 
         {/* Section 1: Strategy Validation Scorecard */}

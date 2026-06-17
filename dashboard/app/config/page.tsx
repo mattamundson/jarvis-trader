@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { fetchEngine } from "@/lib/api";
 import {
   Activity,
@@ -303,11 +304,7 @@ export default function ConfigPage() {
         {/* Error state */}
         {error && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 flex items-center gap-3">
-            <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-red-300">Engine offline</p>
-              <p className="text-xs text-zinc-400 mt-0.5">{error}</p>
-            </div>
+            <OfflineFallback variant="card" message="Configuration unavailable — engine offline" className="w-full" />
           </div>
         )}
 

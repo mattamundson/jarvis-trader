@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import {
   Card,
   CardHeader,
@@ -87,7 +88,7 @@ export function RecentTradesTableWidget() {
       </CardHeader>
       <CardContent>
         {error && (
-          <p className="text-sm text-red-400 mb-2">Engine error: {error}</p>
+          <OfflineFallback variant="card" message="Trade history unavailable — engine offline" className="mb-2" />
         )}
         {trades.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">

@@ -1,20 +1,15 @@
 "use client";
 
 import React, { useCallback, useState } from "react";
-import useSWR from "swr";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import {
-  fetchEngine,
-  postEngine,
   PendingApproval,
   PendingApprovalsResponse,
   ApprovalActionResult,
   postApprovePending,
   postRejectPending,
 } from "@/lib/api";
-
-// Module-level SWR fetchers (not inside component to avoid re-render loops)
-const fetchPendingApprovals = () =>
-  fetchEngine<PendingApprovalsResponse>("/pipeline/pending-approvals?limit=50");
+import { useEnginePendingApprovals } from "@/lib/engine-context";
 
 // Format ISO string as "X minutes ago" or "X hours ago"
 function timeAgo(isoString: string): string {
@@ -93,11 +88,8 @@ function SignalPill({ label, active }: { label: string; active: boolean | null |
 }
 
 export default function ApprovalPanel() {
-  const { data, error, isLoading, mutate } = useSWR<PendingApprovalsResponse>(
-    "/pipeline/pending-approvals",
-    fetchPendingApprovals,
-    { refreshInterval: 5000 }
-  );
+  const { pendingApprovals: data, isOffline, error, mutate } = useEnginePendingApprovals();
+  const isLoading = !data && !error && !isOffline;
 
   const [loadingApprovals, setLoadingApprovals] = useState<Record<string, boolean>>({});
   const [actionError, setActionError] = useState<string | null>(null);
@@ -140,10 +132,7 @@ export default function ApprovalPanel() {
   // Error / offline state — dark, no raw API paths
   if (error) {
     return (
-      <div className="rounded-lg px-4 py-3 flex items-center gap-2" style={{ backgroundColor: "#0d0d1a" }}>
-        <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#555" }} />
-        <p className="text-xs font-mono" style={{ color: "#555" }}>Approvals unavailable — engine offline</p>
-      </div>
+      <OfflineFallback variant="inline" message="Approvals unavailable — engine offline" />
     );
   }
 
@@ -258,7 +247,7 @@ export default function ApprovalPanel() {
               <button
                 onClick={() => handleApprove(approval)}
                 disabled={isApprovalLoading}
-                className="flex-1 py-2 px-3 rounded text-xs font-mono font-bold transition-opacity disabled:opacity-40"
+                className="flex-1 py-2 px-3 rounded text-xs font-mono font-bold transition-opacity disabled:opacity-40 min-h-[44px] min-w-[44px]"
                 style={{ backgroundColor: "#00ff8820", color: "#00ff88", border: "1px solid #00ff8840" }}
               >
                 {isApprovalLoading ? "..." : "Approve"}
@@ -266,7 +255,7 @@ export default function ApprovalPanel() {
               <button
                 onClick={() => handleReject(approval)}
                 disabled={isApprovalLoading}
-                className="flex-1 py-2 px-3 rounded text-xs font-mono font-bold transition-opacity disabled:opacity-40"
+                className="flex-1 py-2 px-3 rounded text-xs font-mono font-bold transition-opacity disabled:opacity-40 min-h-[44px] min-w-[44px]"
                 style={{ backgroundColor: "#ff444420", color: "#ff4444", border: "1px solid #ff444440" }}
               >
                 {isApprovalLoading ? "..." : "Reject"}

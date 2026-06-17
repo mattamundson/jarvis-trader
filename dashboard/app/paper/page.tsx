@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Activity, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
 import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload, KillSwitchStatus } from "@/lib/api";
@@ -18,12 +19,20 @@ import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
 import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
 import ValidationCheckpointWidget from "@/components/ValidationCheckpointWidget";
+import { PageTabs, useTabState } from "@/components/PageTabs";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
 }
 
 type EngineHealthPayload = { status?: string };
+
+const PAPER_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "mcl", label: "MCL" },
+  { id: "mnq", label: "MNQ" },
+  { id: "mgc", label: "MGC" },
+];
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function PaperTradingPage() {
@@ -32,6 +41,8 @@ export default function PaperTradingPage() {
     fetcher,
     { refreshInterval: 30_000, revalidateOnFocus: true }
   );
+
+  const [activeTab, setActiveTab] = useTabState("overview", PAPER_TABS);
 
   let engineHealthLabel = "ENGINE …";
   let engineHealthStyle: React.CSSProperties = {
@@ -66,76 +77,130 @@ export default function PaperTradingPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-4 space-y-4">
-        {/* WFE Halt Banner */}
-        <div className="rounded-xl p-4 font-mono"
-          style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
-          <div className="flex items-start gap-3">
-            <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
-              PAPER TRADING SUSPENDED
-            </span>
-            <span className="text-[10px]" style={{ color: "#ff8888" }}>
-              MGC 1d WFE corrected to 0.14 (was 0.27) — below 0.30 threshold. Status: OVERFIT.
-              Paper trading suspended pending MTF filter validation.
-            </span>
-          </div>
+
+        {/* Instrument status row */}
+        <div className="flex items-center gap-3 mb-4">
+          {[
+            { sym: "MCL", status: "Active" },
+            { sym: "MNQ", status: "Active" },
+            { sym: "MGC", status: "Suspended" },
+          ].map(({ sym, status }) => (
+            <div key={sym} className="flex items-center gap-1.5 text-xs font-mono">
+              <span className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: status === "Active" ? "#00ff88" : "#ff4444" }} />
+              <span style={{ color: "#888" }}>{sym}</span>
+              <span style={{ color: status === "Active" ? "#00ff88" : "#ff4444" }}>{status}</span>
+            </div>
+          ))}
         </div>
 
-        {/* Open Positions — safety-critical, first widget at top of page */}
-        <OpenPositionsWidget />
+        {/* Tab navigation */}
+        <PageTabs tabs={PAPER_TABS} activeTab={activeTab} onTabChange={setActiveTab} className="mb-4" />
 
-        {/* Risk Status — always visible at top of page */}
-        <RiskStatusWidget />
+        {/* Overview tab — all existing content */}
+        {activeTab === "overview" && (
+          <div className="space-y-4">
+            {/* WFE Halt Banner */}
+            <div className="rounded-xl p-4 font-mono"
+              style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
+              <div className="flex items-start gap-3">
+                <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
+                  PAPER TRADING SUSPENDED
+                </span>
+                <span className="text-[10px]" style={{ color: "#ff8888" }}>
+                  MGC 1d WFE corrected to 0.14 (was 0.27) — below 0.30 threshold. Status: OVERFIT.
+                  Paper trading suspended pending MTF filter validation.
+                </span>
+              </div>
+            </div>
 
-        {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
-        <PaperApprovedValidationWidget />
+            {/* Open Positions — safety-critical, first widget at top of page */}
+            <OpenPositionsWidget />
 
-        {/* Overall validation checkpoint (30-day window progress) */}
-        <ValidationCheckpointWidget />
+            {/* Risk Status — always visible at top of page */}
+            <RiskStatusWidget />
 
-        {/* Circuit breaker / safety status */}
-        <CircuitBreakerWidget />
+            {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
+            <PaperApprovedValidationWidget />
 
-        {/* Today's session summary */}
-        <TodaySummaryWidget />
+            {/* Overall validation checkpoint (30-day window progress) */}
+            <ValidationCheckpointWidget />
 
-        {/* ATR-based position sizing */}
-        <PositionSizingWidget />
+            {/* Circuit breaker / safety status */}
+            <CircuitBreakerWidget />
 
-        {/* Current signal state: entry signal, direction, regime, STC, ATR levels */}
-        <SignalQueueWidget />
+            {/* Today's session summary */}
+            <TodaySummaryWidget />
 
-        {/* Recent pipeline signals */}
-        <RecentSignalsWidget />
+            {/* ATR-based position sizing */}
+            <PositionSizingWidget />
 
-        {/* Market regime / MTF analysis */}
-        <MarketRegimeWidget />
+            {/* Current signal state: entry signal, direction, regime, STC, ATR levels */}
+            <SignalQueueWidget />
 
-        {/* Top row: Signal + Performance */}
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-12 lg:col-span-6">
-            <LiveSignalPanel />
+            {/* Recent pipeline signals */}
+            <RecentSignalsWidget />
+
+            {/* Market regime / MTF analysis */}
+            <MarketRegimeWidget />
+
+            {/* Top row: Signal + Performance */}
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-12 lg:col-span-6">
+                <LiveSignalPanel />
+              </div>
+              <div className="col-span-12 lg:col-span-6">
+                <PerformanceMetricsPanel />
+              </div>
+            </div>
+
+            {/* Kill Switch + Reset Controls */}
+            <KillSwitchPanel />
+
+            {/* Middle: Pending Signals Queue with History Tab */}
+            <SignalQueuePanel />
+
+            {/* Bottom: Trade Logger */}
+            <TradeLoggerPanel />
+
+            {/* Recent AI Decisions */}
+            <RecentDecisionsWidget />
+
+            {/* Today's session summary (P&L, trades, win rate, best/worst trade) */}
+            <SessionSummaryWidget />
           </div>
-          <div className="col-span-12 lg:col-span-6">
-            <PerformanceMetricsPanel />
+        )}
+
+        {/* MCL tab */}
+        {activeTab === "mcl" && (
+          <div className="space-y-4">
+            <h3 className="font-mono text-sm font-bold" style={{ color: "#00ff88" }}>MCL — Micro Crude Light</h3>
+            <p className="text-xs font-mono" style={{ color: "#555" }}>MCL-specific validation and signal history coming soon.</p>
+            <ValidationCheckpointWidget />
           </div>
-        </div>
+        )}
 
-        {/* Kill Switch + Reset Controls */}
-        <KillSwitchPanel />
+        {/* MNQ tab */}
+        {activeTab === "mnq" && (
+          <div className="space-y-4">
+            <h3 className="font-mono text-sm font-bold" style={{ color: "#00ff88" }}>MNQ — Micro Nasdaq</h3>
+            <p className="text-xs font-mono" style={{ color: "#555" }}>MNQ-specific validation and signal history coming soon.</p>
+            <ValidationCheckpointWidget />
+          </div>
+        )}
 
-        {/* Middle: Pending Signals Queue with History Tab */}
-        <SignalQueuePanel />
+        {/* MGC tab */}
+        {activeTab === "mgc" && (
+          <div className="space-y-4">
+            <div className="rounded-lg px-4 py-3 flex items-center gap-2" style={{ backgroundColor: "#ff444408", border: "1px solid #ff444430" }}>
+              <span className="text-xs font-mono font-bold" style={{ color: "#ff4444" }}>SUSPENDED</span>
+              <span className="text-xs font-mono" style={{ color: "#888" }}>MGC paper trading suspended pending MTF filter validation</span>
+            </div>
+            <ValidationCheckpointWidget />
+          </div>
+        )}
 
-        {/* Bottom: Trade Logger */}
-        <TradeLoggerPanel />
-
-        {/* Recent AI Decisions */}
-        <RecentDecisionsWidget />
-
-        {/* Today's session summary (P&L, trades, win rate, best/worst trade) */}
-        <SessionSummaryWidget />
       </main>
     </div>
   );
@@ -385,10 +450,7 @@ function KillSwitchPanel() {
       </div>
 
       {error && !ks && (
-        <div className="rounded-lg p-3 mb-3 font-mono text-xs"
-          style={{ backgroundColor: "#ff444410", color: "#ff4444" }}>
-          Engine offline — kill switch status unavailable
-        </div>
+        <OfflineFallback variant="card" message="Engine offline — kill switch status unavailable" className="mb-3" />
       )}
 
       {/* Reset result toast */}
@@ -617,9 +679,7 @@ function PerformanceMetricsPanel() {
       </div>
 
       {error && !perf && (
-        <div className="rounded-lg p-3 mb-3 font-mono text-xs" style={{ backgroundColor: "#ff444410", color: "#ff4444" }}>
-          Engine offline — performance data unavailable
-        </div>
+        <OfflineFallback variant="card" message="Engine offline — performance data unavailable" className="mb-3" />
       )}
 
       {/* Metrics Grid */}

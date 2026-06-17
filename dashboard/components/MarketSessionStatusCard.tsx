@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 
@@ -298,7 +299,7 @@ export function MarketSessionStatusCard() {
 
         {fetchError && (
           <p className="font-mono text-[10px] text-neutral-700">
-            Engine offline — showing client-side session only
+            <OfflineFallback variant="inline" message="Engine offline — showing client-side session only" />
           </p>
         )}
 

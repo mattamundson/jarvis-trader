@@ -3,6 +3,7 @@
 import React from "react";
 import useSWR from "swr";
 import { RefreshCw } from "lucide-react";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEODSummary, type EODSummary } from "@/lib/api";
@@ -101,7 +102,7 @@ export function EODSummaryWidget() {
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-bear">Engine offline</p>
+          <OfflineFallback variant="card" message="EOD summary unavailable — engine offline" />
         </CardContent>
       </Card>
     );

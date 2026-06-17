@@ -3,6 +3,8 @@
 import useSWR from "swr";
 import { Activity, TrendingUp, TrendingDown, Circle } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { OfflineFallback } from "@/components/OfflineFallback";
+import React, { useEffect, useState } from "react";
 
 const REFRESH_MS = 5000;
 
@@ -150,7 +152,7 @@ function MarketHealthCard({ market, mod, capital }: {
           </span>
           <span className="inline-flex rounded-full h-2 w-2 bg-muted-foreground/20" />
         </div>
-        <p className="font-mono text-[10px] text-muted-foreground/40 italic">Not registered</p>
+        <p className="font-mono text-[10px] italic" style={{ color: "#333" }} title="Module not active — engine not running or market disabled in config">Not registered</p>
       </div>
     );
   }
@@ -215,24 +217,63 @@ export default function PortfolioPage() {
 
   const engineOffline = !!summaryError;
 
+  // Persist last-known portfolio data to localStorage
+  useEffect(() => {
+    if (summary) {
+      try {
+        localStorage.setItem('jarvis:portfolio:last_known', JSON.stringify({
+          data: summary,
+          timestamp: new Date().toISOString()
+        }));
+      } catch {}
+    }
+  }, [summary]);
+
+  // Read stale data when offline
+  const [staleData, setStaleData] = useState<{data: PortfolioSummary, timestamp: string} | null>(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('jarvis:portfolio:last_known');
+      if (raw) setStaleData(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const displaySummary = summary ?? staleData?.data ?? null;
+  const isStale = !summary && !!staleData;
+
   const moduleMap: Record<string, ModuleHealth> = {};
   for (const m of health?.modules ?? []) moduleMap[m.market] = m;
 
-  const total = summary?.total_daily_pnl ?? 0;
-  const target = summary?.daily_target ?? 500;
+  const total = displaySummary?.total_daily_pnl ?? 0;
+  const target = displaySummary?.daily_target ?? 500;
 
   return (
     <div className="min-h-screen bg-background">
       {engineOffline && (
         <div className="px-6 py-2 flex items-center gap-2 border-b border-[#1a1a2e]" style={{ backgroundColor: "#0d0d1a" }}>
           <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#555" }} />
-          <span className="text-[10px] font-mono" style={{ color: "#555" }}>Engine offline — showing last known state</span>
+          <OfflineFallback variant="inline" message="Engine offline — showing last known state" />
+        </div>
+      )}
+      {isStale && staleData && (
+        <div className="px-6 py-1 flex items-center gap-2" style={{ backgroundColor: "#0a0a0a" }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "#ffaa00" }} />
+          <span className="text-[10px] font-mono" style={{ color: "#ffaa00" }}>
+            Showing cached data from {new Date(staleData.timestamp).toLocaleTimeString()}
+          </span>
         </div>
       )}
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
         {/* Daily target progress */}
-        <DailyTargetProgress total={total} target={target} />
+        {(displaySummary || engineOffline === false) ? (
+          <DailyTargetProgress total={total} target={target} />
+        ) : (
+          <div className="rounded-widget border p-4" style={{ backgroundColor: "#0a0a0a", borderColor: "#1a1a2e" }}>
+            <p className="text-[10px] font-mono uppercase tracking-widest mb-2" style={{ color: "#555" }}>Daily Target</p>
+            <p className="text-xs font-mono" style={{ color: "#333" }}>No trading data yet — start the engine to begin tracking P&amp;L</p>
+          </div>
+        )}
 
         {/* Market health grid */}
         <div>

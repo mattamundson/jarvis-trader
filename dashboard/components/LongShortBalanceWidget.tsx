@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 
@@ -179,7 +180,7 @@ export function LongShortBalanceWidget() {
           </p>
         ) : error ? (
           <p className="text-sm text-muted-foreground text-center py-6">
-            Could not load trades — engine offline?
+            <OfflineFallback variant="inline" message="Could not load trades — engine offline" />
           </p>
         ) : total === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">

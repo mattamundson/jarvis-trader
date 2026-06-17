@@ -22,6 +22,8 @@ import HoldTimeWidget from "@/components/HoldTimeWidget";
 import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
 import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
 import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
+import { OfflineFallback } from "@/components/OfflineFallback";
+import { useEngineHealth } from "@/lib/engine-context";
 
 // ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
@@ -586,24 +588,67 @@ function DoNotTradeList() {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PerformancePage() {
+  const { isOffline: engineOffline } = useEngineHealth();
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#050505" }}>
-      {/* Header */}
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+
+        {/* ── Section A: Live Stats (engine-dependent) ─────────────────────── */}
+
         {/* Account ROI */}
-        <AccountROIWidget />
+        {engineOffline ? (
+          <OfflineFallback variant="card" message="Live stats unavailable — engine offline" />
+        ) : (
+          <AccountROIWidget />
+        )}
 
         {/* Weekly P&L */}
-        <WeeklyPnLCard />
-
-        {/* Daily P&L Calendar */}
-        <DailyPnLCalendarWidget />
-
-        {/* P&L Calendar Heatmap -- 13-week GitHub-style grid */}
-        <PnlCalendarWidget />
+        {engineOffline ? (
+          <OfflineFallback variant="card" message="Live stats unavailable — engine offline" />
+        ) : (
+          <WeeklyPnLCard />
+        )}
 
         {/* Win Rate by Hour of Day */}
-        <WinRateByHourWidget />
+        {engineOffline ? (
+          <OfflineFallback variant="card" message="Live stats unavailable — engine offline" />
+        ) : (
+          <WinRateByHourWidget />
+        )}
+
+        {/* ── Section Divider ──────────────────────────────────────────────── */}
+        <div className="flex items-center gap-3 my-2">
+          <div className="flex-1 border-t" style={{ borderColor: "#1a1a2e" }} />
+          <span className="text-[10px] font-mono uppercase tracking-widest" style={{ color: "#333" }}>Historical — EOD Data</span>
+          <div className="flex-1 border-t" style={{ borderColor: "#1a1a2e" }} />
+        </div>
+
+        {/* ── Section B: Historical (file-based, never shows 502) ──────────── */}
+
+        {/* Daily P&L Calendar */}
+        <div className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-wider mb-3" style={{ color: "#555" }}>
+            Daily P&amp;L Calendar
+          </p>
+          <DailyPnLCalendarWidget />
+          <p className="font-mono text-[10px] mt-3" style={{ color: "#333" }}>
+            Historical data is written at market close each day.
+            No data available yet — connect your engine and trade to populate.
+          </p>
+        </div>
+
+        {/* 13-Week P&L Calendar */}
+        <div className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-wider mb-3" style={{ color: "#555" }}>
+            13-Week P&amp;L Calendar
+          </p>
+          <PnlCalendarWidget />
+          <p className="font-mono text-[10px] mt-3" style={{ color: "#333" }}>
+            Historical data is written at market close each day.
+            No data available yet — connect your engine and trade to populate.
+          </p>
+        </div>
 
         {/* Streak Tracker */}
         <StreakTrackerWidget />

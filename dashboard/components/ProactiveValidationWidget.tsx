@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { CheckCircle, XCircle, AlertTriangle, Clock, ShieldCheck } from "lucide-react";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 
@@ -154,7 +155,7 @@ function SymbolPanel({ symbol }: { symbol: string }) {
           <span className="font-mono text-xs font-bold text-foreground">{symbol}</span>
           <Badge variant="neutral">UNAVAILABLE</Badge>
         </div>
-        <p className="text-xs text-muted-foreground font-mono">Engine offline or validation data unavailable.</p>
+        <OfflineFallback variant="inline" message="Engine offline or validation data unavailable" />
       </div>
     );
   }

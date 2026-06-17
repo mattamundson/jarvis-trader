@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import useSWR from "swr";
-import { fetchEngine } from "@/lib/api";
+import { useEngineStrategyC } from "@/lib/engine-context";
 import { TrendingUp, TrendingDown, Shield, Zap, BarChart2 } from "lucide-react";
 
 interface StrategyCSignal {
@@ -59,11 +58,8 @@ function MomentumBadge({ val }: { val: string }) {
 }
 
 export function StrategyCPlusCard() {
-  const { data, error, isLoading } = useSWR<StrategyCSignal>(
-    "/v1/strategy_c/signal",
-    () => fetchEngine<StrategyCSignal>("/v1/strategy_c/signal"),
-    { refreshInterval: 300_000, shouldRetryOnError: false }
-  );
+  const { strategyC: data, isOffline, error } = useEngineStrategyC();
+  const isLoading = !data && !error && !isOffline;
 
   const regime = data?.layers?.momentum_signal?.risk_regime ?? "—";
   const scale = data?.combined_scale ?? 0;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GitCompare } from "lucide-react";
@@ -177,9 +178,7 @@ export function BacktestComparisonCard() {
 
       <CardContent>
         {error && (
-          <p className="text-sm text-red-400 mb-3">
-            Engine offline — {error}
-          </p>
+          <OfflineFallback variant="card" message="Comparison data unavailable — engine offline" className="mb-3" />
         )}
 
         <div className="overflow-x-auto">

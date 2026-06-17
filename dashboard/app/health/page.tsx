@@ -28,6 +28,7 @@ import { ConnectionHealthCard } from "@/components/ConnectionHealthCard";
 import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -447,13 +448,7 @@ export default function HealthPage() {
 
         {/* Error state — engine unreachable */}
         {error && !isLoading && (
-          <div className="rounded-xl border border-bear/30 bg-bear/5 p-6 text-center space-y-2">
-            <XCircle className="h-8 w-8 text-bear mx-auto" />
-            <p className="text-sm font-semibold text-bear">Engine unreachable</p>
-            <p className="text-xs text-muted-foreground">
-              Could not fetch /health/full — verify the engine is running and the dashboard proxy can reach it.
-            </p>
-          </div>
+          <OfflineFallback variant="card" message="Engine unreachable — verify the engine is running and the dashboard proxy can reach it" />
         )}
 
         {/* Pre-Flight Widget */}

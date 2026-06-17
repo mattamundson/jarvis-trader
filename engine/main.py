@@ -123,6 +123,8 @@ from routers.messaging_router import inject_dependencies as inject_messaging_dep
 from routers.observability_router import router as observability_router
 from routers.strategy_c_router import router as strategy_c_router
 from routers.system2_router import router as system2_router
+from routers.eod_router import router as eod_router
+from routers.research_journal_router import router as research_journal_router
 from routers.scanner_router import router as scanner_router
 from routers.scanner_router import inject_dependencies as inject_scanner_deps
 from routers.tradingview_router import router as tradingview_router
@@ -2185,6 +2187,8 @@ app.include_router(settings_router)
 app.include_router(reports_router)
 app.include_router(prices_router)
 app.include_router(thinkscript_router)
+app.include_router(eod_router)
+app.include_router(research_journal_router)
 
 
 

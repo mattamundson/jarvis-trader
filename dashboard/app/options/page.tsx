@@ -3,6 +3,7 @@
 import useSWR from "swr";
 import { Activity } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 const REFRESH_MS = 5000;
 
@@ -116,7 +117,7 @@ export default function OptionsPage() {
                 )}
               </div>
             ) : (
-              <p className="font-mono text-[10px] text-muted-foreground/50 italic">Engine offline</p>
+              <OfflineFallback variant="inline" message="Engine offline" />
             )}
           </div>
 

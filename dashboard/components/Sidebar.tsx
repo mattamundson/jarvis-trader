@@ -43,6 +43,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
+  badge?: string;
 }
 
 interface NavGroup {
@@ -54,7 +55,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Trading",
     items: [
-      { label: "Dashboard", href: "/dashboard", icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
       { label: "Pending Approvals", href: "/trades/pending-approvals", icon: <Zap className="h-3.5 w-3.5" /> },
       { label: "Trade History", href: "/trades", icon: <History className="h-3.5 w-3.5" /> },
       { label: "Paper Trading", href: "/paper", icon: <Layers className="h-3.5 w-3.5" /> },
@@ -98,6 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },
       { label: "Settings", href: "/settings", icon: <Settings className="h-3.5 w-3.5" /> },
       { label: "Validation", href: "/validation", icon: <Shield className="h-3.5 w-3.5" /> },
+      { label: "Legacy View", href: "/dashboard", icon: <LayoutDashboard className="h-3.5 w-3.5" />, badge: "archived" },
     ],
   },
 ];
@@ -109,7 +110,7 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   function isActive(href: string): boolean {
-    if (href === "/dashboard") return pathname === "/" || pathname === "/dashboard";
+    if (href === "/dashboard") return pathname === "/dashboard";
     return pathname === href || pathname.startsWith(href + "/");
   }
 
@@ -163,7 +164,12 @@ export function Sidebar() {
                     {item.icon}
                   </span>
                   <span className="font-mono tracking-wide">{item.label}</span>
-                  {active && (
+                  {item.badge && (
+                    <span className="ml-auto font-mono text-[9px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#0d0d1a', color: '#555555', border: '1px solid #1a1a2e' }}>
+                      {item.badge.toUpperCase()}
+                    </span>
+                  )}
+                  {active && !item.badge && (
                     <ChevronRight className="ml-auto h-3 w-3 text-accent/60" />
                   )}
                 </Link>

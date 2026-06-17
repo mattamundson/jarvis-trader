@@ -29,4 +29,23 @@ export type WsEvent =
       entry_price?: number;
       timestamp?: string;
     }
+  | {
+      type: "position_opened";
+      symbol: string;
+      action: "long" | "short";
+      quantity: number;
+      entry_price: number;
+      account?: string;
+      timestamp?: string;
+    }
+  | {
+      type: "position_closed";
+      symbol: string;
+      action: "long" | "short";
+      quantity: number;
+      exit_price: number;
+      pnl: number;
+      account?: string;
+      timestamp?: string;
+    }
   | { type: "ping" };

@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import type {
   RecentPipelineReasoningResponse,
   RecentPipelineDecision,
@@ -305,7 +306,7 @@ export default function LiveTradeReasoningWidget() {
             <span className="text-xs text-slate-600 animate-pulse">loading...</span>
           )}
           {error && (
-            <span className="text-xs text-red-500">engine offline</span>
+            <OfflineFallback variant="inline" message="engine offline" />
           )}
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 
@@ -201,7 +202,7 @@ export function DecisionBreakdownCard() {
           </p>
         ) : error ? (
           <p className="text-sm text-muted-foreground text-center py-6">
-            Could not load decisions — engine offline?
+            <OfflineFallback variant="inline" message="Could not load decisions — engine offline" />
           </p>
         ) : totalDecisions === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">

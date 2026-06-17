@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import {
   TrendingUp,
   BarChart2,
@@ -259,13 +260,7 @@ export function BacktestMetricsWidget() {
         {/* Error state */}
         {error && (
           <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-            <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-red-400">Engine offline</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Start the FastAPI engine to see backtest metrics.
-              </p>
-            </div>
+            <OfflineFallback variant="card" message="Backtest metrics unavailable — engine offline" className="w-full" />
           </div>
         )}
 

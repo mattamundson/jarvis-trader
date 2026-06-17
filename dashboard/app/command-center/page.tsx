@@ -2,6 +2,14 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
+import {
+  useEngineData,
+  useEngineHealth,
+  useEngineSafety,
+  useEnginePortfolio,
+  useEngineDecisions,
+  useEnginePendingApprovals,
+} from "@/lib/engine-context";
 import { JetBrains_Mono, Orbitron } from "next/font/google";
 import {
   Shield,
@@ -263,6 +271,22 @@ function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
+// ── StaleDataBanner ──────────────────────────────────────────────────────
+
+function StaleDataBanner({ lastUpdated }: { lastUpdated: Date | null | undefined }) {
+  if (!lastUpdated) return null;
+  const ageMs = Date.now() - lastUpdated.getTime();
+  if (ageMs < 5 * 60 * 1000) return null; // not stale
+  const mins = Math.round(ageMs / 60_000);
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono"
+      style={{ backgroundColor: "#ffaa0008", color: "#ffaa00", border: "1px solid #ffaa0020" }}>
+      <span>⚠</span>
+      <span>Data last updated {mins}m ago — engine may be slow</span>
+    </div>
+  );
+}
+
 // ── Page Component ────────────────────────────────────────────────────────
 
 export default function CommandCenterPage() {
@@ -275,25 +299,13 @@ export default function CommandCenterPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const {
-    data: health,
-    error: healthErr,
-    mutate: mutateHealth,
-  } = useSWR<HealthData>("/health", fetcher, { refreshInterval });
-
-  const { data: safety } = useSWR<SafetyData>("/safety/status", fetcher, {
-    refreshInterval,
-  });
-
-  const { data: portfolio } = useSWR<PortfolioData>("/portfolio", fetcher, {
-    refreshInterval,
-  });
-
-  const { data: decisions } = useSWR<Decision[]>(
-    "/decisions/recent?limit=5",
-    fetcher,
-    { refreshInterval }
-  );
+  const { health, error: healthErr, lastUpdated } = useEngineHealth();
+  const { mutate: mutateEngine } = useEngineData();
+  const mutateHealth = useCallback(() => mutateEngine("health"), [mutateEngine]);
+  const { safety } = useEngineSafety();
+  const { portfolio } = useEnginePortfolio();
+  const { decisions } = useEngineDecisions();
+  const { pendingApprovals } = useEnginePendingApprovals();
 
   const { data: scheduler } = useSWR<SchedulerData>(
     "/scheduler/status",
@@ -395,7 +407,7 @@ export default function CommandCenterPage() {
       {/* ═══════════════════════════════════════════════════════
           HEADER
       ═══════════════════════════════════════════════════════ */}
-      <div className="flex items-center justify-between mb-5 border-b border-cyan-900/40 pb-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 border-b border-cyan-900/40 pb-4 gap-3">
         <div>
           <h1
             className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-300 to-cyan-300 bg-clip-text text-transparent tracking-widest uppercase"
@@ -474,27 +486,46 @@ export default function CommandCenterPage() {
         </div>
       </div>
 
+      <StaleDataBanner lastUpdated={lastUpdated?.portfolio} />
+
       {/* ═══════════════════════════════════════════════════════
           TRADE APPROVALS — human-in-the-loop gate
       ═══════════════════════════════════════════════════════ */}
-      <div className="mb-4">
-        <Card className="border border-amber-500/30 bg-zinc-900/50">
-          <CardHeader className="pb-1.5 pt-3 px-4">
-            <CardTitle className="text-xs font-mono text-amber-400 tracking-widest flex items-center gap-1.5">
-              <AlertTriangle className="w-3 h-3" />
-              TRADE APPROVALS
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <ApprovalPanel />
-          </CardContent>
-        </Card>
-      </div>
+      {(() => {
+        const pendingCount = pendingApprovals?.count ?? 0;
+        // Offline + no pending: collapse entirely
+        if (!engineOnline && pendingCount === 0) return null;
+        // Online + 0 pending: compact bar
+        if (engineOnline && pendingCount === 0) {
+          return (
+            <div className="mb-3 flex items-center gap-2 px-1">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "#00ff88" }} />
+              <span className="text-[10px] font-mono" style={{ color: "#555" }}>No pending approvals</span>
+            </div>
+          );
+        }
+        // Pending approvals > 0: full expanded panel
+        return (
+          <div className="mb-4">
+            <Card className="border border-amber-500/30 bg-zinc-900/50">
+              <CardHeader className="pb-1.5 pt-3 px-4">
+                <CardTitle className="text-xs font-mono text-amber-400 tracking-widest flex items-center gap-1.5">
+                  <AlertTriangle className="w-3 h-3" />
+                  TRADE APPROVALS
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <ApprovalPanel />
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* ═══════════════════════════════════════════════════════
           ROW 1 — STRATEGY INTELLIGENCE (System 2 + Strategy C+)
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <System2StatusWidget />
         <StrategyCPlusCard />
       </div>
@@ -502,7 +533,7 @@ export default function CommandCenterPage() {
       {/* ═══════════════════════════════════════════════════════
           ROW 2 — STATUS OVERVIEW (5 columns)
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
         {/* Portfolio */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">
           <CardHeader className="pb-1.5 pt-3 px-4">
@@ -696,7 +727,7 @@ export default function CommandCenterPage() {
       {/* ═══════════════════════════════════════════════════════
           ROW 2 — SIGNAL CARDS (3 columns)
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
         {liveInstruments.map((inst) => (
           <Card
             key={inst.symbol}
@@ -798,7 +829,7 @@ export default function CommandCenterPage() {
       {/* ═══════════════════════════════════════════════════════
           ROW 3 — RISK GAUGES + RECENT SIGNALS (2 columns)
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         {/* Risk Gauges */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">
           <CardHeader className="pb-2 pt-3 px-4">
@@ -965,7 +996,7 @@ export default function CommandCenterPage() {
       {/* ═══════════════════════════════════════════════════════
           ROW 4 — TRADES TABLE + WFE MONITOR (2 columns)
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         {/* Recent Trades */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">
           <CardHeader className="pb-2 pt-3 px-4">
@@ -1100,7 +1131,7 @@ export default function CommandCenterPage() {
       {/* ═══════════════════════════════════════════════════════
           ROW 5 — OPTIONS + SCHEDULER + ENGINE HEALTH (3 columns)
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {/* Options Engine */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">
           <CardHeader className="pb-2 pt-3 px-4">

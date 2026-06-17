@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
 import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
+import { EngineReconnectToast } from "@/components/EngineReconnectToast";
 import { EngineWebSocketProvider } from "@/lib/engine-websocket-context";
+import { EngineDataProvider } from "@/lib/engine-context";
 import { ToastProvider } from "@/lib/toast-context";
 import { Sidebar } from "@/components/Sidebar";
 import "./globals.css";
@@ -35,14 +37,18 @@ export default function RootLayout({
       <body className="min-h-screen bg-background font-sans antialiased">
         <ToastProvider>
           <EngineWebSocketProvider>
-            <PendingApprovalToastListener />
-            <EngineAvailabilityHint />
-            <div className="flex min-h-screen">
-              <Sidebar />
-              <main className="flex-1 min-w-0 overflow-x-hidden">
-                {children}
-              </main>
-            </div>
+            {/* EngineDataProvider must be inside WebSocketProvider — it subscribes to WS events */}
+            <EngineDataProvider>
+              <PendingApprovalToastListener />
+              <EngineAvailabilityHint />
+              <div className="flex min-h-screen">
+                <Sidebar />
+                <main className="flex-1 min-w-0 overflow-x-hidden">
+                  {children}
+                </main>
+              </div>
+              <EngineReconnectToast />
+            </EngineDataProvider>
           </EngineWebSocketProvider>
         </ToastProvider>
       </body>

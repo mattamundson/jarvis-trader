@@ -21,6 +21,8 @@ import { StrategyParamsCard } from "@/components/StrategyParamsCard";
 import { SignalAccuracyWidget } from "@/components/SignalAccuracyWidget";
 import { LongShortBalanceWidget } from "@/components/LongShortBalanceWidget";
 import { DecisionBreakdownCard } from "@/components/DecisionBreakdownCard";
+import { PageTabs, useTabState } from "@/components/PageTabs";
+import { OfflineFallback } from "@/components/OfflineFallback";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -448,6 +450,13 @@ function Metric({ label, value, color }: { label: string; value: string; color: 
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+const BACKTEST_TABS = [
+  { id: "reference", label: "Reference Params" },
+  { id: "comparison", label: "Live vs Backtest" },
+  { id: "accuracy", label: "Signal Accuracy" },
+  { id: "walkforward", label: "Walk-Forward", badge: "soon" as const },
+];
+
 export default function BacktestPage() {
   const { data: results, isLoading, error } = useSWR<BacktestResult[]>(
     "/backtest/results",
@@ -456,6 +465,7 @@ export default function BacktestPage() {
   );
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useTabState("reference", BACKTEST_TABS);
 
   // Filter to backtest results (not optimizer files)
   const backtestResults = useMemo(
@@ -486,123 +496,151 @@ export default function BacktestPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
-        {/* Strategy Parameters reference card */}
-        <StrategyParamsCard />
 
-        {/* Loading / Error */}
-        {isLoading && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse p-4">
-            <Activity className="h-3.5 w-3.5" />
-            Loading backtest results from engine…
+        {/* Tab navigation */}
+        <PageTabs tabs={BACKTEST_TABS} activeTab={activeTab} onTabChange={setActiveTab} className="mb-6" />
+
+        {/* ── Reference Params Tab ─────────────────────────────────────────── */}
+        {activeTab === "reference" && (
+          <>
+            {/* Strategy Parameters reference card */}
+            <StrategyParamsCard />
+
+            {/* Summary stat cards — "BEST BACKTEST" */}
+            {summaryStats && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard
+                  label="Total Backtests"
+                  value={String(summaryStats.total)}
+                  sub="result files loaded"
+                  icon={BarChart2}
+                />
+                <StatCard
+                  label="Best Profit Factor"
+                  value={summaryStats.bestPF.toFixed(2)}
+                  sub="higher is better (≥3 = strong)"
+                  icon={TrendingUp}
+                  valueClass={pfColor(summaryStats.bestPF)}
+                />
+                <StatCard
+                  label="Best Sharpe Ratio"
+                  value={summaryStats.bestSharpe.toFixed(2)}
+                  sub="risk-adjusted return"
+                  icon={Award}
+                  valueClass="text-accent"
+                />
+                <StatCard
+                  label="Best Win Rate"
+                  value={pct(summaryStats.bestWinRate, 0)}
+                  sub="across all backtests"
+                  icon={Percent}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Live vs Backtest Tab ─────────────────────────────────────────── */}
+        {activeTab === "comparison" && (
+          <>
+            {/* Loading / Error */}
+            {isLoading && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse p-4">
+                <Activity className="h-3.5 w-3.5" />
+                Loading backtest results from engine…
+              </div>
+            )}
+            {error && (
+              <OfflineFallback variant="card" message="Comparison data unavailable — engine offline" showRetry />
+            )}
+
+            {/* Live vs. Backtest Comparison */}
+            <BacktestComparisonCard />
+
+            {/* Long vs Short balance vs backtest benchmark */}
+            <LongShortBalanceWidget />
+
+            {/* Decision breakdown from pipeline history */}
+            <DecisionBreakdownCard />
+
+            {/* Results table */}
+            {backtestResults.length > 0 && (
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Backtest Results
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {backtestResults.length} result{backtestResults.length !== 1 ? "s" : ""} · click row to expand
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-border bg-black/20">
+                        {["Symbol", "Interval", "Period", "Trades", "Win%", "Prof. Factor", "Sharpe", "Return", "Status"].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              className="px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-muted-foreground text-left"
+                            >
+                              {h}
+                            </th>
+                          )
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {backtestResults.map((r) => (
+                        <ResultRow
+                          key={r._filename}
+                          result={r}
+                          isSelected={selectedFile === r._filename}
+                          onSelect={() =>
+                            setSelectedFile(selectedFile === r._filename ? null : r._filename)
+                          }
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Detail panel for selected row */}
+            {selectedResult && !selectedResult.top_params && (
+              <DetailPanel result={selectedResult} />
+            )}
+
+            {/* Empty state */}
+            {(results?.length ?? 0) === 0 && !isLoading && !error && (
+              <div className="text-center text-muted-foreground py-12">
+                <p>No backtest results yet. Run a backtest above to see results.</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Signal Accuracy Tab ──────────────────────────────────────────── */}
+        {activeTab === "accuracy" && (
+          <>
+            {error ? (
+              <OfflineFallback variant="card" message="Signal accuracy data unavailable — engine offline" />
+            ) : (
+              <SignalAccuracyWidget />
+            )}
+          </>
+        )}
+
+        {/* ── Walk-Forward Tab ─────────────────────────────────────────────── */}
+        {activeTab === "walkforward" && (
+          <div className="rounded-widget border p-8 text-center" style={{ backgroundColor: "#0a0a0a", borderColor: "#1a1a2e" }}>
+            <p className="text-sm font-mono font-bold mb-2" style={{ color: "#555" }}>Walk-Forward Analysis</p>
+            <p className="text-xs font-mono" style={{ color: "#333" }}>Available after 90-day paper trading validation phase</p>
           </div>
         )}
-        {error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
-            Engine offline or no backtest results found. Start the FastAPI engine and verify the dashboard proxy is configured.
-          </div>
-        )}
 
-        {/* Live vs. Backtest Comparison */}
-        <BacktestComparisonCard />
-
-        {/* Signal Accuracy by direction */}
-        <SignalAccuracyWidget />
-
-        {/* Long vs Short balance vs backtest benchmark */}
-        <LongShortBalanceWidget />
-
-        {/* Decision breakdown from pipeline history */}
-        <DecisionBreakdownCard />
-
-        {/* Summary stat cards */}
-        {summaryStats && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              label="Total Backtests"
-              value={String(summaryStats.total)}
-              sub="result files loaded"
-              icon={BarChart2}
-            />
-            <StatCard
-              label="Best Profit Factor"
-              value={summaryStats.bestPF.toFixed(2)}
-              sub="higher is better (≥3 = strong)"
-              icon={TrendingUp}
-              valueClass={pfColor(summaryStats.bestPF)}
-            />
-            <StatCard
-              label="Best Sharpe Ratio"
-              value={summaryStats.bestSharpe.toFixed(2)}
-              sub="risk-adjusted return"
-              icon={Award}
-              valueClass="text-accent"
-            />
-            <StatCard
-              label="Best Win Rate"
-              value={pct(summaryStats.bestWinRate, 0)}
-              sub="across all backtests"
-              icon={Percent}
-            />
-          </div>
-        )}
-
-        {/* Results table */}
-        {backtestResults.length > 0 && (
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Backtest Results
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {backtestResults.length} result{backtestResults.length !== 1 ? "s" : ""} · click row to expand
-              </p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-border bg-black/20">
-                    {["Symbol", "Interval", "Period", "Trades", "Win%", "Prof. Factor", "Sharpe", "Return", "Status"].map(
-                      (h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-muted-foreground text-left"
-                        >
-                          {h}
-                        </th>
-                      )
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {backtestResults.map((r) => (
-                    <ResultRow
-                      key={r._filename}
-                      result={r}
-                      isSelected={selectedFile === r._filename}
-                      onSelect={() =>
-                        setSelectedFile(selectedFile === r._filename ? null : r._filename)
-                      }
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Detail panel for selected row */}
-        {selectedResult && !selectedResult.top_params && (
-          <DetailPanel result={selectedResult} />
-        )}
-
-        {/* Optimizer / Parameters section */}
-        {(results?.length ?? 0) === 0 && (
-          <div className="text-center text-muted-foreground py-12">
-            <p>No backtest results yet. Run a backtest above to see results.</p>
-          </div>
-        )}
       </main>
     </div>
   );

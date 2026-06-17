@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { Bell, MessageSquare, Hash } from "lucide-react";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 
@@ -110,7 +111,7 @@ export function AlertHistoryWidget() {
 
       {/* Error */}
       {error && (
-        <p className="text-xs text-muted-foreground font-mono">Engine offline — alert history unavailable.</p>
+        <OfflineFallback variant="inline" message="Engine offline — alert history unavailable" />
       )}
 
       {/* Empty state */}

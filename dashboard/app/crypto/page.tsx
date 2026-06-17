@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Activity } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 
@@ -212,7 +213,7 @@ export default function CryptoPage() {
                 )}
               </div>
             ) : (
-              <p className="font-mono text-[10px] text-muted-foreground/50 italic">Engine offline</p>
+              <OfflineFallback variant="inline" message="Engine offline" />
             )}
           </div>
         </div>

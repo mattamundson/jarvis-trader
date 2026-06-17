@@ -2,11 +2,15 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Brain, Play, RefreshCw, CheckCircle, XCircle, Clock, Zap, Activity, Cpu, StopCircle } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
 import { SectionHeader } from "./SectionHeader";
 import { HowItWorksPanel } from "./HowItWorksPanel";
 import { StrategyDiscoveryBrowser } from "@/components/StrategyDiscoveryBrowser";
+import { PageTabs, useTabState } from "@/components/PageTabs";
+import { System2StatusWidget } from "@/components/System2StatusWidget";
+import { StrategyCPlusCard } from "@/components/StrategyCPlusCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -194,7 +198,7 @@ function HealthPanel({ health }: { health: HealthStatus | null }) {
     return (
       <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
         <SectionHeader title="RL Module Health" />
-        <p className="font-mono text-xs" style={{ color: "#555" }}>Engine offline or not reachable.</p>
+        <OfflineFallback variant="inline" message="Engine offline or not reachable" />
       </section>
     );
   }
@@ -1900,6 +1904,12 @@ const NAV_LINKS = [
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const STRATEGY_TABS = [
+  { id: "rl", label: "RL Discovery" },
+  { id: "system2", label: "System 2 — ES/NQ" },
+  { id: "strategyc", label: "Strategy C+" },
+];
+
 export default function StrategiesPage() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [status, setStatus] = useState<TrainingStatus | null>(null);
@@ -1913,6 +1923,7 @@ export default function StrategiesPage() {
   const [rlExecutorStatus, setRlExecutorStatus] = useState<RLExecutorStatus | null>(null);
   const [wfGridWindows, setWfGridWindows] = useState<WalkForwardGridWindow[]>([]);
   const [wfGridRunning, setWfGridRunning] = useState(false);
+  const [activeTab, setActiveTab] = useTabState("rl", STRATEGY_TABS);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -2092,10 +2103,10 @@ export default function StrategiesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h2 className="text-2xl font-bold tracking-tight font-mono" style={{ color: "#e0e0e0" }}>
-              RL Strategy Discovery
+              Strategies
             </h2>
             <p className="text-sm mt-1 font-mono" style={{ color: "#555" }}>
-              PPO agent — discovers higher-conviction trading patterns from raw OHLCV data
+              RL Discovery · System 2 · Strategy C+
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -2109,89 +2120,136 @@ export default function StrategiesPage() {
           </div>
         </div>
 
+        {/* Tab navigation */}
+        <PageTabs tabs={STRATEGY_TABS} activeTab={activeTab} onTabChange={setActiveTab} className="mb-6" />
+
         {/* Engine offline banner */}
         {error && (
           <div
             className="rounded-xl p-4 font-mono text-xs"
             style={{ backgroundColor: "#ff444410", border: "1px solid #ff444430", color: "#ff9999" }}
           >
-            {error}
+            <OfflineFallback variant="inline" message={error || "Engine offline"} />
           </div>
         )}
 
-        {/* Health */}
-        <HealthPanel health={health} />
+        {/* RL Discovery tab */}
+        {activeTab === "rl" && (
+          <div className="space-y-6">
+            {/* Health */}
+            <HealthPanel health={health} />
 
-        {/* How it works */}
-        <HowItWorksPanel />
+            {/* How it works */}
+            <HowItWorksPanel />
 
-        {/* Start training */}
-        <StartTrainingPanel
-          isRunning={status?.running ?? false}
-          onStart={handleStartTraining}
-        />
+            {/* Start training */}
+            <StartTrainingPanel
+              isRunning={status?.running ?? false}
+              onStart={handleStartTraining}
+            />
 
-        {/* Training status */}
-        <TrainingStatusPanel status={status} />
+            {/* Training status */}
+            <TrainingStatusPanel status={status} />
 
-        {/* Training history */}
-        <TrainingHistoryPanel runs={recentRuns} />
+            {/* Training history */}
+            <TrainingHistoryPanel runs={recentRuns} />
 
-        {/* Walk-forward windows (from status endpoint) */}
-        <WalkForwardWindowsPanel
-          windows={wfWindows}
-          complete={wfComplete}
-          allPass={wfAllPass}
-        />
+            {/* Walk-forward windows (from status endpoint) */}
+            <WalkForwardWindowsPanel
+              windows={wfWindows}
+              complete={wfComplete}
+              allPass={wfAllPass}
+            />
 
-        {/* Validation gates */}
-        <ValidationGatesPanel metrics={lastMetrics} />
+            {/* Validation gates */}
+            <ValidationGatesPanel metrics={lastMetrics} />
 
-        {/* Action distribution */}
-        <ActionDistributionPanel metrics={lastMetrics} />
+            {/* Action distribution */}
+            <ActionDistributionPanel metrics={lastMetrics} />
 
-        {/* Walk-forward results table */}
-        <WalkForwardResultsPanel models={models} latestResult={status?.last_result ?? null} />
+            {/* Walk-forward results table */}
+            <WalkForwardResultsPanel models={models} latestResult={status?.last_result ?? null} />
 
-        {/* RL vs STC comparison */}
-        <RLvsSTC latestResult={status?.last_result ?? null} />
+            {/* RL vs STC comparison */}
+            <RLvsSTC latestResult={status?.last_result ?? null} />
 
-        {/* Saved models */}
-        <ModelsListPanel models={models} />
+            {/* Saved models */}
+            <ModelsListPanel models={models} />
 
-        {/* Executor status */}
-        <ExecutorStatusPanel
-          executors={executors}
-          models={models}
-          onDeploy={handleDeploy}
-          onUndeploy={handleUndeploy}
-        />
+            {/* Executor status */}
+            <ExecutorStatusPanel
+              executors={executors}
+              models={models}
+              onDeploy={handleDeploy}
+              onUndeploy={handleUndeploy}
+            />
 
-        {/* RL Executor Status Card (simplified single-executor view) */}
-        <RLExecutorStatusCard
-          status={rlExecutorStatus}
-          models={models}
-          onDeploy={handleSimpleDeploy}
-          onUndeploy={handleSimpleUndeploy}
-        />
+            {/* RL Executor Status Card (simplified single-executor view) */}
+            <RLExecutorStatusCard
+              status={rlExecutorStatus}
+              models={models}
+              onDeploy={handleSimpleDeploy}
+              onUndeploy={handleSimpleUndeploy}
+            />
 
-        {/* Walk-Forward Results Grid (8-window date-based table) */}
-        <WalkForwardGridPanel
-          windows={wfGridWindows}
-          wfRunning={wfGridRunning}
-          onRunWalkForward={handleRunWalkForward}
-        />
+            {/* Walk-Forward Results Grid (8-window date-based table) */}
+            <WalkForwardGridPanel
+              windows={wfGridWindows}
+              wfRunning={wfGridRunning}
+              onRunWalkForward={handleRunWalkForward}
+            />
 
-        {/* Strategy Discovery Browser */}
-        <StrategyDiscoveryBrowser />
+            {/* Strategy Discovery Browser */}
+            <StrategyDiscoveryBrowser />
 
-        {/* Footer */}
-        <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>
-          <p className="font-mono text-[10px]" style={{ color: "#333" }}>
-            RL agent runs in parallel with existing STC pipeline — does NOT interfere with live paper trading.
-            Models saved to data/rl_models/. Kill switch active = RL returns HOLD (safety enforced).
-          </p>
-        </div>
+            {/* Footer */}
+            <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>
+              <p className="font-mono text-[10px]" style={{ color: "#333" }}>
+                RL agent runs in parallel with existing STC pipeline — does NOT interfere with live paper trading.
+                Models saved to data/rl_models/. Kill switch active = RL returns HOLD (safety enforced).
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* System 2 tab */}
+        {activeTab === "system2" && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="font-mono text-sm font-bold tracking-wider mb-1" style={{ color: "#00ff88" }}>SYSTEM 2 — ES/NQ EXECUTOR</h2>
+              <p className="text-xs font-mono" style={{ color: "#555" }}>Bar-by-bar momentum executor running on ES and NQ futures via IBKR paper account DUP662235.</p>
+            </div>
+            <System2StatusWidget />
+            <div className="rounded-widget border p-4" style={{ backgroundColor: "#0a0a0a", borderColor: "#1a1a2e" }}>
+              <p className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color: "#555" }}>Execution</p>
+              <div className="space-y-1 font-mono text-xs" style={{ color: "#888" }}>
+                <p>Account: DUP662235 (PAPER)</p>
+                <p>Port: 4002</p>
+                <p>Command: <code className="text-signal-info">python -m engine.system2.ibkr_executor --paper</code></p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Strategy C+ tab */}
+        {activeTab === "strategyc" && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="font-mono text-sm font-bold tracking-wider mb-1" style={{ color: "#00ff88" }}>STRATEGY C+ — WEEKLY SIGNAL</h2>
+              <p className="text-xs font-mono" style={{ color: "#555" }}>Multi-factor weekly rotation signal. Execute Monday MOC (Friday close).</p>
+            </div>
+            <StrategyCPlusCard />
+            <div className="rounded-widget border p-4" style={{ backgroundColor: "#0a0a0a", borderColor: "#1a1a2e" }}>
+              <p className="text-[10px] font-mono uppercase tracking-widest mb-3" style={{ color: "#555" }}>Execution</p>
+              <div className="space-y-1 font-mono text-xs" style={{ color: "#888" }}>
+                <p>Execute Monday Market-On-Close (MOC)</p>
+                <p>Account: DUP662235 (PAPER)</p>
+                <p>Command: <code className="text-signal-info">python -m engine.strategy_c.ibkr_executor --paper</code></p>
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );

@@ -1,0 +1,50 @@
+/* Command Center named grid areas */
+.commandCenterGrid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "approvals"
+    "intelligence"
+    "status"
+    "signals"
+    "risk"
+    "trades"
+    "engine"
+    "feed";
+}
+
+@media (min-width: 1024px) {
+  .commandCenterGrid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "approvals approvals"
+      "intelligence intelligence"
+      "status status"
+      "signals signals"
+      "risk risk"
+      "trades trades"
+      "engine engine"
+      "feed feed";
+  }
+}
+
+/* Individual area assignments */
+.areaApprovals    { grid-area: approvals; }
+.areaIntelligence { grid-area: intelligence; }
+.areaStatus       { grid-area: status; }
+.areaSignals      { grid-area: signals; }
+.areaRisk         { grid-area: risk; }
+.areaTrades       { grid-area: trades; }
+.areaEngine       { grid-area: engine; }
+.areaFeed         { grid-area: feed; }
+
+.staleLabel {
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  color: #555;
+}
+
+.staleLabelWarning {
+  color: #ffaa00;
+}

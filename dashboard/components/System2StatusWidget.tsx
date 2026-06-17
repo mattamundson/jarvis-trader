@@ -1,8 +1,8 @@
 "use client";
 
 import React from "react";
-import useSWR from "swr";
-import { fetchEngine } from "@/lib/api";
+import { useEngineSystem2 } from "@/lib/engine-context";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Activity, AlertTriangle, TrendingUp, TrendingDown, Clock, Zap } from "lucide-react";
 
 interface System2Trade {
@@ -46,13 +46,9 @@ function timeAgo(ts: string) {
 }
 
 export function System2StatusWidget() {
-  const { data, error, isLoading } = useSWR<System2Status>(
-    "/system2/status",
-    () => fetchEngine<System2Status>("/system2/status"),
-    { refreshInterval: 15000, shouldRetryOnError: false }
-  );
-
-  const offline = error || (!isLoading && !data);
+  const { system2: data, isOffline, error } = useEngineSystem2();
+  const isLoading = !data && !error && !isOffline;
+  const offline = isOffline || !!error;
 
   // ── offline / engine down ──────────────────────────────────────────────────
   if (offline) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { OfflineFallback } from "@/components/OfflineFallback";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -158,10 +159,7 @@ export function OpenPositionsWidget() {
       <CardContent>
         {/* Engine offline error banner */}
         {engineOffline && (
-          <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 mb-3 text-sm text-destructive">
-            <WifiOff className="h-4 w-4 shrink-0" />
-            <span>Engine offline — cannot retrieve positions: {error}</span>
-          </div>
+          <OfflineFallback variant="card" message="Engine offline — cannot retrieve positions" className="mb-3" />
         )}
 
         {/* Non-fatal error (stale data still shown) */}
