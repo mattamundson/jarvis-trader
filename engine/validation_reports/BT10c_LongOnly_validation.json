@@ -1,0 +1,23 @@
+{
+  "bt": "BT-10c",
+  "config": {
+    "max_hold": 35,
+    "atr_target_mul": 1.5,
+    "atr_stop_mul": 0.75
+  },
+  "n_trades": 420,
+  "win_rate": 44.05,
+  "profit_factor": 1.057,
+  "sharpe": 0.263,
+  "cagr": 24.08,
+  "max_dd": -66.82,
+  "avg_win": 869.18,
+  "avg_loss": -647.4,
+  "rr_ratio": 1.343,
+  "final_equity": 18659.24,
+  "exit_breakdown": {
+    "STOP": 235,
+    "TARGET": 184,
+    "MAX_HOLD": 1
+  }
+}

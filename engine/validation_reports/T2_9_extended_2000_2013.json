@@ -1,0 +1,43 @@
+{
+  "bt": "T2-9-Extended-2000-2013",
+  "period": "2000-11-27 \u2192 2013-12-30",
+  "cagr": 7.94,
+  "sharpe": 0.929,
+  "sortino": 1.134,
+  "calmar": 0.681,
+  "max_dd": -11.65,
+  "win_rate": 54.8,
+  "ann_vol": 8.59,
+  "final_equity": 271774.24,
+  "spy_cagr": 4.56,
+  "sub_periods": [
+    {
+      "label": "Dot-com bust (2000\u20132002)",
+      "cagr": 1.07,
+      "sharpe": 0.451,
+      "max_dd": -2.85,
+      "n_weeks": 110
+    },
+    {
+      "label": "Recovery bull (2003\u20132007)",
+      "cagr": 11.87,
+      "sharpe": 1.075,
+      "max_dd": -11.65,
+      "n_weeks": 261
+    },
+    {
+      "label": "GFC bear (2008\u2013Q1'09)",
+      "cagr": 6.29,
+      "sharpe": 0.849,
+      "max_dd": -8.71,
+      "n_weeks": 65
+    },
+    {
+      "label": "Recovery bull (2009\u20132013)",
+      "cagr": 6.91,
+      "sharpe": 0.971,
+      "max_dd": -6.81,
+      "n_weeks": 248
+    }
+  ]
+}

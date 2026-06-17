@@ -1,0 +1,32 @@
+{
+  "T3_13_commodity_stress": {
+    "A": {
+      "label": "2004\u20132013 (Full commodity universe)",
+      "period": "2005-01-03 \u2192 2013-12-30",
+      "n_years": 9.0,
+      "cagr": 9.92,
+      "spy_cagr": 7.23,
+      "sharpe": 1.086,
+      "sortino": 1.393,
+      "calmar": 1.016,
+      "max_dd": -9.77,
+      "win_rate": 61.5,
+      "ann_vol": 9.05,
+      "final_equity": 233950.66
+    },
+    "B": {
+      "label": "2000\u20132013 (Commodity, pre-GLD fallback)",
+      "period": "2001-01-01 \u2192 2013-12-30",
+      "n_years": 13.0,
+      "cagr": 8.19,
+      "spy_cagr": 4.76,
+      "sharpe": 0.987,
+      "sortino": 1.211,
+      "calmar": 0.839,
+      "max_dd": -9.77,
+      "win_rate": 55.7,
+      "ann_vol": 8.3,
+      "final_equity": 278235.15
+    }
+  }
+}
