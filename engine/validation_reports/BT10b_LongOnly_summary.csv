@@ -1,0 +1,2 @@
+backtest,strategy,n_trades,win_rate,profit_factor,sharpe,sortino,calmar,max_dd_pct,cagr,total_return,pf_ci_lower_90,p_edge,dsr,gate_v2,gates_passed,gates_total
+BT-10b,CohenMESComposite_LongOnly,174,0.6839,1.1322,0.8553,21.7011,0.2988,0.0802,0.024,0.0706,0.8537,0.7725,0.3863,FAIL,7,10

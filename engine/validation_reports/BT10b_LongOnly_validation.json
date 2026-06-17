@@ -1,0 +1,94 @@
+{
+  "backtest": "BT-10b",
+  "strategy": "Cohen MES Composite \u2014 Long-Only + Overnight Hold",
+  "symbol": "SPY_1h (MES proxy)",
+  "run_timestamp": "2026-06-17T03:45:32.956979+00:00",
+  "data_range": "2023-07-05 13:30:00+00:00 \u2192 2026-06-01 19:30:00+00:00",
+  "config": {
+    "long_only": true,
+    "eod_close": false,
+    "max_hold_bars": 21,
+    "entry_threshold": 0.55,
+    "adx_min": 20.0,
+    "stop_atr_mult": 0.9,
+    "t1_atr_mult": 1.0,
+    "t2_atr_mult": 2.0,
+    "trailing_stop_after_t1": true,
+    "trailing_stop_after_t2": true
+  },
+  "signal_stats": {
+    "n_long_signals": 103,
+    "n_short_signals": 0,
+    "regime_trending_bars": 2848,
+    "regime_ranging_bars": 2220,
+    "regime_volatile_bars": 14
+  },
+  "metrics": {
+    "n_trades": 174,
+    "n_long": 174,
+    "n_short": 0,
+    "win_rate": 0.6839,
+    "long_win_rate": 0.6839,
+    "profit_factor": 1.1322,
+    "sharpe": 0.8553,
+    "sortino": 21.7011,
+    "calmar": 0.2988,
+    "cagr": 0.024,
+    "max_drawdown_pct": 0.0802,
+    "max_drawdown_dollars": 876.92,
+    "tail_ratio": 1.093,
+    "gain_to_pain": 1.1322,
+    "exposure": 0.1379,
+    "max_consecutive_losses": 6,
+    "skew": -0.1833,
+    "total_return_pct": 0.0706,
+    "final_capital": 10705.72,
+    "avg_win": 50.8,
+    "avg_loss": 97.08,
+    "avg_rr": 0.523,
+    "avg_hold_bars": 5.9,
+    "max_hold_bars_actual": 21,
+    "pf_ci_lower_90": 0.8537,
+    "p_edge": 0.7725,
+    "dsr": 0.3863,
+    "gate_v2_core": false,
+    "gate_v2_alt": false,
+    "gate_v2_verdict": "FAIL",
+    "gates_passed": "7",
+    "gates_total": 10
+  },
+  "gates_detail": {
+    "sortino_ge_1.0": "True",
+    "calmar_ge_0.5": "False",
+    "tail_ratio_ge_1.0": "True",
+    "exposure_ge_0.15": false,
+    "gain_to_pain_ge_0.5": "True",
+    "consec_losses_le_8": true,
+    "skew_ge_neg1.5": true,
+    "sharpe_ge_1.5": "False",
+    "win_rate_ge_55pct": true,
+    "max_dd_le_15pct": "True"
+  },
+  "exit_breakdown": {
+    "STOP": {
+      "n": 89,
+      "pnl": -4941.945042379768,
+      "avg_hold_bars": 5.0
+    },
+    "T1": {
+      "n": 46,
+      "pnl": 2434.2517368461777,
+      "avg_hold_bars": 3.2
+    },
+    "T2": {
+      "n": 27,
+      "pnl": 1709.8901105310701,
+      "avg_hold_bars": 6.6
+    },
+    "MAX_HOLD": {
+      "n": 12,
+      "pnl": 1503.5261312255875,
+      "avg_hold_bars": 21.0
+    }
+  }
+}
