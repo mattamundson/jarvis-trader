@@ -1,8 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import EngineWidget from "@/components/EngineWidget";
+import {
+  fetchHonestTrades,
+  type HonestTradeSet,
+  dailyPnl,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 
 // Fallback only — the real figure comes from the API's starting_balance
 // (settings.INITIAL_CAPITAL). Hardcoding it made ROI%, P&L and the displayed
@@ -20,7 +27,7 @@ interface PaperPhaseSummary {
 
 interface ROIState {
   startingBalance: number;
-  currentBalance: number;
+  // P&L comes from honest deduped set — NOT the raw engine total
   totalPnl: number;
   roi: number;
   tradingDays: number;
@@ -70,22 +77,55 @@ function StatCell({
 }
 
 export function AccountROIWidget() {
-  const transformData = (json: PaperPhaseSummary): ROIState => {
-    const startingBalance = json.starting_balance ?? STARTING_BALANCE_FALLBACK;
-    const currentBalance =
-      json.current_balance ??
-      json.balance ??
-      startingBalance + (json.total_pnl ?? 0);
+  const [honestSet, setHonestSet] = useState<HonestTradeSet | null>(null);
+  const [honestError, setHonestError] = useState<string | null>(null);
 
-    const totalPnl = json.total_pnl ?? currentBalance - startingBalance;
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const set = await fetchHonestTrades();
+        if (!cancelled) setHonestSet(set);
+      } catch (e) {
+        if (!cancelled)
+          setHonestError(e instanceof Error ? e.message : "honest trades unavailable");
+      }
+    };
+    load();
+    const id = setInterval(load, 300_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  // Derive trading days from unique close dates in honest set
+  const honestTradingDays = honestSet
+    ? new Set(dailyPnl(honestSet.trades).map((d) => d.date)).size
+    : null;
+
+  const transformData = (
+    json: PaperPhaseSummary,
+    honest: HonestTradeSet | null,
+  ): ROIState => {
+    const startingBalance = json.starting_balance ?? STARTING_BALANCE_FALLBACK;
+
+    // P&L: prefer honest deduped net; fall back to raw only if honest unavailable
+    const totalPnl = honest !== null ? honest.net : (json.total_pnl ?? 0);
+
     const roi = startingBalance ? (totalPnl / startingBalance) * 100 : 0;
-    const tradingDays = Math.max(json.trading_days ?? json.days_traded ?? 1, 1);
+
+    // Trading days: prefer honest unique close dates; fall back to raw
+    const tradingDays = Math.max(
+      honestTradingDays ?? json.trading_days ?? json.days_traded ?? 1,
+      1,
+    );
     const dailyAvgPnl = totalPnl / tradingDays;
     const annualizedROI = startingBalance
       ? ((dailyAvgPnl * 252) / startingBalance) * 100
       : 0;
 
-    return { startingBalance, currentBalance, totalPnl, roi, tradingDays, dailyAvgPnl, annualizedROI };
+    return { startingBalance, totalPnl, roi, tradingDays, dailyAvgPnl, annualizedROI };
   };
 
   return (
@@ -94,7 +134,7 @@ export function AccountROIWidget() {
       title="Account ROI"
       refreshInterval={300_000}
       render={(json) => {
-        const data = transformData(json);
+        const data = transformData(json, honestSet);
         return (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -156,6 +196,12 @@ export function AccountROIWidget() {
               <p className="font-mono text-[10px]" style={{ color: "#444" }}>
                 Paper account · ${data.startingBalance.toLocaleString()} starting capital
                 {data.tradingDays < 5 && " · Annualized projection available after 5 trading days"}
+                {honestSet && (
+                  <> · {dedupCaveat(honestSet)}</>
+                )}
+                {honestError && (
+                  <> · P&amp;L: raw (honest record unavailable)</>
+                )}
               </p>
             </CardContent>
           </Card>
