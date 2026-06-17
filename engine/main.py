@@ -122,6 +122,7 @@ from routers.messaging_router import router as messaging_router
 from routers.messaging_router import inject_dependencies as inject_messaging_deps
 from routers.observability_router import router as observability_router
 from routers.strategy_c_router import router as strategy_c_router
+from routers.system2_router import router as system2_router
 from routers.scanner_router import router as scanner_router
 from routers.scanner_router import inject_dependencies as inject_scanner_deps
 from routers.tradingview_router import router as tradingview_router
@@ -2175,6 +2176,7 @@ app.include_router(cache_router)
 app.include_router(v1_router)
 app.include_router(observability_router)
 app.include_router(strategy_c_router)
+app.include_router(system2_router)
 app.include_router(analysis_router)
 app.include_router(sentiment_router)
 app.include_router(watchlist_router)

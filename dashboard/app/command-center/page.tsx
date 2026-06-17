@@ -28,6 +28,8 @@ import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { System2StatusWidget } from "@/components/System2StatusWidget";
+import { StrategyCPlusCard } from "@/components/StrategyCPlusCard";
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -1280,7 +1282,15 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          ROW 6 — SIGNAL FEED (full width)
+          ROW 6 — SYSTEM 2 + STRATEGY C+ (two columns)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <System2StatusWidget />
+        <StrategyCPlusCard />
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ROW 7 — SIGNAL FEED (full width)
       ═══════════════════════════════════════════════════════ */}
       <div className="mt-3">
         <SignalFeedWidget />

@@ -1,0 +1,671 @@
+"use client";
+
+import React, { useCallback, useState } from "react";
+import useSWR from "swr";
+import { Activity, AlertTriangle, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { KillSwitch } from "@/components/KillSwitch";
+import { PositionsPanel } from "@/components/PositionsPanel";
+import { AgentFeed } from "@/components/AgentFeed";
+import { SentimentPanel } from "@/components/SentimentPanel";
+import { PerformancePanel } from "@/components/PerformancePanel";
+import { WatchlistBar } from "@/components/WatchlistBar";
+import { PaperTradingPanel } from "@/components/PaperTradingPanel";
+import { TradeHistory } from "@/components/TradeHistory";
+import { DailyPnlPanel } from "@/components/DailyPnlPanel";
+import { RegimeDisplay } from "@/components/RegimeDisplay";
+import { MTFConfirmationWidget } from "@/components/MTFConfirmationWidget";
+import { DualTFWidget } from "@/components/DualTFWidget";
+import { SignalHistory } from "@/components/SignalHistory";
+import { CircuitBreakerPanel } from "@/components/CircuitBreakerPanel";
+import { IBGatewayStatus } from "@/components/IBGatewayStatus";
+import { SchwabStatusWidget } from "@/components/SchwabStatusWidget";
+import { BrokerPositionsWidget } from "@/components/BrokerPositionsWidget";
+import { StrategyParamsPanel } from "@/components/StrategyParamsPanel";
+import { SessionTodayWidget } from "@/components/SessionTodayWidget";
+import { RollingWFEWidget } from "@/components/RollingWFEWidget";
+import { TradeJournalWidget } from "@/components/TradeJournalWidget";
+import { EODSummaryWidget } from "@/components/EODSummaryWidget";
+import { EventsFeedWidget } from '@/components/EventsFeedWidget';
+import UnrealizedPnLWidget from "@/components/UnrealizedPnLWidget";
+import { ProactiveValidationWidget } from "@/components/ProactiveValidationWidget";
+import { AlertHistoryWidget } from "@/components/AlertHistoryWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
+import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
+import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
+import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
+import { Badge } from "@/components/ui/badge";
+import { fetchEngine, getPendingApprovals } from "@/lib/api";
+import type {
+  HealthResponse,
+  SafetyStatus,
+  PortfolioSnapshot,
+  AgentDecision,
+  SentimentData,
+  WatchlistItem,
+  MacroSnapshot,
+} from "@/lib/api";
+
+const REFRESH_MS = 5000;
+
+function fetcher<T = unknown>(url: string): Promise<T> {
+  return fetchEngine<T>(url);
+}
+
+export default function DashboardPage() {
+  const { data: health, error: healthErr, mutate: mutateHealth } = useSWR<HealthResponse>(
+    "/health",
+    fetcher,
+    { refreshInterval: REFRESH_MS }
+  );
+
+  const { data: safety, mutate: mutateSafety } = useSWR<SafetyStatus>(
+    "/safety/status",
+    fetcher,
+    { refreshInterval: REFRESH_MS }
+  );
+
+  const { data: portfolio } = useSWR<PortfolioSnapshot>(
+    "/portfolio",
+    fetcher,
+    { refreshInterval: REFRESH_MS }
+  );
+
+  const { data: agentDecisions } = useSWR<AgentDecision[]>(
+    "/decisions/recent",
+    fetcher,
+    { refreshInterval: REFRESH_MS }
+  );
+
+  const { data: sentiments } = useSWR<SentimentData[]>(
+    "/sentiment/recent",
+    fetcher,
+    { refreshInterval: REFRESH_MS * 6 } // 30s
+  );
+
+  const { data: watchlist } = useSWR<WatchlistItem[]>(
+    "/watchlist",
+    fetcher,
+    { refreshInterval: REFRESH_MS * 2 }
+  );
+
+  // Macro snapshot for VIX header — poll every 60s (FRED data doesn't change faster)
+  const { data: macro } = useSWR<MacroSnapshot>(
+    "/macro/snapshot",
+    fetcher,
+    { refreshInterval: 60_000, shouldRetryOnError: false }
+  );
+
+  const engineReachable = !healthErr && !!health;
+  const engineHealthy =
+    health?.status === "ok" || health?.status === "healthy";
+  const engineDegraded = engineReachable && !engineHealthy;
+
+  const { data: pendingApprovals } = useSWR(
+    engineReachable ? "pending-approvals-count" : null,
+    () => getPendingApprovals(50),
+    { refreshInterval: 25_000, shouldRetryOnError: false }
+  );
+  const pendingCount = pendingApprovals?.count ?? 0;
+
+  const [analysisSymbol, setAnalysisSymbol] = React.useState("SPY");
+  const [isRunning, setIsRunning] = React.useState(false);
+  const [lastResult, setLastResult] = React.useState<Record<string, unknown> | null>(null);
+
+  const runAnalysis = useCallback(async () => {
+    if (!engineReachable || isRunning) return;
+    setIsRunning(true);
+    try {
+      const res = await fetchEngine("/pipeline/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: analysisSymbol, is_futures: false }),
+      });
+      setLastResult(res as Record<string, unknown>);
+    } catch (e) {
+      console.error("Pipeline error:", e);
+    } finally {
+      setIsRunning(false);
+    }
+  }, [engineReachable, isRunning, analysisSymbol]);
+
+  const onKillSwitchToggle = useCallback(() => {
+    mutateSafety();
+    mutateHealth();
+  }, [mutateSafety, mutateHealth]);
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 2xl:px-10 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+              <Activity className="h-5 w-5 text-accent" />
+            </div>
+            <div>
+              <h1 className="font-bold text-foreground tracking-tight">
+                JARVIS TRADER
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                IBKR Futures + Schwab Options
+              </p>
+            </div>
+            
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* IB Gateway compact status card */}
+            <IBGatewayStatus />
+
+            {/* Engine connection status */}
+            {engineReachable ? (
+              <div className="flex items-center gap-1.5 text-xs text-bull">
+                <Wifi className="h-3.5 w-3.5" />
+                <span>
+                  {engineDegraded ? "Engine connected (degraded)" : "Engine connected"}
+                </span>
+                {health?.schwab_connected && <Badge variant="info">Schwab</Badge>}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs text-bear">
+                <WifiOff className="h-3.5 w-3.5" />
+                <span>Engine offline</span>
+              </div>
+            )}
+
+            {/* Mode badges */}
+            {health?.live_trading && <Badge variant="bull">LIVE</Badge>}
+            {health?.paper_mode && <Badge variant="info">PAPER MODE</Badge>}
+            {health?.kill_switch_active && (
+              <Badge variant="bear">
+                <AlertTriangle className="mr-1 h-3 w-3" />
+                KILL SWITCH
+              </Badge>
+            )}
+
+            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin opacity-40" />
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 2xl:px-10 py-4 space-y-4">
+        {/* Macro / VIX header bar */}
+        <MacroBar macro={macro ?? null} />
+
+        {/* Watchlist ticker bar — live price feed */}
+        <WatchlistBar items={watchlist ?? []} />
+
+        {/* EOD Summary — daily P&L and validation gates */}
+        <EODSummaryWidget />
+
+        {/* Circuit breaker safety panel — safety-critical, shown before trading panels */}
+        <CircuitBreakerPanel />
+
+        {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
+        <ProactiveValidationWidget />
+
+        {/* Signal Flow — per-instrument STC values and pipeline block stage */}
+        <SignalFlowWidget />
+
+        {/* Walk-Forward / Paper Trading Status */}
+        <WFEStatusCard />
+
+        {/* Rolling WFE Monitoring */}
+        <RollingWFEWidget />
+
+        {/* Main grid */}
+        <div className="grid grid-cols-12 gap-4">
+          {/* Left column — positions + performance + regime */}
+          <div className="col-span-12 lg:col-span-3 space-y-4">
+            <SessionTodayWidget />
+            <PositionsPanel
+              positions={portfolio?.positions ?? []}
+              totalEquity={portfolio?.total_equity ?? 0}
+              dailyPnl={portfolio?.daily_pnl ?? 0}
+              unrealizedPnl={portfolio?.unrealized_pnl ?? 0}
+            />
+            <PerformancePanel
+              metrics={null}
+              equityCurve={[]}
+            />
+            <RegimeDisplay />
+            <MTFConfirmationWidget symbol="MES" />
+            <DualTFWidget />
+          </div>
+
+          {/* Center column — agent activity feed */}
+          <div className="col-span-12 lg:col-span-6">
+            <AgentFeed decisions={agentDecisions ?? []} />
+          </div>
+
+          {/* Right column — safety + sentiment */}
+          <div className="col-span-12 lg:col-span-3 space-y-4">
+            <KillSwitch
+              isActive={safety?.kill_switch_active ?? false}
+              reason={safety?.kill_switch_reason}
+              onToggle={onKillSwitchToggle}
+            />
+
+            {/* Schwab connection status */}
+            <SchwabStatusWidget />
+
+            {/* Broker position reconciliation */}
+            <BrokerPositionsWidget />
+
+            {/* Unrealized P&L — live paper positions with mark-to-market */}
+            <UnrealizedPnLWidget />
+
+            {/* Safety metrics */}
+            {safety && (
+              <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                  Risk Monitor
+                </p>
+                <RiskRow
+                  label="Daily P&L"
+                  value={`$${(safety.daily_pnl ?? 0).toFixed(0)}`}
+                  limit={`limit: $${Math.abs(safety.max_daily_loss ?? 0).toFixed(0)}`}
+                  pct={Math.abs(safety.daily_pnl ?? 0) / Math.abs(safety.max_daily_loss || 1)}
+                  danger={(safety.daily_pnl ?? 0) < (safety.max_daily_loss ?? 0)}
+                />
+                <RiskRow
+                  label="Drawdown"
+                  value={`${((safety.current_drawdown ?? 0) * 100).toFixed(1)}%`}
+                  limit="limit: 10%"
+                  pct={(safety.current_drawdown ?? 0) / 0.10}
+                  danger={(safety.current_drawdown ?? 0) > 0.08}
+                />
+                <RiskRow
+                  label="Orders Today"
+                  value={String(safety.orders_today ?? 0)}
+                  limit="limit: 50"
+                  pct={(safety.orders_today ?? 0) / 50}
+                  danger={(safety.orders_today ?? 0) > 40}
+                />
+              </div>
+            )}
+
+            <SentimentPanel sentiments={sentiments ?? []} />
+
+            {/* Alert History — fired P&L threshold alerts */}
+            <AlertHistoryWidget />
+
+            {/* Discord Intelligence — Corey Auction Tools signal context */}
+            <DiscordIntelligenceWidget />
+
+            {/* Bookmark Themes — Claude-clustered weekly themes from Discord bookmarks */}
+            <BookmarkThemesPanel />
+
+            {/* Strategy Parameters */}
+            <StrategyParamsPanel />
+
+            {/* Run Analysis */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Run Analysis
+              </p>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono uppercase focus:outline-none focus:ring-1 focus:ring-accent"
+                  value={analysisSymbol}
+                  onChange={(e) => setAnalysisSymbol(e.target.value.toUpperCase())}
+                  placeholder="SPY"
+                  maxLength={10}
+                />
+                <button
+                  onClick={runAnalysis}
+                  disabled={!engineReachable || isRunning}
+                  className="rounded-lg bg-accent/20 px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isRunning ? "Running…" : "Analyze"}
+                </button>
+              </div>
+              {lastResult && (
+                <div className="rounded-lg bg-muted/50 p-2 text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Action</span>
+                    <span className={`font-bold uppercase ${
+                      String(lastResult.final_action) === "buy" ? "text-bull" :
+                      String(lastResult.final_action) === "sell" ? "text-bear" : "text-muted-foreground"
+                    }`}>{String(lastResult.final_action ?? "—")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Confidence</span>
+                    <span className="tabular-nums">{((Number(lastResult.confidence) || 0) * 100).toFixed(0)}%</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Paper trading positions panel — full width below main grid */}
+        <PaperTradingPanel />
+
+        {/* Live pipeline reasoning — full 5-stage breakdown for each trade decision */}
+        <LiveTradeReasoningWidget />
+
+        {/* Trade journal with full signal provenance (US-1404) */}
+        <TradeJournalWidget />
+
+        {/* Persisted history — full width, three-column on large screens */}
+        <div className="grid grid-cols-12 gap-4">
+          <div className="col-span-12 lg:col-span-6">
+            <TradeHistory />
+          </div>
+          <div className="col-span-12 lg:col-span-3">
+            <SignalHistory />
+          </div>
+          <div className="col-span-12 lg:col-span-3">
+            <DailyPnlPanel />
+          </div>
+        </div>
+      
+      <div className="mt-8">
+        <EventsFeedWidget />
+      </div>
+    
+</main>
+    </div>
+  );
+}
+
+// ── Macro Bar ────────────────────────────────────────────────────────────
+
+function MacroBar({ macro }: { macro: MacroSnapshot | null }) {
+  if (!macro) return null;
+
+  const vix = typeof macro.vix === "number" ? macro.vix : null;
+  const fedFunds = typeof macro.fed_funds_rate === "number" ? macro.fed_funds_rate : null;
+  const tenYear = typeof macro.ten_year_yield === "number" ? macro.ten_year_yield : null;
+
+  // Determine VIX regime color
+  function vixColor(v: number): string {
+    if (v >= 30) return "text-bear";
+    if (v >= 20) return "text-warn";
+    return "text-bull";
+  }
+
+  const hasAnyData = vix != null || fedFunds != null || tenYear != null;
+  if (!hasAnyData) return null;
+
+  return (
+    <div className="flex items-center gap-5 rounded-lg border border-border bg-card/60 px-4 py-2 overflow-x-auto scrollbar-none">
+      <span className="font-mono text-[10px] font-bold text-muted-foreground tracking-widest shrink-0 uppercase">
+        Macro
+      </span>
+      <div className="h-4 w-px bg-border shrink-0" />
+
+      {vix != null && (
+        <MacroStat
+          label="VIX"
+          value={vix.toFixed(2)}
+          colorClass={vixColor(vix)}
+          tag={vix >= 30 ? "HIGH FEAR" : vix >= 20 ? "ELEVATED" : "LOW"}
+          tagColor={vixColor(vix)}
+        />
+      )}
+
+      {fedFunds != null && (
+        <MacroStat
+          label="FED FUNDS"
+          value={`${fedFunds.toFixed(2)}%`}
+          colorClass="text-foreground/80"
+        />
+      )}
+
+      {tenYear != null && (
+        <MacroStat
+          label="10Y YIELD"
+          value={`${tenYear.toFixed(2)}%`}
+          colorClass={tenYear >= 5 ? "text-bear" : tenYear >= 4 ? "text-warn" : "text-foreground/80"}
+        />
+      )}
+    </div>
+  );
+}
+
+function MacroStat({
+  label,
+  value,
+  colorClass,
+  tag,
+  tagColor,
+}: {
+  label: string;
+  value: string;
+  colorClass: string;
+  tag?: string;
+  tagColor?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      <span className="font-mono text-[10px] text-muted-foreground tracking-wider">{label}</span>
+      <span className={`font-mono text-xs font-bold tabular-nums ${colorClass}`}>{value}</span>
+      {tag && (
+        <span
+          className={`font-mono text-[9px] font-semibold tracking-widest px-1.5 py-0.5 rounded border ${
+            tagColor === "text-bear"
+              ? "border-bear/30 bg-bear/10 text-bear"
+              : tagColor === "text-warn"
+              ? "border-warn/30 bg-warn/10 text-warn"
+              : "border-bull/30 bg-bull/10 text-bull"
+          }`}
+        >
+          {tag}
+        </span>
+      )}
+    </div>
+  );
+}
+
+
+// ── WFE / Paper Trading Status Card ──────────────────────────────────────
+
+interface PaperStatusEntry {
+  status: string;
+  wfe: number;
+  wfe_label: string;
+  cleared_date?: string;
+  risk_per_trade?: string;
+  config?: string;
+  target_wfe?: number;
+}
+
+interface RegimeStatusEntry {
+  current_regime: string;
+  regime_breakdown_30d?: Record<string, number>;
+  adaptive_stc_os?: number;
+  adaptive_stc_ob?: number;
+}
+
+const FALLBACK_PAPER: Record<string, PaperStatusEntry> = {
+  "MGC_1d": {
+    status: "ACTIVE",
+    wfe: 0.88,
+    wfe_label: "EXCELLENT",
+    cleared_date: "2026-03-29",
+    risk_per_trade: "0.25%",
+    config: "adaptive_regime=ON",
+  },
+  "MNQ_1h": {
+    status: "RESEARCH",
+    wfe: 0.34,
+    wfe_label: "ACCEPTABLE",
+    target_wfe: 0.40,
+  },
+  "MCL_1h": {
+    status: "NO-TRADE",
+    wfe: -0.31,
+    wfe_label: "FAILED",
+    target_wfe: 0.40,
+  },
+};
+
+const FALLBACK_REGIME: Record<string, RegimeStatusEntry> = {
+  "MGC_1d": { current_regime: "TRENDING" },
+  "MNQ_1h": { current_regime: "RANGING" },
+  "MCL_1h": { current_regime: "\u2014" },
+};
+
+function WFEStatusCard() {
+  const { data: paperData } = useSWR<Record<string, PaperStatusEntry>>(
+    "/backtest/paper-status",
+    fetcher,
+    { refreshInterval: 30_000, fallbackData: FALLBACK_PAPER, shouldRetryOnError: false }
+  );
+  const { data: regimeData } = useSWR<Record<string, RegimeStatusEntry>>(
+    "/backtest/regime-status",
+    fetcher,
+    { refreshInterval: 30_000, fallbackData: FALLBACK_REGIME, shouldRetryOnError: false }
+  );
+
+  const paper = paperData ?? FALLBACK_PAPER;
+  const regime = regimeData ?? FALLBACK_REGIME;
+
+  const symbols = Object.keys(paper);
+
+  function statusColor(status: string): string {
+    if (status === "ACTIVE") return "#00ff88";
+    if (status === "RESEARCH") return "#ffcc00";
+    return "#ff4444";
+  }
+
+  function statusDot(status: string): string {
+    if (status === "ACTIVE") return "\uD83D\uDFE2";
+    if (status === "RESEARCH") return "\uD83D\uDFE1";
+    return "\uD83D\uDD34";
+  }
+
+  function wfeColor(wfe: number): string {
+    if (wfe >= 0.70) return "#00ff88";
+    if (wfe >= 0.30) return "#ffcc00";
+    return "#ff4444";
+  }
+
+  return (
+    <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: "#00ff88" }}>
+            PAPER TRADING STATUS
+          </span>
+          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border" style={{ borderColor: "#00d4ff33", backgroundColor: "#00d4ff10", color: "#00d4ff" }}>
+            WFE
+          </span>
+        </div>
+        <span className="font-mono text-[9px]" style={{ color: "#555" }}>
+          Walk-Forward Efficiency
+        </span>
+      </div>
+
+      {/* Table */}
+      <div className="font-mono text-xs">
+        {/* Header row */}
+        <div className="grid grid-cols-4 gap-2 pb-2 mb-2" style={{ borderBottom: "1px solid #1a1a2e" }}>
+          <span className="text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Symbol</span>
+          <span className="text-[10px] uppercase tracking-wider text-center" style={{ color: "#555" }}>WFE</span>
+          <span className="text-[10px] uppercase tracking-wider text-center" style={{ color: "#555" }}>Status</span>
+          <span className="text-[10px] uppercase tracking-wider text-center" style={{ color: "#555" }}>Regime</span>
+        </div>
+
+        {/* Data rows */}
+        {symbols.map((key) => {
+          const entry = paper[key];
+          const reg = regime[key];
+          const displayName = key.replace("_", " ");
+          const currentRegime = reg?.current_regime ?? "\u2014";
+
+          return (
+            <div
+              key={key}
+              className="grid grid-cols-4 gap-2 py-1.5 items-center"
+              style={{ borderBottom: "1px solid #111" }}
+            >
+              {/* Symbol */}
+              <span className="font-semibold" style={{ color: "#e0e0e0" }}>
+                {displayName}
+              </span>
+
+              {/* WFE */}
+              <span className="text-center tabular-nums font-bold" style={{ color: wfeColor(entry.wfe) }}>
+                {entry.wfe.toFixed(2)}
+              </span>
+
+              {/* Status */}
+              <span className="text-center" style={{ color: statusColor(entry.status) }}>
+                {statusDot(entry.status)} {entry.status}
+              </span>
+
+              {/* Regime */}
+              <span className="text-center" style={{ color: currentRegime === "\u2014" ? "#555" : "#00d4ff" }}>
+                {currentRegime !== "\u2014" ? `${currentRegime} (NOW)` : "\u2014"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer — show config for ACTIVE symbols */}
+      {symbols.some((k) => paper[k].status === "ACTIVE") && (
+        <div className="mt-3 pt-2" style={{ borderTop: "1px solid #1a1a2e" }}>
+          {symbols
+            .filter((k) => paper[k].status === "ACTIVE")
+            .map((k) => {
+              const entry = paper[k];
+              return (
+                <div key={k} className="flex items-center gap-3 font-mono text-[10px]" style={{ color: "#555" }}>
+                  <span style={{ color: "#00ff88" }}>{k.replace("_", " ")}</span>
+                  <span>cleared: {entry.cleared_date ?? "\u2014"}</span>
+                  <span>risk: {entry.risk_per_trade ?? "\u2014"}</span>
+                  <span style={{ color: "#00d4ff" }}>{entry.config ?? ""}</span>
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Risk Row ──────────────────────────────────────────────────────────────
+
+function RiskRow({
+  label,
+  value,
+  limit,
+  pct,
+  danger,
+}: {
+  label: string;
+  value: string;
+  limit: string;
+  pct: number;
+  danger: boolean;
+}) {
+  const clampedPct = Math.min(pct, 1);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono font-semibold" style={{ color: danger ? "#ff4444" : "#e0e0e0" }}>
+            {value}
+          </span>
+          <span className="font-mono" style={{ color: "#555" }}>/ {limit}</span>
+        </div>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "#1a1a2e" }}>
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${clampedPct * 100}%`,
+            backgroundColor: danger ? "#ff4444" : clampedPct > 0.7 ? "#ffcc00" : "#00ff88",
+          }}
+        />
+      </div>
+      <p className="font-mono text-[10px]" style={{ color: "#555" }}>{limit}</p>
+    </div>
+  );
+}

@@ -221,39 +221,6 @@ export default function PortfolioPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-              <Activity className="h-5 w-5 text-accent" />
-            </div>
-            <div>
-              <h1 className="font-bold text-foreground tracking-tight">JARVIS TRADER</h1>
-              <p className="text-xs text-muted-foreground">Multi-Market Portfolio</p>
-            </div>
-            <nav className="hidden lg:flex items-center gap-4 ml-6">
-              {[
-                ["/", "Home"], ["/analysis", "Analysis"], ["/backtest", "Backtest"],
-                ["/performance", "Performance"], ["/validation", "Validation"],
-                ["/journal", "Journal"], ["/paper", "Paper"], ["/watchlist", "Watchlist"],
-                ["/scorecard", "Scorecard"], ["/settings", "Settings"], ["/health", "Health"],
-                ["/options", "Options"], ["/crypto", "Crypto"], ["/discord", "Discord Intel"], ["/learning", "Learning"],
-              ].map(([href, label]) => (
-                <a key={href} href={href} className={`text-xs transition-colors ${href === "/portfolio" ? "text-accent font-semibold" : "text-muted-foreground hover:text-foreground"}`}>
-                  {label}
-                </a>
-              ))}
-            </nav>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] text-muted-foreground">
-              {health?.count ?? 0} modules active
-            </span>
-          </div>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
         {/* Daily target progress */}

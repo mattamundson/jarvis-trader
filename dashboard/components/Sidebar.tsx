@@ -54,7 +54,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Trading",
     items: [
-      { label: "Dashboard", href: "/", icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
+      { label: "Dashboard", href: "/dashboard", icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
       { label: "Pending Approvals", href: "/trades/pending-approvals", icon: <Zap className="h-3.5 w-3.5" /> },
       { label: "Trade History", href: "/trades", icon: <History className="h-3.5 w-3.5" /> },
       { label: "Paper Trading", href: "/paper", icon: <Layers className="h-3.5 w-3.5" /> },
@@ -109,7 +109,7 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   function isActive(href: string): boolean {
-    if (href === "/") return pathname === "/";
+    if (href === "/dashboard") return pathname === "/" || pathname === "/dashboard";
     return pathname === href || pathname.startsWith(href + "/");
   }
 
