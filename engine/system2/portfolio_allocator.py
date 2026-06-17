@@ -45,12 +45,16 @@ _SYS1_TARGET_MAX = 0.80   # 80% max
 _SYS2_TARGET_MIN = 0.10   # 10% min for System 2 (can be idle)
 _SYS2_TARGET_MAX = 0.30   # 30% max
 
-# Contract notional approximations (used when broker value unavailable)
-_CONTRACT_NOTIONAL: dict[str, float] = {
-    "ES":  "dynamic",   # ES: ~50 * price (~$275k at ES=5500)
-    "NQ":  "dynamic",   # NQ: ~20 * price (~$380k at NQ=19000)
-    "MES": "dynamic",
-    "MNQ": "dynamic",
+# Initial margin requirements per contract (IBKR overnight, USD)
+# Using margin rather than notional — futures are leveraged instruments.
+# Notional of 1 ES (~$370k) against a $50k account would always block orders.
+# Margin is the actual capital at risk / collateral required.
+_IBKR_INITIAL_MARGIN: dict[str, float] = {
+    "ES":  13_200.0,   # E-mini S&P 500 full (CME overnight margin ~$13,200)
+    "NQ":  19_800.0,   # E-mini NASDAQ-100 full (CME overnight margin ~$19,800)
+    "MES":  1_320.0,   # Micro E-mini S&P 500 (1/10 of ES)
+    "MNQ":  1_980.0,   # Micro E-mini NASDAQ-100 (1/10 of NQ)
+    "MCL":    572.0,   # Micro Crude Oil
 }
 
 _SYS1_SIGNAL_PATH = Path(__file__).resolve().parents[1] / "strategy_c" / "output" / "strategy_c_plus_live_signal.json"
@@ -264,16 +268,15 @@ class PortfolioAllocator:
         symbol: str, contracts: int, current_price: Optional[float] = None
     ) -> float:
         """
-        Approximate notional value for a futures position.
-        Uses live price if provided, otherwise conservative estimate.
+        Return IBKR initial margin (not notional) for a futures position.
+
+        Futures are leveraged — 1 ES contract has ~$370k notional but only
+        ~$13,200 initial margin. Using notional makes the cap check nonsensical
+        (every order would show 700%+ exposure against a $50k account).
+        Using margin correctly reflects the capital committed / collateral required.
         """
-        mult = _MULT.get(symbol, 50.0)
-        if current_price:
-            return mult * current_price * contracts
-        # Conservative estimates if no price available
-        defaults = {"ES": 5500.0, "NQ": 19500.0, "MES": 5500.0, "MNQ": 19500.0}
-        price = defaults.get(symbol, 5000.0)
-        return mult * price * contracts
+        margin_per_contract = _IBKR_INITIAL_MARGIN.get(symbol, 13_200.0)
+        return margin_per_contract * contracts
 
     # ── Reporting ─────────────────────────────────────────────────────────────
     async def get_allocation_snapshot(self) -> dict:

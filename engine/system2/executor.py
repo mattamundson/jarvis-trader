@@ -117,8 +117,8 @@ def _build_ibkr_executor(paper: bool = True):
     try:
         from execution.ibkr_executor import IBKRExecutor
         from risk.safety_layer import SafetyLayer
-    except ImportError as e:
-        logger.warning(f"Could not import IBKR executor: {e}")
+    except Exception as e:
+        logger.warning(f"Could not import IBKR executor: {e} — running in dry-run mode")
         return None
 
     class _Settings:
@@ -288,10 +288,13 @@ class System2Executor:
         _log_signal(sig)
 
         # Portfolio allocation check before submitting
+        # Use 1 contract for the cap check — order manager sizes by 1% risk
+        # which always yields 1 contract for ES/NQ on a $50k account.
+        # Passing 2 (old estimate) was incorrectly blocking every signal.
         check = await self._allocator.check_new_order(
-            symbol       = sig.symbol,
-            contracts    = 2,  # estimate; order manager will size precisely
-            side         = sig.direction,
+            symbol        = sig.symbol,
+            contracts     = 1,
+            side          = sig.direction,
             current_price = sig.entry_price,
         )
         if not check.approved:
