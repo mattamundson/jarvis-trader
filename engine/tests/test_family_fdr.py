@@ -140,6 +140,39 @@ def test_run_on_real_verdicts_smoke():
     assert set(report["robust_edge_ids"]).issubset(set(report["gate_pass_ids"]))
 
 
+# --- CPCV verdicts excluded from the sign-test family ----------------------
+
+
+def test_build_family_excludes_cpcv_verdicts():
+    # A CPCV verdict reports many overlapping folds as "windows" -- not
+    # independent, so it must be excluded from the binomial sign-test family
+    # rather than over-credited alongside sequential-WFO verdicts.
+    cpcv_verdict = {
+        "_id": "MGC_singlefinder_fill_cpcv",
+        "verdict": "PASS",
+        "symbol": "MGC",
+        "family": "singlefinder_fill",
+        "wfo_config": {"cv_method": "cpcv", "n_oos_windows": 15},
+        "gate_v2_metrics": {"p_edge": 0.73, "pf_ci_lower": 1.2, "dsr": 0.4},
+    }
+    seq_verdict = {
+        "_id": "MGC_singlefinder_fill_rank1",
+        "verdict": "PASS",
+        "symbol": "MGC",
+        "family": "singlefinder_fill",
+        "wfo_config": {"n_oos_windows": 5},
+        "gate_v2_metrics": {"p_edge": 0.6, "pf_ci_lower": 1.05, "dsr": 0.2},
+    }
+    family, excluded = ff.build_family([cpcv_verdict, seq_verdict])
+    fam_ids = {r["id"] for r in family}
+    exc_ids = {e["id"] for e in excluded}
+    assert "MGC_singlefinder_fill_cpcv" in exc_ids
+    assert "MGC_singlefinder_fill_cpcv" not in fam_ids
+    assert "MGC_singlefinder_fill_rank1" in fam_ids  # sequential stays in the family
+    cpcv_reason = next(e["reason"] for e in excluded if e["id"] == "MGC_singlefinder_fill_cpcv")
+    assert "overlap" in cpcv_reason.lower()
+
+
 # --- append_history ledger -------------------------------------------------
 
 import json  # noqa: E402
