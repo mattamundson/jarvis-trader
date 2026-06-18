@@ -206,6 +206,10 @@ def test_run_config_grid_size():
 def test_find_data_file_resolves():
     from backtest.run_mes_overnight_rank1 import _find_data_file
     data_file = _find_data_file()
-    assert data_file is not None, "Could not find MES 1h cache -- check main checkout cache"
+    if data_file is None:
+        # The MES 1h CSV cache is gitignored and only present in a local
+        # checkout -- CI runners have no cache, so resolution correctly
+        # returns None. Skip rather than fail in that environment.
+        pytest.skip("MES 1h cache not available (no local cache, e.g. CI)")
     assert data_file.exists(), f"Data file path doesn't exist: {data_file}"
     assert data_file.suffix == ".csv"
