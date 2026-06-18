@@ -280,7 +280,7 @@ export function MaxDrawdownTrackerWidget() {
             <p className="text-[10px] text-muted-foreground">
               Recovery formula: drawdown / (1 &minus; drawdown) &times; 100 &mdash; A{" "}
               {drawdownPct.toFixed(1)}% drawdown requires a{" "}
-              {isFinite(recoveryPct) ? recoveryPct.toFixed(1) : "&mdash;"}% gain to recover.
+              {isFinite(recoveryPct) ? `${recoveryPct.toFixed(1)}%` : "—"} gain to recover.
               {honestSet && <> &middot; {dedupCaveat(honestSet)}</>}
             </p>
           </>

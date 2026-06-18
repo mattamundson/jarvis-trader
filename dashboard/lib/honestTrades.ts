@@ -213,6 +213,6 @@ export function perTradeSharpe(trades: HonestTrade[]): number | null {
 /** Stable caveat string for "raw rows collapsed" disclosure. */
 export function dedupCaveat(set: HonestTradeSet): string {
   return set.relogged > 0
-    ? `${set.trades} real trades · ${set.relogged} re-logged rows collapsed`
-    : `${set.trades} real trades`;
+    ? `${set.trades.length} real trades · ${set.relogged} re-logged rows collapsed`
+    : `${set.trades.length} real trades`;
 }
