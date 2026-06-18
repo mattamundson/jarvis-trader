@@ -164,6 +164,27 @@ class TradingConfig(BaseSettings):
         description="Reduced max contracts when both instruments in a correlated pair are open",
     )
 
+    # ── Volatility-Targeting Sizing (default OFF; OOS-validated on MGC) ───
+    # Scales contracts toward a constant target volatility: a final risk
+    # overlay applied after VIX scaling. w = clip(target_vol / realized_vol,
+    # 0, max_leverage). DEFAULT OFF — inert until explicitly enabled.
+    # Evidence: backtest/vol_target_wfo.py — MGC trend OOS Sharpe +0.69,
+    # MaxDD -59% (ROBUST_OOS, 6/10 windows); realized vol read from the live
+    # technical indicator rv_20_ann_pct (same 20-bar annualized formula).
+    VOL_TARGET_ENABLED: bool = Field(
+        False,
+        description="Enable volatility-targeting position-size overlay (default OFF)",
+    )
+    VOL_TARGET_MAX_LEVERAGE: float = Field(
+        3.0,
+        description="Max vol-target up-scaling multiplier (clip ceiling for target/realized vol)",
+    )
+    VOL_TARGET_PER_SYMBOL: dict = Field(
+        default={"MGC": 13.3},
+        description="Per-symbol target annualized realized vol (%) for vol-targeting sizing "
+        "(MGC=13.3 calibrated from the WFO study global target_vol)",
+    )
+
     # Futures position-size gate uses MARGIN (not notional). 1 MES is ~$7,130
     # notional but only ~$1,320 overnight maintenance margin at IBKR. Against a
     # $10K paper account, notional-based math rejects every futures order as
