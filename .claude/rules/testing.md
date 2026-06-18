@@ -27,19 +27,25 @@ cd dashboard && pnpm run build
 
 ## No look-ahead bias (point-in-time discipline)
 
-Every backtest, walk-forward, and WFE run must use **only data that was available at the
-decision timestamp**. No future bars, no revised fundamentals, no end-of-day values applied
-intrabar, no indicator warmed up on data the live agent would not yet have seen. A signal
-computed at bar `t` may read bars `≤ t` only.
+Every backtest, walk-forward, and WFE run must use only data that was actually
+available at the simulated decision time. "Time travel is cheating" — a strategy that
+reads a bar, a news item, an earnings print, or a regime label from the future is not a
+strategy, it is a leak, and any Sharpe it produces is curve-fit noise.
 
-This is an invariant, not a guideline: a strategy that "wins" by peeking at the future is
-curve-fit noise that will not survive paper trading. We already enforce pieces of it
-(`engine/backtest/news_blackout.py`, regime gating, walk-forward splits) — this rule names
-the whole. When in doubt, ask: "would the live pipeline have had this value at this instant?"
-If no, the backtest is cheating.
+- **Indicators / signals**: a decision at bar `t` may only use bars `≤ t`. No
+  centered windows, no `shift(-n)`, no full-series `.fit()` before the split.
+- **News / events**: gate on publish timestamp, not event date. We already enforce
+  pieces of this — see `engine/backtest/news_blackout.py` and the regime gating in
+  `engine/backtest/regime.py` — but the invariant applies everywhere, not just there.
+- **Labels / outcomes**: realized P&L and outcome hygiene
+  (`engine/analytics/outcome_hygiene.py`) are training/evaluation targets only; they
+  must never feed back into a same-bar decision.
+- **Live vs. backtest parity**: prefer live/forward evaluation
+  (`engine/backtest/forward_test.py`, `paper_tracker.py`) when a backtest result looks
+  too good — out-of-sample live is the honest scoreboard.
 
 Source: DeepFund, "Time Travel is Cheating: Going Live with DeepFund for Real-Time Fund
-Investment Benchmarking" (arXiv 2505.11065, 2025), surfaced via the
+Investment Benchmarking" (arXiv 2505.11065, HKUSTDial, 2025), surfaced via the
 `LLMQuant/awesome-trading-agents` list.
 
 ## When Adding New Features
