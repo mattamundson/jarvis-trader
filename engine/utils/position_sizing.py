@@ -217,6 +217,68 @@ def calculate_position_size(
     )
 
 
+def apply_vol_target_scaling(
+    contracts: int,
+    symbol: str,
+    realized_vol_ann_pct: float | None,
+    target_vol_by_symbol: dict[str, float] | None,
+    max_leverage: float = 3.0,
+    max_contracts: int = 2,
+) -> tuple[int, str]:
+    """
+    Volatility-targeting position-size overlay (pure function, gate it upstream).
+
+    Scales an already-computed contract count toward a constant target
+    volatility, so quiet regimes size up and turbulent regimes size down:
+
+        w      = clip(target_vol / realized_vol, 0, max_leverage)
+        scaled = clamp(round(contracts * w), 1, max_contracts)
+
+    This is the live-sizer analogue of the backtest overlay validated in
+    ``backtest/vol_target_wfo.py`` (MGC trend: OOS Sharpe +0.69, MaxDD -59%).
+    It is a *risk overlay only* — it never creates or vetoes a trade, only
+    rescales size, and it floors at 1 contract to match the rest of the sizer
+    (an approved trade is never zeroed out). Integer contract granularity means
+    the effect is coarser for micros than the continuous backtest weight.
+
+    Caller is responsible for the enable gate (``settings.VOL_TARGET_ENABLED``);
+    this function is a no-op passthrough whenever it lacks the inputs to scale.
+
+    Args:
+        contracts: Base contract count from the upstream sizing chain.
+        symbol: Instrument ticker (looked up in ``target_vol_by_symbol``).
+        realized_vol_ann_pct: 20-bar annualized realized vol (%) at decision
+            time (the live ``rv_20_ann_pct`` technical indicator). None/<=0 =>
+            passthrough.
+        target_vol_by_symbol: Per-symbol target annualized vol (%). A symbol
+            missing from the map => passthrough (overlay does not apply).
+        max_leverage: Clip ceiling on the up-scaling multiplier.
+        max_contracts: Hard ceiling; the scaled result is clamped to it.
+
+    Returns:
+        (scaled_contracts, reasoning) — ``scaled_contracts == contracts`` on any
+        passthrough path.
+    """
+    if contracts <= 0:
+        return contracts, "no base contracts; vol-target passthrough"
+
+    target = (target_vol_by_symbol or {}).get(symbol)
+    if target is None or target <= 0:
+        return contracts, f"no target_vol configured for {symbol}; vol-target passthrough"
+
+    if realized_vol_ann_pct is None or realized_vol_ann_pct <= 0:
+        return contracts, "realized vol unavailable; vol-target passthrough"
+
+    w = min(max(target / realized_vol_ann_pct, 0.0), max_leverage)
+    scaled = max(1, min(int(round(contracts * w)), max_contracts))
+    reasoning = (
+        f"vol-target: target={target:.2f}% / rv={realized_vol_ann_pct:.2f}% "
+        f"=> w={w:.2f} (cap {max_leverage:.1f}); contracts {contracts} -> {scaled} "
+        f"[clamp 1..{max_contracts}]"
+    )
+    return scaled, reasoning
+
+
 # ---------------------------------------------------------------------------
 # Spot crypto sizing — fractional quantity instead of per-point multipliers
 # ---------------------------------------------------------------------------
