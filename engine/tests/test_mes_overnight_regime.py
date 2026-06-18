@@ -126,5 +126,8 @@ def test_regime_grid_size_and_baseline():
 def test_regime_find_data_file_resolves():
     from backtest.run_mes_overnight_regime_rank1 import _find_data_file
     data_file = _find_data_file()
-    assert data_file is not None, "Could not find MES 1h cache"
+    if data_file is None:
+        # MES 1h CSV cache is gitignored / local-only; CI has no cache, so
+        # resolution returns None. Skip rather than fail there.
+        pytest.skip("MES 1h cache not available (no local cache, e.g. CI)")
     assert data_file.exists() and data_file.suffix == ".csv"
