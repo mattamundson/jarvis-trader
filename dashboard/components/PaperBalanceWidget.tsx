@@ -178,7 +178,14 @@ export function PaperBalanceWidget() {
           </p>
         </div>
 
-        <p className="text-xs text-muted-foreground mt-3">Refreshes every 2m</p>
+        {/* Balance and return% are broker-computed from the paper-phase-summary endpoint
+            and reflect the actual account state, not a re-summed trade list.
+            "Trades" count and "Total P&L" here come from the raw engine record and may
+            include re-logged duplicates; refer to the deduped stats widgets for accurate P&L. */}
+        <p className="text-[10px] text-muted-foreground/60 mt-2">
+          Balance &amp; return from broker account · trade count may include re-logs
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">Refreshes every 2m</p>
       </CardContent>
     </Card>
   );
