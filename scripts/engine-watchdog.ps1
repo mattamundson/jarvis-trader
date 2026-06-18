@@ -78,6 +78,30 @@ if ($healthy) {
 
 Write-Log "FAIL: /health unresponsive after $ProbeCount consecutive probes (${ProbeTimeoutSec}s each) -- checking port $Port"
 
+
+# --- Log-recency guard (2026-06-18, Amo-authorized) ------------------------
+# /health can stay unresponsive for >1min during RTH-open pipeline saturation
+# while the engine event loop is perfectly alive and working. Before the
+# disruptive kill+restart, confirm the engine is genuinely dead via log
+# freshness: a line written in the last 60s means the loop is running
+# (apscheduler jobs, IBKR bars, TVStreamer reads), so a slow /health is
+# saturation, not death -- skip the restart. A truly hung loop stops logging,
+# so a stale log still restarts. Stat failure falls through to restart
+# (fail-safe, preserves prior behavior).
+$EngineLog = "$env:USERPROFILE\.pm2\logs\jarvis-engine-error.log"
+try {
+    $logAgeSec = ((Get-Date) - (Get-Item $EngineLog -ErrorAction Stop).LastWriteTime).TotalSeconds
+    if ($logAgeSec -lt 60) {
+        Write-Log ("SKIP: /health failed {1}x but engine log fresh ({0:N0}s) -- event loop alive, not restarting (RTH saturation)" -f $logAgeSec, $ProbeCount)
+        Trim-Log
+        exit 0
+    }
+    Write-Log ("CONFIRM-DEAD: engine log stale ({0:N0}s) AND /health failed {1}x -- genuine hang, restarting" -f $logAgeSec, $ProbeCount)
+} catch {
+    Write-Log "WARN: cannot stat engine log -- falling through to restart on /health failure"
+}
+# --------------------------------------------------------------------------
+
 # Find PID(s) listening on port 8010
 $holders = netstat -ano -p TCP 2>$null |
     Select-String ":$Port\s" |
