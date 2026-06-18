@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import EngineWidget from "@/components/EngineWidget";
 import {
-  fetchHonestTrades,
   type HonestTradeSet,
   dailyPnl,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // Fallback only — the real figure comes from the API's starting_balance
 // (settings.INITIAL_CAPITAL). Hardcoding it made ROI%, P&L and the displayed
@@ -77,27 +76,8 @@ function StatCell({
 }
 
 export function AccountROIWidget() {
-  const [honestSet, setHonestSet] = useState<HonestTradeSet | null>(null);
-  const [honestError, setHonestError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const set = await fetchHonestTrades();
-        if (!cancelled) setHonestSet(set);
-      } catch (e) {
-        if (!cancelled)
-          setHonestError(e instanceof Error ? e.message : "honest trades unavailable");
-      }
-    };
-    load();
-    const id = setInterval(load, 300_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+  const { honest: honestSet, error: loadError } = useHonestTrades(300_000);
+  const honestError = loadError ? (loadError instanceof Error ? loadError.message : "honest trades unavailable") : null;
 
   // Derive trading days from unique close dates in honest set
   const honestTradingDays = honestSet

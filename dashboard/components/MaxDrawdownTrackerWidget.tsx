@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { RefreshCw, TrendingDown, AlertTriangle, ShieldCheck } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   equityCurve,
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // Circuit breaker limit (from engine config / settings.MAX_DRAWDOWN_PCT default)
@@ -63,27 +63,8 @@ function getDrawdownLevel(pct: number): {
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 export function MaxDrawdownTrackerWidget() {
-  const [honestSet, setHonestSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const set = await fetchHonestTrades();
-      setHonestSet(set);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch");
-      setHonestSet(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const { honest: honestSet, isLoading: loading, error: loadError, mutate: fetchData } = useHonestTrades(0);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
   // Derive max drawdown (peak-to-trough in USD) from honest equity curve
   // The honest equity curve tracks drawdown as: equity - running_peak (always <= 0)
@@ -120,7 +101,7 @@ export function MaxDrawdownTrackerWidget() {
             <Badge variant={level.variant}>{level.label}</Badge>
           </div>
           <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             disabled={loading}
             className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
           >

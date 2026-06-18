@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { fetchHonestTrades, dailyPnl } from "@/lib/honestTrades";
+import { dailyPnl } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -86,34 +87,20 @@ function cellClasses(pnl: number | undefined, isToday: boolean): string {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function DailyPnLCalendarWidget() {
-  const [dailyPnlMap, setDailyPnlMap] = useState<DailyPnLMap | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(120_000);
+  const error = !!loadError;
 
-  async function fetchData() {
-    try {
-      const set = await fetchHonestTrades();
-      // dailyPnl() returns {date, pnl, count}[] grouped by close date
-      const records = dailyPnl(set.trades);
-      const map: DailyPnLMap = {};
-      for (const r of records) {
-        map[r.date] = (map[r.date] ?? 0) + r.pnl;
-      }
-      setDailyPnlMap(map);
-      setLoading(false);
-      setError(false);
-    } catch {
-      setError(true);
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 120_000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // dailyPnl() returns {date, pnl, count}[] grouped by close date
+  const dailyPnlMap: DailyPnLMap | null = set
+    ? (() => {
+        const records = dailyPnl(set.trades);
+        const map: DailyPnLMap = {};
+        for (const r of records) {
+          map[r.date] = (map[r.date] ?? 0) + r.pnl;
+        }
+        return map;
+      })()
+    : null;
 
   // ── Derived values ──────────────────────────────────────────────────────────
 

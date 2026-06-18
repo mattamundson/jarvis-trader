@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
-  fetchHonestTrades,
   dailyPnl,
   dedupCaveat,
-  type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -174,26 +173,7 @@ function CalendarSkeleton() {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function PnlCalendarWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const s = await fetchHonestTrades();
-        if (!cancelled) { setSet(s); setError(null); }
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-    load();
-    const iv = setInterval(load, 5 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, []);
+  const { honest: set, isLoading, error } = useHonestTrades(5 * 60 * 1000);
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,

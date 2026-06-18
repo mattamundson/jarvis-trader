@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -9,12 +9,12 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import {
-  fetchHonestTrades,
   equityCurve,
   type HonestTradeSet,
   type EquityPoint,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -51,29 +51,9 @@ const PLOT_H = VB_H - PAD_TOP - PAD_BOTTOM;
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EquityCurveWidget() {
-  const [honestSet, setHonestSet] = useState<HonestTradeSet | null>(null);
-  const [curve, setCurve] = useState<EquityPoint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  async function loadHonest() {
-    try {
-      setError(null);
-      const set = await fetchHonestTrades();
-      setHonestSet(set);
-      setCurve(equityCurve(set.trades));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadHonest();
-    const id = setInterval(loadHonest, 120_000);
-    return () => clearInterval(id);
-  }, []);
+  const { honest: honestSet, isLoading: loading, error: loadError } = useHonestTrades(120_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const curve: EquityPoint[] = honestSet ? equityCurve(honestSet.trades) : [];
 
   // ── Derived data ──────────────────────────────────────────────────────────
 

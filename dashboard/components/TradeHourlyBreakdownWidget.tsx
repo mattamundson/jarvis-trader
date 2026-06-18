@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchHonestTrades, type HonestTrade } from "@/lib/honestTrades";
+import { type HonestTrade } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // RTH hours to display (8 AM through 3 PM CT)
@@ -147,62 +147,33 @@ function StatCell({ label, value, valueClass = "text-foreground" }: StatCellProp
 }
 
 export function TradeHourlyBreakdownWidget() {
-  const [hourMap, setHourMap] = useState<HourMap>(new Map());
-  const [totalRthTrades, setTotalRthTrades] = useState(0);
-  const [rthWins, setRthWins] = useState(0);
-  const [bestHour, setBestHour] = useState<number | null>(null);
-  const [bestWinRate, setBestWinRate] = useState(0);
-  const [maxCount, setMaxCount] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [insufficient, setInsufficient] = useState(false);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(300_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
-  const fetchTrades = useCallback(async () => {
-    try {
-      const set = await fetchHonestTrades();
-      const map = buildHourMap(set.trades);
-      setHourMap(map);
+  // Compute RTH aggregates from the trade set
+  const hourMap: HourMap = set ? buildHourMap(set.trades) : new Map();
 
-      // Compute RTH aggregates
-      let rthTotal = 0;
-      let rthWinCount = 0;
-      let maxC = 1;
-      let bestH: number | null = null;
-      let bestWR = -1;
+  let totalRthTrades = 0;
+  let rthWins = 0;
+  let maxCount = 1;
+  let bestHour: number | null = null;
+  let bestWinRate = -1;
 
-      for (const hour of RTH_HOURS) {
-        const bucket = map.get(hour);
-        if (!bucket) continue;
-        rthTotal += bucket.count;
-        rthWinCount += bucket.wins;
-        if (bucket.count > maxC) maxC = bucket.count;
+  for (const hour of RTH_HOURS) {
+    const bucket = hourMap.get(hour);
+    if (!bucket) continue;
+    totalRthTrades += bucket.count;
+    rthWins += bucket.wins;
+    if (bucket.count > maxCount) maxCount = bucket.count;
 
-        const wr = bucket.count > 0 ? bucket.wins / bucket.count : 0;
-        if (bucket.count >= 2 && wr > bestWR) {
-          bestWR = wr;
-          bestH = hour;
-        }
-      }
-
-      setTotalRthTrades(rthTotal);
-      setRthWins(rthWinCount);
-      setMaxCount(maxC);
-      setBestHour(bestH);
-      setBestWinRate(bestWR);
-      setInsufficient(rthTotal < 5);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
+    const wr = bucket.count > 0 ? bucket.wins / bucket.count : 0;
+    if (bucket.count >= 2 && wr > bestWinRate) {
+      bestWinRate = wr;
+      bestHour = hour;
     }
-  }, []);
+  }
 
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 300_000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  const insufficient = totalRthTrades < 5;
 
   const rthWinRate = totalRthTrades > 0 ? rthWins / totalRthTrades : 0;
 

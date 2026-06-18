@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Pure stat computation (derived from deduped HonestTrade[]) ───────────────
 
@@ -156,29 +155,9 @@ function LoadingSkeleton() {
 // ── Main widget ──────────────────────────────────────────────────────────────
 
 export function JournalStatsWidget() {
-  const [stats, setStats] = useState<JournalStats | null>(null);
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  async function load() {
-    try {
-      const s = await fetchHonestTrades();
-      setSet(s);
-      setStats(computeStats(s.trades));
-      setError(false);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 60_000);
-    return () => clearInterval(interval);
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError != null;
+  const stats: JournalStats | null = set ? computeStats(set.trades) : null;
 
   if (loading) return <LoadingSkeleton />;
 

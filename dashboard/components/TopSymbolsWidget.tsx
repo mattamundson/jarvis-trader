@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { RefreshCw, BarChart2 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   bySymbolStats,
   dedupCaveat,
   type HonestTradeSet,
   type SymbolStat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -38,31 +38,18 @@ function pnlColor(value: number): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function TopSymbolsWidget() {
-  const [stats, setStats] = useState<SymbolStat[]>([]);
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: set, isLoading: loading, error: loadError, mutate } = useHonestTrades(0);
+  const error = loadError
+    ? loadError instanceof Error
+      ? loadError.message
+      : String(loadError)
+    : null;
+  const stats: SymbolStat[] = set ? bySymbolStats(set.trades) : [];
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  async function fetchData() {
-    setLoading(true);
-    setError(null);
-    try {
-      const honest = await fetchHonestTrades();
-      setSet(honest);
-      setStats(bySymbolStats(honest.trades));
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (set) setLastUpdated(new Date());
+  }, [set]);
 
   return (
     <Card>
@@ -80,7 +67,7 @@ export function TopSymbolsWidget() {
             </span>
           )}
           <button
-            onClick={fetchData}
+            onClick={() => mutate()}
             disabled={loading}
             className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-mono transition-colors disabled:opacity-40"
             style={{

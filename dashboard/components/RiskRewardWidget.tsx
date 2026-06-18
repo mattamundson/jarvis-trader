@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { TrendingUp, Target, RefreshCw, Scale } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -98,29 +98,8 @@ function deriveRR(set: HonestTradeSet): {
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 export function RiskRewardWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchHonestTrades();
-      setSet(result);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch");
-      setSet(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60_000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const { honest: set, isLoading: loading, error: loadError, mutate: fetchData } = useHonestTrades(60_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
   // ── Derived values ────────────────────────────────────────────────────────
 
@@ -143,7 +122,7 @@ export function RiskRewardWidget() {
             <Badge variant={level.variant}>{level.label}</Badge>
           </div>
           <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             disabled={loading}
             className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
           >

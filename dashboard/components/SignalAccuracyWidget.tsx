@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Per-direction stat shape ──────────────────────────────────────────────────
 
@@ -39,27 +38,8 @@ function calcDirectionStats(trades: HonestTrade[]): DirectionStats {
 // ── Main widget ───────────────────────────────────────────────────────────────
 
 export function SignalAccuracyWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  async function load() {
-    try {
-      const s = await fetchHonestTrades();
-      setSet(s);
-      setError(false);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(5 * 60 * 1000);
+  const error = !!loadError;
 
   // Derive per-direction stats from deduped trades
   const longTrades = set?.trades.filter(

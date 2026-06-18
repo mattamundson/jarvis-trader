@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { RefreshCw, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   bySymbolStats,
   dedupCaveat,
   type HonestTradeSet,
   type SymbolStat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -153,32 +153,10 @@ function SymbolRow({ row }: { row: SymbolStatsDisplay }) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function WinRateBySymbolWidget() {
-  const [stats, setStats] = useState<SymbolStatsDisplay[]>([]);
-  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: tradeSet, isLoading: loading, error: loadError, mutate } = useHonestTrades(120_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const stats: SymbolStatsDisplay[] = tradeSet ? bySymbolStats(tradeSet.trades).map(toDisplay) : [];
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
-  async function fetchData() {
-    setError(null);
-    try {
-      const set = await fetchHonestTrades();
-      setTradeSet(set);
-      setStats(bySymbolStats(set.trades).map(toDisplay));
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 120_000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Overall summary stats ─────────────────────────────────────────────────
   const overallTrades = stats.reduce((s, r) => s + r.total_trades, 0);
@@ -206,8 +184,8 @@ export function WinRateBySymbolWidget() {
           )}
           <button
             onClick={() => {
-              setLoading(true);
-              fetchData();
+              mutate();
+              setLastUpdated(new Date());
             }}
             disabled={loading}
             className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-mono transition-colors disabled:opacity-40"

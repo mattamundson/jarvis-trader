@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, Trophy, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,12 +9,12 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   durationMinutes,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // Columns dropped vs. prior raw version:
 //   - Entry price / exit price (not in honest record)
@@ -185,27 +184,8 @@ function RankList({ trades, type }: RankListProps) {
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export function BestWorstTradeWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      const s = await fetchHonestTrades();
-      setSet(s);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch trades");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 60_000);
-    return () => clearInterval(interval);
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
   // Sort by pnl descending
   const sorted: HonestTrade[] = set

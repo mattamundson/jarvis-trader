@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchHonestTrades, durationMinutes, type HonestTrade } from "@/lib/honestTrades";
+import { durationMinutes, type HonestTrade } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 interface DurationData {
@@ -54,29 +54,9 @@ function computeDurationData(trades: HonestTrade[]): DurationData | null {
 }
 
 export function TradeDurationWidget() {
-  const [data, setData] = useState<DurationData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const set = await fetchHonestTrades();
-        const computed = computeDurationData(set.trades);
-        setData(computed);
-        setError(false);
-      } catch {
-        setData(null);
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-    const id = setInterval(load, 300_000);
-    return () => clearInterval(id);
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(300_000);
+  const error = !!loadError;
+  const data = set ? computeDurationData(set.trades) : null;
 
   if (loading) {
     return (

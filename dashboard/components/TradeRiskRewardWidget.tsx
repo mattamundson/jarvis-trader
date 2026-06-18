@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Metric derivation ─────────────────────────────────────────────────────────
 
@@ -85,27 +84,8 @@ function StatCell({ label, value, valueClass = "text-foreground" }: StatCellProp
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 export function TradeRiskRewardWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTrades = useCallback(async () => {
-    try {
-      const result = await fetchHonestTrades();
-      setSet(result);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 300_000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(300_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
   const metrics = set ? deriveMetrics(set) : null;
   const rrDisplay =

@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchHonestTrades, dedupCaveat, type HonestTradeSet } from "@/lib/honestTrades";
+import { dedupCaveat, type HonestTradeSet } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Backtest benchmarks (static saved-backtest reference — NOT live) ──────────
@@ -132,31 +133,10 @@ function Skeleton() {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function BacktestCompareWidget() {
-  const [data, setData] = useState<LiveData | null>(null);
-  const [caveat, setCaveat] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  function fetchData() {
-    fetchHonestTrades()
-      .then((set: HonestTradeSet) => {
-        setData(liveFromHonest(set));
-        setCaveat(dedupCaveat(set));
-        setError(false);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError(true);
-        setLoading(false);
-      });
-  }
-
-  useEffect(() => {
-    fetchData();
-    const id = setInterval(fetchData, 60_000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError != null;
+  const data: LiveData | null = set ? liveFromHonest(set) : null;
+  const caveat: string = set ? dedupCaveat(set) : "";
 
   // ── Overall badge ──────────────────────────────────────────────────────────
 

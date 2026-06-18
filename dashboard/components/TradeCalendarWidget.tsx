@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,11 +10,11 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -178,27 +178,12 @@ export function TradeCalendarWidget() {
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const s = await fetchHonestTrades();
-        if (!cancelled) { setSet(s); setError(null); }
-      } catch (err) {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : "Failed to fetch trades");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    const iv = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError
+    ? loadError instanceof Error
+      ? loadError.message
+      : String(loadError)
+    : null;
 
   // ── Build day map ─────────────────────────────────────────────────────────────
 

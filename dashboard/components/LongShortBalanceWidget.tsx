@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   type HonestTrade,
-  type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 const BENCHMARK_LONG_PCT = 58;
 const BENCHMARK_SHORT_PCT = 42;
@@ -42,33 +40,12 @@ function pnlClass(val: number): string {
 }
 
 export function LongShortBalanceWidget() {
-  const [longTrades, setLongTrades] = useState<HonestTrade[]>([]);
-  const [shortTrades, setShortTrades] = useState<HonestTrade[]>([]);
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(300_000);
+  const error = !!loadError;
 
-  async function fetchTrades() {
-    try {
-      const honest = await fetchHonestTrades();
-      setSet(honest);
-      // HonestTrade.direction is "LONG" | "SHORT"
-      setLongTrades(honest.trades.filter((t) => t.direction === "LONG"));
-      setShortTrades(honest.trades.filter((t) => t.direction === "SHORT"));
-      setError(false);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 300_000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // HonestTrade.direction is "LONG" | "SHORT"
+  const longTrades = set ? set.trades.filter((t) => t.direction === "LONG") : [];
+  const shortTrades = set ? set.trades.filter((t) => t.direction === "SHORT") : [];
 
   const total = longTrades.length + shortTrades.length;
   const longPct = total > 0 ? (longTrades.length / total) * 100 : 0;

@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 function TradeRow({ trade }: { trade: HonestTrade }) {
@@ -38,41 +37,12 @@ function TradeRow({ trade }: { trade: HonestTrade }) {
 }
 
 export function BestWorstTradesWidget() {
-  const [best5, setBest5] = useState<HonestTrade[]>([]);
-  const [worst5, setWorst5] = useState<HonestTrade[]>([]);
-  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
-  const [insufficient, setInsufficient] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTrades = useCallback(async () => {
-    try {
-      const set = await fetchHonestTrades();
-      setTradeSet(set);
-
-      if (set.trades.length < 2) {
-        setInsufficient(true);
-        setBest5([]);
-        setWorst5([]);
-      } else {
-        setInsufficient(false);
-        const sorted = [...set.trades].sort((a, b) => b.pnl - a.pnl);
-        setBest5(sorted.slice(0, 5));
-        setWorst5([...sorted].reverse().slice(0, 5));
-      }
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  const { honest: tradeSet, isLoading: loading, error: loadError } = useHonestTrades(5 * 60 * 1000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const insufficient = tradeSet ? tradeSet.trades.length < 2 : false;
+  const sorted = tradeSet && !insufficient ? [...tradeSet.trades].sort((a, b) => b.pnl - a.pnl) : [];
+  const best5 = sorted.slice(0, 5);
+  const worst5 = [...sorted].reverse().slice(0, 5);
 
   return (
     <Card>

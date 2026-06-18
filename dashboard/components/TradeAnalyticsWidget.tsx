@@ -10,16 +10,16 @@
 //   - hour data derived from entry_time (entry_time may be null for some trades;
 //     those trades are excluded from the "by hour" view with a caveat shown)
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   bySymbolStats,
   dedupCaveat,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Local derived types ───────────────────────────────────────────────────────
 
@@ -118,25 +118,7 @@ const pnlVariant = (v: number): "bull" | "bear" | "neutral" =>
 
 export function TradeAnalyticsWidget() {
   const [tab, setTab] = useState<Tab>("symbol");
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const s = await fetchHonestTrades();
-        if (!cancelled) setSet(s);
-      } catch {
-        // leave set null
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    const iv = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, []);
+  const { honest: set, isLoading: loading } = useHonestTrades(60_000);
 
   const trades = set?.trades ?? [];
 

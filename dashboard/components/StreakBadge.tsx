@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Flame, TrendingDown } from "lucide-react";
-import { fetchHonestTrades, type HonestTrade } from "@/lib/honestTrades";
+import { type HonestTrade } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 interface DerivedStreakData {
   currentStreak: number;
@@ -44,21 +44,8 @@ function deriveStreakData(trades: HonestTrade[]): DerivedStreakData {
 }
 
 export function StreakBadge() {
-  const [streakData, setStreakData] = useState<DerivedStreakData | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const set = await fetchHonestTrades();
-        setStreakData(deriveStreakData(set.trades));
-      } catch {
-        setStreakData(null);
-      }
-    };
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, []);
+  const { honest } = useHonestTrades(60_000);
+  const streakData = honest ? deriveStreakData(honest.trades) : null;
 
   if (!streakData || streakData.totalTrades === 0) return null;
 

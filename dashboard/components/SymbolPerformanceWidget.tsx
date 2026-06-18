@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw } from "lucide-react";
 import {
-  fetchHonestTrades,
   bySymbolStats,
   dedupCaveat,
-  type HonestTradeSet,
   type SymbolStat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,54 +47,32 @@ function winRateClass(rate: number): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function SymbolPerformanceWidget() {
-  const [symbols, setSymbols] = useState<SymbolDisplay[]>([]);
-  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [error, setError] = useState(false);
+  const { honest: tradeSet, isLoading: loading, error: loadError, mutate } = useHonestTrades(300_000);
+  const error = !!loadError;
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(false);
-    try {
-      const set = await fetchHonestTrades();
-      setTradeSet(set);
-
-      // Build per-symbol best/worst from raw trades for the display columns
-      const perSymbolTrades = new Map<string, number[]>();
-      for (const t of set.trades) {
-        const arr = perSymbolTrades.get(t.symbol) ?? [];
-        arr.push(t.pnl);
-        perSymbolTrades.set(t.symbol, arr);
-      }
-
-      const display: SymbolDisplay[] = bySymbolStats(set.trades).map((s) => {
-        const pnls = perSymbolTrades.get(s.symbol) ?? [];
-        return {
-          ...s,
-          avg_pnl: s.trades > 0 ? s.net / s.trades : 0,
-          best_trade: pnls.length > 0 ? Math.max(...pnls) : null,
-          worst_trade: pnls.length > 0 ? Math.min(...pnls) : null,
-        };
-      });
-
-      setSymbols(display);
-      setLastUpdated(
-        new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      );
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
+  // Derive display rows from the trade set
+  const symbols = useMemo<SymbolDisplay[]>(() => {
+    if (!tradeSet) return [];
+    const perSymbolTrades = new Map<string, number[]>();
+    for (const t of tradeSet.trades) {
+      const arr = perSymbolTrades.get(t.symbol) ?? [];
+      arr.push(t.pnl);
+      perSymbolTrades.set(t.symbol, arr);
     }
-  };
+    return bySymbolStats(tradeSet.trades).map((s) => {
+      const pnls = perSymbolTrades.get(s.symbol) ?? [];
+      return {
+        ...s,
+        avg_pnl: s.trades > 0 ? s.net / s.trades : 0,
+        best_trade: pnls.length > 0 ? Math.max(...pnls) : null,
+        worst_trade: pnls.length > 0 ? Math.min(...pnls) : null,
+      };
+    });
+  }, [tradeSet]);
 
-  useEffect(() => {
-    fetchData();
-    const id = setInterval(fetchData, 300_000); // refresh every 5 min
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const lastUpdated = tradeSet
+    ? new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : null;
 
   const hasSymbols = symbols.length > 0;
 
@@ -111,7 +88,7 @@ export function SymbolPerformanceWidget() {
               </span>
             )}
             <button
-              onClick={fetchData}
+              onClick={() => mutate()}
               disabled={loading}
               className="text-muted-foreground hover:text-foreground transition-colors"
               title="Refresh"

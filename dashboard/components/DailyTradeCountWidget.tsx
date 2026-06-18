@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { RefreshCw, BarChart2, Calendar, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   dailyPnl,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -56,47 +56,33 @@ function buildBuckets(days: number): DayBucket[] {
 // ── Widget ───────────────────────────────────────────────────────────────────
 
 export function DailyTradeCountWidget() {
-  const [buckets, setBuckets] = useState<DayBucket[]>([]);
-  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: tradeSet, isLoading: loading, error: loadError, mutate: fetchData } = useHonestTrades(0);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const set = await fetchHonestTrades();
-      setTradeSet(set);
-
-      // dailyPnl returns {date, pnl, count}[] keyed by YYYY-MM-DD (UTC exit date)
-      const byDay = dailyPnl(set.trades);
-      const dailyMap = new Map<string, { pnl: number; count: number }>(
-        byDay.map((d) => [d.date, { pnl: d.pnl, count: d.count }])
-      );
-
-      // Build 14-day buckets and merge deduped daily data
-      const dayBuckets = buildBuckets(14);
-      for (const bucket of dayBuckets) {
-        const dayData = dailyMap.get(bucket.dateKey);
-        if (dayData) {
-          bucket.count = dayData.count;
-          bucket.totalPnl = dayData.pnl;
-        }
-      }
-
-      setBuckets(dayBuckets);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (tradeSet) setLastUpdated(new Date());
+  }, [tradeSet]);
+
+  // Derive buckets at render time from the honest trade set
+  const buckets: DayBucket[] = (() => {
+    if (!tradeSet) return [];
+    // dailyPnl returns {date, pnl, count}[] keyed by YYYY-MM-DD (UTC exit date)
+    const byDay = dailyPnl(tradeSet.trades);
+    const dailyMap = new Map<string, { pnl: number; count: number }>(
+      byDay.map((d) => [d.date, { pnl: d.pnl, count: d.count }])
+    );
+    // Build 14-day buckets and merge deduped daily data
+    const dayBuckets = buildBuckets(14);
+    for (const bucket of dayBuckets) {
+      const dayData = dailyMap.get(bucket.dateKey);
+      if (dayData) {
+        bucket.count = dayData.count;
+        bucket.totalPnl = dayData.pnl;
+      }
+    }
+    return dayBuckets;
+  })();
 
   // ── Derived stats ──────────────────────────────────────────────────────────
 
@@ -161,7 +147,7 @@ export function DailyTradeCountWidget() {
         </div>
 
         <button
-          onClick={fetchData}
+          onClick={() => fetchData()}
           disabled={loading}
           className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/5 transition-colors disabled:opacity-50"
           aria-label="Refresh daily trade count"

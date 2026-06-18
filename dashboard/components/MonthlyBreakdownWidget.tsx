@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   exitDate,
   dedupCaveat,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -139,36 +138,9 @@ function Skeleton() {
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 export function MonthlyBreakdownWidget() {
-  const [months, setMonths] = useState<MonthBucket[]>([]);
-  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const set = await fetchHonestTrades();
-        if (!cancelled) {
-          setTradeSet(set);
-          setMonths(groupByMonth(set.trades));
-          setError(false);
-        }
-      } catch {
-        if (!cancelled) setError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    load();
-    const id = setInterval(load, 5 * 60 * 1000); // refresh every 5 minutes
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+  const { honest: tradeSet, isLoading: loading, error: loadError } = useHonestTrades(5 * 60 * 1000);
+  const error = !!loadError;
+  const months = tradeSet ? groupByMonth(tradeSet.trades) : [];
 
   if (loading) return <Skeleton />;
 

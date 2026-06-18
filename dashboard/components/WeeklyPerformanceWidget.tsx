@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Minus, Calendar } from "lucide-react";
 import {
-  fetchHonestTrades,
   dailyPnl,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -208,29 +207,9 @@ function getCurrentWeekStart(): string {
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export function WeeklyPerformanceWidget() {
-  const [weeks, setWeeks] = useState<WeekStats[]>([]);
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTrades = useCallback(async () => {
-    try {
-      const honest = await fetchHonestTrades();
-      setSet(honest);
-      setWeeks(buildWeekStats(honest));
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 60_000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const weeks = set ? buildWeekStats(set) : [];
 
   // Header badge
   function headerBadge(): { variant: "bull" | "bear" | "info"; label: string } {

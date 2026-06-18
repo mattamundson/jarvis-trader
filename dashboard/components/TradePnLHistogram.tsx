@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -8,7 +8,8 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import { fetchHonestTrades, type HonestTrade } from "@/lib/honestTrades";
+import { type HonestTrade } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Bucket config ─────────────────────────────────────────────────────────────
@@ -43,30 +44,11 @@ function getBucketIndex(pnl: number): number {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function TradePnLHistogram() {
-  const [trades, setTrades] = useState<HonestTrade[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTrades = async () => {
-    try {
-      const set = await fetchHonestTrades();
-      setTrades(set.trades);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch trades");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(5 * 60 * 1000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
   // All honest trades have a valid pnl — no status/null filter needed
-  const closedTrades = trades;
+  const closedTrades = set?.trades ?? [];
 
   // Bucket counts
   const counts = new Array(BUCKETS.length).fill(0);
