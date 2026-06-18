@@ -14,7 +14,7 @@
 |----|-----------|
 | S1 | Safety architecture: hardcoded Python safety layer; human approval; paper mode defaults. |
 | S2 | Clear engine vs dashboard split; `fetchEngine` / `postEngine` boundary. |
-| S3 | MCL/MNQ walk-forward validated per policy (see validated-instruments). |
+| S3 | MES/MGC validated per policy and active on paper; MCL/MNQ halted (see validated-instruments). |
 | S4 | Large pytest corpus and targeted integration tests (IB offline, middleware, approvals). |
 | S5 | Runbooks and troubleshooting for real failures (OpenClaw, engine restart, Twilio). |
 
