@@ -78,6 +78,9 @@ TPO_ENTER_GRID = (0.33, 0.50, 0.66)
 TPO_STOP_GRID = (1.0, 1.5, 2.0)
 TPO_ATR_PERIOD = 14
 
+# Saty arm: the chart's Calls>/Puts< trigger-break levels (GO continuation mode).
+SATY_TARGET_GRID = (1.0, 1.5, 2.0)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. corey-IC (live, with offline fallback)
@@ -312,10 +315,32 @@ def _apply_tpo(df, params):
     return _tpo_contract(df, params["enter"], params["stop_mult"])
 
 
+def _grid_saty(df_train):
+    from backtest.saty_atr_signals import generate_saty_atr_signals
+
+    best = (-1.0, None, None)
+    for target_ratio in SATY_TARGET_GRID:
+        try:
+            sig = generate_saty_atr_signals(df_train.copy(), mode="go", target_ratio=target_ratio)
+            m = _run_bt(sig, 2.0)
+        except Exception:  # noqa: BLE001
+            continue
+        if m["n_trades"] >= 5 and m["pf"] > best[0]:
+            best = (m["pf"], {"target_ratio": target_ratio, "atr_trail": 2.0}, m)
+    return best[1], best[2]
+
+
+def _apply_saty(df, params):
+    from backtest.saty_atr_signals import generate_saty_atr_signals
+
+    return generate_saty_atr_signals(df, mode="go", target_ratio=params["target_ratio"])
+
+
 ARMS = {
     "trend": (_grid_trend, _apply_trend),
     "composite": (_grid_composite, _apply_composite),
     "tpo": (_grid_tpo, _apply_tpo),
+    "saty": (_grid_saty, _apply_saty),
 }
 
 
@@ -383,7 +408,7 @@ def build_verdict(
         label = "TREND_DOMINANT"
         rationale = f"No auction arm beats trend ({base_pf}) by the {edge_margin}x margin."
 
-    n_combos = sum(len(g) for g in (TPO_ENTER_GRID, TPO_STOP_GRID))
+    n_combos = len(TPO_ENTER_GRID) * len(TPO_STOP_GRID) + len(SATY_TARGET_GRID) + 27  # +SMA grid
     caveats = [
         "DIAGNOSTIC — does not feed any paper-promotion or go/no-go gate (ml-pitfalls-defense.md).",
         f"Multiple testing: {len(ARMS)} arms grid-searched (~{n_combos}+ combos); max PF is biased up. "
