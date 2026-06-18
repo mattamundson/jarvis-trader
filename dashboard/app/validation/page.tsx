@@ -25,6 +25,11 @@ import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  equityCurve,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 import { simulateTrade } from "@/lib/settings-api";
 import type { SimulateTradePayload, SimulateTradeResult } from "@/lib/settings-api";
 import { PipelineRunHistory } from "@/components/PipelineRunHistory";
@@ -66,6 +71,88 @@ const REFRESH_MS = 30_000;
 
 function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
+}
+
+// ── Honest performance adapter ────────────────────────────────────────────────
+// Replaces the former /analytics/performance fetcher that returned the inflated
+// raw-engine counts (~29 rows → fabricated +$3,899 / PF 2.95 / 19 trades).
+// Now sources everything from fetchHonestTrades() which applies the dedup
+// (18 real trades, -$8,188, PF 0.66). Sharpe is NOT in the deduped record
+// (only symbol/direction/entry_time/exit_time/pnl_usd/grade are available),
+// so it is surfaced as null / "not computed" — no fabricated PASS.
+
+function computeHonestMaxDrawdownPct(trades: Parameters<typeof equityCurve>[0]): number {
+  const curve = equityCurve(trades);
+  let maxDDPct = 0;
+  for (const pt of curve) {
+    const peak = pt.equity - pt.drawdown;
+    if (peak > 0) {
+      const ddPct = Math.abs(pt.drawdown) / peak;
+      if (ddPct > maxDDPct) maxDDPct = ddPct;
+    }
+  }
+  return maxDDPct; // fraction (not percent)
+}
+
+async function honestPerformanceFetcher(): Promise<ValidationReport> {
+  const set = await fetchHonestTrades();
+
+  const pf = set.profitFactor;
+  // sharpe_ratio is intentionally null — annualized Sharpe cannot be derived
+  // from the deduped record (no timestamps granular enough, no risk-free rate).
+  const sharpe: null = null;
+  const winRate = set.winRate; // already 0..1
+  const maxDd = computeHonestMaxDrawdownPct(set.trades); // fraction
+  const trades = set.trades.length;
+
+  // Avg win/loss from the deduped set
+  const winners = set.trades.filter((t) => t.pnl > 0);
+  const losers = set.trades.filter((t) => t.pnl < 0);
+  const avgWin = winners.length > 0
+    ? winners.reduce((s, t) => s + t.pnl, 0) / winners.length
+    : 0;
+  const avgLoss = losers.length > 0
+    ? losers.reduce((s, t) => s + t.pnl, 0) / losers.length
+    : 0;
+
+  let status: ValidationReport["status"];
+  let recommendation: string;
+  if (trades < THRESHOLDS.minTrades) {
+    status = "INSUFFICIENT_DATA";
+    recommendation = `Collecting data — ${trades}/${THRESHOLDS.minTrades} trades before validation gates apply. ${dedupCaveat(set)}.`;
+  } else {
+    const pfPass = pf != null && pf >= THRESHOLDS.profitFactor;
+    // Sharpe gate is SUSPENDED — cannot fabricate a PASS from the deduped record.
+    const ddPass = maxDd < THRESHOLDS.maxDrawdown;
+    const allPass = pfPass && ddPass; // sharpe intentionally excluded
+    status = allPass ? "PASS" : "FAIL";
+    recommendation = allPass
+      ? `All computable validation gates passing. Sharpe not computed from deduped record. ${dedupCaveat(set)}.`
+      : [
+          !pfPass ? "profit factor" : null,
+          !ddPass ? "max drawdown" : null,
+          "Sharpe not computed from deduped record",
+        ]
+          .filter(Boolean)
+          .join("; ")
+          .replace(/^(.)/, (c) => c.toUpperCase()) + `. ${dedupCaveat(set)}.`;
+  }
+
+  return {
+    status,
+    recommendation,
+    metrics: {
+      profit_factor: pf,
+      sharpe_ratio: sharpe,
+      win_rate: winRate,
+      max_drawdown: maxDd,
+      total_trades: trades,
+      period_days: 0, // not in deduped record
+      total_pnl: set.net,
+      avg_win: avgWin,
+      avg_loss: avgLoss,
+    },
+  };
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -851,7 +938,19 @@ function BacktestReferenceCard({ baseline }: { baseline: ScorecardBacktestBaseli
 // ── Live Paper Performance Card ───────────────────────────────────────────────
 
 function LivePerformanceCard({ report }: { report: ValidationReport }) {
-  const m = report.metrics;
+  const m = report?.metrics;
+  // Defense-in-depth: if the engine ever returns a report without metrics,
+  // show an honest "unavailable" state instead of crashing the whole page.
+  if (!m) {
+    return (
+      <Card className="border-border">
+        <CardContent className="pt-5 pb-5 flex items-center gap-2 text-xs text-muted-foreground">
+          <AlertCircle className="h-3.5 w-3.5 text-warn shrink-0" />
+          Live paper metrics unavailable — engine returned no performance data.
+        </CardContent>
+      </Card>
+    );
+  }
   const isInsufficient = report.status === "INSUFFICIENT_DATA";
   const isPass = report.status === "PASS";
   const isFail = report.status === "FAIL";
@@ -949,26 +1048,11 @@ function LivePerformanceCard({ report }: { report: ValidationReport }) {
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">
               Sharpe Ratio
             </p>
-            <p
-              className={`tabular-nums text-lg font-bold font-mono ${
-                isInsufficient
-                  ? "text-muted-foreground"
-                  : sharpePass
-                  ? "text-bull"
-                  : "text-bear"
-              }`}
-            >
-              {m.sharpe_ratio !== null ? m.sharpe_ratio.toFixed(2) : "—"}
+            <p className="tabular-nums text-lg font-bold font-mono text-muted-foreground">
+              —
             </p>
-            <p className="text-[10px] mt-0.5">
-              {!isInsufficient && (
-                <span className={sharpePass ? "text-bull" : "text-bear"}>
-                  {sharpePass ? "PASS" : "FAIL"} (need &gt;{THRESHOLDS.sharpeRatio})
-                </span>
-              )}
-              {isInsufficient && (
-                <span className="text-muted-foreground">need more daily data</span>
-              )}
+            <p className="text-[10px] mt-0.5 text-muted-foreground leading-tight">
+              not computed from deduped record
             </p>
           </div>
 
@@ -1085,15 +1169,14 @@ function ComparisonTable({
         : null,
     },
     {
+      // Sharpe is intentionally null in the honest deduped record — annualized
+      // Sharpe cannot be derived from symbol/direction/entry_time/exit_time/pnl_usd.
+      // pass=null prevents a fabricated PASS; the "—" label makes the gap visible.
       metric: "Sharpe Ratio",
       backtest: fmtBaselineNum(baseline?.sharpeRatio ?? null),
-      live: m.sharpe_ratio !== null ? m.sharpe_ratio.toFixed(2) : "—",
+      live: "— (not computed from deduped record)",
       threshold: `> ${THRESHOLDS.sharpeRatio}`,
-      pass: isInsufficient
-        ? null
-        : m.sharpe_ratio !== null
-        ? m.sharpe_ratio >= THRESHOLDS.sharpeRatio
-        : null,
+      pass: null,
     },
     {
       metric: "Win Rate",
@@ -1510,7 +1593,9 @@ export default function ValidationPage() {
     data: report,
     error: reportError,
     isLoading: reportLoading,
-  } = useSWR<ValidationReport>("/analytics/performance", fetcher, {
+    // Key is a stable string; honestPerformanceFetcher ignores the key and fetches
+    // from fetchHonestTrades() which calls the deduped /master/trading/realized endpoint.
+  } = useSWR<ValidationReport>("honest-performance", honestPerformanceFetcher, {
     refreshInterval: REFRESH_MS,
   });
 
@@ -1653,10 +1738,10 @@ export default function ValidationPage() {
           <div className="rounded-xl border border-bear/20 bg-bear/5 p-5 flex items-center gap-3">
             <WifiOff className="h-5 w-5 text-bear shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-bear">Engine offline or analytics unavailable</p>
+              <p className="text-sm font-semibold text-bear">Engine offline or honest trade record unavailable</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Ensure the JARVIS engine is running and reachable through the dashboard proxy, and{" "}
-                <code className="font-mono">/analytics/performance</code> is responding.
+                <code className="font-mono">/master/trading/realized</code> is responding (the deduped trade source).
                 Backtest baseline pills need <code className="font-mono">/backtest/results</code> when the engine is up.
               </p>
             </div>
