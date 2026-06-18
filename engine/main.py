@@ -151,6 +151,10 @@ from routers.analysis_router import (
     router as analysis_router,
     inject_dependencies as inject_analysis_deps,
 )
+from routers.regime_router import (
+    router as regime_router,
+    inject_dependencies as inject_regime_deps,
+)
 from routers.watchlist_router import (
     router as watchlist_router,
     inject_dependencies as inject_watchlist_deps,
@@ -1673,6 +1677,7 @@ async def lifespan(app: FastAPI):
     )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
+    inject_regime_deps(data_manager)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
     inject_sentiment_deps(data_manager)
     inject_settings_deps(settings, db_manager, safety_layer)
@@ -2978,6 +2983,7 @@ app.include_router(strategy_c_router)
 app.include_router(ib_scanner_router)
 app.include_router(macro_router)
 app.include_router(analysis_router)
+app.include_router(regime_router)
 app.include_router(watchlist_router)
 app.include_router(sentiment_router)
 app.include_router(settings_router)

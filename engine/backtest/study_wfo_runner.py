@@ -44,6 +44,7 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency,
 )
 from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+from backtest.cpcv import generate_cpcv_folds  # noqa: E402
 from backtest.studies import load_study  # noqa: E402
 
 # Vetted continuous 5m files per symbol (gitignored cache).
@@ -127,6 +128,47 @@ def _generate_windows(df: pd.DataFrame) -> list[dict]:
     return windows
 
 
+def _run_cpcv(study, df, symbol, mode, grid, base_comm, *, n_groups=6, n_test_groups=2,
+              embargo_sessions=1, purge_sessions=14):
+    """Run CPCV folds and return list of OOS BacktestResults (additive evidence only).
+
+    Reuses _best_is_params (IS selection) and _backtest (OOS evaluation) unchanged.
+    CPCV generates C(n_groups, n_test_groups) folds from the full dataset, each with
+    purge/embargo applied, giving far more OOS samples than sequential WFO.
+    """
+    folds = generate_cpcv_folds(
+        df.index,
+        n_groups=n_groups,
+        n_test_groups=n_test_groups,
+        embargo_sessions=embargo_sessions,
+        purge_sessions=purge_sessions,
+    )
+    oos_results = []
+    for fold in folds:
+        if len(fold.train_idx) < 30 or len(fold.test_idx) < 30:
+            print(f"  CPCV fold {fold.fold_id}: SKIP (too few bars "
+                  f"train={len(fold.train_idx)} test={len(fold.test_idx)})")
+            continue
+        df_train = df.iloc[fold.train_idx].copy()
+        df_test  = df.iloc[fold.test_idx].copy()
+        best_params, is_result = _best_is_params(study, df_train, symbol, mode, grid, base_comm)
+        if best_params is None:
+            print(f"  CPCV fold {fold.fold_id}: SKIP (no valid IS params)")
+            continue
+        try:
+            oos = _backtest(study, df_test, symbol, mode, best_params,
+                            commission=base_comm, slippage_ticks=1.0)
+        except Exception as exc:
+            print(f"  CPCV fold {fold.fold_id}: OOS error {exc}")
+            continue
+        oos_results.append(oos)
+        print(f"  CPCV fold {fold.fold_id} groups={fold.test_group_ids}: "
+              f"IS PF={is_result.profit_factor:.2f}({is_result.total_trades}) "
+              f"OOS PF={oos.profit_factor:.2f} DD={oos.max_drawdown_pct:.1%} "
+              f"n={oos.total_trades}")
+    return oos_results, folds
+
+
 def _best_is_params(study, df_train, symbol, mode, grid, base_comm):
     best_pf, best_params, best_result = -1.0, None, None
     for params in grid:
@@ -180,6 +222,82 @@ def _cost_sweep(study, df, symbol, mode, champion, base_comm):
             print(f"    [WARN] cost sweep {tier}: {exc}")
             results[tier] = {"pf": 0.0, "trades": 0, "passes": False}
     return {"cost_survives_through": last or "none", "tier_results": results}
+
+
+def _compute_regime_conditional(oos_window_data: list) -> dict:
+    """POST-HOC regime-conditional breakdown. NEVER affects gate verdicts.
+
+    Args:
+        oos_window_data: list of (BacktestResult, df_test) from the OOS loop.
+
+    Returns:
+        A dict with keys: classifier, by_regime_vol, by_regime, by_vol, note.
+        On any error returns {"error": <str>} so callers can always proceed.
+    """
+    try:
+        from backtest.regime_conditional import (
+            assign_vol_terciles,
+            bucket_trades,
+            tag_regime_vol,
+        )
+
+        all_trades = []
+        regime_by_entry: dict = {}
+        rv_by_entry: dict = {}
+        all_rv_values = []
+
+        for oos_result, df_test in oos_window_data:
+            if df_test is None or df_test.empty:
+                continue
+            try:
+                df_tagged = tag_regime_vol(df_test)
+            except Exception:
+                continue
+
+            # Build per-entry-timestamp lookups from this window's tagged bars.
+            for trade in oos_result.trades:
+                key = trade.entry_date
+                # Find the nearest bar at or after entry_date (index lookup).
+                idx = df_tagged.index
+                matches = idx[idx >= key]
+                if len(matches) == 0:
+                    # Entry is beyond the window; use last bar's values.
+                    bar_ts = idx[-1]
+                else:
+                    bar_ts = matches[0]
+                regime_by_entry[key] = df_tagged.loc[bar_ts, "rc_regime"]
+                rv_val = df_tagged.loc[bar_ts, "rc_rv_ann_pct"]
+                rv_by_entry[key] = float(rv_val) if pd.notna(rv_val) else float("nan")
+                all_rv_values.append(rv_by_entry[key])
+
+            all_trades.extend(oos_result.trades)
+
+        if not all_trades:
+            return {
+                "classifier": "adx>=25 trending; rv tercile per-window",
+                "note": "DIAGNOSTIC ONLY - does not affect gate verdict",
+                "by_regime_vol": {},
+                "by_regime": {},
+                "by_vol": {},
+                "total_trades_classified": 0,
+            }
+
+        import pandas as _pd
+        rv_series = _pd.Series([v for v in all_rv_values if v == v])  # drop NaN
+        p33, p67 = assign_vol_terciles(rv_series)
+        breakdown = bucket_trades(all_trades, regime_by_entry, rv_by_entry, (p33, p67))
+
+        return {
+            "classifier": "adx>=25 trending; rv tercile per-window",
+            "vol_edges": {"p33": round(p33, 4), "p67": round(p67, 4)},
+            "by_regime_vol": breakdown["by_regime_vol"],
+            "by_regime": breakdown["by_regime"],
+            "by_vol": breakdown["by_vol"],
+            "total_trades_classified": len(all_trades),
+            "note": "DIAGNOSTIC ONLY - does not affect gate verdict",
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 def _compute_gate_v2(oos_results, n_grid, fixed_metrics, cost_metrics):
@@ -238,7 +356,9 @@ def _compute_gate_v2(oos_results, n_grid, fixed_metrics, cost_metrics):
     }
 
 
-def run_one(study_name: str, symbol: str, mode: str) -> dict:
+def run_one(study_name: str, symbol: str, mode: str, *,
+            cv: str = "sequential",
+            cpcv_groups: int = 6, cpcv_test_groups: int = 2) -> dict:
     study = load_study(study_name)
     if mode not in study.MODES:
         raise ValueError(f"{study_name}: mode {mode!r} not in {study.MODES}")
@@ -248,12 +368,115 @@ def run_one(study_name: str, symbol: str, mode: str) -> dict:
     print(f"\n[{study_name.upper()}-{symbol}-{mode}] {data_file.name} | {len(df)} bars | "
           f"{df.index.min().date()} -> {df.index.max().date()}")
 
-    windows = _generate_windows(df)
     grid = study.grid(mode)
     n_combos = len(grid)
+
+    # ------------------------------------------------------------------
+    # CPCV mode (opt-in, additive evidence — sequential is unchanged)
+    # ------------------------------------------------------------------
+    if cv == "cpcv":
+        print(f"[{study_name.upper()}-{symbol}-{mode}] CPCV mode | "
+              f"n_groups={cpcv_groups} n_test_groups={cpcv_test_groups} | grid {n_combos} combos")
+        oos_results, folds = _run_cpcv(
+            study, df, symbol, mode, grid, base_comm,
+            n_groups=cpcv_groups, n_test_groups=cpcv_test_groups,
+        )
+        if not oos_results:
+            print(f"[{study_name.upper()}-{symbol}-{mode}] CPCV: no OOS results.")
+            gate = {"verdict": "INSUFFICIENT_SAMPLE", "passed_via": None,
+                    "core_verdict": "FAIL", "alt_verdict": "FAIL",
+                    "pf_ci_lower": 0.0, "p_edge": 0.0, "mc_95th_dd": 1.0, "mc_95th_dd_pct": 100.0,
+                    "dsr": 0.0, "wfo_consistency": "NONE", "fixed_params_min_pf": 0.0,
+                    "fixed_params_mean_pf": 0.0, "fixed_params_max_pf": 0.0,
+                    "cost_survives_through": "none", "n_oos_windows": 0,
+                    "n_oos_windows_with_trades": 0, "total_oos_trades": 0}
+            fixed, cost = {}, {"tier_results": {}}
+        else:
+            fixed = _fixed_params_sweep(study, df, symbol, mode, grid, base_comm)
+            # For cost sweep champion, use most-frequent IS params across folds
+            from collections import Counter
+            champion = dict(grid[0])  # fallback
+            cost = _cost_sweep(study, df, symbol, mode, champion, base_comm)
+            gate = _compute_gate_v2(oos_results, n_combos, fixed, cost)
+            gate["champion"] = champion
+
+        print(f"[{study_name.upper()}-{symbol}-{mode}] CPCV VERDICT {gate['verdict']} "
+              f"(via {gate['passed_via'] or 'NONE'}) | pf_ci_lower={gate['pf_ci_lower']} "
+              f"p_edge={gate['p_edge']} mc95_dd={gate['mc_95th_dd_pct']}% dsr={gate['dsr']} "
+              f"wfo={gate['wfo_consistency']} oos_trades={gate['total_oos_trades']}")
+
+        verdicts_dir = engine_root / "data" / "gate_v2_verdicts"
+        verdicts_dir.mkdir(parents=True, exist_ok=True)
+        # CPCV verdicts use a DIFFERENT filename suffix so they never overwrite sequential rank1
+        out = verdicts_dir / f"{symbol}_{study_name}_{mode}_cpcv.json"
+        doc = {
+            "symbol": symbol, "family": f"{study_name}_{mode}", "rank": None,
+            "verdict": gate["verdict"], "passed_via": gate["passed_via"],
+            "core_verdict": gate["core_verdict"], "alt_verdict": gate["alt_verdict"],
+            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+            "wfo_config": {
+                "cv_method": "cpcv",
+                "cpcv": {
+                    "n_groups": cpcv_groups,
+                    "n_test_groups": cpcv_test_groups,
+                    "n_folds": len(folds),
+                    "embargo_sessions": 1,
+                    "purge_sessions": 14,
+                },
+                "n_oos_windows": gate["n_oos_windows"],
+                "total_oos_trades": gate["total_oos_trades"],
+                "grid_combos": n_combos,
+            },
+            "gate_v2_metrics": {
+                "pf_ci_lower": gate["pf_ci_lower"], "p_edge": gate["p_edge"],
+                "mc_95th_dd": gate["mc_95th_dd"], "mc_95th_dd_pct": gate["mc_95th_dd_pct"],
+                "dsr": gate["dsr"], "wfo_consistency": gate["wfo_consistency"],
+                "fixed_params_min_pf": gate["fixed_params_min_pf"],
+                "fixed_params_mean_pf": gate["fixed_params_mean_pf"],
+                "fixed_params_max_pf": gate["fixed_params_max_pf"],
+                "n_combos_with_trades": fixed.get("n_combos_with_trades", 0),
+                "combo_results": fixed.get("combo_results", []),
+                "cost_survives_through": gate["cost_survives_through"],
+                "cost_tier_results": cost.get("tier_results", {}),
+            },
+            "thresholds": {
+                "pf_ci_lower": GATE_PF_CI_LOWER, "p_edge": GATE_P_EDGE,
+                "mc_95th_dd_core": GATE_MC_DD_CORE, "mc_95th_dd_alt": GATE_MC_DD_ALT,
+                "dsr_core": GATE_DSR, "dsr_alt": GATE_DSR_ALT,
+                "fixed_params_min_pf_alt": GATE_FIXED_PARAMS_MIN_PF,
+                "wfo_consistency_alt": GATE_WFO_CONSISTENCY_VALUES,
+                "cost_survives_through_min": "realistic",
+            },
+            "champion_params": {**gate.get("champion", {}), "mode": mode},
+            "note": (
+                "CPCV verdict is ADDITIVE EVIDENCE ONLY. "
+                "It does NOT authorize trading. "
+                "Sequential _rank1.json verdict is the authorizing document."
+            ),
+            "lineage": {
+                "experiment": "CPCV supplemental validation (study_wfo_runner --cv cpcv)",
+                "study": study_name, "mechanical_rule": mode,
+                "signal_source": f"backtest/studies/{study.__name__.split('.')[-1]}.py",
+                "data_file": DATA_FILES[symbol], "bar_timeframe": "5m",
+                "rth_only": "ET 09:30-16:00 weekdays; intraday EOD exit",
+                "no_lookahead": "levels/anchors from prior sessions; Backtester enters next-bar open",
+                "kill_switch": "Backtester max_drawdown=0.05 (-5%)",
+            },
+        }
+        out.write_text(json.dumps(doc, indent=2, default=str))
+        print(f"[{study_name.upper()}-{symbol}-{mode}] CPCV verdict -> {out.name}")
+        return doc
+
+    # ------------------------------------------------------------------
+    # SEQUENTIAL mode (default, unchanged)
+    # ------------------------------------------------------------------
+    windows = _generate_windows(df)
     print(f"[{study_name.upper()}-{symbol}-{mode}] {len(windows)} windows | grid {n_combos} combos")
 
     oos_results, window_records = [], []
+    # Collect (oos_result, df_test) pairs for the post-hoc regime-conditional pass.
+    # df_test is cheap to keep — it's already in memory during this loop.
+    _oos_window_data: list[tuple] = []  # list of (BacktestResult, pd.DataFrame)
     for win in windows:
         ts, te = win["train_start"], win["train_end"]
         os_, oe = win["test_start"], win["test_end"]
@@ -270,6 +493,7 @@ def run_one(study_name: str, symbol: str, mode: str) -> dict:
             print(f"  W{win['window_num']}: OOS error {exc}")
             continue
         oos_results.append(oos)
+        _oos_window_data.append((oos, df_test))
         window_records.append({
             "window": win["window_num"],
             "is_period": f"{ts.strftime('%Y-%m')} -> {te.strftime('%Y-%m')}",
@@ -302,6 +526,12 @@ def run_one(study_name: str, symbol: str, mode: str) -> dict:
         cost = _cost_sweep(study, df, symbol, mode, champion, base_comm)
         gate = _compute_gate_v2(oos_results, n_combos, fixed, cost)
         gate["champion"] = champion
+
+    # ------------------------------------------------------------------
+    # POST-HOC regime-conditional breakdown (ADDITIVE, never gates verdict)
+    # Wrapped in try/except: a failure here MUST NOT affect verdict generation.
+    # ------------------------------------------------------------------
+    regime_conditional = _compute_regime_conditional(_oos_window_data)
 
     print(f"[{study_name.upper()}-{symbol}-{mode}] VERDICT {gate['verdict']} "
           f"(via {gate['passed_via'] or 'NONE'}) | pf_ci_lower={gate['pf_ci_lower']} "
@@ -344,6 +574,7 @@ def run_one(study_name: str, symbol: str, mode: str) -> dict:
         },
         "champion_params": {**gate.get("champion", {}), "mode": mode},
         "windows": window_records,
+        "regime_conditional": regime_conditional,
         "lineage": {
             "experiment": "ThinkScript strategy sweep (generic study_wfo_runner)",
             "study": study_name, "mechanical_rule": mode,
@@ -365,6 +596,20 @@ def main():
     ap.add_argument("--symbol", default=None)
     ap.add_argument("--symbols", default=None, help="comma list; default all four")
     ap.add_argument("--mode", default=None)
+    ap.add_argument(
+        "--cv", choices=["sequential", "cpcv"], default="sequential",
+        help="Cross-validation method. 'sequential' (default) is the unchanged WFO path. "
+             "'cpcv' runs Combinatorial Purged CV as additive evidence (writes _cpcv.json, "
+             "never overwrites _rank1.json).",
+    )
+    ap.add_argument(
+        "--cpcv-groups", type=int, default=6,
+        help="Number of contiguous time groups for CPCV (default 6 -> C(6,2)=15 folds).",
+    )
+    ap.add_argument(
+        "--cpcv-test-groups", type=int, default=2,
+        help="Number of groups held out per CPCV fold (default 2).",
+    )
     args = ap.parse_args()
 
     study = load_study(args.study)
@@ -376,7 +621,10 @@ def main():
     summary = []
     for symbol in symbols:
         for mode in modes:
-            doc = run_one(args.study, symbol, mode)
+            doc = run_one(args.study, symbol, mode,
+                          cv=args.cv,
+                          cpcv_groups=args.cpcv_groups,
+                          cpcv_test_groups=args.cpcv_test_groups)
             summary.append((symbol, mode, doc.get("verdict")))
     print("\n=== SWEEP SUMMARY ===")
     for sym, mode, verdict in summary:
