@@ -40,6 +40,20 @@ def test_staged_diversifier_set_all_have_specs():
         assert cfg.tick_size > 0
 
 
+def test_staged_diversifiers_are_pullable_via_ibkr_export():
+    # The IB history puller must know each staged symbol's contract (exchange/
+    # currency) or a pull fails on contract identification. This keeps the puller
+    # and the runner's staged set in lock-step.
+    from backtest.export_ibkr_history import SYMBOL_TO_IB_SPEC
+
+    for sym in rd.STAGED_DIVERSIFIERS:
+        assert sym in SYMBOL_TO_IB_SPEC, f"{sym} missing from export_ibkr_history.SYMBOL_TO_IB_SPEC"
+        spec = SYMBOL_TO_IB_SPEC[sym]
+        assert spec["symbol"] == sym
+        assert spec["exchange"]  # non-empty exchange required for IB resolution
+        assert spec["currency"] == "USD"
+
+
 # --- config_for -------------------------------------------------------------
 
 
