@@ -7,6 +7,7 @@ import { fetchEngine } from "@/lib/api";
 import {
   fetchHonestTrades,
   equityCurve,
+  maxDrawdownPct,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
@@ -49,17 +50,10 @@ interface ValidationState {
  * Returns null when the equity curve has no points or the peak never goes above 0.
  */
 function computeMaxDrawdownFromHonest(set: HonestTradeSet): number | null {
-  const curve = equityCurve(set.trades);
-  if (curve.length === 0) return null;
-  let maxDDPct = 0;
-  for (const pt of curve) {
-    const peak = pt.equity - pt.drawdown; // peak = equity + |drawdown|
-    if (peak > 0) {
-      const ddPct = Math.abs(pt.drawdown) / peak;
-      if (ddPct > maxDDPct) maxDDPct = ddPct;
-    }
-  }
-  return maxDDPct * 100; // as percentage
+  // null distinguishes "no data" from a real 0% in the checklist; otherwise
+  // defer to the canonical helper (same running-peak math as the old inline loop).
+  if (equityCurve(set.trades).length === 0) return null;
+  return maxDrawdownPct(set.trades) * 100;
 }
 
 function fmt(value: number | null | undefined, decimals = 2): string {

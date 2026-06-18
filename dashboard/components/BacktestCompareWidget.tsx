@@ -3,7 +3,11 @@
 import React from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { dedupCaveat, type HonestTradeSet } from "@/lib/honestTrades";
+import {
+  dedupCaveat,
+  maxDrawdownPct,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
@@ -41,18 +45,10 @@ type RowColor = "green" | "orange" | "red" | "neutral";
 
 function liveFromHonest(set: HonestTradeSet): LiveData {
   const avgTrade = set.trades.length > 0 ? set.net / set.trades.length : 0;
-  // Max drawdown from equity curve: compute running peak and trough
-  let equity = 0;
-  let peak = 0;
-  let maxDD = 0;
-  for (const t of set.trades) {
-    equity += t.pnl;
-    if (equity > peak) peak = equity;
-    const dd = equity - peak;
-    if (dd < maxDD) maxDD = dd;
-  }
-  // Express as fraction relative to peak (or 0 if no peak)
-  const maxDDFrac = peak > 0 ? maxDD / peak : 0;
+  // Negative fraction of peak (matches the BACKTEST.max_drawdown sign). The
+  // shared helper sorts by close time before accumulating, so this no longer
+  // depends on set.trades arriving in chronological order.
+  const maxDDFrac = -maxDrawdownPct(set.trades);
   return {
     profit_factor: set.profitFactor,
     sharpe_ratio: null,

@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, ArrowRight, Circle, Target } from "lucide-react";
 import {
-  equityCurve,
+  maxDrawdownPct,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
@@ -29,22 +29,21 @@ interface PhaseData {
   status: PhaseStatus;
 }
 
-function maxDrawdownPct(set: HonestTradeSet): number {
-  const curve = equityCurve(set.trades);
-  if (curve.length === 0) return 0;
-  const worstDd = Math.min(...curve.map((p) => p.drawdown));
-  const peakEquity = Math.max(...curve.map((p) => p.equity));
-  if (peakEquity > 0) {
-    return Math.abs(worstDd / peakEquity) * 100;
-  }
-  return worstDd < 0 ? 100 : 0;
+// Max drawdown as % of peak for the phase gate. Defers to the canonical
+// running-peak helper; an all-losing record that never rose above its $0
+// baseline counts as a full 100% drawdown for the gate (a % drawdown is
+// undefined vs a non-positive peak — treat it as fully drawn down, not 0%).
+function ddPctForGate(set: HonestTradeSet): number {
+  const dd = maxDrawdownPct(set.trades) * 100;
+  if (dd > 0) return dd;
+  return set.net < 0 && set.trades.length > 0 ? 100 : 0;
 }
 
 function computePhases(set: HonestTradeSet | null): PhaseData[] {
   const totalTrades = set?.trades.length ?? 0;
   const winRatePct = set != null ? (set.winRate ?? 0) * 100 : 0;
   const pf = set?.profitFactor ?? 0;
-  const ddPct = set != null ? maxDrawdownPct(set) : 0;
+  const ddPct = set != null ? ddPctForGate(set) : 0;
 
   // Phase 1 — Data Collection
   const p1_engine = set !== null;
