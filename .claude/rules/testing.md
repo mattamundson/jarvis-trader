@@ -25,6 +25,23 @@ cd engine && .venv/Scripts/python -m pytest tests/test_safety_layer.py -v
 cd dashboard && pnpm run build
 ```
 
+## No look-ahead bias (point-in-time discipline)
+
+Every backtest, walk-forward, and WFE run must use **only data that was available at the
+decision timestamp**. No future bars, no revised fundamentals, no end-of-day values applied
+intrabar, no indicator warmed up on data the live agent would not yet have seen. A signal
+computed at bar `t` may read bars `≤ t` only.
+
+This is an invariant, not a guideline: a strategy that "wins" by peeking at the future is
+curve-fit noise that will not survive paper trading. We already enforce pieces of it
+(`engine/backtest/news_blackout.py`, regime gating, walk-forward splits) — this rule names
+the whole. When in doubt, ask: "would the live pipeline have had this value at this instant?"
+If no, the backtest is cheating.
+
+Source: DeepFund, "Time Travel is Cheating: Going Live with DeepFund for Real-Time Fund
+Investment Benchmarking" (arXiv 2505.11065, 2025), surfaced via the
+`LLMQuant/awesome-trading-agents` list.
+
 ## When Adding New Features
 
 1. Add test for the new functionality first (TDD where practical)
