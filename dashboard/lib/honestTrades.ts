@@ -20,7 +20,7 @@ export interface HonestTrade {
   /** stable synthetic key (the deduped record has no trade id) */
   id: string;
   symbol: string;
-  /** "LONG" | "SHORT" */
+  /** normalized "LONG" | "SHORT" (see normalizeDirection); rarely other if upstream sends an unknown side */
   direction: string;
   /** alias of direction, for widgets keyed on `action` */
   action: string;
@@ -50,6 +50,22 @@ export interface HonestTradeSet {
   caveats: string[];
 }
 
+/**
+ * Canonicalize a raw direction/side to "LONG" | "SHORT". The deduped record's
+ * `direction` is produced upstream (the engine emits "LONG"/"SHORT", but
+ * broker/IB-style feeds use BUY/SELL or B/S), so normalize ONCE here — every
+ * widget that splits the record by direction (`t.direction === "LONG"`) then
+ * works regardless of upstream casing or convention, and a long/short split can
+ * never silently collapse to zero on a casing mismatch. Unrecognized values
+ * pass through upper-cased so they stay visible rather than miscounted.
+ */
+function normalizeDirection(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim().toUpperCase();
+  if (s === "LONG" || s === "BUY" || s === "BOT" || s === "B") return "LONG";
+  if (s === "SHORT" || s === "SELL" || s === "SLD" || s === "S") return "SHORT";
+  return s;
+}
+
 /** Fetch the deduped trade record. Throws if the honest record is unavailable. */
 export async function fetchHonestTrades(): Promise<HonestTradeSet> {
   const p = await fetchRealizedPnl();
@@ -58,17 +74,20 @@ export async function fetchHonestTrades(): Promise<HonestTradeSet> {
     throw new Error(es?.error || "honest trade record unavailable");
   }
   const trades: HonestTrade[] = (es.trade_list ?? []).map(
-    (t: RealizedTrade, i: number) => ({
-      id: `${t.symbol}-${t.entry_time ?? "na"}-${i}`,
-      symbol: t.symbol,
-      direction: t.direction,
-      action: t.direction,
-      entry_time: t.entry_time,
-      exit_time: t.exit_time,
-      pnl: t.pnl_usd,
-      pnl_usd: t.pnl_usd,
-      grade: t.grade,
-    }),
+    (t: RealizedTrade, i: number) => {
+      const direction = normalizeDirection(t.direction);
+      return {
+        id: `${t.symbol}-${t.entry_time ?? "na"}-${i}`,
+        symbol: t.symbol,
+        direction,
+        action: direction,
+        entry_time: t.entry_time,
+        exit_time: t.exit_time,
+        pnl: t.pnl_usd,
+        pnl_usd: t.pnl_usd,
+        grade: t.grade,
+      };
+    },
   );
   return {
     trades,
