@@ -10,6 +10,15 @@ open).
 Optional trend filter: only enter when close > SMA(filter_len). ``filter_len=0``
 disables the filter (raw overnight carry, no bias screen).
 
+Optional volatility-stress (regime) gate: only enter when the trailing 20-bar
+annualized realized vol at the entry bar is <= ``max_rv_annualized`` (percent).
+``max_rv_annualized=0`` disables it. Rationale: the overnight equity-carry edge
+concentrates in calm/uptrend regimes; equity selloffs (e.g. the 2024 bear
+cluster that broke OOS consistency for raw overnight carry) spike realized vol,
+so standing aside when vol is elevated is a price-only proxy for "VIX contango /
+low-stress" that removes the worst sessions. No lookahead — rv is measured on
+bars up to and including the entry bar.
+
 SIGNAL CONTRACT (Backtester columns):
     entry_signal  : "ENTRY_NOW" | "NO_TRADE"
     exit_signal   : "EXIT_NOW"  | "NO_EXIT"
@@ -17,8 +26,9 @@ SIGNAL CONTRACT (Backtester columns):
     trailing_stop : NaN (unused; wide stop already set)
     target_1/2/3  : entry + N × 50 × ATR  (far enough to never fire before time-exit)
     atr           : ATR(14) Wilder series
+    rv_20_ann_pct : 20-bar annualized realized vol (percent)
     bias          : "STRONG_BULL" (all entries are long-only)
-    regime        : "OVERNIGHT_CARRY" | "FILTERED_OUT"
+    regime        : "OVERNIGHT_CARRY" | "FILTERED_OUT" (trend) | "VOL_GATED" (stress)
 """
 from __future__ import annotations
 
@@ -26,6 +36,9 @@ import numpy as np
 import pandas as pd
 
 _ATR_PERIOD = 14
+# Realized-vol regime gate (mirrors trend_signals / vol_target_experiment)
+_RV_WINDOW = 20
+_RV_ANNUAL_FACTOR = 252 * 24  # 24 1h bars per trading day, 252 trading days/yr
 # Wide stop multiplier -- set far enough that the time-based EXIT_NOW fires first
 _STOP_ATR_MULT = 50.0
 # Targets set proportionally wide so R:R > 1.2 is always satisfied and targets
@@ -46,6 +59,7 @@ def _wilder_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
 def generate_overnight_signals(
     df: pd.DataFrame,
     filter_len: int = 0,
+    max_rv_annualized: float = 0.0,
 ) -> pd.DataFrame:
     """
     Generate overnight-carry signals for the JARVIS Backtester.
@@ -57,6 +71,9 @@ def generate_overnight_signals(
         Required columns: open, high, low, close.
     filter_len : int
         SMA look-back for the optional trend filter. 0 = disabled.
+    max_rv_annualized : float
+        Volatility-stress gate. When > 0, skip an entry whose trailing 20-bar
+        annualized realized vol (percent) exceeds this threshold. 0 = disabled.
 
     Returns
     -------
@@ -74,6 +91,10 @@ def generate_overnight_signals(
 
     # Optional SMA filter
     sma = df["close"].rolling(filter_len).mean() if filter_len > 0 else None
+
+    # Trailing realized vol (annualized %) for the optional stress gate.
+    log_ret = np.log(df["close"] / df["close"].shift(1))
+    rv_ann = log_ret.rolling(_RV_WINDOW).std() * np.sqrt(_RV_ANNUAL_FACTOR) * 100.0
 
     n = len(df)
     entry_signal = np.full(n, "NO_TRADE", dtype=object)
@@ -112,6 +133,14 @@ def generate_overnight_signals(
                     regime[i] = "FILTERED_OUT"
                     continue
 
+            # Optional volatility-stress gate -- stand aside when trailing rv is
+            # elevated (proxy for high-VIX / backwardation stress regimes).
+            if max_rv_annualized > 0.0:
+                rv_i = rv_ann.iloc[i]
+                if pd.isna(rv_i) or float(rv_i) > max_rv_annualized:
+                    regime[i] = "VOL_GATED"
+                    continue
+
             # Wide stop so it never fires before the time-based exit
             stop = price - _STOP_ATR_MULT * atr_i
             t1 = price + _T1_ATR_MULT * atr_i
@@ -133,6 +162,7 @@ def generate_overnight_signals(
     df["target_2"] = target_2
     df["target_3"] = target_3
     df["atr"] = atr
+    df["rv_20_ann_pct"] = rv_ann
     df["bias"] = "STRONG_BULL"
     df["regime"] = regime
 
