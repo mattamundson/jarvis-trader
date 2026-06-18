@@ -8,30 +8,45 @@ import { fetchEngine } from "@/lib/api";
 import {
   fetchHonestTrades,
   dedupCaveat,
+  exitDate,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** Shape of the backtest-reference side of /analytics/performance/compare */
+/** Backtest-reference side of /analytics/performance/compare (engine key: "backtest"). */
 interface BacktestRef {
   profit_factor: number;
   sharpe_ratio: number;
   win_rate: number;
 }
 
+/** Each gate the engine reports as { required, met, current? }. */
+interface ThresholdGate {
+  required: number;
+  met?: boolean;
+  current?: number;
+}
+
+/**
+ * Engine's compare_to_backtest() validation_thresholds — nested gates, NOT flat
+ * min_* numbers. The engine gates PF, Sharpe, and trading DAYS; there is no
+ * win-rate or trade-count gate here.
+ */
 interface ValidationThresholds {
-  min_profit_factor: number;
-  min_sharpe: number;
-  min_win_rate: number;
-  min_trades: number;
+  profit_factor?: ThresholdGate;
+  sharpe_ratio?: ThresholdGate;
+  min_trading_days?: ThresholdGate;
 }
 
 interface CompareResponse {
-  backtested: BacktestRef;
+  backtest: BacktestRef;
   validation_thresholds: ValidationThresholds;
-  /** kept for back-compat; not used for paper metrics any more */
-  degradation_factor?: number;
+  degradation_factor?: {
+    profit_factor: number | null;
+    sharpe_ratio: number | null;
+    note?: string;
+  };
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -93,31 +108,31 @@ export function BacktestComparisonCard() {
 
   // ── Derived pass/fail (honest paper vs backtest thresholds) ───────────────
 
+  // The engine gates on PF, Sharpe, and trading DAYS — there is no win-rate or
+  // trade-count gate here. Win rate is shown as an informational paper-vs-
+  // backtest reference only.
   const thresholds = ref?.validation_thresholds;
+  const minPf = thresholds?.profit_factor?.required ?? null;
+  const minSharpe = thresholds?.sharpe_ratio?.required ?? null;
+  const minDays = thresholds?.min_trading_days?.required ?? null;
 
   // Paper-side values come from the honest deduped record
   const paperPf = honest?.profitFactor ?? null;
   const paperWr = honest != null ? honest.winRate * 100 : null; // 0..100
-  const paperTrades = honest?.trades.length ?? null;
-  // Sharpe is not computable from the deduped record (no timestamps-per-trade
-  // Sharpe vs annualised); surface "—"
-  const paperSharpe: null = null;
+  // Trading days = distinct local close-dates in the deduped record (matches the
+  // engine's min_trading_days gate, not raw trade count).
+  const paperTradingDays = honest
+    ? new Set(honest.trades.map((t) => exitDate(t)).filter(Boolean)).size
+    : null;
 
-  const pfPass =
-    paperPf != null && thresholds != null && paperPf >= thresholds.min_profit_factor;
-  const sharpePass = false; // always "—" / FAIL until real annualised Sharpe available
-  const winRatePass =
-    paperWr != null &&
-    thresholds != null &&
-    paperWr >= thresholds.min_win_rate;
-  const tradesPass =
-    paperTrades != null &&
-    thresholds != null &&
-    paperTrades >= thresholds.min_trades;
+  const pfPass = paperPf != null && minPf != null && paperPf >= minPf;
+  // Sharpe is not computable from the deduped record (no annualised Sharpe) —
+  // surfaced as "—"/N/A and excluded from the pass tally.
+  const daysPass =
+    paperTradingDays != null && minDays != null && paperTradingDays >= minDays;
 
-  const allPass = pfPass && winRatePass && tradesPass;
-  // Note: sharpePass excluded from allPass because the metric is not available
-  // from the deduped record — "NOT YET" is correct until that gap is filled.
+  // Only the gates the engine defines AND we can honestly evaluate.
+  const allPass = pfPass && daysPass;
 
   interface MetricRowDef {
     label: string;
@@ -127,20 +142,29 @@ export function BacktestComparisonCard() {
     badgeLabel: string;
   }
 
+  // Backtest win rate may arrive as a fraction (0..1) or a percent (0..100);
+  // normalize to percent for the reference display.
+  const backtestWrPct =
+    ref?.backtest?.win_rate != null
+      ? ref.backtest.win_rate <= 1
+        ? ref.backtest.win_rate * 100
+        : ref.backtest.win_rate
+      : null;
+
   const metricRows: MetricRowDef[] =
-    honest != null && thresholds != null
+    honest != null
       ? [
           {
             label: "Profit Factor",
             paperValue: fmt(paperPf),
-            targetValue: `≥ ${fmt(thresholds.min_profit_factor)}`,
+            targetValue: minPf != null ? `≥ ${fmt(minPf)}` : "—",
             badgeVariant: pfPass ? "bull" : "bear",
             badgeLabel: pfPass ? "PASS" : "FAIL",
           },
           {
             label: "Sharpe Ratio",
             paperValue: "—",
-            targetValue: `≥ ${fmt(thresholds.min_sharpe)}`,
+            targetValue: minSharpe != null ? `≥ ${fmt(minSharpe)}` : "—",
             // Sharpe not computable from deduped record — neutral, not FAIL
             badgeVariant: "neutral",
             badgeLabel: "N/A",
@@ -148,22 +172,25 @@ export function BacktestComparisonCard() {
           {
             label: "Win Rate %",
             paperValue: paperWr != null ? `${paperWr.toFixed(1)}%` : "—",
-            targetValue: `≥ ${fmt(thresholds.min_win_rate, 1)}%`,
-            badgeVariant: winRatePass ? "bull" : "bear",
-            badgeLabel: winRatePass ? "PASS" : "FAIL",
+            // No engine win-rate gate — show the backtest win rate as a reference.
+            targetValue:
+              backtestWrPct != null ? `bt ${backtestWrPct.toFixed(1)}%` : "—",
+            badgeVariant: "neutral",
+            badgeLabel: "REF",
           },
           {
-            label: "Total Trades",
-            paperValue: paperTrades != null ? String(paperTrades) : "—",
-            targetValue: `≥ ${thresholds.min_trades ?? "—"}`,
-            badgeVariant: tradesPass ? "bull" : "warn",
-            badgeLabel: tradesPass ? "PASS" : "IN PROGRESS",
+            label: "Trading Days",
+            paperValue:
+              paperTradingDays != null ? String(paperTradingDays) : "—",
+            targetValue: minDays != null ? `≥ ${minDays}` : "—",
+            badgeVariant: daysPass ? "bull" : "warn",
+            badgeLabel: daysPass ? "PASS" : "IN PROGRESS",
           },
         ]
       : [];
 
   // Degradation: honest PF vs backtest PF
-  const backtestPf = ref?.backtested?.profit_factor ?? null;
+  const backtestPf = ref?.backtest?.profit_factor ?? null;
   const degradationPct =
     backtestPf != null && backtestPf > 0 && paperPf != null
       ? ((paperPf / backtestPf) * 100).toFixed(1)

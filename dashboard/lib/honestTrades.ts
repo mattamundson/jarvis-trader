@@ -141,12 +141,21 @@ export function bySymbolStats(trades: HonestTrade[]): SymbolStat[] {
   return out.sort((a, b) => b.net - a.net);
 }
 
-/** ISO date (YYYY-MM-DD, UTC) of a trade's close, or null. */
+/**
+ * Local-calendar date (YYYY-MM-DD) of a trade's close, or null.
+ * Uses the local clock (not UTC) so daily/calendar/rolling buckets line up with
+ * the calendar widgets — which key on local time. UTC here put evening
+ * (US-Central) trades on the next day, shifting the P&L calendar by one.
+ */
 export function exitDate(t: HonestTrade): string | null {
   if (!t.exit_time) return null;
   const ms = Date.parse(t.exit_time);
   if (Number.isNaN(ms)) return null;
-  return new Date(ms).toISOString().slice(0, 10);
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export interface DailyPnl {
@@ -192,6 +201,25 @@ export function equityCurve(trades: HonestTrade[]): EquityPoint[] {
     out.push({ t: t.exit_time!, equity, drawdown: equity - peak });
   }
   return out;
+}
+
+/**
+ * Max drawdown as a fraction of the running peak equity (0..1), from the deduped
+ * record. Returns 0 when there is never a positive peak (a % drawdown is
+ * undefined against a zero/negative base). Single source of truth for every
+ * drawdown widget — do not re-derive this loop inline.
+ */
+export function maxDrawdownPct(trades: HonestTrade[]): number {
+  let peak = 0;
+  let maxDd = 0;
+  for (const pt of equityCurve(trades)) {
+    if (pt.equity > peak) peak = pt.equity;
+    if (peak > 0) {
+      const dd = (peak - pt.equity) / peak;
+      if (dd > maxDd) maxDd = dd;
+    }
+  }
+  return maxDd;
 }
 
 /**
