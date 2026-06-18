@@ -353,10 +353,12 @@ Check `watchlist_scan` and `market_open_scan` show recent `next_run` timestamps.
 
 ### Check Walk-Forward Efficiency (Weekly)
 
-WFE targets (from backtest — check monthly):
-- MCL 1h: WFE = 0.82 (APPROVED)
-- MNQ 1h: WFE = 0.57 (APPROVED)
-- MES 1h: WFE = 0.09 (DO NOT TRADE — data collection only)
+Active paper symbols since Tier-3 flip 2026-05-24 (gate v2 ALT, p_edge):
+- MES 1h: p_edge = 0.75 (APPROVED — active paper)
+- MGC 1h: p_edge = 0.6842 (APPROVED — active paper)
+- MCL 1h: WFE = 0.82 (HALTED — DO_NOT_TRADE; hypotheses A–E exhausted)
+- MNQ 1h: WFE = 0.57 (HALTED — DO_NOT_TRADE; fails gate v2)
+- M2K 1h: REJECTED (SMA/ORB/Donchian all FAIL 2026-05-24)
 
 ---
 
