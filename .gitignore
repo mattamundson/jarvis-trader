@@ -325,3 +325,4 @@ engine/strategy_c/output/strategy_c_plus_dashboard.png
 engine/strategy_c/output/execution_log.json
 engine/strategy_c/output/allocation_log.csv
 engine/strategy_c/output/equity_curve.csv
+.gstack/
