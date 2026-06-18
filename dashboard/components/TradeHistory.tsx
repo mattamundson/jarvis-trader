@@ -1,20 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import useSWR from "swr";
 import { Clock, TrendingUp, TrendingDown } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import type { TradeRecord } from "@/lib/api";
-import { TradeReviewPanel } from "./TradeReviewPanel";
+import {
+  dedupCaveat,
+  durationMinutes,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
+
+// Columns dropped vs. prior raw version:
+//   - Qty (not in honest record)
+//   - Price (not in honest record — only direction + P&L are available)
+//   - TradeReviewPanel (required trade_id from raw engine record)
+// Replaced: timestamp → exit_time; grade still available.
 
 const REFRESH_MS = 30_000;
-
-function fetcher<T>(path: string): Promise<T> {
-  return fetchEngine<T>(path);
-}
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
@@ -36,13 +40,7 @@ const GRADE_STYLES: Record<string, string> = {
   F: "bg-red-500/15 text-red-400 border border-red-500/30",
 };
 
-function GradeBadge({
-  grade,
-  reviewStatus,
-}: {
-  grade: string | null;
-  reviewStatus: string | null;
-}) {
+function GradeBadge({ grade }: { grade: string | null }) {
   if (grade && GRADE_STYLES[grade]) {
     return (
       <span
@@ -52,37 +50,23 @@ function GradeBadge({
       </span>
     );
   }
-  if (reviewStatus === "pending") {
-    return (
-      <span className="inline-flex items-center justify-center w-6 h-6 rounded text-[10px] font-bold bg-muted/40 text-muted-foreground border border-border animate-pulse">
-        …
-      </span>
-    );
-  }
-  if (reviewStatus === "failed") {
-    return (
-      <span className="inline-flex items-center justify-center w-6 h-6 rounded text-[10px] font-bold bg-muted/40 text-muted-foreground border border-border">
-        ?
-      </span>
-    );
-  }
   return <span className="text-muted-foreground/40">—</span>;
 }
 
 export function TradeHistory() {
-  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
+  const { honest: set, isLoading, error: loadError } = useHonestTrades(REFRESH_MS);
+  const error = loadError
+    ? loadError instanceof Error
+      ? loadError.message
+      : String(loadError)
+    : null;
 
-  const { data: trades, isLoading, error } = useSWR<TradeRecord[]>(
-    "/portfolio/history/trades?limit=50",
-    fetcher,
-    { refreshInterval: REFRESH_MS }
-  );
-
-  const rows = trades ?? [];
-
-  function toggleRow(tradeId: string) {
-    setSelectedTradeId((prev) => (prev === tradeId ? null : tradeId));
-  }
+  // Sort by exit_time descending (most recent first)
+  const rows: HonestTrade[] = set
+    ? [...set.trades]
+        .filter((t) => t.exit_time)
+        .sort((a, b) => Date.parse(b.exit_time!) - Date.parse(a.exit_time!))
+    : [];
 
   return (
     <Card>
@@ -93,7 +77,7 @@ export function TradeHistory() {
             Trade History
           </CardTitle>
           <span className="text-xs text-muted-foreground tabular-nums">
-            {rows.length > 0 ? `${rows.length} records` : ""}
+            {set ? `${rows.length} records · ${dedupCaveat(set)}` : ""}
           </span>
         </div>
       </CardHeader>
@@ -107,7 +91,7 @@ export function TradeHistory() {
 
         {error && !isLoading && (
           <p className="text-center text-xs text-bear py-6">
-            Failed to load trade history — engine may be offline.
+            Failed to load trade history — {error}
           </p>
         )}
 
@@ -118,128 +102,96 @@ export function TradeHistory() {
         )}
 
         {!isLoading && !error && rows.length > 0 && (
-          <>
-            <div className="overflow-x-auto -mx-1">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                      Date / Time
-                    </th>
-                    <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                      Symbol
-                    </th>
-                    <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                      Side
-                    </th>
-                    <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                      Qty
-                    </th>
-                    <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                      Price
-                    </th>
-                    <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                      P&L
-                    </th>
-                    <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
-                      Grade
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {rows.map((trade) => {
-                    const pnl = trade.pnl;
-                    const pnlColor =
-                      pnl == null
-                        ? "text-muted-foreground"
-                        : pnl > 0
-                        ? "text-bull"
-                        : pnl < 0
-                        ? "text-bear"
-                        : "text-muted-foreground";
-                    const PnlIcon =
-                      pnl != null && pnl > 0
-                        ? TrendingUp
-                        : pnl != null && pnl < 0
-                        ? TrendingDown
-                        : null;
-                    const isSelected = selectedTradeId === trade.trade_id;
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    Exit Time
+                  </th>
+                  <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider">
+                    Symbol
+                  </th>
+                  <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider">
+                    Direction
+                  </th>
+                  <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    P&L
+                  </th>
+                  <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    Duration
+                  </th>
+                  <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
+                    Grade
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {rows.map((trade) => {
+                  const pnl = trade.pnl;
+                  const pnlColor =
+                    pnl > 0
+                      ? "text-bull"
+                      : pnl < 0
+                      ? "text-bear"
+                      : "text-muted-foreground";
+                  const PnlIcon =
+                    pnl > 0 ? TrendingUp : pnl < 0 ? TrendingDown : null;
+                  const dur = durationMinutes(trade);
+                  const durStr =
+                    dur === null
+                      ? "—"
+                      : dur < 60
+                      ? `${Math.round(dur)}m`
+                      : `${Math.floor(dur / 60)}h ${Math.round(dur % 60)}m`;
 
-                    return (
-                      <tr
-                        key={trade.trade_id}
-                        onClick={() => toggleRow(trade.trade_id)}
-                        className={`cursor-pointer transition-colors ${
-                          isSelected
-                            ? "bg-accent/10 hover:bg-accent/15"
-                            : "hover:bg-muted/20"
-                        }`}
-                      >
-                        {/* Date/Time */}
-                        <td className="py-2 pr-3 font-mono text-muted-foreground whitespace-nowrap">
-                          {formatDateTime(trade.timestamp)}
-                        </td>
+                  return (
+                    <tr
+                      key={trade.id}
+                      className="hover:bg-muted/20"
+                    >
+                      {/* Exit Time */}
+                      <td className="py-2 pr-3 font-mono text-muted-foreground whitespace-nowrap">
+                        {formatDateTime(trade.exit_time)}
+                      </td>
 
-                        {/* Symbol */}
-                        <td className="py-2 pr-3">
-                          <span className="font-mono font-semibold text-foreground">
-                            {trade.symbol}
-                          </span>
-                        </td>
+                      {/* Symbol */}
+                      <td className="py-2 pr-3">
+                        <span className="font-mono font-semibold text-foreground">
+                          {trade.symbol}
+                        </span>
+                      </td>
 
-                        {/* Side */}
-                        <td className="py-2 pr-3">
-                          <span
-                            className={`font-mono font-bold ${
-                              trade.action === "BUY" ? "text-bull" : "text-bear"
-                            }`}
-                          >
-                            {trade.action}
-                          </span>
-                        </td>
+                      {/* Direction */}
+                      <td className="py-2 pr-3">
+                        <Badge variant={trade.direction === "LONG" ? "bull" : "bear"}>
+                          {trade.direction}
+                        </Badge>
+                      </td>
 
-                        {/* Qty */}
-                        <td className="py-2 pr-3 text-right tabular-nums text-foreground">
-                          {trade.quantity}
-                        </td>
+                      {/* P&L */}
+                      <td className={`py-2 pr-3 text-right tabular-nums font-medium ${pnlColor}`}>
+                        <span className="flex items-center justify-end gap-1">
+                          {PnlIcon && <PnlIcon className="h-3 w-3 shrink-0" />}
+                          {formatCurrency(pnl)}
+                        </span>
+                      </td>
 
-                        {/* Price */}
-                        <td className="py-2 pr-3 text-right tabular-nums text-foreground">
-                          {formatCurrency(trade.price)}
-                        </td>
+                      {/* Duration */}
+                      <td className="py-2 pr-3 text-right font-mono text-muted-foreground tabular-nums">
+                        {durStr}
+                      </td>
 
-                        {/* P&L */}
-                        <td className={`py-2 pr-3 text-right tabular-nums font-medium ${pnlColor}`}>
-                          <span className="flex items-center justify-end gap-1">
-                            {PnlIcon && <PnlIcon className="h-3 w-3 shrink-0" />}
-                            {pnl != null ? formatCurrency(pnl) : "—"}
-                          </span>
-                        </td>
-
-                        {/* Grade */}
-                        <td className="py-2 text-center">
-                          <GradeBadge
-                            grade={trade.grade}
-                            reviewStatus={trade.review_status}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Review Panel — expands below table when a row is selected */}
-            {selectedTradeId && (
-              <div className="mt-4 border-t border-border pt-4">
-                <TradeReviewPanel
-                  tradeId={selectedTradeId}
-                  onClose={() => setSelectedTradeId(null)}
-                />
-              </div>
-            )}
-          </>
+                      {/* Grade */}
+                      <td className="py-2 text-center">
+                        <GradeBadge grade={trade.grade} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </CardContent>
     </Card>
