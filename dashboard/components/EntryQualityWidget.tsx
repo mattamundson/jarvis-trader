@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Target, ShieldAlert, Minus, TrendingUp, AlertTriangle } from "lucide-react";
+import { Target, ShieldAlert, Minus, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngineRaw } from "@/lib/api";
+import { RawRecordBadge } from "@/components/RawRecordBadge";
 
 // NOTE: outcome-bucketing (Target/Stopped/Partial/Scratch) requires an exit-reason
 // or target/stop field that the deduped honest record does NOT carry. This widget
@@ -139,10 +140,7 @@ export function EntryQualityWidget() {
         <CardTitle>Entry Quality</CardTitle>
         <div className="flex items-center gap-2">
           {/* Prominent raw-data disclosure badge */}
-          <Badge variant="neutral" className="flex items-center gap-1 text-[10px]">
-            <AlertTriangle className="h-3 w-3" />
-            Raw record · not deduped
-          </Badge>
+          <RawRecordBadge className="text-[10px]" />
           {stats && !error && (
             <Badge variant={qualityBadgeVariant(hitRate)}>
               {qualityLabel(hitRate)} — {hitRate.toFixed(0)}% HIT RATE

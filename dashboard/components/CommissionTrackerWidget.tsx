@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import { RawRecordBadge } from "@/components/RawRecordBadge";
 
 
 interface CommissionStats {
@@ -84,9 +85,7 @@ export function CommissionTrackerWidget() {
         <div className="flex items-center gap-2 flex-wrap">
           <CardTitle className="text-sm">Commission Tracker</CardTitle>
           {/* Honest-data caveat badge */}
-          <Badge variant="warn" className="text-[10px] font-normal">
-            Raw record &middot; not deduped
-          </Badge>
+          <RawRecordBadge className="text-[10px] font-normal" />
         </div>
         <Badge variant={headerBadgeVariant}>
           ${totalCommissions.toFixed(2)} Total

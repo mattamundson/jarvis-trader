@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { RefreshCw, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import { RawRecordBadge } from "@/components/RawRecordBadge";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -177,9 +178,7 @@ export function RegimePnLBreakdownWidget() {
               </p>
               {/* Regime is sourced from strategy_params — absent in the deduped HonestTrade record.
                   P&L totals here reflect the raw (over-counted) trade log, not the deduplicated record. */}
-              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-yellow-500/10 text-yellow-400 border border-yellow-500/30">
-                Raw · not deduped
-              </span>
+              <RawRecordBadge className="text-[9px]" />
             </div>
             <p className="text-[10px] text-muted-foreground/60">
               Closed trades grouped by market regime
