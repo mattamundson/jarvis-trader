@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   equityCurve,
   type EquityPoint,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 const REFRESH_INTERVAL_MS = 120_000;
@@ -170,30 +170,10 @@ function deriveSeries(curve: EquityPoint[]): number[] {
 // ── Main widget ────────────────────────────────────────────────────────────
 
 export function DrawdownChartWidget() {
-  const [series, setSeries] = useState<number[]>([]);
-  const [tradeCount, setTradeCount] = useState(0);
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  async function fetchData() {
-    try {
-      const set = await fetchHonestTrades();
-      const curve = equityCurve(set.trades);
-      setSeries(deriveSeries(curve));
-      setTradeCount(set.trades.filter((t) => t.exit_time).length);
-      setLoadState("ok");
-    } catch {
-      setLoadState("error");
-    }
-  }
-
-  useEffect(() => {
-    fetchData();
-    intervalRef.current = setInterval(fetchData, REFRESH_INTERVAL_MS);
-    return () => {
-      if (intervalRef.current !== null) clearInterval(intervalRef.current);
-    };
-  }, []);
+  const { honest: set, isLoading, error: loadError } = useHonestTrades(REFRESH_INTERVAL_MS);
+  const loadState: LoadState = isLoading ? "loading" : loadError ? "error" : "ok";
+  const series = set ? deriveSeries(equityCurve(set.trades)) : [];
+  const tradeCount = set ? set.trades.filter((t) => t.exit_time).length : 0;
 
   const maxDrawdown = series.length > 0 ? Math.max(...series) : 0;
 

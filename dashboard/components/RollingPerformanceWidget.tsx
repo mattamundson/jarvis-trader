@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import {
-  fetchHonestTrades,
   dailyPnl,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -160,27 +160,9 @@ function MetricCell({ value, variant }: MetricCellProps) {
 // ── Main widget ───────────────────────────────────────────────────────────────
 
 export function RollingPerformanceWidget() {
-  const [windows, setWindows] = useState<RollingWindow[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchWindows = useCallback(async () => {
-    try {
-      const set = await fetchHonestTrades();
-      setWindows(buildWindows(set));
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load rolling performance");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchWindows();
-    const id = setInterval(fetchWindows, 5 * 60 * 1000); // refresh every 5 minutes
-    return () => clearInterval(id);
-  }, [fetchWindows]);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(5 * 60 * 1000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const windows = set ? buildWindows(set) : null;
 
   const hasData = windows && windows.some((w) => w.trade_count > 0);
 

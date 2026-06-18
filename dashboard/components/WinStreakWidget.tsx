@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   type HonestTrade,
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 interface StreakResult {
@@ -76,30 +75,9 @@ function computeStreaksFromHonest(trades: HonestTrade[]): StreakResult {
 }
 
 export function WinStreakWidget() {
-  const [streaks, setStreaks] = useState<StreakResult | null>(null);
-  const [honestSet, setHonestSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTrades = useCallback(async () => {
-    try {
-      const set = await fetchHonestTrades();
-      setHonestSet(set);
-      const result = computeStreaksFromHonest(set.trades);
-      setStreaks(result);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 300_000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  const { honest: honestSet, isLoading: loading, error: loadError } = useHonestTrades(300_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const streaks = honestSet ? computeStreaksFromHonest(honestSet.trades) : null;
 
   const currentNum = streaks?.currentStreak ?? 0;
   const currentType = streaks?.currentStreakType ?? "NONE";

@@ -1,14 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { TrendingUp, RefreshCw, AlertTriangle, Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  fetchHonestTrades,
-  perTradeSharpe,
-  type HonestTradeSet,
-} from "@/lib/honestTrades";
+import { perTradeSharpe } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -102,31 +99,10 @@ function StatCell({
 // ── Main Widget ────────────────────────────────────────────────────────────────
 
 export function SharpeRatioWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [sharpe, setSharpe] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-
-  async function fetchData() {
-    try {
-      const honest = await fetchHonestTrades();
-      setSet(honest);
-      setSharpe(perTradeSharpe(honest.trades));
-      setError(null);
-      setLastRefresh(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch deduped trade record");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(30_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const sharpe = set ? perTradeSharpe(set.trades) : null;
+  const lastRefresh = set ? new Date() : null;
 
   const interpretation = getSharpeInterpretation(sharpe);
   const GAUGE_MAX = 1.5;

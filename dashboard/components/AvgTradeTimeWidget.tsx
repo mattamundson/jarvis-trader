@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Clock, TrendingUp, Zap, Timer, Info } from "lucide-react";
 import {
-  fetchHonestTrades,
   durationMinutes,
   dedupCaveat,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -168,30 +167,9 @@ function BucketRow({
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export default function AvgTradeTimeWidget() {
-  const [data, setData] = useState<AvgTradeTimeData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const set: HonestTradeSet = await fetchHonestTrades();
-        const computed = computeData(set.trades, set);
-        setData(computed);
-        setError(false);
-        setLastRefresh(new Date());
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, []);
+  const { honest: honestSet, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = !!loadError;
+  const data = honestSet ? computeData(honestSet.trades, honestSet) : null;
 
   // ── Loading state ──────────────────────────────────────────────────────────
 
@@ -359,9 +337,6 @@ export default function AvgTradeTimeWidget() {
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">
             Auto-refreshes every 60s
-            {lastRefresh && (
-              <span> &bull; Last: {lastRefresh.toLocaleTimeString()}</span>
-            )}
           </p>
           {caveat && (
             <p className="text-[10px] text-muted-foreground flex items-center gap-1">

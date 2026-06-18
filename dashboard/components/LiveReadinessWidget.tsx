@@ -5,11 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Target } from "lucide-react";
 import {
-  fetchHonestTrades,
   equityCurve,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 interface Criterion {
   label: string;
@@ -98,29 +98,15 @@ function CriterionRow({ criterion }: { criterion: Criterion }) {
 }
 
 export function LiveReadinessWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  async function fetchData() {
-    try {
-      const result = await fetchHonestTrades();
-      setSet(result);
-      setError(null);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000);
-    return () => clearInterval(interval);
-  }, []);
+    if (set != null) {
+      setLastUpdated(new Date());
+    }
+  }, [set]);
 
   if (loading) {
     return (

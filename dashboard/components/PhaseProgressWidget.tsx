@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, ArrowRight, Circle, Target } from "lucide-react";
 import {
-  fetchHonestTrades,
   equityCurve,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Phase logic ───────────────────────────────────────────────────────────────
 
@@ -208,34 +208,8 @@ function phaseStatusLabel(status: PhaseStatus): string {
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export function PhaseProgressWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchData() {
-      try {
-        const result = await fetchHonestTrades();
-        if (!cancelled) {
-          setSet(result);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Fetch failed");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(0);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
   const phases = computePhases(set);
   const currentLabel = currentPhaseLabel(phases);

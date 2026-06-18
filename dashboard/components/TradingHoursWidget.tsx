@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { Clock, TrendingUp, TrendingDown, Activity, Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   type HonestTrade,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -132,34 +132,18 @@ function HourBar({ stat, maxAbsPnl, isBest, isWorst }: HourBarProps) {
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export function TradingHoursWidget() {
-  const [hourStats, setHourStats] = useState<HourStats[]>([]);
-  const [totalTrades, setTotalTrades] = useState(0);
-  const [caveat, setCaveat] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const loadTrades = useCallback(async () => {
-    try {
-      const set: HonestTradeSet = await fetchHonestTrades();
-      const stats = buildHourStats(set.trades);
-      setHourStats(stats);
-      setTotalTrades(set.trades.length);
-      setCaveat(dedupCaveat(set));
-      setError(null);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load honest trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    loadTrades();
-    const interval = setInterval(loadTrades, 60_000);
-    return () => clearInterval(interval);
-  }, [loadTrades]);
+    if (honest) setLastUpdated(new Date());
+  }, [honest]);
+
+  // Derive stats at render time
+  const hourStats: HourStats[] = honest ? buildHourStats(honest.trades) : [];
+  const totalTrades = honest ? honest.trades.length : 0;
+  const caveat = honest ? dedupCaveat(honest) : "";
 
   // Derived stats
   const insufficient = totalTrades < 5;

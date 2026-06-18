@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp } from "lucide-react";
 import {
-  fetchHonestTrades,
   exitDate,
   dedupCaveat,
   type HonestTrade,
-  type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,39 +82,9 @@ function deriveWeeklyStats(trades: HonestTrade[]): WeeklyStats | null {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function WeeklyStatsWidget() {
-  const [data, setData] = useState<WeeklyStats | null>(null);
-  const [tradeSet, setTradeSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const set = await fetchHonestTrades();
-        if (!cancelled) {
-          setTradeSet(set);
-          setData(deriveWeeklyStats(set.trades));
-          setFetchError(false);
-        }
-      } catch {
-        if (!cancelled) {
-          setFetchError(true);
-          setData(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    load();
-    const id = setInterval(load, 120_000); // refresh every 2 minutes
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+  const { honest: tradeSet, isLoading: loading, error: loadError } = useHonestTrades(120_000);
+  const fetchError = !!loadError;
+  const data = tradeSet ? deriveWeeklyStats(tradeSet.trades) : null;
 
   if (loading) {
     return (

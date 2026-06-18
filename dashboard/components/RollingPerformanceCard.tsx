@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BarChart2 } from "lucide-react";
 import {
-  fetchHonestTrades,
   type HonestTrade,
   dailyPnl,
   perTradeSharpe,
   dedupCaveat,
-  type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 const WINDOWS = [7, 14, 30] as const;
 
@@ -75,33 +74,8 @@ function deriveRolling(trades: HonestTrade[], days: number): DerivedRollingMetri
 
 export function RollingPerformanceCard() {
   const [rollingWindow, setRollingWindow] = useState<7 | 14 | 30>(30);
-  const [honestSet, setHonestSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const set = await fetchHonestTrades();
-        if (!cancelled) {
-          setHonestSet(set);
-          setFetchError(false);
-        }
-      } catch {
-        if (!cancelled) setFetchError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    const id = setInterval(load, 300_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+  const { honest: honestSet, isLoading: loading, error: fetchErrorObj } = useHonestTrades(300_000);
+  const fetchError = !!fetchErrorObj;
 
   const metrics = honestSet
     ? deriveRolling(honestSet.trades, rollingWindow)

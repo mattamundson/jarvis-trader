@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   type HonestTrade,
-  type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -183,44 +181,14 @@ function ComparisonBar({ longCount, shortCount }: ComparisonBarProps) {
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export function LongShortBreakdownWidget() {
-  const [longStats, setLongStats] = useState<DirectionStats>({
-    count: 0,
-    wins: 0,
-    totalPnl: 0,
-    winRate: 0,
-  });
-  const [shortStats, setShortStats] = useState<DirectionStats>({
-    count: 0,
-    wins: 0,
-    totalPnl: 0,
-    winRate: 0,
-  });
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError
+    ? (loadError instanceof Error ? loadError.message : String(loadError))
+    : null;
 
-  const fetchTrades = useCallback(async () => {
-    try {
-      const honest = await fetchHonestTrades();
-      setSet(honest);
-      // Split by direction field ("LONG" | "SHORT") from deduped record
-      const longs = honest.trades.filter((t) => t.direction === "LONG");
-      const shorts = honest.trades.filter((t) => t.direction === "SHORT");
-      setLongStats(buildStats(longs));
-      setShortStats(buildStats(shorts));
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 60_000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  // Split by direction field ("LONG" | "SHORT") from deduped record
+  const longStats = set ? buildStats(set.trades.filter((t) => t.direction === "LONG")) : { count: 0, wins: 0, totalPnl: 0, winRate: 0 };
+  const shortStats = set ? buildStats(set.trades.filter((t) => t.direction === "SHORT")) : { count: 0, wins: 0, totalPnl: 0, winRate: 0 };
 
   // Determine edge badge
   function edgeBadgeVariant(): "bull" | "bear" | "neutral" {

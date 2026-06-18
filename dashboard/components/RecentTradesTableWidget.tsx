@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -9,11 +8,10 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import {
-  fetchHonestTrades,
   dedupCaveat,
   durationMinutes,
-  type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 function formatDuration(mins: number | null): string {
   if (mins === null) return "—";
@@ -31,24 +29,10 @@ function formatPnl(pnl: number | null | undefined): { text: string; className: s
 }
 
 export function RecentTradesTableWidget() {
-  const [set, setSet] = useState<HonestTradeSet | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      const s = await fetchHonestTrades();
-      setSet(s);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch");
-    }
-  };
-
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 120_000);
-    return () => clearInterval(interval);
-  }, []);
+  const { honest: set, error: loadError } = useHonestTrades(120_000);
+  const error = loadError
+    ? (loadError instanceof Error ? loadError.message : String(loadError))
+    : null;
 
   // Show the 10 most-recent trades (sorted by exit_time desc)
   const recent = set
