@@ -14,10 +14,18 @@ if str(ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(ENGINE_DIR))
 
 from scripts.signal_confluence_audit import (  # noqa: E402
+    ARMS,
     build_verdict,
     format_report,
     rank_arms,
 )
+
+
+class TestArmWiring:
+    def test_expected_arms_registered(self):
+        assert set(ARMS) == {"trend", "composite", "tpo", "saty"}
+        for grid_fn, apply_fn in ARMS.values():
+            assert callable(grid_fn) and callable(apply_fn)
 
 
 def _arm(name, pf, trades, status="ok", sharpe=1.0, wfe=0.6):
