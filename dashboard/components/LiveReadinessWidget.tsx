@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Target } from "lucide-react";
 import {
-  equityCurve,
+  maxDrawdownPct,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
@@ -24,20 +24,11 @@ function buildCriteria(set: HonestTradeSet): Criterion[] {
   const wrPct = set.winRate * 100;
   const tradeCount = set.trades.length;
 
-  // Max drawdown from equity curve — express as positive percentage of peak
-  const curve = equityCurve(set.trades);
-  let maxDdPct = 0;
-  if (curve.length > 0) {
-    const worstDd = Math.min(...curve.map((p) => p.drawdown));
-    // drawdown is negative; peak is the running high
-    const peakEquity = Math.max(...curve.map((p) => p.equity));
-    if (peakEquity > 0) {
-      maxDdPct = Math.abs(worstDd / peakEquity) * 100;
-    } else if (worstDd < 0) {
-      // all equity negative — can't express as % of peak, use absolute
-      maxDdPct = 100;
-    }
-  }
+  // Max drawdown as % of peak (canonical running-peak helper). An all-losing
+  // record that never rose above its $0 baseline counts as a full 100%
+  // drawdown for the readiness gate, not 0%.
+  const ddPctRaw = maxDrawdownPct(set.trades) * 100;
+  const maxDdPct = ddPctRaw > 0 ? ddPctRaw : set.net < 0 ? 100 : 0;
 
   return [
     {
