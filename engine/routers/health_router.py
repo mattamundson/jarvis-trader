@@ -5,6 +5,7 @@ Endpoints for monitoring system health, running preflight checks, and getting
 status information about all JARVIS TRADER subsystems.
 """
 
+import asyncio
 import logging
 import os
 import socket
@@ -282,6 +283,40 @@ async def _get_ib_gateway_health() -> dict:
     return health
 
 
+# A dead/unresponsive IB connection makes ib_gw.health_check() block on its
+# internal connect/request timeout (~14s observed 2026-06-21 with IB paper down).
+# /health awaits this inline, so the whole endpoint stalls -> the engine-watchdog
+# reads /health as a hang and (absent the log-recency guard) restarts a healthy
+# engine. Bound it: the IB leg is worth at most a couple seconds of a liveness probe.
+IB_HEALTH_TIMEOUT_S = 2.0
+
+
+async def _ib_health_bounded() -> dict:
+    """`_get_ib_gateway_health()` with a hard time budget.
+
+    Returns the real IB health dict when it resolves within ``IB_HEALTH_TIMEOUT_S``;
+    otherwise cancels the stalled check and returns a bounded ``status="timeout"``
+    leg so ``/health`` stays fast and reliable even when IB Gateway is down. The
+    underlying ``health_check()`` is a read-only probe, so cancellation is safe.
+    """
+    try:
+        return await asyncio.wait_for(
+            _get_ib_gateway_health(), timeout=IB_HEALTH_TIMEOUT_S
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "IB gateway health check exceeded %ss; reporting IB leg as degraded "
+            "so /health stays responsive",
+            IB_HEALTH_TIMEOUT_S,
+        )
+        return {
+            "status": "timeout",
+            "execution_connected": False,
+            "data_connected": False,
+            "degraded_reason": f"health_check exceeded {IB_HEALTH_TIMEOUT_S}s",
+        }
+
+
 @router.get("/system/data-integrity")
 async def get_data_integrity():
     """
@@ -346,7 +381,7 @@ async def _health_inner() -> dict:
         pass
 
     now = datetime.now(timezone.utc)
-    ib_health = await _get_ib_gateway_health()
+    ib_health = await _ib_health_bounded()
 
     llm_path_healthy = True
     llm_path_details: dict = {}
