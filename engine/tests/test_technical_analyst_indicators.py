@@ -6,7 +6,8 @@ Two concerns:
       non-None ATR and rv_20_ann_pct in the returned indicators dict.
   (b) If _compute_indicators raises inside asyncio.to_thread, the analyze() caller
       degrades gracefully: returns an empty/safe TechnicalReport, does NOT propagate
-      the exception or crash the pipeline.
+      the exception or crash the pipeline. (Guards the try/except added at
+      technical_analyst.py:182 — previously this offload path was unguarded.)
 
 No LLM, no broker I/O — llm_client and data_manager are mocked throughout.
 """
@@ -26,7 +27,6 @@ if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
 from agents.technical_analyst import TechnicalAnalystAgent, TechnicalReport  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -190,21 +190,20 @@ class TestComputeIndicatorsErrorDegradation:
         dm.get_current_price = AsyncMock(return_value={"last_price": price_val, "source": "mock"})
         return dm
 
-    def test_exception_in_compute_indicators_propagates_uncaught(self):
+    def test_exception_in_compute_indicators_degrades_gracefully(self):
         """
-        REAL BUG FOUND: analyze() does NOT wrap the asyncio.to_thread call at line 182
-        in a try/except. An exception raised inside _compute_indicators propagates
-        out of analyze() uncaught, crashing the pipeline caller.
+        REGRESSION GUARD: a crash inside _compute_indicators (run via
+        asyncio.to_thread at agents/technical_analyst.py:182) must NOT propagate
+        out of analyze(). The offload is wrapped in try/except Exception that
+        degrades to self._empty_report(symbol, timeframe) — same contract as the
+        daily-fallback path above it.
 
-        This test characterises the CURRENT (broken) behavior. It should be inverted
-        once the bug is fixed by wrapping line 182 in a try/except that falls back to
-        self._empty_report(). Until then, this documents the gap.
-
-        BUG: agents/technical_analyst.py line 182 — asyncio.to_thread is unguarded.
-        FIX: wrap in try/except Exception, return self._empty_report(symbol, timeframe).
+        Previously this path was unguarded and the exception crashed the pipeline
+        caller; the fix makes the failure mode an empty/safe report instead.
+        The LLM must never be reached on this path.
         """
         df = _make_synthetic_ohlcv(60)
-        llm = self._make_llm()
+        llm = self._make_llm()  # llm.call raises if invoked
         dm = self._make_data_manager_with_bars(df)
         agent = _make_agent(llm, dm)
 
@@ -213,12 +212,21 @@ class TestComputeIndicatorsErrorDegradation:
             "_compute_indicators",
             side_effect=RuntimeError("simulated indicator crash"),
         ):
-            # Currently raises — documents the unguarded path. Once fixed this
-            # should return a safe TechnicalReport instead.
-            with pytest.raises(RuntimeError, match="simulated indicator crash"):
-                asyncio.get_event_loop().run_until_complete(
+            try:
+                report = asyncio.get_event_loop().run_until_complete(
                     agent.analyze("MES", timeframe="15m", is_futures=True)
                 )
+            except Exception as exc:  # noqa: BLE001
+                pytest.fail(
+                    "analyze() must degrade gracefully when _compute_indicators "
+                    f"raises, but it propagated: {exc!r}"
+                )
+
+        assert isinstance(report, TechnicalReport)
+        assert report.signal == pytest.approx(0.0)
+        assert report.confidence == pytest.approx(0.0)
+        # LLM must not have been consulted on the degraded path.
+        llm.call.assert_not_called()
 
     def test_empty_data_manager_returns_safe_report(self):
         """
