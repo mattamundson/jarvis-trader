@@ -178,8 +178,22 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             using_daily_fallback = True
             effective_timeframe = "1d (fallback)"
 
-        # 2. Compute all indicators (deterministic Python — no LLM)
-        indicators = await asyncio.to_thread(self._compute_indicators, df)
+        # 2. Compute all indicators (deterministic Python — no LLM).
+        # Offloaded to a worker thread so the deterministic CPU work doesn't block
+        # the event loop. A failure here must degrade gracefully (empty/safe report),
+        # never propagate out of analyze() and crash the pipeline caller — same
+        # contract as the daily-fallback path above.
+        try:
+            indicators = await asyncio.to_thread(self._compute_indicators, df)
+        except Exception as exc:  # noqa: BLE001 — degrade-not-crash is the invariant
+            logger.error(
+                f"Indicator computation failed for {symbol} on {effective_timeframe} "
+                f"({exc!r}) — returning empty report"
+            )
+            price = await self._fetch_current_price(symbol)
+            report = self._empty_report(symbol, timeframe)
+            report.current_price = price
+            return report
 
         # 2-rv. 20-bar annualized realized volatility (1h bars only).
         # Tags each pipeline run so paper trades accumulate rv_at_entry for
