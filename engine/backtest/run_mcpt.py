@@ -3,8 +3,9 @@
 Three subcommands:
 
     prices  -- load a 1h OHLC cache CSV for a symbol and run the bar-permutation MCPT
-               (analytics.permutation_test.validate_strategy) with a reference SMA-trend
-               optimizer in the approved MES/MGC family.
+               (analytics.permutation_test.validate_strategy). Default optimizer is the
+               REAL production path (generate_sma_trend_signals -> Backtester over
+               config_for(symbol).grid); pass --proxy for a fast SMA approximation.
     trades  -- load closed paper trades (SQLite paper_trades, or a CSV with a 'pnl'
                column) and run the trade-sign permutation test (permute_and_score).
     make-sample -- write a CLEARLY-LABELED synthetic OHLC CSV and a sample paper_trades
@@ -14,10 +15,13 @@ IMPORTANT -- data integrity:
   * Real verdicts require REAL data. The make-sample outputs are synthetic and named with
     a SAMPLE_ prefix; any p-value computed on them is meaningless and the runner prints a
     loud warning when it detects sample inputs.
-  * The bundled optimizer is a SIMPLIFIED SMA-trend proxy (no ATR trailing / targets /
-    cost model), so a `prices` verdict is INDICATIVE, not the gate-v2 authority. Wiring
-    the real ``backtest.backtester.Backtester`` as the optimize_fn is the production step
-    (and any move from diagnostic to blocking gate is a separate [safety-review] change).
+  * The default optimizer is the real ``Backtester`` + ``generate_sma_trend_signals`` over
+    ``config_for(symbol).grid`` -- authoritative (ATR trailing / targets / cost model). It
+    requires the engine env (API_KEY) like any engine script. ``--proxy`` swaps in a fast
+    SMA approximation (no cost model) that is INDICATIVE only. Either way this is a
+    DIAGNOSTIC; moving from diagnostic to a blocking gate is a separate [safety-review]
+    change. Profit factor is capped at 10.0 so a no-loss permutation cannot make the null
+    mean infinite.
 
 Examples:
     python -m backtest.run_mcpt make-sample --symbol MES
@@ -46,8 +50,61 @@ _OHLC = ["open", "high", "low", "close"]
 # Reference SMA-trend grid (brackets the approved MES SMA(60,200) / MGC SMA(50,120)).
 _SMA_PAIRS = [(f, s) for f in (10, 20, 30, 50, 60) for s in (100, 120, 150, 200) if f < s]
 
+#: Profit factor cap. The real Backtester returns inf for a no-loss window; left raw it
+#: would make the permutation null's mean inf and break the comparison. Capping keeps the
+#: distribution finite while preserving ordering (a capped real still beats a capped null
+#: only if it is genuinely at the ceiling too).
+_PF_CAP = 10.0
 
-# ── reference strategy (simplified SMA-trend proxy) ─────────────────────────────
+
+def _cap_pf(pf: float) -> float:
+    if pf == float("inf") or pf != pf:  # inf or NaN
+        return _PF_CAP
+    return min(float(pf), _PF_CAP)
+
+
+# ── real strategy (gate-v2 SMA-trend via the production Backtester) ─────────────
+
+def _real_strategy_factory(symbol: str, capital: float = 10_000.0):
+    """Build (optimize_fn, walkforward_fn) backed by the REAL Backtester + trend signals.
+
+    Mirrors backtest/run_trend_diversifier.py: ``generate_sma_trend_signals`` ->
+    ``Backtester.run`` -> ``result.profit_factor`` over ``config_for(symbol).grid``
+    (fast, slow, atr_trail). Authoritative (ATR trailing / targets / cost model), unlike
+    the --proxy SMA optimizer. Requires the engine env (API_KEY) like any engine script;
+    lazy-imported so the proxy path and tests need no pydantic/config.
+    """
+    from backtest.run_trend_diversifier import _run_signals_and_backtest, config_for
+
+    cfg = config_for(symbol, capital=capital)
+    grid = cfg.grid  # list of (fast, slow, atr_trail)
+
+    def optimize_fn(df: pd.DataFrame) -> tuple[tuple, float]:
+        best = None
+        for fast, slow, atr in grid:
+            pf = _cap_pf(_run_signals_and_backtest(cfg, df, fast, slow, atr).profit_factor)
+            if best is None or pf > best[1]:
+                best = ((fast, slow, atr), pf)
+        return best
+
+    def walkforward_fn(df: pd.DataFrame, train_window: int, step: int = 250) -> float:
+        n = len(df)
+        gp_tot = gl_tot = 0.0
+        start = train_window
+        while start < n - 1:
+            train = df.iloc[start - train_window:start]
+            best_params, _ = optimize_fn(train)
+            end = min(start + step, n)
+            res = _run_signals_and_backtest(cfg, df.iloc[start - max(best_params[:2]):end], *best_params)
+            gp_tot += float(getattr(res, "gross_profit", 0.0) or 0.0)
+            gl_tot += abs(float(getattr(res, "gross_loss", 0.0) or 0.0))
+            start = end
+        return _cap_pf(gp_tot / gl_tot if gl_tot > 0 else (gp_tot if gp_tot > 0 else 0.0))
+
+    return optimize_fn, walkforward_fn
+
+
+# ── reference strategy (simplified SMA-trend proxy, --proxy) ────────────────────
 
 def _pf(close: np.ndarray, fast: int, slow: int) -> float:
     """Profit factor of 'long when fast SMA > slow SMA', decided at t-1 (no look-ahead)."""
@@ -195,18 +252,23 @@ def cmd_prices(args: argparse.Namespace) -> int:
     df = _load_ohlc(path)
     print(f"Loaded {path.name}: {len(df)} bars, {df.index[0].date()} -> {df.index[-1].date()}")
     _warn_if_sample(path)
-    tw = args.train_window
-    is_res = run_insample_mcpt(df, _optimize_fn, n_permutations=args.insample_perms, seed=0)
+    if args.proxy:
+        optimize_fn, walkforward_fn = _optimize_fn, _walkforward_fn
+        engine = "SMA-trend proxy (indicative, not the gate-v2 authority)"
+    else:
+        optimize_fn, walkforward_fn = _real_strategy_factory(args.symbol, capital=args.capital)
+        engine = "real Backtester + generate_sma_trend_signals (authoritative diagnostic)"
+    print(f"optimizer: {engine}")
+    is_res = run_insample_mcpt(df, optimize_fn, n_permutations=args.insample_perms, seed=0)
     print(f"in-sample MCPT : best={is_res['real_params']} real_pf={is_res['real_pf']} "
           f"perm_mean={is_res['perm_pf_mean']} p={is_res['p_value']} pass={is_res['passes']}")
-    out = validate_strategy(df, _optimize_fn, _walkforward_fn, train_window=tw,
+    out = validate_strategy(df, optimize_fn, walkforward_fn, train_window=args.train_window,
                             n_insample_perms=args.insample_perms, n_wf_perms=args.wf_perms,
                             seed=0, long_history=args.long_history)
     print(f"VERDICT: {out['verdict']}")
     for k in ("is_pf", "is_pval", "wf_pf", "wf_pval"):
         if k in out:
             print(f"   {k} = {out[k]}")
-    print("\n(Reference SMA-trend proxy — indicative, not the gate-v2 authority.)")
     return 0
 
 
@@ -249,6 +311,9 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--insample-perms", type=int, default=300)
     pp.add_argument("--wf-perms", type=int, default=100)
     pp.add_argument("--long-history", action="store_true", help="use stricter walk-forward alpha")
+    pp.add_argument("--capital", type=float, default=10_000.0, help="account size for the Backtester")
+    pp.add_argument("--proxy", action="store_true",
+                    help="use the simplified SMA-trend proxy instead of the real Backtester")
     pp.set_defaults(func=cmd_prices)
 
     pt = sub.add_parser("trades", help="trade-sign permutation test on closed trades")
