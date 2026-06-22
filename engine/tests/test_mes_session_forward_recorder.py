@@ -452,7 +452,7 @@ async def test_fill_outcomes_missing_bars_leaves_row_pending():
 
 
 @pytest.mark.asyncio
-async def test_fill_outcomes_skips_stale_rows_without_for_date():
+async def test_fill_outcomes_skips_stale_rows_without_for_date(monkeypatch):
     """When called bare (no for_date), only TODAY's row is filled. Stale
     rows must stay NULL rather than be filled with the wrong-day close.
 
@@ -463,9 +463,25 @@ async def test_fill_outcomes_skips_stale_rows_without_for_date():
     """
     db_path = _fresh_db()
     briefing_fn = await _fake_briefing_fn_factory(_make_briefing())
-    # Seed yesterday's row (stale) + today's row (current)
+    # Seed yesterday's row (stale) + today's row (current).
+    # Pin "today" to a fixed date so this test cannot flake when it runs across
+    # local midnight: fill_outcomes() bare reads date.today() internally
+    # (experiments/mes_session_outcome.py line ~138), and the seeded "today"
+    # row must match it. Patch the module's date.today() and seed from the same
+    # fixed value so both sides always agree, clock-independent.
     from datetime import timedelta
-    today = date.today()
+    import experiments.mes_session_outcome as _mso
+
+    fixed_today = date(2026, 4, 20)
+
+    class _FixedDate(date):
+        @classmethod
+        def today(cls):
+            return fixed_today
+
+    monkeypatch.setattr(_mso, "date", _FixedDate)
+
+    today = fixed_today
     yesterday = today - timedelta(days=1)
     await record_session(
         for_date=yesterday, db_path=db_path,
