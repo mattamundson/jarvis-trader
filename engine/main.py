@@ -97,6 +97,7 @@ from routers.safety_router import router as safety_router
 from routers.schwab_router import router as schwab_router
 from routers.schwab_router import set_schwab_connector
 from routers.strategies_router import router as strategies_router
+from routers.trading_status_router import router as trading_status_router
 from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.paper_validation_router import router as paper_validation_router
@@ -2943,6 +2944,7 @@ app.include_router(journal_review_router, prefix="/journal", tags=["journal-revi
 app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(strategy_ledger_router)
+app.include_router(trading_status_router)
 app.include_router(forward_test_router)
 app.include_router(validation_analytics_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
