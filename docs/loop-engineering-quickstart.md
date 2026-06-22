@@ -163,14 +163,32 @@ Every loop you create, local or cloud, inherits these (they override the brakes)
 
 ---
 
-## 6. Your first loop, end to end
+## 6. Your first loop, end to end (the one-command path)
 
-1. `claude` → `/loop-brakes` — read the checklist.
-2. Run `scripts/loops/morning-brief-loop.ps1` **once by hand** (engine must be
-   up) — the safest loop, pure read + report.
-3. Happy with it? Register it for 9am daily, and add the `heartbeat-check.ps1`
-   watcher so a silent stall pages you.
-4. Then graduate to `scripts/loops/triage-loop.ps1` for CI/test triage.
-5. Read every report for a week before you widen scope or add another loop.
+```powershell
+# 0. Learn the brakes (interactive, in the Claude Code terminal)
+claude
+> /loop-brakes
+
+# 1. Verify the box is ready (read-only; fix any [FAIL] before continuing)
+pwsh -File scripts\loops\preflight.ps1
+
+# 2. Run the safest loop ONCE by hand and read what it posts
+pwsh -File scripts\loops\morning-brief-loop.ps1
+
+# 3. Happy with it? Schedule the brief + its dead-man watcher in one command
+#    (elevated shell; re-runnable; optionally persist the alert webhook)
+pwsh -File scripts\loops\register-loops.ps1 -LoopWebhook https://discord.com/api/webhooks/...
+
+# 4. Confirm + smoke-test the scheduled task
+Get-ScheduledTask -TaskName jarvis-*
+Start-ScheduledTask -TaskName jarvis-morning-brief
+```
+
+Then, once you trust that harness:
+
+5. Graduate to `scripts/loops/triage-loop.ps1` for CI/test triage (run by hand,
+   then add it to Task Scheduler the same way).
+6. **Read every report for a week** before you widen scope or add another loop.
 
 You designed it once. You stay the engineer.
