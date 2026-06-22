@@ -53,3 +53,35 @@ def test_mount_metrics_reflects_recorded_values():
 
     assert "jarvis_kill_switch_active 1.0" in body
     assert "jarvis_consecutive_losses 11.0" in body
+
+
+def test_sync_safety_gauges_sets_all_four_from_snapshot():
+    from prometheus_client import REGISTRY
+
+    from monitoring import metrics
+
+    metrics.sync_safety_gauges(
+        {
+            "kill_switch_active": True,
+            "daily_pnl": -123.45,
+            "portfolio_equity": 8525.41,
+            "consecutive_losses": 11,
+        }
+    )
+    assert REGISTRY.get_sample_value("jarvis_kill_switch_active") == 1.0
+    assert REGISTRY.get_sample_value("jarvis_daily_pnl_usd") == -123.45
+    assert REGISTRY.get_sample_value("jarvis_equity_usd") == 8525.41
+    assert REGISTRY.get_sample_value("jarvis_consecutive_losses") == 11.0
+
+
+def test_sync_safety_gauges_tolerates_partial_snapshot_and_never_raises():
+    from prometheus_client import REGISTRY
+
+    from monitoring import metrics
+
+    # Seed a known value, then sync a snapshot missing that key — it must be left
+    # untouched (not reset to 0) and the call must not raise.
+    metrics.set_equity(9999.0)
+    metrics.sync_safety_gauges({"kill_switch_active": False})
+    assert REGISTRY.get_sample_value("jarvis_kill_switch_active") == 0.0
+    assert REGISTRY.get_sample_value("jarvis_equity_usd") == 9999.0
