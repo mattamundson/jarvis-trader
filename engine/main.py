@@ -705,6 +705,13 @@ async def lifespan(app: FastAPI):
     # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
     set_analytics_data_manager(data_manager)
+    # Wire the real-price source into the paper connector so simulated fills use
+    # the live get_tick_price waterfall instead of static mock quotes. Without
+    # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
+    # paper_trades. (2026-06-22 paper-fill integrity fix.)
+    if ib_paper_connector is not None:
+        ib_paper_connector.attach_market_data(data_manager)
+        logger.info("✅ Paper connector: real-price source wired (get_tick_price)")
     # Re-inject with data_manager now available so /orders/status can fall back to
     # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
     inject_orders_deps(order_router, safety_layer=safety_layer, data_manager=data_manager)
