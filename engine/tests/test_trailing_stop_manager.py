@@ -110,7 +110,12 @@ def _build_manager(oms, data, atr_mult: float = 2.0):
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # asyncio.run() creates and tears down a fresh event loop per call. The old
+    # asyncio.get_event_loop().run_until_complete() pattern raises
+    # "RuntimeError: There is no current event loop" under Python 3.12 once an
+    # earlier async test in the full suite has closed the thread's loop -- it
+    # passes in isolation (auto-creates a loop) but fails in CI's full run.
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
