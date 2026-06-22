@@ -109,6 +109,42 @@ Register-ScheduledTask -TaskName "jarvis-triage-loop" -Action $action -Trigger $
 **Keep loops out of PM2.** PM2 manages the engine (port 8010); a loop crash must
 never touch that process. Task Scheduler isolates them cleanly.
 
+### Notifications and the dead-man watcher
+
+Both shipped loops use `scripts/loops/loop-lib.ps1` for two brakes:
+
+- **Notification** — set `JARVIS_LOOP_WEBHOOK` to a Discord/Slack-style webhook
+  URL and the loop pushes a one-line result. Unset = silent (file report only).
+  This follows the repo's existing env-gated webhook convention.
+- **Dead-man heartbeat** — every run appends to `docs/loop-reports/.heartbeat`.
+  Schedule `heartbeat-check.ps1` on a SEPARATE, more frequent trigger so a loop
+  that silently stops firing pages you instead of failing quietly:
+
+```powershell
+# Watch the triage loop: alert if no run in 26h. Run it a few times a day.
+$hbAction  = New-ScheduledTaskAction -Execute "pwsh.exe" `
+  -Argument "-File C:\Users\mattm\ThinkorSwim\jarvis-trader\scripts\loops\heartbeat-check.ps1 -LoopName triage -MaxAgeHours 26"
+$hbTrigger = New-ScheduledTaskTrigger -Daily -At 12pm
+Register-ScheduledTask -TaskName "jarvis-heartbeat-triage" -Action $hbAction -Trigger $hbTrigger
+```
+
+### The recommended first scheduled loop — morning brief
+
+`scripts/loops/morning-brief-loop.ps1` wraps the existing
+`engine/scripts/daily_morning_briefing.py` (which posts the brief to Discord via
+`DISCORD_WEBHOOK_URL`). It is pure read + report, fails closed if the engine is
+down, and is the safest loop to start with:
+
+```powershell
+$mbAction  = New-ScheduledTaskAction -Execute "pwsh.exe" `
+  -Argument "-File C:\Users\mattm\ThinkorSwim\jarvis-trader\scripts\loops\morning-brief-loop.ps1"
+$mbTrigger = New-ScheduledTaskTrigger -Daily -At 9am
+Register-ScheduledTask -TaskName "jarvis-morning-brief" -Action $mbAction -Trigger $mbTrigger
+```
+
+All three scripts return exit codes (0 = green, non-zero = problem), so Task
+Scheduler's own run history is a free red/green dashboard.
+
 ---
 
 ## 5. The non-negotiable jarvis-trader guardrails
@@ -130,9 +166,11 @@ Every loop you create, local or cloud, inherits these (they override the brakes)
 ## 6. Your first loop, end to end
 
 1. `claude` → `/loop-brakes` — read the checklist.
-2. Run `scripts/loops/triage-loop.ps1` **once by hand**, read the report it drops
-   in `docs/loop-reports/`.
-3. Happy with it? Register it in Task Scheduler (Option B above) for 8am daily.
-4. Read every report for a week before you widen scope or add a second loop.
+2. Run `scripts/loops/morning-brief-loop.ps1` **once by hand** (engine must be
+   up) — the safest loop, pure read + report.
+3. Happy with it? Register it for 9am daily, and add the `heartbeat-check.ps1`
+   watcher so a silent stall pages you.
+4. Then graduate to `scripts/loops/triage-loop.ps1` for CI/test triage.
+5. Read every report for a week before you widen scope or add another loop.
 
 You designed it once. You stay the engineer.
