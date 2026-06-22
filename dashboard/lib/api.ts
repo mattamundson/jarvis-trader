@@ -1015,8 +1015,8 @@ export async function fetchStrategyGates(symbol: string): Promise<GatesResponse>
 // ── Per-trade full review (closed loop) ──────────────────────────────────────
 
 export interface TradeFullReview {
-  trade: Record<string, any>;
-  attribution: Record<string, any>;
+  trade: Record<string, unknown>;
+  attribution: Record<string, unknown>;
   why: {
     decision_id: number | null;
     matched_by: string;
@@ -1026,7 +1026,7 @@ export interface TradeFullReview {
     confidence: number | null;
     regime: string | null;
     reasoning: string | null;
-    pipeline: Record<string, any> | null;
+    pipeline: Record<string, unknown> | null;
   } | null;
   backtest: LedgerEntry | null;
   forward: {
@@ -1041,7 +1041,7 @@ export interface TradeFullReview {
     meets_paper_threshold: boolean;
     period_days: number;
   } | null;
-  review: Record<string, any> | null;
+  review: Record<string, unknown> | null;
 }
 
 /** GET /trades/{id}/full-review — the closed-loop join for one placed trade. */
