@@ -1420,6 +1420,31 @@ class MarketDataManager:
 
         return {"value": None, "source": "unavailable"}
 
+    async def get_vix3m(self) -> dict:
+        """
+        Get VIX3M (CBOE 3-Month / 93-day Volatility Index) value. Returns {value, source}.
+        Waterfall: FRED → IBKR. Mirrors get_vix(); the term-structure overlay pairs
+        this with VIX. Returns {value: None} when unavailable so callers pass through.
+        """
+        # Tier 1: FRED (VXVCLS series — most reliable, free)
+        try:
+            from data.fred_data import FREDDataService
+
+            fred = FREDDataService(getattr(self._config, "FRED_API_KEY", None))
+            v3_val = await fred.get_latest_value("VXVCLS")
+            if v3_val is not None:
+                return {"value": float(v3_val), "source": "fred"}
+        except Exception:
+            pass
+
+        # Tier 2: IBKR Index("VIX3M")
+        if self.ibkr and self.ibkr.is_connected:
+            result = await self.ibkr.get_snapshot_price("VIX3M", is_futures=False)
+            if result.get("last_price"):
+                return {"value": result["last_price"], "source": "ibkr"}
+
+        return {"value": None, "source": "unavailable"}
+
     async def get_options_greeks(self, symbol: str) -> dict:
         """
         Get real-time Greeks for an option.

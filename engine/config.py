@@ -185,6 +185,34 @@ class TradingConfig(BaseSettings):
         "(MGC=13.3 calibrated from the WFO study global target_vol)",
     )
 
+    # VIX/VIX3M term-structure sizing overlay (DEFAULT OFF). Sizes directional
+    # futures down when the curve inverts (BACKWARDATION: VIX > VIX3M, the stress
+    # signature). The contango/backwardation filter is validated for short-vol
+    # strategies (~/Code/options-vrp); its value on directional futures is a NEW
+    # hypothesis that must clear the A/B gate-v2 backtest
+    # (backtest/run_term_structure_overlay_ab.py) before this is enabled.
+    TS_OVERLAY_ENABLED: bool = Field(
+        False,
+        description="Enable VIX/VIX3M term-structure position-size overlay (default OFF)",
+    )
+    TS_FLAT_BAND: float = Field(
+        0.5,
+        description="Dead-band in VIX points for the FLAT regime (|VIX3M-VIX| within => FLAT; "
+        "0.5 pts == the options-vrp 0.005 decimal default)",
+    )
+    TS_BACKWARDATION_MULT: float = Field(
+        0.5,
+        description="Position-size multiplier when the curve is in BACKWARDATION (VIX > VIX3M)",
+    )
+    TS_FLAT_MULT: float = Field(
+        1.0,
+        description="Position-size multiplier when the curve is FLAT (within the dead-band)",
+    )
+    TS_STANDASIDE_ON_BACKWARDATION: bool = Field(
+        False,
+        description="If True, BACKWARDATION forces HOLD (stand aside) instead of down-sizing",
+    )
+
     # Futures position-size gate uses MARGIN (not notional). 1 MES is ~$7,130
     # notional but only ~$1,320 overnight maintenance margin at IBKR. Against a
     # $10K paper account, notional-based math rejects every futures order as

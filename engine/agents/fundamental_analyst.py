@@ -69,6 +69,7 @@ FRED_SERIES = {
     "fed_funds_rate": "FEDFUNDS",
     "us_10y_yield": "DGS10",
     "vix": "VIXCLS",
+    "vix3m": "VXVCLS",  # CBOE 3-Month VIX — pairs with vix for the term-structure overlay
 }
 
 # Fallback defaults used when FRED is unavailable (rate-limited, maintenance, no network).
@@ -77,6 +78,7 @@ FRED_DEFAULTS: dict[str, float] = {
     "fed_funds_rate": 4.33,  # Fed Funds rate as of Q1 2026
     "us_10y_yield": 4.30,  # 10-Year Treasury yield as of Q1 2026
     "vix": 20.0,  # Neutral VIX assumption when data unavailable
+    "vix3m": 21.0,  # Neutral VIX3M (slight contango over VIX) when data unavailable
 }
 
 # ---------------------------------------------------------------------------

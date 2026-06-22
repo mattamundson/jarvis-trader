@@ -583,6 +583,50 @@ class TraderAgent:
             except Exception as _vt_err:
                 logger.debug("[Trader] Vol-target size overlay failed (non-fatal): %s", _vt_err)
 
+        # ── VIX/VIX3M term-structure position-size overlay (DEFAULT OFF) ───
+        # Last risk overlay: size down (or stand aside) when the VIX curve inverts
+        # (BACKWARDATION: VIX > VIX3M, the stress signature). Gated behind
+        # settings.TS_OVERLAY_ENABLED (default False) => inert until enabled. The
+        # contango/backwardation filter is validated for short-vol (~/Code/options-vrp);
+        # its value on directional futures is a NEW hypothesis pending the A/B gate-v2
+        # backtest. VIX & VIX3M ride the same fundamental-report rail (FRED VIXCLS/VXVCLS).
+        # Falls back silently — never blocks a trade except an explicit stand-aside.
+        if settings.TS_OVERLAY_ENABLED:
+            try:
+                from analytics.term_structure import apply_term_structure_scaling
+
+                _km = _fund_report.get("key_metrics", {}) if isinstance(_fund_report, dict) else {}
+                _ts_vix = _km.get("vix")
+                _ts_vix3m = _km.get("vix3m")
+                _ts_contracts, _ts_reason = apply_term_structure_scaling(
+                    contracts=position_size.contracts,
+                    front_iv=float(_ts_vix) if _ts_vix is not None else None,
+                    back_iv=float(_ts_vix3m) if _ts_vix3m is not None else None,
+                    flat_band=settings.TS_FLAT_BAND,
+                    backwardation_mult=settings.TS_BACKWARDATION_MULT,
+                    flat_mult=settings.TS_FLAT_MULT,
+                    standaside_on_backwardation=settings.TS_STANDASIDE_ON_BACKWARDATION,
+                    max_contracts=max_contracts,
+                )
+                if _ts_contracts == 0:
+                    logger.warning("[Trader] %s: term-structure stand-aside — %s", symbol, _ts_reason)
+                    return self._hold_decision(
+                        symbol=symbol,
+                        reasoning=_ts_reason,
+                        risk_notes="VIX term structure in backwardation — standing aside until it normalises.",
+                    )
+                if _ts_contracts != position_size.contracts:
+                    logger.info(
+                        "[Trader] Term-structure sizing for %s: contracts %d → %d (%s)",
+                        symbol,
+                        position_size.contracts,
+                        _ts_contracts,
+                        _ts_reason,
+                    )
+                    position_size.contracts = _ts_contracts
+            except Exception as _ts_err:
+                logger.debug("[Trader] Term-structure size overlay failed (non-fatal): %s", _ts_err)
+
         # ── Confluence-based position sizing override ─────────────────────
         # Count how many Stage 1 agents agree with the debate verdict direction.
         # Insufficient agreement (< 40%) forces a HOLD regardless of debate outcome.
