@@ -34,9 +34,7 @@ _HEADER = "timestamp,open,high,low,close,volume\n"
 def _write_hourly_cache(d, name: str, start: str, periods: int) -> None:
     """Write a synthetic hourly OHLCV cache with a real DatetimeIndex span."""
     idx = pd.date_range(start=start, periods=periods, freq="h", tz="UTC")
-    rows = "".join(
-        f"{ts.isoformat()},100,101,99,100,10\n" for ts in idx
-    )
+    rows = "".join(f"{ts.isoformat()},100,101,99,100,10\n" for ts in idx)
     (d / name).write_text(_HEADER + rows, encoding="utf-8")
 
 
@@ -54,8 +52,10 @@ def cache(tmp_path):
 def test_grid_cartesian_product():
     g = grid(fast=[8, 12], slow=[24, 36])
     assert g == [
-        {"fast": 8, "slow": 24}, {"fast": 8, "slow": 36},
-        {"fast": 12, "slow": 24}, {"fast": 12, "slow": 36},
+        {"fast": 8, "slow": 24},
+        {"fast": 8, "slow": 36},
+        {"fast": 12, "slow": 24},
+        {"fast": 12, "slow": 36},
     ]
 
 
@@ -66,7 +66,9 @@ def test_grid_single_axis():
 # ---------------------------------------------------------------- StrategySpec
 def test_spec_label_and_combo_count():
     s = StrategySpec(
-        symbol="MES", family="sma_trend", interval="15m",
+        symbol="MES",
+        family="sma_trend",
+        interval="15m",
         signal_fn=lambda df, **k: df,
         param_grid=grid(fast=[8, 12], slow=[24, 36]),
         train_months=3,
@@ -139,8 +141,12 @@ def test_plan_spec_missing_cache(cache):
 
 def test_plan_spec_unsupported_symbol(cache):
     spec = StrategySpec(
-        symbol="ZZZ", family="sma_trend", interval="1h",
-        signal_fn=lambda df, **k: df, param_grid=grid(fast=[8]), train_months=3,
+        symbol="ZZZ",
+        family="sma_trend",
+        interval="1h",
+        signal_fn=lambda df, **k: df,
+        param_grid=grid(fast=[8]),
+        train_months=3,
     )
     assert plan_spec(spec, cache)["status"] == "UNSUPPORTED_SYMBOL"
 
@@ -154,17 +160,31 @@ def test_run_spec_wires_pipeline_and_writes_json(cache, monkeypatch, tmp_path):
     fake_oos = [object()]
     fake_records = [{"best_params": {"fast": 40, "slow": 100, "atr_trail_mult": 1.5}}]
     fake_gate = {
-        "verdict": "PASS", "passed_via": "alt",
-        "pf_ci_lower": 1.2, "p_edge": 1.0, "mc_95th_dd": 0.03, "mc_95th_dd_pct": 3.0,
-        "dsr": 0.4, "wfo_consistency": "STRONG", "fixed_params_min_pf": 1.3,
-        "cost_survives_through": "pessimistic", "n_oos_windows": 5,
-        "n_oos_windows_with_trades": 5, "total_oos_trades": 60,
-        "core_reasons": [], "alt_reasons": [], "reasons": [],
+        "verdict": "PASS",
+        "passed_via": "alt",
+        "pf_ci_lower": 1.2,
+        "p_edge": 1.0,
+        "mc_95th_dd": 0.03,
+        "mc_95th_dd_pct": 3.0,
+        "dsr": 0.4,
+        "wfo_consistency": "STRONG",
+        "fixed_params_min_pf": 1.3,
+        "cost_survives_through": "pessimistic",
+        "n_oos_windows": 5,
+        "n_oos_windows_with_trades": 5,
+        "total_oos_trades": 60,
+        "core_reasons": [],
+        "alt_reasons": [],
+        "reasons": [],
     }
     monkeypatch.setattr(dfac, "_make_run_fn", lambda s: (lambda df, p: None))
     monkeypatch.setattr(dfac, "run_wfo", lambda *a, **k: (fake_oos, fake_records))
-    monkeypatch.setattr(dfac, "run_fixed_params_sweep", lambda *a, **k: {"fixed_params_min_pf": 1.3})
-    monkeypatch.setattr(dfac, "run_cost_sweep", lambda *a, **k: {"cost_survives_through": "pessimistic"})
+    monkeypatch.setattr(
+        dfac, "run_fixed_params_sweep", lambda *a, **k: {"fixed_params_min_pf": 1.3}
+    )
+    monkeypatch.setattr(
+        dfac, "run_cost_sweep", lambda *a, **k: {"cost_survives_through": "pessimistic"}
+    )
     monkeypatch.setattr(dfac, "compute_gate_v2", lambda *a, **k: fake_gate)
     out_dir = tmp_path / "discovery_out"
     monkeypatch.setattr(dfac, "OUTPUT_DIR", out_dir)
@@ -187,6 +207,97 @@ def test_run_spec_no_windows_returns_sentinel(cache, monkeypatch):
     monkeypatch.setattr(dfac, "run_wfo", lambda *a, **k: ([], []))
     v = dfac.run_spec(spec, cache)
     assert v["verdict"] == "NO_WINDOWS"
+
+
+def test_run_spec_below_sample_floor_overrides_to_insufficient(cache, monkeypatch, tmp_path):
+    """A gate that scores PASS but on < MIN_OOS_TRADES_TOTAL total OOS trades MUST
+    be overridden to INSUFFICIENT_SAMPLE -- compute_gate_v2 grades edge metrics but
+    does NOT gate on sample size, so a handful of trades in one window can spuriously
+    PASS. This mirrors run_cl_trend_rank1.py's sample-adequacy override and is the
+    fix for the real MES_rsi_breakout_15m false-positive (5 trades in 1 window)."""
+    spec = _select(default_registry(), "MGC", "sma_trend", "1h")[0]
+    thin_gate = {
+        "verdict": "PASS",
+        "passed_via": "core",
+        "pf_ci_lower": 1.48,
+        "p_edge": 1.0,
+        "mc_95th_dd": 0.003,
+        "mc_95th_dd_pct": 0.29,
+        "dsr": 0.97,
+        "wfo_consistency": "STRONG",
+        "fixed_params_min_pf": 0.34,
+        "cost_survives_through": "catastrophic",
+        "n_oos_windows": 6,
+        "n_oos_windows_with_trades": 1,
+        "total_oos_trades": 5,
+        "core_reasons": [],
+        "alt_reasons": [],
+        "reasons": [],
+    }
+    monkeypatch.setattr(dfac, "_make_run_fn", lambda s: (lambda df, p: None))
+    monkeypatch.setattr(
+        dfac,
+        "run_wfo",
+        lambda *a, **k: ([object()], [{"best_params": spec.param_grid[0]}]),
+    )
+    monkeypatch.setattr(
+        dfac, "run_fixed_params_sweep", lambda *a, **k: {"fixed_params_min_pf": 0.34}
+    )
+    monkeypatch.setattr(
+        dfac, "run_cost_sweep", lambda *a, **k: {"cost_survives_through": "catastrophic"}
+    )
+    # Return a fresh copy so the override can't mutate shared test state.
+    monkeypatch.setattr(dfac, "compute_gate_v2", lambda *a, **k: dict(thin_gate))
+    monkeypatch.setattr(dfac, "OUTPUT_DIR", tmp_path / "out")
+
+    v = dfac.run_spec(spec, cache)
+
+    assert v["verdict"] == "INSUFFICIENT_SAMPLE"
+    assert v["passed_via"] is None
+    assert v["gate_v2_metrics"]["total_oos_trades"] == 5
+    assert v["gate_v2"]["sample_adequate"] is False
+
+
+def test_run_spec_at_sample_floor_keeps_pass(cache, monkeypatch, tmp_path):
+    """A genuine PASS with >= MIN_OOS_TRADES_TOTAL trades is untouched by the floor."""
+    spec = _select(default_registry(), "MGC", "sma_trend", "1h")[0]
+    ok_gate = {
+        "verdict": "PASS",
+        "passed_via": "alt",
+        "pf_ci_lower": 1.2,
+        "p_edge": 1.0,
+        "mc_95th_dd": 0.03,
+        "mc_95th_dd_pct": 3.0,
+        "dsr": 0.4,
+        "wfo_consistency": "STRONG",
+        "fixed_params_min_pf": 1.3,
+        "cost_survives_through": "pessimistic",
+        "n_oos_windows": 8,
+        "n_oos_windows_with_trades": 8,
+        "total_oos_trades": 45,
+        "core_reasons": [],
+        "alt_reasons": [],
+        "reasons": [],
+    }
+    monkeypatch.setattr(dfac, "_make_run_fn", lambda s: (lambda df, p: None))
+    monkeypatch.setattr(
+        dfac,
+        "run_wfo",
+        lambda *a, **k: ([object()], [{"best_params": spec.param_grid[0]}]),
+    )
+    monkeypatch.setattr(
+        dfac, "run_fixed_params_sweep", lambda *a, **k: {"fixed_params_min_pf": 1.3}
+    )
+    monkeypatch.setattr(
+        dfac, "run_cost_sweep", lambda *a, **k: {"cost_survives_through": "pessimistic"}
+    )
+    monkeypatch.setattr(dfac, "compute_gate_v2", lambda *a, **k: dict(ok_gate))
+    monkeypatch.setattr(dfac, "OUTPUT_DIR", tmp_path / "out")
+
+    v = dfac.run_spec(spec, cache)
+
+    assert v["verdict"] == "PASS"
+    assert v["gate_v2"]["sample_adequate"] is True
 
 
 def test_output_dir_is_not_gate_v2_verdicts():

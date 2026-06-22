@@ -57,7 +57,7 @@ if str(engine_root) not in sys.path:
 os.environ.setdefault("API_KEY", "offline-discovery-factory")
 
 # Reuse the canonical WFO + gate-v2 pipeline -- do NOT reimplement.
-from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
+from backtest._gate_v2_helpers import MIN_OOS_TRADES_TOTAL, _find_latest_cache  # noqa: E402
 from backtest.atr_channel_signals import generate_atr_channel_signals  # noqa: E402
 from backtest.breakout_signals import generate_donchian_breakout_signals  # noqa: E402
 from backtest.donchian_signals import generate_donchian_signals  # noqa: E402
@@ -445,6 +445,24 @@ def run_spec(spec: StrategySpec, cache_dir: Path) -> dict:
     cost = run_cost_sweep(df, champion, COST_SWEEP_TIERS, run_fn, min_trades=min_trades)
     gate = compute_gate_v2(oos_results, spec.n_combos, fixed, cost, min_trades=min_trades)
 
+    # Sample-adequacy override. compute_gate_v2 grades edge metrics (PF-CI, p_edge,
+    # DSR, MC-DD, consistency) but does NOT gate on the TOTAL OOS trade count, so a
+    # handful of trades concentrated in a single window can spuriously score PASS
+    # (observed live: MES_rsi_breakout_15m, 5 trades in 1 of 6 windows -> PASS).
+    # Mirror the production runners (run_cl_trend_rank1.py:370): a verdict on fewer
+    # than MIN_OOS_TRADES_TOTAL trades is statistically meaningless, so override to
+    # INSUFFICIENT_SAMPLE -- a non-PASS verdict that can never authorize trading.
+    total_oos = gate.get("total_oos_trades", 0)
+    gate["sample_adequate"] = total_oos >= MIN_OOS_TRADES_TOTAL
+    gate["min_oos_trades_total"] = MIN_OOS_TRADES_TOTAL
+    if not gate["sample_adequate"]:
+        gate["verdict"] = "INSUFFICIENT_SAMPLE"
+        gate["passed_via"] = None
+        gate["reasons"] = [
+            f"INSUFFICIENT_SAMPLE: total_oos_trades={total_oos} < {MIN_OOS_TRADES_TOTAL} floor",
+            *gate.get("reasons", []),
+        ]
+
     verdict = {
         "label": spec.label,
         "symbol": spec.symbol,
@@ -475,6 +493,8 @@ def run_spec(spec: StrategySpec, cache_dir: Path) -> dict:
             "n_oos_windows": gate["n_oos_windows"],
             "n_oos_windows_with_trades": gate["n_oos_windows_with_trades"],
             "total_oos_trades": gate["total_oos_trades"],
+            "sample_adequate": gate["sample_adequate"],
+            "min_oos_trades_total": gate["min_oos_trades_total"],
         },
         "windows": window_records,
         "tags": list(spec.tags),
