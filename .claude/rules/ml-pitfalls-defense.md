@@ -37,7 +37,7 @@ third-party curated lists.
 | 6 | Fractional differentiation (stationarity vs memory tradeoff) | `pandas.diff()` is used ad-hoc in indicator code | Gap for regime-detection features that consume price level directly (vs returns). If/when `engine/analysis/regime.py` adds a "price relative to fair value" feature, reach for `mlfinlab.features.fracdiff` rather than integer differencing. |
 | 7 | Chart-pattern subjectivity | N/A — no visual classification in production debate (Pattern Vision Analyst is scaffold only, not live-wired as of `a217dd0`) | Becomes live when Pattern Vision Analyst is wired. See `engine/agents/pattern_vision_analyst.py` — classifier returns structured `VisionClassification`, not free-form text, which mitigates but does NOT eliminate subjectivity risk. The 30-setup eval replay named in the scaffold's NEXT STEPS block is how we measure this — do not ship live wiring without it. |
 | 8 | Survivorship bias | CME futures (MCL / MNQ / MES) — survivorship doesn't apply to active contracts | N/A for futures. Would matter if equities universe is ever added. |
-| 9 | Monte Carlo permutation tests on trade sequences | None | **Gap.** Aronson ch. 6 recommends shuffling trade signs and re-running backtest `k >= 500` times to build a null distribution for Sharpe. A strategy with live Sharpe 1.5 in a null distribution averaging 1.2 is not statistically edged. Fix: add `engine/analytics/permutation_test.py` with `permute_and_score(trades, n_iters=500) -> p_value`. Paper-trading gate on p < 0.05. |
+| 9 | Monte Carlo permutation tests | **Partial — two distinct nulls.** (a) *Bar-permutation MCPT* (Masters 2020) is **implemented**: `engine/backtest/bar_permute.py` permutes price bars, `engine/analytics/permutation_test.py` re-optimizes on each (`run_insample_mcpt`, `run_walkforward_mcpt`, `validate_strategy`). (b) *Trade-sign shuffle* (Aronson ch. 6) — still a gap. | **Remaining.** (a) The bar-permutation MCPT is available as a **diagnostic** but is **not yet a blocking gate** — it catches data-mining / optimization bias by re-running the optimizer on noise. (b) The trade-sign shuffle `permute_and_score(trades, n_iters=500) -> p_value` over the *realized trade list* is the right null for `forward_test.py` graduation (the live entry path is LLM-driven, not a mechanical optimizer, so the re-optimize null does not apply there) and remains unbuilt. Wiring (a) into the gate-v2 optimizer and building+wiring (b) into forward_test are deferred to a `[safety-review]` PR: both change trade authorization, and small-sample power on the 16-trade (MES) / 67-trade (MGC) series needs to be observed before either blocks. |
 
 ## Numerical gates — WFE table addendum
 
@@ -46,12 +46,27 @@ Existing: `backtest-signals.md` requires WFE >= 0.5 for paper.
 Proposed additions (not yet enforced in code — targets for follow-up PR):
 
 ```
-WFE >= 0.5                     -> existing gate (keep)
-DSR >= 0                       -> Deflated Sharpe non-negative after N-strategy correction
-p_permutation < 0.05           -> >=500-iter sign-shuffle null distribution
+WFE >= 0.5                       -> existing gate (keep)
+DSR >= 0                         -> Deflated Sharpe non-negative after N-strategy correction
+insample_mcpt_p < 0.01           -> bar-permutation re-optimize null (IMPLEMENTED; diagnostic, not yet gating)
+walkforward_mcpt_p < 0.05 (<0.01 for 2yr+)  -> bar-permutation walk-forward null (IMPLEMENTED; diagnostic)
+trade_shuffle_p < 0.05           -> >=500-iter sign-shuffle of realized trades (still a gap; forward_test null)
 max_dd_recovery_bars <= 2*lookback  -> drawdown must recover within 2x the feature lookback
-oos_access_count <= 3/quarter  -> mechanical OOS contamination cap
+oos_access_count <= 3/quarter    -> mechanical OOS contamination cap
 ```
+
+Bar-permutation MCPT — how to invoke (diagnostic):
+
+```python
+from analytics.permutation_test import validate_strategy
+# optimize_fn(df) -> (params, pf); walkforward_fn(df, train_window) -> pf
+verdict = validate_strategy(df, optimize_fn, walkforward_fn, train_window=TRAIN_BARS)
+# verdict["verdict"] in {PASS, REJECT (in-sample excellence|in-sample MCPT|walk-forward|walk-forward MCPT)}
+```
+
+Discipline: lock the strategy spec BEFORE running. A fail means discard the
+strategy, not tweak-and-rerun — iterating against the test data-mines the
+p-value itself (the most insidious failure mode; Masters ch. on target-fiddling).
 
 The first three are the ones most worth implementing. The fourth and fifth
 are stretch goals — useful but incremental over the existing WFE gate.
