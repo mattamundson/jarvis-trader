@@ -14,9 +14,14 @@ silently stack aggregate exposure. This module adds the missing portfolio view:
 Pure functions, exhaustively testable, no I/O. Wiring into the live sizing path
 and a backtest validation are deliberately OUT of scope here (Amo-gated).
 """
+
 import math
 
-from risk.portfolio_sizer import correlation_scale_factor, portfolio_risk
+from risk.portfolio_sizer import (
+    correlation_scale_factor,
+    correlation_trim_contracts,
+    portfolio_risk,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -130,3 +135,97 @@ def test_missing_correlation_uses_conservative_default():
         "MES", 100.0, {"MGC": 150.0}, {}, max_portfolio_risk=200.0, default_corr=1.0
     )
     assert math.isclose(f_unknown, 0.5, rel_tol=1e-9)
+
+
+# --------------------------------------------------------------------------- #
+# correlation_trim_contracts — factor -> integer micro-contract count
+# --------------------------------------------------------------------------- #
+def test_trim_noop_when_book_empty():
+    n, f, _ = correlation_trim_contracts(
+        "MES",
+        contracts=2,
+        new_risk=100.0,
+        open_book_risks={},
+        correlations={},
+        max_portfolio_risk=200.0,
+    )
+    assert n == 2 and f == 1.0
+
+
+def test_trim_noop_when_zero_contracts():
+    n, _f, _ = correlation_trim_contracts(
+        "MES",
+        contracts=0,
+        new_risk=100.0,
+        open_book_risks={"MGC": 100.0},
+        correlations={},
+        max_portfolio_risk=200.0,
+    )
+    assert n == 0
+
+
+def test_trim_unchanged_when_room_available():
+    # Uncorrelated, plenty of headroom -> factor 1.0 -> no change.
+    n, f, _ = correlation_trim_contracts(
+        "MES",
+        contracts=2,
+        new_risk=50.0,
+        open_book_risks={"MGC": 50.0},
+        correlations={("MES", "MGC"): 0.0},
+        max_portfolio_risk=500.0,
+    )
+    assert n == 2 and f == 1.0
+
+
+def test_trim_scales_down_but_keeps_at_least_one_above_block_threshold():
+    # factor ~0.5 (>= block_threshold) -> round(2*0.5)=1, never below 1.
+    n, f, _ = correlation_trim_contracts(
+        "MES",
+        contracts=2,
+        new_risk=100.0,
+        open_book_risks={"MGC": 150.0},
+        correlations={("MES", "MGC"): 1.0},
+        max_portfolio_risk=200.0,
+        block_threshold=0.4,
+    )
+    assert n == 1 and math.isclose(f, 0.5, rel_tol=1e-9)
+
+
+def test_trim_blocks_to_zero_below_block_threshold():
+    # Book full + perfectly correlated -> factor 0.0 < block_threshold -> block.
+    n, f, _ = correlation_trim_contracts(
+        "MES",
+        contracts=2,
+        new_risk=100.0,
+        open_book_risks={"MGC": 200.0},
+        correlations={("MES", "MGC"): 1.0},
+        max_portfolio_risk=200.0,
+        block_threshold=0.4,
+    )
+    assert n == 0 and f == 0.0
+
+
+def test_trim_keeps_single_contract_on_mild_pressure():
+    # 1 contract, factor 0.7 (>= threshold) -> max(1, round(0.7)) = 1, kept.
+    n, _f, _ = correlation_trim_contracts(
+        "MES",
+        contracts=1,
+        new_risk=60.0,
+        open_book_risks={"MGC": 160.0},
+        correlations={("MES", "MGC"): 1.0},
+        max_portfolio_risk=200.0,
+        block_threshold=0.4,
+    )
+    assert n == 1
+
+
+def test_trim_never_increases_contracts():
+    n, _f, _ = correlation_trim_contracts(
+        "MES",
+        contracts=2,
+        new_risk=10.0,
+        open_book_risks={"MGC": 10.0},
+        correlations={("MES", "MGC"): -1.0},
+        max_portfolio_risk=1000.0,
+    )
+    assert n <= 2
