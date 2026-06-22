@@ -19,6 +19,11 @@ param([switch]$DryRun)
 
 $ErrorActionPreference = 'Continue'
 
+# Load the pure restart-storm guard helper (unit-tested in
+# scripts/tests/engine-watchdog-guards.Tests.ps1). If it fails to load, the
+# guard call below degrades safely to the original "restart on /health failure".
+. "$PSScriptRoot\lib\engine-watchdog-guards.ps1"
+
 $EngineUrl  = 'http://127.0.0.1:8010/health'
 $Port       = 8010
 $JarvisDir  = 'C:\Users\mattm\ThinkorSwim\jarvis-trader'
@@ -89,15 +94,15 @@ Write-Log "FAIL: /health unresponsive after $ProbeCount consecutive probes (${Pr
 # so a stale log still restarts. Stat failure falls through to restart
 # (fail-safe, preserves prior behavior).
 $EngineLog = "$env:USERPROFILE\.pm2\logs\jarvis-engine-error.log"
-try {
-    $logAgeSec = ((Get-Date) - (Get-Item $EngineLog -ErrorAction Stop).LastWriteTime).TotalSeconds
-    if ($logAgeSec -lt 60) {
-        Write-Log ("SKIP: /health failed {1}x but engine log fresh ({0:N0}s) -- event loop alive, not restarting (RTH saturation)" -f $logAgeSec, $ProbeCount)
+$recency = Test-EngineLogFresh -LogPath $EngineLog -ThresholdSec 60
+if ($recency.Statted) {
+    if ($recency.Fresh) {
+        Write-Log ("SKIP: /health failed {1}x but engine log fresh ({0:N0}s) -- event loop alive, not restarting (RTH saturation)" -f $recency.AgeSec, $ProbeCount)
         Trim-Log
         exit 0
     }
-    Write-Log ("CONFIRM-DEAD: engine log stale ({0:N0}s) AND /health failed {1}x -- genuine hang, restarting" -f $logAgeSec, $ProbeCount)
-} catch {
+    Write-Log ("CONFIRM-DEAD: engine log stale ({0:N0}s) AND /health failed {1}x -- genuine hang, restarting" -f $recency.AgeSec, $ProbeCount)
+} else {
     Write-Log "WARN: cannot stat engine log -- falling through to restart on /health failure"
 }
 # --------------------------------------------------------------------------
