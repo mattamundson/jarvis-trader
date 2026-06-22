@@ -217,3 +217,111 @@ def validate_strategy(
         "wf_pval": wf_res["p_value"],
         "params": is_res["real_params"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Trade-sign permutation test (Aronson EBTA ch. 6) — the OTHER null
+# ---------------------------------------------------------------------------
+#
+# The MCPT above permutes *price* and re-optimizes; it is the right null for a
+# mechanical optimizer. This test takes an already-realized *trade list* and asks a
+# narrower question: given these trade outcomes, is the aggregate result better than a
+# strategy with no directional edge would produce by chance? Under H0 (no edge) each
+# trade is as likely to have made money as to have lost the same magnitude, so the null
+# is built by randomly flipping the sign of each trade's P&L and rescoring.
+#
+# This is the correct null for ``forward_test.py`` graduation (the live entry path is
+# LLM-driven, not a mechanical optimizer, so there is no optimizer to permute). It is
+# provided here as a DIAGNOSTIC; wiring it into the graduation rule changes trade
+# authorization and is deferred to a [safety-review] PR.
+
+#: Trade-sign permutation p-value ceiling.
+TRADE_SHUFFLE_ALPHA: float = 0.05
+
+
+def _extract_pnls(trades: Any) -> np.ndarray:
+    """Coerce a trade list into a float P&L array. Accepts floats, dicts with a 'pnl'
+    key, or objects with a ``.pnl`` attribute."""
+    out: list[float] = []
+    for t in trades:
+        if isinstance(t, (int, float)):
+            out.append(float(t))
+        elif isinstance(t, dict):
+            out.append(float(t.get("pnl", 0.0)))
+        else:
+            out.append(float(getattr(t, "pnl", 0.0)))
+    return np.array(out, dtype=np.float64)
+
+
+def _trade_metric(pnls: np.ndarray, metric: str) -> float:
+    """Score a P&L array. 'mean'/'total' test return edge; 'sharpe' tests risk-adjusted
+    edge; 'profit_factor' tests the win/loss money ratio."""
+    if metric == "mean":
+        return float(pnls.mean())
+    if metric == "total":
+        return float(pnls.sum())
+    if metric == "sharpe":
+        std = pnls.std()
+        return float(pnls.mean() / std) if std > 0 else 0.0
+    if metric == "profit_factor":
+        gp = float(pnls[pnls > 0].sum())
+        gl = float(abs(pnls[pnls < 0].sum()))
+        return gp / gl if gl > 0 else (gp if gp > 0 else 0.0)
+    raise ValueError(f"unknown metric: {metric!r}")
+
+
+def permute_and_score(
+    trades: Any,
+    n_iters: int = 500,
+    metric: str = "mean",
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Sign-flip permutation test over a realized trade list (Aronson EBTA ch. 6).
+
+    Builds a no-edge null by randomly negating each trade's P&L ``n_iters`` times and
+    rescoring, then reports where the real score falls. A high p-value means the realized
+    result is within what a no-edge strategy produces by luck.
+
+    Args:
+        trades: sequence of P&L floats, dicts with ``pnl``, or objects with ``.pnl``.
+        n_iters: number of sign-flip permutations (Aronson recommends >= 500).
+        metric: one of ``mean`` / ``total`` / ``sharpe`` / ``profit_factor``.
+        seed: RNG seed.
+
+    Returns:
+        dict with ``real_score``, ``p_value``, ``passes`` (p < TRADE_SHUFFLE_ALPHA),
+        ``n_trades`` and the null mean. With < 2 trades the test is undefined and
+        returns ``p_value = 1.0`` (fail-closed: too little evidence is no evidence).
+    """
+    pnls = _extract_pnls(trades)
+    n = len(pnls)
+    if n < 2:
+        return {
+            "test": "trade_sign_permutation",
+            "metric": metric,
+            "real_score": float(pnls.sum()) if n else 0.0,
+            "p_value": 1.0,
+            "n_iters": n_iters,
+            "n_trades": n,
+            "perm_score_mean": 0.0,
+            "passes": False,
+            "alpha": TRADE_SHUFFLE_ALPHA,
+        }
+
+    real = _trade_metric(pnls, metric)
+    rng = np.random.default_rng(seed)
+    perm_scores = [
+        _trade_metric(pnls * rng.choice((-1.0, 1.0), size=n), metric) for _ in range(n_iters)
+    ]
+    p_value = _perm_pvalue(real, perm_scores)
+    return {
+        "test": "trade_sign_permutation",
+        "metric": metric,
+        "real_score": round(real, 6),
+        "p_value": round(p_value, 4),
+        "n_iters": n_iters,
+        "n_trades": n,
+        "perm_score_mean": round(float(np.mean(perm_scores)), 6),
+        "passes": p_value < TRADE_SHUFFLE_ALPHA,
+        "alpha": TRADE_SHUFFLE_ALPHA,
+    }
