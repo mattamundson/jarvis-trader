@@ -15,6 +15,7 @@ import pytest
 
 from analytics.permutation_test import (
     INSAMPLE_ALPHA,
+    permute_and_score,
     run_insample_mcpt,
     run_walkforward_mcpt,
     validate_strategy,
@@ -237,3 +238,50 @@ def test_validate_strategy_rejects_at_gate2():
         n_insample_perms=50, n_wf_perms=20, seed=0,
     )
     assert out["verdict"] == "REJECT (in-sample MCPT)"
+
+
+# ── trade-sign permutation test (Aronson) ────────────────────────────────────────
+
+def test_trade_shuffle_rejects_no_edge():
+    """Symmetric P&L around zero -> the real result is ordinary under the null."""
+    rng = np.random.default_rng(3)
+    pnls = rng.normal(0.0, 1.0, 80).tolist()  # mean ~ 0, no directional edge
+    res = permute_and_score(pnls, n_iters=500, metric="mean", seed=0)
+    assert res["p_value"] > res["alpha"]
+    assert res["passes"] is False
+    assert res["n_trades"] == 80
+
+
+def test_trade_shuffle_passes_real_edge():
+    """A win-heavy P&L list sits in the right tail of the sign-flip null."""
+    pnls = [1.0] * 45 + [-1.0] * 8  # strongly positive mean
+    res = permute_and_score(pnls, n_iters=500, metric="mean", seed=0)
+    assert res["real_score"] > res["perm_score_mean"]
+    assert res["p_value"] < res["alpha"]
+    assert res["passes"] is True
+
+
+def test_trade_shuffle_profit_factor_metric():
+    pnls = [2.0, 3.0, 1.5, 2.5, -0.5, -0.4]  # PF well above 1
+    res = permute_and_score(pnls, n_iters=300, metric="profit_factor", seed=1)
+    assert res["metric"] == "profit_factor"
+    assert 0.0 < res["p_value"] <= 1.0
+
+
+def test_trade_shuffle_accepts_dicts_and_objects():
+    class _T:
+        def __init__(self, pnl):
+            self.pnl = pnl
+
+    as_dicts = [{"pnl": 1.0}, {"pnl": -1.0}, {"pnl": 1.0}]
+    as_objs = [_T(1.0), _T(-1.0), _T(1.0)]
+    r1 = permute_and_score(as_dicts, n_iters=50, seed=0)
+    r2 = permute_and_score(as_objs, n_iters=50, seed=0)
+    assert r1["n_trades"] == r2["n_trades"] == 3
+
+
+def test_trade_shuffle_too_few_trades_fails_closed():
+    res = permute_and_score([1.0], n_iters=100, seed=0)
+    assert res["n_trades"] == 1
+    assert res["p_value"] == 1.0
+    assert res["passes"] is False
