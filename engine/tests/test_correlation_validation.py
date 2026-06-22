@@ -9,7 +9,11 @@ newer position. These two pure helpers are the load-bearing correctness:
   find_concurrent_pairs overlap detection (which positions were open together)
 """
 
-from risk.correlation_validation import find_concurrent_pairs, risk_at_stop
+from risk.correlation_validation import (
+    aligned_returns_from_ts_closes,
+    find_concurrent_pairs,
+    risk_at_stop,
+)
 
 
 def test_risk_at_stop_basic():
@@ -65,3 +69,47 @@ def test_three_way_overlap_yields_three_pairs():
     ]
     pairs = find_concurrent_pairs(intervals)
     assert len(pairs) == 3  # a-b, a-c, b-c
+
+
+# --------------------------------------------------------------------------- #
+# aligned_returns_from_ts_closes — timestamp-align before computing returns
+# --------------------------------------------------------------------------- #
+def test_alignment_intersects_timestamps():
+    # MGC has an extra leading bar; only the shared timestamps are used.
+    ts_closes = {
+        "MES": [("t1", 100.0), ("t2", 101.0), ("t3", 102.0)],
+        "MGC": [("t0", 50.0), ("t1", 200.0), ("t2", 202.0), ("t3", 204.0)],
+    }
+    rets = aligned_returns_from_ts_closes(ts_closes)
+    # Common ts = t1,t2,t3 => 2 returns each.
+    assert len(rets["MES"]) == 2
+    assert len(rets["MGC"]) == 2
+
+
+def test_alignment_preserves_return_correspondence():
+    # On the shared grid both move proportionally => returns line up 1:1.
+    ts_closes = {
+        "MES": [("t1", 100.0), ("t2", 110.0), ("t3", 121.0)],
+        "MGC": [("t1", 200.0), ("t2", 220.0), ("t3", 242.0)],
+    }
+    rets = aligned_returns_from_ts_closes(ts_closes)
+    assert rets["MES"] == rets["MGC"]  # both +10% then +10%
+
+
+def test_alignment_sorts_by_timestamp():
+    # Unsorted input must still align chronologically.
+    ts_closes = {
+        "MES": [("t3", 102.0), ("t1", 100.0), ("t2", 101.0)],
+        "MGC": [("t2", 201.0), ("t3", 202.0), ("t1", 200.0)],
+    }
+    rets = aligned_returns_from_ts_closes(ts_closes)
+    assert len(rets["MES"]) == 2 and len(rets["MGC"]) == 2
+
+
+def test_alignment_empty_intersection_yields_empty():
+    ts_closes = {
+        "MES": [("t1", 100.0), ("t2", 101.0)],
+        "MGC": [("t8", 200.0), ("t9", 201.0)],
+    }
+    rets = aligned_returns_from_ts_closes(ts_closes)
+    assert rets["MES"] == [] and rets["MGC"] == []
