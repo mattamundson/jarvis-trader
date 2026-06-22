@@ -223,7 +223,8 @@ def _metrics_from_trades(trades, mult_fn, capital: float) -> SimpleNamespace:
     n = len(scaled_pnls)
     if n == 0:
         return SimpleNamespace(
-            profit_factor=0.0, max_drawdown_pct=0.0, sharpe_ratio=0.0, total_trades=0
+            profit_factor=0.0, max_drawdown_pct=0.0, sharpe_ratio=0.0,
+            total_trades=0, total_pnl=0.0,
         )
 
     arr = np.array(scaled_pnls, dtype=float)
@@ -253,6 +254,7 @@ def _metrics_from_trades(trades, mult_fn, capital: float) -> SimpleNamespace:
         max_drawdown_pct=max_dd,
         sharpe_ratio=sharpe,
         total_trades=n,
+        total_pnl=float(arr.sum()),
     )
 
 
@@ -440,6 +442,79 @@ def run_ab() -> dict:
     )
     print(f"{'=' * 72}")
 
+    # --- Powered full-sample A/B (higher N than the trade-starved WFO) -----------
+    # The 6/1 WFO leaves ~0-1 OOS trades/window. Run the champion VIX combo over the
+    # FULL dataset (no walk-forward) for a higher-N signal-strength readout, and break
+    # the trades down by term-structure regime: if almost none land in BACKWARDATION,
+    # the overlay cannot help by construction. This is IN-SAMPLE (no DSR/gate meaning)
+    # and labeled as such -- a diagnostic, not a gate verdict.
+    full_result = _run_signals_and_backtest(
+        df, vix_df, champion_vix["vix_min"], champion_vix["vix_max"]
+    )
+    full_trades = list(full_result.trades)
+    regime_counts = {"CONTANGO": 0, "FLAT": 0, "BACKWARDATION": 0, "NO_DATA": 0}
+    for t in full_trades:
+        d = pd.Timestamp(t.entry_date).normalize()
+        sub = ts_daily.loc[:d]
+        if sub.empty or pd.isna(sub.iloc[-1]["vix"]) or pd.isna(sub.iloc[-1]["vix3m"]):
+            regime_counts["NO_DATA"] += 1
+            continue
+        rg, _ = classify_term_structure(
+            float(sub.iloc[-1]["vix"]), float(sub.iloc[-1]["vix3m"]), 0.5
+        )
+        regime_counts[rg.value] += 1
+
+    full_a = _metrics_from_trades(full_trades, lambda d: 1.0, CAPITAL)
+    full_b_sweep = []
+    for flat_band, bwd_mult in itertools.product(FLAT_BAND_VALUES, BACKWARDATION_MULT_VALUES):
+        standaside = bwd_mult <= 0.0
+
+        def mfn(entry_date, _fb=flat_band, _bm=bwd_mult, _sa=standaside):
+            return _regime_mult_for_trade(entry_date, ts_daily, _fb, _bm, _sa)
+
+        mb = _metrics_from_trades(full_trades, mfn, CAPITAL)
+        full_b_sweep.append(
+            {
+                "flat_band": flat_band,
+                "backwardation_mult": bwd_mult,
+                "standaside": standaside,
+                "profit_factor": round(mb.profit_factor, 4) if mb.profit_factor != float("inf") else "inf",
+                "sharpe_ratio": round(mb.sharpe_ratio, 4),
+                "max_drawdown_pct": round(mb.max_drawdown_pct, 6),
+                "total_pnl": round(mb.total_pnl, 2),
+                "total_trades": mb.total_trades,
+            }
+        )
+
+    # Does ANY full-sample overlay combo improve risk-adjusted terms (Sharpe up AND
+    # maxDD not worse) over the unscaled champion? If not, the overlay adds nothing.
+    full_improves = any(
+        c["sharpe_ratio"] > round(full_a.sharpe_ratio, 4)
+        and c["max_drawdown_pct"] <= round(full_a.max_drawdown_pct, 6)
+        for c in full_b_sweep
+    )
+    print(f"\n{'=' * 72}")
+    print("=== POWERED FULL-SAMPLE A/B (in-sample diagnostic; champion VIX combo) ===")
+    print(
+        f"  regime breakdown of {len(full_trades)} champion trades: "
+        f"CONTANGO={regime_counts['CONTANGO']} FLAT={regime_counts['FLAT']} "
+        f"BACKWARDATION={regime_counts['BACKWARDATION']} NO_DATA={regime_counts['NO_DATA']}"
+    )
+    print(
+        f"  Arm A (overlay OFF): PF={full_a.profit_factor:.3f} "
+        f"Sharpe={full_a.sharpe_ratio:.3f} maxDD={full_a.max_drawdown_pct:.2%} "
+        f"pnl=${full_a.total_pnl:,.0f} trades={full_a.total_trades}"
+    )
+    for c in full_b_sweep:
+        print(
+            f"  Arm B fb={c['flat_band']:.1f} bwd={c['backwardation_mult']:.2f}: "
+            f"PF={c['profit_factor']} Sharpe={c['sharpe_ratio']} "
+            f"maxDD={c['max_drawdown_pct']:.4f} pnl=${c['total_pnl']:,.0f} "
+            f"trades={c['total_trades']}"
+        )
+    print(f"  any combo improves (Sharpe up AND maxDD not worse): {full_improves}")
+    print(f"{'=' * 72}")
+
     verdict_doc = {
         "symbol": "MES",
         "study": "term_structure_overlay_ab",
@@ -493,6 +568,27 @@ def run_ab() -> dict:
                 "live overlay clamps to integer contracts (coarser at 1-2 lots)."
             )
             % (n_vix_combos, N_OVERLAY_COMBOS),
+        },
+        "full_sample_ab": {
+            "note": (
+                "IN-SAMPLE diagnostic (no walk-forward / no DSR / not a gate verdict). "
+                "Champion VIX combo over the full dataset for a higher-N readout than "
+                "the trade-starved WFO. If few trades land in BACKWARDATION the overlay "
+                "cannot help by construction."
+            ),
+            "champion_vix": champion_vix,
+            "n_trades": len(full_trades),
+            "regime_breakdown": regime_counts,
+            "any_combo_improves": full_improves,
+            "arm_a": {
+                "profit_factor": round(full_a.profit_factor, 4)
+                if full_a.profit_factor != float("inf") else "inf",
+                "sharpe_ratio": round(full_a.sharpe_ratio, 4),
+                "max_drawdown_pct": round(full_a.max_drawdown_pct, 6),
+                "total_pnl": round(full_a.total_pnl, 2),
+                "total_trades": full_a.total_trades,
+            },
+            "arm_b_sweep": full_b_sweep,
         },
         "windows": window_records,
     }
@@ -576,6 +672,38 @@ def _write_summary_md(path: Path, doc: dict) -> None:
             f"{round(c['mc_95th_dd'] * 100, 3)}% | {c['dsr']} | {c['total_oos_trades']} |"
         )
     lines.append("")
+    fs = doc.get("full_sample_ab")
+    if fs:
+        rb = fs["regime_breakdown"]
+        a = fs["arm_a"]
+        lines.append("### Powered full-sample A/B (in-sample diagnostic)")
+        lines.append("")
+        lines.append(
+            f"Higher-N readout than the trade-starved WFO: the champion VIX combo "
+            f"`{fs['champion_vix']}` over the full dataset = **{fs['n_trades']} trades**."
+        )
+        lines.append("")
+        lines.append(
+            f"**Regime breakdown:** CONTANGO {rb['CONTANGO']} / FLAT {rb['FLAT']} / "
+            f"BACKWARDATION {rb['BACKWARDATION']} / NO_DATA {rb['NO_DATA']}. "
+            f"_Any combo improves (Sharpe up AND maxDD not worse): **{fs['any_combo_improves']}**._"
+        )
+        lines.append("")
+        lines.append("| Arm | flat_band | bwd_mult | PF | Sharpe | maxDD | pnl | trades |")
+        lines.append("|---|---|---|---|---|---|---|---|")
+        lines.append(
+            f"| A (OFF) | -- | -- | {a['profit_factor']} | {a['sharpe_ratio']} | "
+            f"{round(a['max_drawdown_pct'] * 100, 3)}% | ${a['total_pnl']:,.0f} | {a['total_trades']} |"
+        )
+        for c in fs["arm_b_sweep"]:
+            lines.append(
+                f"| B | {c['flat_band']} | {c['backwardation_mult']} | {c['profit_factor']} | "
+                f"{c['sharpe_ratio']} | {round(c['max_drawdown_pct'] * 100, 3)}% | "
+                f"${c['total_pnl']:,.0f} | {c['total_trades']} |"
+            )
+        lines.append("")
+        lines.append(f"_{fs['note']}_")
+        lines.append("")
     lines.append("### Scope & caveats")
     lines.append("")
     lines.append(

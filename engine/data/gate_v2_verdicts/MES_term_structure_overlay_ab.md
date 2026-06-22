@@ -1,6 +1,6 @@
 # Term-Structure Overlay A/B -- MES (decision gate)
 
-_Generated: 2026-06-22T08:35:23.498733+00:00_
+_Generated: 2026-06-22T08:51:10.525579+00:00_
 
 ## RECOMMENDATION: **KILL**
 
@@ -45,6 +45,26 @@ _Generated: 2026-06-22T08:35:23.498733+00:00_
 | 1.0 | 0.5 | False | FAIL | 0.5999 | 0.3571 | 0.934% | 0.0 | 16 |
 | 2.0 | 0.0 | True | FAIL | 0.5999 | 0.3571 | 0.934% | 0.0 | 16 |
 | 2.0 | 0.5 | False | FAIL | 0.5999 | 0.3571 | 0.934% | 0.0 | 16 |
+
+### Powered full-sample A/B (in-sample diagnostic)
+
+Higher-N readout than the trade-starved WFO: the champion VIX combo `{'vix_min': 12, 'vix_max': 28}` over the full dataset = **32 trades**.
+
+**Regime breakdown:** CONTANGO 30 / FLAT 2 / BACKWARDATION 0 / NO_DATA 0. _Any combo improves (Sharpe up AND maxDD not worse): **False**._
+
+| Arm | flat_band | bwd_mult | PF | Sharpe | maxDD | pnl | trades |
+|---|---|---|---|---|---|---|---|
+| A (OFF) | -- | -- | 1.5292 | 2.8383 | 3.886% | $2,877 | 32 |
+| B | 0.0 | 0.0 | 1.3762 | 2.1273 | 3.946% | $2,045 | 31 |
+| B | 0.0 | 0.5 | 1.4527 | 2.5007 | 3.916% | $2,461 | 32 |
+| B | 0.5 | 0.0 | 1.5292 | 2.8383 | 3.886% | $2,877 | 32 |
+| B | 0.5 | 0.5 | 1.5292 | 2.8383 | 3.886% | $2,877 | 32 |
+| B | 1.0 | 0.0 | 1.5292 | 2.8383 | 3.886% | $2,877 | 32 |
+| B | 1.0 | 0.5 | 1.5292 | 2.8383 | 3.886% | $2,877 | 32 |
+| B | 2.0 | 0.0 | 1.5292 | 2.8383 | 3.886% | $2,877 | 32 |
+| B | 2.0 | 0.5 | 1.5292 | 2.8383 | 3.886% | $2,877 | 32 |
+
+_IN-SAMPLE diagnostic (no walk-forward / no DSR / not a gate verdict). Champion VIX combo over the full dataset for a higher-N readout than the trade-starved WFO. If few trades land in BACKWARDATION the overlay cannot help by construction._
 
 ### Scope & caveats
 
