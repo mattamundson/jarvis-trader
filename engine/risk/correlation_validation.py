@@ -39,6 +39,36 @@ def risk_at_stop(
     return abs(entry_price - stop_loss) * abs(quantity) * multiplier
 
 
+def aligned_returns_from_ts_closes(
+    ts_closes_by_symbol: "dict[str, Sequence[tuple]]",
+) -> "dict[str, list[float]]":
+    """Timestamp-align close series, then return close-to-close returns.
+
+    ``ts_closes_by_symbol`` maps symbol -> sequence of ``(ts, close)``. Only the
+    timestamps present for EVERY symbol are used (intersection), so each symbol's
+    returns are computed on the same chronological grid — correlating misaligned
+    series (e.g. one symbol's holiday gap shifting the other) would be spurious.
+    """
+    if not ts_closes_by_symbol:
+        return {}
+    common: Optional[set] = None
+    for series in ts_closes_by_symbol.values():
+        stamps = {ts for ts, _ in series}
+        common = stamps if common is None else (common & stamps)
+    grid = sorted(common or set())
+    out: dict[str, list[float]] = {}
+    for sym, series in ts_closes_by_symbol.items():
+        by_ts = dict(series)
+        closes = [by_ts[ts] for ts in grid]
+        rets = []
+        for i in range(1, len(closes)):
+            prev = closes[i - 1]
+            if prev:
+                rets.append((closes[i] - prev) / prev)
+        out[sym] = rets
+    return out
+
+
 def find_concurrent_pairs(
     intervals: Sequence[tuple],
 ) -> list[tuple]:
@@ -112,30 +142,33 @@ def _load_trades(db_path: str) -> list[dict]:
     return out
 
 
-def _estimate_pair_correlations(symbols, data_dir: str, interval: str = "1d"):
-    """Best-effort return correlations from cached bars; {} on any miss."""
-    import csv
-    import glob
+def _estimate_pair_correlations(symbols, db_path: str, interval: str = "1d"):
+    """Return correlations from the market_data_bars table; {} if unavailable.
 
-    from risk.correlation_estimator import bars_to_returns, estimate_correlations
+    Reads (ts_utc, close) per symbol at ``interval``, timestamp-aligns them, then
+    estimates pairwise correlations on the shared grid. Bar data lives in the
+    SQLite ``market_data_bars`` table (not CSV) — symbol, interval, ts_utc, close.
+    """
+    import sqlite3
 
-    closes_by_symbol: dict[str, list[float]] = {}
-    for sym in symbols:
-        matches = sorted(glob.glob(f"{data_dir}/{sym}_*_{interval}.csv"))
-        if not matches:
-            continue
-        closes: list[float] = []
-        try:
-            with open(matches[-1], newline="") as fh:
-                for row in csv.DictReader(fh):
-                    c = row.get("close") or row.get("Close")
-                    if c:
-                        closes.append(float(c))
-        except (OSError, ValueError):
-            continue
-        if len(closes) > 30:
-            closes_by_symbol[sym] = bars_to_returns(closes)
-    return estimate_correlations(closes_by_symbol, min_overlap=30)
+    from risk.correlation_estimator import estimate_correlations
+
+    ts_closes: dict[str, list[tuple]] = {}
+    try:
+        conn = sqlite3.connect(db_path)
+        for sym in symbols:
+            rows = conn.execute(
+                "SELECT ts_utc, close FROM market_data_bars "
+                "WHERE symbol = ? AND interval = ? AND close > 0 ORDER BY ts_utc",
+                (sym, interval),
+            ).fetchall()
+            if len(rows) > 30:
+                ts_closes[sym] = [(r[0], float(r[1])) for r in rows]
+        conn.close()
+    except sqlite3.Error:
+        return {}
+    returns = aligned_returns_from_ts_closes(ts_closes)
+    return estimate_correlations(returns, min_overlap=30)
 
 
 def main() -> None:
@@ -146,7 +179,6 @@ def main() -> None:
 
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     db_path = os.path.join(here, "data", "jarvis_trader.db")
-    data_dir = os.path.join(here, "data")
 
     trades = _load_trades(db_path)
     intervals = [(t["entry"], t["exit"], t["symbol"], t) for t in trades]
@@ -154,7 +186,7 @@ def main() -> None:
     cross = [p for p in pairs if p[0][2] != p[1][2]]
 
     symbols = sorted({t["symbol"] for t in trades})
-    est_corr = _estimate_pair_correlations(symbols, data_dir)
+    est_corr = _estimate_pair_correlations(symbols, db_path)
 
     ceiling = settings.CORRELATION_MAX_PORTFOLIO_RISK_USD
     default_corr = settings.CORRELATION_DEFAULT_CORR
