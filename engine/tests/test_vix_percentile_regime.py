@@ -21,32 +21,38 @@ from backtest.vix_percentile_regime import (
     VixTier,
     classify_latest,
     classify_vix_regime,
+    gate_signals_by_vix_regime,
     momentum_overlay,
     vix_percentile,
 )
 
 
 def test_tier_thresholds_with_known_inputs():
-    # A long flat run then a single spike at the end -> highest percentile -> Crisis.
+    # A long flat run then a single spike at the end -> top of the trailing window
+    # -> Crisis tier. The flat bars themselves read ~50th percentile (MidVol).
     vix = pd.Series([15.0] * 100 + [80.0])
     tiers = classify_vix_regime(vix, lookback=252)
     assert tiers.iloc[-1] == VixTier.CRISIS
-    # The flat low values sit at the top of their own trailing window (all equal ->
-    # rank 100) early on, but a constant series ranks at 100 each bar; verify the
-    # explicit mapping via a controlled distribution instead.
+    assert tiers.iloc[50] == VixTier.MID_VOL
 
 
 def test_percentile_rank_is_trailing():
-    # Strictly increasing -> each bar is the max so far -> percentile 100 every bar.
+    # Mid-rank convention: a single observation ranks at the 50th percentile.
+    # Strictly increasing -> latest is the max so far -> rank = 100*(n-0.5)/n.
     vix = pd.Series(np.arange(1, 51, dtype=float))
     pct = vix_percentile(vix, lookback=252)
-    assert np.allclose(pct.to_numpy(), 100.0)
+    assert pct.iloc[0] == 50.0
+    assert pct.iloc[-1] == 100.0 * (49.5 / 50.0)  # 99.0
 
-    # Strictly decreasing -> each new bar is the min so far -> percentile = 100/n.
+    # Strictly decreasing -> latest is the min so far -> rank = 100*0.5/n.
     vix_dec = pd.Series(np.arange(50, 0, -1, dtype=float))
     pct_dec = vix_percentile(vix_dec, lookback=252)
-    assert pct_dec.iloc[0] == 100.0
-    assert pct_dec.iloc[-1] == 100.0 * (1.0 / 50.0)
+    assert pct_dec.iloc[0] == 50.0
+    assert pct_dec.iloc[-1] == 100.0 * (0.5 / 50.0)  # 1.0
+
+    # A flat window must read ~50th percentile (MidVol), never Crisis.
+    flat = pd.Series([20.0] * 60)
+    assert vix_percentile(flat, lookback=252).iloc[-1] == 50.0
 
 
 def test_tier_mapping_across_distribution():
@@ -110,3 +116,43 @@ def test_classify_latest_shape_and_confidence_bounds():
     assert 0.0 <= ctx.vix_percentile <= 100.0
     assert 0.0 <= ctx.confidence <= 1.0
     assert ctx.vix == vix.iloc[-1]
+
+
+def test_gate_blocks_entries_in_crisis_tier():
+    # Build a window where the final bar is a clear Crisis-tier spike.
+    n = 120
+    vix = pd.Series([15.0] * n)
+    vix.iloc[-1] = 99.0  # top of its trailing window -> Crisis
+    price = pd.Series(np.linspace(100, 110, n))
+    signals = pd.Series([0] * n)
+    signals.iloc[-1] = 1  # a long entry on the crisis bar
+    gated = gate_signals_by_vix_regime(signals, vix, price)
+    assert gated.iloc[-1] == 0  # suppressed
+    # A long entry on a calm bar survives.
+    signals2 = pd.Series([0] * n)
+    signals2.iloc[-2] = 1
+    gated2 = gate_signals_by_vix_regime(signals2, vix, price)
+    assert gated2.iloc[-2] == 1
+
+
+def test_gate_enforces_required_momentum():
+    n = 120
+    vix = pd.Series([15.0] * n)  # all LowVol, never blocked by tier
+    price = pd.Series(np.linspace(200, 100, n))  # downtrend -> Bear momentum
+    signals = pd.Series([0] * n)
+    signals.iloc[-1] = 1  # long entry into a bear tape
+    gated = gate_signals_by_vix_regime(signals, vix, price, long_requires_momentum=Momentum.BULL)
+    assert gated.iloc[-1] == 0  # long requires Bull, tape is Bear -> suppressed
+
+
+def test_gate_does_not_mutate_input_and_validates_length():
+    n = 80
+    vix = pd.Series([15.0] * n)
+    price = pd.Series(np.linspace(100, 120, n))
+    signals = pd.Series([1] * n)
+    _ = gate_signals_by_vix_regime(signals, vix, price)
+    assert (signals == 1).all()  # original untouched
+    import pytest
+
+    with pytest.raises(ValueError):
+        gate_signals_by_vix_regime(signals, vix.iloc[:-1], price)

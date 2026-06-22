@@ -100,6 +100,13 @@ monitoring add, but only after the classifier exists. Use existing badge variant
 
 ## Integration plan
 
+> **Status (2026-06-22):** User chose "both options + futures" for the SPX/VIX vehicle and
+> authorized proceeding. **Phase 1 SHIPPED**, **Phase 2 SHIPPED**, **Phase 3 primitive
+> SHIPPED** (gate function + tests); the full SPY/SPX walk-forward run is deferred — it
+> needs the market-data cache + compute (unavailable in this session), and SPY is already
+> WFE-rejected (`engine/CLAUDE.md`), so any run is research/forward-test only, never a live
+> path. Phase 4 deferred.
+
 Phased, additive-only, smallest-first. Each phase is independently shippable and testable.
 Nothing here touches `engine/config.py`, `engine/risk/`, or kill-switch code, so **no
 `[safety-review]` tag required** — but adding any *new tradeable symbol* to live routing

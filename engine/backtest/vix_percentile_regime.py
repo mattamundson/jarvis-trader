@@ -75,8 +75,9 @@ def _trailing_percentile_rank(window: np.ndarray) -> float:
     """Percentile rank (0..100) of the last element within ``window``.
 
     ``window`` holds VIX observations for bars ``<= t`` only (rolling supplies a
-    trailing slice), so this is point-in-time safe. Rank counts the fraction of
-    window observations ``<= the latest`` value.
+    trailing slice), so this is point-in-time safe. Uses the mid-rank convention
+    (ties count as half) so a flat/constant window reads ~50th percentile rather
+    than 100th — a calm-but-steady VIX must not masquerade as Crisis.
     """
     if window.size == 0:
         return np.nan
@@ -86,7 +87,9 @@ def _trailing_percentile_rank(window: np.ndarray) -> float:
     valid = window[~np.isnan(window)]
     if valid.size == 0:
         return np.nan
-    return 100.0 * np.count_nonzero(valid <= latest) / valid.size
+    less = np.count_nonzero(valid < latest)
+    equal = np.count_nonzero(valid == latest)
+    return 100.0 * (less + 0.5 * equal) / valid.size
 
 
 def vix_percentile(vix: pd.Series, lookback: int = DEFAULT_PCTILE_LOOKBACK) -> pd.Series:
@@ -180,3 +183,53 @@ def classify_latest(
         momentum=mom_series.iloc[-1],
         confidence=_percentile_confidence(pct),
     )
+
+
+# Default tiers in which to suppress new entries. AgentQuant's evidence (and our own
+# run_mes_trend_vix_rank*.py) is that trend entries taken in the top vol tier net-lose;
+# Crisis is blocked by default. Callers can widen/narrow this set.
+DEFAULT_BLOCKED_TIERS = (VixTier.CRISIS,)
+
+
+def gate_signals_by_vix_regime(
+    signals: pd.Series,
+    vix: pd.Series,
+    price: pd.Series,
+    blocked_tiers: tuple[VixTier, ...] = DEFAULT_BLOCKED_TIERS,
+    long_requires_momentum: Momentum | None = None,
+    short_requires_momentum: Momentum | None = None,
+    lookback: int = DEFAULT_PCTILE_LOOKBACK,
+    momentum_window: int = DEFAULT_MOMENTUM_WINDOW,
+) -> pd.Series:
+    """Suppress entry signals that conflict with the VIX percentile regime.
+
+    Composable entry filter for the existing trend runners (e.g. ``trend_signals.py``).
+    Takes a ``{-1, 0, +1}`` signal series and zeroes any entry whose bar is in a
+    ``blocked_tiers`` volatility tier, or whose direction disagrees with a required
+    momentum overlay (e.g. only allow longs when momentum is Bull).
+
+    Point-in-time safe: tier and momentum are trailing-window computations, so a gated
+    decision at bar ``t`` depends only on bars ``<= t``. All three input series must
+    share the same index. Returns a new series; the input is not mutated.
+    """
+    if not (len(signals) == len(vix) == len(price)):
+        raise ValueError("signals, vix and price must be the same length")
+
+    tiers = classify_vix_regime(vix, lookback=lookback)
+    momentum = momentum_overlay(price, window=momentum_window)
+    gated = signals.copy()
+
+    blocked = set(blocked_tiers)
+    for i in range(len(gated)):
+        sig = gated.iloc[i]
+        if sig == 0:
+            continue
+        if tiers.iloc[i] in blocked:
+            gated.iloc[i] = 0
+            continue
+        if sig > 0 and long_requires_momentum is not None and momentum.iloc[i] != long_requires_momentum:
+            gated.iloc[i] = 0
+        elif sig < 0 and short_requires_momentum is not None and momentum.iloc[i] != short_requires_momentum:
+            gated.iloc[i] = 0
+
+    return gated
