@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import os
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -47,6 +48,13 @@ import pandas as pd
 engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
+
+# The Backtester constructs config.TradingConfig(), which fails fast if API_KEY
+# is unset. A git worktree has no .env (gitignored), so supply a harmless offline
+# placeholder ONLY when nothing real is set. This is pure offline backtesting --
+# the factory never starts the API server or makes an authenticated call; when
+# run from the main engine dir, its real .env value wins (setdefault is a no-op).
+os.environ.setdefault("API_KEY", "offline-discovery-factory")
 
 # Reuse the canonical WFO + gate-v2 pipeline -- do NOT reimplement.
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
