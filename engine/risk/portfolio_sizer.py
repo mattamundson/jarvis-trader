@@ -27,6 +27,7 @@ until a backtest validates the behaviour change.
 wiring is later a single ``contracts = floor(contracts * corr_factor)`` style
 multiply at the sizing seam.
 """
+
 from __future__ import annotations
 
 import math
@@ -135,6 +136,60 @@ def correlation_scale_factor(
     if f >= 1.0:
         return 1.0
     return f
+
+
+def correlation_trim_contracts(
+    symbol: str,
+    contracts: int,
+    new_risk: float,
+    open_book_risks: Mapping[str, float],
+    correlations: Mapping[tuple[str, str], float],
+    max_portfolio_risk: float,
+    default_corr: float = 0.5,
+    block_threshold: float = 0.5,
+) -> tuple[int, float, str]:
+    """Apply the correlation scale factor to an integer micro-contract count.
+
+    Returns ``(trimmed_contracts, factor, reason)``. Risk *policy* lives in the
+    two thresholds, kept explicit and conservative because they shape live
+    behaviour and should be informed by validation, not buried:
+
+      - ``default_corr`` (0.5): correlation assumed for pairs absent from the
+        estimated matrix — biases toward caution (more trim), never less.
+      - ``block_threshold`` (0.5): if less than this fraction of the new
+        position's risk fits, the book is too full/correlated and the add is
+        blocked (0 contracts) rather than shaved to a token size.
+
+    Above the block threshold the size is scaled but floored at 1 contract, so a
+    mild correlation does not silently zero out a 1-lot micro signal. Never
+    raises on normal inputs; never increases the contract count.
+    """
+    if contracts <= 0 or new_risk <= 0.0 or not open_book_risks:
+        return contracts, 1.0, "no open book — no correlation trim"
+
+    factor = correlation_scale_factor(
+        symbol, new_risk, open_book_risks, correlations, max_portfolio_risk, default_corr
+    )
+    if factor >= 1.0:
+        return contracts, 1.0, "room available — no correlation trim"
+    if factor < block_threshold:
+        return (
+            0,
+            factor,
+            (
+                f"correlation block x{factor:.3f} < {block_threshold:.2f} "
+                f"(book {sorted(open_book_risks)} too full/correlated)"
+            ),
+        )
+    trimmed = max(1, round(contracts * factor))
+    return (
+        trimmed,
+        factor,
+        (
+            f"correlation trim x{factor:.3f}: {contracts} -> {trimmed} "
+            f"(book {sorted(open_book_risks)})"
+        ),
+    )
 
 
 def combined_scale(*factors: Optional[float]) -> float:
