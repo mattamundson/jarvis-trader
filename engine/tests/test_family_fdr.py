@@ -138,3 +138,98 @@ def test_run_on_real_verdicts_smoke():
     assert report["n_verdicts_total"] >= 0
     assert report["n_robust_edge"] <= report["n_gate_pass"]
     assert set(report["robust_edge_ids"]).issubset(set(report["gate_pass_ids"]))
+
+
+# --- CPCV verdicts excluded from the sign-test family ----------------------
+
+
+def test_build_family_excludes_cpcv_verdicts():
+    # A CPCV verdict reports many overlapping folds as "windows" -- not
+    # independent, so it must be excluded from the binomial sign-test family
+    # rather than over-credited alongside sequential-WFO verdicts.
+    cpcv_verdict = {
+        "_id": "MGC_singlefinder_fill_cpcv",
+        "verdict": "PASS",
+        "symbol": "MGC",
+        "family": "singlefinder_fill",
+        "wfo_config": {"cv_method": "cpcv", "n_oos_windows": 15},
+        "gate_v2_metrics": {"p_edge": 0.73, "pf_ci_lower": 1.2, "dsr": 0.4},
+    }
+    seq_verdict = {
+        "_id": "MGC_singlefinder_fill_rank1",
+        "verdict": "PASS",
+        "symbol": "MGC",
+        "family": "singlefinder_fill",
+        "wfo_config": {"n_oos_windows": 5},
+        "gate_v2_metrics": {"p_edge": 0.6, "pf_ci_lower": 1.05, "dsr": 0.2},
+    }
+    family, excluded = ff.build_family([cpcv_verdict, seq_verdict])
+    fam_ids = {r["id"] for r in family}
+    exc_ids = {e["id"] for e in excluded}
+    assert "MGC_singlefinder_fill_cpcv" in exc_ids
+    assert "MGC_singlefinder_fill_cpcv" not in fam_ids
+    assert "MGC_singlefinder_fill_rank1" in fam_ids  # sequential stays in the family
+    cpcv_reason = next(e["reason"] for e in excluded if e["id"] == "MGC_singlefinder_fill_cpcv")
+    assert "overlap" in cpcv_reason.lower()
+
+
+# --- append_history ledger -------------------------------------------------
+
+import json  # noqa: E402
+
+
+def _sample_report():
+    return {
+        "q": 0.10,
+        "n_verdicts_total": 7,
+        "n_family": 5,
+        "n_gate_pass": 2,
+        "n_robust_edge": 1,
+        "robust_edge_ids": ["MGC_trend_rank4"],
+        "extra_ignored_field": "should not appear in the ledger record",
+    }
+
+
+def test_append_history_writes_expected_record(tmp_path):
+    path = str(tmp_path / "family_fdr_history.jsonl")
+    rec = ff.append_history(_sample_report(), path=path, ts="2026-06-17T00:00:00+00:00")
+    assert rec["ts"] == "2026-06-17T00:00:00+00:00"
+    assert rec["n_robust_edge"] == 1
+    assert rec["robust_edge_ids"] == ["MGC_trend_rank4"]
+    # Compact record: only the tracked keys, never the full report.
+    assert set(rec.keys()) == {
+        "ts",
+        "q",
+        "n_verdicts_total",
+        "n_family",
+        "n_gate_pass",
+        "n_robust_edge",
+        "robust_edge_ids",
+    }
+    on_disk = json.loads((tmp_path / "family_fdr_history.jsonl").read_text(encoding="utf-8").strip())
+    assert on_disk == rec
+
+
+def test_append_history_is_append_only(tmp_path):
+    path = str(tmp_path / "family_fdr_history.jsonl")
+    ff.append_history(_sample_report(), path=path, ts="2026-06-17T00:00:00+00:00")
+    ff.append_history(_sample_report(), path=path, ts="2026-06-18T00:00:00+00:00")
+    lines = (tmp_path / "family_fdr_history.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0])["ts"] == "2026-06-17T00:00:00+00:00"
+    assert json.loads(lines[1])["ts"] == "2026-06-18T00:00:00+00:00"
+
+
+def test_append_history_creates_parent_dir(tmp_path):
+    path = str(tmp_path / "nested" / "sub" / "history.jsonl")
+    ff.append_history(_sample_report(), path=path, ts="2026-06-17T00:00:00+00:00")
+    assert (tmp_path / "nested" / "sub" / "history.jsonl").exists()
+
+
+def test_append_history_default_ts_is_iso(tmp_path):
+    path = str(tmp_path / "history.jsonl")
+    rec = ff.append_history(_sample_report(), path=path)
+    # Default timestamp must be a parseable ISO-8601 string.
+    from datetime import datetime
+
+    assert datetime.fromisoformat(rec["ts"])
