@@ -26,6 +26,9 @@ EXEMPT_PATHS = {
     "/docs",
     "/openapi.json",
     "/redoc",
+    # Prometheus exposition — read-only metrics, loopback-bound. Scraped keyless
+    # so the Prometheus container needs no engine API key. See monitoring.metrics.
+    "/metrics",
 }
 
 

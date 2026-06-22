@@ -132,3 +132,19 @@ def record_safety_event(event_type: str):
 def set_consecutive_losses(count: int):
     """Set the consecutive losses gauge."""
     consecutive_losses.set(count)
+
+
+# ── Exposition ──────────────────────────────────────────────────────────────
+
+
+def mount_metrics(app) -> None:
+    """Mount the Prometheus exposition endpoint at ``/metrics`` on ``app``.
+
+    Importing this module already registered the ``jarvis_*`` families with the
+    default registry; ``make_asgi_app()`` serves them in text exposition format.
+    ``/metrics`` is in ``middleware.auth.EXEMPT_PATHS`` so Prometheus can scrape
+    it without the engine API key (read-only, loopback-bound).
+    """
+    from prometheus_client import make_asgi_app
+
+    app.mount("/metrics", make_asgi_app())
