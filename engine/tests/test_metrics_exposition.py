@@ -16,6 +16,24 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
+def test_metrics_scrapeable_keyless_through_auth_middleware():
+    """Reproduce the LIVE condition the bare-app test missed: with the real
+    APIKeyMiddleware attached, GET /metrics 307-redirects to /metrics/, which
+    must ALSO be auth-exempt or Prometheus scrapes get 401. TestClient follows
+    the redirect, so this asserts the end-to-end keyless scrape works."""
+    from middleware.api_key_middleware import APIKeyMiddleware
+    from monitoring import metrics
+
+    app = FastAPI()
+    app.add_middleware(APIKeyMiddleware)
+    metrics.mount_metrics(app)
+    client = TestClient(app)
+
+    r = client.get("/metrics")  # no X-API-Key — Prometheus scrapes keyless
+    assert r.status_code == 200
+    assert "jarvis_kill_switch_active" in r.text
+
+
 def test_metrics_path_is_auth_exempt():
     from middleware.auth import EXEMPT_PATHS
 
