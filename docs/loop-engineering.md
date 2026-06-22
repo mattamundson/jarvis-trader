@@ -330,8 +330,11 @@ essay:
   `REQUIRE_HUMAN_APPROVAL = True`, hardcoded kill switch (-2% daily / drawdown
   halt). Any loop that touches `engine/risk/`, `engine/config.py`, or kill-switch
   code is a Tier 3 change and needs the `[safety-review]` PR tag.
-- **State on disk** already exists as `docs/CURRENT_STATE.md` and `MEMORY.md` —
-  use those as the loop's STATUS.md, do not invent a parallel file.
+- **State on disk** already exists as `docs/CURRENT_STATE.md` and `MEMORY.md`,
+  but those are human-curated handoff docs — `meta-discipline.md` rule 3 forbids
+  letting automation edit them. A loop should *read* them and write its own
+  output to a dedicated, loop-owned location (`docs/loop-reports/`), never
+  clobber the curated docs.
 - **Sub-agents** are configured in `.claude/agents/` (`safety-reviewer`,
   `pipeline-debugger`, `backtest-runner`). The maker/checker split is the
   `safety-reviewer` agent.
