@@ -588,8 +588,18 @@ class IBGatewayConnector:
         # Generate order ID (UUID for paper trades)
         order_id = str(uuid.uuid4())
 
-        # Get market quote (mock for paper trading)
-        quote = await self.get_quote(symbol)
+        # Get market quote (mock for paper trading). A transient quote-feed
+        # failure must not abort the simulated fill — degrade to the same
+        # fallback the no-quote branch already uses (limit_price or 100.0).
+        try:
+            quote = await self.get_quote(symbol)
+        except Exception as exc:
+            logger.warning(
+                "IBGatewayConnector: get_quote raised for %s (%s) — using fallback price",
+                symbol,
+                exc,
+            )
+            quote = None
         if not quote or "error" in quote:
             logger.warning("IBGatewayConnector: Could not get quote for %s", symbol)
             mid_price = limit_price or 100.0
@@ -950,7 +960,18 @@ class IBGatewayConnector:
             for symbol, quantity in self._positions.items():
                 if quantity == 0:
                     continue
-                quote = await self.get_quote(symbol)
+                # A transient quote-feed failure must not break position
+                # marking — degrade to the same fallback the no-quote branch
+                # below already uses (current_price = 100.0).
+                try:
+                    quote = await self.get_quote(symbol)
+                except Exception as exc:
+                    logger.warning(
+                        "IBGatewayConnector: get_quote raised marking %s (%s) — using fallback price",
+                        symbol,
+                        exc,
+                    )
+                    quote = None
                 if quote and "error" not in quote:
                     current_price = float(quote.get("last", 100.0))
                 else:
