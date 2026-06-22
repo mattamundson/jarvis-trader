@@ -156,7 +156,7 @@ class TestRv20AnnPct:
         tv_mock = MagicMock()
         tv_mock.return_value.get_all_indicators.return_value = {}
         with patch.dict("sys.modules", {"data.tradingview_feed": MagicMock(TradingViewFeed=tv_mock)}):
-            report = asyncio.get_event_loop().run_until_complete(
+            report = asyncio.run(
                 agent.analyze("MES", timeframe="15m", is_futures=True)
             )
 
@@ -213,7 +213,7 @@ class TestComputeIndicatorsErrorDegradation:
             side_effect=RuntimeError("simulated indicator crash"),
         ):
             try:
-                report = asyncio.get_event_loop().run_until_complete(
+                report = asyncio.run(
                     agent.analyze("MES", timeframe="15m", is_futures=True)
                 )
             except Exception as exc:  # noqa: BLE001
@@ -241,7 +241,7 @@ class TestComputeIndicatorsErrorDegradation:
         agent = _make_agent(llm, dm)
 
         try:
-            report = asyncio.get_event_loop().run_until_complete(
+            report = asyncio.run(
                 agent.analyze("MES", timeframe="15m", is_futures=True)
             )
         except Exception as exc:
