@@ -160,12 +160,12 @@ def _fetch_corey_ic_offline() -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _load_mes():
+def _load_mes(test_end: str = TEST_END):
     """Load MES OHLCV; returns DataFrame or None when data/cache is unavailable."""
     try:
         from backtest import BacktestDataLoader
 
-        df = BacktestDataLoader().load(SYMBOL, FULL_START, TEST_END, interval=INTERVAL)
+        df = BacktestDataLoader().load(SYMBOL, FULL_START, test_end, interval=INTERVAL)
         if df is None or len(df) == 0:
             return None
         return df
@@ -188,12 +188,12 @@ def _run_bt(df_sig, atr_trail: float) -> dict:
     }
 
 
-def _walk(name: str, df_full, grid_fn, apply_fn) -> dict:
+def _walk(name: str, df_full, grid_fn, apply_fn, test_end: str = TEST_END) -> dict:
     """Grid-search on train, apply champion OOS + full period, package metrics."""
     import pandas as pd  # noqa: F401 — index comparison below needs pandas types
 
     train = df_full[(df_full.index >= FULL_START) & (df_full.index < TRAIN_END)].copy()
-    test = df_full[(df_full.index >= TRAIN_END) & (df_full.index < TEST_END)].copy()
+    test = df_full[(df_full.index >= TRAIN_END) & (df_full.index < test_end)].copy()
     if len(train) == 0 or len(test) == 0:
         return {"arm": name, "status": "no_data"}
 
@@ -344,12 +344,12 @@ ARMS = {
 }
 
 
-def run_backtest_arms(df_full) -> list[dict]:
+def run_backtest_arms(df_full, test_end: str = TEST_END) -> list[dict]:
     """Run every arm against the loaded frame. Pure orchestration over _walk."""
     arms = []
     for name, (grid_fn, apply_fn) in ARMS.items():
         logger.info("running arm: %s", name)
-        arms.append(_walk(name, df_full, grid_fn, apply_fn))
+        arms.append(_walk(name, df_full, grid_fn, apply_fn, test_end=test_end))
     return arms
 
 
@@ -488,20 +488,30 @@ def main() -> int:
     parser.add_argument("--engine-url", default=DEFAULT_ENGINE_URL)
     parser.add_argument("--json", help="Write the full verdict JSON to this path")
     parser.add_argument("--skip-backtest", action="store_true", help="corey-IC only (no data needed)")
+    parser.add_argument(
+        "--test-end",
+        default=TEST_END,
+        help=(
+            f"OOS window end date (YYYY-MM-DD). Default {TEST_END} mirrors "
+            "strategy_comparison.py for an apples-to-apples trend comparison; "
+            "extend it to include more recent data."
+        ),
+    )
     args = parser.parse_args()
 
     corey_ic = fetch_corey_ic(args.engine_url)
 
     arms: list[dict] = []
     if not args.skip_backtest:
-        df = _load_mes()
+        df = _load_mes(test_end=args.test_end)
         if df is None:
             logger.warning("No MES data available — reporting corey-IC only.")
             arms = [{"arm": name, "status": "no_data"} for name in ARMS]
         else:
-            arms = run_backtest_arms(df)
+            arms = run_backtest_arms(df, test_end=args.test_end)
 
     verdict = build_verdict(arms, corey_ic)
+    verdict["window"] = {"full_start": FULL_START, "train_end": TRAIN_END, "test_end": args.test_end}
     print(format_report(verdict))
 
     if args.json:
