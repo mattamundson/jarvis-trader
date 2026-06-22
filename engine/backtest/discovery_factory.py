@@ -58,7 +58,11 @@ os.environ.setdefault("API_KEY", "offline-discovery-factory")
 
 # Reuse the canonical WFO + gate-v2 pipeline -- do NOT reimplement.
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
+from backtest.atr_channel_signals import generate_atr_channel_signals  # noqa: E402
+from backtest.breakout_signals import generate_donchian_breakout_signals  # noqa: E402
 from backtest.donchian_signals import generate_donchian_signals  # noqa: E402
+from backtest.meanrev_signals import generate_bollinger_rsi_signals  # noqa: E402
+from backtest.rsi_breakout_signals import generate_rsi_breakout_signals  # noqa: E402
 from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 from backtest.wfo_lifecycle import (  # noqa: E402
     WFOConfig,
@@ -134,50 +138,187 @@ def default_registry() -> list[StrategySpec]:
     return [
         # MGC 1h SMA trend -- known gate-v2 PASS; sanity anchor for the harness.
         StrategySpec(
-            symbol="MGC", family="sma_trend", interval="1h",
+            symbol="MGC",
+            family="sma_trend",
+            interval="1h",
             signal_fn=generate_sma_trend_signals,
-            param_grid=grid(fast=[40, 50, 60], slow=[100, 120, 200],
-                            atr_trail_mult=[1.5, 2.0]),
-            train_months=6, test_months=2, step_months=1,
+            param_grid=grid(fast=[40, 50, 60], slow=[100, 120, 200], atr_trail_mult=[1.5, 2.0]),
+            train_months=6,
+            test_months=2,
+            step_months=1,
             tags=("anchor", "known_pass"),
         ),
         # MES 1h SMA trend -- known INSUFFICIENT_SAMPLE (17 OOS < 30); baseline.
         StrategySpec(
-            symbol="MES", family="sma_trend", interval="1h",
+            symbol="MES",
+            family="sma_trend",
+            interval="1h",
             signal_fn=generate_sma_trend_signals,
-            param_grid=grid(fast=[40, 50, 60], slow=[120, 200],
-                            atr_trail_mult=[2.0]),
-            train_months=6, test_months=1, step_months=1,
+            param_grid=grid(fast=[40, 50, 60], slow=[120, 200], atr_trail_mult=[2.0]),
+            train_months=6,
+            test_months=1,
+            step_months=1,
             tags=("baseline", "starved_1h"),
         ),
         # MES 15m SMA trend -- the pivot: more trades on the same history.
         StrategySpec(
-            symbol="MES", family="sma_trend", interval="15m",
+            symbol="MES",
+            family="sma_trend",
+            interval="15m",
             signal_fn=generate_sma_trend_signals,
-            param_grid=grid(fast=[8, 12, 16], slow=[24, 36, 48],
-                            atr_trail_mult=[1.5, 2.0, 2.5]),
-            train_months=3, test_months=1, step_months=1,
+            param_grid=grid(fast=[8, 12, 16], slow=[24, 36, 48], atr_trail_mult=[1.5, 2.0, 2.5]),
+            train_months=3,
+            test_months=1,
+            step_months=1,
             min_oos_trades_per_window=3,
             tags=("pivot", "higher_freq"),
         ),
         # MES 1h Donchian breakout -- a different family on the flagship symbol.
         StrategySpec(
-            symbol="MES", family="donchian", interval="1h",
+            symbol="MES",
+            family="donchian",
+            interval="1h",
             signal_fn=generate_donchian_signals,
-            param_grid=grid(lookback_entry=[20, 40, 55], lookback_exit=[10, 20],
-                            atr_trail_mult=[2.0]),
-            train_months=6, test_months=1, step_months=1,
+            param_grid=grid(
+                lookback_entry=[20, 40, 55], lookback_exit=[10, 20], atr_trail_mult=[2.0]
+            ),
+            train_months=6,
+            test_months=1,
+            step_months=1,
             tags=("diversify",),
         ),
         # MES 15m Donchian breakout -- higher-freq breakout candidate.
         StrategySpec(
-            symbol="MES", family="donchian", interval="15m",
+            symbol="MES",
+            family="donchian",
+            interval="15m",
             signal_fn=generate_donchian_signals,
-            param_grid=grid(lookback_entry=[20, 40], lookback_exit=[10, 20],
-                            atr_trail_mult=[2.0, 2.5]),
-            train_months=3, test_months=1, step_months=1,
+            param_grid=grid(
+                lookback_entry=[20, 40], lookback_exit=[10, 20], atr_trail_mult=[2.0, 2.5]
+            ),
+            train_months=3,
+            test_months=1,
+            step_months=1,
             min_oos_trades_per_window=3,
             tags=("pivot", "higher_freq", "diversify"),
+        ),
+        # --- Expanded edge hunt (round 2): more families on the freed-up sample ---
+        # MES 15m Bollinger+RSI mean-reversion -- a non-trend family on the pivot TF.
+        StrategySpec(
+            symbol="MES",
+            family="bollinger_rsi",
+            interval="15m",
+            signal_fn=generate_bollinger_rsi_signals,
+            param_grid=grid(
+                bb_period=[20],
+                bb_std=[2.0, 2.5],
+                rsi_long=[25, 30],
+                rsi_short=[70, 75],
+                stop_atr_mult=[1.5],
+            ),
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            tags=("pivot", "meanrev"),
+        ),
+        # MES 15m ATR-channel breakout.
+        StrategySpec(
+            symbol="MES",
+            family="atr_channel",
+            interval="15m",
+            signal_fn=generate_atr_channel_signals,
+            param_grid=grid(ema_period=[20, 30], atr_mult=[1.5, 2.0, 2.5], atr_stop_mult=[2.0]),
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            tags=("pivot", "breakout"),
+        ),
+        # MES 15m RSI breakout.
+        StrategySpec(
+            symbol="MES",
+            family="rsi_breakout",
+            interval="15m",
+            signal_fn=generate_rsi_breakout_signals,
+            param_grid=grid(
+                rsi_oversold=[20, 25],
+                rsi_overbought=[75, 80],
+                entry_period=[20, 40],
+                atr_stop_mult=[2.0],
+            ),
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            tags=("pivot", "meanrev"),
+        ),
+        # MES 15m volume-confirmed Donchian breakout (distinct from plain donchian).
+        StrategySpec(
+            symbol="MES",
+            family="donchian_breakout",
+            interval="15m",
+            signal_fn=generate_donchian_breakout_signals,
+            param_grid=grid(donchian_period=[20, 40], vol_mult=[0.0, 1.0], stop_atr_mult=[2.0]),
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            tags=("pivot", "breakout"),
+        ),
+        # MES 1h ATR-channel -- diversify the flagship's 1h families.
+        StrategySpec(
+            symbol="MES",
+            family="atr_channel",
+            interval="1h",
+            signal_fn=generate_atr_channel_signals,
+            param_grid=grid(ema_period=[20, 50], atr_mult=[2.0, 2.5], atr_stop_mult=[2.0]),
+            train_months=6,
+            test_months=1,
+            step_months=1,
+            tags=("diversify",),
+        ),
+        # MGC 1h ATR-channel -- more families on the strongest symbol.
+        StrategySpec(
+            symbol="MGC",
+            family="atr_channel",
+            interval="1h",
+            signal_fn=generate_atr_channel_signals,
+            param_grid=grid(ema_period=[20, 50], atr_mult=[2.0, 2.5], atr_stop_mult=[2.0]),
+            train_months=6,
+            test_months=2,
+            step_months=1,
+            tags=("diversify",),
+        ),
+        # MGC 1h volume-confirmed Donchian breakout.
+        StrategySpec(
+            symbol="MGC",
+            family="donchian_breakout",
+            interval="1h",
+            signal_fn=generate_donchian_breakout_signals,
+            param_grid=grid(donchian_period=[20, 40, 55], vol_mult=[0.0, 1.0], stop_atr_mult=[2.0]),
+            train_months=6,
+            test_months=2,
+            step_months=1,
+            tags=("diversify",),
+        ),
+        # MGC 1h Bollinger+RSI mean-reversion.
+        StrategySpec(
+            symbol="MGC",
+            family="bollinger_rsi",
+            interval="1h",
+            signal_fn=generate_bollinger_rsi_signals,
+            param_grid=grid(
+                bb_period=[20],
+                bb_std=[2.0, 2.5],
+                rsi_long=[25, 30],
+                rsi_short=[70, 75],
+                stop_atr_mult=[1.5],
+            ),
+            train_months=6,
+            test_months=2,
+            step_months=1,
+            tags=("meanrev",),
         ),
     ]
 
@@ -211,8 +352,7 @@ def _make_run_fn(spec: StrategySpec) -> Callable:
     multiplier = CONTRACT_SPECS[spec.symbol]
 
     def run_fn(df: pd.DataFrame, params: dict):
-        sig_params = {k: v for k, v in params.items()
-                      if k not in ("commission", "slippage_ticks")}
+        sig_params = {k: v for k, v in params.items() if k not in ("commission", "slippage_ticks")}
         sig = spec.signal_fn(df, **sig_params)
         bt = Backtester(
             initial_capital=CAPITAL,
@@ -242,9 +382,7 @@ def _champion_params(window_records: list[dict], fallback: dict) -> dict:
     """Most-frequently IS-selected param set across windows (cost-sweep target)."""
     if not window_records:
         return fallback
-    votes = Counter(
-        tuple(sorted(r["best_params"].items())) for r in window_records
-    )
+    votes = Counter(tuple(sorted(r["best_params"].items())) for r in window_records)
     best = votes.most_common(1)[0][0]
     return dict(best)
 
@@ -252,8 +390,12 @@ def _champion_params(window_records: list[dict], fallback: dict) -> dict:
 def plan_spec(spec: StrategySpec, cache_dir: Path) -> dict:
     """Dry-run plan for one spec: load bars, count WFO windows + total runs."""
     info: dict = {
-        "symbol": spec.symbol, "family": spec.family, "interval": spec.interval,
-        "label": spec.label, "n_combos": spec.n_combos, "tags": list(spec.tags),
+        "symbol": spec.symbol,
+        "family": spec.family,
+        "interval": spec.interval,
+        "label": spec.label,
+        "n_combos": spec.n_combos,
+        "tags": list(spec.tags),
     }
     if spec.symbol not in SUPPORTED_SYMBOLS:
         info["status"] = "UNSUPPORTED_SYMBOL"
@@ -289,8 +431,11 @@ def run_spec(spec: StrategySpec, cache_dir: Path) -> dict:
     oos_results, window_records = run_wfo(df, spec.param_grid, run_fn, cfg, min_trades=min_trades)
     if not oos_results:
         return {
-            "label": spec.label, "symbol": spec.symbol, "family": spec.family,
-            "interval": spec.interval, "verdict": "NO_WINDOWS",
+            "label": spec.label,
+            "symbol": spec.symbol,
+            "family": spec.family,
+            "interval": spec.interval,
+            "verdict": "NO_WINDOWS",
             "reason": "no OOS windows formed (insufficient data or all IS failed)",
             "source_file": df.attrs.get("source_file"),
         }
@@ -336,15 +481,14 @@ def run_spec(spec: StrategySpec, cache_dir: Path) -> dict:
     }
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUTPUT_DIR / f"{spec.label}.json").write_text(
-        json.dumps(verdict, indent=2, default=str)
-    )
+    (OUTPUT_DIR / f"{spec.label}.json").write_text(json.dumps(verdict, indent=2, default=str))
     return verdict
 
 
 def _select(registry: list[StrategySpec], symbol, family, interval) -> list[StrategySpec]:
     return [
-        s for s in registry
+        s
+        for s in registry
         if (symbol is None or s.symbol == symbol)
         and (family is None or s.family == family)
         and (interval is None or s.interval == interval)
@@ -352,8 +496,10 @@ def _select(registry: list[StrategySpec], symbol, family, interval) -> list[Stra
 
 
 def _format_plan(plans: list[dict]) -> str:
-    h = (f"{'SYMBOL':<7}{'FAMILY':<11}{'INT':<5}{'STATUS':<10}"
-         f"{'BARS':>8}{'WINS':>6}{'COMBOS':>7}{'~RUNS':>8}  RANGE")
+    h = (
+        f"{'SYMBOL':<7}{'FAMILY':<11}{'INT':<5}{'STATUS':<10}"
+        f"{'BARS':>8}{'WINS':>6}{'COMBOS':>7}{'~RUNS':>8}  RANGE"
+    )
     lines = [h, "-" * len(h)]
     total_runs = 0
     for p in plans:
@@ -391,8 +537,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--symbol", help="filter to one symbol")
     parser.add_argument("--family", help="filter to one family")
     parser.add_argument("--interval", help="filter to one interval")
-    parser.add_argument("--cache-dir", default=str(engine_root / "backtest" / "cache"),
-                        help="bar cache dir")
+    parser.add_argument(
+        "--cache-dir", default=str(engine_root / "backtest" / "cache"), help="bar cache dir"
+    )
     args = parser.parse_args(argv)
 
     cache_dir = Path(args.cache_dir)
@@ -414,12 +561,20 @@ def main(argv: list[str] | None = None) -> int:
             v = run_spec(spec, cache_dir)
         except Exception as exc:  # noqa: BLE001 -- one bad spec must not kill the sweep
             print(f"  [SPEC ERROR] {spec.label}: {exc}")
-            v = {"label": spec.label, "symbol": spec.symbol, "family": spec.family,
-                 "interval": spec.interval, "verdict": "ERROR", "error": str(exc)}
+            v = {
+                "label": spec.label,
+                "symbol": spec.symbol,
+                "family": spec.family,
+                "interval": spec.interval,
+                "verdict": "ERROR",
+                "error": str(exc),
+            }
         verdicts.append(v)
-        print(f"  -> {v.get('verdict')} "
-              f"(dsr={v.get('gate_v2_metrics', {}).get('dsr', '-')}, "
-              f"oos_trades={v.get('gate_v2_metrics', {}).get('total_oos_trades', '-')})")
+        print(
+            f"  -> {v.get('verdict')} "
+            f"(dsr={v.get('gate_v2_metrics', {}).get('dsr', '-')}, "
+            f"oos_trades={v.get('gate_v2_metrics', {}).get('total_oos_trades', '-')})"
+        )
 
     print(f"\n{'=' * 70}\nLEADERBOARD\n{'=' * 70}")
     ranked = _rank_verdicts(verdicts)
@@ -440,10 +595,15 @@ def main(argv: list[str] | None = None) -> int:
         "n_specs": len(verdicts),
         "n_pass": n_pass,
         "ranked": [
-            {"label": v.get("label"), "verdict": v.get("verdict"),
-             "passed_via": v.get("passed_via"),
-             **{k: (v.get("gate_v2_metrics", {}) or {}).get(k)
-                for k in ("pf_ci_lower", "dsr", "total_oos_trades")}}
+            {
+                "label": v.get("label"),
+                "verdict": v.get("verdict"),
+                "passed_via": v.get("passed_via"),
+                **{
+                    k: (v.get("gate_v2_metrics", {}) or {}).get(k)
+                    for k in ("pf_ci_lower", "dsr", "total_oos_trades")
+                },
+            }
             for v in ranked
         ],
     }
