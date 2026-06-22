@@ -64,11 +64,16 @@ class CapitalAllocator:
         - Otherwise → keep current allocation unchanged
         - Renormalize so all active allocations sum to 1.0
         """
-        # MCL/MNQ: 0 WFO winners on cached OHLC per multi_symbol_trend_wfo.py
-        # (composite path scored PF 0.13). MGC: no validated strategy.
-        # MES: now tradeable (SMA(50,200)+2.0×ATR, live). Per-symbol decision
-        # T5 Option B (2026-04-21) — see project_per_symbol_strategy_decision.md.
-        _DO_NOT_TRADE: frozenset[str] = frozenset({"MCL", "MNQ", "MGC"})
+        # Single source of truth for what may not trade: the live gate is
+        # backtest.signals.DO_NOT_TRADE_SYMBOLS (consumed by the pipeline and
+        # safety layer). Import it here instead of keeping a private list — a
+        # divergent local copy is the third-config split-brain the MNQ wiring
+        # leak taught us to forbid (see tests/test_paper_config_donottrade_sync.py).
+        # The old private literal {"MCL","MNQ","MGC"} was wrong both ways: it
+        # blocked MGC (gate-v2 PASS, tradeable) and allowed M2K (blocked). Lazy
+        # import mirrors pipeline.py / pipeline_autonomous.py and avoids pulling
+        # the heavy signals module (numpy/pandas/indicators) at allocator import.
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS as _DO_NOT_TRADE
 
         new_alloc: dict[str, float] = {}
         for symbol, perf in paper_performance_by_symbol.items():
