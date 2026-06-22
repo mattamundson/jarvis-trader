@@ -1,0 +1,138 @@
+# Loop Engineering — PowerShell Quickstart (jarvis-trader)
+
+> Hands-on companion to `docs/loop-engineering.md` (the mental model) and the
+> `loop-brakes` skill (the safety checklist). This file is the "type these
+> commands on Windows" guide. Flags verified against current Claude Code,
+> 2026-06-22.
+
+---
+
+## 1. Why bother — the jarvis-trader business case
+
+The leverage is not "write code faster." It is **moving repeatable, low-judgment
+work off your plate while you keep judgment for yourself.** Concretely, for this
+repo:
+
+| Loop | Boring job it removes | Payoff |
+|---|---|---|
+| Test/build triage | Manually running `pytest` + `pnpm build` and reading output | A 9am report of only NEW failures; you stop babysitting green suites |
+| PR/CI triage | Checking which PRs are red or reviewer-less | Inbox of "needs you" items, the rest archived |
+| Secret-scan sweep | Remembering to run `check-secrets.sh` before push | Continuous guard against committing `.env`/keys |
+| Doc/state drift | Noticing `CURRENT_STATE.md` has gone stale vs. code | A flagged diff for you to approve, not auto-applied |
+
+What you should **never** automate here (the value of NOT looping):
+
+- Anything that places an order or touches `engine/risk/`, `engine/config.py`,
+  or kill-switch code. `REQUIRE_HUMAN_APPROVAL = True` is the whole point.
+- Anything where being wrong costs paper-account dollars or breaks a safety
+  invariant. Those stay human, every time.
+
+The honest ROI math: on a $20–200 plan, one small capped loop pointed at one dull
+job pays for itself in attention reclaimed. A swarm does not — the $1.3M/month
+fleet in the essay is sponsored. Start with one loop, read every diff, widen only
+when you trust it.
+
+---
+
+## 2. Step 0 — learn the brakes with zero risk
+
+Open Claude Code and run the skill. No loop, no automation, just the checklist:
+
+```powershell
+claude
+> /loop-brakes
+```
+
+Answer every cell in its table before you ever add `--max-turns` to a real run.
+
+---
+
+## 3. Running a loop in PowerShell
+
+The flags are identical to macOS/Linux. Only **quoting** and **scheduling**
+differ on Windows.
+
+### Interactive loop (safest to start — dies when you close the session)
+
+```powershell
+claude
+> /loop 30m run the fast pytest suite and pnpm build, list only NEW failures
+```
+
+`/loop` re-runs the prompt on the interval **while the session is open**. Close
+the window and it stops. Good for "watch this while I work," not for overnight.
+
+### Headless, fully capped run (the brakes, baked in)
+
+PowerShell uses the **backtick** `` ` `` for line continuation (not `\`), and
+double-quotes for the prompt:
+
+```powershell
+claude -p --max-turns 20 --max-budget-usd 2.50 `
+  --permission-mode auto `
+  --tools "Read,Bash,Grep" --disallowedTools "Write,Edit" `
+  --output-format json `
+  "Run engine fast tests and the dashboard build. Summarize only failures."
+```
+
+- `--max-turns` and `--max-budget-usd` only work in **print mode** (`-p`).
+- Need a literal quote inside the prompt? Escape it as `` `" ``.
+
+---
+
+## 4. Scheduling on Windows (there is no crontab)
+
+Two real options:
+
+### Option A — cloud Routines (`/schedule`), laptop can be closed
+
+```powershell
+claude
+> /schedule daily test+build triage at 8am
+```
+
+Runs on Anthropic's cloud, 1-hour minimum interval, survives reboots. Best when
+you want it to fire regardless of whether your machine is on.
+
+### Option B — Windows Task Scheduler calling a .ps1 (local, full control)
+
+Use the shipped wrapper `scripts/loops/triage-loop.ps1` (read-only, all brakes
+baked in). Register it once:
+
+```powershell
+$action  = New-ScheduledTaskAction -Execute "pwsh.exe" `
+  -Argument "-File C:\Users\mattm\ThinkorSwim\jarvis-trader\scripts\loops\triage-loop.ps1"
+$trigger = New-ScheduledTaskTrigger -Daily -At 8am
+Register-ScheduledTask -TaskName "jarvis-triage-loop" -Action $action -Trigger $trigger
+```
+
+**Keep loops out of PM2.** PM2 manages the engine (port 8010); a loop crash must
+never touch that process. Task Scheduler isolates them cleanly.
+
+---
+
+## 5. The non-negotiable jarvis-trader guardrails
+
+Every loop you create, local or cloud, inherits these (they override the brakes):
+
+1. **No order placement, ever, unattended.** The human-approval gate is the
+   dead-man check for trading.
+2. **No autonomous edits to** `engine/risk/`, `engine/config.py`, or kill-switch
+   code. Those need a human and the `[safety-review]` PR tag.
+3. **Read curated state, write your own.** A loop reads `CURRENT_STATE.md` /
+   `MEMORY.md` but writes its output to `docs/loop-reports/` — never edits the
+   curated docs (`meta-discipline.md` rule 3).
+4. **Budget every LLM-in-the-loop** against the `jarvis-cost-routing` skill.
+5. **Live port 4001 stays blocked.** Paper only (4002, DUP662235).
+
+---
+
+## 6. Your first loop, end to end
+
+1. `claude` → `/loop-brakes` — read the checklist.
+2. Run `scripts/loops/triage-loop.ps1` **once by hand**, read the report it drops
+   in `docs/loop-reports/`.
+3. Happy with it? Register it in Task Scheduler (Option B above) for 8am daily.
+4. Read every report for a week before you widen scope or add a second loop.
+
+You designed it once. You stay the engineer.
