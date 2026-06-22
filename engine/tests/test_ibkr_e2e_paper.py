@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 
 import pytest
 
@@ -61,6 +62,23 @@ logger = logging.getLogger(__name__)
 
 _PAPER_PORT = 4002
 _CLIENT_ID_BASE = 91  # Use high client IDs to avoid collisions with the engine (IDs 1–44)
+_PREFLIGHT_TIMEOUT = 2.0  # seconds — fast TCP probe before the slow IB connect
+
+
+def _port_reachable(host: str, port: int, timeout: float = _PREFLIGHT_TIMEOUT) -> bool:
+    """Fast TCP pre-flight: True iff a connection completes within ``timeout``.
+
+    ``IBGatewayManager.connect()`` carries a 15s asyncio timeout, but a
+    *firewall-dropped* port (SYN sent, no RST, no SYN/ACK) stalls at the OS TCP
+    layer far longer than that and hangs the whole asyncio loop — the exact
+    documented hang behind ``-m "not manual"`` in pyproject. ``create_connection``
+    bounds the wait to ``timeout`` so we can skip fast instead of hanging.
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 async def _connect_or_skip(client_id: int) -> IBGatewayManager:
@@ -78,6 +96,15 @@ async def _connect_or_skip(client_id: int) -> IBGatewayManager:
         pytest.skip(
             "ib_async / ib_insync not installed — "
             "run: pip install ib_async>=0.9.86 inside engine/.venv"
+        )
+
+    # Fast pre-flight before the 15s connect: a firewall-dropped paper port would
+    # otherwise stall gw.connect() at the OS level and hang the suite.
+    if not _port_reachable("127.0.0.1", _PAPER_PORT):
+        pytest.skip(
+            f"IB Gateway paper port {_PAPER_PORT} not reachable within "
+            f"{_PREFLIGHT_TIMEOUT:.0f}s (not running, or firewall-dropped) — "
+            "fast-skipping before the slow connect to avoid hanging the suite."
         )
 
     cfg = IBGatewayConfig(
