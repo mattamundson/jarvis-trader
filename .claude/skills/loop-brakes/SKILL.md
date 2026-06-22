@@ -72,8 +72,9 @@ claude -p --max-turns 20 --max-budget-usd 2.50 \
 - **Never point a loop at `engine/risk/`, `engine/config.py`, or kill-switch
   code** without a human and the `[safety-review]` PR tag. No autonomous edits to
   safety files — ever.
-- **Reuse existing state.** The loop's STATUS.md is `docs/CURRENT_STATE.md` /
-  `MEMORY.md`. Do not invent a parallel status file.
+- **Read curated state, write your own.** A loop *reads* `docs/CURRENT_STATE.md`
+  / `MEMORY.md` but must never edit them (`meta-discipline.md` rule 3). Write loop
+  output to a dedicated `docs/loop-reports/` file instead.
 - **Budget every LLM-in-the-loop** against `jarvis-cost-routing` before scheduling
   an agent that burns tokens on a cadence.
 - A trading loop's blast radius is dollars in the paper account (DUP662235), not
