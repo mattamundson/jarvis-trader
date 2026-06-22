@@ -2921,6 +2921,13 @@ app.add_middleware(APIKeyMiddleware)
 app.state.limiter = get_limiter()
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 
+# Prometheus exposition at /metrics (auth-exempt; see monitoring.metrics +
+# middleware.auth.EXEMPT_PATHS). P1.0 of the observability roadmap — the jarvis_*
+# families were defined but never mounted/scraped before this.
+from monitoring.metrics import mount_metrics  # noqa: E402
+
+mount_metrics(app)
+
 app.include_router(health_router)
 app.include_router(phase3_readiness_router)
 app.include_router(readiness_router)
