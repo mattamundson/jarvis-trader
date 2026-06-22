@@ -27,8 +27,11 @@ EXEMPT_PATHS = {
     "/openapi.json",
     "/redoc",
     # Prometheus exposition — read-only metrics, loopback-bound. Scraped keyless
-    # so the Prometheus container needs no engine API key. See monitoring.metrics.
+    # so the Prometheus container needs no engine API key. The ASGI mount
+    # 307-redirects /metrics -> /metrics/, so BOTH forms must be exempt or the
+    # scrape lands on /metrics/ and gets 401. See monitoring.metrics.
     "/metrics",
+    "/metrics/",
 }
 
 
