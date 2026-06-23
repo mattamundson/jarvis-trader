@@ -27,6 +27,7 @@ from backtest.discovery_factory import (
     grid,
     plan_spec,
 )
+from backtest.trend_signals import generate_sma_trend_signals
 
 _HEADER = "timestamp,open,high,low,close,volume\n"
 
@@ -82,6 +83,22 @@ def test_registry_only_supported_symbols():
     assert reg, "registry must not be empty"
     for s in reg:
         assert s.symbol in CONTRACT_SPECS, f"{s.label} uses unsupported symbol"
+
+
+def test_regime_filtered_trend_specs_registered_with_rv_axis():
+    # The sma_trend_rv family must sweep a non-zero realized-vol floor on every
+    # combo (that gate IS the regime filter); a zero floor would silently degrade
+    # to the plain trend family and the experiment would be a no-op.
+    reg = default_registry()
+    rv_specs = [s for s in reg if s.family == "sma_trend_rv"]
+    assert {s.symbol for s in rv_specs} == {"MGC", "MES"}
+    for s in rv_specs:
+        assert s.interval == "1h"
+        assert s.signal_fn is generate_sma_trend_signals
+        assert "rv_filter" in s.tags
+        assert all(
+            c.get("min_rv_annualized", 0.0) > 0.0 for c in s.param_grid
+        ), f"{s.label}: every combo must enable the RV gate"
 
 
 # --------------------------------------------------------------------- _select

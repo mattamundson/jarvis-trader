@@ -320,6 +320,52 @@ def default_registry() -> list[StrategySpec]:
             step_months=1,
             tags=("meanrev",),
         ),
+        # --- Regime-filtered trend (round 3) -------------------------------------
+        # Same SMA-trend signal as the base specs, but with the realized-vol regime
+        # gate enabled (min_rv_annualized > 0) -- the mechanism behind the live MGC
+        # trend_rv_filter strategy. Thesis: the base MGC 1h trend FAILs ONLY on
+        # p_edge (0.53: just over half of OOS windows profitable) and WEAK
+        # consistency, not on PF/DD/DSR. If the losing windows are low-vol /
+        # range-bound regimes, screening entries below an RV floor should lift
+        # p_edge and consistency toward a PASS. rv_annual_factor defaults to the
+        # 1h bar factor (252*24), so no override is needed at this interval.
+        StrategySpec(
+            symbol="MGC",
+            family="sma_trend_rv",
+            interval="1h",
+            signal_fn=generate_sma_trend_signals,
+            param_grid=grid(
+                fast=[50, 60],
+                slow=[120, 200],
+                atr_trail_mult=[2.0],
+                min_rv_annualized=[6.0, 9.0, 12.0],
+            ),
+            train_months=6,
+            test_months=2,
+            step_months=1,
+            tags=("regime_filter", "rv_filter", "trend"),
+        ),
+        # MES 1h regime-filtered trend -- baseline counterpart. The RV gate trims
+        # entries, so the already-starved MES 1h sample (17 OOS < 30 floor) is
+        # expected to fall further into INSUFFICIENT_SAMPLE; included to confirm
+        # the floor override holds and to measure whether RV concentration lifts
+        # the per-window edge even when the total sample stays inadequate.
+        StrategySpec(
+            symbol="MES",
+            family="sma_trend_rv",
+            interval="1h",
+            signal_fn=generate_sma_trend_signals,
+            param_grid=grid(
+                fast=[50, 60],
+                slow=[120, 200],
+                atr_trail_mult=[2.0],
+                min_rv_annualized=[6.0, 9.0, 12.0],
+            ),
+            train_months=6,
+            test_months=1,
+            step_months=1,
+            tags=("regime_filter", "rv_filter", "trend", "starved_1h"),
+        ),
     ]
 
 
