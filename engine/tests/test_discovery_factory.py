@@ -438,3 +438,81 @@ def test_output_dir_is_not_gate_v2_verdicts():
     # live engine's verdict store, so a candidate can't silently authorize trading.
     assert OUTPUT_DIR.name == "discovery_factory"
     assert "gate_v2_verdicts" not in str(OUTPUT_DIR)
+
+
+# --- Stage 3: synthesizer -------------------------------------------------
+
+
+def _write_verdict(
+    d,
+    label,
+    verdict,
+    *,
+    trades,
+    pf=1.5,
+    p_edge=0.5,
+    dsr=0.5,
+    dd_pct=3.0,
+    passed_via=None,
+    sample_adequate=None,
+):
+    """Dump a minimal per-spec verdict JSON the synthesizer can read."""
+    sym, fam, interval = label.split("_", 1)[0], "fam", label.rsplit("_", 1)[-1]
+    payload = {
+        "label": label,
+        "symbol": sym,
+        "family": fam,
+        "interval": interval,
+        "verdict": verdict,
+        "passed_via": passed_via,
+        "source_file": f"{label}.csv",
+        "champion_params": {"fast": 8},
+        "gate_v2": {
+            "pf_ci_lower": pf,
+            "p_edge": p_edge,
+            "dsr": dsr,
+            "mc_95th_dd_pct": dd_pct,
+            "wfo_consistency": "STRONG",
+            "fixed_params_min_pf": 1.3,
+            "cost_survives_through": "realistic",
+            "total_oos_trades": trades,
+            "sample_adequate": sample_adequate,
+        },
+    }
+    (d / f"{label}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_synth_undersampled_pass_is_not_a_candidate(tmp_path):
+    from backtest.discovery_synthesize import synthesize
+
+    # A PASS on only 5 OOS trades is noise, not an edge -- must not be briefed.
+    _write_verdict(tmp_path, "MES_x_15m", "PASS", trades=5, passed_via="core")
+    res = synthesize(tmp_path)
+    assert res["n_pass"] == 0
+    assert "Caution" in res["report"]
+    assert "CANDIDATE: MES_x_15m" not in res["report"]
+    assert "Honest negative" in res["report"]
+
+
+def test_synth_deployable_pass_gets_a_brief(tmp_path):
+    from backtest.discovery_synthesize import synthesize
+
+    _write_verdict(tmp_path, "MGC_x_5m", "PASS", trades=120, passed_via="alt", sample_adequate=True)
+    res = synthesize(tmp_path)
+    assert res["n_pass"] == 1
+    assert "CANDIDATE: MGC_x_5m" in res["report"]
+    assert "passed_via=alt" in res["report"]
+
+
+def test_synth_near_miss_flagged_and_leaderboard_skipped(tmp_path):
+    from backtest.discovery_synthesize import synthesize
+
+    # FAIL but sample-adequate, PF>=1.10, DSR>=0.10 -> near-miss watchlist.
+    _write_verdict(tmp_path, "MGC_x_5m", "FAIL", trades=388, pf=1.25, p_edge=0.83, dsr=0.79)
+    # FAIL with no edge -> not a near-miss.
+    _write_verdict(tmp_path, "MES_y_15m", "FAIL", trades=409, pf=0.73, p_edge=0.50, dsr=0.0)
+    # The aggregate LEADERBOARD.json must be ignored, not parsed as a spec.
+    (tmp_path / "LEADERBOARD.json").write_text(json.dumps({"ranked": []}), encoding="utf-8")
+    res = synthesize(tmp_path)
+    assert res["n_specs"] == 2  # LEADERBOARD.json excluded
+    assert res["n_near"] == 1
