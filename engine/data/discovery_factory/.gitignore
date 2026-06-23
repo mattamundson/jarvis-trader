@@ -1,0 +1,9 @@
+# Regenerable discovery-factory outputs: per-spec verdict JSONs, the racy
+# LEADERBOARD aggregate, and scratch run logs. Reproduce with
+#   python -m backtest.discovery_factory [--symbol ... --interval ...]
+# FINDINGS.md -- the curated, synthesized deliverable -- is the ONLY tracked
+# artifact here (it is not matched by these patterns).
+*.json
+*.err
+*.log
+!.gitignore
