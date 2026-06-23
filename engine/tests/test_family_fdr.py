@@ -297,3 +297,77 @@ def test_append_history_default_ts_is_iso(tmp_path):
     from datetime import datetime
 
     assert datetime.fromisoformat(rec["ts"])
+
+
+# --- per-window sample adequacy (Task 5: aggregate-30 is necessary-not-sufficient) ---
+
+
+def _verdict_windows(_id, verdict, p_edge, dsr, pf, window_trades):
+    """Verdict carrying a real windows[] array so per-window adequacy is computable."""
+    n = len(window_trades)
+    return {
+        "_id": _id,
+        "symbol": _id.split("_")[0],
+        "family": "trend",
+        "verdict": verdict,
+        "gate_v2_metrics": {"pf_ci_lower": pf, "p_edge": p_edge, "dsr": dsr},
+        "wfo_config": {"n_oos_windows": n, "total_oos_trades": sum(window_trades)},
+        "windows": [{"window": i + 1, "oos_trades": t} for i, t in enumerate(window_trades)],
+    }
+
+
+def test_per_window_signal_computed_from_windows():
+    # singlefinder-like (fat windows) vs trend-mirage (thin windows).
+    v_fat = _verdict_windows("MGC_singlefinder#1", "PASS", 0.714, 1.0, 1.05,
+                             [61, 56, 64, 60, 58, 63, 19])
+    v_thin = _verdict_windows("MGC_trend_rank4#1", "PASS", 0.684, 1.0, 3.0,
+                              [5, 5, 7, 5, 3, 4, 4, 4, 4, 3, 2, 4, 5, 3, 2, 1, 1, 3, 2])
+    family, _ = ff.build_family([v_fat, v_thin])
+    by = {r["id"]: r for r in family}
+
+    fat = by["MGC_singlefinder#1"]
+    assert fat["median_oos_trades_per_window"] == 60
+    assert fat["n_thin_windows"] == 0
+    assert fat["per_window_adequate"] is True
+
+    thin = by["MGC_trend_rank4#1"]
+    assert thin["median_oos_trades_per_window"] == 4
+    assert thin["n_thin_windows"] == 14  # 14 of 19 windows below 5 trades
+    assert thin["per_window_adequate"] is False
+    assert 0.0 < thin["frac_trades_in_thin_windows"] <= 1.0
+
+
+def test_per_window_thin_blocks_robust(monkeypatch):
+    # Aggregate-adequate (67 >= 30) and BH-significant, but per-window median 4 < 5
+    # -> the necessary-not-sufficient gap -> NOT robust.
+    v = _verdict_windows("MGC_trend_rank4#1", "PASS", 1.0, 1.0, 3.0, [7, 5, 6, 4, 4, 3, 2])
+    monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: [v])
+    report = ff.run(q=0.10)
+    row = report["family"][0]
+    assert row["sample_adequate"] is True          # aggregate floor cleared (31 >= 30)
+    assert row["per_window_adequate"] is False      # but per-window thin
+    assert row["robust_edge"] is False
+    assert report["n_robust_edge"] == 0
+
+
+def test_per_window_adequate_allows_robust(monkeypatch):
+    # Fat windows -> per-window adequate -> does not over-block a genuine edge.
+    v = _verdict_windows("MGC_singlefinder#1", "PASS", 1.0, 1.0, 1.3,
+                         [40, 45, 38, 42, 50, 44, 41])
+    monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: [v])
+    report = ff.run(q=0.10)
+    row = report["family"][0]
+    assert row["per_window_adequate"] is True
+    assert row["robust_edge"] is True
+    assert report["n_robust_edge"] == 1
+
+
+def test_per_window_absent_does_not_block(monkeypatch):
+    # No windows[] (legacy/aggregate-only verdict) -> per_window_adequate None ->
+    # must NOT manufacture a block beyond the aggregate floor (fail-open on missing).
+    v = _verdict("AAA_trend#1", "PASS", 1.0, 7, 1.0, 3.18, oos_trades=40)
+    monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: [v])
+    report = ff.run(q=0.10)
+    row = report["family"][0]
+    assert row["per_window_adequate"] is None
+    assert row["robust_edge"] is True  # unchanged from the pre-Task-5 behavior
