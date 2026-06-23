@@ -140,10 +140,65 @@ def test_intraday_frontier_specs_registered():
     for sym in ("MGC", "MNQ"):
         assert f"{sym}_bollinger_rsi_15m" in labels, f"missing {sym} 15m meanrev"
     intraday = [s for s in reg if "intraday" in s.tags]
-    # 5 (symbol, interval) pairs x 4 families.
-    assert len(intraday) == 20
+    # 5 (symbol, interval) pairs x 4 families + 3 ORB specs.
+    assert len(intraday) == 23
     assert all(s.min_oos_trades_per_window == 3 for s in intraday)
     assert all(s.symbol in CONTRACT_SPECS for s in intraday)
+
+
+def _orb_frame(days=("2026-03-02", "2026-03-03"), freq="15min"):
+    """Synthetic ET-localized intraday frame with a rising price (triggers longs)."""
+    import numpy as np
+
+    frames = []
+    for d in days:
+        idx = pd.date_range(f"{d} 09:00", f"{d} 15:45", freq=freq, tz="America/New_York")
+        base = 100.0 + np.arange(len(idx)) * 0.5
+        frames.append(
+            pd.DataFrame(
+                {
+                    "open": base,
+                    "high": base + 1,
+                    "low": base - 1,
+                    "close": base + 0.5,
+                    "volume": 100.0,
+                },
+                index=idx,
+            )
+        )
+    return pd.concat(frames)
+
+
+def test_orb_sub_hourly_marks_one_open_bar_per_session():
+    """Sub-hourly detection marks exactly the first bar at/after 09:30 ET per day."""
+    from backtest.orb_signals import _detect_rth_open_bar
+
+    frame = _orb_frame()
+    is_or = _detect_rth_open_bar(frame, sub_hourly=True)
+    assert int(is_or.sum()) == 2  # one per weekday session
+    et = is_or[is_or].index.tz_convert("America/New_York")
+    assert all((t.hour, t.minute) == (9, 30) for t in et)
+
+
+def test_orb_adapter_emits_backtester_columns():
+    """Adapter maps ORB output to Backtester-native columns with correct bias/targets."""
+    from backtest.orb_factory_adapter import generate_orb_factory_signals
+
+    sig = generate_orb_factory_signals(_orb_frame(), symbol="MES", t1_range_mult=2.0)
+    for col in ("entry_signal", "exit_signal", "bias", "stop_level", "target_1", "target_2"):
+        assert col in sig.columns
+    longs = sig[sig["bias"] == "STRONG_BULL"]
+    assert len(longs) > 0, "rising price should trigger long ORB entries"
+    assert (longs["entry_signal"] == "ENTRY_NOW").all()
+    # T1 is 2x the OR range above the OR high (clears the Backtester R:R>=1.2 gate).
+    row = longs.iloc[0]
+    assert abs(row["target_1"] - (row["or_high"] + 2.0 * row["or_range"])) < 1e-6
+
+
+def test_orb_specs_registered():
+    labels = {s.label for s in default_registry()}
+    for sym in ("MES", "MGC", "MNQ"):
+        assert f"{sym}_orb_15m" in labels
 
 
 def test_regime_filtered_trend_specs_registered_with_rv_axis():

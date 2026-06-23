@@ -56,12 +56,15 @@ MIN_OR_RANGE_PCT = 0.0008  # 0.08% of price (e.g., 4+ pts on MES ~5000)
 VOLUME_FILTER_MULTIPLIER = 0.80
 
 
-def _detect_rth_open_bar(df: pd.DataFrame) -> pd.Series:
+def _detect_rth_open_bar(df: pd.DataFrame, sub_hourly: bool = False) -> pd.Series:
     """
-    Return a boolean Series True for bars that are the first bar of an RTH session.
+    Return a boolean Series True for the first bar of each RTH session.
 
-    Handles both timezone-aware and timezone-naive DatetimeIndex.
-    Assumes index is already in or convertible to Eastern Time.
+    For 1-hour bars (``sub_hourly=False``, the original behavior) the RTH-open
+    bar is the one whose Eastern hour == 9 (the 09:30-10:30 bar). For sub-hourly
+    bars (5m/15m) ``hour == 9`` matches several bars, so instead mark the FIRST
+    bar at/after 09:30 ET on each calendar day. Handles tz-aware indexes (e.g.
+    UTC IB caches -> converted to ET) and tz-naive frames.
     """
     # Sprint A / B3 fix: defensive DatetimeIndex normalization prevents crash
     # when merging tz-aware IB bars with tz-naive backtest frames.
@@ -75,14 +78,18 @@ def _detect_rth_open_bar(df: pd.DataFrame) -> pd.Series:
     else:
         eastern = idx
 
-    hours = eastern.hour
-    # First RTH bar: hour 9 (the 09:30–10:30 bar in yfinance 1h data)
-    # Also require it's not a weekday 0=Mon ... 4=Fri
-    weekday = eastern.dayofweek
-    is_open = (pd.Series(hours, index=df.index) == RTH_OPEN_HOUR) & (
-        pd.Series(weekday, index=df.index) < 5
-    )
-    return is_open
+    weekday = pd.Series(eastern.dayofweek, index=df.index)
+
+    if not sub_hourly:
+        # First RTH bar: hour 9 (the 09:30–10:30 bar in 1h data). Weekday 0=Mon..4=Fri.
+        return (pd.Series(eastern.hour, index=df.index) == RTH_OPEN_HOUR) & (weekday < 5)
+
+    # Sub-hourly: the first bar at/after 09:30 ET on each calendar (ET) day.
+    minutes = pd.Series(eastern.hour * 60 + eastern.minute, index=df.index)
+    at_or_after_open = (minutes >= RTH_OPEN_HOUR * 60 + 30) & (weekday < 5)
+    day = pd.Series(eastern.normalize(), index=df.index)
+    first_of_day = at_or_after_open.groupby(day).cumsum() == 1
+    return at_or_after_open & first_of_day
 
 
 def _volume_ok(df: pd.DataFrame, idx: int, multiplier: float = VOLUME_FILTER_MULTIPLIER) -> bool:
@@ -108,6 +115,7 @@ def generate_orb_signals(
     volume_filter: bool = True,
     regime_filter: bool = False,
     min_or_range_pct: float = MIN_OR_RANGE_PCT,
+    sub_hourly: bool = False,
 ) -> pd.DataFrame:
     """
     Add ORB signal columns to a 1-hour OHLCV DataFrame.
@@ -150,7 +158,7 @@ def generate_orb_signals(
         return df
 
     # Detect opening range bars
-    is_or_bar = _detect_rth_open_bar(df)
+    is_or_bar = _detect_rth_open_bar(df, sub_hourly=sub_hourly)
     df["is_or_bar"] = is_or_bar.values
 
     # Detect final hour (no new entries)

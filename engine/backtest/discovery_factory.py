@@ -62,6 +62,7 @@ from backtest.atr_channel_signals import generate_atr_channel_signals  # noqa: E
 from backtest.breakout_signals import generate_donchian_breakout_signals  # noqa: E402
 from backtest.donchian_signals import generate_donchian_signals  # noqa: E402
 from backtest.meanrev_signals import generate_bollinger_rsi_signals  # noqa: E402
+from backtest.orb_factory_adapter import generate_orb_factory_signals  # noqa: E402
 from backtest.rsi_breakout_signals import generate_rsi_breakout_signals  # noqa: E402
 from backtest.trend_signals import generate_sma_trend_signals  # noqa: E402
 from backtest.wfo_lifecycle import (  # noqa: E402
@@ -209,6 +210,38 @@ def _intraday_frontier_specs() -> list[StrategySpec]:
     return specs
 
 
+def _orb_frontier_specs() -> list[StrategySpec]:
+    """Opening-Range-Breakout at 15m for MES/MGC/MNQ -- the intraday-NATIVE bet.
+
+    15m so the first RTH bar is a legitimate 15-minute opening range. Uses the
+    ORB->Backtester adapter (``generate_orb_factory_signals``), which targets the
+    2x range extension to clear the Backtester's R:R>=1.2 entry precheck. This is
+    a genuinely different hypothesis than the trend/breakout/mean-reversion
+    families (momentum off the RTH open), not just another lookback grid.
+    """
+    pgrid = grid(
+        t1_range_mult=[1.5, 2.0],
+        t2_range_mult=[3.0],
+        volume_filter=[True, False],
+        min_or_range_pct=[0.0005, 0.0008],
+    )
+    return [
+        StrategySpec(
+            sym,
+            "orb",
+            "15m",
+            generate_orb_factory_signals,
+            pgrid,
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            tags=("intraday", "frontier", "15m", "orb", "native"),
+        )
+        for sym in ("MES", "MGC", "MNQ")
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Initial registry (slice 1) -- deliberately small. Tests the central thesis:
 # does dropping to 15m break the 30-trade floor that starves 1h trend, and do
@@ -216,238 +249,246 @@ def _intraday_frontier_specs() -> list[StrategySpec]:
 # PASS sanity anchor. Grids mirror the validated one-off runners.
 # ---------------------------------------------------------------------------
 def default_registry() -> list[StrategySpec]:
-    return [
-        # MGC 1h SMA trend -- known gate-v2 PASS; sanity anchor for the harness.
-        StrategySpec(
-            symbol="MGC",
-            family="sma_trend",
-            interval="1h",
-            signal_fn=generate_sma_trend_signals,
-            param_grid=grid(fast=[40, 50, 60], slow=[100, 120, 200], atr_trail_mult=[1.5, 2.0]),
-            train_months=6,
-            test_months=2,
-            step_months=1,
-            tags=("anchor", "known_pass"),
-        ),
-        # MES 1h SMA trend -- known INSUFFICIENT_SAMPLE (17 OOS < 30); baseline.
-        StrategySpec(
-            symbol="MES",
-            family="sma_trend",
-            interval="1h",
-            signal_fn=generate_sma_trend_signals,
-            param_grid=grid(fast=[40, 50, 60], slow=[120, 200], atr_trail_mult=[2.0]),
-            train_months=6,
-            test_months=1,
-            step_months=1,
-            tags=("baseline", "starved_1h"),
-        ),
-        # MES 15m SMA trend -- the pivot: more trades on the same history.
-        StrategySpec(
-            symbol="MES",
-            family="sma_trend",
-            interval="15m",
-            signal_fn=generate_sma_trend_signals,
-            param_grid=grid(fast=[8, 12, 16], slow=[24, 36, 48], atr_trail_mult=[1.5, 2.0, 2.5]),
-            train_months=3,
-            test_months=1,
-            step_months=1,
-            min_oos_trades_per_window=3,
-            tags=("pivot", "higher_freq"),
-        ),
-        # MES 1h Donchian breakout -- a different family on the flagship symbol.
-        StrategySpec(
-            symbol="MES",
-            family="donchian",
-            interval="1h",
-            signal_fn=generate_donchian_signals,
-            param_grid=grid(
-                lookback_entry=[20, 40, 55], lookback_exit=[10, 20], atr_trail_mult=[2.0]
+    return (
+        [
+            # MGC 1h SMA trend -- known gate-v2 PASS; sanity anchor for the harness.
+            StrategySpec(
+                symbol="MGC",
+                family="sma_trend",
+                interval="1h",
+                signal_fn=generate_sma_trend_signals,
+                param_grid=grid(fast=[40, 50, 60], slow=[100, 120, 200], atr_trail_mult=[1.5, 2.0]),
+                train_months=6,
+                test_months=2,
+                step_months=1,
+                tags=("anchor", "known_pass"),
             ),
-            train_months=6,
-            test_months=1,
-            step_months=1,
-            tags=("diversify",),
-        ),
-        # MES 15m Donchian breakout -- higher-freq breakout candidate.
-        StrategySpec(
-            symbol="MES",
-            family="donchian",
-            interval="15m",
-            signal_fn=generate_donchian_signals,
-            param_grid=grid(
-                lookback_entry=[20, 40], lookback_exit=[10, 20], atr_trail_mult=[2.0, 2.5]
+            # MES 1h SMA trend -- known INSUFFICIENT_SAMPLE (17 OOS < 30); baseline.
+            StrategySpec(
+                symbol="MES",
+                family="sma_trend",
+                interval="1h",
+                signal_fn=generate_sma_trend_signals,
+                param_grid=grid(fast=[40, 50, 60], slow=[120, 200], atr_trail_mult=[2.0]),
+                train_months=6,
+                test_months=1,
+                step_months=1,
+                tags=("baseline", "starved_1h"),
             ),
-            train_months=3,
-            test_months=1,
-            step_months=1,
-            min_oos_trades_per_window=3,
-            tags=("pivot", "higher_freq", "diversify"),
-        ),
-        # --- Expanded edge hunt (round 2): more families on the freed-up sample ---
-        # MES 15m Bollinger+RSI mean-reversion -- a non-trend family on the pivot TF.
-        StrategySpec(
-            symbol="MES",
-            family="bollinger_rsi",
-            interval="15m",
-            signal_fn=generate_bollinger_rsi_signals,
-            param_grid=grid(
-                bb_period=[20],
-                bb_std=[2.0, 2.5],
-                rsi_long=[25, 30],
-                rsi_short=[70, 75],
-                stop_atr_mult=[1.5],
+            # MES 15m SMA trend -- the pivot: more trades on the same history.
+            StrategySpec(
+                symbol="MES",
+                family="sma_trend",
+                interval="15m",
+                signal_fn=generate_sma_trend_signals,
+                param_grid=grid(
+                    fast=[8, 12, 16], slow=[24, 36, 48], atr_trail_mult=[1.5, 2.0, 2.5]
+                ),
+                train_months=3,
+                test_months=1,
+                step_months=1,
+                min_oos_trades_per_window=3,
+                tags=("pivot", "higher_freq"),
             ),
-            train_months=3,
-            test_months=1,
-            step_months=1,
-            min_oos_trades_per_window=3,
-            tags=("pivot", "meanrev"),
-        ),
-        # MES 15m ATR-channel breakout.
-        StrategySpec(
-            symbol="MES",
-            family="atr_channel",
-            interval="15m",
-            signal_fn=generate_atr_channel_signals,
-            param_grid=grid(ema_period=[20, 30], atr_mult=[1.5, 2.0, 2.5], atr_stop_mult=[2.0]),
-            train_months=3,
-            test_months=1,
-            step_months=1,
-            min_oos_trades_per_window=3,
-            tags=("pivot", "breakout"),
-        ),
-        # MES 15m RSI breakout.
-        StrategySpec(
-            symbol="MES",
-            family="rsi_breakout",
-            interval="15m",
-            signal_fn=generate_rsi_breakout_signals,
-            param_grid=grid(
-                rsi_oversold=[20, 25],
-                rsi_overbought=[75, 80],
-                entry_period=[20, 40],
-                atr_stop_mult=[2.0],
+            # MES 1h Donchian breakout -- a different family on the flagship symbol.
+            StrategySpec(
+                symbol="MES",
+                family="donchian",
+                interval="1h",
+                signal_fn=generate_donchian_signals,
+                param_grid=grid(
+                    lookback_entry=[20, 40, 55], lookback_exit=[10, 20], atr_trail_mult=[2.0]
+                ),
+                train_months=6,
+                test_months=1,
+                step_months=1,
+                tags=("diversify",),
             ),
-            train_months=3,
-            test_months=1,
-            step_months=1,
-            min_oos_trades_per_window=3,
-            tags=("pivot", "meanrev"),
-        ),
-        # MES 15m volume-confirmed Donchian breakout (distinct from plain donchian).
-        StrategySpec(
-            symbol="MES",
-            family="donchian_breakout",
-            interval="15m",
-            signal_fn=generate_donchian_breakout_signals,
-            param_grid=grid(donchian_period=[20, 40], vol_mult=[0.0, 1.0], stop_atr_mult=[2.0]),
-            train_months=3,
-            test_months=1,
-            step_months=1,
-            min_oos_trades_per_window=3,
-            tags=("pivot", "breakout"),
-        ),
-        # MES 1h ATR-channel -- diversify the flagship's 1h families.
-        StrategySpec(
-            symbol="MES",
-            family="atr_channel",
-            interval="1h",
-            signal_fn=generate_atr_channel_signals,
-            param_grid=grid(ema_period=[20, 50], atr_mult=[2.0, 2.5], atr_stop_mult=[2.0]),
-            train_months=6,
-            test_months=1,
-            step_months=1,
-            tags=("diversify",),
-        ),
-        # MGC 1h ATR-channel -- more families on the strongest symbol.
-        StrategySpec(
-            symbol="MGC",
-            family="atr_channel",
-            interval="1h",
-            signal_fn=generate_atr_channel_signals,
-            param_grid=grid(ema_period=[20, 50], atr_mult=[2.0, 2.5], atr_stop_mult=[2.0]),
-            train_months=6,
-            test_months=2,
-            step_months=1,
-            tags=("diversify",),
-        ),
-        # MGC 1h volume-confirmed Donchian breakout.
-        StrategySpec(
-            symbol="MGC",
-            family="donchian_breakout",
-            interval="1h",
-            signal_fn=generate_donchian_breakout_signals,
-            param_grid=grid(donchian_period=[20, 40, 55], vol_mult=[0.0, 1.0], stop_atr_mult=[2.0]),
-            train_months=6,
-            test_months=2,
-            step_months=1,
-            tags=("diversify",),
-        ),
-        # MGC 1h Bollinger+RSI mean-reversion.
-        StrategySpec(
-            symbol="MGC",
-            family="bollinger_rsi",
-            interval="1h",
-            signal_fn=generate_bollinger_rsi_signals,
-            param_grid=grid(
-                bb_period=[20],
-                bb_std=[2.0, 2.5],
-                rsi_long=[25, 30],
-                rsi_short=[70, 75],
-                stop_atr_mult=[1.5],
+            # MES 15m Donchian breakout -- higher-freq breakout candidate.
+            StrategySpec(
+                symbol="MES",
+                family="donchian",
+                interval="15m",
+                signal_fn=generate_donchian_signals,
+                param_grid=grid(
+                    lookback_entry=[20, 40], lookback_exit=[10, 20], atr_trail_mult=[2.0, 2.5]
+                ),
+                train_months=3,
+                test_months=1,
+                step_months=1,
+                min_oos_trades_per_window=3,
+                tags=("pivot", "higher_freq", "diversify"),
             ),
-            train_months=6,
-            test_months=2,
-            step_months=1,
-            tags=("meanrev",),
-        ),
-        # --- Regime-filtered trend (round 3) -------------------------------------
-        # Same SMA-trend signal as the base specs, but with the realized-vol regime
-        # gate enabled (min_rv_annualized > 0) -- the mechanism behind the live MGC
-        # trend_rv_filter strategy. Thesis: the base MGC 1h trend FAILs ONLY on
-        # p_edge (0.53: just over half of OOS windows profitable) and WEAK
-        # consistency, not on PF/DD/DSR. If the losing windows are low-vol /
-        # range-bound regimes, screening entries below an RV floor should lift
-        # p_edge and consistency toward a PASS. rv_annual_factor defaults to the
-        # 1h bar factor (252*24), so no override is needed at this interval.
-        StrategySpec(
-            symbol="MGC",
-            family="sma_trend_rv",
-            interval="1h",
-            signal_fn=generate_sma_trend_signals,
-            param_grid=grid(
-                fast=[50, 60],
-                slow=[120, 200],
-                atr_trail_mult=[2.0],
-                min_rv_annualized=[6.0, 9.0, 12.0],
+            # --- Expanded edge hunt (round 2): more families on the freed-up sample ---
+            # MES 15m Bollinger+RSI mean-reversion -- a non-trend family on the pivot TF.
+            StrategySpec(
+                symbol="MES",
+                family="bollinger_rsi",
+                interval="15m",
+                signal_fn=generate_bollinger_rsi_signals,
+                param_grid=grid(
+                    bb_period=[20],
+                    bb_std=[2.0, 2.5],
+                    rsi_long=[25, 30],
+                    rsi_short=[70, 75],
+                    stop_atr_mult=[1.5],
+                ),
+                train_months=3,
+                test_months=1,
+                step_months=1,
+                min_oos_trades_per_window=3,
+                tags=("pivot", "meanrev"),
             ),
-            train_months=6,
-            test_months=2,
-            step_months=1,
-            tags=("regime_filter", "rv_filter", "trend"),
-        ),
-        # MES 1h regime-filtered trend -- baseline counterpart. The RV gate trims
-        # entries, so the already-starved MES 1h sample (17 OOS < 30 floor) is
-        # expected to fall further into INSUFFICIENT_SAMPLE; included to confirm
-        # the floor override holds and to measure whether RV concentration lifts
-        # the per-window edge even when the total sample stays inadequate.
-        StrategySpec(
-            symbol="MES",
-            family="sma_trend_rv",
-            interval="1h",
-            signal_fn=generate_sma_trend_signals,
-            param_grid=grid(
-                fast=[50, 60],
-                slow=[120, 200],
-                atr_trail_mult=[2.0],
-                min_rv_annualized=[6.0, 9.0, 12.0],
+            # MES 15m ATR-channel breakout.
+            StrategySpec(
+                symbol="MES",
+                family="atr_channel",
+                interval="15m",
+                signal_fn=generate_atr_channel_signals,
+                param_grid=grid(ema_period=[20, 30], atr_mult=[1.5, 2.0, 2.5], atr_stop_mult=[2.0]),
+                train_months=3,
+                test_months=1,
+                step_months=1,
+                min_oos_trades_per_window=3,
+                tags=("pivot", "breakout"),
             ),
-            train_months=6,
-            test_months=1,
-            step_months=1,
-            tags=("regime_filter", "rv_filter", "trend", "starved_1h"),
-        ),
-    ] + _intraday_frontier_specs()
+            # MES 15m RSI breakout.
+            StrategySpec(
+                symbol="MES",
+                family="rsi_breakout",
+                interval="15m",
+                signal_fn=generate_rsi_breakout_signals,
+                param_grid=grid(
+                    rsi_oversold=[20, 25],
+                    rsi_overbought=[75, 80],
+                    entry_period=[20, 40],
+                    atr_stop_mult=[2.0],
+                ),
+                train_months=3,
+                test_months=1,
+                step_months=1,
+                min_oos_trades_per_window=3,
+                tags=("pivot", "meanrev"),
+            ),
+            # MES 15m volume-confirmed Donchian breakout (distinct from plain donchian).
+            StrategySpec(
+                symbol="MES",
+                family="donchian_breakout",
+                interval="15m",
+                signal_fn=generate_donchian_breakout_signals,
+                param_grid=grid(donchian_period=[20, 40], vol_mult=[0.0, 1.0], stop_atr_mult=[2.0]),
+                train_months=3,
+                test_months=1,
+                step_months=1,
+                min_oos_trades_per_window=3,
+                tags=("pivot", "breakout"),
+            ),
+            # MES 1h ATR-channel -- diversify the flagship's 1h families.
+            StrategySpec(
+                symbol="MES",
+                family="atr_channel",
+                interval="1h",
+                signal_fn=generate_atr_channel_signals,
+                param_grid=grid(ema_period=[20, 50], atr_mult=[2.0, 2.5], atr_stop_mult=[2.0]),
+                train_months=6,
+                test_months=1,
+                step_months=1,
+                tags=("diversify",),
+            ),
+            # MGC 1h ATR-channel -- more families on the strongest symbol.
+            StrategySpec(
+                symbol="MGC",
+                family="atr_channel",
+                interval="1h",
+                signal_fn=generate_atr_channel_signals,
+                param_grid=grid(ema_period=[20, 50], atr_mult=[2.0, 2.5], atr_stop_mult=[2.0]),
+                train_months=6,
+                test_months=2,
+                step_months=1,
+                tags=("diversify",),
+            ),
+            # MGC 1h volume-confirmed Donchian breakout.
+            StrategySpec(
+                symbol="MGC",
+                family="donchian_breakout",
+                interval="1h",
+                signal_fn=generate_donchian_breakout_signals,
+                param_grid=grid(
+                    donchian_period=[20, 40, 55], vol_mult=[0.0, 1.0], stop_atr_mult=[2.0]
+                ),
+                train_months=6,
+                test_months=2,
+                step_months=1,
+                tags=("diversify",),
+            ),
+            # MGC 1h Bollinger+RSI mean-reversion.
+            StrategySpec(
+                symbol="MGC",
+                family="bollinger_rsi",
+                interval="1h",
+                signal_fn=generate_bollinger_rsi_signals,
+                param_grid=grid(
+                    bb_period=[20],
+                    bb_std=[2.0, 2.5],
+                    rsi_long=[25, 30],
+                    rsi_short=[70, 75],
+                    stop_atr_mult=[1.5],
+                ),
+                train_months=6,
+                test_months=2,
+                step_months=1,
+                tags=("meanrev",),
+            ),
+            # --- Regime-filtered trend (round 3) -------------------------------------
+            # Same SMA-trend signal as the base specs, but with the realized-vol regime
+            # gate enabled (min_rv_annualized > 0) -- the mechanism behind the live MGC
+            # trend_rv_filter strategy. Thesis: the base MGC 1h trend FAILs ONLY on
+            # p_edge (0.53: just over half of OOS windows profitable) and WEAK
+            # consistency, not on PF/DD/DSR. If the losing windows are low-vol /
+            # range-bound regimes, screening entries below an RV floor should lift
+            # p_edge and consistency toward a PASS. rv_annual_factor defaults to the
+            # 1h bar factor (252*24), so no override is needed at this interval.
+            StrategySpec(
+                symbol="MGC",
+                family="sma_trend_rv",
+                interval="1h",
+                signal_fn=generate_sma_trend_signals,
+                param_grid=grid(
+                    fast=[50, 60],
+                    slow=[120, 200],
+                    atr_trail_mult=[2.0],
+                    min_rv_annualized=[6.0, 9.0, 12.0],
+                ),
+                train_months=6,
+                test_months=2,
+                step_months=1,
+                tags=("regime_filter", "rv_filter", "trend"),
+            ),
+            # MES 1h regime-filtered trend -- baseline counterpart. The RV gate trims
+            # entries, so the already-starved MES 1h sample (17 OOS < 30 floor) is
+            # expected to fall further into INSUFFICIENT_SAMPLE; included to confirm
+            # the floor override holds and to measure whether RV concentration lifts
+            # the per-window edge even when the total sample stays inadequate.
+            StrategySpec(
+                symbol="MES",
+                family="sma_trend_rv",
+                interval="1h",
+                signal_fn=generate_sma_trend_signals,
+                param_grid=grid(
+                    fast=[50, 60],
+                    slow=[120, 200],
+                    atr_trail_mult=[2.0],
+                    min_rv_annualized=[6.0, 9.0, 12.0],
+                ),
+                train_months=6,
+                test_months=1,
+                step_months=1,
+                tags=("regime_filter", "rv_filter", "trend", "starved_1h"),
+            ),
+        ]
+        + _intraday_frontier_specs()
+        + _orb_frontier_specs()
+    )
 
 
 # ---------------------------------------------------------------------------
