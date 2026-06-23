@@ -192,3 +192,45 @@ Then, once you trust that harness:
 6. **Read every report for a week** before you widen scope or add another loop.
 
 You designed it once. You stay the engineer.
+
+---
+
+## 7. Tier-2: the checker (maker/checker review loop)
+
+The highest-value move in any loop is splitting the agent that writes from the
+agent that checks. `scripts/loops/review-loop.ps1` is the **checker** half: it
+runs an adversarial, READ-ONLY review of the current branch's diff against a base
+ref and writes the verdict to `docs/loop-reports/`. It reuses the repo's existing
+review tooling (the `/code-review` skill + `safety-reviewer` discipline) instead
+of reimplementing review logic.
+
+```powershell
+# Second opinion before you open a PR by hand
+pwsh -File scripts\loops\review-loop.ps1 -BaseRef origin/master
+```
+
+It is incapable of changing anything: `--disallowedTools "Write,Edit"`, so it
+cannot edit code, commit, push, open, or merge a PR. Exit codes: 0 = no blocking
+issues, 2 = blocking issue(s) found, 3 = run error.
+
+Run this *on demand* (after staging work), not on a schedule — a checker with no
+diff to review is wasted tokens. It never auto-merges and never touches
+`engine/risk/`, `engine/config.py`, or kill-switch code.
+
+### The full maker/checker loop
+
+`scripts/loops/maker-checker-loop.ps1` composes both halves: a **maker** drafts
+the change for a task in an isolated git worktree, a **hardcoded** safety-path
+guard rejects any diff touching `engine/risk/`, `config.py`, kill-switch,
+`trader.py` sizing, or `.env`, then the **checker** reviews the diff read-only.
+
+```powershell
+pwsh -File scripts\loops\maker-checker-loop.ps1 -Task "Add a --dry-run flag to scripts\foo.py and a test"
+```
+
+It stops at a human gate: the output is a worktree (`.worktrees/maker-<stamp>`,
+gitignored) plus a report. Nothing is committed, pushed, or PR'd for you — you
+inspect the worktree and open the PR by hand if you agree. Exit codes: 0 green,
+2 review found blockers, 3 error, 4 safety-path violation (diff rejected
+unreviewed). The maker may edit files (that is its job) but cannot commit/push,
+and your real working tree is never touched.
