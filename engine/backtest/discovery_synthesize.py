@@ -37,6 +37,23 @@ OUTPUT_DIR = engine_root / "data" / "discovery_factory"
 MIN_OOS_TRADES_TOTAL = 30  # mirror _gate_v2_helpers; sample-adequacy floor
 
 
+def _do_not_trade() -> frozenset[str]:
+    """The live engine's symbol block list -- the single source of truth. A
+    candidate on one of these has passed the *discovery* gate but is STILL
+    barred from live/paper, so the brief must say so. Lazy import keeps the
+    synthesizer runnable standalone; fall back to the known set if signals
+    can't be imported (e.g. outside the engine venv)."""
+    try:
+        from backtest import signals
+
+        return frozenset(signals.DO_NOT_TRADE_SYMBOLS)
+    except Exception:
+        return frozenset({"MCL", "MNQ", "M2K"})
+
+
+DO_NOT_TRADE = _do_not_trade()
+
+
 def _load_specs(output_dir: Path) -> list[dict]:
     """Load every per-spec verdict JSON (skip the racy LEADERBOARD aggregate)."""
     specs = []
@@ -115,6 +132,8 @@ def _table(rows: list[dict]) -> str:
     lines = [hdr, "-" * len(hdr)]
     for m in rows:
         flag = " *" if _is_near_miss(m) else ""
+        if m["symbol"] in DO_NOT_TRADE:
+            flag += " !DNT"
         lines.append(
             f"{(m['label'] or '?'):<26} {(m['verdict'] or '?'):<19} "
             f"{_fmt(m['total_oos_trades']):>6} {_fmt(m['pf_ci_lower'], 3):>7} "
@@ -125,8 +144,18 @@ def _table(rows: list[dict]) -> str:
 
 
 def _candidate_brief(m: dict) -> str:
+    dnt = ""
+    if m["symbol"] in DO_NOT_TRADE:
+        dnt = (
+            f"\n> **⛔ {m['symbol']} IS ON THE LIVE `DO_NOT_TRADE_SYMBOLS` BLOCK LIST.** "
+            f"Passing the discovery gate does NOT lift that block. This combo cannot be "
+            f"promoted to live/paper without first resolving why {m['symbol']} is barred "
+            f"(see signals.DO_NOT_TRADE_SYMBOLS / rules/jarvis-trader.md) -- a separate, "
+            f"explicit human decision.\n"
+        )
     return (
-        f"### CANDIDATE: {m['label']}  (passed_via={m['passed_via']})\n\n"
+        f"### CANDIDATE: {m['label']}  (passed_via={m['passed_via']})\n"
+        f"{dnt}\n"
         f"- **Symbol / family / interval:** {m['symbol']} / {m['family']} / {m['interval']}\n"
         f"- **Champion params:** `{json.dumps(m['champion_params'])}`\n"
         f"- **Found on cache:** `{m['source_file']}`\n"

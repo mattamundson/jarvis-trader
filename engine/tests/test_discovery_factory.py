@@ -504,6 +504,20 @@ def test_synth_deployable_pass_gets_a_brief(tmp_path):
     assert "passed_via=alt" in res["report"]
 
 
+def test_synth_blocked_symbol_candidate_is_flagged(tmp_path):
+    """A PASS on a DO_NOT_TRADE symbol must be briefed with a loud block warning."""
+    from backtest.discovery_synthesize import DO_NOT_TRADE, synthesize
+
+    blocked = next(iter(DO_NOT_TRADE))  # e.g. MNQ
+    _write_verdict(
+        tmp_path, f"{blocked}_x_15m", "PASS", trades=186, passed_via="alt", sample_adequate=True
+    )
+    res = synthesize(tmp_path)
+    assert res["n_pass"] == 1
+    assert "DO_NOT_TRADE" in res["report"]
+    assert "!DNT" in res["report"]  # table flag
+
+
 def test_synth_near_miss_flagged_and_leaderboard_skipped(tmp_path):
     from backtest.discovery_synthesize import synthesize
 
