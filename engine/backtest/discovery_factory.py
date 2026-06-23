@@ -128,6 +128,87 @@ class StrategySpec:
         return len(self.param_grid)
 
 
+def _intraday_family_specs(symbol: str, interval: str, train_months: int = 3) -> list[StrategySpec]:
+    """Standard 4-family intraday sweep for one (symbol, interval).
+
+    Reuses the same param-grid *shapes* as the validated MES 15m specs so the
+    hypothesis under test is "does this family's logic hold at higher
+    frequency", not a freshly over-tuned grid. ``min_oos_trades_per_window=3``
+    is the higher-frequency floor (mirrors the existing 15m specs).
+    """
+    common = {
+        "train_months": train_months,
+        "test_months": 1,
+        "step_months": 1,
+        "min_oos_trades_per_window": 3,
+    }
+    base = ("intraday", "frontier", interval)
+    return [
+        StrategySpec(
+            symbol,
+            "sma_trend",
+            interval,
+            generate_sma_trend_signals,
+            grid(fast=[8, 12, 16], slow=[24, 48], atr_trail_mult=[2.0, 2.5]),
+            tags=base + ("trend",),
+            **common,
+        ),
+        StrategySpec(
+            symbol,
+            "donchian",
+            interval,
+            generate_donchian_signals,
+            grid(lookback_entry=[20, 40], lookback_exit=[10, 20], atr_trail_mult=[2.0, 2.5]),
+            tags=base + ("breakout",),
+            **common,
+        ),
+        StrategySpec(
+            symbol,
+            "donchian_breakout",
+            interval,
+            generate_donchian_breakout_signals,
+            grid(donchian_period=[20, 40], vol_mult=[0.0, 1.0], stop_atr_mult=[2.0]),
+            tags=base + ("breakout", "vol_confirmed"),
+            **common,
+        ),
+        StrategySpec(
+            symbol,
+            "bollinger_rsi",
+            interval,
+            generate_bollinger_rsi_signals,
+            grid(
+                bb_period=[20],
+                bb_std=[2.0, 2.5],
+                rsi_long=[25, 30],
+                rsi_short=[70, 75],
+                stop_atr_mult=[1.5],
+            ),
+            tags=base + ("meanrev",),
+            **common,
+        ),
+    ]
+
+
+def _intraday_frontier_specs() -> list[StrategySpec]:
+    """5m + new-15m specs across MES/MGC/MNQ -- the intraday edge-hunt frontier.
+
+    MGC/MNQ intraday bars load from roll-adjusted ``_cont`` caches (see
+    ``load_interval_bars``). Registered here but typically run selectively via
+    ``--symbol``/``--interval``; a no-filter run includes them all.
+    """
+    pairs = [
+        ("MGC", "5m"),  # best intraday depth (continuous ~15-24mo)
+        ("MES", "5m"),
+        ("MGC", "15m"),
+        ("MNQ", "5m"),
+        ("MNQ", "15m"),
+    ]
+    specs: list[StrategySpec] = []
+    for symbol, interval in pairs:
+        specs += _intraday_family_specs(symbol, interval)
+    return specs
+
+
 # ---------------------------------------------------------------------------
 # Initial registry (slice 1) -- deliberately small. Tests the central thesis:
 # does dropping to 15m break the 30-trade floor that starves 1h trend, and do
@@ -366,7 +447,7 @@ def default_registry() -> list[StrategySpec]:
             step_months=1,
             tags=("regime_filter", "rv_filter", "trend", "starved_1h"),
         ),
-    ]
+    ] + _intraday_frontier_specs()
 
 
 # ---------------------------------------------------------------------------

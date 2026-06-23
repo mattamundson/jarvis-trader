@@ -131,6 +131,21 @@ def test_registry_only_supported_symbols():
         assert s.symbol in CONTRACT_SPECS, f"{s.label} uses unsupported symbol"
 
 
+def test_intraday_frontier_specs_registered():
+    """The 5m + new-15m intraday frontier is registered across MES/MGC/MNQ."""
+    reg = default_registry()
+    labels = {s.label for s in reg}
+    for sym in ("MES", "MGC", "MNQ"):
+        assert f"{sym}_sma_trend_5m" in labels, f"missing {sym} 5m trend"
+    for sym in ("MGC", "MNQ"):
+        assert f"{sym}_bollinger_rsi_15m" in labels, f"missing {sym} 15m meanrev"
+    intraday = [s for s in reg if "intraday" in s.tags]
+    # 5 (symbol, interval) pairs x 4 families.
+    assert len(intraday) == 20
+    assert all(s.min_oos_trades_per_window == 3 for s in intraday)
+    assert all(s.symbol in CONTRACT_SPECS for s in intraday)
+
+
 def test_regime_filtered_trend_specs_registered_with_rv_axis():
     # The sma_trend_rv family must sweep a non-zero realized-vol floor on every
     # combo (that gate IS the regime filter); a zero floor would silently degrade
