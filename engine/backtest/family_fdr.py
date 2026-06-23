@@ -54,6 +54,17 @@ _HISTORY_PATH = os.path.join(_REPORT_DIR, "family_fdr_history.jsonl")
 
 DEFAULT_Q = 0.10
 
+# Minimum total OOS trades for a strategy's PASS to be sample-adequate. Mirrors
+# gate-v2's MIN_OOS_TRADES_TOTAL: a "PASS" built on too few OOS trades (e.g. PF
+# 295 / inf on 2-trade windows) is a small-sample mirage, not an edge. The
+# campaign report must surface this so the lowest-p_binom row is not mistaken
+# for "where real edge lives" when it is sample-inadequate.
+try:  # pragma: no cover - exercised via the value, not the import path
+    from backtest._gate_v2_helpers import MIN_OOS_TRADES_TOTAL as _MIN_OOS_TRADES
+except Exception:  # pragma: no cover - defensive fallback if helper moves
+    _MIN_OOS_TRADES = 30
+MIN_OOS_TRADES = int(_MIN_OOS_TRADES)
+
 
 def bh_fdr(pvals: list[float], q: float = DEFAULT_Q) -> list[bool]:
     """Benjamini-Hochberg FDR control at level ``q``.
@@ -102,6 +113,23 @@ def _n_oos(verdict: dict) -> int:
             except (TypeError, ValueError):
                 continue
     return 0
+
+
+def _total_oos_trades(verdict: dict) -> int | None:
+    """Total OOS trades behind the verdict, or None if the field is absent.
+
+    None means "unknown sample size" — distinct from a known-small one. Robust
+    edge certification treats unknown as not-adequate (fail-safe), but the report
+    shows it as ``?`` rather than a hard inadequacy.
+    """
+    w = verdict.get("wfo_config") or {}
+    v = w.get("total_oos_trades")
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def load_verdicts(verdict_dir: str = _VERDICT_DIR) -> list[dict]:
@@ -157,6 +185,8 @@ def build_family(verdicts: list[dict]) -> tuple[list[dict], list[dict]]:
             )
             continue
         dsr = m.get("dsr")
+        oos_trades = _total_oos_trades(v)
+        sample_adequate = None if oos_trades is None else (oos_trades >= MIN_OOS_TRADES)
         family.append(
             {
                 "id": v["_id"],
@@ -167,6 +197,8 @@ def build_family(verdicts: list[dict]) -> tuple[list[dict], list[dict]]:
                 "p_edge": float(p_edge),
                 "n_oos_windows": n,
                 "k_profitable": int(round(float(p_edge) * n)),
+                "total_oos_trades": oos_trades,
+                "sample_adequate": sample_adequate,
                 "dsr": dsr,
                 "p_binom": binomial_oos_pvalue(float(p_edge), n),
                 "p_dsr": (None if dsr is None else max(0.0, 1.0 - float(dsr))),
@@ -191,8 +223,14 @@ def run(q: float = DEFAULT_Q, verdict_dir: str = _VERDICT_DIR) -> dict[str, Any]
         for r, bf, df in zip(family, binom_flags, dsr_flags, strict=True):
             r["bh_significant_binom"] = bool(bf)
             r["bh_significant_dsr"] = bool(df)
-            # Actionable: gate-v2 PASS AND survives the PRIMARY (binomial) family FDR.
-            r["robust_edge"] = bool(r["gate_verdict"] == "PASS" and bf)
+            # Actionable: gate-v2 PASS AND survives the PRIMARY (binomial) family
+            # FDR AND has a sample-adequate OOS trade count. The adequacy clause
+            # blocks small-sample mirages (e.g. a 7/7-window PASS built on 26 OOS
+            # trades, PF inflated by 2-trade windows) from being certified robust.
+            # Unknown sample size (None) is treated as not-adequate (fail-safe).
+            r["robust_edge"] = bool(
+                r["gate_verdict"] == "PASS" and bf and r.get("sample_adequate") is True
+            )
 
     family_sorted = sorted(family, key=lambda r: r["p_binom"])
     gate_pass = [r for r in family_sorted if r["gate_verdict"] == "PASS"]
@@ -254,17 +292,22 @@ def _markdown(report: dict[str, Any]) -> str:
         "Primary p-value = binomial sign-test on OOS-window profitability. "
         "`robust_edge` = gate-v2 PASS AND survives the primary family BH line.",
         "",
-        "| id | gate | pf_ci_lo | p_edge | n_oos | p_binom | BH-binom | p_dsr | BH-dsr | ROBUST |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| id | gate | pf_ci_lo | p_edge | n_oos | oos_tr | adq | p_binom | "
+        "BH-binom | p_dsr | BH-dsr | ROBUST |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
+    _adq = {True: "Y", False: "**n**", None: "?"}
     for r in report["family"]:
         lines.append(
-            "| {id} | {gv} | {pf} | {pe} | {n} | {pb:.4f} | {bb} | {pd} | {bd} | {rob} |".format(
+            "| {id} | {gv} | {pf} | {pe} | {n} | {ot} | {adq} | {pb:.4f} | "
+            "{bb} | {pd} | {bd} | {rob} |".format(
                 id=r["id"],
                 gv=r["gate_verdict"],
                 pf="" if r["pf_ci_lower"] is None else f"{r['pf_ci_lower']:.3f}",
                 pe=f"{r['p_edge']:.3f}",
                 n=r["n_oos_windows"],
+                ot="?" if r.get("total_oos_trades") is None else r["total_oos_trades"],
+                adq=_adq[r.get("sample_adequate")],
                 pb=r["p_binom"],
                 bb="Y" if r.get("bh_significant_binom") else "·",
                 pd="" if r["p_dsr"] is None else f"{r['p_dsr']:.4f}",
@@ -286,7 +329,13 @@ def _markdown(report: dict[str, Any]) -> str:
         "sign-test is deliberately conservative; a strict BH line over a "
         f"{report['n_family']}-member family can reject strong-PF strategies on "
         "window count alone. The ranking (lowest `p_binom` first) shows which "
-        "strategies are *closest* to robust — that is where real edge, if any, lives.",
+        "strategies are *closest* to robust — but read it together with `adq`.",
+        f"- **`adq` = sample adequacy** (total OOS trades >= {MIN_OOS_TRADES}). An "
+        "`adq=n` row is a small-sample mirage: its p_binom/PF can look strong while "
+        "resting on a handful of OOS trades (PF inflated by 2-trade windows). Such a "
+        "row can rank high on p_binom yet is **not** where durable edge lives, and it "
+        "can never be certified `ROBUST` regardless of the BH line. Treat the "
+        "lowest-p_binom `adq=Y` row as the genuine lead.",
         "- This correction can only SHRINK the validated set. A NO survivor result "
         "is the honest outcome of screening many candidates with few OOS windows, "
         "not proof that no edge exists.",

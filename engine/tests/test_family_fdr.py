@@ -8,6 +8,7 @@ from backtest import family_fdr as ff
 
 # --- bh_fdr core -----------------------------------------------------------
 
+
 def test_bh_fdr_empty():
     assert ff.bh_fdr([], 0.10) == []
 
@@ -48,6 +49,7 @@ def test_bh_fdr_preserves_input_order():
 
 # --- binomial OOS sign-test -----------------------------------------------
 
+
 def test_binomial_perfect_small():
     # 7/7 profitable windows -> P(X>=7 | Bin(7,0.5)) = 1/128.
     assert math.isclose(ff.binomial_oos_pvalue(1.0, 7), 1 / 128, rel_tol=1e-9)
@@ -71,8 +73,10 @@ def test_binomial_monotonic_in_k():
 
 # --- conservative / shrink-only properties ---------------------------------
 
+
 def _synthetic_verdicts():
     """Two strong + two weak strategies, plus one with no OOS data."""
+
     def mk(_id, verdict, p_edge, n, dsr, pf):
         return {
             "_id": _id,
@@ -173,6 +177,64 @@ def test_build_family_excludes_cpcv_verdicts():
     assert "overlap" in cpcv_reason.lower()
 
 
+# --- sample-adequacy: small-sample mirages cannot be robust edges ----------
+
+
+def _verdict(_id, verdict, p_edge, n, dsr, pf, oos_trades=None):
+    wfo = {"n_oos_windows": n}
+    if oos_trades is not None:
+        wfo["total_oos_trades"] = oos_trades
+    return {
+        "_id": _id,
+        "symbol": _id.split("_")[0],
+        "family": "trend",
+        "verdict": verdict,
+        "gate_v2_metrics": {"pf_ci_lower": pf, "p_edge": p_edge, "dsr": dsr},
+        "wfo_config": wfo,
+    }
+
+
+def test_build_family_tags_sample_adequacy():
+    # total_oos_trades >= floor -> adequate; below -> inadequate; absent -> unknown.
+    v_ok = _verdict("AAA_trend#1", "PASS", 1.0, 7, 1.0, 3.0, oos_trades=67)
+    v_thin = _verdict("BBB_trend#1", "PASS", 1.0, 7, 1.0, 3.0, oos_trades=26)
+    v_unknown = _verdict("CCC_trend#1", "PASS", 1.0, 7, 1.0, 3.0)  # no total_oos_trades
+    family, _ = ff.build_family([v_ok, v_thin, v_unknown])
+    by = {r["id"]: r for r in family}
+    assert by["AAA_trend#1"]["total_oos_trades"] == 67
+    assert by["AAA_trend#1"]["sample_adequate"] is True
+    assert by["BBB_trend#1"]["total_oos_trades"] == 26
+    assert by["BBB_trend#1"]["sample_adequate"] is False
+    assert by["CCC_trend#1"]["total_oos_trades"] is None
+    assert by["CCC_trend#1"]["sample_adequate"] is None
+
+
+def test_sample_inadequate_strategy_not_robust_even_if_bh_significant(monkeypatch):
+    # 7/7 OOS PASS clears the BH line in a 1-member family, but 26 < 30 OOS
+    # trades is a small-sample mirage (PF 295/inf on 2-trade windows) -> it must
+    # NOT be certified a robust edge. This is MGC_trend_rv_filter_rank1.
+    v = _verdict("MGC_trend_rv_filter_rank1", "PASS", 1.0, 7, 1.0, 3.18, oos_trades=26)
+    monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: [v])
+    report = ff.run(q=0.10)
+    row = report["family"][0]
+    assert row["bh_significant_binom"] is True  # clears BH on the p-value alone
+    assert row["sample_adequate"] is False
+    assert row["robust_edge"] is False  # but blocked by sample adequacy
+    assert report["n_robust_edge"] == 0
+
+
+def test_sample_adequate_strong_strategy_can_be_robust(monkeypatch):
+    # Same significance, but 40 >= 30 OOS trades -> adequacy does not over-block.
+    v = _verdict("AAA_trend#1", "PASS", 1.0, 7, 1.0, 3.18, oos_trades=40)
+    monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: [v])
+    report = ff.run(q=0.10)
+    row = report["family"][0]
+    assert row["bh_significant_binom"] is True
+    assert row["sample_adequate"] is True
+    assert row["robust_edge"] is True
+    assert report["n_robust_edge"] == 1
+
+
 # --- append_history ledger -------------------------------------------------
 
 import json  # noqa: E402
@@ -206,7 +268,9 @@ def test_append_history_writes_expected_record(tmp_path):
         "n_robust_edge",
         "robust_edge_ids",
     }
-    on_disk = json.loads((tmp_path / "family_fdr_history.jsonl").read_text(encoding="utf-8").strip())
+    on_disk = json.loads(
+        (tmp_path / "family_fdr_history.jsonl").read_text(encoding="utf-8").strip()
+    )
     assert on_disk == rec
 
 
