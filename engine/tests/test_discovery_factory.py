@@ -49,6 +49,52 @@ def cache(tmp_path):
     return d
 
 
+# ----------------------------------------------------- load_interval_bars (_cont)
+def _write_intraday_cache(d, name: str, start: str, periods: int, freq: str) -> None:
+    """Write a synthetic intraday (5m/15m) OHLCV cache with a real span."""
+    idx = pd.date_range(start=start, periods=periods, freq=freq, tz="UTC")
+    rows = "".join(f"{ts.isoformat()},100,101,99,100,10\n" for ts in idx)
+    (d / name).write_text(_HEADER + rows, encoding="utf-8")
+
+
+def test_load_interval_bars_accepts_cont_only(tmp_path):
+    """A symbol whose only intraday cache is the _cont variant must still load."""
+    d = tmp_path / "cache"
+    d.mkdir()
+    _write_intraday_cache(d, "MGC_2024-05-01_2026-05-29_5m_cont.csv", "2024-05-01", 500, "5min")
+    df = dfac.load_interval_bars("MGC", "5m", d)
+    assert len(df) == 500
+    assert df.attrs["source_file"] == "MGC_2024-05-01_2026-05-29_5m_cont.csv"
+
+
+def test_load_interval_bars_freshest_end_date_wins(tmp_path):
+    """Across bare and _cont, the freshest end-date wins (bare here is fresher)."""
+    d = tmp_path / "cache"
+    d.mkdir()
+    _write_intraday_cache(d, "MES_2025-04-09_2026-06-12_5m_cont.csv", "2025-04-09", 300, "5min")
+    _write_intraday_cache(d, "MES_2025-04-09_2026-06-22_5m.csv", "2025-04-09", 400, "5min")
+    df = dfac.load_interval_bars("MES", "5m", d)
+    assert df.attrs["source_file"] == "MES_2025-04-09_2026-06-22_5m.csv"
+
+
+def test_load_interval_bars_prefers_cont_on_tie(tmp_path):
+    """On an exact end-date tie, the roll-adjusted _cont file is preferred."""
+    d = tmp_path / "cache"
+    d.mkdir()
+    _write_intraday_cache(d, "MNQ_2025-04-09_2026-06-12_5m.csv", "2025-04-09", 300, "5min")
+    _write_intraday_cache(d, "MNQ_2025-04-09_2026-06-12_5m_cont.csv", "2025-04-09", 350, "5min")
+    df = dfac.load_interval_bars("MNQ", "5m", d)
+    assert df.attrs["source_file"] == "MNQ_2025-04-09_2026-06-12_5m_cont.csv"
+
+
+def test_load_interval_bars_missing_raises(tmp_path):
+    """No bare and no _cont cache -> FileNotFoundError (plan_spec maps to NO_CACHE)."""
+    d = tmp_path / "cache"
+    d.mkdir()
+    with pytest.raises(FileNotFoundError):
+        dfac.load_interval_bars("MES", "5m", d)
+
+
 # --------------------------------------------------------------------------- grid
 def test_grid_cartesian_product():
     g = grid(fast=[8, 12], slow=[24, 36])

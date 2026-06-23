@@ -373,8 +373,36 @@ def default_registry() -> list[StrategySpec]:
 # Data loading (interval-agnostic; mirrors run_mes_trend_15m_rank1._load_data)
 # ---------------------------------------------------------------------------
 def load_interval_bars(symbol: str, interval: str, cache_dir: Path) -> pd.DataFrame:
-    """Load the freshest cached bars for (symbol, interval) -- any interval."""
-    data_file = _find_latest_cache(Path(cache_dir), symbol, suffix=f"_{interval}.csv")
+    """Load the freshest cached bars for (symbol, interval) -- any interval.
+
+    Accepts both the bare ``_<interval>.csv`` cache and the roll-adjusted
+    continuous ``_<interval>_cont.csv`` cache. Intraday futures (5m/15m for
+    MGC/MNQ) are frequently only cached as continuous contracts, which the bare
+    suffix would miss. The freshest end-date wins across both candidates; on an
+    exact end-date tie the ``_cont`` (roll-adjusted) file is preferred because
+    it is the more correct series for backtesting across contract rolls. The two
+    globs (``_<interval>.csv`` vs ``_<interval>_cont.csv``) are disjoint, so a
+    symbol with only one variant is unaffected.
+    """
+    cache_dir = Path(cache_dir)
+    candidates: list[Path] = []
+    for suffix in (f"_{interval}.csv", f"_{interval}_cont.csv"):
+        try:
+            candidates.append(_find_latest_cache(cache_dir, symbol, suffix=suffix))
+        except FileNotFoundError:
+            continue
+    if not candidates:
+        raise FileNotFoundError(
+            f"No {symbol} {interval} cache (bare '_{interval}.csv' or continuous "
+            f"'_{interval}_cont.csv') found in {cache_dir}"
+        )
+
+    def _freshness_key(p: Path) -> tuple[str, bool]:
+        parts = p.stem.split("_")
+        end_date = parts[2] if len(parts) >= 3 else ""
+        return (end_date, p.stem.endswith("_cont"))  # tie -> prefer _cont
+
+    data_file = max(candidates, key=_freshness_key)
     df = pd.read_csv(data_file)
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
