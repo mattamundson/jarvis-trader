@@ -1,7 +1,31 @@
 # Proposal: a beta-harvest gate variant + a systematic-strategy promotion path
 
-**Date:** 2026-06-24 · **Status:** PROPOSAL — Tier-3, awaiting Amo. JARVIS does not flip gate
-policy. Evidence: `SESSION_ANOMALY_FINDINGS.md` (SPY 33yr) + `session_anomaly_backtest.validate_tom`.
+**Date:** 2026-06-24 · **Status:** MECHANISM BUILT (default-off) — Tier-3 ACTIVATION awaiting Amo.
+JARVIS does not flip gate policy. Evidence: `SESSION_ANOMALY_FINDINGS.md` (SPY 33yr) +
+`session_anomaly_backtest.validate_tom`.
+
+## Implementation status (2026-06-24)
+
+Both mechanisms are now CODE — additive, default-off, reversible, TDD'd (53 tests green, ruff
+clean). Nothing trades and no existing verdict changes until Amo performs the single activation
+flip described under each. Verified end-to-end on real SPY 33yr data:
+`gate_v2_beta_harvest_verdict(beta_sized_TOM)` → **PASS (reclassified)**, because the canonical
+`compute_gate_v2` core FAILs on EXACTLY one criterion (p_edge 0.618), TOM clears the lower floor
+(0.618 ≥ 0.60) and is stationary (H1/H2 PF > 1).
+
+- **Problem 1 (beta-harvest variant):** `session_anomaly_backtest.gate_v2_beta_harvest_verdict()`
+  — a WRAPPER that never modifies `compute_gate_v2`; it reclassifies a canonical FAIL to PASS only
+  when the sole failing core criterion is p_edge AND p_edge ≥ `BETA_HARVEST_P_EDGE_MIN` (0.60) AND
+  the series is stationary. `grade_returns(..., beta_harvest=True)` lowers the module-gate p_edge
+  floor identically. **Amo activation:** route a `beta_harvest`-tagged strategy's promotion read
+  through `gate_v2_beta_harvest_verdict` (no flag exists yet — wiring it is the explicit Tier-3 step).
+- **Problem 2 (systematic promotion path):** `live_promotion_gate.evaluate_promotion()` honors a
+  new `decision_mode` field (default `"ensemble"`, unchanged). `"systematic"` makes the
+  `ensemble_not_subneutral` pillar N/A (substituted by the already-required robust_edge +
+  per_window_adequate). `turn_of_month_current_evidence()` now sets `decision_mode="systematic"`,
+  so TOM no longer blocks on the ensemble pillar — but is STILL correctly BLOCKED on robust_edge,
+  paper_shadow_passed, and live_system_stable. **Amo activation:** none needed for the mechanism;
+  promotion still requires populating `PROMOTED_STRATEGIES` + `PROMOTION_GATE_ENFORCE` (Tier-3).
 
 ## The trigger
 

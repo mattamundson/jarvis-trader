@@ -339,5 +339,133 @@ def test_tom_is_tracked_but_blocked_candidate():
     assert "robust_edge" in result["blocks"]
 
 
+# ── beta-harvest CANONICAL-gate wrapper (reclassifies compute_gate_v2) ────────
+
+
+def _fake_verdict(*, p_edge=0.62, fail_pf_ci=False):
+    core = [
+        ("FAIL pf_ci_lower=1.02 >= 1.1" if fail_pf_ci else "pf_ci_lower=1.17 >= 1.1"),
+        f"FAIL p_edge={p_edge:.3f} >= 0.95",
+        "mc_95th_dd_pct=4.57 <= 5.0",
+        "dsr=1.000000 >= 0.1",
+    ]
+    return {"verdict": "FAIL", "p_edge": p_edge, "pf_ci_lower": 1.17, "core_reasons": core}
+
+
+def test_beta_harvest_verdict_reclassifies_p_edge_only_fail(monkeypatch):
+    import backtest.session_anomaly_backtest as sab
+
+    monkeypatch.setattr(sab, "gate_v2_verdict", lambda r, **k: dict(_fake_verdict()))
+    out = sab.gate_v2_beta_harvest_verdict(_stationary_p_edge_series())  # stationary
+    assert out["verdict"] == "PASS"
+    assert out["beta_harvest_reclassified"] is True
+
+
+def test_beta_harvest_verdict_does_not_rescue_multi_criterion_fail(monkeypatch):
+    import backtest.session_anomaly_backtest as sab
+
+    monkeypatch.setattr(sab, "gate_v2_verdict", lambda r, **k: dict(_fake_verdict(fail_pf_ci=True)))
+    out = sab.gate_v2_beta_harvest_verdict(_stationary_p_edge_series())
+    assert out["verdict"] == "FAIL"  # pf_ci also fails -> not a p_edge-only rescue
+    assert out["beta_harvest_reclassified"] is False
+
+
+def test_beta_harvest_verdict_requires_stationarity(monkeypatch):
+    import backtest.session_anomaly_backtest as sab
+
+    monkeypatch.setattr(sab, "gate_v2_verdict", lambda r, **k: dict(_fake_verdict()))
+    # Non-stationary (all losses in the 2nd half) -> the substitute fails -> no rescue.
+    r = _stationary_p_edge_series(losing_months=(13, 14, 15, 16, 17, 18, 19, 20, 21))
+    out = sab.gate_v2_beta_harvest_verdict(r)
+    assert out["verdict"] == "FAIL"
+    assert out["beta_harvest_reclassified"] is False
+
+
+def test_beta_harvest_verdict_requires_p_edge_above_floor(monkeypatch):
+    import backtest.session_anomaly_backtest as sab
+
+    # p_edge below even the 0.60 floor -> no rescue.
+    monkeypatch.setattr(sab, "gate_v2_verdict", lambda r, **k: dict(_fake_verdict(p_edge=0.40)))
+    out = sab.gate_v2_beta_harvest_verdict(_stationary_p_edge_series())
+    assert out["verdict"] == "FAIL"
+
+
+def test_beta_harvest_verdict_passes_through_an_already_passing_gate(monkeypatch):
+    import backtest.session_anomaly_backtest as sab
+
+    monkeypatch.setattr(
+        sab,
+        "gate_v2_verdict",
+        lambda r, **k: {"verdict": "PASS", "p_edge": 1.0, "core_reasons": []},
+    )
+    out = sab.gate_v2_beta_harvest_verdict(_stationary_p_edge_series())
+    assert out["verdict"] == "PASS"
+    assert out["beta_harvest_reclassified"] is False  # didn't need the variant
+
+
+# ── beta-harvest gate variant (Tier-3 p_edge floor) ──────────────────────────
+
+
+def _stationary_p_edge_series(losing_months=(1, 4, 7, 10, 13, 16, 19), n_months=24):
+    """Daily-return series with ~70% of monthly windows profitable and both halves
+    individually positive (stationary). Winning months are all-positive (PF capped
+    high); losing months are all-negative (PF 0). p_edge = (n_months-len(losers))/n.
+    """
+    idx, vals = [], []
+    base = pd.Timestamp("2010-01-01")
+    for m in range(n_months):
+        start = base + pd.DateOffset(months=m)
+        days = pd.bdate_range(start, start + pd.offsets.MonthEnd(0))
+        losing = m in losing_months
+        for d in days:
+            idx.append(str(d.date()))
+            vals.append(-0.0004 if losing else 0.0010)
+    return pd.Series(vals, index=idx)
+
+
+def test_beta_harvest_uses_lower_p_edge_floor():
+    from backtest.session_anomaly_backtest import grade_returns
+
+    r = _stationary_p_edge_series()  # p_edge = 17/24 ≈ 0.708, stationary
+    default = grade_returns("x", r, beta_harvest=False)
+    bh = grade_returns("x", r, beta_harvest=True)
+    assert 0.60 <= default.p_edge < 0.95
+    assert default.stationary is True
+    # Default (intraday-WFO) floor 0.95 blocks; beta-harvest floor 0.60 clears.
+    assert any("p_edge" in b for b in default.blocks)
+    assert not any("p_edge" in b for b in bh.blocks)
+
+
+def test_beta_harvest_floor_still_exists():
+    from backtest.session_anomaly_backtest import grade_returns
+
+    # p_edge below 0.60 blocks even under the beta-harvest variant (it lowers the
+    # floor, it does not remove it).
+    r = _stationary_p_edge_series(losing_months=tuple(range(13)))  # 13 losers -> p_edge ~0.458
+    bh = grade_returns("x", r, beta_harvest=True)
+    assert bh.p_edge < 0.60
+    assert any("p_edge" in b for b in bh.blocks)
+
+
+def test_beta_harvest_still_requires_stationarity():
+    from backtest.session_anomaly_backtest import grade_returns
+
+    # All losses concentrated in the second half -> H2 PF < 1 -> non-stationary.
+    # The beta-harvest variant must STILL block (stationarity is the substitute for
+    # the 0.95 p_edge bar, not waived).
+    r = _stationary_p_edge_series(losing_months=(13, 14, 15, 16, 17, 18, 19, 20, 21))
+    bh = grade_returns("x", r, beta_harvest=True)
+    assert bh.stationary is False
+    assert any("non-stationary" in b for b in bh.blocks)
+
+
+def test_beta_harvest_default_off_is_byte_for_byte_unchanged():
+    from backtest.session_anomaly_backtest import grade_returns
+
+    r = _stationary_p_edge_series()
+    # Omitting the flag must equal beta_harvest=False (additive, default-off).
+    assert grade_returns("x", r).blocks == grade_returns("x", r, beta_harvest=False).blocks
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
