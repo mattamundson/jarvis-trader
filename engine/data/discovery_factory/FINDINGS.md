@@ -1,6 +1,6 @@
 # Discovery-factory findings
 
-_42 specs synthesized | 1 deployable PASS (>= 30 trades) | 1 under-sampled PASS | 7 near-miss (FAIL w/ adequate sample, PF>=1.10, DSR>=0.10)_
+_46 specs synthesized | 1 deployable PASS (>= 30 trades) | 1 under-sampled PASS | 7 near-miss (FAIL w/ adequate sample, PF>=1.10, DSR>=0.10)_
 
 ```
 LABEL                      VERDICT             TRADES   PF_LO  P_EDGE     DSR    DD% WFO      
@@ -19,15 +19,19 @@ MGC_sma_trend_rv_mid_PROBE_1h FAIL                    38   1.778   0.611   0.000
 MGC_sma_trend_rv_t4_PROBE_1h FAIL                    70   1.607   0.632   0.000   1.59 MODERATE 
 MES_sma_trend_1h           FAIL                    20   1.565   0.571   0.000   0.98 MODERATE 
 MGC_sma_trend_15m          FAIL                   293   1.116   0.583   0.000   5.37 MODERATE 
+MGC_sma_trend_rv_5m        FAIL                   302   1.001   0.583   0.000   5.69 MODERATE 
+MGC_sma_trend_rv_15m       FAIL                   178   0.991   0.583   0.000   5.17 MODERATE 
 MGC_bollinger_rsi_1h       FAIL                   173   0.981   0.500   0.000   5.33 WEAK     
 MES_donchian_5m            FAIL                   238   0.940   0.700   0.000   5.83 MODERATE 
 MNQ_bollinger_rsi_5m       FAIL                   263   0.911   0.636   0.000   5.87 MODERATE  !DNT
 MES_atr_channel_1h         FAIL                   267   0.891   0.500   0.000   4.28 WEAK     
+MES_sma_trend_rv_5m        FAIL                   266   0.885   0.600   0.000   5.66 MODERATE 
 MNQ_donchian_5m            FAIL                   353   0.885   0.727   0.000   5.69 MODERATE  !DNT
 MNQ_donchian_breakout_15m  FAIL                   806   0.774   0.545   0.000   5.48 WEAK      !DNT
 MES_orb_15m                FAIL                   186   0.732   0.444   0.000   5.42 WEAK     
 MES_sma_trend_15m          FAIL                   409   0.728   0.500   0.000   5.61 WEAK     
 MES_donchian_1h            FAIL                   201   0.689   0.350   0.000   3.36 WEAK     
+MES_sma_trend_rv_15m       FAIL                   234   0.666   0.389   0.000   5.42 WEAK     
 MNQ_donchian_15m           FAIL                   220   0.656   0.364   0.000   5.43 WEAK      !DNT
 MGC_bollinger_rsi_15m      FAIL                   291   0.650   0.333   0.000   5.76 WEAK     
 MGC_donchian_breakout_1h   FAIL                   660   0.621   0.400   0.000   5.13 WEAK     
