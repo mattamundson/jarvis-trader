@@ -27,6 +27,7 @@ from backtest.discovery_factory import (
     grid,
     plan_spec,
 )
+from backtest.donchian_signals import generate_donchian_signals
 from backtest.trend_signals import generate_sma_trend_signals
 
 _HEADER = "timestamp,open,high,low,close,volume\n"
@@ -176,7 +177,7 @@ def test_rv_filtered_trend_specs_registered():
 def test_drawdown_attack_specs_registered():
     """DD specs use the robust slow in {48,72} grid + a lowered risk_per_trade."""
     reg = default_registry()
-    dd = [s for s in reg if "drawdown_attack" in s.tags]
+    dd = [s for s in reg if "drawdown_attack" in s.tags and "donchian" not in s.tags]
     assert {s.label for s in dd} == {
         "MGC_sma_trend_dd_5m",
         "MGC_sma_trend_dd_15m",
@@ -193,6 +194,32 @@ def test_drawdown_attack_specs_registered():
         slows = {c["slow"] for c in s.param_grid}
         assert slows == {48, 72}, "robust grid excludes the whipsaw slow=24 region"
         assert all(c["fast"] in (12, 16, 20) for c in s.param_grid)
+        assert s.min_oos_trades_per_window == 3
+
+
+def test_donchian_drawdown_attack_band_registered():
+    """Donchian dd specs sweep a risk BAND on the baseline (robust) donchian grid.
+
+    The robustness test for the cleanest non-blocked near-miss: a genuine PASS
+    must hold across the whole 0.004/0.005/0.006 band, not at one knife-edge size.
+    """
+    reg = default_registry()
+    don = [s for s in reg if "drawdown_attack" in s.tags and "donchian" in s.tags]
+    by_label = {s.label: s for s in don}
+    assert set(by_label) == {
+        "MGC_donchian_dd_lo_15m",
+        "MGC_donchian_dd_15m",
+        "MGC_donchian_dd_hi_15m",
+    }
+    assert by_label["MGC_donchian_dd_lo_15m"].risk_per_trade == 0.004
+    assert by_label["MGC_donchian_dd_15m"].risk_per_trade == 0.005
+    assert by_label["MGC_donchian_dd_hi_15m"].risk_per_trade == 0.006
+    for s in don:
+        assert s.signal_fn is generate_donchian_signals
+        # baseline donchian grid -- fixed_params_min_pf already 2.38, no surgery
+        entries = {c["lookback_entry"] for c in s.param_grid}
+        exits = {c["lookback_exit"] for c in s.param_grid}
+        assert entries == {20, 40} and exits == {10, 20}
         assert s.min_oos_trades_per_window == 3
 
 

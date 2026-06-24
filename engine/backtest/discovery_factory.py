@@ -334,8 +334,13 @@ def _drawdown_attack_specs() -> list[StrategySpec]:
     # variant at 0.0025 is the decisive test: if mc_95th_dd drops <=4%, ALT PASSES.
     # risk 0.005 -> DD 5.42% fails / dsr 0.40 ok; risk 0.0025 -> DD 2.23% ok /
     # dsr 0.0 fails (the max_drawdown breaker couples sizing to trade selection,
-    # so dsr is NOT scale-invariant here). dd_mid at 0.0035 probes the DD=4%
-    # crossover to verify no single risk satisfies BOTH dsr>=0.3 AND DD<=4%.
+    # so dsr is NOT scale-invariant here). dd_mid at 0.0035 PASSES ALT
+    # (DD 3.997% <=4, dsr 0.9999, pf_lo 1.385) -- but it is a KNIFE-EDGE: dsr is
+    # wildly non-monotonic across the three sizes (0.40 @0.005 -> 1.0 @0.0035 ->
+    # 0.0 @0.0025) because the breaker reselects the per-window champion at each
+    # size, and DD clears by only 0.003%. A pass found at exactly one of three
+    # tuned risk values, with a razor-thin DD margin, is gate-threading, not a
+    # robust edge. Treat it as a fragile artifact -- see DRAWDOWN_ATTACK_FINDINGS.
     plan = [
         ("MGC", "5m", 0.005, "sma_trend_dd"),
         ("MGC", "15m", 0.005, "sma_trend_dd"),
@@ -355,6 +360,54 @@ def _drawdown_attack_specs() -> list[StrategySpec]:
             min_oos_trades_per_window=3,
             risk_per_trade=risk,
             tags=("intraday", "drawdown_attack", interval),
+        )
+        for symbol, interval, risk, family in plan
+    ]
+
+
+def _donchian_drawdown_attack_specs() -> list[StrategySpec]:
+    """MGC 15m donchian sized across a risk BAND to test PASS robustness.
+
+    MGC_donchian_15m is the cleanest non-blocked near-miss the factory has
+    surfaced: at risk_per_trade=0.01 it fails ALT on EXACTLY ONE condition --
+    mc_95th_dd=5.55% (need <=4%) -- while every edge metric clears with margin:
+    dsr=1.0 (vs 0.30 floor), fixed_params_min_pf=2.38 (vs 1.20 floor, every
+    grid combo profitable), wfo_consistency MODERATE, cost survives catastrophic
+    tiers, pf_ci_lower=1.533. The single failing condition is a risk-budget
+    question, not an edge question: drawdown% scales with size.
+
+    The trend dd_mid result taught the methodology lesson -- a pass at one tuned
+    risk value is a knife-edge artifact, because the max_drawdown breaker makes
+    the per-window champion (hence dsr) discontinuous in size. So this does NOT
+    chase a single passing size. It runs a BAND (0.004 / 0.005 / 0.006, all of
+    which put 5.55% baseline DD comfortably <4%) and asks the honest question:
+    does the ALT PASS hold across the WHOLE band, or only at a point?
+      * Holds across the band -> a genuine, robust, deployable-at-reduced-size
+        candidate (still human-promotion-gated).
+      * Holds at only one size -> another fragile artifact; report as such.
+
+    Grid mirrors the baseline donchian grid (fixed_params_min_pf already 2.38,
+    so no grid surgery is warranted or honest here).
+    """
+    grid_donchian = grid(lookback_entry=[20, 40], lookback_exit=[10, 20], atr_trail_mult=[2.0, 2.5])
+    plan = [
+        ("MGC", "15m", 0.004, "donchian_dd_lo"),
+        ("MGC", "15m", 0.005, "donchian_dd"),
+        ("MGC", "15m", 0.006, "donchian_dd_hi"),
+    ]
+    return [
+        StrategySpec(
+            symbol,
+            family,
+            interval,
+            generate_donchian_signals,
+            grid_donchian,
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            risk_per_trade=risk,
+            tags=("intraday", "drawdown_attack", "donchian", interval),
         )
         for symbol, interval, risk, family in plan
     ]
@@ -608,6 +661,7 @@ def default_registry() -> list[StrategySpec]:
         + _orb_frontier_specs()
         + _rv_filtered_trend_specs()
         + _drawdown_attack_specs()
+        + _donchian_drawdown_attack_specs()
     )
 
 
