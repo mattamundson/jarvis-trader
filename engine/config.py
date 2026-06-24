@@ -226,6 +226,15 @@ class TradingConfig(BaseSettings):
     # ── Trade Management Rules ─────────────────────────────────────────
     REENTRY_LOCKOUT_MINUTES: int = 240  # 4-hour lockout after stop-out
     BREAKEVEN_STOP_ATR_MULT: float = 0.50  # Move stop to BE after +0.50x ATR gain
+    TRAILING_STOP_ATR_MULT: float = Field(
+        2.0,
+        description=(
+            "ATR multiplier for the live trailing-stop service. Stop distance = "
+            "TRAILING_STOP_ATR_MULT * ATR(14, 1h). Default 2.0 matches the "
+            "atr_trail_mult used in trend_signals.py backtests. Tune here to "
+            "keep live behaviour in sync with backtested strategy parameters."
+        ),
+    )
     SESSION_FLATTEN_TIME_ET: str = "15:45"  # Flatten all positions at 3:45 PM ET
     MCL_INVENTORY_BLACKOUT_MINUTES: int = (
         45  # EIA blackout: 15min before + 30min after Wed 10:30 ET
