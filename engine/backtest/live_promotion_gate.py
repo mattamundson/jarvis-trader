@@ -157,10 +157,21 @@ def turn_of_month_current_evidence() -> dict[str, Any]:
     TOM is a SYSTEMATIC strategy — it does NOT route through the LLM agent ensemble,
     so it sets ``decision_mode="systematic"`` and the ``ensemble_not_subneutral``
     pillar is N/A (substituted by the OOS backtest-power pillars). TOM is STILL
-    correctly BLOCKED — on ``robust_edge`` (BH-FDR not crossed), the forward
-    paper-shadow, and live-system stability — so the systematic path does not
-    promote it; it only removes a pillar that never applied. The strongest backtest
-    evidence of the arc, still gated.
+    correctly BLOCKED — on ``robust_edge``, the forward paper-shadow, and live-system
+    stability — so the systematic path does not promote it; it only removes a pillar
+    that never applied.
+
+    NOTE on ``robust_edge`` (pre-registered-hypothesis caveat, 2026-06-24): the family
+    BH-FDR behind ``robust_edge`` exists to penalize the discovery factory's ~38 SWEPT
+    candidates for multiple testing (family_fdr.py). TOM is a single PRE-REGISTERED
+    hypothesis — it was never a member of that family, so crossing the family FDR is the
+    wrong bar for it (it would be penalized for OTHER candidates' data-mining). TOM's
+    honest validity rests instead on (a) the forward paper-shadow holding out-of-sample
+    and (b) cross-index robustness. The cross-index check ran (TOM_CROSS_INDEX_RESULTS.md)
+    and came back PARTIAL — corroborated in SPY/QQQ/MDY (large/tech/mid) but NOT across the
+    full complex (3/6; small-cap + intl lose stationarity). So ``robust_edge`` stays False
+    as the conservative state, and the forward shadow is the decisive arbiter — NOT a
+    family-FDR pass it was never eligible for.
     """
     return {
         "strategy_id": "MES_turn_of_month",
