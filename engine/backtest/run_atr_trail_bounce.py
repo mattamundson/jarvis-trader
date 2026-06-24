@@ -81,6 +81,20 @@ def _load(symbol: str, timeframe: str, data_file: str | None) -> pd.DataFrame:
     missing = required - set(df.columns)
     if missing:
         raise SystemExit(f"Missing columns in {path.name}: {missing}")
+    # The Backtester groups bars by .date() for the daily-loss limit, so it needs
+    # a DatetimeIndex. Without one, every backtest raises
+    # "'int' object has no attribute 'date'" — which the runner's broad
+    # `except Exception: continue` silently swallows, making every param set look
+    # like it produced 0 trades ("too rare on this data"). Parse the timestamp.
+    for tcol in ("timestamp", "datetime", "date", "time"):
+        if tcol in df.columns:
+            df.index = pd.to_datetime(df[tcol], utc=True)
+            break
+    else:
+        raise SystemExit(
+            f"No timestamp/datetime column in {path.name}; the Backtester needs a "
+            f"DatetimeIndex. Columns: {list(df.columns)}"
+        )
     return df
 
 
@@ -91,10 +105,7 @@ def _grid_for(mode: str) -> list[dict]:
     if mode == "confluence":
         # flip base + prior-session value-area gate; sweep factor x strictness
         return [{"factor": f, "strict_confluence": s} for f in FACTOR_GRID for s in (False, True)]
-    return [
-        {"factor": f, "hold_bars": h, "touch_tol_atr": t}
-        for f, h, t in PARAM_GRID
-    ]
+    return [{"factor": f, "hold_bars": h, "touch_tol_atr": t} for f, h, t in PARAM_GRID]
 
 
 def _signals_for(mode: str, df: pd.DataFrame, params: dict):
@@ -102,12 +113,18 @@ def _signals_for(mode: str, df: pd.DataFrame, params: dict):
         return generate_atr_trail_flip_signals(df, atr_period=ATR_PERIOD, factor=params["factor"])
     if mode == "confluence":
         return generate_atr_trail_confluence_signals(
-            df, atr_period=ATR_PERIOD, factor=params["factor"],
-            base="flip", strict_confluence=params["strict_confluence"],
+            df,
+            atr_period=ATR_PERIOD,
+            factor=params["factor"],
+            base="flip",
+            strict_confluence=params["strict_confluence"],
         )
     return generate_atr_trail_bounce_signals(
-        df, atr_period=ATR_PERIOD, factor=params["factor"],
-        hold_bars=params["hold_bars"], touch_tol_atr=params["touch_tol_atr"],
+        df,
+        atr_period=ATR_PERIOD,
+        factor=params["factor"],
+        hold_bars=params["hold_bars"],
+        touch_tol_atr=params["touch_tol_atr"],
     )
 
 
@@ -126,8 +143,11 @@ def _backtest(df: pd.DataFrame, symbol: str, mode: str, params: dict):
         # opposite flip (exit_signal=EXIT_NOW) with a trailing stop, no fixed
         # targets, hold overnight, 1 contract — the SMA-trend harness convention.
         kwargs.update(
-            use_targets=False, eod_close=False, fixed_contracts=1,
-            trailing_stop=True, strict_trailing=True,
+            use_targets=False,
+            eod_close=False,
+            fixed_contracts=1,
+            trailing_stop=True,
+            strict_trailing=True,
         )
     bt = Backtester(**kwargs)
     return bt.run(sig, symbol=symbol, multiplier=MULTIPLIERS.get(symbol, 1.0))
@@ -164,7 +184,12 @@ def _make_walkforward_fn(symbol: str, mode: str):
         params, _ = optimize_fn(df.iloc[:train_window])
         if not params:
             return 0.0
-        oos = df.iloc[train_window:].reset_index(drop=True)
+        # Keep the DatetimeIndex on the OOS slice — the Backtester groups by
+        # .date() for the daily-loss limit. reset_index(drop=True) would replace
+        # it with a RangeIndex, crash the backtest, get swallowed by the
+        # `except` below (-> 0.0), and silently fail the walk-forward gate for
+        # every strategy. (See test_walkforward_oos_preserves_datetime_index.)
+        oos = df.iloc[train_window:]
         try:
             res = _backtest(oos, symbol, mode, params)
         except Exception:
@@ -224,10 +249,14 @@ def main() -> None:
     ap.add_argument("--symbol", default="MES")
     ap.add_argument("--timeframe", default="1h")
     ap.add_argument("--data-file", default=None)
-    ap.add_argument("--mode", choices=["bounce", "flip", "confluence", "both", "all"], default="all",
-                    help="bounce = tag+reclaim+hold; flip = TOS LE/SE stop-and-reverse; "
-                         "confluence = flip + prior-session value-area gate; "
-                         "both = bounce+flip; all = bounce+flip+confluence")
+    ap.add_argument(
+        "--mode",
+        choices=["bounce", "flip", "confluence", "both", "all"],
+        default="all",
+        help="bounce = tag+reclaim+hold; flip = TOS LE/SE stop-and-reverse; "
+        "confluence = flip + prior-session value-area gate; "
+        "both = bounce+flip; all = bounce+flip+confluence",
+    )
     ap.add_argument("--train-window", type=int, default=2000, help="bars for MCPT in-sample")
     ap.add_argument("--insample-perms", type=int, default=200)
     ap.add_argument("--walkforward-perms", type=int, default=200)
