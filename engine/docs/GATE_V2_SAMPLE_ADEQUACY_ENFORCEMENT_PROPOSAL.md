@@ -71,16 +71,26 @@ signal blocks them in the family-FDR *campaign report* (`robust_edge`), but that
 — it does **not** gate live authorization. So there is a latent risk: two per-window-degenerate
 strategies could authorize MGC trend trades.
 
-**Recommended follow-on (code, JARVIS can build in shadow mode):** add
-`GATE_V2_ENFORCE_PER_WINDOW` wired into `_compute_gate_v2` so a strategy whose median window is
-below `MIN_OOS_TRADES_PER_WINDOW (5)` returns `INSUFFICIENT_SAMPLE`. Shadow-default (records but
-doesn't gate) like the aggregate flag, so flipping it on is a second reversible `.env` decision for
-Amo. Impact preview if enforced today: `trend_rank4` and `trend_adx_filter_rank1` → INSUFFICIENT_SAMPLE;
+**Follow-on — NOW BUILT (shadow mode, commit `710784a`):** `GATE_V2_ENFORCE_PER_WINDOW` +
+`per_window_sample_adequate()` are wired into `study_wfo_runner._compute_gate_v2`. A strategy whose
+median window is below `MIN_OOS_TRADES_PER_WINDOW (5)` returns `INSUFFICIENT_SAMPLE` when the flag is
+set. Shadow-default OFF (records `median_oos_trades_per_window` / `per_window_adequate` but does not
+gate) — zero behavior change to existing verdicts until Amo flips it. 9 tests, ruff clean. Impact
+preview if enforced (on re-run): `trend_rank4` / `trend_adx_filter_rank1` → INSUFFICIENT_SAMPLE;
 singlefinder (median 60) unaffected.
+
+**The change (Amo runs, after reviewing):**
+```
+# engine/.env
+GATE_V2_ENFORCE_PER_WINDOW=1
+```
+Note: this gates at verdict-GENERATION time, so it affects strategies on their next WFO re-run; it
+does not retroactively rewrite stored verdict JSONs.
 
 ## Recommendation
 
 - **Approve Part 1 now** — it is strictly safe and removes one false-PASS mirage from the
   authorization path.
-- **Authorize JARVIS to build Part 2 in shadow mode** so the per-window mirages can be de-authorized
-  with a second `.env` flip after you review the (identical-shape, equally reversible) impact set.
+- **Part 2 is now BUILT** (shadow mode, `710784a`) — review the per-window impact set, then flip
+  `GATE_V2_ENFORCE_PER_WINDOW=1` to also de-authorize the per-window mirages (`trend_rank4`,
+  `trend_adx_filter`). Identical-shape, equally reversible.
