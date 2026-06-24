@@ -332,10 +332,15 @@ def _drawdown_attack_specs() -> list[StrategySpec]:
     # already fixed (1.51) by the robust grid, and dsr/cost/wfo all clear. Since
     # drawdown scales with risk while those are scale-invariant, the dd_lo 5m
     # variant at 0.0025 is the decisive test: if mc_95th_dd drops <=4%, ALT PASSES.
+    # risk 0.005 -> DD 5.42% fails / dsr 0.40 ok; risk 0.0025 -> DD 2.23% ok /
+    # dsr 0.0 fails (the max_drawdown breaker couples sizing to trade selection,
+    # so dsr is NOT scale-invariant here). dd_mid at 0.0035 probes the DD=4%
+    # crossover to verify no single risk satisfies BOTH dsr>=0.3 AND DD<=4%.
     plan = [
         ("MGC", "5m", 0.005, "sma_trend_dd"),
         ("MGC", "15m", 0.005, "sma_trend_dd"),
         ("MGC", "5m", 0.0025, "sma_trend_dd_lo"),
+        ("MGC", "5m", 0.0035, "sma_trend_dd_mid"),
     ]
     return [
         StrategySpec(

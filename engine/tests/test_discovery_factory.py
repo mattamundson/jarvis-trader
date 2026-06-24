@@ -181,11 +181,12 @@ def test_drawdown_attack_specs_registered():
         "MGC_sma_trend_dd_5m",
         "MGC_sma_trend_dd_15m",
         "MGC_sma_trend_dd_lo_5m",
+        "MGC_sma_trend_dd_mid_5m",
     }
     by_label = {s.label: s for s in dd}
-    # The dd_lo 5m variant sizes down further (0.0025) to attack the last failing
-    # ALT condition (mc_95th_dd); the rest use 0.005.
+    # Three 5m risk levels probe the dsr/drawdown tradeoff: 0.005 / 0.0035 / 0.0025.
     assert by_label["MGC_sma_trend_dd_lo_5m"].risk_per_trade == 0.0025
+    assert by_label["MGC_sma_trend_dd_mid_5m"].risk_per_trade == 0.0035
     assert by_label["MGC_sma_trend_dd_5m"].risk_per_trade == 0.005
     for s in dd:
         assert s.risk_per_trade <= 0.005, "must size down to fit the drawdown budget"
