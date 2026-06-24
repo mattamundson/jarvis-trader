@@ -115,6 +115,26 @@ promotion gate — not a raw unhedged long. Overnight drift is confirmed real bu
 standalone deployment** (per-trade edge ≈ transaction cost). This is a regime-NEUTRAL-by-design
 direction (the meta-finding's prescription), now with empirical support.
 
+## Productionization (TOM → candidate) — `validate_tom`
+
+Re-run via `python -m backtest.session_anomaly_backtest --validate-tom`.
+
+- **MES transfer confirmed:** turn-of-month on the actual tradeable (MES, net of real MES cost)
+  is Sharpe 0.52, PF 1.10, +3.03 bps/day — positive and consistent with the SPY result (the lower
+  Sharpe is the 20-month sample, not a transfer failure).
+- **Beta-sizing works:** scaling net TOM by 0.263 brings max-DD from 19% to **5.23%**, so the
+  deployable form clears the gate's `mc_95th_dd ≤ 5%` ceiling.
+- **Rigorous gate-v2 (canonical `compute_gate_v2`, SPY 33yr yearly windows), beta-sized net form:**
+  `pf_ci=1.172 ✓  dsr=1.000 ✓  mc95_dd=0.0457 ✓  wfo=MODERATE`. **FAILs the core path on a single
+  criterion — `p_edge 0.618 < 0.95`** — and the ALT path on `fixed_params_min_pf 1.15 < 1.20`.
+
+The `p_edge ≥ 0.95` bar (95% of annual windows profitable) is structurally unmeetable for a
+long-beta harvest. Two Tier-3 questions for Amo (a beta-harvest gate variant + a systematic-strategy
+promotion path) are written up in `BETA_HARVEST_GATE_PROPOSAL.md`. TOM is now a **tracked
+promotion-gate candidate** (`live_promotion_gate.turn_of_month_current_evidence`) — correctly
+BLOCKED pending the forward paper-shadow + live-system stability + those two policy decisions, but
+it carries the strongest backtest evidence of the arc.
+
 ## The one promising refinement (not yet run)
 
 The naive leg's two killers — 17% DD and H1 losses — are exactly what a **regime filter**
