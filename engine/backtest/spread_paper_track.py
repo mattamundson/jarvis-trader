@@ -1,14 +1,19 @@
-"""ES-NQ spread mean-reversion -- DARK forward paper track (observe-only).
+"""Relative-value spread mean-reversion -- DARK forward paper track (observe-only).
 
-The in-sample backtest (`spread_backtest.py`, see `data/spread_es_nq_results.md`)
-found a genuine but NON-STATIONARY edge: on 1h data the spread MR passes the pooled
-gate-v2 thresholds yet 100% of the profit is back-loaded into 2025-07+, so its
-persistence is unprovable on the 26-month / 7-window history available. The only honest
-resolution is out-of-sample TIME -- so this module records what the strategy WOULD do on
-live, forward bars, building a clean OOS record we can evaluate in a few months.
+The in-sample backtests (`spread_backtest.py` / `spread_pairs_scan.py`, see
+`data/spread_es_nq_results.md` and `data/spread_pairs_results.md`) found genuine but
+NON-STATIONARY edges across index-spread pairs: on 1h data they pass the pooled gate-v2
+thresholds yet the profit is back-loaded into the favorable 2025 regime, so persistence
+is unprovable on the 26-month / 7-window history available. The only honest resolution is
+out-of-sample TIME -- so this module records what each strategy WOULD do on live, forward
+bars, building clean OOS records we can evaluate in a few months.
 
-DARK = observe-only. It:
-  * pulls fresh MES+MNQ bars from the live engine's read-only /analyze/bars endpoint,
+Two pairs are tracked (PAIR_REGISTRY): the original **ES-NQ** (root ledger, kept for
+continuity) and **MES-M2K** (the stronger candidate found by the multi-pair scan -- its
+H1 half is genuinely profitable, where ES-NQ's loses), each in its own ledger subdir.
+
+DARK = observe-only. For each pair it:
+  * pulls fresh leg bars from the live engine's read-only /analyze/bars endpoint,
   * computes the spread z-score and the desired position with the SAME pure functions as
     the backtest (`compute_spread_z` / `step_position` -- single source of truth),
   * writes spread closed-trade records into an ISOLATED JSONL ledger (NOT the live DB),
@@ -50,6 +55,26 @@ from backtest.spread_backtest import (
 LINEAGE = "es_nq_spread_v1"
 SPREAD_SYMBOL = "ES_NQ_SPREAD"
 DEFAULT_BASE_URL = "http://127.0.0.1:8010"
+
+# Pairs forward-tracked each run. ES-NQ keeps the legacy root ledger (subdir="") for
+# continuity; MES-M2K (the stronger candidate per data/spread_pairs_results.md) gets its
+# own subdir. sym_a/sym_b are the engine /analyze/bars symbols (a=ES-leg, b=NQ-leg).
+PAIR_REGISTRY: dict[str, dict] = {
+    "ES-NQ": {
+        "sym_a": "MES",
+        "sym_b": "MNQ",
+        "symbol": "ES_NQ_SPREAD",
+        "lineage": "es_nq_spread_v1",
+        "subdir": "",
+    },
+    "MES-M2K": {
+        "sym_a": "MES",
+        "sym_b": "M2K",
+        "symbol": "MES_M2K_SPREAD",
+        "lineage": "mes_m2k_spread_v1",
+        "subdir": "MES-M2K",
+    },
+}
 # Synthetic dollar-neutral book: per-leg notional. pnl = net_spread_log_return * NOTIONAL.
 # A 1% spread move on the book ~= $200. This is a unit book for readability, NOT real
 # contract sizing (the backtest edge is execution-agnostic / return-based).
@@ -60,8 +85,10 @@ _CANONICAL_DATA = Path(r"C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\data")
 _ENGINE_ENV = Path(r"C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.env")
 
 
-def _track_dir(base: Path | None = None) -> Path:
+def _track_dir(base: Path | None = None, subdir: str = "") -> Path:
     d = (base or _CANONICAL_DATA) / "spread_paper_track"
+    if subdir:
+        d = d / subdir
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -88,12 +115,17 @@ def close_trade(
     ts: str,
     cost_bps_per_leg: float,
     notional: float,
+    pair_symbol: str = SPREAD_SYMBOL,
+    lineage: str = LINEAGE,
 ) -> dict:
     """Build a closed spread-trade record (build_windows-shaped) from the open `state`.
 
-    A +1 long-spread unit earns dlogES - dlogNQ since entry; -1 earns the negative. Cost
+    A +1 long-spread unit earns dlogA - dlogB since entry; -1 earns the negative. Cost
     is the full round trip: entry (2 legs) + exit (2 legs) = 4 leg-turns * cost_bps,
     matching the per-bar turn cost the backtest charges over an open->close cycle.
+
+    pair_symbol/lineage default to the ES-NQ track for backward compatibility; the
+    multi-pair orchestrator passes the per-pair values from PAIR_REGISTRY.
     """
     pos = state["position"]
     r_es = math.log(es / state["entry_es"])
@@ -102,7 +134,7 @@ def close_trade(
     cost_ret = 4.0 * (cost_bps_per_leg / 1e4)
     net_ret = gross_ret - cost_ret
     return {
-        "symbol": SPREAD_SYMBOL,
+        "symbol": pair_symbol,
         "direction": "long_spread" if pos == 1 else "short_spread",
         "entry_time": state["entry_time"],
         "exit_time": ts,
@@ -114,7 +146,7 @@ def close_trade(
         "exit_z": round(float(z_exit), 4),
         "ret": round(net_ret, 6),
         "pnl": round(net_ret * notional, 2),
-        "strategy_params": {"lineage": LINEAGE, **DEFAULT_PARAMS},
+        "strategy_params": {"lineage": lineage, **DEFAULT_PARAMS},
     }
 
 
@@ -127,6 +159,8 @@ def decide_transition(
     params: dict,
     cost_bps_per_leg: float = DEFAULT_COST_BPS_PER_LEG,
     notional: float = NOTIONAL_PER_LEG,
+    pair_symbol: str = SPREAD_SYMBOL,
+    lineage: str = LINEAGE,
 ) -> tuple[dict, str, dict | None]:
     """Pure transition: given the open `state` and the latest (z, prices, ts), return
     (new_state, event, closed_trade_or_None). event in {hold, in_position, open, close, flip}.
@@ -144,7 +178,7 @@ def decide_transition(
 
     closed = None
     if cur != 0:
-        closed = close_trade(state, es, nq, z, ts, cost_bps_per_leg, notional)
+        closed = close_trade(state, es, nq, z, ts, cost_bps_per_leg, notional, pair_symbol, lineage)
 
     if new_pos != 0:
         new_state.update(
@@ -229,29 +263,36 @@ def run_once(
     params: dict | None = None,
     cost_bps_per_leg: float = DEFAULT_COST_BPS_PER_LEG,
     track_base: Path | None = None,
+    pair: str = "ES-NQ",
 ) -> dict:  # pragma: no cover - orchestration over network + files
-    """One observe-only tick: fetch -> compute z -> transition -> persist. Idempotent
-    within an hour (skips if the latest bar timestamp was already processed)."""
+    """One observe-only tick for ONE pair: fetch -> compute z -> transition -> persist.
+    Idempotent within an hour (skips if the latest bar timestamp was already processed).
+
+    `pair` keys into PAIR_REGISTRY; ES-NQ keeps the legacy root ledger (subdir="") so its
+    live forward record is undisturbed, MES-M2K writes to its own subdir."""
     params = params or DEFAULT_PARAMS
-    td = _track_dir(track_base)
+    cfg = PAIR_REGISTRY[pair]
+    sym_a, sym_b = cfg["sym_a"], cfg["sym_b"]
+    td = _track_dir(track_base, cfg["subdir"])
     now = datetime.now(timezone.utc).isoformat()
     api_key = _read_api_key()
 
     try:
-        bars_es = fetch_bars("MES", base_url, api_key, tf)
-        bars_nq = fetch_bars("MNQ", base_url, api_key, tf)
+        bars_a = fetch_bars(sym_a, base_url, api_key, tf)
+        bars_b = fetch_bars(sym_b, base_url, api_key, tf)
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
-        obs = {"run_at": now, "event": "fetch_failed", "error": str(e)}
+        obs = {"run_at": now, "pair": pair, "event": "fetch_failed", "error": str(e)}
         _append_jsonl(td / "observations.jsonl", obs)
         return obs
 
-    aligned = align_latest(bars_es, bars_nq, params["window"])
+    aligned = align_latest(bars_a, bars_b, params["window"])
     if aligned is None:
         obs = {
             "run_at": now,
+            "pair": pair,
             "event": "insufficient_data",
-            "n_es": len(bars_es),
-            "n_nq": len(bars_nq),
+            "n_a": len(bars_a),
+            "n_b": len(bars_b),
         }
         _append_jsonl(td / "observations.jsonl", obs)
         return obs
@@ -262,6 +303,7 @@ def run_once(
     if state.get("last_bar_ts") == ts:
         obs = {
             "run_at": now,
+            "pair": pair,
             "event": "no_new_bar",
             "bar_ts": ts,
             "z": round(z, 4),
@@ -270,12 +312,23 @@ def run_once(
         _append_jsonl(td / "observations.jsonl", obs)
         return obs
 
-    new_state, event, closed = decide_transition(state, z, es, nq, ts, params, cost_bps_per_leg)
+    new_state, event, closed = decide_transition(
+        state,
+        z,
+        es,
+        nq,
+        ts,
+        params,
+        cost_bps_per_leg,
+        pair_symbol=cfg["symbol"],
+        lineage=cfg["lineage"],
+    )
     _save_state(td, new_state)
     if closed is not None:
         _append_jsonl(td / "closed_trades.jsonl", closed)
     obs = {
         "run_at": now,
+        "pair": pair,
         "bar_ts": ts,
         "event": event,
         "z": round(z, 4),
@@ -288,8 +341,8 @@ def run_once(
     return obs
 
 
-def load_closed_trades(track_base: Path | None = None) -> list[dict]:
-    p = _track_dir(track_base) / "closed_trades.jsonl"
+def load_closed_trades(track_base: Path | None = None, subdir: str = "") -> list[dict]:
+    p = _track_dir(track_base, subdir) / "closed_trades.jsonl"
     if not p.exists():
         return []
     out = []
@@ -303,17 +356,22 @@ def load_closed_trades(track_base: Path | None = None) -> list[dict]:
     return out
 
 
-def report(track_base: Path | None = None, window_days: int = 30) -> dict:
-    """Grade the forward record on the SAME gate-v2 bar as the rest of the campaign,
+def report(
+    track_base: Path | None = None,
+    window_days: int = 30,
+    subdir: str = "",
+    lineage: str = LINEAGE,
+) -> dict:
+    """Grade ONE pair's forward record on the SAME gate-v2 bar as the rest of the campaign,
     by reusing forward_test.build_windows / forward_stats over the isolated ledger."""
     from backtest.forward_test import build_windows, forward_stats
 
-    closed = load_closed_trades(track_base)
+    closed = load_closed_trades(track_base, subdir)
     windows = build_windows(closed, window_days)
     stats = forward_stats(windows)
     stats["n_closed_trades"] = len(closed)
     stats["total_pnl_dollars"] = round(sum(t.get("pnl", 0.0) for t in closed), 2)
-    return {"lineage": LINEAGE, "windows": windows, "stats": stats}
+    return {"lineage": lineage, "windows": windows, "stats": stats}
 
 
 def main() -> None:  # pragma: no cover - thin CLI
@@ -323,20 +381,30 @@ def main() -> None:  # pragma: no cover - thin CLI
     )
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL)
     ap.add_argument("--window-days", type=int, default=30)
+    ap.add_argument(
+        "--pair",
+        default=None,
+        help="run/report a single pair (default: all of PAIR_REGISTRY)",
+    )
     args = ap.parse_args()
+    pairs = [args.pair] if args.pair else list(PAIR_REGISTRY)
 
     if args.report:
-        rep = report(window_days=args.window_days)
-        print(json.dumps(rep["stats"], indent=2))
-        print(f"\nwindows ({len(rep['windows'])}):")
-        for w in rep["windows"]:
-            print(
-                f"  {w['start']}..{w['end']}: n={w['n_trades']} pf={w['pf']:.3f} pnl={w['pnl']:.2f}"
-            )
+        for pair in pairs:
+            cfg = PAIR_REGISTRY[pair]
+            rep = report(window_days=args.window_days, subdir=cfg["subdir"], lineage=cfg["lineage"])
+            print(f"\n=== {pair} ({cfg['lineage']}) ===")
+            print(json.dumps(rep["stats"], indent=2))
+            print(f"windows ({len(rep['windows'])}):")
+            for w in rep["windows"]:
+                print(
+                    f"  {w['start']}..{w['end']}: n={w['n_trades']} pf={w['pf']:.3f} pnl={w['pnl']:.2f}"
+                )
         return
 
-    obs = run_once(base_url=args.base_url)
-    print(json.dumps(obs, indent=2))
+    for pair in pairs:
+        obs = run_once(base_url=args.base_url, pair=pair)
+        print(json.dumps(obs, indent=2))
 
 
 if __name__ == "__main__":  # pragma: no cover

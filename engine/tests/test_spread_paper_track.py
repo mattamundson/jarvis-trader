@@ -225,3 +225,91 @@ def test_align_latest_intersects_timestamps():
     out = pt.align_latest(a, b, window=10)
     assert out is not None
     assert out[0] == "t049"  # latest common timestamp
+
+
+# --- multi-pair generalization ---------------------------------------------
+
+
+def test_pair_registry_es_nq_keeps_root_ledger():
+    # ES-NQ must stay at subdir="" so the LIVE forward record is undisturbed by the
+    # multi-pair refactor; MES-M2K gets an isolated subdir.
+    assert pt.PAIR_REGISTRY["ES-NQ"]["subdir"] == ""
+    assert pt.PAIR_REGISTRY["ES-NQ"]["lineage"] == pt.LINEAGE
+    assert pt.PAIR_REGISTRY["ES-NQ"]["symbol"] == pt.SPREAD_SYMBOL
+    assert pt.PAIR_REGISTRY["MES-M2K"]["subdir"] == "MES-M2K"
+    assert pt.PAIR_REGISTRY["MES-M2K"]["lineage"] != pt.LINEAGE
+
+
+def test_close_trade_honors_pair_symbol_and_lineage():
+    st = {
+        "position": 1,
+        "entry_es": 5000.0,
+        "entry_nq": 2000.0,
+        "entry_time": "t0",
+        "entry_z": -2.5,
+    }
+    c = pt.close_trade(
+        st,
+        5050.0,
+        2000.0,
+        0.3,
+        "t1",
+        2.0,
+        20000.0,
+        pair_symbol="MES_M2K_SPREAD",
+        lineage="mes_m2k_spread_v1",
+    )
+    assert c["symbol"] == "MES_M2K_SPREAD"
+    assert c["strategy_params"]["lineage"] == "mes_m2k_spread_v1"
+
+
+def test_close_trade_defaults_to_es_nq():
+    st = {
+        "position": 1,
+        "entry_es": 5000.0,
+        "entry_nq": 18000.0,
+        "entry_time": "t0",
+        "entry_z": -2.5,
+    }
+    c = pt.close_trade(st, 5050.0, 18000.0, 0.3, "t1", 2.0, 20000.0)
+    assert c["symbol"] == pt.SPREAD_SYMBOL
+    assert c["strategy_params"]["lineage"] == pt.LINEAGE
+
+
+def test_decide_transition_threads_pair_identity_into_closed_trade():
+    st = {
+        **pt._empty_state(),
+        "position": -1,
+        "entry_es": 5000.0,
+        "entry_nq": 2000.0,
+        "entry_time": "t0",
+        "entry_z": 2.5,
+    }
+    _, ev, closed = pt.decide_transition(
+        st,
+        0.3,
+        5010.0,
+        2010.0,
+        "t1",
+        P,
+        pair_symbol="MES_M2K_SPREAD",
+        lineage="mes_m2k_spread_v1",
+    )
+    assert ev == "close"
+    assert closed["symbol"] == "MES_M2K_SPREAD"
+    assert closed["strategy_params"]["lineage"] == "mes_m2k_spread_v1"
+
+
+def test_track_dir_and_ledgers_isolate_per_pair(tmp_path):
+    root = pt._track_dir(tmp_path, "")  # ES-NQ legacy root
+    sub = pt._track_dir(tmp_path, "MES-M2K")
+    assert root != sub
+    assert sub.parent == root  # subdir nested under the spread_paper_track root
+
+    # writing to one ledger must not leak into the other
+    pt._append_jsonl(root / "closed_trades.jsonl", {"exit_time": "t1", "pnl": 1.0})
+    pt._append_jsonl(sub / "closed_trades.jsonl", {"exit_time": "t1", "pnl": 2.0})
+    es_nq = pt.load_closed_trades(tmp_path, "")
+    mes_m2k = pt.load_closed_trades(tmp_path, "MES-M2K")
+    assert len(es_nq) == 1 and es_nq[0]["pnl"] == 1.0
+    assert len(mes_m2k) == 1 and mes_m2k[0]["pnl"] == 2.0
