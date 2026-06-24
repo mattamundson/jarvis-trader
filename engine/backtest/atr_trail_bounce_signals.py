@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 
 from backtest.indicators import atr_trailing_stop, wilder_atr
+from backtest.tpo_profile import compute_tpo_profile
 
 _TARGET_ATR_PERIOD = 14
 _T1_MULT = 1.5
@@ -242,3 +243,72 @@ def generate_atr_trail_flip_signals(
     df.loc[short_state, "regime"] = "TRENDING_BEAR"
 
     return df
+
+
+def generate_atr_trail_confluence_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    base: str = "flip",
+    strict_confluence: bool = False,
+    hold_bars: int = 1,
+    touch_tol_atr: float = 0.10,
+    value_area_pct: float = 0.70,
+) -> pd.DataFrame:
+    """Confluence-gated ATR-trail entries (flip or bounce) + TPO value area.
+
+    Matt's live /ES episode (2026-06-24) showed the flip-short, the VAL break,
+    and the TPO profile target all agreeing before a clean ~50pt move. This
+    variant tests whether requiring that agreement adds edge over the bare
+    signal: it takes the base flip/bounce signals and DROPS any entry that
+    fights the prior-session value-area regime.
+
+    Implemented as a filter on top of the base generator so attribution is
+    clean — confluence trades are a strict subset of the base trades, so a
+    side-by-side backtest shows exactly what the value-area gate adds or costs.
+
+    Gate (directional agreement with prior-session value area, via
+    ``compute_tpo_profile`` which is shifted one session -> no look-ahead):
+        strict_confluence=False : long survives unless price BELOW_VAL;
+                                  short survives unless price ABOVE_VAH.
+        strict_confluence=True  : long requires ABOVE_VAH; short requires BELOW_VAL.
+
+    ``base`` selects the underlying rule ("flip" = TOS LE/SE stop-and-reverse;
+    "bounce" = tag+reclaim+hold). Requires a DatetimeIndex for session detection;
+    if TPO cannot be computed (no datetime index) the base signals pass through
+    unfiltered and a ``confluence_applied=False`` flag is set so the caller knows.
+    """
+    if base == "bounce":
+        sig = generate_atr_trail_bounce_signals(
+            df, atr_period=atr_period, factor=factor,
+            hold_bars=hold_bars, touch_tol_atr=touch_tol_atr,
+        )
+    else:
+        sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
+
+    try:
+        tpo = compute_tpo_profile(df, value_area_pct=value_area_pct)
+        pvva = tpo["price_vs_va"]
+        applied = True
+    except Exception:
+        sig["price_vs_va"] = "IN_VA"
+        sig["confluence_applied"] = False
+        return sig
+
+    is_entry = sig["entry_signal"] == "ENTRY_NOW"
+    is_long = sig["bias"].str.contains("BULL", na=False)
+    is_short = sig["bias"].str.contains("BEAR", na=False)
+    if strict_confluence:
+        long_ok = pvva == "ABOVE_VAH"
+        short_ok = pvva == "BELOW_VAL"
+    else:
+        long_ok = pvva != "BELOW_VAL"
+        short_ok = pvva != "ABOVE_VAH"
+
+    drop = is_entry & ((is_long & ~long_ok) | (is_short & ~short_ok))
+    sig.loc[drop, "entry_signal"] = "NO_TRADE"
+    sig.loc[drop, ["stop_level", "target_1", "target_2", "target_3"]] = np.nan
+
+    sig["price_vs_va"] = pvva.values
+    sig["confluence_applied"] = applied
+    return sig
