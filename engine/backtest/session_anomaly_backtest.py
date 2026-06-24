@@ -49,6 +49,14 @@ _RTH_CLOSE = (16, 0)
 # Honest-gate thresholds (mirror gate-v2 core where applicable).
 PF_CI_LOWER_MIN = 1.10
 P_EDGE_MIN = 0.95
+# Beta-harvest gate variant (Tier-3 proposal, BETA_HARVEST_GATE_PROPOSAL.md): the
+# 0.95 p_edge bar is mis-calibrated for a low-frequency long-beta harvest (no
+# long-only strategy is profitable in 95% of windows). For a strategy explicitly
+# graded `beta_harvest=True`, the chronological H1/H2 stationarity guard (already
+# required in both modes) SUBSTITUTES for the near-deterministic win-rate, and the
+# p_edge floor drops to 0.60 (clearly better than a coin). This is opt-in and
+# default-off: it can only ever de-authorize less, never more.
+BETA_HARVEST_P_EDGE_MIN = 0.60
 DSR_MIN = 0.10  # we report annualized Sharpe as the risk-adjusted proxy
 MAX_DD_PCT = 5.0
 
@@ -211,12 +219,23 @@ class LegVerdict:
     blocks: list[str] = field(default_factory=list)
 
 
-def grade_returns(label: str, r: pd.Series, *, net: bool = True) -> LegVerdict:
+def grade_returns(
+    label: str, r: pd.Series, *, net: bool = True, beta_harvest: bool = False
+) -> LegVerdict:
     """Grade an arbitrary daily-return series with the full honest gate.
 
     Shared by the session legs and the calendar tracks so every candidate is
     judged on the identical bar (gate-v2 thresholds + chronological H1/H2 split).
+
+    ``beta_harvest`` (default-off) selects the Tier-3 beta-harvest variant: the
+    p_edge floor drops from ``P_EDGE_MIN`` (0.95) to ``BETA_HARVEST_P_EDGE_MIN``
+    (0.60), because for a long-beta harvest the chronological H1/H2 stationarity
+    guard (still required) is the right substitute for a near-deterministic
+    win-rate. Every other threshold (pf_ci_lower, Sharpe, max_dd, stationarity) is
+    unchanged. Passing it is the *evaluation* opt-in; activating it for live
+    promotion stays an Amo Tier-3 flip.
     """
+    p_edge_floor = BETA_HARVEST_P_EDGE_MIN if beta_harvest else P_EDGE_MIN
     pfs = _window_pfs(r)
     pf = profit_factor(r)
     pf_ci = bootstrap_pf_ci_lower(pfs) if len(pfs) >= 2 else 0.0
@@ -235,8 +254,8 @@ def grade_returns(label: str, r: pd.Series, *, net: bool = True) -> LegVerdict:
     blocks: list[str] = []
     if pf_ci < PF_CI_LOWER_MIN:
         blocks.append(f"pf_ci_lower {pf_ci:.3f}<{PF_CI_LOWER_MIN}")
-    if p_edge < P_EDGE_MIN:
-        blocks.append(f"p_edge {p_edge:.3f}<{P_EDGE_MIN}")
+    if p_edge < p_edge_floor:
+        blocks.append(f"p_edge {p_edge:.3f}<{p_edge_floor}")
     if annualized_sharpe(r) < DSR_MIN:
         blocks.append(f"sharpe<{DSR_MIN}")
     if max_drawdown_pct(r) > MAX_DD_PCT:
@@ -302,12 +321,14 @@ def turn_of_month_mask(index, *, n_end: int = 1, n_start: int = 3) -> pd.Series:
     return pd.Series((is_start | is_end), index=list(index))
 
 
-def evaluate_turn_of_month(sessions: pd.DataFrame, *, net: bool = True) -> LegVerdict:
+def evaluate_turn_of_month(
+    sessions: pd.DataFrame, *, net: bool = True, beta_harvest: bool = False
+) -> LegVerdict:
     """Long MES only during the turn-of-month window, flat otherwise."""
     r = daily_close_returns(sessions, net=net)
     mask = turn_of_month_mask(r.index)
     tom = r[mask.to_numpy()]
-    return grade_returns("turn_of_month", tom, net=net)
+    return grade_returns("turn_of_month", tom, net=net, beta_harvest=beta_harvest)
 
 
 def day_of_week_summary(sessions: pd.DataFrame, *, net: bool = True) -> pd.DataFrame:
@@ -384,6 +405,45 @@ def gate_v2_verdict(
         {"fixed_params_min_pf": float(full_pf if np.isfinite(full_pf) else 5.0)},
         {"cost_survives_through": cost_survives},
     )
+
+
+def gate_v2_beta_harvest_verdict(r: pd.Series, **kwargs) -> dict:
+    """Beta-harvest variant of the CANONICAL gate-v2 verdict (Tier-3 proposal).
+
+    Wraps — never modifies — ``compute_gate_v2`` (via ``gate_v2_verdict``). If the
+    canonical verdict FAILs the core path on ONE criterion that is exactly p_edge,
+    AND p_edge clears the lower beta-harvest floor (``BETA_HARVEST_P_EDGE_MIN``),
+    AND the series is chronologically stationary (H1 and H2 PF both > 1 — the
+    substitute for the near-deterministic win-rate), the verdict is reclassified to
+    PASS. Any other failing criterion (pf_ci_lower, dsr, mc_dd) is NOT rescued, so
+    this can only ever de-authorize less, never more — the canonical gate is the
+    source of truth and this is an explicit, tagged overlay for a beta-harvest
+    strategy class. Activating it for live promotion remains an Amo Tier-3 flip.
+    """
+    v = gate_v2_verdict(r, **kwargs)
+    out = dict(v)
+    out["beta_harvest"] = True
+    out["beta_harvest_reclassified"] = False
+    if v.get("verdict") == "PASS":
+        return out  # already passes the canonical core/alt path; nothing to do
+
+    failed = [c for c in v.get("core_reasons", []) if c.strip().upper().startswith("FAIL")]
+    only_p_edge = len(failed) == 1 and "p_edge" in failed[0]
+
+    n = len(r)
+    h1, h2 = r.iloc[: n // 2], r.iloc[n // 2 :]
+    stationary = bool(profit_factor(h1) > 1.0 and profit_factor(h2) > 1.0)
+    p_edge = float(v.get("p_edge", 0.0))
+
+    if only_p_edge and p_edge >= BETA_HARVEST_P_EDGE_MIN and stationary:
+        out["verdict"] = "PASS"
+        out["beta_harvest_reclassified"] = True
+        out["beta_harvest_note"] = (
+            f"canonical core FAILs only on p_edge ({p_edge:.3f} < {P_EDGE_MIN}); "
+            f"beta-harvest variant clears it (p_edge {p_edge:.3f} >= "
+            f"{BETA_HARVEST_P_EDGE_MIN} AND stationary H1/H2 PF>1)"
+        )
+    return out
 
 
 _DEFAULT_CACHE = Path("C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache")

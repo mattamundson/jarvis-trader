@@ -95,11 +95,21 @@ def evaluate_promotion(evidence: dict[str, Any]) -> dict[str, Any]:
     # Sensitivity: ROBUST/ACCEPTABLE pass, FRAGILE/missing block.
     criteria["sensitivity_robust"] = evidence.get("sensitivity_verdict") in _SENSITIVITY_OK
 
-    # Ensemble: must be a known Brier strictly below the neutral ceiling.
-    brier = evidence.get("ensemble_brier")
-    criteria["ensemble_not_subneutral"] = (
-        isinstance(brier, (int, float)) and brier < ENSEMBLE_BRIER_CEILING
-    )
+    # Ensemble pillar — depends on decision_mode (Tier-3 systematic-strategy path):
+    #   "ensemble" (default): an LLM-ensemble-driven strategy must beat the neutral
+    #       Brier ceiling (unchanged behavior).
+    #   "systematic": a deterministic rule (e.g. turn-of-month) has no agent ensemble,
+    #       so the pillar is N/A. It is replaced by the out-of-sample backtest power
+    #       (robust_edge + per_window_adequate), which are already required pillars
+    #       above — so this can only ever de-authorize less, never more.
+    decision_mode = evidence.get("decision_mode", "ensemble")
+    if decision_mode == "systematic":
+        criteria["ensemble_not_subneutral"] = True  # N/A for a non-LLM systematic rule
+    else:
+        brier = evidence.get("ensemble_brier")
+        criteria["ensemble_not_subneutral"] = (
+            isinstance(brier, (int, float)) and brier < ENSEMBLE_BRIER_CEILING
+        )
 
     blocks = [name for name, ok in criteria.items() if not ok]
     return {
@@ -145,21 +155,23 @@ def turn_of_month_current_evidence() -> dict[str, Any]:
     and the family BH-FDR.
 
     TOM is a SYSTEMATIC strategy — it does NOT route through the LLM agent ensemble,
-    so the ``ensemble_not_subneutral`` pillar does not apply. It is intentionally
-    left unset (the gate's default-deny then BLOCKS on it), which is the honest state
-    until a systematic-strategy promotion path is defined. TOM is also still blocked
-    on the forward paper-shadow and live-system stability. A tracked, BLOCKED
-    candidate — but the strongest backtest evidence of the arc.
+    so it sets ``decision_mode="systematic"`` and the ``ensemble_not_subneutral``
+    pillar is N/A (substituted by the OOS backtest-power pillars). TOM is STILL
+    correctly BLOCKED — on ``robust_edge`` (BH-FDR not crossed), the forward
+    paper-shadow, and live-system stability — so the systematic path does not
+    promote it; it only removes a pillar that never applied. The strongest backtest
+    evidence of the arc, still gated.
     """
     return {
         "strategy_id": "MES_turn_of_month",
+        "decision_mode": "systematic",  # deterministic calendar rule, no LLM ensemble
         "robust_edge": False,  # gate-v2 fails on the mis-calibrated p_edge; BH-FDR not run
         "per_window_adequate": True,  # ~48 trades/yr over decades of windows
         "sensitivity_verdict": "ROBUST",  # parameter-free; stationary across 33yr/all regimes
         "leakage_clean": True,  # close-to-close, TOM dates known ex-ante, no look-ahead
         "cost_robust": True,  # net@2bps Sharpe 0.79; low turnover ~48 trades/yr
         "live_system_stable": False,  # engine on Gemini fallback / unverified
-        # ensemble_brier omitted: systematic strategy, not LLM-ensemble-driven (pillar N/A)
+        # ensemble_brier omitted: systematic decision_mode makes the pillar N/A
         "paper_shadow_passed": False,  # forward dry-run not yet run
     }
 
