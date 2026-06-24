@@ -173,6 +173,52 @@ def test_rv_filtered_trend_specs_registered():
         assert s.min_oos_trades_per_window == 3
 
 
+def test_drawdown_attack_specs_registered():
+    """DD specs use the robust slow in {48,72} grid + a lowered risk_per_trade."""
+    reg = default_registry()
+    dd = [s for s in reg if "drawdown_attack" in s.tags]
+    assert {s.label for s in dd} == {"MGC_sma_trend_dd_5m", "MGC_sma_trend_dd_15m"}
+    for s in dd:
+        assert s.risk_per_trade == 0.005, "must size down to fit the drawdown budget"
+        slows = {c["slow"] for c in s.param_grid}
+        assert slows == {48, 72}, "robust grid excludes the whipsaw slow=24 region"
+        assert all(c["fast"] in (12, 16, 20) for c in s.param_grid)
+        assert s.min_oos_trades_per_window == 3
+
+
+def test_spec_risk_per_trade_routes_to_backtester(monkeypatch):
+    """_make_run_fn must pass spec.risk_per_trade to the Backtester (not a constant)."""
+    import backtest.discovery_factory as m
+
+    captured = {}
+
+    class _FakeResult:
+        pass
+
+    class _FakeBT:
+        def __init__(self, **kw):
+            captured.update(kw)
+
+        def run(self, *a, **k):
+            return _FakeResult()
+
+    # _make_run_fn does `from backtest.backtester import Backtester` locally,
+    # so patch it at the source module, not on discovery_factory.
+    monkeypatch.setattr("backtest.backtester.Backtester", _FakeBT)
+    spec = StrategySpec(
+        symbol="MGC",
+        family="sma_trend_dd",
+        interval="5m",
+        signal_fn=lambda df, **k: df,
+        param_grid=grid(fast=[12]),
+        train_months=3,
+        risk_per_trade=0.005,
+    )
+    run_fn = m._make_run_fn(spec)
+    run_fn(pd.DataFrame({"close": [1.0]}), {"fast": 12})
+    assert captured["risk_per_trade"] == 0.005
+
+
 def _orb_frame(days=("2026-03-02", "2026-03-03"), freq="15min"):
     """Synthetic ET-localized intraday frame with a rising price (triggers longs)."""
     import numpy as np

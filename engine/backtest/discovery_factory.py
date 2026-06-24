@@ -118,6 +118,10 @@ class StrategySpec:
     # Higher-frequency bars => more entries; raise the per-window floor so an
     # IS window isn't won by a 1-trade fluke (mirrors run_mes_trend_15m_rank1).
     min_oos_trades_per_window: int = 1
+    # Fractional risk per trade routed to the Backtester. mc_95th_dd scales ~with
+    # this (drawdown% is scale-dependent) while pf/p_edge/dsr do not (ratios) --
+    # so it's the lever for fitting a drawdown budget without touching the edge.
+    risk_per_trade: float = 0.01
     tags: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -300,6 +304,45 @@ def _rv_filtered_trend_specs() -> list[StrategySpec]:
             )
         )
     return specs
+
+
+def _drawdown_attack_specs() -> list[StrategySpec]:
+    """MGC trend on the robust profitable sub-grid + a drawdown-budget size.
+
+    MGC_sma_trend_5m is the prime near-miss; it can only PASS via ALT (p_edge
+    0.833<0.95 rules out CORE) and fails ALT on exactly two conditions:
+      * fixed_params_min_pf=0.000 (need >=1.20) -- because every slow=24 combo
+        whipsaws on 5m (full-dataset PF 0.0-0.19). Restricting to slow in {48,72}
+        (every combo PF >=1.49 on full data, diagnostic 2026-06-24) is a genuine
+        robustness improvement, not cherry-picking: it also drops the whipsaw
+        champions that dragged baseline p_edge down.
+      * mc_95th_dd=5.77% (need <=4%) -- the ~5% wall is the max_drawdown breaker
+        biting at risk_per_trade=0.01. Halving the size to 0.005 ~halves the
+        drawdown while leaving pf/p_edge/dsr (scale-invariant ratios) intact.
+
+    This tests whether BOTH clear at once. 15m carried for the same treatment.
+    """
+    grid_robust = grid(
+        fast=[12, 16, 20],
+        slow=[48, 72],
+        atr_trail_mult=[1.5, 2.0, 2.5],
+    )
+    return [
+        StrategySpec(
+            symbol,
+            "sma_trend_dd",
+            interval,
+            generate_sma_trend_signals,
+            grid_robust,
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            risk_per_trade=0.005,
+            tags=("intraday", "drawdown_attack", interval),
+        )
+        for symbol, interval in (("MGC", "5m"), ("MGC", "15m"))
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +592,7 @@ def default_registry() -> list[StrategySpec]:
         + _intraday_frontier_specs()
         + _orb_frontier_specs()
         + _rv_filtered_trend_specs()
+        + _drawdown_attack_specs()
     )
 
 
@@ -613,7 +657,7 @@ def _make_run_fn(spec: StrategySpec) -> Callable:
         sig = spec.signal_fn(df, **sig_params)
         bt = Backtester(
             initial_capital=CAPITAL,
-            risk_per_trade=0.01,
+            risk_per_trade=spec.risk_per_trade,
             max_daily_loss=0.02,
             max_drawdown=0.05,
             t1_exit_pct=0.50,
