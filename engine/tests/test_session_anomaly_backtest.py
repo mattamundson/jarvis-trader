@@ -287,5 +287,57 @@ def test_day_of_week_summary_shape():
     assert (tbl["n"] > 0).all()
 
 
+# ── beta-sizing + rigorous gate-v2 verdict ───────────────────────────────────
+
+
+def test_beta_size_hits_dd_budget():
+    from backtest.session_anomaly_backtest import beta_size, max_drawdown_pct
+
+    rng = np.random.default_rng(7)
+    r = pd.Series(0.0005 + rng.normal(0, 0.01, 500))  # ~20%+ raw DD
+    sized, scale, dd = beta_size(r, dd_budget_pct=5.0)
+    assert 0 < scale < 1
+    assert dd == pytest.approx(5.0, abs=1.0)  # achieved DD near the 5% budget
+    assert max_drawdown_pct(sized) == pytest.approx(dd)
+
+
+def test_gate_v2_verdict_returns_canonical_dict():
+    from backtest.session_anomaly_backtest import gate_v2_verdict
+
+    idx = pd.date_range("2010-01-01", periods=1500, freq="B").date
+    rng = np.random.default_rng(11)
+    r = pd.Series(0.0006 + rng.normal(0, 0.004, 1500), index=idx)
+    v = gate_v2_verdict(r)
+    # Canonical gate-v2 verdict shape from compute_gate_v2.
+    assert v["verdict"] in {"PASS", "FAIL"}
+    for k in ("pf_ci_lower", "p_edge", "mc_95th_dd", "dsr", "wfo_consistency"):
+        assert k in v
+
+
+# ── TOM as a tracked promotion-gate candidate ────────────────────────────────
+
+
+def test_tom_is_tracked_but_blocked_candidate():
+    from backtest.live_promotion_gate import (
+        evaluate_promotion,
+        turn_of_month_current_evidence,
+    )
+
+    ev = turn_of_month_current_evidence()
+    assert ev["strategy_id"] == "MES_turn_of_month"
+    # Strong backtest pillars pass...
+    assert ev["per_window_adequate"] is True
+    assert ev["leakage_clean"] is True
+    assert ev["cost_robust"] is True
+    assert ev["sensitivity_verdict"] == "ROBUST"
+    # ...but the candidate is correctly BLOCKED (pending paper-shadow, live stability,
+    # the p_edge gate-variant decision, and the systematic-strategy promotion path).
+    result = evaluate_promotion(ev)
+    assert result["promote"] is False
+    assert "paper_shadow_passed" in result["blocks"]
+    assert "live_system_stable" in result["blocks"]
+    assert "robust_edge" in result["blocks"]
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

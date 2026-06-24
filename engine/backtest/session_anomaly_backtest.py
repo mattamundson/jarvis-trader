@@ -329,6 +329,63 @@ def day_of_week_summary(sessions: pd.DataFrame, *, net: bool = True) -> pd.DataF
     return pd.DataFrame(out)
 
 
+def beta_size(r: pd.Series, *, dd_budget_pct: float = MAX_DD_PCT) -> tuple[pd.Series, float, float]:
+    """Scale a long-beta return series down to a target max-drawdown budget.
+
+    A long-equity harvest (overnight/TOM) inherits equity-like drawdown; sizing it
+    to a fixed DD budget is the deployable form. Returns (scaled, scale, achieved_dd%).
+    """
+    dd = max_drawdown_pct(r)
+    if dd <= 0:
+        return r, 1.0, 0.0
+    scale = dd_budget_pct / dd
+    rs = r * scale
+    return rs, scale, max_drawdown_pct(rs)
+
+
+def gate_v2_verdict(
+    r: pd.Series,
+    *,
+    freq: str = "YE",
+    n_grid_combos: int = 1,
+    cost_survives: str = "realistic",
+) -> dict:
+    """Rigorous gate-v2 verdict via the canonical ``compute_gate_v2``.
+
+    Feeds chronological (default yearly) windows of the return series as OOS
+    results. ``n_grid_combos=1`` because the strategy is parameter-free (no
+    multiple-testing penalty on the deflated Sharpe). ``fixed_params_min_pf`` is the
+    full-sample PF -- the only params there are. DD is passed as a fraction to match
+    the gate convention (GATE_MC_DD_CORE = 0.05).
+    """
+    from types import SimpleNamespace
+
+    from backtest.wfo_lifecycle import compute_gate_v2
+
+    idx = pd.to_datetime(pd.Series(list(r.index)))
+    s = pd.Series(r.to_numpy(), index=idx)
+    windows = []
+    for _, grp in s.groupby(pd.Grouper(freq=freq)):
+        if len(grp) == 0:
+            continue
+        pf = profit_factor(grp)
+        windows.append(
+            SimpleNamespace(
+                total_trades=int(len(grp)),
+                profit_factor=float(pf if np.isfinite(pf) else 5.0),
+                max_drawdown_pct=float(max_drawdown_pct(grp) / 100.0),
+                sharpe_ratio=float(annualized_sharpe(grp)),
+            )
+        )
+    full_pf = profit_factor(r)
+    return compute_gate_v2(
+        windows,
+        n_grid_combos,
+        {"fixed_params_min_pf": float(full_pf if np.isfinite(full_pf) else 5.0)},
+        {"cost_survives_through": cost_survives},
+    )
+
+
 _DEFAULT_CACHE = Path("C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache")
 
 
@@ -401,14 +458,78 @@ def run_daily(csv_path: Path, *, net: bool = False) -> dict[str, LegVerdict]:
     return results
 
 
+def _tom_series(sessions: pd.DataFrame, *, net: bool) -> pd.Series:
+    r = daily_close_returns(sessions, net=net)
+    return r[turn_of_month_mask(r.index).to_numpy()]
+
+
+def validate_tom(
+    spy_csv: Path,
+    mes_csv: Path | None = None,
+    *,
+    cost_bps: float = 2.0,
+    dd_budget: float = MAX_DD_PCT,
+) -> dict:
+    """Productionize the turn-of-month candidate: rigorous gate-v2 on SPY (powered
+    sample), beta-sized to the DD budget, plus the MES transfer check."""
+    spy = decompose_daily(pd.read_csv(spy_csv))
+    tom = _tom_series(spy, net=False)
+    tom_net = tom - cost_bps / 1e4
+    sized, scale, dd = beta_size(tom_net, dd_budget_pct=dd_budget)
+    out = {
+        "spy_n": len(tom),
+        "sharpe_gross": annualized_sharpe(tom),
+        "sharpe_net": annualized_sharpe(tom_net),
+        "raw_dd_pct": max_drawdown_pct(tom_net),
+        "beta_scale": scale,
+        "sized_dd_pct": dd,
+        "gate_gross": gate_v2_verdict(tom),
+        "gate_net": gate_v2_verdict(tom_net),
+        "gate_net_sized": gate_v2_verdict(sized),
+    }
+    print(
+        f"SPY turn-of-month: n={out['spy_n']}  Sharpe {out['sharpe_gross']:.3f} gross / "
+        f"{out['sharpe_net']:.3f} net@{cost_bps:.0f}bps  rawDD={out['raw_dd_pct']:.1f}%  "
+        f"beta-size x{scale:.3f} -> DD {dd:.2f}%\n"
+    )
+    for k in ("gate_gross", "gate_net", "gate_net_sized"):
+        v = out[k]
+        print(
+            f"  {k:14s}: {v.get('verdict')} (via {v.get('passed_via')})  "
+            f"pf_ci={v.get('pf_ci_lower'):.3f} p_edge={v.get('p_edge'):.3f} "
+            f"mc95_dd={v.get('mc_95th_dd'):.4f} dsr={v.get('dsr'):.3f} wfo={v.get('wfo_consistency')}"
+        )
+    if mes_csv is not None and Path(mes_csv).exists():
+        mtom = _tom_series(decompose_sessions(pd.read_csv(mes_csv)), net=True)
+        out["mes_transfer"] = {
+            "n": len(mtom),
+            "sharpe": annualized_sharpe(mtom),
+            "pf": profit_factor(mtom),
+            "mean_bps": float(mtom.mean() * 1e4),
+        }
+        m = out["mes_transfer"]
+        print(
+            f"\n  MES transfer (net of MES cost): n={m['n']}  Sharpe {m['sharpe']:.3f}  "
+            f"PF {m['pf']:.3f}  mean {m['mean_bps']:.2f} bps/day"
+        )
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="overnight-drift / session anomaly backtest")
     ap.add_argument("--csv", type=Path, default=None, help="explicit CSV")
     ap.add_argument("--cache-dir", type=Path, default=_DEFAULT_CACHE)
     ap.add_argument("--gross", action="store_true", help="evaluate gross of cost")
     ap.add_argument("--daily", action="store_true", help="input is daily OHLC (e.g. SPY)")
+    ap.add_argument("--validate-tom", action="store_true", help="productionize turn-of-month")
     args = ap.parse_args()
     csv = args.csv
+    if args.validate_tom:
+        spy = args.csv or (args.cache_dir / "SPY_daily.csv")
+        mes_cands = sorted(args.cache_dir.glob("MES_*_5m_cont.csv"))
+        mes = max(mes_cands, key=lambda p: p.stat().st_size) if mes_cands else None
+        validate_tom(spy, mes)
+        return
     if args.daily:
         if csv is None:
             csv = args.cache_dir / "SPY_daily.csv"
