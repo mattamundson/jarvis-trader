@@ -177,9 +177,18 @@ def test_drawdown_attack_specs_registered():
     """DD specs use the robust slow in {48,72} grid + a lowered risk_per_trade."""
     reg = default_registry()
     dd = [s for s in reg if "drawdown_attack" in s.tags]
-    assert {s.label for s in dd} == {"MGC_sma_trend_dd_5m", "MGC_sma_trend_dd_15m"}
+    assert {s.label for s in dd} == {
+        "MGC_sma_trend_dd_5m",
+        "MGC_sma_trend_dd_15m",
+        "MGC_sma_trend_dd_lo_5m",
+    }
+    by_label = {s.label: s for s in dd}
+    # The dd_lo 5m variant sizes down further (0.0025) to attack the last failing
+    # ALT condition (mc_95th_dd); the rest use 0.005.
+    assert by_label["MGC_sma_trend_dd_lo_5m"].risk_per_trade == 0.0025
+    assert by_label["MGC_sma_trend_dd_5m"].risk_per_trade == 0.005
     for s in dd:
-        assert s.risk_per_trade == 0.005, "must size down to fit the drawdown budget"
+        assert s.risk_per_trade <= 0.005, "must size down to fit the drawdown budget"
         slows = {c["slow"] for c in s.param_grid}
         assert slows == {48, 72}, "robust grid excludes the whipsaw slow=24 region"
         assert all(c["fast"] in (12, 16, 20) for c in s.param_grid)

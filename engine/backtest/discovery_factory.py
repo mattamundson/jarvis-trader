@@ -327,10 +327,20 @@ def _drawdown_attack_specs() -> list[StrategySpec]:
         slow=[48, 72],
         atr_trail_mult=[1.5, 2.0, 2.5],
     )
+    # (symbol, interval, risk_per_trade, family). The first run at risk 0.005
+    # showed MGC 5m fails ALT on ONLY mc_95th_dd (5.42% > 4%) -- fixed_min_pf is
+    # already fixed (1.51) by the robust grid, and dsr/cost/wfo all clear. Since
+    # drawdown scales with risk while those are scale-invariant, the dd_lo 5m
+    # variant at 0.0025 is the decisive test: if mc_95th_dd drops <=4%, ALT PASSES.
+    plan = [
+        ("MGC", "5m", 0.005, "sma_trend_dd"),
+        ("MGC", "15m", 0.005, "sma_trend_dd"),
+        ("MGC", "5m", 0.0025, "sma_trend_dd_lo"),
+    ]
     return [
         StrategySpec(
             symbol,
-            "sma_trend_dd",
+            family,
             interval,
             generate_sma_trend_signals,
             grid_robust,
@@ -338,10 +348,10 @@ def _drawdown_attack_specs() -> list[StrategySpec]:
             test_months=1,
             step_months=1,
             min_oos_trades_per_window=3,
-            risk_per_trade=0.005,
+            risk_per_trade=risk,
             tags=("intraday", "drawdown_attack", interval),
         )
-        for symbol, interval in (("MGC", "5m"), ("MGC", "15m"))
+        for symbol, interval, risk, family in plan
     ]
 
 
