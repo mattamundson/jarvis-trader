@@ -84,30 +84,35 @@ def compute_spread_z(
     return spread, z.to_numpy()
 
 
-def generate_positions(z: np.ndarray, entry: float, exit_: float, stop: float) -> np.ndarray:
-    """Stateful spread position from the z series. +1 = long spread (long ES/short NQ),
-    -1 = short spread, 0 = flat.
+def step_position(cur: int, z: float, entry: float, exit_: float, stop: float) -> int:
+    """One-bar spread-position update -- the primitive shared by the batch backtest and
+    the live/forward dark track (single source of truth).
 
-    Enter when |z| crosses `entry` (against the move -> betting on reversion); exit when
-    |z| reverts below `exit_` OR diverges beyond `stop` (risk stop). NaN z -> hold/flat.
-    Returns the DESIRED position decided at each bar's close.
+    +1 = long spread (long ES / short NQ), -1 = short spread, 0 = flat. NaN z holds the
+    current position; flat enters when |z|>entry (against the move = betting reversion);
+    in-position exits when |z| reverts below exit_ OR diverges beyond stop. Pure.
     """
+    if np.isnan(z):
+        return cur
+    if cur == 0:
+        if z > entry:
+            return -1  # spread rich -> expect fall -> short the spread
+        if z < -entry:
+            return 1  # spread cheap -> expect rise -> long the spread
+        return 0
+    if abs(z) < exit_ or abs(z) > stop:
+        return 0
+    return cur
+
+
+def generate_positions(z: np.ndarray, entry: float, exit_: float, stop: float) -> np.ndarray:
+    """Stateful spread position over a z series, via the per-bar `step_position` primitive.
+    Returns the DESIRED position decided at each bar's close."""
     z = np.asarray(z, dtype=float)
     pos = np.zeros(len(z), dtype=int)
     cur = 0
     for t in range(len(z)):
-        zt = z[t]
-        if np.isnan(zt):
-            pos[t] = cur
-            continue
-        if cur == 0:
-            if zt > entry:
-                cur = -1  # spread rich -> expect fall -> short the spread
-            elif zt < -entry:
-                cur = 1  # spread cheap -> expect rise -> long the spread
-        else:
-            if abs(zt) < exit_ or abs(zt) > stop:
-                cur = 0
+        cur = step_position(cur, float(z[t]), entry, exit_, stop)
         pos[t] = cur
     return pos
 
