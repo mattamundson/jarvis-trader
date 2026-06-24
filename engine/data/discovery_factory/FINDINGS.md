@@ -1,6 +1,6 @@
 # Discovery-factory findings
 
-_53 specs synthesized | 2 deployable PASS (>= 30 trades) | 1 under-sampled PASS | 9 near-miss (FAIL w/ adequate sample, PF>=1.10, DSR>=0.10)_
+_60 specs synthesized | 2 deployable PASS (>= 30 trades) | 1 under-sampled PASS | 11 near-miss (FAIL w/ adequate sample, PF>=1.10, DSR>=0.10)_
 
 ```
 LABEL                      VERDICT             TRADES   PF_LO  P_EDGE     DSR    DD% WFO      
@@ -12,9 +12,11 @@ MGC_sma_trend_rv_1h        FAIL                    33   1.843   0.667   1.000   
 MGC_sma_trend_rv_t2_PROBE_1h FAIL                    33   1.843   0.667   1.000   0.92 MODERATE  *
 MGC_sma_trend_rv_t3_PROBE_1h FAIL                    53   1.677   0.722   1.000   1.59 MODERATE  *
 MGC_donchian_15m           FAIL                   243   1.533   0.667   1.000   5.55 MODERATE  *
+MGC_donchian_stop_15m      FAIL                   212   1.520   0.667   1.000   5.89 MODERATE  *
 MGC_sma_trend_1h           FAIL                    41   1.452   0.529   1.000   1.98 WEAK      *
 MGC_donchian_dd_hi_15m     FAIL                   282   1.459   0.667   1.000   4.17 MODERATE  *
 MGC_sma_trend_5m           FAIL                   388   1.254   0.833   0.792   5.77 STRONG    *
+MGC_donchian_nobrk_hi_15m  FAIL                   274   1.371   0.583   0.743   4.17 MODERATE  *
 MNQ_sma_trend_5m           FAIL                   388   1.177   0.636   0.700   5.43 MODERATE  * !DNT
 MGC_sma_trend_dd_5m        FAIL                   503   1.329   0.583   0.398   5.42 MODERATE  *
 MGC_donchian_5m            FAIL                   353   1.314   0.750   0.000   5.61 STRONG   
@@ -22,9 +24,14 @@ MGC_sma_trend_rv_mid_PROBE_1h FAIL                    38   1.778   0.611   0.000
 MGC_sma_trend_rv_t4_PROBE_1h FAIL                    70   1.607   0.632   0.000   1.59 MODERATE 
 MES_sma_trend_1h           FAIL                    20   1.565   0.571   0.000   0.98 MODERATE 
 MGC_donchian_dd_lo_15m     FAIL                   211   1.381   0.750   0.000   2.60 STRONG   
+MGC_donchian_nobrk_lo_15m  FAIL                   211   1.381   0.750   0.000   2.60 STRONG   
 MGC_donchian_dd_15m        FAIL                   247   1.350   0.667   0.000   4.05 MODERATE 
+MGC_donchian_nobrk_15m     FAIL                   246   1.335   0.667   0.000   4.05 MODERATE 
+MGC_sma_trend_stop_5m      FAIL                   285   1.329   0.667   0.000   5.55 MODERATE 
 MGC_sma_trend_dd_lo_5m     FAIL                   350   1.245   0.750   0.000   2.23 STRONG   
 MGC_sma_trend_15m          FAIL                   293   1.116   0.583   0.000   5.37 MODERATE 
+MGC_donchian_deep_15m      FAIL                   487   1.090   0.682   0.000   5.51 MODERATE 
+MGC_sma_trend_deep_5m      FAIL                   647   1.012   0.455   0.000   5.81 WEAK     
 MGC_sma_trend_dd_15m       FAIL                   140   1.007   0.636   0.000   2.14 MODERATE 
 MGC_sma_trend_rv_5m        FAIL                   302   1.001   0.583   0.000   5.69 MODERATE 
 MGC_sma_trend_rv_15m       FAIL                   178   0.991   0.583   0.000   5.17 MODERATE 

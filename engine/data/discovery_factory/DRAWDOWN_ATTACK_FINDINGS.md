@@ -135,19 +135,95 @@ candidates via sizing:** `MGC_sma_trend_5m` and `MGC_donchian_15m`. The ~5% draw
 structural (the RV-filter refutation already ruled out a low-vol entry-filter rescue, and the
 sizing lever is now ruled out too).
 
-### Remaining levers (NOT sizing; Amo-gated judgment calls)
+> ⚠️ **CORRECTION (2026-06-24, lever 1 below):** the mechanism stated in this section —
+> "the `max_drawdown=0.05` breaker couples size to champion selection" — is **WRONG**. The
+> breaker-decouple A/B (lever 1) proved the breaker is *dormant* at these sized-down risk
+> levels and is NOT the cause of the non-monotonic dsr. The conclusion (sizing is not a valid
+> lever; dsr/DD are non-monotonic in size) **stands**, but the true mechanism is **integer
+> contract quantization**, not the breaker. See "Levers round 2 → Lever 1" below. Kept the
+> original text rather than rewriting history, with this correction inline.
 
-1. **Decouple the breaker from sizing** — e.g. set `max_drawdown` per-spec proportional to
-   `risk_per_trade`, or disable the in-window breaker for the discovery sweep so dsr becomes
-   genuinely scale-invariant and sizing-to-budget can be evaluated cleanly. This is a
-   **semantic change to the validated backtester/gate** and could be read as loosening the
-   gate to manufacture a pass — needs Amo's call, not an autonomous edit.
-2. **Position-level drawdown control that is NOT a global size cut** — a hard per-trade dollar
-   stop, or volatility-scaled (not flat-fractional) sizing, which reduces tail drawdown
-   without uniformly shrinking every position. Different mechanism than `risk_per_trade`.
-3. **Deeper / different data** — higher-frequency or additional symbols where the edge clears
-   the floor at a lower structural drawdown. (IB micro-1h history is capped ~26mo — Amo-gated
-   backfill.)
+---
+
+## Levers round 2 — tested 2026-06-24 ("proceed with all of the above")
+
+Three further levers run as offline factory experiments. **All three either refute or are
+moot; no robust gate pass emerged.** The ~5.5% drawdown wall survives every one.
+
+### Lever 1 — decouple the breaker (DIAGNOSTIC) → REFUTES the breaker hypothesis
+
+Re-ran the donchian band (0.004/0.005/0.006) with the in-window `max_drawdown` breaker
+effectively OFF (1.0), as a direct A/B vs the breaker-ON band. Result: **identical**.
+
+| risk | mc_95th_dd ON→OFF | dsr ON→OFF |
+|---|---|---|
+| 0.004 | 2.60% → 2.60% | 0.000 → 0.000 |
+| 0.005 | 4.05% → 4.05% | 0.000 → 0.000 |
+| 0.006 | 4.17% → 4.17% | 1.000 → 0.743 |
+
+Drawdown is unchanged and dsr is still non-monotonic with the breaker off. **The breaker was
+dormant** — at sized-down risk the per-window equity never draws down to −5%, so halting at
+−5% changes nothing. The real coupling between size and champion/dsr is **integer contract
+quantization**: `contracts = int((capital·risk)/(stop_dist·mult))`. Because each param-combo
+has a different `stop_dist` (via `atr_trail_mult`), the `int()` floor rounds combos
+differently at each risk level, so the in-sample champion (and the realized OOS Sharpe →
+dsr) flips with size even though Sharpe is nominally scale-invariant. This is **inherent to
+real futures trading** (no fractional contracts), not a removable artifact — so the
+decouple-the-breaker idea is **moot**, and sizing-to-budget stays non-viable for a deeper
+reason than first documented.
+
+### Lever 2 — tighter per-trade stop at FULL risk → REFUTED
+
+Kept risk 0.01 (no global size cut, breaker untouched) and tightened the per-trade trailing
+stop (`atr_trail_mult` into the <1.5 region) to cap each trade's loss directly.
+
+| spec | champion | mc_95th_dd | dsr | pf_lo | trades | vs baseline |
+|---|---|---|---|---|---|---|
+| trend baseline | atr2.5 | 5.77% | 0.792 | 1.254 | 388 | — |
+| **trend STOP** | **atr1.0** | 5.55% | **0.000** | 1.329 | 285 | DD ~flat, dsr destroyed |
+| donch baseline | atr2.5 | 5.55% | 1.000 | 1.533 | 243 | — |
+| **donch STOP** | **atr1.0** | **5.89%** | 1.000 | 1.520 | 212 | DD *rose*, no help |
+
+Tightening the stop does **not** lower the wall. Trend: the tightest stop (atr 1.0) was
+selected yet drawdown barely moved (5.77→5.55%) while dsr collapsed 0.79→0.00 — pure whipsaw.
+Donchian: the tight stop *raised* drawdown (5.55→5.89%) via more re-entries. **Diagnosis of
+the wall:** the ~5.5% drawdown is **not** sourced from per-trade tail losses (which a stop
+caps) — it comes from **sequences of correlated losing trades (a losing-regime drawdown)**.
+A tighter stop trades a few big losses for many small ones: same-or-worse aggregate drawdown,
+wrecked risk-adjusted edge.
+
+### Lever 3 — deeper data (no-Gateway: resample-what-we-have) → REFUTES persistence (the decisive result)
+
+The freshest-end-date loader was judging both edges on ~15mo caches while a ~24mo MGC 5m cont
+cache sat unused locally. Built `backtest.resample_intraday` to lift the deep 5m → deep 15m
+(49,107 bars vs 20,607) and ran distinct-label `*_deep_*` specs on the deep caches: **22 WFO
+windows vs 12**. The question was persistence — does the edge hold on ~24mo? **It does not.**
+
+| edge | window | verdict | dsr | mc_95th_dd | pf_lo | p_edge | wfo | trades |
+|---|---|---|---|---|---|---|---|---|
+| trend 5m | ~15mo | FAIL | 0.792 | 5.77% | 1.254 | 0.833 | STRONG | 388 |
+| **trend 5m** | **~24mo** | **FAIL** | **0.000** | 5.81% | **1.012** | **0.455** | **WEAK** | 647 |
+| donchian 15m | ~15mo | FAIL | 1.000 | 5.55% | 1.533 | 0.667 | MODERATE | 243 |
+| **donchian 15m** | **~24mo** | **FAIL** | **0.000** | 5.51% | **1.090** | 0.682 | MODERATE | 487 |
+
+On the deeper window **both edges evaporate**: pf_ci_lower collapses to ~1.0–1.1 (no edge),
+dsr to 0.000, trend consistency STRONG→WEAK. The drawdown is unchanged (~5.5–5.8%), so the
+wall is genuinely structural — but the *edge itself* on the ~15-month window was a
+**period-specific artifact**, not a durable signal. Judging on ~15mo materially overstated
+both near-misses; the ~24mo history (which we already had locally) exposes the
+non-stationarity. (Same lesson as the peer ES-NQ spread work: a short/pooled window passes
+non-stationary edges — a longer chronological window is the honest test.)
+
+**This is the decisive, campaign-level result.** The intraday simple-family near-misses
+weren't "good edges blocked only by drawdown" — on the longest history available they aren't
+durable edges at all. Every lever (sizing, RV filter, breaker-decouple, tighter stop) was
+attacking the drawdown of an edge that doesn't survive a longer look-back.
+
+The genuinely-blocked deeper-intraday (beyond the ~24mo IB free-data limit) needs a **paid
+intraday source** (`export_ibkr_history` is 1h/1d-only; IB free micro-1h caps ~26mo) — an Amo
+procurement decision, not a Gateway restart. But given persistence already fails at 24mo,
+buying more of the *same* family's history is low-value; the signal says change the
+**strategy class**, not extend the look-back.
 
 _Safety: the factory writes `data/discovery_factory/`, never `gate_v2_verdicts/`. No
 candidate can self-authorize trading; promotion to live is a human decision._
