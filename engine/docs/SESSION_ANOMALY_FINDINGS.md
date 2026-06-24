@@ -40,6 +40,37 @@ Gate bar: PF_ci_lower ≥ 1.10, p_edge ≥ 0.95, sharpe ≥ 0.10, maxDD ≤ 5%, 
 **Verdict: no deployable naive session edge on MES.** Consistent with every prior track —
 the honest gate + stationarity guard refute it.
 
+## Calendar / seasonality extension (turn-of-month + day-of-week)
+
+Same data, same honest gate. Close-to-close daily returns, net of cost.
+
+| track | days held | total ret | PF | PF_ci_lower | p_edge | sharpe | maxDD | H1_pf | H2_pf | stationary | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| turn-of-month (long TOM window) | 84 | +2.21% | 1.103 | **1.607** ✓ | 0.619 ✗ | **0.523** | 5.78% ✗ | **0.98** | 1.26 | **No** | FAIL |
+
+Day-of-week descriptive (mean bps/day, net): **Mon +17.8 (PF 1.78), Wed +27.0 (PF 2.24)**
+positive; **Thu −19.4 (PF 0.54)** strongly negative; Tue/Fri ~flat. A "long Mon+Wed" rule is
+**not** built — selecting the winning days from this table is in-sample selection bias, and (see
+below) it would be regime-beta regardless.
+
+Turn-of-month is the *best* candidate found (Sharpe 0.52, PF_ci 1.61, DD near the ceiling) but
+fails the same way as overnight: **non-stationary** — H1 PF 0.98 loses, H2 PF 1.26 carries it.
+
+## Meta-finding (the decision-grade conclusion)
+
+**Every MES session/calendar candidate is non-stationary, back-loaded into the second half.**
+Overnight (H1 0.96 / H2 1.20), turn-of-month (H1 0.98 / H2 1.26), and the positive weekdays all
+concentrate their return in H2 (late-2025 → 2026). In this 20-month sample the "anomalies" are
+**indistinguishable from exposure to the recent bull regime** — regime-beta, not alpha. The
+chronological H1/H2 guard catches it every time; a pooled bootstrap (which several of these pass:
+overnight PF_ci 1.18, TOM PF_ci 1.61) would have green-lit a regime artifact.
+
+**Implication for the edge search:** a stationary edge on this instrument/period likely needs
+either (a) a **longer sample spanning multiple regimes** (data-gated — IB/Amo), or (b) a
+genuinely **regime-neutral structure** (market-neutral / stationarity-gated relative-value, or
+the magnet-fill microstructure singlefinder — the one candidate that already cleared per-window
+adequacy). Piling on more simple single-leg MES anomalies will keep producing H2-regime-beta.
+
 ## The one promising refinement (not yet run)
 
 The naive leg's two killers — 17% DD and H1 losses — are exactly what a **regime filter**

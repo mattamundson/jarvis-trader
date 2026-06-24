@@ -187,9 +187,12 @@ class LegVerdict:
     blocks: list[str] = field(default_factory=list)
 
 
-def evaluate_leg(sessions: pd.DataFrame, leg: str, *, net: bool = True) -> LegVerdict:
-    """Full honest evaluation of one session leg, incl. chronological H1/H2 split."""
-    r = leg_returns(sessions, leg, net=net)
+def grade_returns(label: str, r: pd.Series, *, net: bool = True) -> LegVerdict:
+    """Grade an arbitrary daily-return series with the full honest gate.
+
+    Shared by the session legs and the calendar tracks so every candidate is
+    judged on the identical bar (gate-v2 thresholds + chronological H1/H2 split).
+    """
     pfs = _window_pfs(r)
     pf = profit_factor(r)
     pf_ci = bootstrap_pf_ci_lower(pfs) if len(pfs) >= 2 else 0.0
@@ -218,7 +221,7 @@ def evaluate_leg(sessions: pd.DataFrame, leg: str, *, net: bool = True) -> LegVe
         blocks.append(f"non-stationary (H1_pf {h1_pf:.2f} / H2_pf {h2_pf:.2f})")
 
     return LegVerdict(
-        leg=leg,
+        leg=label,
         net=net,
         n_days=n,
         total_ret_pct=float(((1.0 + r).prod() - 1.0) * 100.0),
@@ -237,6 +240,69 @@ def evaluate_leg(sessions: pd.DataFrame, leg: str, *, net: bool = True) -> LegVe
         verdict="PASS" if not blocks else "FAIL",
         blocks=blocks,
     )
+
+
+def evaluate_leg(sessions: pd.DataFrame, leg: str, *, net: bool = True) -> LegVerdict:
+    """Honest evaluation of one session leg (overnight | intraday)."""
+    return grade_returns(leg, leg_returns(sessions, leg, net=net), net=net)
+
+
+# ── calendar / seasonality track (turn-of-month) ─────────────────────────────
+
+
+def daily_close_returns(sessions: pd.DataFrame, *, net: bool = True) -> pd.Series:
+    """Close-to-close daily returns (RTH close to RTH close), optional cost."""
+    px = sessions["rth_close_px"].astype(float)
+    r = px.pct_change().dropna()
+    if net:
+        cost = px.shift(1).reindex(r.index).map(_cost_ret).fillna(0.0)
+        r = r - cost
+    return r
+
+
+def turn_of_month_mask(index, *, n_end: int = 1, n_start: int = 3) -> pd.Series:
+    """Boolean mask: True on the last ``n_end`` trading days of a month and the
+    first ``n_start`` trading days of the next (the turn-of-month window).
+
+    Trading-day based (not calendar-day), computed from the actual session dates.
+    """
+    dt = pd.to_datetime(pd.Series(list(index)))
+    ym = dt.dt.year * 12 + dt.dt.month
+    # rank within month (1 = first trading day) and from-end rank (1 = last).
+    grp = pd.Series(range(len(dt))).groupby(ym.to_numpy())
+    rank_from_start = grp.cumcount() + 1
+    size = ym.map(ym.value_counts())
+    rank_from_end = size.to_numpy() - rank_from_start.to_numpy() + 1
+    is_start = rank_from_start.to_numpy() <= n_start
+    is_end = rank_from_end <= n_end
+    return pd.Series((is_start | is_end), index=list(index))
+
+
+def evaluate_turn_of_month(sessions: pd.DataFrame, *, net: bool = True) -> LegVerdict:
+    """Long MES only during the turn-of-month window, flat otherwise."""
+    r = daily_close_returns(sessions, net=net)
+    mask = turn_of_month_mask(r.index)
+    tom = r[mask.to_numpy()]
+    return grade_returns("turn_of_month", tom, net=net)
+
+
+def day_of_week_summary(sessions: pd.DataFrame, *, net: bool = True) -> pd.DataFrame:
+    """Descriptive mean close-to-close return (bps) and PF by weekday."""
+    r = daily_close_returns(sessions, net=net)
+    dt = pd.to_datetime(pd.Series(list(r.index)))
+    out = []
+    for wd in range(5):  # Mon..Fri
+        sel = r[(dt.dt.dayofweek == wd).to_numpy()]
+        if len(sel):
+            out.append(
+                {
+                    "weekday": ["Mon", "Tue", "Wed", "Thu", "Fri"][wd],
+                    "n": len(sel),
+                    "mean_bps": float(sel.mean() * 1e4),
+                    "pf": round(profit_factor(sel), 3),
+                }
+            )
+    return pd.DataFrame(out)
 
 
 _DEFAULT_CACHE = Path("C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache")
@@ -262,10 +328,13 @@ def run(csv_path: Path, *, net: bool = True) -> dict[str, LegVerdict]:
     df = pd.read_csv(csv_path)
     sessions = decompose_sessions(df)
     results = {leg: evaluate_leg(sessions, leg, net=net) for leg in ("overnight", "intraday")}
+    results["turn_of_month"] = evaluate_turn_of_month(sessions, net=net)
     print(f"MES session-anomaly backtest — {csv_path.name}  ({len(sessions)} RTH days)\n")
     for v in results.values():
         print(_format_verdict(v))
         print()
+    print("Day-of-week (close-to-close, net):")
+    print(day_of_week_summary(sessions, net=net).to_string(index=False))
     return results
 
 
