@@ -18,9 +18,10 @@ Two subcommands, two nulls:
 
             This catches what the gate-v2 bootstrap cannot: a strategy that fit
             the in-sample price path rather than a real edge (the documented
-            "pooled bootstrap passes non-stationary edges" failure mode). v1 is
-            fixed-param (tests the champion); an optimization-aware variant
-            (re-run the whole selection per permutation) is a deferred follow-on.
+            "pooled bootstrap passes non-stationary edges" failure mode).
+            Default is fixed-param (tests the champion); --optimize re-runs the
+            grid selection per permutation for a selection-adjusted p-value that
+            also captures data-snooping across the param grid.
 
 Usage (from the engine/ directory):
 
@@ -48,6 +49,24 @@ MULTIPLIERS: dict[str, float] = {
     "MGC": 10.0,
     "MCL": 10.0,
     "M2K": 5.0,
+}
+
+# Selection grids for the optimization-aware prices-MCPT (--optimize). These
+# mirror the tight grids the production gate-v2 runners search, so the v2
+# p-value reflects the same data-snooping surface the gate is exposed to.
+# (fast, slow, atr_trail_mult)
+OPTIMIZE_GRIDS: dict[str, list[tuple]] = {
+    "MES": [(50, 200, 2.0), (55, 200, 2.0), (60, 200, 2.0)],
+    "MGC": [
+        (40, 80, 1.5),
+        (40, 80, 2.0),
+        (40, 120, 1.5),
+        (40, 120, 2.0),
+        (50, 80, 1.5),
+        (50, 80, 2.0),
+        (50, 120, 1.5),
+        (50, 120, 2.0),
+    ],
 }
 
 
@@ -243,6 +262,54 @@ def prices_mcpt(
     }
 
 
+def prices_mcpt_optimized(
+    df: pd.DataFrame,
+    run_param_fn: Callable[[pd.DataFrame, tuple], object],
+    grid: list,
+    n_resamples: int = 200,
+    seed: int = 42,
+) -> dict:
+    """Optimization-aware prices-MCPT (v2).
+
+    Instead of a single fixed champion, re-run the FULL grid selection on each
+    permuted series and use best-PF-over-grid as the statistic. The p-value
+    therefore accounts for the data-snooping inflation of selecting the best of
+    K param sets -- the selection/consistency dimension the fixed-param
+    ``prices_mcpt`` cannot see. ``run_param_fn(df, params)`` returns an object
+    exposing ``profit_factor``.
+    """
+
+    def _best_over_grid(series: pd.DataFrame):
+        best_pf = -np.inf
+        best_params = None
+        for params in grid:
+            pf = float(run_param_fn(series, params).profit_factor)
+            if pf > best_pf:
+                best_pf, best_params = pf, params
+        return best_pf, best_params
+
+    observed_best_pf, best_params = _best_over_grid(df)
+
+    perm_bests = np.empty(n_resamples)
+    for i in range(n_resamples):
+        permuted = permute_ohlc(df, seed=seed + i + 1)
+        perm_bests[i] = _best_over_grid(permuted)[0]
+
+    count_ge = int(np.sum(perm_bests >= observed_best_pf))
+    p_value = (1 + count_ge) / (n_resamples + 1)
+
+    return {
+        "observed_best_pf": observed_best_pf,
+        "best_params": best_params,
+        "p_value": float(p_value),
+        "count_ge_observed": count_ge,
+        "n_resamples": n_resamples,
+        "perm_best_pf_mean": float(np.mean(perm_bests)),
+        "perm_best_pf_50th": float(np.percentile(perm_bests, 50)),
+        "perm_best_pf_95th": float(np.percentile(perm_bests, 95)),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Data loaders
 # ---------------------------------------------------------------------------
@@ -305,6 +372,40 @@ def _make_strategy_run_fn(symbol: str, params: dict, multiplier: float) -> Calla
     return run_fn
 
 
+def _make_param_run_fn(symbol: str, multiplier: float) -> Callable:
+    """Build a (df, (fast, slow, atr_trail_mult)) -> result fn for --optimize."""
+    from backtest.backtester import Backtester
+    from backtest.trend_signals import generate_sma_trend_signals
+
+    def run_param_fn(df: pd.DataFrame, params: tuple):
+        fast, slow, atr_trail_mult = params
+        df_sig = generate_sma_trend_signals(
+            df, fast=fast, slow=slow, atr_trail_mult=atr_trail_mult, min_rv_annualized=0.0
+        )
+        bt = Backtester(
+            initial_capital=50_000.0,
+            risk_per_trade=0.01,
+            max_daily_loss=0.02,
+            max_drawdown=0.05,
+            t1_exit_pct=0.50,
+            t2_exit_pct=0.30,
+            commission_per_contract=0.62,
+            slippage_ticks=2.0,
+        )
+        return bt.run(df_sig, symbol=symbol, multiplier=multiplier)
+
+    return run_param_fn
+
+
+def _grid_for(symbol: str, params: dict) -> list[tuple]:
+    """Selection grid for --optimize: the gate's tight grid when known, else a
+    fast-neighbor grid around the champion."""
+    if symbol in OPTIMIZE_GRIDS:
+        return OPTIMIZE_GRIDS[symbol]
+    f, s, a = params["fast"], params["slow"], params["atr_trail_mult"]
+    return [(max(2, f - 10), s, a), (f, s, a), (f + 10, s, a)]
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -359,14 +460,39 @@ def _cmd_prices(args) -> int:
         print(f"ERROR: no multiplier registered for {sym}; add it to MULTIPLIERS.")
         return 1
 
+    mode = (
+        "optimization-aware (grid re-selected per perm)"
+        if args.optimize
+        else "fixed-param champion"
+    )
     print(f"\n=== PRICES MCPT -- {sym} {args.interval} ===")
     print(f"Cache: {data_file.name} ({len(df)} bars)")
     print(
         f"Champion: fast={params['fast']} slow={params['slow']} "
         f"atr_trail_mult={params['atr_trail_mult']} | multiplier=${multiplier}"
     )
-    print(f"Permutations: {args.n} (re-running fixed-param champion on each)")
 
+    if args.optimize:
+        grid = _grid_for(sym, params)
+        print(f"Mode: {mode} | grid={len(grid)} combos | permutations: {args.n}")
+        run_param_fn = _make_param_run_fn(sym, multiplier)
+        res = prices_mcpt_optimized(df, run_param_fn, grid, n_resamples=args.n, seed=args.seed)
+        print(
+            f"\n  observed best PF       : {res['observed_best_pf']:.3f}  (params {res['best_params']})"
+        )
+        print(f"  permuted best PF 50th  : {res['perm_best_pf_50th']:.3f}")
+        print(f"  permuted best PF 95th  : {res['perm_best_pf_95th']:.3f}")
+        print(f"  perms >= observed best : {res['count_ge_observed']} / {res['n_resamples']}")
+        print(f"  p-value                : {res['p_value']:.4f}")
+        verdict = (
+            "EDGE PLAUSIBLE (p<0.05, selection-adjusted)"
+            if res["p_value"] < 0.05
+            else "NOT SIGNIFICANT -- selection inflation explains the edge"
+        )
+        print(f"\nVERDICT: {verdict}")
+        return 0
+
+    print(f"Mode: {mode} | permutations: {args.n}")
     run_fn = _make_strategy_run_fn(sym, params, multiplier)
     res = prices_mcpt(df, run_fn, n_resamples=args.n, seed=args.seed)
 
@@ -400,6 +526,11 @@ def main(argv: list[str] | None = None) -> int:
     p_pr.add_argument("--seed", type=int, default=42)
     p_pr.add_argument("--interval", default="1h")
     p_pr.add_argument("--cache-dir", default="backtest/cache")
+    p_pr.add_argument(
+        "--optimize",
+        action="store_true",
+        help="v2: re-run the grid selection per permutation (selection-adjusted p-value)",
+    )
     p_pr.set_defaults(func=_cmd_prices)
 
     args = parser.parse_args(argv)

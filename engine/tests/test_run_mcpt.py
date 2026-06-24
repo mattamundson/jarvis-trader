@@ -19,6 +19,7 @@ from backtest.run_mcpt import (
     load_trade_pnls,
     permute_ohlc,
     prices_mcpt,
+    prices_mcpt_optimized,
     profit_factor,
     signflip_test,
 )
@@ -254,3 +255,52 @@ def test_load_trade_pnls_empty_for_unknown_symbol(tmp_path):
     _make_trades_db(db)
     pnls = load_trade_pnls(str(db), "ZZZZ")
     assert len(pnls) == 0
+
+
+# ---------------------------------------------------------------------------
+# optimization-aware prices-MCPT (v2: re-run grid selection per permutation)
+# ---------------------------------------------------------------------------
+
+
+def test_prices_mcpt_optimized_constant_gives_pvalue_one():
+    # Every param on every series scores the same -> observed best ties all
+    # permuted bests -> p = 1.0.
+    df = _make_ohlc(80, seed=2)
+    grid = [(50, 200), (55, 200), (60, 200)]
+
+    def run_param_fn(_df, _params):
+        return type("R", (), {"profit_factor": 2.0})()
+
+    res = prices_mcpt_optimized(df, run_param_fn, grid, n_resamples=40, seed=42)
+    assert res["p_value"] == pytest.approx(1.0)
+    assert res["observed_best_pf"] == pytest.approx(2.0)
+    assert res["n_resamples"] == 40
+
+
+def test_prices_mcpt_optimized_selects_best_param():
+    # Best-over-grid must pick the max-PF param on the real series.
+    df = _make_ohlc(80, seed=2)
+    grid = [(50, 200), (55, 200), (60, 200)]
+    pf_by_fast = {50: 1.5, 55: 3.0, 60: 2.0}
+
+    def run_param_fn(d, params):
+        pf = pf_by_fast[params[0]] if d is df else 0.5
+        return type("R", (), {"profit_factor": pf})()
+
+    res = prices_mcpt_optimized(df, run_param_fn, grid, n_resamples=30, seed=42)
+    assert res["observed_best_pf"] == pytest.approx(3.0)
+    assert res["best_params"] == (55, 200)
+    # observed best (3.0) beats every permuted best (0.5) -> floor p-value.
+    assert res["p_value"] == pytest.approx(1.0 / 31.0)
+
+
+def test_prices_mcpt_optimized_reproducible_with_seed():
+    df = _make_ohlc(80, seed=2)
+    grid = [(50, 200), (60, 200)]
+
+    def run_param_fn(d, params):
+        return type("R", (), {"profit_factor": float(d["close"].iloc[-1]) + params[0]})()
+
+    a = prices_mcpt_optimized(df, run_param_fn, grid, n_resamples=20, seed=5)
+    b = prices_mcpt_optimized(df, run_param_fn, grid, n_resamples=20, seed=5)
+    assert a["p_value"] == b["p_value"]
