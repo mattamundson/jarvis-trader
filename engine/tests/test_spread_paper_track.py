@@ -260,7 +260,10 @@ def test_close_trade_honors_pair_symbol_and_lineage():
         lineage="mes_m2k_spread_v1",
     )
     assert c["symbol"] == "MES_M2K_SPREAD"
-    assert c["strategy_params"]["lineage"] == "mes_m2k_spread_v1"
+    # Nested decision_identity carrying "<lineage>::<composite_symbol>".
+    assert (
+        c["strategy_params"]["decision_identity"]["lineage"] == "mes_m2k_spread_v1::MES_M2K_SPREAD"
+    )
 
 
 def test_close_trade_defaults_to_es_nq():
@@ -273,7 +276,37 @@ def test_close_trade_defaults_to_es_nq():
     }
     c = pt.close_trade(st, 5050.0, 18000.0, 0.3, "t1", 2.0, 20000.0)
     assert c["symbol"] == pt.SPREAD_SYMBOL
-    assert c["strategy_params"]["lineage"] == pt.LINEAGE
+    assert (
+        c["strategy_params"]["decision_identity"]["lineage"] == f"{pt.LINEAGE}::{pt.SPREAD_SYMBOL}"
+    )
+
+
+def test_close_trade_stamp_is_read_by_forward_test_trade_lineage():
+    # The whole point of the nested stamp: forward_test must pick the lineage up so
+    # the dark record can graduate through the lineage track.
+    from backtest import forward_test as ft
+
+    st = {
+        "position": 1,
+        "entry_es": 5000.0,
+        "entry_nq": 2000.0,
+        "entry_time": "t0",
+        "entry_z": -2.5,
+    }
+    c = pt.close_trade(
+        st,
+        5050.0,
+        2000.0,
+        0.3,
+        "2026-07-01T15:00:00Z",
+        2.0,
+        20000.0,
+        pair_symbol="MES_M2K_SPREAD",
+        lineage="mes_m2k_spread_v1",
+    )
+    assert ft.trade_lineage(c) == "mes_m2k_spread_v1::MES_M2K_SPREAD"
+    # pnl/symbol unchanged (regression guard on the live ES-NQ math contract)
+    assert isinstance(c["pnl"], float) and c["symbol"] == "MES_M2K_SPREAD"
 
 
 def test_decide_transition_threads_pair_identity_into_closed_trade():
@@ -297,7 +330,10 @@ def test_decide_transition_threads_pair_identity_into_closed_trade():
     )
     assert ev == "close"
     assert closed["symbol"] == "MES_M2K_SPREAD"
-    assert closed["strategy_params"]["lineage"] == "mes_m2k_spread_v1"
+    assert (
+        closed["strategy_params"]["decision_identity"]["lineage"]
+        == "mes_m2k_spread_v1::MES_M2K_SPREAD"
+    )
 
 
 def test_track_dir_and_ledgers_isolate_per_pair(tmp_path):

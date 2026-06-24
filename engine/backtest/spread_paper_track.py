@@ -146,7 +146,14 @@ def close_trade(
         "exit_z": round(float(z_exit), 4),
         "ret": round(net_ret, 6),
         "pnl": round(net_ret * notional, 2),
-        "strategy_params": {"lineage": lineage, **DEFAULT_PARAMS},
+        # Nested decision_identity so forward_test.trade_lineage() picks it up and the
+        # dark record graduates through the lineage track. The lineage is per-pair and
+        # carries the composite symbol (e.g. "mes_m2k_spread_v1::MES_M2K_SPREAD"), which
+        # is_pre_registered() matches by id stem against the decision_registry.
+        "strategy_params": {
+            "decision_identity": {"lineage": f"{lineage}::{pair_symbol}"},
+            "params": dict(DEFAULT_PARAMS),
+        },
     }
 
 
