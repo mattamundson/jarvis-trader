@@ -174,6 +174,14 @@ def _fragility_warnings(m: dict) -> list[str]:
             "knife-edge artifact unless it holds across a BAND. Verify against the size band before "
             "trusting (see DRAWDOWN_ATTACK_FINDINGS.md)."
         )
+    if "breaker_off" in m.get("tags", ()):
+        warns.append(
+            "**Modified risk model (breaker OFF):** this spec ran with the in-window "
+            "`max_drawdown` halt disabled -- a DIFFERENT, more permissive risk regime than the "
+            "validated gate. It is a diagnostic probe, NOT a promotion path: a pass here does not "
+            "model a tradeable strategy and must be re-derived under a realistic per-trade risk "
+            "control before it means anything."
+        )
     return warns
 
 

@@ -281,6 +281,55 @@ def test_spec_risk_per_trade_routes_to_backtester(monkeypatch):
     assert captured["risk_per_trade"] == 0.005
 
 
+def test_spec_breakers_route_to_backtester(monkeypatch):
+    """_make_run_fn must pass spec.max_drawdown/max_daily_loss (lever 1), not constants."""
+    import backtest.discovery_factory as m
+
+    captured = {}
+
+    class _FakeBT:
+        def __init__(self, **kw):
+            captured.update(kw)
+
+        def run(self, *a, **k):
+            return object()
+
+    monkeypatch.setattr("backtest.backtester.Backtester", _FakeBT)
+    spec = StrategySpec(
+        symbol="MGC",
+        family="donchian_nobrk",
+        interval="15m",
+        signal_fn=lambda df, **k: df,
+        param_grid=grid(lookback_entry=[20]),
+        train_months=3,
+        max_drawdown=1.0,
+        max_daily_loss=0.5,
+    )
+    m._make_run_fn(spec)(pd.DataFrame({"close": [1.0]}), {"lookback_entry": 20})
+    assert captured["max_drawdown"] == 1.0
+    assert captured["max_daily_loss"] == 0.5
+
+
+def test_breaker_decouple_specs_registered():
+    """Lever 1 diagnostic: donchian band A/B with the in-window breaker OFF."""
+    reg = default_registry()
+    nb = [s for s in reg if "breaker_off" in s.tags]
+    by_label = {s.label: s for s in nb}
+    assert set(by_label) == {
+        "MGC_donchian_nobrk_lo_15m",
+        "MGC_donchian_nobrk_15m",
+        "MGC_donchian_nobrk_hi_15m",
+    }
+    # SAME risk band as the breaker-ON donchian_dd band -- only the breaker differs.
+    assert by_label["MGC_donchian_nobrk_lo_15m"].risk_per_trade == 0.004
+    assert by_label["MGC_donchian_nobrk_15m"].risk_per_trade == 0.005
+    assert by_label["MGC_donchian_nobrk_hi_15m"].risk_per_trade == 0.006
+    for s in nb:
+        assert s.max_drawdown == 1.0, "breaker effectively off"
+        assert s.signal_fn is generate_donchian_signals
+        assert s.min_oos_trades_per_window == 3
+
+
 def _orb_frame(days=("2026-03-02", "2026-03-03"), freq="15min"):
     """Synthetic ET-localized intraday frame with a rising price (triggers longs)."""
     import numpy as np
@@ -682,6 +731,25 @@ def test_synth_drawdown_attack_pass_is_flagged_sizing_tuned(tmp_path):
     assert res["n_pass"] == 1
     assert "Sizing-tuned pass" in res["report"]
     assert "knife-edge" in res["report"]
+
+
+def test_synth_breaker_off_pass_is_flagged_modified_risk(tmp_path):
+    """A breaker_off-tagged PASS must carry the modified-risk-model caution."""
+    from backtest.discovery_synthesize import synthesize
+
+    _write_verdict(
+        tmp_path,
+        "MGC_x_15m",
+        "PASS",
+        trades=247,
+        passed_via="alt",
+        dd_pct=2.5,
+        sample_adequate=True,
+        tags=("intraday", "breaker_off", "donchian", "15m"),
+    )
+    res = synthesize(tmp_path)
+    assert "Modified risk model" in res["report"]
+    assert "breaker OFF" in res["report"]
 
 
 def test_synth_clean_pass_has_no_fragility_warning(tmp_path):

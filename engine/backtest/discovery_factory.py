@@ -122,6 +122,14 @@ class StrategySpec:
     # this (drawdown% is scale-dependent) while pf/p_edge/dsr do not (ratios) --
     # so it's the lever for fitting a drawdown budget without touching the edge.
     risk_per_trade: float = 0.01
+    # Backtester in-window breakers. Defaults match the validated gate (5% / 2%).
+    # Lever 1 (breaker-decouple diagnostic) raises max_drawdown to effectively off
+    # (1.0) to test whether dsr becomes scale-invariant once per-window champion
+    # selection is no longer coupled to the breaker firing. A pass found this way
+    # uses a MODIFIED risk model (no in-window drawdown halt) and is NOT promotable
+    # on those semantics alone -- the synthesizer flags any breaker_off spec.
+    max_drawdown: float = 0.05
+    max_daily_loss: float = 0.02
     tags: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -467,6 +475,50 @@ def _position_stop_attack_specs() -> list[StrategySpec]:
     ]
 
 
+def _breaker_decouple_specs() -> list[StrategySpec]:
+    """Lever 1 (DIAGNOSTIC): the donchian band again, but with the in-window
+    max_drawdown breaker effectively OFF (max_drawdown=1.0).
+
+    This is a direct A/B against `_donchian_drawdown_attack_specs()`: SAME symbol,
+    interval, grid and the SAME risk band (0.004/0.005/0.006) -- the ONLY
+    difference is the breaker. It isolates the breaker's effect. The drawdown-
+    attack work concluded the breaker couples size to champion selection, making
+    dsr non-monotonic in size. If that diagnosis is right, turning the breaker off
+    should make dsr scale-invariant (stable across the band).
+
+    IMPORTANT -- this is a research probe, not a promotion path. With the breaker
+    off the backtest no longer halts a window at -5%, so it models a DIFFERENT
+    (more permissive) risk regime; mc_95th_dd will be larger at any given size.
+    A gate pass under these semantics is NOT tradeable on its own -- it only tells
+    us whether sizing-to-budget COULD work in principle once decoupled, which then
+    has to be re-derived under a realistic per-trade risk control (lever 2). The
+    `breaker_off` tag makes the synthesizer flag every such spec loudly.
+    """
+    grid_donchian = grid(lookback_entry=[20, 40], lookback_exit=[10, 20], atr_trail_mult=[2.0, 2.5])
+    plan = [
+        ("MGC", "15m", 0.004, "donchian_nobrk_lo"),
+        ("MGC", "15m", 0.005, "donchian_nobrk"),
+        ("MGC", "15m", 0.006, "donchian_nobrk_hi"),
+    ]
+    return [
+        StrategySpec(
+            symbol,
+            family,
+            interval,
+            generate_donchian_signals,
+            grid_donchian,
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            risk_per_trade=risk,
+            max_drawdown=1.0,  # in-window drawdown breaker effectively OFF
+            tags=("intraday", "breaker_off", "donchian", interval),
+        )
+        for symbol, interval, risk, family in plan
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Initial registry (slice 1) -- deliberately small. Tests the central thesis:
 # does dropping to 15m break the 30-trade floor that starves 1h trend, and do
@@ -717,6 +769,7 @@ def default_registry() -> list[StrategySpec]:
         + _drawdown_attack_specs()
         + _donchian_drawdown_attack_specs()
         + _position_stop_attack_specs()
+        + _breaker_decouple_specs()
     )
 
 
@@ -782,8 +835,8 @@ def _make_run_fn(spec: StrategySpec) -> Callable:
         bt = Backtester(
             initial_capital=CAPITAL,
             risk_per_trade=spec.risk_per_trade,
-            max_daily_loss=0.02,
-            max_drawdown=0.05,
+            max_daily_loss=spec.max_daily_loss,
+            max_drawdown=spec.max_drawdown,
             t1_exit_pct=0.50,
             t2_exit_pct=0.30,
             commission_per_contract=params.get("commission", _DEFAULT_COMMISSION),
