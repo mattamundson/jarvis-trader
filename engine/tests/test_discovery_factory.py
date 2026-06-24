@@ -197,6 +197,31 @@ def test_drawdown_attack_specs_registered():
         assert s.min_oos_trades_per_window == 3
 
 
+def test_position_stop_attack_specs_registered():
+    """Lever 2: tighter per-trade stop at FULL risk (0.01) -- not sizing-tuned.
+
+    These attack drawdown at the position level (tighter atr_trail_mult) and must
+    keep risk_per_trade=0.01 and NOT carry the drawdown_attack tag (so the
+    synthesizer's sizing-tuned fragility flag does not fire on them)."""
+    reg = default_registry()
+    stop = [s for s in reg if "stop_attack" in s.tags]
+    by_label = {s.label: s for s in stop}
+    assert set(by_label) == {"MGC_sma_trend_stop_5m", "MGC_donchian_stop_15m"}
+    for s in stop:
+        assert s.risk_per_trade == 0.01, "full risk -- no global size cut"
+        assert "drawdown_attack" not in s.tags
+        assert s.min_oos_trades_per_window == 3
+        atrs = {c["atr_trail_mult"] for c in s.param_grid}
+        # grid must reach into the tighter (<1.5) region the baseline never tested
+        assert min(atrs) <= 1.25, "must force evaluation of tight stops"
+    # trend keeps the robust slow region; donchian keeps the baseline lookbacks
+    trend = by_label["MGC_sma_trend_stop_5m"]
+    assert {c["slow"] for c in trend.param_grid} == {48, 72}
+    assert trend.signal_fn is generate_sma_trend_signals
+    don = by_label["MGC_donchian_stop_15m"]
+    assert don.signal_fn is generate_donchian_signals
+
+
 def test_donchian_drawdown_attack_band_registered():
     """Donchian dd specs sweep a risk BAND on the baseline (robust) donchian grid.
 

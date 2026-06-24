@@ -413,6 +413,60 @@ def _donchian_drawdown_attack_specs() -> list[StrategySpec]:
     ]
 
 
+def _position_stop_attack_specs() -> list[StrategySpec]:
+    """Lever 2: attack drawdown at the POSITION level via a tighter per-trade stop.
+
+    Sizing-to-budget was refuted (DRAWDOWN_ATTACK_FINDINGS.md) because the
+    max_drawdown breaker couples a global size cut to champion selection. This
+    lever is fundamentally different: keep FULL risk (0.01, no global size cut,
+    breaker untouched) and instead tighten the per-trade trailing stop
+    (`atr_trail_mult`), which caps each trade's loss directly. Lower per-trade
+    loss -> lower tail drawdown, sourced from cutting losers shorter rather than
+    from shrinking every position. (Vol-scaled sizing is already active: the
+    Backtester sizes contracts inversely to the ATR-based stop distance.)
+
+    The grids extend the stop INTO the tighter region (below the baseline
+    1.5-2.5 band) so the WFO is forced to evaluate tight stops, not just
+    re-pick the loose baseline champion. The open question a tighter stop
+    answers empirically: does drawdown clear the 4% ALT ceiling BEFORE the extra
+    whipsaw erodes pf/dsr? Tagged `stop_attack` (NOT `drawdown_attack`) -- these
+    are full-risk, so the sizing-tuned fragility flag must not fire on them.
+    """
+    plan = [
+        # (symbol, interval, family, signal_fn, grid)
+        (
+            "MGC",
+            "5m",
+            "sma_trend_stop",
+            generate_sma_trend_signals,
+            grid(fast=[12, 16, 20], slow=[48, 72], atr_trail_mult=[1.0, 1.25, 1.5]),
+        ),
+        (
+            "MGC",
+            "15m",
+            "donchian_stop",
+            generate_donchian_signals,
+            grid(lookback_entry=[20, 40], lookback_exit=[10, 20], atr_trail_mult=[1.0, 1.5, 2.0]),
+        ),
+    ]
+    return [
+        StrategySpec(
+            symbol,
+            family,
+            interval,
+            signal_fn,
+            g,
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            risk_per_trade=0.01,
+            tags=("intraday", "stop_attack", interval),
+        )
+        for symbol, interval, family, signal_fn, g in plan
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Initial registry (slice 1) -- deliberately small. Tests the central thesis:
 # does dropping to 15m break the 30-trade floor that starves 1h trend, and do
@@ -662,6 +716,7 @@ def default_registry() -> list[StrategySpec]:
         + _rv_filtered_trend_specs()
         + _drawdown_attack_specs()
         + _donchian_drawdown_attack_specs()
+        + _position_stop_attack_specs()
     )
 
 
