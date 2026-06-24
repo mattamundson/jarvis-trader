@@ -154,10 +154,20 @@ The `--strategy breakout` path reuses the existing four-gate validator, the prod
 Backtester (next-bar fill + real costs), and the PF cap — only the signal and its 6-combo
 grid are new. `--strategy trend` (default) is unchanged.
 
-Follow-on once the MCPT verdict is in hand: point the existing gate-v2 WFO harness (pattern:
-`engine/backtest/run_m2k_donchian_rank1.py`) at this signal for the full CORE/ALT verdict
-(bootstrap PF CI, `p_edge`, MC 95th-pct drawdown, 4-tier cost sweep). That harness already
-exists; it does not need to be rewritten.
+Follow-on once the MCPT verdict is in hand — the full gate-v2 CORE/ALT verdict (bootstrap PF
+CI, `p_edge`, MC 95th-pct drawdown, 4-tier cost sweep, Deflated Sharpe) with the ≥100-trade
+floor wired in:
+
+```bash
+.venv/Scripts/python backtest/run_index_breakout_gate_v2.py --symbol MNQ
+# writes engine/data/gate_v2_verdicts/MNQ_breakout_rank1.json
+```
+
+`run_index_breakout_gate_v2.py` mirrors the established `run_m2k_donchian_rank1.py` template
+(same rolling-WFO windows, same gate thresholds) and reuses the production Backtester +
+`generate_donchian_breakout_signals` — nothing in the execution or gate math is
+re-implemented. Run the four-gate MCPT first; if it REJECTs, there is no point running the
+heavier gate-v2 sweep.
 
 ---
 
