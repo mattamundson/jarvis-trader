@@ -34,17 +34,29 @@ so the engine's line matches the chart bar-for-bar.
 
 ## The alpha hypothesis (and how it is being tested)
 
-Hypothesis: the line is dynamic S/R; a tag-and-reclaim is a high-probability
-entry. This is exactly the kind of claim that survives in *random* data (a
-trailing stop hugs price by construction), so it is gated, not trusted:
+There are **two distinct rules** the line can generate, and they are not the
+same edge — both are implemented and backtested separately:
 
-- **Signal** (`atr_trail_bounce_signals.py`): long when a bar wicks to/through
-  the line while in long state **and** closes back above it (`touch + reclaim`),
-  **and** the line stays in long state for `hold_bars` afterward (Matt's "does
-  it stay above after 5 min" confirmation). Mirror for shorts. Stop = the line.
-  Targets = {1.5, 2.618} x ATR(14) (Saty convention). Point-in-time clean:
-  decision at bar `i` reads only bars `<= i` (enforced by a truncation-invariance
-  unit test).
+- **Bounce** (`generate_atr_trail_bounce_signals`): long when a bar wicks
+  to/through the line while in long state **and** closes back above it
+  (`touch + reclaim`), **and** the line stays in long state for `hold_bars`
+  afterward (Matt's "does it stay above after 5 min" confirmation). Mirror for
+  shorts. Stop = the line. Targets = {1.5, 2.618} x ATR(14). This is a
+  defined-target continuation trade.
+- **Flip** (`generate_atr_trail_flip_signals`): enter the bar the line flips
+  (close crosses through it) — this is what the TOS built-in strategies
+  `ATRTrailingStopLE` / `ATRTrailingStopSE` actually trade (the `-100 (-5000)` /
+  `100 (5000)` fills on Matt's chart). Stop-and-reverse, trend-following: stop =
+  the line, targets are R-multiples (2/3/4 R) but the real exit is the *opposite
+  flip*, so it is backtested with `use_targets=False` + trailing exit + 1
+  contract (the SMA-trend harness convention).
+
+Both are point-in-time clean: the decision at bar `i` reads only bars `<= i`
+(enforced by truncation-invariance unit tests for each variant).
+
+This is exactly the kind of claim that survives in *random* data (a trailing
+stop hugs price by construction), so both variants are gated by MCPT, not
+trusted on sight.
 - **Validation** (`run_atr_trail_bounce.py`): grid-search the locked spec, run
   the event-driven `Backtester`, then bar-permutation MCPT
   (`analytics.permutation_test.validate_strategy`). PASS requires in-sample
