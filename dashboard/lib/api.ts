@@ -456,6 +456,19 @@ export interface RegimeStatusResult {
   [key: string]: unknown;
 }
 
+/** GET /regime/vix-percentile — percentile VIX regime + momentum overlay */
+export interface VixPercentileRegime {
+  vix: number;
+  vix_percentile: number; // 0..100
+  tier: "Crisis" | "HighVol" | "MidVol" | "LowVol";
+  momentum: "Bull" | "Neutral" | "Bear";
+  confidence: number; // 0..1
+  lookback: number;
+  momentum_window: number;
+  price_symbol: string;
+  n_vix_bars: number;
+}
+
 /** GET /watchlist/scan */
 export interface WatchlistScanRow {
   symbol: string;

@@ -23,6 +23,7 @@ from backtest.vix_percentile_regime import (
     classify_vix_regime,
     gate_signals_by_vix_regime,
     momentum_overlay,
+    regime_snapshot,
     vix_percentile,
 )
 
@@ -156,3 +157,19 @@ def test_gate_does_not_mutate_input_and_validates_length():
 
     with pytest.raises(ValueError):
         gate_signals_by_vix_regime(signals, vix.iloc[:-1], price)
+
+
+def test_regime_snapshot_is_json_serializable_dict():
+    import json
+
+    rng = np.random.default_rng(11)
+    vix = pd.Series(np.abs(rng.normal(20, 5, 300)))
+    price = pd.Series(100.0 + rng.normal(0, 1, 300).cumsum())
+    snap = regime_snapshot(vix, price, lookback=252, momentum_window=63)
+    # Round-trips through JSON (no numpy/enum leakage).
+    json.dumps(snap)
+    assert set(snap) >= {"vix", "vix_percentile", "tier", "momentum", "confidence"}
+    assert snap["tier"] in {"Crisis", "HighVol", "MidVol", "LowVol"}
+    assert snap["momentum"] in {"Bull", "Neutral", "Bear"}
+    assert isinstance(snap["vix"], float)
+    assert 0.0 <= snap["vix_percentile"] <= 100.0
