@@ -135,6 +135,23 @@ promotion-gate candidate** (`live_promotion_gate.turn_of_month_current_evidence`
 BLOCKED pending the forward paper-shadow + live-system stability + those two policy decisions, but
 it carries the strongest backtest evidence of the arc.
 
+## Forward paper-shadow (DARK, observe-only) — LIVE
+
+`engine/backtest/tom_paper_track.py` (+5 tests) is the honest next gate, built in the
+`spread_paper_track` mold: NO orders, NO live DB, an isolated JSONL ledger under the
+MAIN-checkout `engine/data/tom_paper_track/` (durable across a worktree prune). Each tick records
+realized turn-of-month close-to-close returns (SPY daily via free yfinance — the validated vehicle,
+no engine dependency); only TOM days strictly AFTER inception count; idempotent. `--report` grades
+the accumulated FORWARD record on the gate-v2 bar vs the backtest prior (SPY Sharpe ~0.79 net).
+
+**Inception established 2026-06-24** (first live tick recorded 0 forward days, as expected). It now
+accumulates ~48 TOM days/yr; a gate verdict is meaningful after ~24 forward days (~6 months).
+
+**To go fully durable (Amo):** (1) merge `feat/session-anomaly-mes` so the tracker code lands in the
+main checkout; (2) register a daily scheduled task — mirrors `Jarvis-SpreadPaperTrack`:
+`schtasks /Create /SC DAILY /TN "Jarvis-TomPaperTrack" /TR "<main>/engine/.venv/Scripts/python.exe -m backtest.tom_paper_track" /ST 17:30 /RL LIMITED`
+(observe-only; the ledger/state already live in the main checkout, so the data is durable now).
+
 ## The one promising refinement (not yet run)
 
 The naive leg's two killers — 17% DD and H1 losses — are exactly what a **regime filter**
