@@ -8,7 +8,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.atr_trail_bounce_signals import generate_atr_trail_bounce_signals
+from backtest.atr_trail_bounce_signals import (
+    generate_atr_trail_bounce_signals,
+    generate_atr_trail_flip_signals,
+)
 from backtest.indicators import atr_trailing_stop
 
 
@@ -91,6 +94,47 @@ def test_no_lookahead_truncation_invariance():
     for i in range(cutoff + 1):
         assert full.loc[i, "entry_signal"] == truncated.loc[i, "entry_signal"], (
             f"bar {i} changed when future bars were dropped — look-ahead leak"
+        )
+
+
+def test_flip_fires_on_state_change():
+    # Uptrend then sharp breakdown -> a +1 -> -1 flip -> short entry on the
+    # flip bar; reversal back up -> -1 -> +1 flip -> long entry.
+    closes = np.concatenate([
+        np.linspace(100, 130, 30),  # long state established
+        np.linspace(129, 95, 25),   # breakdown -> flip short
+        np.linspace(96, 125, 25),   # recovery -> flip long
+    ])
+    df = _ohlc(closes)
+    out = generate_atr_trail_flip_signals(df, factor=3.5)
+    entries = out[out["entry_signal"] == "ENTRY_NOW"]
+    assert not entries.empty
+    # at least one short (target_1 < close) and one long (target_1 > close)
+    assert (entries["target_1"] < entries["close"]).any()
+    assert (entries["target_1"] > entries["close"]).any()
+
+
+def test_flip_entry_aligns_with_state_change():
+    closes = np.concatenate([np.linspace(100, 130, 30), np.linspace(129, 95, 25)])
+    df = _ohlc(closes)
+    out = generate_atr_trail_flip_signals(df, factor=3.5)
+    state = out["trail_state"]
+    for i in out.index[out["entry_signal"] == "ENTRY_NOW"]:
+        pos = out.index.get_loc(i)
+        if pos == 0:
+            continue
+        assert state.iloc[pos] != state.iloc[pos - 1], "flip entry without a state change"
+
+
+def test_flip_no_lookahead_truncation_invariance():
+    closes = list(np.linspace(100, 130, 30)) + list(np.linspace(129, 100, 20))
+    df = _ohlc(closes)
+    full = generate_atr_trail_flip_signals(df, factor=3.5)
+    cutoff = 40
+    trunc = generate_atr_trail_flip_signals(df.iloc[: cutoff + 1].copy(), factor=3.5)
+    for i in range(cutoff + 1):
+        assert full.loc[i, "entry_signal"] == trunc.loc[i, "entry_signal"], (
+            f"flip bar {i} changed when future bars dropped — look-ahead leak"
         )
 
 

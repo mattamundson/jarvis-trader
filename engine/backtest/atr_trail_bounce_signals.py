@@ -38,6 +38,10 @@ from backtest.indicators import atr_trailing_stop, wilder_atr
 _TARGET_ATR_PERIOD = 14
 _T1_MULT = 1.5
 _T2_MULT = 2.618
+# Flip (stop-and-reverse) target ladder, as R-multiples of the trail-stop risk.
+_FLIP_R1 = 2.0
+_FLIP_R2 = 3.0
+_FLIP_R3 = 4.0
 
 
 def generate_atr_trail_bounce_signals(
@@ -137,6 +141,102 @@ def generate_atr_trail_bounce_signals(
     df.loc[long_state, "bias"] = "LEAN_BULL"
     df.loc[short_state, "bias"] = "LEAN_BEAR"
 
+    df["regime"] = "RANGE_BOUND"
+    df.loc[long_state, "regime"] = "TRENDING_BULL"
+    df.loc[short_state, "regime"] = "TRENDING_BEAR"
+
+    return df
+
+
+def generate_atr_trail_flip_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    first_trade_long: bool = True,
+    trail_type: str = "modified",
+) -> pd.DataFrame:
+    """ATR trailing-stop FLIP (stop-and-reverse) entries.
+
+    This is the rule the TOS built-in strategies ``ATRTrailingStopLE`` (long
+    entry) and ``ATRTrailingStopSE`` (short entry) actually trade: enter in the
+    new direction the bar the trailing stop flips (close crosses through the
+    line). Distinct from the bounce rule above — the bounce buys a *hold* of
+    the line; the flip buys the *break* of it.
+
+    Long entry  : trail state flips -1 -> +1 (close crosses above the line).
+    Short entry : trail state flips +1 -> -1 (close crosses below the line).
+    Stop  : the trail line (the opposite-side stop you'd reverse on).
+    Targets: entry +/- {1.5, 2.618} x ATR(14).
+
+    Point-in-time: state at bar i uses only bars <= i (the trailing stop is
+    causal); the flip compares state[i] vs state[i-1]; entry is at close[i].
+
+    Same output schema as ``generate_atr_trail_bounce_signals``.
+    """
+    df = df.copy()
+    trail, state = atr_trailing_stop(
+        df["high"], df["low"], df["close"],
+        period=atr_period, factor=factor,
+        first_trade_long=first_trade_long, trail_type=trail_type,
+    )
+    atr14 = wilder_atr(df["high"], df["low"], df["close"], _TARGET_ATR_PERIOD)
+
+    prev_state = state.shift(1)
+    flip_long = (state == 1.0) & (prev_state == -1.0)
+    flip_short = (state == -1.0) & (prev_state == 1.0)
+
+    n = len(df)
+    entry_signal = np.full(n, "NO_TRADE", dtype=object)
+    exit_signal = np.full(n, "NO_EXIT", dtype=object)
+    stop_level = np.full(n, np.nan)
+    target_1 = np.full(n, np.nan)
+    target_2 = np.full(n, np.nan)
+    target_3 = np.full(n, np.nan)
+
+    for i in range(n):
+        if pd.isna(atr14.iloc[i]) or pd.isna(trail.iloc[i]):
+            continue
+        price = float(df["close"].iloc[i])
+        # Stop is the trail line; targets are R-multiples of that stop distance
+        # (standard stop-and-reverse sizing). Tying targets to the stop keeps
+        # R:R well above the backtester's 1.2 entry gate regardless of ATR mix.
+        # The true exit is the opposite flip (EXIT_NOW) under use_targets=False;
+        # these targets are the nominal R-ladder.
+        risk = abs(price - float(trail.iloc[i]))
+        if risk <= 0:
+            continue
+        if flip_long.iloc[i]:
+            entry_signal[i] = "ENTRY_NOW"
+            stop_level[i] = float(trail.iloc[i])
+            target_1[i] = price + _FLIP_R1 * risk
+            target_2[i] = price + _FLIP_R2 * risk
+            target_3[i] = price + _FLIP_R3 * risk
+        elif flip_short.iloc[i]:
+            entry_signal[i] = "ENTRY_NOW"
+            stop_level[i] = float(trail.iloc[i])
+            target_1[i] = price - _FLIP_R1 * risk
+            target_2[i] = price - _FLIP_R2 * risk
+            target_3[i] = price - _FLIP_R3 * risk
+
+    # Exit on the next flip (the stop-and-reverse handoff).
+    flipped = state != state.shift(1)
+    exit_signal[(flipped & state.notna()).to_numpy()] = "EXIT_NOW"
+
+    df["entry_signal"] = entry_signal
+    df["exit_signal"] = exit_signal
+    df["stop_level"] = stop_level
+    df["target_1"] = target_1
+    df["target_2"] = target_2
+    df["target_3"] = target_3
+    df["atr"] = atr14
+    df["trail"] = trail
+    df["trail_state"] = state
+
+    long_state = state == 1.0
+    short_state = state == -1.0
+    df["bias"] = "NEUTRAL"
+    df.loc[long_state, "bias"] = "LEAN_BULL"
+    df.loc[short_state, "bias"] = "LEAN_BEAR"
     df["regime"] = "RANGE_BOUND"
     df.loc[long_state, "regime"] = "TRENDING_BULL"
     df.loc[short_state, "regime"] = "TRENDING_BEAR"

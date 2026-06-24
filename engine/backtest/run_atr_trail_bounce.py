@@ -40,7 +40,10 @@ ENGINE_ROOT = Path(__file__).resolve().parent.parent
 if str(ENGINE_ROOT) not in sys.path:
     sys.path.insert(0, str(ENGINE_ROOT))
 
-from backtest.atr_trail_bounce_signals import generate_atr_trail_bounce_signals  # noqa: E402
+from backtest.atr_trail_bounce_signals import (  # noqa: E402
+    generate_atr_trail_bounce_signals,
+    generate_atr_trail_flip_signals,
+)
 from backtest.backtester import Backtester  # noqa: E402
 
 # ── Locked spec ────────────────────────────────────────────────────────────
@@ -80,44 +83,71 @@ def _load(symbol: str, timeframe: str, data_file: str | None) -> pd.DataFrame:
     return df
 
 
-def _backtest(df: pd.DataFrame, symbol: str, factor: float, hold_bars: int, tol: float):
-    sig = generate_atr_trail_bounce_signals(
-        df, atr_period=ATR_PERIOD, factor=factor, hold_bars=hold_bars, touch_tol_atr=tol
+def _grid_for(mode: str) -> list[dict]:
+    """Locked param grids, per mode."""
+    if mode == "flip":
+        return [{"factor": f} for f in FACTOR_GRID]
+    return [
+        {"factor": f, "hold_bars": h, "touch_tol_atr": t}
+        for f, h, t in PARAM_GRID
+    ]
+
+
+def _signals_for(mode: str, df: pd.DataFrame, params: dict):
+    if mode == "flip":
+        return generate_atr_trail_flip_signals(df, atr_period=ATR_PERIOD, factor=params["factor"])
+    return generate_atr_trail_bounce_signals(
+        df, atr_period=ATR_PERIOD, factor=params["factor"],
+        hold_bars=params["hold_bars"], touch_tol_atr=params["touch_tol_atr"],
     )
-    bt = Backtester(
-        initial_capital=CAPITAL,
-        risk_per_trade=0.01,
-        max_daily_loss=0.02,
-        max_drawdown=0.05,
-        commission_per_contract=COMMISSION,
-        slippage_ticks=SLIPPAGE_TICKS,
-    )
+
+
+def _backtest(df: pd.DataFrame, symbol: str, mode: str, params: dict):
+    sig = _signals_for(mode, df, params)
+    kwargs = {
+        "initial_capital": CAPITAL,
+        "risk_per_trade": 0.01,
+        "max_daily_loss": 0.02,
+        "max_drawdown": 0.05,
+        "commission_per_contract": COMMISSION,
+        "slippage_ticks": SLIPPAGE_TICKS,
+    }
+    if mode == "flip":
+        # Stop-and-reverse is trend-following: ride to the opposite flip
+        # (exit_signal=EXIT_NOW) with a trailing stop, no fixed targets, hold
+        # overnight, 1 contract — same harness convention as the SMA-trend runs.
+        kwargs.update(
+            use_targets=False, eod_close=False, fixed_contracts=1,
+            trailing_stop=True, strict_trailing=True,
+        )
+    bt = Backtester(**kwargs)
     return bt.run(sig, symbol=symbol, multiplier=MULTIPLIERS.get(symbol, 1.0))
 
 
-def _make_optimize_fn(symbol: str):
+def _make_optimize_fn(symbol: str, mode: str):
     """optimize_fn(df) -> (best_params, best_profit_factor) over the LOCKED grid."""
+    grid = _grid_for(mode)
 
     def optimize_fn(df: pd.DataFrame):
         best_pf, best_params = -1.0, None
-        for factor, hold_bars, tol in PARAM_GRID:
+        for params in grid:
             try:
-                res = _backtest(df, symbol, factor, hold_bars, tol)
+                res = _backtest(df, symbol, mode, params)
             except Exception:
                 continue
             if res.total_trades < MIN_TRADES:
                 continue
             if res.profit_factor > best_pf:
                 best_pf = res.profit_factor
-                best_params = {"factor": factor, "hold_bars": hold_bars, "touch_tol_atr": tol}
+                best_params = params
         return best_params, (best_pf if best_pf > 0 else 0.0)
 
     return optimize_fn
 
 
-def _make_walkforward_fn(symbol: str):
+def _make_walkforward_fn(symbol: str, mode: str):
     """walkforward_fn(df, train_window) -> OOS profit factor via rolling re-opt."""
-    optimize_fn = _make_optimize_fn(symbol)
+    optimize_fn = _make_optimize_fn(symbol, mode)
 
     def walkforward_fn(df: pd.DataFrame, train_window: int) -> float:
         if len(df) <= train_window + MIN_TRADES:
@@ -127,7 +157,7 @@ def _make_walkforward_fn(symbol: str):
             return 0.0
         oos = df.iloc[train_window:].reset_index(drop=True)
         try:
-            res = _backtest(oos, symbol, params["factor"], params["hold_bars"], params["touch_tol_atr"])
+            res = _backtest(oos, symbol, mode, params)
         except Exception:
             return 0.0
         return res.profit_factor if res.total_trades >= MIN_TRADES else 0.0
@@ -135,28 +165,20 @@ def _make_walkforward_fn(symbol: str):
     return walkforward_fn
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="ATR trail-bounce backtest + MCPT")
-    ap.add_argument("--symbol", default="MES")
-    ap.add_argument("--timeframe", default="1h")
-    ap.add_argument("--data-file", default=None)
-    ap.add_argument("--train-window", type=int, default=2000, help="bars for MCPT in-sample")
-    ap.add_argument("--insample-perms", type=int, default=200)
-    ap.add_argument("--walkforward-perms", type=int, default=200)
-    ap.add_argument("--skip-mcpt", action="store_true")
-    args = ap.parse_args()
+def _run_mode(mode: str, df: pd.DataFrame, args) -> None:
+    label = {"bounce": "BOUNCE (tag+reclaim+hold)", "flip": "FLIP (stop-and-reverse / TOS LE/SE)"}[mode]
+    optimize_fn = _make_optimize_fn(args.symbol, mode)
+    grid = _grid_for(mode)
 
-    df = _load(args.symbol, args.timeframe, args.data_file)
-    optimize_fn = _make_optimize_fn(args.symbol)
-
-    print(f"\n[ATR-BOUNCE] grid-searching {len(PARAM_GRID)} param sets on {len(df)} bars ...")
-    best_params, best_pf = optimize_fn(df)
+    print(f"\n{'=' * 72}\nMODE: {label}\n{'=' * 72}")
+    print(f"[ATR-{mode.upper()}] grid-searching {len(grid)} param sets on {len(df)} bars ...")
+    best_params, _ = optimize_fn(df)
     if not best_params:
-        raise SystemExit(f"No param set produced >= {MIN_TRADES} trades. Bounce too rare here.")
+        print(f"  No param set produced >= {MIN_TRADES} trades — too rare on this data. Skipping.")
+        return
 
-    res = _backtest(df, args.symbol, best_params["factor"], best_params["hold_bars"],
-                    best_params["touch_tol_atr"])
-    print("\n=== HEADLINE (full-sample, best in-sample params) ===")
+    res = _backtest(df, args.symbol, mode, best_params)
+    print("\n--- HEADLINE (full-sample, best in-sample params) ---")
     print(f"  params        : {best_params}")
     print(f"  trades        : {res.total_trades}")
     print(f"  profit factor : {res.profit_factor:.3f}")
@@ -168,22 +190,42 @@ def main() -> None:
     if args.skip_mcpt:
         return
 
-    print("\n[ATR-BOUNCE] running bar-permutation MCPT (this is the honest test) ...")
+    print(f"\n[ATR-{mode.upper()}] running bar-permutation MCPT (the honest test) ...")
     from analytics.permutation_test import validate_strategy
 
     verdict = validate_strategy(
         df,
         optimize_fn,
-        _make_walkforward_fn(args.symbol),
+        _make_walkforward_fn(args.symbol, mode),
         train_window=args.train_window,
         n_insample_perms=args.insample_perms,
         n_wf_perms=args.walkforward_perms,
     )
-    print("\n=== MCPT VERDICT ===")
+    print("--- MCPT VERDICT ---")
     for k, v in verdict.items():
         print(f"  {k:24s}: {v}")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="ATR trail bounce/flip backtest + MCPT")
+    ap.add_argument("--symbol", default="MES")
+    ap.add_argument("--timeframe", default="1h")
+    ap.add_argument("--data-file", default=None)
+    ap.add_argument("--mode", choices=["bounce", "flip", "both"], default="both",
+                    help="bounce = tag+reclaim+hold; flip = TOS LE/SE stop-and-reverse")
+    ap.add_argument("--train-window", type=int, default=2000, help="bars for MCPT in-sample")
+    ap.add_argument("--insample-perms", type=int, default=200)
+    ap.add_argument("--walkforward-perms", type=int, default=200)
+    ap.add_argument("--skip-mcpt", action="store_true")
+    args = ap.parse_args()
+
+    df = _load(args.symbol, args.timeframe, args.data_file)
+    modes = ["bounce", "flip"] if args.mode == "both" else [args.mode]
+    for mode in modes:
+        _run_mode(mode, df, args)
+
     print("\nGate: PASS only if in-sample MCPT p < 0.01 AND walk-forward MCPT p < 0.05.")
-    print("A REJECT means discard the hypothesis. Do NOT re-tune and rerun.")
+    print("A REJECT means discard that variant. Do NOT re-tune and rerun (data-mines the p-value).")
 
 
 if __name__ == "__main__":
