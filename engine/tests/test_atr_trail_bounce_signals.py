@@ -10,6 +10,7 @@ import pytest
 
 from backtest.atr_trail_bounce_signals import (
     generate_atr_trail_bounce_signals,
+    generate_atr_trail_confluence_signals,
     generate_atr_trail_flip_signals,
 )
 from backtest.indicators import atr_trailing_stop
@@ -135,6 +136,52 @@ def test_flip_no_lookahead_truncation_invariance():
     for i in range(cutoff + 1):
         assert full.loc[i, "entry_signal"] == trunc.loc[i, "entry_signal"], (
             f"flip bar {i} changed when future bars dropped — look-ahead leak"
+        )
+
+
+def _ohlc_dt(closes, highs=None, lows=None):
+    """OHLC with an hourly DatetimeIndex (confluence needs it for sessions)."""
+    df = _ohlc(closes, highs, lows)
+    df.index = pd.date_range("2025-01-02 08:00", periods=len(df), freq="h", tz="UTC")
+    return df
+
+
+def test_confluence_is_subset_of_base():
+    # Confluence trades must be a strict subset of the base flip trades —
+    # the gate can only remove entries, never add them. This is what keeps
+    # attribution clean (we can see exactly what the VA gate costs/adds).
+    closes = np.concatenate([
+        np.linspace(100, 130, 40), np.linspace(129, 95, 30), np.linspace(96, 125, 30),
+    ])
+    df = _ohlc_dt(closes)
+    base = generate_atr_trail_flip_signals(df, factor=3.5)
+    conf = generate_atr_trail_confluence_signals(df, factor=3.5, base="flip")
+    base_entries = set(np.where(base["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    conf_entries = set(np.where(conf["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    assert conf_entries.issubset(base_entries), "confluence added entries not in base"
+
+
+def test_confluence_strict_drops_more_than_loose():
+    closes = np.concatenate([
+        np.linspace(100, 130, 40), np.linspace(129, 95, 30), np.linspace(96, 125, 30),
+    ])
+    df = _ohlc_dt(closes)
+    loose = generate_atr_trail_confluence_signals(df, factor=3.5, strict_confluence=False)
+    strict = generate_atr_trail_confluence_signals(df, factor=3.5, strict_confluence=True)
+    n_loose = int((loose["entry_signal"] == "ENTRY_NOW").sum())
+    n_strict = int((strict["entry_signal"] == "ENTRY_NOW").sum())
+    assert n_strict <= n_loose, "strict confluence should never keep more trades than loose"
+
+
+def test_confluence_no_lookahead_truncation_invariance():
+    closes = list(np.linspace(100, 130, 40)) + list(np.linspace(129, 100, 30))
+    df = _ohlc_dt(closes)
+    full = generate_atr_trail_confluence_signals(df, factor=3.5)
+    cutoff = 55
+    trunc = generate_atr_trail_confluence_signals(df.iloc[: cutoff + 1].copy(), factor=3.5)
+    for i in range(cutoff + 1):
+        assert full["entry_signal"].iloc[i] == trunc["entry_signal"].iloc[i], (
+            f"confluence bar {i} changed when future bars dropped — look-ahead leak"
         )
 
 
