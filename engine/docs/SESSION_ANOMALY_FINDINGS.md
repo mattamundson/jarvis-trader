@@ -71,6 +71,50 @@ genuinely **regime-neutral structure** (market-neutral / stationarity-gated rela
 the magnet-fill microstructure singlefinder — the one candidate that already cleared per-window
 adequacy). Piling on more simple single-leg MES anomalies will keep producing H2-regime-beta.
 
+## DATA PULL — SPY daily 1993→2026 (Amo-authorized, the decisive test)
+
+The MES non-stationarity could be a too-short-sample artifact (20 months, one regime).
+Authorized data pull: **SPY daily, 8,407 days, 1993-01-29 → 2026-06-24** (yfinance,
+split/div-adjusted; saved `engine/backtest/cache/SPY_daily.csv`, gitignored). SPY is the
+canonical multi-decade vehicle for the night effect and tracks SPX/MES directly. Spans 2000,
+2008, 2018, 2020, 2022 — every regime. Run via `... --daily --gross`.
+
+| leg (gross, 33yr) | total ret | PF | PF_ci_lower | p_edge | sharpe | maxDD | H1_pf | H2_pf | stationary |
+|---|---|---|---|---|---|---|---|---|---|
+| **OVERNIGHT** | +2282% | 1.210 | 1.529 | 0.728 | **0.950** | 32.8% | **1.24** | **1.18** | **YES** |
+| INTRADAY | +28% | 1.024 | 1.262 | 0.545 | 0.125 | 68.5% | 0.98 | 1.09 | No |
+| **TURN_OF_MONTH** | +209% | 1.213 | 2.088 | 0.584 | **1.072** | 18.4% | **1.23** | **1.20** | **YES** |
+
+**Overnight PF by 5-year era — positive in EVERY regime:** 1990s 1.56/1.64, 2000-04 **1.053**
+(dot-com), 2005-09 **1.124** (GFC), 2010-14 1.183, 2015-19 1.216, 2020-24 1.154, 2025+ 1.161.
+Never < 1.0. The MES "non-stationarity" was a **short-sample artifact** — the overnight drift is
+real and stationary across 33 years. Virtually all of SPY's return is overnight (+2282% vs the
+intraday +28%); the intraday leg is the weak, non-stationary one.
+
+### Why they still "FAIL" the gate — and the honest net read
+
+Both real legs fail only on `p_edge ≥ 0.95` (95% of *months* profitable) and `maxDD ≤ 5%` —
+thresholds calibrated for hedged intraday-trend WFO, structurally impossible for a **long-beta
+harvest** (you cannot hold equity overnight through 2008/2020 at 5% DD; no long wins 95% of
+months). They are real edges, not gate-passers in raw long form.
+
+Net-of-cost (the deciding lens):
+
+| | gross Sharpe | net@1bp | net@2bp | net@3bp | trades/yr | verdict |
+|---|---|---|---|---|---|---|
+| overnight | 0.950 | 0.712 | 0.475 | 0.237 | ~252 | **real but too thin** — cost eats half; sized to 5% DD → ~1.5%/yr gross |
+| turn-of-month | 1.072 | — | **0.793** | — | ~48 | **the candidate** — low turnover ⇒ cost-robust; stationary; Sharpe survives |
+
+## Conclusion — first real edge of the arc
+
+**Turn-of-month is the first stationary, cost-surviving, multi-regime anomaly found.** Sharpe
+1.07 gross / 0.79 net, both 16-year halves PF ~1.2 (no modern decay), ~48 trades/yr so
+transaction cost barely dents it. It carries equity-beta drawdown (18%), so its deployable form
+is **beta-sized to the risk budget** (≈0.27x for a 5% DD ceiling) and/or routed through the
+promotion gate — not a raw unhedged long. Overnight drift is confirmed real but **killed for
+standalone deployment** (per-trade edge ≈ transaction cost). This is a regime-NEUTRAL-by-design
+direction (the meta-finding's prescription), now with empirical support.
+
 ## The one promising refinement (not yet run)
 
 The naive leg's two killers — 17% DD and H1 losses — are exactly what a **regime filter**

@@ -195,6 +195,31 @@ def test_consistently_profitable_edge_is_stationary():
     assert v.stationary is True
 
 
+# ── daily OHLC decomposition (SPY etc.) ──────────────────────────────────────
+
+
+def test_decompose_daily_returns():
+    from backtest.session_anomaly_backtest import decompose_daily
+
+    df = pd.DataFrame(
+        {
+            "date": ["2020-01-02", "2020-01-03", "2020-01-06"],
+            "open": [100.0, 103.0, 108.0],
+            "high": [105.0, 109.0, 110.0],
+            "low": [99.0, 102.0, 107.0],
+            "close": [102.0, 107.0, 109.0],
+            "volume": [1, 1, 1],
+        }
+    )
+    s = decompose_daily(df)
+    assert len(s) == 3
+    # intraday day1 = 102/100 - 1
+    assert s.iloc[0]["intraday_ret"] == pytest.approx(0.02)
+    # overnight day2 = open2/close1 - 1 = 103/102 - 1
+    assert s.iloc[1]["overnight_ret"] == pytest.approx(103.0 / 102.0 - 1.0)
+    assert np.isnan(s.iloc[0]["overnight_ret"])
+
+
 # ── calendar / turn-of-month track ───────────────────────────────────────────
 
 
