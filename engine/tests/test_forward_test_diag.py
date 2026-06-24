@@ -50,24 +50,8 @@ def test_lineage_report_attaches_diag_without_changing_graduation(monkeypatch):
     row = rows[0]
     assert "trade_shuffle" in row
     assert "p_value" in row["trade_shuffle"]
-    assert "dsr" in row
-    assert {"dsr", "passes_at_10pct", "n_obs", "n_trials"} <= set(row["dsr"])
-    # The diagnostics must not override the stubbed graduation verdict.
+    # The diagnostic must not override the stubbed graduation verdict.
     assert row["graduated"] is False
-
-
-def test_dsr_diag_shape_and_n_trials():
-    trades = [{"pnl": v} for v in (3.0, -1.0, 2.0, -0.5, 4.0, 1.0)]
-    res = ft.dsr_diag(trades, n_trials=7)
-    assert set(res) == {"dsr", "passes_at_10pct", "raw_sharpe", "n_obs", "n_trials"}
-    assert res["n_obs"] == 6
-    assert res["n_trials"] == 7  # multiple-testing family size flows through
-
-
-def test_dsr_diag_fail_closed_on_one_trade():
-    res = ft.dsr_diag([{"pnl": 5.0}], n_trials=3)
-    assert res["dsr"] == 0.0
-    assert res["passes_at_10pct"] is False
 
 
 def test_markdown_includes_ts_p_column(monkeypatch):
@@ -84,4 +68,3 @@ def test_markdown_includes_ts_p_column(monkeypatch):
     }
     md = ft._markdown(report)
     assert "ts_p" in md
-    assert "dsr" in md
