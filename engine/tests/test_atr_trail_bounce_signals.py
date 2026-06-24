@@ -21,8 +21,13 @@ def _ohlc(closes, highs=None, lows=None):
     highs = closes + 1.0 if highs is None else np.asarray(highs, dtype=float)
     lows = closes - 1.0 if lows is None else np.asarray(lows, dtype=float)
     return pd.DataFrame(
-        {"open": closes, "high": highs, "low": lows, "close": closes,
-         "volume": np.full(len(closes), 1000.0)}
+        {
+            "open": closes,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": np.full(len(closes), 1000.0),
+        }
     )
 
 
@@ -93,19 +98,21 @@ def test_no_lookahead_truncation_invariance():
         df.iloc[: cutoff + 1].copy(), hold_bars=1, touch_tol_atr=0.5
     )
     for i in range(cutoff + 1):
-        assert full.loc[i, "entry_signal"] == truncated.loc[i, "entry_signal"], (
-            f"bar {i} changed when future bars were dropped — look-ahead leak"
-        )
+        assert (
+            full.loc[i, "entry_signal"] == truncated.loc[i, "entry_signal"]
+        ), f"bar {i} changed when future bars were dropped — look-ahead leak"
 
 
 def test_flip_fires_on_state_change():
     # Uptrend then sharp breakdown -> a +1 -> -1 flip -> short entry on the
     # flip bar; reversal back up -> -1 -> +1 flip -> long entry.
-    closes = np.concatenate([
-        np.linspace(100, 130, 30),  # long state established
-        np.linspace(129, 95, 25),   # breakdown -> flip short
-        np.linspace(96, 125, 25),   # recovery -> flip long
-    ])
+    closes = np.concatenate(
+        [
+            np.linspace(100, 130, 30),  # long state established
+            np.linspace(129, 95, 25),  # breakdown -> flip short
+            np.linspace(96, 125, 25),  # recovery -> flip long
+        ]
+    )
     df = _ohlc(closes)
     out = generate_atr_trail_flip_signals(df, factor=3.5)
     entries = out[out["entry_signal"] == "ENTRY_NOW"]
@@ -134,9 +141,9 @@ def test_flip_no_lookahead_truncation_invariance():
     cutoff = 40
     trunc = generate_atr_trail_flip_signals(df.iloc[: cutoff + 1].copy(), factor=3.5)
     for i in range(cutoff + 1):
-        assert full.loc[i, "entry_signal"] == trunc.loc[i, "entry_signal"], (
-            f"flip bar {i} changed when future bars dropped — look-ahead leak"
-        )
+        assert (
+            full.loc[i, "entry_signal"] == trunc.loc[i, "entry_signal"]
+        ), f"flip bar {i} changed when future bars dropped — look-ahead leak"
 
 
 def _ohlc_dt(closes, highs=None, lows=None):
@@ -150,9 +157,13 @@ def test_confluence_is_subset_of_base():
     # Confluence trades must be a strict subset of the base flip trades —
     # the gate can only remove entries, never add them. This is what keeps
     # attribution clean (we can see exactly what the VA gate costs/adds).
-    closes = np.concatenate([
-        np.linspace(100, 130, 40), np.linspace(129, 95, 30), np.linspace(96, 125, 30),
-    ])
+    closes = np.concatenate(
+        [
+            np.linspace(100, 130, 40),
+            np.linspace(129, 95, 30),
+            np.linspace(96, 125, 30),
+        ]
+    )
     df = _ohlc_dt(closes)
     base = generate_atr_trail_flip_signals(df, factor=3.5)
     conf = generate_atr_trail_confluence_signals(df, factor=3.5, base="flip")
@@ -162,9 +173,13 @@ def test_confluence_is_subset_of_base():
 
 
 def test_confluence_strict_drops_more_than_loose():
-    closes = np.concatenate([
-        np.linspace(100, 130, 40), np.linspace(129, 95, 30), np.linspace(96, 125, 30),
-    ])
+    closes = np.concatenate(
+        [
+            np.linspace(100, 130, 40),
+            np.linspace(129, 95, 30),
+            np.linspace(96, 125, 30),
+        ]
+    )
     df = _ohlc_dt(closes)
     loose = generate_atr_trail_confluence_signals(df, factor=3.5, strict_confluence=False)
     strict = generate_atr_trail_confluence_signals(df, factor=3.5, strict_confluence=True)
@@ -180,17 +195,89 @@ def test_confluence_no_lookahead_truncation_invariance():
     cutoff = 55
     trunc = generate_atr_trail_confluence_signals(df.iloc[: cutoff + 1].copy(), factor=3.5)
     for i in range(cutoff + 1):
-        assert full["entry_signal"].iloc[i] == trunc["entry_signal"].iloc[i], (
-            f"confluence bar {i} changed when future bars dropped — look-ahead leak"
-        )
+        assert (
+            full["entry_signal"].iloc[i] == trunc["entry_signal"].iloc[i]
+        ), f"confluence bar {i} changed when future bars dropped — look-ahead leak"
 
 
 def test_output_schema_matches_backtester_contract():
     df = _ohlc(np.linspace(100, 120, 30))
     out = generate_atr_trail_bounce_signals(df)
-    for col in ["entry_signal", "exit_signal", "stop_level", "target_1",
-                "target_2", "target_3", "atr", "trail", "trail_state"]:
+    for col in [
+        "entry_signal",
+        "exit_signal",
+        "stop_level",
+        "target_1",
+        "target_2",
+        "target_3",
+        "atr",
+        "trail",
+        "trail_state",
+    ]:
         assert col in out.columns
+
+
+def test_loader_sets_datetime_index(tmp_path):
+    # The Backtester groups by .date() for daily-loss limits, so it needs a
+    # DatetimeIndex. _load() must parse the timestamp column into the index;
+    # a plain RangeIndex makes every backtest crash with
+    # "'int' object has no attribute 'date'", which the runner's broad
+    # `except Exception: continue` masks as "no trades — too rare".
+    from backtest.run_atr_trail_bounce import _load
+
+    csv = tmp_path / "MES_2024-01-01_2024-01-02_1h.csv"
+    csv.write_text(
+        "timestamp,open,high,low,close,volume\n"
+        "2024-01-01 05:00:00+00:00,100,101,99,100.5,1000\n"
+        "2024-01-01 06:00:00+00:00,100.5,102,100,101.5,1200\n"
+    )
+    out = _load("MES", "1h", str(csv))
+    assert isinstance(
+        out.index, pd.DatetimeIndex
+    ), "loader must return a DatetimeIndex or the Backtester crashes on .date()"
+
+
+def test_walkforward_oos_preserves_datetime_index(monkeypatch):
+    # The walk-forward OOS slice must keep its DatetimeIndex. A
+    # `.reset_index(drop=True)` replaces it with a RangeIndex, so the OOS
+    # backtest crashes ('int' has no attribute 'date'), the crash is swallowed
+    # by `except Exception: return 0.0`, and the walk-forward gate silently
+    # rejects EVERY strategy (real_wf_pf == 0). Capture the index type handed to
+    # every _backtest call; the OOS call must not be a RangeIndex.
+    import backtest.run_atr_trail_bounce as runner
+
+    # Oscillating series -> frequent ATR-trail flips (>=20 in each fold so the
+    # in-sample optimizer finds params and the OOS backtest is actually reached).
+    n = 600
+    closes = 100.0 + 12.0 * np.sin(np.arange(n) / 4.0)
+    df = pd.DataFrame(
+        {
+            "open": closes,
+            "high": closes + 1.0,
+            "low": closes - 1.0,
+            "close": closes,
+            "volume": np.full(n, 1000.0),
+        }
+    )
+    df.index = pd.date_range("2025-01-02 00:00", periods=n, freq="h", tz="UTC")
+
+    seen_index_types: list[type] = []
+    orig_backtest = runner._backtest
+
+    def _spy(frame, symbol, mode, params):
+        seen_index_types.append(type(frame.index))
+        return orig_backtest(frame, symbol, mode, params)
+
+    monkeypatch.setattr(runner, "_backtest", _spy)
+
+    wf = runner._make_walkforward_fn("MES", "flip")
+    wf(df, train_window=400)  # must reach and run the OOS backtest
+
+    assert seen_index_types, "optimizer never ran a backtest — fold too small to evaluate"
+    assert all(t is pd.DatetimeIndex for t in seen_index_types), (
+        "an OOS/in-sample backtest received a non-DatetimeIndex frame — "
+        "reset_index(drop=True) leak; the walk-forward gate would silently reject all"
+    )
 
 
 if __name__ == "__main__":
