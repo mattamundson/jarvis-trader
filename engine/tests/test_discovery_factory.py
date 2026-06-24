@@ -567,6 +567,7 @@ def _write_verdict(
     dd_pct=3.0,
     passed_via=None,
     sample_adequate=None,
+    tags=(),
 ):
     """Dump a minimal per-spec verdict JSON the synthesizer can read."""
     sym, fam, interval = label.split("_", 1)[0], "fam", label.rsplit("_", 1)[-1]
@@ -577,6 +578,7 @@ def _write_verdict(
         "interval": interval,
         "verdict": verdict,
         "passed_via": passed_via,
+        "tags": list(tags),
         "source_file": f"{label}.csv",
         "champion_params": {"fast": 8},
         "gate_v2": {
@@ -614,6 +616,66 @@ def test_synth_deployable_pass_gets_a_brief(tmp_path):
     assert res["n_pass"] == 1
     assert "CANDIDATE: MGC_x_5m" in res["report"]
     assert "passed_via=alt" in res["report"]
+
+
+def test_synth_razor_thin_dd_pass_is_flagged_fragile(tmp_path):
+    """An ALT PASS that clears the 4% DD ceiling by <0.1pp is briefed WITH a
+    razor-thin-margin caution -- never as a clean candidate."""
+    from backtest.discovery_synthesize import synthesize
+
+    _write_verdict(
+        tmp_path,
+        "MGC_x_5m",
+        "PASS",
+        trades=525,
+        passed_via="alt",
+        dd_pct=3.997,
+        sample_adequate=True,
+    )
+    res = synthesize(tmp_path)
+    assert res["n_pass"] == 1
+    assert "CANDIDATE: MGC_x_5m" in res["report"]
+    assert "Razor-thin drawdown margin" in res["report"]
+
+
+def test_synth_drawdown_attack_pass_is_flagged_sizing_tuned(tmp_path):
+    """A drawdown_attack-tagged PASS must carry the sizing-tuned / verify-across-band
+    caution even when its DD margin is comfortable."""
+    from backtest.discovery_synthesize import synthesize
+
+    _write_verdict(
+        tmp_path,
+        "MGC_x_5m",
+        "PASS",
+        trades=525,
+        passed_via="alt",
+        dd_pct=2.5,
+        sample_adequate=True,
+        tags=("intraday", "drawdown_attack", "5m"),
+    )
+    res = synthesize(tmp_path)
+    assert res["n_pass"] == 1
+    assert "Sizing-tuned pass" in res["report"]
+    assert "knife-edge" in res["report"]
+
+
+def test_synth_clean_pass_has_no_fragility_warning(tmp_path):
+    """A comfortable CORE pass (good DD margin, not sizing-tuned) gets no caution."""
+    from backtest.discovery_synthesize import synthesize
+
+    _write_verdict(
+        tmp_path,
+        "MGC_x_5m",
+        "PASS",
+        trades=200,
+        passed_via="core",
+        dd_pct=1.5,
+        sample_adequate=True,
+    )
+    res = synthesize(tmp_path)
+    assert "CANDIDATE: MGC_x_5m" in res["report"]
+    assert "Razor-thin drawdown margin" not in res["report"]
+    assert "Sizing-tuned pass" not in res["report"]
 
 
 def test_synth_blocked_symbol_candidate_is_flagged(tmp_path):

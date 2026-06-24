@@ -143,6 +143,40 @@ def _table(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# ALT drawdown ceiling for $50K+ routing (GATE_MC_DD_ALT=0.04). A PASS that
+# clears it by less than this epsilon is a razor-thin margin, not robust headroom.
+_ALT_DD_CEILING_PCT = 4.0
+_DD_MARGIN_EPS_PCT = 0.1
+
+
+def _fragility_warnings(m: dict) -> list[str]:
+    """Single-spec heuristics that flag a PASS as fragile / not yet trustworthy.
+
+    The synthesizer reads one spec at a time and cannot see cross-size context,
+    so it cannot prove a knife-edge by itself -- but two signals ARE visible from
+    one JSON and reliably mark a pass that needs more scrutiny before promotion."""
+    warns: list[str] = []
+    dd = m.get("mc_95th_dd_pct")
+    if (
+        m.get("passed_via") == "alt"
+        and dd is not None
+        and dd >= _ALT_DD_CEILING_PCT - _DD_MARGIN_EPS_PCT
+    ):
+        warns.append(
+            f"**Razor-thin drawdown margin:** mc_95th_dd={dd:.2f}% clears the {_ALT_DD_CEILING_PCT:.0f}% "
+            f"ALT ceiling by <{_DD_MARGIN_EPS_PCT:.1f}pp -- a coin-flip from FAIL, not robust headroom."
+        )
+    if "drawdown_attack" in m.get("tags", ()):
+        warns.append(
+            "**Sizing-tuned pass:** this spec was found by lowering `risk_per_trade` to fit the "
+            "drawdown budget. The `max_drawdown=0.05` breaker couples size to per-window champion "
+            "selection, so dsr and mc_95th_dd are non-monotonic in size -- a pass at one size is a "
+            "knife-edge artifact unless it holds across a BAND. Verify against the size band before "
+            "trusting (see DRAWDOWN_ATTACK_FINDINGS.md)."
+        )
+    return warns
+
+
 def _candidate_brief(m: dict) -> str:
     dnt = ""
     if m["symbol"] in DO_NOT_TRADE:
@@ -153,9 +187,12 @@ def _candidate_brief(m: dict) -> str:
             f"(see signals.DO_NOT_TRADE_SYMBOLS / rules/jarvis-trader.md) -- a separate, "
             f"explicit human decision.\n"
         )
+    frag = ""
+    for w in _fragility_warnings(m):
+        frag += f"\n> ⚠️ {w}\n"
     return (
         f"### CANDIDATE: {m['label']}  (passed_via={m['passed_via']})\n"
-        f"{dnt}\n"
+        f"{dnt}{frag}\n"
         f"- **Symbol / family / interval:** {m['symbol']} / {m['family']} / {m['interval']}\n"
         f"- **Champion params:** `{json.dumps(m['champion_params'])}`\n"
         f"- **Found on cache:** `{m['source_file']}`\n"
