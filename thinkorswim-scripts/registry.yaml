@@ -325,6 +325,27 @@ scripts:
 
   # ── Layer 5 / Supporting ─────────────────────────────────────────────────
 
+  - id: atr_trailing_stop
+    file: null  # ThinkorSwim built-in study/strategy — no shareable .ts in repo
+    docs: docs/atr_trailing_stop.md
+    author: "ThinkorSwim built-in (Vervoort ATR stop-and-reverse)"
+    layer: 5
+    layer_name: Sizing
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::atr_trailing_stop"
+    signal_module: "engine/backtest/atr_trail_bounce_signals.py"
+    panel: upper
+    jarvis_signals:
+      - atr_trail
+      - atr_trail_state
+      - atr_trail_bounce
+    tos_inputs:
+      trail_type: modified
+      atr_period: 5
+      atr_factor: 3.5
+      first_trade: long
+      average_type: WILDERS
+
   - id: cohen_mes_composite
     file: COHEN_MES_COMPOSITE.ts
     docs: COHEN_MES_README.md
