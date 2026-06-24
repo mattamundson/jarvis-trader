@@ -38,7 +38,7 @@ function momentumVariant(
   return "neutral";
 }
 
-export function VixRegimeCard() {
+export function VixPercentileRegimeCard() {
   const { data, error, isLoading, mutate } = useSWR<VixPercentileRegime>(
     "/regime/vix-percentile",
     fetcher,
