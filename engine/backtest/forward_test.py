@@ -234,31 +234,6 @@ def trade_shuffle_diag(trades: list[dict], n_iters: int = 500, metric: str = "me
     }
 
 
-def dsr_diag(trades: list[dict], n_trials: int) -> dict[str, Any]:
-    """Deflated Sharpe over a unit's realized P&L, corrected for ``n_trials``. Report-only.
-
-    DSR (Bailey & Lopez de Prado) discounts the Sharpe for the multiple-testing inflation
-    that comes from having evaluated ``n_trials`` units -- here the family size (number of
-    lineages / candidates) tested this run. Uses per-trade P&L as the return proxy: the
-    Sharpe and skew/kurt the DSR depends on are scale-invariant, so dollar P&L gives the
-    same statistic as fractional returns (same convention as gate-v2 ``trade_level_dsr``).
-
-    NON-BLOCKING. Returned as a separate field; NOT consumed by ``meets_graduation``.
-    Lazy-imports the analytics module so forward_test stays cheap to import.
-    """
-    from backtest.deflated_sharpe import deflated_sharpe_from_returns  # noqa: PLC0415
-
-    pnls = [float(t["pnl"]) for t in trades if t.get("pnl") is not None]
-    res = deflated_sharpe_from_returns(pnls, n_trials=max(int(n_trials), 1))
-    return {
-        "dsr": round(float(res["dsr"]), 4),
-        "passes_at_10pct": bool(res["passes_at_10pct"]),
-        "raw_sharpe": round(float(res["raw_sharpe"]), 4),
-        "n_obs": int(res["n_obs"]),
-        "n_trials": int(res["n_trials"]),
-    }
-
-
 # ── the loop ───────────────────────────────────────────────────────────────────
 
 def tag_strategy_params(strategy_params: Any, candidate_id: str) -> dict:
@@ -325,7 +300,6 @@ def run_lineage_track(
             "pre_registered": pre_reg,
             "forward": stats,
             "trade_shuffle": trade_shuffle_diag(buckets[lineage]),  # report-only; not in graduation
-            "dsr": dsr_diag(buckets[lineage], n_trials=len(rows)),  # report-only; not in graduation
             "survives_family_fdr": survives[i],
             "graduated": graduated,
             "reason": reason,
@@ -392,7 +366,6 @@ def run_forward_test(
             "precise_attribution": precise,
             "forward": stats,
             "trade_shuffle": trade_shuffle_diag(r["trades"]),  # report-only; not in graduation
-            "dsr": dsr_diag(r["trades"], n_trials=len(rows)),  # report-only; not in graduation
             "survives_family_fdr": survives[i],
             "graduated": graduated,
             "reason": reason,
@@ -430,9 +403,8 @@ def run_forward_test(
             "stamped on live paper entries (P2) -- the unit that actually trades; they "
             "graduate against the decision_registry. Default-material (unregistered:*) "
             "lineages can clear the stats but never graduate -- pre-register a lineage "
-            "before its forward window counts. ts_p (trade_shuffle p-value) and dsr "
-            "(deflated Sharpe, n_trials=family size) are REPORT-ONLY diagnostics; "
-            "neither affects graduation."
+            "before its forward window counts. ts_p (trade_shuffle p-value) is a "
+            "REPORT-ONLY Aronson sign-flip diagnostic; it does NOT affect graduation."
         ),
     }
     if persist:  # pragma: no cover - file IO exercised live
@@ -452,17 +424,16 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- active candidates: {report['n_active_candidates']}  |  "
         f"graduated: **{report['n_graduated']}**",
         "",
-        "| candidate | sym | attribution | n_oos | p_edge | pf_ci_lo | ts_p | dsr | fdr | graduated |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| candidate | sym | attribution | n_oos | p_edge | pf_ci_lo | ts_p | fdr | graduated |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for c in report["candidates"]:
         f = c["forward"]
         ts = c.get("trade_shuffle", {})
-        dsr = c.get("dsr", {})
         lines.append(
             f"| {c['id']} | {c['symbol']} | {c['attribution_level'] or '-'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
-            f"{ts.get('p_value', '-')} | {dsr.get('dsr', '-')} | "
+            f"{ts.get('p_value', '-')} | "
             f"{'Y' if c['survives_family_fdr'] else '.'} | "
             f"{'YES' if c['graduated'] else 'no'} |"
         )
@@ -470,21 +441,20 @@ def _markdown(report: dict[str, Any]) -> str:
     lines += ["", "## Decision lineages (LLM path -- the unit that trades live)", "",
               f"- lineages: {report.get('n_lineages', 0)}  |  "
               f"graduated: **{report.get('n_lineages_graduated', 0)}**", "",
-              "| lineage | pre-reg | n_oos | p_edge | pf_ci_lo | ts_p | dsr | fdr | graduated |",
-              "|---|---|---|---|---|---|---|---|---|"]
+              "| lineage | pre-reg | n_oos | p_edge | pf_ci_lo | ts_p | fdr | graduated |",
+              "|---|---|---|---|---|---|---|---|"]
     for lin in lineages:
         f = lin["forward"]
         ts = lin.get("trade_shuffle", {})
-        dsr = lin.get("dsr", {})
         lines.append(
             f"| {lin['lineage']} | {'Y' if lin['pre_registered'] else '.'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
-            f"{ts.get('p_value', '-')} | {dsr.get('dsr', '-')} | "
+            f"{ts.get('p_value', '-')} | "
             f"{'Y' if lin['survives_family_fdr'] else '.'} | "
             f"{'YES' if lin['graduated'] else 'no'} |"
         )
     if not lineages:
-        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |  |  |")
+        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |  |")
     lines += ["", "## Symbol context (all closed trades per symbol)", "",
               "| symbol | n_oos | p_edge | pf_ci_lo | trades | pnl |",
               "|---|---|---|---|---|---|"]
