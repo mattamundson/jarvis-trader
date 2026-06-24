@@ -102,6 +102,30 @@ def decompose_sessions(
     return out
 
 
+def decompose_daily(df: pd.DataFrame) -> pd.DataFrame:
+    """Decompose *daily* OHLC bars into the same session frame.
+
+    For a daily bar the official open IS the RTH open and the close IS the RTH
+    close, so no intraday-bar grouping is needed:
+      - overnight_ret = today_open / prior_close - 1
+      - intraday_ret  = today_close / today_open - 1
+    Accepts a ``date`` (or ``timestamp``) column plus open/close.
+    """
+    date_col = "date" if "date" in df.columns else "timestamp"
+    d = pd.to_datetime(df[date_col]).dt.date
+    out = pd.DataFrame(
+        {
+            "rth_open_px": df["open"].to_numpy(dtype=float),
+            "rth_close_px": df["close"].to_numpy(dtype=float),
+        },
+        index=list(d),
+    )
+    prior_close = out["rth_close_px"].shift(1)
+    out["overnight_ret"] = out["rth_open_px"] / prior_close - 1.0
+    out["intraday_ret"] = out["rth_close_px"] / out["rth_open_px"] - 1.0
+    return out
+
+
 def _cost_ret(entry_px: float) -> float:
     """Realistic MES round-trip cost expressed as a return on notional."""
     if entry_px <= 0:
@@ -338,13 +362,58 @@ def run(csv_path: Path, *, net: bool = True) -> dict[str, LegVerdict]:
     return results
 
 
+def overnight_era_table(sessions: pd.DataFrame, *, years: int = 5) -> pd.DataFrame:
+    """Overnight-leg PF and mean bps by multi-year era — the regime-stationarity view."""
+    r = leg_returns(sessions, "overnight", net=False)
+    dt = pd.to_datetime(pd.Series(list(r.index)))
+    era = (dt.dt.year // years) * years
+    out = []
+    for e, grp in pd.Series(r.to_numpy(), index=era.to_numpy()).groupby(level=0):
+        out.append(
+            {
+                "era": f"{int(e)}-{int(e) + years - 1}",
+                "n": len(grp),
+                "mean_bps": round(float(grp.mean() * 1e4), 2),
+                "pf": round(profit_factor(grp), 3),
+            }
+        )
+    return pd.DataFrame(out)
+
+
+def run_daily(csv_path: Path, *, net: bool = False) -> dict[str, LegVerdict]:
+    """Run the session + calendar tracks on a *daily* OHLC series (e.g. SPY)."""
+    df = pd.read_csv(csv_path)
+    sessions = decompose_daily(df)
+    results = {leg: evaluate_leg(sessions, leg, net=net) for leg in ("overnight", "intraday")}
+    results["turn_of_month"] = evaluate_turn_of_month(sessions, net=net)
+    span = f"{sessions.index[0]}..{sessions.index[-1]}"
+    print(
+        f"DAILY session-anomaly backtest — {csv_path.name}  "
+        f"({len(sessions)} days, {span}, {'net' if net else 'gross'})\n"
+    )
+    for v in results.values():
+        print(_format_verdict(v))
+        print()
+    print("Overnight PF by era (regime-stationarity view):")
+    print(overnight_era_table(sessions).to_string(index=False))
+    print("\nDay-of-week (close-to-close):")
+    print(day_of_week_summary(sessions, net=net).to_string(index=False))
+    return results
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description="MES overnight-drift / session anomaly backtest")
-    ap.add_argument("--csv", type=Path, default=None, help="explicit MES intraday CSV")
+    ap = argparse.ArgumentParser(description="overnight-drift / session anomaly backtest")
+    ap.add_argument("--csv", type=Path, default=None, help="explicit CSV")
     ap.add_argument("--cache-dir", type=Path, default=_DEFAULT_CACHE)
     ap.add_argument("--gross", action="store_true", help="evaluate gross of cost")
+    ap.add_argument("--daily", action="store_true", help="input is daily OHLC (e.g. SPY)")
     args = ap.parse_args()
     csv = args.csv
+    if args.daily:
+        if csv is None:
+            csv = args.cache_dir / "SPY_daily.csv"
+        run_daily(csv, net=not args.gross)
+        return
     if csv is None:
         cands = sorted(args.cache_dir.glob("MES_*_5m_cont.csv"))
         if not cands:
