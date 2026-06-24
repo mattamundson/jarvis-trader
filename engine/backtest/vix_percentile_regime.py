@@ -185,6 +185,29 @@ def classify_latest(
     )
 
 
+def regime_snapshot(
+    vix: pd.Series,
+    price: pd.Series,
+    lookback: int = DEFAULT_PCTILE_LOOKBACK,
+    momentum_window: int = DEFAULT_MOMENTUM_WINDOW,
+) -> dict:
+    """JSON-serializable latest-bar snapshot for API consumers.
+
+    Thin wrapper over :func:`classify_latest` that returns plain Python types
+    (enum ``.value`` strings, rounded floats) ready for a FastAPI response.
+    """
+    ctx = classify_latest(vix, price, lookback=lookback, momentum_window=momentum_window)
+    return {
+        "vix": round(ctx.vix, 2),
+        "vix_percentile": round(ctx.vix_percentile, 1),
+        "tier": ctx.tier.value,
+        "momentum": ctx.momentum.value,
+        "confidence": round(ctx.confidence, 3),
+        "lookback": lookback,
+        "momentum_window": momentum_window,
+    }
+
+
 # Default tiers in which to suppress new entries. AgentQuant's evidence (and our own
 # run_mes_trend_vix_rank*.py) is that trend entries taken in the top vol tier net-lose;
 # Crisis is blocked by default. Callers can widen/narrow this set.
