@@ -28,6 +28,7 @@ Pillars (all required):
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 # Neutral baseline Brier score = always predict p=0.5 on a binary outcome:
@@ -47,6 +48,35 @@ _BOOL_PILLARS = (
     "live_system_stable",
     "paper_shadow_passed",
 )
+
+
+#: Strategies cleared for live capital. INTENTIONALLY EMPTY (default-deny): a
+#: strategy enters this set only when a human/verified process confirms it passed
+#: ``evaluate_promotion`` — promotion is never an automatic data-driven act. As of
+#: 2026-06-24 NO strategy qualifies (the one real candidate, singlefinder, is
+#: BLOCKED — see ``singlefinder_current_evidence``). Populating this is the final
+#: Amo-gated step of live promotion, paired with flipping PROMOTION_GATE_ENFORCE.
+PROMOTED_STRATEGIES: frozenset[str] = frozenset()
+
+
+def is_strategy_promoted(strategy_id: str | None) -> bool:
+    """True only if ``strategy_id`` is an explicitly promoted strategy.
+
+    Looks up ``PROMOTED_STRATEGIES`` at call time (so it honors monkeypatching /
+    runtime population). A falsy/None id is never promoted.
+    """
+    return bool(strategy_id) and strategy_id in PROMOTED_STRATEGIES
+
+
+def promotion_gate_enforced() -> bool:
+    """Whether the pre-trade promotion block is ENFORCED (vs shadow-recorded).
+
+    Shadow-default OFF (env unset → ``False``): the live order path records that an
+    un-promoted strategy *would* be blocked but does not block. Setting
+    ``PROMOTION_GATE_ENFORCE`` to a truthy value turns the block hard. House
+    convention, mirrors ``GATE_V2_ENFORCE_*``. This flip is Amo Tier-3.
+    """
+    return os.getenv("PROMOTION_GATE_ENFORCE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def evaluate_promotion(evidence: dict[str, Any]) -> dict[str, Any]:
