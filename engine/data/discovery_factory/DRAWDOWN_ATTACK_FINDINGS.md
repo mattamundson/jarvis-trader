@@ -97,11 +97,57 @@ with margin:
 | total_oos_trades | 243 | ≥30 | ✓ |
 
 Because dsr=1.0 and fixed_min_pf=2.38 are *already* robust (unlike trend, which needed grid
-surgery and had a fragile dsr), this is the setup where sizing-to-budget could yield a real
-pass. Band test (`donchian_dd_lo`/`donchian_dd`/`donchian_dd_hi` @ 0.004/0.005/0.006 — all
-put 5.55% baseline DD comfortably <4%): **does the ALT PASS hold across the whole band?**
-Holds across the band → genuine candidate at reduced size. Holds at a point only → another
-artifact. Results to be appended when the sweep completes.
+surgery and had a fragile dsr), this looked like the setup where sizing-to-budget could yield
+a real pass. Band test (`donchian_dd_lo`/`donchian_dd`/`donchian_dd_hi` @ 0.004/0.005/0.006).
+
+### Band result — REFUTED (no point passes; same breaker coupling as trend)
+
+| spec | risk | mc_95th_dd | dsr | fixed_min_pf | pf_lo | wfo | trades | champion | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline | 0.010 | 5.55% ✗ | 1.000 ✓ | 2.379 | 1.533 | MOD | 243 | le40/lx10/atr2.5 | FAIL (DD) |
+| `dd_lo` | 0.004 | 2.60% ✓ | **0.000 ✗** | 1.674 | 1.381 | STRONG | 211 | le40/lx10/atr2.5 | FAIL (dsr) |
+| `dd` | 0.005 | 4.05% ✗ | **0.000 ✗** | 1.756 | 1.350 | MOD | 247 | le20/lx10/atr2.5 | FAIL (dsr+DD) |
+| `dd_hi` | 0.006 | 4.17% ✗ | 0.9999 ✓ | 1.892 | 1.459 | MOD | 282 | le40/lx10/atr2.0 | FAIL (DD) |
+
+**No band point passes**, and the metrics are chaotic — the opposite of a robust edge:
+- **dsr is non-monotonic in size: 1.0 → 0.0 → 0.0 → 1.0** across 0.010/0.004/0.005/0.006.
+- **mc_95th_dd is also non-monotonic: 2.60% → 4.05% → 4.17%** across 0.004/0.005/0.006 —
+  sizing *up* from 0.004 to 0.005 jumped DD by 1.45pp because the champion flipped
+  (le40→le20); the drawdown number does not even move smoothly with size.
+- The closest point (0.006: dsr 0.9999 ✓, fixed_min_pf 1.89 ✓, wfo ✓, pf_lo 1.46) still
+  misses DD by 0.17pp (4.17% vs 4.00%). Threading a risk between 0.005 and 0.006 to land
+  DD≤4% with dsr≥0.30 would be exactly the knife-edge gate-threading condemned for trend.
+
+### The general finding (both non-blocked intraday near-misses, same mechanism)
+
+At full size the `max_drawdown=0.05` Backtester breaker is the **binding constraint that does
+double duty**: it caps per-window drawdown near 5% *and* it culls the param combos that blow
+through −5%, fixing which champion survives. Sizing down **releases** the breaker (smaller
+positions rarely hit −5%), which simultaneously (a) lowers drawdown and (b) lets the
+previously-culled combos compete, reshuffling the champion and the realized Sharpe. You
+cannot get the lower drawdown without the champion reshuffle — so **dsr and mc_95th_dd are
+both non-monotonic and chaotic in `risk_per_trade`, and "size down to fit the ALT drawdown
+budget" is NOT a valid lever.** Any pass it produces (e.g. trend `dd_mid`) is a knife-edge
+artifact of tuning risk to thread a razor-thin margin, not evidence of edge.
+
+**Both intraday simple-family non-blocked near-misses are thereby exhausted as gate-passing
+candidates via sizing:** `MGC_sma_trend_5m` and `MGC_donchian_15m`. The ~5% drawdown wall is
+structural (the RV-filter refutation already ruled out a low-vol entry-filter rescue, and the
+sizing lever is now ruled out too).
+
+### Remaining levers (NOT sizing; Amo-gated judgment calls)
+
+1. **Decouple the breaker from sizing** — e.g. set `max_drawdown` per-spec proportional to
+   `risk_per_trade`, or disable the in-window breaker for the discovery sweep so dsr becomes
+   genuinely scale-invariant and sizing-to-budget can be evaluated cleanly. This is a
+   **semantic change to the validated backtester/gate** and could be read as loosening the
+   gate to manufacture a pass — needs Amo's call, not an autonomous edit.
+2. **Position-level drawdown control that is NOT a global size cut** — a hard per-trade dollar
+   stop, or volatility-scaled (not flat-fractional) sizing, which reduces tail drawdown
+   without uniformly shrinking every position. Different mechanism than `risk_per_trade`.
+3. **Deeper / different data** — higher-frequency or additional symbols where the edge clears
+   the floor at a lower structural drawdown. (IB micro-1h history is capped ~26mo — Amo-gated
+   backfill.)
 
 _Safety: the factory writes `data/discovery_factory/`, never `gate_v2_verdicts/`. No
 candidate can self-authorize trading; promotion to live is a human decision._
