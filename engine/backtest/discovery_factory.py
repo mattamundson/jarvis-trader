@@ -76,7 +76,7 @@ from backtest.wfo_lifecycle import (  # noqa: E402
 
 # Per-contract dollar multipliers. Backtester handles tick size internally by
 # symbol; we only supply the point multiplier (mirrors run_mes_trend_15m_rank1).
-CONTRACT_SPECS = {"MES": 5.0, "MGC": 10.0, "MNQ": 2.0}
+CONTRACT_SPECS = {"MES": 5.0, "MGC": 10.0, "MNQ": 2.0, "MCL": 100.0, "M2K": 5.0}
 SUPPORTED_SYMBOLS = frozenset(CONTRACT_SPECS)
 
 CAPITAL = 50_000.0  # ALT gate path requires $50K+ accounts

@@ -132,6 +132,51 @@ def test_registry_only_supported_symbols():
         assert s.symbol in CONTRACT_SPECS, f"{s.label} uses unsupported symbol"
 
 
+def test_contract_specs_cover_all_five_micros():
+    """All five micros must be registered with their correct point multipliers.
+
+    MCL/M2K were absent, so run_spec raised a bare KeyError on them (the
+    SUPPORTED_SYMBOLS guard in plan_spec runs too late to catch _make_run_fn's
+    line-883 lookup). MES=$5/pt, MGC=$10/pt, MNQ=$2/pt, MCL=$100/pt (100 bbl),
+    M2K=$5/index-pt.
+    """
+    assert CONTRACT_SPECS == {
+        "MES": 5.0,
+        "MGC": 10.0,
+        "MNQ": 2.0,
+        "MCL": 100.0,
+        "M2K": 5.0,
+    }
+
+
+def test_contract_specs_symbols_known_to_backtester():
+    """Every CONTRACT_SPECS symbol must have a tick size in the backtester.
+
+    A point multiplier without a matching TICK_SIZES entry would silently fall
+    back to DEFAULT_TICK_SIZE_FUTURES (0.25) and mis-cost crude/Russell fills.
+    """
+    from backtest.backtester import TICK_SIZES
+
+    for sym in CONTRACT_SPECS:
+        assert sym in TICK_SIZES, f"{sym} has a multiplier but no backtester tick size"
+
+
+def test_make_run_fn_resolves_mcl_and_m2k():
+    """_make_run_fn must build a closure for MCL/M2K without KeyError (the bug)."""
+    for sym in ("MCL", "M2K"):
+        spec = StrategySpec(
+            symbol=sym,
+            family="sma_trend",
+            interval="1d",
+            signal_fn=generate_sma_trend_signals,
+            param_grid=grid(fast=[10], slow=[50]),
+            train_months=18,
+            test_months=3,
+            step_months=3,
+        )
+        assert callable(dfac._make_run_fn(spec)), f"{sym} run_fn not built"
+
+
 def test_intraday_frontier_specs_registered():
     """The 5m + new-15m intraday frontier is registered across MES/MGC/MNQ."""
     reg = default_registry()
