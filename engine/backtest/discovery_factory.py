@@ -519,6 +519,58 @@ def _breaker_decouple_specs() -> list[StrategySpec]:
     ]
 
 
+def _deep_history_specs() -> list[StrategySpec]:
+    """Lever 3 (no-Gateway variant): the two MGC edges on the DEEPER history we
+    already have locally but the loader isn't picking.
+
+    The freshest-end-date cache rule makes the factory load the ~15-month MGC
+    caches (end 2026-06-12) even though a ~24-month MGC 5m cont cache exists
+    (2024-05-01..2026-05-29). So the trend-5m and donchian-15m discovery runs
+    were both judged on ~15mo, not the ~24mo available. This tests edge
+    PERSISTENCE on the longer window without any IB Gateway:
+      * trend 5m -> run against the deep 24mo 5m cont cache directly.
+      * donchian 15m -> run against a 15m series resampled from that deep 5m
+        cache (backtest.resample_intraday), ~24mo vs the shallow ~15mo.
+
+    These carry DISTINCT family labels (``*_deep_*``) so they never overwrite the
+    canonical shallow-cache verdicts, and must be run with
+    ``--cache-dir <deep_dir>`` (the dir holding the deep 5m + resampled deep 15m).
+    Grids mirror the robust trend region and the baseline donchian grid.
+    """
+    plan = [
+        (
+            "MGC",
+            "5m",
+            "sma_trend_deep",
+            generate_sma_trend_signals,
+            grid(fast=[12, 16, 20], slow=[48, 72], atr_trail_mult=[1.5, 2.0, 2.5]),
+        ),
+        (
+            "MGC",
+            "15m",
+            "donchian_deep",
+            generate_donchian_signals,
+            grid(lookback_entry=[20, 40], lookback_exit=[10, 20], atr_trail_mult=[2.0, 2.5]),
+        ),
+    ]
+    return [
+        StrategySpec(
+            symbol,
+            family,
+            interval,
+            signal_fn,
+            g,
+            train_months=3,
+            test_months=1,
+            step_months=1,
+            min_oos_trades_per_window=3,
+            risk_per_trade=0.01,
+            tags=("intraday", "deep_history", interval),
+        )
+        for symbol, interval, family, signal_fn, g in plan
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Initial registry (slice 1) -- deliberately small. Tests the central thesis:
 # does dropping to 15m break the 30-trade floor that starves 1h trend, and do
@@ -770,6 +822,7 @@ def default_registry() -> list[StrategySpec]:
         + _donchian_drawdown_attack_specs()
         + _position_stop_attack_specs()
         + _breaker_decouple_specs()
+        + _deep_history_specs()
     )
 
 

@@ -310,6 +310,18 @@ def test_spec_breakers_route_to_backtester(monkeypatch):
     assert captured["max_daily_loss"] == 0.5
 
 
+def test_deep_history_specs_registered():
+    """Lever 3 no-Gateway variant: distinct *_deep_* labels so they never overwrite
+    the canonical shallow-cache verdicts."""
+    reg = default_registry()
+    deep = [s for s in reg if "deep_history" in s.tags]
+    assert {s.label for s in deep} == {"MGC_sma_trend_deep_5m", "MGC_donchian_deep_15m"}
+    for s in deep:
+        assert s.risk_per_trade == 0.01
+        assert s.max_drawdown == 0.05, "deep-history test keeps the validated breaker"
+        assert s.min_oos_trades_per_window == 3
+
+
 def test_breaker_decouple_specs_registered():
     """Lever 1 diagnostic: donchian band A/B with the in-window breaker OFF."""
     reg = default_registry()

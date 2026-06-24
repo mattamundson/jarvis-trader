@@ -6,4 +6,7 @@
 *.json
 *.err
 *.log
+# Staged deep-history caches (lever 3): large resampled/copied CSVs, regenerable
+# via backtest.resample_intraday -- never committed.
+_deep15m_cache/
 !.gitignore
