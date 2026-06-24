@@ -195,5 +195,72 @@ def test_consistently_profitable_edge_is_stationary():
     assert v.stationary is True
 
 
+# ── calendar / turn-of-month track ───────────────────────────────────────────
+
+
+def test_turn_of_month_mask_marks_end_and_start():
+    from backtest.session_anomaly_backtest import turn_of_month_mask
+
+    # 5 trading days in Jan, 5 in Feb (weekday business days).
+    idx = list(pd.bdate_range("2025-01-27", periods=10).date)  # Jan27-31, Feb3-7
+    m = turn_of_month_mask(idx, n_end=1, n_start=3)
+    flags = [bool(x) for x in m.to_numpy()]
+    # Jan: last trading day (idx 4 = Jan31) is the end-of-month flag.
+    assert flags[4] is True
+    # Feb: first 3 trading days (idx 5,6,7) are start-of-month.
+    assert all(flags[i] for i in (5, 6, 7))
+    # Genuine mid-month days (rank 4 from start, 2 from end) are NOT in the window:
+    # idx 3 = Jan30 and idx 8 = Feb6.
+    assert flags[3] is False
+    assert flags[8] is False
+
+
+def test_daily_close_returns_net_below_gross():
+    from backtest.session_anomaly_backtest import daily_close_returns
+
+    bars = _rth_day("2025-06-02", 100.0, 110.0) + _rth_day("2025-06-03", 121.0, 130.0)
+    s = decompose_sessions(pd.DataFrame(bars))
+    gross = daily_close_returns(s, net=False)
+    net = daily_close_returns(s, net=True)
+    assert (net <= gross + 1e-12).all()
+
+
+def test_evaluate_turn_of_month_returns_legverdict():
+    from backtest.session_anomaly_backtest import evaluate_turn_of_month
+
+    idx = pd.date_range("2024-01-01", periods=200, freq="B").date
+    s = pd.DataFrame(
+        {
+            "rth_open_px": np.linspace(5000, 5200, 200),
+            "rth_close_px": np.linspace(5000, 5200, 200),
+            "overnight_ret": [0.0] * 200,
+            "intraday_ret": [0.0] * 200,
+        },
+        index=idx,
+    )
+    v = evaluate_turn_of_month(s, net=False)
+    assert isinstance(v, LegVerdict)
+    assert v.leg == "turn_of_month"
+    assert v.n_days < 200  # only the TOM window days are held
+
+
+def test_day_of_week_summary_shape():
+    from backtest.session_anomaly_backtest import day_of_week_summary
+
+    idx = pd.date_range("2024-01-01", periods=60, freq="B").date
+    s = pd.DataFrame(
+        {
+            "rth_open_px": np.linspace(5000, 5100, 60),
+            "rth_close_px": np.linspace(5000, 5100, 60),
+            "overnight_ret": [0.0] * 60,
+            "intraday_ret": [0.0] * 60,
+        },
+        index=idx,
+    )
+    tbl = day_of_week_summary(s, net=False)
+    assert list(tbl["weekday"]) == ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    assert (tbl["n"] > 0).all()
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
