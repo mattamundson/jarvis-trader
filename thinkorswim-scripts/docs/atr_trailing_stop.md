@@ -34,8 +34,8 @@ so the engine's line matches the chart bar-for-bar.
 
 ## The alpha hypothesis (and how it is being tested)
 
-There are **two distinct rules** the line can generate, and they are not the
-same edge — both are implemented and backtested separately:
+There are **three rules** the line can generate, all implemented and backtested
+separately so their edges can be compared and attributed:
 
 - **Bounce** (`generate_atr_trail_bounce_signals`): long when a bar wicks
   to/through the line while in long state **and** closes back above it
@@ -50,9 +50,18 @@ same edge — both are implemented and backtested separately:
   the line, targets are R-multiples (2/3/4 R) but the real exit is the *opposite
   flip*, so it is backtested with `use_targets=False` + trailing exit + 1
   contract (the SMA-trend harness convention).
+- **Confluence** (`generate_atr_trail_confluence_signals`): the flip base, but
+  entries that fight the prior-session value area are dropped (long requires
+  price not BELOW_VAL, short not ABOVE_VAH; `strict_confluence=True` requires
+  the confirming extreme). Motivated by Matt's live episode where the flip-short,
+  the VAL break, and the TPO target all agreed before a clean move. The
+  value-area reference comes from `tpo_profile.compute_tpo_profile`, which is
+  shifted one session — so it uses only the *prior* completed session, no leak.
+  Confluence trades are a strict subset of the flip trades, so the side-by-side
+  backtest shows exactly what the gate adds or costs.
 
-Both are point-in-time clean: the decision at bar `i` reads only bars `<= i`
-(enforced by truncation-invariance unit tests for each variant).
+All three are point-in-time clean: the decision at bar `i` reads only bars
+`<= i` (enforced by truncation-invariance unit tests for each variant).
 
 This is exactly the kind of claim that survives in *random* data (a trailing
 stop hugs price by construction), so both variants are gated by MCPT, not

@@ -42,6 +42,7 @@ if str(ENGINE_ROOT) not in sys.path:
 
 from backtest.atr_trail_bounce_signals import (  # noqa: E402
     generate_atr_trail_bounce_signals,
+    generate_atr_trail_confluence_signals,
     generate_atr_trail_flip_signals,
 )
 from backtest.backtester import Backtester  # noqa: E402
@@ -87,6 +88,9 @@ def _grid_for(mode: str) -> list[dict]:
     """Locked param grids, per mode."""
     if mode == "flip":
         return [{"factor": f} for f in FACTOR_GRID]
+    if mode == "confluence":
+        # flip base + prior-session value-area gate; sweep factor x strictness
+        return [{"factor": f, "strict_confluence": s} for f in FACTOR_GRID for s in (False, True)]
     return [
         {"factor": f, "hold_bars": h, "touch_tol_atr": t}
         for f, h, t in PARAM_GRID
@@ -96,6 +100,11 @@ def _grid_for(mode: str) -> list[dict]:
 def _signals_for(mode: str, df: pd.DataFrame, params: dict):
     if mode == "flip":
         return generate_atr_trail_flip_signals(df, atr_period=ATR_PERIOD, factor=params["factor"])
+    if mode == "confluence":
+        return generate_atr_trail_confluence_signals(
+            df, atr_period=ATR_PERIOD, factor=params["factor"],
+            base="flip", strict_confluence=params["strict_confluence"],
+        )
     return generate_atr_trail_bounce_signals(
         df, atr_period=ATR_PERIOD, factor=params["factor"],
         hold_bars=params["hold_bars"], touch_tol_atr=params["touch_tol_atr"],
@@ -112,10 +121,10 @@ def _backtest(df: pd.DataFrame, symbol: str, mode: str, params: dict):
         "commission_per_contract": COMMISSION,
         "slippage_ticks": SLIPPAGE_TICKS,
     }
-    if mode == "flip":
-        # Stop-and-reverse is trend-following: ride to the opposite flip
-        # (exit_signal=EXIT_NOW) with a trailing stop, no fixed targets, hold
-        # overnight, 1 contract — same harness convention as the SMA-trend runs.
+    if mode in ("flip", "confluence"):
+        # flip / confluence both ride a flip base (trend-following): exit on the
+        # opposite flip (exit_signal=EXIT_NOW) with a trailing stop, no fixed
+        # targets, hold overnight, 1 contract — the SMA-trend harness convention.
         kwargs.update(
             use_targets=False, eod_close=False, fixed_contracts=1,
             trailing_stop=True, strict_trailing=True,
@@ -166,7 +175,11 @@ def _make_walkforward_fn(symbol: str, mode: str):
 
 
 def _run_mode(mode: str, df: pd.DataFrame, args) -> None:
-    label = {"bounce": "BOUNCE (tag+reclaim+hold)", "flip": "FLIP (stop-and-reverse / TOS LE/SE)"}[mode]
+    label = {
+        "bounce": "BOUNCE (tag+reclaim+hold)",
+        "flip": "FLIP (stop-and-reverse / TOS LE/SE)",
+        "confluence": "CONFLUENCE (flip + prior-session value-area gate)",
+    }[mode]
     optimize_fn = _make_optimize_fn(args.symbol, mode)
     grid = _grid_for(mode)
 
@@ -211,8 +224,10 @@ def main() -> None:
     ap.add_argument("--symbol", default="MES")
     ap.add_argument("--timeframe", default="1h")
     ap.add_argument("--data-file", default=None)
-    ap.add_argument("--mode", choices=["bounce", "flip", "both"], default="both",
-                    help="bounce = tag+reclaim+hold; flip = TOS LE/SE stop-and-reverse")
+    ap.add_argument("--mode", choices=["bounce", "flip", "confluence", "both", "all"], default="all",
+                    help="bounce = tag+reclaim+hold; flip = TOS LE/SE stop-and-reverse; "
+                         "confluence = flip + prior-session value-area gate; "
+                         "both = bounce+flip; all = bounce+flip+confluence")
     ap.add_argument("--train-window", type=int, default=2000, help="bars for MCPT in-sample")
     ap.add_argument("--insample-perms", type=int, default=200)
     ap.add_argument("--walkforward-perms", type=int, default=200)
@@ -220,7 +235,8 @@ def main() -> None:
     args = ap.parse_args()
 
     df = _load(args.symbol, args.timeframe, args.data_file)
-    modes = ["bounce", "flip"] if args.mode == "both" else [args.mode]
+    mode_sets = {"both": ["bounce", "flip"], "all": ["bounce", "flip", "confluence"]}
+    modes = mode_sets.get(args.mode, [args.mode])
     for mode in modes:
         _run_mode(mode, df, args)
 
