@@ -242,6 +242,66 @@ def _orb_frontier_specs() -> list[StrategySpec]:
     ]
 
 
+# Bars-per-year for realized-vol annualization, by interval. generate_sma_trend_
+# signals defaults to 252*24 (1h); intraday bars need the denser factor so the
+# min_rv_annualized threshold (a % vol) means the same thing across intervals.
+_RV_ANNUAL_FACTOR_BY_INTERVAL = {
+    "5m": 252 * 24 * 12,  # 72576
+    "15m": 252 * 24 * 4,  # 24192
+    "1h": 252 * 24,  # 6048
+}
+
+
+def _rv_filtered_trend_specs() -> list[StrategySpec]:
+    """RV-filtered sma_trend at the tradeable intraday near-miss intervals.
+
+    The 42-spec frontier sweep showed trend-following owns the edge but the best
+    tradeable combo (MGC_sma_trend_5m: pf_lo 1.25, DSR 0.79, p_edge 0.83) dies on
+    a ~5.5-5.9% drawdown wall and on p_edge<0.95. The realized-vol filter
+    (``min_rv_annualized`` on generate_sma_trend_signals) suppresses low-vol
+    ranging periods where SMA crossovers false-signal -- the hypothesis is it
+    trims the bad-regime tail (lower mc_95th_dd) and raises win-quality (higher
+    p_edge), converting the near-miss to a gate PASS.
+
+    Every combo enables the RV gate (min_rv_annualized in {9, 12}, MES-derived
+    thresholds) and pins the interval-correct rv_annual_factor. The no-filter
+    control is the existing baseline sma_trend_{5m,15m} verdicts already on disk,
+    so this run is a clean A/B against them. Family ``sma_trend_rv`` + interval
+    suffix => labels like MGC_sma_trend_rv_5m, extending the 1h sma_trend_rv
+    family to intraday (unique labels, no collision).
+    """
+    pairs = [
+        ("MGC", "5m"),  # prime target -- strongest tradeable near-miss
+        ("MGC", "15m"),
+        ("MES", "5m"),  # RV-filter empirics originate on MES -- a control
+        ("MES", "15m"),
+    ]
+    specs: list[StrategySpec] = []
+    for symbol, interval in pairs:
+        factor = _RV_ANNUAL_FACTOR_BY_INTERVAL[interval]
+        specs.append(
+            StrategySpec(
+                symbol,
+                "sma_trend_rv",
+                interval,
+                generate_sma_trend_signals,
+                grid(
+                    fast=[8, 12, 16],
+                    slow=[24, 48],
+                    atr_trail_mult=[2.0, 2.5],
+                    min_rv_annualized=[9.0, 12.0],
+                    rv_annual_factor=[factor],
+                ),
+                train_months=3,
+                test_months=1,
+                step_months=1,
+                min_oos_trades_per_window=3,
+                tags=("intraday", "rv_filter", interval),
+            )
+        )
+    return specs
+
+
 # ---------------------------------------------------------------------------
 # Initial registry (slice 1) -- deliberately small. Tests the central thesis:
 # does dropping to 15m break the 30-trade floor that starves 1h trend, and do
@@ -488,6 +548,7 @@ def default_registry() -> list[StrategySpec]:
         ]
         + _intraday_frontier_specs()
         + _orb_frontier_specs()
+        + _rv_filtered_trend_specs()
     )
 
 

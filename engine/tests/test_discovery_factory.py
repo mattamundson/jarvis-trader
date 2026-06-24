@@ -139,11 +139,38 @@ def test_intraday_frontier_specs_registered():
         assert f"{sym}_sma_trend_5m" in labels, f"missing {sym} 5m trend"
     for sym in ("MGC", "MNQ"):
         assert f"{sym}_bollinger_rsi_15m" in labels, f"missing {sym} 15m meanrev"
-    intraday = [s for s in reg if "intraday" in s.tags]
+    # The frontier = the simple-family + ORB sweep (rv_filter specs are tagged
+    # 'intraday' too but not 'frontier', so scope to 'frontier' to stay stable).
+    frontier = [s for s in reg if "frontier" in s.tags]
     # 5 (symbol, interval) pairs x 4 families + 3 ORB specs.
-    assert len(intraday) == 23
-    assert all(s.min_oos_trades_per_window == 3 for s in intraday)
-    assert all(s.symbol in CONTRACT_SPECS for s in intraday)
+    assert len(frontier) == 23
+    assert all(s.min_oos_trades_per_window == 3 for s in frontier)
+    assert all(s.symbol in CONTRACT_SPECS for s in frontier)
+
+
+def test_rv_filtered_trend_specs_registered():
+    """RV-filtered trend specs carry an RV grid + interval-correct annual factor."""
+    from backtest.discovery_factory import _RV_ANNUAL_FACTOR_BY_INTERVAL
+
+    reg = default_registry()
+    # The intraday rv extension = rv_filter-tagged AND intraday (the existing 1h
+    # regime-filter probes are rv_filter-tagged but not 'intraday').
+    rv = [s for s in reg if "rv_filter" in s.tags and "intraday" in s.tags]
+    assert len(rv) == 4
+    assert {s.label for s in rv} == {
+        "MGC_sma_trend_rv_5m",
+        "MGC_sma_trend_rv_15m",
+        "MES_sma_trend_rv_5m",
+        "MES_sma_trend_rv_15m",
+    }
+    # No collision with the existing *_rv_1h specs.
+    assert all(not s.label.endswith("_rv_1h") for s in rv)
+    for s in rv:
+        rvs = {c["min_rv_annualized"] for c in s.param_grid}
+        assert all(v > 0.0 for v in rvs) and len(rvs) >= 2, "every combo enables the RV gate"
+        factors = {c["rv_annual_factor"] for c in s.param_grid}
+        assert factors == {_RV_ANNUAL_FACTOR_BY_INTERVAL[s.interval]}, "wrong annualization factor"
+        assert s.min_oos_trades_per_window == 3
 
 
 def _orb_frame(days=("2026-03-02", "2026-03-03"), freq="15min"):
@@ -208,8 +235,10 @@ def test_regime_filtered_trend_specs_registered_with_rv_axis():
     reg = default_registry()
     rv_specs = [s for s in reg if s.family == "sma_trend_rv"]
     assert {s.symbol for s in rv_specs} == {"MGC", "MES"}
+    # The family now spans 1h (baseline regime-filter probes) and intraday (the
+    # 5m/15m extension); every combo must still enable the RV gate.
+    assert {s.interval for s in rv_specs} <= {"1h", "5m", "15m"}
     for s in rv_specs:
-        assert s.interval == "1h"
         assert s.signal_fn is generate_sma_trend_signals
         assert "rv_filter" in s.tags
         assert all(
