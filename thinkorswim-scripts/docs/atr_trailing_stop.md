@@ -13,10 +13,15 @@
 
 This is the **dotted blue line** on Matt's /ES 5m chart that price was observed
 bouncing off precisely (2026-06-24). It was the only major study in that view
-with no entry in `registry.yaml` and no engine counterpart — every other study
-(Saty ATR Levels, Corey Tscore/TPO, Keltner 3.01) was already ported. This doc
-and the two modules above close that gap and, more importantly, make the
-"price bounces off the line" claim **testable** instead of visual.
+with no engine counterpart — every other study (Saty ATR Levels, Corey
+Tscore/TPO, Keltner 3.01) was already ported. This doc and the two modules
+above close that gap and, more importantly, make the "price bounces off the
+line" claim **testable** instead of visual.
+
+It is intentionally **not** an entry in `registry.yaml`: that file is keyed on
+real shareable `.ts` files (its schema requires a `file:` path and its loader
+test locks the script count), and this is a ThinkorSwim built-in with no `.ts`.
+This doc is its home in the bridge.
 
 ## What the line is
 
