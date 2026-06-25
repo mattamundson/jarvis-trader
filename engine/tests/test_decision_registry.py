@@ -16,11 +16,12 @@ from backtest import decision_registry as dr  # noqa: E402
 def test_loads_shipped_scaffold_registers_dark_lineages() -> None:
     # R1/T6: the spread + calendar dark tracks are now pre-registered (empty forward
     # windows). ES-NQ stays intentionally UNregistered (context-only, preserves live).
+    # preholiday_spy_v1 added 2026-06-25 (free-daily calendar standout forward track).
     reg = dr.load_registry()
     assert reg["schema_version"] == 1
     assert "graduation_rule" in reg
     ids = {lin["id"] for lin in reg["lineages"]}
-    assert ids == {"mes_m2k_spread_v1", "tom_spy_v1"}
+    assert ids == {"mes_m2k_spread_v1", "tom_spy_v1", "preholiday_spy_v1"}
     assert "es_nq_spread_v1" not in ids  # honesty: unregistered, never graduates
 
 
@@ -31,6 +32,8 @@ def test_shipped_registry_dark_lineages_have_correct_types() -> None:
     assert by_id["mes_m2k_spread_v1"]["legs"] == ["MES", "M2K"]
     assert by_id["tom_spy_v1"]["strategy_type"] == "calendar"
     assert by_id["tom_spy_v1"]["rule"] == "turn_of_month"
+    assert by_id["preholiday_spy_v1"]["strategy_type"] == "calendar"
+    assert by_id["preholiday_spy_v1"]["rule"] == "pre_holiday"
 
 
 def test_shipped_unregistered_es_nq_spread_is_never_pre_registered() -> None:
