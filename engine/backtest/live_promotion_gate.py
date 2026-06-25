@@ -95,11 +95,21 @@ def evaluate_promotion(evidence: dict[str, Any]) -> dict[str, Any]:
     # Sensitivity: ROBUST/ACCEPTABLE pass, FRAGILE/missing block.
     criteria["sensitivity_robust"] = evidence.get("sensitivity_verdict") in _SENSITIVITY_OK
 
-    # Ensemble: must be a known Brier strictly below the neutral ceiling.
-    brier = evidence.get("ensemble_brier")
-    criteria["ensemble_not_subneutral"] = (
-        isinstance(brier, (int, float)) and brier < ENSEMBLE_BRIER_CEILING
-    )
+    # Ensemble pillar — depends on decision_mode (Tier-3 systematic-strategy path):
+    #   "ensemble" (default): an LLM-ensemble-driven strategy must beat the neutral
+    #       Brier ceiling (unchanged behavior).
+    #   "systematic": a deterministic rule (e.g. turn-of-month) has no agent ensemble,
+    #       so the pillar is N/A. It is replaced by the out-of-sample backtest power
+    #       (robust_edge + per_window_adequate), which are already required pillars
+    #       above — so this can only ever de-authorize less, never more.
+    decision_mode = evidence.get("decision_mode", "ensemble")
+    if decision_mode == "systematic":
+        criteria["ensemble_not_subneutral"] = True  # N/A for a non-LLM systematic rule
+    else:
+        brier = evidence.get("ensemble_brier")
+        criteria["ensemble_not_subneutral"] = (
+            isinstance(brier, (int, float)) and brier < ENSEMBLE_BRIER_CEILING
+        )
 
     blocks = [name for name, ok in criteria.items() if not ok]
     return {
@@ -129,6 +139,51 @@ def singlefinder_current_evidence() -> dict[str, Any]:
         "live_system_stable": False,  # engine on Gemini fallback / unverified (Task 4)
         "ensemble_brier": 0.42,  # live ensemble worse-than-random
         "paper_shadow_passed": False,  # forward dry-run not yet run (Task 10c)
+    }
+
+
+def turn_of_month_current_evidence() -> dict[str, Any]:
+    """Turn-of-month candidate evidence as of 2026-06-24 (SPY 33yr + MES transfer).
+
+    The first stationary, cost-surviving, multi-regime anomaly found this arc. On
+    SPY 1993-2026 it is positive in every 5yr era (incl. 2008/2020) and stationary
+    (H1 PF 1.23 / H2 PF 1.20). Beta-sized to a 5% DD budget it clears pf_ci_lower
+    (1.17), DSR (1.0), and mc_95th_dd (4.57% <= 5%) — it fails the CORE gate ONLY on
+    p_edge (0.62 < 0.95), which over annual windows is structurally unmeetable for a
+    long-beta harvest (no long-only strategy is positive in 95% of years). See the
+    beta-harvest gate proposal; robust_edge stays False pending that Tier-3 decision
+    and the family BH-FDR.
+
+    TOM is a SYSTEMATIC strategy — it does NOT route through the LLM agent ensemble,
+    so it sets ``decision_mode="systematic"`` and the ``ensemble_not_subneutral``
+    pillar is N/A (substituted by the OOS backtest-power pillars). TOM is STILL
+    correctly BLOCKED — on ``robust_edge``, the forward paper-shadow, and live-system
+    stability — so the systematic path does not promote it; it only removes a pillar
+    that never applied.
+
+    NOTE on ``robust_edge`` (pre-registered-hypothesis caveat, 2026-06-24): the family
+    BH-FDR behind ``robust_edge`` exists to penalize the discovery factory's ~38 SWEPT
+    candidates for multiple testing (family_fdr.py). TOM is a single PRE-REGISTERED
+    hypothesis — it was never a member of that family, so crossing the family FDR is the
+    wrong bar for it (it would be penalized for OTHER candidates' data-mining). TOM's
+    honest validity rests instead on (a) the forward paper-shadow holding out-of-sample
+    and (b) cross-index robustness. The cross-index check ran (TOM_CROSS_INDEX_RESULTS.md)
+    and came back PARTIAL — corroborated in SPY/QQQ/MDY (large/tech/mid) but NOT across the
+    full complex (3/6; small-cap + intl lose stationarity). So ``robust_edge`` stays False
+    as the conservative state, and the forward shadow is the decisive arbiter — NOT a
+    family-FDR pass it was never eligible for.
+    """
+    return {
+        "strategy_id": "MES_turn_of_month",
+        "decision_mode": "systematic",  # deterministic calendar rule, no LLM ensemble
+        "robust_edge": False,  # gate-v2 fails on the mis-calibrated p_edge; BH-FDR not run
+        "per_window_adequate": True,  # ~48 trades/yr over decades of windows
+        "sensitivity_verdict": "ROBUST",  # parameter-free; stationary across 33yr/all regimes
+        "leakage_clean": True,  # close-to-close, TOM dates known ex-ante, no look-ahead
+        "cost_robust": True,  # net@2bps Sharpe 0.79; low turnover ~48 trades/yr
+        "live_system_stable": False,  # engine on Gemini fallback / unverified
+        # ensemble_brier omitted: systematic decision_mode makes the pillar N/A
+        "paper_shadow_passed": False,  # forward dry-run not yet run
     }
 
 
