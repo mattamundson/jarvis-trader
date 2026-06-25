@@ -80,6 +80,56 @@ def _zone_label(close: float, va_high: float, va_low: float) -> str:
     return _ZONE_LABELS[4]
 
 
+def compute_tpo_score_tos(df: pd.DataFrame) -> pd.DataFrame:
+    """Faithful port of the TOS AA_CoreyTscorev2 ScoreTotal (the chart panel).
+
+    Unlike ``compute_tpo_score`` (a normalized distance reinterpretation), this
+    reproduces the ThinkScript exactly: five ticsize-scaled sub-scores whose sign
+    drives the chart's "TPO Score is Positive/Negative" label. The ticsize factor
+    cancels for the sign, so this sums the five unit components and normalizes by
+    5 for cross-instrument comparability.
+
+        s_vah   = +1 close>VAH / -1 close<VAL / 0      (scorevah)
+        s_val   = +1 close>VAH / -1 close<VAL / 0      (scoreval; identical to s_vah)
+        s_poc   = +1 close>VPOC / -1 close<VPOC / 0
+        s_vabal = +1 close>VAbal / -1 close<VAbal / 0  (VAbal=(VAH+VAL)/2)
+        s_imbal = +1 VAbal>VPOC / -1 VAbal<VPOC / 0    (profile skew; close-independent)
+
+    Adds columns: tpo_score_tos (-1..1), tpo_score_tos_sign
+    ("POSITIVE"/"NEUTRAL"/"NEGATIVE"). Requires vpoc/va_high/va_low/close
+    (prior-session via compute_tpo_profile -> point-in-time safe).
+    """
+    missing = _REQUIRED - set(df.columns)
+    if missing:
+        raise ValueError(f"compute_tpo_score_tos: missing columns {sorted(missing)}")
+    out = df.copy()
+    close = out["close"]
+    poc = out["vpoc"]
+    vah = out["va_high"]
+    val = out["va_low"]
+    vabal = (vah + val) / 2
+
+    def _sign_above_below(x: pd.Series, lo: pd.Series, hi: pd.Series) -> pd.Series:
+        return np.where(x > hi, 1.0, np.where(x < lo, -1.0, 0.0))
+
+    s_vah = _sign_above_below(close, val, vah)  # +1 above VAH, -1 below VAL
+    s_val = s_vah  # the ThinkScript scoreval is identical to scorevah
+    s_poc = np.sign((close - poc).to_numpy())
+    s_vabal = np.sign((close - vabal).to_numpy())
+    s_imbal = np.sign((vabal - poc).to_numpy())
+
+    total = s_vah + s_val + s_poc + s_vabal + s_imbal  # range -5..+5
+    out["tpo_score_tos"] = total / 5.0
+    out["tpo_score_tos_sign"] = np.where(
+        total > 0, "POSITIVE", np.where(total < 0, "NEGATIVE", "NEUTRAL")
+    )
+    # NaN profile -> neutral / NaN score
+    undefined = poc.isna() | vah.isna() | val.isna()
+    out.loc[undefined, "tpo_score_tos"] = np.nan
+    out.loc[undefined.to_numpy(), "tpo_score_tos_sign"] = "NEUTRAL"
+    return out
+
+
 def compute_tpo_score(df: pd.DataFrame) -> pd.DataFrame:
     """Add tpo_score, tpo_score_label, price_zone_label columns to df.
 
