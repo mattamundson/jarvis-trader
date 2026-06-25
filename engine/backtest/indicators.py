@@ -175,6 +175,65 @@ def keltner_channels(
     return upper, basis, lower
 
 
+def keltner_channels_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    sma_len: int = 20,
+    atr_factor: float = 3.0,
+    developing: bool = True,
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """Multi-timeframe Keltner Channel — port of jp_keltner_multi_timeframe.ts.
+
+    The ThinkScript computes a Keltner (SMA basis +/- factor*SMA(TrueRange)) on a
+    user-selected ``iAggregationPeriod`` and plots it on the base chart. This
+    reproduces that: it aggregates the base bars to ``rule`` (e.g. "4h" =
+    FOUR_HOURS) and maps the higher-timeframe Keltner back onto every base bar.
+
+    developing=True matches TOS: the current higher-TF bar is the *developing*
+    aggregate of the base bars seen so far, so the line updates each base bar.
+    developing=False uses only completed higher-TF bars (one extra bar of lag).
+    Both are point-in-time safe — a base bar at t uses only base bars <= t.
+    With ``rule`` equal to the base bar frequency this collapses exactly to
+    ``keltner_channels``.
+
+    Returns (upper, basis, lower) Series on df.index.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("keltner_channels_mtf requires a DatetimeIndex")
+    idx = df.index
+    win = idx.floor(rule)
+    grp = df.groupby(win)
+    htf_close = grp["close"].last()
+    htf_high = grp["high"].max()
+    htf_low = grp["low"].min()
+    tr_htf = pd.concat(
+        [htf_high - htf_low,
+         (htf_high - htf_close.shift(1)).abs(),
+         (htf_low - htf_close.shift(1)).abs()],
+        axis=1,
+    ).max(axis=1)
+
+    def _to_base(s: pd.Series) -> pd.Series:
+        return pd.Series(s.reindex(win).to_numpy(), index=idx)
+
+    if developing:
+        prev_close = _to_base(htf_close.shift(1))  # last completed HTF close
+        dev_high = grp["high"].cummax()
+        dev_low = grp["low"].cummin()
+        tr_dev = pd.concat(
+            [dev_high - dev_low, (dev_high - prev_close).abs(), (dev_low - prev_close).abs()],
+            axis=1,
+        ).max(axis=1)
+        comp_close = _to_base(htf_close.shift(1).rolling(sma_len - 1).sum())
+        comp_tr = _to_base(tr_htf.shift(1).rolling(sma_len - 1).sum())
+        basis = (comp_close + df["close"]) / sma_len
+        shift = atr_factor * (comp_tr + tr_dev) / sma_len
+    else:
+        basis = _to_base(htf_close.rolling(sma_len).mean().shift(1))
+        shift = _to_base(atr_factor * tr_htf.rolling(sma_len).mean().shift(1))
+    return basis + shift, basis, basis - shift
+
+
 def ib_levels(
     high: pd.Series,
     low: pd.Series,
