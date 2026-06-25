@@ -234,6 +234,61 @@ def keltner_channels_mtf(
     return basis + shift, basis, basis - shift
 
 
+def keltner_cloud_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    sma_len: int = 20,
+    inner_factor: float = 1.5,
+    outer_factor: float = 2.0,
+    developing: bool = True,
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
+    """Dual-band multi-timeframe Keltner — port of the OB_OMEGA / JBOYD cloud.
+
+    The OB_OMEGA study plots two Keltner bands (inner 1.5x, outer 2.0x) on a
+    higher aggregation and shades the cloud between them. Reuses
+    ``keltner_channels_mtf`` (one aggregation, scaled to both factors) so the
+    basis and TR are computed once. The cloud shading itself is cosmetic; this
+    returns the band levels that matter for signals.
+
+    Returns (upper_outer, upper_inner, basis, lower_inner, lower_outer).
+    """
+    upper_inner, basis, lower_inner = keltner_channels_mtf(
+        df, rule=rule, sma_len=sma_len, atr_factor=inner_factor, developing=developing
+    )
+    scale = outer_factor / inner_factor
+    shift_inner = upper_inner - basis
+    upper_outer = basis + scale * shift_inner
+    lower_outer = basis - scale * shift_inner
+    return upper_outer, upper_inner, basis, lower_inner, lower_outer
+
+
+def macd_primer_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9,
+    developing: bool = True,
+) -> pd.Series:
+    """MACD primer (OB_OMEGA cloud color) on a higher aggregation.
+
+    Returns the MACD histogram (macd - signal) on the ``rule`` timeframe mapped
+    to base bars. Uses only completed higher-TF bars (shift(1)) so it is
+    point-in-time safe; ``developing`` is accepted for API symmetry but the
+    histogram always lags by one completed higher-TF bar.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("macd_primer_mtf requires a DatetimeIndex")
+    idx = df.index
+    win = idx.floor(rule)
+    htf_close = df.groupby(win)["close"].last()
+    ema_fast = htf_close.ewm(span=fast, adjust=False).mean()
+    ema_slow = htf_close.ewm(span=slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    hist = (macd - macd.ewm(span=signal, adjust=False).mean()).shift(1)
+    return pd.Series(hist.reindex(win).to_numpy(), index=idx)
+
+
 def ib_levels(
     high: pd.Series,
     low: pd.Series,
