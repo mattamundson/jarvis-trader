@@ -45,6 +45,7 @@ from backtest.atr_trail_bounce_signals import (  # noqa: E402
     generate_atr_trail_confluence_signals,
     generate_atr_trail_flip_signals,
     generate_atr_trail_kelt_confluence_signals,
+    generate_atr_trail_tpotarget_confluence_signals,
 )
 from backtest.backtester import Backtester  # noqa: E402
 
@@ -106,6 +107,9 @@ def _grid_for(mode: str) -> list[dict]:
     if mode == "kelt":
         # flip base + 4H Keltner gate; sweep factor x strictness
         return [{"factor": f, "strict_kelt": s} for f in FACTOR_GRID for s in (False, True)]
+    if mode == "tpotgt":
+        # flip base + TPO measured-move direction gate; sweep factor x room
+        return [{"factor": f, "require_room": r} for f in FACTOR_GRID for r in (False, True)]
     return [
         {"factor": f, "hold_bars": h, "touch_tol_atr": t}
         for f, h, t in PARAM_GRID
@@ -125,6 +129,11 @@ def _signals_for(mode: str, df: pd.DataFrame, params: dict):
             df, atr_period=ATR_PERIOD, factor=params["factor"],
             base="flip", strict_kelt=params["strict_kelt"],
         )
+    if mode == "tpotgt":
+        return generate_atr_trail_tpotarget_confluence_signals(
+            df, atr_period=ATR_PERIOD, factor=params["factor"],
+            base="flip", require_room=params["require_room"],
+        )
     return generate_atr_trail_bounce_signals(
         df, atr_period=ATR_PERIOD, factor=params["factor"],
         hold_bars=params["hold_bars"], touch_tol_atr=params["touch_tol_atr"],
@@ -141,10 +150,10 @@ def _backtest(df: pd.DataFrame, symbol: str, mode: str, params: dict):
         "commission_per_contract": COMMISSION,
         "slippage_ticks": SLIPPAGE_TICKS,
     }
-    if mode in ("flip", "confluence", "kelt"):
-        # flip / confluence / kelt all ride a flip base (trend-following): exit on
-        # the opposite flip (exit_signal=EXIT_NOW) with a trailing stop, no fixed
-        # targets, hold overnight, 1 contract — the SMA-trend harness convention.
+    if mode in ("flip", "confluence", "kelt", "tpotgt"):
+        # flip + all confluence variants ride a flip base (trend-following): exit
+        # on the opposite flip (exit_signal=EXIT_NOW) with a trailing stop, no
+        # fixed targets, hold overnight, 1 contract — the SMA-trend convention.
         kwargs.update(
             use_targets=False, eod_close=False, fixed_contracts=1,
             trailing_stop=True, strict_trailing=True,
@@ -200,6 +209,7 @@ def _run_mode(mode: str, df: pd.DataFrame, args) -> None:
         "flip": "FLIP (stop-and-reverse / TOS LE/SE)",
         "confluence": "CONFLUENCE (flip + prior-session value-area gate)",
         "kelt": "KELT-CONFLUENCE (flip + 4H Keltner gate)",
+        "tpotgt": "TPO-TARGET (flip + profile measured-move direction gate)",
     }[mode]
     optimize_fn = _make_optimize_fn(args.symbol, mode)
     grid = _grid_for(mode)
@@ -245,12 +255,14 @@ def main() -> None:
     ap.add_argument("--symbol", default="MES")
     ap.add_argument("--timeframe", default="1h")
     ap.add_argument("--data-file", default=None)
-    ap.add_argument("--mode", choices=["bounce", "flip", "confluence", "kelt", "both", "all"],
-                    default="all",
-                    help="bounce = tag+reclaim+hold; flip = TOS LE/SE stop-and-reverse; "
-                         "confluence = flip + prior-session value-area gate; "
-                         "kelt = flip + 4H Keltner gate; both = bounce+flip; "
-                         "all = bounce+flip+confluence+kelt")
+    ap.add_argument(
+        "--mode",
+        choices=["bounce", "flip", "confluence", "kelt", "tpotgt", "both", "all"],
+        default="all",
+        help="bounce = tag+reclaim+hold; flip = TOS LE/SE stop-and-reverse; "
+             "confluence = flip + prior-session value-area gate; "
+             "kelt = flip + 4H Keltner gate; tpotgt = flip + TPO target direction; "
+             "both = bounce+flip; all = bounce+flip+confluence+kelt+tpotgt")
     ap.add_argument("--train-window", type=int, default=2000, help="bars for MCPT in-sample")
     ap.add_argument("--insample-perms", type=int, default=200)
     ap.add_argument("--walkforward-perms", type=int, default=200)
@@ -260,7 +272,7 @@ def main() -> None:
     df = _load(args.symbol, args.timeframe, args.data_file)
     mode_sets = {
         "both": ["bounce", "flip"],
-        "all": ["bounce", "flip", "confluence", "kelt"],
+        "all": ["bounce", "flip", "confluence", "kelt", "tpotgt"],
     }
     modes = mode_sets.get(args.mode, [args.mode])
     for mode in modes:
