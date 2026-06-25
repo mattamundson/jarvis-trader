@@ -79,6 +79,46 @@ def promotion_gate_enforced() -> bool:
     return os.getenv("PROMOTION_GATE_ENFORCE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
+#: Strategy-class tag whose gate verdict may route through the beta-harvest variant.
+BETA_HARVEST_TAG = "beta_harvest"
+
+
+def beta_harvest_gate_enforced() -> bool:
+    """Whether the APPROVED beta-harvest gate variant is active for tagged strategies.
+
+    Shadow-default OFF (env unset → ``False``), mirroring ``promotion_gate_enforced``.
+    The variant was APPROVED by Amo on 2026-06-25 (T10 — see
+    ``engine/docs/BETA_HARVEST_GATE_PROPOSAL.md``); flipping ``BETA_HARVEST_GATE_ENFORCE``
+    truthy is the pre-authorized runtime activation. Even when active it only changes
+    the gate VERDICT for a strategy tagged ``beta_harvest`` — it promotes nothing
+    (``evaluate_promotion`` still requires robust_edge + paper_shadow + live_system_stable,
+    which turn-of-month does not yet satisfy).
+    """
+    return os.getenv("BETA_HARVEST_GATE_ENFORCE", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def resolve_gate_verdict(r: Any, *, strategy_class: str = "", **kwargs: Any) -> dict[str, Any]:
+    """Single activation point (Tier-3, T9): route a strategy's gate-v2 verdict.
+
+    A strategy tagged ``strategy_class="beta_harvest"`` gets the approved beta-harvest
+    variant (``gate_v2_beta_harvest_verdict``: the p_edge core floor 0.95 → 0.60 plus a
+    chronological H1/H2 stationarity test) when ``beta_harvest_gate_enforced()``. Every
+    other strategy — and the tagged strategy while the flag is off — gets the canonical
+    ``gate_v2_verdict`` UNCHANGED. This routes the VERDICT only; it never promotes (see
+    ``beta_harvest_gate_enforced``). The variant can only ever de-authorize less, never
+    more: it rescues a canonical FAIL solely when the lone failing core criterion is
+    p_edge (the mechanism enforces that).
+    """
+    from backtest.session_anomaly_backtest import (
+        gate_v2_beta_harvest_verdict,
+        gate_v2_verdict,
+    )
+
+    if strategy_class == BETA_HARVEST_TAG and beta_harvest_gate_enforced():
+        return gate_v2_beta_harvest_verdict(r, **kwargs)
+    return gate_v2_verdict(r, **kwargs)
+
+
 def evaluate_promotion(evidence: dict[str, Any]) -> dict[str, Any]:
     """Evaluate a candidate's evidence against the enforced DoD.
 
