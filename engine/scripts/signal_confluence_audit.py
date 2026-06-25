@@ -351,11 +351,32 @@ def _apply_saty(df, params):
     return generate_saty_atr_signals(df, mode="go", target_ratio=params["target_ratio"])
 
 
+def _apply_atrtrail(df, params):
+    """ATR trailing-stop FLIP (the TOS ATRTrailingStopLE/SE rule) signal frame."""
+    from backtest.atr_trail_bounce_signals import generate_atr_trail_flip_signals
+
+    return generate_atr_trail_flip_signals(df, atr_period=5, factor=params["factor"])
+
+
+def _grid_atrtrail(df_train):
+    """Grid the ATR-trail flip over the trailing-stop factor (TOS default 3.5)."""
+    best = (-1.0, None, None)
+    for factor in (3.0, 3.5, 4.0):
+        try:
+            m = _run_bt(_apply_atrtrail(df_train.copy(), {"factor": factor}), 2.0)
+        except Exception:  # noqa: BLE001
+            continue
+        if m["n_trades"] >= 5 and m["pf"] > best[0]:
+            best = (m["pf"], {"factor": factor, "atr_trail": 2.0}, m)
+    return best[1], best[2]
+
+
 ARMS = {
     "trend": (_grid_trend, _apply_trend),
     "composite": (_grid_composite, _apply_composite),
     "tpo": (_grid_tpo, _apply_tpo),
     "saty": (_grid_saty, _apply_saty),
+    "atrtrail": (_grid_atrtrail, _apply_atrtrail),
 }
 
 # Representative (mid-grid) params used ONLY by --diagnose to count raw entry
@@ -520,7 +541,8 @@ def build_verdict(
         label = "TREND_DOMINANT"
         rationale = f"No auction arm beats trend ({base_pf}) by the {edge_margin}x margin."
 
-    n_combos = len(TPO_ENTER_GRID) * len(TPO_STOP_GRID) + len(SATY_TARGET_GRID) + 27  # +SMA grid
+    # +SMA grid (27) + ATR-trail factor grid (3)
+    n_combos = len(TPO_ENTER_GRID) * len(TPO_STOP_GRID) + len(SATY_TARGET_GRID) + 27 + 3
     caveats = [
         "SCREEN, NOT A VERDICT — single fixed train/test split. NEVER cite this as evidence a "
         "strategy lacks edge. For promotion-grade evidence use scripts/validate_strategy.py "
