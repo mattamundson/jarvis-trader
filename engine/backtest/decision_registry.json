@@ -34,6 +34,17 @@
       "hypothesis": "Long equity-index beta across the turn-of-month window harvests a stationary calendar premium. SPY 1993-2026 Sharpe 1.07 gross / 0.79 net@2bps, positive in every 5yr era incl 2008/2020, stationary H1 1.23 / H2 1.20 (project_session_anomaly_tom_edge_2026_06_24). FAILs core gate-v2 only on p_edge<0.95 (mis-calibrated for low-freq long-beta harvest -> R2 beta-harvest variant). Pre-registered to satisfy paper_shadow_passed before any beta-harvest promotion.",
       "locked_params": {"window_rule": "last_1_first_3_trading_days", "cost_bps": 2.0},
       "material_change_policy": "Any change to the turn-of-month window definition or the vehicle is a material change that MUST start a NEW lineage with a zero forward record."
+    },
+    {
+      "id": "preholiday_spy_v1",
+      "status": "forward_testing",
+      "strategy_type": "calendar",
+      "inception": "2026-06-25",
+      "rule": "pre_holiday",
+      "vehicle": "SPY",
+      "hypothesis": "Long equity-index beta on the session BEFORE a market holiday harvests a calendar premium. STANDOUT of the free-daily calendar discovery: robust across all 5 ETFs, SPY+GLD pass gate-v2 ALT (stronger than turn-of-month). SPY 1993-2026 over 302 pre-holiday days: mean 7.91 bps/day net@2bps, Sharpe 1.32 net, PF 1.28, maxDD 7.75% (computed 2026-06-25). Pre-holiday days are inferred gap-free from the trading index (no hardcoded calendar). Pre-registered with an EMPTY forward window to satisfy paper_shadow_passed before any promotion.",
+      "locked_params": {"rule": "abnormal_gap_to_next_session", "vehicle": "SPY", "cost_bps": 2.0},
+      "material_change_policy": "Any change to the pre-holiday detection rule or the vehicle is a material change that MUST start a NEW lineage with a zero forward record."
     }
   ]
 }
