@@ -157,5 +157,63 @@ def test_check_order_does_not_block_unpromoted_in_shadow(mock_settings, monkeypa
     assert "PROMOTION_GATE" not in (result.rejection_reason or "")
 
 
+# ── systematic-strategy promotion path (decision_mode) ───────────────────────
+
+
+def _all_pass_evidence(**overrides):
+    """Evidence with every boolean pillar satisfied; override one to probe it."""
+    ev = {
+        "strategy_id": "TEST_STRAT",
+        "robust_edge": True,
+        "per_window_adequate": True,
+        "sensitivity_verdict": "ROBUST",
+        "leakage_clean": True,
+        "cost_robust": True,
+        "live_system_stable": True,
+        "paper_shadow_passed": True,
+        "ensemble_brier": 0.10,
+    }
+    ev.update(overrides)
+    return ev
+
+
+def test_ensemble_mode_is_default_and_requires_brier():
+    # No decision_mode == ensemble mode (unchanged): a missing Brier blocks.
+    ev = _all_pass_evidence(ensemble_brier=None)
+    res = lpg.evaluate_promotion(ev)
+    assert res["criteria"]["ensemble_not_subneutral"] is False
+    assert "ensemble_not_subneutral" in res["blocks"]
+
+
+def test_systematic_mode_waives_ensemble_pillar():
+    # A systematic (non-LLM) strategy has no agent ensemble; the pillar is N/A and
+    # the OOS power pillars (robust_edge + per_window_adequate) carry the weight.
+    ev = _all_pass_evidence(decision_mode="systematic")
+    ev.pop("ensemble_brier")  # systematic strategies don't produce one
+    res = lpg.evaluate_promotion(ev)
+    assert res["criteria"]["ensemble_not_subneutral"] is True
+    assert res["promote"] is True
+
+
+def test_systematic_mode_still_requires_robust_edge():
+    # The substitute for the ensemble pillar IS the OOS backtest power, still
+    # required — a systematic strategy without a robust edge stays blocked.
+    ev = _all_pass_evidence(decision_mode="systematic", robust_edge=False)
+    ev.pop("ensemble_brier")
+    res = lpg.evaluate_promotion(ev)
+    assert res["promote"] is False
+    assert "robust_edge" in res["blocks"]
+
+
+def test_tom_evidence_systematic_no_longer_blocks_on_ensemble():
+    res = lpg.evaluate_promotion(lpg.turn_of_month_current_evidence())
+    # Systematic path: the ensemble pillar is no longer a blocker...
+    assert "ensemble_not_subneutral" not in res["blocks"]
+    # ...but TOM is still correctly BLOCKED on the real remaining gaps.
+    assert res["promote"] is False
+    assert "live_system_stable" in res["blocks"]
+    assert "paper_shadow_passed" in res["blocks"]
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
