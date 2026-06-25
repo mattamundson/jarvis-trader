@@ -54,6 +54,7 @@ _REPORT_MD = os.path.normpath(os.path.join(_HERE, "..", "data", "forward_test_re
 
 # ── attribution ───────────────────────────────────────────────────────────────
 
+
 def _parse_params(raw: Any) -> dict:
     """strategy_params may be a dict, a JSON string, or None -> always a dict."""
     if isinstance(raw, dict):
@@ -104,6 +105,7 @@ def attributable_trades(trades: list[dict], candidate: dict) -> tuple[Optional[s
 # identity's per-symbol ``lineage`` -- the unit that actually trades -- and graduates
 # it against the decision_registry on the same statistical bar.
 
+
 def trade_lineage(trade: dict) -> Optional[str]:
     """The per-symbol decision lineage stamped on a paper trade (P2), or None."""
     sp = _parse_params(trade.get("strategy_params"))
@@ -115,7 +117,12 @@ def trade_lineage(trade: dict) -> Optional[str]:
 
 
 def lineage_buckets(trades: list[dict]) -> dict[str, list[dict]]:
-    """Group closed trades by their stamped decision lineage (untagged dropped)."""
+    """Group closed trades by their stamped decision lineage (untagged dropped).
+
+    Composite spread symbols (e.g. ``MES_M2K_SPREAD``) and calendar symbols (e.g.
+    ``SPY_TOM``) need NO special case here -- they bucket by their stamped lineage
+    exactly like single-symbol LLM lineages, because the lineage string is the key.
+    """
     out: dict[str, list[dict]] = {}
     for t in trades:
         lin = trade_lineage(t)
@@ -124,7 +131,95 @@ def lineage_buckets(trades: list[dict]) -> dict[str, list[dict]]:
     return out
 
 
+# ── dark-track ledgers (R1) ──────────────────────────────────────────────────────
+#
+# Relative-value spreads and calendar anomalies are observe-only "dark" tracks that
+# write build_windows-shaped closed trades to ISOLATED JSONL ledgers under data/ --
+# never the live SQLite DB. They carry a nested decision_identity (spreads stamp it in
+# spread_paper_track.close_trade; calendar rows are adapted below), so they feed the
+# lineage track and graduate on the SAME bar -- without ever touching the mechanical
+# candidate loop (their composite symbols match no single-instrument candidate).
+
+_DATA_DIR = os.path.normpath(os.path.join(_HERE, "..", "data"))
+
+
+def _read_jsonl(path: str) -> list[dict]:
+    if not os.path.exists(path):
+        return []
+    out: list[dict] = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                out.append(row)
+    return out
+
+
+def tom_records_to_closed_trades(records: list[dict], lineage: str, symbol: str) -> list[dict]:
+    """Adapt a turn-of-month daily ledger into build_windows-shaped closed trades.
+
+    The TOM dark ledger writes one row per turn-of-month day ``{date, net_bps, ...}``;
+    each becomes one closed trade with pnl = net_bps stamped with the calendar lineage,
+    so ~1 trade/30d-window => p_edge measures the fraction of profitable TOM windows.
+    Pure; TOM's own bespoke daily-Sharpe report stays as a richer secondary diagnostic.
+    """
+    out: list[dict] = []
+    for r in records:
+        date = r.get("date") or r.get("exit_time")
+        net = r.get("net_bps")
+        if net is None:
+            net = r.get("pnl")
+        if date is None or net is None:
+            continue
+        out.append(
+            {
+                "symbol": symbol,
+                "exit_time": str(date),
+                "pnl": float(net),
+                "strategy_params": {"decision_identity": {"lineage": f"{lineage}::{symbol}"}},
+            }
+        )
+    return out
+
+
+def load_dark_track_trades(base: Optional[str] = None) -> list[dict]:
+    """Load all observe-only dark-track closed trades (spreads + calendar) as a flat
+    list of build_windows-shaped dicts carrying their nested decision_identity.
+
+    Spread ledgers already stamp decision_identity (read as-is). The TOM ledger is a
+    daily-return file, so it is adapted via ``tom_records_to_closed_trades``. Missing
+    ledgers yield nothing -- the tracks simply have no forward record yet.
+    """
+    import glob
+
+    root = base or _DATA_DIR
+    trades: list[dict] = []
+
+    # Spreads: root ledger (ES-NQ legacy) + every per-pair subdir ledger.
+    spread_root = os.path.join(root, "spread_paper_track")
+    spread_paths = [os.path.join(spread_root, "closed_trades.jsonl")]
+    spread_paths += sorted(glob.glob(os.path.join(spread_root, "*", "closed_trades.jsonl")))
+    for p in spread_paths:
+        trades.extend(_read_jsonl(p))
+
+    # Calendar: turn-of-month daily ledger -> adapted trades (vehicle SPY).
+    tom_ledger = os.path.join(root, "tom_paper_track", "tom_forward_ledger.jsonl")
+    trades.extend(
+        tom_records_to_closed_trades(
+            _read_jsonl(tom_ledger), lineage="tom_spy_v1", symbol="SPY_TOM"
+        )
+    )
+    return trades
+
+
 # ── windows + stats ────────────────────────────────────────────────────────────
+
 
 def _window_pf(gross_win: float, gross_loss: float) -> float:
     if gross_loss > 0:
@@ -161,8 +256,9 @@ def build_windows(trades: list[dict], window_days: int = DEFAULT_WINDOW_DAYS) ->
     windows: dict[int, dict] = {}
     for d, pnl in dated:
         idx = int((d - anchor) // width)
-        w = windows.setdefault(idx, {"idx": idx, "n_trades": 0, "pnl": 0.0,
-                                     "gross_win": 0.0, "gross_loss": 0.0})
+        w = windows.setdefault(
+            idx, {"idx": idx, "n_trades": 0, "pnl": 0.0, "gross_win": 0.0, "gross_loss": 0.0}
+        )
         w["n_trades"] += 1
         w["pnl"] += pnl
         if pnl > 0:
@@ -208,6 +304,7 @@ def forward_stats(windows: list[dict]) -> dict[str, Any]:
 
 # ── the loop ───────────────────────────────────────────────────────────────────
 
+
 def tag_strategy_params(strategy_params: Any, candidate_id: str) -> dict:
     """Stamp a candidate_id into a trade's strategy_params so it is attributable.
 
@@ -237,6 +334,8 @@ def run_lineage_track(
 
     reg = decision_registry or dr.load_registry()
     buckets = lineage_buckets(closed)
+    # id -> declared strategy class (llm/mechanical/spread/calendar) for the report.
+    reg_types = {lin.get("id"): lin.get("strategy_type", "llm") for lin in reg.get("lineages", [])}
 
     rows: list[dict] = []
     for lineage in sorted(buckets):
@@ -244,8 +343,9 @@ def run_lineage_track(
         rows.append({"lineage": lineage, "stats": forward_stats(windows)})
 
     # Family-wide BH-FDR across all lineages with >=1 forward window.
-    fdr_inputs = [(i, r["stats"]["binom_p"]) for i, r in enumerate(rows)
-                  if r["stats"]["n_oos_windows"] > 0]
+    fdr_inputs = [
+        (i, r["stats"]["binom_p"]) for i, r in enumerate(rows) if r["stats"]["n_oos_windows"] > 0
+    ]
     survives = dict.fromkeys(range(len(rows)), False)
     if fdr_inputs:
         flags = bh_fdr([p for _, p in fdr_inputs])
@@ -255,7 +355,9 @@ def run_lineage_track(
     out: list[dict] = []
     for i, r in enumerate(rows):
         lineage, stats = r["lineage"], r["stats"]
-        pre_reg = dr.is_pre_registered(lineage)
+        pre_reg = dr.is_pre_registered(lineage, reg)
+        stem = str(lineage).split("::", 1)[0]
+        strategy_type = reg_types.get(stem, "-")  # unregistered -> context-only, no class
         grad_stats = {**stats, "survives_family_fdr": survives[i]}
         graduated = pre_reg and dr.meets_graduation(grad_stats, reg)
         if not pre_reg:
@@ -267,14 +369,17 @@ def run_lineage_track(
             reason = "graduated: forward OOS record clears the decision-registry rule"
         else:
             reason = "not yet graduated: forward record does not clear the rule"
-        out.append({
-            "lineage": lineage,
-            "pre_registered": pre_reg,
-            "forward": stats,
-            "survives_family_fdr": survives[i],
-            "graduated": graduated,
-            "reason": reason,
-        })
+        out.append(
+            {
+                "lineage": lineage,
+                "strategy_type": strategy_type,
+                "pre_registered": pre_reg,
+                "forward": stats,
+                "survives_family_fdr": survives[i],
+                "graduated": graduated,
+                "reason": reason,
+            }
+        )
     return out
 
 
@@ -295,8 +400,19 @@ def run_forward_test(
 
     if db is None:  # pragma: no cover - exercised live, not in unit tests
         from database.db_manager import get_db_manager
+
         db = get_db_manager()
     closed = db.get_closed_trades(limit=100_000)
+
+    # Observe-only dark tracks (spreads + calendar) write isolated JSONL ledgers,
+    # never the live DB. Fold them in so they feed the lineage track and graduate on
+    # the same bar. They carry composite symbols + a nested decision_identity, so the
+    # mechanical candidate loop and symbol_context below never pick them up. Never let
+    # a missing/garbled ledger break the report.
+    try:
+        closed = list(closed) + load_dark_track_trades()
+    except Exception:  # pragma: no cover - defensive; disk IO exercised live
+        pass
 
     # First pass: per-candidate attributable windows + raw stats.
     rows: list[dict] = []
@@ -307,8 +423,9 @@ def run_forward_test(
         rows.append({"cand": cand, "level": level, "stats": stats})
 
     # Family-wide BH-FDR across candidates that have >=1 forward window.
-    fdr_inputs = [(i, r["stats"]["binom_p"]) for i, r in enumerate(rows)
-                  if r["stats"]["n_oos_windows"] > 0]
+    fdr_inputs = [
+        (i, r["stats"]["binom_p"]) for i, r in enumerate(rows) if r["stats"]["n_oos_windows"] > 0
+    ]
     survives = dict.fromkeys(range(len(rows)), False)
     if fdr_inputs:
         flags = bh_fdr([p for _, p in fdr_inputs])
@@ -330,16 +447,18 @@ def run_forward_test(
             reason = "graduated: forward OOS record clears the registry rule"
         else:
             reason = "not yet graduated: forward record does not clear the rule"
-        candidates_out.append({
-            "id": cand["id"],
-            "symbol": cand["symbol"],
-            "attribution_level": level,
-            "precise_attribution": precise,
-            "forward": stats,
-            "survives_family_fdr": survives[i],
-            "graduated": graduated,
-            "reason": reason,
-        })
+        candidates_out.append(
+            {
+                "id": cand["id"],
+                "symbol": cand["symbol"],
+                "attribution_level": level,
+                "precise_attribution": precise,
+                "forward": stats,
+                "survives_family_fdr": survives[i],
+                "graduated": graduated,
+                "reason": reason,
+            }
+        )
 
     # Symbol-level context (liveness even when untagged): forward stats over ALL
     # closed trades per symbol that appears in the active set.
@@ -405,24 +524,34 @@ def _markdown(report: dict[str, Any]) -> str:
             f"{'YES' if c['graduated'] else 'no'} |"
         )
     lineages = report.get("lineages") or []
-    lines += ["", "## Decision lineages (LLM path -- the unit that trades live)", "",
-              f"- lineages: {report.get('n_lineages', 0)}  |  "
-              f"graduated: **{report.get('n_lineages_graduated', 0)}**", "",
-              "| lineage | pre-reg | n_oos | p_edge | pf_ci_lo | fdr | graduated |",
-              "|---|---|---|---|---|---|---|"]
+    lines += [
+        "",
+        "## Decision lineages (LLM path -- the unit that trades live)",
+        "",
+        f"- lineages: {report.get('n_lineages', 0)}  |  "
+        f"graduated: **{report.get('n_lineages_graduated', 0)}**",
+        "",
+        "| lineage | type | pre-reg | n_oos | p_edge | pf_ci_lo | fdr | graduated |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
     for lin in lineages:
         f = lin["forward"]
         lines.append(
-            f"| {lin['lineage']} | {'Y' if lin['pre_registered'] else '.'} | "
+            f"| {lin['lineage']} | {lin.get('strategy_type', '-')} | "
+            f"{'Y' if lin['pre_registered'] else '.'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
             f"{'Y' if lin['survives_family_fdr'] else '.'} | "
             f"{'YES' if lin['graduated'] else 'no'} |"
         )
     if not lineages:
-        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |")
-    lines += ["", "## Symbol context (all closed trades per symbol)", "",
-              "| symbol | n_oos | p_edge | pf_ci_lo | trades | pnl |",
-              "|---|---|---|---|---|---|"]
+        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |  |")
+    lines += [
+        "",
+        "## Symbol context (all closed trades per symbol)",
+        "",
+        "| symbol | n_oos | p_edge | pf_ci_lo | trades | pnl |",
+        "|---|---|---|---|---|---|",
+    ]
     for sym, s in report["symbol_context"].items():
         lines.append(
             f"| {sym} | {s['n_oos_windows']} | {s['p_edge']} | {s['pf_ci_lower']} | "
