@@ -13,8 +13,14 @@ from backtest.atr_trail_bounce_signals import (
     generate_atr_trail_confluence_signals,
     generate_atr_trail_flip_signals,
     generate_atr_trail_kelt_confluence_signals,
+    generate_atr_trail_tpotarget_confluence_signals,
 )
-from backtest.indicators import atr_trailing_stop, keltner_channels, keltner_channels_mtf
+from backtest.indicators import (
+    atr_trailing_stop,
+    keltner_channels,
+    keltner_channels_mtf,
+    keltner_cloud_mtf,
+)
 
 
 def _ohlc(closes, highs=None, lows=None):
@@ -255,6 +261,53 @@ def test_kelt_confluence_strict_subset_of_loose():
     loose_e = set(np.where(loose["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
     strict_e = set(np.where(strict["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
     assert strict_e.issubset(loose_e), "strict kelt confluence must be a subset of loose"
+
+
+def test_obomega_cloud_bands_are_ordered_and_nested():
+    # outer_upper >= inner_upper >= basis >= inner_lower >= outer_lower
+    rng = np.random.default_rng(4)
+    closes = 100 + np.cumsum(rng.normal(0, 1, 400))
+    df = _ohlc(closes)
+    df.index = pd.date_range("2025-01-02", periods=len(df), freq="h", tz="UTC")
+    uo, ui, b, li, lo = keltner_cloud_mtf(df, rule="4h", inner_factor=1.5, outer_factor=2.0)
+    m = b.notna()
+    assert m.sum() > 50
+    assert (uo[m] >= ui[m] - 1e-9).all()
+    assert (ui[m] >= b[m] - 1e-9).all()
+    assert (b[m] >= li[m] - 1e-9).all()
+    assert (li[m] >= lo[m] - 1e-9).all()
+
+
+def test_tpo_target_columns_present_and_pointintime():
+    from backtest.tpo_profile import compute_tpo_profile
+    rng = np.random.default_rng(6)
+    closes = 100 + np.cumsum(rng.normal(0, 1, 500))
+    df = _ohlc(closes)
+    df.index = pd.date_range("2025-01-02 08:00", periods=len(df), freq="h", tz="UTC")
+    out = compute_tpo_profile(df)
+    for col in ["tpo_bal", "tpo_imbalance", "tpo_target", "tpo_fail_target"]:
+        assert col in out.columns
+    assert set(out["tpo_imbalance"].unique()).issubset({"BEAR_IMBAL", "BULL_IMBAL"})
+    # truncation invariance: target at bar i unchanged when future bars dropped
+    cutoff = 400
+    trunc = compute_tpo_profile(df.iloc[: cutoff + 1].copy())
+    a = out["tpo_target"].iloc[: cutoff + 1].to_numpy()
+    c = trunc["tpo_target"].to_numpy()
+    both = ~(np.isnan(a) | np.isnan(c))
+    assert both.sum() > 50
+    assert np.allclose(a[both], c[both], atol=1e-9), "TPO target leaked future data"
+
+
+def test_tpotarget_confluence_is_subset_of_base():
+    closes = np.concatenate([
+        np.linspace(100, 130, 80), np.linspace(129, 95, 70), np.linspace(96, 125, 70),
+    ])
+    df = _ohlc_dt(closes)
+    base = generate_atr_trail_flip_signals(df, factor=3.5)
+    conf = generate_atr_trail_tpotarget_confluence_signals(df, factor=3.5, base="flip")
+    base_e = set(np.where(base["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    conf_e = set(np.where(conf["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    assert conf_e.issubset(base_e), "tpo-target confluence added entries not in base"
 
 
 def test_output_schema_matches_backtester_contract():
