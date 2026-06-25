@@ -381,3 +381,67 @@ def generate_atr_trail_kelt_confluence_signals(
     sig["kelt_lower"] = lower.values
     sig["kelt_confluence_applied"] = True
     return sig
+
+
+def generate_atr_trail_tpotarget_confluence_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    base: str = "flip",
+    require_room: bool = False,
+    hold_bars: int = 1,
+    touch_tol_atr: float = 0.10,
+) -> pd.DataFrame:
+    """ATR-trail flips gated by the TPO measured-move target direction.
+
+    Corey's TPO profile projects a 1.0x measured move from the VPOC whose
+    direction is set by the value-area imbalance (bal vs VPOC) — the
+    "This profile targets X" level on Matt's chart. This variant keeps only
+    flips that agree with that projection: shorts when the profile is
+    bear-imbalanced (target below), longs when bull-imbalanced (target above).
+    Strict subset of the base flips -> clean attribution.
+
+    require_room=True additionally demands the target is still unreached in the
+    signal's direction (price has room to run toward it). Uses
+    ``tpo_profile.compute_tpo_profile`` (prior-session, point-in-time safe).
+    """
+    if base == "bounce":
+        sig = generate_atr_trail_bounce_signals(
+            df, atr_period=atr_period, factor=factor,
+            hold_bars=hold_bars, touch_tol_atr=touch_tol_atr,
+        )
+    else:
+        sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
+
+    try:
+        tpo = compute_tpo_profile(df)
+    except Exception:
+        sig["tpo_imbalance"] = "BULL_IMBAL"
+        sig["tpotgt_confluence_applied"] = False
+        return sig
+
+    imbalance = tpo["tpo_imbalance"]
+    target = tpo["tpo_target"]
+    close = df["close"]
+    bear = (imbalance == "BEAR_IMBAL")
+    bull = (imbalance == "BULL_IMBAL")
+
+    long_ok = bull
+    short_ok = bear
+    if require_room:
+        long_ok = long_ok & (target > close)
+        short_ok = short_ok & (target < close)
+    long_ok = long_ok.fillna(False)
+    short_ok = short_ok.fillna(False)
+
+    is_entry = sig["entry_signal"] == "ENTRY_NOW"
+    is_long = sig["bias"].str.contains("BULL", na=False)
+    is_short = sig["bias"].str.contains("BEAR", na=False)
+    drop = is_entry & ((is_long & ~long_ok) | (is_short & ~short_ok))
+    sig.loc[drop, "entry_signal"] = "NO_TRADE"
+    sig.loc[drop, ["stop_level", "target_1", "target_2", "target_3"]] = np.nan
+
+    sig["tpo_imbalance"] = imbalance.values
+    sig["tpo_target"] = target.values
+    sig["tpotgt_confluence_applied"] = True
+    return sig
