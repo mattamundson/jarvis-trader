@@ -182,3 +182,40 @@ def test_original_df_not_mutated():
     original_cols = set(df.columns)
     compute_tpo_score(df)
     assert set(df.columns) == original_cols
+
+
+def test_tos_score_sign_matches_thinkscript_logic():
+    """compute_tpo_score_tos reproduces the TOS 5-component sign."""
+    import pandas as pd
+
+    from backtest.tpo_score import compute_tpo_score_tos
+
+    # close above VAH and POC, bull-imbalanced (vabal<poc) -> all bullish -> POSITIVE
+    df = pd.DataFrame(
+        {"close": [110.0], "vpoc": [100.0], "va_high": [105.0], "va_low": [99.0]}
+    )
+    out = compute_tpo_score_tos(df)
+    assert out["tpo_score_tos_sign"].iloc[0] == "POSITIVE"
+    assert out["tpo_score_tos"].iloc[0] > 0
+
+    # close below VAL and POC -> NEGATIVE
+    df2 = pd.DataFrame(
+        {"close": [90.0], "vpoc": [100.0], "va_high": [105.0], "va_low": [95.0]}
+    )
+    out2 = compute_tpo_score_tos(df2)
+    assert out2["tpo_score_tos_sign"].iloc[0] == "NEGATIVE"
+    assert out2["tpo_score_tos"].iloc[0] < 0
+
+
+def test_tos_score_handles_nan_profile():
+    import numpy as np
+    import pandas as pd
+
+    from backtest.tpo_score import compute_tpo_score_tos
+
+    df = pd.DataFrame(
+        {"close": [100.0], "vpoc": [np.nan], "va_high": [np.nan], "va_low": [np.nan]}
+    )
+    out = compute_tpo_score_tos(df)
+    assert out["tpo_score_tos_sign"].iloc[0] == "NEUTRAL"
+    assert np.isnan(out["tpo_score_tos"].iloc[0])

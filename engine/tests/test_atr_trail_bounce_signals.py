@@ -12,8 +12,15 @@ from backtest.atr_trail_bounce_signals import (
     generate_atr_trail_bounce_signals,
     generate_atr_trail_confluence_signals,
     generate_atr_trail_flip_signals,
+    generate_atr_trail_kelt_confluence_signals,
+    generate_atr_trail_tpotarget_confluence_signals,
 )
-from backtest.indicators import atr_trailing_stop
+from backtest.indicators import (
+    atr_trailing_stop,
+    keltner_channels,
+    keltner_channels_mtf,
+    keltner_cloud_mtf,
+)
 
 
 def _ohlc(closes, highs=None, lows=None):
@@ -198,6 +205,109 @@ def test_confluence_no_lookahead_truncation_invariance():
         assert (
             full["entry_signal"].iloc[i] == trunc["entry_signal"].iloc[i]
         ), f"confluence bar {i} changed when future bars dropped — look-ahead leak"
+
+
+def test_mtf_keltner_collapses_to_base_when_rule_equals_bar_freq():
+    # With rule == base bar frequency, the developing MTF Keltner must equal the
+    # plain single-timeframe keltner_channels exactly (each window is one bar).
+    rng = np.random.default_rng(3)
+    closes = 100 + np.cumsum(rng.normal(0, 1, 300))
+    df = _ohlc(closes)
+    df.index = pd.date_range("2025-01-02", periods=len(df), freq="h", tz="UTC")
+    u_mtf, b_mtf, l_mtf = keltner_channels_mtf(df, rule="h", sma_len=20, atr_factor=3.0)
+    u, b, low = keltner_channels(df["close"], df["high"], df["low"], sma_len=20, atr_factor=3.0)
+    # compare where both are defined
+    mask = b_mtf.notna() & b.notna()
+    assert mask.sum() > 50
+    assert np.allclose(b_mtf[mask], b[mask], atol=1e-9)
+    assert np.allclose(u_mtf[mask], u[mask], atol=1e-9)
+    assert np.allclose(l_mtf[mask], low[mask], atol=1e-9)
+
+
+def test_mtf_keltner_no_lookahead_truncation_invariance():
+    rng = np.random.default_rng(5)
+    closes = 100 + np.cumsum(rng.normal(0, 1, 400))
+    df = _ohlc(closes)
+    df.index = pd.date_range("2025-01-02", periods=len(df), freq="h", tz="UTC")
+    _, full_basis, _ = keltner_channels_mtf(df, rule="4h", sma_len=20)
+    cutoff = 300
+    _, trunc_basis, _ = keltner_channels_mtf(df.iloc[: cutoff + 1].copy(), rule="4h", sma_len=20)
+    a = full_basis.iloc[: cutoff + 1].to_numpy()
+    b = trunc_basis.to_numpy()
+    both = ~(np.isnan(a) | np.isnan(b))
+    assert both.sum() > 50
+    assert np.allclose(a[both], b[both], atol=1e-9), "MTF Keltner changed when future bars dropped"
+
+
+def test_kelt_confluence_is_subset_of_base():
+    closes = np.concatenate([
+        np.linspace(100, 130, 60), np.linspace(129, 95, 50), np.linspace(96, 125, 50),
+    ])
+    df = _ohlc_dt(closes)
+    base = generate_atr_trail_flip_signals(df, factor=3.5)
+    conf = generate_atr_trail_kelt_confluence_signals(df, factor=3.5, base="flip", kelt_rule="4h")
+    base_e = set(np.where(base["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    conf_e = set(np.where(conf["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    assert conf_e.issubset(base_e), "kelt confluence added entries not in base"
+
+
+def test_kelt_confluence_strict_subset_of_loose():
+    closes = np.concatenate([
+        np.linspace(100, 130, 60), np.linspace(129, 95, 50), np.linspace(96, 125, 50),
+    ])
+    df = _ohlc_dt(closes)
+    loose = generate_atr_trail_kelt_confluence_signals(df, factor=3.5, strict_kelt=False, kelt_rule="4h")
+    strict = generate_atr_trail_kelt_confluence_signals(df, factor=3.5, strict_kelt=True, kelt_rule="4h")
+    loose_e = set(np.where(loose["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    strict_e = set(np.where(strict["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    assert strict_e.issubset(loose_e), "strict kelt confluence must be a subset of loose"
+
+
+def test_obomega_cloud_bands_are_ordered_and_nested():
+    # outer_upper >= inner_upper >= basis >= inner_lower >= outer_lower
+    rng = np.random.default_rng(4)
+    closes = 100 + np.cumsum(rng.normal(0, 1, 400))
+    df = _ohlc(closes)
+    df.index = pd.date_range("2025-01-02", periods=len(df), freq="h", tz="UTC")
+    uo, ui, b, li, lo = keltner_cloud_mtf(df, rule="4h", inner_factor=1.5, outer_factor=2.0)
+    m = b.notna()
+    assert m.sum() > 50
+    assert (uo[m] >= ui[m] - 1e-9).all()
+    assert (ui[m] >= b[m] - 1e-9).all()
+    assert (b[m] >= li[m] - 1e-9).all()
+    assert (li[m] >= lo[m] - 1e-9).all()
+
+
+def test_tpo_target_columns_present_and_pointintime():
+    from backtest.tpo_profile import compute_tpo_profile
+    rng = np.random.default_rng(6)
+    closes = 100 + np.cumsum(rng.normal(0, 1, 500))
+    df = _ohlc(closes)
+    df.index = pd.date_range("2025-01-02 08:00", periods=len(df), freq="h", tz="UTC")
+    out = compute_tpo_profile(df)
+    for col in ["tpo_bal", "tpo_imbalance", "tpo_target", "tpo_fail_target"]:
+        assert col in out.columns
+    assert set(out["tpo_imbalance"].unique()).issubset({"BEAR_IMBAL", "BULL_IMBAL"})
+    # truncation invariance: target at bar i unchanged when future bars dropped
+    cutoff = 400
+    trunc = compute_tpo_profile(df.iloc[: cutoff + 1].copy())
+    a = out["tpo_target"].iloc[: cutoff + 1].to_numpy()
+    c = trunc["tpo_target"].to_numpy()
+    both = ~(np.isnan(a) | np.isnan(c))
+    assert both.sum() > 50
+    assert np.allclose(a[both], c[both], atol=1e-9), "TPO target leaked future data"
+
+
+def test_tpotarget_confluence_is_subset_of_base():
+    closes = np.concatenate([
+        np.linspace(100, 130, 80), np.linspace(129, 95, 70), np.linspace(96, 125, 70),
+    ])
+    df = _ohlc_dt(closes)
+    base = generate_atr_trail_flip_signals(df, factor=3.5)
+    conf = generate_atr_trail_tpotarget_confluence_signals(df, factor=3.5, base="flip")
+    base_e = set(np.where(base["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    conf_e = set(np.where(conf["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
+    assert conf_e.issubset(base_e), "tpo-target confluence added entries not in base"
 
 
 def test_output_schema_matches_backtester_contract():
