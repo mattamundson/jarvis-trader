@@ -33,7 +33,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from backtest.indicators import atr_trailing_stop, wilder_atr
+from backtest.indicators import atr_trailing_stop, keltner_channels_mtf, wilder_atr
 from backtest.tpo_profile import compute_tpo_profile
 
 _TARGET_ATR_PERIOD = 14
@@ -311,4 +311,73 @@ def generate_atr_trail_confluence_signals(
 
     sig["price_vs_va"] = pvva.values
     sig["confluence_applied"] = applied
+    return sig
+
+
+def generate_atr_trail_kelt_confluence_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    base: str = "flip",
+    kelt_rule: str = "4h",
+    kelt_len: int = 20,
+    kelt_factor: float = 3.0,
+    strict_kelt: bool = False,
+    hold_bars: int = 1,
+    touch_tol_atr: float = 0.10,
+) -> pd.DataFrame:
+    """Confluence-gated ATR-trail entries (flip/bounce) + multi-timeframe Keltner.
+
+    The kelt_3.01 study on Matt's /ES chart is a FOUR_HOURS Keltner channel — a
+    higher-timeframe trend/volatility envelope. This variant keeps only entries
+    aligned with that envelope, dropping the rest (so it is a strict subset of
+    the base trades -> clean attribution, same pattern as the TPO variant):
+
+        strict_kelt=False : long requires close >= 4H Keltner basis (upper half);
+                            short requires close <= basis (lower half).
+        strict_kelt=True  : long requires close >= 4H upper band (breakout up);
+                            short requires close <= 4H lower band (breakout down).
+
+    Strict is a subset of loose. The 4H Keltner comes from
+    ``indicators.keltner_channels_mtf`` (developing, point-in-time safe — a base
+    bar at t uses only base bars <= t). Requires a DatetimeIndex; if the Keltner
+    cannot be computed the base signals pass through unfiltered with
+    ``kelt_confluence_applied=False``.
+    """
+    if base == "bounce":
+        sig = generate_atr_trail_bounce_signals(
+            df, atr_period=atr_period, factor=factor,
+            hold_bars=hold_bars, touch_tol_atr=touch_tol_atr,
+        )
+    else:
+        sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
+
+    try:
+        upper, basis, lower = keltner_channels_mtf(
+            df, rule=kelt_rule, sma_len=kelt_len, atr_factor=kelt_factor
+        )
+    except Exception:
+        sig["kelt_basis"] = np.nan
+        sig["kelt_confluence_applied"] = False
+        return sig
+
+    close = df["close"]
+    is_entry = sig["entry_signal"] == "ENTRY_NOW"
+    is_long = sig["bias"].str.contains("BULL", na=False)
+    is_short = sig["bias"].str.contains("BEAR", na=False)
+    if strict_kelt:
+        long_ok = (close >= upper).fillna(False)
+        short_ok = (close <= lower).fillna(False)
+    else:
+        long_ok = (close >= basis).fillna(False)
+        short_ok = (close <= basis).fillna(False)
+
+    drop = is_entry & ((is_long & ~long_ok) | (is_short & ~short_ok))
+    sig.loc[drop, "entry_signal"] = "NO_TRADE"
+    sig.loc[drop, ["stop_level", "target_1", "target_2", "target_3"]] = np.nan
+
+    sig["kelt_upper"] = upper.values
+    sig["kelt_basis"] = basis.values
+    sig["kelt_lower"] = lower.values
+    sig["kelt_confluence_applied"] = True
     return sig

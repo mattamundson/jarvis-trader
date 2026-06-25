@@ -60,8 +60,26 @@ separately so their edges can be compared and attributed:
   Confluence trades are a strict subset of the flip trades, so the side-by-side
   backtest shows exactly what the gate adds or costs.
 
-All three are point-in-time clean: the decision at bar `i` reads only bars
-`<= i` (enforced by truncation-invariance unit tests for each variant).
+- **Kelt-confluence** (`generate_atr_trail_kelt_confluence_signals`): the flip
+  base, gated by the **4-hour Keltner channel** (the `kelt_3.01` study on the
+  chart). `strict_kelt=False` keeps longs above the 4H Keltner basis / shorts
+  below it (channel half); `strict_kelt=True` requires a 4H band breakout
+  (long ≥ upper, short ≤ lower). Strict ⊆ loose ⊆ flip. The 4H Keltner is
+  `indicators.keltner_channels_mtf` (developing aggregation, point-in-time safe).
+
+All variants are point-in-time clean: the decision at bar `i` reads only bars
+`<= i` (enforced by truncation-invariance unit tests for each).
+
+## On the kelt_3.01 Keltner port
+
+`indicators.keltner_channels` reproduces the `jp_keltner_multi_timeframe.ts`
+math (SMA basis ± factor·SMA(TrueRange)) but only on the base bar timeframe.
+`indicators.keltner_channels_mtf` adds the `iAggregationPeriod` behaviour:
+aggregate base bars to `rule` (e.g. `"4h"` = FOUR_HOURS), compute the Keltner
+there, map back to base bars. With `rule` equal to the base frequency it
+collapses exactly to `keltner_channels` (unit-tested). `developing=True`
+matches the TOS line (current higher-TF bar is the developing aggregate);
+`developing=False` uses only completed higher-TF bars.
 
 This is exactly the kind of claim that survives in *random* data (a trailing
 stop hugs price by construction), so both variants are gated by MCPT, not
