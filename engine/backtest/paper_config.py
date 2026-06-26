@@ -232,7 +232,13 @@ MES_TREND_PAPER_CONFIG = {
     "symbol": "MES",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() -> trend_signals path
-    "enabled": True,  # gate_v2_policy blocks trades (INSUFFICIENT_SAMPLE); runner still polls for data
+    # 2026-06-26: DISABLED. MES trend re-validated on fresh 2026-06-25 1h data FAILS gate v2
+    # outright under every grid -- pf_ci_lower 0.73/0.93, p_edge 0.40/0.43, fixed_params_min_pf
+    # 0.69/0.72, wfo WEAK. The edge is ABSENT (not merely sample-starved: a 0.40 p_edge / sub-1.0
+    # PF won't be fixed by collecting more OOS trades). Was authorized on the stale rank7 ALT PASS,
+    # which does not reproduce. See PR #172 (ALT pf_ci_lower floor) + the re-validation. Same pattern
+    # as the MGC disable above. Re-enable only on a fresh CORE/ALT PASS with stored metrics.
+    "enabled": False,
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
