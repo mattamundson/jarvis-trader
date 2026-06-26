@@ -48,6 +48,7 @@ import numpy as np
 
 from backtest.deflated_sharpe import deflated_sharpe_from_returns
 from backtest.monte_carlo import bootstrap_max_dd, bootstrap_win_rate
+from backtest.stationarity_gate import h1_h2_split
 
 #: Drawdown returned when there are too few real trades to simulate a path.
 #: 1.0 == 100% == fail-safe (worse than any real gate ceiling).
@@ -105,6 +106,24 @@ def trade_level_dsr(
         returns=returns, n_trials=max(int(n_grid_combos), 1), ann_factor=252.0
     )
     return float(result.get("dsr", 0.0))
+
+
+def trade_level_stationarity(
+    oos_results: Sequence,
+    min_trades_per_half: int = 5,
+    min_pf: float = 1.0,
+) -> dict:
+    """H1/H2 chronological PF consistency from the SAME concatenated OOS trade
+    series used by the DD/DSR metrics.
+
+    Pooled bootstrap PF-CI is blind to WHEN the edge occurred; this binds on
+    stationarity. Returns the `stationarity_gate.h1_h2_split` dict -- consumers
+    gate on `["consistent"]`. Fail-safe: an empty/sparse series yields
+    consistent=False so an enforcing gate default-denies rather than waving a
+    back-loaded edge through. See stationarity_gate for the ES-NQ rationale.
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    return h1_h2_split(pnls, min_trades_per_half=min_trades_per_half, min_pf=min_pf)
 
 
 def trade_level_win_rate_ci_lower(oos_results: Sequence) -> float:
