@@ -364,6 +364,34 @@ def relval_pairs() -> list[Pair]:
             "diversifier vs the equity/rates pairs. Data starts 2025-06 -- thin and regime-limited.",
             **common,
         ),
+        Pair(
+            name="ES_RTY",
+            leg_a="ES",
+            leg_b="RTY",
+            economic_rationale="Full-size S&P 500 vs Russell 2000: the large-cap vs small-cap size "
+            "factor (full-size analog of the strong MES_M2K near-miss) on the deeper 2024-06+ "
+            "full-size history; mean-reverts as breadth oscillates around the prevailing regime.",
+            **common,
+        ),
+        Pair(
+            name="NQ_RTY",
+            leg_a="NQ",
+            leg_b="RTY",
+            economic_rationale="Full-size Nasdaq-100 vs Russell 2000: the widest growth-vs-small "
+            "style spread (full-size analog of MNQ_M2K), on deeper data; the rotation tends to "
+            "overshoot and snap back as positioning rebalances.",
+            **common,
+        ),
+        Pair(
+            name="MGC_ZN",
+            leg_a="MGC",
+            leg_b="ZN",
+            economic_rationale="Gold vs 10y T-note: both price off real rates (gold inversely to "
+            "real yields, the note off nominal yields), so the spread is a real-rate relative-value "
+            "bet that mean-reverts as inflation/growth expectations rebalance. Cross-asset "
+            "diversifier; correlation is regime-dependent, so PBO/p_edge must adjudicate.",
+            **common,
+        ),
     ]
 
 
