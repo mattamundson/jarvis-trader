@@ -97,6 +97,7 @@ from routers.safety_router import router as safety_router
 from routers.schwab_router import router as schwab_router
 from routers.schwab_router import set_schwab_connector
 from routers.strategies_router import router as strategies_router
+from routers.trading_status_router import router as trading_status_router
 from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.paper_validation_router import router as paper_validation_router
@@ -705,6 +706,13 @@ async def lifespan(app: FastAPI):
     # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
     set_analytics_data_manager(data_manager)
+    # Wire the real-price source into the paper connector so simulated fills use
+    # the live get_tick_price waterfall instead of static mock quotes. Without
+    # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
+    # paper_trades. (2026-06-22 paper-fill integrity fix.)
+    if ib_paper_connector is not None:
+        ib_paper_connector.attach_market_data(data_manager)
+        logger.info("✅ Paper connector: real-price source wired (get_tick_price)")
     # Re-inject with data_manager now available so /orders/status can fall back to
     # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
     inject_orders_deps(order_router, safety_layer=safety_layer, data_manager=data_manager)
@@ -2921,6 +2929,13 @@ app.add_middleware(APIKeyMiddleware)
 app.state.limiter = get_limiter()
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 
+# Prometheus exposition at /metrics (auth-exempt; see monitoring.metrics +
+# middleware.auth.EXEMPT_PATHS). P1.0 of the observability roadmap — the jarvis_*
+# families were defined but never mounted/scraped before this.
+from monitoring.metrics import mount_metrics  # noqa: E402
+
+mount_metrics(app)
+
 app.include_router(health_router)
 app.include_router(phase3_readiness_router)
 app.include_router(readiness_router)
@@ -2929,6 +2944,7 @@ app.include_router(journal_review_router, prefix="/journal", tags=["journal-revi
 app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(strategy_ledger_router)
+app.include_router(trading_status_router)
 app.include_router(forward_test_router)
 app.include_router(validation_analytics_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])

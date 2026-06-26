@@ -314,7 +314,10 @@ class TechnicalAnalysisResponse(BaseModel):
     symbol: str = Field(..., description="Analyzed symbol")
     timestamp: str = Field(..., description="Analysis timestamp")
     timeframe: str = Field("5m", description="Timeframe used")
-    signal: str = Field(..., description="Trading signal")
+    signal: float = Field(
+        ...,
+        description="Trading signal — numeric score from the TechnicalAnalyst (e.g. -1..1)",
+    )
     confidence: float = Field(..., description="Signal confidence (0-1)")
     trend: Optional[str] = Field(None, description="Current trend")
     regime: Optional[str] = Field(None, description="Market regime")

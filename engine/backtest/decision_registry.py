@@ -6,6 +6,7 @@ default-material / honest). Graduation evaluation over lineages lands in P4.
 
 Design: docs/design/llm-decision-identity-attribution.md
 """
+
 from __future__ import annotations
 
 import json
@@ -28,12 +29,26 @@ def load_registry(path: Optional[str] = None) -> dict[str, Any]:
     return reg
 
 
+# Strategy classes a lineage may declare. ``llm`` is the historical default (LLM
+# decision identities); the other three are systematic/non-LLM units routed through
+# the SAME lineage track (R1). Each non-llm class carries extra required fields so a
+# reviewer can see exactly what was pre-registered.
+ALLOWED_STRATEGY_TYPES = ("llm", "mechanical", "spread", "calendar")
+# field -> classes that must declare it (besides the universal ``inception`` for non-llm)
+_REQUIRED_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "spread": ("legs", "composite_symbol"),
+    "calendar": ("rule", "vehicle"),
+}
+
+
 def verify_registry(registry: dict[str, Any]) -> list[str]:
     """Pure structural check; returns a list of problems (empty == ok).
 
     Enforces the contract the resolver relies on: unique lineage ids, valid
-    status, and -- the honesty guard -- no config_hash claimed by more than one
-    lineage (which would make attribution ambiguous).
+    status, no config_hash claimed by more than one lineage (attribution
+    ambiguity), and -- for non-LLM strategy classes (R1) -- the class-specific
+    fields plus a machine-checkable ``inception`` date (pre-registration must
+    predate the forward window).
     """
     problems: list[str] = []
     if not isinstance(registry, dict):
@@ -53,10 +68,24 @@ def verify_registry(registry: dict[str, Any]) -> list[str]:
             problems.append(f"{lid}: bad status {lin.get('status')!r}")
         for h in lin.get("member_config_hashes") or []:
             if h in hash_owner and hash_owner[h] != lid:
-                problems.append(
-                    f"config_hash {h[:8]} claimed by both {hash_owner[h]} and {lid}"
-                )
+                problems.append(f"config_hash {h[:8]} claimed by both {hash_owner[h]} and {lid}")
             hash_owner[h] = lid
+
+        # Strategy-class contract (R1). Absent strategy_type == "llm" (back-compat).
+        stype = lin.get("strategy_type", "llm")
+        if stype not in ALLOWED_STRATEGY_TYPES:
+            problems.append(
+                f"{lid}: bad strategy_type {stype!r} (allowed: {ALLOWED_STRATEGY_TYPES})"
+            )
+            continue
+        if stype != "llm":
+            if not lin.get("inception"):
+                problems.append(
+                    f"{lid}: {stype} lineage missing 'inception' (pre-registration date)"
+                )
+            for field in _REQUIRED_BY_TYPE.get(stype, ()):
+                if not lin.get(field):
+                    problems.append(f"{lid}: {stype} lineage missing '{field}'")
     return problems
 
 
@@ -82,15 +111,28 @@ def lineage_for_config_hash(
 UNREGISTERED_PREFIX = "unregistered:"
 
 
-def is_pre_registered(lineage: str) -> bool:
+def is_pre_registered(lineage: str, registry: Optional[dict[str, Any]] = None) -> bool:
     """A lineage may graduate only if it was pre-registered (honesty guard).
 
     Default-material singletons carry the ``unregistered:`` prefix; they were
     never asserted as an edge hypothesis *before* their forward window, so they
     can never graduate -- this is what stops post-hoc cherry-picking of whichever
     config happened to print money.
+
+    When ``registry`` is provided, the check is strengthened to require actual
+    membership: the lineage's id stem (the part before ``::``) must be a
+    registered lineage id. This is what keeps an intentionally-UNregistered but
+    cleanly-stamped track (e.g. ``es_nq_spread_v1::ES_NQ_SPREAD``) context-only
+    instead of silently graduation-eligible. With no registry, the historical
+    prefix-only behaviour is preserved (back-compat).
     """
-    return bool(lineage) and not str(lineage).startswith(UNREGISTERED_PREFIX)
+    if not lineage or str(lineage).startswith(UNREGISTERED_PREFIX):
+        return False
+    if registry is None:
+        return True
+    stem = str(lineage).split("::", 1)[0]
+    registered_ids = {lin.get("id") for lin in registry.get("lineages", [])}
+    return stem in registered_ids
 
 
 def meets_graduation(

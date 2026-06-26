@@ -1,55 +1,29 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { RefreshCw, TrendingDown, AlertTriangle, ShieldCheck } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import {
+  equityCurve,
+  type HonestTradeSet,
+  dedupCaveat,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // Circuit breaker limit (from engine config / settings.MAX_DRAWDOWN_PCT default)
 const CIRCUIT_BREAKER_LIMIT_PCT = 15;
 
-// ── API response shape ────────────────────────────────────────────────────────
-
-interface PerformanceMetrics {
-  profit_factor: number;
-  sharpe_ratio: number;
-  win_rate: number;
-  avg_win: number;
-  avg_loss: number;
-  max_drawdown: number; // fraction, always <= 0 (e.g. -0.082 = 8.2% drawdown)
-  total_trades: number;
-  total_pnl: number;
-  meets_paper_threshold: boolean;
-  period_days: number;
-}
-
-interface AnalyticsPerformanceResponse {
-  status: string;
-  metrics: PerformanceMetrics;
-  thresholds: {
-    profit_factor: number;
-    sharpe_ratio: number;
-    min_trades_required: number;
-  };
-  recommendation: string;
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Convert a fraction drawdown (negative, e.g. -0.082) to a positive percentage */
-function toPositivePct(fraction: number): number {
-  return Math.abs(fraction) * 100;
-}
 
 /**
  * Recovery gain % needed to return to peak from a drawdown.
  * Formula: recovery = drawdown / (1 - drawdown) * 100
  * where drawdown is the positive fraction (e.g. 0.082 for 8.2%).
  */
-function calcRecoveryPct(drawdownFraction: number): number {
-  const d = Math.abs(drawdownFraction);
+function calcRecoveryPct(drawdownPct: number): number {
+  const d = drawdownPct / 100;
   if (d >= 1) return Infinity;
   return (d / (1 - d)) * 100;
 }
@@ -89,32 +63,22 @@ function getDrawdownLevel(pct: number): {
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 export function MaxDrawdownTrackerWidget() {
-  const [data, setData] = useState<AnalyticsPerformanceResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: honestSet, isLoading: loading, error: loadError, mutate: fetchData } = useHonestTrades(0);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const json = await fetchEngine(`/analytics/performance`);
-      setData(json);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch");
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Derive max drawdown (peak-to-trough in USD) from honest equity curve
+  // The honest equity curve tracks drawdown as: equity - running_peak (always <= 0)
+  const curve = honestSet ? equityCurve(honestSet.trades) : [];
+  const peakEquity = curve.length > 0 ? Math.max(...curve.map((p) => p.equity)) : 0;
+  // Max drawdown = worst (most negative) drawdown point
+  const maxDrawdownUsd =
+    curve.length > 0 ? Math.min(...curve.map((p) => p.drawdown)) : 0; // <= 0
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // Express as % of peak (avoid division by zero when peak <= 0)
+  const drawdownPct =
+    peakEquity > 0 ? (Math.abs(maxDrawdownUsd) / peakEquity) * 100 : 0;
 
-  // Extract max_drawdown from metrics (negative fraction, e.g. -0.082)
-  const rawDrawdown = data?.metrics?.max_drawdown ?? 0;
-  const drawdownPct = toPositivePct(rawDrawdown); // positive %, e.g. 8.2
-  const recoveryPct = calcRecoveryPct(rawDrawdown);
+  const recoveryPct = calcRecoveryPct(drawdownPct);
   const gaugeWidth = Math.min(100, (drawdownPct / CIRCUIT_BREAKER_LIMIT_PCT) * 100);
 
   const level = getDrawdownLevel(drawdownPct);
@@ -137,7 +101,7 @@ export function MaxDrawdownTrackerWidget() {
             <Badge variant={level.variant}>{level.label}</Badge>
           </div>
           <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             disabled={loading}
             className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
           >
@@ -264,34 +228,30 @@ export function MaxDrawdownTrackerWidget() {
             </div>
 
             {/* ── Context row ─────────────────────────────────────────── */}
-            {data?.metrics && (
+            {honestSet && (
               <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Total Trades</span>
                   <span className="font-mono font-medium text-foreground">
-                    {data.metrics.total_trades}
+                    {honestSet.trades.length}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Period Days</span>
+                  <span className="text-muted-foreground">Peak Equity</span>
                   <span className="font-mono font-medium text-foreground">
-                    {data.metrics.period_days}d
+                    {peakEquity >= 0 ? "+" : ""}${peakEquity.toFixed(0)}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Win Rate</span>
                   <span className="font-mono font-medium text-foreground">
-                    {(data.metrics.win_rate * 100).toFixed(1)}%
+                    {(honestSet.winRate * 100).toFixed(1)}%
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Validation</span>
-                  <span
-                    className={`font-mono font-medium ${
-                      data.status === "PASS" ? "text-bull" : "text-warn"
-                    }`}
-                  >
-                    {data.status}
+                  <span className="text-muted-foreground">Max DD (USD)</span>
+                  <span className="font-mono font-medium text-bear">
+                    ${maxDrawdownUsd.toFixed(0)}
                   </span>
                 </div>
               </div>
@@ -299,9 +259,10 @@ export function MaxDrawdownTrackerWidget() {
 
             {/* ── Recovery formula footnote ────────────────────────────── */}
             <p className="text-[10px] text-muted-foreground">
-              Recovery formula: drawdown / (1 − drawdown) &times; 100 &mdash; A{" "}
+              Recovery formula: drawdown / (1 &minus; drawdown) &times; 100 &mdash; A{" "}
               {drawdownPct.toFixed(1)}% drawdown requires a{" "}
-              {isFinite(recoveryPct) ? recoveryPct.toFixed(1) : "—"}% gain to recover.
+              {isFinite(recoveryPct) ? `${recoveryPct.toFixed(1)}%` : "—"} gain to recover.
+              {honestSet && <> &middot; {dedupCaveat(honestSet)}</>}
             </p>
           </>
         )}

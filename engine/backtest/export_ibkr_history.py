@@ -135,6 +135,13 @@ SYMBOL_TO_IB_SPEC = {
     "MGC": {"symbol": "MGC", "exchange": "COMEX", "currency": "USD"},
     "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD"},
     "M2K": {"symbol": "M2K", "exchange": "CME", "currency": "USD"},
+    # B1 trend diversifiers (gold-uncorrelated). Rates on CBOT, FX micros on CME.
+    # Required so export_ibkr_history can resolve a continuous-front-month contract
+    # for these symbols; without them a pull fails on contract identification.
+    "ZN": {"symbol": "ZN", "exchange": "CBOT", "currency": "USD"},
+    "ZB": {"symbol": "ZB", "exchange": "CBOT", "currency": "USD"},
+    "M6E": {"symbol": "M6E", "exchange": "CME", "currency": "USD"},
+    "M6B": {"symbol": "M6B", "exchange": "CME", "currency": "USD"},
 }
 
 

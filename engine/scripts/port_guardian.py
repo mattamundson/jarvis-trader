@@ -26,17 +26,26 @@ Exit codes:
          min_uptime back off the restart loop instead of hammering taskkill.
          Human must kill the elevated PID via Task Manager (admin) and then
          `pm2 start jarvis-engine` to take over management.
+    4  — wrong Python (Store Python instead of the project venv); exits before
+         touching the port to avoid double-binding.
+    5  — readiness gate fired: uvicorn was launched but never served /health within
+         READINESS_DEADLINE seconds (hung/failed startup). Forced exit via the
+         watchdog thread so PM2 restarts the engine instead of leaving a dead
+         in-process server reported as "online". Reason logged to RESTART_LOG.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 PORT = 8010
@@ -45,9 +54,53 @@ HEALTHY_ORPHAN_BACKOFF = 30  # seconds to sleep before exiting when orphan is he
                               # but unkillable — gives PM2's restart_delay+min_uptime
                               # space to mark the slot as unstable instead of looping
 PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring failure
+# Readiness gate (P0.1): the guardian launches uvicorn IN-PROCESS and blocks, so PM2
+# only ever sees the guardian PID. If uvicorn never binds / never serves /health, PM2
+# still reports "online" while nothing answers. A background watchdog polls /health up
+# to READINESS_DEADLINE (covers the ~229s steady-state startup with margin) and forces a
+# non-zero exit if the server never comes up — so PM2 actually restarts a dead engine.
+READINESS_DEADLINE = 360      # seconds to wait for /health to serve before declaring the start dead
+READINESS_POLL = 5            # seconds between readiness probes
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENGINE_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = ENGINE_DIR.parent
+RESTART_LOG = ENGINE_DIR / "logs" / "port_guardian_restarts.jsonl"  # structured restart-reason trail
+
+
+def _record_restart_event(reason: str, details: dict, log_path: Path) -> None:
+    """Append a structured restart-reason record (JSONL) so a restart's cause is
+    no longer invisible. Never raises — logging must not break the guardian."""
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "reason": reason,
+        "pid": os.getpid(),
+        "details": details,
+    }
+    try:
+        path = Path(log_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
+
+
+def _readiness_watchdog(
+    deadline_s: float,
+    poll_interval_s: float,
+    is_ready_fn,
+    *,
+    now_fn=time.monotonic,
+    sleep_fn=time.sleep,
+) -> bool:
+    """Poll ``is_ready_fn`` until it returns True (→ True) or ``deadline_s`` elapses
+    (→ False). Clock/sleep are injectable so the loop is deterministically testable."""
+    start = now_fn()
+    while (now_fn() - start) < deadline_s:
+        if is_ready_fn():
+            return True
+        sleep_fn(poll_interval_s)
+    return False
 
 
 def _port_holders(port: int) -> list[int]:
@@ -185,6 +238,33 @@ def _check_venv_python() -> None:
         sys.exit(4)
 
 
+def _start_readiness_watchdog() -> None:
+    """Spawn a daemon thread that confirms uvicorn actually serves /health within
+    READINESS_DEADLINE. If it never does, record the reason and force a non-zero exit
+    so PM2 restarts the engine instead of leaving a dead server reported as 'online'."""
+
+    def _watch() -> None:
+        ready = _readiness_watchdog(
+            READINESS_DEADLINE, READINESS_POLL, lambda: _is_healthy(PORT)
+        )
+        if ready:
+            print("[port_guardian] readiness confirmed — /health is serving", flush=True)
+            return
+        _record_restart_event(
+            "health-timeout",
+            {"port": PORT, "deadline_s": READINESS_DEADLINE},
+            RESTART_LOG,
+        )
+        print(
+            f"[port_guardian] uvicorn did not serve /health within {READINESS_DEADLINE}s "
+            "— forcing exit so PM2 restarts the engine",
+            flush=True,
+        )
+        os._exit(5)
+
+    threading.Thread(target=_watch, name="readiness-watchdog", daemon=True).start()
+
+
 def main() -> int:
     _check_venv_python()
     print(f"[port_guardian] checking port {PORT}...", flush=True)
@@ -205,6 +285,10 @@ def main() -> int:
                 return 1
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
             killed = _kill_pid(pid)
+            if killed:
+                _record_restart_event(
+                    "orphan-kill", {"pid": pid, "name": name, "port": PORT}, RESTART_LOG
+                )
             if not killed:
                 # Both taskkill and Stop-Process failed — process is likely elevated.
                 if _is_healthy(PORT):
@@ -253,6 +337,12 @@ def main() -> int:
         if path not in sys.path:
             sys.path.insert(0, path)
     import uvicorn  # noqa: PLC0415 — deferred import so the cleanup phase above stays cheap
+
+    # Readiness gate: watch from a side thread that uvicorn actually serves /health.
+    # If startup hangs / never binds, this forces a non-zero exit so PM2 truly restarts
+    # the engine instead of reporting a dead in-process server as "online".
+    _start_readiness_watchdog()
+
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
