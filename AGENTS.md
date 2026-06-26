@@ -39,6 +39,22 @@ Two services make up the product: the **engine** (FastAPI, Python 3.12, port 801
 - Dashboard: from `dashboard/`, `pnpm dev` (port 3010). Use `pnpm` only (npm is broken).
 - Auth: all engine routes require header `X-API-Key: <API_KEY from engine/.env>`.
 
+### External service: master-api (:8030)
+
+The dashboard talks to a SEPARATE `master-api` service at `NEXT_PUBLIC_MASTER_API_URL`
+(default `http://127.0.0.1:8030`) via `dashboard/lib/masterApi.ts`. This service is NOT in
+this repo and is not started by the engine/dashboard. When it is absent (the default in
+this environment):
+
+- `/master`, `/master/finances`, `/master/trading` show "Master API unreachable on :8030"
+  banners (expected).
+- The "honest deduped trade record" (`useHonestTrades` → `/master/trading/realized`) is
+  unavailable, so widgets on `/stats`, `/journal`, `/performance`, and `/backtest` render
+  "Failed to fetch"/"unavailable" states. These are NOT engine bugs — they need master-api.
+
+`/strategy-c` showing `Engine error 404: /v1/strategy_c/signal` is also expected when no
+live Strategy-C signal has been generated; the page prints the command to create one.
+
 ### Lint / test / build
 
 - Engine lint: from `engine/`, `.venv/bin/ruff check . --config ruff.toml`.
