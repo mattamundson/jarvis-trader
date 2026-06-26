@@ -152,7 +152,7 @@ async def get_safety_status(request: Request) -> dict[str, Any]:
     equity = current_balance if current_balance > 0 else max(starting_balance, 1.0)
     daily_pnl_pct = (daily_pnl / equity) if equity else 0.0
 
-    return {
+    status = {
         "kill_switch_active": bool(base.get("is_killed")),
         "kill_switch_reason": base.get("kill_switch_reason"),
         "daily_pnl": daily_pnl,
@@ -172,6 +172,15 @@ async def get_safety_status(request: Request) -> dict[str, Any]:
         "equity_peak": float(base.get("equity_peak") or 0.0),
         "daily_realized_pnl": float(base.get("daily_realized_pnl") or 0.0),
     }
+    # Feed the Prometheus safety gauges off this read-path (P1.0b). Tolerant and
+    # non-raising — observability must never break the safety endpoint.
+    try:
+        from monitoring.metrics import sync_safety_gauges
+
+        sync_safety_gauges(status)
+    except Exception:  # noqa: BLE001 - metrics are best-effort
+        pass
+    return status
 
 
 @router.get(
