@@ -523,6 +523,19 @@ export async function fetchHiddenPivotsScan(
   );
 }
 
+/**
+ * Last price + daily change for the given symbols (GET /prices/snapshot).
+ * Goes through the engine proxy (REST), so it works on the remote/Vercel
+ * deploy unlike the WS feed. Server-side cache is 60s (rate-limit guard), so
+ * values refresh roughly once a minute during market hours. Reuses the shared
+ * `PriceSnapshot` map type (see below / WatchlistBar).
+ */
+export async function fetchPriceSnapshot(symbols: string[]): Promise<PriceSnapshot> {
+  if (symbols.length === 0) return {};
+  const q = encodeURIComponent(symbols.join(","));
+  return fetchEngine<PriceSnapshot>(`/prices/snapshot?symbols=${q}`);
+}
+
 /** GET /pipeline/history */
 export interface PipelineHistoryEntry {
   id?: string | number;
