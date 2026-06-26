@@ -237,12 +237,6 @@ from backtest._constants import (  # noqa: E402
 from backtest._gate_v2_helpers import _find_latest_cache  # noqa: E402
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
-    GATE_DSR,  # core dsr floor (primary thresholds live in _gate_v2_helpers, not _constants)
-    GATE_DSR_ALT,  # alt dsr floor
-    GATE_MC_DD_ALT,  # alt mc-dd ceiling
-    GATE_MC_DD_CORE,  # core mc-dd ceiling
-    GATE_P_EDGE,  # core p_edge floor
-    GATE_PF_CI_LOWER,  # core pf_ci_lower floor
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
 )
 
