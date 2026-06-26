@@ -29,6 +29,13 @@ from backtest.wfo_lifecycle import OOSResult, compute_gate_v2
 # Smoke-test kill thresholds.
 SMOKE_MIN_SHARPE = 0.5
 SMOKE_MIN_PF = 1.0
+# Below this, there is no meaningful pre-cost metric to judge -> kill.
+SMOKE_MIN_TRADES = 5
+# Between SMOKE_MIN_TRADES and this, the strategy is low-frequency (e.g. a daily
+# SMA cross fires ~15x in 33yr). That is NOT a reason to kill -- it is the nature
+# of the strategy. Flag it `low_sample` and let robustness judge it honestly via
+# the bootstrap PF-CI + DSR, which already price in small-sample uncertainty.
+SMOKE_LOW_SAMPLE_TRADES = 30
 # Realistic cost tier (matches COST_SWEEP_TIERS["realistic"]).
 REALISTIC_COMMISSION = 0.62
 REALISTIC_SLIPPAGE_TICKS = 2.0
@@ -95,18 +102,23 @@ def smoke_test(
         commission=0.0,
         slippage_ticks=0.0,
     )
-    if (
-        pre.total_trades < MIN_BARS_PER_SPLIT
-        or pre.sharpe_ratio < SMOKE_MIN_SHARPE
-        or pre.profit_factor < SMOKE_MIN_PF
-    ):
+    low_sample = pre.total_trades < SMOKE_LOW_SAMPLE_TRADES
+    base = {
+        "stage": "smoke",
+        "pre_sharpe": pre.sharpe_ratio,
+        "pre_pf": pre.profit_factor,
+        "trades": pre.total_trades,
+        "low_sample": low_sample,
+    }
+    # Too few trades to compute a trustworthy pre-cost metric at all.
+    if pre.total_trades < SMOKE_MIN_TRADES:
         return False, {
-            "stage": "smoke",
-            "pre_sharpe": pre.sharpe_ratio,
-            "pre_pf": pre.profit_factor,
-            "trades": pre.total_trades,
-            "kill_reason": "pre-cost sharpe/pf/trades below floor",
+            **base,
+            "kill_reason": f"insufficient trades to evaluate (<{SMOKE_MIN_TRADES})",
         }
+    # Kill only on a genuinely absent pre-cost edge -- NOT on low frequency.
+    if pre.sharpe_ratio < SMOKE_MIN_SHARPE or pre.profit_factor < SMOKE_MIN_PF:
+        return False, {**base, "kill_reason": "pre-cost sharpe/pf below floor"}
     post = backtest_once(
         card,
         bars,
@@ -118,12 +130,9 @@ def smoke_test(
     )
     survives = post.profit_factor > SMOKE_MIN_PF
     return survives, {
-        "stage": "smoke",
-        "pre_sharpe": pre.sharpe_ratio,
-        "pre_pf": pre.profit_factor,
+        **base,
         "post_cost_pf": post.profit_factor,
         "post_cost_sharpe": post.sharpe_ratio,
-        "trades": pre.total_trades,
         "kill_reason": None if survives else "does not survive realistic cost",
     }
 

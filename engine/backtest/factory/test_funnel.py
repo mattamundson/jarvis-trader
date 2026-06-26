@@ -70,6 +70,40 @@ def test_smoke_returns_bool_and_metrics():
         assert "post_cost_pf" in metrics
 
 
+def test_smoke_does_not_kill_low_frequency_profitable(monkeypatch):
+    """A profitable but low-frequency strategy (e.g. 15 trades) must NOT be killed
+    on trade count -- it is flagged low_sample and proceeds. Regression for the
+    pilot finding where SPY-1d sma_trend (PF 1.80) was wrongly killed at smoke."""
+    from backtest.factory import funnel as F
+
+    def fake(card, bars, params, symbol, multiplier, **kw):
+        return F.BacktestMetrics(
+            profit_factor=1.8, sharpe_ratio=3.1, max_drawdown_pct=4.0, total_trades=15
+        )
+
+    monkeypatch.setattr(F, "backtest_once", fake)
+    survives, m = F.smoke_test(_donchian_card(), _thin(), symbol="SPY", multiplier=1.0)
+    assert survives is True
+    assert m["low_sample"] is True
+    assert m["kill_reason"] is None
+
+
+def test_smoke_kills_below_min_trades(monkeypatch):
+    """Below 5 trades there is no trustworthy pre-cost metric -> kill, even if the
+    handful of trades look great."""
+    from backtest.factory import funnel as F
+
+    def fake(card, bars, params, symbol, multiplier, **kw):
+        return F.BacktestMetrics(
+            profit_factor=4.0, sharpe_ratio=6.0, max_drawdown_pct=1.0, total_trades=3
+        )
+
+    monkeypatch.setattr(F, "backtest_once", fake)
+    survives, m = F.smoke_test(_donchian_card(), _thin(), symbol="SPY", multiplier=1.0)
+    assert survives is False
+    assert "insufficient trades" in m["kill_reason"]
+
+
 def test_gauntlet_runs_full_path_with_global_wiring():
     """Real end-to-end: enough calendar span that >=4 windows form, so DSR + PBO
     actually compute (not the insufficient-data early-out)."""
