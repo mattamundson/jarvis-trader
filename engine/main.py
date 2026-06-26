@@ -97,6 +97,7 @@ from routers.safety_router import router as safety_router
 from routers.schwab_router import router as schwab_router
 from routers.schwab_router import set_schwab_connector
 from routers.strategies_router import router as strategies_router
+from routers.trading_status_router import router as trading_status_router
 from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.paper_validation_router import router as paper_validation_router
@@ -150,6 +151,10 @@ from routers.macro_router import router as macro_router, inject_dependencies as 
 from routers.analysis_router import (
     router as analysis_router,
     inject_dependencies as inject_analysis_deps,
+)
+from routers.regime_router import (
+    router as regime_router,
+    inject_dependencies as inject_regime_deps,
 )
 from routers.watchlist_router import (
     router as watchlist_router,
@@ -701,6 +706,13 @@ async def lifespan(app: FastAPI):
     # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
     set_analytics_data_manager(data_manager)
+    # Wire the real-price source into the paper connector so simulated fills use
+    # the live get_tick_price waterfall instead of static mock quotes. Without
+    # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
+    # paper_trades. (2026-06-22 paper-fill integrity fix.)
+    if ib_paper_connector is not None:
+        ib_paper_connector.attach_market_data(data_manager)
+        logger.info("✅ Paper connector: real-price source wired (get_tick_price)")
     # Re-inject with data_manager now available so /orders/status can fall back to
     # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
     inject_orders_deps(order_router, safety_layer=safety_layer, data_manager=data_manager)
@@ -1673,6 +1685,7 @@ async def lifespan(app: FastAPI):
     )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
+    inject_regime_deps(data_manager)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
     inject_sentiment_deps(data_manager)
     inject_settings_deps(settings, db_manager, safety_layer)
@@ -2916,6 +2929,13 @@ app.add_middleware(APIKeyMiddleware)
 app.state.limiter = get_limiter()
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 
+# Prometheus exposition at /metrics (auth-exempt; see monitoring.metrics +
+# middleware.auth.EXEMPT_PATHS). P1.0 of the observability roadmap — the jarvis_*
+# families were defined but never mounted/scraped before this.
+from monitoring.metrics import mount_metrics  # noqa: E402
+
+mount_metrics(app)
+
 app.include_router(health_router)
 app.include_router(phase3_readiness_router)
 app.include_router(readiness_router)
@@ -2924,6 +2944,7 @@ app.include_router(journal_review_router, prefix="/journal", tags=["journal-revi
 app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(strategy_ledger_router)
+app.include_router(trading_status_router)
 app.include_router(forward_test_router)
 app.include_router(validation_analytics_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
@@ -2978,6 +2999,7 @@ app.include_router(strategy_c_router)
 app.include_router(ib_scanner_router)
 app.include_router(macro_router)
 app.include_router(analysis_router)
+app.include_router(regime_router)
 app.include_router(watchlist_router)
 app.include_router(sentiment_router)
 app.include_router(settings_router)

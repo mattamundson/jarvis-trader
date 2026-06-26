@@ -54,9 +54,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -66,15 +67,19 @@ import pandas as pd
 # Format: <SYMBOL>_<START_DATE>_<END_DATE>_<INTERVAL>.csv
 #   - SYMBOL:   2-4 uppercase letters (e.g. MES, MGC, MNQ, MCL, M2K)
 #   - START / END: ISO YYYY-MM-DD
-#   - INTERVAL: digits + 'h' or 'd' (e.g. 1h, 4h, 1d)
+#   - INTERVAL: digits + 'm', 'h', or 'd' (e.g. 5m, 15m, 1h, 4h, 1d)
 #
 # The downstream selector engine/backtest/_gate_v2_helpers.py::_find_latest_cache
 # splits on "_" and uses parts[2] (the END_DATE) as the lex-sort key. If this
 # pattern ever drifts (e.g. a contract-month suffix, or a non-ISO date), the
 # selector silently picks the wrong file. The assertion in _save_merged below
 # is the canary that catches drift at write-time, not weeks later at WFO time.
+#
+# 'm' added 2026-06-16 for intraday 5m/15m history: INTERVAL_TO_IB_BARSIZE has
+# declared "5m"/"15m" but this regex only accepted [hd], so any 5m/15m save
+# raised here -- the bars were fetchable but never persistable. Now persistable.
 CACHE_FILENAME_CONTRACT = re.compile(
-    r"^[A-Z][A-Z0-9]{1,3}_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}_\d{1,2}[hd]\.csv$"
+    r"^[A-Z][A-Z0-9]{1,3}_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}_\d{1,2}[mhd]\.csv$"
 )
 
 engine_root = Path(__file__).parent.parent
@@ -97,6 +102,29 @@ INTERVAL_TO_IB_BARSIZE = {
     "15m": "15 mins",
 }
 
+# Per-interval IB request economics for deep-history pulls.
+#   chunk_days  -- conservative max calendar days reqHistoricalData returns in a
+#                  single request for this bar size. IB enforces tighter limits
+#                  for smaller bars; these are deliberately safe (monthly for
+#                  intraday) so a deep pull never silently truncates a chunk.
+#   depth_days  -- default total history target when no --duration is given and
+#                  there is no existing cache (the "fetch a long range" case).
+# The actual per-request cap IB allows is larger for some bar sizes, but the
+# binding constraint on new edge is *coverage*, not request count -- erring
+# toward smaller, reliable chunks costs a few extra requests, never data.
+INTERVAL_CHUNK_DAYS = {
+    "5m": 30,     # ~1 month per request
+    "15m": 30,    # ~1 month per request
+    "1h": 365,    # ~1 year per request
+    "1d": 3650,   # daily fits a single 10y request
+}
+INTERVAL_DEPTH_DAYS = {
+    "5m": 1825,   # 5 years intraday
+    "15m": 1825,  # 5 years intraday
+    "1h": 1825,   # 5 years (was a single 2Y request; now chunked + deeper)
+    "1d": 3650,   # 10 years daily (was capped at 5y)
+}
+
 # IB requires `whatToShow` for futures — TRADES is correct for OHLCV
 WHAT_TO_SHOW = "TRADES"
 
@@ -107,6 +135,13 @@ SYMBOL_TO_IB_SPEC = {
     "MGC": {"symbol": "MGC", "exchange": "COMEX", "currency": "USD"},
     "MCL": {"symbol": "MCL", "exchange": "NYMEX", "currency": "USD"},
     "M2K": {"symbol": "M2K", "exchange": "CME", "currency": "USD"},
+    # B1 trend diversifiers (gold-uncorrelated). Rates on CBOT, FX micros on CME.
+    # Required so export_ibkr_history can resolve a continuous-front-month contract
+    # for these symbols; without them a pull fails on contract identification.
+    "ZN": {"symbol": "ZN", "exchange": "CBOT", "currency": "USD"},
+    "ZB": {"symbol": "ZB", "exchange": "CBOT", "currency": "USD"},
+    "M6E": {"symbol": "M6E", "exchange": "CME", "currency": "USD"},
+    "M6B": {"symbol": "M6B", "exchange": "CME", "currency": "USD"},
 }
 
 
@@ -166,6 +201,61 @@ def _ib_duration_from_gap(last_bar: datetime | None, interval: str) -> str:
         # IB caps 1h to ~1 year per request — clamp to safe value
         return f"{min(gap_days, 365)} D"
     return f"{min(gap_days, 1825)} D"  # daily up to 5y
+
+
+def _ib_enddate(dt: datetime) -> str:
+    """Format a datetime as an IB endDateTime string in UTC.
+
+    IB accepts 'yyyymmdd HH:mm:ss UTC'. An empty string means 'now', which is
+    what the most-recent chunk uses.
+    """
+    return dt.astimezone(timezone.utc).strftime("%Y%m%d %H:%M:%S UTC")
+
+
+def plan_history_chunks(
+    interval: str,
+    *,
+    now: datetime,
+    depth_days: int | None = None,
+    last_bar: datetime | None = None,
+) -> list[tuple[str, str]]:
+    """Plan the (endDateTime, durationStr) IB requests, newest-first, that cover
+    the desired history depth for ``interval`` in IB-safe chunks.
+
+    - With ``last_bar`` set, only the gap last_bar -> now is fetched (incremental
+      refresh), capped at ``depth_days``.
+    - With ``last_bar`` None, the full ``depth_days`` (default per interval) is
+      split into ceil(depth_days / chunk_days) chunks, walking endDateTime back.
+
+    Pure: no IB, no IO, deterministic in ``now``. The newest chunk uses
+    endDateTime="" (IB interprets "" as now). This is the real chunking the
+    module's docstring always promised but never actually performed -- the old
+    path issued a single capped request, silently truncating deep pulls.
+    """
+    if interval not in INTERVAL_CHUNK_DAYS:
+        raise ValueError(
+            f"Unknown interval {interval!r}; supported: {list(INTERVAL_CHUNK_DAYS)}"
+        )
+
+    target = depth_days if depth_days is not None else INTERVAL_DEPTH_DAYS[interval]
+    if last_bar is not None:
+        gap_days = max(1, (now - last_bar).days + 2)  # +2 day safety buffer
+        target = min(target, gap_days)
+    target = max(1, target)
+
+    chunk_days = INTERVAL_CHUNK_DAYS[interval]
+    n_chunks = max(1, math.ceil(target / chunk_days))
+
+    plan: list[tuple[str, str]] = []
+    for i in range(n_chunks):
+        days_to_end = i * chunk_days  # this chunk ENDS at now - days_to_end
+        remaining = target - days_to_end
+        this_chunk = min(chunk_days, remaining)
+        if this_chunk <= 0:
+            break
+        end_dt = "" if i == 0 else _ib_enddate(now - timedelta(days=days_to_end))
+        plan.append((end_dt, f"{this_chunk} D"))
+    return plan
 
 
 def _save_merged(symbol: str, interval: str, merged: pd.DataFrame) -> Path:
@@ -295,8 +385,21 @@ async def _fetch_bars_async(
         print("[IBKR] Disconnected.")
 
 
-def _refresh_one(symbol: str, interval: str, duration: str | None, dry_run: bool) -> dict:
-    """Refresh cache for one symbol/interval. Returns summary dict."""
+def _refresh_one(
+    symbol: str,
+    interval: str,
+    duration: str | None,
+    dry_run: bool,
+    depth_days: int | None = None,
+) -> dict:
+    """Refresh cache for one symbol/interval. Returns summary dict.
+
+    Two fetch modes:
+      * ``--duration`` given  -> a single IB request of that duration (back-compat).
+      * otherwise             -> a chunked deep pull via :func:`plan_history_chunks`
+        (covers the interval's default depth, or just the gap from the existing
+        cache), walking endDateTime back in IB-safe chunks and merging+deduping.
+    """
     summary = {
         "symbol": symbol,
         "interval": interval,
@@ -304,6 +407,7 @@ def _refresh_one(symbol: str, interval: str, duration: str | None, dry_run: bool
         "n_existing": 0,
         "n_fetched": 0,
         "n_merged": 0,
+        "n_chunks": 0,
         "out_file": None,
         "error": None,
     }
@@ -323,8 +427,18 @@ def _refresh_one(symbol: str, interval: str, duration: str | None, dry_run: bool
         except Exception as e:
             print(f"[{symbol}-{interval}] WARN: cannot load existing cache: {e}")
 
-    duration_str = duration or _ib_duration_from_gap(last_bar, interval)
-    print(f"[{symbol}-{interval}] Will request duration: {duration_str}")
+    now = datetime.now(tz=timezone.utc)
+    if duration:
+        plan = [("", duration)]  # explicit single-request override
+    else:
+        plan = plan_history_chunks(
+            interval, now=now, depth_days=depth_days, last_bar=last_bar
+        )
+    summary["n_chunks"] = len(plan)
+    print(
+        f"[{symbol}-{interval}] Plan: {len(plan)} request(s) -- "
+        f"{[d for _, d in plan][:3]}{' ...' if len(plan) > 3 else ''}"
+    )
 
     if dry_run:
         print(f"[{symbol}-{interval}] DRY RUN — skipping fetch.")
@@ -332,7 +446,17 @@ def _refresh_one(symbol: str, interval: str, duration: str | None, dry_run: bool
         return summary
 
     try:
-        new_df = asyncio.run(_fetch_bars_async(symbol, interval, duration_str))
+        chunk_frames = []
+        for idx, (end_dt, dur) in enumerate(plan, 1):
+            print(f"[{symbol}-{interval}] chunk {idx}/{len(plan)}: end='{end_dt or 'now'}' dur={dur}")
+            cdf = asyncio.run(_fetch_bars_async(symbol, interval, dur, end_dt))
+            if not cdf.empty:
+                chunk_frames.append(cdf)
+        new_df = (
+            pd.concat(chunk_frames).sort_index() if chunk_frames else pd.DataFrame()
+        )
+        if not new_df.empty:
+            new_df = new_df[~new_df.index.duplicated(keep="last")]
         summary["n_fetched"] = len(new_df)
     except Exception as e:
         summary["error"] = str(e)
@@ -393,7 +517,15 @@ def main() -> int:
         help="Bar size (default: 1h)",
     )
     parser.add_argument(
-        "--duration", help='IB-style duration (e.g. "60 D", "2 Y"). Default: auto from cache gap.'
+        "--duration", help='IB-style duration (e.g. "60 D", "2 Y"). Single request; '
+        "overrides chunked deep-pull. Default: auto-chunked from cache gap / depth.",
+    )
+    parser.add_argument(
+        "--depth-days",
+        type=int,
+        default=None,
+        help="Total history depth to pull when no --duration is given "
+        "(default per interval: 5m/15m/1h=1825, 1d=3650). Chunked automatically.",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Connect + identify contract but skip fetch"
@@ -414,7 +546,9 @@ def main() -> int:
         results = []
         for sym, interval in targets:
             print(f"\n{'=' * 60}\n{sym} {interval}\n{'=' * 60}")
-            results.append(_refresh_one(sym, interval, args.duration, args.dry_run))
+            results.append(
+                _refresh_one(sym, interval, args.duration, args.dry_run, args.depth_days)
+            )
         print("\nFINAL SUMMARY:")
         for r in results:
             status = "OK" if r["ok"] else f"FAIL ({r.get('error', 'unknown')})"
@@ -426,7 +560,9 @@ def main() -> int:
 
     if not args.symbol:
         parser.error("--symbol required (or use --refresh-all-pass-verdicts)")
-    summary = _refresh_one(args.symbol, args.interval, args.duration, args.dry_run)
+    summary = _refresh_one(
+        args.symbol, args.interval, args.duration, args.dry_run, args.depth_days
+    )
     print(f"\nSUMMARY: {summary}")
     return 0 if summary["ok"] else 1
 

@@ -111,6 +111,44 @@ def sample_adequacy_enforced() -> bool:
     }
 
 
+def per_window_adequacy_enforced() -> bool:
+    """Shadow -> enforce switch for the PER-WINDOW adequacy floor (Task 8 follow-on).
+
+    Companion to ``sample_adequacy_enforced()``. The aggregate
+    ``MIN_OOS_TRADES_TOTAL`` floor is necessary but NOT sufficient: a strategy can
+    clear 30 aggregate OOS trades while most windows are 1-4 trades with degenerate
+    PFs (e.g. ``MGC_trend_rank4``: 67 aggregate, median 4/window, 14 of 19 thin).
+    This switch makes a strategy whose MEDIAN window is below
+    ``MIN_OOS_TRADES_PER_WINDOW`` return ``INSUFFICIENT_SAMPLE``.
+
+    Default OFF (shadow): runners record the per-window inputs but the verdict is
+    unchanged, so live authorization is unaffected. Set
+    ``GATE_V2_ENFORCE_PER_WINDOW=1`` to enforce. Like the aggregate flag this is an
+    env switch (house ``GATE_V2_ENFORCE_*`` convention) evaluated at call time, so
+    the shadow->enforce flip is a one-line, fully reversible ``.env`` change.
+    """
+    return os.getenv("GATE_V2_ENFORCE_PER_WINDOW", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def per_window_sample_adequate(per_window_trades: list[int] | None) -> bool:
+    """True iff the MEDIAN per-window OOS trade count clears the per-window floor.
+
+    ``per_window_trades`` is the list of OOS trade counts, one per WFO window.
+    Empty/None -> False (fail-safe: unknown per-window distribution does not
+    certify). Uses the median (not the mean) so a few fat windows cannot mask many
+    thin ones — that masking is exactly the necessary-not-sufficient gap this guard
+    closes.
+    """
+    if not per_window_trades:
+        return False
+    return bool(float(np.median(per_window_trades)) >= MIN_OOS_TRADES_PER_WINDOW)
+
+
 # ---------------------------------------------------------------------------
 # Cost sweep tiers — canonical; do not redefine per-runner
 # ---------------------------------------------------------------------------

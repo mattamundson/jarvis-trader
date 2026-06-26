@@ -456,6 +456,19 @@ export interface RegimeStatusResult {
   [key: string]: unknown;
 }
 
+/** GET /regime/vix-percentile — percentile VIX regime + momentum overlay */
+export interface VixPercentileRegime {
+  vix: number;
+  vix_percentile: number; // 0..100
+  tier: "Crisis" | "HighVol" | "MidVol" | "LowVol";
+  momentum: "Bull" | "Neutral" | "Bear";
+  confidence: number; // 0..1
+  lookback: number;
+  momentum_window: number;
+  price_symbol: string;
+  n_vix_bars: number;
+}
+
 /** GET /watchlist/scan */
 export interface WatchlistScanRow {
   symbol: string;
@@ -1015,8 +1028,8 @@ export async function fetchStrategyGates(symbol: string): Promise<GatesResponse>
 // ── Per-trade full review (closed loop) ──────────────────────────────────────
 
 export interface TradeFullReview {
-  trade: Record<string, any>;
-  attribution: Record<string, any>;
+  trade: Record<string, unknown>;
+  attribution: Record<string, unknown>;
   why: {
     decision_id: number | null;
     matched_by: string;
@@ -1026,7 +1039,7 @@ export interface TradeFullReview {
     confidence: number | null;
     regime: string | null;
     reasoning: string | null;
-    pipeline: Record<string, any> | null;
+    pipeline: Record<string, unknown> | null;
   } | null;
   backtest: LedgerEntry | null;
   forward: {
@@ -1041,7 +1054,7 @@ export interface TradeFullReview {
     meets_paper_threshold: boolean;
     period_days: number;
   } | null;
-  review: Record<string, any> | null;
+  review: Record<string, unknown> | null;
 }
 
 /** GET /trades/{id}/full-review — the closed-loop join for one placed trade. */
@@ -1950,6 +1963,142 @@ export async function fetchCalibration(): Promise<CalibrationDiagnostics> {
   return fetchEngine<CalibrationDiagnostics>("/analytics/calibration");
 }
 
+// ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
+// Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
+// mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.
+
+export interface ExcursionTrade {
+  trade_id: string;
+  symbol: string;
+  side: string;
+  entry_price: number;
+  exit_price: number | null;
+  pnl: number | null;
+  entry_time: string;
+  exit_time: string | null;
+  mae_pct: number | null;
+  mfe_pct: number | null;
+  mae_usd: number | null;
+  mfe_usd: number | null;
+  mfe_capture_ratio: number | null;
+}
+
+export interface ExcursionAggregates {
+  trade_count: number;
+  populated_count: number;
+  avg_mae_pct: number | null;
+  avg_mfe_pct: number | null;
+  avg_mae_usd: number | null;
+  avg_mfe_usd: number | null;
+  avg_mfe_capture_ratio: number | null;
+}
+
+export interface ExcursionResponse {
+  trades: ExcursionTrade[];
+  aggregates: ExcursionAggregates;
+  timestamp: string;
+}
+
+export async function fetchExcursion(
+  opts?: { symbol?: string; limit?: number }
+): Promise<ExcursionResponse> {
+  const qs = new URLSearchParams();
+  if (opts?.symbol) qs.set("symbol", opts.symbol);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return fetchEngine<ExcursionResponse>(`/analytics/excursion${suffix}`);
+}
+
+// ── Entry-timing scenarios (/analytics/entry-timing) ─────────────────────────
+// Per-closed-trade what-if: PnL if entry had occurred N bars earlier/later
+// (exit held constant). offset 0 reproduces the actual trade. Bars are fetched
+// server-side; trades with no bars return bars_available=false + empty scenarios.
+
+export interface EntryTimingScenarioRow {
+  offset_bars: number;
+  hypothetical_entry: number;
+  pnl_usd: number;
+  pnl_pct: number;
+  delta_vs_actual_usd: number;
+}
+
+export interface EntryTimingTrade {
+  trade_id: string;
+  symbol: string;
+  side: string;
+  entry_price: number;
+  exit_price: number | null;
+  pnl: number | null;
+  entry_time: string;
+  exit_time: string | null;
+  scenarios: EntryTimingScenarioRow[];
+  entry_bar_index: number | null;
+  bars_available: boolean;
+}
+
+export interface EntryTimingAggregates {
+  trade_count: number;
+  computed_count: number;
+  avg_delta_by_offset: Record<string, number>;
+  best_avg_offset: number | null;
+  worst_avg_offset: number | null;
+  systematic_bias: string | null;
+}
+
+export interface EntryTimingResponse {
+  trades: EntryTimingTrade[];
+  aggregates: EntryTimingAggregates;
+  offsets_evaluated: number[];
+  timestamp: string;
+}
+
+export async function fetchEntryTiming(
+  opts?: { symbol?: string; limit?: number; offsets?: string }
+): Promise<EntryTimingResponse> {
+  const qs = new URLSearchParams();
+  if (opts?.symbol) qs.set("symbol", opts.symbol);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  if (opts?.offsets) qs.set("offsets", opts.offsets);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return fetchEngine<EntryTimingResponse>(`/analytics/entry-timing${suffix}`);
+}
+
+// ── Bar-depth / data-coverage health (/analytics/bar-depth) ──────────────────
+// Per symbol×interval coverage: rows, calendar span, gap structure, and the
+// fraction the bar-quality gate would reject. Endpoint is additive and only
+// goes live after an engine restart, so callers must tolerate a 404.
+
+export interface BarDepthPair {
+  symbol: string;
+  interval: string;
+  rows: number;
+  first_ts: string | null;
+  last_ts: string | null;
+  span_days: number;
+  gap_count: number;
+  max_gap_hours: number;
+  contaminated_pct: number;
+  enforce_safe: boolean;
+}
+
+export interface BarDepthSummary {
+  pair_count: number;
+  symbol_count: number;
+  total_rows: number;
+  total_rejects: number;
+  contaminated_pct: number;
+}
+
+export interface BarDepthResponse {
+  pairs: BarDepthPair[];
+  summary: BarDepthSummary;
+  timestamp: string;
+}
+
+export async function fetchBarDepth(): Promise<BarDepthResponse> {
+  return fetchEngine<BarDepthResponse>("/analytics/bar-depth");
+}
+
 // ── Discord Briefing (command-center /discord/briefing) ──────────────────────
 
 export interface BriefingIBLevels {
@@ -1982,7 +2131,10 @@ export interface KnowledgeContextHit {
 export interface BriefingResponse {
   symbol: string;
   headline?: string | null;
-  corey_bias?: string | null;
+  // engine returns either a plain string or a structured object
+  // ({date, session_type, directional_bias, ...}) — accept both so consumers
+  // coerce/extract rather than crashing (e.g. .toLowerCase on an object).
+  corey_bias?: string | Record<string, unknown> | null;
   ib_levels?: BriefingIBLevels | null;
   recent_signal?: BriefingRecentSignal | null;
   /** Advisory curated-knowledge hits — present ONLY when fetched with enriched:true. */
