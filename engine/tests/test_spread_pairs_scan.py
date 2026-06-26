@@ -26,6 +26,27 @@ def test_pooled_pass_but_back_loaded_is_non_stationary():
     assert pooled and not stat and v == "NON-STATIONARY"
 
 
+def test_both_positive_but_magnitude_imbalanced_is_back_loaded():
+    # MES-M2K shape: both halves profitable, but H1 carries only ~7% of profit.
+    # Passes the binary stationarity check yet is a recent-regime edge -> BACK-LOADED,
+    # a rung below CANDIDATE. stationary stays True (both halves > 0).
+    pooled, stat, v = ps.classify_verdict(2.26, 1.0, 264, h1_sum=0.087, h2_sum=1.213)
+    assert pooled and stat and v == "BACK-LOADED"
+
+
+def test_balanced_halves_earn_candidate():
+    # H1 share = 0.4 / 1.0 = 40% >= 20% floor -> CANDIDATE
+    pooled, stat, v = ps.classify_verdict(1.5, 1.0, 200, h1_sum=0.4, h2_sum=0.6)
+    assert pooled and stat and v == "CANDIDATE"
+
+
+def test_magnitude_balance_boundary_inclusive():
+    # exactly 20% profit-share in the weaker half -> CANDIDATE (inclusive)
+    assert ps.classify_verdict(1.5, 1.0, 200, h1_sum=0.20, h2_sum=0.80)[2] == "CANDIDATE"
+    # a hair under 20% -> BACK-LOADED
+    assert ps.classify_verdict(1.5, 1.0, 200, h1_sum=0.199, h2_sum=0.801)[2] == "BACK-LOADED"
+
+
 def test_fails_pooled_thresholds_is_no_edge():
     assert ps.classify_verdict(0.9, 0.6, 200, 0.1, 0.1)[2] == "NO_EDGE"  # pf_ci low
     assert ps.classify_verdict(1.5, 0.5, 200, 0.1, 0.1)[2] == "NO_EDGE"  # p_edge low

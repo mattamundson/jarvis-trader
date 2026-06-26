@@ -64,19 +64,41 @@ def load_pair(
     return dt.to_numpy(), m["a"].to_numpy(), m["b"].to_numpy()
 
 
+MIN_HALF_SHARE = 0.20  # weaker chronological half must carry >= 20% of total profit
+
+
 def classify_verdict(
-    pf_ci_lower: float, p_edge: float, n_trades: int, h1_sum: float | None, h2_sum: float | None
+    pf_ci_lower: float,
+    p_edge: float,
+    n_trades: int,
+    h1_sum: float | None,
+    h2_sum: float | None,
+    min_half_share: float = MIN_HALF_SHARE,
 ) -> tuple[bool, bool, str]:
     """Pure verdict logic -> (pooled_pass, stationary, verdict).
 
     pooled_pass = the three gate-v2 pooled thresholds. stationary = BOTH chronological
     halves profitable (the ES-NQ trap is a pooled PASS with all profit in one half).
-    Only pooled_pass AND stationary earns CANDIDATE.
+
+    The binary both-halves check is necessary but NOT sufficient: an edge can be
+    profitable in both halves yet have ~93% of its profit in the recent half
+    (MES-M2K: H1 +0.087 vs H2 +1.213). That is a recent-regime edge wearing a
+    stationary mask -- it clears the binary gate but a 2024-like regime would yield
+    only the thin H1 PF. So CANDIDATE additionally requires MAGNITUDE BALANCE: the
+    weaker half carries >= min_half_share of total profit. Stationary-but-imbalanced
+    earns BACK-LOADED, a rung below CANDIDATE (keep forward-tracking; only forward
+    evidence resolves back-loaded vs durable).
     """
     pooled_pass = pf_ci_lower >= 1.10 and p_edge >= 0.95 and n_trades >= 30
     stationary = bool(h1_sum is not None and h2_sum is not None and h1_sum > 0 and h2_sum > 0)
-    if pooled_pass and stationary:
+    balanced = False
+    if stationary:
+        total = h1_sum + h2_sum  # both > 0, so total > 0
+        balanced = (min(h1_sum, h2_sum) / total) >= min_half_share
+    if pooled_pass and stationary and balanced:
         verdict = "CANDIDATE"
+    elif pooled_pass and stationary:
+        verdict = "BACK-LOADED"
     elif pooled_pass:
         verdict = "NON-STATIONARY"
     else:
@@ -161,7 +183,12 @@ def main() -> None:
         rows.append(r)
         print(_fmt(r))
     cands = [r["pair"] for r in rows if r["verdict"] == "CANDIDATE"]
-    print(f"\nCANDIDATES (pooled PASS + both halves profitable): {cands or 'none'}")
+    backloaded = [r["pair"] for r in rows if r["verdict"] == "BACK-LOADED"]
+    print(f"\nCANDIDATES (pooled PASS + both halves profitable + balanced): {cands or 'none'}")
+    print(
+        f"BACK-LOADED (both halves > 0 but weaker half < {int(MIN_HALF_SHARE * 100)}% of profit "
+        f"-> recent-regime risk): {backloaded or 'none'}"
+    )
 
 
 if __name__ == "__main__":
