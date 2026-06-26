@@ -155,13 +155,24 @@ def _print_signal_alert(signal: dict) -> None:
     print(f"\n  ── Signal Layers ──")
     print(f"  Momentum:        {mom.get('risk_regime', '?')} | "
           f"Abs mom pass: {mom.get('absolute_mom_pass', False)}")
+    # NOTE: vol_regime = REALIZED vol vs vol-target thresholds (CALM/NORMAL/ELEVATED/CRISIS).
+    #       This is NOT the VIX level. Label as RealVolRegime to prevent confusion.
     print(f"  Vol Targeting:   scale={vol.get('scale', 0):.3f} | "
           f"realized_vol={vol.get('realized_vol_pct', 0):.1f}% | "
-          f"regime={vol.get('vol_regime', '?')}")
-    print(f"  VIX Composite:   {vix.get('vix', 0):.1f} | "
-          f"regime={vix.get('vix_regime', '?')} | "
-          f"score={vix.get('composite_score', 0):.3f} | "
-          f"mult={vix.get('position_multiplier', 0):.3f}")
+          f"RealVolRegime={vol.get('vol_regime', '?')}")
+    # VIX line: show both vix_regime (raw level band) and composite_regime (position decision)
+    fear_spread = vix.get('fear_spread')
+    fear_context = vix.get('fear_context', '')
+    fear_str = (
+        f" | fear_spread={fear_spread:+.2f} ({fear_context})"
+        if fear_spread is not None else ""
+    )
+    print(f"  VIX Composite:   VIX={vix.get('vix', 0):.1f} "
+          f"[VIX_LEVEL={vix.get('vix_regime', '?')}] "
+          f"[composite={vix.get('composite_regime', '?')}] "
+          f"score={vix.get('composite_score', 0):.3f} "
+          f"mult={vix.get('position_multiplier', 0):.3f}"
+          f"{fear_str}")
     print(f"  Macro Filter:    mult={macro.get('multiplier', 1.0):.3f} | "
           f"yield_curve={macro.get('yield_curve', 'N/A')}")
 

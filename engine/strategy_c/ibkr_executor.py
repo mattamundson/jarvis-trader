@@ -377,8 +377,13 @@ def _print_signal_summary(signal: dict) -> None:
     vix = layers.get("vix_composite", {})
     print(f"  Regime:        {mom.get('risk_regime', '?')}")
     print(f"  Combined Scale:{signal.get('combined_scale', 0):.3f}")
-    print(f"  Vol Scale:     {vol.get('scale', 0):.3f}  (realized {vol.get('realized_vol_pct', 0):.1f}%)")
-    print(f"  VIX:           {vix.get('vix', 0):.1f}  ({vix.get('vix_regime', '?')})  score={vix.get('composite_score', 0):.3f}")
+    # vol_regime = REALIZED vol band (CALM/NORMAL/ELEVATED/CRISIS), NOT VIX level
+    print(f"  Vol Scale:     {vol.get('scale', 0):.3f}  (realized {vol.get('realized_vol_pct', 0):.1f}%  RealVolRegime={vol.get('vol_regime', '?')})")
+    # vix_regime = raw VIX level band; composite_regime = position decision (all 4 components)
+    print(f"  VIX:           {vix.get('vix', 0):.1f}  "
+          f"[VIX_LEVEL={vix.get('vix_regime', '?')}] "
+          f"[composite={vix.get('composite_regime', '?')}]  "
+          f"score={vix.get('composite_score', 0):.3f}")
     print(f"\n  Holdings:")
     for tk, wt in sorted(signal.get("holdings", {}).items(), key=lambda x: -x[1]):
         bar = "█" * max(1, int(wt * 25))

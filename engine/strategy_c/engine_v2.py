@@ -220,6 +220,21 @@ class StrategyCEngineV2:
         self._daily_prices = daily
         vix_col = "^VIX" if "^VIX" in self._weekly_prices.columns else None
         self._weekly_vix = self._weekly_prices[vix_col] if vix_col else None
+
+        # Intraday VIX guard: W-FRI resample captures partial intraday VIX
+        # when the cron runs before Friday market close (4pm ET / 21:00 UTC).
+        # Drop the current-week row so VIX composite uses the prior confirmed close.
+        if self._weekly_vix is not None and len(self._weekly_vix) > 1:
+            now_utc = pd.Timestamp.utcnow()
+            is_friday = now_utc.weekday() == 4
+            before_close = now_utc.hour < 21   # 4pm ET = 21:00 UTC
+            if is_friday and before_close:
+                _dropped_vix = self._weekly_vix.iloc[-1]
+                self._weekly_vix = self._weekly_vix.iloc[:-1]
+                print(f"[StrategyC+ v2] Intraday VIX guard: dropped intraday row "
+                      f"({_dropped_vix:.2f} at {now_utc.strftime('%H:%M')} UTC). "
+                      f"Using prior confirmed Friday close.")
+
         price_cols = [c for c in self._weekly_prices.columns if c not in ("^VIX",)]
         self._weekly_prices = self._weekly_prices[price_cols]
         print(f"[StrategyC+ v2] {len(self._daily_prices)} daily | "

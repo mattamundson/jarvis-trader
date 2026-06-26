@@ -187,6 +187,21 @@ class StrategyCEngine:
         vix_col = "^VIX" if "^VIX" in self._weekly_prices.columns else None
         self._weekly_vix = self._weekly_prices[vix_col] if vix_col else None
 
+        # Intraday VIX guard: W-FRI resample uses .last() which captures the
+        # *current* partial bar when signal runs before Friday market close
+        # (e.g. 04:24 CT = pre-open; VIX 18.89 vs confirmed close 20.21).
+        # Drop the last row if today is Friday and we're before 4pm ET (21:00 UTC).
+        if self._weekly_vix is not None and len(self._weekly_vix) > 1:
+            now_utc = pd.Timestamp.utcnow()
+            is_friday = now_utc.weekday() == 4          # Friday
+            before_close = now_utc.hour < 21            # before 4pm ET (21:00 UTC)
+            if is_friday and before_close:
+                _dropped_vix = self._weekly_vix.iloc[-1]
+                self._weekly_vix = self._weekly_vix.iloc[:-1]
+                print(f"[Strategy C+] Intraday VIX guard: dropped last row "
+                      f"({_dropped_vix:.2f} at {now_utc.strftime('%H:%M')} UTC, "
+                      f"market not yet closed). Using prior confirmed Friday close.")
+
         # Yield curve: 10Y - 3M (better recession signal than 10Y-2Y)
         if "^TNX" in daily_close.columns and "^IRX" in daily_close.columns:
             tnx_weekly = daily_close["^TNX"].resample("W-FRI").last()
