@@ -30,21 +30,33 @@ import pandas as pd
 from backtest import spread_backtest as sb
 
 # Named pairs -> (cache_file_a, cache_file_b, timeframe). Matched date ranges, aligned on join.
+# Named pairs -> (root_a, root_b, timeframe). Legs are resolved to their LATEST cache
+# at run time via _find_latest_cache (end-date keyed), NOT pinned to a hardcoded filename
+# -- a hardcoded date silently goes stale the moment the cache rotates (the recurring
+# loader-staleness bug; cf. the 2026-06-25 _pick_cache_file fix).
 PAIRS_REG: dict[str, tuple[str, str, str]] = {
-    "MES-M2K": ("MES_2024-04-26_2026-06-22_1h.csv", "M2K_2024-04-26_2026-06-22_1h.csv", "1h"),
-    "MNQ-M2K": ("MNQ_2024-04-26_2026-06-22_1h.csv", "M2K_2024-04-26_2026-06-22_1h.csv", "1h"),
-    "ZN-ZB": ("ZN_2025-06-18_2026-06-24_1h.csv", "ZB_2025-06-18_2026-06-24_1h.csv", "1h"),
+    "MES-M2K": ("MES", "M2K", "1h"),
+    "MNQ-M2K": ("MNQ", "M2K", "1h"),
+    "ZN-ZB": ("ZN", "ZB", "1h"),
 }
 
 
 def load_pair(
-    file_a: str, file_b: str, cache_dir: Path | None = None
+    root_a: str, root_b: str, timeframe: str = "1h", cache_dir: Path | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Inner-join two named caches on timestamp -> aligned (ts, close_a, close_b).
-    tz-normalized so 1h (tz-aware) and 1d (tz-naive) compare consistently."""
+    """Inner-join the two legs' LATEST caches on timestamp -> aligned (ts, close_a, close_b).
+
+    Each leg resolves via _find_latest_cache (end-date keyed) rather than a hardcoded
+    filename, so the scan never breaks when the bar cache rotates. tz-normalized so 1h
+    (tz-aware) and 1d (tz-naive) compare consistently."""
+    from backtest._gate_v2_helpers import _find_latest_cache
+
     cache = sb._resolve_cache(cache_dir)
-    da = pd.read_csv(cache / file_a)[["timestamp", "close"]].rename(columns={"close": "a"})
-    db = pd.read_csv(cache / file_b)[["timestamp", "close"]].rename(columns={"close": "b"})
+    suffix = f"_{timeframe}.csv"
+    file_a = _find_latest_cache(cache, root_a, suffix)
+    file_b = _find_latest_cache(cache, root_b, suffix)
+    da = pd.read_csv(file_a)[["timestamp", "close"]].rename(columns={"close": "a"})
+    db = pd.read_csv(file_b)[["timestamp", "close"]].rename(columns={"close": "b"})
     m = da.merge(db, on="timestamp", how="inner").dropna().reset_index(drop=True)
     dt = pd.to_datetime(m["timestamp"])
     if dt.dt.tz is not None:
@@ -74,8 +86,9 @@ def classify_verdict(
 
 def scan_pair(
     name: str,
-    file_a: str,
-    file_b: str,
+    root_a: str,
+    root_b: str,
+    timeframe: str = "1h",
     params: dict | None = None,
     cost_bps: float = sb.DEFAULT_COST_BPS_PER_LEG,
     cache_dir: Path | None = None,
@@ -86,7 +99,7 @@ def scan_pair(
     all profit in one half is the ES-NQ non-stationarity trap, not a deployable edge.
     """
     params = params or sb.DEFAULT_PARAMS
-    ts, a, b = load_pair(file_a, file_b, cache_dir)
+    ts, a, b = load_pair(root_a, root_b, timeframe, cache_dir)
     windows = sb.walk_forward(ts, a, b, params, cost_bps)
     pooled, tagged = sb.collect_oos_trades(ts, a, b, params, cost_bps)
     ev = sb.bootstrap_eval(pooled)
@@ -139,9 +152,9 @@ def main() -> None:
     args = ap.parse_args()
     print(f"[spread-pairs] params={sb.DEFAULT_PARAMS} cost={args.cost_bps}bp/leg\n")
     rows = []
-    for name, (fa, fb, _tf) in PAIRS_REG.items():
+    for name, (ra, rb, tf) in PAIRS_REG.items():
         try:
-            r = scan_pair(name, fa, fb, cost_bps=args.cost_bps)
+            r = scan_pair(name, ra, rb, timeframe=tf, cost_bps=args.cost_bps)
         except Exception as e:  # noqa: BLE001 - report per-pair failure, keep scanning
             print(f"{name:<8} | ERROR: {e}")
             continue
