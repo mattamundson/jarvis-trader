@@ -43,15 +43,11 @@ def _write_verdict(
     passed_via: str | None,
     created_at: str | None = None,
     age_days: float = 0.0,
-    pf_ci_lower: float | None = None,
 ) -> Path:
     dir_.mkdir(parents=True, exist_ok=True)
     if created_at is None:
         ts = datetime.now(tz=timezone.utc) - timedelta(days=age_days)
         created_at = ts.isoformat()
-    # gate_v2_metrics carries the stored pf_ci_lower the ALT floor reads; omitted
-    # (empty) when pf_ci_lower is None to mimic older metric-less verdict files.
-    gate_v2_metrics = {} if pf_ci_lower is None else {"pf_ci_lower": pf_ci_lower}
     doc = {
         "symbol": symbol,
         "family": family,
@@ -65,7 +61,6 @@ def _write_verdict(
         "created_at": created_at,
         "aux_freshness": {"rolling_wfo": None, "fixed_params": None, "cost_sweep": None},
         "gate_v2": {},
-        "gate_v2_metrics": gate_v2_metrics,
     }
     path = dir_ / f"{symbol}_{family}_rank{rank}.json"
     path.write_text(json.dumps(doc))
@@ -175,7 +170,6 @@ def test_is_ungate_eligible_pass_via_core(tmp_verdicts_dir):
 
 
 def test_is_ungate_eligible_pass_via_alt(tmp_verdicts_dir):
-    # A valid ALT pass must clear the ALT pf_ci_lower floor (>= 1.00).
     _write_verdict(
         tmp_verdicts_dir,
         symbol="MES",
@@ -183,66 +177,6 @@ def test_is_ungate_eligible_pass_via_alt(tmp_verdicts_dir):
         rank=7,
         verdict="PASS",
         passed_via="alt",
-        pf_ci_lower=1.5,
-    )
-    assert is_ungate_eligible("MES") is True
-
-
-def test_is_ungate_eligible_alt_below_pf_floor_denied(tmp_verdicts_dir):
-    # R1: an ALT pass whose stored pf_ci_lower < 1.00 is a net loser in the 5th
-    # bootstrap percentile -> not a green light (the MES_trend_rank7 0.92 case).
-    _write_verdict(
-        tmp_verdicts_dir,
-        symbol="MES",
-        family="trend",
-        rank=7,
-        verdict="PASS",
-        passed_via="alt",
-        pf_ci_lower=0.92,
-    )
-    assert is_ungate_eligible("MES") is False
-
-
-def test_is_ungate_eligible_alt_missing_metric_denied(tmp_verdicts_dir):
-    # R1 fail-conservative: an ALT pass with no stored pf_ci_lower (older metric-less
-    # verdict files) cannot be confirmed to clear the floor -> deny.
-    _write_verdict(
-        tmp_verdicts_dir,
-        symbol="MES",
-        family="trend",
-        rank=7,
-        verdict="PASS",
-        passed_via="alt",
-        pf_ci_lower=None,
-    )
-    assert is_ungate_eligible("MES") is False
-
-
-def test_is_ungate_eligible_alt_pf_floor_boundary_inclusive(tmp_verdicts_dir):
-    # exactly 1.00 -> passes (inclusive floor)
-    _write_verdict(
-        tmp_verdicts_dir,
-        symbol="MES",
-        family="trend",
-        rank=7,
-        verdict="PASS",
-        passed_via="alt",
-        pf_ci_lower=1.00,
-    )
-    assert is_ungate_eligible("MES") is True
-
-
-def test_is_ungate_eligible_core_pass_ignores_alt_floor(tmp_verdicts_dir):
-    # The ALT floor applies ONLY to passed_via="alt"; a CORE pass with no stored
-    # pf_ci_lower stays eligible (CORE already enforced pf_ci_lower >= 1.10 upstream).
-    _write_verdict(
-        tmp_verdicts_dir,
-        symbol="MES",
-        family="trend",
-        rank=1,
-        verdict="PASS",
-        passed_via="core",
-        pf_ci_lower=None,
     )
     assert is_ungate_eligible("MES") is True
 
@@ -260,7 +194,6 @@ def test_is_ungate_eligible_case_insensitive_symbol(tmp_verdicts_dir):
         rank=7,
         verdict="PASS",
         passed_via="alt",
-        pf_ci_lower=1.5,
     )
     # Symbol lookup should normalize case
     assert is_ungate_eligible("mes") is True

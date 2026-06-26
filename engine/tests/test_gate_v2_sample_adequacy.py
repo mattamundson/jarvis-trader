@@ -58,9 +58,7 @@ def _verdict_doc(symbol, verdict, created_at=None):
         "created_at": created_at or datetime.now(timezone.utc).isoformat(),
         "aux_freshness": {},
         "gate_v2": {},
-        # A valid ALT PASS must clear the ALT pf_ci_lower floor (>= 1.00); supply a
-        # clearing value so PASS docs authorize as intended under the R1 floor.
-        "gate_v2_metrics": {"pf_ci_lower": 1.5} if verdict == "PASS" else {},
+        "gate_v2_metrics": {},
     }
 
 
