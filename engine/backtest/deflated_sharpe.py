@@ -34,6 +34,7 @@ Rejected dependency: the `arch` library has a canonical implementation but
 pulls in ~50MB of GARCH/volatility tooling we don't need. DSR is closed-form
 and ~80 LOC, so we implement it directly.
 """
+
 from __future__ import annotations
 
 from math import e as EULER_E
@@ -117,14 +118,22 @@ def deflated_sharpe_ratio(
             "sharpe_std_error": float("inf"),
             "dsr": 0.0,
             "passes_at_10pct": False,
+            "dsr_degenerate": False,
             "n_trials": int(n_trials),
             "n_obs": int(n_obs),
         }
 
     expected_max = _expected_max_sharpe(n_trials)
     sigma = _sharpe_standard_error(sharpe, skew, kurt, n_obs)
-    if not np.isfinite(sigma) or sigma == 0:
-        dsr = 0.0 if sharpe <= expected_max else 1.0
+    degenerate = not np.isfinite(sigma) or sigma == 0
+    if degenerate:
+        # The non-normality SE estimate broke down (variance <= 0), which happens
+        # for high-Sharpe positively-skewed sparse series. A degenerate SE is the
+        # ABSENCE of a usable selection-bias correction, not evidence of a real
+        # edge -- so fail-conservative (0.0), never the old fake 1.0 that
+        # auto-passed both gate floors. The `dsr_degenerate` flag lets verdict
+        # writers record WHY the DSR is zero.
+        dsr = 0.0
     else:
         z = (sharpe - expected_max) / sigma
         dsr = float(stats.norm.cdf(z))
@@ -135,6 +144,7 @@ def deflated_sharpe_ratio(
         "sharpe_std_error": round(float(sigma) if np.isfinite(sigma) else -1.0, 6),
         "dsr": round(dsr, 6),
         "passes_at_10pct": bool(dsr >= 0.10),
+        "dsr_degenerate": bool(degenerate),
         "n_trials": int(n_trials),
         "n_obs": int(n_obs),
     }
@@ -159,18 +169,32 @@ def deflated_sharpe_from_returns(
     T = len(r)
     if T < 2:
         return {
-            "raw_sharpe": 0.0, "expected_max_sharpe": 0.0, "sharpe_std_error": float("inf"),
-            "dsr": 0.0, "passes_at_10pct": False, "n_trials": int(n_trials), "n_obs": int(T),
-            "skew": 0.0, "kurt": 3.0,
+            "raw_sharpe": 0.0,
+            "expected_max_sharpe": 0.0,
+            "sharpe_std_error": float("inf"),
+            "dsr": 0.0,
+            "passes_at_10pct": False,
+            "dsr_degenerate": False,
+            "n_trials": int(n_trials),
+            "n_obs": int(T),
+            "skew": 0.0,
+            "kurt": 3.0,
         }
 
     mean = float(r.mean())
     std = float(r.std(ddof=1))
     if std == 0:
         return {
-            "raw_sharpe": 0.0, "expected_max_sharpe": _expected_max_sharpe(n_trials),
-            "sharpe_std_error": float("inf"), "dsr": 0.0, "passes_at_10pct": False,
-            "n_trials": int(n_trials), "n_obs": int(T), "skew": 0.0, "kurt": 3.0,
+            "raw_sharpe": 0.0,
+            "expected_max_sharpe": _expected_max_sharpe(n_trials),
+            "sharpe_std_error": float("inf"),
+            "dsr": 0.0,
+            "passes_at_10pct": False,
+            "dsr_degenerate": False,
+            "n_trials": int(n_trials),
+            "n_obs": int(T),
+            "skew": 0.0,
+            "kurt": 3.0,
         }
 
     ann_sharpe = mean / std * np.sqrt(ann_factor)
