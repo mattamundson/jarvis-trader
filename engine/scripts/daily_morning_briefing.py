@@ -237,9 +237,14 @@ def render_key_levels(levels_map: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _persist_forecast(briefing_date: date, levels_map: dict[str, Any]) -> None:
-    """Persist today's levels to the forecast journal + a JSON backup. Best-effort:
-    any failure here is logged and swallowed so it never breaks the brief."""
+def _persist_forecast(
+    briefing_date: date,
+    levels_map: dict[str, Any],
+    read: dict[str, Any] | None = None,
+) -> None:
+    """Persist today's levels (+ JARVIS's Read) to the forecast journal + a JSON
+    backup. Best-effort: any failure here is logged and swallowed so it never
+    breaks the brief. The Read is attached to the anchor symbol's row only."""
     try:
         from analysis.forecast_journal import upsert_forecast, write_json_backup
     except ImportError as exc:  # pragma: no cover - defensive
@@ -247,13 +252,18 @@ def _persist_forecast(briefing_date: date, levels_map: dict[str, Any]) -> None:
         return
     date_str = briefing_date.isoformat()
     ts = datetime.now(_UTC).isoformat()
+    # Only persist a real read (skip the 'none' fallback stub).
+    store_read = read if (read and read.get("data_quality") != "none") else None
     bundle: dict[str, Any] = {"date": date_str, "generated_ts": ts, "symbols": {}}
+    if store_read is not None:
+        bundle["read"] = store_read
     for sym, lv in levels_map.items():
         if lv is None:
             continue
         levels_dict = lv.to_dict()
+        read_for_sym = store_read if sym == _READ_ANCHOR else None
         try:
-            upsert_forecast(date_str, sym, levels_dict, ts, db_path=_DB_PATH)
+            upsert_forecast(date_str, sym, levels_dict, ts, read=read_for_sym, db_path=_DB_PATH)
             bundle["symbols"][sym] = {"levels": levels_dict}
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("journal upsert failed for %s: %s", sym, exc)
@@ -261,6 +271,105 @@ def _persist_forecast(briefing_date: date, levels_map: dict[str, Any]) -> None:
         write_json_backup(date_str, bundle)
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("json backup failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# JARVIS's Read — a labeled discretionary opinion (LLM, display/journal only)
+# ---------------------------------------------------------------------------
+
+# Anchor the daily Read on the broad equity index (ES via MES); stored on that
+# journal row and graded against MES outcome by the evening scorer.
+_READ_ANCHOR = "MES"
+
+
+def _read_fallback(reason: str) -> dict[str, Any]:
+    return {
+        "bias": "neutral",
+        "conviction": 0.0,
+        "key_levels_committed": [],
+        "scenario_if_above": "",
+        "scenario_if_below": "",
+        "narrative": f"No read available ({reason}).",
+        "data_quality": "none",
+    }
+
+
+def compute_jarvis_read(
+    briefing_date: date,
+    levels_map: dict[str, Any],
+    regime_map: dict[str, dict],
+) -> dict[str, Any]:
+    """Generate JARVIS's discretionary read for the session (LLM, best-effort).
+
+    Always returns a dict; on any failure (import, no API key, LLM error) it
+    returns an honest 'no read' stub rather than fabricating an opinion.
+    """
+    try:
+        from analysis.jarvis_read import generate_read
+    except ImportError as exc:  # pragma: no cover - defensive
+        logger.warning("JARVIS's Read unavailable — import failed: %s", exc)
+        return _read_fallback("import error")
+
+    # Ensure the API key is loaded from engine/.env when not already in the
+    # environment (the scheduled task may or may not pre-load secrets). Absolute
+    # path so it works regardless of CWD. App loading its own config; no secret
+    # is logged or echoed.
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        try:
+            from dotenv import load_dotenv
+
+            load_dotenv(_ENGINE_DIR / ".env", override=False)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug(".env load for read skipped: %s", exc)
+
+    import asyncio
+
+    try:
+        return asyncio.run(generate_read(briefing_date.isoformat(), levels_map, regime_map))
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("JARVIS's Read generation failed: %s", exc)
+        return _read_fallback("error")
+
+
+def render_jarvis_read(read: dict[str, Any] | None) -> list[str]:
+    lines: list[str] = []
+    lines.append("## JARVIS's Read")
+    lines.append(
+        "*JARVIS's own labeled opinion for the session — a discretionary lean, "
+        "NOT a fact and NOT a trade signal. Graded against the close each evening "
+        "so the track record is honest.*"
+    )
+    lines.append("")
+
+    if not read or read.get("data_quality") == "none":
+        reason = (read or {}).get("narrative") or "No read available."
+        lines.append(f"*{reason}*")
+        lines.append("")
+        return lines
+
+    bias = str(read.get("bias", "neutral")).upper()
+    conv = float(read.get("conviction", 0.0) or 0.0)
+    conv_10 = round(conv * 10)
+    lines.append(f"**Lean:** {bias}  |  **Conviction:** {conv_10}/10")
+    lines.append("")
+
+    narrative = str(read.get("narrative", "")).strip()
+    if narrative:
+        lines.append(narrative)
+        lines.append("")
+
+    above = str(read.get("scenario_if_above", "")).strip()
+    below = str(read.get("scenario_if_below", "")).strip()
+    if above:
+        lines.append(f"- **If accepted above pivot/trigger:** {above}")
+    if below:
+        lines.append(f"- **If held/broken below:** {below}")
+    committed = read.get("key_levels_committed") or []
+    if committed:
+        watching = " / ".join(f"{v:g}" for v in committed)
+        lines.append(f"- **Watching:** {watching}")
+    lines.append("")
+    return lines
 
 
 def load_active_strategies() -> list[dict[str, Any]]:
@@ -830,6 +939,7 @@ def render_briefing(
     positions: list[dict[str, Any]],
     attention_items: list[str],
     levels_map: dict[str, Any] | None = None,
+    read: dict[str, Any] | None = None,
 ) -> str:
     now_et = datetime.now(_ET).strftime("%Y-%m-%dT%H:%M %Z")
     lines: list[str] = []
@@ -840,6 +950,7 @@ def render_briefing(
 
     lines.extend(render_engine_status(health))
     lines.extend(render_key_levels(levels_map or {}))
+    lines.extend(render_jarvis_read(read))
     lines.extend(render_active_strategies(active_strategies))
     lines.extend(render_overnight_regime(regime_map))
     lines.extend(render_rv_accumulation())
@@ -962,7 +1073,9 @@ def main() -> None:
     # Deterministic structural levels (ES/NQ/MGC) — also persisted to the
     # forecast journal so the evening scorer can grade them.
     levels_map = compute_key_levels()
-    _persist_forecast(briefing_date, levels_map)
+    # JARVIS's Read — the labeled discretionary opinion (LLM, display/journal only).
+    read = compute_jarvis_read(briefing_date, levels_map, regime_map)
+    _persist_forecast(briefing_date, levels_map, read=read)
 
     attention_items = compute_attention_items(
         health=health,
@@ -982,6 +1095,7 @@ def main() -> None:
         positions=positions,
         attention_items=attention_items,
         levels_map=levels_map,
+        read=read,
     )
 
     # Save
