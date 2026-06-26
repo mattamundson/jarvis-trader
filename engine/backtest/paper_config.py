@@ -49,7 +49,7 @@ MCL_PAPER_CONFIG = {
     #  Contract Specifications
     "multiplier": 100.0,  # $100/point for MCL (1000 barrels � $0.10 tick)
     "tick_size": 0.01,
-    "commission_per_contract": 0.85,
+    "commission_per_contract": 2.50,
     "slippage_ticks": 1,
     "max_concurrent_positions": 1,
 }
@@ -88,7 +88,7 @@ MNQ_PAPER_CONFIG = {
     #  Contract Specifications
     "multiplier": 2.0,  # $2/point for MNQ (Micro Nasdaq)
     "tick_size": 0.25,
-    "commission_per_contract": 0.62,
+    "commission_per_contract": 2.50,
     "slippage_ticks": 1,
     "max_concurrent_positions": 1,
 }
@@ -132,7 +132,7 @@ MGC_PAPER_CONFIG = {
     #  Contract Specifications
     "multiplier": 10.0,  # $10/point for MGC (Micro Gold, 10 oz)
     "tick_size": 0.10,
-    "commission_per_contract": 0.85,
+    "commission_per_contract": 0.62,
     "slippage_ticks": 2,
     "max_concurrent_positions": 1,
     # Allow entry up to N bars after a crossover to catch signals missed while runner
@@ -174,7 +174,7 @@ MCL_15M_CONFIG = {
     #  Contract Specifications
     "multiplier": 100.0,
     "tick_size": 0.01,
-    "commission_per_contract": 0.85,
+    "commission_per_contract": 2.50,
     "slippage_ticks": 1,
     "max_concurrent_positions": 1,
 }
@@ -213,7 +213,7 @@ MNQ_15M_CONFIG = {
     #  Contract Specifications
     "multiplier": 2.0,
     "tick_size": 0.25,
-    "commission_per_contract": 0.62,
+    "commission_per_contract": 2.50,
     "slippage_ticks": 1,
     "max_concurrent_positions": 1,
 }
@@ -260,7 +260,7 @@ MES_TREND_PAPER_CONFIG = {
     #  Contract Specifications
     "multiplier": 5.0,  # $5/point for MES (Micro E-mini S&P 500)
     "tick_size": 0.25,
-    "commission_per_contract": 0.62,
+    "commission_per_contract": 2.50,
     "slippage_ticks": 1,
     "max_concurrent_positions": 1,
     # Allow entry up to N bars after a crossover to catch signals missed while runner
@@ -301,7 +301,7 @@ MES_15M_CONFIG = {
     #  Contract Specifications
     "multiplier": 5.0,  # $5/point for MES (Micro E-mini S&P 500)
     "tick_size": 0.25,
-    "commission_per_contract": 0.62,
+    "commission_per_contract": 2.50,
     "slippage_ticks": 1,
     "max_concurrent_positions": 1,
 }
