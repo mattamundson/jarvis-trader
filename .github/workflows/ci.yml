@@ -151,6 +151,53 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
+  # Forward-compat guard: the main test jobs install requirements-core.txt, whose
+  # `pandas>=2.2.3` floor is unbounded -- but a stale pip cache keeps them on pandas
+  # 2.2.x, while every local .venv runs pandas 3.x. That drift hid a real str-Enum
+  # coercion bug (PR #161): pandas >= 3.0 coerces str-subclass Enum members to plain
+  # str inside a Series, breaking `.iloc[-1].value` / `.map(t.value)`. This job pins
+  # the env to pandas 3.x and runs the fast unit slice so coercion-class regressions
+  # surface on every PR -- BEFORE the cache eventually flips the main jobs to 3.x.
+  # Additive only: it changes no requirements pins, so production/Render resolution is
+  # untouched. The full unit suite is 3.x-green (7156 passed on 3.0.2, 2026-06-26);
+  # only live-engine/IB integration tests are excluded here (they need a running
+  # engine, same as the default fast slice).
+  engine-test-pandas3:
+    name: Engine Tests (pytest, pandas 3.x)
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies (pandas pinned to 3.x)
+        run: |
+          pip install -q -r engine/requirements-core.txt
+          pip install -q --upgrade 'pandas>=3.0,<4.0'
+          python -c "import pandas; print('pandas', pandas.__version__); assert pandas.__version__.split('.')[0] == '3', 'expected pandas 3.x'"
+
+      - name: Run pytest (-m "not slow and not manual") on pandas 3.x
+        run: |
+          # Same fresh-process flake retry as engine-test-fast (scanner-pollution flake).
+          set +e
+          attempts=2
+          ec=0
+          for i in $(seq 1 "$attempts"); do
+            echo "::group::pytest pandas3 (attempt $i/$attempts)"
+            pytest engine/tests/ -m "not slow and not manual" --tb=short
+            ec=$?
+            echo "::endgroup::"
+            [ "$ec" -eq 0 ] && break
+            if [ "$i" -lt "$attempts" ]; then
+              echo "::warning title=pandas3-suite retry::attempt $i failed (exit $ec); retrying once in a fresh process (intermittent scanner-pollution flake)"
+            fi
+          done
+          exit "$ec"
+
   engine-test-slow:
     name: Engine Tests (pytest, slow)
     runs-on: ubuntu-latest
