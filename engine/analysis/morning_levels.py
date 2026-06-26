@@ -179,6 +179,32 @@ def compute_levels_from_bars(
     )
 
 
+def resample_ohlc_to_daily(df: pd.DataFrame, tz: str = "America/New_York") -> pd.DataFrame:
+    """Resample intraday OHLCV bars to daily sessions (calendar day in ``tz``).
+
+    The DB stores 1h bars; pivots/ATR need daily sessions. Accepts a DataFrame
+    with a 'timestamp' column or a DatetimeIndex. Returns a daily DataFrame
+    indexed by date with open/high/low/close/volume; empty if no usable bars.
+    """
+    if df is None or len(df) == 0:
+        return pd.DataFrame()
+    work = df.copy()
+    if isinstance(work.index, pd.DatetimeIndex):
+        idx = work.index
+    elif "timestamp" in work.columns:
+        idx = pd.DatetimeIndex(pd.to_datetime(work["timestamp"], utc=True))
+    else:
+        return pd.DataFrame()
+    if idx.tz is None:
+        idx = idx.tz_localize("UTC")
+    work = work.set_index(idx.tz_convert(tz))
+    agg = {"open": "first", "high": "max", "low": "min", "close": "last"}
+    if "volume" in work.columns:
+        agg["volume"] = "sum"
+    daily = work.resample("1D").agg(agg).dropna(subset=["close"])
+    return daily
+
+
 def _value_area(intraday_df: pd.DataFrame):
     """Best-effort value area from intraday bars. Returns (vah, val, poc, label).
 

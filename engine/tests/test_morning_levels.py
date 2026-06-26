@@ -14,6 +14,7 @@ from analysis.morning_levels import (
     DEFAULT_TARGET_RATIOS,
     MorningLevels,
     compute_levels_from_bars,
+    resample_ohlc_to_daily,
 )
 
 
@@ -111,3 +112,49 @@ def test_symbol_preserved_and_type():
     lv = compute_levels_from_bars("MGC", df, atr_period=2)
     assert isinstance(lv, MorningLevels)
     assert lv.symbol == "MGC"
+
+
+def test_resample_1h_to_daily_aggregates_sessions():
+    # Two distinct ET calendar days (3 bars each) -> two daily rows.
+    idx = list(pd.date_range("2026-06-23 13:00", periods=3, freq="1h", tz="UTC")) + list(
+        pd.date_range("2026-06-24 13:00", periods=3, freq="1h", tz="UTC")
+    )
+    df = pd.DataFrame(
+        {
+            "timestamp": idx,
+            "open": [10, 11, 12, 20, 21, 22],
+            "high": [11, 15, 13, 21, 25, 23],
+            "low": [9, 10, 11, 19, 20, 21],
+            "close": [11, 12, 12, 21, 22, 22],
+            "volume": [1] * 6,
+        }
+    )
+    daily = resample_ohlc_to_daily(df, tz="America/New_York")
+    assert len(daily) == 2
+    assert daily.iloc[0]["high"] == 15 and daily.iloc[0]["low"] == 9
+    assert daily.iloc[0]["open"] == 10 and daily.iloc[0]["close"] == 12
+    assert daily.iloc[1]["high"] == 25 and daily.iloc[1]["low"] == 19
+
+
+def test_resample_empty_returns_empty():
+    assert resample_ohlc_to_daily(pd.DataFrame()).empty
+
+
+def test_resample_then_levels_end_to_end():
+    idx = pd.date_range("2026-06-01 13:00", periods=20 * 24, freq="1h", tz="UTC")
+    base = pd.Series(range(len(idx))) % 50 + 100
+    df = pd.DataFrame(
+        {
+            "timestamp": idx,
+            "open": base.values,
+            "high": (base + 2).values,
+            "low": (base - 2).values,
+            "close": base.values,
+            "volume": [1] * len(idx),
+        }
+    )
+    daily = resample_ohlc_to_daily(df)
+    lv = compute_levels_from_bars("ES", daily, atr_period=14)
+    assert lv.pivot > 0
+    assert lv.atr > 0  # enough daily bars for ATR(14)
+    assert len(lv.targets_up) == len(DEFAULT_TARGET_RATIOS)
