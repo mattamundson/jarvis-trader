@@ -36,6 +36,14 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   // it so we always get the engine's JSON. Harmless for other tunnels.
   headers.set("ngrok-skip-browser-warning", "true");
 
+  // If the tunnel (ngrok) enforces HTTP basic-auth, inject it server-side so the
+  // credential never reaches the browser. ENGINE_TUNNEL_BASIC_AUTH is "user:pass".
+  // No-op when unset (local dev / tunnels without basic-auth).
+  const tunnelAuth = process.env.ENGINE_TUNNEL_BASIC_AUTH;
+  if (tunnelAuth) {
+    headers.set("Authorization", `Basic ${Buffer.from(tunnelAuth).toString("base64")}`);
+  }
+
   const init: RequestInit = {
     method: request.method,
     headers,
