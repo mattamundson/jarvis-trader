@@ -52,6 +52,7 @@ _TTL_NAME = "AUTONOMOUS_CANDIDATE_TTL_SECONDS"
 _SYMBOLS_NAME = "AUTONOMOUS_ACTIVE_SYMBOLS"
 _TICK_NAME = "AUTONOMOUS_TICK_SECONDS"
 _MIN_TICK_NAME = "AUTONOMOUS_MIN_TICK_SECONDS"
+_AUTO_APPROVE_PAPER_NAME = "AUTONOMOUS_AUTO_APPROVE_PAPER"
 
 _DEFAULT_THRESHOLD = 0.65
 _DEFAULT_TTL_SECONDS = 1800  # 30 minutes
@@ -257,6 +258,44 @@ def _get_live_trading_enabled() -> bool:
         return bool(_cfg.LIVE_TRADING_ENABLED)
     except Exception:
         return False
+
+
+def _auto_approve_paper_enabled() -> bool:
+    """Read AUTONOMOUS_AUTO_APPROVE_PAPER fresh from env (module convention)."""
+    return os.getenv(_AUTO_APPROVE_PAPER_NAME, "0").strip().lower() in ("1", "true", "yes")
+
+
+async def _maybe_auto_approve_paper(candidate_id: int) -> bool:
+    """
+    Auto-approve a freshly-enqueued candidate in PAPER mode, if enabled.
+
+    Returns True iff auto-approval was attempted (regardless of the submit
+    result), False if the feature is off or live trading is enabled.
+
+    Safety: this is purely a programmatic press of the same approve button a
+    human would use — it routes through routers.approval_queue_router.approve_candidate,
+    which re-checks the kill switch + live guard, the VALIDATION_ONLY_STRATEGIES
+    block, entry-price sanity, and submits via safety_layer.submit_paper_order.
+    It NEVER runs when LIVE_TRADING_ENABLED is True, so the autonomous path's
+    documented "never auto-submit for live" guarantee is preserved.
+    """
+    if not _auto_approve_paper_enabled():
+        return False
+    if _get_live_trading_enabled():  # paranoid redundant guard — never auto-approve live
+        logger.warning(
+            "[AutonomousTick] AUTO_APPROVE_PAPER set but LIVE_TRADING_ENABLED — refusing (live-safe)."
+        )
+        return False
+    try:
+        from routers.approval_queue_router import approve_candidate
+
+        await approve_candidate(candidate_id)
+        logger.info("[AutonomousTick] AUTO-APPROVED (paper): candidate %d", candidate_id)
+    except Exception as exc:  # never let auto-approve break the tick loop
+        logger.warning(
+            "[AutonomousTick] auto-approve failed for candidate %d: %s", candidate_id, exc
+        )
+    return True
 
 
 def _preflight_check() -> tuple[bool, str]:
@@ -500,6 +539,19 @@ async def autonomous_tick() -> dict:
                 "confidence": confidence,
             }
             summary["enqueued"].append(enqueued_entry)
+
+            # Opt-in paper-only auto-approve (default OFF). Never affects live —
+            # _maybe_auto_approve_paper() refuses when LIVE_TRADING_ENABLED is True
+            # and routes through the same approve_candidate() gate a human uses.
+            try:
+                if await _maybe_auto_approve_paper(row_id):
+                    enqueued_entry["auto_approved_paper"] = True
+            except Exception as _aa_exc:
+                logger.warning(
+                    "[AutonomousTick] auto-approve hook raised (non-fatal) for %d: %s",
+                    row_id,
+                    _aa_exc,
+                )
 
             # Fire-and-forget Discord notification — never blocks the enqueue path
             try:
