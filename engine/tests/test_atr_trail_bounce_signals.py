@@ -11,6 +11,7 @@ import pytest
 from backtest.atr_trail_bounce_signals import (
     generate_atr_trail_bounce_signals,
     generate_atr_trail_confluence_signals,
+    generate_atr_trail_fade_signals,
     generate_atr_trail_flip_signals,
     generate_atr_trail_kelt_confluence_signals,
     generate_atr_trail_tpotarget_confluence_signals,
@@ -240,9 +241,13 @@ def test_mtf_keltner_no_lookahead_truncation_invariance():
 
 
 def test_kelt_confluence_is_subset_of_base():
-    closes = np.concatenate([
-        np.linspace(100, 130, 60), np.linspace(129, 95, 50), np.linspace(96, 125, 50),
-    ])
+    closes = np.concatenate(
+        [
+            np.linspace(100, 130, 60),
+            np.linspace(129, 95, 50),
+            np.linspace(96, 125, 50),
+        ]
+    )
     df = _ohlc_dt(closes)
     base = generate_atr_trail_flip_signals(df, factor=3.5)
     conf = generate_atr_trail_kelt_confluence_signals(df, factor=3.5, base="flip", kelt_rule="4h")
@@ -252,12 +257,20 @@ def test_kelt_confluence_is_subset_of_base():
 
 
 def test_kelt_confluence_strict_subset_of_loose():
-    closes = np.concatenate([
-        np.linspace(100, 130, 60), np.linspace(129, 95, 50), np.linspace(96, 125, 50),
-    ])
+    closes = np.concatenate(
+        [
+            np.linspace(100, 130, 60),
+            np.linspace(129, 95, 50),
+            np.linspace(96, 125, 50),
+        ]
+    )
     df = _ohlc_dt(closes)
-    loose = generate_atr_trail_kelt_confluence_signals(df, factor=3.5, strict_kelt=False, kelt_rule="4h")
-    strict = generate_atr_trail_kelt_confluence_signals(df, factor=3.5, strict_kelt=True, kelt_rule="4h")
+    loose = generate_atr_trail_kelt_confluence_signals(
+        df, factor=3.5, strict_kelt=False, kelt_rule="4h"
+    )
+    strict = generate_atr_trail_kelt_confluence_signals(
+        df, factor=3.5, strict_kelt=True, kelt_rule="4h"
+    )
     loose_e = set(np.where(loose["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
     strict_e = set(np.where(strict["entry_signal"].to_numpy() == "ENTRY_NOW")[0])
     assert strict_e.issubset(loose_e), "strict kelt confluence must be a subset of loose"
@@ -280,6 +293,7 @@ def test_obomega_cloud_bands_are_ordered_and_nested():
 
 def test_tpo_target_columns_present_and_pointintime():
     from backtest.tpo_profile import compute_tpo_profile
+
     rng = np.random.default_rng(6)
     closes = 100 + np.cumsum(rng.normal(0, 1, 500))
     df = _ohlc(closes)
@@ -299,9 +313,13 @@ def test_tpo_target_columns_present_and_pointintime():
 
 
 def test_tpotarget_confluence_is_subset_of_base():
-    closes = np.concatenate([
-        np.linspace(100, 130, 80), np.linspace(129, 95, 70), np.linspace(96, 125, 70),
-    ])
+    closes = np.concatenate(
+        [
+            np.linspace(100, 130, 80),
+            np.linspace(129, 95, 70),
+            np.linspace(96, 125, 70),
+        ]
+    )
     df = _ohlc_dt(closes)
     base = generate_atr_trail_flip_signals(df, factor=3.5)
     conf = generate_atr_trail_tpotarget_confluence_signals(df, factor=3.5, base="flip")
@@ -345,6 +363,102 @@ def test_loader_sets_datetime_index(tmp_path):
     assert isinstance(
         out.index, pd.DatetimeIndex
     ), "loader must return a DatetimeIndex or the Backtester crashes on .date()"
+
+
+def test_pick_cache_file_prefers_latest_end_not_lexicographic_last(tmp_path):
+    # The bug: sorted(glob)[-1] sorts strings, so it picks the file with the latest
+    # START date — a short recent tail — and ignores a freshly-refreshed 2-year
+    # file. _pick_cache_file must instead pick the file that ENDS latest (and, on
+    # a tie, spans the most history), so a data refresh actually feeds the backtest.
+    from backtest.run_atr_trail_bounce import _pick_cache_file
+
+    fresh = tmp_path / "MES_2024-04-26_2026-06-25_1h.csv"  # 2-year, freshest end
+    tail = tmp_path / "MES_2026-03-21_2026-05-20_1h.csv"  # 2-month recent slice
+    short_same_end = tmp_path / "MES_2025-09-02_2026-06-25_1h.csv"  # same end, shorter
+    for p in (fresh, tail, short_same_end):
+        p.write_text("timestamp,open,high,low,close,volume\n")
+
+    # Sanity: the naive sort really does pick the wrong (tail) file.
+    assert sorted([fresh, tail])[-1] == tail
+
+    # Latest end date wins regardless of input order.
+    assert _pick_cache_file([fresh, tail]) == fresh
+    assert _pick_cache_file([tail, fresh]) == fresh
+    # On equal end dates, the longer history wins.
+    assert _pick_cache_file([short_same_end, fresh, tail]) == fresh
+
+
+def test_fade_enters_opposite_the_flip():
+    # The fade is the mean-reversion inverse of the flip: it fires on the SAME
+    # trail-flip bars but takes the OPPOSITE side (flip-long -> fade-short).
+    closes = np.concatenate(
+        [
+            np.linspace(100, 130, 30),  # long state established
+            np.linspace(129, 95, 25),  # breakdown -> flip short
+            np.linspace(96, 125, 25),  # recovery -> flip long
+        ]
+    )
+    df = _ohlc(closes)
+    fade = generate_atr_trail_fade_signals(df, factor=3.5)
+    ent = fade["entry_signal"] == "ENTRY_NOW"
+    assert ent.any(), "fade produced no entries on a series with clear flips"
+    for pos in np.flatnonzero(ent.to_numpy()):
+        st = fade["trail_state"].iloc[pos]
+        if st == 1.0:  # trail flipped LONG -> fade SHORT
+            assert fade["bias"].iloc[pos] == "LEAN_BEAR"
+            assert fade["target_1"].iloc[pos] < fade["close"].iloc[pos]
+            assert fade["stop_level"].iloc[pos] > fade["close"].iloc[pos]
+        elif st == -1.0:  # trail flipped SHORT -> fade LONG
+            assert fade["bias"].iloc[pos] == "LEAN_BULL"
+            assert fade["target_1"].iloc[pos] > fade["close"].iloc[pos]
+            assert fade["stop_level"].iloc[pos] < fade["close"].iloc[pos]
+
+
+def test_fade_rr_clears_backtester_entry_gate():
+    # The Backtester rejects any entry with |target_1 - price| / |price - stop| < 1.2.
+    # The fade's default target_atr=1.5 vs stop_atr=1.0 must clear that gate, else
+    # every fade trade is silently dropped and the mode looks empty.
+    closes = np.concatenate(
+        [np.linspace(100, 130, 30), np.linspace(129, 95, 25), np.linspace(96, 125, 25)]
+    )
+    df = _ohlc(closes)
+    fade = generate_atr_trail_fade_signals(df, stop_atr=1.0, target_atr=1.5)
+    ent = fade["entry_signal"] == "ENTRY_NOW"
+    assert ent.any()
+    for pos in np.flatnonzero(ent.to_numpy()):
+        price = fade["close"].iloc[pos]
+        rr = abs(fade["target_1"].iloc[pos] - price) / abs(price - fade["stop_level"].iloc[pos])
+        assert rr >= 1.2, f"fade R:R {rr:.3f} below the Backtester gate at bar {pos}"
+
+
+def test_fade_no_lookahead_truncation_invariance():
+    # Dropping future bars must not change any past fade signal (no look-ahead).
+    closes = list(np.linspace(100, 130, 30)) + list(np.linspace(129, 100, 20))
+    df = _ohlc(closes)
+    full = generate_atr_trail_fade_signals(df, factor=3.5)
+    cutoff = 40
+    trunc = generate_atr_trail_fade_signals(df.iloc[: cutoff + 1].copy(), factor=3.5)
+    for i in range(cutoff + 1):
+        assert (
+            full.loc[i, "entry_signal"] == trunc.loc[i, "entry_signal"]
+        ), f"fade bar {i} changed when future bars dropped — look-ahead leak"
+
+
+def test_fade_output_schema_matches_backtester_contract():
+    df = _ohlc(np.concatenate([np.linspace(100, 130, 30), np.linspace(129, 95, 25)]))
+    out = generate_atr_trail_fade_signals(df)
+    for col in [
+        "entry_signal",
+        "exit_signal",
+        "stop_level",
+        "target_1",
+        "target_2",
+        "target_3",
+        "atr",
+        "bias",
+        "regime",
+    ]:
+        assert col in out.columns
 
 
 def test_walkforward_oos_preserves_datetime_index(monkeypatch):
