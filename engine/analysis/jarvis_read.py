@@ -111,13 +111,22 @@ def _regime_summary(regime_map: dict[str, dict] | None) -> str:
 
 
 def build_prompt(
-    date_str: str, levels_map: dict[str, Any], regime_map: dict[str, dict] | None
+    date_str: str,
+    levels_map: dict[str, Any],
+    regime_map: dict[str, dict] | None,
+    calibration_hint: str = "",
 ) -> str:
-    """Pure: assemble the LLM prompt from levels + regime. Unit-testable."""
+    """Pure: assemble the LLM prompt from levels + regime. Unit-testable.
+
+    ``calibration_hint`` (from the Phase E calibrator) is folded in so the Read
+    learns from its own graded track record.
+    """
     context = _levels_summary(levels_map)
     regime = _regime_summary(regime_map)
     if regime:
         context = f"{context}\n\nRegime:\n{regime}"
+    if calibration_hint:
+        context = f"{context}\n\nCalibration feedback on your past reads:\n{calibration_hint}"
     return _PROMPT_TEMPLATE.format(date=date_str, context=context)
 
 
@@ -161,14 +170,21 @@ async def generate_read(
     *,
     llm_client: Optional[object] = None,
     api_key: Optional[str] = None,
+    calibration_hint: str = "",
+    conviction_shrink: float = 1.0,
 ) -> dict[str, Any]:
-    """Generate JARVIS's discretionary read. Always returns a dict (fallback on failure)."""
+    """Generate JARVIS's discretionary read. Always returns a dict (fallback on failure).
+
+    ``calibration_hint`` / ``conviction_shrink`` come from the Phase E calibrator:
+    the hint is folded into the prompt, and the shrink factor scales the parsed
+    conviction down when the Read has been historically overconfident.
+    """
     key = api_key if api_key is not None else os.getenv("ANTHROPIC_API_KEY", "")
     has_client = llm_client is not None and hasattr(llm_client, "call")
     if not key and not has_client:
         return _fallback_read("LLM unavailable")
 
-    prompt = build_prompt(date_str, levels_map, regime_map)
+    prompt = build_prompt(date_str, levels_map, regime_map, calibration_hint)
     try:
         if has_client:
             result = await llm_client.call(
@@ -214,6 +230,14 @@ async def generate_read(
                 raw = resp.json()["content"][0]["text"].strip()
 
         read = parse_read(raw)
+        # Apply the calibrator's conviction-shrink (no-op at 1.0).
+        try:
+            shrink = float(conviction_shrink)
+            if 0.0 < shrink < 1.0:
+                read["conviction"] = round(read["conviction"] * shrink, 3)
+                read["conviction_shrunk"] = True
+        except (TypeError, ValueError):
+            pass
         return read
     except Exception as exc:
         logger.warning("JARVIS's Read degraded to fallback: %s", exc)
