@@ -1,0 +1,9 @@
+# Vercel installs deps and builds remotely — never upload these.
+node_modules
+.next
+.vercel
+.turbo
+
+# Local-only env + logs (Vercel injects env vars from project settings)
+.env*.local
+*.log
