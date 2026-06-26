@@ -154,6 +154,115 @@ def render_engine_status(health: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Section — Key Levels (JARVIS, deterministic)
+# ---------------------------------------------------------------------------
+
+# Micros carry the DB bars; ES/NQ are price-identical relabels (and match Corey).
+_LEVELS_SYMBOLS: tuple[str, ...] = ("MES", "MNQ", "MGC")
+_LEVELS_LABELS: dict[str, str] = {"MES": "ES (via MES)", "MNQ": "NQ (via MNQ)", "MGC": "MGC"}
+# 1h bars to pull for the daily resample — ~50 trading days (futures ~23h/day).
+_LEVELS_LOOKBACK_1H = 1200
+
+
+def compute_key_levels(
+    symbols: tuple[str, ...] = _LEVELS_SYMBOLS, db_path: Path | None = None
+) -> dict[str, Any]:
+    """Compute deterministic structural levels per symbol from DB bars.
+
+    Returns {symbol: MorningLevels | None}. Offline: reuses
+    analytics.regime.load_recent_bars (1h) + morning_levels.resample_ohlc_to_daily.
+    """
+    try:
+        from analysis.morning_levels import compute_levels_from_bars, resample_ohlc_to_daily
+        from analytics.regime import load_recent_bars
+    except ImportError as exc:  # pragma: no cover - defensive
+        logger.warning("Key Levels unavailable — import failed: %s", exc)
+        return dict.fromkeys(symbols)
+
+    out: dict[str, Any] = {}
+    for sym in symbols:
+        df1h = load_recent_bars(sym, n_bars=_LEVELS_LOOKBACK_1H, db_path=db_path or _DB_PATH)
+        if df1h is None or len(df1h) == 0:
+            out[sym] = None
+            continue
+        daily = resample_ohlc_to_daily(df1h)
+        if daily is None or len(daily) < 2:
+            out[sym] = None
+            continue
+        # Drop today's still-forming session so pivots use the last COMPLETED
+        # session (the brief runs pre-open; today's partial bar would be H=L=C).
+        today_et = datetime.now(_ET).date()
+        completed = daily[daily.index.date < today_et]
+        use_df = completed if len(completed) >= 2 else daily
+        try:
+            out[sym] = compute_levels_from_bars(sym, use_df, atr_period=14)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Key Levels compute failed for %s: %s", sym, exc)
+            out[sym] = None
+    return out
+
+
+def _fmt_levels(vals: list[float] | None) -> str:
+    if not vals:
+        return "—"
+    return " / ".join(f"{v:.2f}" for v in vals)
+
+
+def render_key_levels(levels_map: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    lines.append("## Key Levels (JARVIS)")
+    lines.append(
+        "*Deterministic from real bars (floor pivots + Wilder ATR). "
+        "MES≈ES, MNQ≈NQ. This is math, not a discretionary read.*"
+    )
+    lines.append("")
+    lines.append(
+        "| Instrument | Pivot | R1 / S1 | R2 / S2 | ATR | Upside targets | Downside targets |"
+    )
+    lines.append("|---|---|---|---|---|---|---|")
+    for sym in _LEVELS_SYMBOLS:
+        label = _LEVELS_LABELS.get(sym, sym)
+        lv = levels_map.get(sym)
+        if lv is None:
+            lines.append(f"| {label} | *no bars* | — | — | — | — | — |")
+            continue
+        atr_str = f"{lv.atr:.2f}" if lv.atr == lv.atr else "—"  # NaN-safe
+        lines.append(
+            f"| {label} | {lv.pivot:.2f} | {lv.r1:.2f} / {lv.s1:.2f} | "
+            f"{lv.r2:.2f} / {lv.s2:.2f} | {atr_str} | "
+            f"{_fmt_levels(lv.targets_up)} | {_fmt_levels(lv.targets_down)} |"
+        )
+    lines.append("")
+    return lines
+
+
+def _persist_forecast(briefing_date: date, levels_map: dict[str, Any]) -> None:
+    """Persist today's levels to the forecast journal + a JSON backup. Best-effort:
+    any failure here is logged and swallowed so it never breaks the brief."""
+    try:
+        from analysis.forecast_journal import upsert_forecast, write_json_backup
+    except ImportError as exc:  # pragma: no cover - defensive
+        logger.warning("forecast journal unavailable: %s", exc)
+        return
+    date_str = briefing_date.isoformat()
+    ts = datetime.now(_UTC).isoformat()
+    bundle: dict[str, Any] = {"date": date_str, "generated_ts": ts, "symbols": {}}
+    for sym, lv in levels_map.items():
+        if lv is None:
+            continue
+        levels_dict = lv.to_dict()
+        try:
+            upsert_forecast(date_str, sym, levels_dict, ts, db_path=_DB_PATH)
+            bundle["symbols"][sym] = {"levels": levels_dict}
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("journal upsert failed for %s: %s", sym, exc)
+    try:
+        write_json_backup(date_str, bundle)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("json backup failed: %s", exc)
+
+
 def load_active_strategies() -> list[dict[str, Any]]:
     """
     Return a list of enabled strategy configs with verdict freshness info.
@@ -720,6 +829,7 @@ def render_briefing(
     expectations: list[dict[str, Any]],
     positions: list[dict[str, Any]],
     attention_items: list[str],
+    levels_map: dict[str, Any] | None = None,
 ) -> str:
     now_et = datetime.now(_ET).strftime("%Y-%m-%dT%H:%M %Z")
     lines: list[str] = []
@@ -729,6 +839,7 @@ def render_briefing(
     lines.append("")
 
     lines.extend(render_engine_status(health))
+    lines.extend(render_key_levels(levels_map or {}))
     lines.extend(render_active_strategies(active_strategies))
     lines.extend(render_overnight_regime(regime_map))
     lines.extend(render_rv_accumulation())
@@ -848,6 +959,11 @@ def main() -> None:
     expectations = compute_strategy_expectations(active_strategies, regime_map)
     positions = fetch_open_positions()
 
+    # Deterministic structural levels (ES/NQ/MGC) — also persisted to the
+    # forecast journal so the evening scorer can grade them.
+    levels_map = compute_key_levels()
+    _persist_forecast(briefing_date, levels_map)
+
     attention_items = compute_attention_items(
         health=health,
         active_strategies=active_strategies,
@@ -865,6 +981,7 @@ def main() -> None:
         expectations=expectations,
         positions=positions,
         attention_items=attention_items,
+        levels_map=levels_map,
     )
 
     # Save
