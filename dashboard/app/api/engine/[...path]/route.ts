@@ -41,10 +41,11 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   }
 
   const controller = new AbortController();
-  // 25s: cold-cache engine endpoints (TV/yfinance-backed prices, mtf,
+  // 60s: cold-cache engine endpoints (TV/yfinance-backed prices, mtf,
   // discord intelligence) exceed 5s on first hit and were 502ing every page
-  // load right after an engine restart.
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+  // load right after an engine restart. The Hidden Pivots full scan fetches
+  // bars for ~33 symbols and can run past 25s cold, so the ceiling is 60s.
+  const timeout = setTimeout(() => controller.abort(), 60_000);
 
   let upstream: Response;
   try {
