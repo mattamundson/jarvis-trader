@@ -165,6 +165,12 @@ class OrderRequest:
     is_options: bool = False
     estimated_value: float = 0.0
     stark_signal: str | None = None
+    #: Originating strategy id, for the pre-trade promotion gate. None = untagged
+    #: (manual/dashboard) order, governed by human-approval + gate-v2 elsewhere;
+    #: automated strategy orders should populate this so the promotion gate can
+    #: enforce that only promoted strategies reach a broker. Threading it through
+    #: the executor construction sites is the Phase-2 follow-on.
+    strategy_id: str | None = None
 
 
 @dataclass
@@ -1194,6 +1200,47 @@ class SafetyLayer:
                 )
         return RiskCheckResult(approved=True)
 
+    def _check_promotion_gate(self, order: OrderRequest) -> RiskCheckResult:
+        """Hard pre-trade promotion gate: a strategy-tagged order may reach a
+        broker only if its strategy is cleared for live capital.
+
+        Scope: this gate governs *automated, strategy-tagged* orders. An untagged
+        order (``strategy_id`` is None — manual/dashboard) is out of scope here;
+        those are gated by human-approval + gate-v2 at approval time, so this check
+        passes them through.
+
+        Shadow-default OFF: when ``PROMOTION_GATE_ENFORCE`` is unset/false, an
+        un-promoted strategy is *logged* (so impact is observable) but NOT blocked —
+        identical-shape to the ``GATE_V2_ENFORCE_*`` flags. Flipping the flag makes
+        the block hard (Amo Tier-3). Default-deny: a tagged strategy not in the
+        (currently empty) promoted set is treated as un-promoted.
+        """
+        from backtest.live_promotion_gate import (  # noqa: PLC0415 — lazy, cycle-free
+            is_strategy_promoted,
+            promotion_gate_enforced,
+        )
+
+        sid = getattr(order, "strategy_id", None)
+        if sid is None or is_strategy_promoted(sid):
+            return RiskCheckResult(approved=True)
+
+        # Strategy is tagged but NOT promoted.
+        if not promotion_gate_enforced():
+            logger.warning(
+                "PROMOTION_GATE shadow: strategy '%s' is not cleared for live "
+                "capital (order would be BLOCKED if PROMOTION_GATE_ENFORCE=1)",
+                sid,
+            )
+            return RiskCheckResult(approved=True)
+
+        return RiskCheckResult(
+            approved=False,
+            rejection_reason=(
+                f"PROMOTION_GATE: strategy '{sid}' is not cleared for live capital "
+                "(failed the enforced definition-of-done)"
+            ),
+        )
+
     def check_order(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
         """
         Run all pre-trade safety checks.
@@ -1206,6 +1253,7 @@ class SafetyLayer:
         for check_fn in [
             lambda: self._check_kill_switch(),
             lambda: self._check_gating_conditions(),
+            lambda: self._check_promotion_gate(order),
             lambda: self._check_daily_loss_limit(portfolio_equity),
             lambda: self._check_drawdown(portfolio_equity, warnings),
             lambda: self._check_order_value_limits(order, portfolio_equity),

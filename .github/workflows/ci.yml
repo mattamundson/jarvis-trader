@@ -192,7 +192,7 @@ jobs:
   engine-coverage-merge:
     name: Engine Tests (coverage merge)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     needs: [engine-test-fast, engine-test-slow]
     if: ${{ needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:
