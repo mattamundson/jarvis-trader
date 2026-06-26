@@ -30,21 +30,33 @@ import pandas as pd
 from backtest import spread_backtest as sb
 
 # Named pairs -> (cache_file_a, cache_file_b, timeframe). Matched date ranges, aligned on join.
+# Named pairs -> (root_a, root_b, timeframe). Legs are resolved to their LATEST cache
+# at run time via _find_latest_cache (end-date keyed), NOT pinned to a hardcoded filename
+# -- a hardcoded date silently goes stale the moment the cache rotates (the recurring
+# loader-staleness bug; cf. the 2026-06-25 _pick_cache_file fix).
 PAIRS_REG: dict[str, tuple[str, str, str]] = {
-    "MES-M2K": ("MES_2024-04-26_2026-06-22_1h.csv", "M2K_2024-04-26_2026-06-22_1h.csv", "1h"),
-    "MNQ-M2K": ("MNQ_2024-04-26_2026-06-22_1h.csv", "M2K_2024-04-26_2026-06-22_1h.csv", "1h"),
-    "ZN-ZB": ("ZN_2025-06-18_2026-06-24_1h.csv", "ZB_2025-06-18_2026-06-24_1h.csv", "1h"),
+    "MES-M2K": ("MES", "M2K", "1h"),
+    "MNQ-M2K": ("MNQ", "M2K", "1h"),
+    "ZN-ZB": ("ZN", "ZB", "1h"),
 }
 
 
 def load_pair(
-    file_a: str, file_b: str, cache_dir: Path | None = None
+    root_a: str, root_b: str, timeframe: str = "1h", cache_dir: Path | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Inner-join two named caches on timestamp -> aligned (ts, close_a, close_b).
-    tz-normalized so 1h (tz-aware) and 1d (tz-naive) compare consistently."""
+    """Inner-join the two legs' LATEST caches on timestamp -> aligned (ts, close_a, close_b).
+
+    Each leg resolves via _find_latest_cache (end-date keyed) rather than a hardcoded
+    filename, so the scan never breaks when the bar cache rotates. tz-normalized so 1h
+    (tz-aware) and 1d (tz-naive) compare consistently."""
+    from backtest._gate_v2_helpers import _find_latest_cache
+
     cache = sb._resolve_cache(cache_dir)
-    da = pd.read_csv(cache / file_a)[["timestamp", "close"]].rename(columns={"close": "a"})
-    db = pd.read_csv(cache / file_b)[["timestamp", "close"]].rename(columns={"close": "b"})
+    suffix = f"_{timeframe}.csv"
+    file_a = _find_latest_cache(cache, root_a, suffix)
+    file_b = _find_latest_cache(cache, root_b, suffix)
+    da = pd.read_csv(file_a)[["timestamp", "close"]].rename(columns={"close": "a"})
+    db = pd.read_csv(file_b)[["timestamp", "close"]].rename(columns={"close": "b"})
     m = da.merge(db, on="timestamp", how="inner").dropna().reset_index(drop=True)
     dt = pd.to_datetime(m["timestamp"])
     if dt.dt.tz is not None:
@@ -52,19 +64,41 @@ def load_pair(
     return dt.to_numpy(), m["a"].to_numpy(), m["b"].to_numpy()
 
 
+MIN_HALF_SHARE = 0.20  # weaker chronological half must carry >= 20% of total profit
+
+
 def classify_verdict(
-    pf_ci_lower: float, p_edge: float, n_trades: int, h1_sum: float | None, h2_sum: float | None
+    pf_ci_lower: float,
+    p_edge: float,
+    n_trades: int,
+    h1_sum: float | None,
+    h2_sum: float | None,
+    min_half_share: float = MIN_HALF_SHARE,
 ) -> tuple[bool, bool, str]:
     """Pure verdict logic -> (pooled_pass, stationary, verdict).
 
     pooled_pass = the three gate-v2 pooled thresholds. stationary = BOTH chronological
     halves profitable (the ES-NQ trap is a pooled PASS with all profit in one half).
-    Only pooled_pass AND stationary earns CANDIDATE.
+
+    The binary both-halves check is necessary but NOT sufficient: an edge can be
+    profitable in both halves yet have ~93% of its profit in the recent half
+    (MES-M2K: H1 +0.087 vs H2 +1.213). That is a recent-regime edge wearing a
+    stationary mask -- it clears the binary gate but a 2024-like regime would yield
+    only the thin H1 PF. So CANDIDATE additionally requires MAGNITUDE BALANCE: the
+    weaker half carries >= min_half_share of total profit. Stationary-but-imbalanced
+    earns BACK-LOADED, a rung below CANDIDATE (keep forward-tracking; only forward
+    evidence resolves back-loaded vs durable).
     """
     pooled_pass = pf_ci_lower >= 1.10 and p_edge >= 0.95 and n_trades >= 30
     stationary = bool(h1_sum is not None and h2_sum is not None and h1_sum > 0 and h2_sum > 0)
-    if pooled_pass and stationary:
+    balanced = False
+    if stationary:
+        total = h1_sum + h2_sum  # both > 0, so total > 0
+        balanced = (min(h1_sum, h2_sum) / total) >= min_half_share
+    if pooled_pass and stationary and balanced:
         verdict = "CANDIDATE"
+    elif pooled_pass and stationary:
+        verdict = "BACK-LOADED"
     elif pooled_pass:
         verdict = "NON-STATIONARY"
     else:
@@ -74,8 +108,9 @@ def classify_verdict(
 
 def scan_pair(
     name: str,
-    file_a: str,
-    file_b: str,
+    root_a: str,
+    root_b: str,
+    timeframe: str = "1h",
     params: dict | None = None,
     cost_bps: float = sb.DEFAULT_COST_BPS_PER_LEG,
     cache_dir: Path | None = None,
@@ -86,7 +121,7 @@ def scan_pair(
     all profit in one half is the ES-NQ non-stationarity trap, not a deployable edge.
     """
     params = params or sb.DEFAULT_PARAMS
-    ts, a, b = load_pair(file_a, file_b, cache_dir)
+    ts, a, b = load_pair(root_a, root_b, timeframe, cache_dir)
     windows = sb.walk_forward(ts, a, b, params, cost_bps)
     pooled, tagged = sb.collect_oos_trades(ts, a, b, params, cost_bps)
     ev = sb.bootstrap_eval(pooled)
@@ -139,16 +174,21 @@ def main() -> None:
     args = ap.parse_args()
     print(f"[spread-pairs] params={sb.DEFAULT_PARAMS} cost={args.cost_bps}bp/leg\n")
     rows = []
-    for name, (fa, fb, _tf) in PAIRS_REG.items():
+    for name, (ra, rb, tf) in PAIRS_REG.items():
         try:
-            r = scan_pair(name, fa, fb, cost_bps=args.cost_bps)
+            r = scan_pair(name, ra, rb, timeframe=tf, cost_bps=args.cost_bps)
         except Exception as e:  # noqa: BLE001 - report per-pair failure, keep scanning
             print(f"{name:<8} | ERROR: {e}")
             continue
         rows.append(r)
         print(_fmt(r))
     cands = [r["pair"] for r in rows if r["verdict"] == "CANDIDATE"]
-    print(f"\nCANDIDATES (pooled PASS + both halves profitable): {cands or 'none'}")
+    backloaded = [r["pair"] for r in rows if r["verdict"] == "BACK-LOADED"]
+    print(f"\nCANDIDATES (pooled PASS + both halves profitable + balanced): {cands or 'none'}")
+    print(
+        f"BACK-LOADED (both halves > 0 but weaker half < {int(MIN_HALF_SHARE * 100)}% of profit "
+        f"-> recent-regime risk): {backloaded or 'none'}"
+    )
 
 
 if __name__ == "__main__":
