@@ -90,6 +90,20 @@ PAIR_REGISTRY: dict[str, dict] = {
         "params": {"window": 60, "entry": 2.0, "exit": 0.5, "stop": 4.0},
         "cost_bps_per_leg": 1.0,
     },
+    # M6E-M6B (EUR/USD vs GBP/USD micro-FX) -- the factory's SECOND gate-v2 PASS (ALT),
+    # and structurally cleaner than ZB-ZN: log(M6E)-log(M6B) = log(EUR/GBP) (the USD leg
+    # cancels), so the 1:1 spread is the genuine EUR/GBP cross with NO duration-mismatch
+    # contamination. Tracked at the same gate config (window 60 / 1bps). Caveats: thin +
+    # single regime (data from 2025-06), wfo only MODERATE, somewhat asymmetric. Observe-only.
+    "M6E-M6B": {
+        "sym_a": "M6E",
+        "sym_b": "M6B",
+        "symbol": "M6E_M6B_SPREAD",
+        "lineage": "m6e_m6b_spread_v1",
+        "subdir": "M6E-M6B",
+        "params": {"window": 60, "entry": 2.0, "exit": 0.5, "stop": 4.0},
+        "cost_bps_per_leg": 1.0,
+    },
 }
 # Synthetic dollar-neutral book: per-leg notional. pnl = net_spread_log_return * NOTIONAL.
 # A 1% spread move on the book ~= $200. This is a unit book for readability, NOT real
