@@ -1,50 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
 import {
   Card,
   CardHeader,
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
+import {
+  dedupCaveat,
+  durationMinutes,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
-
-interface Trade {
-  trade_id?: string;
-  symbol: string;
-  action: string;
-  entry_price?: number | null;
-  exit_price?: number | null;
-  pnl?: number | null;
-  entry_time?: string | null;
-  exit_time?: string | null;
-  status?: string;
+function formatDuration(mins: number | null): string {
+  if (mins === null) return "—";
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}hr` : `${h}hr ${m}m`;
 }
 
-interface TradesResponse {
-  trades?: Trade[];
-}
-
-function deriveDirection(action: string): "LONG" | "SHORT" {
-  const a = action.toUpperCase();
-  if (a === "BUY" || a === "LONG" || a === "BUY_LONG") return "LONG";
-  return "SHORT";
-}
-
-function formatDuration(entry?: string | null, exit?: string | null): string {
-  if (!entry || !exit) return "—";
-  const diffMs = new Date(exit).getTime() - new Date(entry).getTime();
-  if (isNaN(diffMs) || diffMs < 0) return "—";
-  const totalMinutes = Math.floor(diffMs / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes}m`;
-  return minutes === 0 ? `${hours}hr` : `${hours}hr ${minutes}m`;
-}
-
-function formatPnl(pnl?: number | null): { text: string; className: string } {
+function formatPnl(pnl: number | null | undefined): { text: string; className: string } {
   if (pnl == null) return { text: "—", className: "text-muted-foreground" };
   const abs = Math.abs(pnl).toFixed(2);
   if (pnl >= 0) return { text: `+$${abs}`, className: "text-green-400" };
@@ -52,32 +29,20 @@ function formatPnl(pnl?: number | null): { text: string; className: string } {
 }
 
 export function RecentTradesTableWidget() {
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: set, error: loadError } = useHonestTrades(120_000);
+  const error = loadError
+    ? (loadError instanceof Error ? loadError.message : String(loadError))
+    : null;
 
-  const fetchTrades = async () => {
-    try {
-      const raw: unknown = await fetchEngine(
-        `/portfolio/history/trades?limit=10&status=CLOSED`
-      );
-      const list: Trade[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: Trade[] }).trades ?? []);
-      setTrades(list);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch");
-    }
-  };
+  // Show the 10 most-recent trades (sorted by exit_time desc)
+  const recent = set
+    ? [...set.trades]
+        .filter((t) => t.exit_time)
+        .sort((a, b) => Date.parse(b.exit_time!) - Date.parse(a.exit_time!))
+        .slice(0, 10)
+    : [];
 
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 120_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const totalPnl = trades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-  const totalPnlFormatted = formatPnl(trades.length > 0 ? totalPnl : null);
+  const totalPnl = set ? formatPnl(set.net) : formatPnl(null);
 
   return (
     <Card>
@@ -89,7 +54,9 @@ export function RecentTradesTableWidget() {
         {error && (
           <p className="text-sm text-red-400 mb-2">Engine error: {error}</p>
         )}
-        {trades.length === 0 ? (
+        {!set && !error ? (
+          <p className="text-sm text-muted-foreground text-center py-6">Loading…</p>
+        ) : recent.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">
             No closed trades yet
           </p>
@@ -100,20 +67,18 @@ export function RecentTradesTableWidget() {
                 <tr className="text-xs text-muted-foreground uppercase">
                   <th className="text-left pb-2 w-7">#</th>
                   <th className="text-left pb-2">Symbol</th>
-                  <th className="text-left pb-2">Action</th>
-                  <th className="text-right pb-2">Entry</th>
-                  <th className="text-right pb-2">Exit</th>
+                  <th className="text-left pb-2">Direction</th>
                   <th className="text-right pb-2">P&amp;L</th>
                   <th className="text-right pb-2">Duration</th>
                 </tr>
               </thead>
               <tbody>
-                {trades.map((trade, i) => {
-                  const direction = deriveDirection(trade.action);
+                {recent.map((trade, i) => {
                   const pnl = formatPnl(trade.pnl);
+                  const dur = formatDuration(durationMinutes(trade));
                   return (
                     <tr
-                      key={trade.trade_id ?? `${trade.symbol}-${i}`}
+                      key={trade.id}
                       className="border-t border-border"
                     >
                       <td className="py-1.5 font-mono text-muted-foreground">
@@ -123,19 +88,9 @@ export function RecentTradesTableWidget() {
                         {trade.symbol}
                       </td>
                       <td className="py-1.5">
-                        <Badge variant={direction === "LONG" ? "bull" : "bear"}>
-                          {direction}
+                        <Badge variant={trade.direction === "LONG" ? "bull" : "bear"}>
+                          {trade.direction}
                         </Badge>
-                      </td>
-                      <td className="py-1.5 text-right font-mono">
-                        {trade.entry_price != null
-                          ? trade.entry_price.toFixed(2)
-                          : "—"}
-                      </td>
-                      <td className="py-1.5 text-right font-mono">
-                        {trade.exit_price != null
-                          ? trade.exit_price.toFixed(2)
-                          : "—"}
                       </td>
                       <td
                         className={`py-1.5 text-right font-mono font-medium ${pnl.className}`}
@@ -143,7 +98,7 @@ export function RecentTradesTableWidget() {
                         {pnl.text}
                       </td>
                       <td className="py-1.5 text-right font-mono text-muted-foreground">
-                        {formatDuration(trade.entry_time, trade.exit_time)}
+                        {dur}
                       </td>
                     </tr>
                   );
@@ -152,15 +107,15 @@ export function RecentTradesTableWidget() {
               <tfoot>
                 <tr className="border-t-2 border-border">
                   <td
-                    colSpan={5}
+                    colSpan={3}
                     className="pt-2 text-xs text-muted-foreground font-mono uppercase tracking-wider"
                   >
-                    Total ({trades.length} trades)
+                    {set ? dedupCaveat(set) : ""}
                   </td>
                   <td
-                    className={`pt-2 text-right font-mono font-semibold ${totalPnlFormatted.className}`}
+                    className={`pt-2 text-right font-mono font-semibold ${totalPnl.className}`}
                   >
-                    {totalPnlFormatted.text}
+                    {totalPnl.text}
                   </td>
                   <td />
                 </tr>

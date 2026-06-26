@@ -1,37 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, ArrowRight, Circle, Target } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
-
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface PerformanceMetrics {
-  profit_factor: number;
-  sharpe_ratio: number;
-  win_rate: number;
-  total_trades: number;
-  period_days: number;
-  max_drawdown: number;
-  total_pnl: number;
-  avg_win: number;
-  avg_loss: number;
-  meets_paper_threshold: boolean;
-}
-
-interface ValidationReport {
-  status: "PASS" | "FAIL" | "INSUFFICIENT_DATA";
-  metrics: PerformanceMetrics;
-  thresholds: {
-    profit_factor: number;
-    sharpe_ratio: number;
-    min_trades_required: number;
-  };
-  recommendation: string;
-}
+import {
+  maxDrawdownPct,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Phase logic ───────────────────────────────────────────────────────────────
 
@@ -42,37 +20,54 @@ interface PhaseData {
   name: string;
   subtitle: string;
   targetDate: string;
-  criteria: Array<{ label: string; met: boolean; detail: string }>;
+  criteria: Array<{
+    label: string;
+    /** null = indeterminate (Sharpe) */
+    met: boolean | null;
+    detail: string;
+  }>;
   status: PhaseStatus;
 }
 
-function computePhases(metrics: PerformanceMetrics | null): PhaseData[] {
-  const tradingDays = metrics?.period_days ?? 0;
-  const totalTrades = metrics?.total_trades ?? 0;
-  // win_rate from engine is 0–1 fraction; convert to percent for display/compare
-  const winRatePct = metrics !== null ? metrics.win_rate * 100 : 0;
-  const pf = metrics?.profit_factor ?? 0;
-  const sharpe = metrics?.sharpe_ratio ?? 0;
+// Max drawdown as % of peak for the phase gate. Defers to the canonical
+// running-peak helper; an all-losing record that never rose above its $0
+// baseline counts as a full 100% drawdown for the gate (a % drawdown is
+// undefined vs a non-positive peak — treat it as fully drawn down, not 0%).
+function ddPctForGate(set: HonestTradeSet): number {
+  const dd = maxDrawdownPct(set.trades) * 100;
+  if (dd > 0) return dd;
+  return set.net < 0 && set.trades.length > 0 ? 100 : 0;
+}
 
-  // Phase 1 criteria
-  const p1_days = tradingDays >= 10;
-  const p1_engine = metrics !== null; // engine responding = engine running
-  const p1_allMet = p1_days && p1_engine;
+function computePhases(set: HonestTradeSet | null): PhaseData[] {
+  const totalTrades = set?.trades.length ?? 0;
+  const winRatePct = set != null ? (set.winRate ?? 0) * 100 : 0;
+  const pf = set?.profitFactor ?? 0;
+  const ddPct = set != null ? ddPctForGate(set) : 0;
 
-  // Phase 2 criteria
+  // Phase 1 — Data Collection
+  const p1_engine = set !== null;
+  // Use trade count as a proxy for "10 trading days" (engine is up if we have trades)
+  const p1_started = totalTrades >= 1;
+  const p1_allMet = p1_engine && p1_started;
+
+  // Phase 2 — Statistical Validation
   const p2_trades = totalTrades >= 30;
   const p2_winRate = winRatePct >= 50;
-  const p2_pf = pf >= 1.5;
+  const p2_pf = (set?.profitFactor ?? null) !== null && pf >= 1.5;
   const p2_metCount = [p2_trades, p2_winRate, p2_pf].filter(Boolean).length;
   const p2_allMet = p2_trades && p2_winRate && p2_pf;
 
-  // Phase 3 criteria
+  // Phase 3 — Extended Validation
+  // Sharpe is indeterminate — excluded from pass count (null)
   const p3_trades = totalTrades >= 60;
   const p3_winRate = winRatePct >= 55;
-  const p3_pf = pf >= 2.0;
-  const p3_sharpe = sharpe >= 1.5;
-  const p3_metCount = [p3_trades, p3_winRate, p3_pf, p3_sharpe].filter(Boolean).length;
-  const p3_allMet = p3_trades && p3_winRate && p3_pf && p3_sharpe;
+  const p3_pf = (set?.profitFactor ?? null) !== null && pf >= 2.0;
+  const p3_dd = ddPct <= 15;
+  // count only decidable criteria
+  const p3_decidable = [p3_trades, p3_winRate, p3_pf, p3_dd];
+  const p3_metCount = p3_decidable.filter(Boolean).length;
+  const p3_allMet = p3_trades && p3_winRate && p3_pf && p3_dd;
 
   function p2Status(): PhaseStatus {
     if (p2_allMet) return "COMPLETE";
@@ -94,14 +89,14 @@ function computePhases(metrics: PerformanceMetrics | null): PhaseData[] {
       targetDate: "March 2026",
       criteria: [
         {
-          label: "Trading Days",
-          met: p1_days,
-          detail: `${tradingDays}/10 days`,
+          label: "Trades Logged",
+          met: p1_started,
+          detail: `${totalTrades} recorded`,
         },
         {
           label: "Engine Running",
           met: p1_engine,
-          detail: metrics !== null ? "Online" : "Offline",
+          detail: set !== null ? "Online" : "Offline",
         },
       ],
       status: p1_allMet ? "COMPLETE" : "IN_PROGRESS",
@@ -125,7 +120,7 @@ function computePhases(metrics: PerformanceMetrics | null): PhaseData[] {
         {
           label: "Profit Factor",
           met: p2_pf,
-          detail: `${pf.toFixed(2)} / 1.50`,
+          detail: set?.profitFactor != null ? `${(set.profitFactor ?? 0).toFixed(2)} / 1.50` : "— / 1.50",
         },
       ],
       status: p2Status(),
@@ -149,12 +144,18 @@ function computePhases(metrics: PerformanceMetrics | null): PhaseData[] {
         {
           label: "Profit Factor",
           met: p3_pf,
-          detail: `${pf.toFixed(2)} / 2.00`,
+          detail: set?.profitFactor != null ? `${(set.profitFactor ?? 0).toFixed(2)} / 2.00` : "— / 2.00",
+        },
+        {
+          label: "Max Drawdown",
+          met: p3_dd,
+          detail: `${ddPct.toFixed(1)}% / ≤15%`,
         },
         {
           label: "Sharpe Ratio",
-          met: p3_sharpe,
-          detail: `${sharpe.toFixed(2)} / 1.50`,
+          // Indeterminate — broker-computed Sharpe not available from deduped record
+          met: null,
+          detail: "— (not computed)",
         },
       ],
       status: p3Status(),
@@ -172,10 +173,10 @@ function currentPhaseLabel(phases: PhaseData[]): string {
 }
 
 function overallProgress(phases: PhaseData[]): number {
-  // Total criteria across all phases
-  const allCriteria = phases.flatMap((p) => p.criteria);
+  // Only count decidable (non-null) criteria
+  const allCriteria = phases.flatMap((p) => p.criteria).filter((c) => c.met !== null);
   if (allCriteria.length === 0) return 0;
-  const met = allCriteria.filter((c) => c.met).length;
+  const met = allCriteria.filter((c) => c.met === true).length;
   return Math.round((met / allCriteria.length) * 100);
 }
 
@@ -206,43 +207,16 @@ function phaseStatusLabel(status: PhaseStatus): string {
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export function PhaseProgressWidget() {
-  const [report, setReport] = useState<ValidationReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(0);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchData() {
-      try {
-        const data = await fetchEngine(`/analytics/performance`);
-        if (!cancelled) {
-          setReport(data);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Fetch failed");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const metrics = report?.metrics ?? null;
-  const phases = computePhases(metrics);
+  const phases = computePhases(set);
   const currentLabel = currentPhaseLabel(phases);
   const progress = overallProgress(phases);
   const isAllComplete = phases.every((p) => p.status === "COMPLETE");
 
-  // Find current active phase for the header
   const activePhase = phases.find((p) => p.status !== "COMPLETE") ?? phases[phases.length - 1];
+  const caveat = set ? dedupCaveat(set) : null;
 
   return (
     <Card>
@@ -278,7 +252,7 @@ export function PhaseProgressWidget() {
         {/* Error notice */}
         {error && (
           <div className="rounded-lg border border-warn/20 bg-warn/5 px-3 py-2 text-xs text-warn mb-4">
-            Engine offline — showing last known state. ({error})
+            Honest trade record unavailable — showing last known state. ({error})
           </div>
         )}
 
@@ -330,39 +304,47 @@ export function PhaseProgressWidget() {
 
               {/* Criteria list */}
               <div className="flex flex-wrap gap-x-4 gap-y-1 pl-7">
-                {phase.criteria.map((criterion) => (
-                  <div key={criterion.label} className="flex items-center gap-1">
-                    <span
-                      className={`text-xs font-mono ${
-                        criterion.met ? "text-bull" : "text-muted-foreground"
-                      }`}
-                    >
-                      {criterion.met ? "✓" : "○"}
-                    </span>
-                    <span
-                      className={`text-xs ${
-                        criterion.met ? "text-foreground" : "text-muted-foreground"
-                      }`}
-                    >
-                      {criterion.label}:
-                    </span>
-                    <span
-                      className={`text-xs font-mono ${
-                        criterion.met ? "text-bull" : "text-muted-foreground"
-                      }`}
-                    >
-                      {loading ? "—" : criterion.detail}
-                    </span>
-                  </div>
-                ))}
+                {phase.criteria.map((criterion) => {
+                  const isIndeterminate = criterion.met === null;
+                  const color = isIndeterminate
+                    ? "text-muted-foreground"
+                    : criterion.met
+                    ? "text-bull"
+                    : "text-muted-foreground";
+                  return (
+                    <div key={criterion.label} className="flex items-center gap-1">
+                      <span className={`text-xs font-mono ${color}`}>
+                        {isIndeterminate ? "–" : criterion.met ? "✓" : "○"}
+                      </span>
+                      <span
+                        className={`text-xs ${
+                          criterion.met ? "text-foreground" : "text-muted-foreground"
+                        }`}
+                      >
+                        {criterion.label}:
+                      </span>
+                      <span className={`text-xs font-mono ${color}`}>
+                        {loading ? "—" : criterion.detail}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Footnote */}
-        <p className="text-[10px] text-muted-foreground text-center mt-4">
-          Live trading target: June 2026 · Endpoint: /analytics/performance
+        {/* Dedup caveat + footnote */}
+        {caveat && (
+          <p className="text-[10px] text-muted-foreground mt-3">{caveat}</p>
+        )}
+        {set?.caveats && set.caveats.length > 0 && (
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {set.caveats.join(" · ")}
+          </p>
+        )}
+        <p className="text-[10px] text-muted-foreground text-center mt-3">
+          Sharpe excluded — not derivable from deduped trade record · Source: master/trading/realized
         </p>
       </CardContent>
     </Card>

@@ -1,32 +1,16 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Minus, Calendar } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
-
+import {
+  dailyPnl,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: string;
-  quantity: number;
-  entry_price: number;
-  exit_price: number;
-  realized_pnl: number;
-  status: string;
-  entry_time: string;
-  exit_time: string | null;
-  notes: string | null;
-}
-
-interface TradesResponse {
-  trades: TradeRecord[];
-  count: number;
-}
 
 interface WeekStats {
   weekStart: string; // YYYY-MM-DD (Monday)
@@ -80,19 +64,23 @@ function winRateClass(wr: number): string {
   return "text-bear";
 }
 
-function aggregateByWeek(trades: TradeRecord[]): WeekStats[] {
-  const closed = trades.filter(
-    (t) => t.exit_time !== null && t.status === "CLOSED"
-  );
+/**
+ * Aggregate dailyPnl entries (from honestTrades) into per-week buckets.
+ * Each daily entry already carries a trade count; we can track wins only
+ * indirectly (days with pnl > 0) — so win/loss here is per-day-in-week,
+ * not per-trade. This is a known limitation when coming from daily buckets
+ * rather than raw trades; we note it in the UI.
+ */
+function buildWeekStats(set: HonestTradeSet): WeekStats[] {
+  const daily = dailyPnl(set.trades);
 
-  const weekMap = new Map<string, { wins: number; count: number; totalPnl: number }>();
-
-  for (const trade of closed) {
-    const key = getWeekKey(new Date(trade.exit_time!));
-    const existing = weekMap.get(key) || { wins: 0, count: 0, totalPnl: 0 };
-    existing.count++;
-    existing.totalPnl += trade.realized_pnl ?? 0;
-    if ((trade.realized_pnl ?? 0) > 0) existing.wins++;
+  const weekMap = new Map<string, { pnl: number; count: number; wins: number }>();
+  for (const day of daily) {
+    const key = getWeekKey(new Date(day.date + "T00:00:00"));
+    const existing = weekMap.get(key) ?? { pnl: 0, count: 0, wins: 0 };
+    existing.pnl += day.pnl;
+    existing.count += day.count;
+    if (day.pnl > 0) existing.wins += day.count; // proxy: winning-day trades
     weekMap.set(key, existing);
   }
 
@@ -108,7 +96,7 @@ function aggregateByWeek(trades: TradeRecord[]): WeekStats[] {
       weekEnd,
       count: s.count,
       wins: s.wins,
-      totalPnl: s.totalPnl,
+      totalPnl: s.pnl,
       winRate: s.count > 0 ? (s.wins / s.count) * 100 : 0,
     };
   });
@@ -219,33 +207,9 @@ function getCurrentWeekStart(): string {
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export function WeeklyPerformanceWidget() {
-  const [weeks, setWeeks] = useState<WeekStats[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTrades = useCallback(async () => {
-    try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?status=CLOSED&limit=500`
-      );
-      const trades: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
-      const aggregated = aggregateByWeek(trades);
-      setWeeks(aggregated);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 60_000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const weeks = set ? buildWeekStats(set) : [];
 
   // Header badge
   function headerBadge(): { variant: "bull" | "bear" | "info"; label: string } {
@@ -365,10 +329,10 @@ export function WeeklyPerformanceWidget() {
               </table>
             </div>
 
-            {/* Summary footer */}
+            {/* Summary footer with dedup caveat */}
             <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border/30 pt-3">
               <span>
-                Showing {weeks.length} week{weeks.length !== 1 ? "s" : ""} of data
+                {set ? dedupCaveat(set) : `${weeks.length} week${weeks.length !== 1 ? "s" : ""} of data`}
               </span>
               <span className="text-[10px]">Refreshes every 60s</span>
             </div>

@@ -1,32 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import useSWR from "swr";
-import { fetchEngine } from "@/lib/api";
+import {
+  dailyPnl,
+  dedupCaveat,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface DailyPnl {
-  date: string;        // "2026-04-01"
+interface DailyPnlEntry {
+  date: string;   // "YYYY-MM-DD"
   pnl: number;
   trade_count: number;
-}
-
-interface TradesByDayItem {
-  date: string;
-  trades: number;
-  pnl: number;
-  win_rate: number;
-}
-
-interface TradesByDayResponse {
-  days: TradesByDayItem[];
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const WEEKS = 13;
-const DAYS = WEEKS * 7; // 91 calendar days
 
 // Color thresholds in USD
 const COLORS = {
@@ -51,7 +42,6 @@ function pnlColor(pnl: number | undefined): string {
     if (pnl < 300) return COLORS.profit_md;
     return COLORS.profit_lg;
   }
-  // loss
   const abs = Math.abs(pnl);
   if (abs < 50)  return COLORS.loss_xs;
   if (abs < 150) return COLORS.loss_sm;
@@ -89,39 +79,25 @@ function formatPnl(v: number): string {
   return v >= 0 ? `+$${abs}` : `-$${abs}`;
 }
 
-/**
- * Build a grid of 13 columns (weeks) x 7 rows (Sun=0…Sat=6).
- * The last column's Saturday aligns to "today".
- * Returns an array of 91 Date|null slots in [week][dow] order,
- * flattened as week-major (col 0 all rows, col 1 all rows…).
- */
 function buildGrid(): { weeks: (Date | null)[][]; startDate: Date } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Anchor the grid so today lands at the bottom-right (last column, today's DOW row)
-  // We fill backwards from today to cover WEEKS complete columns.
-  const todayDow = today.getDay(); // 0=Sun…6=Sat
-
-  // The last column = the week containing today. Pad forward to Saturday if needed.
-  const daysAfterToday = 6 - todayDow; // days left in this week after today
+  const todayDow = today.getDay();
+  const daysAfterToday = 6 - todayDow;
 
   const weeks: (Date | null)[][] = [];
 
-  // Build week by week, starting from the oldest
   for (let w = 0; w < WEEKS; w++) {
     const week: (Date | null)[] = [];
     for (let d = 0; d < 7; d++) {
-      // Position in the grid: slot index from oldest (week-major order)
       const slotIndex = w * 7 + d;
-      // Offset from today: negative = past, 0 = today, positive = future
       const lastSlot = WEEKS * 7 - 1;
       const offsetFromToday = slotIndex - lastSlot + daysAfterToday;
 
       const date = new Date(today);
       date.setDate(today.getDate() + offsetFromToday);
 
-      // Mark future days (after today) as null
       if (offsetFromToday > 0) {
         week.push(null);
       } else {
@@ -131,14 +107,12 @@ function buildGrid(): { weeks: (Date | null)[][]; startDate: Date } {
     weeks.push(week);
   }
 
-  // The start date is the first non-null slot
   const startDate = new Date(today);
   startDate.setDate(today.getDate() - (WEEKS * 7 - 1 - daysAfterToday));
 
   return { weeks, startDate };
 }
 
-/** Returns month labels positioned over the correct week columns */
 function buildMonthLabels(weeks: (Date | null)[][]): { label: string; colIndex: number }[] {
   const labels: { label: string; colIndex: number }[] = [];
   let lastMonth = -1;
@@ -156,18 +130,6 @@ function buildMonthLabels(weeks: (Date | null)[][]): { label: string; colIndex: 
     }
   }
   return labels;
-}
-
-// ── Fetcher ───────────────────────────────────────────────────────────────────
-
-async function fetchPnlByDay(): Promise<DailyPnl[]> {
-  const data = await fetchEngine<TradesByDayResponse>(`/analytics/trades/by-day?days=91`);
-  const days = Array.isArray(data?.days) ? data.days : [];
-  return days.map((d) => ({
-    date: d.date,
-    pnl: d.pnl,
-    trade_count: d.trades,
-  }));
 }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
@@ -211,14 +173,7 @@ function CalendarSkeleton() {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function PnlCalendarWidget() {
-  const { data: pnlDays, error, isLoading } = useSWR<DailyPnl[]>(
-    "/analytics/trades/by-day?days=91",
-    fetchPnlByDay,
-    {
-      refreshInterval: 5 * 60 * 1000, // 5 minutes
-      revalidateOnFocus: false,
-    }
-  );
+  const { honest: set, isLoading, error } = useHonestTrades(5 * 60 * 1000);
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -229,10 +184,18 @@ export function PnlCalendarWidget() {
     tradeCount: undefined,
   });
 
-  // Build lookup map from fetched data
-  const pnlMap = React.useMemo<Record<string, DailyPnl>>(() => {
-    if (!pnlDays) return {};
-    const m: Record<string, DailyPnl> = {};
+  // Convert honest daily P&L to the local DailyPnlEntry shape
+  const pnlDays: DailyPnlEntry[] = React.useMemo(() => {
+    if (!set) return [];
+    return dailyPnl(set.trades).map((d) => ({
+      date: d.date,
+      pnl: d.pnl,
+      trade_count: d.count,
+    }));
+  }, [set]);
+
+  const pnlMap = React.useMemo<Record<string, DailyPnlEntry>>(() => {
+    const m: Record<string, DailyPnlEntry> = {};
     for (const d of pnlDays) {
       m[d.date] = d;
     }
@@ -244,7 +207,6 @@ export function PnlCalendarWidget() {
 
   const todayStr = toYMD(new Date());
 
-  // Summary stats
   const stats = React.useMemo(() => {
     if (!pnlDays || pnlDays.length === 0) return null;
     const values = pnlDays.map((d) => d.pnl);
@@ -259,7 +221,7 @@ export function PnlCalendarWidget() {
   const handleMouseEnter = (
     e: React.MouseEvent<HTMLDivElement>,
     date: Date,
-    entry: DailyPnl | undefined
+    entry: DailyPnlEntry | undefined
   ) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
     setTooltip({
@@ -372,7 +334,6 @@ export function PnlCalendarWidget() {
                     className="flex items-center justify-end pr-1"
                     style={{ height: "12px", flexShrink: 0 }}
                   >
-                    {/* Show only Mo, We, Fr to avoid crowding */}
                     {(i === 1 || i === 3 || i === 5) ? (
                       <span className="font-mono text-[8px]" style={{ color: "#444" }}>
                         {label}
@@ -387,7 +348,6 @@ export function PnlCalendarWidget() {
                 <div key={wi} className="flex flex-col gap-1 flex-1">
                   {week.map((date, di) => {
                     if (date === null) {
-                      // Future slot
                       return (
                         <div
                           key={di}
@@ -495,6 +455,15 @@ export function PnlCalendarWidget() {
         <div className="mt-4 pt-3 text-center" style={{ borderTop: "1px solid #1a1a2e" }}>
           <span className="font-mono text-xs" style={{ color: "#333" }}>
             No trade data in the last 13 weeks
+          </span>
+        </div>
+      )}
+
+      {/* Dedup caveat */}
+      {!isLoading && !error && set && (
+        <div className="mt-2 text-center">
+          <span className="font-mono text-[9px]" style={{ color: "#333" }}>
+            {dedupCaveat(set)}
           </span>
         </div>
       )}

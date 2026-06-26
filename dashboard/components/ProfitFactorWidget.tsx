@@ -4,32 +4,13 @@ import React, { useState, useEffect } from "react";
 import { BarChart3, RefreshCw, TrendingUp, TrendingDown, Hash, Trophy } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchRealizedPnl, type RealizedPnl } from "@/lib/masterApi";
 
-
-// ── API types ──────────────────────────────────────────────────────────────────
-
-interface PerformanceMetrics {
-  profit_factor: number;
-  sharpe_ratio: number;
-  win_rate: number;
-  total_trades: number;
-  period_days: number;
-  max_drawdown: number;
-  total_pnl: number;
-  avg_win: number;
-  avg_loss: number;
-  meets_paper_threshold: boolean;
-}
-
-interface PerformanceResponse {
-  status: string;
-  metrics: PerformanceMetrics;
-  thresholds: {
-    min_profit_factor: number;
-  };
-  recommendation: string;
-}
+// Honest trade-record source: GET /master/trading/realized (read-time deduped).
+// The raw /analytics/performance endpoint over-counts re-logged winners
+// (fabricated PF 2.95 / +$3,899 vs the deduplicated reality PF 0.66 / -$8,188),
+// so this widget reads profit factor / win-rate / avg win-loss / trade count
+// from the honest engine_sim record. See lib/honestMetrics.ts.
 
 // ── Badge helpers ──────────────────────────────────────────────────────────────
 
@@ -72,7 +53,7 @@ function fmtCurrency(n: number): string {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function ProfitFactorWidget() {
-  const [data, setData] = useState<PerformanceResponse | null>(null);
+  const [data, setData] = useState<RealizedPnl | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -80,7 +61,10 @@ export function ProfitFactorWidget() {
   async function fetchData() {
     try {
       setLoading(true);
-      const payload = await fetchEngine(`/analytics/performance`);
+      const payload = await fetchRealizedPnl();
+      if (!payload.engine_sim?.ok) {
+        throw new Error(payload.engine_sim?.error || "honest trade record unavailable");
+      }
       setData(payload);
       setError(null);
       setLastRefresh(new Date());
@@ -97,12 +81,13 @@ export function ProfitFactorWidget() {
     return () => clearInterval(interval);
   }, []);
 
-  const pf: number | null = data?.metrics?.profit_factor ?? null;
-  const avgWin: number = data?.metrics?.avg_win ?? 0;
-  const avgLoss: number = data?.metrics?.avg_loss ?? 0;
-  const winRate: number = (data?.metrics?.win_rate ?? 0) * 100;
-  const totalTrades: number = data?.metrics?.total_trades ?? 0;
-  const recommendation: string = data?.recommendation ?? "";
+  const es = data?.engine_sim;
+  const pf: number | null = es?.profit_factor ?? null;
+  const avgWin: number = es && es.wins > 0 ? es.gross_win / es.wins : 0;
+  const avgLoss: number = es && es.losses > 0 ? -(es.gross_loss / es.losses) : 0;
+  const winRate: number = (es?.win_rate ?? 0) * 100;
+  const totalTrades: number = es?.trades ?? 0;
+  const recommendation: string = data?.headline ?? "";
   const trimmedRec = recommendation.length > 100 ? recommendation.slice(0, 100) + "…" : recommendation;
 
   const badgeVariant = pfBadgeVariant(pf);

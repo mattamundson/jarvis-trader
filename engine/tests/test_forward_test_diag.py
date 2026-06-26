@@ -39,7 +39,7 @@ def test_lineage_report_attaches_diag_without_changing_graduation(monkeypatch):
     # Stub the decision registry so the test is independent of registry files, and
     # force graduation to a known constant so we can prove the diagnostic does not move it.
     monkeypatch.setattr(dr, "load_registry", lambda: {})
-    monkeypatch.setattr(dr, "is_pre_registered", lambda lineage: True)
+    monkeypatch.setattr(dr, "is_pre_registered", lambda lineage, reg: True)
     monkeypatch.setattr(dr, "meets_graduation", lambda stats, reg: False)
 
     # A win-heavy lineage (the diagnostic would "pass") spread across multiple windows.
@@ -56,14 +56,20 @@ def test_lineage_report_attaches_diag_without_changing_graduation(monkeypatch):
 
 def test_markdown_includes_ts_p_column(monkeypatch):
     monkeypatch.setattr(dr, "load_registry", lambda: {})
-    monkeypatch.setattr(dr, "is_pre_registered", lambda lineage: True)
+    monkeypatch.setattr(dr, "is_pre_registered", lambda lineage, reg: True)
     monkeypatch.setattr(dr, "meets_graduation", lambda stats, reg: False)
     closed = [_trade(5.0, d) for d in (1, 35, 70)]
     report = {
-        "generated_at": "x", "window_days": 30, "graduation_rule": None,
-        "n_active_candidates": 0, "n_graduated": 0, "candidates": [],
+        "generated_at": "x",
+        "window_days": 30,
+        "graduation_rule": None,
+        "n_active_candidates": 0,
+        "n_graduated": 0,
+        "candidates": [],
         "lineages": ft.run_lineage_track(closed, window_days=30),
-        "n_lineages": 1, "n_lineages_graduated": 0, "symbol_context": {},
+        "n_lineages": 1,
+        "n_lineages_graduated": 0,
+        "symbol_context": {},
         "note": "n",
     }
     md = ft._markdown(report)
