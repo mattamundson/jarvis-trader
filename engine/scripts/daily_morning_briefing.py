@@ -322,10 +322,31 @@ def compute_jarvis_read(
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug(".env load for read skipped: %s", exc)
 
+    # Fold in the Phase E calibrator's feedback so the Read self-corrects.
+    hint = ""
+    shrink = 1.0
+    try:
+        from analytics.morning_levels_calibrator import calibration_hint, load_state
+
+        state = load_state()
+        if state:
+            hint = calibration_hint(state)
+            shrink = float((state.get("read_calibration") or {}).get("conviction_shrink", 1.0))
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("calibrator state unavailable: %s", exc)
+
     import asyncio
 
     try:
-        return asyncio.run(generate_read(briefing_date.isoformat(), levels_map, regime_map))
+        return asyncio.run(
+            generate_read(
+                briefing_date.isoformat(),
+                levels_map,
+                regime_map,
+                calibration_hint=hint,
+                conviction_shrink=shrink,
+            )
+        )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("JARVIS's Read generation failed: %s", exc)
         return _read_fallback("error")
