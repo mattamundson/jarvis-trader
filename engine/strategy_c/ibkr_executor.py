@@ -261,7 +261,8 @@ class StrategyCExecutor:
         if EXECUTION_LOG.exists():
             with open(EXECUTION_LOG) as f:
                 try:
-                    log = json.load(f)
+                    loaded = json.load(f)
+                    log = loaded if isinstance(loaded, list) else []
                 except Exception:
                     log = []
 
@@ -297,7 +298,8 @@ class StrategyCExecutor:
         if EXECUTION_LOG.exists():
             with open(EXECUTION_LOG) as f:
                 try:
-                    log = json.load(f)
+                    loaded = json.load(f)
+                    log = loaded if isinstance(loaded, list) else []
                 except Exception:
                     log = []
         log.append(paper_trade)
