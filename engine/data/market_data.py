@@ -134,6 +134,17 @@ FUTURES_EXCHANGE = {
     "ES": "CME",
     "MGC": "COMEX",
     "GC": "COMEX",
+    # CBOT (ECBOT) — Treasuries + grains. Without these the lookup default ("CME")
+    # builds a nonexistent CME contract → IB Error 200 "no security definition" →
+    # contract=None → stale-cache fallback. (Bug 2026-06-26: froze the ZB/ZN
+    # forward-shadow.) ZB/ZN are the live ones; the rest are mapped for correctness.
+    "ZB": "CBOT",
+    "ZN": "CBOT",
+    "ZF": "CBOT",
+    "ZT": "CBOT",
+    "ZC": "CBOT",
+    "ZS": "CBOT",
+    "ZW": "CBOT",
 }
 
 
@@ -1072,7 +1083,12 @@ class MarketDataManager:
                         age_hours = (datetime.utcnow() - last_ts).total_seconds() / 3600
                     if age_hours <= 72:
                         bars_per_day = {
-                            "1m": 390, "5m": 78, "15m": 26, "1h": 24, "4h": 6, "1d": 1
+                            "1m": 390,
+                            "5m": 78,
+                            "15m": 26,
+                            "1h": 24,
+                            "4h": 6,
+                            "1d": 1,
                         }.get(timeframe, 24)
                         n_bars = lookback_days * bars_per_day
                         cached_df = cached_df.tail(n_bars).copy()
