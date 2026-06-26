@@ -80,6 +80,26 @@ CONTRACT_SPECS: Dict[str, ContractSpec] = {
     "SPY": ContractSpec(multiplier=1.0, tick_size=0.01, commission=0.00, slippage_ticks=1),
     "QQQ": ContractSpec(multiplier=1.0, tick_size=0.01, commission=0.00, slippage_ticks=1),
     "IWM": ContractSpec(multiplier=1.0, tick_size=0.01, commission=0.00, slippage_ticks=1),
+    # Cash-settled index OPTIONS underlyings (SPX / VIX exposure via options vehicle).
+    # multiplier is the index-option contract multiplier ($100/index-point), tick_size
+    # is the option premium increment. commission is IB per-contract for index options.
+    # [ASSUMPTION] commission ($0.65/contract) is an IB tiered estimate; the backtest
+    # cost sweep (0.5x..4x) keeps gate verdicts robust to it.
+    #
+    # SPX  : full S&P 500 index options, cash-settled, European-style.
+    # XSP  : Mini-SPX index options = 1/10 of SPX level, same $100 multiplier.
+    # VIX  : VIX index is NOT directly tradeable — this spec is for VIX *options*.
+    #        Direct vol exposure uses the VX / VXM futures below.
+    "SPX": ContractSpec(multiplier=100.0, tick_size=0.05, commission=0.65, slippage_ticks=1),
+    "XSP": ContractSpec(multiplier=100.0, tick_size=0.01, commission=0.65, slippage_ticks=1),
+    "VIX": ContractSpec(multiplier=100.0, tick_size=0.05, commission=0.65, slippage_ticks=1),
+    # Volatility FUTURES (CFE). VX = standard VIX future ($1,000/pt), VXM = Micro VIX
+    # future ($100/pt). slippage is wider than equity micros — VX gaps through stops
+    # around vol spikes. [ASSUMPTION] commissions are IB CFE estimates pending live fills;
+    # cost sweep stresses them. These products carry roll/contango cost the trend cost
+    # model does NOT yet capture — flag before any forward-test promotion.
+    "VX":  ContractSpec(multiplier=1000.0, tick_size=0.05, commission=1.50, slippage_ticks=2),
+    "VXM": ContractSpec(multiplier=100.0,  tick_size=0.05, commission=0.37, slippage_ticks=1),
 }
 
 

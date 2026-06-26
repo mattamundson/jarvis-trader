@@ -117,6 +117,25 @@
         "p_binom": 0.0625
       },
       "caveats": "Only 7 OOS windows and INSUFFICIENT_SAMPLE. High p_edge (0.83) is encouraging but unproven."
+    },
+    {
+      "id": "MES_sma_trend_vix_pctile_blockCrisis_v1",
+      "symbol": "MES",
+      "family": "trend_vix_pctile",
+      "status": "paused",
+      "deployed_live": false,
+      "rank_basis": "DRAFT pre-registration (PR #120 follow-up); not yet ranked -- awaits a local walk-forward verdict before it can enter forward_testing.",
+      "hypothesis": "On MES, suppressing the SMA(60,200) golden-cross trend entry while VIX sits in the top percentile tier (Crisis, >85th of trailing 252d) preserves the rank11 trend edge with fewer degrees of freedom than the fixed vix_min/vix_max gate, by adapting to volatility-regime drift instead of fixed VIX prints.",
+      "params": {"fast": 60, "slow": 200, "atr_trail_mult": 2.0, "vix_regime_block": ["Crisis"], "vix_regime_lookback": 252, "momentum_window": 63},
+      "lock_in_sample": {
+        "gate_verdict": "PENDING",
+        "pf_ci_lower": null,
+        "p_edge": null,
+        "n_oos_windows": null,
+        "note": "Populate from engine/data/gate_v2_verdicts/MES_trend_vix_pctile_rank1.json after running backtest/run_mes_trend_vix_pctile_rank1.py where the MES cache + yfinance live. Baseline to beat: MES_trend_vix_rank1 p_edge=0.75 (ALT PASS)."
+      },
+      "activation_protocol": "DRAFT, INERT at status 'paused' (get_active_candidates returns only forward_testing; deployed_live=false). Flip to 'forward_testing' ONLY after the local rank1 run yields a gate-v2 PASS and its in-sample stats are copied into lock_in_sample. If that run's champion blocked-tier set differs from ['Crisis'], register a NEW id rather than mutating these frozen params.",
+      "caveats": "Params locked a-priori to block ONLY the Crisis tier (minimal DOF, AgentQuant default). Not yet validated -- no verdict exists until the runner is executed locally."
     }
   ]
 }
