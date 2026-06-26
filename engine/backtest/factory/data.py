@@ -74,3 +74,9 @@ def spec_for(symbol: str) -> dict:
     if symbol not in CONTRACT_SPECS:
         raise KeyError(f"no contract spec for '{symbol}' -- add it to CONTRACT_SPECS")
     return CONTRACT_SPECS[symbol]
+
+
+def has_cache(symbol: str, timeframe: str, cache_dir: str | Path) -> bool:
+    """True if at least one cache file exists for symbol+timeframe (no read)."""
+    prefix = _PREFIX_OVERRIDE.get(symbol, symbol)
+    return any(Path(cache_dir).glob(f"{prefix}_*_{timeframe}.csv"))

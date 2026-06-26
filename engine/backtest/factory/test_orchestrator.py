@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from backtest.factory.orchestrator import (
+    INTRADAY_TFS,
     Universe,
     enumerate_candidates,
+    factory_cards,
     pilot_cards,
     render_report,
 )
@@ -14,6 +16,18 @@ def test_pilot_cards_all_pass_the_gate():
     """Every shipped pilot card must clear the rationale/family gate."""
     for card in pilot_cards():
         assert card.is_valid(), f"{card.name} failed gate: {card.problems()}"
+
+
+def test_factory_cards_all_valid_and_intraday():
+    """Every comprehensive-library card clears the gate and is intraday-only."""
+    cards = factory_cards()
+    assert len(cards) >= 8
+    names = [c.name for c in cards]
+    assert len(names) == len(set(names)), "duplicate card names"
+    for card in cards:
+        assert card.is_valid(), f"{card.name} failed gate: {card.problems()}"
+        assert set(card.native_timeframes) <= set(INTRADAY_TFS), f"{card.name} not intraday-only"
+        assert "sma_trend" not in card.name  # daily-only -> calendar track
 
 
 def test_enumerate_intersects_universe():
@@ -73,7 +87,7 @@ def test_render_report_contains_sections():
         ],
     }
     report = render_report(summary)
-    assert "# Strategy-Factory Pilot Report" in report
+    assert "# Strategy-Factory Report" in report
     assert "global DSR n_trials = **24**" in report
     assert "## Kill / fail reasons" in report
     # overfit PBO must surface in the fail reason
