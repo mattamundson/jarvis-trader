@@ -65,3 +65,27 @@ def test_report_accumulating_then_metrics(tmp_path):
     rep = cpt.report_sleeve(s, track_base=tmp_path)
     assert rep["forward_n"] >= 1
     assert "sharpe_net" in rep and "max_dd_pct" in rep
+
+
+def test_pre_fomc_sleeves_registered():
+    assert "pre_fomc" in cpt.EFFECT_MASKS
+    assert cpt.Sleeve("TLT", "pre_fomc") in cpt.SLEEVES  # the gate-PASS
+    assert cpt.Sleeve("SPY", "pre_fomc") in cpt.SLEEVES  # the decay-watch
+
+
+def test_inline_fomc_table_matches_screener():
+    # The 271-date table is duplicated (inlined) for self-containment; this guards the
+    # two copies from drifting apart.
+    from backtest import daily_calendar_discovery as dcd
+
+    assert tuple(cpt._FOMC_DATES) == tuple(dcd.FOMC_ANNOUNCEMENTS)
+
+
+def test_mask_pre_fomc_flags_day_before_and_is_forward_safe():
+    idx = pd.DatetimeIndex(pd.bdate_range("2024-01-01", "2024-12-31"))
+    flagged = {str(d.date()) for d in idx[cpt.mask_pre_fomc(idx)]}
+    assert "2024-01-30" in flagged  # day before the 2024-01-31 decision
+    assert "2024-01-31" not in flagged  # the decision day itself is not the pre-day
+    # forward-safe: a window ending between meetings must not flag its last bar
+    short = pd.DatetimeIndex(pd.bdate_range("2024-02-05", "2024-02-15"))
+    assert not cpt.mask_pre_fomc(short).any()
