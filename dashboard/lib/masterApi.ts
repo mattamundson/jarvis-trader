@@ -12,7 +12,37 @@ export type MasterStatus = {
   domains: Record<string, DomainStatus>;
   system_ok: boolean;
   ts: string;
+  // Split-brain circuit-breaker signal from master-api. aggregation_ok is false
+  // when any domain's data is older than the staleness ceiling (the aggregate is
+  // serving a cache that stopped refreshing). Optional so older master-api builds
+  // (no field) default to trustworthy.
+  aggregation_ok?: boolean;
+  stale_domains?: string[];
 };
+
+export type AggregationBanner = { degraded: boolean; reason: string };
+
+/**
+ * Derive the dashboard's aggregation-health banner. Degraded when EITHER the
+ * fetch failed (master-api unreachable / crashlooping) or there is no body to
+ * trust, or the body reports aggregation_ok === false. Returns the reason
+ * (naming stale domains) so the banner can be specific instead of silently
+ * rendering stale-but-trustworthy-looking numbers.
+ */
+export function aggregationBannerState(
+  status: MasterStatus | null,
+  fetchFailed: boolean,
+): AggregationBanner {
+  if (fetchFailed || status == null) {
+    return { degraded: true, reason: "aggregation service unreachable" };
+  }
+  if (status.aggregation_ok === false) {
+    const stale = status.stale_domains ?? [];
+    const which = stale.length ? `: ${stale.join(", ")}` : "";
+    return { degraded: true, reason: `aggregation degraded — stale data${which}` };
+  }
+  return { degraded: false, reason: "" };
+}
 
 const BASE = process.env.NEXT_PUBLIC_MASTER_API_URL ?? "http://127.0.0.1:8030";
 const KEY = process.env.NEXT_PUBLIC_MASTER_API_KEY ?? "";
