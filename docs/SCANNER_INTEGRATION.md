@@ -228,10 +228,10 @@ signal_scanner = SignalScanner(
 ```
 
 **Recommended:**
-- **symbols**: Only scan validated instruments (WFE >= 0.57)
-  - MCL (crude oil, 1h, WFE=0.82) — APPROVED
-  - MNQ (micro Nasdaq, 1h, WFE=0.57) — APPROVED
-  - DO NOT scan MES (1h, WFE=0.09) — too much overfitting
+- **symbols**: Only scan active instruments (approved via gate v2, Tier-3 2026-05-24)
+  - MES (micro S&P, 1h, p_edge=0.75) — APPROVED
+  - MGC (micro gold, 1h, p_edge=0.6842) — APPROVED
+  - DO NOT scan MCL/MNQ (HALTED) or M2K (REJECTED)
 - **scan_interval_minutes**: 60 (balances latency vs API/broker load)
 
 ## Safety & Compliance

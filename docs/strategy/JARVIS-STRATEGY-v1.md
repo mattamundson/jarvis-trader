@@ -101,7 +101,7 @@ These are pulled directly from `INSTRUMENT_PARAMS` in `engine/backtest/signals.p
 
 **Enter SHORT** — mirror of LONG conditions, with `short_score ≥ 0.35` and STC bearish cross required.
 
-**⚠️ Status note:** `signals.py:100-102` says MES composite is "data collection only" because it "produced broken exit_date=None artifacts" in Sprint 16. The rules file says MES is HALTED with WFE 0.09. Before any MES trades land in paper_trades, Matt needs to explicitly confirm this is approved.
+**Status note (updated 2026-05-24):** MES 1h is now **APPROVED and active on paper** (Tier-3 auth, gate v2 ALT PASS, p_edge 0.75) using the SMA(60,200) trend config — not the old STC composite. The prior "data collection only" / WFE 0.09 framing is superseded. See `engine/CLAUDE.md` Active Instruments.
 
 ### B.4 — MGC (Micro Gold) — HALTED
 
@@ -435,9 +435,9 @@ Gap analysis against the rules/frameworks used by world-class traders. For each:
 
 > "Before you risk real money, prove the edge survived out-of-sample data."
 
-**JARVIS today:** Walk-Forward Efficiency (WFE) validation exists; MCL=0.82, MNQ=0.57, MES=0.09, MGC=0.14. Sprint 16 validated MCL params. Bootstrap p-value check exists in `proactive_validation` suite.
+**JARVIS today (2026-05-24):** Validation moved to gate v2 (p_edge / Monte Carlo / rolling WFO). Active paper: MES p_edge=0.75, MGC p_edge=0.6842 (both ALT gate v2 PASS). Halted: MCL (WFE 0.82) and MNQ (WFE 0.57) — `DO_NOT_TRADE`; M2K rejected. Bootstrap p-value check exists in `proactive_validation` suite.
 **Chan principle:** OOS Sharpe ≥ 1.0, WFE ≥ 0.5, Monte Carlo p-value ≤ 0.05. Regime-conditional performance (does edge hold in bull AND bear regimes?).
-**Gap:** Some instruments (MES, MGC) don't meet WFE threshold but params exist and can be accidentally used.
+**Gap:** Halted instruments (MCL, MNQ) still have params in code and can be accidentally used — `DO_NOT_TRADE_SYMBOLS` and `paper_config.enabled=False` are the guards.
 **Recommendation:** **ALREADY DOING** — but tighten: add a startup guard in `main.py` that refuses to activate any instrument below `WFE ≥ 0.50`. Currently only advisory via handoff notes.
 
 ### K.6 — James Simons / Renaissance: Signal Orthogonality

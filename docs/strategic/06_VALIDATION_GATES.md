@@ -54,7 +54,7 @@ These require **explicit Tier 3 / human confirmation** before merge to productio
 | [docs/strategy/](../strategy/) | Strategy canon, equations, rules |
 | [engine/backtest/](../../engine/backtest/) | Runners, walk-forward, optimizers |
 
-**MES note:** In-sample performance without acceptable WFE is **not** a license to trade. See validated-instruments narrative.
+**MES note:** In-sample headline performance (e.g. the old PF 5.3 / WFE 0.09 figures) is **not** a license to trade. MES was promoted to active paper on 2026-05-24 via the gate-v2 ALT path (p_edge 0.75), not the in-sample headline. See validated-instruments narrative.
 
 ---
 
