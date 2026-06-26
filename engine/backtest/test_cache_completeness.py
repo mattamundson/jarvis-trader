@@ -231,6 +231,104 @@ def test_scan_directory_sorts_holed_first_and_skips_unnamed():
     print("[PASS] scan_directory sorts holed-first, skips unnamed caches")
 
 
+def _make_picker_dir():
+    """A clean older-end cache (A) and a holed later-end cache (B) for the picker."""
+    import os
+    import tempfile
+
+    d = tempfile.mkdtemp()
+
+    def _write(name, stamps):
+        fp = os.path.join(d, name)
+        rows = ["timestamp,open,high,low,close,volume"]
+        for t in stamps:
+            rows.append(f"{t.isoformat()},1,1,1,1,1")
+        with open(fp, "w") as fh:
+            fh.write("\n".join(rows) + "\n")
+
+    # A: clean continuous 5m, Mon 2026-01-05 -> Fri 2026-01-09 (1440 bars), end 01-09
+    a = [_utc(2026, 1, 5) + timedelta(minutes=5 * i) for i in range(288 * 5)]
+    _write("SYM_2026-01-05_2026-01-09_5m_cont.csv", a)
+    # B: later end (01-16) but HOLED -- Jan 7+8 deleted (unexplained weekdays)
+    b = [
+        t
+        for t in (_utc(2026, 1, 5) + timedelta(minutes=5 * i) for i in range(288 * 12))
+        if t.date() not in (datetime(2026, 1, 7).date(), datetime(2026, 1, 8).date())
+    ]
+    _write("SYM_2026-01-05_2026-01-16_5m_cont.csv", b)
+    return d
+
+
+def test_picker_prefers_complete_over_holed_latest_end():
+    """Required window in the early range -> pick clean A, NOT the holed later B."""
+    from datetime import date
+
+    from backtest.cache_completeness import find_trustworthy_cache
+
+    d = _make_picker_dir()
+    r = find_trustworthy_cache(
+        d, "SYM", required_start=date(2026, 1, 5), required_end=date(2026, 1, 9)
+    )
+    assert r["path"].endswith("2026-01-09_5m_cont.csv"), r["path"]
+    assert r["fallback"] is False
+    assert r["latest_end_path"].endswith("2026-01-16_5m_cont.csv")
+    print("[PASS] picker prefers complete cache over holed latest-end")
+
+
+def test_picker_uses_latest_when_only_it_covers():
+    """Window in the late range only B covers -> pick B."""
+    from datetime import date
+
+    from backtest.cache_completeness import find_trustworthy_cache
+
+    d = _make_picker_dir()
+    r = find_trustworthy_cache(
+        d, "SYM", required_start=date(2026, 1, 12), required_end=date(2026, 1, 16)
+    )
+    assert r["path"].endswith("2026-01-16_5m_cont.csv"), r["path"]
+    assert r["fallback"] is False
+    print("[PASS] picker uses latest-end when only it covers the window")
+
+
+def test_picker_falls_back_when_none_cover():
+    """A window nobody covers -> fallback to latest-end, flagged."""
+    from datetime import date
+
+    from backtest.cache_completeness import find_trustworthy_cache
+
+    d = _make_picker_dir()
+    r = find_trustworthy_cache(
+        d, "SYM", required_start=date(2025, 1, 1), required_end=date(2025, 1, 3)
+    )
+    assert r["fallback"] is True
+    assert r["path"].endswith("2026-01-16_5m_cont.csv")
+    print("[PASS] picker falls back (flagged) when no cache covers the window")
+
+
+def test_picker_no_window_picks_latest_clean():
+    """No required window -> the latest-end FULLY-trustworthy cache (A, not holed B)."""
+    from backtest.cache_completeness import find_trustworthy_cache
+
+    d = _make_picker_dir()
+    r = find_trustworthy_cache(d, "SYM")
+    assert r["path"].endswith("2026-01-09_5m_cont.csv"), r["path"]
+    assert r["fallback"] is False
+    print("[PASS] picker (no window) picks latest fully-trustworthy cache")
+
+
+def test_picker_raises_when_no_match():
+    import tempfile
+
+    from backtest.cache_completeness import find_trustworthy_cache
+
+    try:
+        find_trustworthy_cache(tempfile.mkdtemp(), "NOPE")
+    except FileNotFoundError:
+        print("[PASS] picker raises FileNotFoundError when no cache matches")
+        return
+    raise AssertionError("expected FileNotFoundError")
+
+
 def main():
     tests = [
         test_interval_parsing,
@@ -246,6 +344,11 @@ def main():
         test_unsorted_input_is_sorted_first,
         test_inspect_cache_file_roundtrip,
         test_scan_directory_sorts_holed_first_and_skips_unnamed,
+        test_picker_prefers_complete_over_holed_latest_end,
+        test_picker_uses_latest_when_only_it_covers,
+        test_picker_falls_back_when_none_cover,
+        test_picker_no_window_picks_latest_clean,
+        test_picker_raises_when_no_match,
     ]
     failures = []
     for t in tests:
