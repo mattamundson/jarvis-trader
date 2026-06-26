@@ -326,6 +326,106 @@ def scan_directory(
     return out
 
 
+def find_trustworthy_cache(
+    data_dir,
+    prefix: str,
+    suffix: str = "_5m_cont.csv",
+    *,
+    required_start: Optional[date] = None,
+    required_end: Optional[date] = None,
+    holiday_dates: Optional[Iterable[date]] = US_MARKET_HOLIDAYS,
+    **kwargs,
+) -> dict:
+    """Completeness-aware companion to ``_find_latest_cache``.
+
+    ``_find_latest_cache`` picks the latest END date -- which does NOT imply the
+    file is complete: a holed late-end cache can beat a clean earlier one. This
+    picker inspects completeness and chooses:
+
+    * with a required [start, end] window: the latest-end cache whose
+      ``trustworthy_window`` COVERS that window; if none covers, falls back to the
+      latest-end file with ``fallback=True`` so the caller can warn/refuse;
+    * with no window: the latest-end cache that is fully trustworthy (zero
+      suspicious gaps); if none is clean, the latest-end file with ``fallback=True``.
+
+    Returns a dict: ``path``, ``fallback`` (bool), ``reason``, ``trustworthy_window``,
+    ``n_suspicious_gaps``, ``latest_end_path`` (what ``_find_latest_cache`` would
+    have returned). Purely advisory -- it does NOT mutate ``_find_latest_cache``;
+    callers opt in. Raises FileNotFoundError if no file matches the glob.
+    """
+    d = Path(data_dir)
+    candidates = sorted(d.glob(f"{prefix}_*{suffix}"))
+    if not candidates:
+        raise FileNotFoundError(
+            f"No {prefix}{suffix} cache in {d} (looked for '{prefix}_*{suffix}')"
+        )
+
+    def _end_key(p: Path) -> str:
+        parts = p.stem.split("_")
+        return parts[2] if len(parts) >= 3 else ""
+
+    candidates.sort(key=_end_key, reverse=True)  # latest end-date first
+    latest = candidates[0]
+    reports: list[tuple[Path, Optional[dict]]] = []
+    for p in candidates:
+        try:
+            reports.append((p, inspect_cache_file(p, holiday_dates=holiday_dates, **kwargs)))
+        except Exception:
+            reports.append((p, None))
+    latest_report = reports[0][1]
+
+    def _result(path, fallback, reason, rep):
+        return {
+            "path": str(path),
+            "fallback": bool(fallback),  # True only when NO trustworthy cache was found
+            "chose_latest_end": str(path) == str(latest),
+            "reason": reason,
+            "trustworthy_window": rep["trustworthy_window"] if rep else None,
+            "n_suspicious_gaps": rep["n_suspicious_gaps"] if rep else None,
+            "latest_end_path": str(latest),
+        }
+
+    if required_start or required_end:
+        for p, rep in reports:  # latest-end first
+            if rep is None:
+                continue
+            tw = rep["trustworthy_window"]
+            if tw["start"] is None or tw["end"] is None:
+                continue
+            if required_start and tw["start"].date() > required_start:
+                continue
+            if required_end and tw["end"].date() < required_end:
+                continue
+            reason = (
+                "latest end-date covers required window"
+                if p == latest
+                else "earlier end-date covers required window (latest end-date is holed over it)"
+            )
+            return _result(p, False, reason, rep)
+        return _result(
+            latest,
+            True,
+            "NO cache trustworthy over required window; fell back to latest end-date",
+            latest_report,
+        )
+
+    # No window: the latest-end fully-trustworthy cache.
+    for p, rep in reports:
+        if rep is not None and rep["n_suspicious_gaps"] == 0:
+            reason = (
+                "latest end-date is fully trustworthy"
+                if p == latest
+                else "earlier end-date is fully trustworthy (latest end-date is holed)"
+            )
+            return _result(p, False, reason, rep)
+    return _result(
+        latest,
+        True,
+        "no fully-trustworthy cache; latest end-date has suspicious gaps",
+        latest_report,
+    )
+
+
 def _main(argv: Optional[Sequence[str]] = None) -> int:
     import argparse
 
