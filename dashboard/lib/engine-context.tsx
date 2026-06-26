@@ -227,10 +227,10 @@ export function EngineDataProvider({ children }: { children: React.ReactNode }) 
     useSWR<SchedulerData>("/scheduler/status", ef, swrOpts);
 
   const { data: system2, error: system2Error, mutate: mutateSystem2 } =
-    useSWR<System2Status>("/engine/system2/status", ef, swrOpts);
+    useSWR<System2Status>("/system2/status", ef, swrOpts);
 
   const { data: strategyC, error: strategyCError, mutate: mutateStrategyC } =
-    useSWR<StrategyCSignal>("/engine/v1/strategy_c/signal", ef, swrOpts);
+    useSWR<StrategyCSignal>("/v1/strategy_c/signal", ef, swrOpts);
 
   // ── Derive isOffline from health ───────────────────────────────────────────
 
