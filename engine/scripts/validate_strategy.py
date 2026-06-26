@@ -43,6 +43,7 @@ Usage (from engine/):
 If any aux-input flag is omitted the alt-evidence path is scored as UNSCORED
 and the overall verdict is driven by the core gate alone.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,6 +66,7 @@ from backtest.monte_carlo import (  # noqa: E402
     bootstrap_sharpe,
     moving_block_bootstrap,
 )
+from backtest.stationarity_gate import h1_h2_split  # noqa: E402
 
 # Revised gate v2 thresholds — see memo project_gate_v2_proposal.md (2026-04-21)
 CORE_GATE = {
@@ -132,8 +134,7 @@ def _load_result(results_file: Path, rank: int) -> dict:
     }
 
 
-def _load_result_from_wfo(results_file: Path, symbol: str, rank: int,
-                          window: str = "test") -> dict:
+def _load_result_from_wfo(results_file: Path, symbol: str, rank: int, window: str = "test") -> dict:
     """Load rank-th result from multi_symbol_trend_wfo output (nested shape)."""
     with open(results_file, "r") as f:
         doc = json.load(f)
@@ -169,8 +170,10 @@ def _extract_pnls(combo: dict, window: str | None = None) -> list[float]:
         trades = combo.get("trades", [])
 
     if not trades:
-        raise ValueError("No 'trades' field in result. Re-run research script to "
-                         "regenerate JSON — per-trade emission was added in A2.")
+        raise ValueError(
+            "No 'trades' field in result. Re-run research script to "
+            "regenerate JSON — per-trade emission was added in A2."
+        )
     return [float(t["pnl"]) for t in trades]
 
 
@@ -392,19 +395,24 @@ def _load_aux_evidence(
     return aux
 
 
-def validate(pnls: list[float], n_grid_trials: int,
-             initial_capital: float = 10_000.0,
-             n_resamples: int = 10_000,
-             seed: int = 42) -> dict:
+def validate(
+    pnls: list[float],
+    n_grid_trials: int,
+    initial_capital: float = 10_000.0,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
     """Run the full validation battery on a PnL list.
 
     Returns the report dict without the gate-evaluation wrapper — useful for
     programmatic callers (tests, notebooks, bulk sweeps).
     """
     pnls_arr = np.asarray(pnls, dtype=float)
-    raw_pf = float(
-        pnls_arr[pnls_arr > 0].sum() / max(abs(pnls_arr[pnls_arr < 0].sum()), 1e-12)
-    ) if len(pnls_arr) > 0 else 0.0
+    raw_pf = (
+        float(pnls_arr[pnls_arr > 0].sum() / max(abs(pnls_arr[pnls_arr < 0].sum()), 1e-12))
+        if len(pnls_arr) > 0
+        else 0.0
+    )
 
     # Returns-as-fraction-of-capital for Sharpe computation (per-trade basis)
     returns = pnls_arr / initial_capital
@@ -418,38 +426,56 @@ def validate(pnls: list[float], n_grid_trials: int,
         },
         "bootstrap_iid": bootstrap_pf(pnls_arr, n_resamples=n_resamples, seed=seed),
         "bootstrap_block": moving_block_bootstrap(pnls_arr, n_resamples=n_resamples, seed=seed),
-        "sharpe_ci": bootstrap_sharpe(pnls_arr, initial_capital=initial_capital,
-                                       n_resamples=n_resamples, seed=seed),
-        "drawdown_mc": bootstrap_max_dd(pnls_arr, initial_capital=initial_capital,
-                                         n_resamples=n_resamples, seed=seed),
+        "sharpe_ci": bootstrap_sharpe(
+            pnls_arr, initial_capital=initial_capital, n_resamples=n_resamples, seed=seed
+        ),
+        "drawdown_mc": bootstrap_max_dd(
+            pnls_arr, initial_capital=initial_capital, n_resamples=n_resamples, seed=seed
+        ),
         "deflated_sharpe": deflated_sharpe_from_returns(
-            returns=returns.tolist(), n_trials=n_grid_trials, ann_factor=252.0,
+            returns=returns.tolist(),
+            n_trials=n_grid_trials,
+            ann_factor=252.0,
         ),
     }
 
 
 def main():
     ap = argparse.ArgumentParser(description="Tier A strategy validator")
-    ap.add_argument("--results-file", required=True,
-                    help="Path to research-script results JSON")
-    ap.add_argument("--rank", type=int, default=1,
-                    help="1-indexed rank within results[] (1 = best PF)")
-    ap.add_argument("--symbol", default=None,
-                    help="Required for WFO-shaped JSONs (multi_symbol_trend_wfo)")
-    ap.add_argument("--window", default="test", choices=["train", "test"],
-                    help="For WFO-shaped JSONs: which window to validate")
-    ap.add_argument("--output", default=None,
-                    help="Output report JSON path (default: derived from input)")
+    ap.add_argument("--results-file", required=True, help="Path to research-script results JSON")
+    ap.add_argument(
+        "--rank", type=int, default=1, help="1-indexed rank within results[] (1 = best PF)"
+    )
+    ap.add_argument(
+        "--symbol", default=None, help="Required for WFO-shaped JSONs (multi_symbol_trend_wfo)"
+    )
+    ap.add_argument(
+        "--window",
+        default="test",
+        choices=["train", "test"],
+        help="For WFO-shaped JSONs: which window to validate",
+    )
+    ap.add_argument(
+        "--output", default=None, help="Output report JSON path (default: derived from input)"
+    )
     ap.add_argument("--initial-capital", type=float, default=10_000.0)
     ap.add_argument("--n-resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--rolling-wfo", default=None,
-                    help="Path to rolling_wfo_validator report JSON (alt-path input)")
-    ap.add_argument("--fixed-params", default=None,
-                    help="Path to fixed_params_temporal_validator report JSON "
-                         "(alt-path input)")
-    ap.add_argument("--cost-sweep", default=None,
-                    help="Path to cost_sensitivity_sweep report JSON (alt-path input)")
+    ap.add_argument(
+        "--rolling-wfo",
+        default=None,
+        help="Path to rolling_wfo_validator report JSON (alt-path input)",
+    )
+    ap.add_argument(
+        "--fixed-params",
+        default=None,
+        help="Path to fixed_params_temporal_validator report JSON " "(alt-path input)",
+    )
+    ap.add_argument(
+        "--cost-sweep",
+        default=None,
+        help="Path to cost_sensitivity_sweep report JSON (alt-path input)",
+    )
     args = ap.parse_args()
 
     results_file = Path(args.results_file).resolve()
@@ -479,9 +505,13 @@ def main():
     print(f"Validating: {loaded['symbol']} rank={args.rank} params={params_str}", flush=True)
     print(f"  n_trades={len(pnls)} n_grid_trials={loaded['n_grid_trials']}", flush=True)
 
-    report = validate(pnls, n_grid_trials=loaded["n_grid_trials"],
-                      initial_capital=args.initial_capital,
-                      n_resamples=args.n_resamples, seed=args.seed)
+    report = validate(
+        pnls,
+        n_grid_trials=loaded["n_grid_trials"],
+        initial_capital=args.initial_capital,
+        n_resamples=args.n_resamples,
+        seed=args.seed,
+    )
 
     aux = _load_aux_evidence(
         rolling_wfo_path=Path(args.rolling_wfo).resolve() if args.rolling_wfo else None,
@@ -490,6 +520,13 @@ def main():
     )
     gate = _evaluate_gate_v2(report, aux_evidence=aux)
     report["gate_v2"] = gate
+    # Record-first H1/H2 chronological stationarity (ADVISORY — does NOT affect
+    # the verdict this cycle). The campaign's #1 lesson: a pooled bootstrap PF-CI
+    # passes back-loaded non-stationary edges (ES-NQ: H1 PF 0.91 / H2 7.96).
+    # `pnls` is the per-trade series in execution order. Logged now to accrue a
+    # cycle of evidence before promoting H1/H2 to a blocking gate criterion; it is
+    # deliberately NOT read into `gate`. See backtest/stationarity_gate.py.
+    report["stationarity"] = h1_h2_split(pnls)
     if aux is not None:
         report["aux_evidence"] = aux
     report["strategy"] = {
@@ -504,27 +541,52 @@ def main():
 
     # Print summary
     print("\n=== TIER A VALIDATION REPORT ===", flush=True)
-    print(f"Raw:        PF={report['raw']['pf']:.3f}  net_pnl=${report['raw']['net_pnl']}  n={report['raw']['n_trades']}", flush=True)
-    print(f"Bootstrap:  PF median={report['bootstrap_iid']['median_pf']:.3f}  "
-          f"CI=[{report['bootstrap_iid']['pf_ci_95_low']:.3f}, "
-          f"{report['bootstrap_iid']['pf_ci_95_high']:.3f}]  "
-          f"p_edge={report['bootstrap_iid']['p_positive_edge']:.3f}", flush=True)
-    print(f"Block-bs:   PF median={report['bootstrap_block']['median_pf']:.3f}  "
-          f"CI=[{report['bootstrap_block']['pf_ci_95_low']:.3f}, "
-          f"{report['bootstrap_block']['pf_ci_95_high']:.3f}]  "
-          f"block={report['bootstrap_block']['block_size']}", flush=True)
-    print(f"Sharpe:     median={report['sharpe_ci']['median_sharpe']:.3f}  "
-          f"CI=[{report['sharpe_ci']['sharpe_ci_95_low']:.3f}, "
-          f"{report['sharpe_ci']['sharpe_ci_95_high']:.3f}]", flush=True)
-    print(f"MaxDD MC:   obs={report['drawdown_mc']['observed_max_dd_pct']:.2f}%  "
-          f"95th={report['drawdown_mc']['mc_95th']:.2f}%  99th={report['drawdown_mc']['mc_99th']:.2f}%", flush=True)
-    print(f"DSR:        raw_sr={report['deflated_sharpe']['raw_sharpe']:.3f}  "
-          f"E[max|N]={report['deflated_sharpe']['expected_max_sharpe']:.3f}  "
-          f"dsr={report['deflated_sharpe']['dsr']:.3f}  "
-          f"passes_10pct={report['deflated_sharpe']['passes_at_10pct']}", flush=True)
+    print(
+        f"Raw:        PF={report['raw']['pf']:.3f}  net_pnl=${report['raw']['net_pnl']}  n={report['raw']['n_trades']}",
+        flush=True,
+    )
+    print(
+        f"Bootstrap:  PF median={report['bootstrap_iid']['median_pf']:.3f}  "
+        f"CI=[{report['bootstrap_iid']['pf_ci_95_low']:.3f}, "
+        f"{report['bootstrap_iid']['pf_ci_95_high']:.3f}]  "
+        f"p_edge={report['bootstrap_iid']['p_positive_edge']:.3f}",
+        flush=True,
+    )
+    print(
+        f"Block-bs:   PF median={report['bootstrap_block']['median_pf']:.3f}  "
+        f"CI=[{report['bootstrap_block']['pf_ci_95_low']:.3f}, "
+        f"{report['bootstrap_block']['pf_ci_95_high']:.3f}]  "
+        f"block={report['bootstrap_block']['block_size']}",
+        flush=True,
+    )
+    print(
+        f"Sharpe:     median={report['sharpe_ci']['median_sharpe']:.3f}  "
+        f"CI=[{report['sharpe_ci']['sharpe_ci_95_low']:.3f}, "
+        f"{report['sharpe_ci']['sharpe_ci_95_high']:.3f}]",
+        flush=True,
+    )
+    print(
+        f"MaxDD MC:   obs={report['drawdown_mc']['observed_max_dd_pct']:.2f}%  "
+        f"95th={report['drawdown_mc']['mc_95th']:.2f}%  99th={report['drawdown_mc']['mc_99th']:.2f}%",
+        flush=True,
+    )
+    print(
+        f"DSR:        raw_sr={report['deflated_sharpe']['raw_sharpe']:.3f}  "
+        f"E[max|N]={report['deflated_sharpe']['expected_max_sharpe']:.3f}  "
+        f"dsr={report['deflated_sharpe']['dsr']:.3f}  "
+        f"passes_10pct={report['deflated_sharpe']['passes_at_10pct']}",
+        flush=True,
+    )
     passed_via = gate["passed_via"] or "—"
     print(
         f"\nGate v2 verdict: {gate['verdict']} (via {passed_via})",
+        flush=True,
+    )
+    _st = report["stationarity"]
+    print(
+        f"  H1/H2 (advisory): consistent={_st['consistent']} "
+        f"h1_pf={_st['h1_pf']} h2_pf={_st['h2_pf']} "
+        f"(n {_st['h1_n']}/{_st['h2_n']}) — NOT gated this cycle",
         flush=True,
     )
     print(
@@ -550,8 +612,11 @@ def main():
     if args.output:
         out_path = Path(args.output).resolve()
     else:
-        out_path = results_file.parent / "validation_reports" / \
-                   f"{loaded['symbol']}_rank{args.rank}_report.json"
+        out_path = (
+            results_file.parent
+            / "validation_reports"
+            / f"{loaded['symbol']}_rank{args.rank}_report.json"
+        )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(report, f, indent=2)
