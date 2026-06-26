@@ -74,6 +74,22 @@ PAIR_REGISTRY: dict[str, dict] = {
         "lineage": "mes_m2k_spread_v1",
         "subdir": "MES-M2K",
     },
+    # ZB-ZN (30y bond / 10y note curve slope) -- the strategy-factory's first gate-v2
+    # PASS (via ALT). Tracked at its GATE-EVALUATED config (window 60 / 1bps), not the
+    # global DEFAULT_PARAMS, so the forward record faithfully reproduces the strategy
+    # that passed. CAVEAT (load-bearing): this 1:1 log spread is duration-CONTAMINATED
+    # -- the duration-neutral (DV01) re-test FAILS the gate, so a chunk of the pass is
+    # unhedged net-duration (rate-level reversion), not pure curve RV. The forward record
+    # is precisely the adjudicator of whether the 1:1 edge persists or decays.
+    "ZB-ZN": {
+        "sym_a": "ZB",
+        "sym_b": "ZN",
+        "symbol": "ZB_ZN_SPREAD",
+        "lineage": "zb_zn_spread_v1",
+        "subdir": "ZB-ZN",
+        "params": {"window": 60, "entry": 2.0, "exit": 0.5, "stop": 4.0},
+        "cost_bps_per_leg": 1.0,
+    },
 }
 # Synthetic dollar-neutral book: per-leg notional. pnl = net_spread_log_return * NOTIONAL.
 # A 1% spread move on the book ~= $200. This is a unit book for readability, NOT real
@@ -277,8 +293,11 @@ def run_once(
 
     `pair` keys into PAIR_REGISTRY; ES-NQ keeps the legacy root ledger (subdir="") so its
     live forward record is undisturbed, MES-M2K writes to its own subdir."""
-    params = params or DEFAULT_PARAMS
     cfg = PAIR_REGISTRY[pair]
+    # Per-pair overrides (default to the global a-priori params) so a pair can be tracked
+    # at its own gate-evaluated config without disturbing the existing pairs' behavior.
+    params = params or cfg.get("params", DEFAULT_PARAMS)
+    cost_bps_per_leg = cfg.get("cost_bps_per_leg", cost_bps_per_leg)
     sym_a, sym_b = cfg["sym_a"], cfg["sym_b"]
     td = _track_dir(track_base, cfg["subdir"])
     now = datetime.now(timezone.utc).isoformat()
