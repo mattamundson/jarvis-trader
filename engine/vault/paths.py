@@ -81,11 +81,7 @@ def iter_recent_notes(
         return []
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     cutoff_ts = cutoff.timestamp()
-    recent = [
-        p
-        for p in base.rglob("*.md")
-        if p.is_file() and p.stat().st_mtime >= cutoff_ts
-    ]
+    recent = [p for p in base.rglob("*.md") if p.is_file() and p.stat().st_mtime >= cutoff_ts]
     recent.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return recent
 
@@ -109,7 +105,11 @@ def read_notes_text(
         except (OSError, UnicodeDecodeError):
             continue
         try:
-            label = str(path.relative_to(base))
+            # as_posix() forces forward slashes so the LLM-facing citation label is
+            # identical on every OS. str(PurePath) uses backslashes on Windows, which
+            # both reads wrong in a citation and broke test_read_notes_text on Windows
+            # (it asserts "02-Theses/thesis.md"); CI on Linux never saw the divergence.
+            label = path.relative_to(base).as_posix()
         except ValueError:
             label = path.name
         if len(text) > max_chars_each:
