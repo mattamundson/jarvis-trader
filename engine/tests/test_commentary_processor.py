@@ -19,12 +19,17 @@ because the Anthropic API was returning HTTP 400 (credit-balance).
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import date, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 
-from discord.commentary_processor import CoreyCommentaryProcessor
+from discord.commentary_processor import (
+    TATHEDOG_AUTHOR_ID,
+    CoreyCommentaryProcessor,
+    _neutral_bias,
+)
 
 
 def _make_failing_async_client(exc: Exception) -> MagicMock:
@@ -174,6 +179,162 @@ async def test_get_session_bias_still_caches_no_rows_branch():
     assert result.data_quality == "none"
     assert result.message_count == 0
     save_mock.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Stale "no-data" cache eviction (backfilled commentary) — bug fix #1.
+#
+# A none/msgs=0 cache row records "no commentary existed at compute time". But
+# #market-updates ingestion can backfill a date hours later (or after a
+# multi-day ingestion gap). The old _load_from_cache trusted msgs=0 rows as
+# permanently stable, so the directional read was never recovered and corey's
+# signal stayed 0.0 forever — starving the IC calibration (corey-IC=0,
+# ready=False). These tests pin the recheck-and-evict behavior.
+# ---------------------------------------------------------------------------
+
+
+def _seed_commentary_table(db_path: str) -> None:
+    """Create the discord_corey_commentary table matching the live schema fields
+    that _fetch_commentary / _count_commentary filter on."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discord_corey_commentary (
+                content   TEXT,
+                timestamp TEXT,
+                channel   TEXT,
+                author_id TEXT
+            )
+            """
+        )
+        conn.commit()
+
+
+def _insert_market_update(db_path: str, for_date: date, content: str = "MES bid") -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO discord_corey_commentary (content, timestamp, channel, author_id) "
+            "VALUES (?, ?, 'market-updates', NULL)",
+            (content, f"{for_date.isoformat()}T14:30:00+00:00"),
+        )
+        conn.commit()
+
+
+def test_load_from_cache_evicts_stale_no_data_when_commentary_backfilled(tmp_path):
+    """A cached none/msgs=0 row must be evicted once commentary is ingested for
+    that date — the row is stale, not 'stable no data'. Eviction returns None so
+    get_session_bias re-extracts the real directional bias."""
+    db = str(tmp_path / "jarvis_trader.db")
+    proc = CoreyCommentaryProcessor(api_key="test-key", db_path=db)  # creates cache table
+    _seed_commentary_table(db)
+
+    d = date(2026, 6, 24)
+    # Cache the premature neutral (computed when ingestion hadn't caught up).
+    proc._save_to_cache(_neutral_bias(d, message_count=0))
+    # Commentary is backfilled afterward.
+    _insert_market_update(db, d)
+
+    result = proc._load_from_cache(d)
+
+    assert result is None, "stale none/msgs=0 row should be evicted once commentary exists"
+    # Row is gone from the table (forces re-extraction on next get_session_bias).
+    with sqlite3.connect(db) as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM corey_session_bias WHERE date = ?", (d.isoformat(),)
+        ).fetchone()[0]
+    assert n == 0, "evicted row should be deleted from cache"
+
+
+def test_load_from_cache_keeps_no_data_when_still_empty(tmp_path):
+    """Counterpart: a genuinely-empty day (no commentary, e.g. weekend/holiday)
+    keeps its cached neutral and is NOT evicted — the answer is stable, and we
+    must not thrash the LLM on every pipeline call for a day that will never
+    have data."""
+    db = str(tmp_path / "jarvis_trader.db")
+    proc = CoreyCommentaryProcessor(api_key="test-key", db_path=db)
+    _seed_commentary_table(db)  # table exists but holds no rows for the date
+
+    d = date(2026, 6, 20)
+    proc._save_to_cache(_neutral_bias(d, message_count=0))
+
+    result = proc._load_from_cache(d)
+
+    assert result is not None, "stable no-data row must be returned, not evicted"
+    assert result.data_quality == "none"
+    assert result.message_count == 0
+    assert result.directional_bias == "neutral"
+
+
+def test_load_from_cache_evict_recheck_tolerates_missing_commentary_table(tmp_path):
+    """If the commentary table is absent (fresh/standalone DB), the recheck must
+    not raise — it degrades to 'still empty' and returns the cached row."""
+    db = str(tmp_path / "jarvis_trader.db")
+    proc = CoreyCommentaryProcessor(api_key="test-key", db_path=db)
+    # Deliberately do NOT create discord_corey_commentary.
+
+    d = date(2026, 6, 20)
+    proc._save_to_cache(_neutral_bias(d, message_count=0))
+
+    result = proc._load_from_cache(d)  # must not raise
+
+    assert result is not None
+    assert result.data_quality == "none"
+
+
+def test_purge_stale_no_data_cache_evicts_only_backfilled_dates(tmp_path):
+    """Maintenance sweep: purge_stale_no_data_cache evicts none/msgs=0 rows whose
+    date now has commentary, and leaves genuinely-empty dates alone."""
+    db = str(tmp_path / "jarvis_trader.db")
+    proc = CoreyCommentaryProcessor(api_key="test-key", db_path=db)
+    _seed_commentary_table(db)
+
+    backfilled = date(2026, 6, 24)  # has commentary now
+    still_empty = date(2026, 6, 20)  # weekend / no posts
+    proc._save_to_cache(_neutral_bias(backfilled, message_count=0))
+    proc._save_to_cache(_neutral_bias(still_empty, message_count=0))
+    _insert_market_update(db, backfilled)
+
+    evicted = proc.purge_stale_no_data_cache()
+
+    assert evicted == [backfilled.isoformat()]
+    with sqlite3.connect(db) as conn:
+        remaining = {r[0] for r in conn.execute("SELECT date FROM corey_session_bias").fetchall()}
+    assert backfilled.isoformat() not in remaining, "backfilled stale row should be purged"
+    assert still_empty.isoformat() in remaining, "genuinely-empty date must be retained"
+
+
+def test_purge_stale_no_data_cache_ignores_directional_and_poisoned_rows(tmp_path):
+    """The sweep only touches none/msgs=0 rows — directional (fresh) rows and
+    poisoned (none/msgs>0) rows are out of scope and left for the per-call path."""
+    from discord.commentary_processor import CoreySessionBias
+
+    db = str(tmp_path / "jarvis_trader.db")
+    proc = CoreyCommentaryProcessor(api_key="test-key", db_path=db)
+    _seed_commentary_table(db)
+
+    directional = date(2026, 6, 25)
+    proc._save_to_cache(
+        CoreySessionBias(
+            date=directional,
+            session_type="range_day",
+            directional_bias="bearish",
+            key_levels=[],
+            ib_bias="below_ib",
+            specific_triggers=[],
+            conviction=0.65,
+            corey_quote="fading the high",
+            message_count=62,
+            data_quality="fresh",
+        )
+    )
+    _insert_market_update(db, directional)  # commentary present, but row is directional
+
+    evicted = proc.purge_stale_no_data_cache()
+
+    assert evicted == [], "directional/fresh rows must not be purged"
+    with sqlite3.connect(db) as conn:
+        n = conn.execute("SELECT COUNT(*) FROM corey_session_bias").fetchone()[0]
+    assert n == 1
 
 
 def _failure_result(for_date, n_rows):
