@@ -53,6 +53,92 @@ def test_mask_pre_holiday_detects_gap():
     assert "2024-01-16" in flagged
 
 
+def test_mask_post_holiday_detects_day_after_gap():
+    # Drop Wed 2024-01-17; the 18th is the first trading day AFTER the gap.
+    idx = _bdays("2024-01-15", "2024-01-19").delete(2)  # remove the 17th
+    m = dcd.mask_post_holiday(idx)
+    flagged = {str(d.date()) for d in idx[m]}
+    assert "2024-01-18" in flagged
+    assert "2024-01-16" not in flagged  # that's the PRE-holiday day, not post
+    # a normal Monday-after-Friday must NOT be flagged as post-holiday
+    assert "2024-01-16" not in flagged
+
+
+def test_mask_santa_claus_spans_year_boundary():
+    idx = _bdays("2023-12-01", "2024-01-31")
+    m = dcd.mask_santa_claus(idx, n_dec=5, n_jan=2)
+    flagged = {str(d.date()) for d in idx[m]}
+    # last trading day of Dec 2023 is the 29th (Fri); first 2 of Jan 2024 are 1(holiday-free bday)/2
+    assert "2023-12-29" in flagged  # within last 5 of December
+    assert "2024-01-01" in flagged or "2024-01-02" in flagged  # within first 2 of January
+    assert "2023-12-15" not in flagged  # mid-December excluded
+    # never selects a non Dec/Jan month
+    assert set(idx[m].month) <= {12, 1}
+
+
+def test_mask_last_day_of_month_is_single_day_per_month():
+    idx = _bdays("2024-01-01", "2024-03-31")
+    m = dcd.mask_last_day_of_month(idx)
+    flagged = sorted(str(d.date()) for d in idx[m])
+    # exactly one day per month, each the month's final trading day
+    assert flagged == ["2024-01-31", "2024-02-29", "2024-03-29"]
+
+
+def test_mask_opex_week_ends_on_third_friday():
+    idx = _bdays("2024-01-01", "2024-01-31")
+    m = dcd.mask_opex_week(idx)
+    flagged = {str(d.date()) for d in idx[m]}
+    # Jan 2024 3rd Friday = the 19th; its Mon-Fri week is the 16th-19th (15th is MLK holiday
+    # but present in a bday index). The 3rd Friday itself must be in; a prior week must not.
+    assert "2024-01-19" in flagged
+    assert "2024-01-18" in flagged  # Thursday of opex week
+    assert "2024-01-12" not in flagged  # 2nd Friday, prior week
+    assert "2024-01-26" not in flagged  # 4th Friday, following week
+
+
+def test_mask_pre_fomc_flags_day_before_each_scheduled_announcement():
+    # 2024 scheduled FOMC announcement (last-day) dates and their pre-FOMC days:
+    #   01-31->01-30, 03-20->03-19, 05-01->04-30, 06-12->06-11,
+    #   07-31->07-30, 09-18->09-17, 11-07->11-06, 12-18->12-17
+    idx = _bdays("2024-01-01", "2024-12-31")
+    flagged = {str(d.date()) for d in idx[dcd.mask_pre_fomc(idx)]}
+    expected = {
+        "2024-01-30",
+        "2024-03-19",
+        "2024-04-30",
+        "2024-06-11",
+        "2024-07-30",
+        "2024-09-17",
+        "2024-11-06",
+        "2024-12-17",
+    }
+    assert flagged == expected
+    # the announcement day itself is NOT the pre-FOMC day
+    assert "2024-01-31" not in flagged
+
+
+def test_mask_pre_fomc_does_not_flag_last_bar_for_a_future_meeting():
+    # Window ends 2024-02-15, between the Jan (pre-day 01-30) and Mar (pre-day 03-19)
+    # meetings -> no pre-FOMC day falls inside, and the future March meeting must NOT
+    # cause the last bar to be flagged (the day-before guard).
+    idx = _bdays("2024-02-05", "2024-02-15")
+    assert not dcd.mask_pre_fomc(idx).any()
+
+
+def test_fomc_announcement_table_integrity():
+    ts = dcd._FOMC_TS
+    # sorted, unique, ~8/yr from 1994 onward
+    assert list(ts) == sorted(ts)
+    assert len(set(ts)) == len(ts)
+    assert ts.min().year == 1994 and ts.max().year >= 2026
+    # the first-ever FOMC announcement (1994-02-04) anchors the series
+    assert pd.Timestamp("1994-02-04") in set(ts)
+    # the cancelled 2020 March meeting (would have ended 03-18) is excluded
+    assert pd.Timestamp("2020-03-18") not in set(ts)
+    # emergency intermeeting cuts are excluded (e.g. 2008-10-08 coordinated cut)
+    assert pd.Timestamp("2008-10-08") not in set(ts)
+
+
 # --------------------------------------------------------------- returns + grade
 def test_effect_returns_long_on_mask_net_of_cost():
     idx = _bdays("2024-01-01", "2024-01-10")
