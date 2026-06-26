@@ -39,7 +39,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from analytics.permutation_test import permute_and_score, run_insample_mcpt, validate_strategy
+from analytics.permutation_test import (
+    bootstrap_metric_ci,
+    permute_and_score,
+    run_insample_mcpt,
+    validate_strategy,
+)
 
 _HERE = Path(__file__).resolve().parent
 CACHE_DIR = _HERE / "cache"
@@ -380,6 +385,12 @@ def cmd_trades(args: argparse.Namespace) -> int:
     res = permute_and_score(pnls, n_iters=args.iters, metric=args.metric)
     print(f"trade-sign test ({res['metric']}): real_score={res['real_score']} "
           f"p={res['p_value']} pass(<{res['alpha']})={res['passes']} n_trades={res['n_trades']}")
+    if args.bootstrap:
+        ci = bootstrap_metric_ci(pnls, n_iters=args.boot_iters, metric=args.metric)
+        lvl = int(round(ci["ci"] * 100))
+        print(f"bootstrap CI ({ci['metric']}): real={ci['real_score']} "
+              f"{lvl}% CI=[{ci['ci_lower']:.4f}, {ci['ci_upper']:.4f}] "
+              f"P(<=no-edge)={ci['p_null']} n_trades={ci['n_trades']}")
     return 0
 
 
@@ -418,6 +429,9 @@ def build_parser() -> argparse.ArgumentParser:
     pt.add_argument("--symbol", default=None)
     pt.add_argument("--metric", default="mean", choices=("mean", "total", "sharpe", "profit_factor"))
     pt.add_argument("--iters", type=int, default=500)
+    pt.add_argument("--bootstrap", action="store_true",
+                    help="also print a bootstrap CI on the metric (estimate width; key on small N)")
+    pt.add_argument("--boot-iters", type=int, default=2000, help="bootstrap resamples")
     pt.set_defaults(func=cmd_trades)
 
     ps = sub.add_parser("make-sample", help="write synthetic sample price CSV + trades DB")

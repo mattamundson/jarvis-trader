@@ -4,90 +4,84 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Target } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
-
-interface PerformanceData {
-  profit_factor: number;
-  sharpe_ratio: number;
-  win_rate: number;
-  total_trades: number;
-  max_drawdown: number;
-  trading_days: number;
-}
+import {
+  maxDrawdownPct,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 interface Criterion {
   label: string;
   threshold: string;
-  passed: boolean;
+  /** null = indeterminate (not countable as pass or fail) */
+  passed: boolean | null;
   displayValue: string;
 }
 
-function buildCriteria(data: PerformanceData): Criterion[] {
-  const profitFactor = data.profit_factor;
-  const sharpeRatio = data.sharpe_ratio;
-  const winRatePct = data.win_rate * 100;
-  const totalTrades = data.total_trades;
-  const tradingDays = data.trading_days;
-  const maxDrawdownPct = Math.abs(data.max_drawdown) * 100;
+function buildCriteria(set: HonestTradeSet): Criterion[] {
+  const pf = set.profitFactor ?? 0;
+  const wrPct = set.winRate * 100;
+  const tradeCount = set.trades.length;
+
+  // Max drawdown as % of peak (canonical running-peak helper). An all-losing
+  // record that never rose above its $0 baseline counts as a full 100%
+  // drawdown for the readiness gate, not 0%.
+  const ddPctRaw = maxDrawdownPct(set.trades) * 100;
+  const maxDdPct = ddPctRaw > 0 ? ddPctRaw : set.net < 0 ? 100 : 0;
 
   return [
     {
       label: "Profit Factor",
       threshold: "≥ 2.0",
-      passed: profitFactor >= 2.0,
-      displayValue: `${profitFactor.toFixed(2)}`,
+      passed: pf >= 2.0,
+      displayValue: set.profitFactor != null ? (set.profitFactor ?? 0).toFixed(2) : "—",
     },
     {
       label: "Sharpe Ratio",
       threshold: "≥ 1.5",
-      passed: sharpeRatio >= 1.5,
-      displayValue: `${sharpeRatio.toFixed(2)}`,
+      // Sharpe is not derivable from deduped trade record — mark indeterminate
+      passed: null,
+      displayValue: "— (not computed)",
     },
     {
       label: "Win Rate",
       threshold: "≥ 55%",
-      passed: winRatePct >= 55,
-      displayValue: `${winRatePct.toFixed(1)}%`,
+      passed: wrPct >= 55,
+      displayValue: `${wrPct.toFixed(1)}%`,
     },
     {
       label: "Total Trades",
       threshold: "≥ 60",
-      passed: totalTrades >= 60,
-      displayValue: `${totalTrades}`,
-    },
-    {
-      label: "Trading Days",
-      threshold: "≥ 30",
-      passed: tradingDays >= 30,
-      displayValue: `${tradingDays}`,
+      passed: tradeCount >= 60,
+      displayValue: `${tradeCount}`,
     },
     {
       label: "Max Drawdown",
       threshold: "≤ 15%",
-      passed: maxDrawdownPct <= 15,
-      displayValue: `${maxDrawdownPct.toFixed(1)}%`,
+      passed: maxDdPct <= 15,
+      displayValue: `${maxDdPct.toFixed(1)}%`,
     },
   ];
 }
 
 function CriterionRow({ criterion }: { criterion: Criterion }) {
+  const isIndeterminate = criterion.passed === null;
+  const colorClass = isIndeterminate
+    ? "text-muted-foreground"
+    : criterion.passed
+    ? "text-[hsl(var(--bull))]"
+    : "text-[hsl(var(--bear))]";
+
   return (
     <div className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-      <span
-        className={`text-sm font-bold w-4 text-center flex-shrink-0 ${
-          criterion.passed ? "text-[hsl(var(--bull))]" : "text-[hsl(var(--bear))]"
-        }`}
-      >
-        {criterion.passed ? "✓" : "✗"}
+      <span className={`text-sm font-bold w-4 text-center flex-shrink-0 ${colorClass}`}>
+        {isIndeterminate ? "–" : criterion.passed ? "✓" : "✗"}
       </span>
       <span className="flex-1 text-xs text-card-foreground">
         {criterion.label} {criterion.threshold}
       </span>
-      <span
-        className={`text-xs font-mono font-semibold tabular-nums ${
-          criterion.passed ? "text-[hsl(var(--bull))]" : "text-[hsl(var(--bear))]"
-        }`}
-      >
+      <span className={`text-xs font-mono font-semibold tabular-nums ${colorClass}`}>
         current: {criterion.displayValue}
       </span>
     </div>
@@ -95,29 +89,15 @@ function CriterionRow({ criterion }: { criterion: Criterion }) {
 }
 
 export function LiveReadinessWidget() {
-  const [data, setData] = useState<PerformanceData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  async function fetchData() {
-    try {
-      const json = await fetchEngine<PerformanceData>("/analytics/performance");
-      setData(json);
-      setError(null);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000);
-    return () => clearInterval(interval);
-  }, []);
+    if (set != null) {
+      setLastUpdated(new Date());
+    }
+  }, [set]);
 
   if (loading) {
     return (
@@ -135,7 +115,7 @@ export function LiveReadinessWidget() {
     );
   }
 
-  if (error || !data) {
+  if (error || !set) {
     return (
       <Card>
         <CardHeader>
@@ -148,7 +128,7 @@ export function LiveReadinessWidget() {
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-[hsl(var(--warn))]" />
             <p className="text-xs text-muted-foreground">
-              Unable to load performance data{error ? `: ${error}` : ""}
+              Unable to load honest trade record{error ? `: ${error}` : ""}
             </p>
           </div>
         </CardContent>
@@ -156,9 +136,11 @@ export function LiveReadinessWidget() {
     );
   }
 
-  const criteria = buildCriteria(data);
-  const passCount = criteria.filter((c) => c.passed).length;
-  const total = criteria.length;
+  const criteria = buildCriteria(set);
+  // Only count definite pass/fail (null = indeterminate = excluded from tally)
+  const decidable = criteria.filter((c) => c.passed !== null);
+  const passCount = decidable.filter((c) => c.passed === true).length;
+  const total = decidable.length;
 
   let overallVariant: "bull" | "info" | "warn" | "neutral";
   let overallLabel: string;
@@ -166,10 +148,10 @@ export function LiveReadinessWidget() {
   if (passCount === total) {
     overallVariant = "bull";
     overallLabel = "READY FOR LIVE";
-  } else if (passCount >= 4) {
+  } else if (passCount >= Math.ceil(total * 0.7)) {
     overallVariant = "info";
     overallLabel = "NEARLY READY";
-  } else if (passCount >= 2) {
+  } else if (passCount >= Math.ceil(total * 0.4)) {
     overallVariant = "warn";
     overallLabel = "NEEDS WORK";
   } else {
@@ -178,9 +160,9 @@ export function LiveReadinessWidget() {
   }
 
   const borderClass =
-    passCount === total
-      ? "border-[hsl(var(--bull))]"
-      : "border-border";
+    passCount === total ? "border-[hsl(var(--bull))]" : "border-border";
+
+  const caveat = dedupCaveat(set);
 
   return (
     <Card className={borderClass}>
@@ -202,6 +184,7 @@ export function LiveReadinessWidget() {
             <span className="font-semibold text-card-foreground">
               {passCount}/{total}
             </span>
+            <span className="ml-1 text-[10px]">(Sharpe excluded — not computable)</span>
           </span>
           {lastUpdated && (
             <span className="text-[10px] text-muted-foreground">
@@ -215,6 +198,13 @@ export function LiveReadinessWidget() {
             <CriterionRow key={c.label} criterion={c} />
           ))}
         </div>
+
+        <p className="text-[10px] text-muted-foreground mt-3">{caveat}</p>
+        {set.caveats.length > 0 && (
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {set.caveats.join(" · ")}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

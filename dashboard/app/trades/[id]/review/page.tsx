@@ -33,7 +33,7 @@ function num(v: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
-function fmt(v: any, digits = 2): string {
+function fmt(v: unknown, digits = 2): string {
   return typeof v === "number" && Number.isFinite(v) ? v.toFixed(digits) : "—";
 }
 
@@ -90,7 +90,7 @@ export default function TradeReviewPage() {
     const out: SeriesMarker<Time>[] = [];
     const side = String(tr.side ?? tr.direction ?? "").toLowerCase();
     const isBuy = side.includes("buy") || side.includes("long");
-    const entryT = toUnix(tr.entry_time);
+    const entryT = toUnix(tr.entry_time as string | null | undefined);
     if (entryT != null) {
       out.push({
         time: entryT as Time,
@@ -100,7 +100,7 @@ export default function TradeReviewPage() {
         text: `ENTRY ${num(tr.entry_price) ?? ""}`.trim(),
       });
     }
-    const exitT = toUnix(tr.exit_time);
+    const exitT = toUnix(tr.exit_time as string | null | undefined);
     if (exitT != null) {
       out.push({
         time: exitT as Time,
@@ -159,7 +159,7 @@ export default function TradeReviewPage() {
         <div className="flex items-center gap-3">
           <Link href="/trades" className="text-xs text-blue-400 underline">← Trades</Link>
           <h1 className="font-mono text-lg font-bold text-foreground">
-            {t.symbol ?? "—"} <span className="text-muted-foreground">·</span> Trade Review
+            {String(t.symbol ?? "—")} <span className="text-muted-foreground">·</span> Trade Review
           </h1>
           {grade && <Badge variant={gradeVariant(grade)}>Grade {grade}</Badge>}
           <Badge variant="neutral">{String(t.status ?? "—")}</Badge>
@@ -167,9 +167,9 @@ export default function TradeReviewPage() {
         <div className="flex flex-wrap gap-x-8 gap-y-2 mt-3">
           <Stat label="Entry" value={fmt(t.entry_price)} />
           <Stat label="Exit" value={t.exit_price != null ? fmt(t.exit_price) : "—"} />
-          <Stat label="P&L" value={t.pnl != null ? `$${fmt(t.pnl)}` : "—"} className={pnlClass(t.pnl)} />
+          <Stat label="P&L" value={t.pnl != null ? `$${fmt(t.pnl)}` : "—"} className={pnlClass(num(t.pnl))} />
           <Stat label="Side" value={String(t.side ?? "—")} />
-          <Stat label="Entered" value={t.entry_time ? new Date(t.entry_time).toLocaleString() : "—"} />
+          <Stat label="Entered" value={t.entry_time ? new Date(String(t.entry_time)).toLocaleString() : "—"} />
           <Stat label="trade_id" value={<span className="text-[11px] text-muted-foreground">{String(t.trade_id ?? id)}</span>} />
         </div>
       </div>
@@ -179,7 +179,7 @@ export default function TradeReviewPage() {
         <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle>
-              Price action <span className="text-muted-foreground">· {t.symbol ?? "—"} · {win.timeframe}</span>
+              Price action <span className="text-muted-foreground">· {String(t.symbol ?? "—")} · {win.timeframe}</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -319,12 +319,12 @@ export default function TradeReviewPage() {
         </Card>
 
         {/* MAE/MFE POST-TRADE EXCURSION — how far adverse vs favorable it ran */}
-        {t.symbol && (
+        {Boolean(t.symbol) && (
           <ExcursionPanel tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
         )}
 
         {/* ENTRY-TIMING WHAT-IF — PnL if entered ±N bars (exit held constant) */}
-        {t.symbol && (
+        {Boolean(t.symbol) && (
           <EntryTimingScenarios tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
         )}
       </div>

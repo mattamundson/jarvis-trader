@@ -147,3 +147,43 @@ def test_rv_filter_zero_matches_unfiltered():
     n_off = (df_off["entry_signal"] == "ENTRY_NOW").sum()
     n_on = (df_on["entry_signal"] == "ENTRY_NOW").sum()
     assert n_on <= n_off, f"Filter should never INCREASE entries: off={n_off} on={n_on}"
+
+
+def _daily_vix(value: float, periods: int = 25) -> pd.DataFrame:
+    """Flat daily VIX frame aligned to the trending fixture's start date."""
+    idx = pd.date_range("2024-06-01", periods=periods, freq="D")
+    return pd.DataFrame({"close": [value] * periods}, index=idx)
+
+
+def test_vix_regime_block_is_noop_by_default():
+    """vix_regime_block=None must not change entries vs no VIX args (backward-compat)."""
+    df_base = generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100)
+    df_vix = generate_sma_trend_signals(
+        _make_trending_df(), fast=20, slow=100, vix_df=_daily_vix(20.0)
+    )
+    base_entries = (df_base["entry_signal"] == "ENTRY_NOW").sum()
+    vix_entries = (df_vix["entry_signal"] == "ENTRY_NOW").sum()
+    assert base_entries >= 1
+    assert base_entries == vix_entries
+
+
+def test_vix_regime_block_suppresses_entries_in_blocked_tier():
+    """A flat VIX series maps to the MidVol tier (mid-rank ~50th percentile)."""
+    base_entries = (
+        generate_sma_trend_signals(_make_trending_df(), fast=20, slow=100)["entry_signal"]
+        == "ENTRY_NOW"
+    ).sum()
+
+    # Blocking a tier the series is NOT in (Crisis) leaves entries unchanged.
+    crisis_blocked = generate_sma_trend_signals(
+        _make_trending_df(), fast=20, slow=100,
+        vix_df=_daily_vix(20.0), vix_regime_block=("Crisis",),
+    )
+    assert (crisis_blocked["entry_signal"] == "ENTRY_NOW").sum() == base_entries
+
+    # Blocking the tier the flat series IS in (MidVol) suppresses every entry.
+    midvol_blocked = generate_sma_trend_signals(
+        _make_trending_df(), fast=20, slow=100,
+        vix_df=_daily_vix(20.0), vix_regime_block=("MidVol",),
+    )
+    assert (midvol_blocked["entry_signal"] == "ENTRY_NOW").sum() == 0

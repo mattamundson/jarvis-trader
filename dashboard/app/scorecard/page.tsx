@@ -38,12 +38,19 @@ import { PnLStreakWidget } from "@/components/PnLStreakWidget";
 import { MaxDrawdownTrackerWidget } from "@/components/MaxDrawdownTrackerWidget";
 import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
+import {
+  fetchHonestTrades,
+  equityCurve,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const TARGETS = {
   profitFactor: 2.0,  // v2.7 live gate (paper gate: 1.5)
-  sharpeRatio: 1.5,   // v2.7 live gate (paper gate: 1.0)
+  // sharpeRatio gate intentionally removed — Sharpe is not computable from the
+  // deduped record and must NOT contribute a PASS to any readiness verdict.
   winRate: 50,        // percent — v2.7 live gate (paper gate: 45%)
   maxDrawdown: 8,     // percent (positive = limit) — v2.7 live gate
   daysActive: 60,     // min 60+ days with 60+ trades — v2.7 graduation rule
@@ -51,27 +58,17 @@ const TARGETS = {
 
 const REFRESH_MS = 60_000;
 
-// ── API types ─────────────────────────────────────────────────────────────────
+// ── API types (kept only for non-inflated supplemental fields) ────────────────
 
-interface PortfolioStatsSummary {
-  total_trades: number;
-  winning: number;
-  losing: number;
-  total_pnl: number;
+/** Used only for best_day, worst_day, days_active — NOT for trade counts or P&L */
+interface PortfolioStatsSummarySupplemental {
   best_day: number;
   worst_day: number;
   days_active?: number;
   start_date?: string;
 }
 
-interface AnalyticsPerformance {
-  profit_factor: number;
-  sharpe_ratio: number;
-  win_rate: number;   // 0–1 decimal
-  avg_win: number;
-  avg_loss: number;
-}
-
+/** Used only for current_drawdown, peak_balance (live balance, not trade-count driven) */
 interface DrawdownStats {
   current_drawdown: number;       // decimal, negative = loss
   peak_balance: number;
@@ -80,10 +77,8 @@ interface DrawdownStats {
 
 // ── Fetchers ─────────────────────────────────────────────────────────────────
 
-const fetchSummary = () =>
-  fetchEngine<PortfolioStatsSummary>("/portfolio/stats/summary");
-const fetchPerformance = () =>
-  fetchEngine<AnalyticsPerformance>("/analytics/performance");
+const fetchSupplemental = () =>
+  fetchEngine<PortfolioStatsSummarySupplemental>("/portfolio/stats/summary");
 const fetchDrawdown = () =>
   fetchEngine<DrawdownStats>("/portfolio/stats/drawdown");
 const fetchBacktestResults = () =>
@@ -112,12 +107,6 @@ function pfLevel(pf: number): ColorLevel {
   return "red";
 }
 
-function sharpeLevel(sr: number): ColorLevel {
-  if (sr >= TARGETS.sharpeRatio) return "green";
-  if (sr >= 0.8) return "yellow";
-  return "red";
-}
-
 function daysLevel(days: number): ColorLevel {
   if (days >= TARGETS.daysActive) return "green";
   if (days >= 15) return "yellow";
@@ -134,6 +123,26 @@ function barColor(level: ColorLevel): string {
   if (level === "green") return "bg-bull";
   if (level === "yellow") return "bg-warn";
   return "bg-bear";
+}
+
+/**
+ * Compute max drawdown percentage from honest equity curve.
+ * Returns 0 when there are no curve points or peak is non-positive.
+ * Result is a positive percentage (e.g. 12.5 means 12.5% drawdown).
+ */
+function computeMaxDDPct(set: HonestTradeSet): number {
+  const curve = equityCurve(set.trades);
+  if (curve.length === 0) return 0;
+  let maxAbsDD = 0;
+  let runningPeak = 0;
+  for (const pt of curve) {
+    if (pt.equity > runningPeak) runningPeak = pt.equity;
+    if (runningPeak > 0) {
+      const dd = (runningPeak - pt.equity) / runningPeak;
+      if (dd > maxAbsDD) maxAbsDD = dd;
+    }
+  }
+  return maxAbsDD * 100;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -259,22 +268,30 @@ function SkeletonCard() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ScorecardPage() {
+  // ── Honest deduped trade record (primary performance source) ───────────────
   const {
-    data: summary,
-    isLoading: loadingSummary,
-    mutate: mutateSummary,
-  } = useSWR<PortfolioStatsSummary>("scorecard/summary", fetchSummary, {
+    data: honestSet,
+    isLoading: loadingHonest,
+    error: honestError,
+    mutate: mutateHonest,
+  } = useSWR<HonestTradeSet>("scorecard/honest-trades", fetchHonestTrades, {
     refreshInterval: REFRESH_MS,
   });
 
+  // ── Supplemental data (NOT used for trade counts or P&L) ──────────────────
+  // /portfolio/stats/summary is used ONLY for best_day, worst_day, days_active
   const {
-    data: perf,
-    isLoading: loadingPerf,
-    mutate: mutatePerf,
-  } = useSWR<AnalyticsPerformance>("scorecard/performance", fetchPerformance, {
-    refreshInterval: REFRESH_MS,
-  });
+    data: supplemental,
+    isLoading: loadingSupplemental,
+    mutate: mutateSupplemental,
+  } = useSWR<PortfolioStatsSummarySupplemental>(
+    "scorecard/supplemental",
+    fetchSupplemental,
+    { refreshInterval: REFRESH_MS }
+  );
 
+  // /portfolio/stats/drawdown is used ONLY for current_drawdown, peak_balance
+  // (live balance metrics; max_historical_drawdown is recomputed from honest trades)
   const {
     data: drawdown,
     isLoading: loadingDrawdown,
@@ -291,49 +308,59 @@ export default function ScorecardPage() {
   const baseline: ScorecardBacktestBaseline | null =
     pickApprovedBacktestBaseline(backtestRows);
 
-  const isLoading = loadingSummary || loadingPerf || loadingDrawdown;
+  const isLoading = loadingHonest || loadingSupplemental || loadingDrawdown;
 
   function refreshAll() {
-    mutateSummary();
-    mutatePerf();
+    mutateHonest();
+    mutateSupplemental();
     mutateDrawdown();
     mutateBacktest();
   }
 
-  // Derived values
-  const pf = perf?.profit_factor ?? 0;
-  const sr = perf?.sharpe_ratio ?? 0;
-  const wr = (perf?.win_rate ?? 0) * 100; // convert 0–1 → percent
-  const days = summary?.days_active ?? 0;
-  const maxDD = Math.abs((drawdown?.max_historical_drawdown ?? 0) * 100);
-  const totalPnl = summary?.total_pnl ?? 0;
+  // ── Derived values from honest deduped record ─────────────────────────────
+  // All gate-relevant metrics come exclusively from fetchHonestTrades().
 
+  const pf = honestSet?.profitFactor ?? 0;
+  // Sharpe is NOT available from the deduped record — it must NOT gate readiness.
+  // It is displayed as "—" with a note everywhere it appears.
+  const wr = (honestSet?.winRate ?? 0) * 100;  // 0..1 → percent
+  const totalPnl = honestSet?.net ?? 0;
+  const totalTrades = honestSet?.trades.length ?? 0;
+  const wins = honestSet?.wins ?? 0;
+  const losses = honestSet?.losses ?? 0;
+
+  // Avg win / avg loss derived from honest gross figures
+  const avgWin = wins > 0 ? (honestSet?.grossWin ?? 0) / wins : 0;
+  const avgLoss = losses > 0 ? (honestSet?.grossLoss ?? 0) / losses : 0;
+
+  // Max drawdown: computed from equityCurve(honest trades), NOT from the engine endpoint
+  const maxDD = honestSet ? computeMaxDDPct(honestSet) : 0;
+
+  // ── Supplemental (non-gate) values ────────────────────────────────────────
+  const days = supplemental?.days_active ?? 0;
+
+  // ── Gate evaluations ──────────────────────────────────────────────────────
   const pfLvl = pfLevel(pf);
-  const srLvl = sharpeLevel(sr);
   const daysLvl = daysLevel(days);
 
   const pfPass = pf >= TARGETS.profitFactor;
-  const srPass = sr >= TARGETS.sharpeRatio;
+  // srPass is intentionally excluded — Sharpe not computable, must never PASS
   const daysPass = days >= TARGETS.daysActive;
-  const allPass = pfPass && srPass && daysPass;
-  const anyPass = pfPass || srPass || daysPass;
+  const allPass = pfPass && daysPass;
+  const anyPass = pfPass || daysPass;
 
   type Verdict = "NOT READY" | "APPROACHING" | "READY FOR LIVE";
   let verdict: Verdict = "NOT READY";
-  let verdictColor = "text-bear";
-  let verdictBg = "border-bear/40 bg-bear/5";
   if (allPass) {
     verdict = "READY FOR LIVE";
-    verdictColor = "text-bull";
-    verdictBg = "border-bull/40 bg-bull/5";
-  } else if (anyPass || pfLvl === "yellow" || srLvl === "yellow") {
+  } else if (anyPass || pfLvl === "yellow") {
     verdict = "APPROACHING";
-    verdictColor = "text-warn";
-    verdictBg = "border-warn/40 bg-warn/5";
   }
 
   const wrPass = wr >= TARGETS.winRate;
   const ddPass = maxDD < TARGETS.maxDrawdown;
+
+  const caveatText = honestSet ? dedupCaveat(honestSet) : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -424,6 +451,7 @@ export default function ScorecardPage() {
               href="/api/engine/reports/performance?format=download"
               target="_blank"
               rel="noopener noreferrer"
+              prefetch={false}
               className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-accent"
             >
               <FileDown className="h-4 w-4" />
@@ -459,6 +487,26 @@ export default function ScorecardPage() {
           </div>
         </div>
 
+        {/* Dedup caveat banner */}
+        {caveatText && (
+          <div className="rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5 flex items-start gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-warn mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-warn font-medium">
+              Honest deduped record: {caveatText}. Raw engine endpoints over-count
+              re-logged winners — all metrics on this page use the deduped source.
+            </p>
+          </div>
+        )}
+        {honestError && (
+          <div className="rounded-lg border border-bear/40 bg-bear/5 px-4 py-2.5 flex items-start gap-2">
+            <XCircle className="h-3.5 w-3.5 text-bear mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-bear font-medium">
+              Honest trade record unavailable — performance metrics cannot be displayed.{" "}
+              <span className="font-normal text-muted-foreground">{String(honestError)}</span>
+            </p>
+          </div>
+        )}
+
         {/* ── Paper Account Balance ───────────────────────────────────────── */}
         <PaperBalanceWidget />
 
@@ -469,7 +517,15 @@ export default function ScorecardPage() {
         <PnLStreakWidget />
 
         {/* ── Validation Progress ─────────────────────────────────────────── */}
-        <div className={`rounded-xl border p-6 space-y-6 ${verdictBg}`}>
+        <div
+          className={`rounded-xl border p-6 space-y-6 ${
+            allPass
+              ? "border-bull/40 bg-bull/5"
+              : verdict === "APPROACHING"
+              ? "border-warn/40 bg-warn/5"
+              : "border-bear/40 bg-bear/10"
+          }`}
+        >
           <div className="flex items-center justify-between">
             <SectionHeader title="Validation Progress" />
             <div
@@ -493,10 +549,11 @@ export default function ScorecardPage() {
           </div>
 
           <p className="text-xs text-muted-foreground -mt-2">
-            All three criteria must be met to advance to live trading.
+            All criteria must be met to advance to live trading. Sharpe is not
+            gated here — it cannot be computed from the deduped trade record.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <ProgressBar
               label="Profit Factor"
               value={pf}
@@ -504,14 +561,6 @@ export default function ScorecardPage() {
               level={pfLvl}
               currentLabel={isLoading ? "—" : fmt2(pf)}
               targetLabel={`${TARGETS.profitFactor}`}
-            />
-            <ProgressBar
-              label="Sharpe Ratio"
-              value={sr}
-              target={TARGETS.sharpeRatio}
-              level={srLvl}
-              currentLabel={isLoading ? "—" : fmt2(sr)}
-              targetLabel={`${TARGETS.sharpeRatio}`}
             />
             <ProgressBar
               label="Days Active"
@@ -524,19 +573,21 @@ export default function ScorecardPage() {
             />
           </div>
 
-          <div className="flex items-center gap-6 pt-1">
+          <div className="flex flex-wrap items-center gap-6 pt-1">
             <StatusCheck
               label={`PF > ${TARGETS.profitFactor} (currently ${isLoading ? "…" : fmt2(pf)})`}
               pass={isLoading ? null : pfPass}
             />
             <StatusCheck
-              label={`Sharpe > ${TARGETS.sharpeRatio} (currently ${isLoading ? "…" : fmt2(sr)})`}
-              pass={isLoading ? null : srPass}
-            />
-            <StatusCheck
               label={`${TARGETS.daysActive}+ trading days (currently ${isLoading ? "…" : days})`}
               pass={isLoading ? null : daysPass}
             />
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground">
+                Sharpe ratio — not computed (absent from deduped record)
+              </span>
+            </div>
           </div>
         </div>
 
@@ -571,11 +622,12 @@ export default function ScorecardPage() {
                   level={pfLvl}
                   icon={BarChart3}
                 />
+                {/* Sharpe is not in the deduped record — never fabricate a value */}
                 <MetricCard
                   label="Sharpe Ratio"
-                  value={fmt2(sr)}
-                  sub={`Target: > ${TARGETS.sharpeRatio}`}
-                  level={srLvl}
+                  value="—"
+                  sub="Not computed (deduped record)"
+                  level="yellow"
                   icon={TrendingUp}
                 />
                 <MetricCard
@@ -588,7 +640,7 @@ export default function ScorecardPage() {
                 <MetricCard
                   label="Total P&L"
                   value={formatCurrency(totalPnl)}
-                  sub={totalPnl >= 0 ? "Net profit" : "Net loss"}
+                  sub={totalPnl >= 0 ? "Net profit (deduped)" : "Net loss (deduped)"}
                   level={totalPnl > 0 ? "green" : totalPnl === 0 ? "yellow" : "red"}
                   icon={totalPnl >= 0 ? TrendingUp : TrendingDown}
                 />
@@ -602,7 +654,8 @@ export default function ScorecardPage() {
           <div className="px-5 py-4 border-b border-border">
             <SectionHeader title="Backtest vs Live Paper" />
             <p className="text-xs text-muted-foreground -mt-1">
-              Comparing live paper results against strategy backtest baseline
+              Comparing live paper results against strategy backtest baseline.
+              Live Paper column uses the deduped honest record.
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -655,7 +708,7 @@ export default function ScorecardPage() {
                     )}
                   </td>
                 </tr>
-                {/* Sharpe Ratio */}
+                {/* Sharpe Ratio — not computable from deduped record */}
                 <tr className="hover:bg-muted/20 transition-colors">
                   <td className="px-5 py-3.5 font-medium text-foreground">
                     Sharpe Ratio
@@ -663,24 +716,15 @@ export default function ScorecardPage() {
                   <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
                     {fmtBaselineNum(baseline?.sharpeRatio ?? null)}
                   </td>
-                  <td
-                    className={`px-4 py-3.5 text-right font-mono font-bold ${
-                      isLoading ? "text-muted-foreground" : colorClass(srLvl)
-                    }`}
-                  >
-                    {isLoading ? "…" : fmt2(sr)}
+                  <td className="px-4 py-3.5 text-right font-mono text-muted-foreground">
+                    — <span className="text-[10px] font-normal">(not computed)</span>
                   </td>
                   <td className="px-4 py-3.5 text-right text-muted-foreground">
-                    &gt; {TARGETS.sharpeRatio}
+                    &gt; 1.5
                   </td>
                   <td className="px-5 py-3.5 text-center">
-                    {isLoading ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : srPass ? (
-                      <CheckCircle2 className="h-4 w-4 text-bull mx-auto" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-bear mx-auto" />
-                    )}
+                    {/* Sharpe must never contribute a PASS — always show not-available */}
+                    <span className="text-muted-foreground text-[10px]">n/a</span>
                   </td>
                 </tr>
                 {/* Win Rate */}
@@ -717,7 +761,7 @@ export default function ScorecardPage() {
                     )}
                   </td>
                 </tr>
-                {/* Max Drawdown */}
+                {/* Max Drawdown — computed from honest equity curve */}
                 <tr className="hover:bg-muted/20 transition-colors">
                   <td className="px-5 py-3.5 font-medium text-foreground">
                     Max Drawdown
@@ -784,38 +828,43 @@ export default function ScorecardPage() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <TradeStat
                 label="Total Trades"
-                value={String(summary?.total_trades ?? 0)}
+                value={String(totalTrades)}
               />
               <TradeStat
                 label="Winning"
-                value={String(summary?.winning ?? 0)}
+                value={String(wins)}
                 valueClass="text-bull"
               />
               <TradeStat
                 label="Losing"
-                value={String(summary?.losing ?? 0)}
+                value={String(losses)}
                 valueClass="text-bear"
               />
               <TradeStat
                 label="Avg Win"
-                value={formatCurrency(perf?.avg_win ?? 0)}
+                value={wins > 0 ? formatCurrency(avgWin) : "—"}
                 valueClass="text-bull"
               />
               <TradeStat
                 label="Avg Loss"
-                value={formatCurrency(perf?.avg_loss ?? 0)}
+                value={losses > 0 ? formatCurrency(avgLoss) : "—"}
                 valueClass="text-bear"
               />
-              <div />
+              {/* Sharpe not available from deduped record */}
+              <TradeStat
+                label="Sharpe Ratio"
+                value="—"
+                valueClass="text-muted-foreground"
+              />
 
               <TradeStat
                 label="Best Day"
-                value={formatCurrency(summary?.best_day ?? 0)}
+                value={formatCurrency(supplemental?.best_day ?? 0)}
                 valueClass="text-bull"
               />
               <TradeStat
                 label="Worst Day"
-                value={formatCurrency(summary?.worst_day ?? 0)}
+                value={formatCurrency(supplemental?.worst_day ?? 0)}
                 valueClass="text-bear"
               />
               <TradeStat
@@ -858,12 +907,12 @@ export default function ScorecardPage() {
               {fmtBaselineNum(baseline.profitFactor)}, Sharpe{" "}
               {fmtBaselineNum(baseline.sharpeRatio)}, {baseline.totalReturnLabel ?? "—"}, Win Rate{" "}
               {baseline.winRatePct != null ? `${baseline.winRatePct.toFixed(1)}%` : "—"} &mdash;
-              Auto-refresh every 60s
+              Auto-refresh every 60s &mdash; Live metrics: deduped honest record
             </>
           ) : (
             <>
               Baseline from saved backtest (MCL/MNQ preferred) &mdash; none loaded &mdash;
-              Auto-refresh every 60s
+              Auto-refresh every 60s &mdash; Live metrics: deduped honest record
             </>
           )}
         </p>
