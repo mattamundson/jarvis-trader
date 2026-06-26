@@ -3,17 +3,19 @@
 Standalone screener (`daily_calendar_discovery.py`) over the deep free daily ETF
 caches pulled by `free_daily_export.py` (SPY 33yr, DIA 28yr, QQQ 27yr, IWM 26yr,
 GLD 22yr; + cross-asset TLT 24yr, SLV 20yr, EEM 23yr, XLU 28yr, HYG 19yr, LQD 24yr,
-EFA 25yr). **12 symbols × 17 effects = 204** parameter-free long-on-selected-days
+EFA 25yr). **12 symbols × 18 effects = 216** parameter-free long-on-selected-days
 strategies, each graded net @ 2bps on the honest bar: bootstrap PF-CI, p_edge,
-**deflated Sharpe penalized for 17 trials**, max-DD, chronological H1/H2 stationarity,
+**deflated Sharpe penalized for 18 trials**, max-DD, chronological H1/H2 stationarity,
 and the canonical `compute_gate_v2` verdict.
 
-> **2026-06-26 update:** family grew 13 → 17 effects (added `santa_claus`, `post_holiday`,
-> `last_day_of_month`, `opex_week`) AND the symbol set grew 5 → 12 (added cross-asset
-> TLT/SLV/EEM, then the duration/credit/intl family XLU/HYG/LQD/EFA to TEST the month-end
-> mechanism). Net: **29 durable candidates, 9 gate-v2 PASSes.** The cross-asset breadth
-> didn't just add passers — it LOCALIZED each effect to its economic mechanism (see
-> § "Cross-asset" and headline 3). The known passers survived every deflation bump.
+> **2026-06-26 update:** family grew 13 → 17 → **18** effects (added `santa_claus`,
+> `post_holiday`, `last_day_of_month`, `opex_week`, then **`pre_fomc`**) AND the symbol
+> set grew 5 → 12 (added cross-asset TLT/SLV/EEM, then the duration/credit/intl family
+> XLU/HYG/LQD/EFA to TEST the month-end mechanism). Net: **33 durable candidates, 10
+> gate-v2 PASSes.** The cross-asset breadth didn't just add passers — it LOCALIZED each
+> effect to its economic mechanism (see § "Cross-asset" and headline 3). **Every prior
+> passer survived re-deflation to 18 trials** — adding the 18th effect (raising the
+> multiple-testing penalty) knocked out none of the 9 standing PASSes.
 
 Candidacy ranks on DURABLE metrics (stationary + PF-CI≥1.10 + dsr≥0.10), NOT p_edge —
 the turn-of-month lesson: `p_edge≥0.95` is structurally impossible for a long-beta
@@ -84,7 +86,38 @@ generic "be long on these days," they fire where their economic driver lives:
   intl (EFA), gold (GLD), and high-yield credit (HYG, which trades like equity), and go negative in
   Treasuries. HYG pre_holiday is especially clean (DD only 2.7%, H1/H2 1.43/3.29).
 
-9 gate-v2 PASSes total; 29 durable candidates across the 204 cells.
+10 gate-v2 PASSes total; 33 durable candidates across the 216 cells.
+
+## Headline 4: pre-FOMC drift is REAL but DECAYING — passes only on low-DD Treasuries (2026-06-26)
+
+The Lucca-Moench pre-FOMC announcement drift (NY Fed Staff Report 512: equities earn an
+outsized premium in the ~24h before scheduled FOMC decisions) is the strongest *documented*
+equity anomaly tested here — and the screen tells the honest story of its **post-publication
+decay**. The mask flags the single trading day before each of the **271 scheduled FOMC
+announcements 1994-2027** (last day of each scheduled meeting; emergency/intermeeting cuts
+and the cancelled 2020 March meeting excluded — the drift is an ANTICIPATED-announcement
+effect). Dates sourced from the Fed's own calendars + per-year historical pages, not memory.
+
+| sym | effect | n | PF-CI | dsr(×18) | Sharpe | DD% | H1/H2 PF | gate-v2 |
+|---|---|---|---|---|---|---|---|---|
+| TLT | pre_fomc | 191 | 2.46 | 1.00 | 2.50 | 3.8 | 1.93/1.26 | **PASS (ALT)** |
+| SPY | pre_fomc | 259 | 2.49 | 1.00 | 1.46 | 12.4 | 1.68/**1.04** | FAIL (DD) |
+| DIA | pre_fomc | 227 | 2.45 | 1.00 | 1.58 | 11.1 | 1.41/1.48 | FAIL (DD) |
+| QQQ | pre_fomc | 218 | 2.55 | 0.98 | 1.25 | 15.8 | 1.22/1.37 | FAIL (DD) |
+
+- **The decay is the headline.** SPY's H1→H2 profit factor collapses **1.68 → 1.04** — the
+  pre-FOMC equity drift was strong pre-~2011 and has faded to near-nothing since, exactly the
+  "anomaly decays after it's published" pattern (Lucca-Moench published 2015). The screen
+  surfaces SPY/DIA/QQQ as durable candidates (full-sample PF-CI > 2.4) but the gate correctly
+  **FAILS** them on the ~12-16% drawdown of the equity pre-FOMC day-subset.
+- **Only TLT (20y Treasuries) PASSES the gate (ALT path)** — bonds' pre-FOMC bid is lower-DD
+  (3.8%) and **less decayed** (H2 PF 1.26 vs SPY's 1.04): Treasuries rally into a binary rate
+  decision (rate-anticipation + event hedging), and that duration bid has held up better than
+  the equity risk-premium compression. **Caveat: it is a NARROW pass** — DD 3.8% sits just
+  under the 4.0% ALT ceiling (`GATE_MC_DD_ALT`); a slightly tighter ceiling flips it to FAIL.
+- **Best forward-shadow cadence of the whole calendar family** — fires ~8×/yr, so a forward
+  record accrues an order of magnitude faster than once-a-year santa_claus. That makes
+  `pre_fomc` the highest-value forward slot for *watching the decay continue* out-of-sample.
 
 ## Cross-asset (2026-06-26) — TLT / SLV / EEM / XLU / HYG / LQD / EFA separate real seasonals from equity quirks
 
@@ -117,6 +150,9 @@ markets) tested whether the effects are US-equity artifacts or genuine cross-ass
   month, NOT month-end** — isolating the last day strips the edge entirely.
 - **opex_week** (Mon-Fri ending on the 3rd Friday) — clean null, dsr 0.00 everywhere.
   Options-expiration flows do not produce a durable close-to-close daily long edge.
+- **pre_fomc** (day before each scheduled FOMC announcement; headline 4) — real but
+  DECAYING; 4 equity/bond candidates, 1 gate-PASS (TLT). The SPY H1/H2 1.68→1.04 split is
+  the cleanest decay signature in the whole family — a textbook published-anomaly fade.
 
 ## Caveats / honest reads
 
@@ -139,5 +175,8 @@ markets) tested whether the effects are US-equity artifacts or genuine cross-ass
    live via `Jarvis-PreHolidayPaperTrack` (SPY+GLD). See `project_preholiday_forward_shadow`.
 2. **santa_claus is the new forward-shadow candidate** (SPY+DIA gate-PASS). It fires only
    late-Dec→early-Jan, so add its forward slot before December; no observations until then.
-3. Fold the calendar family into the discovery factory once the session-anomaly +
+3. **pre_fomc is the best forward-shadow cadence in the family** (~8 obs/yr). Forward-watch
+   TLT pre_fomc (the gate-PASS) + SPY pre_fomc (the decayed-equity reference) to test whether
+   the decay continues out-of-sample — wired into `calendar_paper_track.py` 2026-06-26.
+4. Fold the calendar family into the discovery factory once the session-anomaly +
    discovery-factory branches converge (currently kept standalone to avoid peer collision).
