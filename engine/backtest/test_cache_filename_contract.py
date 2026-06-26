@@ -8,7 +8,7 @@ CONTRACT (summary):
     <SYMBOL>_<START_DATE>_<END_DATE>_<INTERVAL>.csv
       SYMBOL   : 2-4 uppercase alphanumeric chars starting with A-Z
       START/END: ISO YYYY-MM-DD
-      INTERVAL : 1-2 digit integer + 'h' or 'd'  (e.g. 1h, 4h, 1d)
+      INTERVAL : 1-2 digit integer + 'm', 'h', or 'd'  (e.g. 5m, 15m, 1h, 4h, 1d)
 
 Run:  cd engine && .venv/Scripts/python backtest/test_cache_filename_contract.py
 """
@@ -36,13 +36,14 @@ VALID_FILENAMES = [
     "MNQ_2024-01-01_2026-03-28_4h.csv",
     "M2K_2023-01-01_2025-12-31_1d.csv",
     "MES_2020-01-01_2024-01-01_1d.csv",
+    "MES_2024-06-01_2026-03-28_5m.csv",  # 'm' accepted since 2026-06-16 (5m/15m history)
+    "MNQ_2024-06-01_2026-03-28_15m.csv",
 ]
 
 INVALID_FILENAMES = [
     "mes_2024-01-01_2026-03-28_1h.csv",  # lowercase symbol
     "MES_20240101_20260328_1h.csv",  # non-ISO dates (no hyphens)
     "MES_2024-01-01_2026-03-28_1H.csv",  # uppercase interval
-    "MES_2024-01-01_2026-03-28_1m.csv",  # 'm' not in contract (only h/d)
     "MES_2024-01-01_2026-03-28.csv",  # missing interval segment
     "MES_2024-01-01_2026-03-28_1h",  # missing .csv extension
     "MES_2024-01-01_1h.csv",  # missing end-date segment
