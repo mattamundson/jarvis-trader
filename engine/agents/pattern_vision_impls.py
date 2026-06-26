@@ -18,6 +18,7 @@ it's looking at shapes.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import logging
@@ -91,7 +92,8 @@ class MatplotlibChartCapture:
                 "need at least 20 to render a meaningful chart"
             )
 
-        return _render_candlestick_png(
+        return await asyncio.to_thread(
+            _render_candlestick_png,
             df,
             title=f"{symbol} {timeframe} ({len(df)} bars)",
             figure_size=self._figure_size,
@@ -150,14 +152,18 @@ def _render_candlestick_png(
     with no display, and leaving backend selection implicit has caused
     past ``TclError: no display name`` failures on headless boxes.
     """
-    import matplotlib
-
-    matplotlib.use("Agg", force=True)
-    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
     from matplotlib.patches import Rectangle
 
-    fig, ax = plt.subplots(figsize=figure_size, dpi=dpi)
+    # Figure() object API (not pyplot) so this render is thread-safe under
+    # asyncio.to_thread: pyplot's global figure registry is process-wide shared
+    # state that races across concurrent renders. An explicit Agg canvas keeps
+    # it headless and version-independent for savefig.
+    fig = Figure(figsize=figure_size, dpi=dpi)
+    FigureCanvasAgg(fig)
+    ax = fig.subplots()
     try:
         xs = range(len(df))
         wick_width = 0.08
@@ -205,7 +211,8 @@ def _render_candlestick_png(
         buf.seek(0)
         return buf.getvalue()
     finally:
-        plt.close(fig)
+        # Figure() has no global pyplot registry entry to close.
+        del fig
 
 
 # ---------------------------------------------------------------------------

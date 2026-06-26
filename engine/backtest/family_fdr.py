@@ -54,6 +54,28 @@ _HISTORY_PATH = os.path.join(_REPORT_DIR, "family_fdr_history.jsonl")
 
 DEFAULT_Q = 0.10
 
+# Minimum total OOS trades for a strategy's PASS to be sample-adequate. Mirrors
+# gate-v2's MIN_OOS_TRADES_TOTAL: a "PASS" built on too few OOS trades (e.g. PF
+# 295 / inf on 2-trade windows) is a small-sample mirage, not an edge. The
+# campaign report must surface this so the lowest-p_binom row is not mistaken
+# for "where real edge lives" when it is sample-inadequate.
+try:  # pragma: no cover - exercised via the value, not the import path
+    from backtest._gate_v2_helpers import MIN_OOS_TRADES_TOTAL as _MIN_OOS_TRADES
+except Exception:  # pragma: no cover - defensive fallback if helper moves
+    _MIN_OOS_TRADES = 30
+MIN_OOS_TRADES = int(_MIN_OOS_TRADES)
+
+# Per-window adequacy floor. The aggregate MIN_OOS_TRADES floor is
+# NECESSARY BUT NOT SUFFICIENT: a strategy can clear 30 aggregate OOS trades
+# while its per-window samples are 1-4 trades with degenerate PFs (inf/666/295)
+# concentrated in a few fat windows. The per-window signal exposes that gap;
+# `per_window_adequate` requires the MEDIAN window to clear this floor.
+try:  # pragma: no cover - exercised via the value, not the import path
+    from backtest._gate_v2_helpers import MIN_OOS_TRADES_PER_WINDOW as _MIN_OOS_TRADES_PW
+except Exception:  # pragma: no cover - defensive fallback if helper moves
+    _MIN_OOS_TRADES_PW = 5
+MIN_OOS_TRADES_PER_WINDOW = int(_MIN_OOS_TRADES_PW)
+
 
 def bh_fdr(pvals: list[float], q: float = DEFAULT_Q) -> list[bool]:
     """Benjamini-Hochberg FDR control at level ``q``.
@@ -102,6 +124,67 @@ def _n_oos(verdict: dict) -> int:
             except (TypeError, ValueError):
                 continue
     return 0
+
+
+def _total_oos_trades(verdict: dict) -> int | None:
+    """Total OOS trades behind the verdict, or None if the field is absent.
+
+    None means "unknown sample size" — distinct from a known-small one. Robust
+    edge certification treats unknown as not-adequate (fail-safe), but the report
+    shows it as ``?`` rather than a hard inadequacy.
+    """
+    w = verdict.get("wfo_config") or {}
+    v = w.get("total_oos_trades")
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _per_window_oos_trades(verdict: dict) -> list[int] | None:
+    """Per-window OOS trade counts from the verdict's ``windows[]``, or None.
+
+    None means the verdict carries no per-window breakdown (legacy / aggregate-
+    only / CPCV) — distinct from a known-thin one. Per-window adequacy fails OPEN
+    on None: it can only ADD a block when the data is present and shows thin
+    windows, never manufacture one from missing data (the aggregate floor still
+    applies via ``sample_adequate``).
+    """
+    windows = verdict.get("windows")
+    if not windows or not isinstance(windows, list):
+        return None
+    counts: list[int] = []
+    for w in windows:
+        t = (w or {}).get("oos_trades")
+        if t is None:
+            continue
+        try:
+            counts.append(int(t))
+        except (TypeError, ValueError):
+            continue
+    return counts or None
+
+
+def _per_window_adequacy(per_window: list[int] | None) -> dict[str, Any]:
+    """Compute the per-window adequacy summary. Absent data -> all-None / None flag."""
+    if not per_window:
+        return {
+            "median_oos_trades_per_window": None,
+            "n_thin_windows": None,
+            "frac_trades_in_thin_windows": None,
+            "per_window_adequate": None,
+        }
+    median = float(np.median(per_window))
+    thin = [t for t in per_window if t < MIN_OOS_TRADES_PER_WINDOW]
+    total = sum(per_window)
+    return {
+        "median_oos_trades_per_window": int(median) if median.is_integer() else round(median, 1),
+        "n_thin_windows": len(thin),
+        "frac_trades_in_thin_windows": round(sum(thin) / total, 4) if total else 0.0,
+        "per_window_adequate": bool(median >= MIN_OOS_TRADES_PER_WINDOW),
+    }
 
 
 def load_verdicts(verdict_dir: str = _VERDICT_DIR) -> list[dict]:
@@ -157,6 +240,9 @@ def build_family(verdicts: list[dict]) -> tuple[list[dict], list[dict]]:
             )
             continue
         dsr = m.get("dsr")
+        oos_trades = _total_oos_trades(v)
+        sample_adequate = None if oos_trades is None else (oos_trades >= MIN_OOS_TRADES)
+        per_window = _per_window_adequacy(_per_window_oos_trades(v))
         family.append(
             {
                 "id": v["_id"],
@@ -167,6 +253,9 @@ def build_family(verdicts: list[dict]) -> tuple[list[dict], list[dict]]:
                 "p_edge": float(p_edge),
                 "n_oos_windows": n,
                 "k_profitable": int(round(float(p_edge) * n)),
+                "total_oos_trades": oos_trades,
+                "sample_adequate": sample_adequate,
+                **per_window,
                 "dsr": dsr,
                 "p_binom": binomial_oos_pvalue(float(p_edge), n),
                 "p_dsr": (None if dsr is None else max(0.0, 1.0 - float(dsr))),
@@ -191,8 +280,21 @@ def run(q: float = DEFAULT_Q, verdict_dir: str = _VERDICT_DIR) -> dict[str, Any]
         for r, bf, df in zip(family, binom_flags, dsr_flags, strict=True):
             r["bh_significant_binom"] = bool(bf)
             r["bh_significant_dsr"] = bool(df)
-            # Actionable: gate-v2 PASS AND survives the PRIMARY (binomial) family FDR.
-            r["robust_edge"] = bool(r["gate_verdict"] == "PASS" and bf)
+            # Actionable: gate-v2 PASS AND survives the PRIMARY (binomial) family
+            # FDR AND has a sample-adequate OOS trade count AND is not per-window
+            # thin. The aggregate-adequacy clause blocks 26-OOS-trade mirages;
+            # the per-window clause blocks the NECESSARY-NOT-SUFFICIENT case where
+            # 30+ aggregate trades hide a degenerate per-window distribution
+            # (median < MIN_OOS_TRADES_PER_WINDOW, PF inflated by 1-2-trade windows
+            # -- e.g. trend_rank4). Unknown aggregate size (None) is fail-safe
+            # (blocks); absent per-window data (None) fails OPEN (no extra block
+            # beyond the aggregate floor). Both clauses can only SHRINK the set.
+            r["robust_edge"] = bool(
+                r["gate_verdict"] == "PASS"
+                and bf
+                and r.get("sample_adequate") is True
+                and r.get("per_window_adequate") is not False
+            )
 
     family_sorted = sorted(family, key=lambda r: r["p_binom"])
     gate_pass = [r for r in family_sorted if r["gate_verdict"] == "PASS"]
@@ -254,17 +356,27 @@ def _markdown(report: dict[str, Any]) -> str:
         "Primary p-value = binomial sign-test on OOS-window profitability. "
         "`robust_edge` = gate-v2 PASS AND survives the primary family BH line.",
         "",
-        "| id | gate | pf_ci_lo | p_edge | n_oos | p_binom | BH-binom | p_dsr | BH-dsr | ROBUST |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| id | gate | pf_ci_lo | p_edge | n_oos | oos_tr | adq | med_tr/win | "
+        "thin | pwadq | p_binom | BH-binom | p_dsr | BH-dsr | ROBUST |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
+    _adq = {True: "Y", False: "**n**", None: "?"}
     for r in report["family"]:
+        _mtw = r.get("median_oos_trades_per_window")
+        _nthin = r.get("n_thin_windows")
         lines.append(
-            "| {id} | {gv} | {pf} | {pe} | {n} | {pb:.4f} | {bb} | {pd} | {bd} | {rob} |".format(
+            "| {id} | {gv} | {pf} | {pe} | {n} | {ot} | {adq} | {mtw} | {thin} | "
+            "{pwadq} | {pb:.4f} | {bb} | {pd} | {bd} | {rob} |".format(
                 id=r["id"],
                 gv=r["gate_verdict"],
                 pf="" if r["pf_ci_lower"] is None else f"{r['pf_ci_lower']:.3f}",
                 pe=f"{r['p_edge']:.3f}",
                 n=r["n_oos_windows"],
+                ot="?" if r.get("total_oos_trades") is None else r["total_oos_trades"],
+                adq=_adq[r.get("sample_adequate")],
+                mtw="?" if _mtw is None else _mtw,
+                thin="?" if _nthin is None else _nthin,
+                pwadq=_adq[r.get("per_window_adequate")],
                 pb=r["p_binom"],
                 bb="Y" if r.get("bh_significant_binom") else "·",
                 pd="" if r["p_dsr"] is None else f"{r['p_dsr']:.4f}",
@@ -286,7 +398,21 @@ def _markdown(report: dict[str, Any]) -> str:
         "sign-test is deliberately conservative; a strict BH line over a "
         f"{report['n_family']}-member family can reject strong-PF strategies on "
         "window count alone. The ranking (lowest `p_binom` first) shows which "
-        "strategies are *closest* to robust — that is where real edge, if any, lives.",
+        "strategies are *closest* to robust — but read it together with `adq`.",
+        f"- **`adq` = sample adequacy** (total OOS trades >= {MIN_OOS_TRADES}). An "
+        "`adq=n` row is a small-sample mirage: its p_binom/PF can look strong while "
+        "resting on a handful of OOS trades (PF inflated by 2-trade windows). Such a "
+        "row can rank high on p_binom yet is **not** where durable edge lives, and it "
+        "can never be certified `ROBUST` regardless of the BH line. Treat the "
+        "lowest-p_binom `adq=Y` row as the genuine lead.",
+        f"- **`pwadq` = per-window adequacy** (MEDIAN window >= "
+        f"{MIN_OOS_TRADES_PER_WINDOW} OOS trades; `med_tr/win` and `thin` = count of "
+        "windows below that floor). The aggregate `adq` floor is necessary but NOT "
+        "sufficient: a strategy can clear 30 aggregate trades while most windows are "
+        "1-4 trades with degenerate PFs (inf/666/295) — `pwadq=n` flags exactly that. "
+        "A `pwadq=n` row can never be `ROBUST` even if `adq=Y` (e.g. `trend_rank4`: 67 "
+        "aggregate trades, median 4/window, 14 of 19 windows thin). `pwadq=?` means no "
+        "per-window data (fails open — the aggregate floor still applies).",
         "- This correction can only SHRINK the validated set. A NO survivor result "
         "is the honest outcome of screening many candidates with few OOS windows, "
         "not proof that no edge exists.",

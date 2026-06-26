@@ -1,12 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import useSWR from "swr";
-import {
-  fetchHonestRealized,
-  HONEST_REALIZED_KEY,
-  type HonestPnlSummary,
-} from "@/lib/honestMetrics";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 function fmt(n: number): string {
   const s = new Intl.NumberFormat("en-US", {
@@ -21,13 +16,16 @@ function fmt(n: number): string {
  * Deduplicated trade-record P&L on the main dashboard, sourced through the
  * honest-metrics layer (not the raw, over-counting engine tables). Surfaces the
  * real -$1,378 / PF 0.88 record so it is visible here, not only on /master.
+ *
+ * Reads through the shared `useHonestTrades()` subscription (SWR key
+ * "honest-trades") rather than a private "honest-realized-pnl" key, so this card
+ * dedupes with every other honest-metrics widget — one /master/trading/realized
+ * request per refresh cycle for the whole page, and no cross-widget desync. The
+ * HonestTradeSet already carries every field this summary needs.
  */
 export function HonestPnlCard() {
-  const { data, error } = useSWR<HonestPnlSummary>(
-    HONEST_REALIZED_KEY,
-    fetchHonestRealized,
-    { refreshInterval: 60_000, shouldRetryOnError: false }
-  );
+  const { honest, error } = useHonestTrades(60_000);
+  const pf = honest?.profitFactor ?? null;
 
   return (
     <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4">
@@ -49,45 +47,42 @@ export function HonestPnlCard() {
         </p>
       )}
 
-      {!error && !data && (
+      {!error && !honest && (
         <p className="py-2 text-xs text-gray-500">Loading record…</p>
       )}
 
-      {data && (
+      {honest && (
         <div className="space-y-2">
           <div className="flex items-end justify-between">
             <span
               className={`font-mono text-3xl font-bold tabular-nums ${
-                data.netRealized < 0 ? "text-red-400" : "text-emerald-400"
+                honest.net < 0 ? "text-red-400" : "text-emerald-400"
               }`}
             >
-              {fmt(data.netRealized)}
+              {fmt(honest.net)}
             </span>
             <span className="text-[11px] text-gray-500">
-              {data.wins}W / {data.losses}L · PF{" "}
-              <span className={data.profitFactor < 1 ? "text-red-400" : "text-emerald-400"}>
-                {data.profitFactor.toFixed(2)}
+              {honest.wins}W / {honest.losses}L · PF{" "}
+              <span className={pf != null && pf < 1 ? "text-red-400" : "text-emerald-400"}>
+                {pf != null ? pf.toFixed(2) : "—"}
               </span>
             </span>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
             <span>
-              <span className="text-gray-600">trades</span> {data.trades}
+              <span className="text-gray-600">trades</span> {honest.trades.length}
             </span>
             <span>
               <span className="text-gray-600">win rate</span>{" "}
-              {(data.winRate * 100).toFixed(0)}%
+              {(honest.winRate * 100).toFixed(0)}%
             </span>
           </div>
-          {data.relogsCollapsed > 0 && (
+          {honest.relogged > 0 && (
             <p className="text-[10px] text-amber-400">
-              {data.relogsCollapsed} re-logged row
-              {data.relogsCollapsed === 1 ? "" : "s"} collapsed — the raw table
+              {honest.relogged} re-logged row
+              {honest.relogged === 1 ? "" : "s"} collapsed — the raw table
               over-counts to a false profit.
             </p>
-          )}
-          {!data.ok && (
-            <p className="text-[10px] text-red-400">engine record unavailable</p>
           )}
         </div>
       )}
