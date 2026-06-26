@@ -148,6 +148,77 @@ dead tunnel that the local-only `Jarvis-EngineHealth-Hourly` watchdog can't see.
 
 ---
 
+## Credential rotation
+
+Rotate when: a credential leaks, on 90-day hygiene, or to re-sync after a peer session
+changed the ngrok cred (which silently 401s the public site — see the footgun note above).
+Generate new values locally; never echo existing ones. These steps are run by you,
+not by an agent (credential-guard blocks `.env`/`ngrok.yml` writes).
+
+### A. ngrok basic-auth credential (re-sync + clean ownership)
+
+```powershell
+# 1. Generate a new 32-char credential (printed once, for you to paste)
+$newpass = -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 32 | %{[char]$_})
+"jarvis:$newpass"        # copy this whole string
+
+# 2. Edit %LOCALAPPDATA%\ngrok\ngrok.yml -> replace the credentials line under
+#    tunnels.jarvis-engine.traffic_policy ... basic-auth ... credentials:
+#        - "jarvis:<newpass>"
+
+# 3. Apply it
+Restart-Service ngrok
+
+# 4. Re-point Vercel + redeploy (from dashboard/)
+vercel env rm  ENGINE_TUNNEL_BASIC_AUTH production
+vercel env add ENGINE_TUNNEL_BASIC_AUTH production --sensitive   # paste jarvis:<newpass>
+vercel --prod --archive=tgz
+```
+
+Brief 401 window between step 3 and the redeploy completing (~2-3 min). Expected.
+
+### B. engine API key (X-API-Key)
+
+More blast radius — **three** consumers must move together or one of them 401s:
+
+```powershell
+# 1. Generate a new 64-hex key
+$newkey = -join (1..64 | %{ '{0:x}' -f (Get-Random -Max 16) })
+$newkey | Set-Clipboard      # on clipboard, not echoed
+
+# 2. Update all THREE consumers:
+#    a) engine/.env            -> API_KEY=<newkey>
+#    b) dashboard/.env.local   -> ENGINE_API_KEY=<newkey>   (local :3010 proxy)
+#    c) Vercel (remote proxy):
+vercel env rm  ENGINE_API_KEY production
+vercel env add ENGINE_API_KEY production --sensitive          # paste <newkey>
+
+# 3. Restart engine (~229s warm-up), then redeploy Vercel
+.\restart_engine.ps1
+vercel --prod --archive=tgz
+```
+
+`check-tunnel-health.ps1` keeps working throughout — it hits `/health` (auth-exempt).
+
+### C. Ownership — stop the rotation thrash
+
+Only **one** session should own `ngrok.yml`. A peer rotating the basic-auth is what
+desyncs Vercel. The `ngrok` resource is now wired into the Tier-2.5 shared-resource
+guard, so a peer that tries to restart/reconfigure ngrok while you have it claimed gets
+blocked. Claim it before editing the config:
+
+```powershell
+~/scripts/claude-resource-lock.ps1 -Claim ngrok -Reason "rotating basic-auth cred"
+# ... edit ngrok.yml, Restart-Service ngrok ...
+~/scripts/claude-resource-lock.ps1 -Release ngrok
+```
+
+### Optional
+The ngrok account `authtoken` in `ngrok.yml` is local-only and hasn't leaked — rotate it
+(via the ngrok dashboard) only if that file is ever exposed.
+
+---
+
 ## Known limitation — WebSocket pages
 
 Live-tick panels (`lib/engine-websocket-context.tsx`, `hooks/useWebSocket.ts`,
