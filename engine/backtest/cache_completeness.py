@@ -234,7 +234,7 @@ def inspect_completeness(
     seg_ends = suspicious_breaks + [n]
     best = {"start": ts[0], "end": ts[-1], "n_bars": n}
     best_count = -1
-    for s, e in zip(seg_starts, seg_ends):
+    for s, e in zip(seg_starts, seg_ends, strict=True):  # equal length by construction
         count = e - s
         if count > best_count:
             best_count = count
