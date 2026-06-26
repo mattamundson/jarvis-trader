@@ -30,7 +30,9 @@ A REJECT verdict means discard the hypothesis, not tweak-and-rerun.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+from datetime import date
 from itertools import product
 from pathlib import Path
 
@@ -43,11 +45,41 @@ if str(ENGINE_ROOT) not in sys.path:
 from backtest.atr_trail_bounce_signals import (  # noqa: E402
     generate_atr_trail_bounce_signals,
     generate_atr_trail_confluence_signals,
+    generate_atr_trail_fade_signals,
     generate_atr_trail_flip_signals,
     generate_atr_trail_kelt_confluence_signals,
     generate_atr_trail_tpotarget_confluence_signals,
 )
 from backtest.backtester import Backtester  # noqa: E402
+
+_CACHE_RANGE_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})_")
+
+
+def _pick_cache_file(paths: list[Path]) -> Path:
+    """Pick the most useful cache file: latest END date, tie-broken by longest span.
+
+    The cache convention is ``<SYM>_<start>_<end>_<tf>.csv`` with ISO dates. A naive
+    ``sorted(paths)[-1]`` sorts the *strings* and so picks the file with the latest
+    START date — which is usually the SHORTEST, most-recent slice (e.g. a 2-month
+    tail), silently ignoring a freshly-refreshed multi-year file whose start date
+    sorts earlier. That bug ran the whole ATR-trail backtest on ~965 bars / ~21
+    trades instead of the 12.5k-bar 2-year file, and made the refresh step a no-op.
+
+    Parse the range instead: prefer the file that ENDS latest (freshest data), break
+    ties toward the EARLIEST start (longest history), then newest mtime. Files whose
+    names carry no parseable range fall back to mtime only and rank below any that do.
+    """
+
+    def key(p: Path):
+        m = _CACHE_RANGE_RE.search(p.name)
+        if m:
+            start = date.fromisoformat(m.group(1)).toordinal()
+            end = date.fromisoformat(m.group(2)).toordinal()
+            return (1, end, -start, p.stat().st_mtime)
+        return (0, 0, 0, p.stat().st_mtime)
+
+    return max(paths, key=key)
+
 
 # ── Locked spec ────────────────────────────────────────────────────────────
 ATR_PERIOD = 5
@@ -69,13 +101,16 @@ def _load(symbol: str, timeframe: str, data_file: str | None) -> pd.DataFrame:
         path = Path(data_file)
     else:
         cache = ENGINE_ROOT / "backtest" / "cache"
-        matches = sorted(cache.glob(f"{symbol}_*_{timeframe}.csv"))
+        matches = list(cache.glob(f"{symbol}_*_{timeframe}.csv"))
         if not matches:
             raise SystemExit(
                 f"No cache file matching {symbol}_*_{timeframe}.csv in {cache}. "
                 f"Pass --data-file explicitly."
             )
-        path = matches[-1]
+        # Pick the freshest+longest file by parsing the date range — NOT the
+        # lexicographically-last one, which silently picks the shortest recent
+        # tail and ignores a freshly-refreshed multi-year file. See _pick_cache_file.
+        path = _pick_cache_file(matches)
     print(f"[ATR-BOUNCE] loading {path.name}")
     df = pd.read_csv(path)
     df.columns = [c.lower() for c in df.columns]
@@ -117,6 +152,11 @@ def _grid_for(mode: str) -> list[dict]:
     if mode == "tpotgt":
         # flip base + TPO measured-move direction gate; sweep factor x room
         return [{"factor": f, "require_room": r} for f in FACTOR_GRID for r in (False, True)]
+    if mode == "fade":
+        # mean-reversion inverse of flip; sweep factor x reversion target (ATR mult).
+        # stop is fixed at 1.0 ATR so target_atr both sets the goal AND the R:R
+        # (target/stop). 1.5 and 2.0 both clear the Backtester's R:R>=1.2 gate.
+        return [{"factor": f, "target_atr": t} for f in FACTOR_GRID for t in (1.5, 2.0)]
     return [{"factor": f, "hold_bars": h, "touch_tol_atr": t} for f, h, t in PARAM_GRID]
 
 
@@ -147,6 +187,13 @@ def _signals_for(mode: str, df: pd.DataFrame, params: dict):
             base="flip",
             require_room=params["require_room"],
         )
+    if mode == "fade":
+        return generate_atr_trail_fade_signals(
+            df,
+            atr_period=ATR_PERIOD,
+            factor=params["factor"],
+            target_atr=params["target_atr"],
+        )
     return generate_atr_trail_bounce_signals(
         df,
         atr_period=ATR_PERIOD,
@@ -176,6 +223,17 @@ def _backtest(df: pd.DataFrame, symbol: str, mode: str, params: dict):
             fixed_contracts=1,
             trailing_stop=True,
             strict_trailing=True,
+        )
+    elif mode == "fade":
+        # fade is mean-reversion: it TAKES PROFIT at a fixed ATR target and stops
+        # out beyond the breakout — so it needs use_targets=True and NO trailing
+        # stop (the opposite of the trend-following family). 1 contract, hold
+        # overnight, to stay comparable to the flip it inverts.
+        kwargs.update(
+            use_targets=True,
+            eod_close=False,
+            fixed_contracts=1,
+            trailing_stop=False,
         )
     bt = Backtester(**kwargs)
     return bt.run(sig, symbol=symbol, multiplier=MULTIPLIERS.get(symbol, 1.0))
@@ -234,6 +292,7 @@ def _run_mode(mode: str, df: pd.DataFrame, args) -> None:
         "confluence": "CONFLUENCE (flip + prior-session value-area gate)",
         "kelt": "KELT-CONFLUENCE (flip + 4H Keltner gate)",
         "tpotgt": "TPO-TARGET (flip + profile measured-move direction gate)",
+        "fade": "FADE (mean-reversion inverse of flip — fade the breakout)",
     }[mode]
     optimize_fn = _make_optimize_fn(args.symbol, mode)
     grid = _grid_for(mode)
@@ -281,12 +340,14 @@ def main() -> None:
     ap.add_argument("--data-file", default=None)
     ap.add_argument(
         "--mode",
-        choices=["bounce", "flip", "confluence", "kelt", "tpotgt", "both", "all"],
+        choices=["bounce", "flip", "confluence", "kelt", "tpotgt", "fade", "both", "all"],
         default="all",
         help="bounce = tag+reclaim+hold; flip = TOS LE/SE stop-and-reverse; "
         "confluence = flip + prior-session value-area gate; "
         "kelt = flip + 4H Keltner gate; tpotgt = flip + TPO target direction; "
-        "both = bounce+flip; all = bounce+flip+confluence+kelt+tpotgt",
+        "fade = mean-reversion inverse of flip (fresh hypothesis, opt-in only); "
+        "both = bounce+flip; all = bounce+flip+confluence+kelt+tpotgt "
+        "(fade is NOT in 'all' — it is a distinct hypothesis, run it explicitly)",
     )
     ap.add_argument("--train-window", type=int, default=2000, help="bars for MCPT in-sample")
     ap.add_argument("--insample-perms", type=int, default=200)

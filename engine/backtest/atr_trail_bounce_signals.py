@@ -77,9 +77,13 @@ def generate_atr_trail_bounce_signals(
     df = df.copy()
 
     trail, state = atr_trailing_stop(
-        df["high"], df["low"], df["close"],
-        period=atr_period, factor=factor,
-        first_trade_long=first_trade_long, trail_type=trail_type,
+        df["high"],
+        df["low"],
+        df["close"],
+        period=atr_period,
+        factor=factor,
+        first_trade_long=first_trade_long,
+        trail_type=trail_type,
     )
     atr14 = wilder_atr(df["high"], df["low"], df["close"], _TARGET_ATR_PERIOD)
 
@@ -176,9 +180,13 @@ def generate_atr_trail_flip_signals(
     """
     df = df.copy()
     trail, state = atr_trailing_stop(
-        df["high"], df["low"], df["close"],
-        period=atr_period, factor=factor,
-        first_trade_long=first_trade_long, trail_type=trail_type,
+        df["high"],
+        df["low"],
+        df["close"],
+        period=atr_period,
+        factor=factor,
+        first_trade_long=first_trade_long,
+        trail_type=trail_type,
     )
     atr14 = wilder_atr(df["high"], df["low"], df["close"], _TARGET_ATR_PERIOD)
 
@@ -245,6 +253,115 @@ def generate_atr_trail_flip_signals(
     return df
 
 
+def generate_atr_trail_fade_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    stop_atr: float = 1.0,
+    target_atr: float = 1.5,
+    first_trade_long: bool = True,
+    trail_type: str = "modified",
+) -> pd.DataFrame:
+    """FADE the ATR-trail flip — the mean-reversion inverse of the flip system.
+
+    Hypothesis (Amo, 2026-06-25): the flip / stop-and-reverse system LOSES on MES
+    1h (PF ~0.315, Sharpe < 0) precisely because MES 1h is ~88% ranging — most
+    trail flips are whipsaws that revert rather than trends that continue. This
+    variant bets on the reversion: when the trail flips LONG (a bullish break),
+    enter SHORT; when it flips SHORT, enter LONG. Same entry bars as
+    ``generate_atr_trail_flip_signals`` but the opposite side.
+
+    Unlike the trend-following flip (which rides to the opposite flip with a
+    trailing stop), a fade is a mean-reversion trade with a FIXED ATR(14) target
+    and stop, so it must be backtested with ``use_targets=True`` / no trailing:
+        entry  : at the close of the flip bar, OPPOSITE the flip direction.
+        target : entry -/+ target_atr * ATR(14)   (revert toward the mean).
+        stop   : entry +/- stop_atr  * ATR(14)    (beyond the breakout extreme).
+    ``target_atr`` must be >= 1.2 * ``stop_atr`` or the Backtester's R:R>=1.2
+    entry gate rejects every fade (it sizes the target off target_atr/stop_atr).
+
+    This is a NEW hypothesis, NOT a re-tune of the flip — lock the grid and run it
+    through MCPT/OOS fresh (see ml-pitfalls-defense.md). A negative flip PF does
+    NOT guarantee a positive fade PF: commission + slippage are paid on the fade
+    side too, so a gross-3x inverse can still be a net loser. The backtest decides.
+
+    Look-ahead discipline: the trail state is causal; the flip compares state[i]
+    vs state[i-1]; entry/target/stop are all set at close[i]. No future bar is
+    read. Same output schema as ``generate_atr_trail_bounce_signals``.
+    """
+    df = df.copy()
+    trail, state = atr_trailing_stop(
+        df["high"],
+        df["low"],
+        df["close"],
+        period=atr_period,
+        factor=factor,
+        first_trade_long=first_trade_long,
+        trail_type=trail_type,
+    )
+    atr14 = wilder_atr(df["high"], df["low"], df["close"], _TARGET_ATR_PERIOD)
+
+    prev_state = state.shift(1)
+    flip_long = (state == 1.0) & (prev_state == -1.0)  # bullish break -> FADE short
+    flip_short = (state == -1.0) & (prev_state == 1.0)  # bearish break -> FADE long
+
+    n = len(df)
+    entry_signal = np.full(n, "NO_TRADE", dtype=object)
+    exit_signal = np.full(n, "NO_EXIT", dtype=object)
+    stop_level = np.full(n, np.nan)
+    target_1 = np.full(n, np.nan)
+    target_2 = np.full(n, np.nan)
+    target_3 = np.full(n, np.nan)
+    bias = np.full(n, "NEUTRAL", dtype=object)
+
+    for i in range(n):
+        if pd.isna(atr14.iloc[i]) or pd.isna(trail.iloc[i]):
+            continue
+        atr_i = float(atr14.iloc[i])
+        if atr_i <= 0:
+            continue
+        price = float(df["close"].iloc[i])
+        if flip_long.iloc[i]:
+            # bullish break -> bet it reverts: SHORT (fade)
+            entry_signal[i] = "ENTRY_NOW"
+            bias[i] = "LEAN_BEAR"
+            stop_level[i] = price + stop_atr * atr_i
+            target_1[i] = price - target_atr * atr_i
+            target_2[i] = price - 2.0 * target_atr * atr_i
+            target_3[i] = price - 3.0 * target_atr * atr_i
+        elif flip_short.iloc[i]:
+            # bearish break -> bet it reverts: LONG (fade)
+            entry_signal[i] = "ENTRY_NOW"
+            bias[i] = "LEAN_BULL"
+            stop_level[i] = price - stop_atr * atr_i
+            target_1[i] = price + target_atr * atr_i
+            target_2[i] = price + 2.0 * target_atr * atr_i
+            target_3[i] = price + 3.0 * target_atr * atr_i
+
+    # Safety exit: the next flip in either direction closes an open fade (so a
+    # breakout that keeps trending hands off to a new opposite fade rather than
+    # bleeding). With use_targets=True the target/stop usually fires first.
+    flipped = state != state.shift(1)
+    exit_signal[(flipped & state.notna()).to_numpy()] = "EXIT_NOW"
+
+    df["entry_signal"] = entry_signal
+    df["exit_signal"] = exit_signal
+    df["stop_level"] = stop_level
+    df["target_1"] = target_1
+    df["target_2"] = target_2
+    df["target_3"] = target_3
+    df["atr"] = atr14
+    df["trail"] = trail
+    df["trail_state"] = state
+    df["bias"] = bias
+    # Regime reflects the FADE direction (opposite the trail state).
+    df["regime"] = "RANGE_BOUND"
+    df.loc[df["bias"] == "LEAN_BULL", "regime"] = "MEANREV_LONG"
+    df.loc[df["bias"] == "LEAN_BEAR", "regime"] = "MEANREV_SHORT"
+
+    return df
+
+
 def generate_atr_trail_confluence_signals(
     df: pd.DataFrame,
     atr_period: int = 5,
@@ -280,8 +397,11 @@ def generate_atr_trail_confluence_signals(
     """
     if base == "bounce":
         sig = generate_atr_trail_bounce_signals(
-            df, atr_period=atr_period, factor=factor,
-            hold_bars=hold_bars, touch_tol_atr=touch_tol_atr,
+            df,
+            atr_period=atr_period,
+            factor=factor,
+            hold_bars=hold_bars,
+            touch_tol_atr=touch_tol_atr,
         )
     else:
         sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
@@ -346,8 +466,11 @@ def generate_atr_trail_kelt_confluence_signals(
     """
     if base == "bounce":
         sig = generate_atr_trail_bounce_signals(
-            df, atr_period=atr_period, factor=factor,
-            hold_bars=hold_bars, touch_tol_atr=touch_tol_atr,
+            df,
+            atr_period=atr_period,
+            factor=factor,
+            hold_bars=hold_bars,
+            touch_tol_atr=touch_tol_atr,
         )
     else:
         sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
@@ -407,8 +530,11 @@ def generate_atr_trail_tpotarget_confluence_signals(
     """
     if base == "bounce":
         sig = generate_atr_trail_bounce_signals(
-            df, atr_period=atr_period, factor=factor,
-            hold_bars=hold_bars, touch_tol_atr=touch_tol_atr,
+            df,
+            atr_period=atr_period,
+            factor=factor,
+            hold_bars=hold_bars,
+            touch_tol_atr=touch_tol_atr,
         )
     else:
         sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
@@ -423,8 +549,8 @@ def generate_atr_trail_tpotarget_confluence_signals(
     imbalance = tpo["tpo_imbalance"]
     target = tpo["tpo_target"]
     close = df["close"]
-    bear = (imbalance == "BEAR_IMBAL")
-    bull = (imbalance == "BULL_IMBAL")
+    bear = imbalance == "BEAR_IMBAL"
+    bull = imbalance == "BULL_IMBAL"
 
     long_ok = bull
     short_ok = bear
