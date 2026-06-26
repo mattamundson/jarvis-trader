@@ -32,7 +32,9 @@ from backtest.export_ibkr_history import CACHE_FILENAME_CONTRACT
 CACHE_DIR = Path("C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache")
 INTERVAL = "1d"
 # Index/sector ETFs with deep free daily history. All 2-4 chars (contract-valid).
-DEFAULT_SYMBOLS = ("SPY", "QQQ", "IWM", "GLD", "DIA")
+# Cross-asset breadth added 2026-06-26: TLT (20y Treasuries), SLV (silver), EEM
+# (emerging mkts) -- separates instrument quirks from real cross-asset seasonals.
+DEFAULT_SYMBOLS = ("SPY", "QQQ", "IWM", "GLD", "DIA", "TLT", "SLV", "EEM")
 _COLS = ["timestamp", "open", "high", "low", "close", "volume"]
 
 Fetcher = tuple[str, Callable[[str], "pd.DataFrame | None"]]

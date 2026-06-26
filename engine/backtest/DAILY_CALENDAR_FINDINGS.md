@@ -2,16 +2,17 @@
 
 Standalone screener (`daily_calendar_discovery.py`) over the deep free daily ETF
 caches pulled by `free_daily_export.py` (SPY 33yr, DIA 28yr, QQQ 27yr, IWM 26yr,
-GLD 22yr). 5 symbols × **17** calendar effects = 85 parameter-free long-on-selected-days
-strategies, each graded net @ 2bps on the honest bar: bootstrap PF-CI, p_edge,
-**deflated Sharpe penalized for 17 trials**, max-DD, chronological H1/H2 stationarity,
-and the canonical `compute_gate_v2` verdict.
+GLD 22yr; + TLT 24yr, SLV 20yr, EEM 23yr cross-asset). 8 symbols × **17** calendar
+effects = 136 parameter-free long-on-selected-days strategies, each graded net @ 2bps
+on the honest bar: bootstrap PF-CI, p_edge, **deflated Sharpe penalized for 17 trials**,
+max-DD, chronological H1/H2 stationarity, and the canonical `compute_gate_v2` verdict.
 
-> **2026-06-26 update:** the family grew from 13 → 17 effects (added `santa_claus`,
-> `post_holiday`, `last_day_of_month`, `opex_week` — all pre-registered, documented
-> anomalies). The harsher 17-trial deflation did NOT unseat the known passers (SPY
-> pre_holiday dsr 0.94→0.61, GLD pre_holiday 1.00 — both still gate-PASS) and surfaced
-> **santa_claus as a second robust effect** (see headline 2). See § "2026-06-26 effects".
+> **2026-06-26 update:** family grew 13 → 17 effects (added `santa_claus`, `post_holiday`,
+> `last_day_of_month`, `opex_week`) AND the symbol set grew 5 → 8 (added cross-asset
+> TLT/SLV/EEM). The harsher 17-trial deflation did NOT unseat the known passers (SPY
+> pre_holiday dsr 0.94→0.61, GLD 1.00 — both still gate-PASS). Net: **19 durable candidates,
+> 5 gate-v2 PASSes** — `santa_claus` PASSES on SPY+DIA+**EEM** and `pre_holiday` on SPY+GLD.
+> See headline 2 and § "Cross-asset (2026-06-26)".
 
 Candidacy ranks on DURABLE metrics (stationary + PF-CI≥1.10 + dsr≥0.10), NOT p_edge —
 the turn-of-month lesson: `p_edge≥0.95` is structurally impossible for a long-beta
@@ -60,6 +61,26 @@ a forward shadow sees its first observation only in late December.
 - **QQQ turn_of_quarter** (n=437, PF-CI 2.16, dsr 0.05) — quarter-turn rebalancing drift.
 
 10 durable candidates total across the 85 cells.
+
+## Cross-asset (2026-06-26) — TLT / SLV / EEM separate real seasonals from equity quirks
+
+Pulling 3 economically-distinct instruments (TLT 20y Treasuries, SLV silver, EEM emerging
+markets) tested whether the effects are US-equity artifacts or genuine cross-asset seasonals:
+
+- **santa_claus generalizes hardest** — adds a **gate-v2 PASS on EEM** (dsr 1.00, Sharpe 3.88,
+  H1/H2 2.40/1.55) on top of SPY+DIA, plus a strong SLV candidate. Equity + EM + metals breadth
+  = a real cross-asset year-end seasonal, not a single-market fluke.
+- **pre_holiday generalizes** — EEM (PF-CI 2.91, dsr 1.00) and SLV are strong candidates atop
+  the SPY+GLD PASS. Holds across equity / EM / metals.
+- **NEW bond-specific effect — TLT `last_day_of_month`** (n=288, PF-CI 2.81, dsr 1.00, Sharpe
+  3.20, H1/H2 2.12/1.37). The month-end effect that is *negative* in equities is *strongly
+  positive* in 20y Treasuries — the documented month-end index-duration-extension buy. The
+  cross-asset SIGN FLIP validates the economic mechanism (it is duration demand, not beta).
+- **Precious-metals holiday symmetry** — GLD and SLV BOTH show pre- and post-holiday candidacy
+  (dsr 1.00); equities are pre-only, bonds negative. Metals' holiday effect spans the break.
+- **TLT otherwise diverges from equities** — pre_holiday/santa_claus are NEGATIVE for bonds
+  (flight-to-safety vs risk-on calendar structure differ), confirming the effects are not just
+  generic beta on a day-subset.
 
 ## 2026-06-26 effects — what the 4 new pre-registered anomalies revealed
 
