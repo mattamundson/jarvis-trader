@@ -120,33 +120,38 @@ export function RegimeScoreHistoryChart({
           isAnimationActive={false}
         />
 
+        {/* recharts v2 does not recurse into React Fragments when collecting
+            chart series, so each Line must be a direct child of the chart.
+            Wrapping these in a fragment silently drops them from the render. */}
         {showEma && (
-          <>
-            <Line
-              type="monotone"
-              dataKey="shortEma"
-              stroke={COLORS.shortEma}
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="longEma"
-              stroke={COLORS.longEma}
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="extraEma"
-              stroke={COLORS.extraEma}
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </>
+          <Line
+            type="monotone"
+            dataKey="shortEma"
+            stroke={COLORS.shortEma}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        )}
+        {showEma && (
+          <Line
+            type="monotone"
+            dataKey="longEma"
+            stroke={COLORS.longEma}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        )}
+        {showEma && (
+          <Line
+            type="monotone"
+            dataKey="extraEma"
+            stroke={COLORS.extraEma}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
         )}
       </ComposedChart>
     </ResponsiveContainer>

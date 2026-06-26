@@ -1,31 +1,17 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { RefreshCw, BarChart2, Calendar, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import {
+  dailyPnl,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: "BUY" | "SELL";
-  quantity: number;
-  entry_price: number;
-  exit_price: number | null;
-  realized_pnl: number | null;
-  status: "OPEN" | "CLOSED" | "CANCELLED";
-  entry_time: string;
-  exit_time: string | null;
-  notes: string | null;
-}
-
-interface TradeHistoryResponse {
-  trades: TradeRecord[];
-  count: number;
-}
 
 interface DayBucket {
   dateKey: string; // "2026-03-29"
@@ -70,54 +56,33 @@ function buildBuckets(days: number): DayBucket[] {
 // ── Widget ───────────────────────────────────────────────────────────────────
 
 export function DailyTradeCountWidget() {
-  const [buckets, setBuckets] = useState<DayBucket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: tradeSet, isLoading: loading, error: loadError, mutate: fetchData } = useHonestTrades(0);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?status=CLOSED&limit=500`
-      );
-      const trades: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
-
-      // Build 14-day buckets
-      const dayBuckets = buildBuckets(14);
-      const bucketMap = new Map<string, DayBucket>();
-      for (const b of dayBuckets) {
-        bucketMap.set(b.dateKey, b);
-      }
-
-      // Populate from closed trades using exit_time
-      for (const trade of trades) {
-        if (trade.status !== "CLOSED" || !trade.exit_time) continue;
-        // Parse exit_time and extract date key in local time
-        const exitDate = new Date(trade.exit_time);
-        const dateKey = toDateKey(exitDate);
-        const bucket = bucketMap.get(dateKey);
-        if (bucket) {
-          bucket.count += 1;
-          bucket.totalPnl += trade.realized_pnl ?? 0;
-        }
-      }
-
-      setBuckets(dayBuckets);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (tradeSet) setLastUpdated(new Date());
+  }, [tradeSet]);
+
+  // Derive buckets at render time from the honest trade set
+  const buckets: DayBucket[] = (() => {
+    if (!tradeSet) return [];
+    // dailyPnl returns {date, pnl, count}[] keyed by YYYY-MM-DD (UTC exit date)
+    const byDay = dailyPnl(tradeSet.trades);
+    const dailyMap = new Map<string, { pnl: number; count: number }>(
+      byDay.map((d) => [d.date, { pnl: d.pnl, count: d.count }])
+    );
+    // Build 14-day buckets and merge deduped daily data
+    const dayBuckets = buildBuckets(14);
+    for (const bucket of dayBuckets) {
+      const dayData = dailyMap.get(bucket.dateKey);
+      if (dayData) {
+        bucket.count = dayData.count;
+        bucket.totalPnl = dayData.pnl;
+      }
+    }
+    return dayBuckets;
+  })();
 
   // ── Derived stats ──────────────────────────────────────────────────────────
 
@@ -182,7 +147,7 @@ export function DailyTradeCountWidget() {
         </div>
 
         <button
-          onClick={fetchData}
+          onClick={() => fetchData()}
           disabled={loading}
           className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/5 transition-colors disabled:opacity-50"
           aria-label="Refresh daily trade count"
@@ -317,6 +282,13 @@ export function DailyTradeCountWidget() {
             </p>
           </div>
         </div>
+      )}
+
+      {/* Dedup caveat footer */}
+      {!error && tradeSet && tradeSet.relogged > 0 && (
+        <p className="text-[10px] text-muted-foreground/70 border-t border-border pt-1">
+          {dedupCaveat(tradeSet)}
+        </p>
       )}
 
       {/* Last updated */}
