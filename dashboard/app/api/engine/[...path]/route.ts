@@ -30,6 +30,12 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
     headers.set("X-API-Key", engineApiKey);
   }
 
+  // When the engine is reached through an ngrok free-tier tunnel, ngrok injects
+  // an HTML "browser warning" interstitial for requests with browser-like
+  // headers (which this proxy forwards from the client). This header bypasses
+  // it so we always get the engine's JSON. Harmless for other tunnels.
+  headers.set("ngrok-skip-browser-warning", "true");
+
   const init: RequestInit = {
     method: request.method,
     headers,
