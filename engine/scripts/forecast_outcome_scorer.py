@@ -1,7 +1,9 @@
 """
 Evening outcome scorer for the self-improving morning briefing (Phase D).
 
-Runs post-close. For each (date, symbol) row written by the morning brief
+Grades the most recent COMPLETED session by default (the prior trading day), so
+the daily bar is final rather than a partial pre-settlement bar. For each
+(date, symbol) row written by the morning brief
 (Phase A levels + Phase B JARVIS's Read), it pulls the actual session OHLC,
 grades the structural levels and the Read, writes the outcome back to the
 forecast journal, emits a markdown report, and posts a one-line scoreline to
@@ -32,7 +34,7 @@ import argparse
 import logging
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -356,9 +358,40 @@ async def _post_scoreline(
         logger.warning("Discord scoreline post failed: %s", exc)
 
 
+def _default_score_date(db_path: Path | None = None) -> date:
+    """Most recent forecast date strictly before today ET — the last session whose
+    daily bar is complete.
+
+    Grading "today" at the 4:15pm slot would use a partial, pre-settlement bar
+    (futures settle ~5pm ET and the resampled daily bar is still forming), so the
+    Read would be scored against an intraday price rather than the real close.
+    Grading the prior completed session avoids that. Falls back to yesterday when
+    the journal is empty.
+    """
+    today = datetime.now(_ET).date()
+    try:
+        from analysis.forecast_journal import list_journal
+
+        rows = list_journal(db_path=db_path or _DB_PATH)
+        prior = [
+            date.fromisoformat(r["date"])
+            for r in rows
+            if r.get("date") and date.fromisoformat(r["date"]) < today
+        ]
+        if prior:
+            return max(prior)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("default score-date lookup failed: %s", exc)
+    return today - timedelta(days=1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="JARVIS forecast outcome scorer")
-    parser.add_argument("--date", default=None, help="Target date YYYY-MM-DD (default: today ET)")
+    parser.add_argument(
+        "--date",
+        default=None,
+        help="Target date YYYY-MM-DD (default: most recent completed session)",
+    )
     parser.add_argument("--no-discord", action="store_true", help="Skip Discord scoreline post")
     args = parser.parse_args()
 
@@ -369,7 +402,7 @@ def main() -> None:
             logger.error("Invalid --date '%s'. Use YYYY-MM-DD.", args.date)
             sys.exit(1)
     else:
-        target_date = datetime.now(_ET).date()
+        target_date = _default_score_date()
 
     logger.info("Scoring forecast for %s", target_date)
     results = score_date(target_date)
