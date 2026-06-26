@@ -35,6 +35,18 @@ logger = logging.getLogger(__name__)
 # advisory eligibility flips to default-deny.
 MAX_VERDICT_AGE_DAYS = 14
 
+# ALT-path pf_ci_lower floor (R1). The ALT gate (in the runners) drops the CORE
+# pf_ci_lower >= 1.10 requirement entirely rather than relaxing it, so an ALT
+# verdict can PASS while its 5th-percentile bootstrap PF is below 1.0 — i.e. a
+# net loser in the worst 5% of resamples (observed: MES_trend_rank7 at 0.92).
+# The read path re-imposes a hard floor of 1.00: an ALT pass must at least not
+# lose money in the 5th percentile. CORE passes are unaffected (CORE already
+# enforced 1.10 upstream). Fail-conservative: an ALT pass whose verdict file
+# predates gate_v2_metrics (no stored pf_ci_lower) cannot be confirmed and is
+# denied. Defined here (not in _gate_v2_helpers) so the read path stays free of
+# the write-path's numpy/statistics deps.
+GATE_PF_CI_LOWER_ALT = 1.00
+
 # INSUFFICIENT_SAMPLE (Init 2B): the strategy's total OOS trade count is below
 # MIN_OOS_TRADES_TOTAL, so the gate refuses rather than certifying on thin
 # evidence. It is a non-PASS verdict, so is_ungate_eligible / is_strategy_
@@ -171,9 +183,25 @@ def get_last_verdict(symbol: str, verdicts_dir: Optional[Path] = None) -> Option
     return candidates[0]
 
 
+def _passes_alt_pf_floor(v: "VerdictSnapshot") -> bool:
+    """A PASS verdict counts as a green light only if, when it passed via ALT,
+    its stored pf_ci_lower clears `GATE_PF_CI_LOWER_ALT` (R1).
+
+    CORE passes (and any PASS not routed via ALT) are unaffected. Fail-
+    conservative: an ALT pass whose gate_v2_metrics lacks pf_ci_lower (older
+    metric-less verdict files) cannot be confirmed and returns False.
+    """
+    if v.verdict != "PASS":
+        return False
+    if v.passed_via != "alt":
+        return True  # core pass — CORE already enforced pf_ci_lower >= 1.10
+    pf = v.gate_v2_metrics.get("pf_ci_lower")
+    return isinstance(pf, (int, float)) and not isinstance(pf, bool) and pf >= GATE_PF_CI_LOWER_ALT
+
+
 def is_ungate_eligible(symbol: str, verdicts_dir: Optional[Path] = None) -> bool:
-    """Default-deny advisory: `True` iff ANY non-stale PASS verdict exists
-    for `symbol` across all families.
+    """Default-deny advisory: `True` iff ANY non-stale PASS verdict that also
+    clears the ALT pf_ci_lower floor exists for `symbol` across all families.
 
     A FAIL in one family (e.g. trend_rv_filter) does not negate a PASS in
     another (e.g. trend). The routing layer decides which family to trade;
@@ -184,7 +212,7 @@ def is_ungate_eligible(symbol: str, verdicts_dir: Optional[Path] = None) -> bool
     """
     sym_upper = symbol.upper()
     return any(
-        v.verdict == "PASS"
+        _passes_alt_pf_floor(v)
         for v in _iter_verdict_files(verdicts_dir)
         if v.symbol.upper() == sym_upper and not v.is_stale()
     )
