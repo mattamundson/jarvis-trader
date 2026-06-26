@@ -41,6 +41,10 @@ from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+# Keep httpx/httpcore quiet: their INFO "HTTP Request: POST <url>" line logs the
+# full Discord webhook URL (a secret) into stdout and the scheduled-task log.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("daily_morning_briefing")
 
 # ---------------------------------------------------------------------------
