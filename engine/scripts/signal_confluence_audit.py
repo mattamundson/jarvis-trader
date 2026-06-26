@@ -15,15 +15,30 @@ champion on MES:
   3. auction    — composite (STC+ORB+VWAP) and a TPO-score threshold arm, the
                   backtested representation of the chart's profile/value read.
 
-This is a DIAGNOSTIC. It does NOT feed any paper-promotion or go/no-go gate.
-Per .claude/rules/ml-pitfalls-defense.md, ranking the max of N grid-searched
-arms inflates the apparent edge; no Deflated-Sharpe or permutation correction
-is applied here, so a "winner" is a candidate for a sealed walk-forward run,
-never a green light on its own.
+This is a SINGLE-SPLIT DIRECTIONAL SCREEN, not a verdict. It does NOT feed any
+paper-promotion or go/no-go gate, and it must NEVER be cited as evidence that a
+strategy lacks edge. Two structural reasons it cannot refute a strategy:
+
+  - It uses ONE fixed train/test split. For a low-frequency strategy (the MES
+    trend champion fires ~1 trade/month → ~16 OOS trades across its whole
+    validation), a single OOS slice lands in one regime and a profit factor
+    computed on ~10 trades is noise. The validated champion earned its p_edge
+    via a ROLLING walk-forward (many windows), not a single hold-out.
+  - It grid-searches several arms (max-of-N is biased up; ml-pitfalls-defense.md
+    #3/#4). No Deflated-Sharpe / permutation correction is applied here.
+
+For promotion-grade evidence use scripts/validate_strategy.py (rolling
+walk-forward + gate v2: p_edge / DSR / MC-drawdown / cost survival). A "winner"
+here is at most a candidate to feed into that pipeline.
+
+If an arm produces few or zero OOS trades, that is a DIAGNOSTIC RESULT about the
+arm's gating, not proof of no edge — run --diagnose to see the entry funnel
+(regime / ADX / signal-cross counts) before drawing any conclusion.
 
 Usage (from engine/):
   .venv/Scripts/python -m scripts.signal_confluence_audit
   .venv/Scripts/python -m scripts.signal_confluence_audit --json out.json
+  .venv/Scripts/python -m scripts.signal_confluence_audit --diagnose
 """
 
 from __future__ import annotations
@@ -343,6 +358,16 @@ ARMS = {
     "saty": (_grid_saty, _apply_saty),
 }
 
+# Representative (mid-grid) params used ONLY by --diagnose to count raw entry
+# signals per arm. Not a champion selection — just a single sane point so the
+# entry funnel is visible without a grid search. Keys must match each apply_fn.
+DIAGNOSE_PARAMS = {
+    "trend": {"fast": 60, "slow": 200, "atr_trail": 2.0},
+    "composite": {"atr_trail": 2.0},
+    "tpo": {"enter": 0.33, "stop_mult": 1.5, "atr_trail": 1.5},
+    "saty": {"target_ratio": 1.5, "atr_trail": 2.0},
+}
+
 
 def run_backtest_arms(df_full, test_end: str = TEST_END) -> list[dict]:
     """Run every arm against the loaded frame. Pure orchestration over _walk."""
@@ -351,6 +376,93 @@ def run_backtest_arms(df_full, test_end: str = TEST_END) -> list[dict]:
         logger.info("running arm: %s", name)
         arms.append(_walk(name, df_full, grid_fn, apply_fn, test_end=test_end))
     return arms
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Diagnostic — raw entry funnel (why an arm goes silent), no min-trade gate
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _entry_count(df_sig) -> int:
+    """Count ENTRY_NOW rows in a signal frame (0 if column/frame missing)."""
+    if df_sig is None or "entry_signal" not in getattr(df_sig, "columns", []):
+        return 0
+    return int((df_sig["entry_signal"] == "ENTRY_NOW").sum())
+
+
+def _composite_funnel(df_sig) -> dict:
+    """Expose the composite entry gates so a 0-trade slice is explainable.
+
+    Composite blocks entries in VOLATILE regime and when ADX < 25, and gates on
+    an STC cross. If a slice produces no trades, these counts say which gate shut
+    it off (a gating result, NOT proof of no edge).
+    """
+    out: dict = {}
+    if df_sig is None:
+        return out
+    cols = getattr(df_sig, "columns", [])
+    if "regime_type" in cols:
+        out["regime"] = {str(k): int(v) for k, v in df_sig["regime_type"].value_counts().items()}
+    if "adx" in cols:
+        adx = df_sig["adx"].dropna()
+        out["adx_ge_25_pct"] = round(float((adx >= 25).mean()), 3) if len(adx) else None
+    for col in ("stc_cross_up", "stc_cross_down"):
+        if col in cols:
+            out[col] = int(df_sig[col].astype(bool).sum())
+    return out
+
+
+def diagnose_arms(df_full, test_end: str = TEST_END) -> list[dict]:
+    """Apply each arm at a fixed param point and count raw entries per slice.
+
+    Reveals silent-zero arms BEFORE the min-trade gate that the main audit
+    swallows into no_combos/no_data. For composite, also reports the gate funnel.
+    """
+    train = df_full[(df_full.index >= FULL_START) & (df_full.index < TRAIN_END)].copy()
+    test = df_full[(df_full.index >= TRAIN_END) & (df_full.index < test_end)].copy()
+    rows: list[dict] = []
+    for name, (_grid_fn, apply_fn) in ARMS.items():
+        params = DIAGNOSE_PARAMS[name]
+        row: dict = {"arm": name, "train_bars": len(train), "test_bars": len(test)}
+        for slc, frame in (("train", train), ("test", test)):
+            if len(frame) == 0:
+                row[f"{slc}_entries"] = 0
+                continue
+            try:
+                sig = apply_fn(frame.copy(), params)
+                row[f"{slc}_entries"] = _entry_count(sig)
+                if name == "composite":
+                    row[f"{slc}_funnel"] = _composite_funnel(sig)
+            except Exception as exc:  # noqa: BLE001 — diagnostic, never abort
+                row[f"{slc}_entries"] = None
+                row[f"{slc}_error"] = str(exc)
+        rows.append(row)
+    return rows
+
+
+def format_diagnose(rows: list[dict]) -> str:
+    """Render the entry-funnel diagnostic as a human-readable block."""
+    lines = [
+        "=" * 68,
+        "SIGNAL CONFLUENCE — ENTRY FUNNEL DIAGNOSTIC (raw, pre-gate)",
+        "=" * 68,
+        "Counts raw ENTRY_NOW signals per arm on train vs OOS at a fixed param",
+        "point. A 0 here means the arm's GATING shut it off — not proof of no edge.",
+        "",
+        f"  {'arm':<12}{'train_entries':>15}{'oos_entries':>13}",
+    ]
+    for r in rows:
+        te = r.get("train_entries")
+        oe = r.get("test_entries")
+        lines.append(f"  {r['arm']:<12}{str(te):>15}{str(oe):>13}")
+        if r.get("train_error") or r.get("test_error"):
+            lines.append(f"      error: {r.get('train_error') or r.get('test_error')}")
+        for slc in ("train", "test"):
+            funnel = r.get(f"{slc}_funnel")
+            if funnel:
+                lines.append(f"      {slc} funnel: {funnel}")
+    lines.append("=" * 68)
+    return "\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -410,6 +522,13 @@ def build_verdict(
 
     n_combos = len(TPO_ENTER_GRID) * len(TPO_STOP_GRID) + len(SATY_TARGET_GRID) + 27  # +SMA grid
     caveats = [
+        "SCREEN, NOT A VERDICT — single fixed train/test split. NEVER cite this as evidence a "
+        "strategy lacks edge. For promotion-grade evidence use scripts/validate_strategy.py "
+        "(rolling walk-forward + gate v2: p_edge / DSR / MC-DD / cost survival).",
+        "Low-frequency caveat: the MES trend champion fires ~1 trade/month; a single OOS slice "
+        "yields ~10 trades, so any PF here is noise-dominated. Rank order is indicative only.",
+        "An arm with few/zero OOS trades is a GATING result, not no-edge — run --diagnose to see "
+        "the entry funnel (regime / ADX / signal-cross counts) before concluding anything.",
         "DIAGNOSTIC — does not feed any paper-promotion or go/no-go gate (ml-pitfalls-defense.md).",
         f"Multiple testing: {len(ARMS)} arms grid-searched (~{n_combos}+ combos); max PF is biased up. "
         "No Deflated Sharpe / permutation test applied — required before paper promotion.",
@@ -489,6 +608,12 @@ def main() -> int:
     parser.add_argument("--json", help="Write the full verdict JSON to this path")
     parser.add_argument("--skip-backtest", action="store_true", help="corey-IC only (no data needed)")
     parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="Print per-arm raw entry funnel (train vs OOS, pre-gate) and exit. "
+        "Reveals silent-zero arms the main audit hides behind no_combos/no_data.",
+    )
+    parser.add_argument(
         "--test-end",
         default=TEST_END,
         help=(
@@ -499,19 +624,52 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    window = {"full_start": FULL_START, "train_end": TRAIN_END, "test_end": args.test_end}
+
+    # --diagnose: entry-funnel only. Needs data; refuses to pretend on no data.
+    if args.diagnose:
+        df = _load_mes(test_end=args.test_end)
+        if df is None:
+            logger.error(
+                "No MES data available (cache empty / symbol blocklisted / network down) — "
+                "cannot diagnose. Populate the IBKR-sourced backtest cache and retry."
+            )
+            return 2
+        print(format_diagnose(diagnose_arms(df, test_end=args.test_end)))
+        return 0
+
     corey_ic = fetch_corey_ic(args.engine_url)
 
     arms: list[dict] = []
     if not args.skip_backtest:
         df = _load_mes(test_end=args.test_end)
         if df is None:
-            logger.warning("No MES data available — reporting corey-IC only.")
-            arms = [{"arm": name, "status": "no_data"} for name in ARMS]
-        else:
-            arms = run_backtest_arms(df, test_end=args.test_end)
+            # Refuse to emit a verdict on no data — a silent no_data verdict reads
+            # as "tested and found nothing" when nothing was tested. Abort loudly.
+            logger.error(
+                "No MES data available (cache empty / symbol blocklisted / network down). "
+                "Aborting — refusing to emit a confluence verdict on zero data."
+            )
+            abort = {
+                "symbol": SYMBOL,
+                "interval": INTERVAL,
+                "verdict": "NO_DATA_ABORT",
+                "rationale": (
+                    "BacktestDataLoader returned no MES bars (empty cache / POLYGON_FUTURES_BLOCKLIST "
+                    "/ no network). No arm was run; this is NOT a no-edge result."
+                ),
+                "corey_ic": corey_ic,
+                "window": window,
+            }
+            if args.json:
+                Path(args.json).parent.mkdir(parents=True, exist_ok=True)
+                Path(args.json).write_text(json.dumps(abort, indent=2, default=str))
+                logger.info("NO_DATA_ABORT JSON written to %s", args.json)
+            return 2
+        arms = run_backtest_arms(df, test_end=args.test_end)
 
     verdict = build_verdict(arms, corey_ic)
-    verdict["window"] = {"full_start": FULL_START, "train_end": TRAIN_END, "test_end": args.test_end}
+    verdict["window"] = window
     print(format_report(verdict))
 
     if args.json:
