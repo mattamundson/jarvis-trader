@@ -156,7 +156,7 @@ Copied trading domain mirrors `engine/` → `app/` with routers split from monol
 |-------|----------|----------|------------------|
 | MES 1h “headline” PF / Sharpe | `JARVIS_TRADER_MASTER_REPORT_2026-03-30.md`, Session 5 `BacktestCompareWidget` | `MEMORY.md` v2.7 WFE + bugfix narrative | **§11:** old headline = `ui_only` / `superseded`; research decisions use **WFE + post-fix** rows. |
 | STC OS/OB defaults | older SUMMARY (23/83 daily); INTEGRATION_GUIDE (15/83 1h) | MEMORY per-instrument tuples | **Canonical params:** `MEMORY.md` + `signals.py` for live code; TOS must match INTEGRATION_GUIDE table when visual parity needed. |
-| MCL/MNQ approval | MEMORY “APPROVED” | Earlier “all instruments fail” line in same file | **Canon:** use **§11 Critical Findings v2.7** block as latest explicit approval; earlier contradiction superseded by dated subsection. |
+| Active instruments | MEMORY/v2.7 “MCL/MNQ APPROVED” | Tier-3 flip 2026-05-24 (`engine/CLAUDE.md`) | **Canon:** §11 + `engine/CLAUDE.md` — as of 2026-05-24, **MES 1h** and **MGC 1h** are the active paper symbols (p_edge gate v2); **MCL/MNQ halted** (`DO_NOT_TRADE`), **M2K rejected**. The earlier v2.7 MCL/MNQ approval is superseded. |
 
 ### 5.3 Instruments and walk-forward ethos
 
@@ -313,10 +313,11 @@ Full literal ThinkScript source is **not** inlined here — see files in `thinko
 
 | Instrument | Timeframe | Metric | Value | Status | Note |
 |-----------|-----------|--------|-------|--------|------|
-| MCL | 1h | WFE | **0.82** | trusted_research | Paper **APPROVED**; static params; `STC_OS=15, STC_OB=83, Stop=0.90, T1=1.50` |
-| MNQ | 1h | WFE | **0.57** | trusted_research | Paper **APPROVED**; **adaptive regime only**; **no MTF**, **no volume** filter per filter study |
-| MGC | 1d | WFE | **0.14** (extended) | trusted_research | **HALTED** — overfit; prior 0.88 small-sample |
-| MES | 1h | WFE | **0.09** | trusted_research | **Do not trade** (overfit) |
+| MES | 1h | p_edge | **0.75** | trusted_research | Paper **APPROVED** (Tier-3 2026-05-24); SMA(60,200) trend, atr_trail_mult=2.0; ALT gate v2 PASS. Supersedes prior 1h WFE=0.09. |
+| MGC | 1h | p_edge | **0.6842** | trusted_research | Paper **APPROVED** (Tier-3 2026-05-24); SMA(50,120) trend, atr_trail_mult=2.0; ALT gate v2 PASS. Supersedes prior 1d WFE=0.14. |
+| MCL | 1h | WFE | **0.82** | trusted_research | **HALTED** — `DO_NOT_TRADE`; hypotheses A–E exhausted 2026-05-07 |
+| MNQ | 1h | WFE | **0.57** | trusted_research | **HALTED** — `DO_NOT_TRADE`; trend/breakout/ORB all fail gate v2 |
+| M2K | 1h | — | — | trusted_research | **REJECTED** — SMA/ORB/Donchian rank-1 all FAIL 2026-05-24 |
 | SPY | 1h | WFE | negative / TBD | trusted_research | Not cleared (see MEMORY) |
 
 ### 11.3 Conflicting headline claims (must not drive risk)

@@ -22,12 +22,17 @@ dashboard visibility, but are blocked from generating paper orders. This is the
 **validation-only** state, codified as `VALIDATION_ONLY_INSTRUMENTS` in
 `engine/agents/pipeline.py`.
 
-### Current validation-only instruments (as of 2026-05-21)
+### Current validation-only instruments (as of 2026-05-24)
 
-| Symbol | WFE | Reason | Added |
-|--------|-----|--------|-------|
-| MES | 0.09 | REJECTED 2026-04-02; Tier 3 paper walk-forward authorized 2026-04-09 | Wave 3 |
-| MGC | 0.14 | HALTED; pipeline-only for trend-signal validation | Wave 3 |
+`VALIDATION_ONLY_INSTRUMENTS` is currently **empty** — MES and MGC were promoted
+from validation-only to active paper trading on 2026-05-24 (Tier-3 auth, gate v2
+ALT PASS: MES p_edge 0.75, MGC p_edge 0.6842). No instrument is in the
+validation-only state right now.
+
+| Symbol | Status | Note |
+|--------|--------|------|
+| MES | ACTIVE (promoted 2026-05-24) | was validation-only Wave 3 (2026-05-21) |
+| MGC | ACTIVE (promoted 2026-05-24) | was validation-only Wave 3 (2026-05-21) |
 
 ### Lifecycle
 
