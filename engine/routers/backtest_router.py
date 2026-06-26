@@ -144,6 +144,54 @@ async def get_backtest_results():
         raise HTTPException(500, f"Failed to get backtest results: {e}") from e
 
 
+@router.get(
+    "/backtest/atr-trail/trades",
+    description=(
+        "ATR trailing-stop FLIP (TOS ATRTrailingStopLE/SE) trades on cached bars: "
+        "price + trail line (with state), every entry/exit, and the equity curve. "
+        "Powers the dashboard ATR-trail visualizer."
+    ),
+)
+async def get_atr_trail_trades(
+    symbol: str = "MES",
+    timeframe: str = "5m",
+    period: int = 5,
+    factor: float = 3.5,
+    max_points: int = 3000,
+):
+    """Read the freshest cached bars for symbol/timeframe and return the viz payload."""
+    try:
+        import pandas as pd
+
+        from backtest.atr_trail_viz import compute_atr_trail_viz
+
+        cache = Path(__file__).resolve().parent.parent / "backtest" / "cache"
+        # Broad glob so it also matches the IBKR continuous file (..._5m_cont.csv).
+        matches = list(cache.glob(f"{symbol}_*_{timeframe}*.csv"))
+        if not matches:
+            raise HTTPException(
+                404, f"No cached {symbol} {timeframe} bars in {cache}. Run the IBKR fetch first."
+            )
+        path = max(matches, key=lambda p: p.stat().st_mtime)  # freshest pull
+
+        df = pd.read_csv(path)
+        df.columns = [c.lower() for c in df.columns]
+        ts_col = next((c for c in ("timestamp", "datetime", "date", "time") if c in df.columns), None)
+        if ts_col is None:
+            raise HTTPException(422, f"{path.name} has no timestamp column for the bar index.")
+        df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
+        df = df.set_index(ts_col).sort_index()
+
+        viz = compute_atr_trail_viz(df, symbol, period, factor, max_points)
+        viz["source_file"] = path.name
+        return _sanitize_floats(viz)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[BACKTEST] ATR-trail viz failed: {e}")
+        raise HTTPException(500, f"ATR-trail viz failed: {e}") from e
+
+
 @router.post(
     "/backtest/run",
     description="Run a single backtest for a symbol over a date range with specified capital and risk per trade.",

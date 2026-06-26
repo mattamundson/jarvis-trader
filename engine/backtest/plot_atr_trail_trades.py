@@ -39,12 +39,8 @@ ENGINE_ROOT = Path(__file__).resolve().parent.parent
 if str(ENGINE_ROOT) not in sys.path:
     sys.path.insert(0, str(ENGINE_ROOT))
 
+from backtest.atr_trail_viz import reconstruct_flip_trades  # noqa: E402
 from backtest.indicators import atr_trailing_stop  # noqa: E402
-
-MULTIPLIERS = {"MES": 5.0, "ES": 50.0, "MNQ": 2.0, "MCL": 100.0, "MGC": 10.0}
-TICK = {"MES": 0.25, "ES": 0.25, "MNQ": 0.25, "MCL": 0.01, "MGC": 0.1}
-COMMISSION = 0.62  # $/round-trip
-SLIPPAGE_TICKS = 1.0  # per side
 
 
 def _load(path: Path) -> pd.DataFrame:
@@ -55,38 +51,6 @@ def _load(path: Path) -> pd.DataFrame:
             df[tcol] = pd.to_datetime(df[tcol], utc=True)
             return df.set_index(tcol).sort_index()
     raise SystemExit(f"No timestamp column in {path.name}; columns={list(df.columns)}")
-
-
-def _reconstruct_trades(df: pd.DataFrame, symbol: str, period: int, factor: float) -> list[dict]:
-    """Flip-to-flip trades: enter on the trail flip, exit on the opposite flip.
-
-    This IS the TOS ATRTrailingStopLE/SE rule. P&L is net of the same commission
-    + slippage the backtest uses, so the equity curve here matches the strategy.
-    """
-    trail, state = atr_trailing_stop(df["high"], df["low"], df["close"], period=period, factor=factor)
-    mult = MULTIPLIERS.get(symbol, 1.0)
-    cost = COMMISSION + 2 * SLIPPAGE_TICKS * TICK.get(symbol, 0.25) * mult  # round trip
-    close = df["close"]
-    trades: list[dict] = []
-    open_t = None
-    for i in range(len(df)):
-        s = state.iloc[i]
-        if pd.isna(s):
-            continue
-        prev = state.iloc[i - 1] if i > 0 else float("nan")
-        if not pd.isna(prev) and s != prev:  # a flip
-            px = float(close.iloc[i])
-            if open_t is not None:
-                d = open_t["dir"]
-                pnl_pts = (px - open_t["entry_px"]) * d
-                trades.append({
-                    **open_t,
-                    "exit_time": df.index[i], "exit_px": px,
-                    "pnl_pts": round(pnl_pts, 4),
-                    "pnl_usd": round(pnl_pts * mult - cost, 2),
-                })
-            open_t = {"entry_time": df.index[i], "entry_px": px, "dir": 1 if s == 1.0 else -1}
-    return trades
 
 
 def main() -> None:
@@ -102,7 +66,7 @@ def main() -> None:
     args = ap.parse_args()
 
     df = _load(Path(args.data_file))
-    trades = _reconstruct_trades(df, args.symbol, args.period, args.factor)
+    trades = reconstruct_flip_trades(df, args.symbol, args.period, args.factor)
     # Equity over the FULL series (the honest aggregate), computed before zoom.
     for k, t in enumerate(trades):
         t["cum_usd"] = round(sum(x["pnl_usd"] for x in trades[: k + 1]), 2)
