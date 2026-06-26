@@ -4,13 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3010",
+    "dev:cursor": "next dev --port 3011",
     "prebuild:clean": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){}\"",
     "build:clean": "pnpm run prebuild:clean && next build",
     "build": "next build",
     "start": "next start --port 3010",
     "lint": "next lint",
     "test:e2e": "playwright test",
-    "check:live": "node scripts/check-live-data.mjs"
+    "check:live": "node scripts/check-live-data.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.3",
