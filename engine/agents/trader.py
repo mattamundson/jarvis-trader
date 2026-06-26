@@ -551,6 +551,38 @@ class TraderAgent:
         except Exception as _vix_err:
             logger.debug("[Trader] VIX size overlay failed (non-fatal): %s", _vix_err)
 
+        # ── Volatility-targeting position-size multiplier (DEFAULT OFF) ────
+        # Final risk overlay: scale contracts toward a constant target vol so
+        # quiet regimes size up and turbulent regimes size down. Gated behind
+        # settings.VOL_TARGET_ENABLED (default False) => inert until enabled.
+        # OOS-validated on MGC trend (backtest/vol_target_wfo.py: Sharpe +0.69,
+        # MaxDD -59%). Realized vol comes from the existing rv_20_ann_pct
+        # indicator. Falls back silently — never blocks or vetoes a trade.
+        if settings.VOL_TARGET_ENABLED:
+            try:
+                from utils.position_sizing import apply_vol_target_scaling
+
+                _rv = indicators.get("rv_20_ann_pct") if isinstance(indicators, dict) else None
+                _vt_contracts, _vt_reason = apply_vol_target_scaling(
+                    contracts=position_size.contracts,
+                    symbol=symbol,
+                    realized_vol_ann_pct=_rv,
+                    target_vol_by_symbol=settings.VOL_TARGET_PER_SYMBOL,
+                    max_leverage=settings.VOL_TARGET_MAX_LEVERAGE,
+                    max_contracts=max_contracts,
+                )
+                if _vt_contracts != position_size.contracts:
+                    logger.info(
+                        "[Trader] Vol-target sizing for %s: contracts %d → %d (%s)",
+                        symbol,
+                        position_size.contracts,
+                        _vt_contracts,
+                        _vt_reason,
+                    )
+                    position_size.contracts = _vt_contracts
+            except Exception as _vt_err:
+                logger.debug("[Trader] Vol-target size overlay failed (non-fatal): %s", _vt_err)
+
         # ── Confluence-based position sizing override ─────────────────────
         # Count how many Stage 1 agents agree with the debate verdict direction.
         # Insufficient agreement (< 40%) forces a HOLD regardless of debate outcome.

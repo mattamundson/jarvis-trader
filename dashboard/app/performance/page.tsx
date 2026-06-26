@@ -747,25 +747,39 @@ export default function PerformancePage() {
         </WidgetErrorBoundary>
 
         {/* Account ROI */}
-        <AccountROIWidget />
+        <WidgetErrorBoundary name="Account ROI">
+          <AccountROIWidget />
+        </WidgetErrorBoundary>
 
         {/* Weekly P&L */}
-        <WeeklyPnLCard />
+        <WidgetErrorBoundary name="Weekly P&L">
+          <WeeklyPnLCard />
+        </WidgetErrorBoundary>
 
         {/* Daily P&L Calendar */}
-        <DailyPnLCalendarWidget />
+        <WidgetErrorBoundary name="Daily P&L Calendar">
+          <DailyPnLCalendarWidget />
+        </WidgetErrorBoundary>
 
         {/* P&L Calendar Heatmap -- 13-week GitHub-style grid */}
-        <PnlCalendarWidget />
+        <WidgetErrorBoundary name="P&L Calendar Heatmap">
+          <PnlCalendarWidget />
+        </WidgetErrorBoundary>
 
         {/* Win Rate by Hour of Day */}
-        <WinRateByHourWidget />
+        <WidgetErrorBoundary name="Win Rate by Hour">
+          <WinRateByHourWidget />
+        </WidgetErrorBoundary>
 
         {/* Streak Tracker */}
-        <StreakTrackerWidget />
+        <WidgetErrorBoundary name="Streak Tracker">
+          <StreakTrackerWidget />
+        </WidgetErrorBoundary>
 
         {/* Regime Attribution */}
-        <RegimeAttributionWidget />
+        <WidgetErrorBoundary name="Regime Attribution">
+          <RegimeAttributionWidget />
+        </WidgetErrorBoundary>
 
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -810,17 +824,25 @@ export default function PerformancePage() {
 
         {/* Hold time analytics */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <HoldTimeWidget />
+          <WidgetErrorBoundary name="Hold Time">
+            <HoldTimeWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Weekly live performance summary */}
-        <WeeklyStatsWidget />
+        <WidgetErrorBoundary name="Weekly Stats">
+          <WeeklyStatsWidget />
+        </WidgetErrorBoundary>
 
         {/* Commission cost tracker */}
-        <CommissionTrackerWidget />
+        <WidgetErrorBoundary name="Commission Tracker">
+          <CommissionTrackerWidget />
+        </WidgetErrorBoundary>
 
         {/* Trade duration analysis */}
-        <TradeDurationWidget />
+        <WidgetErrorBoundary name="Trade Duration">
+          <TradeDurationWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 1: Backtest Performance Matrix */}
         <BacktestMatrix />
@@ -835,28 +857,44 @@ export default function PerformancePage() {
         <DoNotTradeList />
 
         {/* Section 5: Monthly Breakdown */}
-        <MonthlyBreakdownWidget />
+        <WidgetErrorBoundary name="Monthly Breakdown">
+          <MonthlyBreakdownWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 6: Drawdown Chart */}
-        <DrawdownChart />
+        <WidgetErrorBoundary name="Drawdown Chart">
+          <DrawdownChart />
+        </WidgetErrorBoundary>
 
         {/* Section 7: Top Symbols by P&L */}
-        <TopSymbolsWidget />
+        <WidgetErrorBoundary name="Top Symbols">
+          <TopSymbolsWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 8: Avg Trade Hold Time */}
-        <AvgTradeTimeWidget />
+        <WidgetErrorBoundary name="Avg Trade Time">
+          <AvgTradeTimeWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 9: Equity Curve */}
-        <EquityCurveWidget />
+        <WidgetErrorBoundary name="Equity Curve">
+          <EquityCurveWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 10: Entry Quality */}
-        <EntryQualityWidget />
+        <WidgetErrorBoundary name="Entry Quality">
+          <EntryQualityWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 11: Recent Closed Trades */}
-        <RecentTradesTableWidget />
+        <WidgetErrorBoundary name="Recent Closed Trades">
+          <RecentTradesTableWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 12: Win Rate by Symbol */}
-        <WinRateBySymbolWidget />
+        <WidgetErrorBoundary name="Win Rate by Symbol">
+          <WinRateBySymbolWidget />
+        </WidgetErrorBoundary>
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>

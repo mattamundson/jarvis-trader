@@ -106,117 +106,87 @@ def _compute_stability(pf_values: List[float]) -> float:
     return round(max(0.0, min(100.0, 100.0 - cv)), 1)
 
 
-def run_sensitivity_analysis(
-    df: pd.DataFrame,
-    symbol: str,
-    multiplier: float,
-    base_params: Optional[Dict[str, float]] = None,
-    capital: float = 10_000.0,
+def sweep_param_sensitivity(
+    run_fn,
+    param_ranges: Dict[str, list],
+    base_params: Dict[str, Any],
+    *,
+    neighbors: int = 3,
+    progress: bool = False,
 ) -> Dict[str, Any]:
+    """Strategy-agnostic parameter-sensitivity sweep.
+
+    ``run_fn(params: dict) -> metrics`` must return a metrics dict containing at
+    least ``"pf"`` (float) and ``"trades"`` (int) — ``_extract_metrics`` produces
+    exactly this shape, but any study can supply its own adapter. For each
+    parameter in ``param_ranges`` the others are pinned at ``base_params`` and the
+    target is swept across its range; PF percent-change-from-base is recorded per
+    point. Per-parameter stability uses the ``neighbors`` closest values on each
+    side of base (CV-based, via ``_compute_stability``); the verdict keys off the
+    WORST per-parameter stability.
+
+    Returns ``{base_params, base_result, sensitivity, stability_scores, verdict}``.
+    This is the reusable core; the STC ``run_sensitivity_analysis`` and the
+    singlefinder driver are thin adapters over it.
     """
-    Run parameter sensitivity analysis.
+    base_metrics = run_fn(dict(base_params))
+    base_pf = float(base_metrics.get("pf", 0.0))
 
-    For each of the 4 parameters, hold the others at their base values and
-    sweep the target parameter across its range. Records PF, Sharpe, return,
-    and win rate at each point.
-
-    Returns a dict with:
-      - base_params, base_result
-      - sensitivity: per-parameter sweep data
-      - stability_scores: per-parameter and overall stability
-      - verdict: ROBUST / ACCEPTABLE / FRAGILE
-    """
-    if base_params is None:
-        base_params = DEFAULT_BASE_PARAMS.copy()
-
-    # ── Run base case ─────────────────────────────────────────────────────
-    base_result_raw = _run_single_backtest(
-        df,
-        multiplier,
-        capital,
-        stc_os=base_params["stc_os"],
-        stc_ob=base_params["stc_ob"],
-        stop_atr=base_params["stop_atr"],
-        t1_atr=base_params["t1_atr"],
-    )
-    base_metrics = _extract_metrics(base_result_raw)
-
-    total_runs = sum(len(v) for v in PARAM_RANGES.values())
+    total_runs = sum(len(v) for v in param_ranges.values())
     run_count = 0
 
-    # ── Sweep each parameter ──────────────────────────────────────────────
     sensitivity: Dict[str, List[Dict]] = {}
     stability_scores: Dict[str, float] = {}
 
-    for param_name, values in PARAM_RANGES.items():
+    for param_name, values in param_ranges.items():
         param_results: List[Dict] = []
 
         for val in values:
             run_count += 1
-            if run_count % 5 == 0 or run_count == total_runs:
+            if progress and (run_count % 5 == 0 or run_count == total_runs):
                 print(f"  [{run_count}/{total_runs}] Sweeping {param_name}={val}", end="\r")
 
-            # Build param set: base values with this one overridden
-            run_params = base_params.copy()
+            run_params = dict(base_params)
             run_params[param_name] = val
+            metrics = run_fn(run_params)
 
-            result = _run_single_backtest(
-                df,
-                multiplier,
-                capital,
-                stc_os=run_params["stc_os"],
-                stc_ob=run_params["stc_ob"],
-                stop_atr=run_params["stop_atr"],
-                t1_atr=run_params["t1_atr"],
-            )
-            metrics = _extract_metrics(result)
-
-            # Percent change from base PF
-            if base_metrics["pf"] > 0:
-                pct_change = round(
-                    ((metrics["pf"] - base_metrics["pf"]) / base_metrics["pf"]) * 100, 1
-                )
+            if base_pf > 0:
+                pct_change = round(((float(metrics.get("pf", 0.0)) - base_pf) / base_pf) * 100, 1)
             else:
                 pct_change = 0.0
 
             param_results.append(
                 {
                     "value": val,
-                    "pf": metrics["pf"],
-                    "sharpe": metrics["sharpe"],
-                    "return": metrics["return"],
-                    "win_rate": metrics["win_rate"],
-                    "trades": metrics["trades"],
+                    "pf": metrics.get("pf", 0.0),
+                    "sharpe": metrics.get("sharpe", 0.0),
+                    "return": metrics.get("return", 0.0),
+                    "win_rate": metrics.get("win_rate", 0.0),
+                    "trades": metrics.get("trades", 0),
                     "pct_change_from_base": pct_change,
                 }
             )
 
         sensitivity[param_name] = param_results
 
-        # ── Stability score: use 3 closest values on each side of base ────
+        # ── Stability: `neighbors` closest values on each side of base ────
         base_val = base_params[param_name]
-        # Find the index of the base value in the range
         try:
             base_idx = values.index(base_val)
+            start_idx = max(0, base_idx - neighbors)
+            end_idx = min(len(values), base_idx + neighbors + 1)  # exclusive
+            nearby_values = values[start_idx:end_idx]
         except ValueError:
-            # Base value not in range; use the closest 6 values centered on it
-            sorted_by_dist = sorted(values, key=lambda v: abs(v - base_val))
-            nearby_values = sorted_by_dist[:7]
-            nearby_pfs = [r["pf"] for r in param_results if r["value"] in nearby_values]
-            stability_scores[param_name] = _compute_stability(nearby_pfs)
-            continue
-
-        # 3 values on each side + the base itself
-        start_idx = max(0, base_idx - 3)
-        end_idx = min(len(values), base_idx + 4)  # exclusive
-        nearby_pfs = [r["pf"] for r in param_results if r["value"] in values[start_idx:end_idx]]
+            # Base value not in range; use the closest (2*neighbors+1) centered on it.
+            nearby_values = sorted(values, key=lambda v: abs(v - base_val))[: 2 * neighbors + 1]
+        nearby_pfs = [r["pf"] for r in param_results if r["value"] in nearby_values]
         stability_scores[param_name] = _compute_stability(nearby_pfs)
 
-    print()  # newline after progress
+    if progress:
+        print()  # newline after progress
 
-    # ── Overall stability & verdict ───────────────────────────────────────
     all_scores = list(stability_scores.values())
-    overall = round(np.mean(all_scores), 1) if all_scores else 0.0
+    overall = round(float(np.mean(all_scores)), 1) if all_scores else 0.0
     stability_scores["overall"] = overall
 
     min_score = min(all_scores) if all_scores else 0.0
@@ -228,12 +198,43 @@ def run_sensitivity_analysis(
         verdict = "FRAGILE"
 
     return {
-        "base_params": base_params,
+        "base_params": dict(base_params),
         "base_result": base_metrics,
         "sensitivity": sensitivity,
         "stability_scores": stability_scores,
         "verdict": verdict,
     }
+
+
+def run_sensitivity_analysis(
+    df: pd.DataFrame,
+    symbol: str,
+    multiplier: float,
+    base_params: Optional[Dict[str, float]] = None,
+    capital: float = 10_000.0,
+) -> Dict[str, Any]:
+    """STC sensitivity analysis — thin adapter over ``sweep_param_sensitivity``.
+
+    Sweeps the 4 STC parameters (stc_os/stc_ob/stop_atr/t1_atr) around their base
+    values, holding the others fixed. Returns the same dict shape as the generic
+    core: base_params, base_result, sensitivity, stability_scores, verdict.
+    """
+    if base_params is None:
+        base_params = DEFAULT_BASE_PARAMS.copy()
+
+    def _stc_run_fn(params: Dict[str, Any]) -> Dict[str, float]:
+        result = _run_single_backtest(
+            df,
+            multiplier,
+            capital,
+            stc_os=params["stc_os"],
+            stc_ob=params["stc_ob"],
+            stop_atr=params["stop_atr"],
+            t1_atr=params["t1_atr"],
+        )
+        return _extract_metrics(result)
+
+    return sweep_param_sensitivity(_stc_run_fn, PARAM_RANGES, base_params, progress=True)
 
 
 def format_sensitivity_report(result: Dict[str, Any]) -> str:

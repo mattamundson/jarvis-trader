@@ -326,3 +326,6 @@ engine/strategy_c/output/execution_log.json
 engine/strategy_c/output/allocation_log.csv
 engine/strategy_c/output/equity_curve.csv
 .gstack/
+
+# loop maker/checker throwaway worktrees
+.worktrees/
