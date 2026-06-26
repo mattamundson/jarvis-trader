@@ -65,10 +65,10 @@ class VixRegimeContext:
     """Latest-bar regime snapshot. Mirrors AgentQuant's RegimeContext shape."""
 
     vix: float
-    vix_percentile: float        # 0..100, trailing-window rank of the latest VIX
+    vix_percentile: float  # 0..100, trailing-window rank of the latest VIX
     tier: VixTier
     momentum: Momentum
-    confidence: float            # 0..1, distance of percentile from nearest tier edge
+    confidence: float  # 0..1, distance of percentile from nearest tier edge
 
 
 def _trailing_percentile_rank(window: np.ndarray) -> float:
@@ -98,9 +98,7 @@ def vix_percentile(vix: pd.Series, lookback: int = DEFAULT_PCTILE_LOOKBACK) -> p
     Uses ``min_periods=1`` so the series warms up gradually; callers that require a
     full window before acting should gate on bar index >= ``lookback``.
     """
-    return vix.rolling(window=lookback, min_periods=1).apply(
-        _trailing_percentile_rank, raw=True
-    )
+    return vix.rolling(window=lookback, min_periods=1).apply(_trailing_percentile_rank, raw=True)
 
 
 def _tier_for_percentile(pct: float) -> VixTier:
@@ -115,9 +113,7 @@ def _tier_for_percentile(pct: float) -> VixTier:
     return VixTier.LOW_VOL
 
 
-def classify_vix_regime(
-    vix: pd.Series, lookback: int = DEFAULT_PCTILE_LOOKBACK
-) -> pd.Series:
+def classify_vix_regime(vix: pd.Series, lookback: int = DEFAULT_PCTILE_LOOKBACK) -> pd.Series:
     """Map each bar to a :class:`VixTier` from its trailing VIX percentile."""
     pct = vix_percentile(vix, lookback=lookback)
     return pct.map(_tier_for_percentile)
@@ -180,7 +176,11 @@ def classify_latest(
         vix=float(vix.iloc[-1]),
         vix_percentile=pct,
         tier=_tier_for_percentile(pct),
-        momentum=mom_series.iloc[-1],
+        # pandas >= 3.0 coerces str-Enum elements to plain str inside a Series, so
+        # mom_series.iloc[-1] returns e.g. 'Bear' rather than Momentum.BEAR. Rebuild
+        # the enum (Momentum('Bear') -> Momentum.BEAR; idempotent on a real member)
+        # so the dataclass field type holds and downstream `.momentum.value` works.
+        momentum=Momentum(mom_series.iloc[-1]),
         confidence=_percentile_confidence(pct),
     )
 
@@ -250,9 +250,17 @@ def gate_signals_by_vix_regime(
         if tiers.iloc[i] in blocked:
             gated.iloc[i] = 0
             continue
-        if sig > 0 and long_requires_momentum is not None and momentum.iloc[i] != long_requires_momentum:
+        if (
+            sig > 0
+            and long_requires_momentum is not None
+            and momentum.iloc[i] != long_requires_momentum
+        ):
             gated.iloc[i] = 0
-        elif sig < 0 and short_requires_momentum is not None and momentum.iloc[i] != short_requires_momentum:
+        elif (
+            sig < 0
+            and short_requires_momentum is not None
+            and momentum.iloc[i] != short_requires_momentum
+        ):
             gated.iloc[i] = 0
 
     return gated

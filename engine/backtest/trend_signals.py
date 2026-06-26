@@ -124,9 +124,13 @@ def generate_sma_trend_signals(
         if vix_regime_block:
             from backtest.vix_percentile_regime import classify_vix_regime
 
-            tiers_daily = classify_vix_regime(
-                vix_daily, lookback=vix_regime_lookback
-            ).map(lambda t: t.value)
+            # pandas >= 3.0 coerces the str-Enum tier elements to plain str inside the
+            # Series, so `t` may be 'MidVol' (str) rather than VixTier.MID_VOL. The
+            # coerced str already equals the enum's .value, so fall back to the element
+            # itself when .value is absent.
+            tiers_daily = classify_vix_regime(vix_daily, lookback=vix_regime_lookback).map(
+                lambda t: getattr(t, "value", t)
+            )
             _vix_tier_series = tiers_daily.reindex(bar_dates, method="ffill")
             _vix_tier_series.index = df.index
 
