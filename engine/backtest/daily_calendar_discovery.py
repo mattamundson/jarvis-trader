@@ -124,12 +124,62 @@ def mask_pre_holiday(idx: pd.DatetimeIndex) -> np.ndarray:
     return (gap.notna() & ~normal).to_numpy()
 
 
-# The screened family. Each entry: (name, idx -> boolean mask).
+def mask_post_holiday(idx: pd.DatetimeIndex) -> np.ndarray:
+    """The first trading day AFTER a market holiday -- the complement of
+    ``pre_holiday``. Tests whether the holiday effect continues past the break or
+    is a pre-break-only phenomenon (a contrast/control on the same anomaly)."""
+    d = idx.to_series().reset_index(drop=True)
+    gap = (d - d.shift(1)).dt.days  # gap to the PREVIOUS trading day
+    wd = d.dt.dayofweek
+    normal = (gap == 1) | ((wd == 0) & (gap == 3))  # consecutive weekday or Mon-after-Fri
+    return (gap.notna() & ~normal).to_numpy()
+
+
+def mask_santa_claus(idx: pd.DatetimeIndex, n_dec: int = 5, n_jan: int = 2) -> np.ndarray:
+    """The Santa-Claus-rally window (Hirsch): the last ``n_dec`` trading days of
+    December plus the first ``n_jan`` of January -- thin-liquidity year-end drift
+    plus the tax-loss-selling reversal."""
+    rs, re_, mo, _ = _month_ranks(idx)
+    dec = (mo == 12) & (re_ <= n_dec)
+    jan = (mo == 1) & (rs <= n_jan)
+    return dec | jan
+
+
+def mask_last_day_of_month(idx: pd.DatetimeIndex) -> np.ndarray:
+    """ONLY the single last trading day of each month -- isolates the strongest
+    turn-of-month day (month-end pension/index-fund rebalancing buy pressure),
+    stripped of the surrounding TOM window."""
+    _, re_, _, _ = _month_ranks(idx)
+    return re_ <= 1
+
+
+def mask_opex_week(idx: pd.DatetimeIndex) -> np.ndarray:
+    """The options-expiration week: the Mon-Fri trading block ending on the third
+    Friday of each month. Dealer gamma-hedging and pin-risk flows make this week
+    a documented elevated-activity / directional-bias window."""
+    ym = np.asarray(idx.year) * 12 + np.asarray(idx.month)
+    dom = np.asarray(idx.day)
+    isfri = np.asarray(idx.dayofweek == 4)
+    df = pd.DataFrame({"ym": ym, "dom": dom, "isfri": isfri})
+    fri_rank = df["isfri"].groupby(df["ym"]).cumsum()  # running Friday count within month
+    fri3 = np.where(isfri & (fri_rank.to_numpy() == 3), dom, np.nan)
+    df["fri3"] = fri3
+    tf = df.groupby("ym")["fri3"].transform("max").to_numpy()  # 3rd-Friday dom, broadcast
+    return (dom <= tf) & (dom > tf - 7)  # the 7-day (= Mon-Fri trading) block ending on it
+
+
+# The screened family. Each entry: (name, idx -> boolean mask). Every effect is a
+# pre-registered, economically-documented calendar anomaly (weekday singles act as
+# the null-ish controls; they die on the multiple-testing penalty, as they should).
 EFFECTS: list[tuple[str, object]] = [
     ("turn_of_month", lambda idx: mask_turn_of_month(idx)),
     ("turn_of_quarter", lambda idx: mask_turn_of_quarter(idx)),
     ("first_half_month", lambda idx: mask_first_half_month(idx)),
     ("pre_holiday", lambda idx: mask_pre_holiday(idx)),
+    ("post_holiday", lambda idx: mask_post_holiday(idx)),
+    ("santa_claus", lambda idx: mask_santa_claus(idx)),
+    ("last_day_of_month", lambda idx: mask_last_day_of_month(idx)),
+    ("opex_week", lambda idx: mask_opex_week(idx)),
     ("mon", lambda idx: mask_weekday(idx, 0)),
     ("tue", lambda idx: mask_weekday(idx, 1)),
     ("wed", lambda idx: mask_weekday(idx, 2)),
