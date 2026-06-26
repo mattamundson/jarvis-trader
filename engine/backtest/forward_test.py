@@ -302,6 +302,37 @@ def forward_stats(windows: list[dict]) -> dict[str, Any]:
     }
 
 
+# ── trade-sign permutation diagnostic (Aronson) — REPORT ONLY ───────────────────
+#
+# NON-BLOCKING. This computes the trade-sign permutation p-value over a unit's realized
+# P&L (the right null for a forward record: the live entry path is LLM-driven, not a
+# mechanical optimizer). It is attached to the REPORT for observation only and is NOT
+# consumed by ``meets_graduation`` — graduation inputs (``forward_stats`` + family FDR)
+# are deliberately untouched. Promoting this to a blocking gate is a separate
+# [safety-review] change, to be made only after the p-values are observed on the live
+# MES/MGC series (16 / 67 trades -> low power today).
+
+
+def trade_shuffle_diag(
+    trades: list[dict], n_iters: int = 500, metric: str = "mean"
+) -> dict[str, Any]:
+    """Trade-sign permutation p-value over a unit's realized P&L. Report-only diagnostic.
+
+    Returns ``{p_value, n_trades, passes, metric}``. Fail-closed (p=1.0) under ~2 trades.
+    Lazy-imports the analytics module so forward_test stays cheap to import.
+    """
+    from analytics.permutation_test import permute_and_score  # noqa: PLC0415
+
+    pnls = [float(t["pnl"]) for t in trades if t.get("pnl") is not None]
+    res = permute_and_score(pnls, n_iters=n_iters, metric=metric)
+    return {
+        "p_value": res["p_value"],
+        "n_trades": res["n_trades"],
+        "passes": res["passes"],
+        "metric": metric,
+    }
+
+
 # ── the loop ───────────────────────────────────────────────────────────────────
 
 
@@ -375,6 +406,9 @@ def run_lineage_track(
                 "strategy_type": strategy_type,
                 "pre_registered": pre_reg,
                 "forward": stats,
+                "trade_shuffle": trade_shuffle_diag(
+                    buckets[lineage]
+                ),  # report-only; not in graduation
                 "survives_family_fdr": survives[i],
                 "graduated": graduated,
                 "reason": reason,
@@ -420,7 +454,7 @@ def run_forward_test(
         level, trs = attributable_trades(closed, cand)
         windows = build_windows(trs, window_days)
         stats = forward_stats(windows)
-        rows.append({"cand": cand, "level": level, "stats": stats})
+        rows.append({"cand": cand, "level": level, "stats": stats, "trades": trs})
 
     # Family-wide BH-FDR across candidates that have >=1 forward window.
     fdr_inputs = [
@@ -454,6 +488,7 @@ def run_forward_test(
                 "attribution_level": level,
                 "precise_attribution": precise,
                 "forward": stats,
+                "trade_shuffle": trade_shuffle_diag(r["trades"]),  # report-only; not in graduation
                 "survives_family_fdr": survives[i],
                 "graduated": graduated,
                 "reason": reason,
@@ -492,7 +527,8 @@ def run_forward_test(
             "stamped on live paper entries (P2) -- the unit that actually trades; they "
             "graduate against the decision_registry. Default-material (unregistered:*) "
             "lineages can clear the stats but never graduate -- pre-register a lineage "
-            "before its forward window counts."
+            "before its forward window counts. ts_p (trade_shuffle p-value) is a "
+            "REPORT-ONLY Aronson sign-flip diagnostic; it does NOT affect graduation."
         ),
     }
     if persist:  # pragma: no cover - file IO exercised live
@@ -512,14 +548,16 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- active candidates: {report['n_active_candidates']}  |  "
         f"graduated: **{report['n_graduated']}**",
         "",
-        "| candidate | sym | attribution | n_oos | p_edge | pf_ci_lo | fdr | graduated |",
-        "|---|---|---|---|---|---|---|---|",
+        "| candidate | sym | attribution | n_oos | p_edge | pf_ci_lo | ts_p | fdr | graduated |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for c in report["candidates"]:
         f = c["forward"]
+        ts = c.get("trade_shuffle", {})
         lines.append(
             f"| {c['id']} | {c['symbol']} | {c['attribution_level'] or '-'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
+            f"{ts.get('p_value', '-')} | "
             f"{'Y' if c['survives_family_fdr'] else '.'} | "
             f"{'YES' if c['graduated'] else 'no'} |"
         )
@@ -531,15 +569,17 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- lineages: {report.get('n_lineages', 0)}  |  "
         f"graduated: **{report.get('n_lineages_graduated', 0)}**",
         "",
-        "| lineage | type | pre-reg | n_oos | p_edge | pf_ci_lo | fdr | graduated |",
-        "|---|---|---|---|---|---|---|---|",
+        "| lineage | type | pre-reg | n_oos | p_edge | pf_ci_lo | ts_p | fdr | graduated |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for lin in lineages:
         f = lin["forward"]
+        ts = lin.get("trade_shuffle", {})
         lines.append(
             f"| {lin['lineage']} | {lin.get('strategy_type', '-')} | "
             f"{'Y' if lin['pre_registered'] else '.'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
+            f"{ts.get('p_value', '-')} | "
             f"{'Y' if lin['survives_family_fdr'] else '.'} | "
             f"{'YES' if lin['graduated'] else 'no'} |"
         )

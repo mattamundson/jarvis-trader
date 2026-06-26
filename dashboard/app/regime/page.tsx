@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { RegimeScoreHistoryChart } from "@/components/regime/RegimeScoreHistoryChart";
+import { VixPercentileRegimeCard } from "@/components/VixPercentileRegimeCard";
 import {
   buildSampleRegime,
   fetchIntradayRegime,
@@ -110,6 +111,7 @@ export default function IntradayRegimePage() {
 
         <VerdictCard data={data} />
         <RegimeScoreBar score={data.score} />
+        <VixPercentileRegimeCard />
         <ScoreHistoryCard data={data} showEma={showEma} onToggleEma={() => setShowEma((v) => !v)} />
         <TimeframeScores scores={data.timeframeScores} />
         <IndicatorBreakdown timeframe={data.indicatorTimeframe} indicators={data.indicators} />
