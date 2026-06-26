@@ -63,15 +63,17 @@ def _local_date(ts: str) -> str | None:
     return dt.date().isoformat()
 
 
-def collect(days: int, since: str) -> dict:
-    if not FEEDBACK_DB.exists():
-        raise FileNotFoundError(f"feedback db not found: {FEEDBACK_DB}")
-    if not TRADER_DB.exists():
-        raise FileNotFoundError(f"trader db not found: {TRADER_DB}")
+def collect(days: int, since: str, feedback_db=None, trader_db=None) -> dict:
+    feedback_db = Path(feedback_db) if feedback_db is not None else FEEDBACK_DB
+    trader_db = Path(trader_db) if trader_db is not None else TRADER_DB
+    if not feedback_db.exists():
+        raise FileNotFoundError(f"feedback db not found: {feedback_db}")
+    if not trader_db.exists():
+        raise FileNotFoundError(f"trader db not found: {trader_db}")
 
-    fb = sqlite3.connect(f"file:{FEEDBACK_DB}?mode=ro", uri=True)
+    fb = sqlite3.connect(f"file:{feedback_db}?mode=ro", uri=True)
     fb.row_factory = sqlite3.Row
-    tr = sqlite3.connect(f"file:{TRADER_DB}?mode=ro", uri=True)
+    tr = sqlite3.connect(f"file:{trader_db}?mode=ro", uri=True)
     tr.row_factory = sqlite3.Row
 
     qmarks = ",".join("?" * len(COREY_FUTURES))
