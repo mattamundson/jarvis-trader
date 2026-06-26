@@ -25,10 +25,8 @@ def _get_settings():
     global _settings
     if _settings is None:
         from config import settings  # noqa: PLC0415
-
         _settings = settings
     return _settings
-
 
 __all__ = ["Backtester", "BacktestResult", "Trade"]
 
@@ -58,9 +56,9 @@ class Backtester:
     def __init__(
         self,
         initial_capital: float = 10_000.0,
-        risk_per_trade: float = 0.03,  # $10K aggressive profile (2026-06-25, Amo-directed; see ror_sweep)
-        max_daily_loss: float = 0.06,  # aggressive $10K (3x prior 0.02), matches config/.env
-        max_drawdown: float = 0.20,  # reconciled to live .env ceiling (was 0.05 backtest breaker)
+        risk_per_trade: float = 0.01,
+        max_daily_loss: float = 0.02,
+        max_drawdown: float = 0.05,
         t1_exit_pct: float = 0.50,  # % to exit at target 1
         t2_exit_pct: float = 0.30,  # % to exit at target 2
         commission_per_contract: Optional[float] = None,
@@ -82,11 +80,7 @@ class Backtester:
         self.t2_exit_pct = t2_exit_pct
         # Pull from config if not explicitly overridden by caller
         cfg = _get_settings()
-        self.commission_per_contract = (
-            commission_per_contract
-            if commission_per_contract is not None
-            else cfg.COMMISSION_PER_CONTRACT
-        )
+        self.commission_per_contract = commission_per_contract if commission_per_contract is not None else cfg.COMMISSION_PER_CONTRACT
         self.slippage_ticks = slippage_ticks if slippage_ticks is not None else cfg.SLIPPAGE_TICKS
         self.spread_ticks = spread_ticks if spread_ticks is not None else cfg.SPREAD_TICKS
         self.trailing_stop = trailing_stop
@@ -104,9 +98,7 @@ class Backtester:
         # contracts → amplified losses; large-ATR/trending → fewer contracts → muted wins).
         self.fixed_contracts = fixed_contracts
 
-    def _apply_slippage(
-        self, price: float, direction: str, tick_size: float, slippage_ticks: float
-    ) -> float:
+    def _apply_slippage(self, price: float, direction: str, tick_size: float, slippage_ticks: float) -> float:
         """Long entries pay up, short entries get worse fills. Realistic 1-tick adverse selection."""
         pts = tick_size * slippage_ticks
         return price + pts if direction == "long" else price - pts
@@ -130,9 +122,9 @@ class Backtester:
         total_adverse_ticks = slippage_ticks + spread_ticks
         adverse_pts = tick_size * total_adverse_ticks
         if direction == "long":
-            return price + adverse_pts  # Long entry: pay up (ask side + slippage)
+            return price + adverse_pts   # Long entry: pay up (ask side + slippage)
         else:
-            return price - adverse_pts  # Short entry: sell down (bid side + slippage)
+            return price - adverse_pts   # Short entry: sell down (bid side + slippage)
 
     def _exit_spread_cost(self, contracts: int, tick_size: float, multiplier: float) -> float:
         """
@@ -155,11 +147,7 @@ class Backtester:
               Exit spread cost is applied separately via _exit_spread_cost().
         """
         cfg = _get_settings()
-        return (
-            self._round_trip_cost(contracts, self.commission_per_contract)
-            if cfg.COMMISSION_ENABLED
-            else 0.0
-        )
+        return self._round_trip_cost(contracts, self.commission_per_contract) if cfg.COMMISSION_ENABLED else 0.0
 
     def _get_tick_size(self, symbol: str, multiplier: float) -> float:
         """Determine tick size from symbol or multiplier heuristic."""
@@ -200,11 +188,7 @@ class Backtester:
         effective_spread = self.spread_ticks if cfg.SPREAD_ENABLED else 0.0
         if cfg.SLIPPAGE_ENABLED or cfg.SPREAD_ENABLED:
             entry_price = self._apply_execution_costs(
-                raw_entry_price,
-                direction,
-                tick_size,
-                self.slippage_ticks if cfg.SLIPPAGE_ENABLED else 0.0,
-                effective_spread,
+                raw_entry_price, direction, tick_size, self.slippage_ticks if cfg.SLIPPAGE_ENABLED else 0.0, effective_spread
             )
         else:
             entry_price = raw_entry_price
@@ -278,11 +262,7 @@ class Backtester:
                 pnl = open_contracts_t1 * (exit_price - open_trade.entry_price) * multiplier
             else:
                 pnl = open_contracts_t1 * (open_trade.entry_price - exit_price) * multiplier
-            capital_change += (
-                pnl
-                - self._transaction_cost(open_contracts_t1, tick_size)
-                - self._exit_spread_cost(open_contracts_t1, tick_size, multiplier)
-            )
+            capital_change += pnl - self._transaction_cost(open_contracts_t1, tick_size) - self._exit_spread_cost(open_contracts_t1, tick_size, multiplier)
             open_trade.pnl += pnl
             open_contracts_t1 = 0
             open_trade.stop_price = open_trade.entry_price
@@ -294,11 +274,7 @@ class Backtester:
                 pnl = open_contracts_t2 * (exit_price - open_trade.entry_price) * multiplier
             else:
                 pnl = open_contracts_t2 * (open_trade.entry_price - exit_price) * multiplier
-            capital_change += (
-                pnl
-                - self._transaction_cost(open_contracts_t2, tick_size)
-                - self._exit_spread_cost(open_contracts_t2, tick_size, multiplier)
-            )
+            capital_change += pnl - self._transaction_cost(open_contracts_t2, tick_size) - self._exit_spread_cost(open_contracts_t2, tick_size, multiplier)
             open_trade.pnl += pnl
             open_contracts_t2 = 0
             targets_hit.append("target_2")
@@ -333,11 +309,7 @@ class Backtester:
             pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
         else:
             pnl = remaining * (open_trade.entry_price - exit_price) * multiplier
-        capital_change = (
-            pnl
-            - self._transaction_cost(remaining, tick_size)
-            - self._exit_spread_cost(remaining, tick_size, multiplier)
-        )
+        capital_change = pnl - self._transaction_cost(remaining, tick_size) - self._exit_spread_cost(remaining, tick_size, multiplier)
         open_trade.exit_price = exit_price
         open_trade.pnl += pnl
         open_trade.exit_reason = targets_hit[-1] if targets_hit else "stop"
@@ -368,11 +340,7 @@ class Backtester:
             if low <= open_trade.stop_price:
                 exit_price = open_trade.stop_price
                 pnl = open_contracts * (exit_price - open_trade.entry_price) * multiplier
-                capital_change = (
-                    pnl
-                    - self._transaction_cost(open_contracts, tick_size)
-                    - self._exit_spread_cost(open_contracts, tick_size, multiplier)
-                )
+                capital_change = pnl - self._transaction_cost(open_contracts, tick_size) - self._exit_spread_cost(open_contracts, tick_size, multiplier)
                 open_trade.exit_price = exit_price
                 open_trade.pnl += pnl
                 open_trade.exit_reason = "trailing_stop"
@@ -404,11 +372,7 @@ class Backtester:
             if high >= open_trade.stop_price:
                 exit_price = open_trade.stop_price
                 pnl = open_contracts * (open_trade.entry_price - exit_price) * multiplier
-                capital_change = (
-                    pnl
-                    - self._transaction_cost(open_contracts, tick_size)
-                    - self._exit_spread_cost(open_contracts, tick_size, multiplier)
-                )
+                capital_change = pnl - self._transaction_cost(open_contracts, tick_size) - self._exit_spread_cost(open_contracts, tick_size, multiplier)
                 open_trade.exit_price = exit_price
                 open_trade.pnl += pnl
                 open_trade.exit_reason = "trailing_stop"
@@ -456,11 +420,7 @@ class Backtester:
             pnl = remaining * (close - open_trade.entry_price) * multiplier
         else:
             pnl = remaining * (open_trade.entry_price - close) * multiplier
-        capital_change = (
-            pnl
-            - self._transaction_cost(remaining, tick_size)
-            - self._exit_spread_cost(remaining, tick_size, multiplier)
-        )
+        capital_change = pnl - self._transaction_cost(remaining, tick_size) - self._exit_spread_cost(remaining, tick_size, multiplier)
         open_trade.pnl += pnl
         open_trade.exit_price = close
         open_trade.exit_date = idx
@@ -804,11 +764,7 @@ class Backtester:
                             pnl = remaining * (close - open_trade.entry_price) * multiplier
                         else:
                             pnl = remaining * (open_trade.entry_price - close) * multiplier
-                        capital_change = (
-                            pnl
-                            - self._transaction_cost(remaining, tick_size)
-                            - self._exit_spread_cost(remaining, tick_size, multiplier)
-                        )
+                        capital_change = pnl - self._transaction_cost(remaining, tick_size) - self._exit_spread_cost(remaining, tick_size, multiplier)
                         capital += capital_change
                         open_trade.pnl += pnl
                         open_trade.exit_price = close
