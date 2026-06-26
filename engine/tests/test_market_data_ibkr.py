@@ -123,3 +123,22 @@ def test_make_contract_uses_cbot_for_treasury_futures():
     # regression: CME index futures unchanged
     assert conn._make_contract("MES", True).exchange == "CME"
     assert conn._make_contract("MNQ", True).exchange == "CME"
+
+
+def test_make_contract_exchange_for_copper_and_dow_micros():
+    """MHG (copper) is COMEX and MYM (E-mini Dow) is CBOT — not the CME default.
+
+    Same bug class as the ZB/ZN freeze (2026-06-26): both symbols are declared in
+    mtf_analyzer._FUTURES_SYMBOLS but were absent from FUTURES_EXCHANGE, so the lookup
+    defaulted them to 'CME'. A live bar fetch would then build a nonexistent CME
+    contract -> IB Error 200 -> None contract -> stale-cache/404. Copper trades on
+    COMEX; the Dow (YM/MYM) trades on CBOT. M2K (Russell micro) IS genuinely CME, so
+    its CME default is correct and must stay that way (regression guard).
+    """
+    conn = IBKRDataConnector()
+    assert conn._make_contract("MHG", True).exchange == "COMEX"  # micro copper
+    assert conn._make_contract("HG", True).exchange == "COMEX"  # full copper
+    assert conn._make_contract("MYM", True).exchange == "CBOT"  # micro Dow
+    assert conn._make_contract("YM", True).exchange == "CBOT"  # full Dow
+    # regression: Russell 2000 micro is correctly CME-by-default
+    assert conn._make_contract("M2K", True).exchange == "CME"

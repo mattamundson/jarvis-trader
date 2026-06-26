@@ -134,10 +134,15 @@ FUTURES_EXCHANGE = {
     "ES": "CME",
     "MGC": "COMEX",
     "GC": "COMEX",
-    # CBOT (ECBOT) — Treasuries + grains. Without these the lookup default ("CME")
-    # builds a nonexistent CME contract → IB Error 200 "no security definition" →
-    # contract=None → stale-cache fallback. (Bug 2026-06-26: froze the ZB/ZN
-    # forward-shadow.) ZB/ZN are the live ones; the rest are mapped for correctness.
+    # Copper trades on COMEX too (same default-to-CME trap as the bonds below).
+    # MHG is declared in mtf_analyzer._FUTURES_SYMBOLS, so a live pull would break.
+    "HG": "COMEX",
+    "MHG": "COMEX",
+    # CBOT (ECBOT) — Treasuries + grains + the Dow. Without these the lookup default
+    # ("CME") builds a nonexistent CME contract → IB Error 200 "no security
+    # definition" → contract=None → stale-cache fallback. (Bug 2026-06-26: froze the
+    # ZB/ZN forward-shadow.) ZB/ZN are the live bond pair; YM/MYM (E-mini Dow, also in
+    # mtf_analyzer._FUTURES_SYMBOLS) and the grains are mapped for correctness.
     "ZB": "CBOT",
     "ZN": "CBOT",
     "ZF": "CBOT",
@@ -145,6 +150,8 @@ FUTURES_EXCHANGE = {
     "ZC": "CBOT",
     "ZS": "CBOT",
     "ZW": "CBOT",
+    "YM": "CBOT",
+    "MYM": "CBOT",
 }
 
 
