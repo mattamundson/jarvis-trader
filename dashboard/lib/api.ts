@@ -484,6 +484,48 @@ export interface WatchlistScanResponse {
   signals?: unknown[];
 }
 
+/** GET /hidden-pivots/scan — Rick Ackerman HiddenPivots scanner (analysis-only). */
+export interface HPSignal {
+  symbol: string;
+  timeframe: string;
+  pattern: string | null;
+  bias: "LONG" | "SHORT" | "WATCH" | "SOH";
+  trigger_price: number | null;
+  tight_stop: number | null;
+  riskier_stop: number | null;
+  targets: number[];
+  hp_ou_level: number | null;
+  ema_alignment: string;
+  rs_rw_score: number;
+  rs_rw_label: string;
+  soh: boolean;
+  oscillator_state: string;
+  bars_since_cross: number;
+  last_cross_dir: "bull" | "bear" | "none";
+  confidence: number;
+  notes: string;
+}
+
+export interface HPScanResponse {
+  scan_time: string;
+  symbols_scanned: number;
+  signals: HPSignal[];
+  soh_symbols: string[];
+  watch_symbols: string[];
+  /** Full per-symbol result for every scanned name (incl. WATCH/SOH). */
+  details: HPSignal[];
+}
+
+/** Fetch the HiddenPivots scan for a given timeframe. */
+export async function fetchHiddenPivotsScan(
+  timeframe = "1d",
+  benchmark = "SPY"
+): Promise<HPScanResponse> {
+  return fetchEngine<HPScanResponse>(
+    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
+  );
+}
+
 /** GET /pipeline/history */
 export interface PipelineHistoryEntry {
   id?: string | number;
@@ -544,48 +586,6 @@ export interface PriceSnapshotEntry {
 }
 
 export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
-
-/** GET /hidden-pivots/scan — Rick Ackerman HiddenPivots scanner (analysis-only). */
-export interface HPSignal {
-  symbol: string;
-  timeframe: string;
-  pattern: string | null;
-  bias: "LONG" | "SHORT" | "WATCH" | "SOH";
-  trigger_price: number | null;
-  tight_stop: number | null;
-  riskier_stop: number | null;
-  targets: number[];
-  hp_ou_level: number | null;
-  ema_alignment: string;
-  rs_rw_score: number;
-  rs_rw_label: string;
-  soh: boolean;
-  oscillator_state: string;
-  bars_since_cross: number;
-  last_cross_dir: "bull" | "bear" | "none";
-  confidence: number;
-  notes: string;
-}
-
-export interface HPScanResponse {
-  scan_time: string;
-  symbols_scanned: number;
-  signals: HPSignal[];
-  soh_symbols: string[];
-  watch_symbols: string[];
-  /** Full per-symbol result for every scanned name (incl. WATCH/SOH). */
-  details: HPSignal[];
-}
-
-/** Fetch the HiddenPivots scan for a given timeframe. */
-export async function fetchHiddenPivotsScan(
-  timeframe = "1d",
-  benchmark = "SPY"
-): Promise<HPScanResponse> {
-  return fetchEngine<HPScanResponse>(
-    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
-  );
-}
 
 /**
  * Last price + daily change for the given symbols (GET /prices/snapshot).
