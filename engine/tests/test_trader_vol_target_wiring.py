@@ -30,7 +30,7 @@ engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
-from utils.position_sizing import apply_vol_target_scaling  # noqa: E402
+from utils.position_sizing import apply_vol_target_scaling  # noqa: E402, I001
 
 
 # ---------------------------------------------------------------------------
