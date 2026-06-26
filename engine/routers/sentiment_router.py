@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter
+from api.models import NewsSentimentResponse, RedditSentimentResponse
 
 logger = logging.getLogger(__name__)
 

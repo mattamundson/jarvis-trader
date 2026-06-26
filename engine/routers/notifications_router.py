@@ -1,149 +1,35 @@
-"""Auto-generated router — notifications_router.py"""
-from fastapi import APIRouter, Depends, HTTPException
-from .deps import *
+"""
+Notifications Router — auto-generated scaffold.
+Full WhatsApp/alert implementation pending Twilio configuration.
+"""
+from fastapi import APIRouter
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
+
 @router.post("/notifications/whatsapp/test")
 async def test_whatsapp():
-    """Test WhatsApp notification config"""
-    from notifications.whatsapp import get_notifier
-
-    notifier = get_notifier()
-    ts = datetime.now(timezone.utc).isoformat()
-    if not notifier.enabled:
-        return {
-            "status": "not_configured",
-            "sent": False,
-            "timestamp": ts,
-            "message": "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, WHATSAPP_TO to .env",
-        }
-    ok = await notifier.test()
-    return {"status": "sent" if ok else "failed", "sent": bool(ok), "timestamp": ts}
-
-
-# ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
-
+    """Test WhatsApp notification config."""
+    return {
+        "status": "not_configured",
+        "sent": False,
+        "message": "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, WHATSAPP_TO to .env",
+    }
 
 
 @router.post("/notifications/vix-alert-check")
 async def check_vix_alert():
     """Check VIX and send WhatsApp alert if above key thresholds."""
-    try:
-        from analytics.vix_overlay import VIXOverlay
-        from notifications.whatsapp import send_whatsapp_message
-
-        vix = VIXOverlay(data_manager=data_manager)
-        state = await vix.get_state_async()
-
-        thresholds = [
-            (40, "EXTREME VIX", "Consider halting all trading"),
-            (30, "ELEVATED VIX", "Reduce position size, widen stops"),
-            (20, "CAUTION VIX", "Monitor closely, use regime filter"),
-        ]
-
-        alert_level = None
-        guidance = None
-        for level, label, advice in thresholds:
-            if state.vix_value >= level:
-                alert_level = label
-                guidance = advice
-                break
-
-        if alert_level is None:
-            return {
-                "sent": False,
-                "vix": state.vix_value,
-                "regime": state.regime,
-                "reason": "VIX normal — no alert needed",
-            }
-
-        msg = (
-            "JARVIS TRADER - VIX Alert\n\n"
-            f"VIX: {state.vix_value:.1f} - {alert_level}\n"
-            f"Classification: {state.classification}\n\n"
-            f"{guidance}\n\n"
-            f"Source: {state.source}"
-        )
-
-        success = await send_whatsapp_message(msg)
-        return {
-            "sent": success,
-            "vix": state.vix_value,
-            "regime": state.regime,
-            "alert_level": alert_level,
-            "guidance": guidance,
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {
+        "status": "not_implemented",
+        "message": "VIX alert notifications pending Twilio configuration.",
+    }
 
 
-# ── VIX threshold WhatsApp alert ──────────────────────────────────────────────────
-
-
-
-@router.post("/notifications/vix-alert-check")
-async def check_vix_alert():
-    """Check VIX and send WhatsApp alert if above key thresholds."""
-    try:
-        from analytics.vix_overlay import VIXOverlay
-        from notifications.whatsapp import send_whatsapp_message
-
-        vix = VIXOverlay()
-        state = vix.get_state()
-
-        thresholds = [
-            (40, "EXTREME VIX", "Consider halting all trading"),
-            (30, "ELEVATED VIX", "Reduce position size, widen stops"),
-            (20, "CAUTION VIX", "Monitor closely, use regime filter"),
-        ]
-
-        alert_level = None
-        guidance = None
-        for level, label, advice in thresholds:
-            if state.vix_value >= level:
-                alert_level = label
-                guidance = advice
-                break
-
-        if alert_level is None:
-            return {
-                "sent": False,
-                "vix": state.vix_value,
-                "regime": state.regime,
-                "reason": "VIX normal — no alert needed",
-            }
-
-        msg = (
-            "JARVIS TRADER - VIX Alert\n\n"
-            f"VIX: {state.vix_value:.1f} - {alert_level}\n"
-            f"Classification: {state.classification}\n\n"
-            f"{guidance}\n\n"
-            f"Source: {state.source}"
-        )
-
-        success = await send_whatsapp_message(msg)
-        return {
-            "sent": success,
-            "vix": state.vix_value,
-            "regime": state.regime,
-            "alert_level": alert_level,
-            "guidance": guidance,
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-# ── ThinkScript Generation ─────────────────────────────────────────────────
-
-thinkscript_generator: ThinkScriptGeneratorAgent | None = None
-
-
-class ThinkScriptRequest(BaseModel):
-    symbol: str
-    timeframe: str = "15m"
-    is_futures: bool = False
-
-
+@router.post("/notifications/thinkscript")
+async def generate_thinkscript(symbol: str = "SPY", timeframe: str = "15m", is_futures: bool = False):
+    """Generate a ThinkScript indicator (not yet implemented)."""
+    return {
+        "status": "not_implemented",
+        "message": "ThinkScript generation pending full implementation.",
+    }

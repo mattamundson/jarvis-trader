@@ -10,7 +10,7 @@ from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
 from starlette.requests import Request
 
-from api.models import KillSwitchToggleResponse, SafetyStatusResponse
+from api.models import CircuitBreakerStatus, KillSwitchToggleResponse, SafetyStatusResponse
 from config import settings
 from middleware.rate_limit import limiter
 from risk.safety_layer import KillSwitchReason

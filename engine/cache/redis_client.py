@@ -17,12 +17,16 @@ try:
 
     REDIS_AVAILABLE = True
 except ImportError:
+    redis = None  # type: ignore[assignment]
+    ConnectionError = OSError  # type: ignore[misc]
+    RedisError = OSError  # type: ignore[misc]
+    ResponseError = OSError  # type: ignore[misc]
     REDIS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 # Global Redis client and fallback cache
-_redis_client: Optional[redis.Redis] = None
+_redis_client: Optional[Any] = None
 _fallback_cache: dict[str, Any] = {}  # in-memory cache if Redis unavailable
 _redis_enabled = True  # Track whether Redis is actually working
 
@@ -90,7 +94,7 @@ async def close_redis() -> None:
             _redis_client = None
 
 
-def get_redis_client() -> Optional[redis.Redis]:
+def get_redis_client() -> Optional[Any]:
     """Get current Redis client, or None if using fallback."""
     return _redis_client if _redis_enabled else None
 

@@ -26,10 +26,14 @@ from api.models import (
     DailyPnLResponse,
     DecisionHistoryResponse,
     DrawdownResponse,
-    PaperTradeRequest,
+    PaperPerformanceResponse,
+    PaperPositionsResponse,
     PaperTradeResponse,
+    PendingSignalsResponse,
+    PortfolioResponse,
     StatsSummaryResponse,
 )
+# PaperTradeRequest is defined locally below (search: class PaperTradeRequest)
 from approval.service import approved_watchlist_symbols
 from config import settings
 from execution.order_router import FUTURES_SYMBOLS

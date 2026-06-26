@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from starlette.requests import Request
 
-from api.models import FullHealthResponse, HealthResponse
+from api.models import FullHealthResponse, HealthResponse  # noqa: F401 — used in response_model=
 from config import settings
 from middleware.rate_limit import get_limiter
 
