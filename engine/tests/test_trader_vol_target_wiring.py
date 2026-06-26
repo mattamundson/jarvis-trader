@@ -32,7 +32,6 @@ if str(engine_root) not in sys.path:
 
 from utils.position_sizing import apply_vol_target_scaling  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers that mirror the exact wiring block in trader.py decide()
 # ---------------------------------------------------------------------------
