@@ -133,6 +133,32 @@ def test_score_date_persists_outcome(tmp_path, monkeypatch):
     assert "CORRECT" in md
 
 
+def test_default_score_date_picks_latest_completed(tmp_path):
+    from datetime import datetime, timedelta
+
+    import scripts.forecast_outcome_scorer as scorer
+    from analysis.forecast_journal import upsert_forecast
+
+    today = datetime.now(scorer._ET).date()
+    yest = today - timedelta(days=1)
+    two = today - timedelta(days=2)
+    db = tmp_path / "j.db"
+    lv = {"pivot": 1.0}
+    upsert_forecast(two.isoformat(), "MES", lv, "t", db_path=db)
+    upsert_forecast(yest.isoformat(), "MES", lv, "t", db_path=db)
+    upsert_forecast(today.isoformat(), "MES", lv, "t", db_path=db)  # today excluded (partial)
+    assert scorer._default_score_date(db_path=db) == yest
+
+
+def test_default_score_date_empty_journal_falls_back_yesterday(tmp_path):
+    from datetime import datetime, timedelta
+
+    import scripts.forecast_outcome_scorer as scorer
+
+    today = datetime.now(scorer._ET).date()
+    assert scorer._default_score_date(db_path=tmp_path / "empty.db") == today - timedelta(days=1)
+
+
 def test_score_date_no_actual(tmp_path, monkeypatch):
     import scripts.forecast_outcome_scorer as scorer
     from analysis.forecast_journal import upsert_forecast
