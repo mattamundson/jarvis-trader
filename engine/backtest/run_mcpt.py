@@ -45,6 +45,7 @@ from analytics.permutation_test import (
     run_insample_mcpt,
     validate_strategy,
 )
+from backtest._gate_v2_helpers import _find_latest_cache
 
 _HERE = Path(__file__).resolve().parent
 CACHE_DIR = _HERE / "cache"
@@ -69,6 +70,7 @@ def _cap_pf(pf: float) -> float:
 
 
 # ── real strategy (gate-v2 SMA-trend via the production Backtester) ─────────────
+
 
 def _real_strategy_factory(symbol: str, capital: float = 10_000.0):
     """Build (optimize_fn, walkforward_fn) backed by the REAL Backtester + trend signals.
@@ -97,10 +99,12 @@ def _real_strategy_factory(symbol: str, capital: float = 10_000.0):
         gp_tot = gl_tot = 0.0
         start = train_window
         while start < n - 1:
-            train = df.iloc[start - train_window:start]
+            train = df.iloc[start - train_window : start]
             best_params, _ = optimize_fn(train)
             end = min(start + step, n)
-            res = _run_signals_and_backtest(cfg, df.iloc[start - max(best_params[:2]):end], *best_params)
+            res = _run_signals_and_backtest(
+                cfg, df.iloc[start - max(best_params[:2]) : end], *best_params
+            )
             gp_tot += float(getattr(res, "gross_profit", 0.0) or 0.0)
             gl_tot += abs(float(getattr(res, "gross_loss", 0.0) or 0.0))
             start = end
@@ -147,13 +151,18 @@ def _breakout_strategy_factory(symbol: str, capital: float = 10_000.0):
         )
     grid = [(p, s) for p in _BREAKOUT_PERIODS for s in _BREAKOUT_STOPS]
 
-    def _run(df: pd.DataFrame, period: int, stop: float,
-             commission: float | None = None, slippage: float | None = None) -> object:
+    def _run(
+        df: pd.DataFrame,
+        period: int,
+        stop: float,
+        commission: float | None = None,
+        slippage: float | None = None,
+    ) -> object:
         df_sig = generate_donchian_breakout_signals(
             df,
             donchian_period=period,
             vol_ma_period=20,
-            vol_mult=0.0,        # volume filter OFF — baseline first
+            vol_mult=0.0,  # volume filter OFF — baseline first
             stop_atr_mult=stop,
             ema_trend_period=0,  # regime gates OFF — separate locked sweep
             atr_regime_mult=0.0,
@@ -183,14 +192,14 @@ def _breakout_strategy_factory(symbol: str, capital: float = 10_000.0):
         gp_tot = gl_tot = 0.0
         start = train_window
         while start < n - 1:
-            train = df.iloc[start - train_window:start]
+            train = df.iloc[start - train_window : start]
             best_params, _ = optimize_fn(train)
             end = min(start + step, n)
             # Prepend exactly the indicator warm-up (Donchian period; ATR/vol_ma <= 20) so the
             # first breakout fires AT `start`, not inside the prior fold — counting warm-up
             # trades would double-count and leak in-sample PnL into the OOS profit factor.
             warmup = max(best_params[0], 20)
-            res = _run(df.iloc[start - warmup:end], *best_params)
+            res = _run(df.iloc[start - warmup : end], *best_params)
             gp_tot += float(getattr(res, "gross_profit", 0.0) or 0.0)
             gl_tot += abs(float(getattr(res, "gross_loss", 0.0) or 0.0))
             start = end
@@ -200,6 +209,7 @@ def _breakout_strategy_factory(symbol: str, capital: float = 10_000.0):
 
 
 # ── reference strategy (simplified SMA-trend proxy, --proxy) ────────────────────
+
 
 def _pf(close: np.ndarray, fast: int, slow: int) -> float:
     """Profit factor of 'long when fast SMA > slow SMA', decided at t-1 (no look-ahead)."""
@@ -223,13 +233,13 @@ def _walkforward_fn(df: pd.DataFrame, train_window: int, step: int = 250) -> flo
     pnls: list[np.ndarray] = []
     start = train_window
     while start < n - 1:
-        bp = max(_SMA_PAIRS, key=lambda p: _pf(c[start - train_window:start], *p))
+        bp = max(_SMA_PAIRS, key=lambda p: _pf(c[start - train_window : start], *p))
         end = min(start + step, n)
-        seg = c[start - max(bp):end]
+        seg = c[start - max(bp) : end]
         s = pd.Series(seg)
         pos = (s.rolling(bp[0]).mean() > s.rolling(bp[1]).mean()).astype(float).shift(1).to_numpy()
         r = np.diff(np.log(seg), prepend=np.log(seg[0]))
-        pnls.append((pos * r)[-(end - start):][~np.isnan((pos * r)[-(end - start):])])
+        pnls.append((pos * r)[-(end - start) :][~np.isnan((pos * r)[-(end - start) :])])
         start = end
     pnl = np.concatenate(pnls) if pnls else np.array([0.0])
     gp = pnl[pnl > 0].sum()
@@ -239,10 +249,17 @@ def _walkforward_fn(df: pd.DataFrame, train_window: int, step: int = 250) -> flo
 
 # ── loaders ─────────────────────────────────────────────────────────────────────
 
+
 def _find_cache(symbol: str) -> Path | None:
-    real = sorted(CACHE_DIR.glob(f"{symbol.upper()}_*_1h.csv"))
-    if real:
-        return real[-1]
+    # Pick the REAL cache by latest END-date via the canonical selector. A bare
+    # sorted(glob)[-1] orders by START date, so a later-starting-but-shorter (or
+    # older-but-longer) slice could shadow the freshest cache and feed the MCPT
+    # wrong-era bars (the 2026-06 ATR-trail loader bug). See _find_latest_cache.
+    try:
+        return _find_latest_cache(CACHE_DIR, symbol.upper(), "_1h.csv")
+    except FileNotFoundError:
+        pass
+    # Synthetic plumbing-only fallback: a single fixed-name SAMPLE_ file per symbol.
     sample = sorted(CACHE_DIR.glob(f"{_SAMPLE_PREFIX}{symbol.upper()}_*_1h.csv"))
     return sample[-1] if sample else None
 
@@ -285,11 +302,15 @@ def _load_trade_pnls(db: Path | None, csv: Path | None, symbol: str | None) -> l
 
 # ── sample-data generation (synthetic — for plumbing only) ──────────────────────
 
-def _make_sample(symbol: str, n_bars: int = 2500, n_trades: int = 80, seed: int = 0) -> tuple[Path, Path]:
+
+def _make_sample(
+    symbol: str, n_bars: int = 2500, n_trades: int = 80, seed: int = 0
+) -> tuple[Path, Path]:
     rng = np.random.default_rng(seed)
     # Regime-switching drift so the SMA-trend proxy has *some* structure to find.
-    drift = np.concatenate([np.full(120, d) for d in
-                            rng.choice((0.0008, -0.0008), size=n_bars // 120 + 1)])[:n_bars]
+    drift = np.concatenate(
+        [np.full(120, d) for d in rng.choice((0.0008, -0.0008), size=n_bars // 120 + 1)]
+    )[:n_bars]
     close = 4000.0 * np.exp(np.cumsum(drift + rng.normal(0, 0.004, n_bars)))
     open_ = np.empty(n_bars)
     open_[0] = close[0]
@@ -297,11 +318,15 @@ def _make_sample(symbol: str, n_bars: int = 2500, n_trades: int = 80, seed: int 
     idx = pd.date_range("2024-01-01", periods=n_bars, freq="h")
     csv = CACHE_DIR / f"{_SAMPLE_PREFIX}{symbol.upper()}_2024-01-01_2024-12-31_1h.csv"
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame({
-        "timestamp": idx, "open": open_,
-        "high": np.maximum(open_, close) * 1.0006,
-        "low": np.minimum(open_, close) * 0.9994, "close": close,
-    }).to_csv(csv, index=False)
+    pd.DataFrame(
+        {
+            "timestamp": idx,
+            "open": open_,
+            "high": np.maximum(open_, close) * 1.0006,
+            "low": np.minimum(open_, close) * 0.9994,
+            "close": close,
+        }
+    ).to_csv(csv, index=False)
 
     db = _HERE.parent / "data" / f"{_SAMPLE_PREFIX.lower()}paper_trades_{symbol.lower()}.db"
     db.parent.mkdir(parents=True, exist_ok=True)
@@ -332,17 +357,22 @@ def _is_sample(path: Path) -> bool:
 
 # ── commands ──────────────────────────────────────────────────────────────────
 
+
 def _warn_if_sample(path: Path) -> None:
     if _is_sample(path):
-        print(f"  !! WARNING: {path.name} is SYNTHETIC sample data — this verdict is "
-              "plumbing-only and statistically meaningless. Replace with real data.\n")
+        print(
+            f"  !! WARNING: {path.name} is SYNTHETIC sample data — this verdict is "
+            "plumbing-only and statistically meaningless. Replace with real data.\n"
+        )
 
 
 def cmd_prices(args: argparse.Namespace) -> int:
     path = Path(args.csv) if args.csv else _find_cache(args.symbol)
     if path is None or not path.exists():
-        print(f"No 1h cache for {args.symbol} in {CACHE_DIR} (real or SAMPLE_). "
-              "Run 'make-sample' or drop a real CSV in.")
+        print(
+            f"No 1h cache for {args.symbol} in {CACHE_DIR} (real or SAMPLE_). "
+            "Run 'make-sample' or drop a real CSV in."
+        )
         return 2
     df = _load_ohlc(path)
     print(f"Loaded {path.name}: {len(df)} bars, {df.index[0].date()} -> {df.index[-1].date()}")
@@ -358,11 +388,20 @@ def cmd_prices(args: argparse.Namespace) -> int:
         engine = "real Backtester + generate_sma_trend_signals (authoritative diagnostic)"
     print(f"optimizer: {engine}")
     is_res = run_insample_mcpt(df, optimize_fn, n_permutations=args.insample_perms, seed=0)
-    print(f"in-sample MCPT : best={is_res['real_params']} real_pf={is_res['real_pf']} "
-          f"perm_mean={is_res['perm_pf_mean']} p={is_res['p_value']} pass={is_res['passes']}")
-    out = validate_strategy(df, optimize_fn, walkforward_fn, train_window=args.train_window,
-                            n_insample_perms=args.insample_perms, n_wf_perms=args.wf_perms,
-                            seed=0, long_history=args.long_history)
+    print(
+        f"in-sample MCPT : best={is_res['real_params']} real_pf={is_res['real_pf']} "
+        f"perm_mean={is_res['perm_pf_mean']} p={is_res['p_value']} pass={is_res['passes']}"
+    )
+    out = validate_strategy(
+        df,
+        optimize_fn,
+        walkforward_fn,
+        train_window=args.train_window,
+        n_insample_perms=args.insample_perms,
+        n_wf_perms=args.wf_perms,
+        seed=0,
+        long_history=args.long_history,
+    )
     print(f"VERDICT: {out['verdict']}")
     for k in ("is_pf", "is_pval", "wf_pf", "wf_pval"):
         if k in out:
@@ -378,19 +417,25 @@ def cmd_trades(args: argparse.Namespace) -> int:
         return 2
     pnls = _load_trade_pnls(db, csv, args.symbol)
     src = csv or db
-    print(f"Loaded {len(pnls)} closed trades from {Path(src).name}"
-          f"{' for ' + args.symbol if args.symbol else ''}")
+    print(
+        f"Loaded {len(pnls)} closed trades from {Path(src).name}"
+        f"{' for ' + args.symbol if args.symbol else ''}"
+    )
     if src and _is_sample(Path(src)):
         _warn_if_sample(Path(src))
     res = permute_and_score(pnls, n_iters=args.iters, metric=args.metric)
-    print(f"trade-sign test ({res['metric']}): real_score={res['real_score']} "
-          f"p={res['p_value']} pass(<{res['alpha']})={res['passes']} n_trades={res['n_trades']}")
+    print(
+        f"trade-sign test ({res['metric']}): real_score={res['real_score']} "
+        f"p={res['p_value']} pass(<{res['alpha']})={res['passes']} n_trades={res['n_trades']}"
+    )
     if args.bootstrap:
         ci = bootstrap_metric_ci(pnls, n_iters=args.boot_iters, metric=args.metric)
         lvl = int(round(ci["ci"] * 100))
-        print(f"bootstrap CI ({ci['metric']}): real={ci['real_score']} "
-              f"{lvl}% CI=[{ci['ci_lower']:.4f}, {ci['ci_upper']:.4f}] "
-              f"P(<=no-edge)={ci['p_null']} n_trades={ci['n_trades']}")
+        print(
+            f"bootstrap CI ({ci['metric']}): real={ci['real_score']} "
+            f"{lvl}% CI=[{ci['ci_lower']:.4f}, {ci['ci_upper']:.4f}] "
+            f"P(<=no-edge)={ci['p_null']} n_trades={ci['n_trades']}"
+        )
     return 0
 
 
@@ -415,22 +460,36 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--insample-perms", type=int, default=300)
     pp.add_argument("--wf-perms", type=int, default=100)
     pp.add_argument("--long-history", action="store_true", help="use stricter walk-forward alpha")
-    pp.add_argument("--capital", type=float, default=10_000.0, help="account size for the Backtester")
-    pp.add_argument("--proxy", action="store_true",
-                    help="use the simplified SMA-trend proxy instead of the real Backtester")
-    pp.add_argument("--strategy", default="trend", choices=("trend", "breakout"),
-                    help="production signal to validate: 'trend' (SMA) or 'breakout' "
-                         "(Donchian). Ignored when --proxy is set. Default: trend")
+    pp.add_argument(
+        "--capital", type=float, default=10_000.0, help="account size for the Backtester"
+    )
+    pp.add_argument(
+        "--proxy",
+        action="store_true",
+        help="use the simplified SMA-trend proxy instead of the real Backtester",
+    )
+    pp.add_argument(
+        "--strategy",
+        default="trend",
+        choices=("trend", "breakout"),
+        help="production signal to validate: 'trend' (SMA) or 'breakout' "
+        "(Donchian). Ignored when --proxy is set. Default: trend",
+    )
     pp.set_defaults(func=cmd_prices)
 
     pt = sub.add_parser("trades", help="trade-sign permutation test on closed trades")
     pt.add_argument("--db", default=None, help="SQLite DB with a paper_trades table")
     pt.add_argument("--csv", default=None, help="CSV with a 'pnl' column")
     pt.add_argument("--symbol", default=None)
-    pt.add_argument("--metric", default="mean", choices=("mean", "total", "sharpe", "profit_factor"))
+    pt.add_argument(
+        "--metric", default="mean", choices=("mean", "total", "sharpe", "profit_factor")
+    )
     pt.add_argument("--iters", type=int, default=500)
-    pt.add_argument("--bootstrap", action="store_true",
-                    help="also print a bootstrap CI on the metric (estimate width; key on small N)")
+    pt.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="also print a bootstrap CI on the metric (estimate width; key on small N)",
+    )
     pt.add_argument("--boot-iters", type=int, default=2000, help="bootstrap resamples")
     pt.set_defaults(func=cmd_trades)
 

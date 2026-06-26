@@ -344,22 +344,23 @@ def _compute_regime_conditional(oos_window_data: list) -> dict:
 
 
 def _compute_gate_v2(oos_results, n_grid, fixed_metrics, cost_metrics):
-    from backtest.deflated_sharpe import deflated_sharpe_ratio
+    # DSR is computed from the actual per-trade return series (trade_level_dsr),
+    # NOT the mean of per-window Sharpes. The old mean-of-window-Sharpes path fed
+    # the Bailey/Lopez de Prado deflation an unstable Sharpe (1-2 trade windows
+    # yield giant Sharpes) with n_obs floored at 30, producing a Phi(z) that
+    # rounds to 1.0 and auto-passes. See _gate_v2_trade_metrics for the rationale.
+    from backtest._gate_v2_trade_metrics import trade_level_dsr
+
+    CAPITAL = 50_000.0
 
     oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     oos_dds = [r.max_drawdown_pct for r in oos_results]
-    oos_sharpes = [
-        r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW
-    ]
     all_trades = sum(r.total_trades for r in oos_results)
 
     pf_ci_lower = bootstrap_pf_ci_lower(oos_pfs) if oos_pfs else 0.0
     p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
     mc_95th_dd = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
-    mean_sharpe = float(np.mean(oos_sharpes)) if oos_sharpes else 0.0
-    n_obs = max(all_trades, 30)
-    dsr_r = deflated_sharpe_ratio(sharpe=mean_sharpe, n_trials=n_grid, n_obs=n_obs)
-    dsr = dsr_r.get("dsr", 0.0) if isinstance(dsr_r, dict) else float(dsr_r)
+    dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid, initial_capital=CAPITAL)
 
     wfo_consistency = classify_wfo_consistency(oos_pfs)
     fixed_min_pf = fixed_metrics.get("fixed_params_min_pf", 0.0)
