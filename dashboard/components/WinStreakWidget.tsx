@@ -1,22 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import {
+  type HonestTrade,
+  type HonestTradeSet,
+  dedupCaveat,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
-
-interface TradeRecord {
-  id: string | number;
-  entry_time: string | null;
-  status: string;
-  pnl?: number | null;
-  realized_pnl?: number | null;
-}
-
-interface TradesResponse {
-  trades: TradeRecord[];
-}
 
 interface StreakResult {
   currentStreak: number;
@@ -26,22 +18,16 @@ interface StreakResult {
   validTradeCount: number;
 }
 
-function computeStreaks(trades: TradeRecord[]): StreakResult {
-  // Filter to trades with non-null pnl
-  const valid = trades.filter((t) => {
-    const pnl = t.pnl ?? t.realized_pnl ?? null;
-    return pnl !== null && pnl !== undefined;
+function computeStreaksFromHonest(trades: HonestTrade[]): StreakResult {
+  // Already deduped — sort ascending by exit_time (close order); null goes to end
+  const sorted = [...trades].sort((a, b) => {
+    if (!a.exit_time && !b.exit_time) return 0;
+    if (!a.exit_time) return 1;
+    if (!b.exit_time) return -1;
+    return Date.parse(a.exit_time) - Date.parse(b.exit_time);
   });
 
-  // Sort ascending by entry_time — null entry_time goes to end
-  valid.sort((a, b) => {
-    if (a.entry_time === null && b.entry_time === null) return 0;
-    if (a.entry_time === null) return 1;
-    if (b.entry_time === null) return -1;
-    return new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime();
-  });
-
-  if (valid.length === 0) {
+  if (sorted.length === 0) {
     return {
       currentStreak: 0,
       currentStreakType: "NONE",
@@ -56,10 +42,8 @@ function computeStreaks(trades: TradeRecord[]): StreakResult {
   let runWin = 0;
   let runLoss = 0;
 
-  for (const trade of valid) {
-    const pnl = trade.pnl ?? trade.realized_pnl ?? 0;
-    const isWin = pnl > 0;
-
+  for (const trade of sorted) {
+    const isWin = trade.pnl > 0;
     if (isWin) {
       runWin++;
       runLoss = 0;
@@ -71,10 +55,8 @@ function computeStreaks(trades: TradeRecord[]): StreakResult {
     }
   }
 
-  // Current streak: from last run
   let currentStreak = 0;
   let currentStreakType: "WIN" | "LOSS" | "NONE" = "NONE";
-
   if (runWin > 0) {
     currentStreak = runWin;
     currentStreakType = "WIN";
@@ -88,38 +70,14 @@ function computeStreaks(trades: TradeRecord[]): StreakResult {
     currentStreakType,
     maxWinStreak,
     maxLossStreak,
-    validTradeCount: valid.length,
+    validTradeCount: sorted.length,
   };
 }
 
 export function WinStreakWidget() {
-  const [streaks, setStreaks] = useState<StreakResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTrades = useCallback(async () => {
-    try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?limit=500&status=CLOSED`
-      );
-      const trades: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as TradesResponse).trades ?? []);
-      const result = computeStreaks(trades);
-      setStreaks(result);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 300_000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  const { honest: honestSet, isLoading: loading, error: loadError } = useHonestTrades(300_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const streaks = honestSet ? computeStreaksFromHonest(honestSet.trades) : null;
 
   const currentNum = streaks?.currentStreak ?? 0;
   const currentType = streaks?.currentStreakType ?? "NONE";
@@ -233,7 +191,7 @@ export function WinStreakWidget() {
 
             {/* Footer */}
             <p className="text-xs text-muted-foreground">
-              Last 500 trades &middot; {total} valid trades analyzed
+              {honestSet ? dedupCaveat(honestSet) : `${total} valid trades analyzed`}
             </p>
           </div>
         )}

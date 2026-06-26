@@ -1,31 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
-
+import {
+  dedupCaveat,
+  type HonestTrade,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 const BENCHMARK_LONG_PCT = 58;
 const BENCHMARK_SHORT_PCT = 42;
-
-interface ClosedTrade {
-  id: string;
-  symbol: string;
-  action: string;
-  entry_price: number;
-  exit_price: number;
-  quantity: number;
-  entry_time: string;
-  exit_time: string;
-  pnl: number;
-  commission: number;
-  status: string;
-}
-
-interface TradesResponse {
-  trades: ClosedTrade[];
-}
 
 interface GroupStats {
   count: number;
@@ -34,7 +18,7 @@ interface GroupStats {
   total_pnl: number;
 }
 
-function calcGroupStats(trades: ClosedTrade[]): GroupStats {
+function calcGroupStats(trades: HonestTrade[]): GroupStats {
   const count = trades.length;
   if (count === 0) {
     return { count: 0, win_rate: 0, avg_pnl: 0, total_pnl: 0 };
@@ -56,44 +40,14 @@ function pnlClass(val: number): string {
 }
 
 export function LongShortBalanceWidget() {
-  const [trades, setTrades] = useState<ClosedTrade[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(300_000);
+  const error = !!loadError;
 
-  async function fetchTrades() {
-    try {
-      const raw: unknown = await fetchEngine(`/portfolio/history/trades?limit=500&status=CLOSED`);
-      const rows: ClosedTrade[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: ClosedTrade[] }).trades ?? []);
-      const closed = rows.filter(
-        (t: ClosedTrade) => t.status === "CLOSED" && t.pnl != null
-      );
-      setTrades(closed);
-      setError(false);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }
+  // HonestTrade.direction is "LONG" | "SHORT"
+  const longTrades = set ? set.trades.filter((t) => t.direction === "LONG") : [];
+  const shortTrades = set ? set.trades.filter((t) => t.direction === "SHORT") : [];
 
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 300_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const longTrades = trades.filter(
-    (t) =>
-      t.action === "BUY" || t.action === "LONG" || t.action === "BUY_LONG"
-  );
-  const shortTrades = trades.filter(
-    (t) =>
-      t.action === "SELL" || t.action === "SHORT" || t.action === "SELL_SHORT"
-  );
-
-  const total = trades.length;
+  const total = longTrades.length + shortTrades.length;
   const longPct = total > 0 ? (longTrades.length / total) * 100 : 0;
   const shortPct = total > 0 ? (shortTrades.length / total) * 100 : 0;
 
@@ -266,8 +220,9 @@ export function LongShortBalanceWidget() {
               </span>
             </div>
 
-            <p className="text-xs text-muted-foreground mt-2">
-              From last 500 closed trades · Refreshes every 5m
+            {/* Dedup caveat */}
+            <p className="text-[10px] text-muted-foreground mt-2">
+              {set ? dedupCaveat(set) : ""} · Refreshes every 5m
             </p>
           </>
         )}

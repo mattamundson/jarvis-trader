@@ -189,7 +189,18 @@ class TVStreamer:
                         line = await stderr.readline()
                         if not line:
                             break
-                        logger.warning(f"[TVStreamer:CLI] {line.decode().strip()}")
+                        text = line.decode().strip()
+                        if not text:
+                            continue
+                        # TV CLI floods stderr with routine chatter
+                        # (_chartWidgetCollection, ~5/min). Only surface genuine
+                        # errors at WARNING; route the rest to DEBUG to avoid the
+                        # ~85k-line spam flood. (de-spam 2026-06-18)
+                        low = text.lower()
+                        if any(k in low for k in ("error", "exception", "traceback", "fatal", "failed")):
+                            logger.warning(f"[TVStreamer:CLI] {text}")
+                        else:
+                            logger.debug(f"[TVStreamer:CLI] {text}")
 
                 asyncio.create_task(log_stderr(proc.stderr))
 
