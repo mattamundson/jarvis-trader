@@ -10,9 +10,21 @@ from backtest.factory.relval import (
     backtest_spread,
     build_spread,
     relval_gauntlet,
+    relval_pairs,
     smoke_test_pair,
     spread_trade_dollars,
 )
+
+
+def test_pairs_are_pre_registered_with_rationale():
+    pairs = relval_pairs()
+    names = {p.name for p in pairs}
+    # equity crosses + the pre-registered rates-curve pair
+    assert {"MES_MNQ", "MES_M2K", "MNQ_M2K", "ES_NQ", "ZB_ZN"} <= names
+    # rationale gate: no blank / trivial rationale (pre-registration vs p-hacking)
+    for p in pairs:
+        assert len(p.economic_rationale) >= 25
+        assert p.leg_a != p.leg_b  # never a same-instrument self-pair
 
 
 def _series(arr) -> pd.Series:

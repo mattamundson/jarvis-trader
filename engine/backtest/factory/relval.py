@@ -249,11 +249,13 @@ class Pair:
 
 
 def relval_pairs() -> list[Pair]:
-    """Cointegrated equity-index cross pairs -- the liquid ones with bar data.
+    """Cointegrated cross pairs -- the liquid ones with bar data.
 
     Same-underlying pairs (e.g. MES/ES, MGC/GC) are EXCLUDED: they are the same
     instrument at different multipliers, perfectly cointegrated by construction
-    with no tradeable edge. Each pair is a genuine cross-index relative-value bet.
+    with no tradeable edge. Each pair is a genuine cross-instrument relative-value
+    bet. Four equity-index crosses plus one rates-curve pair (ZB/ZN), each
+    pre-registered with an economic rationale before any result is seen.
     """
     common = {
         "default_params": {"window": 60, "entry_z": 2.0, "exit_z": 0.5, "stop_z": 4.0},
@@ -294,6 +296,18 @@ def relval_pairs() -> list[Pair]:
             economic_rationale="Full-size S&P vs Nasdaq -- the deepest, most-arbitraged index "
             "cross; the spread mean-reverts around the common market factor on a sector-rotation "
             "horizon.",
+            **common,
+        ),
+        Pair(
+            name="ZB_ZN",
+            leg_a="ZB",
+            leg_b="ZN",
+            economic_rationale="30y T-bond vs 10y T-note: both driven by the common rates factor, "
+            "so their spread is the long-end curve slope, which mean-reverts as duration positioning "
+            "rebalances around the prevailing curve regime. NOTE: this is a 1:1 LOG spread, not "
+            "DV01-weighted -- a deliberate first-pass simplification (ZB has more duration than ZN); "
+            "a real edge here would justify a duration-neutral refinement. Data starts 2025-06, so "
+            "the WFO window count is thin and the result is regime-limited.",
             **common,
         ),
     ]
