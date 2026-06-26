@@ -354,6 +354,16 @@ def relval_pairs() -> list[Pair]:
             },
             param_grid={"window": [40, 60, 120], "entry_z": [1.5, 2.0, 2.5], "exit_z": [0.25, 0.5]},
         ),
+        Pair(
+            name="M6E_M6B",
+            leg_a="M6E",
+            leg_b="M6B",
+            economic_rationale="EUR/USD vs GBP/USD (micro FX): both are USD legs of the European "
+            "currency bloc, so their spread isolates the EUR-vs-GBP cross, which mean-reverts around "
+            "the bloc's relative monetary stance as ECB/BoE expectations rebalance. Cross-asset "
+            "diversifier vs the equity/rates pairs. Data starts 2025-06 -- thin and regime-limited.",
+            **common,
+        ),
     ]
 
 
