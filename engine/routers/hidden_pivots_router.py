@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,10 @@ class ScanResponse(BaseModel):
     signals: list[HPSignal]
     soh_symbols: list[str]
     watch_symbols: list[str]
+    # Full per-symbol result for every scanned name (incl. WATCH/SOH), so UIs can
+    # render the level ladder for non-armed setups. Additive; `signals` /
+    # `soh_symbols` / `watch_symbols` keep their original meaning.
+    details: list[HPSignal] = Field(default_factory=list)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -236,6 +240,7 @@ async def scan_watchlist(
         signals=signals,
         soh_symbols=soh_symbols,
         watch_symbols=watch_symbols,
+        details=[s for s in results if s is not None],
     )
     _last_scan_cache = response
     return response
@@ -349,6 +354,7 @@ async def screen_symbols(request: ScreenRequest):
         signals=signals,
         soh_symbols=soh_symbols,
         watch_symbols=watch_symbols,
+        details=[s for s in results if s is not None],
     )
 
 

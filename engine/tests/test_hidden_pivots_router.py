@@ -3,6 +3,7 @@
 Uses FastAPI TestClient with a mocked data_manager so no network calls are made.
 Auth is handled by main.py middleware, not the router — standalone tests skip auth checks.
 """
+
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -16,20 +17,27 @@ from routers.hidden_pivots_router import router as hp_router
 
 # ─── Fake data helpers ───────────────────────────────────────────────────────
 
+
 def _fake_bars(n: int = 150) -> pd.DataFrame:
     rng = np.random.default_rng(0)
     dates = pd.date_range("2025-01-01", periods=n, freq="B")
     close = 100.0 + np.cumsum(rng.normal(0.1, 0.5, n))
     close = np.clip(close, 1.0, None)
     spread = np.abs(rng.normal(0.4, 0.1, n))
-    return pd.DataFrame({
-        "open":   close, "high":  close + spread,
-        "low":    close - spread, "close": close,
-        "volume": rng.integers(500, 5000, n).astype(float),
-    }, index=dates)
+    return pd.DataFrame(
+        {
+            "open": close,
+            "high": close + spread,
+            "low": close - spread,
+            "close": close,
+            "volume": rng.integers(500, 5000, n).astype(float),
+        },
+        index=dates,
+    )
 
 
 # ─── App fixture with injected mocks ─────────────────────────────────────────
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -47,6 +55,7 @@ def client():
 
 
 # ─── /hidden-pivots/analyze/{symbol} ─────────────────────────────────────────
+
 
 class TestAnalyzeEndpoint:
     def test_returns_200(self, client):
@@ -73,10 +82,17 @@ class TestAnalyzeEndpoint:
     def test_response_has_oscillator_state(self, client):
         resp = client.get("/hidden-pivots/analyze/MCL")
         data = resp.json()
-        assert data["oscillator_state"] in ("BULLISH_CROSS", "BEARISH_CROSS", "RISING", "FALLING", "FLAT")
+        assert data["oscillator_state"] in (
+            "BULLISH_CROSS",
+            "BEARISH_CROSS",
+            "RISING",
+            "FALLING",
+            "FLAT",
+        )
 
 
 # ─── /hidden-pivots/levels/{symbol} ──────────────────────────────────────────
+
 
 class TestLevelsEndpoint:
     def test_returns_200(self, client):
@@ -96,6 +112,7 @@ class TestLevelsEndpoint:
 
 
 # ─── /hidden-pivots/scan ─────────────────────────────────────────────────────
+
 
 class TestScanEndpoint:
     def test_returns_200(self, client):
@@ -119,8 +136,22 @@ class TestScanEndpoint:
         assert "signals" in data
         assert isinstance(data["signals"], list)
 
+    def test_response_has_details_for_every_scanned_symbol(self, client):
+        # details carries the full per-symbol result (incl. WATCH/SOH) so UIs
+        # can render ladders for non-armed setups.
+        resp = client.get("/hidden-pivots/scan")
+        data = resp.json()
+        assert "details" in data
+        assert isinstance(data["details"], list)
+        # mock config scans MCL+MNQ; both resolve to a signal -> 2 details
+        assert len(data["details"]) == data["symbols_scanned"]
+        if data["details"]:
+            assert "bias" in data["details"][0]
+            assert "bars_since_cross" in data["details"][0]
+
 
 # ─── /hidden-pivots/report ───────────────────────────────────────────────────
+
 
 class TestReportEndpoint:
     def test_returns_200(self, client):
@@ -135,6 +166,7 @@ class TestReportEndpoint:
 
 
 # ─── /hidden-pivots/screen (POST) ────────────────────────────────────────────
+
 
 class TestScreenEndpoint:
     def test_returns_200_with_valid_payload(self, client):
@@ -162,6 +194,7 @@ class TestScreenEndpoint:
 
 # ─── /hidden-pivots/confluence/{symbol} ──────────────────────────────────────
 
+
 class TestConfluenceEndpoint:
     def test_returns_200_or_service_error(self, client):
         # May return 503 if internal pipeline endpoint unreachable
@@ -174,5 +207,9 @@ class TestConfluenceEndpoint:
             data = resp.json()
             assert "verdict" in data
             assert data["verdict"] in (
-                "HIGH_CONVICTION", "WEAK", "DIVERGENT", "HP_ONLY", "NO_SIGNAL"
+                "HIGH_CONVICTION",
+                "WEAK",
+                "DIVERGENT",
+                "HP_ONLY",
+                "NO_SIGNAL",
             )
