@@ -132,7 +132,10 @@ class TradingConfig(BaseSettings):
     MAX_DAILY_LOSS_PCT: float = Field(0.02, description="Halt trading at -2% daily P&L")
     MAX_DAILY_LOSS_USD: float = Field(100.0, description="Halt trading at flat $100 daily P&L")
     MAX_TRADE_LOSS_USD: float = Field(50.0, description="Max loss per single trade ticket is $50")
-    MAX_DRAWDOWN_PCT: float = Field(0.10, description="Emergency halt at the configured drawdown from equity peak. 0.10 (-10%) is the conservative code default; the paper phase overrides it higher via the MAX_DRAWDOWN_PCT env var, so engine/.env is the source of truth for the live value.")
+    MAX_DRAWDOWN_PCT: float = Field(
+        0.10,
+        description="Emergency halt at the configured drawdown from equity peak. 0.10 (-10%) is the conservative code default; the paper phase overrides it higher via the MAX_DRAWDOWN_PCT env var, so engine/.env is the source of truth for the live value.",
+    )
     MAX_ORDERS_PER_MINUTE: int = Field(10, description="Rate throttle")
     MAX_CORRELATED_EXPOSURE_PCT: float = Field(0.20, description="Max 20% in correlated positions")
     PRICE_COLLAR_PCT: float = Field(0.05, description="Reject orders >5% from NBBO")
@@ -162,6 +165,47 @@ class TradingConfig(BaseSettings):
     CORRELATED_PAIR_MAX_CONTRACTS: int = Field(
         1,
         description="Reduced max contracts when both instruments in a correlated pair are open",
+    )
+
+    # ── Volatility-Targeting Sizing (default OFF; OOS-validated on MGC) ───
+    # Scales contracts toward a constant target volatility: a final risk
+    # overlay applied after VIX scaling. w = clip(target_vol / realized_vol,
+    # 0, max_leverage). DEFAULT OFF — inert until explicitly enabled.
+    # Evidence: backtest/vol_target_wfo.py — MGC trend OOS Sharpe +0.69,
+    # MaxDD -59% (ROBUST_OOS, 6/10 windows); realized vol read from the live
+    # technical indicator rv_20_ann_pct (same 20-bar annualized formula).
+    VOL_TARGET_ENABLED: bool = Field(
+        False,
+        description="Enable volatility-targeting position-size overlay (default OFF)",
+    )
+    VOL_TARGET_MAX_LEVERAGE: float = Field(
+        3.0,
+        description="Max vol-target up-scaling multiplier (clip ceiling for target/realized vol)",
+    )
+    VOL_TARGET_PER_SYMBOL: dict = Field(
+        default={"MGC": 13.3},
+        description="Per-symbol target annualized realized vol (%) for vol-targeting sizing "
+        "(MGC=13.3 calibrated from the WFO study global target_vol)",
+    )
+
+    # Correlation-aware portfolio sizing overlay (P2.3, DEFAULT OFF). Trims a new
+    # position when it would stack correlated risk on the existing open book
+    # ("size MES down when MGC is already hot"). Inert until enabled AND validated.
+    CORRELATION_SIZING_ENABLED: bool = Field(
+        False,
+        description="Enable correlation-aware portfolio-sizing overlay (default OFF)",
+    )
+    CORRELATION_MAX_PORTFOLIO_RISK_USD: float = Field(
+        200.0,
+        description="Aggregate correlated-risk ceiling ($) the new position is trimmed to fit",
+    )
+    CORRELATION_DEFAULT_CORR: float = Field(
+        0.5,
+        description="Correlation assumed for symbol pairs absent from the estimate (conservative)",
+    )
+    CORRELATION_BLOCK_THRESHOLD: float = Field(
+        0.5,
+        description="If less than this fraction of the new position's risk fits, block the add",
     )
 
     # Futures position-size gate uses MARGIN (not notional). 1 MES is ~$7,130

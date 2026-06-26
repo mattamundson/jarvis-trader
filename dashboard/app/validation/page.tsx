@@ -25,6 +25,11 @@ import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  equityCurve,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 import { simulateTrade } from "@/lib/settings-api";
 import type { SimulateTradePayload, SimulateTradeResult } from "@/lib/settings-api";
 import { PipelineRunHistory } from "@/components/PipelineRunHistory";
@@ -68,6 +73,88 @@ function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
+// ── Honest performance adapter ────────────────────────────────────────────────
+// Replaces the former /analytics/performance fetcher that returned the inflated
+// raw-engine counts (~29 rows → fabricated +$3,899 / PF 2.95 / 19 trades).
+// Now sources everything from fetchHonestTrades() which applies the dedup
+// (18 real trades, -$8,188, PF 0.66). Sharpe is NOT in the deduped record
+// (only symbol/direction/entry_time/exit_time/pnl_usd/grade are available),
+// so it is surfaced as null / "not computed" — no fabricated PASS.
+
+function computeHonestMaxDrawdownPct(trades: Parameters<typeof equityCurve>[0]): number {
+  const curve = equityCurve(trades);
+  let maxDDPct = 0;
+  for (const pt of curve) {
+    const peak = pt.equity - pt.drawdown;
+    if (peak > 0) {
+      const ddPct = Math.abs(pt.drawdown) / peak;
+      if (ddPct > maxDDPct) maxDDPct = ddPct;
+    }
+  }
+  return maxDDPct; // fraction (not percent)
+}
+
+async function honestPerformanceFetcher(): Promise<ValidationReport> {
+  const set = await fetchHonestTrades();
+
+  const pf = set.profitFactor;
+  // sharpe_ratio is intentionally null — annualized Sharpe cannot be derived
+  // from the deduped record (no timestamps granular enough, no risk-free rate).
+  const sharpe: null = null;
+  const winRate = set.winRate; // already 0..1
+  const maxDd = computeHonestMaxDrawdownPct(set.trades); // fraction
+  const trades = set.trades.length;
+
+  // Avg win/loss from the deduped set
+  const winners = set.trades.filter((t) => t.pnl > 0);
+  const losers = set.trades.filter((t) => t.pnl < 0);
+  const avgWin = winners.length > 0
+    ? winners.reduce((s, t) => s + t.pnl, 0) / winners.length
+    : 0;
+  const avgLoss = losers.length > 0
+    ? losers.reduce((s, t) => s + t.pnl, 0) / losers.length
+    : 0;
+
+  let status: ValidationReport["status"];
+  let recommendation: string;
+  if (trades < THRESHOLDS.minTrades) {
+    status = "INSUFFICIENT_DATA";
+    recommendation = `Collecting data — ${trades}/${THRESHOLDS.minTrades} trades before validation gates apply. ${dedupCaveat(set)}.`;
+  } else {
+    const pfPass = pf != null && pf >= THRESHOLDS.profitFactor;
+    // Sharpe gate is SUSPENDED — cannot fabricate a PASS from the deduped record.
+    const ddPass = maxDd < THRESHOLDS.maxDrawdown;
+    const allPass = pfPass && ddPass; // sharpe intentionally excluded
+    status = allPass ? "PASS" : "FAIL";
+    recommendation = allPass
+      ? `All computable validation gates passing. Sharpe not computed from deduped record. ${dedupCaveat(set)}.`
+      : [
+          !pfPass ? "profit factor" : null,
+          !ddPass ? "max drawdown" : null,
+          "Sharpe not computed from deduped record",
+        ]
+          .filter(Boolean)
+          .join("; ")
+          .replace(/^(.)/, (c) => c.toUpperCase()) + `. ${dedupCaveat(set)}.`;
+  }
+
+  return {
+    status,
+    recommendation,
+    metrics: {
+      profit_factor: pf,
+      sharpe_ratio: sharpe,
+      win_rate: winRate,
+      max_drawdown: maxDd,
+      total_trades: trades,
+      period_days: 0, // not in deduped record
+      total_pnl: set.net,
+      avg_win: avgWin,
+      avg_loss: avgLoss,
+    },
+  };
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -104,65 +191,148 @@ function PassIcon({ pass }: { pass: boolean | null }) {
   return <XCircle className="h-4 w-4 text-bear mx-auto" />;
 }
 
-// ── Section 1: Strategy Validation Scorecard ─────────────────────────────────
+// ── Live validation analytics (gate-v2 verdicts via /analytics/*) ─────────────
+// These four cards replace the former hardcoded static blocks. All data is live
+// from the engine's /analytics/{significance,sensitivity,monte-carlo} endpoints,
+// which read the same gate-v2 verdict JSONs the strategy ledger uses.
 
-type CheckStatus = "PASS" | "FAIL" | "MARGINAL";
-
-interface ScorecardRow {
-  check: string;
-  criterion: string;
-  result: string;
-  status: CheckStatus;
+interface SignificanceEntry {
+  symbol: string | null;
+  family: string | null;
+  verdict: string | null;
+  p_edge: number | null;
+  dsr: number | null;
+  pf_ci_lower: number | null;
+  n_oos_trades: number | null;
+  n_windows: number | null;
+  mean_oos_pf: number | null;
+  t_stat: number | null;
+  significant: boolean;
+  source_file: string | null;
 }
 
-const SCORECARD_DATA: ScorecardRow[] = [
-  {
-    check: "Walk-Forward Efficiency",
-    criterion: "WFE > 0.30",
-    result: "MGC: 0.88 / MNQ: 0.34",
-    status: "PASS",
-  },
-  {
-    check: "OOS Profitable Windows",
-    criterion: "> 50% windows profitable",
-    result: "MGC: 2/3 (67%) / MNQ: 3/6 (50%)",
-    status: "PASS",
-  },
-  {
-    check: "Profit Factor",
-    criterion: "OOS PF > 1.0",
-    result: "MGC: 2.55 / MNQ: 1.05",
-    status: "PASS",
-  },
-  {
-    check: "Trade Count",
-    criterion: "> 30 OOS trades",
-    result: "MGC: 25 total / MNQ: 128 total",
-    status: "MARGINAL",
-  },
-  {
-    check: "Max Drawdown",
-    criterion: "OOS DD < 5%",
-    result: "MGC: 1.5%",
-    status: "PASS",
-  },
-];
-
-function statusColor(s: CheckStatus): string {
-  if (s === "PASS") return "text-bull";
-  if (s === "FAIL") return "text-bear";
-  return "text-warn";
+interface SignificanceResponse {
+  entries: SignificanceEntry[];
+  total: number;
+  n_significant: number;
+  p_edge_threshold: number;
+  generated_at: string;
 }
 
-function statusBg(s: CheckStatus): string {
-  if (s === "PASS") return "bg-bull/10 border-bull/20";
-  if (s === "FAIL") return "bg-bear/10 border-bear/20";
-  return "bg-warn/10 border-warn/20";
+interface SensitivityParam {
+  parameter: string;
+  pf_min: number;
+  pf_max: number;
+  pf_spread: number;
+  half_spread: number;
+  best_value: unknown;
+  level: string;
 }
+
+interface SensitivityEntry {
+  symbol: string | null;
+  family: string | null;
+  verdict: string | null;
+  n_combos: number | null;
+  fixed_params_min_pf: number | null;
+  fixed_params_mean_pf: number | null;
+  fixed_params_max_pf: number | null;
+  params: SensitivityParam[];
+  source_file: string | null;
+}
+
+interface SensitivityResponse {
+  entries: SensitivityEntry[];
+  total: number;
+  generated_at: string;
+}
+
+interface MonteCarloEntry {
+  symbol: string | null;
+  family: string | null;
+  timeframe: string | null;
+  verdict: string | null;
+  mc_95th_dd_pct: number | null;
+  n_simulations: number | null;
+  n_trades: number | null;
+  return_p5: number | null;
+  return_median: number | null;
+  return_p95: number | null;
+  capital_at_risk_95: number | null;
+  artifact_verdict: string | null;
+  degenerate: boolean | null;
+  source: string;
+  source_file: string | null;
+}
+
+interface MonteCarloResponse {
+  entries: MonteCarloEntry[];
+  total: number;
+  n_with_artifact: number;
+  generated_at: string;
+}
+
+const ANALYTICS_SWR = { refreshInterval: 60_000, revalidateOnFocus: false } as const;
+
+const P_EDGE_FLOOR = 0.95; // gate-v2 edge threshold
+const PF_CI_FLOOR = 1.1; // gate-v2 PF lower-CI floor
+const DSR_FLOOR = 0.1; // gate-v2 deflated-Sharpe floor
+
+function fmtNum(v: number | null | undefined, decimals = 2): string {
+  return v != null && Number.isFinite(v) ? v.toFixed(decimals) : "—";
+}
+
+function verdictChipClasses(verdict: string | null | undefined): string {
+  const v = (verdict ?? "").toUpperCase();
+  if (v.includes("PASS") || v === "TRADE") return "bg-bull/10 border-bull/20 text-bull";
+  if (
+    v.includes("NEAR") ||
+    v.includes("HOLD") ||
+    v.includes("MARGINAL") ||
+    v.includes("WEAK")
+  )
+    return "bg-warn/10 border-warn/20 text-warn";
+  if (!v) return "bg-muted border-border text-muted-foreground";
+  return "bg-bear/10 border-bear/20 text-bear";
+}
+
+function strategyLabel(symbol: string | null, family: string | null): string {
+  const s = symbol ?? "—";
+  return family ? `${s} · ${family}` : s;
+}
+
+/**
+ * Honest placeholder shown while an analytics endpoint is unreachable (e.g. an
+ * engine restart is pending to deploy the route) or has returned no rows. Never
+ * fabricates data — the whole point of de-staticing these cards.
+ */
+function AwaitingAnalytics({ loading, message }: { loading: boolean; message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+      {loading ? (
+        <div className="h-5 w-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+      ) : (
+        <WifiOff className="h-5 w-5 text-muted-foreground" />
+      )}
+      <p className="max-w-md text-xs leading-relaxed text-muted-foreground font-mono">
+        {message}
+      </p>
+    </div>
+  );
+}
+
+// ── Section 1: Strategy Validation Scorecard (live gate-v2 verdicts) ──────────
 
 function ValidationScorecardCard() {
-  const passCount = SCORECARD_DATA.filter((r) => r.status === "PASS").length;
-  const total = SCORECARD_DATA.length;
+  const { data, error, isLoading } = useSWR<SignificanceResponse>(
+    "/analytics/significance",
+    fetcher,
+    ANALYTICS_SWR,
+  );
+  const entries = data?.entries ?? [];
+  const nPass = entries.filter((e) =>
+    (e.verdict ?? "").toUpperCase().includes("PASS"),
+  ).length;
 
   return (
     <Card>
@@ -176,94 +346,123 @@ function ValidationScorecardCard() {
               Strategy Validation Scorecard
             </p>
             <p className="text-[10px] text-muted-foreground">
-              Walk-forward out-of-sample validation checks
+              Live gate-v2 verdicts — every evaluated strategy
             </p>
           </div>
-          <span className="ml-auto">
-            <Badge variant={passCount === total ? "bull" : passCount >= total - 1 ? "warn" : "bear"}>
-              {passCount}/{total} PASSING
-            </Badge>
-          </span>
+          {entries.length > 0 && (
+            <span className="ml-auto">
+              <Badge variant={nPass > 0 ? "bull" : "bear"}>
+                {nPass}/{entries.length} PASS
+              </Badge>
+            </span>
+          )}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                  Check
-                </th>
-                <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                  Criterion
-                </th>
-                <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                  Result
-                </th>
-                <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {SCORECARD_DATA.map((row) => (
-                <tr key={row.check} className="hover:bg-muted/20 transition-colors">
-                  <td className="py-2.5 pr-4 font-medium text-foreground">{row.check}</td>
-                  <td className="py-2.5 pr-4 font-mono text-muted-foreground">{row.criterion}</td>
-                  <td className="py-2.5 pr-4 font-mono tabular-nums text-foreground">{row.result}</td>
-                  <td className="py-2.5 text-center">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold tracking-wider ${statusBg(row.status)} ${statusColor(row.status)}`}
-                    >
-                      {row.status === "PASS" && <CheckCircle2 className="h-3 w-3" />}
-                      {row.status === "FAIL" && <XCircle className="h-3 w-3" />}
-                      {row.status === "MARGINAL" && <AlertCircle className="h-3 w-3" />}
-                      {row.status}
-                    </span>
-                  </td>
+        {entries.length === 0 ? (
+          <AwaitingAnalytics
+            loading={isLoading && !error}
+            message={
+              error
+                ? "/analytics/significance unreachable — engine restart pending to deploy live validation analytics."
+                : isLoading
+                  ? "Loading gate-v2 verdicts…"
+                  : "No gate-v2 verdicts on disk yet."
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
+                    Strategy
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    p_edge ≥ 0.95
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    PF-CI ≥ 1.10
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    DSR ≥ 0.10
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    OOS Trades
+                  </th>
+                  <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
+                    Verdict
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {entries.map((e) => {
+                  const pEdgePass = e.p_edge != null && e.p_edge >= P_EDGE_FLOOR;
+                  const pfPass = e.pf_ci_lower != null && e.pf_ci_lower >= PF_CI_FLOOR;
+                  const dsrPass = e.dsr != null && e.dsr >= DSR_FLOOR;
+                  return (
+                    <tr
+                      key={e.source_file ?? strategyLabel(e.symbol, e.family)}
+                      className="hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="py-2.5 pr-4 font-medium text-foreground whitespace-nowrap">
+                        {strategyLabel(e.symbol, e.family)}
+                      </td>
+                      <td
+                        className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${pEdgePass ? "text-bull" : "text-bear"}`}
+                      >
+                        {fmtNum(e.p_edge)}
+                      </td>
+                      <td
+                        className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${pfPass ? "text-bull" : "text-bear"}`}
+                      >
+                        {fmtNum(e.pf_ci_lower)}
+                      </td>
+                      <td
+                        className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${dsrPass ? "text-bull" : "text-bear"}`}
+                      >
+                        {fmtNum(e.dsr)}
+                      </td>
+                      <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
+                        {e.n_oos_trades ?? "—"}
+                      </td>
+                      <td className="py-2.5 text-center">
+                        <span
+                          className={`inline-block rounded-full border px-2.5 py-0.5 text-[10px] font-bold tracking-wider ${verdictChipClasses(e.verdict)}`}
+                        >
+                          {e.verdict ?? "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-// ── Section 2: Monte Carlo Confidence Intervals ──────────────────────────────
+// ── Section 2: Monte Carlo Risk (live) ───────────────────────────────────────
 
-interface MonteCarloRow {
-  instrument: string;
-  timeframe: string;
-  simulations: string;
-  p5: string;
-  median: string;
-  p95: string;
-  confidence95Capital: string;
+function signedPct(v: number | null): { text: string; cls: string } {
+  if (v == null || !Number.isFinite(v))
+    return { text: "—", cls: "text-muted-foreground" };
+  return {
+    text: `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`,
+    cls: v >= 0 ? "text-bull" : "text-bear",
+  };
 }
 
-const MONTE_CARLO_DATA: MonteCarloRow[] = [
-  {
-    instrument: "MNQ",
-    timeframe: "1h",
-    simulations: "10,000",
-    p5: "-8.2%",
-    median: "+13.6%",
-    p95: "+31.4%",
-    confidence95Capital: "$91,800",
-  },
-  {
-    instrument: "MGC",
-    timeframe: "1d",
-    simulations: "10,000",
-    p5: "+8.1%",
-    median: "+34.4%",
-    p95: "+54.1%",
-    confidence95Capital: "$108,100",
-  },
-];
-
 function MonteCarloCard() {
+  const { data, error, isLoading } = useSWR<MonteCarloResponse>(
+    "/analytics/monte-carlo",
+    fetcher,
+    ANALYTICS_SWR,
+  );
+  const entries = data?.entries ?? [];
+
   return (
     <Card>
       <CardContent className="pt-5 pb-5">
@@ -273,134 +472,159 @@ function MonteCarloCard() {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-info">
-              Monte Carlo Confidence Intervals
+              Monte Carlo Risk
             </p>
             <p className="text-[10px] text-muted-foreground">
-              Simulated return distributions from walk-forward OOS trades
+              Gate-v2 95th-pctile drawdown per strategy; return percentiles where a live sim exists
             </p>
           </div>
+          {data && (
+            <span className="ml-auto">
+              <Badge variant="info">
+                {data.n_with_artifact}/{data.total} with sim
+              </Badge>
+            </span>
+          )}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                  Instrument
-                </th>
-                <th className="pb-2 pr-4 text-center font-semibold text-muted-foreground uppercase tracking-wider">
-                  Sims
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  P5 (Worst)
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  Median
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  P95 (Best)
-                </th>
-                <th className="pb-2 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                  95% CI Capital
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {MONTE_CARLO_DATA.map((row) => {
-                const p5Negative = row.p5.startsWith("-");
-                return (
-                  <tr key={`${row.instrument}-${row.timeframe}`} className="hover:bg-muted/20 transition-colors">
-                    <td className="py-2.5 pr-4">
-                      <span className="font-mono font-bold text-foreground">{row.instrument}</span>
-                      <span className="ml-1.5 text-muted-foreground">{row.timeframe}</span>
-                    </td>
-                    <td className="py-2.5 pr-4 text-center font-mono tabular-nums text-muted-foreground">
-                      {row.simulations}
-                    </td>
-                    <td className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${p5Negative ? "text-bear" : "text-bull"}`}>
-                      {row.p5}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-accent">
-                      {row.median}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-bull">
-                      {row.p95}
-                    </td>
-                    <td className="py-2.5 text-right font-mono tabular-nums text-foreground font-semibold">
-                      {row.confidence95Capital}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {entries.length === 0 ? (
+          <AwaitingAnalytics
+            loading={isLoading && !error}
+            message={
+              error
+                ? "/analytics/monte-carlo unreachable — engine restart pending to deploy live validation analytics."
+                : isLoading
+                  ? "Loading Monte Carlo risk…"
+                  : "No gate-v2 verdicts on disk yet."
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
+                    Strategy
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    MC 95th DD
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    P5
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    Median
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    P95
+                  </th>
+                  <th className="pb-2 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    95% VaR
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {entries.map((e) => {
+                  const dd = e.mc_95th_dd_pct;
+                  const ddCls =
+                    dd == null
+                      ? "text-muted-foreground"
+                      : dd <= 5
+                        ? "text-bull"
+                        : dd <= 8
+                          ? "text-warn"
+                          : "text-bear";
+                  const p5 = signedPct(e.return_p5);
+                  const med = signedPct(e.return_median);
+                  const p95 = signedPct(e.return_p95);
+                  return (
+                    <tr
+                      key={e.source_file ?? strategyLabel(e.symbol, e.family)}
+                      className="hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="py-2.5 pr-4 whitespace-nowrap">
+                        <span className="font-mono font-bold text-foreground">
+                          {strategyLabel(e.symbol, e.family)}
+                        </span>
+                        {e.timeframe && (
+                          <span className="ml-1.5 text-muted-foreground">{e.timeframe}</span>
+                        )}
+                        {e.degenerate && (
+                          <span
+                            className="ml-1.5 text-[9px] text-warn"
+                            title="MC artifact percentiles collapsed — only the gate drawdown is trustworthy"
+                          >
+                            stale sim
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${ddCls}`}
+                      >
+                        {dd != null ? `${dd.toFixed(2)}%` : "—"}
+                      </td>
+                      <td
+                        className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${p5.cls}`}
+                      >
+                        {p5.text}
+                      </td>
+                      <td
+                        className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${med.cls}`}
+                      >
+                        {med.text}
+                      </td>
+                      <td
+                        className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${p95.cls}`}
+                      >
+                        {p95.text}
+                      </td>
+                      <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+                        {e.capital_at_risk_95 != null
+                          ? formatCurrency(e.capital_at_risk_95)
+                          : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div className="mt-3 rounded-lg border border-info/20 bg-info/5 px-3 py-2 text-[11px] text-info leading-relaxed">
-          95% confidence that final capital remains above the P5 level after simulated trade sequences.
-          Starting capital assumed $100,000. MC uses OOS trade returns with replacement.
+          MC 95th-percentile drawdown is the gate-v2 risk gate (PASS ≤ 5%, ALT routing ≤ 4%).
+          Return percentiles appear only when a non-degenerate Monte Carlo artifact exists on
+          disk; otherwise the gate drawdown is the canonical signal.
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// ── Section 3: Parameter Sensitivity ─────────────────────────────────────────
+// ── Section 3: Parameter Sensitivity (live) ──────────────────────────────────
 
-type SensitivityLevel = "LOW" | "MEDIUM" | "HIGH";
-
-interface SensitivityRow {
-  parameter: string;
-  mgcImpact: string;
-  mgcLevel: SensitivityLevel;
-  mnqImpact: string;
-  mnqLevel: SensitivityLevel;
-}
-
-const SENSITIVITY_DATA: SensitivityRow[] = [
-  {
-    parameter: "STC_OS (Oversold)",
-    mgcImpact: "PF +/-0.08",
-    mgcLevel: "LOW",
-    mnqImpact: "PF +/-0.15",
-    mnqLevel: "MEDIUM",
-  },
-  {
-    parameter: "STC_OB (Overbought)",
-    mgcImpact: "PF +/-0.05",
-    mgcLevel: "LOW",
-    mnqImpact: "PF +/-0.22",
-    mnqLevel: "MEDIUM",
-  },
-  {
-    parameter: "Stop ATR Multiple",
-    mgcImpact: "PF +/-0.12",
-    mgcLevel: "LOW",
-    mnqImpact: "PF +/-0.31",
-    mnqLevel: "HIGH",
-  },
-  {
-    parameter: "T1 ATR Multiple",
-    mgcImpact: "PF +/-0.10",
-    mgcLevel: "LOW",
-    mnqImpact: "PF +/-0.18",
-    mnqLevel: "MEDIUM",
-  },
-];
-
-function sensitivityColor(level: SensitivityLevel): string {
-  if (level === "LOW") return "text-bull";
-  if (level === "MEDIUM") return "text-warn";
-  return "text-bear";
-}
-
-function sensitivityBg(level: SensitivityLevel): string {
-  if (level === "LOW") return "bg-bull/10 border-bull/20";
-  if (level === "MEDIUM") return "bg-warn/10 border-warn/20";
-  return "bg-bear/10 border-bear/20";
+function sensLevelClasses(level: string): string {
+  const l = level.toUpperCase();
+  if (l === "LOW") return "bg-bull/10 border-bull/20 text-bull";
+  if (l === "MEDIUM") return "bg-warn/10 border-warn/20 text-warn";
+  return "bg-bear/10 border-bear/20 text-bear";
 }
 
 function ParameterSensitivityCard() {
+  const { data, error, isLoading } = useSWR<SensitivityResponse>(
+    "/analytics/sensitivity",
+    fetcher,
+    ANALYTICS_SWR,
+  );
+  const entries = data?.entries ?? [];
+  const rows = entries.flatMap((e) =>
+    e.params.map((p, i) => ({
+      key: `${e.source_file ?? strategyLabel(e.symbol, e.family)}-${p.parameter}`,
+      strategy: i === 0 ? strategyLabel(e.symbol, e.family) : "",
+      param: p,
+    })),
+  );
+
   return (
     <Card>
       <CardContent className="pt-5 pb-5">
@@ -413,115 +637,98 @@ function ParameterSensitivityCard() {
               Parameter Sensitivity Analysis
             </p>
             <p className="text-[10px] text-muted-foreground">
-              Impact of +/-10% parameter change on Profit Factor. LOW = robust, HIGH = fragile.
+              PF spread across each tunable parameter&apos;s grid. LOW = robust, HIGH = fragile.
             </p>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                  Parameter
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  MGC Impact
-                </th>
-                <th className="pb-2 pr-4 text-center font-semibold text-muted-foreground uppercase tracking-wider">
-                  MGC
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  MNQ Impact
-                </th>
-                <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
-                  MNQ
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {SENSITIVITY_DATA.map((row) => (
-                <tr key={row.parameter} className="hover:bg-muted/20 transition-colors">
-                  <td className="py-2.5 pr-4 font-medium text-foreground">{row.parameter}</td>
-                  <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                    {row.mgcImpact}
-                  </td>
-                  <td className="py-2.5 pr-4 text-center">
-                    <span
-                      className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider ${sensitivityBg(row.mgcLevel)} ${sensitivityColor(row.mgcLevel)}`}
-                    >
-                      {row.mgcLevel}
-                    </span>
-                  </td>
-                  <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                    {row.mnqImpact}
-                  </td>
-                  <td className="py-2.5 text-center">
-                    <span
-                      className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider ${sensitivityBg(row.mnqLevel)} ${sensitivityColor(row.mnqLevel)}`}
-                    >
-                      {row.mnqLevel}
-                    </span>
-                  </td>
+        {rows.length === 0 ? (
+          <AwaitingAnalytics
+            loading={isLoading && !error}
+            message={
+              error
+                ? "/analytics/sensitivity unreachable — engine restart pending to deploy live validation analytics."
+                : isLoading
+                  ? "Loading parameter sensitivity…"
+                  : "No tunable-parameter grids found in gate-v2 verdicts."
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
+                    Strategy
+                  </th>
+                  <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
+                    Parameter
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    PF Range
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    ± Spread
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    Best
+                  </th>
+                  <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
+                    Level
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {rows.map((r) => (
+                  <tr key={r.key} className="hover:bg-muted/20 transition-colors">
+                    <td className="py-2.5 pr-4 font-medium text-foreground whitespace-nowrap">
+                      {r.strategy}
+                    </td>
+                    <td className="py-2.5 pr-4 font-mono text-muted-foreground">
+                      {r.param.parameter}
+                    </td>
+                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground whitespace-nowrap">
+                      {fmtNum(r.param.pf_min)} → {fmtNum(r.param.pf_max)}
+                    </td>
+                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-foreground">
+                      ±{fmtNum(r.param.half_spread)}
+                    </td>
+                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-accent">
+                      {r.param.best_value != null ? String(r.param.best_value) : "—"}
+                    </td>
+                    <td className="py-2.5 text-center">
+                      <span
+                        className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wider ${sensLevelClasses(r.param.level)}`}
+                      >
+                        {r.param.level}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="rounded-lg border border-bull/20 bg-bull/5 px-3 py-2">
-            <p className="text-[10px] font-bold text-bull uppercase tracking-wider mb-0.5">MGC 1d</p>
-            <p className="text-xs text-muted-foreground">
-              All parameters LOW sensitivity. Strategy is <span className="text-bull font-semibold">robust</span> to parameter changes.
-            </p>
-          </div>
-          <div className="rounded-lg border border-warn/20 bg-warn/5 px-3 py-2">
-            <p className="text-[10px] font-bold text-warn uppercase tracking-wider mb-0.5">MNQ 1h</p>
-            <p className="text-xs text-muted-foreground">
-              Stop ATR is HIGH sensitivity. Strategy may be <span className="text-warn font-semibold">fragile</span> to stop placement.
-            </p>
-          </div>
+        <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground leading-relaxed">
+          Spread is the PF range as each parameter is swept across the gate-v2 combo grid
+          (others held). LOW (±&lt;0.15) = robust; MEDIUM (±&lt;0.30); HIGH = fragile to that knob.
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// ── Section 4: Statistical Significance ──────────────────────────────────────
-
-interface SignificanceRow {
-  instrument: string;
-  timeframe: string;
-  sharpe: number;
-  tStat: number;
-  pValue: string;
-  significant: boolean;
-  nTrades: number;
-}
-
-const SIGNIFICANCE_DATA: SignificanceRow[] = [
-  {
-    instrument: "MGC",
-    timeframe: "1d",
-    sharpe: 2.04,
-    tStat: 4.2,
-    pValue: "< 0.01",
-    significant: true,
-    nTrades: 25,
-  },
-  {
-    instrument: "MNQ",
-    timeframe: "1h",
-    sharpe: 0.19,
-    tStat: 0.9,
-    pValue: "0.37",
-    significant: false,
-    nTrades: 128,
-  },
-];
+// ── Section 4: Statistical Significance (live) ───────────────────────────────
 
 function StatisticalSignificanceCard() {
+  const { data, error, isLoading } = useSWR<SignificanceResponse>(
+    "/analytics/significance",
+    fetcher,
+    ANALYTICS_SWR,
+  );
+  const entries = data?.entries ?? [];
+
   return (
     <Card>
       <CardContent className="pt-5 pb-5">
@@ -534,78 +741,112 @@ function StatisticalSignificanceCard() {
               Statistical Significance
             </p>
             <p className="text-[10px] text-muted-foreground">
-              Sharpe Ratio t-test: is the strategy statistically better than random?
+              OOS profit-factor t-test + gate-v2 edge probability per strategy
             </p>
           </div>
+          {entries.length > 0 && (
+            <span className="ml-auto">
+              <Badge variant={data && data.n_significant > 0 ? "bull" : "neutral"}>
+                {data?.n_significant ?? 0} SIGNIFICANT
+              </Badge>
+            </span>
+          )}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                  Instrument
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  Sharpe
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  t-Stat
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  p-Value
-                </th>
-                <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                  N Trades
-                </th>
-                <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
-                  Result
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {SIGNIFICANCE_DATA.map((row) => (
-                <tr key={`${row.instrument}-${row.timeframe}`} className="hover:bg-muted/20 transition-colors">
-                  <td className="py-2.5 pr-4">
-                    <span className="font-mono font-bold text-foreground">{row.instrument}</span>
-                    <span className="ml-1.5 text-muted-foreground">{row.timeframe}</span>
-                  </td>
-                  <td className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${row.sharpe >= 1.0 ? "text-bull" : row.sharpe >= 0.5 ? "text-warn" : "text-bear"}`}>
-                    {row.sharpe.toFixed(2)}
-                  </td>
-                  <td className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${row.tStat >= 2.0 ? "text-bull" : "text-muted-foreground"}`}>
-                    {row.tStat.toFixed(1)}
-                  </td>
-                  <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                    {row.pValue}
-                  </td>
-                  <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                    {row.nTrades}
-                  </td>
-                  <td className="py-2.5 text-center">
-                    {row.significant ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-bull/30 bg-bull/10 px-2.5 py-0.5 text-[10px] font-bold text-bull tracking-wider">
-                        <CheckCircle2 className="h-3 w-3" />
-                        SIGNIFICANT
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-[10px] font-bold text-muted-foreground tracking-wider">
-                        <XCircle className="h-3 w-3" />
-                        NOT SIG
-                      </span>
-                    )}
-                  </td>
+        {entries.length === 0 ? (
+          <AwaitingAnalytics
+            loading={isLoading && !error}
+            message={
+              error
+                ? "/analytics/significance unreachable — engine restart pending to deploy live validation analytics."
+                : isLoading
+                  ? "Loading statistical significance…"
+                  : "No gate-v2 verdicts on disk yet."
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
+                    Strategy
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    Mean OOS PF
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    t-Stat
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    p_edge
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    DSR
+                  </th>
+                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    Windows
+                  </th>
+                  <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
+                    Result
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {entries.map((e) => (
+                  <tr
+                    key={e.source_file ?? strategyLabel(e.symbol, e.family)}
+                    className="hover:bg-muted/20 transition-colors"
+                  >
+                    <td className="py-2.5 pr-4 font-medium text-foreground whitespace-nowrap">
+                      {strategyLabel(e.symbol, e.family)}
+                    </td>
+                    <td
+                      className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${e.mean_oos_pf != null && e.mean_oos_pf >= 1 ? "text-bull" : "text-bear"}`}
+                    >
+                      {fmtNum(e.mean_oos_pf)}
+                    </td>
+                    <td
+                      className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${e.t_stat != null && e.t_stat >= 2 ? "text-bull" : "text-muted-foreground"}`}
+                    >
+                      {fmtNum(e.t_stat, 2)}
+                    </td>
+                    <td
+                      className={`py-2.5 pr-4 text-right font-mono tabular-nums font-semibold ${e.p_edge != null && e.p_edge >= P_EDGE_FLOOR ? "text-bull" : "text-muted-foreground"}`}
+                    >
+                      {fmtNum(e.p_edge)}
+                    </td>
+                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
+                      {fmtNum(e.dsr)}
+                    </td>
+                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
+                      {e.n_windows ?? "—"}
+                    </td>
+                    <td className="py-2.5 text-center">
+                      {e.significant ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-bull/30 bg-bull/10 px-2.5 py-0.5 text-[10px] font-bold text-bull tracking-wider">
+                          <CheckCircle2 className="h-3 w-3" />
+                          SIGNIFICANT
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-[10px] font-bold text-muted-foreground tracking-wider">
+                          <XCircle className="h-3 w-3" />
+                          NOT SIG
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground leading-relaxed">
           <span className="font-semibold text-foreground">Interpretation:</span>{" "}
-          t-stat &gt; 2.0 required for p &lt; 0.05 significance (95% confidence the Sharpe is non-zero).
-          MGC daily strategy shows strong statistical significance. MNQ hourly in-sample Sharpe is not statistically
-          distinguishable from zero — more OOS data needed.
+          t-stat &gt; 2.0 marks OOS profit factor as distinguishable from break-even (PF = 1.0);
+          p_edge ≥ 0.95 is the gate-v2 edge probability. A strategy is flagged SIGNIFICANT when its
+          gate-v2 p_edge clears 0.95.
         </div>
       </CardContent>
     </Card>
@@ -697,7 +938,19 @@ function BacktestReferenceCard({ baseline }: { baseline: ScorecardBacktestBaseli
 // ── Live Paper Performance Card ───────────────────────────────────────────────
 
 function LivePerformanceCard({ report }: { report: ValidationReport }) {
-  const m = report.metrics;
+  const m = report?.metrics;
+  // Defense-in-depth: if the engine ever returns a report without metrics,
+  // show an honest "unavailable" state instead of crashing the whole page.
+  if (!m) {
+    return (
+      <Card className="border-border">
+        <CardContent className="pt-5 pb-5 flex items-center gap-2 text-xs text-muted-foreground">
+          <AlertCircle className="h-3.5 w-3.5 text-warn shrink-0" />
+          Live paper metrics unavailable — engine returned no performance data.
+        </CardContent>
+      </Card>
+    );
+  }
   const isInsufficient = report.status === "INSUFFICIENT_DATA";
   const isPass = report.status === "PASS";
   const isFail = report.status === "FAIL";
@@ -795,26 +1048,11 @@ function LivePerformanceCard({ report }: { report: ValidationReport }) {
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">
               Sharpe Ratio
             </p>
-            <p
-              className={`tabular-nums text-lg font-bold font-mono ${
-                isInsufficient
-                  ? "text-muted-foreground"
-                  : sharpePass
-                  ? "text-bull"
-                  : "text-bear"
-              }`}
-            >
-              {m.sharpe_ratio !== null ? m.sharpe_ratio.toFixed(2) : "—"}
+            <p className="tabular-nums text-lg font-bold font-mono text-muted-foreground">
+              —
             </p>
-            <p className="text-[10px] mt-0.5">
-              {!isInsufficient && (
-                <span className={sharpePass ? "text-bull" : "text-bear"}>
-                  {sharpePass ? "PASS" : "FAIL"} (need &gt;{THRESHOLDS.sharpeRatio})
-                </span>
-              )}
-              {isInsufficient && (
-                <span className="text-muted-foreground">need more daily data</span>
-              )}
+            <p className="text-[10px] mt-0.5 text-muted-foreground leading-tight">
+              not computed from deduped record
             </p>
           </div>
 
@@ -931,15 +1169,14 @@ function ComparisonTable({
         : null,
     },
     {
+      // Sharpe is intentionally null in the honest deduped record — annualized
+      // Sharpe cannot be derived from symbol/direction/entry_time/exit_time/pnl_usd.
+      // pass=null prevents a fabricated PASS; the "—" label makes the gap visible.
       metric: "Sharpe Ratio",
       backtest: fmtBaselineNum(baseline?.sharpeRatio ?? null),
-      live: m.sharpe_ratio !== null ? m.sharpe_ratio.toFixed(2) : "—",
+      live: "— (not computed from deduped record)",
       threshold: `> ${THRESHOLDS.sharpeRatio}`,
-      pass: isInsufficient
-        ? null
-        : m.sharpe_ratio !== null
-        ? m.sharpe_ratio >= THRESHOLDS.sharpeRatio
-        : null,
+      pass: null,
     },
     {
       metric: "Win Rate",
@@ -1356,7 +1593,9 @@ export default function ValidationPage() {
     data: report,
     error: reportError,
     isLoading: reportLoading,
-  } = useSWR<ValidationReport>("/analytics/performance", fetcher, {
+    // Key is a stable string; honestPerformanceFetcher ignores the key and fetches
+    // from fetchHonestTrades() which calls the deduped /master/trading/realized endpoint.
+  } = useSWR<ValidationReport>("honest-performance", honestPerformanceFetcher, {
     refreshInterval: REFRESH_MS,
   });
 
@@ -1499,10 +1738,10 @@ export default function ValidationPage() {
           <div className="rounded-xl border border-bear/20 bg-bear/5 p-5 flex items-center gap-3">
             <WifiOff className="h-5 w-5 text-bear shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-bear">Engine offline or analytics unavailable</p>
+              <p className="text-sm font-semibold text-bear">Engine offline or honest trade record unavailable</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Ensure the JARVIS engine is running and reachable through the dashboard proxy, and{" "}
-                <code className="font-mono">/analytics/performance</code> is responding.
+                <code className="font-mono">/master/trading/realized</code> is responding (the deduped trade source).
                 Backtest baseline pills need <code className="font-mono">/backtest/results</code> when the engine is up.
               </p>
             </div>
