@@ -157,20 +157,19 @@ from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf  # 
 
 
 def _gate_v2(oos_results, n_combos, fixed_metrics):
-    from backtest.deflated_sharpe import deflated_sharpe_ratio
+    from backtest._gate_v2_trade_metrics import trade_level_dsr
 
     pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES]
     dds = [r.max_drawdown_pct for r in oos_results]
-    shs = [r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES]
     tot = sum(r.total_trades for r in oos_results)
 
     pf_ci = _bootstrap_pf(pfs)
     p_edge = float(sum(1 for p in pfs if p > 1.0) / max(1, len(pfs)))
     mc_dd = float(np.percentile(dds, 95.0)) if dds else 1.0
-    dsr_r = deflated_sharpe_ratio(
-        sharpe=float(np.mean(shs)) if shs else 0.0, n_trials=n_combos, n_obs=max(tot, 30)
-    )
-    dsr = dsr_r.get("dsr", 0.0) if isinstance(dsr_r, dict) else float(dsr_r)
+    # DSR from the ACTUAL per-trade OOS return series, not the mean of per-window
+    # Sharpes (a 1-2 trade window's giant Sharpe deflated to a fake ~1.0 and
+    # auto-passed both gate floors). See _gate_v2_trade_metrics for the why.
+    dsr = trade_level_dsr(oos_results, n_grid_combos=n_combos, initial_capital=CAPITAL)
     wfo = (
         "STRONG"
         if sum(1 for p in pfs if p > 1.0) / max(1, len(pfs)) >= 0.75
