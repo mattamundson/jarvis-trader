@@ -96,6 +96,49 @@ def test_mask_opex_week_ends_on_third_friday():
     assert "2024-01-26" not in flagged  # 4th Friday, following week
 
 
+def test_mask_pre_fomc_flags_day_before_each_scheduled_announcement():
+    # 2024 scheduled FOMC announcement (last-day) dates and their pre-FOMC days:
+    #   01-31->01-30, 03-20->03-19, 05-01->04-30, 06-12->06-11,
+    #   07-31->07-30, 09-18->09-17, 11-07->11-06, 12-18->12-17
+    idx = _bdays("2024-01-01", "2024-12-31")
+    flagged = {str(d.date()) for d in idx[dcd.mask_pre_fomc(idx)]}
+    expected = {
+        "2024-01-30",
+        "2024-03-19",
+        "2024-04-30",
+        "2024-06-11",
+        "2024-07-30",
+        "2024-09-17",
+        "2024-11-06",
+        "2024-12-17",
+    }
+    assert flagged == expected
+    # the announcement day itself is NOT the pre-FOMC day
+    assert "2024-01-31" not in flagged
+
+
+def test_mask_pre_fomc_does_not_flag_last_bar_for_a_future_meeting():
+    # Window ends 2024-02-15, between the Jan (pre-day 01-30) and Mar (pre-day 03-19)
+    # meetings -> no pre-FOMC day falls inside, and the future March meeting must NOT
+    # cause the last bar to be flagged (the day-before guard).
+    idx = _bdays("2024-02-05", "2024-02-15")
+    assert not dcd.mask_pre_fomc(idx).any()
+
+
+def test_fomc_announcement_table_integrity():
+    ts = dcd._FOMC_TS
+    # sorted, unique, ~8/yr from 1994 onward
+    assert list(ts) == sorted(ts)
+    assert len(set(ts)) == len(ts)
+    assert ts.min().year == 1994 and ts.max().year >= 2026
+    # the first-ever FOMC announcement (1994-02-04) anchors the series
+    assert pd.Timestamp("1994-02-04") in set(ts)
+    # the cancelled 2020 March meeting (would have ended 03-18) is excluded
+    assert pd.Timestamp("2020-03-18") not in set(ts)
+    # emergency intermeeting cuts are excluded (e.g. 2008-10-08 coordinated cut)
+    assert pd.Timestamp("2008-10-08") not in set(ts)
+
+
 # --------------------------------------------------------------- returns + grade
 def test_effect_returns_long_on_mask_net_of_cost():
     idx = _bdays("2024-01-01", "2024-01-10")
