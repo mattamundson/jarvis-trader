@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -163,24 +164,51 @@ def _load_verdicts() -> list[dict[str, Any]]:
     return rows
 
 
-# Path to PortfolioTracker JSONL store. Resolved relative to engine root so the
-# check works regardless of where live_readiness.py is invoked from.
+# Curated paper-trade store. The forward-test reads the SQLite paper_trades
+# table — the source the live PortfolioTracker reloads from — NOT the raw
+# append-only portfolio/trades.jsonl. The jsonl carries no status field, so it
+# never reflects DB-layer curation (duplicate cancellation, contaminated-row
+# voiding, phantom voids) and over-counts voided/duplicate positions as live
+# (it reported a phantom MES "+$30,918 / 43 open" book on 2026-06-16 that the
+# live engine did not hold). Reading the curated table with a genuine-status
+# filter keeps forward-test stats in sync with reality.
+PAPER_TRADES_DB_PATH = engine_root / "data" / "jarvis_trader.db"
+
+# Legacy raw store — retained for reference / backward-compatible imports only;
+# no longer the forward-test source (see PAPER_TRADES_DB_PATH above).
 PAPER_TRADES_PATH = engine_root / "portfolio" / "trades.jsonl"
+
+# Statuses that represent genuine, non-curated-out paper trades. Everything else
+# (cancelled_duplicate, cancelled_contaminated, phantom, ...) is excluded so a
+# voided or duplicate position can never inflate forward-test counts or P&L.
+GENUINE_OPEN_STATUS = "open"
+GENUINE_CLOSED_STATUS = "closed"
 
 
 def _query_paper_trade_stats(symbol: str) -> dict[str, Any]:
-    """Return paper-trade stats for one symbol from the PortfolioTracker JSONL.
+    """Return paper-trade stats for one symbol from the curated paper_trades DB.
+
+    Reads engine/data/jarvis_trader.db (the SQLite store the live
+    PortfolioTracker reloads from), counting only genuine rows — status 'open'
+    or 'closed'. Curated-out rows (cancelled_duplicate / cancelled_contaminated
+    / phantom / ...) are excluded, so the forward-test never counts a voided or
+    duplicate phantom position as live. This replaced the prior
+    portfolio/trades.jsonl reader, which had no status field and therefore
+    over-reported open positions and P&L by every uncancelled raw append.
+
+    Opens the DB read-only so this validator can never mutate live trade state.
 
     Returns dict with:
-      n_closed       — int, count of CLOSED trades (is_open=False, exit_time set)
-      n_open         — int, count of currently open positions
-      first_entry    — datetime|None, earliest entry_time across closed+open
+      n_closed       — int, count of status='closed' trades
+      n_open         — int, count of status='open' positions
+      first_entry    — datetime|None, earliest entry_time across genuine rows
       last_entry     — datetime|None, latest entry_time
-      days_elapsed   — int, days from first_entry to now (None if no trades)
+      days_elapsed   — int|None, days from first_entry to now
       forward_pf     — float|None, sum(wins) / |sum(losses)| over closed trades.
                        None when n_closed==0; inf when no losing trades.
       total_pnl      — float, sum of pnl across closed trades
-      available      — bool, True if the JSONL store exists and is readable
+      available      — bool, True if the DB exists, is readable, and the query
+                       succeeded
     """
     stats = {
         "n_closed": 0,
@@ -192,45 +220,53 @@ def _query_paper_trade_stats(symbol: str) -> dict[str, Any]:
         "total_pnl": 0.0,
         "available": False,
     }
-    if not PAPER_TRADES_PATH.exists():
+    if not PAPER_TRADES_DB_PATH.exists():
         return stats
+
+    try:
+        conn = sqlite3.connect(
+            f"{PAPER_TRADES_DB_PATH.as_uri()}?mode=ro", uri=True, timeout=5.0
+        )
+    except sqlite3.Error:
+        return stats
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT entry_time, exit_time, pnl, status FROM paper_trades "
+            "WHERE symbol = ? AND status IN (?, ?)",
+            (symbol, GENUINE_OPEN_STATUS, GENUINE_CLOSED_STATUS),
+        ).fetchall()
+    except sqlite3.Error:
+        # Missing table / corrupt DB — fall through as "no curated store".
+        return stats
+    finally:
+        conn.close()
+
+    # Query succeeded: the curated store is available.
     stats["available"] = True
 
     wins = 0.0
     losses = 0.0
     entries = []
-    try:
-        with PAPER_TRADES_PATH.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if rec.get("symbol") != symbol:
-                    continue
-                entry_dt = _parse_iso(rec.get("entry_time"))
-                if entry_dt is not None:
-                    entries.append(entry_dt)
-                if rec.get("is_open"):
-                    stats["n_open"] += 1
-                    continue
-                # Closed trade
-                if rec.get("exit_time") is None:
-                    continue
-                stats["n_closed"] += 1
-                pnl = rec.get("pnl")
-                if pnl is None:
-                    continue
-                stats["total_pnl"] += float(pnl)
-                if pnl > 0:
-                    wins += float(pnl)
-                elif pnl < 0:
-                    losses += abs(float(pnl))
-    except OSError:
-        return stats
+    for r in rows:
+        entry_dt = _parse_iso(r["entry_time"])
+        if entry_dt is not None:
+            entries.append(entry_dt)
+        if r["status"] == GENUINE_OPEN_STATUS:
+            stats["n_open"] += 1
+            continue
+        # Closed trade
+        if r["exit_time"] is None:
+            continue
+        stats["n_closed"] += 1
+        pnl = r["pnl"]
+        if pnl is None:
+            continue
+        stats["total_pnl"] += float(pnl)
+        if pnl > 0:
+            wins += float(pnl)
+        elif pnl < 0:
+            losses += abs(float(pnl))
 
     if entries:
         stats["first_entry"] = min(entries)
@@ -255,9 +291,9 @@ def _query_paper_trade_stats(symbol: str) -> dict[str, Any]:
 def check_c1_mes_paper_validation() -> CheckResult:
     """30 days elapsed AND >=30 closed paper trades AND forward-test PF >= 1.0 on MES.
 
-    Authoritative source: portfolio/trades.jsonl (PortfolioTracker store).
-    Falls back to the verdict-creation-date proxy when the JSONL is missing,
-    which is the case before any paper trades have been recorded.
+    Authoritative source: the curated paper_trades table in jarvis_trader.db.
+    Falls back to the verdict-creation-date proxy when the curated store is
+    missing/empty, which is the case before any paper trades have been recorded.
     """
     try:
         from backtest.paper_config import MES_TREND_PAPER_CONFIG

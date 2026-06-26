@@ -21,7 +21,7 @@
  * useHonestRealized()/summarizeRealized() — track them in the dashboard README.
  */
 
-import { fetchRealizedPnl, type RealizedPnl } from "@/lib/masterApi";
+import { type RealizedPnl } from "@/lib/masterApi";
 
 /** Normalized, display-ready honest trade-record summary. */
 export interface HonestPnlSummary {
@@ -52,10 +52,8 @@ export function summarizeRealized(data: RealizedPnl): HonestPnlSummary {
   };
 }
 
-/** Stable SWR key for the honest realized record. */
-export const HONEST_REALIZED_KEY = "honest-realized-pnl";
-
-/** SWR fetcher returning the normalized summary. */
-export async function fetchHonestRealized(): Promise<HonestPnlSummary> {
-  return summarizeRealized(await fetchRealizedPnl());
-}
+// NOTE: the honest realized record is fetched through the shared
+// `useHonestTrades()` hook (SWR key "honest-trades") so every consumer dedupes
+// to one /master/trading/realized request. `summarizeRealized` above is the pure
+// transform for any panel that wants the normalized summary from that record —
+// do NOT re-introduce a separate SWR key/fetcher here (it would double-fetch).

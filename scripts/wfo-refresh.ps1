@@ -72,6 +72,28 @@ foreach ($s in $scripts) {
     }
 }
 
+# Family-wide BH-FDR across the whole gate-v2 verdict set, and append a
+# timestamped robust_edge record to the history ledger so drift is tracked
+# across refreshes. Diagnostic only -- a zero-survivor result is the honest
+# norm with few OOS windows and does NOT flip the PASS/FAIL exit code.
+Write-Log "--- Running family-wide BH-FDR (robust_edge ledger) ---"
+Push-Location $engineDir
+try {
+    $fdrOut = & $python -m backtest.family_fdr --history 2>&1
+    foreach ($line in $fdrOut) { Write-Log "  $line" }
+    $robustLine = $fdrOut | Where-Object { $_ -match "\[history\] n_robust_edge=" }
+    if ($robustLine) {
+        Write-Log "FDR: $robustLine"
+    } else {
+        Write-Log "FDR: family-fdr ran (no history line captured -- check log)"
+    }
+} catch {
+    # Diagnostic step must never break the refresh task's PASS/FAIL signal.
+    Write-Log "WARN: family-fdr step errored (non-fatal): $_"
+} finally {
+    Pop-Location
+}
+
 Write-Log "=== WFO REFRESH COMPLETE ==="
 if ($anyFail) {
     Write-Log "RESULT: one or more verdicts FAILED — check log and update paper config"

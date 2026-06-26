@@ -116,6 +116,7 @@ engine/data/*.jsonl
 engine/data/*.db
 engine/data/*.backup_*
 engine/data/backups/
+engine/data/forward_test_report.md
 engine/jarvis_trader.db
 engine/jarvis.db
 data/*.db
@@ -324,3 +325,7 @@ engine/strategy_c/output/strategy_c_plus_dashboard.png
 engine/strategy_c/output/execution_log.json
 engine/strategy_c/output/allocation_log.csv
 engine/strategy_c/output/equity_curve.csv
+.gstack/
+
+# loop maker/checker throwaway worktrees
+.worktrees/

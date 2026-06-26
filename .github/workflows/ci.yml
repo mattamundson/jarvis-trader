@@ -90,7 +90,8 @@ jobs:
   engine-test-fast:
     name: Engine Tests (pytest, fast)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Headroom for the (rare) second attempt of the flake retry below.
+    timeout-minutes: 28
     env:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.fast
     steps:
@@ -110,10 +111,36 @@ jobs:
       - name: Strategic metrics snapshot script
         run: python scripts/strategic_snapshot.py
 
-      - name: Run pytest (-m "not slow")
+      - name: Run pytest (-m "not slow and not manual")
         run: |
-          pytest engine/tests/ -m "not slow" \
-            -v --tb=short --cov=engine --cov-report=term-missing
+          # Process-level retry for the intermittent scanner / strategy-validation
+          # pollution flake: an upstream test occasionally dirties process-global
+          # state (env / config singleton), making ~21 scanner tests' scan_symbol
+          # short-circuit and fail together. Whether it fires varies with per-process
+          # ordering / PYTHONHASHSEED, so re-running in a FRESH process clears it (a
+          # test-level --reruns in the same dirtied process would NOT). Proven flaky:
+          # a failed fast job re-ran red->green on identical code. The retry stays
+          # visible (::warning::) so a genuine regression is never silently masked.
+          # Root cause tracked in project_ci_flaky_scanner_pollution_2026_06_16.
+          #
+          # `not manual` keeps the IB-Gateway e2e tests (which hang the asyncio loop
+          # with no timeout) out of the default slice -- a CLI -m overrides pyproject's
+          # `-m "not manual"` default, so it must be restated here.
+          set +e
+          attempts=2
+          ec=0
+          for i in $(seq 1 "$attempts"); do
+            echo "::group::pytest fast (attempt $i/$attempts)"
+            pytest engine/tests/ -m "not slow and not manual" \
+              -v --tb=short --cov=engine --cov-report=term-missing
+            ec=$?
+            echo "::endgroup::"
+            [ "$ec" -eq 0 ] && break
+            if [ "$i" -lt "$attempts" ]; then
+              echo "::warning title=fast-suite retry::attempt $i failed (exit $ec); retrying once in a fresh process (intermittent scanner-pollution flake)"
+            fi
+          done
+          exit "$ec"
 
       - name: Upload coverage data
         if: success()
@@ -144,9 +171,11 @@ jobs:
         run: |
           pip install -q -r engine/requirements-core.txt
 
-      - name: Run pytest (-m slow)
+      - name: Run pytest (-m "slow and not manual")
         run: |
-          pytest engine/tests/ -m slow \
+          # `not manual` restated: a CLI -m overrides pyproject's `-m "not manual"`
+          # default, and the IB-Gateway e2e tests must never be collected in CI.
+          pytest engine/tests/ -m "slow and not manual" \
             -v --tb=short --cov=engine --cov-report=term-missing \
             || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow slice"; exit 0; fi; exit "$ec"; }
 
@@ -163,7 +192,7 @@ jobs:
   engine-coverage-merge:
     name: Engine Tests (coverage merge)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     needs: [engine-test-fast, engine-test-slow]
     if: ${{ needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:

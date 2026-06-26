@@ -5,8 +5,13 @@ Brier scoring interpretation
 ----------------------------
 For each trade, each agent's signal s ∈ [-1, 1] is decomposed into:
   confidence = |s|
-  correct    = 1 if sign(s) == sign(pnl) else 0
+  correct    = 1 if sign(s) == sign(realized price move) else 0
   brier_i    = (confidence - correct)²
+
+The realized price move is the direction-aware return (pnl flipped for SHORT
+trades; see _directional_return). All fixtures here are LONG, so the move sign
+equals the pnl sign and these tests isolate the Brier mechanics; the SHORT-side
+flip is verified in test_calibration_direction_aware.py.
 
 Lower Brier = better calibrated. A confident-and-wrong agent gets the
 maximum penalty (brier = 1.0); a cautious agent (|s|→0) is penalized
@@ -63,6 +68,17 @@ def _mk_rows(agent_col_index, signals_and_pnls, now_iso=None):
     Build rows varying only one agent's signal column.
     signals_and_pnls: iterable of (signal, pnl_usd) tuples.
 
+    All rows are LONG so the direction-aware scoring (``_directional_return``,
+    added 2026-06-16) is a no-op passthrough: realized return == pnl_usd. These
+    tests exercise the Brier *mechanics* (confidence x correctness), where the
+    agent's signal sign is compared against the realized price-move sign; on a
+    LONG trade that move sign is exactly the pnl sign, so a bullish signal on a
+    losing LONG (price fell) is correctly scored "wrong". The SHORT-side flip is
+    covered separately in test_calibration_direction_aware.py. (Earlier this
+    helper coupled direction to pnl-sign -- "LONG if pnl>=0 else SHORT" -- which
+    made every losing trade a SHORT and, post-direction-fix, inverted the
+    intended correctness labels.)
+
     `now_iso` defaults to the current UTC time so rows stay inside the
     30-day rolling window the BrierCalibrationTracker applies. Pass an
     explicit historical ISO string only when deliberately exercising the
@@ -80,7 +96,7 @@ def _mk_rows(agent_col_index, signals_and_pnls, now_iso=None):
                 f"t{i:03d}",
                 now_iso,
                 "MCL",
-                "LONG" if pnl >= 0 else "SHORT",
+                "LONG",
                 pnl,
                 0.0,
                 "WIN" if pnl > 0 else "LOSS",
@@ -329,7 +345,8 @@ def test_duplicate_outcomes_collapsed_in_brier(tmp_db):
     dup = []
     for k in range(3):
         sigs = [0.9, 0.0, 0.0, 0.0, 0.0]  # technical=0.9, confident & wrong
-        dup.append((f"dup{k}", fresh, "MCL", "SHORT", -20.0, 0.0, "LOSS", *sigs))
+        # LONG + bullish 0.9 + losing pnl (price fell) => directionally wrong.
+        dup.append((f"dup{k}", fresh, "MCL", "LONG", -20.0, 0.0, "LOSS", *sigs))
     _seed_trades(tmp_db, good + dup)
     tracker = BrierCalibrationTracker(db_path=str(tmp_db), min_trades=5)
     brier = tracker.compute_brier("technical")
