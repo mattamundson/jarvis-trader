@@ -100,7 +100,10 @@ def _load_vix_data(start: str = "2022-01-01") -> pd.DataFrame:
         sys.exit(1)
 
     vix.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in vix.columns]
-    vix.index = pd.to_datetime(vix.index).normalize()
+    _vidx = pd.to_datetime(vix.index)
+    if getattr(_vidx, "tz", None) is not None:
+        _vidx = _vidx.tz_localize(None)  # some yfinance versions return tz-aware UTC
+    vix.index = _vidx.normalize()
     print(
         f"[VIX] {len(vix)} bars | {vix.index.min().date()} -> {vix.index.max().date()} "
         f"| current: {vix['close'].iloc[-1]:.2f}"
@@ -121,7 +124,13 @@ def _load_mes_data(data_dir: Path) -> pd.DataFrame:
     df = pd.read_csv(data_file)
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
-    df[ts_col] = pd.to_datetime(df[ts_col])
+    _ts = pd.to_datetime(df[ts_col])
+    # Some caches are written tz-aware UTC (datetime64[us, UTC]); the tz-naive VIX
+    # daily frame then fails to reindex against it inside generate_sma_trend_signals
+    # ("Cannot compare dtypes ... UTC"). Drop tz, preserving the UTC wall-clock time.
+    if getattr(_ts.dt, "tz", None) is not None:
+        _ts = _ts.dt.tz_localize(None)
+    df[ts_col] = _ts
     df = df.set_index(ts_col).sort_index()
     required = {"open", "high", "low", "close"}
     missing = required - set(df.columns)
