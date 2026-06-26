@@ -2,17 +2,18 @@
 
 Standalone screener (`daily_calendar_discovery.py`) over the deep free daily ETF
 caches pulled by `free_daily_export.py` (SPY 33yr, DIA 28yr, QQQ 27yr, IWM 26yr,
-GLD 22yr; + TLT 24yr, SLV 20yr, EEM 23yr cross-asset). 8 symbols × **17** calendar
-effects = 136 parameter-free long-on-selected-days strategies, each graded net @ 2bps
-on the honest bar: bootstrap PF-CI, p_edge, **deflated Sharpe penalized for 17 trials**,
-max-DD, chronological H1/H2 stationarity, and the canonical `compute_gate_v2` verdict.
+GLD 22yr; + cross-asset TLT 24yr, SLV 20yr, EEM 23yr, XLU 28yr, HYG 19yr, LQD 24yr,
+EFA 25yr). **12 symbols × 17 effects = 204** parameter-free long-on-selected-days
+strategies, each graded net @ 2bps on the honest bar: bootstrap PF-CI, p_edge,
+**deflated Sharpe penalized for 17 trials**, max-DD, chronological H1/H2 stationarity,
+and the canonical `compute_gate_v2` verdict.
 
 > **2026-06-26 update:** family grew 13 → 17 effects (added `santa_claus`, `post_holiday`,
-> `last_day_of_month`, `opex_week`) AND the symbol set grew 5 → 8 (added cross-asset
-> TLT/SLV/EEM). The harsher 17-trial deflation did NOT unseat the known passers (SPY
-> pre_holiday dsr 0.94→0.61, GLD 1.00 — both still gate-PASS). Net: **19 durable candidates,
-> 5 gate-v2 PASSes** — `santa_claus` PASSES on SPY+DIA+**EEM** and `pre_holiday` on SPY+GLD.
-> See headline 2 and § "Cross-asset (2026-06-26)".
+> `last_day_of_month`, `opex_week`) AND the symbol set grew 5 → 12 (added cross-asset
+> TLT/SLV/EEM, then the duration/credit/intl family XLU/HYG/LQD/EFA to TEST the month-end
+> mechanism). Net: **29 durable candidates, 9 gate-v2 PASSes.** The cross-asset breadth
+> didn't just add passers — it LOCALIZED each effect to its economic mechanism (see
+> § "Cross-asset" and headline 3). The known passers survived every deflation bump.
 
 Candidacy ranks on DURABLE metrics (stationary + PF-CI≥1.10 + dsr≥0.10), NOT p_edge —
 the turn-of-month lesson: `p_edge≥0.95` is structurally impossible for a long-beta
@@ -62,7 +63,30 @@ a forward shadow sees its first observation only in late December.
 
 10 durable candidates total across the 85 cells.
 
-## Cross-asset (2026-06-26) — TLT / SLV / EEM separate real seasonals from equity quirks
+## Headline 3: each effect localizes to its economic mechanism (the 9 gate-v2 PASSes)
+
+The 12-symbol cross-asset board makes the mechanism unambiguous — the effects are not
+generic "be long on these days," they fire where their economic driver lives:
+
+| effect | gate-v2 PASS on | mechanism | dies / negative on |
+|---|---|---|---|
+| **pre_holiday** | SPY, GLD, **HYG** | risk-on holiday drift | bonds (TLT neg) |
+| **santa_claus** | SPY, DIA, EEM, **EFA**, **HYG** | year-end risk-on (broadest) | bonds (TLT neg) |
+| **last_day_of_month** | **LQD** | month-end DURATION/RATES demand | every equity (negative) |
+
+- **`last_day_of_month` is a pure rates/duration effect.** It gate-PASSES on LQD (IG credit,
+  Sharpe 2.95, H1/H2 3.31/1.45, DD 3.5%) and is a strong candidate on TLT (Treasuries) and XLU
+  (utilities = bond proxy) — yet it is **negative on every equity** (SPY −0.96, IWM −1.16, DIA
+  −1.83). The sign-separation between the duration complex (+) and equities (−) is the documented
+  month-end index-duration-extension buy, cleanly isolated. This is the strongest *new structural*
+  finding of the whole calendar track.
+- **Holiday/year-end effects are risk-on** — they pass across equity (SPY/DIA), EM (EEM), developed
+  intl (EFA), gold (GLD), and high-yield credit (HYG, which trades like equity), and go negative in
+  Treasuries. HYG pre_holiday is especially clean (DD only 2.7%, H1/H2 1.43/3.29).
+
+9 gate-v2 PASSes total; 29 durable candidates across the 204 cells.
+
+## Cross-asset (2026-06-26) — TLT / SLV / EEM / XLU / HYG / LQD / EFA separate real seasonals from equity quirks
 
 Pulling 3 economically-distinct instruments (TLT 20y Treasuries, SLV silver, EEM emerging
 markets) tested whether the effects are US-equity artifacts or genuine cross-asset seasonals:
