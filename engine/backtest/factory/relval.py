@@ -66,14 +66,35 @@ REALISTIC_COST_BPS = 1.0
 CAPITAL = 50_000.0
 
 
-def build_spread(close_a: pd.Series, close_b: pd.Series, window: int) -> pd.DataFrame:
+def build_spread(
+    close_a: pd.Series, close_b: pd.Series, window: int, *, beta_window: int | None = None
+) -> pd.DataFrame:
     """Align two close series and return a frame with spread + rolling z-score.
 
     Mean/std are shifted one bar so the z at time t uses only information available
     BEFORE t (no look-ahead).
+
+    beta_window:
+        None -> 1:1 dollar-neutral log spread: ``log(A) - log(B)``.
+        int  -> HEDGE-RATIO-neutral spread. Each bar's spread CHANGE is the
+                duration-neutral return ``ret_A - beta_t * ret_B`` where beta_t is
+                the rolling OLS slope cov(ret_A,ret_B)/var(ret_B) over the trailing
+                `beta_window` bars, SHIFTED one bar (no look-ahead). The spread
+                LEVEL is the cumulative hedged return. This removes the common-rate
+                factor a 1:1 bond/note spread leaves in (the source of slow drift),
+                so it is the DV01-equivalent duration-neutral construction.
     """
     df = pd.DataFrame({"a": close_a, "b": close_b}).dropna()
-    spread = np.log(df["a"]) - np.log(df["b"])
+    if beta_window is None:
+        spread = np.log(df["a"]) - np.log(df["b"])
+    else:
+        ra = np.log(df["a"]).diff()
+        rb = np.log(df["b"]).diff()
+        cov = ra.rolling(beta_window).cov(rb)
+        var = rb.rolling(beta_window).var()
+        beta = (cov / var.replace(0, np.nan)).shift(1).clip(lower=0.1, upper=10.0)
+        hedged_ret = (ra - beta * rb).fillna(0.0)
+        spread = hedged_ret.cumsum()
     mean = spread.rolling(window).mean().shift(1)
     std = spread.rolling(window).std().shift(1)
     z = (spread - mean) / std.replace(0, np.nan)
@@ -89,11 +110,12 @@ def _run_spread(
     exit_z: float,
     stop_z: float,
     cost_bps_per_leg: float,
+    beta_window: int | None = None,
 ) -> tuple[np.ndarray, list[float]]:
     """Core z-score reversion engine. Returns (bar_pnl, trade_pnls) in
     spread-RETURN units (dollar-neutral $1-per-leg book). Both the metrics
     wrapper and the per-trade dollar extractor build on this one engine."""
-    sp = build_spread(close_a, close_b, window)
+    sp = build_spread(close_a, close_b, window, beta_window=beta_window)
     spread, z = sp["spread"].to_numpy(), sp["z"].to_numpy()
     n = len(sp)
     if n < window + 5:
@@ -145,6 +167,7 @@ def spread_trade_dollars(
     stop_z: float = 4.0,
     cost_bps_per_leg: float = REALISTIC_COST_BPS,
     capital: float = CAPITAL,
+    beta_window: int | None = None,
 ) -> list[float]:
     """Per-trade PnL in DOLLARS (return units x notional capital per leg).
 
@@ -159,6 +182,7 @@ def spread_trade_dollars(
         exit_z=exit_z,
         stop_z=stop_z,
         cost_bps_per_leg=cost_bps_per_leg,
+        beta_window=beta_window,
     )
     return [p * capital for p in trade_pnls]
 
@@ -174,6 +198,7 @@ def backtest_spread(
     cost_bps_per_leg: float = 1.0,
     timeframe: str = "1h",
     capital: float = CAPITAL,
+    beta_window: int | None = None,
 ) -> BacktestMetrics:
     """Vectorized dollar-neutral z-score reversion backtest. Returns BacktestMetrics
     so the gauntlet can treat it identically to a single-instrument result.
@@ -190,6 +215,7 @@ def backtest_spread(
         exit_z=exit_z,
         stop_z=stop_z,
         cost_bps_per_leg=cost_bps_per_leg,
+        beta_window=beta_window,
     )
     n_trades = len(trade_pnls)
     if n_trades == 0:
@@ -305,10 +331,28 @@ def relval_pairs() -> list[Pair]:
             economic_rationale="30y T-bond vs 10y T-note: both driven by the common rates factor, "
             "so their spread is the long-end curve slope, which mean-reverts as duration positioning "
             "rebalances around the prevailing curve regime. NOTE: this is a 1:1 LOG spread, not "
-            "DV01-weighted -- a deliberate first-pass simplification (ZB has more duration than ZN); "
-            "a real edge here would justify a duration-neutral refinement. Data starts 2025-06, so "
-            "the WFO window count is thin and the result is regime-limited.",
+            "DV01-weighted -- it carries net duration (ZB ~2x ZN's rate sensitivity), so it partly "
+            "trades rate-LEVEL reversion, not pure curve RV. Compare ZB_ZN_DV01. Data starts "
+            "2025-06, so the WFO window count is thin and the result is regime-limited.",
             **common,
+        ),
+        Pair(
+            name="ZB_ZN_DV01",
+            leg_a="ZB",
+            leg_b="ZN",
+            economic_rationale="Duration-NEUTRAL 30y/10y curve-slope reversion: the spread change "
+            "is the hedge-ratio-neutral return ret_ZB - beta*ret_ZN with a rolling no-look-ahead "
+            "beta, removing the common-rate factor the 1:1 spread leaves in. This isolates the PURE "
+            "curve mean-reversion -- the honest market-neutral version of ZB_ZN.",
+            timeframes=["1h"],
+            default_params={
+                "window": 60,
+                "entry_z": 2.0,
+                "exit_z": 0.5,
+                "stop_z": 4.0,
+                "beta_window": 120,
+            },
+            param_grid={"window": [40, 60, 120], "entry_z": [1.5, 2.0, 2.5], "exit_z": [0.25, 0.5]},
         ),
     ]
 

@@ -19,8 +19,8 @@ from backtest.factory.relval import (
 def test_pairs_are_pre_registered_with_rationale():
     pairs = relval_pairs()
     names = {p.name for p in pairs}
-    # equity crosses + the pre-registered rates-curve pair
-    assert {"MES_MNQ", "MES_M2K", "MNQ_M2K", "ES_NQ", "ZB_ZN"} <= names
+    # equity crosses + the pre-registered rates-curve pair (1:1 and DV01-neutral)
+    assert {"MES_MNQ", "MES_M2K", "MNQ_M2K", "ES_NQ", "ZB_ZN", "ZB_ZN_DV01"} <= names
     # rationale gate: no blank / trivial rationale (pre-registration vs p-hacking)
     for p in pairs:
         assert len(p.economic_rationale) >= 25
