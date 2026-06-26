@@ -2431,3 +2431,60 @@ export async function screenMovers(
 ): Promise<ScreenResponse> {
   return postEngine<ScreenResponse>("/ib-scanner/screen", input);
 }
+
+// ── ATR-trail visualizer (GET /backtest/atr-trail/trades) ──────────────────
+// Powers app/atr-trail: the TOS ATRTrailingStopLE/SE flip strategy's actual
+// trades on cached bars — price + trail line + entries/exits + equity curve.
+export interface AtrTrailPricePoint {
+  t: number;
+  c: number;
+}
+export interface AtrTrailLinePoint {
+  t: number;
+  v: number;
+  s: number;
+}
+export interface AtrTrailTrade {
+  entry_t: number;
+  entry_px: number;
+  exit_t: number;
+  exit_px: number;
+  dir: number;
+  pnl_usd: number;
+  pnl_pts: number;
+}
+export interface AtrTrailEquityPoint {
+  t: number;
+  v: number;
+}
+export interface AtrTrailTradesResponse {
+  symbol: string;
+  period: number;
+  factor: number;
+  n_trades: number;
+  win_rate: number;
+  net_usd: number;
+  bars: number;
+  price: AtrTrailPricePoint[];
+  trail: AtrTrailLinePoint[];
+  trades: AtrTrailTrade[];
+  equity: AtrTrailEquityPoint[];
+  source_file?: string;
+}
+
+export async function fetchAtrTrailTrades(params: {
+  symbol?: string;
+  timeframe?: string;
+  period?: number;
+  factor?: number;
+  maxPoints?: number;
+}): Promise<AtrTrailTradesResponse> {
+  const qs = new URLSearchParams({
+    symbol: params.symbol ?? "MES",
+    timeframe: params.timeframe ?? "5m",
+    period: String(params.period ?? 5),
+    factor: String(params.factor ?? 3.5),
+    max_points: String(params.maxPoints ?? 3000),
+  });
+  return fetchEngine<AtrTrailTradesResponse>(`/backtest/atr-trail/trades?${qs.toString()}`);
+}
