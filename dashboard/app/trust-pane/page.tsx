@@ -275,6 +275,8 @@ export default function TrustPanePage() {
   const h = health.data;
   const jarvisLive = !!h && h.status === "ok";
   const dataLegDown = h?.ibkr_data_connected === false;
+  const llmDegraded = !!h && h.llm_path_healthy === false;
+  const jarvisDegraded = !!health.error || (!!h && h.status !== "ok");
   const openPaper = positions.data?.paper?.positions ?? [];
   const suspectCount = openPaper.filter((p) => suspectPrice(p.symbol, p.entry_price)).length;
   const bq = barQuality.data;
@@ -298,6 +300,7 @@ export default function TrustPanePage() {
   const amoLive = !!a && a.status === "ok";
   const v = verdict.data;
   const verdictOk = !!v && v.status === "ok" && v.n_total > 0;
+  const amoDegraded = !!amo.error || (!!a && a.status !== "ok");
   const commodityById = new Map<number, AmoCommodity>((commodities.data ?? []).map((c) => [c.id, c]));
   const commodityLabel = (id: number | null): string => {
     if (id == null) return "—";
@@ -332,17 +335,26 @@ export default function TrustPanePage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
-        {/* Integrity banner — surfaces suspect prices + data-leg degradation loudly */}
-        {(suspectCount > 0 || dataLegDown) && (
+        {/* System-health banner — surfaces ANY degraded state loudly so neither
+            system reads "LIVE" while quietly degraded (suspect prices, data-leg
+            down, LLM on fallback, jarvis/amo not-ok). */}
+        {(suspectCount > 0 || dataLegDown || llmDegraded || jarvisDegraded || amoDegraded) && (
           <div className="rounded-xl border border-bear/30 bg-bear/5 p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-bear mt-0.5 shrink-0" />
+            <AlertTriangle className="h-5 w-5 text-bear mt-0.5 shrink-0 animate-pulse" />
             <div className="text-sm">
-              <p className="font-semibold text-bear">Data-integrity warnings</p>
+              <p className="font-semibold text-bear">System degraded — do not trust at a glance</p>
               <ul className="text-xs text-muted-foreground mt-1 list-disc pl-4 space-y-0.5">
+                {jarvisDegraded && (
+                  <li>jarvis engine is {health.error ? "unreachable" : `reporting status="${h?.status ?? "?"}"`} — not in a healthy live state.</li>
+                )}
+                {dataLegDown && <li>jarvis IB data leg is disconnected — marks are stale fallback data; unrealized P&L is suppressed, not trustworthy.</li>}
+                {llmDegraded && <li>jarvis LLM path is on fallback (primary provider degraded) — decision quality may be affected.</li>}
                 {suspectCount > 0 && (
                   <li>{suspectCount} open paper position{suspectCount > 1 ? "s have" : " has"} an implausible entry price — likely a corrupted field. Do not trust the signal until reconciled.</li>
                 )}
-                {dataLegDown && <li>jarvis IB data leg is disconnected — engine is on fallback data.</li>}
+                {amoDegraded && (
+                  <li>amo-arbitrage is {amo.error ? "unreachable" : `reporting status="${a?.status ?? "?"}"`} — the cross-system pane is partial.</li>
+                )}
               </ul>
             </div>
           </div>
