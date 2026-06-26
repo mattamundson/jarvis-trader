@@ -16,19 +16,19 @@ from backtest.factory.strategy_card import StrategyCard, load_cards, save_cards
 
 
 def _good_card(**over) -> StrategyCard:
-    base = dict(
-        name="donchian_breakout",
-        family="breakout",
-        signal_ref="backtest.donchian_signals:generate_donchian_signals",
-        entry="close breaks N-bar high",
-        exit="ATR trail / opposite channel",
-        economic_rationale="Trend persistence: a fresh N-bar breakout reflects "
+    base = {
+        "name": "donchian_breakout",
+        "family": "breakout",
+        "signal_ref": "backtest.donchian_signals:generate_donchian_signals",
+        "entry": "close breaks N-bar high",
+        "exit": "ATR trail / opposite channel",
+        "economic_rationale": "Trend persistence: a fresh N-bar breakout reflects "
         "genuine order-flow imbalance that tends to continue intraday.",
-        native_instruments=["MES", "MNQ"],
-        native_timeframes=["1h"],
-        default_params={"lookback_entry": 20, "lookback_exit": 10},
-        param_grid={"lookback_entry": [20, 40], "lookback_exit": [10, 20]},
-    )
+        "native_instruments": ["MES", "MNQ"],
+        "native_timeframes": ["1h"],
+        "default_params": {"lookback_entry": 20, "lookback_exit": 10},
+        "param_grid": {"lookback_entry": [20, 40], "lookback_exit": [10, 20]},
+    }
     base.update(over)
     return StrategyCard(**base)
 
