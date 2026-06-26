@@ -185,6 +185,22 @@ def factory_cards() -> list[StrategyCard]:
             param_grid={"rsi_oversold": [20.0, 30.0], "entry_period": [14, 20]},
             known_failure_modes=["fires rarely with strict thresholds; low sample on calm regimes"],
         ),
+        StrategyCard(
+            name="range_expansion",
+            family="breakout",
+            signal_ref="backtest.range_expansion_signals:generate_range_expansion_signals",
+            entry="bar true-range > k*ATR closing near its extreme (volatility expansion)",
+            exit="ATR stop / targets",
+            economic_rationale="Volatility-expansion momentum: an outsized bar relative to ATR "
+            "that closes at its extreme marks a regime shift where new information is being "
+            "priced in, and the move tends to continue. (Bar-range-vs-ATR backtested as the "
+            "single best filter across thousands of NASDAQ strategy variants.)",
+            native_instruments=inst,
+            native_timeframes=tfs,
+            default_params={"range_mult": 1.5, "close_frac": 0.66, "stop_atr_mult": 1.5},
+            param_grid={"range_mult": [1.5, 2.0, 2.5], "close_frac": [0.66, 0.75]},
+            known_failure_modes=["expansion bars can mark exhaustion (reversal) not continuation"],
+        ),
     ]
 
 
