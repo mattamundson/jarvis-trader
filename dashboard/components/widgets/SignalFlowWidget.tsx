@@ -20,10 +20,13 @@ interface SignalDebugResponse {
 
 interface PriceSnapshot {
   symbol: string;
-  last_price: number;
-  prev_close: number;
-  change_pct: number;
-  source: string;
+  // The engine returns null for these when no market data is available
+  // (no IB Gateway, market closed, data gap) — alongside an `error` field.
+  last_price: number | null;
+  prev_close: number | null;
+  change_pct: number | null;
+  source?: string;
+  error?: string;
 }
 
 type PricesResponse = Record<string, PriceSnapshot>;
@@ -185,7 +188,7 @@ function InstrumentRow({ symbol, latestEntry, price }: InstrumentRowProps) {
             {symbol}
           </span>
           {/* Price */}
-          {price ? (
+          {price && price.last_price != null ? (
             <div className="flex items-center gap-1.5">
               <span className="font-mono text-sm tabular-nums font-semibold" style={{ color: "#ccc" }}>
                 {price.last_price.toLocaleString("en-US", {
@@ -193,13 +196,15 @@ function InstrumentRow({ symbol, latestEntry, price }: InstrumentRowProps) {
                   maximumFractionDigits: 2,
                 })}
               </span>
-              <span
-                className="font-mono text-[10px] tabular-nums"
-                style={{ color: pctColor(price.change_pct) }}
-              >
-                {price.change_pct >= 0 ? "+" : ""}
-                {(price.change_pct * 100).toFixed(2)}%
-              </span>
+              {price.change_pct != null && (
+                <span
+                  className="font-mono text-[10px] tabular-nums"
+                  style={{ color: pctColor(price.change_pct) }}
+                >
+                  {price.change_pct >= 0 ? "+" : ""}
+                  {(price.change_pct * 100).toFixed(2)}%
+                </span>
+              )}
             </div>
           ) : (
             <span className="font-mono text-xs" style={{ color: "#444" }}>
