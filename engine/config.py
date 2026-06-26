@@ -610,8 +610,22 @@ class TradingConfig(BaseSettings):
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
         default=["SPY", "QQQ", "AAPL", "TSLA"], description="Underlying symbols for options trading"
     )
+    # HiddenPivots scan universe — futures + ETFs + liquid individual names.
+    # Display/analysis only (the HP scanner never routes orders), so the roster
+    # is intentionally broad and is NOT bound by DO_NOT_TRADE_SYMBOLS. Override
+    # via the SCAN_SYMBOLS env var (comma-separated or JSON array).
+    SCAN_SYMBOLS: Union[str, list[str]] = Field(
+        default=(
+            "MES,MNQ,MGC,MCL,"
+            "SPY,QQQ,IWM,DIA,GLD,SLV,SMH,XLE,"
+            "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA,AMD,AVGO,NFLX,"
+            "PLTR,COIN,MSTR,MU,CRM,UBER,JPM,BAC,XOM,LLY,COST"
+        ),
+        description="HiddenPivots scan universe (comma-separated or list): "
+        "futures, ETFs, and liquid single-name equities. Analysis-only.",
+    )
 
-    @field_validator("FUTURES_WATCHLIST", "OPTIONS_WATCHLIST", mode="before")
+    @field_validator("FUTURES_WATCHLIST", "OPTIONS_WATCHLIST", "SCAN_SYMBOLS", mode="before")
     @classmethod
     def parse_watchlist(cls, v):
         """
