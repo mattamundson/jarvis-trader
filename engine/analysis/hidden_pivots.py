@@ -8,6 +8,7 @@ Strategy: Rick Ackerman's Hidden Pivots methodology combined with:
   - Pre-calculated HP level ladder (A-B-C-D swing structure)
   - Pattern recognition: rounded base/top, flags, triangles, channel reversals
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,41 +24,54 @@ logger = logging.getLogger(__name__)
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class HPScanResult:
     symbol: str
     timeframe: str
-    pattern: Optional[str]          # "rounded_base" | "rounded_top" | "bull_flag" | "bear_flag" | "triangle" | "channel_reversal" | None
-    bias: str                        # "LONG" | "SHORT" | "WATCH" | "SOH"
-    trigger_price: Optional[float]   # "Above X" level for entry
+    pattern: Optional[
+        str
+    ]  # "rounded_base" | "rounded_top" | "bull_flag" | "bear_flag" | "triangle" | "channel_reversal" | None
+    bias: str  # "LONG" | "SHORT" | "WATCH" | "SOH"
+    trigger_price: Optional[float]  # "Above X" level for entry
     tight_stop: Optional[float]
     riskier_stop: Optional[float]
     targets: list[float] = field(default_factory=list)  # [T1, T2, T3]
-    hp_ou_level: Optional[float] = None                 # The HP o/u dotted line level
+    hp_ou_level: Optional[float] = None  # The HP o/u dotted line level
     hp_levels: list[float] = field(default_factory=list)  # Full level ladder
-    ema_alignment: str = "MIXED"     # "BULLISH_FAN" | "BEARISH_FAN" | "COMPRESSED" | "MIXED"
-    rs_rw_score: float = 0.0         # -1.0 (strong r/w) to +1.0 (strong r/s)
-    rs_rw_label: str = "neutral"     # "awesome_rs" | "good_rs" | "decent_rs" | "neutral" | "decent_rw" | "dominant_rw"
-    soh: bool = False                # Sit On Hands flag
-    oscillator_state: str = "FLAT"  # "BULLISH_CROSS" | "BEARISH_CROSS" | "RISING" | "FALLING" | "FLAT"
-    confidence: float = 0.0          # 0.0–1.0
+    ema_alignment: str = "MIXED"  # "BULLISH_FAN" | "BEARISH_FAN" | "COMPRESSED" | "MIXED"
+    rs_rw_score: float = 0.0  # -1.0 (strong r/w) to +1.0 (strong r/s)
+    rs_rw_label: str = (
+        "neutral"  # "awesome_rs" | "good_rs" | "decent_rs" | "neutral" | "decent_rw" | "dominant_rw"
+    )
+    soh: bool = False  # Sit On Hands flag
+    oscillator_state: str = (
+        "FLAT"  # "BULLISH_CROSS" | "BEARISH_CROSS" | "RISING" | "FALLING" | "FLAT"
+    )
+    bars_since_cross: int = (
+        -1
+    )  # bars since last STC teal/pink cross (0 = latest bar; -1 = none found)
+    last_cross_dir: str = "none"  # "bull" | "bear" | "none" — direction of that most-recent cross
+    confidence: float = 0.0  # 0.0–1.0
     notes: str = ""
 
 
 @dataclass
 class SwingPoints:
     """A-B-C-D swing structure for HP level calculation."""
+
     a_idx: int
     a_price: float
     b_idx: int
     b_price: float
     c_idx: int
     c_price: float
-    d_price: float   # Measured move target (projected)
+    d_price: float  # Measured move target (projected)
     midpoint: float  # HP o/u level
 
 
 # ── EMA Alignment ─────────────────────────────────────────────────────────────
+
 
 def detect_ema_alignment(df: pd.DataFrame, periods: list[int] = None) -> str:
     """
@@ -111,6 +125,7 @@ def detect_ema_alignment(df: pd.DataFrame, periods: list[int] = None) -> str:
 
 # ── Oscillator State ──────────────────────────────────────────────────────────
 
+
 def detect_oscillator_state(df: pd.DataFrame) -> str:
     """
     Detect HiddenPivots 2-line oscillator state using STC as proxy.
@@ -158,7 +173,52 @@ def detect_oscillator_state(df: pd.DataFrame) -> str:
     return "FLAT"
 
 
+def bars_since_last_cross(df: pd.DataFrame) -> tuple[int, str]:
+    """Bars since the most recent STC teal/pink crossover and its direction.
+
+    A crossover is a single-bar event, so `oscillator_state` only reports
+    BULLISH_CROSS/BEARISH_CROSS on the exact bar it prints. This walks backward
+    to find how stale the last cross is, so a WATCH setup can still convey "the
+    cross fired N bars ago" instead of a binary in/out.
+
+    Returns (bars_since, direction):
+      bars_since == 0  -> cross printed on the latest bar
+      bars_since  > 0  -> N bars have closed since the cross
+      bars_since == -1 -> no cross found in the window (direction "none")
+      direction in {"bull", "bear", "none"}
+    """
+    try:
+        from backtest.indicators import stc as compute_stc
+    except ImportError:
+        logger.warning("Could not import stc from backtest.indicators")
+        return -1, "none"
+
+    close = df["close"]
+    if len(close) < 60:
+        return -1, "none"
+
+    teal = compute_stc(close, fast=23, slow=50, k_period=10, d_period=3)
+    pink = teal.ewm(span=3, adjust=False).mean()
+    t = teal.values
+    p = pink.values
+    n = len(t)
+    if n < 2:
+        return -1, "none"
+
+    # Walk from the latest bar backward; NaN comparisons are False so the
+    # warm-up bars never register a spurious cross.
+    for k in range(n - 1, 0, -1):
+        crossed_up = t[k - 1] <= p[k - 1] and t[k] > p[k]
+        crossed_down = t[k - 1] >= p[k - 1] and t[k] < p[k]
+        if crossed_up:
+            return (n - 1 - k), "bull"
+        if crossed_down:
+            return (n - 1 - k), "bear"
+    return -1, "none"
+
+
 # ── HP Level Calculation (Rick Ackerman) ─────────────────────────────────────
+
 
 def _find_swing_points(series: pd.Series, order: int = 5) -> tuple[np.ndarray, np.ndarray]:
     """Find local maxima and minima indices."""
@@ -168,7 +228,9 @@ def _find_swing_points(series: pd.Series, order: int = 5) -> tuple[np.ndarray, n
     return highs, lows
 
 
-def compute_hp_ou_level(df: pd.DataFrame) -> tuple[Optional[float], list[float], Optional[SwingPoints]]:
+def compute_hp_ou_level(
+    df: pd.DataFrame,
+) -> tuple[Optional[float], list[float], Optional[SwingPoints]]:
     """
     Compute HP o/u level and full level ladder from the last A-B-C swing structure.
 
@@ -216,10 +278,14 @@ def compute_hp_ou_level(df: pd.DataFrame) -> tuple[Optional[float], list[float],
         d_price = c_price + (b_price - a_price)
         midpoint = (a_price + d_price) / 2
         swing_points = SwingPoints(
-            a_idx=a_idx, a_price=a_price,
-            b_idx=b_idx, b_price=b_price,
-            c_idx=c_idx, c_price=c_price,
-            d_price=d_price, midpoint=midpoint
+            a_idx=a_idx,
+            a_price=a_price,
+            b_idx=b_idx,
+            b_price=b_price,
+            c_idx=c_idx,
+            c_price=c_price,
+            d_price=d_price,
+            midpoint=midpoint,
         )
         break
 
@@ -246,7 +312,10 @@ def compute_hp_ou_level(df: pd.DataFrame) -> tuple[Optional[float], list[float],
 
 # ── Pattern Detectors ─────────────────────────────────────────────────────────
 
-def detect_rounded_base(df: pd.DataFrame, min_bars: int = 20, max_bars: int = 120) -> tuple[Optional[float], float, str]:
+
+def detect_rounded_base(
+    df: pd.DataFrame, min_bars: int = 20, max_bars: int = 120
+) -> tuple[Optional[float], float, str]:
     """
     Detect rounded base / saucer pattern.
 
@@ -276,7 +345,7 @@ def detect_rounded_base(df: pd.DataFrame, min_bars: int = 20, max_bars: int = 12
 
     # Check concavity (2nd derivative > 0 at trough = concave up)
     second_deriv = np.gradient(np.gradient(smooth_arr))
-    concave_up = np.mean(second_deriv[max(0, trough_rel - 3):trough_rel + 4]) > 0
+    concave_up = np.mean(second_deriv[max(0, trough_rel - 3) : trough_rel + 4]) > 0
 
     # Neckline = max price from trough to now
     post_trough = close.iloc[trough_rel:]
@@ -316,7 +385,11 @@ def detect_rounded_base(df: pd.DataFrame, min_bars: int = 20, max_bars: int = 12
     if confidence < 0.5:
         return None, confidence, f"low_confidence({confidence:.2f})"
 
-    return neckline, confidence, f"saucer(depth={saucer_depth_pct:.1%},trough_bar={trough_rel},neckline={neckline:.2f})"
+    return (
+        neckline,
+        confidence,
+        f"saucer(depth={saucer_depth_pct:.1%},trough_bar={trough_rel},neckline={neckline:.2f})",
+    )
 
 
 def detect_bull_flag(df: pd.DataFrame) -> tuple[Optional[float], float, str]:
@@ -388,7 +461,9 @@ def detect_bear_flag(df: pd.DataFrame) -> tuple[Optional[float], float, str]:
     return trigger, confidence, f"bear_flag(prior_move={prior_move_pct:.1%},slope={slope:.4f})"
 
 
-def detect_rounded_top(df: pd.DataFrame, min_bars: int = 20, max_bars: int = 120) -> tuple[Optional[float], float, str]:
+def detect_rounded_top(
+    df: pd.DataFrame, min_bars: int = 20, max_bars: int = 120
+) -> tuple[Optional[float], float, str]:
     """
     Detect rounded top / inverted saucer — mirror of rounded base.
 
@@ -409,7 +484,7 @@ def detect_rounded_top(df: pd.DataFrame, min_bars: int = 20, max_bars: int = 120
         return None, 0.0, "peak_at_edge"
 
     second_deriv = np.gradient(np.gradient(smooth_arr))
-    concave_down = np.mean(second_deriv[max(0, peak_rel - 3):peak_rel + 4]) < 0
+    concave_down = np.mean(second_deriv[max(0, peak_rel - 3) : peak_rel + 4]) < 0
 
     post_peak = close.iloc[peak_rel:]
     neckline = post_peak.min()
@@ -444,7 +519,11 @@ def detect_rounded_top(df: pd.DataFrame, min_bars: int = 20, max_bars: int = 120
     if confidence < 0.5:
         return None, confidence, f"low_confidence({confidence:.2f})"
 
-    return neckline, confidence, f"rounded_top(height={top_height_pct:.1%},peak_bar={peak_rel},neckline={neckline:.2f})"
+    return (
+        neckline,
+        confidence,
+        f"rounded_top(height={top_height_pct:.1%},peak_bar={peak_rel},neckline={neckline:.2f})",
+    )
 
 
 def detect_symmetrical_triangle(df: pd.DataFrame) -> tuple[Optional[float], str, float, str]:
@@ -493,7 +572,12 @@ def detect_symmetrical_triangle(df: pd.DataFrame) -> tuple[Optional[float], str,
     width_pct = (upper - lower) / mid
     confidence = max(0.3, min(0.85, 1.0 - width_pct * 5))
 
-    return trigger, bias, confidence, f"triangle(upper={upper:.2f},lower={lower:.2f},width={width_pct:.1%})"
+    return (
+        trigger,
+        bias,
+        confidence,
+        f"triangle(upper={upper:.2f},lower={lower:.2f},width={width_pct:.1%})",
+    )
 
 
 def detect_descending_channel_reversal(df: pd.DataFrame) -> tuple[Optional[float], float, str]:
@@ -536,12 +620,19 @@ def detect_descending_channel_reversal(df: pd.DataFrame) -> tuple[Optional[float
         return None, 0.0, "no_gap_up_break"
 
     confidence = 0.75
-    return current_close, confidence, f"channel_reversal(upper={upper_now:.2f},close={current_close:.2f})"
+    return (
+        current_close,
+        confidence,
+        f"channel_reversal(upper={upper_now:.2f},close={current_close:.2f})",
+    )
 
 
 # ── Relative Strength/Weakness ────────────────────────────────────────────────
 
-def compute_rs_rw(df: pd.DataFrame, benchmark_df: Optional[pd.DataFrame] = None) -> tuple[float, str]:
+
+def compute_rs_rw(
+    df: pd.DataFrame, benchmark_df: Optional[pd.DataFrame] = None
+) -> tuple[float, str]:
     """
     Compute relative strength vs benchmark (SPY/QQQ).
 
@@ -557,7 +648,9 @@ def compute_rs_rw(df: pd.DataFrame, benchmark_df: Optional[pd.DataFrame] = None)
     for p in periods:
         if len(df) >= p and len(benchmark_df) >= p:
             sym_ret = (df["close"].iloc[-1] - df["close"].iloc[-p]) / df["close"].iloc[-p]
-            bench_ret = (benchmark_df["close"].iloc[-1] - benchmark_df["close"].iloc[-p]) / benchmark_df["close"].iloc[-p]
+            bench_ret = (
+                benchmark_df["close"].iloc[-1] - benchmark_df["close"].iloc[-p]
+            ) / benchmark_df["close"].iloc[-p]
             scores.append(sym_ret - bench_ret)
 
     if not scores:
@@ -584,6 +677,7 @@ def compute_rs_rw(df: pd.DataFrame, benchmark_df: Optional[pd.DataFrame] = None)
 
 # ── SOH Detection ─────────────────────────────────────────────────────────────
 
+
 def detect_soh(df: pd.DataFrame) -> bool:
     """
     Sit On Hands: return True if all 3 conditions met.
@@ -596,6 +690,7 @@ def detect_soh(df: pd.DataFrame) -> bool:
 
     try:
         from backtest.indicators import wilder_atr
+
         atr = wilder_atr(df["high"], df["low"], df["close"], period=14)
         atr_val = atr.iloc[-1]
     except Exception:
@@ -624,11 +719,9 @@ def detect_soh(df: pd.DataFrame) -> bool:
 
 # ── Stops and Targets ─────────────────────────────────────────────────────────
 
+
 def compute_stops_and_targets(
-    trigger_price: float,
-    bias: str,
-    hp_levels: list[float],
-    atr_value: float
+    trigger_price: float, bias: str, hp_levels: list[float], atr_value: float
 ) -> tuple[float, float, list[float]]:
     """
     Compute two-tier stops and T1/T2/T3 targets.
@@ -640,11 +733,11 @@ def compute_stops_and_targets(
     if bias == "LONG":
         tight_stop = trigger_price - 1.0 * atr_value
         riskier_stop = trigger_price - 1.5 * atr_value
-        candidate_targets = sorted([l for l in hp_levels if l > trigger_price])  # noqa: E741  # OHLC convention
+        candidate_targets = sorted(lvl for lvl in hp_levels if lvl > trigger_price)
     else:  # SHORT
         tight_stop = trigger_price + 1.0 * atr_value
         riskier_stop = trigger_price + 1.5 * atr_value
-        candidate_targets = sorted([l for l in hp_levels if l < trigger_price], reverse=True)  # noqa: E741  # OHLC convention
+        candidate_targets = sorted((lvl for lvl in hp_levels if lvl < trigger_price), reverse=True)
 
     targets = candidate_targets[:3]  # T1, T2, T3
 
@@ -660,6 +753,7 @@ def compute_stops_and_targets(
 
 
 # ── Full Scan ─────────────────────────────────────────────────────────────────
+
 
 def full_hidden_pivots_scan(
     symbol: str,
@@ -677,17 +771,27 @@ def full_hidden_pivots_scan(
     """
     if df is None or len(df) < 20:
         return HPScanResult(
-            symbol=symbol, timeframe=timeframe, pattern=None, bias="WATCH",
-            trigger_price=None, tight_stop=None, riskier_stop=None,
-            notes="insufficient_data"
+            symbol=symbol,
+            timeframe=timeframe,
+            pattern=None,
+            bias="WATCH",
+            trigger_price=None,
+            tight_stop=None,
+            riskier_stop=None,
+            notes="insufficient_data",
         )
 
     # Ensure required columns
     if "close" not in df.columns:
         return HPScanResult(
-            symbol=symbol, timeframe=timeframe, pattern=None, bias="WATCH",
-            trigger_price=None, tight_stop=None, riskier_stop=None,
-            notes="missing_close_column"
+            symbol=symbol,
+            timeframe=timeframe,
+            pattern=None,
+            bias="WATCH",
+            trigger_price=None,
+            tight_stop=None,
+            riskier_stop=None,
+            notes="missing_close_column",
         )
     if "high" not in df.columns:
         df = df.copy()
@@ -704,6 +808,7 @@ def full_hidden_pivots_scan(
     # ATR for stops
     try:
         from backtest.indicators import wilder_atr
+
         atr_series = wilder_atr(df["high"], df["low"], df["close"], period=14)
         atr_val = atr_series.iloc[-1]
     except Exception:
@@ -778,6 +883,11 @@ def full_hidden_pivots_scan(
             confidence = cr_conf
             notes = cr_notes
 
+    # The pattern's directional bias, captured before SOH/oscillator gating can
+    # downgrade the *entry* bias. Stops/targets are computed off this so a gated
+    # WATCH setup still ships a usable level ladder (the entry just isn't armed).
+    pattern_bias = bias  # "LONG" | "SHORT" | "WATCH" (WATCH == no directional pattern)
+
     # --- SOH override ---
     if soh:
         bias = "SOH"
@@ -792,15 +902,21 @@ def full_hidden_pivots_scan(
         elif bias == "SHORT" and osc_state != "BEARISH_CROSS":
             bias = "WATCH"
 
+    # Recency of the last oscillator cross — informs how stale a WATCH setup is.
+    bars_since_cross, last_cross_dir = bars_since_last_cross(df)
+
     # --- Compute stops and targets ---
+    # Populate the ladder whenever there is a directional pattern, even if the
+    # entry bias was gated to WATCH/SOH. The ladder describes the setup; arming
+    # the entry is a separate question answered by `bias`.
     tight_stop = None
     riskier_stop = None
     targets = []
 
-    if trigger is not None and bias in ("LONG", "SHORT"):
+    if trigger is not None and pattern_bias in ("LONG", "SHORT"):
         tight_stop, riskier_stop, targets = compute_stops_and_targets(
             trigger_price=trigger,
-            bias=bias,
+            bias=pattern_bias,
             hp_levels=hp_levels,
             atr_value=atr_val,
         )
@@ -821,6 +937,8 @@ def full_hidden_pivots_scan(
         rs_rw_label=rs_label,
         soh=bool(soh),
         oscillator_state=osc_state,
+        bars_since_cross=int(bars_since_cross),
+        last_cross_dir=last_cross_dir,
         confidence=float(round(confidence, 3)),
         notes=notes,
     )
