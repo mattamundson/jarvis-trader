@@ -35,7 +35,26 @@ from backtest._gate_v2_helpers import _find_latest_cache, bootstrap_pf_ci_lower
 from backtest.wfo_lifecycle import compute_gate_v2
 
 CACHE_DIR = Path("C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache")
-DEFAULT_SYMBOLS = ("SPY", "QQQ", "IWM", "GLD", "DIA")
+# US equity indices + gold, plus cross-asset breadth. Cross-asset is what separates
+# instrument quirks from real seasonals AND localizes each effect to its mechanism:
+#   - pre_holiday / santa_claus  -> risk-on (equity, EM, intl, high-yield credit)
+#   - last_day_of_month          -> DURATION/RATES only (TLT, LQD, XLU); NEGATIVE in equities
+# The duration/credit family (TLT/LQD/XLU/HYG) was added to TEST that month-end is a
+# rates phenomenon -- confirmed: LQD month-end gate-PASSes, equities go negative.
+DEFAULT_SYMBOLS = (
+    "SPY",
+    "QQQ",
+    "IWM",
+    "GLD",
+    "DIA",  # US equity + gold
+    "TLT",
+    "SLV",
+    "EEM",  # Treasuries, silver, emerging mkts
+    "XLU",
+    "HYG",
+    "LQD",
+    "EFA",  # utilities, high-yield, IG credit, developed intl
+)
 COST_BPS = 2.0
 # Durable-metric candidacy bar (p_edge intentionally excluded -- beta-harvest lesson).
 CAND_PF_CI = 1.10
@@ -124,12 +143,378 @@ def mask_pre_holiday(idx: pd.DatetimeIndex) -> np.ndarray:
     return (gap.notna() & ~normal).to_numpy()
 
 
-# The screened family. Each entry: (name, idx -> boolean mask).
+def mask_post_holiday(idx: pd.DatetimeIndex) -> np.ndarray:
+    """The first trading day AFTER a market holiday -- the complement of
+    ``pre_holiday``. Tests whether the holiday effect continues past the break or
+    is a pre-break-only phenomenon (a contrast/control on the same anomaly)."""
+    d = idx.to_series().reset_index(drop=True)
+    gap = (d - d.shift(1)).dt.days  # gap to the PREVIOUS trading day
+    wd = d.dt.dayofweek
+    normal = (gap == 1) | ((wd == 0) & (gap == 3))  # consecutive weekday or Mon-after-Fri
+    return (gap.notna() & ~normal).to_numpy()
+
+
+def mask_santa_claus(idx: pd.DatetimeIndex, n_dec: int = 5, n_jan: int = 2) -> np.ndarray:
+    """The Santa-Claus-rally window (Hirsch): the last ``n_dec`` trading days of
+    December plus the first ``n_jan`` of January -- thin-liquidity year-end drift
+    plus the tax-loss-selling reversal."""
+    rs, re_, mo, _ = _month_ranks(idx)
+    dec = (mo == 12) & (re_ <= n_dec)
+    jan = (mo == 1) & (rs <= n_jan)
+    return dec | jan
+
+
+def mask_last_day_of_month(idx: pd.DatetimeIndex) -> np.ndarray:
+    """ONLY the single last trading day of each month -- isolates the strongest
+    turn-of-month day (month-end pension/index-fund rebalancing buy pressure),
+    stripped of the surrounding TOM window."""
+    _, re_, _, _ = _month_ranks(idx)
+    return re_ <= 1
+
+
+def mask_opex_week(idx: pd.DatetimeIndex) -> np.ndarray:
+    """The options-expiration week: the Mon-Fri trading block ending on the third
+    Friday of each month. Dealer gamma-hedging and pin-risk flows make this week
+    a documented elevated-activity / directional-bias window."""
+    ym = np.asarray(idx.year) * 12 + np.asarray(idx.month)
+    dom = np.asarray(idx.day)
+    isfri = np.asarray(idx.dayofweek == 4)
+    df = pd.DataFrame({"ym": ym, "dom": dom, "isfri": isfri})
+    fri_rank = df["isfri"].groupby(df["ym"]).cumsum()  # running Friday count within month
+    fri3 = np.where(isfri & (fri_rank.to_numpy() == 3), dom, np.nan)
+    df["fri3"] = fri3
+    tf = df.groupby("ym")["fri3"].transform("max").to_numpy()  # 3rd-Friday dom, broadcast
+    return (dom <= tf) & (dom > tf - 7)  # the 7-day (= Mon-Fri trading) block ending on it
+
+
+# Scheduled FOMC announcement (decision) dates = the LAST day of every regularly
+# scheduled FOMC meeting, 1994-2027. Sourced 2026-06-26 from the Federal Reserve's
+# own meeting calendars + per-year historical pages (federalreserve.gov/monetarypolicy/
+# fomccalendars.htm and fomchistorical{YEAR}.htm) -- NOT from memory. The FOMC began
+# announcing decisions in Feb 1994 (hence the start), holding 8 scheduled meetings/yr.
+# EXCLUDED on purpose (the pre-FOMC drift is an ANTICIPATED-announcement effect, so
+# unanticipated actions carry no pre-drift): every emergency/intermeeting conference
+# call (1998 LTCM, the 2001/2007-08 GFC cuts, 2020 March 3 + 15 COVID cuts) AND the
+# cancelled 2020 March 17-18 meeting (replaced by the unscheduled Sunday 3/15 action).
+FOMC_ANNOUNCEMENTS: tuple[str, ...] = (
+    "1994-02-04",
+    "1994-03-22",
+    "1994-05-17",
+    "1994-07-06",
+    "1994-08-16",
+    "1994-09-27",
+    "1994-11-15",
+    "1994-12-20",
+    "1995-02-01",
+    "1995-03-28",
+    "1995-05-23",
+    "1995-07-06",
+    "1995-08-22",
+    "1995-09-26",
+    "1995-11-15",
+    "1995-12-19",
+    "1996-01-31",
+    "1996-03-26",
+    "1996-05-21",
+    "1996-07-03",
+    "1996-08-20",
+    "1996-09-24",
+    "1996-11-13",
+    "1996-12-17",
+    "1997-02-05",
+    "1997-03-25",
+    "1997-05-20",
+    "1997-07-02",
+    "1997-08-19",
+    "1997-09-30",
+    "1997-11-12",
+    "1997-12-16",
+    "1998-02-04",
+    "1998-03-31",
+    "1998-05-19",
+    "1998-07-01",
+    "1998-08-18",
+    "1998-09-29",
+    "1998-11-17",
+    "1998-12-22",
+    "1999-02-03",
+    "1999-03-30",
+    "1999-05-18",
+    "1999-06-30",
+    "1999-08-24",
+    "1999-10-05",
+    "1999-11-16",
+    "1999-12-21",
+    "2000-02-02",
+    "2000-03-21",
+    "2000-05-16",
+    "2000-06-28",
+    "2000-08-22",
+    "2000-10-03",
+    "2000-11-15",
+    "2000-12-19",
+    "2001-01-31",
+    "2001-03-20",
+    "2001-05-15",
+    "2001-06-27",
+    "2001-08-21",
+    "2001-10-02",
+    "2001-11-06",
+    "2001-12-11",
+    "2002-01-30",
+    "2002-03-19",
+    "2002-05-07",
+    "2002-06-26",
+    "2002-08-13",
+    "2002-09-24",
+    "2002-11-06",
+    "2002-12-10",
+    "2003-01-29",
+    "2003-03-18",
+    "2003-05-06",
+    "2003-06-25",
+    "2003-08-12",
+    "2003-09-16",
+    "2003-10-28",
+    "2003-12-09",
+    "2004-01-28",
+    "2004-03-16",
+    "2004-05-04",
+    "2004-06-30",
+    "2004-08-10",
+    "2004-09-21",
+    "2004-11-10",
+    "2004-12-14",
+    "2005-02-02",
+    "2005-03-22",
+    "2005-05-03",
+    "2005-06-30",
+    "2005-08-09",
+    "2005-09-20",
+    "2005-11-01",
+    "2005-12-13",
+    "2006-01-31",
+    "2006-03-28",
+    "2006-05-10",
+    "2006-06-29",
+    "2006-08-08",
+    "2006-09-20",
+    "2006-10-25",
+    "2006-12-12",
+    "2007-01-31",
+    "2007-03-21",
+    "2007-05-09",
+    "2007-06-28",
+    "2007-08-07",
+    "2007-09-18",
+    "2007-10-31",
+    "2007-12-11",
+    "2008-01-30",
+    "2008-03-18",
+    "2008-04-30",
+    "2008-06-25",
+    "2008-08-05",
+    "2008-09-16",
+    "2008-10-29",
+    "2008-12-16",
+    "2009-01-28",
+    "2009-03-18",
+    "2009-04-29",
+    "2009-06-24",
+    "2009-08-12",
+    "2009-09-23",
+    "2009-11-04",
+    "2009-12-16",
+    "2010-01-27",
+    "2010-03-16",
+    "2010-04-28",
+    "2010-06-23",
+    "2010-08-10",
+    "2010-09-21",
+    "2010-11-03",
+    "2010-12-14",
+    "2011-01-26",
+    "2011-03-15",
+    "2011-04-27",
+    "2011-06-22",
+    "2011-08-09",
+    "2011-09-21",
+    "2011-11-02",
+    "2011-12-13",
+    "2012-01-25",
+    "2012-03-13",
+    "2012-04-25",
+    "2012-06-20",
+    "2012-08-01",
+    "2012-09-13",
+    "2012-10-24",
+    "2012-12-12",
+    "2013-01-30",
+    "2013-03-20",
+    "2013-05-01",
+    "2013-06-19",
+    "2013-07-31",
+    "2013-09-18",
+    "2013-10-30",
+    "2013-12-18",
+    "2014-01-29",
+    "2014-03-19",
+    "2014-04-30",
+    "2014-06-18",
+    "2014-07-30",
+    "2014-09-17",
+    "2014-10-29",
+    "2014-12-17",
+    "2015-01-28",
+    "2015-03-18",
+    "2015-04-29",
+    "2015-06-17",
+    "2015-07-29",
+    "2015-09-17",
+    "2015-10-28",
+    "2015-12-16",
+    "2016-01-27",
+    "2016-03-16",
+    "2016-04-27",
+    "2016-06-15",
+    "2016-07-27",
+    "2016-09-21",
+    "2016-11-02",
+    "2016-12-14",
+    "2017-02-01",
+    "2017-03-15",
+    "2017-05-03",
+    "2017-06-14",
+    "2017-07-26",
+    "2017-09-20",
+    "2017-11-01",
+    "2017-12-13",
+    "2018-01-31",
+    "2018-03-21",
+    "2018-05-02",
+    "2018-06-13",
+    "2018-08-01",
+    "2018-09-26",
+    "2018-11-08",
+    "2018-12-19",
+    "2019-01-30",
+    "2019-03-20",
+    "2019-05-01",
+    "2019-06-19",
+    "2019-07-31",
+    "2019-09-18",
+    "2019-10-30",
+    "2019-12-11",
+    # 2020: the scheduled March 17-18 meeting was cancelled (Sunday 3/15 emergency
+    # action instead) -> 7 scheduled announcements this year, no clean pre-FOMC day.
+    "2020-01-29",
+    "2020-04-29",
+    "2020-06-10",
+    "2020-07-29",
+    "2020-09-16",
+    "2020-11-05",
+    "2020-12-16",
+    "2021-01-27",
+    "2021-03-17",
+    "2021-04-28",
+    "2021-06-16",
+    "2021-07-28",
+    "2021-09-22",
+    "2021-11-03",
+    "2021-12-15",
+    "2022-01-26",
+    "2022-03-16",
+    "2022-05-04",
+    "2022-06-15",
+    "2022-07-27",
+    "2022-09-21",
+    "2022-11-02",
+    "2022-12-14",
+    "2023-02-01",
+    "2023-03-22",
+    "2023-05-03",
+    "2023-06-14",
+    "2023-07-26",
+    "2023-09-20",
+    "2023-11-01",
+    "2023-12-13",
+    "2024-01-31",
+    "2024-03-20",
+    "2024-05-01",
+    "2024-06-12",
+    "2024-07-31",
+    "2024-09-18",
+    "2024-11-07",
+    "2024-12-18",
+    "2025-01-29",
+    "2025-03-19",
+    "2025-05-07",
+    "2025-06-18",
+    "2025-07-30",
+    "2025-09-17",
+    "2025-10-29",
+    "2025-12-10",
+    # 2026-2027 are forward-looking (tentative until confirmed) -- kept so the live
+    # forward-shadow producer knows upcoming pre-FOMC days; the day-before guard
+    # ensures a future date never flags the last available bar in-sample.
+    "2026-01-28",
+    "2026-03-18",
+    "2026-04-29",
+    "2026-06-17",
+    "2026-07-29",
+    "2026-09-16",
+    "2026-10-28",
+    "2026-12-09",
+    "2027-01-27",
+    "2027-03-17",
+    "2027-04-28",
+    "2027-06-09",
+    "2027-07-28",
+    "2027-09-15",
+    "2027-10-27",
+    "2027-12-08",
+)
+_FOMC_TS = pd.DatetimeIndex(pd.to_datetime(list(FOMC_ANNOUNCEMENTS))).sort_values()
+
+
+def mask_pre_fomc(idx: pd.DatetimeIndex, max_gap_days: int = 6) -> np.ndarray:
+    """The single trading day immediately BEFORE each scheduled FOMC announcement
+    (Lucca-Moench 2015, "The Pre-FOMC Announcement Drift": equities earn an outsized
+    premium in the ~24h preceding scheduled FOMC decisions). Daily close-to-close
+    proxy: hold the trading day before the decision day. Robust to the announcement
+    landing on a non-trading day -- it flags the last bar strictly before it.
+
+    ``max_gap_days`` guards the live/edge case: a FUTURE announcement (no bar yet on
+    its true day-before) must NOT flag the last available bar, so a candidate day is
+    only flagged when the announcement is within ``max_gap_days`` of it (a real
+    pre-FOMC day is 1-5 calendar days before the decision)."""
+    vals = np.asarray(idx.values)  # datetime64[ns], ascending (screen() sorts)
+    out = np.zeros(len(idx), dtype=bool)
+    if len(vals) == 0:
+        return out
+    ann = np.asarray(_FOMC_TS.values)
+    pos = np.searchsorted(vals, ann, side="left") - 1  # last bar strictly before each
+    for p, d in zip(pos, ann):
+        if p < 0:
+            continue
+        if (d - vals[p]) / np.timedelta64(1, "D") <= max_gap_days:
+            out[p] = True
+    return out
+
+
+# The screened family. Each entry: (name, idx -> boolean mask). Every effect is a
+# pre-registered, economically-documented calendar anomaly (weekday singles act as
+# the null-ish controls; they die on the multiple-testing penalty, as they should).
 EFFECTS: list[tuple[str, object]] = [
     ("turn_of_month", lambda idx: mask_turn_of_month(idx)),
     ("turn_of_quarter", lambda idx: mask_turn_of_quarter(idx)),
     ("first_half_month", lambda idx: mask_first_half_month(idx)),
     ("pre_holiday", lambda idx: mask_pre_holiday(idx)),
+    ("post_holiday", lambda idx: mask_post_holiday(idx)),
+    ("santa_claus", lambda idx: mask_santa_claus(idx)),
+    ("last_day_of_month", lambda idx: mask_last_day_of_month(idx)),
+    ("opex_week", lambda idx: mask_opex_week(idx)),
+    ("pre_fomc", lambda idx: mask_pre_fomc(idx)),
     ("mon", lambda idx: mask_weekday(idx, 0)),
     ("tue", lambda idx: mask_weekday(idx, 1)),
     ("wed", lambda idx: mask_weekday(idx, 2)),
