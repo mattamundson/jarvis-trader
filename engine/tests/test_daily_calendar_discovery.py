@@ -53,6 +53,49 @@ def test_mask_pre_holiday_detects_gap():
     assert "2024-01-16" in flagged
 
 
+def test_mask_post_holiday_detects_day_after_gap():
+    # Drop Wed 2024-01-17; the 18th is the first trading day AFTER the gap.
+    idx = _bdays("2024-01-15", "2024-01-19").delete(2)  # remove the 17th
+    m = dcd.mask_post_holiday(idx)
+    flagged = {str(d.date()) for d in idx[m]}
+    assert "2024-01-18" in flagged
+    assert "2024-01-16" not in flagged  # that's the PRE-holiday day, not post
+    # a normal Monday-after-Friday must NOT be flagged as post-holiday
+    assert "2024-01-16" not in flagged
+
+
+def test_mask_santa_claus_spans_year_boundary():
+    idx = _bdays("2023-12-01", "2024-01-31")
+    m = dcd.mask_santa_claus(idx, n_dec=5, n_jan=2)
+    flagged = {str(d.date()) for d in idx[m]}
+    # last trading day of Dec 2023 is the 29th (Fri); first 2 of Jan 2024 are 1(holiday-free bday)/2
+    assert "2023-12-29" in flagged  # within last 5 of December
+    assert "2024-01-01" in flagged or "2024-01-02" in flagged  # within first 2 of January
+    assert "2023-12-15" not in flagged  # mid-December excluded
+    # never selects a non Dec/Jan month
+    assert set(idx[m].month) <= {12, 1}
+
+
+def test_mask_last_day_of_month_is_single_day_per_month():
+    idx = _bdays("2024-01-01", "2024-03-31")
+    m = dcd.mask_last_day_of_month(idx)
+    flagged = sorted(str(d.date()) for d in idx[m])
+    # exactly one day per month, each the month's final trading day
+    assert flagged == ["2024-01-31", "2024-02-29", "2024-03-29"]
+
+
+def test_mask_opex_week_ends_on_third_friday():
+    idx = _bdays("2024-01-01", "2024-01-31")
+    m = dcd.mask_opex_week(idx)
+    flagged = {str(d.date()) for d in idx[m]}
+    # Jan 2024 3rd Friday = the 19th; its Mon-Fri week is the 16th-19th (15th is MLK holiday
+    # but present in a bday index). The 3rd Friday itself must be in; a prior week must not.
+    assert "2024-01-19" in flagged
+    assert "2024-01-18" in flagged  # Thursday of opex week
+    assert "2024-01-12" not in flagged  # 2nd Friday, prior week
+    assert "2024-01-26" not in flagged  # 4th Friday, following week
+
+
 # --------------------------------------------------------------- returns + grade
 def test_effect_returns_long_on_mask_net_of_cost():
     idx = _bdays("2024-01-01", "2024-01-10")
