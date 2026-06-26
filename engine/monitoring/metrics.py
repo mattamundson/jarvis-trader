@@ -132,3 +132,40 @@ def record_safety_event(event_type: str):
 def set_consecutive_losses(count: int):
     """Set the consecutive losses gauge."""
     consecutive_losses.set(count)
+
+
+def sync_safety_gauges(snapshot: dict) -> None:
+    """Set the safety-critical gauges from a safety-status snapshot dict.
+
+    Reads the same keys the ``/safety/status`` handler returns. Tolerant: a key
+    that is absent leaves its gauge untouched (not reset to 0), and the call
+    never raises — observability must not be able to break the safety endpoint.
+    """
+    try:
+        if "kill_switch_active" in snapshot:
+            set_kill_switch(bool(snapshot["kill_switch_active"]))
+        if "daily_pnl" in snapshot:
+            set_daily_pnl(float(snapshot["daily_pnl"]))
+        if "portfolio_equity" in snapshot:
+            set_equity(float(snapshot["portfolio_equity"]))
+        if "consecutive_losses" in snapshot:
+            set_consecutive_losses(int(snapshot["consecutive_losses"]))
+    except (TypeError, ValueError):
+        # Malformed snapshot value — skip rather than break the caller.
+        pass
+
+
+# ── Exposition ──────────────────────────────────────────────────────────────
+
+
+def mount_metrics(app) -> None:
+    """Mount the Prometheus exposition endpoint at ``/metrics`` on ``app``.
+
+    Importing this module already registered the ``jarvis_*`` families with the
+    default registry; ``make_asgi_app()`` serves them in text exposition format.
+    ``/metrics`` is in ``middleware.auth.EXEMPT_PATHS`` so Prometheus can scrape
+    it without the engine API key (read-only, loopback-bound).
+    """
+    from prometheus_client import make_asgi_app
+
+    app.mount("/metrics", make_asgi_app())
