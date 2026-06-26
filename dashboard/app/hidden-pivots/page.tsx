@@ -14,13 +14,16 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { fetchHiddenPivotsScan } from "@/lib/api";
-import type { HPSignal } from "@/lib/api";
+import { fetchHiddenPivotsScan, fetchPriceSnapshot } from "@/lib/api";
+import type { HPSignal, PriceSnapshot } from "@/lib/api";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const TIMEFRAMES = ["1d", "1h", "4h", "15m", "5m"];
 const REFRESH_MS = 60_000;
+// Price snapshot has a 60s server cache; poll a bit faster so the UI catches a
+// refresh within ~15s of it landing. Cheap — repeats just hit the cache.
+const PRICE_REFRESH_MS = 15_000;
 
 const PATTERN_LABEL: Record<string, string> = {
   rounded_base: "Rounded base / saucer",
@@ -119,6 +122,26 @@ function CrossCell({ s }: { s: HPSignal }) {
   );
 }
 
+/** Live last price + daily change for a row. REST-polled (works remotely). */
+function PriceCell({ snap }: { snap: PriceSnapshot[string] | undefined }) {
+  const px = snap?.last_price;
+  if (px == null) return <span className="text-muted-foreground font-mono text-xs">{"—"}</span>;
+  const chg = snap?.change_pct;
+  const chgColor = chg == null ? "text-muted-foreground" : chg > 0 ? "text-bull" : chg < 0 ? "text-bear" : "text-muted-foreground";
+  const sign = chg != null && chg > 0 ? "+" : "";
+  return (
+    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap font-mono tabular-nums">
+      <span className="text-foreground">{fmt(px)}</span>
+      {chg != null && (
+        <span className={`text-[10px] ${chgColor}`}>
+          {sign}
+          {chg.toFixed(2)}%
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HiddenPivotsPage() {
@@ -128,6 +151,17 @@ export default function HiddenPivotsPage() {
     ["hp-scan", timeframe],
     () => fetchHiddenPivotsScan(timeframe),
     { refreshInterval: REFRESH_MS, revalidateOnFocus: false, shouldRetryOnError: false }
+  );
+
+  // Live prices for the scanned symbols, polled independently of the (slow) scan.
+  const symbolList = useMemo(
+    () => (data?.details ?? []).map((d) => d.symbol),
+    [data]
+  );
+  const { data: prices } = useSWR<PriceSnapshot>(
+    symbolList.length ? ["hp-prices", symbolList.join(",")] : null,
+    () => fetchPriceSnapshot(symbolList),
+    { refreshInterval: PRICE_REFRESH_MS, revalidateOnFocus: false, shouldRetryOnError: false }
   );
 
   const rows = useMemo(() => {
@@ -226,6 +260,7 @@ export default function HiddenPivotsPage() {
                 <tr className="border-b border-border bg-muted/40 text-left">
                   {[
                     "Symbol",
+                    "Price",
                     "Bias",
                     "Pattern",
                     "Trigger",
@@ -247,7 +282,7 @@ export default function HiddenPivotsPage() {
               <tbody className="divide-y divide-border/60">
                 {isLoading && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-10 text-center text-xs text-muted-foreground">
+                    <td colSpan={10} className="px-3 py-10 text-center text-xs text-muted-foreground">
                       <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
                       Scanning {timeframe}…
                     </td>
@@ -256,7 +291,7 @@ export default function HiddenPivotsPage() {
 
                 {error && !isLoading && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-10 text-center text-xs text-bear">
+                    <td colSpan={10} className="px-3 py-10 text-center text-xs text-bear">
                       Scan failed: {error instanceof Error ? error.message : "engine unreachable"}
                     </td>
                   </tr>
@@ -264,7 +299,7 @@ export default function HiddenPivotsPage() {
 
                 {!isLoading && !error && rows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-10 text-center text-xs text-muted-foreground">
+                    <td colSpan={10} className="px-3 py-10 text-center text-xs text-muted-foreground">
                       No results for {timeframe}.
                     </td>
                   </tr>
@@ -281,6 +316,9 @@ export default function HiddenPivotsPage() {
                     >
                       <td className="px-3 py-2.5">
                         <span className="font-mono text-sm font-bold text-foreground">{s.symbol}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-xs">
+                        <PriceCell snap={prices?.[s.symbol]} />
                       </td>
                       <td className="px-3 py-2.5">
                         <BiasBadge bias={s.bias} />
@@ -340,7 +378,8 @@ export default function HiddenPivotsPage() {
 
       <p className="pb-4 text-center text-[11px] text-muted-foreground">
         HiddenPivots is display/analysis only — it never constructs an order or touches the safety
-        layer. A green ● marks a crossover that printed within the last 2 bars. Universe is tunable
+        layer. A green ● marks a crossover that printed within the last 2 bars. Price is a live
+        last/quote (≈60s cache) polled every 15s; levels update on the 60s scan. Universe is tunable
         via the engine&apos;s <span className="font-mono">SCAN_SYMBOLS</span> setting.
       </p>
     </div>
