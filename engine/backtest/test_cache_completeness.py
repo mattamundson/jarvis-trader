@@ -195,6 +195,42 @@ def test_inspect_cache_file_roundtrip(tmp_path_str=None):
     print("[PASS] inspect_cache_file roundtrip detects the hole")
 
 
+def test_scan_directory_sorts_holed_first_and_skips_unnamed():
+    """scan_directory inspects every interval-named cache, skips files with no
+    interval token, and sorts untrustworthy caches first."""
+    import os
+    import tempfile
+
+    from backtest.cache_completeness import scan_directory
+
+    d = tempfile.mkdtemp()
+
+    def _write(name, stamps):
+        fp = os.path.join(d, name)
+        rows = ["timestamp,open,high,low,close,volume"]
+        for t in stamps:
+            rows.append(f"{t.isoformat()},1,1,1,1,1")
+        with open(fp, "w") as fh:
+            fh.write("\n".join(rows) + "\n")
+
+    # clean 5m cache
+    _write("MES_2026-01-05_2026-01-05_5m_cont.csv", _series(_utc(2026, 1, 5, 14, 30), 80, 5))
+    # holed 5m cache (Tue -> Fri mid-week hole)
+    _write(
+        "ES_2026-01-06_2026-01-09_5m_cont.csv",
+        _series(_utc(2026, 1, 6, 14, 30), 60, 5) + _series(_utc(2026, 1, 9, 14, 30), 60, 5),
+    )
+    # no interval token -> must be skipped
+    _write("DIA_daily.csv", _series(_utc(2026, 1, 5, 14, 30), 5, 1440))
+
+    rows = scan_directory(d)
+    assert len(rows) == 2, f"expected 2 interval-named caches, got {[r['file'] for r in rows]}"
+    # untrustworthy sorts first
+    assert rows[0]["trustworthy"] is False and "ES_" in rows[0]["file"]
+    assert rows[1]["trustworthy"] is True and "MES_" in rows[1]["file"]
+    print("[PASS] scan_directory sorts holed-first, skips unnamed caches")
+
+
 def main():
     tests = [
         test_interval_parsing,
@@ -209,6 +245,7 @@ def main():
         test_degenerate_inputs_default_deny,
         test_unsorted_input_is_sorted_first,
         test_inspect_cache_file_roundtrip,
+        test_scan_directory_sorts_holed_first_and_skips_unnamed,
     ]
     failures = []
     for t in tests:

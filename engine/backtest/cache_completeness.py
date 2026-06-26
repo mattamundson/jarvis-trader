@@ -29,6 +29,16 @@ Deliberately calendar-light: rather than hardcode the CME holiday schedule (whic
 drifts), an unexplained mid-week hole is flagged and the caller may whitelist
 known holidays. Conservative by design -- for a data-TRUST gate, over-reporting a
 hole is the safe error.
+
+CALIBRATION SCOPE (important)
+-----------------------------
+``max_intraday_gap_hours`` defaults to 3h, tuned for the ~23h continuous-session
+intraday caches (``*_cont.csv``) the strategy factory actually consumes. For
+RTH-only instruments (ETFs like SPY/DIA, or 1h futures caches that only hold the
+pit session) the LEGITIMATE nightly gap is ~17h and every overnight is flagged --
+so ``trustworthy`` is unreliable for those and their results are advisory until a
+session-aware threshold lands. The continuous intraday verdicts ARE reliable, and
+that is the population this guard exists to protect.
 """
 
 from __future__ import annotations
@@ -268,3 +278,107 @@ def inspect_cache_file(
     result = inspect_completeness(list(stamps), iv, holiday_dates=holiday_dates, **kwargs)
     result["file"] = str(p)
     return result
+
+
+def scan_directory(
+    cache_dir,
+    *,
+    pattern: str = "*.csv",
+    holiday_dates: Optional[Iterable[date]] = US_MARKET_HOLIDAYS,
+    intraday_only: bool = True,
+    **kwargs,
+) -> list[dict]:
+    """Inspect every cache file in a directory; return summaries worst-first.
+
+    Files whose name carries no interval token are skipped (e.g. ``DIA_daily.csv``).
+    With ``intraday_only`` (default) only sub-daily caches (5m/15m/30m/1h) are
+    scanned -- daily caches legitimately skip every weekend/holiday and aren't the
+    hole-risk this guard targets. Each summary is the ``inspect_cache_file`` dict
+    trimmed to the headline fields; the list sorts untrustworthy caches first.
+    """
+    d = Path(cache_dir)
+    out: list[dict] = []
+    for p in sorted(d.glob(pattern)):
+        try:
+            iv = interval_from_filename(p.name)
+        except ValueError:
+            continue  # no interval token -> not a contract-named bar cache
+        if intraday_only and cadence_minutes_for_interval(iv) >= 1440:
+            continue
+        try:
+            r = inspect_cache_file(p, holiday_dates=holiday_dates, **kwargs)
+        except Exception as exc:  # unreadable / malformed -> surface, don't crash
+            out.append({"file": str(p), "error": str(exc), "trustworthy": False})
+            continue
+        out.append(
+            {
+                "file": p.name,
+                "interval": r["interval"],
+                "n_bars": r["n_bars"],
+                "start": r["start"],
+                "end": r["end"],
+                "n_suspicious_gaps": r["n_suspicious_gaps"],
+                "trustworthy": r["trustworthy"],
+                "trustworthy_window": r["trustworthy_window"],
+            }
+        )
+    out.sort(key=lambda s: (s.get("trustworthy", False), -s.get("n_suspicious_gaps", 0)))
+    return out
+
+
+def _main(argv: Optional[Sequence[str]] = None) -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Scan bar caches for completeness holes.")
+    ap.add_argument("path", help="a cache .csv file OR a directory of caches")
+    ap.add_argument(
+        "--all-intervals",
+        action="store_true",
+        help="include daily caches when scanning a directory",
+    )
+    ap.add_argument(
+        "--no-holidays",
+        action="store_true",
+        help="do not apply the built-in US_MARKET_HOLIDAYS whitelist",
+    )
+    args = ap.parse_args(argv)
+
+    holidays = None if args.no_holidays else US_MARKET_HOLIDAYS
+    p = Path(args.path)
+    if p.is_dir():
+        rows = scan_directory(p, holiday_dates=holidays, intraday_only=not args.all_intervals)
+        holed = [r for r in rows if not r.get("trustworthy")]
+        print(f"Scanned {len(rows)} caches in {p}  |  {len(holed)} not trustworthy\n")
+        for r in rows:
+            flag = "OK " if r.get("trustworthy") else "HOLE"
+            if "error" in r:
+                print(f"  [{flag}] {r['file']}: ERROR {r['error']}")
+                continue
+            tw = r["trustworthy_window"]
+            print(
+                f"  [{flag}] {r['file']:<46} {r['interval']:>3}  "
+                f"sus={r['n_suspicious_gaps']:<3} "
+                f"trust_window={str(tw['start'])[:10]}->{str(tw['end'])[:10]} "
+                f"({tw['n_bars']} bars)"
+            )
+        return 1 if holed else 0
+
+    r = inspect_cache_file(p, holiday_dates=holidays)
+    print(f"{r['file']}")
+    print(
+        f"  interval={r['interval']} n_bars={r['n_bars']} "
+        f"range={str(r['start'])[:16]}->{str(r['end'])[:16]}"
+    )
+    print(f"  suspicious_gaps={r['n_suspicious_gaps']} trustworthy={r['trustworthy']}")
+    for g in sorted((g for g in r["gaps"] if g["suspicious"]), key=lambda g: -g["duration_hours"]):
+        print(
+            f"    HOLE {str(g['start'])[:16]} -> {str(g['end'])[:16]} "
+            f"{g['duration_hours']:.1f}h missing={g['missing_days'][:8]}"
+        )
+    return 1 if not r["trustworthy"] else 0
+
+
+if __name__ == "__main__":
+    import sys as _sys
+
+    _sys.exit(_main())
