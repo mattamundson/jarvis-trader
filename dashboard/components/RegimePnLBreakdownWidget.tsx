@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { RefreshCw, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import { RawRecordBadge } from "@/components/RawRecordBadge";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -171,9 +172,14 @@ export function RegimePnLBreakdownWidget() {
             <Globe className="h-3.5 w-3.5 text-accent" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Regime P&amp;L Breakdown
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Regime P&amp;L Breakdown
+              </p>
+              {/* Regime is sourced from strategy_params — absent in the deduped HonestTrade record.
+                  P&L totals here reflect the raw (over-counted) trade log, not the deduplicated record. */}
+              <RawRecordBadge className="text-[9px]" />
+            </div>
             <p className="text-[10px] text-muted-foreground/60">
               Closed trades grouped by market regime
             </p>
@@ -279,16 +285,26 @@ export function RegimePnLBreakdownWidget() {
             </table>
 
             {/* Footer */}
-            <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between">
-              <p className="text-[10px] text-muted-foreground/60">
-                {trades.length} closed trade{trades.length !== 1 ? "s" : ""} ·{" "}
-                {regimeStats.length} regime{regimeStats.length !== 1 ? "s" : ""}
-              </p>
-              {lastRefreshed && (
+            <div className="mt-3 pt-3 border-t border-border/40 space-y-1">
+              <div className="flex items-center justify-between">
                 <p className="text-[10px] text-muted-foreground/60">
-                  Updated {lastRefreshed.toLocaleTimeString()}
+                  {trades.length} closed trade{trades.length !== 1 ? "s" : ""} ·{" "}
+                  {regimeStats.length} regime{regimeStats.length !== 1 ? "s" : ""}
                 </p>
-              )}
+                {lastRefreshed && (
+                  <p className="text-[10px] text-muted-foreground/60">
+                    Updated {lastRefreshed.toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
+              {/* Regime is extracted from strategy_params — a field absent in the deduped HonestTrade
+                  record. These P&L figures come from the raw /portfolio/history/trades endpoint and
+                  may include re-logged duplicate rows. Do not compare regime totals to the deduped
+                  net P&L shown in other widgets. */}
+              <p className="text-[10px] text-yellow-400/70">
+                ⚠ P&amp;L figures are from the raw trade log (not deduped). Regime field is absent
+                from the deduplicated record — an honest regime split cannot be derived.
+              </p>
             </div>
           </div>
         )}

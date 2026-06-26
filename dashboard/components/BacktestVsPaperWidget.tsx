@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import { fetchHonestTrades } from "@/lib/honestTrades";
 import {
   type BacktestBaselineRow,
   fmtBaselineNum,
@@ -27,12 +28,6 @@ interface PaperMetrics {
 function pfVariant(pf: number): BadgeVariant {
   if (pf >= 2.0) return "bull";
   if (pf >= 1.5) return "warn";
-  return "bear";
-}
-
-function sharpeVariant(s: number): BadgeVariant {
-  if (s >= 1.5) return "bull";
-  if (s >= 1.0) return "warn";
   return "bear";
 }
 
@@ -72,11 +67,18 @@ export function BacktestVsPaperWidget() {
 
   async function fetchMetrics() {
     try {
-      const [perf, btRows] = await Promise.all([
-        fetchEngine<PaperMetrics>(`/analytics/performance`),
+      // Paper column from the honest deduped record (was /analytics/performance,
+      // which over-counts re-logged winners -> fabricated PF 2.95 / 19 trades).
+      const [honest, btRows] = await Promise.all([
+        fetchHonestTrades(),
         fetchEngine<BacktestBaselineRow[]>(`/backtest/results`).catch(() => [] as BacktestBaselineRow[]),
       ]);
-      setPaper(perf);
+      setPaper({
+        profit_factor: honest.profitFactor ?? undefined,
+        sharpe_ratio: undefined, // annualized Sharpe not in the deduped record
+        win_rate: honest.winRate * 100,
+        total_trades: honest.trades.length,
+      });
       setBaseline(pickApprovedBacktestBaseline(btRows));
       setError(null);
     } catch (err) {
@@ -94,7 +96,6 @@ export function BacktestVsPaperWidget() {
   }, []);
 
   const pf = paper?.profit_factor ?? null;
-  const sharpe = paper?.sharpe_ratio ?? null;
   const wr = paper?.win_rate != null ? normalizeWinRate(paper.win_rate) : null;
   const trades = paper?.total_trades ?? null;
 
@@ -183,23 +184,14 @@ export function BacktestVsPaperWidget() {
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
                   {fmtBacktestCell(loadingBt, btSr)}
                 </td>
-                <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
-                  {loading ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : error || sharpe == null ? (
-                    <span className="text-muted-foreground">N/A</span>
-                  ) : (
-                    sharpe.toFixed(2)
-                  )}
+                <td
+                  className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground"
+                  title="Annualized Sharpe is not derivable from the deduped trade record"
+                >
+                  —
                 </td>
                 <td className="py-2.5 text-center">
-                  {!loading && !error && sharpe != null ? (
-                    <Badge variant={sharpeVariant(sharpe)} className="text-[10px]">
-                      {sharpeVariant(sharpe) === "bull" ? "ON TRACK" : sharpeVariant(sharpe) === "warn" ? "MARGINAL" : "BELOW"}
-                    </Badge>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">—</span>
-                  )}
+                  <span className="text-muted-foreground text-xs">not computed</span>
                 </td>
               </tr>
 
@@ -273,7 +265,8 @@ export function BacktestVsPaperWidget() {
         </div>
 
         <p className="mt-3 text-[11px] text-muted-foreground italic">
-          Paper targets set at 38% of backtest thresholds to account for real market conditions
+          Paper column from the honest deduped trade record (read-time deduped); backtest column
+          from saved engine results. Paper targets set at 38% of backtest thresholds.
         </p>
 
         {error && (
