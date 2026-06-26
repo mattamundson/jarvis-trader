@@ -393,6 +393,33 @@ def render_jarvis_read(read: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def compute_corey_compare(
+    briefing_date: date,
+    read: dict[str, Any] | None,
+    levels_map: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Compare JARVIS's Read with Corey's session bias. Returns None when Corey's
+    feed is dry (Phase F is dormant until the Discord token is refreshed)."""
+    try:
+        from analysis.corey_compare import compare, fetch_corey_bias
+    except ImportError as exc:  # pragma: no cover - defensive
+        logger.debug("corey_compare unavailable: %s", exc)
+        return None
+
+    corey = fetch_corey_bias(briefing_date.isoformat(), db_path=str(_DB_PATH))
+    if not corey:
+        return None  # dormant — no section rendered
+
+    anchor = levels_map.get(_READ_ANCHOR)
+    jarvis_levels: list[float] = []
+    if anchor is not None:
+        for k in ("pivot", "r1", "s1", "r2", "s2"):
+            v = getattr(anchor, k, None)
+            if v is not None:
+                jarvis_levels.append(float(v))
+    return compare(read, corey, jarvis_levels=jarvis_levels)
+
+
 def load_active_strategies() -> list[dict[str, Any]]:
     """
     Return a list of enabled strategy configs with verdict freshness info.
@@ -961,6 +988,7 @@ def render_briefing(
     attention_items: list[str],
     levels_map: dict[str, Any] | None = None,
     read: dict[str, Any] | None = None,
+    corey_compare: dict[str, Any] | None = None,
 ) -> str:
     now_et = datetime.now(_ET).strftime("%Y-%m-%dT%H:%M %Z")
     lines: list[str] = []
@@ -972,6 +1000,10 @@ def render_briefing(
     lines.extend(render_engine_status(health))
     lines.extend(render_key_levels(levels_map or {}))
     lines.extend(render_jarvis_read(read))
+    # Phase F — dormant: render_corey_compare returns [] while Corey's feed is dry.
+    from analysis.corey_compare import render_corey_compare
+
+    lines.extend(render_corey_compare(corey_compare))
     lines.extend(render_active_strategies(active_strategies))
     lines.extend(render_overnight_regime(regime_map))
     lines.extend(render_rv_accumulation())
@@ -1097,6 +1129,8 @@ def main() -> None:
     # JARVIS's Read — the labeled discretionary opinion (LLM, display/journal only).
     read = compute_jarvis_read(briefing_date, levels_map, regime_map)
     _persist_forecast(briefing_date, levels_map, read=read)
+    # Phase F — JARVIS vs Corey (dormant until the Corey Discord feed returns).
+    corey_compare = compute_corey_compare(briefing_date, read, levels_map)
 
     attention_items = compute_attention_items(
         health=health,
@@ -1117,6 +1151,7 @@ def main() -> None:
         attention_items=attention_items,
         levels_map=levels_map,
         read=read,
+        corey_compare=corey_compare,
     )
 
     # Save
