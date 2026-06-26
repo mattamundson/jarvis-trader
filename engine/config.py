@@ -343,6 +343,18 @@ class TradingConfig(BaseSettings):
         True, description="All live trades require Matt's approval"
     )
 
+    AUTONOMOUS_AUTO_APPROVE_PAPER: bool = Field(
+        False,
+        description=(
+            "When True AND LIVE_TRADING_ENABLED is False, autonomous-scheduler "
+            "candidates are auto-approved in paper mode instead of waiting for "
+            "human approval (which otherwise expires at the candidate TTL). Feeds "
+            "the IC/Brier calibration loop with more paper trades. NEVER affects "
+            "live: when LIVE_TRADING_ENABLED is True this flag is ignored and the "
+            "human-in-the-loop gate is preserved."
+        ),
+    )
+
     ALLOW_PAPER_SIMULATED_ORDERS: bool = Field(
         False,
         description="When True, paper trading mode allows simulated orders via check_order route",
