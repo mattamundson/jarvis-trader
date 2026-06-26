@@ -27,9 +27,9 @@ sys.path.insert(0, ".")
 
 from backtest.cache_completeness import (
     cadence_minutes_for_interval,
-    interval_from_filename,
-    inspect_completeness,
     inspect_cache_file,
+    inspect_completeness,
+    interval_from_filename,
 )
 
 
