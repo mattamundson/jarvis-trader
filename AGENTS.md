@@ -39,6 +39,27 @@ Two services make up the product: the **engine** (FastAPI, Python 3.12, port 801
 - Dashboard: from `dashboard/`, `pnpm dev` (port 3010). Use `pnpm` only (npm is broken).
 - Auth: all engine routes require header `X-API-Key: <API_KEY from engine/.env>`.
 
+### LLM provider — local Ollama option (no cloud key)
+
+The engine's `JarvisLLMClient` (`engine/llm/client.py`) defaults to `JARVIS_LLM_PROVIDER=ollama`
+and needs NO `ANTHROPIC_API_KEY` in that mode — it routes agent calls to a local Ollama
+runtime (`OLLAMA_HOST`, `OLLAMA_MODEL`). To validate the agent/LLM path without cloud keys:
+
+- Run `ollama serve` (installed at `/usr/local/bin/ollama`); pull a small model
+  (`ollama pull llama3.2:1b`).
+- In `engine/.env` set `JARVIS_LLM_PROVIDER=ollama`, `OLLAMA_HOST=http://127.0.0.1:11434`,
+  `OLLAMA_MODEL=llama3.2:1b`, then restart the engine. `/health` then reports
+  `primary_provider: ollama` and a served call flips `active_provider` to `ollama`.
+- **CPU/Firecracker gotcha:** the VM advertises AVX-512 but Ollama's auto-selected AVX-512
+  CPU runner **segfaults on warmup** here. The AVX-512 `libggml-cpu-*` variants were moved to
+  `/usr/local/lib/ollama/_disabled_avx512/` so it falls back to the stable AVX2 (`haswell`)
+  backend. If Ollama is reinstalled/upgraded, re-hide those variants.
+- CPU inference of even a 1B model is slow (~30–70s/call); a full 10-agent pipeline run is
+  impractical on CPU. For real Claude behavior set `ANTHROPIC_API_KEY` instead (and remove the
+  `JARVIS_LLM_PROVIDER=ollama` line so the Anthropic path is used).
+- Note: a full `/pipeline/run` also needs market-data bars (IB Gateway or `POLYGON_API_KEY`);
+  without them the pipeline short-circuits before the LLM stages regardless of provider.
+
 ### External service: master-api (:8030)
 
 The dashboard talks to a SEPARATE `master-api` service at `NEXT_PUBLIC_MASTER_API_URL`
