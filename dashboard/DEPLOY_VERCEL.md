@@ -7,93 +7,113 @@ Browser ── HTTPS ──► Vercel (login-gated)
                        │  app/api/engine/[...path]/route.ts  (server-side proxy)
                        │  injects X-API-Key from ENGINE_API_KEY
                        ▼
-              Tailscale Funnel (public HTTPS)
+              Cloudflare Tunnel (public HTTPS)
                        ▼
               Your PC ── engine :8010  (X-API-Key auth on every non-/health route)
 ```
 
 The browser never sees the engine key. The engine is only reachable with the key,
-and the Vercel site is itself behind a login gate. Three gates, no open doors.
+and the Vercel site is itself behind a login gate (Deployment Protection).
 
-**The site only serves live data while your PC + engine + the funnel are all running.**
-When the PC sleeps, pages render but data calls 502. That is expected.
+**The site only serves live data while your PC + engine + the tunnel are all running.**
+When the PC sleeps or the tunnel stops, pages render but data calls fail. Expected.
+
+Live URLs (current project `matts-projects-fc4f64e1/jarvis-trader`):
+- Site:  https://jarvis-trader-plum.vercel.app
+- Env vars page: https://vercel.com/matts-projects-fc4f64e1/jarvis-trader/settings/environment-variables
 
 ---
 
-## One-time setup
+## The engine tunnel (Cloudflare)
 
-### 1. Start the engine tunnel (you run this — needs your tailnet auth)
-
-```powershell
-tailscale funnel 8010
-```
-
-Leave it running. It prints a public URL like:
-
-```
-https://<your-machine>.<tailnet>.ts.net
-```
-
-Copy that URL — it is `ENGINE_INTERNAL_URL` below. Verify it reaches the engine:
+### Quick tunnel (ephemeral URL — fastest, changes on every restart)
 
 ```powershell
-curl https://<your-machine>.<tailnet>.ts.net/health   # -> {"status":"ok",...}
+cloudflared tunnel --url http://localhost:8010
 ```
 
-(No CORS change is needed — the Vercel proxy calls the engine server-to-server,
-which is not subject to browser CORS.)
+Prints `https://<random-words>.trycloudflare.com`. Leave the window open. That URL
+is the engine's public address. **It changes every time you restart cloudflared**, so
+after a restart you must update Vercel's `ENGINE_INTERNAL_URL` to the new URL and
+redeploy (`vercel --prod --archive=tgz`).
 
-### 2. Link the project (you run — interactive login)
+### Named tunnel (stable URL — set up once, survives restarts)
+
+See `## Stable tunnel` at the bottom. A named tunnel keeps the same URL forever and
+can auto-start as a Windows service, so you never touch Vercel env vars again.
+
+---
+
+## One-time Vercel setup (already done, kept for reference)
+
+1. From `dashboard/`: `vercel login` then `vercel link`
+   (existing project `jarvis-trader`; root directory = `dashboard`).
+2. Env vars (set in the web UI — the CLI's "Store as sensitive?" prompt fouls piping):
+   open the env-vars page above and add, both for **Production**:
+   - `ENGINE_INTERNAL_URL` = the tunnel URL (no trailing slash)
+   - `ENGINE_API_KEY`     = the value of `API_KEY=` from `engine/.env`
+3. Settings → General/Build → **Root Directory = `dashboard`**.
+4. Settings → **Deployment Protection → Vercel Authentication = On**.
+
+To copy the engine key to your clipboard without printing it:
+```powershell
+((Select-String -Path C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.env -Pattern '^API_KEY=' | Select-Object -First 1).Line -split '=',2)[1].Trim() | Set-Clipboard
+```
+
+---
+
+## Deploying
 
 From `dashboard/`:
 
 ```powershell
-vercel login
-vercel link            # create/link a project; set ROOT DIRECTORY = . (you are already in dashboard/)
+vercel --prod --archive=tgz
 ```
 
-### 3. Set the two server-only env vars (you run — paste values when prompted)
+`--archive=tgz` is required: a plain `vercel --prod` tries to upload node_modules
+(~40k files) and hits Vercel's 15000-file limit. `.vercelignore` excludes the bulk;
+`--archive=tgz` bundles the rest. Build runs remotely (~1-3 min) and prints the
+production URL.
 
-```powershell
-vercel env add ENGINE_INTERNAL_URL production
-#   paste: https://<your-machine>.<tailnet>.ts.net   (no trailing slash)
+The local prod dashboard on :3010 (pm2) is independent of Vercel and unaffected.
 
-vercel env add ENGINE_API_KEY production
-#   paste the key from engine/.env  (X-API-Key value) — do NOT prefix with NEXT_PUBLIC_
-```
+---
 
-Repeat both for `preview` if you want preview deploys to work too.
+## After a Cloudflare quick-tunnel restart (ephemeral URL only)
 
-### 4. Turn on Deployment Protection (REQUIRED — the site is public)
+1. Note the new `https://<...>.trycloudflare.com` URL.
+2. Update Vercel env var `ENGINE_INTERNAL_URL` to it (web UI).
+3. Redeploy: `vercel --prod --archive=tgz`.
 
-Vercel dashboard → Project → Settings → Deployment Protection → enable
-**Vercel Authentication** (or a password). This is the login gate; without it,
-anyone with the URL can drive the proxy.
-
-### 5. Deploy
-
-```powershell
-vercel --prod
-```
-
-Open the printed URL, log in through the gate, and load `/hidden-pivots`.
+(The named tunnel below removes this chore entirely.)
 
 ---
 
 ## Known limitation — WebSocket pages
 
 Live-tick panels (anything using `lib/engine-websocket-context.tsx`,
-`use-websocket.ts`, `useWebSocket.ts`) hardcode `ws://127.0.0.1:8010` and will not
-connect from Vercel. REST pages — including Hidden Pivots — work fine. The WS
-contexts need a refactor to a tunneled/proxied WS URL before live-streaming panels
-work remotely. Tracked as a follow-up.
+`hooks/useWebSocket.ts`, `lib/pipeline_ws.ts`) connect **directly** to the engine
+WS and can't go through the Vercel proxy (serverless doesn't proxy WebSockets).
+They degrade gracefully (show "disconnected", retry quietly) and keep working on the
+local :3010 dashboard. REST pages — including Hidden Pivots — work fully on Vercel.
+Making live panels work remotely needs engine-side short-lived WS token auth
+(deliberately deferred to avoid exposing the key in the browser).
 
-## Redeploying after dashboard changes
+---
+
+## Stable tunnel (named Cloudflare tunnel)
+
+A named tunnel gives a permanent URL and can run as a Windows service. Requires a
+domain managed in Cloudflare (the tunnel is routed to e.g. `engine.yourdomain.com`).
 
 ```powershell
-git push                  # if using Git integration, this auto-deploys
-# or, manual:
-vercel --prod
+cloudflared tunnel login                              # browser auth, one time
+cloudflared tunnel create jarvis-engine               # creates tunnel + credentials json
+cloudflared tunnel route dns jarvis-engine engine.<yourdomain>   # stable hostname
+# config.yml: tunnel: <id>; credentials-file: <path>; ingress: [ {hostname: engine.<yourdomain>, service: http://localhost:8010}, {service: http_status:404} ]
+cloudflared tunnel run jarvis-engine                  # or install as a service:
+cloudflared service install
 ```
 
-The local prod dashboard on :3010 (pm2) is independent of Vercel and unaffected.
+Then set Vercel `ENGINE_INTERNAL_URL = https://engine.<yourdomain>` once and never
+touch it again.
