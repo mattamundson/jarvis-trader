@@ -35,7 +35,10 @@ from backtest._gate_v2_helpers import _find_latest_cache, bootstrap_pf_ci_lower
 from backtest.wfo_lifecycle import compute_gate_v2
 
 CACHE_DIR = Path("C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache")
-DEFAULT_SYMBOLS = ("SPY", "QQQ", "IWM", "GLD", "DIA")
+# US equity indices + gold, plus cross-asset breadth (bonds/silver/emerging mkts).
+# Cross-asset matters: it separates instrument-specific quirks from real seasonals
+# (santa_claus survives across equity+EM; the month-end effect is bond-specific).
+DEFAULT_SYMBOLS = ("SPY", "QQQ", "IWM", "GLD", "DIA", "TLT", "SLV", "EEM")
 COST_BPS = 2.0
 # Durable-metric candidacy bar (p_edge intentionally excluded -- beta-harvest lesson).
 CAND_PF_CI = 1.10
