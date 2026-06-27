@@ -105,6 +105,10 @@ ls C:/Users/mattm/ThinkorSwim/jarvis-trader/docs/repo-integrations/
 
 If an analysis doc exists, the research is done — read it and decide adopt/defer/noise.
 
+When the engine is running, prefer the structured `/vault status` query (or `curl
+/vault/status`) over raw `grep` — it reports per-folder note counts and the latest
+synthesis / lint / contradiction reports. See `.claude/skills/jarvis-vault/SKILL.md`.
+
 ## Step 5 — GitHub code search (last resort)
 
 ```bash
