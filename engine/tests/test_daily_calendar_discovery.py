@@ -220,3 +220,119 @@ def test_latest_cache_picks_deepest_by_end_date(tmp_path):
 
 def test_latest_cache_none_when_missing(tmp_path):
     assert dcd._latest_cache("NOPE", tmp_path) is None
+
+
+# ------------------------------------------ beta-harvest gate routing (R3b / Option A)
+# Option A: the calendar screener's OWN local beta-harvest rescue. When a calendar
+# (beta_harvest-tagged) effect FAILs the canonical CORE gate on p_edge ALONE (0.60 <=
+# p_edge < 0.95) and is H1/H2-stationary, and BETA_HARVEST_GATE_ENFORCE is on, its
+# verdict is upgraded to PASS-via-beta_harvest. Default-OFF; untagged effects (and the
+# RV screen that shares grade()) are unchanged; can only ever turn a FAIL into a PASS on
+# the single p_edge axis -- never the reverse. Mirrors the approved session_anomaly
+# gate_v2_beta_harvest variant WITHOUT swapping the screener's gate implementation.
+def _stationary_returns(n=20):
+    # both halves clearly profitable (per-half PF 0.05/0.02 = 2.5) -> grade() marks
+    # stationary True, independent of the (monkeypatched) gate verdict.
+    base = [0.01] * 5 + [-0.004] * 5
+    vals = (base * (n // len(base) + 1))[:n]
+    return pd.Series(vals, index=pd.bdate_range("2015-01-01", periods=len(vals)))
+
+
+def _pedge_only_fail_gate(**over):
+    # a canonical CORE FAIL whose ONLY failing core criterion is p_edge
+    g = {
+        "verdict": "FAIL",
+        "passed_via": None,
+        "pf_ci_lower": 1.20,  # >= GATE_PF_CI_LOWER (1.10)
+        "p_edge": 0.70,  # in [0.60, 0.95): the relaxed-but-not-core band
+        "mc_95th_dd": 0.03,  # <= GATE_MC_DD_CORE (0.05)
+        "dsr": 0.50,  # >= GATE_DSR (0.10)
+    }
+    g.update(over)
+    return g
+
+
+def test_beta_harvest_rescues_pedge_only_fail_when_enforced(monkeypatch):
+    monkeypatch.setattr(dcd, "gate_v2_verdict", lambda r, n: _pedge_only_fail_gate())
+    monkeypatch.setenv("BETA_HARVEST_GATE_ENFORCE", "1")
+    g = dcd.grade(_stationary_returns(), n_grid_combos=10, strategy_class="beta_harvest")
+    assert g["gate"]["verdict"] == "PASS"
+    assert g["gate"]["passed_via"] == "beta_harvest"
+    assert g["gate"].get("beta_harvest_rescued") is True
+
+
+def test_beta_harvest_no_rescue_when_flag_off(monkeypatch):
+    monkeypatch.setattr(dcd, "gate_v2_verdict", lambda r, n: _pedge_only_fail_gate())
+    monkeypatch.delenv("BETA_HARVEST_GATE_ENFORCE", raising=False)
+    g = dcd.grade(_stationary_returns(), n_grid_combos=10, strategy_class="beta_harvest")
+    assert g["gate"]["verdict"] == "FAIL"  # approved but not activated -> canonical
+
+
+def test_beta_harvest_no_rescue_for_untagged_even_when_enforced(monkeypatch):
+    monkeypatch.setattr(dcd, "gate_v2_verdict", lambda r, n: _pedge_only_fail_gate())
+    monkeypatch.setenv("BETA_HARVEST_GATE_ENFORCE", "1")
+    g = dcd.grade(_stationary_returns(), n_grid_combos=10, strategy_class="")
+    assert g["gate"]["verdict"] == "FAIL"  # RV / untagged stays canonical (MES-safe shape)
+
+
+def test_beta_harvest_no_rescue_when_another_core_criterion_fails(monkeypatch):
+    # pf_ci_lower ALSO below the core floor -> p_edge is not the SOLE failure
+    monkeypatch.setattr(
+        dcd, "gate_v2_verdict", lambda r, n: _pedge_only_fail_gate(pf_ci_lower=0.90)
+    )
+    monkeypatch.setenv("BETA_HARVEST_GATE_ENFORCE", "1")
+    g = dcd.grade(_stationary_returns(), n_grid_combos=10, strategy_class="beta_harvest")
+    assert g["gate"]["verdict"] == "FAIL"
+
+
+def test_beta_harvest_no_rescue_when_pedge_below_relaxed_floor(monkeypatch):
+    monkeypatch.setattr(dcd, "gate_v2_verdict", lambda r, n: _pedge_only_fail_gate(p_edge=0.50))
+    monkeypatch.setenv("BETA_HARVEST_GATE_ENFORCE", "1")
+    g = dcd.grade(_stationary_returns(), n_grid_combos=10, strategy_class="beta_harvest")
+    assert g["gate"]["verdict"] == "FAIL"
+
+
+def test_beta_harvest_no_rescue_when_not_stationary(monkeypatch):
+    monkeypatch.setattr(dcd, "gate_v2_verdict", lambda r, n: _pedge_only_fail_gate())
+    monkeypatch.setenv("BETA_HARVEST_GATE_ENFORCE", "1")
+    # second half all negative -> h2_pf < 1 -> not stationary -> no rescue
+    idx = pd.bdate_range("2015-01-01", periods=20)
+    r = pd.Series([0.01] * 10 + [-0.01] * 10, index=idx)
+    g = dcd.grade(r, n_grid_combos=10, strategy_class="beta_harvest")
+    assert g["gate"]["verdict"] == "FAIL"
+
+
+def test_beta_harvest_leaves_canonical_pass_untouched(monkeypatch):
+    passing = {
+        "verdict": "PASS",
+        "passed_via": "core",
+        "pf_ci_lower": 1.5,
+        "p_edge": 0.97,
+        "mc_95th_dd": 0.02,
+        "dsr": 0.6,
+    }
+    monkeypatch.setattr(dcd, "gate_v2_verdict", lambda r, n: dict(passing))
+    monkeypatch.setenv("BETA_HARVEST_GATE_ENFORCE", "1")
+    g = dcd.grade(_stationary_returns(), n_grid_combos=10, strategy_class="beta_harvest")
+    assert g["gate"]["verdict"] == "PASS"
+    assert g["gate"]["passed_via"] == "core"  # not relabeled to beta_harvest
+
+
+def test_screen_tags_only_beta_harvest_effects(monkeypatch):
+    # screen() routes the beta_harvest tag to grade() for exactly the tagged effects,
+    # and "" (canonical) for every other effect -- robust to whatever set is confirmed.
+    monkeypatch.setattr(
+        dcd,
+        "grade",
+        lambda r, n_grid_combos=1, *, strategy_class="": {
+            "sc": strategy_class,
+            "pf_ci_lower": 0.0,
+            "dsr": 0.0,
+            "is_candidate": False,
+        },
+    )
+    df = _synth_df("2018-01-01", "2025-01-01")
+    rows = dcd.screen("SPY", df, cost_bps=2.0)
+    for row in rows:
+        expected = dcd.BETA_HARVEST_TAG if row["effect"] in dcd.BETA_HARVEST_EFFECTS else ""
+        assert row["sc"] == expected, f"{row['effect']} tagged '{row['sc']}', expected '{expected}'"
