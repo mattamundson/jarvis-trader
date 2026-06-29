@@ -577,11 +577,23 @@ def gate_v2_verdict(r: pd.Series, n_grid_combos: int, freq: str = "YE") -> dict:
 # in session_anomaly's gate implementation. A future unify (Option B) would dedupe this.
 BETA_HARVEST_P_EDGE_FLOOR = 0.60
 
-#: Effects whose verdict may route through the beta-harvest variant. PENDING Amo's final
-#: confirmation of the exact set; everything else stays canonical. Market-neutral and
-#: non-calendar callers (e.g. daily_relval_discovery) never pass the tag -> unaffected.
+#: Effects whose verdict may route through the beta-harvest variant -- the long-beta
+#: seasonals for which CORE p_edge >= 0.95 is structurally unmeetable. Confirmed by Amo
+#: 2026-06-29 (the four named sleeves + last_day_of_month, the single-day case of
+#: turn_of_month, + december_santa, the full-December superset of santa_claus). Everything
+#: else stays canonical; the controls (post_holiday, opex_week, weekday singles, september)
+#: and the broader/weaker seasonals (turn_of_quarter, first_half_month, nov_apr_seasonal,
+#: january) are intentionally OUT. Market-neutral / non-calendar callers (e.g.
+#: daily_relval_discovery) never pass the tag -> unaffected.
 BETA_HARVEST_EFFECTS: frozenset[str] = frozenset(
-    {"turn_of_month", "pre_holiday", "santa_claus", "pre_fomc"}
+    {
+        "turn_of_month",
+        "last_day_of_month",  # single-day case of turn_of_month
+        "pre_holiday",
+        "santa_claus",
+        "december_santa",  # full-December superset of santa_claus
+        "pre_fomc",
+    }
 )
 
 
