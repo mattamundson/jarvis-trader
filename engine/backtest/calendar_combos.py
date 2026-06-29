@@ -32,7 +32,7 @@ from backtest.daily_calendar_discovery import (
 )
 
 # name -> (idx -> boolean mask), from the canonical screened family.
-EFFECT_FNS = {name: fn for name, fn in EFFECTS}
+EFFECT_FNS = dict(EFFECTS)
 
 # Sleeves with return correlation below this are "uncorrelated enough" to stack.
 CORR_THRESHOLD = 0.30
