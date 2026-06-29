@@ -35,6 +35,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from execution.submission_dedup import SubmissionDedup
+
 logger = logging.getLogger("jarvis_trader.routers.approval_queue")
 
 router = APIRouter(prefix="/approvals", tags=["approvals", "autonomous-queue"])
@@ -45,15 +47,31 @@ router = APIRouter(prefix="/approvals", tags=["approvals", "autonomous-queue"])
 
 _safety_layer = None
 _db_path: Optional[str] = None
+# Shared cross-path submission dedup: this queue and the systematic bridge
+# consult the SAME ledger so the same (symbol, action, trading_date) is never
+# submitted twice when both paths are armed. Lazily created; overridable for tests.
+_dedup: Optional[SubmissionDedup] = None
 
 _AUDIT_LOG_PATH = Path("data/approval_audit.jsonl")
 
 
-def inject_approval_queue_deps(safety_layer, db_path: str) -> None:
+def _get_dedup() -> SubmissionDedup:
+    """Return the shared submission-dedup ledger (default path), created lazily."""
+    global _dedup
+    if _dedup is None:
+        _dedup = SubmissionDedup()
+    return _dedup
+
+
+def inject_approval_queue_deps(
+    safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None
+) -> None:
     """Called from main.py during lifespan startup."""
-    global _safety_layer, _db_path
+    global _safety_layer, _db_path, _dedup
     _safety_layer = safety_layer
     _db_path = db_path
+    if dedup is not None:
+        _dedup = dedup
     # Ensure the approval queue table exists when the router is first wired.
     _ensure_schema(db_path)
     logger.info("ApprovalQueueRouter: dependencies injected (db=%s)", db_path)
@@ -416,6 +434,22 @@ async def approve_candidate(
 
     action = "BUY" if direction == "LONG" else "SELL"
 
+    # Cross-path dedup: if the systematic bridge (or a prior approve) already
+    # submitted this (symbol, action, trading_date) today, skip to avoid a 2x
+    # double-fill across the two armed paper paths. First-submission-wins.
+    dedup = _get_dedup()
+    trading_date = datetime.now(timezone.utc).date()
+    dkey = dedup.make_key(symbol, action, trading_date)
+    if dedup.already_submitted(dkey):
+        _audit("approve_skipped_cross_path", candidate_id, {"key": dkey})
+        raise HTTPException(
+            409,
+            detail=(
+                f"Another path already submitted {symbol} {action} for "
+                f"{trading_date.isoformat()} (cross-path dedup) — not re-submitting."
+            ),
+        )
+
     # Submit via the existing safety_layer.submit_paper_order path
     try:
         result = await _safety_layer.submit_paper_order(
@@ -440,6 +474,14 @@ async def approve_candidate(
 
     order_id = str(result.get("order_id") or result.get("fill_id") or "")
     _update_status(db, candidate_id, "approved", order_id=order_id)
+    # Claim the shared cross-path slot only on an APPROVED submit, so a rejected
+    # order never blocks the other path. Idempotent (no-op if already recorded).
+    dedup.record(
+        dkey,
+        source="queue",
+        native_id=str(candidate_id),
+        extra={"order_id": order_id, "symbol": symbol, "action": action},
+    )
     _audit(
         "approved",
         candidate_id,

@@ -20,6 +20,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 # -- import the router module directly (no FastAPI app needed for unit tests) --
 from routers.approval_queue_router import (
@@ -150,12 +151,15 @@ async def test_approve_submits_paper_order(tmp_path: Path) -> None:
     )
 
     import routers.approval_queue_router as mod
+    from execution.submission_dedup import SubmissionDedup
 
     original_sl = mod._safety_layer
     original_db = mod._db_path
+    original_dedup = mod._dedup
     try:
         mod._safety_layer = mock_safety
         mod._db_path = db_path
+        mod._dedup = SubmissionDedup(Path(tmp_path) / "dedup.jsonl")  # isolate from default ledger
 
         with (
             patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
@@ -181,6 +185,86 @@ async def test_approve_submits_paper_order(tmp_path: Path) -> None:
     finally:
         mod._safety_layer = original_sl
         mod._db_path = original_db
+        mod._dedup = original_dedup
+
+
+@pytest.mark.asyncio
+async def test_approve_records_to_shared_dedup(tmp_path: Path) -> None:
+    """An APPROVED submit claims the shared cross-path slot for (symbol, action, today)."""
+    from execution.submission_dedup import SubmissionDedup
+
+    db_path = _fresh_db(tmp_path)
+    row_id = _insert_via_sql(db_path, symbol="MCL", direction="LONG", confidence=0.75)
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    mock_safety.submit_paper_order = AsyncMock(
+        return_value={"approved": True, "order_id": "TEST-77"}
+    )
+
+    import routers.approval_queue_router as mod
+
+    original_sl, original_db, original_dedup = mod._safety_layer, mod._db_path, mod._dedup
+    try:
+        mod._safety_layer = mock_safety
+        mod._db_path = db_path
+        mod._dedup = SubmissionDedup(Path(tmp_path) / "dedup.jsonl")
+
+        with patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False):
+            from routers.approval_queue_router import ApproveBody, approve_candidate
+
+            await approve_candidate(row_id, ApproveBody(entry_price=2010.0))
+
+        # the (symbol, action, today) key is now claimed in the shared ledger
+        key = mod._dedup.make_key("MCL", "BUY", datetime.now(timezone.utc).date())
+        assert mod._dedup.already_submitted(key) is True
+    finally:
+        mod._safety_layer, mod._db_path, mod._dedup = original_sl, original_db, original_dedup
+
+
+@pytest.mark.asyncio
+async def test_approve_skips_when_cross_path_already_submitted(tmp_path: Path) -> None:
+    """If the bridge already submitted MCL BUY today, the queue refuses (no 2x fill)."""
+    from execution.submission_dedup import SubmissionDedup
+
+    db_path = _fresh_db(tmp_path)
+    row_id = _insert_via_sql(db_path, symbol="MCL", direction="LONG", confidence=0.75)
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    mock_safety.submit_paper_order = AsyncMock(
+        return_value={"approved": True, "order_id": "SHOULD-NOT-FIRE"}
+    )
+
+    import routers.approval_queue_router as mod
+
+    original_sl, original_db, original_dedup = mod._safety_layer, mod._db_path, mod._dedup
+    try:
+        mod._safety_layer = mock_safety
+        mod._db_path = db_path
+        shared = SubmissionDedup(Path(tmp_path) / "dedup.jsonl")
+        # the bridge already submitted MCL BUY today
+        shared.record(
+            shared.make_key("MCL", "BUY", datetime.now(timezone.utc).date()),
+            source="bridge",
+            native_id="MCL_x_rank1",
+        )
+        mod._dedup = shared
+
+        with patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False):
+            from routers.approval_queue_router import ApproveBody, approve_candidate
+
+            with pytest.raises(HTTPException) as exc_info:
+                await approve_candidate(row_id, ApproveBody(entry_price=2010.0))
+
+        assert exc_info.value.status_code == 409
+        assert "cross-path" in str(exc_info.value.detail).lower()
+        mock_safety.submit_paper_order.assert_not_awaited()
+        # candidate stays pending — nothing was submitted
+        candidate = _get_candidate(db_path, row_id)
+        assert candidate is not None and candidate["status"] == "pending"
+    finally:
+        mod._safety_layer, mod._db_path, mod._dedup = original_sl, original_db, original_dedup
 
 
 def test_reject_records_reason(tmp_path: Path) -> None:
