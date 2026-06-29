@@ -42,6 +42,8 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     GATE_PF_CI_LOWER,
     bootstrap_pf_ci_lower,
     classify_wfo_consistency,
+    per_window_adequacy_enforced,
+    per_window_sample_adequate,
 )
 from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 from backtest.cpcv import generate_cpcv_folds  # noqa: E402
@@ -342,7 +344,14 @@ def _compute_regime_conditional(oos_window_data: list) -> dict:
 
 
 def _compute_gate_v2(oos_results, n_grid, fixed_metrics, cost_metrics):
+    # DSR is computed from the actual per-trade return series (trade_level_dsr),
+    # NOT the mean of per-window Sharpes. The old mean-of-window-Sharpes path fed
+    # the Bailey/Lopez de Prado deflation an unstable Sharpe (1-2 trade windows
+    # yield giant Sharpes) with n_obs floored at 30, producing a Phi(z) that
+    # rounds to 1.0 and auto-passes. See _gate_v2_trade_metrics for the rationale.
     from backtest._gate_v2_trade_metrics import trade_level_dsr
+
+    CAPITAL = 50_000.0
 
     oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     oos_dds = [r.max_drawdown_pct for r in oos_results]
@@ -351,8 +360,6 @@ def _compute_gate_v2(oos_results, n_grid, fixed_metrics, cost_metrics):
     pf_ci_lower = bootstrap_pf_ci_lower(oos_pfs) if oos_pfs else 0.0
     p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
     mc_95th_dd = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
-    # DSR from the ACTUAL per-trade OOS return series, not the mean of per-window
-    # Sharpes (which deflated sparse windows' giant Sharpes to a fake ~1.0).
     dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid, initial_capital=CAPITAL)
 
     wfo_consistency = classify_wfo_consistency(oos_pfs)
@@ -375,9 +382,22 @@ def _compute_gate_v2(oos_results, n_grid, fixed_metrics, cost_metrics):
         and mc_95th_dd <= GATE_MC_DD_ALT
     )
 
+    # Per-window adequacy: median OOS trades/window. Recorded always; ENFORCED
+    # only when GATE_V2_ENFORCE_PER_WINDOW is set (shadow-default OFF -> no verdict
+    # change). Closes the necessary-not-sufficient gap where 30+ aggregate trades
+    # mask a degenerate per-window distribution (median 1-4 trades, PF inflated by
+    # single-trade windows -- e.g. MGC_trend_rank4).
+    per_window_trades = [r.total_trades for r in oos_results]
+    median_oos_trades_per_window = float(np.median(per_window_trades)) if per_window_trades else 0.0
+    per_window_block = per_window_adequacy_enforced() and not per_window_sample_adequate(
+        per_window_trades
+    )
+
     # Low-power guard.
     insufficient = (
-        len(oos_pfs) < MIN_OOS_WINDOWS_FOR_VERDICT or all_trades < MIN_TOTAL_OOS_TRADES_FOR_VERDICT
+        len(oos_pfs) < MIN_OOS_WINDOWS_FOR_VERDICT
+        or all_trades < MIN_TOTAL_OOS_TRADES_FOR_VERDICT
+        or per_window_block
     )
     if insufficient:
         verdict, via = "INSUFFICIENT_SAMPLE", None
@@ -406,6 +426,8 @@ def _compute_gate_v2(oos_results, n_grid, fixed_metrics, cost_metrics):
         "n_oos_windows": len(oos_results),
         "n_oos_windows_with_trades": len(oos_pfs),
         "total_oos_trades": all_trades,
+        "median_oos_trades_per_window": median_oos_trades_per_window,
+        "per_window_adequate": per_window_sample_adequate(per_window_trades),
     }
 
 

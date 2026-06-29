@@ -15,6 +15,7 @@ import pytest
 
 from analytics.permutation_test import (
     INSAMPLE_ALPHA,
+    bootstrap_metric_ci,
     permute_and_score,
     run_insample_mcpt,
     run_walkforward_mcpt,
@@ -285,3 +286,46 @@ def test_trade_shuffle_too_few_trades_fails_closed():
     assert res["n_trades"] == 1
     assert res["p_value"] == 1.0
     assert res["passes"] is False
+
+
+
+# -- bootstrap CI on the trade metric (complements the sign-flip p-value) --
+
+
+def test_bootstrap_ci_brackets_observed_and_orders():
+    pnls = [5.0, 7.0, 6.0, -2.0, 8.0, 4.0, -1.0, 6.0, 5.0, 7.0]
+    res = bootstrap_metric_ci(pnls, n_iters=2000, metric="mean", seed=0)
+    assert res["ci_lower"] <= res["real_score"] <= res["ci_upper"]
+    assert res["metric"] == "mean"
+    assert res["n_trades"] == 10
+
+
+def test_bootstrap_strong_edge_low_null_probability():
+    # Strongly positive mean -> bootstrap almost never lands at/below the no-edge value.
+    pnls = [5.0, 7.0, 6.0, 8.0, 4.0, 9.0, 6.0, 5.0, 7.0, 6.0]
+    res = bootstrap_metric_ci(pnls, n_iters=2000, metric="mean", seed=0)
+    assert res["p_null"] < 0.05
+    assert res["ci_lower"] > 0.0
+
+
+def test_bootstrap_profit_factor_handles_no_loss_resample():
+    # A resample with no losers makes PF = inf; nearest-rank percentile must keep the
+    # bound a real number (finite or a clean inf), never NaN.
+    pnls = [5.0, 7.0, 6.0, 8.0, 4.0, 9.0, -1.0, 6.0, 5.0, 7.0]
+    res = bootstrap_metric_ci(pnls, n_iters=2000, metric="profit_factor", seed=0)
+    assert not np.isnan(res["ci_lower"])
+    assert not np.isnan(res["ci_upper"])
+    assert res["ci_lower"] <= res["ci_upper"]
+
+
+def test_bootstrap_reproducible_with_seed():
+    pnls = [3.0, -1.0, 4.0, -2.0, 5.0, 1.0]
+    a = bootstrap_metric_ci(pnls, n_iters=800, metric="mean", seed=11)
+    b = bootstrap_metric_ci(pnls, n_iters=800, metric="mean", seed=11)
+    assert a == b
+
+
+def test_bootstrap_too_few_trades_fails_closed():
+    res = bootstrap_metric_ci([1.0], n_iters=100, metric="mean", seed=0)
+    assert res["n_trades"] == 1
+    assert res["p_null"] == 1.0

@@ -325,3 +325,78 @@ def permute_and_score(
         "passes": p_value < TRADE_SHUFFLE_ALPHA,
         "alpha": TRADE_SHUFFLE_ALPHA,
     }
+
+
+#: No-edge reference value per metric — the bootstrap reports the probability the metric
+#: lands at or below it. Return metrics break even at 0; profit factor breaks even at 1.
+_METRIC_BREAKEVEN: dict[str, float] = {
+    "mean": 0.0,
+    "total": 0.0,
+    "sharpe": 0.0,
+    "profit_factor": 1.0,
+}
+
+
+def bootstrap_metric_ci(
+    trades: Any,
+    n_iters: int = 2000,
+    metric: str = "mean",
+    seed: int = 0,
+    ci: float = 0.95,
+) -> dict[str, Any]:
+    """Bootstrap confidence interval on a realized trade metric.
+
+    The companion to :func:`permute_and_score`: where the sign-flip test gives a
+    significance p-value under a no-edge null, this resamples the trade list *with
+    replacement* to build the metric's sampling distribution, so the caller can see how
+    *wide* the estimate is — the dimension a single p-value hides, and the one that
+    matters most on the small trade counts JARVIS forward-tests on. ``p_null`` is the
+    bootstrap probability the metric is no better than its no-edge value
+    (:data:`_METRIC_BREAKEVEN`).
+
+    Profit factor is +inf for a no-loss resample; the CI bounds use nearest-rank
+    percentiles so a bound is always a real datum (finite or a clean inf), never NaN
+    (linear interpolation between two infs yields NaN).
+
+    With < 2 trades the interval is undefined and the function fails closed
+    (``p_null = 1.0``).
+    """
+    pnls = _extract_pnls(trades)
+    n = len(pnls)
+    breakeven = _METRIC_BREAKEVEN.get(metric)
+    if breakeven is None:
+        raise ValueError(f"unknown metric: {metric!r}")
+
+    if n < 2:
+        score = _trade_metric(pnls, metric) if n else 0.0
+        return {
+            "test": "trade_bootstrap_ci",
+            "metric": metric,
+            "real_score": round(float(score), 6),
+            "ci_lower": float(score),
+            "ci_upper": float(score),
+            "ci": ci,
+            "p_null": 1.0,
+            "n_iters": n_iters,
+            "n_trades": n,
+        }
+
+    real = _trade_metric(pnls, metric)
+    rng = np.random.default_rng(seed)
+    boot = np.array(
+        [_trade_metric(pnls[rng.integers(0, n, size=n)], metric) for _ in range(n_iters)],
+        dtype=float,
+    )
+    lo_pct = 100.0 * (1.0 - ci) / 2.0
+    hi_pct = 100.0 * (1.0 - (1.0 - ci) / 2.0)
+    return {
+        "test": "trade_bootstrap_ci",
+        "metric": metric,
+        "real_score": round(real, 6),
+        "ci_lower": float(np.percentile(boot, lo_pct, method="nearest")),
+        "ci_upper": float(np.percentile(boot, hi_pct, method="nearest")),
+        "ci": ci,
+        "p_null": round(float(np.mean(boot <= breakeven)), 4),
+        "n_iters": n_iters,
+        "n_trades": n,
+    }

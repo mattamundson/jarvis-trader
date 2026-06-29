@@ -15,7 +15,11 @@ if str(ENGINE_DIR) not in sys.path:
 
 from scripts.signal_confluence_audit import (  # noqa: E402
     ARMS,
+    DIAGNOSE_PARAMS,
+    _composite_funnel,
+    _entry_count,
     build_verdict,
+    format_diagnose,
     format_report,
     rank_arms,
 )
@@ -92,6 +96,43 @@ class TestBuildVerdict:
         v = build_verdict([_arm("trend", 1.6, 40)], _ic(0.3))
         assert any("DIAGNOSTIC" in c for c in v["caveats"])
         assert any("Multiple testing" in c for c in v["caveats"])
+
+    def test_screen_not_verdict_caveat_present(self):
+        # Audit must never read as a refutation; the demotion caveat is mandatory.
+        v = build_verdict([_arm("trend", 1.6, 40)], _ic(0.3))
+        assert any("SCREEN, NOT A VERDICT" in c for c in v["caveats"])
+        assert any("validate_strategy.py" in c for c in v["caveats"])
+        assert any("--diagnose" in c for c in v["caveats"])
+
+
+class TestDiagnose:
+    def test_diagnose_params_cover_all_arms(self):
+        # Every arm needs a representative param point for --diagnose.
+        assert set(DIAGNOSE_PARAMS) == set(ARMS)
+
+    def test_entry_count_handles_none_and_missing_column(self):
+        assert _entry_count(None) == 0
+
+        class _NoCol:
+            columns: list = []
+
+        assert _entry_count(_NoCol()) == 0
+
+    def test_composite_funnel_handles_none(self):
+        assert _composite_funnel(None) == {}
+
+    def test_format_diagnose_renders_counts_and_funnel(self):
+        rows = [
+            {"arm": "composite", "train_bars": 100, "test_bars": 80,
+             "train_entries": 21, "test_entries": 0,
+             "test_funnel": {"regime": {"VOLATILE": 80}, "adx_ge_25_pct": 0.0}},
+            {"arm": "trend", "train_bars": 100, "test_bars": 80,
+             "train_entries": 9, "test_entries": 10},
+        ]
+        out = format_diagnose(rows)
+        assert "ENTRY FUNNEL DIAGNOSTIC" in out
+        assert "composite" in out and "VOLATILE" in out
+        assert "not proof of no edge" in out
 
 
 class TestFormatReport:
