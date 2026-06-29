@@ -371,7 +371,7 @@ def mask_pre_fomc(idx: pd.DatetimeIndex, max_gap_days: int = 6) -> np.ndarray:
         return out
     ann = np.asarray(_FOMC_TS.values)
     pos = np.searchsorted(vals, ann, side="left") - 1
-    for p, d in zip(pos, ann):
+    for p, d in zip(pos, ann, strict=False):
         if p < 0:
             continue
         if (d - vals[p]) / np.timedelta64(1, "D") <= max_gap_days:
