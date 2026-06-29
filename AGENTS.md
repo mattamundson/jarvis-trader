@@ -60,6 +60,21 @@ runtime (`OLLAMA_HOST`, `OLLAMA_MODEL`). To validate the agent/LLM path without 
 - Note: a full `/pipeline/run` also needs market-data bars (IB Gateway or `POLYGON_API_KEY`);
   without them the pipeline short-circuits before the LLM stages regardless of provider.
 
+#### Vertex AI (Claude on Google Cloud) — preferred non-Anthropic-key path
+
+Runs the same Claude models via GCP (no Anthropic API key), using `AsyncAnthropicVertex`
++ google-auth ADC (`engine/llm/client.py:_build_vertex_client`). Both deps are installed.
+To activate (a ready, commented block is in `engine/.env`):
+1. Comment out `JARVIS_LLM_PROVIDER=ollama` (`use_vertex` requires provider != "ollama").
+2. Set `JARVIS_CLAUDE_USE_VERTEX=1`, `ANTHROPIC_VERTEX_PROJECT_ID`, `ANTHROPIC_VERTEX_REGION`
+   (e.g. `us-east5`).
+3. Provide GCP ADC: either `GOOGLE_APPLICATION_CREDENTIALS=<service-account.json path>` or
+   `gcloud auth application-default login`. The service account needs the **Vertex AI User**
+   role, and **Claude models must be enabled in Vertex Model Garden** for that project/region.
+4. Restart; `/health` should report `primary_provider: vertex`. Keep Ollama as a local
+   fallback until Vertex is confirmed (don't remove it before ADC works, or the LLM path
+   breaks with no provider).
+
 ### External service: master-api (:8030)
 
 The dashboard talks to a SEPARATE `master-api` service at `NEXT_PUBLIC_MASTER_API_URL`
