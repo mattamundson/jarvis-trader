@@ -31,7 +31,15 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from backtest._gate_v2_helpers import _find_latest_cache, bootstrap_pf_ci_lower
+from backtest._gate_v2_helpers import (
+    GATE_DSR,
+    GATE_MC_DD_CORE,
+    GATE_P_EDGE,
+    GATE_PF_CI_LOWER,
+    _find_latest_cache,
+    bootstrap_pf_ci_lower,
+)
+from backtest.live_promotion_gate import BETA_HARVEST_TAG, beta_harvest_gate_enforced
 from backtest.wfo_lifecycle import compute_gate_v2
 
 CACHE_DIR = Path("C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache")
@@ -494,7 +502,7 @@ def mask_pre_fomc(idx: pd.DatetimeIndex, max_gap_days: int = 6) -> np.ndarray:
         return out
     ann = np.asarray(_FOMC_TS.values)
     pos = np.searchsorted(vals, ann, side="left") - 1  # last bar strictly before each
-    for p, d in zip(pos, ann):
+    for p, d in zip(pos, ann, strict=False):  # equal length by construction
         if p < 0:
             continue
         if (d - vals[p]) / np.timedelta64(1, "D") <= max_gap_days:
@@ -561,8 +569,55 @@ def gate_v2_verdict(r: pd.Series, n_grid_combos: int, freq: str = "YE") -> dict:
     )
 
 
-def grade(returns: pd.Series, n_grid_combos: int = 1) -> dict:
-    """Grade a long-on-selected-days daily-return series on the honest bar."""
+# ── beta-harvest gate routing (R3b / Option A) ─────────────────────────────────
+# Relaxed CORE p_edge floor for a beta_harvest-tagged (long-beta calendar) effect, for
+# which CORE p_edge >= 0.95 ("positive in 95% of years") is structurally unmeetable.
+# Mirrors the approved session_anomaly gate_v2_beta_harvest variant (0.95 -> 0.60). Kept
+# LOCAL by design (Option A): the screener rescues its OWN verdict rather than swapping
+# in session_anomaly's gate implementation. A future unify (Option B) would dedupe this.
+BETA_HARVEST_P_EDGE_FLOOR = 0.60
+
+#: Effects whose verdict may route through the beta-harvest variant. PENDING Amo's final
+#: confirmation of the exact set; everything else stays canonical. Market-neutral and
+#: non-calendar callers (e.g. daily_relval_discovery) never pass the tag -> unaffected.
+BETA_HARVEST_EFFECTS: frozenset[str] = frozenset(
+    {"turn_of_month", "pre_holiday", "santa_claus", "pre_fomc"}
+)
+
+
+def _maybe_beta_harvest_rescue(gate: dict, *, stationary: bool, strategy_class: str) -> dict:
+    """Option A local rescue: upgrade a beta_harvest verdict that FAILs the canonical
+    CORE gate on p_edge ALONE to PASS-via-beta_harvest -- iff it is H1/H2-stationary and
+    ``BETA_HARVEST_GATE_ENFORCE`` is on. Untagged strategies, the disabled flag, and any
+    canonical PASS are returned UNCHANGED, so MES (never tagged) and the market-neutral RV
+    screen are unaffected. Can only ever turn a FAIL into a PASS on the single p_edge axis,
+    never the reverse (it tightens nothing)."""
+    if strategy_class != BETA_HARVEST_TAG or not beta_harvest_gate_enforced():
+        return gate
+    if gate.get("verdict") == "PASS":
+        return gate
+    pf_ci = float(gate.get("pf_ci_lower", 0.0))
+    p_edge = float(gate.get("p_edge", 0.0))
+    mc_dd = float(gate.get("mc_95th_dd", 1.0))
+    dsr = float(gate.get("dsr", 0.0))
+    core_non_pedge_ok = pf_ci >= GATE_PF_CI_LOWER and dsr >= GATE_DSR and mc_dd <= GATE_MC_DD_CORE
+    pedge_relaxed_ok = BETA_HARVEST_P_EDGE_FLOOR <= p_edge < GATE_P_EDGE
+    if core_non_pedge_ok and pedge_relaxed_ok and stationary:
+        return {
+            **gate,
+            "verdict": "PASS",
+            "passed_via": "beta_harvest",
+            "beta_harvest_rescued": True,
+        }
+    return gate
+
+
+def grade(returns: pd.Series, n_grid_combos: int = 1, *, strategy_class: str = "") -> dict:
+    """Grade a long-on-selected-days daily-return series on the honest bar.
+
+    ``strategy_class="beta_harvest"`` routes the verdict through the local beta-harvest
+    rescue (see ``_maybe_beta_harvest_rescue``); the default "" is the canonical gate.
+    """
     r = returns.dropna()
     n = len(r)
     pfs = _window_pfs(r)
@@ -576,6 +631,9 @@ def grade(returns: pd.Series, n_grid_combos: int = 1) -> dict:
     stationary = bool(h1_pf > 1.0 and h2_pf > 1.0)
     if n >= 8:
         gate = gate_v2_verdict(r, n_grid_combos)
+        gate = _maybe_beta_harvest_rescue(
+            gate, stationary=stationary, strategy_class=strategy_class
+        )
     else:
         gate = {"verdict": "INSUFFICIENT", "dsr": 0.0, "p_edge": p_edge, "pf_ci_lower": pf_ci}
     dsr = float(gate.get("dsr", 0.0))
@@ -606,7 +664,10 @@ def screen(symbol: str, df: pd.DataFrame, cost_bps: float = COST_BPS) -> list[di
     rows = []
     for name, fn in EFFECTS:
         r = effect_returns(closes, fn(idx), cost_bps)
-        rows.append({"symbol": symbol, "effect": name, **grade(r, n_grid_combos=n_eff)})
+        sc = BETA_HARVEST_TAG if name in BETA_HARVEST_EFFECTS else ""
+        rows.append(
+            {"symbol": symbol, "effect": name, **grade(r, n_grid_combos=n_eff, strategy_class=sc)}
+        )
     return rows
 
 
