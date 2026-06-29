@@ -67,7 +67,7 @@ def test_spread_returns_flat_when_never_diverges():
 
 def test_pairs_are_economically_labelled():
     assert len(drd.PAIRS) >= 6
-    for name, a, b, rationale in drd.PAIRS:
+    for _name, a, b, rationale in drd.PAIRS:
         assert a != b
         assert len(rationale) >= 20  # a real economic reason, not a placeholder
 
