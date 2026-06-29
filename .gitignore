@@ -335,6 +335,11 @@ engine/strategy_c/output/equity_curve.csv
 engine/data/*_paper_track/
 engine/data/wfo_live_match/
 
+# Systematic-execution runtime ledgers (bridge exec ledger + shared cross-path
+# submission dedup) -- regenerated at runtime, never source. The top-level
+# engine/data/*.jsonl rule does not recurse into this subdirectory.
+engine/data/systematic_exec/
+
 # Rotated paper-runner logs (e.g. paper_runner.log.1) -- *.log misses the .N suffix
 engine/backtest/results/*.log
 engine/backtest/results/*.log.*
