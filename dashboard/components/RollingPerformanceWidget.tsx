@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -9,7 +9,11 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { fetchEngine } from "@/lib/api";
+import {
+  dailyPnl,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -19,22 +23,16 @@ interface RollingWindow {
   days: number;
   trade_count: number;
   profit_factor: number | null;
-  sharpe_ratio: number | null;
+  /** null — not derivable from deduped daily P&L (no per-trade std) */
+  sharpe_ratio: null;
   win_rate: number | null;
   gross_pnl: number;
-  max_drawdown: number;
-  avg_pnl_per_trade: number | null;
-  best_trade: number | null;
-  worst_trade: number | null;
-  window_start: string;
-  window_end: string;
 }
 
 // ── Thresholds ───────────────────────────────────────────────────────────────
 
 const TARGETS = {
   profit_factor: { pass: 2.0, warn: 1.5 },
-  sharpe_ratio: { pass: 1.5, warn: 1.0 },
   win_rate_pct: { pass: 55, warn: 45 },
 };
 
@@ -49,16 +47,9 @@ function pfVariant(val: number | null): MetricBadgeVariant {
   return "bear";
 }
 
-function sharpeVariant(val: number | null): MetricBadgeVariant {
-  if (val === null) return "neutral";
-  if (val >= TARGETS.sharpe_ratio.pass) return "bull";
-  if (val >= TARGETS.sharpe_ratio.warn) return "warn";
-  return "bear";
-}
-
 function wrVariant(val: number | null): MetricBadgeVariant {
   if (val === null) return "neutral";
-  // win_rate may come as 0-1 or 0-100; normalise to percent
+  // win_rate may come as 0-1; normalise to percent
   const pct = val > 1 ? val : val * 100;
   if (pct >= TARGETS.win_rate_pct.pass) return "bull";
   if (pct >= TARGETS.win_rate_pct.warn) return "warn";
@@ -90,12 +81,56 @@ function fmtPnl(val: number): string {
   return `${sign}$${Math.abs(val).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+// ── Derivation from honest trades ──────────────────────────────────────────────
+// Build rolling windows from deduped dailyPnl data. Trades are keyed by their
+// exit date; "days" is a trailing-calendar-day window. We compute P&L and
+// trade counts from the daily series, and win/loss from individual trade pnl.
+
+function buildWindows(set: HonestTradeSet): RollingWindow[] {
+  const dayParams = [7, 14, 30];
+  const daily = dailyPnl(set.trades);
+  const now = Date.now();
+
+  return dayParams.map((d) => {
+    const cutoffMs = now - d * 24 * 60 * 60 * 1000;
+    // Trades whose exit_time falls within the window
+    const windowTrades = set.trades.filter((t) => {
+      if (!t.exit_time) return false;
+      return Date.parse(t.exit_time) >= cutoffMs;
+    });
+
+    // P&L from daily series that falls within the window
+    const windowDaily = daily.filter((dp) => {
+      return Date.parse(dp.date) >= cutoffMs;
+    });
+
+    const gross_pnl = windowDaily.reduce((s, dp) => s + dp.pnl, 0);
+    const trade_count = windowTrades.length;
+    const wins = windowTrades.filter((t) => t.pnl > 0).length;
+    const losses = windowTrades.filter((t) => t.pnl < 0).length;
+    const grossWin = windowTrades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+    const grossLoss = Math.abs(windowTrades.filter((t) => t.pnl < 0).reduce((s, t) => s + t.pnl, 0));
+    const profit_factor = grossLoss > 0 ? grossWin / grossLoss : null;
+    const win_rate = trade_count > 0 ? wins / trade_count : null;
+
+    return {
+      window: `${d}d`,
+      days: d,
+      trade_count,
+      profit_factor,
+      sharpe_ratio: null,
+      win_rate,
+      gross_pnl,
+    } satisfies RollingWindow;
+  });
+}
+
 // ── Loading skeleton ──────────────────────────────────────────────────────────
 
 function SkeletonRow() {
   return (
     <tr>
-      {Array.from({ length: 6 }).map((_, i) => (
+      {Array.from({ length: 5 }).map((_, i) => (
         <td key={i} className="px-3 py-3">
           <div className="h-4 rounded bg-muted/40 animate-pulse" style={{ width: i === 0 ? 40 : 80 }} />
         </td>
@@ -125,41 +160,9 @@ function MetricCell({ value, variant }: MetricCellProps) {
 // ── Main widget ───────────────────────────────────────────────────────────────
 
 export function RollingPerformanceWidget() {
-  const [windows, setWindows] = useState<RollingWindow[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchWindows = useCallback(async () => {
-    try {
-      const dayParams = [7, 14, 30];
-      const results = await Promise.all(
-        dayParams.map((d) =>
-          fetchEngine(`/analytics/performance/rolling?days=${d}`)
-            .then((r) => {
-              if (!r.ok) throw new Error(`HTTP ${r.status}`);
-              return r.json();
-            })
-            .then((data) => ({
-              ...data,
-              window: `${d}d`,
-              days: d,
-            }))
-        )
-      );
-      setWindows(results as RollingWindow[]);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load rolling performance");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchWindows();
-    const id = setInterval(fetchWindows, 5 * 60 * 1000); // refresh every 5 minutes
-    return () => clearInterval(id);
-  }, [fetchWindows]);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(5 * 60 * 1000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const windows = set ? buildWindows(set) : null;
 
   const hasData = windows && windows.some((w) => w.trade_count > 0);
 
@@ -167,7 +170,7 @@ export function RollingPerformanceWidget() {
     <Card>
       <CardHeader className={cn("flex flex-row items-center justify-between space-y-0 pb-2")}>
         <CardTitle>Rolling Performance Windows</CardTitle>
-        <Badge variant="neutral">Auto-refresh 5m</Badge>
+        <Badge variant="neutral">Deduped · Auto-refresh 5m</Badge>
       </CardHeader>
 
       <CardContent>
@@ -201,9 +204,6 @@ export function RollingPerformanceWidget() {
                     Profit Factor
                   </th>
                   <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Sharpe
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Win Rate
                   </th>
                   <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -216,7 +216,6 @@ export function RollingPerformanceWidget() {
                   ? Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)
                   : windows?.map((w, idx) => {
                       const pfV = pfVariant(w.profit_factor);
-                      const shV = sharpeVariant(w.sharpe_ratio);
                       const wrV = wrVariant(w.win_rate);
                       const pnlPositive = w.gross_pnl >= 0;
 
@@ -244,12 +243,6 @@ export function RollingPerformanceWidget() {
                             variant={w.trade_count === 0 ? "neutral" : pfV}
                           />
 
-                          {/* Sharpe */}
-                          <MetricCell
-                            value={w.sharpe_ratio === null ? "—" : fmtNum(w.sharpe_ratio)}
-                            variant={w.trade_count === 0 ? "neutral" : shV}
-                          />
-
                           {/* Win Rate */}
                           <MetricCell
                             value={fmtWinRate(w.win_rate)}
@@ -274,7 +267,7 @@ export function RollingPerformanceWidget() {
         )}
 
         <p className="text-xs text-muted-foreground mt-2">
-          Rolling windows vs validation targets (PF&ge;2.0, Sharpe&ge;1.5, WR&ge;55%)
+          Rolling windows vs validation targets (PF&ge;2.0, WR&ge;55%) &mdash; derived from deduped trade record. Sharpe omitted (requires per-trade std; see Sharpe widget).
         </p>
       </CardContent>
     </Card>

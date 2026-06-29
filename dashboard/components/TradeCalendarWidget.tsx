@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,21 +9,19 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import type { TradeRecord } from "@/lib/api";
-import { fetchEngine } from "@/lib/api";
-
+import {
+  dedupCaveat,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-interface TradesResponse {
-  trades: TradeRecord[];
-  count: number;
-}
 
 interface DayData {
   totalPnl: number;
   tradeCount: number;
-  trades: TradeRecord[];
+  trades: HonestTrade[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -31,7 +29,7 @@ interface DayData {
 function getCalendarDays(year: number, month: number): (Date | null)[] {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
-  const startDow = firstDay.getDay(); // 0=Sun
+  const startDow = firstDay.getDay();
   const days: (Date | null)[] = Array(startDow).fill(null);
   for (let d = 1; d <= lastDay.getDate(); d++) {
     days.push(new Date(year, month, d));
@@ -90,7 +88,6 @@ function DayCell({ date, dayData, isToday }: DayCellProps) {
       borderClass = "border-bear/40";
       textClass = "text-bear";
     } else {
-      // Has trades but exactly zero P&L
       bgClass = "bg-warn/20";
       borderClass = "border-warn/40";
       textClass = "text-warn";
@@ -111,14 +108,12 @@ function DayCell({ date, dayData, isToday }: DayCellProps) {
         {dayNum}
       </span>
 
-      {/* Trade count indicator */}
       {dayData && dayData.tradeCount > 0 && (
         <span className={`font-mono text-[9px] leading-tight ${textClass} opacity-80`}>
           {dayData.tradeCount}t
         </span>
       )}
 
-      {/* P&L (only if space and has trades) */}
       {dayData && dayData.tradeCount > 0 && (
         <span className={`font-mono text-[8px] leading-tight ${textClass} tabular-nums`}>
           {formatPnlShort(dayData.totalPnl)}
@@ -143,8 +138,8 @@ function DayCell({ date, dayData, isToday }: DayCellProps) {
           {dayData.trades.slice(0, 4).map((t) => (
             <div key={t.id} className="font-mono text-[9px] text-muted-foreground mt-0.5 flex justify-between">
               <span>{t.symbol}</span>
-              <span className={t.realized_pnl != null && t.realized_pnl >= 0 ? "text-bull" : "text-bear"}>
-                {t.realized_pnl != null ? formatPnl(t.realized_pnl) : "—"}
+              <span className={t.pnl >= 0 ? "text-bull" : "text-bear"}>
+                {formatPnl(t.pnl)}
               </span>
             </div>
           ))}
@@ -183,42 +178,18 @@ export function TradeCalendarWidget() {
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const [trades, setTrades] = useState<TradeRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError
+    ? loadError instanceof Error
+      ? loadError.message
+      : String(loadError)
+    : null;
 
-  // ── Fetch ────────────────────────────────────────────────────────────────────
+  // ── Build day map ─────────────────────────────────────────────────────────────
 
-  const fetchTrades = async () => {
-    try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?status=CLOSED&limit=500`
-      );
-      const rows: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
-      const closed = rows.filter(
-        (t: TradeRecord) => t.status === "CLOSED" && t.exit_time != null
-      );
-      setTrades(closed);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch trades");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 60_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // ── Build day map for viewed month ────────────────────────────────────────────
+  const trades: HonestTrade[] = set?.trades ?? [];
 
   const dayMap: Record<string, DayData> = {};
-
   for (const trade of trades) {
     if (!trade.exit_time) continue;
     const exitDate = new Date(trade.exit_time);
@@ -226,7 +197,7 @@ export function TradeCalendarWidget() {
     if (!dayMap[key]) {
       dayMap[key] = { totalPnl: 0, tradeCount: 0, trades: [] };
     }
-    dayMap[key].totalPnl += trade.realized_pnl ?? 0;
+    dayMap[key].totalPnl += trade.pnl;
     dayMap[key].tradeCount += 1;
     dayMap[key].trades.push(trade);
   }
@@ -480,6 +451,13 @@ export function TradeCalendarWidget() {
                 </div>
               </div>
             </div>
+
+            {/* Dedup caveat */}
+            {set && (
+              <p className="mt-2 text-[10px] font-mono text-muted-foreground/60 text-center">
+                {dedupCaveat(set)}
+              </p>
+            )}
           </>
         )}
       </CardContent>

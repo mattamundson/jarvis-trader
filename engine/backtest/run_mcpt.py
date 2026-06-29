@@ -39,7 +39,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from analytics.permutation_test import permute_and_score, run_insample_mcpt, validate_strategy
+from analytics.permutation_test import (
+    bootstrap_metric_ci,
+    permute_and_score,
+    run_insample_mcpt,
+    validate_strategy,
+)
 from backtest._gate_v2_helpers import _find_latest_cache
 
 _HERE = Path(__file__).resolve().parent
@@ -100,6 +105,101 @@ def _real_strategy_factory(symbol: str, capital: float = 10_000.0):
             res = _run_signals_and_backtest(
                 cfg, df.iloc[start - max(best_params[:2]) : end], *best_params
             )
+            gp_tot += float(getattr(res, "gross_profit", 0.0) or 0.0)
+            gl_tot += abs(float(getattr(res, "gross_loss", 0.0) or 0.0))
+            start = end
+        return _cap_pf(gp_tot / gl_tot if gl_tot > 0 else (gp_tot if gp_tot > 0 else 0.0))
+
+    return optimize_fn, walkforward_fn
+
+
+# ── real strategy (breakout via the production Backtester, --strategy breakout) ──
+
+#: Default breakout grid — deliberately MINIMAL. The point of the breakout critique is
+#: "establish the baseline edge first, add filters one at a time". A small grid also keeps
+#: the Deflated-Sharpe multiple-testing penalty honest: every extra combo inflates the
+#: maximum in-sample PF you would expect from noise alone. donchian_period × stop_atr_mult
+#: only (6 combos); the EMA-trend and ATR-expansion regime gates that generate_donchian_
+#: breakout_signals already supports are left OFF here and are a SEPARATE, later sweep —
+#: do not bolt them on without re-locking the spec and re-running MCPT.
+_BREAKOUT_PERIODS = (15, 20, 25)
+_BREAKOUT_STOPS = (1.5, 2.0)
+
+
+def _breakout_strategy_factory(symbol: str, capital: float = 10_000.0):
+    """Build (optimize_fn, walkforward_fn) backed by the REAL Backtester + breakout signals.
+
+    Mirrors ``_real_strategy_factory`` but swaps the SMA-trend signal for
+    ``generate_donchian_breakout_signals`` (close beyond the prior-N-bar Donchian channel,
+    ATR stop). This is the production cost-and-fill model: next-bar-open fills, adverse
+    slippage + half-spread, ATR position sizing — the same Backtester the gate-v2 harness
+    uses. Authoritative diagnostic, NOT a blocking gate. Lazy-imported so the proxy path
+    and tests need no pydantic/config.
+
+    Regime gates (EMA trend, ATR expansion) are intentionally disabled in the default grid
+    (vol_mult=0 too) so this measures the *bare* breakout edge before any filter is added.
+    """
+    from backtest.backtester import Backtester
+    from backtest.breakout_signals import generate_donchian_breakout_signals
+    from backtest.contract_specs import CONTRACT_SPECS
+
+    spec = CONTRACT_SPECS.get(symbol.upper())
+    if spec is None:
+        raise ValueError(
+            f"No contract spec for {symbol!r}. Breakout MCPT needs a known micro/futures "
+            f"symbol (one of {sorted(CONTRACT_SPECS)}). Nikkei has no feed/spec in this repo."
+        )
+    grid = [(p, s) for p in _BREAKOUT_PERIODS for s in _BREAKOUT_STOPS]
+
+    def _run(
+        df: pd.DataFrame,
+        period: int,
+        stop: float,
+        commission: float | None = None,
+        slippage: float | None = None,
+    ) -> object:
+        df_sig = generate_donchian_breakout_signals(
+            df,
+            donchian_period=period,
+            vol_ma_period=20,
+            vol_mult=0.0,  # volume filter OFF — baseline first
+            stop_atr_mult=stop,
+            ema_trend_period=0,  # regime gates OFF — separate locked sweep
+            atr_regime_mult=0.0,
+        )
+        bt = Backtester(
+            initial_capital=capital,
+            risk_per_trade=0.01,
+            max_daily_loss=0.02,
+            max_drawdown=0.05,
+            t1_exit_pct=0.50,
+            t2_exit_pct=0.30,
+            commission_per_contract=spec.commission if commission is None else commission,
+            slippage_ticks=spec.slippage_ticks if slippage is None else slippage,
+        )
+        return bt.run(df_sig, symbol=symbol.upper(), multiplier=spec.multiplier)
+
+    def optimize_fn(df: pd.DataFrame) -> tuple[tuple, float]:
+        best = None
+        for period, stop in grid:
+            pf = _cap_pf(_run(df, period, stop).profit_factor)
+            if best is None or pf > best[1]:
+                best = ((period, stop), pf)
+        return best
+
+    def walkforward_fn(df: pd.DataFrame, train_window: int, step: int = 250) -> float:
+        n = len(df)
+        gp_tot = gl_tot = 0.0
+        start = train_window
+        while start < n - 1:
+            train = df.iloc[start - train_window : start]
+            best_params, _ = optimize_fn(train)
+            end = min(start + step, n)
+            # Prepend exactly the indicator warm-up (Donchian period; ATR/vol_ma <= 20) so the
+            # first breakout fires AT `start`, not inside the prior fold — counting warm-up
+            # trades would double-count and leak in-sample PnL into the OOS profit factor.
+            warmup = max(best_params[0], 20)
+            res = _run(df.iloc[start - warmup : end], *best_params)
             gp_tot += float(getattr(res, "gross_profit", 0.0) or 0.0)
             gl_tot += abs(float(getattr(res, "gross_loss", 0.0) or 0.0))
             start = end
@@ -280,6 +380,9 @@ def cmd_prices(args: argparse.Namespace) -> int:
     if args.proxy:
         optimize_fn, walkforward_fn = _optimize_fn, _walkforward_fn
         engine = "SMA-trend proxy (indicative, not the gate-v2 authority)"
+    elif args.strategy == "breakout":
+        optimize_fn, walkforward_fn = _breakout_strategy_factory(args.symbol, capital=args.capital)
+        engine = "real Backtester + generate_donchian_breakout_signals (authoritative diagnostic)"
     else:
         optimize_fn, walkforward_fn = _real_strategy_factory(args.symbol, capital=args.capital)
         engine = "real Backtester + generate_sma_trend_signals (authoritative diagnostic)"
@@ -325,6 +428,14 @@ def cmd_trades(args: argparse.Namespace) -> int:
         f"trade-sign test ({res['metric']}): real_score={res['real_score']} "
         f"p={res['p_value']} pass(<{res['alpha']})={res['passes']} n_trades={res['n_trades']}"
     )
+    if args.bootstrap:
+        ci = bootstrap_metric_ci(pnls, n_iters=args.boot_iters, metric=args.metric)
+        lvl = int(round(ci["ci"] * 100))
+        print(
+            f"bootstrap CI ({ci['metric']}): real={ci['real_score']} "
+            f"{lvl}% CI=[{ci['ci_lower']:.4f}, {ci['ci_upper']:.4f}] "
+            f"P(<=no-edge)={ci['p_null']} n_trades={ci['n_trades']}"
+        )
     return 0
 
 
@@ -357,6 +468,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="use the simplified SMA-trend proxy instead of the real Backtester",
     )
+    pp.add_argument(
+        "--strategy",
+        default="trend",
+        choices=("trend", "breakout"),
+        help="production signal to validate: 'trend' (SMA) or 'breakout' "
+        "(Donchian). Ignored when --proxy is set. Default: trend",
+    )
     pp.set_defaults(func=cmd_prices)
 
     pt = sub.add_parser("trades", help="trade-sign permutation test on closed trades")
@@ -367,6 +485,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--metric", default="mean", choices=("mean", "total", "sharpe", "profit_factor")
     )
     pt.add_argument("--iters", type=int, default=500)
+    pt.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="also print a bootstrap CI on the metric (estimate width; key on small N)",
+    )
+    pt.add_argument("--boot-iters", type=int, default=2000, help="bootstrap resamples")
     pt.set_defaults(func=cmd_trades)
 
     ps = sub.add_parser("make-sample", help="write synthetic sample price CSV + trades DB")

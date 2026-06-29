@@ -87,7 +87,7 @@ Pass: [A | B | C | D] — see docs/strategic/08_ANALYSIS_PROTOCOL.md
 Constraints:
 - Paper mode; LIVE_TRADING_ENABLED = False; no safety_layer kill logic edits without Tier 3.
 - Canonical signals: engine/backtest/signals.py — Tier 3 for param changes.
-- Approved paper: MCL 1h, MNQ 1h per .claude/imports/validated-instruments.md.
+- Approved paper: MES 1h, MGC 1h per .claude/imports/validated-instruments.md (MCL/MNQ halted, M2K rejected).
 
 Deliverable: [one table / diagram / endpoint list — specify]
 

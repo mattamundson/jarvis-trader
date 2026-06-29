@@ -108,6 +108,43 @@ def test_cache_sourced_corruption_flagged(tmp_path, patch_cache):
     assert any("DIVERGE from the CSV" in f for f in res["findings"])
 
 
+def test_uniform_roll_basis_not_flagged_as_corruption(tmp_path, patch_cache):
+    """A uniform per-bar offset across ALL OHLC (futures roll / back-adjustment
+    basis) is honest divergence, not corruption -- it must NOT raise a finding.
+    This is the 2026-06 MES March-roll false alarm (~0.78% uniform same-sign shift
+    on 34 cache-sourced bars). Counted as a basis divergence, not a mismatch."""
+    patch_cache(_cache_rows())
+    db = _make_db(tmp_path)
+    for i, t in enumerate(TS):
+        # bar index 2: every OHLC shifted +0.8% (same sign, equal proportion)
+        m = 1.008 if i == 2 else 1.0
+        _insert(db, t, ((5300.0 + i) * m, (5310.0 + i) * m,
+                        (5295.0 + i) * m, (5305.0 + i) * m), "cache")
+    res = rb.reconcile_symbol(SYM, db_path=db)
+    assert res["cache_src_mismatches"] == 0
+    assert res["mismatches"] == 0
+    assert res["cache_basis_divergences"] == 1
+    assert not any("DIVERGE from the CSV" in f for f in res["findings"])
+
+
+def test_nonuniform_offset_still_corruption(tmp_path, patch_cache):
+    """A shift on only SOME OHLC (large spread) is NOT a roll basis -- it stays a
+    corruption finding even if same-signed and within the roll-gap cap."""
+    patch_cache(_cache_rows())
+    db = _make_db(tmp_path)
+    for i, t in enumerate(TS):
+        if i == 2:
+            # open/close +0.8%, high/low untouched -> spread huge -> not basis
+            _insert(db, t, ((5300.0 + i) * 1.008, 5310.0 + i,
+                            5295.0 + i, (5305.0 + i) * 1.008), "cache")
+        else:
+            _insert(db, t, (5300.0 + i, 5310.0 + i, 5295.0 + i, 5305.0 + i), "cache")
+    res = rb.reconcile_symbol(SYM, db_path=db)
+    assert res["cache_basis_divergences"] == 0
+    assert res["cache_src_mismatches"] == 1
+    assert any("DIVERGE from the CSV" in f for f in res["findings"])
+
+
 def test_live_gross_divergence_flagged_small_ignored(tmp_path, patch_cache):
     patch_cache(_cache_rows())
     db = _make_db(tmp_path)
