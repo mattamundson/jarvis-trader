@@ -31,13 +31,29 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from backtest.candidate_registry import live_candidate_for_symbol
+from execution.submission_dedup import SubmissionDedup
 
 _HERE = Path(__file__).resolve().parent
 # Runtime ledger lives under the gitignored engine/data/ tree.
 _DEFAULT_LEDGER = _HERE.parent / "data" / "systematic_exec" / "exec_ledger.jsonl"
+
+
+def _default_live_trading_check() -> bool:
+    """Return True if the system is in LIVE trading mode (fresh config read).
+
+    Fail-CLOSED: if the live state cannot be determined, return True so the
+    bridge refuses to submit -- an autonomous order path must never proceed when
+    it cannot confirm it is in paper mode.
+    """
+    try:
+        from config import settings
+
+        return bool(getattr(settings, "LIVE_TRADING_ENABLED", False))
+    except Exception:
+        return True
 
 
 class LiveSignalExecutor:
@@ -50,6 +66,8 @@ class LiveSignalExecutor:
         *,
         ledger_path: Optional[Path | str] = None,
         auto_execute: Optional[bool] = None,
+        dedup: Optional[SubmissionDedup] = None,
+        live_trading_check: Optional[Callable[[], bool]] = None,
     ) -> None:
         self._safety = safety_layer
         self._registry = registry  # None -> candidate_registry loads its default lock
@@ -57,6 +75,19 @@ class LiveSignalExecutor:
         if auto_execute is None:
             auto_execute = os.getenv("SYSTEMATIC_AUTO_EXECUTE", "0") == "1"
         self._auto = bool(auto_execute)
+        # Shared cross-path dedup ledger (auto-approve queue + this bridge).
+        self._dedup = dedup if dedup is not None else SubmissionDedup()
+        self._live_trading_check = live_trading_check or _default_live_trading_check
+
+    def _is_killed(self) -> bool:
+        """Kill-switch state via the SafetyLayer's public accessor; fail-closed."""
+        fn = getattr(self._safety, "is_killed", None)
+        if not callable(fn):
+            return False
+        try:
+            return bool(fn())
+        except Exception:
+            return True  # can't confirm safe -> refuse
 
     # -- ledger helpers ---------------------------------------------------
     @staticmethod
@@ -117,7 +148,23 @@ class LiveSignalExecutor:
                 ),
             }
 
-        # -- Gate 3: idempotency ------------------------------------------
+        # -- Gate 2.5: safety re-check (mirror queue _safety_guard_for_approve)
+        #    Refuse in live mode: this autonomous PAPER path must never route a
+        #    live order even when the system is in live mode. Then the kill switch.
+        if self._live_trading_check():
+            return {
+                "executed": False,
+                "gate": "live_mode_refused",
+                "reason": "LIVE_TRADING_ENABLED=True - systematic paper bridge refuses live mode",
+            }
+        if self._is_killed():
+            return {
+                "executed": False,
+                "gate": "kill_switch",
+                "reason": "kill switch active - bridge refuses to submit",
+            }
+
+        # -- Gate 3: bridge's own idempotency (guards this path's re-runs) -
         key = self._signal_key(candidate_id, symbol, signal_date)
         if key in self._seen_keys():
             return {
@@ -127,7 +174,6 @@ class LiveSignalExecutor:
                 "reason": "signal already attempted (idempotent skip)",
             }
 
-        # -- Submit through the SafetyLayer (paper only) ------------------
         side = str(signal.get("side", "")).lower()
         action = "BUY" if side in ("long", "buy") else "SELL"
         quantity = int(signal.get("quantity", 1) or 1)
@@ -135,6 +181,19 @@ class LiveSignalExecutor:
         stop = signal.get("stop")
         stop_price = float(stop) if stop is not None else None
 
+        # -- Gate 3.5: shared cross-path dedup (auto-approve queue + bridge)
+        #    First-wins on (symbol, action, trading_date): if the other path
+        #    already submitted this opportunity today, skip to avoid 2x exposure.
+        dkey = self._dedup.make_key(symbol, action, signal_date)
+        if self._dedup.already_submitted(dkey):
+            return {
+                "executed": False,
+                "gate": "cross_path_duplicate",
+                "key": dkey,
+                "reason": "another path already submitted this (symbol, action, date)",
+            }
+
+        # -- Submit through the SafetyLayer (paper only) ------------------
         result = await self._safety.submit_paper_order(
             symbol=symbol,
             action=action,
@@ -159,6 +218,16 @@ class LiveSignalExecutor:
             "reason": result.get("reason"),
         }
         self._append(record)
+
+        # Claim the shared cross-path slot only on an APPROVED submit, so a
+        # rejected order never blocks the other path from trying.
+        if bool(result.get("approved")):
+            self._dedup.record(
+                dkey,
+                source="bridge",
+                native_id=candidate_id,
+                extra={"order_id": result.get("order_id")},
+            )
 
         return {
             "executed": True,
