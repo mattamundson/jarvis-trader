@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -253,6 +254,27 @@ class IBKRDataConnector:
                     timeout=self._connect_timeout,
                 )
                 self._connected = True
+                # Delayed-data stopgap for the IB paper-account market-data
+                # subscription gap (Error 10168/354: futures data not subscribed).
+                # reqMarketDataType(3) asks IB for DELAYED data when no live
+                # subscription exists — IB still returns LIVE for any instrument
+                # that IS subscribed, so this never downgrades a good live feed.
+                # Without it the data leg errors and falls through to a months-old
+                # CSV cache (the 2026-06-29 frozen-MES-5300 auto-approve fills).
+                # 1=live 2=frozen 3=delayed 4=delayed-frozen; override via
+                # IB_MARKET_DATA_TYPE. Non-fatal: a failure here must never abort
+                # an otherwise-good connect.
+                try:
+                    _mdt = int(os.environ.get("IB_MARKET_DATA_TYPE", "3"))
+                    if _mdt in (1, 2, 3, 4):
+                        self._ib.reqMarketDataType(_mdt)
+                        logger.info(
+                            "IBKR market-data type set to %d "
+                            "(1=live 2=frozen 3=delayed 4=delayed-frozen)",
+                            _mdt,
+                        )
+                except Exception as _mdt_exc:
+                    logger.warning("reqMarketDataType failed (non-fatal): %s", _mdt_exc)
                 # Keep _connected honest on a mid-session drop so the per-call data
                 # waterfall fails over immediately and the watchdog detects the drop.
                 try:
