@@ -42,6 +42,34 @@ def _default_db_path() -> str:
     return os.path.join(engine_root, "data", "jarvis_trader.db")
 
 
+def build_default_llm_client(db_path: Optional[str] = None) -> Optional[object]:
+    """Construct a JarvisLLMClient for the *standalone* Corey extraction surfaces.
+
+    The MCP server, ``discord.cli --trigger-commentary``, and corey_compare build
+    CoreyCommentaryProcessor without an engine-supplied llm_client, so they fell
+    through to a raw httpx POST against api.anthropic.com. When that account's
+    credit is exhausted, every standalone extraction silently degrades to
+    data_quality='none' (2026-06-29 incident), while the live engine — which
+    routes through JarvisLLMClient's Vertex->Gemini->OpenAI failover chain — stays
+    healthy. Passing this client gives the standalone surfaces the same failover.
+
+    The cost ledger is anchored next to the commentary DB (engine/data/
+    llm_costs.db) so it isn't scattered by the caller's cwd. Returns None — never
+    raises — if the client can't be built, so callers transparently fall back to
+    the existing direct-POST path.
+    """
+    try:
+        # Local import: avoid a heavy import at module load and any import cycle.
+        from llm.client import JarvisLLMClient  # noqa: PLC0415
+
+        anchor = db_path or _default_db_path()
+        cost_db = os.path.join(os.path.dirname(anchor), "llm_costs.db")
+        return JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""), db_path=cost_db)
+    except Exception as e:  # pragma: no cover - defensive; degrade to direct POST
+        logger.warning("[CoreyProcessor] build_default_llm_client unavailable: %s", e)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Cache table DDL
 # ---------------------------------------------------------------------------
@@ -701,6 +729,70 @@ def get_futures_sentiment_staleness(db_path: Optional[str] = None) -> dict:
     result["latest_timestamp"] = latest
     result["age_days"] = age_days
     result["quality"] = "fresh" if age_days <= threshold else "stale"
+    return result
+
+
+def get_bias_extraction_health(db_path: Optional[str] = None) -> dict:
+    """Detect when Corey *structured-bias* LLM extraction has stalled while raw
+    commentary keeps flowing.
+
+    ``get_futures_sentiment_staleness`` covers INGESTION freshness; it cannot see
+    an LLM-extraction outage. On 2026-06-29 the direct-Anthropic account's credit
+    was exhausted: commentary ingested fine, but every structured session_bias
+    degraded to data_quality='none' for two days, undetected by /health. This
+    compares the latest market-updates commentary date against the latest date
+    with a fresh/stale cached bias; if extraction has fallen ``lag_threshold``+
+    days behind ingestion (or never produced bias for existing commentary), it is
+    'degraded'.
+
+    Cache-only — makes NO LLM call (safe for a hot health endpoint). Read-only +
+    resilient: returns quality='unknown' (never raises) if a table is absent/empty.
+    """
+    path = db_path or _default_db_path()
+    lag_threshold = 2
+    result = {
+        "extraction_quality": "unknown",
+        "latest_commentary_date": None,
+        "latest_bias_date": None,
+        "lag_days": None,
+        "lag_threshold_days": lag_threshold,
+    }
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+            crow = conn.execute(
+                "SELECT MAX(DATE(timestamp)) FROM discord_corey_commentary "
+                "WHERE channel = 'market-updates'"
+            ).fetchone()
+            brow = conn.execute(
+                "SELECT MAX(date) FROM corey_session_bias "
+                "WHERE data_quality IN ('fresh','stale')"
+            ).fetchone()
+    except Exception as exc:  # missing table / unreadable DB
+        logger.debug("get_bias_extraction_health: %s", exc)
+        return result
+
+    latest_commentary = crow[0] if crow else None
+    latest_bias = brow[0] if brow else None
+    if not latest_commentary:
+        return result  # no commentary at all -> unknown
+
+    result["latest_commentary_date"] = latest_commentary
+    result["latest_bias_date"] = latest_bias
+
+    cdate = _parse_date(latest_commentary)
+    if cdate is None:
+        return result
+    if not latest_bias:
+        # Commentary exists but no structured bias has ever been cached.
+        result["extraction_quality"] = "degraded"
+        return result
+    bdate = _parse_date(latest_bias)
+    if bdate is None:
+        return result
+
+    lag = (cdate - bdate).days
+    result["lag_days"] = lag
+    result["extraction_quality"] = "degraded" if lag >= lag_threshold else "ok"
     return result
 
 
