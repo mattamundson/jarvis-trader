@@ -92,6 +92,28 @@ def test_disabled_by_default_submits_nothing():
     print("[PASS] master switch off -> submits nothing")
 
 
+def test_kill_switch_property_blocks_submission():
+    """Regression (safety review D1): ``SafetyLayer.is_killed`` is a @property,
+    NOT a method. The previous ``_is_killed`` did ``callable(getattr(...))`` which
+    is False for a property's bool value, so the kill check was inert. A MagicMock
+    (callable) masked it -- so here we use a REAL property accessor and assert the
+    bridge refuses to submit when the kill switch is active."""
+
+    class _KilledSafety:
+        @property
+        def is_killed(self) -> bool:
+            return True
+
+        async def submit_paper_order(self, *a, **k):  # pragma: no cover - must not run
+            raise AssertionError("submit_paper_order must not be called when killed")
+
+    with tempfile.TemporaryDirectory() as d:
+        ex = _make(_KilledSafety(), d)
+        out = asyncio.run(ex.execute_signal(_signal(), "MES_vwap_rank1"))
+    assert out["executed"] is False and out["gate"] == "kill_switch", out
+    print("[PASS] kill switch (real @property) -> bridge refuses, no submit")
+
+
 def test_blocks_non_deployed_candidate():
     safety = _mock_safety()
     with tempfile.TemporaryDirectory() as d:
