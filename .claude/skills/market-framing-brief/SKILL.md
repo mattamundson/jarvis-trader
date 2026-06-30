@@ -1,6 +1,6 @@
 ---
 name: market-framing-brief
-description: Generate a Corey-style Auction Market Theory morning framing brief for ES + NQ (and the MES system overlay) for the next trading session, grounded in live web data. Use when the user says "framing for tomorrow", "morning brief for ES/NQ", "what's the setup for tomorrow", "create a market framing", "structural levels for next session", "do a Corey-style brief", "ES/NQ levels and scenarios", or "what should I watch at the open". Produces a fixed-structure brief: Overview, AMT cues, Game Theory, Structural Levels, Why-levels-matter, Scenario Map, Final Thoughts + System Overlay.
+description: Generate a Corey-style Auction Market Theory morning framing brief for ES + NQ (and the MES system overlay) for the next trading session. Levels come from the engine IB feed first (/prices/snapshot, /levels/{symbol}), with web quotes only as a labeled-low-confidence fallback. Use when the user says "framing for tomorrow", "morning brief for ES/NQ", "what's the setup for tomorrow", "create a market framing", "structural levels for next session", "do a Corey-style brief", "ES/NQ levels and scenarios", or "what should I watch at the open". Produces a fixed-structure brief: Overview, AMT cues, Game Theory, Structural Levels, Why-levels-matter, Scenario Map, Final Thoughts + System Overlay.
 ---
 
 # When to use
@@ -28,12 +28,44 @@ The single biggest failure mode is planning "tomorrow" off stale data because of
 
 State this explicitly at the top of the brief. Do not skip it. Prior incident (this skill's origin): a brief was built treating Friday's close as current when Monday's session had already closed +1.2% — the entire bias was stale.
 
-## Step 1 — Pull FUTURES levels first, directly (WebSearch / WebFetch)
+## Step 1 — Get the levels: ENGINE IB FEED FIRST, web only as fallback
 
 The single biggest accuracy failure (see Failure Modes) is anchoring a futures
-brief on cash. **The brief is about ES/NQ futures — pull futures levels
-directly and make them the anchor. Cash and MAs are secondary context, never
-the level anchor.** Fetch, and cite, in this order:
+brief on cash, or on flaky web aggregators that conflate dates. **The engine's
+IB feed is the source of truth for levels — try it first, every time.** Web
+quotes are the fallback, and a labeled-low-confidence one.
+
+### 1a — Engine IB feed (primary). Try this before any web search.
+
+```bash
+# Reachable? (health is unauthenticated)
+curl -s http://localhost:8010/health | head -c 200
+
+# Live price + prior close + change% (MES≈ES, MNQ≈NQ — same index points)
+curl -s -H "X-API-Key: $API_KEY" \
+  "http://localhost:8010/prices/snapshot?symbols=MES,MNQ"
+
+# Structural level ladder (HiddenPivots A-B-C-D swing + fib levels) — these ARE
+# the pivots/triggers, computed from real bars. Pull 1h for the session and 1d
+# for the regime frame.
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/levels/MES?timeframe=1h"
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/levels/MNQ?timeframe=1h"
+
+# Session OHLC / overnight range if you need the Globex rails explicitly
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/analyze/bars/MES?timeframe=1h"
+```
+
+`$API_KEY` = current value in `engine/.env` (rotates — read at use time, never
+hardcode). If the engine returns levels, **use them as the anchor and label the
+brief "Level confidence: HIGH (engine IB feed)".** The HP `level_ladder` and
+`swing_structure` (a/b/c/d prices) map directly onto the Structural Levels
+section — no basis math, no web quote.
+
+### 1b — Web fallback (only if the engine is unreachable, e.g. cloud session)
+
+Say explicitly that the engine was unreachable and **label the brief "Level
+confidence: LOW".** Then pull native FUTURES levels — never cash + a guessed
+basis. Fetch, and cite, in this order:
 
 1. **Front-month ES + NQ futures, native levels** — current/overnight price,
    the **overnight Globex session high and low** (the pre-open reference rails),
@@ -80,9 +112,14 @@ move has happened and is being framed forward). They are different products: a
 post-open note can cite precise live levels a pre-open forecast cannot. Do not
 compare two briefs, or grade one, without matching their type.
 
-## Step 3 — Optional system data (only if engine reachable)
+## Step 3 — System overlay numbers (engine)
 
-If `curl -s http://localhost:8010/health` returns ok, you MAY pull the live MES levels / hourly ATR for an exact (not approximate) stop. If the engine is unreachable (e.g. cloud session), say so and mark the stop as approximate. Never block the brief on the engine.
+Levels already came from the engine in Step 1a when it was reachable. Here, pull
+the remaining MES sizing inputs for the overlay: the **hourly ATR** (for the
+exact 2.0×ATR stop distance rather than an approximate one) and the live
+kill-switch / daily-P&L state so the sizing respects the −2% halt. If the engine
+is unreachable, mark the stop "approximate" and say the halt state is unknown.
+Never block the brief on the engine.
 
 ## Step 4 — Write the brief (use the template below verbatim in structure)
 
@@ -90,6 +127,7 @@ If `curl -s http://localhost:8010/health` returns ok, you MAY pull the live MES 
 
 ```
 📢 **Morning Framing — <target weekday>, <date>**
+**Level confidence:** <HIGH (engine IB feed) | LOW (web fallback — engine unreachable)>
 **Reference Pivots (<last close / overnight>):** $ES ~<level> | $NQ ~<level>
 
 🧭 **Market Overview (Weekly Structure Context)**
@@ -133,7 +171,7 @@ Scenario 3 — <lower prob>: triggers + what catalyst it needs
 
 > "<one-line memorable thesis>"
 
-**Caveats:** (1) artifact type = <pre-open forecast | at/post-open reaction>. (2) levels are native futures from <source(s)>; web quotes are delayed — IB feed is truth. (3) <econ release / holiday note>.
+**Caveats:** (1) artifact type = <pre-open forecast | at/post-open reaction>. (2) level source = <engine IB feed | web fallback>; if web, levels are delayed and date-conflation-prone — say so. (3) <econ release / holiday note>.
 
 Sources: <markdown links to every source used>
 ```
@@ -148,7 +186,8 @@ Sources: <markdown links to every source used>
 
 # Hard rules
 
-- **Anchor on futures, not cash.** Levels come from native ES/NQ futures (Step 1). Never anchor on a cash index or cash+basis. This is the #1 historical failure.
+- **Engine IB feed first; web is a labeled-low-confidence fallback.** Try `/prices/snapshot` + `/levels/{symbol}` before any web search (Step 1a). State the level source and confidence at the top of every brief.
+- **Anchor on futures, not cash.** On the web-fallback path, levels come from native ES/NQ futures, never a cash index or cash+basis. This is the #1 historical failure.
 - **Never fabricate a level — for any instrument.** Every price comes from a fetched futures source or the engine. If you can't fetch it, say "not retrieved" — do not invent, and do not bridge from cash with an assumed basis.
 - **Verify the prior session's direction before writing context.** Don't let an aggregator's old selloff/rally story set the setup. State prior session date + direction explicitly.
 - **Always fix the clock (Step 0) before pulling data.** A stale-session brief is worse than no brief.
@@ -167,6 +206,7 @@ These come from real misses building this skill's briefs. Each maps to a rule ab
 3. **Stale-week contamination.** Searches surfaced early-month −4% selloff stories and they colored a "momentum-down" frame for a week that had actually rallied. Fix: verify prior-session direction + date explicitly (Step 1.2).
 4. **False comfort from rigor.** A five-source, look-ahead-disciplined, uncertainty-flagged brief was *less* accurate than a confident single-feed note, because the inputs were wrong. Fix: process hygiene ≠ accuracy; cross-check levels.
 5. **Defending instead of reconciling.** When a third-party note's levels didn't match, the first instinct was "they must be a different session" — wrong. Fix: when levels diverge, check your own against the tape first.
+6. **Web aggregators are not trustworthy for levels — demonstrated twice.** Search summaries reported the *same* close (S&P 7,357.49) for both 6/24 and 6/25, and futures history pages 403'd. A brief built on that is untradeable. Fix: engine IB feed is primary (Step 1a); when only web is available, label confidence LOW and refuse to publish precise levels you can't two-source-confirm — an honest hole beats a confident wrong number.
 
 # Example headline (for shape only)
 
