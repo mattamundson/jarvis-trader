@@ -248,7 +248,7 @@ jobs:
   dashboard-build:
     name: Dashboard Build (Next.js)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -271,6 +271,14 @@ jobs:
         working-directory: dashboard
         env:
           NODE_ENV: production
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+        working-directory: dashboard
+
+      - name: Golden-path e2e (overview must not white-screen on degraded data)
+        run: pnpm exec playwright test
+        working-directory: dashboard
 
       - name: No bare await fetch in dashboard app/hooks
         run: |
