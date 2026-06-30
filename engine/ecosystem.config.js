@@ -298,6 +298,32 @@ module.exports = {
       exec_mode: "fork",
     },
 
+    // ── Vault: Wikilink Lint Pass ─────────────────────────────────────────────
+    // 06:30 CT — structural integrity scan (no LLM): finds broken [[wikilinks]]
+    // and orphan notes, writes 00-Inbox/lint-YYYY-MM-DD.md. Inert unless
+    // ENABLE_VAULT_LINT=1.
+    {
+      name: "jarvis-vault-lint",
+      script: PYTHON,
+      args: "scripts/vault_lint.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "30 6 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-lint-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-lint-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
     // ── Vault: Thesis Contradiction Check (#5) ────────────────────────────────
     // 07:00 CT — Claude scans 02-Theses against the last 30 days of 01-Sources
     // for conflict only, writes 00-Inbox/contradictions-YYYY-MM-DD.md. Inert
