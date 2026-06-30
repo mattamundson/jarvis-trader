@@ -147,6 +147,7 @@ from routers.polymarket_router import router as polymarket_router
 from api.operations_dashboard import router as operations_dashboard_router
 from routers.attribution_router import router as attribution_router
 from routers.vault_router import router as vault_router
+from routers.pnl_truth_router import router as pnl_truth_router
 from routers.ib_scanner_router import router as ib_scanner_router
 from routers.macro_router import router as macro_router, inject_dependencies as inject_macro_deps
 from routers.analysis_router import (
@@ -2954,6 +2955,7 @@ app.include_router(market_router)
 app.include_router(analytics_router)
 app.include_router(attribution_router)
 app.include_router(vault_router)
+app.include_router(pnl_truth_router)
 app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)
