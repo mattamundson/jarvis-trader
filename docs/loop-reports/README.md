@@ -11,3 +11,6 @@ Two report kinds:
 
 `.heartbeat` is a local liveness signal (watched by scripts/loops/heartbeat-check.ps1)
 and is gitignored. This README is tracked.
+
+See `_example-overnight-report.md` for a worked reference of the overnight report
+format (a read-only dry run showing the engine-down DEGRADED path).
