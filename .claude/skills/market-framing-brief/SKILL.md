@@ -28,20 +28,57 @@ The single biggest failure mode is planning "tomorrow" off stale data because of
 
 State this explicitly at the top of the brief. Do not skip it. Prior incident (this skill's origin): a brief was built treating Friday's close as current when Monday's session had already closed +1.2% — the entire bias was stale.
 
-## Step 1 — Pull live data (WebSearch / WebFetch)
+## Step 1 — Pull FUTURES levels first, directly (WebSearch / WebFetch)
 
-Fetch, and cite, each of these:
+The single biggest accuracy failure (see Failure Modes) is anchoring a futures
+brief on cash. **The brief is about ES/NQ futures — pull futures levels
+directly and make them the anchor. Cash and MAs are secondary context, never
+the level anchor.** Fetch, and cite, in this order:
 
-1. **Last completed session result** — % change and close for S&P 500 and Nasdaq, plus the day's driver/catalyst (search `"stock market today <weekday> <date>"`).
-2. **Current / overnight ES + NQ** front-month futures level (Sept = `ESU26`/`NQU26` mid-2026; roll at quarterly expiry, 3rd Friday).
-3. **Moving averages**: 50-day and 200-day on the S&P 500 (cash). These are the regime lines.
-4. **VIX** level (regime context: <20 calm/orderly, 20–28 elevated, >28 stress).
-5. **Recent range**: multi-week high and low (the magnets).
-6. **Econ calendar for the target session** — any release in the 07:30–10:00 CT window governs the open. Also flag month/quarter-end and holiday-shortened weeks (thin liquidity → amplified whipsaw).
+1. **Front-month ES + NQ futures, native levels** — current/overnight price,
+   the **overnight Globex session high and low** (the pre-open reference rails),
+   and the prior session's futures range. Sept = `ESU26`/`NQU26` mid-2026; roll
+   at quarterly expiry, 3rd Friday. These futures levels ARE the pivots/triggers
+   in the brief. Pull them from a futures source (Barchart/CME/TradingView
+   futures pages), not by adding a guessed basis to a cash index.
+2. **Immediately-prior session — date, direction, magnitude.** State it
+   explicitly: "prior session = <weekday date>, <up/down X%>, driver <…>."
+   This defuses the aggregator habit of surfacing OLD selloff/rally stories
+   (e.g. an early-month −4% day) as if they were the current week. If you can't
+   confirm the prior session's *direction*, you do not yet know the setup — keep
+   searching before writing context.
+3. **Last completed session result** — % change/close for S&P 500 + Nasdaq and
+   the day's catalyst (search `"stock market today <weekday> <date>"`).
+4. **Moving averages**: 50-day and 200-day on S&P 500 (cash) — regime context
+   only, and remember they are CASH levels (convert to the futures frame before
+   citing any of them as a level).
+5. **VIX** (regime: <20 calm, 20–28 elevated, >28 stress).
+6. **Recent range**: multi-week futures high and low (the magnets).
+7. **Econ calendar for the target session** — any release 07:30–10:00 CT governs
+   the open. Flag month/quarter-end and holiday-shortened weeks (thin liquidity).
 
-## Step 2 — Reconcile cash vs futures basis
+## Step 2 — Level integrity (cross-check before publishing any level)
 
-MA levels come from **cash** (e.g. SPX 50-day). Corey's and the tradeable levels are **futures**, which trade at a premium (cost of carry − dividends; tens of points on ES at mid-2026 rates). When mapping a cash MA onto a futures level, add the prevailing basis — do not present a cash MA as a futures level. State the approximation.
+- **Every tradeable level (pivot, trigger, support, resistance) must come from a
+  futures source.** Never present a cash level — or cash + an assumed basis — as
+  a futures level. A basis-bridged number is a guess, not a level.
+- **Two-source cross-check.** Confirm each anchor level against a second source
+  before publishing. If two sources disagree by more than a few points, say so
+  and give the range, not a false-precise single tick.
+- **No fabricated bridge numbers — for ANY instrument.** If you cannot pull a
+  real futures level for ES *or* NQ, mark it "not retrieved" and do not invent a
+  derived one. (Origin incident: NQ was correctly marked "not retrieved" while ES
+  got an invented "cash + ~40 basis" number that landed ~40–90 pts below the real
+  futures tape — the whole map was wrong. Honesty-flagging one instrument does not
+  license guessing the other.)
+
+## Step 2b — Declare the artifact type
+
+State at the top whether this is a **pre-open forecast** (no tape yet — levels
+come from the overnight session) or an **at/post-open reaction** (the opening
+move has happened and is being framed forward). They are different products: a
+post-open note can cite precise live levels a pre-open forecast cannot. Do not
+compare two briefs, or grade one, without matching their type.
 
 ## Step 3 — Optional system data (only if engine reachable)
 
@@ -96,7 +133,7 @@ Scenario 3 — <lower prob>: triggers + what catalyst it needs
 
 > "<one-line memorable thesis>"
 
-**Caveats:** (1) web quotes are aggregated + delayed with a futures/cash basis — levels solid, exact tick approximate, IB feed is truth. (2) <econ release / holiday note>.
+**Caveats:** (1) artifact type = <pre-open forecast | at/post-open reaction>. (2) levels are native futures from <source(s)>; web quotes are delayed — IB feed is truth. (3) <econ release / holiday note>.
 
 Sources: <markdown links to every source used>
 ```
@@ -111,12 +148,25 @@ Sources: <markdown links to every source used>
 
 # Hard rules
 
-- **Never fabricate a level.** Every price comes from a fetched source or the engine. If you can't fetch it, say "not retrieved" — do not invent.
+- **Anchor on futures, not cash.** Levels come from native ES/NQ futures (Step 1). Never anchor on a cash index or cash+basis. This is the #1 historical failure.
+- **Never fabricate a level — for any instrument.** Every price comes from a fetched futures source or the engine. If you can't fetch it, say "not retrieved" — do not invent, and do not bridge from cash with an assumed basis.
+- **Verify the prior session's direction before writing context.** Don't let an aggregator's old selloff/rally story set the setup. State prior session date + direction explicitly.
 - **Always fix the clock (Step 0) before pulling data.** A stale-session brief is worse than no brief.
+- **Declare artifact type.** Pre-open forecast vs at/post-open reaction — state it; don't grade across types.
 - **Never recommend live trading.** Paper only; `REQUIRE_HUMAN_APPROVAL=True`; the brief is a plan to approve, not an order.
-- **Mark data quality.** Web quotes = approximate tick + basis; IB feed = truth. Say which you used.
+- **Process hygiene ≠ accuracy.** Sources, look-ahead discipline, and uncertainty flags do not make a wrong level right. Verify the inputs, not just the method.
 - **Size to the daily halt.** Default 1 micro on the trigger — a 2.0×ATR stop on 2 micros can trip the −2% daily halt by itself (~$200 on a ~$10K account).
-- **Grade third-party notes honestly.** If a note is supplied, split the verdict: levels vs directional bias vs process. Praise good rails; call a wrong directional call wrong.
+- **Grade third-party notes honestly.** If a note is supplied, split the verdict: levels vs directional bias vs process. Praise good rails; call a wrong directional call wrong — and check your own levels against the same tape before judging theirs.
+
+# Failure modes (learned — do not repeat)
+
+These come from real misses building this skill's briefs. Each maps to a rule above.
+
+1. **Cash-anchoring (worst).** A Friday brief anchored on S&P cash (7,357) + a guessed +40 basis put ES at "~7,400" with resistance at 7,420; the real futures tape was 7,437–7,489 with the pivot at 7,489. Levels were ~40–90 pts too low and the directional frame ("at the 50-day, post-selloff") was inverted from the actual "post-rally retrace." Fix: Step 1 pulls futures directly.
+2. **Invented bridge number.** Same brief marked NQ "not retrieved" (correct) but fabricated the ES level from cash. Fix: the no-fabrication rule applies to every instrument.
+3. **Stale-week contamination.** Searches surfaced early-month −4% selloff stories and they colored a "momentum-down" frame for a week that had actually rallied. Fix: verify prior-session direction + date explicitly (Step 1.2).
+4. **False comfort from rigor.** A five-source, look-ahead-disciplined, uncertainty-flagged brief was *less* accurate than a confident single-feed note, because the inputs were wrong. Fix: process hygiene ≠ accuracy; cross-check levels.
+5. **Defending instead of reconciling.** When a third-party note's levels didn't match, the first instinct was "they must be a different session" — wrong. Fix: when levels diverge, check your own against the tape first.
 
 # Example headline (for shape only)
 
