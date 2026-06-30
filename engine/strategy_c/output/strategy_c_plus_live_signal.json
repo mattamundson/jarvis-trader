@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-06-17T04:04:33.262476",
+  "generated_at": "2026-06-26T04:24:08.727411",
   "strategy": "Strategy_C_Plus",
-  "effective_date": "2026-06-17",
+  "effective_date": "2026-06-26",
   "execution_note": "T+1 lag: execute Monday open after Friday signal",
   "holdings": {
-    "XLK": 0.1787,
-    "MTUM": 0.1787,
-    "SHY": 0.6425
+    "XLK": 0.1882,
+    "MTUM": 0.1882,
+    "SHY": 0.6236
   },
-  "combined_scale": 0.3575,
-  "pre_mtf_scale": 0.3108,
+  "combined_scale": 0.3764,
+  "pre_mtf_scale": 0.3273,
   "layers": {
     "momentum_signal": {
       "raw_holdings": {
@@ -20,35 +20,35 @@
       "absolute_mom_pass": true
     },
     "vol_targeting": {
-      "scale": 0.2826,
-      "realized_vol_pct": 24.77,
+      "scale": 0.2975,
+      "realized_vol_pct": 23.53,
       "vol_target_pct": 7.0,
       "vol_regime": "ELEVATED"
     },
     "vix_composite": {
-      "vix": 16.41,
+      "vix": 18.89,
       "vix_regime": "NORMAL",
-      "composite_score": 0.6696,
+      "composite_score": 0.6333,
       "position_multiplier": 1.0,
       "level_score": 0.75,
-      "mom_score": 0.6782,
+      "mom_score": 0.5113,
       "ma_score": 1.0,
-      "fear_score": 0.0,
-      "date": "2026-06-19"
+      "fear_score": 0.0361,
+      "date": "2026-06-26"
     },
     "macro_filter": {
       "yield_curve_adj": 0.1,
       "cot_adj": 0.0,
       "fed_cycle_adj": 0.0,
       "yield_curve": 0.699,
-      "cot_es": null,
-      "cot_nq": null,
+      "cot_es": "NEUTRAL",
+      "cot_nq": "NEUTRAL",
       "fed_funds": 4.33,
       "source": "live",
-      "cot_es_net": null,
-      "cot_nq_net": null,
-      "cot_es_adj": null,
-      "cot_nq_adj": null,
+      "cot_es_net": -193978,
+      "cot_nq_net": -8908,
+      "cot_es_adj": 0.0,
+      "cot_nq_adj": 0.0,
       "multiplier": 1.1,
       "total_adj": 0.1
     },
@@ -62,19 +62,19 @@
       "votes_bear": 0,
       "confidence": "HIGH",
       "details": {
-        "XLK_weekly_roc": 0.435037,
-        "QQQ_weekly_roc": 0.297344,
-        "SPY_weekly_roc": 0.183318,
-        "weekly_median_roc": 0.297344,
-        "XLK_monthly_roc": 0.337766,
-        "QQQ_monthly_roc": 0.211285,
-        "SPY_monthly_roc": 0.121632,
-        "monthly_median_roc": 0.211285,
+        "XLK_weekly_roc": 0.35885,
+        "QQQ_weekly_roc": 0.225969,
+        "SPY_weekly_roc": 0.122534,
+        "weekly_median_roc": 0.225969,
+        "XLK_monthly_roc": 0.3512,
+        "QQQ_monthly_roc": 0.220046,
+        "SPY_monthly_roc": 0.120842,
+        "monthly_median_roc": 0.220046,
         "daily_ema_symbol": "SPY",
         "ema20_above_ema50": true,
-        "ema20": 742.9251,
-        "ema50": 727.495,
-        "ema_gap_pct": 2.121
+        "ema20": 739.6168,
+        "ema50": 728.3307,
+        "ema_gap_pct": 1.5496
       }
     }
   },
@@ -87,26 +87,26 @@
       {
         "symbol": "XLK",
         "action": "BUY",
-        "weight_pct": 17.87,
+        "weight_pct": 18.82,
         "order_type": "MKT",
         "tif": "OPG",
-        "note": "Strategy C+ allocation: 17.9%"
+        "note": "Strategy C+ allocation: 18.8%"
       },
       {
         "symbol": "MTUM",
         "action": "BUY",
-        "weight_pct": 17.87,
+        "weight_pct": 18.82,
         "order_type": "MKT",
         "tif": "OPG",
-        "note": "Strategy C+ allocation: 17.9%"
+        "note": "Strategy C+ allocation: 18.8%"
       },
       {
         "symbol": "SHY",
         "action": "BUY",
-        "weight_pct": 64.25,
+        "weight_pct": 62.36,
         "order_type": "MKT",
         "tif": "OPG",
-        "note": "Strategy C+ allocation: 64.3%"
+        "note": "Strategy C+ allocation: 62.4%"
       }
     ],
     "rebalance_required": true
