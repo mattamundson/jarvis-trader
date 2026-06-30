@@ -46,6 +46,7 @@ import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWid
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
 import { MESSprintGate } from "@/components/MESSprintGate";
 import PendingApprovals from "@/components/PendingApprovals";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 import { Badge } from "@/components/ui/badge";
@@ -208,114 +209,178 @@ export default function DashboardPage() {
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 2xl:px-10 py-4 space-y-4">
         {/* Macro / VIX header bar */}
-        <MacroBar macro={macro ?? null} />
+        <WidgetErrorBoundary name="Macro Bar">
+          <MacroBar macro={macro ?? null} />
+        </WidgetErrorBoundary>
 
         {/* Watchlist ticker bar — live price feed */}
-        <WatchlistBar items={watchlist ?? []} />
+        <WidgetErrorBoundary name="Watchlist">
+          <WatchlistBar items={watchlist ?? []} />
+        </WidgetErrorBoundary>
 
         {/* EOD Summary — daily P&L and validation gates */}
-        <EODSummaryWidget />
+        <WidgetErrorBoundary name="EOD Summary">
+          <EODSummaryWidget />
+        </WidgetErrorBoundary>
 
         {/* Circuit breaker safety panel — safety-critical, shown before trading panels */}
-        <CircuitBreakerPanel />
+        <WidgetErrorBoundary name="Circuit Breaker">
+          <CircuitBreakerPanel />
+        </WidgetErrorBoundary>
 
         {/* Proactive Validation Suite — 8-check MCL + MNQ validation */}
-        <ProactiveValidationWidget />
+        <WidgetErrorBoundary name="Proactive Validation">
+          <ProactiveValidationWidget />
+        </WidgetErrorBoundary>
 
         {/* Forward-Test loop — per-candidate OOS record + graduation verdict
             (honest-edge spine: registry -> forward-test -> graduation) */}
-        <ForwardTestPanel />
+        <WidgetErrorBoundary name="Forward Test">
+          <ForwardTestPanel />
+        </WidgetErrorBoundary>
 
         {/* Execution Cockpit — live fills, fidelity, slippage, pending approvals */}
-        <ExecutionCockpitWidget />
+        <WidgetErrorBoundary name="Execution Cockpit">
+          <ExecutionCockpitWidget />
+        </WidgetErrorBoundary>
 
         {/* Live market chart — our own real-time futures bars (TradingView's free
             embed delays CME futures, so futures are charted from our data here). */}
-        <PriceChartPanel
-          symbol={chartSymbol}
-          timeframe={chartTimeframe}
-          onSymbolChange={setChartSymbol}
-          onTimeframeChange={setChartTimeframe}
-          height={360}
-        />
+        <WidgetErrorBoundary name="Price Chart">
+          <PriceChartPanel
+            symbol={chartSymbol}
+            timeframe={chartTimeframe}
+            onSymbolChange={setChartSymbol}
+            onTimeframeChange={setChartTimeframe}
+            height={360}
+          />
+        </WidgetErrorBoundary>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Signal Flow — per-instrument STC values and pipeline block stage */}
-          <SignalFlowWidget />
+          <WidgetErrorBoundary name="Signal Flow">
+            <SignalFlowWidget />
+          </WidgetErrorBoundary>
 
           {/* Super-Engine Infrastructure Status */}
-          <SuperEngineStatusWidget />
+          <WidgetErrorBoundary name="Super Engine Status">
+            <SuperEngineStatusWidget />
+          </WidgetErrorBoundary>
 
           {/* Engine Health — live /health subsystem checks (TV MCP, LLM, IBKR) */}
-          <EngineHealthWidget />
+          <WidgetErrorBoundary name="Engine Health">
+            <EngineHealthWidget />
+          </WidgetErrorBoundary>
 
           {/* JARVIS Calibration — Brier/IC ensemble calibration (honest empty state) */}
-          <ConfidenceGauge />
+          <WidgetErrorBoundary name="Confidence Gauge">
+            <ConfidenceGauge />
+          </WidgetErrorBoundary>
 
           {/* Deduped realized record via the honest-metrics layer (not raw tables) */}
-          <HonestPnlCard />
+          <WidgetErrorBoundary name="Honest PnL">
+            <HonestPnlCard />
+          </WidgetErrorBoundary>
 
           {/* Same-day P&L reconciliation (C3): aggregate vs independent snapshot */}
-          <SameDayPnLBadge />
+          <WidgetErrorBoundary name="Same Day PnL">
+            <SameDayPnLBadge />
+          </WidgetErrorBoundary>
 
           {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
-          <Pm2StabilityWidget />
+          <WidgetErrorBoundary name="PM2 Stability">
+            <Pm2StabilityWidget />
+          </WidgetErrorBoundary>
 
           {/* MES Sprint Gate — April 30 live-flip prerequisite aggregator */}
-          <MESSprintGate />
+          <WidgetErrorBoundary name="MES Sprint Gate">
+            <MESSprintGate />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Walk-Forward / Paper Trading Status */}
-        <WFEStatusCard />
+        <WidgetErrorBoundary name="WFE Status">
+          <WFEStatusCard />
+        </WidgetErrorBoundary>
 
         {/* Rolling WFE Monitoring */}
-        <RollingWFEWidget />
+        <WidgetErrorBoundary name="Rolling WFE">
+          <RollingWFEWidget />
+        </WidgetErrorBoundary>
 
         {/* Main grid */}
         <div className="grid grid-cols-12 gap-4">
           {/* Left column — positions + performance + regime */}
           <div className="col-span-12 lg:col-span-3 space-y-4">
-            <SessionTodayWidget />
-            <InstitutionalProfileWidget defaultSymbol="MES" />
-            <PositionsPanel
-              positions={portfolio?.positions ?? []}
-              totalEquity={portfolio?.total_equity ?? 0}
-              dailyPnl={portfolio?.daily_pnl ?? 0}
-              unrealizedPnl={portfolio?.unrealized_pnl ?? 0}
-            />
-            <PerformancePanel
-              metrics={null}
-              equityCurve={[]}
-            />
-            <RegimeDisplay />
-            <ShadowPerformanceWidget />
-            <MTFConfirmationWidget symbol="MES" />
-            <DualTFWidget />
+            <WidgetErrorBoundary name="Session Today">
+              <SessionTodayWidget />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="Institutional Profile">
+              <InstitutionalProfileWidget defaultSymbol="MES" />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="Positions">
+              <PositionsPanel
+                positions={portfolio?.positions ?? []}
+                totalEquity={portfolio?.total_equity ?? 0}
+                dailyPnl={portfolio?.daily_pnl ?? 0}
+                unrealizedPnl={portfolio?.unrealized_pnl ?? 0}
+              />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="Performance">
+              <PerformancePanel
+                metrics={null}
+                equityCurve={[]}
+              />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="Regime">
+              <RegimeDisplay />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="Shadow Performance">
+              <ShadowPerformanceWidget />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="MTF Confirmation">
+              <MTFConfirmationWidget symbol="MES" />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="Dual TF">
+              <DualTFWidget />
+            </WidgetErrorBoundary>
           </div>
 
           {/* Center column — agent activity feed */}
           <div className="col-span-12 lg:col-span-6">
-            <AgentFeed decisions={agentDecisions ?? []} />
+            <WidgetErrorBoundary name="Agent Feed">
+              <AgentFeed decisions={agentDecisions ?? []} />
+            </WidgetErrorBoundary>
           </div>
 
           {/* Right column — safety + sentiment */}
           <div className="col-span-12 lg:col-span-4 space-y-6">
-            <PendingApprovals />
-            <KillSwitch
+            <WidgetErrorBoundary name="Pending Approvals">
+              <PendingApprovals />
+            </WidgetErrorBoundary>
+            <WidgetErrorBoundary name="Kill Switch">
+              <KillSwitch
 
-              isActive={safety?.kill_switch_active ?? false}
-              reason={safety?.kill_switch_reason}
-              onToggle={onKillSwitchToggle}
-            />
+                isActive={safety?.kill_switch_active ?? false}
+                reason={safety?.kill_switch_reason}
+                onToggle={onKillSwitchToggle}
+              />
+            </WidgetErrorBoundary>
 
             {/* Schwab connection status */}
-            <SchwabStatusWidget />
+            <WidgetErrorBoundary name="Schwab Status">
+              <SchwabStatusWidget />
+            </WidgetErrorBoundary>
 
             {/* Broker position reconciliation */}
-            <BrokerPositionsWidget />
+            <WidgetErrorBoundary name="Broker Positions">
+              <BrokerPositionsWidget />
+            </WidgetErrorBoundary>
 
             {/* Unrealized P&L — live paper positions with mark-to-market */}
-            <UnrealizedPnLWidget />
+            <WidgetErrorBoundary name="Unrealized PnL">
+              <UnrealizedPnLWidget />
+            </WidgetErrorBoundary>
 
             {/* Safety metrics */}
             {safety && (
@@ -347,22 +412,34 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <SentimentPanel sentiments={sentiments ?? []} />
+            <WidgetErrorBoundary name="Sentiment">
+              <SentimentPanel sentiments={sentiments ?? []} />
+            </WidgetErrorBoundary>
 
             {/* Alert History — fired P&L threshold alerts */}
-            <AlertHistoryWidget />
+            <WidgetErrorBoundary name="Alert History">
+              <AlertHistoryWidget />
+            </WidgetErrorBoundary>
 
             {/* Discord Intelligence — Corey Auction Tools signal context */}
-            <DiscordIntelligenceWidget />
+            <WidgetErrorBoundary name="Discord Intelligence">
+              <DiscordIntelligenceWidget />
+            </WidgetErrorBoundary>
 
             {/* Bookmark Themes — Claude-clustered weekly themes from Discord bookmarks */}
-            <BookmarkThemesPanel />
+            <WidgetErrorBoundary name="Bookmark Themes">
+              <BookmarkThemesPanel />
+            </WidgetErrorBoundary>
 
             {/* Bookmark Feed — recent and searchable Discord bookmark rows */}
-            <BookmarkFeedPanel />
+            <WidgetErrorBoundary name="Bookmark Feed">
+              <BookmarkFeedPanel />
+            </WidgetErrorBoundary>
 
             {/* Strategy Parameters */}
-            <StrategyParamsPanel />
+            <WidgetErrorBoundary name="Strategy Params">
+              <StrategyParamsPanel />
+            </WidgetErrorBoundary>
 
             {/* Run Analysis */}
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -405,29 +482,43 @@ export default function DashboardPage() {
         </div>
 
         {/* Paper trading positions panel — full width below main grid */}
-        <PaperTradingPanel />
+        <WidgetErrorBoundary name="Paper Trading">
+          <PaperTradingPanel />
+        </WidgetErrorBoundary>
 
         {/* Live pipeline reasoning — full 5-stage breakdown for each trade decision */}
-        <LiveTradeReasoningWidget />
+        <WidgetErrorBoundary name="Live Trade Reasoning">
+          <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
 
         {/* Trade journal with full signal provenance (US-1404) */}
-        <TradeJournalWidget />
+        <WidgetErrorBoundary name="Trade Journal">
+          <TradeJournalWidget />
+        </WidgetErrorBoundary>
 
         {/* Persisted history — full width, three-column on large screens */}
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 lg:col-span-6">
-            <TradeHistory />
+            <WidgetErrorBoundary name="Trade History">
+              <TradeHistory />
+            </WidgetErrorBoundary>
           </div>
           <div className="col-span-12 lg:col-span-3">
-            <SignalHistory />
+            <WidgetErrorBoundary name="Signal History">
+              <SignalHistory />
+            </WidgetErrorBoundary>
           </div>
           <div className="col-span-12 lg:col-span-3">
-            <DailyPnlPanel />
+            <WidgetErrorBoundary name="Daily PnL">
+              <DailyPnlPanel />
+            </WidgetErrorBoundary>
           </div>
         </div>
-      
+
       <div className="mt-8">
-        <EventsFeedWidget />
+        <WidgetErrorBoundary name="Events Feed">
+          <EventsFeedWidget />
+        </WidgetErrorBoundary>
       </div>
     
 </main>
