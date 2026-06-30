@@ -111,7 +111,9 @@ def main():
         print("\n=== Per-Channel Breakdown ===")
         for ch in summary["channels"]:
             name = ch.get("file", "?")
-            print(f"  {name.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8')}")
+            print(
+                f"  {name.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8')}"
+            )
             print(
                 f"    Messages: {ch.get('messages_total', 0):,} | Parsed: {ch.get('parsed', 0):,}",
                 end="",
@@ -127,10 +129,28 @@ def main():
                 import asyncio
                 from datetime import date
 
-                from .commentary_processor import CoreyCommentaryProcessor
+                from .commentary_processor import (
+                    CoreyCommentaryProcessor,
+                    build_default_llm_client,
+                )
+
+                # Load engine/.env so the Vertex/Gemini/OpenAI failover config is
+                # present when building the LLM client. The CLI doesn't otherwise
+                # load it; without it the standalone refresh falls back to the
+                # raw direct-Anthropic POST (dead credit since 2026-06-29) and
+                # every daily bias write degrades to data_quality='none'.
+                try:
+                    from dotenv import load_dotenv
+
+                    load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+                except Exception:
+                    pass
 
                 logger.info("Triggering commentary processor (%d new rows)...", inserted)
-                processor = CoreyCommentaryProcessor(db_path=args.db)
+                processor = CoreyCommentaryProcessor(
+                    db_path=args.db,
+                    llm_client=build_default_llm_client(args.db),
+                )
                 processor.invalidate_cache(date.today())
                 bias = asyncio.run(processor.get_session_bias())
                 logger.info(
