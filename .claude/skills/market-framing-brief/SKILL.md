@@ -1,6 +1,6 @@
 ---
 name: market-framing-brief
-description: Generate a Corey-style Auction Market Theory morning framing brief for ES + NQ (and the MES system overlay) for the next trading session. Levels come from the engine IB feed first (/prices/snapshot, /levels/{symbol}), with web quotes only as a labeled-low-confidence fallback. Use when the user says "framing for tomorrow", "morning brief for ES/NQ", "what's the setup for tomorrow", "create a market framing", "structural levels for next session", "do a Corey-style brief", "ES/NQ levels and scenarios", or "what should I watch at the open". Produces a fixed-structure brief: Overview, AMT cues, Game Theory, Structural Levels, Why-levels-matter, Scenario Map, Final Thoughts + System Overlay.
+description: Generate a Corey-style Auction Market Theory morning framing brief for ES + NQ (and the MES system overlay) for the next trading session. Levels come from the engine IB feed first (/prices/snapshot, /levels/{symbol}); when unreachable, levels are computed deterministically from OHLC via the bundled compute_levels.py (floor pivots + prior-day/overnight rails) — never parroted from a third-party note. Use when the user says "framing for tomorrow", "morning brief for ES/NQ", "what's the setup for tomorrow", "create a market framing", "structural levels for next session", "do a Corey-style brief", "ES/NQ levels and scenarios", or "what should I watch at the open". Produces a fixed-structure brief: Overview, AMT cues, Game Theory, Structural Levels, Why-levels-matter, Scenario Map, Final Thoughts + System Overlay.
 ---
 
 # When to use
@@ -112,6 +112,36 @@ move has happened and is being framed forward). They are different products: a
 post-open note can cite precise live levels a pre-open forecast cannot. Do not
 compare two briefs, or grade one, without matching their type.
 
+## Step 2c — Compute the levels deterministically (the method)
+
+Levels must be **derived from OHLC, not parroted** from a third party's note. When
+the engine `/levels` (HiddenPivots) endpoint is unreachable, compute the ladder
+yourself with the bundled engine — classic floor-trader pivots plus prior-session
+and overnight rails. This is the math auction/structure levels are built on:
+
+```
+P  = (H + L + C) / 3
+R1 = 2P − L      S1 = 2P − H
+R2 = P + (H−L)   S2 = P − (H−L)
+R3 = H + 2(P−L)  S3 = L − 2(H−P)
++ prior-day high/low/close, overnight Globex high/low, prior-mid (H+L)/2 ≈ value
+```
+
+```bash
+python .claude/skills/market-framing-brief/compute_levels.py \
+  --sym NQ --ph <prior_high> --pl <prior_low> --pc <prior_close> \
+  --onh <overnight_high> --onl <overnight_low> --open <session_open>
+```
+
+Inputs are the **prior completed session** H/L/C (the pivot basis) + overnight
+rails. These become the Structural Levels section directly. The geometry only
+locates the rails — catalyst and regime still decide direction (Bias rules).
+
+**Validated:** run on NQ prior-session OHLC (H 29,744 / L 29,493.5 / C 29,727.75),
+the engine returned S1 = 29,566 and P = 29,655 — within ~4 pts of a professional
+note's hand-drawn NQ "liquidation trigger" of 29,570, computed with no knowledge
+of that note. Deterministic geometry reproduces structure-trader levels.
+
 ## Step 3 — System overlay numbers (engine)
 
 Levels already came from the engine in Step 1a when it was reachable. Here, pull
@@ -188,7 +218,7 @@ Sources: <markdown links to every source used>
 
 - **Engine IB feed first; web is a labeled-low-confidence fallback.** Try `/prices/snapshot` + `/levels/{symbol}` before any web search (Step 1a). State the level source and confidence at the top of every brief.
 - **Anchor on futures, not cash.** On the web-fallback path, levels come from native ES/NQ futures, never a cash index or cash+basis. This is the #1 historical failure.
-- **Never fabricate a level — for any instrument.** Every price comes from a fetched futures source or the engine. If you can't fetch it, say "not retrieved" — do not invent, and do not bridge from cash with an assumed basis.
+- **Derive levels, never parrot them.** Levels come from engine `/levels` (HiddenPivots) or are computed from prior-session OHLC via `compute_levels.py` (Step 2c). Never copy a third party's published levels as your own, and never invent or bridge from cash with an assumed basis. If you have no OHLC to compute from, say "not retrieved."
 - **Verify the prior session's direction before writing context.** Don't let an aggregator's old selloff/rally story set the setup. State prior session date + direction explicitly.
 - **Always fix the clock (Step 0) before pulling data.** A stale-session brief is worse than no brief.
 - **Declare artifact type.** Pre-open forecast vs at/post-open reaction — state it; don't grade across types.
