@@ -1103,7 +1103,8 @@ class JarvisLLMClient:
                             )
                         except Exception as gex:
                             logger.error(
-                                f"[{google_model}] Gemini fallback also failed for {agent_name}: {gex}"
+                                f"[{google_model}] Gemini fallback also failed for "
+                                f"{agent_name}: {type(gex).__name__}: {gex}"
                             )
                             # fall through to OpenAI fallback below
 
@@ -1152,7 +1153,8 @@ class JarvisLLMClient:
                             )
                         except Exception as oex:
                             logger.error(
-                                f"[{openai_model}] OpenAI fallback also failed for {agent_name}: {oex}"
+                                f"[{openai_model}] OpenAI fallback also failed for "
+                                f"{agent_name}: {type(oex).__name__}: {oex}"
                             )
                             # fall through to unhealthy-path handling below
 
