@@ -87,3 +87,32 @@ def test_extraction_health_ignores_none_quality_bias(tmp_path):
     _seed(db, ["2026-06-29", "2026-06-30"], [("2026-06-30", "none")])
     r = get_bias_extraction_health(str(db))
     assert r["extraction_quality"] == "degraded"
+
+
+def test_health_response_model_preserves_extraction_quality():
+    """Regression: _health_inner builds futures_sentiment.extraction_quality and
+    pending_approvals, but FastAPI's response_model strips any key the model does
+    not declare — the same class of bug that hid llm_providers from /health until
+    2026-06-06 (see HealthResponse.llm_providers docstring). Without the model
+    fields the detector runs but never reaches the wire, so the monitoring gap it
+    was built to close stays invisible. Assert the model round-trips both blocks.
+    """
+    from api.models import HealthResponse
+
+    payload = {
+        "status": "ok",
+        "version": "1.1.0",
+        "timestamp": "2026-06-30T20:00:00+00:00",
+        "pending_approvals": {"count": 0, "oldest_age_min": None},
+        "futures_sentiment": {
+            "quality": "fresh",
+            "age_days": 0,
+            "extraction_quality": "degraded",
+            "extraction_lag_days": 2,
+            "latest_bias_date": "2026-06-28",
+        },
+    }
+    dumped = HealthResponse(**payload).model_dump()
+    assert dumped["pending_approvals"] == {"count": 0, "oldest_age_min": None}
+    assert dumped["futures_sentiment"]["extraction_quality"] == "degraded"
+    assert dumped["futures_sentiment"]["extraction_lag_days"] == 2
