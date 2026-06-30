@@ -1,5 +1,22 @@
 {
   "worktree": {
     "bgIsolation": "none"
+  },
+  "permissions": {
+    "deny": [
+      "Edit(engine/risk/**)",
+      "Write(engine/risk/**)",
+      "Edit(engine/config.py)",
+      "Write(engine/config.py)",
+      "Edit(engine/.env)",
+      "Write(engine/.env)",
+      "Read(engine/.env)",
+      "Edit(docs/CURRENT_STATE.md)",
+      "Write(docs/CURRENT_STATE.md)",
+      "Edit(MEMORY.md)",
+      "Write(MEMORY.md)",
+      "Edit(docs/MEMORY.md)",
+      "Write(docs/MEMORY.md)"
+    ]
   }
 }
