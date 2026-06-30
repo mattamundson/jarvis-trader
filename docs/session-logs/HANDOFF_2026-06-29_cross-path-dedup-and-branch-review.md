@@ -272,12 +272,29 @@ session.
  4 files changed, 41 insertions(+), 24 deletions(-)
 ```
 
-### My worktrees (now stale — branches merged; clean working trees)
+### My worktrees — REMOVED 2026-06-30 (archive-tagged first; see update below)
 ```
-C:/Users/mattm/ThinkorSwim/_exec_bridge  9979833 [feat/systematic-exec-bridge]
-C:/Users/mattm/ThinkorSwim/_lintfix      993d654 [fix/ruff-calendar-lint]
-C:/Users/mattm/ThinkorSwim/_queue_dedup  1158eb4 [feat/queue-shared-dedup]
+C:/Users/mattm/ThinkorSwim/_exec_bridge  [feat/systematic-exec-bridge]  -> removed (#177)
+C:/Users/mattm/ThinkorSwim/_lintfix      [fix/ruff-calendar-lint]       -> removed (#186)
+C:/Users/mattm/ThinkorSwim/_queue_dedup  [feat/queue-shared-dedup]      -> removed (#183)
 ```
+
+---
+
+## UPDATE 2026-06-30 — post-handoff actions completed
+
+- **PR #196 MERGED** (`2069b5b`): this handoff + the companion `CONVERSATION_2026-06-29_*.md` are now on
+  `master` under `docs/session-logs/`. (A Turn-13 follow-up docs PR extended the conversation log to cover
+  the merge + worktree cleanup and re-committed both files.)
+- **TODO §7.4 DONE — 3 stale worktrees cleaned up.** Verified each clean + each PR MERGED + squash-robust
+  residual check (two benign `residual=1` from master-ahead drift via #188/#189; content fully absorbed).
+  Archive-tagged each branch tip and pushed the tags to origin:
+  `archive/feat-systematic-exec-bridge`, `archive/fix-ruff-calendar-lint`, `archive/feat-queue-shared-dedup`.
+  Removed all 3 worktrees, deleted the 3 local + 3 remote branches, pruned the registry.
+  **Recovery:** `git worktree add <path> archive/<name>`.
+- **Still open (unchanged):** TODO §7.1–§7.3 (run the peer's canonical branch inventory detached in a quiet
+  window; optional residual-signal port; stages 2/3 of the branch review) and §7.5 (Tier-3 arming decision,
+  Amo-only). Peer/active worktrees were left untouched.
 
 ---
 

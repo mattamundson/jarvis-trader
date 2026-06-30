@@ -151,7 +151,43 @@ all 9 requested sections.
 Answered honestly: **no** — the handoff was local-only in `~/.claude/handoffs/`, and no conversation
 `.md` existed yet. Created this file + copied the handoff into `docs/session-logs/` (the peer convention,
 per #191), on a fresh branch `docs/session-log-2026-06-29-dedup` off `origin/master` (NOT the peer's
-branch in the main checkout), then pushed and opened a docs PR.
+branch in the main checkout), then pushed and opened **PR #196**.
+
+## Turn 11 — User: "merge it"
+
+Squash-merged **PR #196** into master. `gh pr merge 196 --squash --delete-branch` errored on the LOCAL
+post-merge step ("`master` is already used by worktree at `jt-campaign`") — but the merge itself had
+already landed on GitHub (`gh pr view 196` → `state: MERGED`, merge commit `2069b5b`). Cleaned up: detached
+the `_lintfix` worktree HEAD, deleted the local `docs/session-log-2026-06-29-dedup` branch, and deleted the
+remote branch. The handoff + conversation log are now permanently on `master`. (Lesson: `gh pr merge
+--delete-branch` tries to check out the base in the current worktree; when the base is pinned to another
+worktree it fails the cleanup *after* a successful merge — verify with `gh pr view`, don't assume failure.)
+
+## Turn 12 — User: "clean up the 3 stale worktrees"
+
+Removed my three now-merged worktrees (`_exec_bridge` / `feat/systematic-exec-bridge` / #177,
+`_queue_dedup` / `feat/queue-shared-dedup` / #183, `_lintfix` / `fix/ruff-calendar-lint` / #186), with the
+archive-never-delete discipline:
+1. Verified each worktree **clean** (`git status --porcelain` empty).
+2. Confirmed each PR **MERGED** and ran the squash-robust **residual** check. Two showed `residual=1`:
+   `fix/ruff-calendar-lint` → `daily_calendar_discovery.py` and `feat/queue-shared-dedup` → `.gitignore`.
+   Inspected both — benign **master-ahead** drift (master gained the beta-harvest gate block from #188 and
+   the `docs/audit/branch-review/` ignore line from #189 *after* my squash-merges); my own content was
+   fully absorbed. `feat/systematic-exec-bridge` was `residual=0`.
+3. **Archive-tagged** each branch tip (`archive/feat-systematic-exec-bridge`, `archive/fix-ruff-calendar-lint`,
+   `archive/feat-queue-shared-dedup`) and **pushed the tags to origin** — durable recovery refs.
+4. `git worktree remove` ×3, `git branch -D` ×3 (local), `git push origin --delete` ×3 (remote), `git
+   worktree prune`. Verified all three dirs + registry entries gone. Left every OTHER worktree (peer-owned
+   `jt-*`, `_spread_track`, `_strategy_factory`, `.claude/worktrees/*`) untouched.
+
+Recovery if ever needed: `git worktree add <path> archive/<name>`.
+
+## Turn 13 — User: "Save everything to the repo including the entire conversation history"
+
+Extended this conversation log to cover Turns 11–13 and refreshed the handoff's git-state section, then
+committed both to `master` via a docs PR (this file). The **raw JSONL transcript stays local** per the
+secret-hygiene convention — this markdown is the faithful, shareable "entire conversation history"; the raw
+bytes (`5e6c4f54-…jsonl`, ~10.8 MB) are not uploaded.
 
 ---
 
@@ -161,6 +197,12 @@ branch in the main checkout), then pushed and opened a docs PR.
   all green). Both paper paths remain **default-OFF / unarmed** — the guard is inert until armed.
 - **Branch review:** consolidated onto the peer's canonical toolkit; my duplicates archived; the
   detached-run + residual-enhancement runbook staged for a quiet-window completion.
+- **Session logs on master:** handoff + this conversation merged via **#196** (`2069b5b`); extended +
+  re-committed via the Turn-13 docs PR.
+- **Worktrees:** my three merged worktrees removed (archive-tagged + pushed); only peer/active worktrees
+  remain.
 - **Key environment lessons:** background jobs are reaped at ~2 min (run long work detached); GitHub
   `mergeStateStatus: CLEAN` can mask an un-triggered heavy workflow (verify the full rollup ran on the
-  current head); `git cherry` is blind to squash-merges (use the residual signal).
+  current head); `git cherry` is blind to squash-merges (use the residual signal); `gh pr merge
+  --delete-branch` can error on local cleanup *after* a successful remote merge when the base is pinned to
+  another worktree — verify with `gh pr view`.
