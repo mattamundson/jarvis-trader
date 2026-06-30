@@ -55,8 +55,10 @@ def _detail(yyyymmdd: str, name: str = "") -> MagicMock:
 
 class _FakeDate:
     """Minimal stand-in for `datetime.date` that pins today() for tests."""
+
     def __init__(self, fixed_today: date):
         self._t = fixed_today
+
     def today(self) -> date:
         return self._t
 
@@ -101,3 +103,42 @@ async def test_resolve_front_month_falls_back_when_all_expired():
         out = await conn._resolve_front_month("MGC", "COMEX")
 
     assert out.localSymbol == "MGCJ6"
+
+
+def test_make_contract_uses_cbot_for_treasury_futures():
+    """ZB/ZN must build on exchange CBOT, not the CME default.
+
+    Bug 2026-06-26: FUTURES_EXCHANGE had no ZB/ZN entry, so the lookup defaulted to
+    'CME'. IB rejected the nonexistent CME contract (Error 200 'no security
+    definition') -> _resolve_front_month returned None -> historical fetch crashed
+    on None.includeExpired -> waterfall served a stale CSV cache, freezing the ZB/ZN
+    forward-shadow at 2026-06-24. ZB/ZN trade on CBOT. MES/MNQ are genuinely CME and
+    must be unaffected (regression guard).
+    """
+    conn = IBKRDataConnector()
+    assert conn._make_contract("ZB", True).exchange == "CBOT"
+    assert conn._make_contract("ZN", True).exchange == "CBOT"
+    # lowercase symbol must resolve the same (lookup uppercases)
+    assert conn._make_contract("zb", True).exchange == "CBOT"
+    # regression: CME index futures unchanged
+    assert conn._make_contract("MES", True).exchange == "CME"
+    assert conn._make_contract("MNQ", True).exchange == "CME"
+
+
+def test_make_contract_exchange_for_copper_and_dow_micros():
+    """MHG (copper) is COMEX and MYM (E-mini Dow) is CBOT — not the CME default.
+
+    Same bug class as the ZB/ZN freeze (2026-06-26): both symbols are declared in
+    mtf_analyzer._FUTURES_SYMBOLS but were absent from FUTURES_EXCHANGE, so the lookup
+    defaulted them to 'CME'. A live bar fetch would then build a nonexistent CME
+    contract -> IB Error 200 -> None contract -> stale-cache/404. Copper trades on
+    COMEX; the Dow (YM/MYM) trades on CBOT. M2K (Russell micro) IS genuinely CME, so
+    its CME default is correct and must stay that way (regression guard).
+    """
+    conn = IBKRDataConnector()
+    assert conn._make_contract("MHG", True).exchange == "COMEX"  # micro copper
+    assert conn._make_contract("HG", True).exchange == "COMEX"  # full copper
+    assert conn._make_contract("MYM", True).exchange == "CBOT"  # micro Dow
+    assert conn._make_contract("YM", True).exchange == "CBOT"  # full Dow
+    # regression: Russell 2000 micro is correctly CME-by-default
+    assert conn._make_contract("M2K", True).exchange == "CME"
