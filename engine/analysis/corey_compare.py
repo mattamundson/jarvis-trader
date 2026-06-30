@@ -40,7 +40,10 @@ def fetch_corey_bias(
         import asyncio
         from datetime import date as _date
 
-        from discord.commentary_processor import CoreyCommentaryProcessor
+        from discord.commentary_processor import (
+            CoreyCommentaryProcessor,
+            build_default_llm_client,
+        )
     except ImportError as exc:  # pragma: no cover - defensive
         logger.debug("corey_compare dormant — import failed: %s", exc)
         return None
@@ -48,7 +51,9 @@ def fetch_corey_bias(
     try:
         for_date = _date.fromisoformat(date_str)
         proc = CoreyCommentaryProcessor(
-            db_path=db_path, api_key=api_key or os.getenv("ANTHROPIC_API_KEY", "")
+            db_path=db_path,
+            api_key=api_key or os.getenv("ANTHROPIC_API_KEY", ""),
+            llm_client=build_default_llm_client(db_path),
         )
         bias = asyncio.run(proc.get_session_bias(for_date))
         d = bias.to_dict()
