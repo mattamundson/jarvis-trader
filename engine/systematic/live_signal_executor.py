@@ -80,14 +80,20 @@ class LiveSignalExecutor:
         self._live_trading_check = live_trading_check or _default_live_trading_check
 
     def _is_killed(self) -> bool:
-        """Kill-switch state via the SafetyLayer's public accessor; fail-closed."""
-        fn = getattr(self._safety, "is_killed", None)
-        if not callable(fn):
-            return False
+        """Kill-switch state via the SafetyLayer's accessor; fail-closed.
+
+        ``SafetyLayer.is_killed`` is a ``@property`` (so ``getattr`` returns a
+        bool, not a callable); a method/callable is also supported. A missing
+        accessor or any error fails CLOSED (refuse) -- we never assume "safe"
+        when the state cannot be confirmed.
+        """
         try:
-            return bool(fn())
+            val = getattr(self._safety, "is_killed", None)
+            if val is None:
+                return True  # no accessor -> cannot confirm safe -> refuse
+            return bool(val()) if callable(val) else bool(val)
         except Exception:
-            return True  # can't confirm safe -> refuse
+            return True  # any failure to read kill state -> refuse (fail-closed)
 
     # -- ledger helpers ---------------------------------------------------
     @staticmethod
