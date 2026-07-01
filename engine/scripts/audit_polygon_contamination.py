@@ -59,6 +59,19 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     # flag it as UNKNOWN_SYMBOL. A stock ETF hitting its equity ticker
     # correctly is the expected, non-contaminated path.
     "SPY": (250.0, 800.0),
+    # Micro GBP/USD futures (USD per GBP). Multi-year range ~1.05 (2022 lows)
+    # to ~1.45 (pre-2015); band is generous around that. No verified
+    # equity-ticker-collision story for M6B/6B like MCL/NQ/GC/ES have — added
+    # to close a UNKNOWN_SYMBOL gap flagged by test_cache_contamination_audit.py,
+    # not because a specific contamination incident was found for this symbol.
+    "M6B": (1.00, 1.80),
+    "6B":  (1.00, 1.80),
+    # Micro EUR/USD futures (USD per EUR). Multi-year range ~0.95 (2022 parity
+    # dip) to ~1.25 (2020-2021 highs); band is generous around that. Same
+    # caveat as M6B above — no verified equity collision, added to close the
+    # UNKNOWN_SYMBOL gap.
+    "M6E": (0.80, 1.60),
+    "6E":  (0.80, 1.60),
 }
 
 # For MCL specifically, Colgate-Palmolive's daily close stays within ~1-2%
