@@ -91,9 +91,40 @@ ENGINE_URL=http://localhost:8010 DISCORD_WEBHOOK_URL="$DISCORD_WEBHOOK_URL" \
 
 You should get exactly one 🔴 then one 🟢 in the channel — not a stream.
 
+## Durability — "how many days straight has it run?"
+
+Every time `down-alert.mjs` sees a recovery it appends the completed outage
+(`downSince → recoveredAt`, duration) to an append-only ledger
+(`DOWN_ALERT_EVENTS`, default `engine/data/down_alert_events.jsonl`).
+[`scripts/ops/durability.mjs`](../../scripts/ops/durability.mjs) reads that ledger
+plus the live state and reports the paper stack's clean-run durability — the
+measurement half of the "clean uninterrupted paper run" goal:
+
+```bash
+node scripts/ops/durability.mjs          # human-readable
+node scripts/ops/durability.mjs --json   # for a widget / endpoint
+```
+
+```
+  🟢 CLEAN — 4.20 days straight (4.20d)
+     monitoring since   2026-06-27T02:10:00.000Z
+     outages recorded   1
+     longest clean run  4.20d
+     total downtime     3.4m
+     MTBF               4.20d between failures
+     last outage        …
+```
+
+It invents nothing: with no outages it says "no outage since monitoring began",
+and with no data at all it says so and points back here. The headline **days
+clean since the last outage** is the durability number — it only advances while
+the stack actually stays up, so it can't be gamed by a restart. Run it whenever
+you want the current streak, or wire the `--json` form into a dashboard widget.
+
 ## What it does NOT do
 
 - It does **not** restart the engine (that's PM2 `autorestart` / `pm2-restart-monitor.ps1`).
 - It does **not** judge data correctness or IB-feed health (that's `check-ib-data-watchdog.ps1`
   and `pnpm check:live` in [DASHBOARD_24_7.md](DASHBOARD_24_7.md)).
-- It only answers one question, reliably, from outside: **is the engine up?**
+- It only answers one question, reliably, from outside: **is the engine up?** — and,
+  via the ledger, **how long has it stayed up?**
