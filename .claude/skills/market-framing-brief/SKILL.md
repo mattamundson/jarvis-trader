@@ -1,6 +1,6 @@
 ---
 name: market-framing-brief
-description: Generate a Corey-style Auction Market Theory morning framing brief for ES + NQ (and the MES system overlay) for the next trading session. Levels come from the engine IB feed first (/prices/snapshot, /levels/{symbol}); when unreachable, levels are computed deterministically from OHLC via the bundled compute_levels.py (floor pivots + prior-day/overnight rails) — never parroted from a third-party note. Use when the user says "framing for tomorrow", "morning brief for ES/NQ", "what's the setup for tomorrow", "create a market framing", "structural levels for next session", "do a Corey-style brief", "ES/NQ levels and scenarios", or "what should I watch at the open". Produces a fixed-structure brief: Overview, AMT cues, Game Theory, Structural Levels, Why-levels-matter, Scenario Map, Final Thoughts + System Overlay.
+description: Generate a Corey-style Auction Market Theory morning framing brief for ES + NQ (and the MES system overlay) for the next trading session. Level priority: Corey's actual engine-extracted commentary first (corey_session_bias_report.py) when it's flowing; else the engine IB feed (/prices/snapshot, /levels/{symbol}); else levels computed deterministically from OHLC via the bundled compute_levels.py (floor pivots + prior-day/overnight rails) — never parroted from a third-party note when none of those are reachable. Use when the user says "framing for tomorrow", "morning brief for ES/NQ", "what's the setup for tomorrow", "create a market framing", "structural levels for next session", "do a Corey-style brief", "ES/NQ levels and scenarios", or "what should I watch at the open". Produces a fixed-structure brief: Overview, AMT cues, Game Theory, Structural Levels, Why-levels-matter, Scenario Map, Final Thoughts + System Overlay.
 ---
 
 # When to use
@@ -9,54 +9,40 @@ The user wants a discretionary, levels-and-scenarios market read for the **next*
 
 This skill does NOT trade, place orders, or modify code. It produces a written brief. The order-placing path is the engine pipeline + human approval, never this brief.
 
-## KNOWN DUPLICATE-EFFORT RISK — read before extending this skill
+## Corey pipeline integration — RESOLVED 2026-07-01 (Matt's decision)
 
-Investigated 2026-06-30 (session ROI task #5), per meta-discipline.md "grep
-first" — this repo already has a **production, LLM-integrated "Corey" pipeline**
-that overlaps with part of what this skill does:
+This repo has a **production, LLM-integrated "Corey" pipeline** that this
+skill now calls first, before its own web/OHLC logic:
 
 - `engine/discord/commentary_processor.py` (`CoreyCommentaryProcessor`) —
   converts Corey's **actual raw commentary** (ingested into the
-  `discord_corey_commentary` table, presumably via a Discord bot feed) into
-  structured session bias via LLM: session type, directional bias, key price
-  levels, IB context, trade triggers. Cached in `corey_session_bias`.
+  `discord_corey_commentary` table via a Discord bot feed) into structured
+  session bias via LLM: session type, directional bias, key price levels, IB
+  context, trade triggers. Cached daily in `corey_session_bias`.
 - `engine/agents/corey_auction_analyst.py` (`CoreyAuctionAnalystAgent`) —
-  Stage-1 pipeline agent that turns that structured bias + live TradingView/
+  a *separate* Stage-1 pipeline agent that turns that bias + live TradingView/
   ThinkOrSwim bot-signal alignment into a scored `signal`/`confidence` for the
-  Bull/Bear debate stage. Feeds tie-break and contradiction-detection logic
-  downstream.
-- `discord.cli --trigger-commentary`, an MCP server surface, and a
-  `corey_compare` tool trigger this on demand. #209 (2026-06-30) just hardened
-  it with LLM failover (Vertex→Gemini→OpenAI) after a 2-day silent-degrade
-  incident (2026-06-29, exhausted Anthropic credit on the standalone path).
-- `GET /corey-alerts` (`engine/routers/discord_router.py`) surfaces it over HTTP.
+  Bull/Bear debate stage. This skill does not call this agent — it is
+  pipeline-internal and produces a debate score, not a human-readable brief.
+- `discord.cli --trigger-commentary` and a `corey_compare` tool trigger
+  extraction on demand. #209 (2026-06-30) hardened it with LLM failover
+  (Vertex→Gemini→OpenAI) after a 2-day silent-degrade incident.
 
-**Where this skill genuinely does NOT duplicate that path:**
-1. The engine's Corey pipeline needs Corey's commentary **already ingested**
-   (Discord bot feed). This skill's `compute_levels.py` deterministic fallback
-   (floor pivots from OHLC) works when no commentary is flowing at all — a
-   different failure mode, not a re-implementation.
-2. The engine's `CoreyAuctionAnalystAgent` emits a debate-stage `signal`/
-   `confidence` score, not a human-readable brief. This skill's MES
-   system-overlay (translate levels into the actual long-only SMA(50,200)
-   strategy, size to the −2% daily halt) has no engine-side equivalent.
+**Correction (2026-07-01):** an earlier version of this note claimed
+`GET /corey-alerts` (`engine/routers/discord_router.py`) surfaces this data.
+It does not — `/corey-alerts` reads `discord_corey_alerts` (Corey's manual
+per-trade alert calls), a *different table* from `discord_corey_commentary` /
+`corey_session_bias`. There is no HTTP endpoint for `get_session_bias()`.
+Verify this yourself before trusting `/corey-alerts` for anything level-related.
 
-**Where it likely DOES duplicate effort:** if Corey's commentary IS flowing
-into `discord_corey_commentary` for the target session, `CoreyCommentaryProcessor`
-already extracts session bias/levels from the real text with an LLM — more
-precise than this skill's web-search approximation or its OHLC-geometry
-fallback (see the ROI-audit worked example: computed pivots landed within
-~5pts of a hand-drawn Corey level, but the engine path could extract the
-*exact* stated level, not an approximation of it).
+**How this skill calls it:** `engine/scripts/corey_session_bias_report.py`
+wraps `CoreyCommentaryProcessor.get_session_bias()` as a runnable CLI (same
+pattern as `rv_filter_calibration_report.py` for #242) — see Step 0.5 below.
 
-**Do not build further overlap into this skill** (e.g. don't add commentary
-scraping/parsing) without first checking `GET /corey-alerts` and
-`CoreyCommentaryProcessor.get_session_bias()` for the target date. If real
-commentary is available there, prefer it over this skill's approximation.
-This is flagged, not resolved — resolving it (e.g. having this skill call the
-engine's Corey path when reachable, and reserve its own logic for the
-no-commentary fallback case) is a product decision for Matt, not something to
-decide unilaterally.
+**Still not duplicated:** `compute_levels.py`'s deterministic OHLC fallback
+covers the case where no commentary is flowing at all (Corey didn't post, or
+the Discord ingestion is down) — a different failure mode the engine path
+can't cover, since it needs commentary already ingested to extract anything.
 
 # Inputs
 
@@ -77,12 +63,39 @@ The single biggest failure mode is planning "tomorrow" off stale data because of
 
 State this explicitly at the top of the brief. Do not skip it. Prior incident (this skill's origin): a brief was built treating Friday's close as current when Monday's session had already closed +1.2% — the entire bias was stale.
 
+## Step 0.5 — Try Corey's ACTUAL commentary first (highest-priority source)
+
+Before pulling any levels yourself, check whether Corey's real commentary has
+already been ingested and extracted for the target session — if so, it beats
+every other source in this skill, because it's the exact stated levels, not
+an approximation of them.
+
+```bash
+cd engine && .venv/Scripts/python.exe scripts/corey_session_bias_report.py --date <target-session-date> --json
+```
+
+- **Exit code 0** (`data_quality` is `"fresh"` or `"stale"`, not `"none"`):
+  usable bias exists. Use `key_levels`, `directional_bias`, `session_type`,
+  `ib_bias`, and `specific_triggers` as the brief's PRIMARY level/bias source.
+  If `data_quality="stale"` (>2 days old), say so explicitly in the brief's
+  confidence line — don't present it as fresh.
+- **Exit code 1** (`data_quality="none"`): no commentary was ingested for that
+  date, or the LLM/DB was unreachable. This is NOT a bearish/neutral market
+  signal — it means the source is unavailable. Fall through to Step 1.
+- **Engine unreachable at all** (e.g. this cloud session, no local engine):
+  fall through to Step 1 immediately — don't block the brief waiting on it.
+
+When Corey's bias is used, label the brief `Level confidence: HIGHEST (Corey
+commentary, engine-extracted)` — a tier above the engine-IB-feed HIGH label,
+since these are literally his stated levels, not levels read off a chart.
+
 ## Step 1 — Get the levels: ENGINE IB FEED FIRST, web only as fallback
 
-The single biggest accuracy failure (see Failure Modes) is anchoring a futures
+If Step 0.5 didn't produce usable data, fall back to price-derived levels. The
+single biggest accuracy failure (see Failure Modes) is anchoring a futures
 brief on cash, or on flaky web aggregators that conflate dates. **The engine's
-IB feed is the source of truth for levels — try it first, every time.** Web
-quotes are the fallback, and a labeled-low-confidence one.
+IB feed is the source of truth for levels here — try it first, every time.**
+Web quotes are the next fallback, and a labeled-low-confidence one.
 
 ### 1a — Engine IB feed (primary). Try this before any web search.
 
@@ -206,7 +219,7 @@ Never block the brief on the engine.
 
 ```
 📢 **Morning Framing — <target weekday>, <date>**
-**Level confidence:** <HIGH (engine IB feed) | LOW (web fallback — engine unreachable)>
+**Level confidence:** <HIGHEST (Corey commentary) | HIGH (engine IB feed) | LOW (web fallback)>
 **Reference Pivots (<last close / overnight>):** $ES ~<level> | $NQ ~<level>
 
 🧭 **Market Overview (Weekly Structure Context)**
@@ -265,7 +278,8 @@ Sources: <markdown links to every source used>
 
 # Hard rules
 
-- **Engine IB feed first; web is a labeled-low-confidence fallback.** Try `/prices/snapshot` + `/levels/{symbol}` before any web search (Step 1a). State the level source and confidence at the top of every brief.
+- **Corey's actual commentary outranks everything else.** Try `corey_session_bias_report.py` first (Step 0.5). A `data_quality="none"` result means unavailable, not bearish/neutral — never read it as a market signal.
+- **Engine IB feed second; web is a labeled-low-confidence fallback.** Try `/prices/snapshot` + `/levels/{symbol}` before any web search (Step 1a). State the level source and confidence at the top of every brief.
 - **Anchor on futures, not cash.** On the web-fallback path, levels come from native ES/NQ futures, never a cash index or cash+basis. This is the #1 historical failure.
 - **Derive levels, never parrot them.** Levels come from engine `/levels` (HiddenPivots) or are computed from prior-session OHLC via `compute_levels.py` (Step 2c). Never copy a third party's published levels as your own, and never invent or bridge from cash with an assumed basis. If you have no OHLC to compute from, say "not retrieved."
 - **Verify the prior session's direction before writing context.** Don't let an aggregator's old selloff/rally story set the setup. State prior session date + direction explicitly.
