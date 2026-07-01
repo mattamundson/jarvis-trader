@@ -149,6 +149,8 @@ async def assemble_morning_brief(
         stc_mnq, regime_mnq = await _get_stc_regime("MNQ")
         avt_mcl = await _get_avt("MCL")
         avt_mnq = await _get_avt("MNQ")
+        avt_mes = await _get_avt("MES")
+        avt_mgc = await _get_avt("MGC")
 
         # Trading plan based on STC position
         def _trading_plan(sym: str, stc_str: str, regime: str) -> str:
@@ -225,6 +227,7 @@ async def assemble_morning_brief(
             "INSTRUMENTS",
             f"  MCL: {_fmt_price('MCL')} | STC: {stc_mcl} | {regime_mcl} | AVT: {avt_mcl}",
             f"  MNQ: {_fmt_price('MNQ')} | STC: {stc_mnq} | {regime_mnq} | AVT: {avt_mnq}",
+            f"  MES: AVT {avt_mes} | MGC: AVT {avt_mgc}  (active — report-only)",
             "",
             "TRADING PLAN",
             f"  MCL: {plan_mcl}",
@@ -274,6 +277,7 @@ async def assemble_morning_brief(
                 "INSTRUMENTS",
                 f"  MCL: {_fmt_price('MCL')} | STC: {stc_mcl} | {regime_mcl} | AVT: {avt_mcl}",
                 f"  MNQ: {_fmt_price('MNQ')} | STC: {stc_mnq} | {regime_mnq} | AVT: {avt_mnq}",
+                f"  MES: AVT {avt_mes} | MGC: AVT {avt_mgc}  (active — report-only)",
                 "",
                 "TRADING PLAN",
                 f"  MCL: {plan_mcl}",
