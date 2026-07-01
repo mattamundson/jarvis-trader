@@ -1,0 +1,113 @@
+{
+  "verdict_touchers": [
+    {
+      "branch": "feat/claude-on-vertex",
+      "refname": "origin/feat/claude-on-vertex",
+      "last_commit_iso": "2026-06-25T22:10:58-05:00",
+      "last_author": "Matt Amundson",
+      "last_subject": "fix(llm): defensive use_vertex read in low-level wire path",
+      "n_files_changed": 86,
+      "verdicts_touched_paths": [
+        "engine/data/gate_v2_verdicts/MES_trend_rank11.json"
+      ],
+      "verdicts_pass_gate": 0,
+      "verdicts_warn_gate": 0,
+      "verdicts_block_gate": 0,
+      "verdicts_missing_pbo": 0,
+      "worst_pbo": null,
+      "worst_verdict_file": null,
+      "sample_verdict_details": []
+    },
+    {
+      "branch": "feat/live-fills-observability",
+      "refname": "origin/feat/live-fills-observability",
+      "last_commit_iso": "2026-06-04T06:10:00-05:00",
+      "last_author": "Matt Amundson",
+      "last_subject": "feat(dashboard): live execution cockpit (fidelity/slippage/approvals/fills)",
+      "n_files_changed": 24,
+      "verdicts_touched_paths": [
+        "engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank2.json"
+      ],
+      "verdicts_pass_gate": 0,
+      "verdicts_warn_gate": 0,
+      "verdicts_block_gate": 0,
+      "verdicts_missing_pbo": 1,
+      "worst_pbo": null,
+      "worst_verdict_file": null,
+      "sample_verdict_details": [
+        {
+          "file": "engine/data/gate_v2_verdicts/MES_trend_rv_filter_rank2.json",
+          "symbol": "MES",
+          "family": "trend_rv_filter",
+          "pbo": null,
+          "gate_status": "warn (missing PBO)"
+        }
+      ]
+    },
+    {
+      "branch": "patch09-llm-fallback",
+      "refname": "origin/patch09-llm-fallback",
+      "last_commit_iso": "2026-05-24T16:02:24-05:00",
+      "last_author": "Matt Amundson",
+      "last_subject": "feat(backtest): three recommendations \u2014 RV env docs, briefing counter, M2K Donch",
+      "n_files_changed": 11,
+      "verdicts_touched_paths": [
+        "engine/data/gate_v2_verdicts/archive/M2K_donchian_rank1.json"
+      ],
+      "verdicts_pass_gate": 0,
+      "verdicts_warn_gate": 0,
+      "verdicts_block_gate": 0,
+      "verdicts_missing_pbo": 0,
+      "worst_pbo": null,
+      "worst_verdict_file": null,
+      "sample_verdict_details": []
+    },
+    {
+      "branch": "worktree-generation-engine",
+      "refname": "origin/worktree-generation-engine",
+      "last_commit_iso": "2026-05-31T03:52:08-05:00",
+      "last_author": "Matt Amundson",
+      "last_subject": "fix(paper-runner): self-init DB + UTF-8 output for standalone cycles",
+      "n_files_changed": 44,
+      "verdicts_touched_paths": [
+        "engine/data/gate_v2_verdicts/M2K_trend_adx_filter_rank1.json",
+        "engine/data/gate_v2_verdicts/MCL_trend_adx_filter_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_confluence_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_gap_fade_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_gap_go_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_tpo_breakout_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_tpo_breakout_trend_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_tpo_reversion_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_tpo_reversion_trend_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_trend_adx_filter_rank1.json",
+        "engine/data/gate_v2_verdicts/MES_trend_adx_rv_filter_rank1.json",
+        "engine/data/gate_v2_verdicts/MGC_gap_fade_rank1.json",
+        "engine/data/gate_v2_verdicts/MGC_gap_go_rank1.json",
+        "engine/data/gate_v2_verdicts/MGC_tpo_breakout_rank1.json",
+        "engine/data/gate_v2_verdicts/MGC_tpo_reversion_rank1.json",
+        "engine/data/gate_v2_verdicts/MGC_trend_adx_filter_rank1.json",
+        "engine/data/gate_v2_verdicts/MGC_trend_adx_rv_filter_rank1.json",
+        "engine/data/gate_v2_verdicts/MNQ_trend_adx_filter_rank1.json",
+        "engine/data/gate_v2_verdicts/MNQ_trend_rv_filter_rank1.json"
+      ],
+      "verdicts_pass_gate": 0,
+      "verdicts_warn_gate": 0,
+      "verdicts_block_gate": 0,
+      "verdicts_missing_pbo": 1,
+      "worst_pbo": null,
+      "worst_verdict_file": null,
+      "sample_verdict_details": [
+        {
+          "file": "engine/data/gate_v2_verdicts/MGC_trend_adx_filter_rank1.json",
+          "symbol": "MGC",
+          "family": "trend_adx_filter",
+          "pbo": null,
+          "gate_status": "warn (missing PBO)"
+        }
+      ]
+    }
+  ],
+  "non_touchers_count": 226,
+  "total_scanned": 230,
+  "scan_timestamp": "2026-07-01T00:38:28.979045+00:00"
+}
