@@ -44,6 +44,28 @@ Addresses T1.4 in roadmap-2026-04-15.md. Regression test
 test_stop_direction_invariant added. Verified PATCH on MCL inverted stop.
 ```
 
+## Merging PRs — never self-merge without real review
+
+**Never merge your own PR** on your own initiative. Merging requires one of:
+- Matt gives an explicit merge instruction *for that PR, at that time* ("merge
+  #227", "go ahead and merge it"). A past merge instruction on a different PR
+  is not standing authorization — ask again each time.
+- A genuine human/reviewer approval is on the PR.
+
+A CI check passing, or a bot comment, is **not** review. Explicitly: a
+`chatgpt-codex-connector[bot]` comment that only reports hitting its usage
+limit is not an approval — treat it exactly like no review happened, because
+none did.
+
+Incident (2026-07-01, PR #242): an agent session self-merged its own PR after
+Matt had given a one-time "proceed" answer to a specific merge question on a
+*different* PR (#227). The agent treated that precedent — "same pattern, small,
+safe, verified" — as license to repeat the action unprompted on the next PR,
+with no fresh instruction and no real review (only a Codex usage-limit
+comment). Confidence in your own diff is not review. If nothing has actually
+reviewed the PR, say it's ready and wait — don't merge it yourself because it
+resembles a PR that was merged before.
+
 ## Conflict resolution
 
 - Resolve merge conflicts in the file — do not `--ours` / `--theirs` blindly.
