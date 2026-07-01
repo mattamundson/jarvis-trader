@@ -29,7 +29,16 @@ Any parameter change requires a new walk-forward evaluation:
 - WFE ≥ 0.5 → can approve for paper trading
 - WFE < 0.2 → HALT — do not trade
 
-Current approvals: MCL (0.82), MNQ (0.57). DO NOT TRADE: MES (0.09), MGC (0.14).
+Current status — authoritative source is `engine/CLAUDE.md` "Active Instruments"
+(update that table, not this line):
+
+- APPROVED, paper active (Tier-3 auth 2026-05-24): **MES** (p_edge 0.75), **MGC** (p_edge 0.68)
+- HALTED, in `DO_NOT_TRADE_SYMBOLS`: **MCL**, **MNQ**
+- REJECTED: **M2K**, **SPY**
+
+Note: MES/MGC were validated via the gate-v2 rolling walk-forward (p_edge / DSR),
+which superseded the older single-number WFE figures once quoted here (the prior
+"MCL 0.82 / MNQ 0.57 approved, MES/MGC do-not-trade" line was stale and inverted).
 
 ## RL Agent Rules
 
