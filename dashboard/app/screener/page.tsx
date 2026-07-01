@@ -263,7 +263,7 @@ function NumField({
   return (
     <Field label={label}>
       <input
-        type="number"
+        type="text"
         inputMode="decimal"
         value={value}
         onChange={onChange}
