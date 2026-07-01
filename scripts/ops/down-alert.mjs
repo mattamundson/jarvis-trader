@@ -36,7 +36,7 @@
  * data leg see scripts/check-ib-data-watchdog.ps1; for degradation see predictive_maintenance.py.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,6 +46,10 @@ const ENGINE =
 const WEBHOOK = (process.env.DISCORD_WEBHOOK_URL || "").trim();
 const STATE_PATH =
   process.env.DOWN_ALERT_STATE || resolve(HERE, "../../engine/data/down_alert_state.json");
+// Append-only ledger of completed outages, consumed by durability.mjs to compute
+// "days clean since last outage". One JSON object per line (JSONL).
+const EVENTS_PATH =
+  process.env.DOWN_ALERT_EVENTS || resolve(HERE, "../../engine/data/down_alert_events.jsonl");
 const THRESHOLD = Math.max(1, parseInt(process.env.DOWN_ALERT_THRESHOLD || "2", 10));
 const TIMEOUT_MS = parseInt(process.env.DOWN_ALERT_TIMEOUT_MS || "8000", 10);
 
@@ -57,9 +61,16 @@ function nowIso() {
 function loadState() {
   try {
     const s = JSON.parse(readFileSync(STATE_PATH, "utf8"));
-    return { consecutiveFailures: s.consecutiveFailures || 0, alerted: !!s.alerted };
+    return {
+      consecutiveFailures: s.consecutiveFailures || 0,
+      alerted: !!s.alerted,
+      // downSince: ISO of the first failure in the current outage (null when up).
+      downSince: s.downSince || null,
+      // monitoringSince: first-ever run, the baseline for the first clean streak.
+      monitoringSince: s.monitoringSince || null,
+    };
   } catch {
-    return { consecutiveFailures: 0, alerted: false };
+    return { consecutiveFailures: 0, alerted: false, downSince: null, monitoringSince: null };
   }
 }
 
@@ -69,6 +80,16 @@ function saveState(state) {
     writeFileSync(STATE_PATH, JSON.stringify({ ...state, updated: nowIso() }, null, 2));
   } catch (e) {
     console.error(`[down-alert] could not write state ${STATE_PATH}: ${e.message}`);
+  }
+}
+
+/** Append one completed-outage record to the JSONL ledger (durability input). */
+function appendOutage(record) {
+  try {
+    mkdirSync(dirname(EVENTS_PATH), { recursive: true });
+    appendFileSync(EVENTS_PATH, JSON.stringify(record) + "\n");
+  } catch (e) {
+    console.error(`[down-alert] could not append event ${EVENTS_PATH}: ${e.message}`);
   }
 }
 
@@ -116,19 +137,32 @@ async function main() {
   const state = loadState();
   const { ok, reason } = await pingHealth();
   const ts = nowIso();
+  // Stamp the monitoring baseline once, on the first-ever run.
+  const monitoringSince = state.monitoringSince || ts;
 
   if (ok) {
+    // Recovery edge: an outage just ended → record it to the durability ledger.
+    if (state.downSince) {
+      appendOutage({
+        downSince: state.downSince,
+        recoveredAt: ts,
+        durationMs: Math.max(0, Date.parse(ts) - Date.parse(state.downSince)),
+        alerted: state.alerted,
+      });
+    }
     if (state.alerted) {
       await sendDiscord(
         `🟢 **Engine RECOVERED** — \`${ENGINE}/health\` is responding again (${reason}) at ${ts}.`
       );
     }
-    saveState({ consecutiveFailures: 0, alerted: false });
+    saveState({ consecutiveFailures: 0, alerted: false, downSince: null, monitoringSince });
     console.log(`[down-alert] ${ts} OK (${reason})`);
     process.exit(0);
   }
 
   const failures = state.consecutiveFailures + 1;
+  // Outage begins at the first failed check; hold that timestamp for the whole outage.
+  const downSince = state.downSince || ts;
   let alerted = state.alerted;
   if (failures >= THRESHOLD && !alerted) {
     const sent = await sendDiscord(
@@ -138,7 +172,7 @@ async function main() {
     );
     alerted = alerted || sent; // only latch "alerted" if the alert actually went out
   }
-  saveState({ consecutiveFailures: failures, alerted });
+  saveState({ consecutiveFailures: failures, alerted, downSince, monitoringSince });
   console.log(`[down-alert] ${ts} DOWN (${reason}) failures=${failures} alerted=${alerted}`);
   process.exit(1);
 }
