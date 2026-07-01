@@ -1,0 +1,159 @@
+name: Funnel Quality Gate
+
+# Runs on every PR that touches strategy/backtest code. Blocks the PR if any
+# of the following fails:
+#   1. The funnel-gate test suite (locks in intentional gate_v2 divergences)
+#   2. The meanrev_v2 test suite (structural correctness of the new signals)
+#   3. The PBO gate check on any *_verdict.json files touched by the PR
+#   4. Any *.py file with a docstring that references a strategy hypothesis
+#      but doesn't include an economic_rationale block (per skill spec)
+#
+# Design intent: catch overfitting and undocumented strategies at PR time,
+# not at deploy time. See docs/funnel-audits/README.md for the framework.
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "engine/backtest/**"
+      - "engine/strategies/**"
+      - "engine/analytics/**"
+      - "engine/data/gate_v2_verdicts/**"
+      - "tools/jarvis-funnel/**"
+      - "scripts/ci/**"
+      - ".github/workflows/funnel-quality-gate.yml"
+
+concurrency:
+  group: funnel-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-funnel-gate:
+    name: Funnel-gate behaviour tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install skill test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pandas numpy pydantic beautifulsoup4
+
+      - name: Run funnel-gate test suite
+        run: |
+          if [ -f tools/jarvis-funnel/tests/test_funnel_gate_vs_gatev2.py ]; then
+            cd tools/jarvis-funnel
+            python -m pytest tests/test_funnel_gate_vs_gatev2.py -v --tb=short
+          else
+            echo "::warning::funnel skill tests not present in this branch — skipping"
+          fi
+
+  test-meanrev-v2:
+    name: meanrev_v2 signal tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install engine test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pandas numpy
+
+      - name: Run meanrev_v2 tests
+        run: |
+          if [ -f engine/tests/test_meanrev_v2_signals.py ]; then
+            cd engine
+            python -m pytest tests/test_meanrev_v2_signals.py -v --tb=short
+          else
+            echo "::warning::meanrev_v2 tests not present in this branch — skipping"
+          fi
+
+  pbo-gate:
+    name: PBO gate on verdicts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Determine touched verdict files
+        id: verdicts
+        run: |
+          # Find any verdict json files added/modified in this PR
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          head_sha="${{ github.event.pull_request.head.sha }}"
+          changed=$(git diff --name-only --diff-filter=AM "$base_sha" "$head_sha" | grep -E 'engine/data/gate_v2_verdicts/.*\.json$' || true)
+          if [ -z "$changed" ]; then
+            echo "No verdict files touched in this PR."
+            echo "verdicts=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Verdict files in this PR:"
+            echo "$changed"
+            {
+              echo 'verdicts<<EOF'
+              echo "$changed"
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run PBO gate check
+        if: steps.verdicts.outputs.verdicts != ''
+        env:
+          VERDICT_FILES: ${{ steps.verdicts.outputs.verdicts }}
+        run: |
+          python scripts/ci/check_pbo_gate.py $VERDICT_FILES
+
+      - name: Post PBO check summary
+        if: always() && steps.verdicts.outputs.verdicts != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## Funnel PBO Gate\n\n';
+            try {
+              const report = fs.readFileSync('pbo_report.md', 'utf8');
+              body += report;
+            } catch (e) {
+              body += '_PBO report not generated — check job logs._';
+            }
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body,
+            });
+
+  rationale-check:
+    name: Strategy rationale check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check new runner files for economic rationale
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python scripts/ci/check_rationale.py --base "$BASE_SHA" --head "$HEAD_SHA"
