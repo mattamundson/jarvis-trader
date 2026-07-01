@@ -1,0 +1,232 @@
+branch,is_bot,last_author,last_commit_iso,n_files,n_verdicts,n_runners,n_signals,n_commits,bundled_commits,verdict_only_commits,code_only_commits,verdicts_pass,verdicts_fail,verdicts_missing_pbo,verdicts_complete,last_subject
+origin,False,Matt Amundson,2026-06-30T18:49:15-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(dashboard): overview resilience — per-widget boundaries + first golden-path 
+agent/ci-and-audit,True,Matt Amundson,2026-06-06T05:46:48-05:00,0,0,0,0,0,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into agent/ci-and-audit
+backtest/bt10-cohen-composite,False,Jarvis-Trader,2026-06-17T05:58:45Z,96,0,0,0,11,0,0,0,0,0,0,0,fix(system2): executor + allocator startup fixes
+chore/discovery-scripts-2026-06-16,False,Matt Amundson,2026-06-17T02:06:01-05:00,25,0,3,0,2,0,0,2,0,0,0,0,chore(backtest): fix ADX entry_signal column bug + re-run MGC H1 (2026-06-17)
+chore/engine-lint-green,False,Matt Amundson,2026-06-25T22:10:38-05:00,83,0,0,2,12,0,0,4,0,0,0,0,chore(lint): sort imports in 4 test files conformed by #13
+chore/pandas3-ci,False,Matt Amundson,2026-06-26T05:27:45-05:00,2,0,0,0,2,0,0,0,0,0,0,0,build(deps): converge pandas to 3.x; drop now-redundant CI guard job
+chore/sync-master-into-fdr,False,Matt Amundson,2026-06-16T06:43:46-05:00,89,0,0,1,1,0,0,0,0,0,0,0,Merge origin/master into feat/family-fdr-campaign (JARVIS-grade hardening sync)
+chore/wfo-live-config-match,False,Matt Amundson,2026-06-17T09:09:03-05:00,26,0,4,0,3,0,0,3,0,0,0,0,chore(backtest): add live-config WFO match harness for MGC plain vs ADX
+ci/quality-gates,False,Matt Amundson (via Computer),2026-07-01T00:06:35Z,5,0,0,0,1,0,0,0,0,0,0,0,"ci(funnel): quality gates, PBO check, branch hygiene automation"
+ci/quality-gates-v2,False,Matt Amundson (via Computer),2026-07-01T00:42:26Z,11,0,0,0,2,0,0,0,0,0,0,0,ci(funnel): PR #217 — tuned PR health + PBO drift monitor + retroactive scan
+claude/activate-mes-vix-candidate,True,Claude,2026-06-26T06:29:23Z,1,0,0,0,1,0,0,0,0,0,0,0,feat(backtest): add activation script for frozen MES VIX-pctile candidate
+claude/adaptive-volatility-trend,True,Claude,2026-06-30T23:46:08Z,2,0,0,0,1,0,0,1,0,0,0,0,feat(analytics): add Adaptive Volatility Trend indicator
+claude/adoring-bardeen-caythe,True,Claude,2026-06-18T04:02:43Z,0,0,0,0,0,0,0,0,0,0,0,0,chore: gitignore .gstack/ browser QA artifacts
+claude/auction-gate-v2-eval,True,Claude,2026-06-26T05:26:42Z,8,0,0,0,2,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into claude/auction-gate-v2-eval
+claude/audit-open-sessions-tnxog2,True,Claude,2026-06-29T22:46:43Z,1,0,0,0,1,0,0,0,0,0,0,0,docs(audit): open-sessions triage — 200 branches + 9 PRs bucketed
+claude/awesome-euler-yk0q1w,True,Claude,2026-06-22T08:32:17Z,1,0,0,0,5,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into claude/awesome-euler-yk0q1w
+claude/beautiful-fermi-yeecq4,True,Matt Amundson,2026-06-26T01:21:33-05:00,233,0,3,1,50,0,0,2,0,0,0,0,docs(session-logs): handoff 2026-06-26 calendar-edges/cache/flip
+claude/clever-bardeen-gkqnzh,True,Claude,2026-06-22T20:11:49Z,7,0,1,1,6,0,0,2,0,0,0,0,feat(backtest): add MES trend VIX percentile-tier WFO runner
+claude/compassionate-cerf-2mgcp2,True,Claude,2026-06-24T01:30:43Z,11,0,1,0,9,0,0,4,0,0,0,0,test(backtest): cover run_mcpt real Backtester optimizer + PF cap
+claude/contesttrade-belief-ensemble,True,Claude,2026-06-18T05:36:16Z,3,0,0,0,1,0,0,0,0,0,0,0,feat(strategies): add belief-diverse trader ensemble (ContestTrade pattern)
+claude/decision-log-audit-chain,True,Matt Amundson,2026-06-26T00:35:30-05:00,2,0,0,0,4,0,0,0,0,0,0,0,Merge branch 'master' into claude/decision-log-audit-chain
+claude/dsr-forward-test-diagnostic,True,Claude,2026-06-24T21:06:26Z,1,0,0,0,3,0,0,0,0,0,0,0,refactor: scope #136 to docs-only — drop forward_test DSR diagnostic
+claude/es-price-recommendation-hk2y2c,True,Claude,2026-06-30T13:49:23Z,1,0,0,0,1,0,0,0,0,0,0,0,chore(hooks): add non-blocking pre-push reminder for stranded work
+claude/fix-confluence-audit-fairness,True,Claude,2026-06-26T01:25:44Z,2,0,0,0,1,0,0,0,0,0,0,0,"fix(analytics): make confluence audit a screen, add entry-funnel diagnostic"
+claude/fix-flaky-scanner-tests,True,Claude,2026-06-17T15:24:26Z,4,0,0,0,1,0,0,0,0,0,0,0,test(scanner): make market-hours-dependent tests deterministic
+claude/fix-lint-vol-target-import,True,Claude,2026-06-26T05:19:14Z,1,0,0,0,1,0,0,0,0,0,0,0,fix(lint): silence I001 on late import in test_trader_vol_target_wiring
+claude/friendly-mendel-u5hjor,True,Claude,2026-06-23T19:02:23Z,0,0,0,0,0,0,0,0,0,0,0,0,feat: add maker/checker loop with isolated worktree + safety guard
+claude/modest-keller-qiartr,True,Matt Amundson,2026-06-26T00:47:29-05:00,17,0,0,0,3,0,0,0,0,0,0,0,Merge branch 'master' into claude/modest-keller-qiartr
+claude/nikkei-breakout-critique-y5z3pl,True,Matt Amundson,2026-06-26T00:53:13-05:00,3,0,2,0,4,0,0,3,0,0,0,0,Merge remote-tracking branch 'origin/master' into HEAD
+claude/obsidian-second-brain-65htyc,True,Claude,2026-06-29T23:55:56Z,13,0,0,0,5,0,0,0,0,0,0,0,docs(vault): map 0xMoysei 10-step second-brain article to repo
+claude/overnight-execution-uin1y0,True,Claude,2026-06-30T06:43:04Z,8,0,0,0,7,0,0,0,0,0,0,0,docs: add overnight SOTA strategy roadmap
+claude/pine-screener-filters-fq0txz,True,Claude,2026-06-30T23:52:46Z,7,0,0,0,2,0,0,1,0,0,0,0,feat(dashboard): add Pine Screener page
+claude/regime-live-endpoint,True,Claude,2026-06-17T15:35:07Z,8,0,0,0,4,0,0,2,0,0,0,0,Merge remote-tracking branch 'origin/master' into claude/regime-live-endpoint
+claude/screener-avt-entry-rule,True,Claude,2026-06-30T23:56:24Z,8,0,0,0,3,0,0,2,0,0,0,0,feat(backtest): add screener-gated AVT entry rule + backtest
+claude/session-log-vix-pctile,True,Claude,2026-06-30T06:30:01Z,7,0,0,0,1,0,0,0,0,0,0,0,docs(session-log): archive 2026-06-30 VIX-pctile Phase 4 session history
+claude/session-record-confluence-reeval,True,Claude,2026-06-30T06:26:49Z,1,0,0,0,1,0,0,0,0,0,0,0,docs(reports): session record — confluence audit re-evaluation
+claude/sessions-index-pointer,True,Claude,2026-06-30T23:46:01Z,1,0,0,0,1,0,0,0,0,0,0,0,docs: add 2026-06-30 VIX-pctile session to SESSIONS_INDEX
+claude/trading-agents-analysis-4w8ivm,True,Claude,2026-06-18T03:56:53Z,4,0,0,0,5,0,0,0,0,0,0,0,docs(rules): consolidate duplicate look-ahead-bias section
+claude/trading-agents-deepdives,True,Claude,2026-06-18T05:13:48Z,4,0,0,0,1,0,0,0,0,0,0,0,"docs(integrations): analyze tradememory-protocol, DeepFund, live-trade-bench"
+claude/trading-dashboard-z74mcd,True,Claude,2026-06-16T20:06:17Z,0,0,0,0,0,0,0,0,0,0,0,0,feat(dashboard): add Intraday Market Regime page
+claude/trading-strategy-tools-vi9r2g,True,Claude,2026-06-24T23:22:49Z,2,0,0,0,1,0,0,0,0,0,0,0,docs: add repo-integration analyses for ai-market and financial-datasets MCP
+claude/twitter-link-implementation-4t2bng,True,Matt Amundson,2026-06-26T00:46:38-05:00,10,0,0,0,5,0,0,0,0,0,0,0,Merge branch 'master' into claude/twitter-link-implementation-4t2bng
+claude/vix-regime-phase4,True,Claude,2026-06-24T21:20:49Z,7,0,0,0,4,0,0,0,0,0,0,0,fix(dashboard): rename to VixPercentileRegimeCard to avoid casing clash
+consolidate/gate-integrity,False,Matt Amundson,2026-06-26T05:44:07-05:00,14,0,2,0,7,0,0,2,0,0,0,0,feat(backtest): H1/H2 chronological stationarity gate (library + wrapper)
+cursor/fix-dashboard-homepage-crash-a5df,False,Cursor Agent,2026-06-29T23:53:50Z,2,0,0,0,5,0,0,0,0,0,0,0,docs: add Vertex AI (Claude-on-Vertex) activation path to AGENTS.md
+cursor/setup-dev-environment-a5df,False,Cursor Agent,2026-06-26T06:43:42Z,1,0,0,0,1,0,0,0,0,0,0,0,docs: add AGENTS.md with Cursor Cloud dev environment setup notes
+data/ib-subhour-caches,False,Matt Amundson,2026-06-29T18:17:18-05:00,23,0,0,0,1,0,0,0,0,0,0,0,data: add IB sub-hour (5m/15m) bar caches for 9 micros
+deploy/dashboard,False,Jarvis Deploy,2026-07-01T00:02:59Z,220,0,0,0,25,0,0,0,0,0,0,0,ci: add deploy/dashboard branch triggers + automated Vercel + Railway deploy wor
+discovery/daily-trend,False,Matt Amundson,2026-06-12T13:44:53-05:00,2,0,1,0,1,0,0,1,0,0,0,0,feat(discovery): daily-timeframe trend batch — evidence higher-TF is sample-star
+docs/funnel-audits,False,Matt Amundson (via Computer),2026-07-01T00:03:37Z,5,0,0,0,1,0,0,0,0,0,0,0,docs(funnel): add forensic audit reports from funnel skill
+docs/handoff-2026-06-30-freshness-gate,False,Matt Amundson,2026-06-30T01:35:59-05:00,2,0,0,0,1,0,0,0,0,0,0,0,docs(session-logs): add 2026-06-30 price-freshness-gate handoff + summary
+docs/hermes-recovery,False,Matt Amundson,2026-06-29T18:19:07-05:00,267,0,4,1,74,0,0,0,0,0,0,0,"docs(hermes): add cron-recovery handoff, fix plan, conversation log"
+docs/llm-decision-identity,False,Matt Amundson,2026-06-15T18:58:30-05:00,1,0,0,0,1,0,0,0,0,0,0,0,docs(design): spec LLM decision-identity attribution model
+docs/safety-do-not-trade-comment,False,Matt Amundson,2026-06-17T00:26:43-05:00,1,0,0,0,1,0,0,0,0,0,0,0,docs(pipeline): correct stale comment claiming a safety-layer DO_NOT_TRADE gate
+docs/safety-review-ritual,True,Claude,2026-06-29T23:52:11Z,1,0,0,0,1,0,0,0,0,0,0,0,docs(safety): add safety-review clearing ritual (no invariant change)
+docs/session-2026-06-30-handoff,False,Matt Amundson,2026-06-30T01:31:25-05:00,269,0,4,1,76,0,0,0,0,0,0,0,docs(session-logs): add 2026-06-30 price-freshness-gate handoff + summary
+docs/session-logs-2026-06-29-ib-backfill,False,Matt Amundson,2026-06-29T21:34:33-05:00,2,0,0,0,1,0,0,0,0,0,0,0,docs(session-logs): 2026-06-29 IB-backfill/tag-backup/cleanup handoff + conversa
+feat-live-2026-06-18,False,Matt Amundson,2026-06-18T16:10:47-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(risk): volatility-targeting sizing overlay [safety-review] (DEFAULT OFF)
+feat-live-2026-06-22,False,Matt Amundson,2026-06-22T00:39:55-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(dashboard): dedupe HonestPnlCard onto the shared honest-trades feed
+feat/amo-edge-verdict-trust-pane,False,Matt Amundson,2026-06-16T04:25:38-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(dashboard): surface amo live edge verdict in Trust Pane
+feat/autonomous-price-freshness-gate,False,Matt Amundson,2026-06-29T19:03:04-05:00,4,0,0,0,2,0,0,0,0,0,0,0,feat(data): request IB delayed market data as subscription-gap stopgap
+feat/b1-trend-diversifiers,False,Matt Amundson,2026-06-17T19:00:03-05:00,4,0,1,0,2,0,0,1,0,0,0,0,feat(backtest): teach the IB history puller the B1 diversifier contracts
+feat/backtest-bar-quality-gate,False,Matt Amundson,2026-06-16T03:14:47-05:00,2,0,0,0,3,0,0,0,0,0,0,0,fix(lint): add strict= to cache-bar screen zip; sync branch with master
+feat/bar-quality-audit-cli,False,Matt Amundson,2026-06-16T07:59:41-05:00,2,0,0,0,1,0,0,0,0,0,0,0,feat(scripts): add read-only stored-bar quality audit CLI
+feat/bar-quality-observability,False,Matt Amundson,2026-06-16T03:20:24-05:00,5,0,0,0,4,0,0,0,0,0,0,0,fix(migrations): add missing MIGRATION_DESCRIPTIONS entry for 039
+feat/bar-quality-write-gate,False,Matt Amundson,2026-06-11T23:31:47-05:00,4,0,0,0,1,0,0,0,0,0,0,0,"feat(data): write-time bar-quality gate (shadow default, enforce opt-in)"
+feat/beta-harvest-wire,False,Matt Amundson,2026-06-25T13:53:03-05:00,0,0,0,0,0,0,0,0,0,0,0,0,docs(env): document BETA_HARVEST_GATE_ENFORCE flag (T9)
+feat/branch-review-harness,True,Claude,2026-06-29T23:00:15Z,3,0,0,0,1,0,0,0,0,0,0,0,feat(audit): branch-review harness — evidence gatherer + verdict playbook
+feat/cache-completeness,False,Matt Amundson,2026-06-26T07:12:03-05:00,2,0,0,0,4,0,0,0,0,0,0,0,style(backtest): ruff B905 (zip strict=) + I001 import sort in cache_completenes
+feat/candidate-registry,False,Matt Amundson,2026-06-12T15:12:26-05:00,3,0,0,0,1,0,0,0,0,0,0,0,feat(backtest): pre-registered candidate registry for forward-testing
+feat/cl-trend-validation,False,Matt Amundson,2026-06-17T10:39:02-05:00,1,0,1,0,1,0,0,1,0,0,0,0,feat(backtest): add CL trend gate-v2 validation runner
+feat/claude-on-vertex,False,Matt Amundson,2026-06-25T22:10:58-05:00,86,1,0,2,8,0,1,1,0,1,0,0,fix(llm): defensive use_vertex read in low-level wire path
+feat/corey-extract-viewer,False,Matt Amundson,2026-06-26T06:06:55-05:00,244,0,4,1,57,0,0,2,0,0,0,0,feat(corey): signal-propagation guardrail for trade_outcomes
+feat/corey-feed-hardening,False,Matt Amundson,2026-06-29T23:55:51Z,7,0,0,0,5,0,0,0,0,0,0,0,"test(corey,harmonic): cover guardrail branches + prove harmonic detector fires"
+feat/cpcv-validation,False,Matt Amundson,2026-06-17T11:16:52-05:00,3,0,0,0,2,0,0,0,0,0,0,0,style(backtest): satisfy ruff lint on CPCV (C416/B905/I001)
+feat/dashboard-completion,False,Matt Amundson,2026-06-15T14:12:00-05:00,14,0,0,0,9,0,0,0,0,0,0,0,fix: repair prd.json US-007/US-008 object boundary
+feat/dashboard-price-chart-panel,False,Matt Amundson,2026-06-12T00:11:07-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(dashboard): price chart panel with trade markers on /analysis (A1)
+feat/dashboard-resilience,False,Matt Amundson,2026-06-12T11:09:05-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(dashboard): per-widget error boundary + harden tearsheet sparkline
+feat/dashboard-resilience-boundaries,True,Claude,2026-06-30T16:45:42Z,7,0,0,0,2,0,0,0,0,0,0,0,test(dashboard): golden-path e2e — overview must not white-screen on degraded da
+feat/dashboard-tv-widget-3d,False,Matt Amundson,2026-06-12T00:16:55-05:00,3,0,0,0,1,0,0,0,0,0,0,0,feat(dashboard): TradingView embed + 3D price terrain on /analysis (A2/A3)
+feat/data-history-extension,False,Matt Amundson,2026-06-16T14:01:32-05:00,3,0,0,0,2,0,0,0,0,0,0,0,test(data): align cache-filename contract for 5m/15m intraday intervals
+feat/decision-identity,False,Matt Amundson,2026-06-15T19:24:34-05:00,19,0,0,0,7,0,0,0,0,0,0,0,feat(attribution): LLM decision-identity fingerprint + per-symbol lineage (P1+P2
+feat/decision-identity-p4,False,Matt Amundson,2026-06-15T19:51:37-05:00,20,0,0,0,8,0,0,0,0,0,0,0,"feat(forward-test): graduate LLM decision lineages, not just mechanical candidat"
+feat/deploy-runbook-gate,False,Matt Amundson,2026-06-16T13:39:04-05:00,2,0,0,0,2,0,0,0,0,0,0,0,docs(deploy): runbook reflects #75 MERGED + live pre-restart state
+feat/discovery-factory,False,Matt Amundson,2026-06-24T16:12:40-05:00,142,0,1,1,28,0,0,1,0,0,0,0,Merge remote-tracking branch 'origin/master' into feat/discovery-factory
+feat/discovery-round3,False,Matt Amundson,2026-06-06T06:28:21-05:00,15,0,0,0,8,0,0,0,0,0,0,0,[safety-review] feat(safety): expose kill-switch activation timestamp
+feat/edge-ledger,False,Matt Amundson,2026-06-15T20:26:41-05:00,22,0,0,0,9,0,0,0,0,0,0,0,feat(observability): unified honest-edge ledger across both forward-test tracks
+feat/es-nq-spread-dark-track,False,Matt Amundson,2026-06-24T09:50:44-05:00,6,0,0,0,2,0,0,0,0,0,0,0,feat(backtest): wire ES-NQ spread as a dark forward paper track
+feat/execution-fidelity-gate-wiring,False,Matt Amundson,2026-06-16T07:11:02-05:00,5,0,0,0,1,0,0,0,0,0,0,0,feat(readiness): wire execution-fidelity edge mode + hardenings
+feat/family-fdr-campaign,False,Matt Amundson,2026-06-25T17:22:58-05:00,0,0,0,0,0,0,0,0,0,0,0,0,Merge pull request #144 from mattamundson/feat/preholiday-forward-track
+feat/family-fdr-standing-gate,False,Matt Amundson,2026-06-17T12:01:54-05:00,3,0,0,0,2,0,0,0,0,0,0,0,fix(backtest): exclude CPCV verdicts from the family-FDR sign-test
+feat/fdr-saty-clean,False,Matt Amundson,2026-06-12T13:22:05-05:00,5,0,0,0,3,0,0,0,0,0,0,0,fix(lint): clear pre-existing ruff errors in signal_broadcast.py
+feat/forward-test-loop,False,Matt Amundson,2026-06-12T15:45:35-05:00,7,0,0,0,3,0,0,0,0,0,0,0,feat(analytics): read-only /analytics/forward-test cockpit endpoint
+feat/forward-test-panel,False,Matt Amundson,2026-06-12T16:27:05-05:00,3,0,0,0,1,0,0,0,0,0,0,0,feat(dashboard): embed forward-test loop in the one-pane cockpit
+feat/forward-test-panel-lineages,False,Matt Amundson,2026-06-15T20:04:19-05:00,3,0,0,0,2,0,0,0,0,0,0,0,feat(dashboard): render the decision-lineage track in the forward-test panel (P5
+feat/free-daily-export,False,Matt Amundson,2026-06-26T11:03:36-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(relval): deep-data daily ETF relative-value screen -- clean NULL
+feat/ft-attribution,False,Matt Amundson,2026-06-15T14:05:37-05:00,12,0,0,0,6,0,0,0,0,0,0,0,fix(forward-test): set deployed_live=false for all candidates (honest default)
+feat/ft-wiring,False,Matt Amundson,2026-06-12T15:58:12-05:00,10,0,0,0,4,0,0,0,0,0,0,0,feat(forward-test): candidate_id tagging hook + daily read-only snapshot job
+feat/funnel-vwap-shadow,False,Matt Amundson,2026-06-29T23:53:51Z,2,0,1,0,1,0,0,1,0,0,0,0,feat(backtest): MES VWAP reversion gate-v2 runner + DARK forward shadow
+feat/fwdtest-attribution,False,Matt Amundson,2026-06-17T08:53:25-05:00,2,0,0,0,1,0,0,0,0,0,0,0,"fix(forward-test): surface verdict for live-traded strategy, not best-ranked"
+feat/gate-v2-sample-adequacy,False,Matt Amundson,2026-06-02T03:28:20-05:00,12,0,2,0,3,0,0,2,0,0,0,0,"feat(gate-v2): bootstrapped win-rate gate (Init 2C, SHADOW mode)"
+feat/ib-data-watchdog,False,Matt Amundson,2026-06-16T03:47:16-05:00,6,0,0,0,1,0,0,0,0,0,0,0,feat(data): auto-reconnect watchdog + silent-degrade visibility for IB data leg
+feat/lightweight-charts-jarvis,False,Matt Amundson,2026-06-16T03:17:02-05:00,8,0,0,0,3,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into tmpfix/lwc
+feat/live-fills-observability,False,Matt Amundson,2026-06-04T06:10:00-05:00,24,1,0,1,8,0,1,1,1,0,1,0,feat(dashboard): live execution cockpit (fidelity/slippage/approvals/fills)
+feat/live-verdict-pane,False,Matt Amundson,2026-06-25T22:09:55-05:00,1,0,0,0,2,0,0,0,0,0,0,0,"feat(dashboard): trust-pane banner surfaces ANY degraded state, not just data-in"
+feat/llm-degraded-surfacing,False,Matt Amundson,2026-06-12T16:13:40-05:00,3,0,0,0,1,0,0,0,0,0,0,0,feat(dashboard): surface LLM fallback/degradation loudly in Engine Health
+feat/loader-complete-preference,False,Matt Amundson,2026-06-26T07:32:20-05:00,2,0,0,0,1,0,0,0,0,0,0,0,feat(backtest): _find_latest_cache prefers complete over fresh (prefer_complete)
+feat/master-scheduler-tile,False,Matt Amundson,2026-06-02T16:06:07-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(master): scheduler panel on mission-control dashboard
+feat/mcpt-trades-bootstrap,False,Matt Amundson,2026-06-24T15:13:51-05:00,3,0,1,0,1,0,0,1,0,0,0,0,feat(mcpt): add bootstrap CI alongside the trade sign-flip test
+feat/mgc-adx-trend-conditioning,False,Matt Amundson,2026-06-17T04:39:56-05:00,5,0,1,1,1,0,0,1,0,0,0,0,feat(backtest): promote ADX(14) entry filter into generate_sma_trend_signals
+feat/morning-brief-self-improving,False,Matt Amundson,2026-06-25T20:56:27-05:00,40,0,2,1,31,0,0,4,0,0,0,0,build(brief): scheduled-task installers for scorer + calibrator
+feat/p3-register-lineage,False,Matt Amundson,2026-06-15T20:41:39-05:00,22,0,0,0,9,0,0,0,0,0,0,0,feat(forward-test): operator CLI to register decision lineages (P3)
+feat/paper-stop-monitor,False,Matt Amundson,2026-06-02T00:51:39-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(health): expose ibgateway_alive port-liveness in /health (Track B3)
+feat/perm-gate-shadow-wire,False,Matt Amundson,2026-06-16T23:01:53-05:00,4,0,0,0,2,0,0,0,0,0,0,0,feat(backtest): shadow-wire trade-sign permutation p into forward_stats
+feat/permutation-significance-gate,False,Matt Amundson,2026-06-06T03:18:54-05:00,2,0,0,0,1,0,0,0,0,0,0,0,feat(backtest): add trade-sign permutation significance test
+feat/pnl-truth-endpoint,True,Claude,2026-06-30T14:00:43Z,3,0,0,0,1,0,0,0,0,0,0,0,feat(api): GET /pnl/truth — honest realized P&L read surface
+feat/pnl-truth-gate,True,Claude,2026-06-29T22:46:34Z,2,0,0,0,1,0,0,1,0,0,0,0,feat(analytics): honest paper-P&L truth surface with TRUSTED/DEGRADED verdict
+feat/post-trade-analytics,False,Matt Amundson,2026-06-16T13:35:11-05:00,3,0,0,0,1,0,0,1,0,0,0,0,feat(analytics): WS4B post-trade attribution endpoints (no migration)
+feat/post-trade-dashboard,False,Matt Amundson,2026-06-16T14:35:27-05:00,2,0,0,0,1,0,0,0,0,0,0,0,feat(dashboard): surface post-trade execution quality in the Trust Pane
+feat/preholiday-forward-track,False,Matt Amundson,2026-06-25T16:56:19-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(forward-track): pre-holiday DARK paper-shadow + daily task + pre-registrati
+feat/promotion-pipeline-extension,False,Matt Amundson,2026-06-24T17:26:43-05:00,0,0,0,0,0,0,0,0,0,0,0,0,docs(discovery): cross-sectional momentum = negative result
+feat/quantstats-integration,False,AmoSZN,2026-04-23T02:50:38Z,6,0,0,0,1,0,0,0,0,0,0,0,"feat(quantstats): Tasks 1-5 — qs.stats integration, 10-gate validation, tearshee"
+feat/realtime-signal-broadcast,False,Matt Amundson,2026-06-12T10:50:58-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(notifications): unified multi-channel signal broadcast
+feat/regime-conditional-v2,False,Matt Amundson,2026-06-17T12:27:12-05:00,4,0,0,0,2,0,0,0,0,0,0,0,style(backtest): satisfy ruff lint on regime-conditional tests
+feat/regime-conditional-verdicts,False,Matt Amundson,2026-06-25T22:11:18-05:00,6,0,0,0,4,0,0,0,0,0,0,0,style(backtest): satisfy ruff lint on CPCV (C416/B905/I001)
+feat/saty-atr-strategy,False,Matt Amundson,2026-06-16T03:15:44-05:00,3,0,0,1,3,0,0,1,0,0,0,0,fix(lint): sort imports in saty_atr_wfo_runner; sync branch with master
+feat/session-anomaly-mes,False,Matt Amundson,2026-06-24T16:24:04-05:00,47,0,1,0,2,0,0,0,0,0,0,0,feat(backtest): cross-index turn-of-month robustness — NOT-CORROBORATED (3/6)
+feat/spread-pairs-generalization,False,Matt Amundson,2026-06-24T16:34:01-05:00,171,0,1,0,3,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into feat/spread-pairs-generalizati
+feat/spread-track-zbzn,False,Matt Amundson,2026-06-26T06:34:53-05:00,1,0,0,0,2,0,0,0,0,0,0,0,feat(spread-track): add M6E/M6B (EUR/GBP) dark track -- factory's 2nd gate PASS
+feat/stationarity-record-first,False,Matt Amundson,2026-06-26T06:59:24-05:00,16,0,2,0,8,0,0,2,0,0,0,0,feat(gate): record-first H1/H2 stationarity in validate_strategy (advisory)
+feat/strategy-edge-wave,False,Matt Amundson,2026-06-18T14:03:00-05:00,17,0,4,2,6,0,0,2,0,0,0,0,fix(test): import pytest in regime test so cacheless-CI skip works
+feat/strategy-factory,False,Matt Amundson,2026-06-26T07:00:25-05:00,24,0,0,1,11,0,0,1,0,0,0,0,feat(factory): add 3 cross-asset RV pairs + Phase-4 combinations layer
+feat/symbol-aware-charting,False,Matt Amundson,2026-06-16T03:17:30-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(dashboard): render futures candles — timestamp field + mount gating
+feat/thinkscript-strategy-sweep,False,Matt Amundson,2026-06-12T16:22:15-05:00,13,0,0,9,3,0,0,2,0,0,0,0,Merge remote-tracking branch 'origin/master' into feat/thinkscript-strategy-swee
+feat/tom-forward-track-task,False,Matt Amundson,2026-06-25T16:43:47-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(forward-track): install daily TOM dark paper-track scheduled task
+feat/top10-roadmap,False,Matt Amundson,2026-06-15T20:50:42-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(safety): state-transition-only kill-switch side effects (kill alert spam)
+feat/tpo-score-layer2,False,Matt Amundson,2026-06-16T16:03:42-05:00,2,0,0,0,1,0,0,0,0,0,0,0,feat(signals): wire TPO score as observability columns (default-off)
+feat/trade-review-loop,False,Matt Amundson,2026-06-12T16:15:34-05:00,10,0,0,0,4,0,0,0,0,0,0,0,test(trade-review): fix lint + suite pollution from full-review tests
+feat/trading-status-live,False,Matt Amundson,2026-06-25T23:49:55-05:00,4,0,0,0,2,0,0,0,0,0,0,0,Merge branch 'master' into feat/trading-status-live
+feat/tradingview-mcp-gamma-kraken,True,Claude,2026-06-25T15:49:47-05:00,108,0,0,0,14,0,0,0,0,0,0,0,chore: bring loop tooling into this checkout from master
+feat/ts-overlay,False,Matt Amundson,2026-06-22T03:54:23-05:00,11,0,2,0,3,0,0,3,0,0,0,0,fix(backtest): tz-strip cache/VIX loaders; add powered full-sample A/B
+feat/unified-trust-pane,False,Matt Amundson,2026-06-12T10:59:57-05:00,0,0,0,0,0,0,0,0,0,0,0,0,"feat(dashboard): unified Trust Pane — both systems, one read-only glance"
+feat/vertex-ai-integration,False,Matt Amundson,2026-06-04T04:22:36-05:00,0,0,0,0,0,0,0,0,0,0,0,0,docs: refresh CURRENT_STATE — correct instrument table + dated reality block
+feat/vertex-landing,False,Matt Amundson,2026-06-04T03:47:13-05:00,4,0,0,0,3,0,0,0,0,0,0,0,fix(restart): drop stray restart_engine.ps1 revert from transport cherry-pick
+feat/vol-target-sizer,False,Matt Amundson,2026-06-25T23:32:27-05:00,0,0,0,0,2,0,0,0,0,0,0,0,Merge origin/master into feat/vol-target-sizer
+feat/wave-a-reliability,False,Matt Amundson,2026-06-16T02:11:58-05:00,6,0,0,0,2,0,0,0,0,0,0,0,feat(data-watchdog): mid-session IB data-leg drop detection + reconnect
+fix/bar-gate-shadow-test,False,Matt Amundson,2026-06-12T02:53:51-05:00,1,0,0,0,1,0,0,0,0,0,0,0,test(data): fix shadow-persist test for #29/#30 gate interaction
+fix/bridge-kill-switch,True,Claude,2026-06-30T06:41:18Z,2,0,0,0,1,0,0,0,0,0,0,0,[safety-review] fix(systematic): repair inert kill-switch check in live bridge
+fix/calibration-direction-aware,False,Matt Amundson,2026-06-16T16:43:56-05:00,4,0,0,0,3,0,0,2,0,0,0,0,test(calibration): repair stale Brier fixtures broken by direction-aware fix
+fix/ci-eager-db-import,False,Matt Amundson,2026-06-04T04:14:38-05:00,21,0,0,0,10,0,0,0,0,0,0,0,fix(ci): defensive LIVE_TRADING_ENABLED read in /health endpoint
+fix/ci-fast-suite-flake-retry,False,Matt Amundson,2026-06-16T17:19:22-05:00,1,0,0,0,1,0,0,0,0,0,0,0,fix(ci): retry fast suite in a fresh process to absorb scanner flake
+fix/ci-test-defects,False,Matt Amundson,2026-06-11T22:40:41-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(tests): repair two CI-red test defects on master
+fix/ci-test-ordering-and-verdict-skip,False,Matt Amundson,2026-06-11T22:44:45-05:00,2,0,0,0,1,0,0,0,0,0,0,0,fix(tests): unbreak master CI — loop-ordering + untracked-verdict failures
+fix/claude-review-skip-when-no-key,False,Matt Amundson,2026-06-12T00:39:05-05:00,1,0,0,0,1,0,0,0,0,0,0,0,ci: skip Claude review cleanly when ANTHROPIC_API_KEY is absent
+fix/corey-cache-stale-nodata,True,Claude,2026-06-29T23:25:48Z,84,0,2,1,75,0,0,0,0,0,0,0,[safety-review] merge origin/master into fix/corey-cache-stale-nodata
+fix/dashboard-honest-metrics,False,Matt Amundson,2026-06-17T22:54:30-05:00,152,0,0,1,21,0,0,0,0,0,0,0,fix(dashboard): normalize trade direction to LONG/SHORT at the source
+fix/dashboard-honesty-safety,False,Matt Amundson,2026-06-03T02:49:45-05:00,16,0,0,0,9,0,0,0,0,0,0,0,feat: US-007 - anomaly sentinel HUD strip
+fix/dashboard-reliability-hardening,False,Matt Amundson,2026-06-30T19:24:42-05:00,2,0,0,0,2,0,0,0,0,0,0,0,Set maxDuration for request handling
+fix/dashboard-sota-2026-06-16,False,Matt Amundson,2026-06-17T12:02:17-05:00,150,0,0,1,15,0,0,0,0,0,0,0,fix(dashboard): guard null position fields crashing the home page
+fix/data-integrity-write-gates,False,Matt Amundson,2026-06-12T01:37:33-05:00,6,0,0,0,2,0,0,0,0,0,0,0,style(data): rename ambiguous `l` to `low` in bars_repository (E741)
+fix/degraded-feed-trade-guard,False,Matt Amundson,2026-06-16T15:35:03-05:00,3,0,0,0,1,0,0,0,0,0,0,0,fix(risk): refuse trades on offline-fallback prices (degraded-feed contamination
+fix/degraded-feed-trade-guard-pr,False,Matt Amundson,2026-06-16T17:26:48-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(risk): refuse trades on offline-fallback prices (degraded-feed contamination
+fix/drawdown-staleness,False,Matt Amundson,2026-06-12T13:28:03-05:00,2,0,0,0,3,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into fix/drawdown-staleness
+fix/dsr-runner-migration,False,Matt Amundson,2026-06-29T23:55:53Z,40,0,39,0,1,0,0,1,0,0,0,0,fix(backtest): migrate all gate runners off mean-of-window-Sharpes DSR
+fix/engine-lint-green,True,Claude,2026-06-29T22:15:28Z,4,0,0,0,1,0,0,0,0,0,0,0,fix(lint): clear 4 ruff errors blocking Engine Lint on master
+fix/era-aware-price-contamination,False,Matt Amundson,2026-06-12T16:03:58-05:00,2,0,0,0,1,0,0,0,0,0,0,0,fix(risk): era-aware price-contamination guard (MES 5300 incident)
+fix/flaky-intraday-trading-hours-test,False,Matt Amundson,2026-06-12T11:37:19-05:00,0,0,0,0,0,0,0,0,0,0,0,0,test(intraday): make test_skips_outside_trading_hours deterministic
+fix/forward-proving-paper,False,Matt Amundson,2026-05-31T20:08:59-05:00,19,0,2,0,11,0,0,2,0,0,0,0,feat(paper): pull runner bars from engine feed + 5m exit management
+fix/forward-test-curated-ledger,False,Matt Amundson,2026-06-16T23:11:49-05:00,0,0,0,0,0,0,0,0,0,0,0,0,"fix(forward-test): read curated paper_trades DB, not raw jsonl"
+fix/futures-exchange-mapping,False,Matt Amundson,2026-06-29T18:14:55-05:00,2,0,0,0,2,0,0,0,0,0,0,0,fix(market_data): map MHG (COMEX) and MYM (CBOT) futures exchanges
+fix/gate-v2-metric-integrity,False,Matt Amundson,2026-05-31T00:12:02-05:00,5,0,2,0,1,0,0,1,0,0,0,0,"[safety-review] fix(gate-v2): compute mc_95th_dd + dsr from trade list, not wind"
+fix/gemini-fallback-logging,False,Matt Amundson,2026-06-30T01:38:08-05:00,1,0,0,0,1,0,0,0,0,0,0,0,fix(llm): surface exception type in Gemini/OpenAI fallback error logs
+fix/ib-data-client-id,False,Matt Amundson,2026-06-12T01:15:26-05:00,3,0,0,0,1,0,0,0,0,0,0,0,fix(data): give the IB data leg a distinct clientId + bounded connect retry
+fix/ib-data-feed-restore,False,Matt Amundson,2026-06-02T23:56:55-05:00,0,0,0,0,1,0,0,0,0,0,0,0,Merge pull request #11 from mattamundson/feat/paper-stop-monitor
+fix/lint-vol-target-wiring-import,False,Matt Amundson,2026-06-26T00:21:40-05:00,1,0,0,0,1,0,0,0,0,0,0,0,fix(lint): sort import block in test_trader_vol_target_wiring (I001)
+fix/master-ci-green,False,Matt Amundson,2026-06-06T02:31:22-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(ci): make drawdown/peak safety regression tests CI-robust
+fix/paper-max-loss-backstop,False,Matt Amundson,2026-06-22T05:09:09-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(paper): catastrophe max-loss backstop closes null-stop positions
+fix/paper-maxdd-guard,False,Matt Amundson,2026-06-17T12:06:11-05:00,1,0,0,0,1,0,0,0,0,0,0,0,fix(engine): guard paper account max_dd divide-by-zero overflow
+fix/paper-order-quote-guard,False,Matt Amundson,2026-06-22T01:35:28-05:00,2,0,0,0,1,0,0,0,0,0,0,0,fix(execution): guard paper-path get_quote raises against lost fills
+fix/phantom-mes-mark-guard,False,Matt Amundson,2026-06-16T15:03:42-05:00,2,0,0,0,1,0,0,0,0,0,0,0,fix(portfolio): guard implausible marks from fabricating phantom P&L
+fix/phantom-pnl-aggregate,False,Matt Amundson,2026-06-16T15:55:27-05:00,2,0,0,0,1,0,0,0,0,0,0,0,fix(portfolio): exclude stale marks from unrealized P&L headline
+fix/pin-tzlocal-core,False,Matt Amundson,2026-06-16T17:10:44-05:00,2,0,0,0,3,0,0,0,0,0,0,0,"Revert ""build(deps): pin pandas==3.0.2 and numpy==2.2.6 (CI scanner suite)"""
+fix/price-fallback-staleness,False,Matt Amundson,2026-06-16T09:00:29-05:00,0,0,0,0,0,0,0,0,0,0,0,0,data(discord): 2026-06-15 digest
+fix/proactive-validation-integrity,False,Matt Amundson,2026-06-16T05:27:55-05:00,2,0,0,0,1,0,0,0,0,0,0,0,fix(validation): correct proactive-suite integrity defects that overstated readi
+fix/reconciler-tick-and-pnl-honesty,False,Matt Amundson,2026-06-06T06:07:57-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(safety): emergency-stop tick rounding + mark /api/pnl as demo [safety-review
+fix/safety-guards-phantom-degraded-2026-06-16,False,Matt Amundson,2026-06-25T22:49:20-05:00,2,0,0,0,3,0,0,0,0,0,0,0,Merge origin/master into fix/safety-guards-phantom-degraded
+fix/safety-test-fixtures-2026-06-16,False,Matt Amundson,2026-06-16T12:58:53-05:00,0,0,0,0,0,0,0,0,0,0,0,0,test(safety): fix 2 stale safety-test fixtures missed by f757673
+fix/scanner-entry-price-gate,False,Matt Amundson,2026-06-12T10:47:25-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(scanner): add one-shot void script for the 2026-06-12 phantom MES position
+fix/scrub-hardcoded-api-key,False,Matt Amundson,2026-06-16T07:15:56-05:00,3,0,0,0,1,0,0,0,0,0,0,0,"fix(security): read engine API key from env, drop hardcoded literal"
+fix/stats-summary-metrics,False,Matt Amundson,2026-06-16T15:30:56-05:00,2,0,0,0,2,0,0,0,0,0,0,0,"fix(portfolio): populate drawdown response fields (peak/current equity, *_pct)"
+fix/ta-offload-guard,False,Matt Amundson,2026-06-17T23:48:04-05:00,152,0,0,1,3,0,0,0,0,0,0,0,fix(dashboard): honest deduped P&L across all surfaces (dashboard-only) (#104)
+fix/technical-analysis-signal-type,False,Matt Amundson,2026-06-25T23:49:58-05:00,2,0,0,0,2,0,0,0,0,0,0,0,Merge branch 'master' into fix/technical-analysis-signal-type
+fix/test-db-isolation,False,Matt Amundson,2026-06-11T22:55:33-05:00,0,0,0,0,0,0,0,0,0,0,0,0,Merge branch 'master' into fix/test-db-isolation
+fix/test-import-prefix,False,Matt Amundson,2026-06-06T01:39:36-05:00,0,0,0,0,0,0,0,0,0,0,0,0,fix(ci): resolve ruff I001 lint errors blocking master Engine Lint
+fix/today-pnl-label,False,Matt Amundson,2026-06-12T14:54:35-05:00,2,0,0,0,1,0,0,0,0,0,0,0,fix(portfolio): give get_performance a real today_pnl (not all-time)
+fix/us09-trailing-stop-atr,False,Matt Amundson,2026-06-22T00:48:38-05:00,3,0,0,0,2,0,0,0,0,0,0,0,test(trailing-stop): use asyncio.run to survive full-suite loop teardown
+fix/us1703-retire-jsonl-store,False,Matt Amundson,2026-06-17T01:06:57-05:00,0,0,0,0,0,0,0,0,0,0,0,0,chore: re-trigger CI after Actions billing fix
+fix/vault-posix-and-smoke-auth-skip,False,Matt Amundson,2026-06-26T05:35:46-05:00,2,0,0,0,1,0,0,0,0,0,0,0,test+fix: cross-platform vault label; skip live smoke when not authable
+fix/ws-events-403,False,Matt Amundson,2026-06-10T22:49:58-05:00,0,0,0,0,0,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into fix/ws-events-403
+funnel-skill,False,Matt Amundson (via Computer),2026-07-01T00:04:04Z,13,0,0,0,1,0,0,0,0,0,0,0,feat(tools): add jarvis-robust-strategy-funnel skill
+integration/decision-identity-stack,False,Matt Amundson,2026-06-16T05:32:07-05:00,26,0,0,0,17,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into integration/decision-identity-
+integration/family-fdr-to-master-2026-06-25,False,Matt Amundson,2026-06-25T19:24:38-05:00,0,0,0,0,0,0,0,0,0,0,0,0,Merge origin/master into family-fdr (campaign->master convergence)
+integration/free-daily-to-master-2026-06-26,False,Matt Amundson,2026-06-25T22:50:27-05:00,0,0,0,0,0,0,0,0,0,0,0,0,Merge free-daily calendar discovery into master
+integration/master-converge-2026-06-16,False,Matt Amundson,2026-06-16T12:08:33-05:00,0,0,0,0,0,0,0,0,0,0,0,0,test(safety): align 4 stale safety-test expectations with family-fdr behavior
+meanrev-v2,False,Matt Amundson (via Computer),2026-07-01T00:03:15Z,6,0,2,1,1,0,0,1,0,0,0,0,feat(meanrev): v2 signal generator with vol-adaptive triggers + OU integration
+merge/session-anomaly-into-family-fdr,False,Matt Amundson,2026-06-24T16:32:29-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat(backtest): cross-index turn-of-month robustness — NOT-CORROBORATED (3/6)
+patch09-llm-fallback,False,Matt Amundson,2026-05-24T16:02:24-05:00,11,1,1,0,3,1,0,0,0,1,0,0,"feat(backtest): three recommendations — RV env docs, briefing counter, M2K Donch"
+perf/health-ib-timebox,False,Matt Amundson,2026-06-21T01:17:21-05:00,2,0,0,0,1,0,0,0,0,0,0,0,perf(health): time-box the IB sub-check so /health cannot hang on dead IB
+perf/offload-gather-compute,False,Matt Amundson,2026-06-19T06:14:11-05:00,3,0,0,0,1,0,0,0,0,0,0,0,perf(analysts): offload Stage-1b gather compute off the event loop
+perf/offload-ta-compute,False,Matt Amundson,2026-06-18T16:16:55-05:00,1,0,0,0,1,0,0,0,0,0,0,0,perf(technical-analyst): offload sync compute off the event loop
+phase0/emergency-hardening,False,AmoSZN,2026-04-23T02:50:38Z,6,0,0,0,1,0,0,0,0,0,0,0,"feat(quantstats): Tasks 1-5 — qs.stats integration, 10-gate validation, tearshee"
+r3b-beta-harvest-calendar,False,Matt Amundson,2026-06-29T18:19:09-05:00,2,0,0,0,3,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/master' into r3b-beta-harvest-calendar
+railway/fix-deploy-431971,True,railway-app[bot],2026-06-17T18:50:18Z,1,0,0,0,1,0,0,0,0,0,0,0,fix: add .python-version to pin Python 3.12 for nautilus_trader
+ralph/auto-0605,False,Matt Amundson,2026-06-05T15:38:40-05:00,19,0,0,0,12,0,0,2,0,0,0,0,fix(analytics): flat-curve Sharpe blew up past the == 0.0 guard
+ralph/auto-0605-rebased,False,Matt Amundson,2026-06-06T03:45:45-05:00,0,0,0,0,0,0,0,0,0,0,0,0,Merge remote-tracking branch 'origin/ralph/auto-0605-rebased' into ralph/auto-06
+ralph/high-roi-2026-06-03,False,Matt Amundson,2026-06-03T22:19:19-05:00,11,0,0,0,8,0,0,0,0,0,0,0,feat(trailing-stop): real ATRr_14 behind TRAILING_STOP_USE_REAL_ATR flag
+ralph/north-star-surfacing-2026-06-16,False,Matt Amundson,2026-06-16T22:49:30-05:00,13,0,0,0,9,0,0,2,0,0,0,0,fix(lint): clear ruff B007/F401 in #74 bar-depth code
+ralph/ns-surfacing-base-2026-06-16,False,Matt Amundson,2026-06-16T22:51:37-05:00,137,0,0,11,1,0,0,1,0,0,0,0,"Surface the invisible: MAE/MFE, entry-timing, bar-depth on jarvis (J1-J5) (#74)"
+ralph/top10-roi-2026-06-16,False,Matt Amundson,2026-06-16T06:31:29-05:00,0,0,0,0,0,0,0,0,0,0,0,0,feat: US-010 - watchdog liveness check for the master overseer
+ralph/top10-roi-2026-06-21,False,Matt Amundson,2026-06-22T00:11:00-05:00,8,0,0,0,5,0,0,0,0,0,0,0,test(strategy-c): lock the live-signal failure contract (no silent stale)
+test/backtest-analysis-coverage,False,Matt Amundson,2026-06-24T09:54:52-05:00,4,0,0,0,3,0,0,0,0,0,0,0,test(backtest): isolate family_fdr verdict-extraction None semantics
+test/e6-gating-precedence,False,Matt Amundson,2026-06-16T23:28:31-05:00,1,0,0,0,1,0,0,0,0,0,0,0,test(safety): E6 -- lock kill-switch / gate precedence and fail-fast order
+test/oms-order-router-coverage,False,Matt Amundson,2026-06-22T03:07:33-05:00,3,0,0,0,2,0,0,0,0,0,0,0,test(risk): cover GreeksGuard limits + PortfolioHedger logic [safety-review]
+test/us0607-live-coverage,False,Matt Amundson,2026-06-22T00:50:30-05:00,3,0,0,0,3,0,0,0,0,0,0,0,test(technical-analyst): use asyncio.run to survive full-suite loop teardown
+worktree-cryptic-purring-pond,False,Matt Amundson,2026-06-02T00:57:38-05:00,1,0,0,0,1,0,0,0,0,0,0,0,[safety-review] fix(pnl_monitor): prefer paper tracker over IB data in EOD snaps
+worktree-dashboard-honesty-safety,False,Matt Amundson,2026-06-05T14:13:54-05:00,1,0,0,0,1,0,0,0,0,0,0,0,fix(ops): require 3 consecutive failures in engine watchdog before restart
+worktree-feat-gemini-primary-routing,False,Matt Amundson,2026-05-24T15:53:33-05:00,4,0,0,0,3,0,0,0,0,0,0,0,Merge origin/feat/tradingview-mcp-gamma-kraken (hardening + MES/MGC promotion)
+worktree-generation-engine,False,Matt Amundson,2026-05-31T03:52:08-05:00,44,19,5,4,21,3,1,7,1,18,1,0,fix(paper-runner): self-init DB + UTF-8 output for standalone cycles
+worktree-journal-review,False,Matt Amundson,2026-06-01T11:39:04-05:00,1,0,0,0,1,0,0,0,0,0,0,0,feat(dashboard): add journal review stats card to command center
+worktree-quirky-swinging-lollipop,False,Matt Amundson,2026-06-02T02:54:12-05:00,7,0,0,0,7,0,0,0,0,0,0,0,fix(paper-runner): open RotatingFileHandler with utf-8 encoding
+worktree-rl-executor-flag-gate,False,Matt Amundson,2026-06-06T06:09:24-05:00,0,0,0,0,0,0,0,0,0,0,0,0,[safety-review] fix(rl): gate RL executor autostart on ENABLE_RL_TRADING
