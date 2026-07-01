@@ -388,6 +388,76 @@ class TestCompositeScore:
         score = composite_score(6.0, 5.0, 1.0, 0.0)
         assert score == pytest.approx(1.0, abs=0.001)
 
+    # ── Report-only DSR diagnostic (ml-pitfalls-defense.md pitfall #3) ────────
+
+    def test_diagnostics_score_matches_bare_composite_score(self):
+        """The wrapper must NOT alter the composite score — it is report-only."""
+        from engine.analytics.validation_metrics import (
+            composite_score,
+            composite_score_with_diagnostics,
+        )
+
+        bare = composite_score(5.27, 4.16, 0.82, 0.0179)
+        out = composite_score_with_diagnostics(
+            5.27, 4.16, 0.82, 0.0179, n_trials=20, n_obs=40
+        )
+        assert out["composite_score"] == pytest.approx(bare, abs=1e-12)
+        assert "deflated_sharpe" in out
+        assert 0.0 <= out["dsr"] <= 1.0
+        assert isinstance(out["dsr_passes_at_10pct"], bool)
+
+    def test_diagnostics_more_trials_never_raises_dsr(self):
+        """Multiple-testing correction: more trials cannot INCREASE the DSR."""
+        from engine.analytics.validation_metrics import (
+            composite_score_with_diagnostics,
+        )
+
+        few = composite_score_with_diagnostics(
+            5.0, 3.0, 0.8, 0.02, n_trials=1, n_obs=60
+        )["dsr"]
+        many = composite_score_with_diagnostics(
+            5.0, 3.0, 0.8, 0.02, n_trials=500, n_obs=60
+        )["dsr"]
+        assert many <= few + 1e-9
+
+    def test_diagnostics_mes_champion_from_results(self):
+        """MES: the approved champion should carry a DSR diagnostic end-to-end."""
+        from engine.analytics.validation_metrics import (
+            composite_score_from_results,
+            composite_score_with_diagnostics_from_results,
+        )
+
+        # MES SMA(60,200) champion surface (p_edge 0.75, ALT gate-v2 PASS).
+        mes = {
+            "profit_factor": 5.27,
+            "sharpe_ratio": 4.16,
+            "walk_forward_efficiency": 0.82,
+            "max_drawdown_pct": 0.0179,
+            "grid_combos": 9,          # n_trials alias
+            "total_oos_trades": 16,    # n_obs alias (thin MES sample)
+        }
+        out = composite_score_with_diagnostics_from_results(mes)
+        # Score is unchanged vs the bare path.
+        assert out["composite_score"] == pytest.approx(
+            composite_score_from_results(mes), abs=1e-12
+        )
+        # DSR present and in range; the thin 16-trade sample is exactly why the
+        # diagnostic matters for MES.
+        assert 0.0 <= out["dsr"] <= 1.0
+        assert out["deflated_sharpe"]["n_trials"] == 9
+        assert out["deflated_sharpe"]["n_obs"] == 16
+
+    def test_diagnostics_missing_trial_count_defaults_to_no_correction(self):
+        """No n_trials in the dict -> n_trials=1 (honest no-op, not a silent pass)."""
+        from engine.analytics.validation_metrics import (
+            composite_score_with_diagnostics_from_results,
+        )
+
+        out = composite_score_with_diagnostics_from_results(
+            {"sharpe_ratio": 2.0, "total_trades": 50}
+        )
+        assert out["deflated_sharpe"]["n_trials"] == 1
+
 
 # ─── Track E: Strategy Optimizer ─────────────────────────────────────────────
 
