@@ -169,8 +169,10 @@ async def get_validation_status():
         raise HTTPException(500, str(exc)) from exc
 
 
-_Q2_PAPER_TARGETS = {"MES": 30, "MCL": 60, "MNQ": 60}
+_Q2_PAPER_TARGETS = {"MES": 30, "MGC": 60, "MCL": 60, "MNQ": 60}
 _Q2_BLOCKED_SYMBOLS = {"MCL", "MNQ"}
+# MGC (target 60, unblocked — APPROVED/active) was previously absent from this
+# counter, hiding progress for one of only two currently paper-active instruments.
 
 
 @router.get("/counts")
