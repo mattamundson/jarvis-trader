@@ -1,0 +1,5 @@
+"System","Status"
+"amo-arbitrage Railway engine","Running 24/7 — commodities (MCL spreads, options, COT)"
+"IB Gateway (Railway)","Running 24/7 — port 4002 paper"
+"Jarvis Trader engine","Local only — no Railway deploy exists"
+"Jarvis dashboard","Vercel — pointing at localhost:8010 (dead)"
