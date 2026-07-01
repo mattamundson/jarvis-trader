@@ -5,7 +5,9 @@ name: Claude PR Review
 # https://code.claude.com/docs/en/github-actions
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    # ready_for_review added so the review (which already skips drafts below) fires
+    # when a draft is marked ready, not only on new commits.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, master, develop]
 
 # Tight, scoped permissions — never write-all.
