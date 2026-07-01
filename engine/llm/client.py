@@ -267,7 +267,7 @@ class JarvisLLMClient:
     OPENAI_FAILOVER_MAP = {
         "claude-opus-4-7": "gpt-4o",
         "claude-opus-4-6": "gpt-4o",
-        "claude-sonnet-4-6": "gpt-4o-mini",
+        "claude-sonnet-4-6": "gpt-4o",
         "claude-haiku-4-5-20251001": "gpt-4o-mini",
     }
 
