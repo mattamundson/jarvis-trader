@@ -1,0 +1,6 @@
+"Track","Status"
+"Strategy C+ signal engine","✅ Live — FRED + CoT wired in"
+"Dashboard","✅ Deployed and current"
+"Weekly cron (Fri 4:05pm CDT)","✅ Active — ID 646a49fe"
+"COHEN futures backtest","⚠️ Complete but not approved — needs threshold tuning"
+"IBKR paper execution","Ready — DUP662235, port 4002, Monday MOO"

@@ -1,0 +1,6 @@
+"File","What it is"
+"strategies_v1.jsonl","The main output — one strategy card per line"
+"atoms_repo.jsonl","Every repo file's extracted hypothesis atom (debug)"
+"atoms_bookmarks.jsonl","Every bookmark's extracted atom (debug)"
+"library_atoms.jsonl","Helper files set aside as instrument-agnostic (not cards)"
+"merge_review.jsonl","Medium-confidence cross-source matches needing your review"

@@ -1,0 +1,8 @@
+"Verdict","gate_v2 said","Was gate_v2 right?"
+"MGC_meanrev_rank1","FAIL","✅ Correct — p_edge=0.32 is worse than coin flip"
+"MGC_meanrev_rank2","FAIL","✅ Correct — same pattern, p_edge=0.25"
+"MGC_trend_rank1","FAIL","✅ Correct — DSR=0, no real edge"
+"MGC_trend_rank2","FAIL","✅ Correct — DSR=0 + only 4 OOS trades"
+"MGC_trend_rank3","FAIL","🚨 FALSE NEGATIVE — see below"
+"MGC_trend_rank4 (pre-refresh)","PASS","✅ Correct"
+"MGC_trend_rank4 (current)","PASS","✅ Correct"

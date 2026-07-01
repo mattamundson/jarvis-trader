@@ -1,0 +1,4 @@
+"Category","Files","Natural home"
+"Skill code (orchestration, gate, tracker)","SKILL.md, scripts/*.py, references/*.md, tests/*.py, Run-JarvisFunnelPhase1.ps1","A new branch in jarvis-trader (e.g., funnel-skill) OR a separate new repo"
+"Meanrev v2 code (drop-in for the engine)","meanrev_v2_signals.py, runner shells, tests","A branch in jarvis-trader (e.g., meanrev-v2) — these files belong inside engine/backtest/ and engine/tests/"
+"Audit/analysis docs (markdown reports, xlsx spreadsheet)","meanrev_audit.md, gate_v2_audit_mgc_evidence.md, gate_comparison_findings.md, gate_comparison_v1.xlsx, strategy_c_audit.md, x_bookmarks_export_playbook.md","Either a docs/funnel-audits/ folder in jarvis-trader, or a separate docs repo"
