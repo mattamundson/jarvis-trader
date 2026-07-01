@@ -19,11 +19,17 @@ Enable:
   Set ENABLE_IB_SCANNER=1 in engine/.env then restart the engine.
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
+from analytics.screener_filters import (
+    BarProvider,
+    ScreenerFilters,
+    screen_candidates,
+)
 from brokers.ib_scanner import (
     VALID_SCAN_CODES,
     is_ib_scanner_enabled,
@@ -211,3 +217,182 @@ async def get_raw_scan(
     except Exception as exc:
         logger.error("[IbScannerRouter] raw scan failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Scanner error: {exc}") from exc
+
+
+# ── Pine Screener filters (GreenStar2-style) ──────────────────────────────────
+# Pipe the read-only IB scanner movers universe through the screener filter
+# chain (analytics/screener_filters.py) to reduce a large mover list to a small
+# set of real-time focus names. Read-only: never touches order routing.
+
+_HISTORY_PERIOD = "2y"  # enough daily bars for the 200-SMA / 52-week Minervini criteria
+
+
+class ScreenRequest(BaseModel):
+    """Universe source + filter thresholds for POST /ib-scanner/screen.
+
+    Any threshold left as ``null`` is not applied. Defaults mirror the
+    GreenStar2 screenshot: xFrom50 in [0, 4], RVOL > 1, %fromLoD < 70, Chg% > 0.
+    """
+
+    scan_code: str = Field("TOP_PERC_GAIN", description="IB scan code for the universe")
+    symbols: list[str] | None = Field(
+        None, description="Explicit symbol list; bypasses the IB scanner when provided"
+    )
+    max_symbols: int = Field(25, ge=1, le=50, description="Cap on candidates screened")
+
+    x_from_50_min: float | None = 0.0
+    x_from_50_max: float | None = 4.0
+    rvol_min: float | None = 1.0
+    x_from_lod_max: float | None = 70.0
+    chg_pct_min: float | None = 0.0
+    chg_open_pct_min: float | None = None
+    atr_pct_min: float | None = None
+    atr_pct_max: float | None = None
+    mm_min: int | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    def to_filters(self) -> ScreenerFilters:
+        return ScreenerFilters(
+            x_from_50_min=self.x_from_50_min,
+            x_from_50_max=self.x_from_50_max,
+            rvol_min=self.rvol_min,
+            x_from_lod_max=self.x_from_lod_max,
+            chg_pct_min=self.chg_pct_min,
+            chg_open_pct_min=self.chg_open_pct_min,
+            atr_pct_min=self.atr_pct_min,
+            atr_pct_max=self.atr_pct_max,
+            mm_min=self.mm_min,
+        )
+
+
+class ScreenedRow(BaseModel):
+    """One symbol's screener metrics plus its pass/fail verdict."""
+
+    symbol: str | None = None
+    last_price: float | None = None
+    atr_pct: float | None = None
+    rvol: float | None = None
+    x_from_50: float | None = None
+    x_from_lod_pct: float | None = None
+    chg_pct: float | None = None
+    chg_open_pct: float | None = None
+    mm_score: int = 0
+    bars_used: int = 0
+    passed: bool = False
+    reasons: list[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ScreenResponse(BaseModel):
+    """Response from POST /ib-scanner/screen."""
+
+    enabled: bool
+    universe_source: str
+    total_candidates: int
+    passed_count: int
+    focus: list[ScreenedRow]
+    rejected: list[ScreenedRow]
+    note: str = (
+        "Focus names pass every active filter, sorted by RVOL desc. Metrics are "
+        "point-in-time (decision bar = latest daily bar). Daily bars fetched via "
+        "yfinance; symbols without bars are skipped."
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+def _make_yfinance_provider(period: str) -> BarProvider:
+    """Build a daily-bar provider backed by yfinance (lazy import, graceful)."""
+
+    def _provider(symbol: str):  # pragma: no cover — network I/O
+        import pandas as pd
+        import yfinance as yf
+
+        raw = yf.download(
+            symbol, period=period, interval="1d", auto_adjust=True, progress=False
+        )
+        if raw is None or len(raw) == 0:
+            return None
+        if isinstance(raw.columns, pd.MultiIndex):
+            raw.columns = raw.columns.get_level_values(0)
+        raw = raw.rename(columns=str.lower)
+        cols = ["open", "high", "low", "close", "volume"]
+        if not all(c in raw.columns for c in cols):
+            return None
+        return raw[cols].dropna()
+
+    return _provider
+
+
+async def _universe_symbols(req: ScreenRequest) -> list[str]:
+    """Resolve the candidate symbol list from the request or the IB scanner."""
+    if req.symbols:
+        return list(dict.fromkeys(req.symbols))[: req.max_symbols]
+    if req.scan_code not in VALID_SCAN_CODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown scan_code '{req.scan_code}'. Supported: {sorted(VALID_SCAN_CODES)}",
+        )
+    rows = await scan(scan_code=req.scan_code, n_results=req.max_symbols)
+    seen: list[str] = []
+    for row in rows:
+        sym = row.get("symbol")
+        if sym and sym != "UNKNOWN" and sym not in seen:
+            seen.append(sym)
+    return seen[: req.max_symbols]
+
+
+@router.post("/screen", response_model=ScreenResponse)
+async def post_screen(req: ScreenRequest) -> ScreenResponse:
+    """Screen an IB scanner movers universe with GreenStar2-style filters.
+
+    Pulls the universe (``scan_code`` movers, or an explicit ``symbols`` list),
+    fetches daily bars per candidate, computes the screener metrics, and returns
+    the focus names that pass every active filter. Read-only — no order routing.
+
+    Returns HTTP 501 when ENABLE_IB_SCANNER=0 unless an explicit ``symbols`` list
+    is supplied (which needs no IB connection).
+    """
+    using_scanner = not req.symbols
+    if using_scanner:
+        _assert_enabled()
+    try:
+        symbols = await _universe_symbols(req)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("[IbScannerRouter] screen universe resolve failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Scanner error: {exc}") from exc
+
+    if not symbols:
+        return ScreenResponse(
+            enabled=is_ib_scanner_enabled(),
+            universe_source="symbols" if req.symbols else req.scan_code,
+            total_candidates=0,
+            passed_count=0,
+            focus=[],
+            rejected=[],
+        )
+
+    provider = _make_yfinance_provider(_HISTORY_PERIOD)
+    filters = req.to_filters()
+    try:
+        # screen_candidates + yfinance fetches are blocking — run off the loop.
+        results = await asyncio.to_thread(screen_candidates, symbols, provider, filters)
+    except Exception as exc:
+        logger.error("[IbScannerRouter] screen failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Screen error: {exc}") from exc
+
+    rows = [ScreenedRow(**r.as_dict()) for r in results]
+    focus = [r for r in rows if r.passed]
+    rejected = [r for r in rows if not r.passed]
+    return ScreenResponse(
+        enabled=is_ib_scanner_enabled(),
+        universe_source="symbols" if req.symbols else req.scan_code,
+        total_candidates=len(rows),
+        passed_count=len(focus),
+        focus=focus,
+        rejected=rejected,
+    )

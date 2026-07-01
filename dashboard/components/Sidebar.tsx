@@ -10,6 +10,7 @@ import {
   Brain,
   ChevronRight,
   Cpu,
+  Crosshair,
   FileText,
   Flame,
   FlaskConical,
@@ -63,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Trade History", href: "/trades", icon: <History className="h-3.5 w-3.5" /> },
       { label: "Paper Trading", href: "/paper", icon: <Layers className="h-3.5 w-3.5" /> },
       { label: "Watchlist", href: "/watchlist", icon: <Star className="h-3.5 w-3.5" /> },
+      { label: "Screener", href: "/screener", icon: <Crosshair className="h-3.5 w-3.5" /> },
     ],
   },
   {
