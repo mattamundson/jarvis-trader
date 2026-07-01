@@ -41,7 +41,6 @@ jobs:
         working-directory: dashboard
         env:
           NODE_ENV: production
-          # Pass stub so build doesn't fail on missing engine at CI time
           ENGINE_INTERNAL_URL: http://localhost:8010
 
       - name: No bare fetch guard
@@ -102,23 +101,68 @@ jobs:
 
       - name: Smoke test deployed endpoint
         run: |
-          sleep 10  # allow propagation
+          sleep 10
           HTTP=$(curl -o /dev/null -s -w "%{http_code}" \
             "${{ steps.deploy.outputs.url }}/api/engine/health" \
             -H "X-Api-Key: ${{ secrets.ENGINE_API_KEY }}" \
             --max-time 15 || echo "000")
           echo "Health endpoint returned: ${HTTP}"
-          # 200 = engine live, 502/503 = engine offline (expected in CI — dashboard still deployed)
-          # Only fail on 404/500 which indicate a routing or build regression
           if [[ "${HTTP}" == "404" || "${HTTP}" == "500" ]]; then
-            echo "ERROR: unexpected ${HTTP} — likely a routing or build regression."
+            echo "ERROR: unexpected ${HTTP} — routing or build regression."
             exit 1
           fi
           echo "Smoke test passed (HTTP ${HTTP})"
+
+      - name: Notify Discord — deploy success
+        if: success()
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          curl -s -o /dev/null -H "Content-Type: application/json" -d "{
+            \"embeds\": [{
+              \"title\": \"✅ Dashboard Deployed — Vercel\",
+              \"color\": 3066993,
+              \"fields\": [
+                {\"name\": \"URL\", \"value\": \"${{ steps.deploy.outputs.url }}\", \"inline\": false},
+                {\"name\": \"Commit\", \"value\": \"\`${SHORT_SHA}\`\", \"inline\": true},
+                {\"name\": \"Branch\", \"value\": \"\`${{ github.ref_name }}\`\", \"inline\": true}
+              ],
+              \"footer\": {\"text\": \"Jarvis Trader · GitHub Actions\"},
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" "${{ secrets.DISCORD_WEBHOOK_URL }}"
 
       - name: Summary
         run: |
           echo "### Vercel Deploy Complete" >> $GITHUB_STEP_SUMMARY
           echo "**URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Discord alert on any job failure
+  # ─────────────────────────────────────────────────────────────────────────────
+  notify-failure:
+    name: Discord — Deploy Failure Alert
+    runs-on: ubuntu-latest
+    needs: [dashboard-build-gate, deploy-vercel]
+    if: failure()
+    steps:
+      - name: Post failure to Discord
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -o /dev/null -H "Content-Type: application/json" -d "{
+            \"embeds\": [{
+              \"title\": \"🚨 Dashboard Deploy FAILED — Vercel\",
+              \"description\": \"A push to \`deploy/dashboard\` failed the Vercel deploy pipeline.\",
+              \"color\": 15158332,
+              \"fields\": [
+                {\"name\": \"Commit\", \"value\": \"\`${SHORT_SHA}\`\", \"inline\": true},
+                {\"name\": \"Branch\", \"value\": \"\`${{ github.ref_name }}\`\", \"inline\": true},
+                {\"name\": \"Logs\", \"value\": \"[View run](${RUN_URL})\", \"inline\": false}
+              ],
+              \"footer\": {\"text\": \"Jarvis Trader · GitHub Actions\"},
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" "${{ secrets.DISCORD_WEBHOOK_URL }}"

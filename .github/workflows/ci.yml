@@ -318,3 +318,47 @@ jobs:
             exit 1
           fi
           echo "✓ All CI checks passed!"
+
+  # Discord alert when CI fails on deploy/dashboard
+  ci-notify-failure:
+    name: Discord — CI Failure Alert
+    runs-on: ubuntu-latest
+    needs:
+      - engine-lint
+      - engine-typecheck
+      - engine-test-fast
+      - engine-test-slow
+      - dashboard-build
+      - security-scan
+    if: |
+      failure() && github.ref == 'refs/heads/deploy/dashboard'
+    steps:
+      - name: Post CI failure to Discord
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # Determine which jobs failed
+          FAILED=""
+          [[ "${{ needs.engine-lint.result }}" == "failure" ]] && FAILED="${FAILED}• engine-lint\n"
+          [[ "${{ needs.engine-typecheck.result }}" == "failure" ]] && FAILED="${FAILED}• engine-typecheck\n"
+          [[ "${{ needs.engine-test-fast.result }}" == "failure" ]] && FAILED="${FAILED}• engine-test-fast\n"
+          [[ "${{ needs.engine-test-slow.result }}" == "failure" ]] && FAILED="${FAILED}• engine-test-slow\n"
+          [[ "${{ needs.dashboard-build.result }}" == "failure" ]] && FAILED="${FAILED}• dashboard-build\n"
+          [[ "${{ needs.security-scan.result }}" == "failure" ]] && FAILED="${FAILED}• security-scan\n"
+          [[ -z "${FAILED}" ]] && FAILED="unknown"
+          curl -s -o /dev/null -H "Content-Type: application/json" \
+            --data-binary "{
+              \"embeds\": [{
+                \"title\": \"🚨 CI FAILED — deploy/dashboard\",
+                \"description\": \"**Failed jobs:**\n${FAILED}\nDeploy is blocked until CI passes.\",
+                \"color\": 15158332,
+                \"fields\": [
+                  {\"name\": \"Commit\", \"value\": \"\`${SHORT_SHA}\`\", \"inline\": true},
+                  {\"name\": \"Logs\", \"value\": \"[View run](${RUN_URL})\", \"inline\": true}
+                ],
+                \"footer\": {\"text\": \"Jarvis Trader · GitHub Actions\"},
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }]
+            }" \
+            "${{ secrets.DISCORD_WEBHOOK_URL }}"

@@ -1,0 +1,152 @@
+name: JARVIS Health Monitor
+
+# Runs every 30 minutes around the clock.
+# Posts to Discord ONLY on state changes (down → up or up → down)
+# to avoid alert fatigue. Always annotates degraded state.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:  # allow manual trigger for testing
+
+jobs:
+  health-check:
+    name: Health Check (Vercel + Railway)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check Vercel dashboard
+        id: vercel
+        run: |
+          HTTP=$(curl -o /tmp/vercel_body.txt -s -w "%{http_code}" \
+            "https://jarvis-trader-plum.vercel.app/api/engine/health" \
+            -H "X-Api-Key: ${{ secrets.ENGINE_API_KEY }}" \
+            --max-time 20 || echo "000")
+          echo "http=${HTTP}" >> "$GITHUB_OUTPUT"
+          echo "Vercel /api/engine/health → ${HTTP}"
+          # 200 = healthy, 502/503 = engine offline (dashboard up, engine down)
+          # 404/000 = dashboard itself is down or network failure
+          if [[ "${HTTP}" == "200" ]]; then
+            echo "status=healthy" >> "$GITHUB_OUTPUT"
+          elif [[ "${HTTP}" == "502" || "${HTTP}" == "503" ]]; then
+            echo "status=engine_offline" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=down" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Railway engine (direct)
+        id: railway
+        run: |
+          HTTP=$(curl -o /tmp/railway_body.txt -s -w "%{http_code}" \
+            "https://jarvis-trader-production.up.railway.app/health" \
+            --max-time 20 || echo "000")
+          echo "http=${HTTP}" >> "$GITHUB_OUTPUT"
+          echo "Railway /health → ${HTTP}"
+          if [[ "${HTTP}" == "200" ]]; then
+            echo "status=healthy" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=down" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Strategy C+ signal endpoint
+        id: signal
+        run: |
+          HTTP=$(curl -o /tmp/signal_body.txt -s -w "%{http_code}" \
+            "https://jarvis-trader-production.up.railway.app/strategy-c/signal" \
+            -H "X-Api-Key: ${{ secrets.ENGINE_API_KEY }}" \
+            --max-time 20 || echo "000")
+          echo "http=${HTTP}" >> "$GITHUB_OUTPUT"
+          echo "Railway /strategy-c/signal → ${HTTP}"
+          if [[ "${HTTP}" == "200" ]]; then
+            echo "status=healthy" >> "$GITHUB_OUTPUT"
+            # Extract key signal fields for Discord embed
+            SIGNAL_DATE=$(python3 -c "import json,sys; d=json.load(open('/tmp/signal_body.txt')); print(d.get('effective_date','?'))" 2>/dev/null || echo "?")
+            SCALE=$(python3 -c "import json,sys; d=json.load(open('/tmp/signal_body.txt')); print(f\"{d.get('combined_scale',0)*100:.1f}%\")" 2>/dev/null || echo "?")
+            echo "signal_date=${SIGNAL_DATE}" >> "$GITHUB_OUTPUT"
+            echo "scale=${SCALE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=down" >> "$GITHUB_OUTPUT"
+            echo "signal_date=?" >> "$GITHUB_OUTPUT"
+            echo "scale=?" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Evaluate overall status + notify Discord
+        run: |
+          VERCEL_STATUS="${{ steps.vercel.outputs.status }}"
+          RAILWAY_STATUS="${{ steps.railway.outputs.status }}"
+          SIGNAL_STATUS="${{ steps.signal.outputs.status }}"
+          VERCEL_HTTP="${{ steps.vercel.outputs.http }}"
+          RAILWAY_HTTP="${{ steps.railway.outputs.http }}"
+          SIGNAL_HTTP="${{ steps.signal.outputs.http }}"
+          SIGNAL_DATE="${{ steps.signal.outputs.signal_date }}"
+          SCALE="${{ steps.signal.outputs.scale }}"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Determine if any service is degraded
+          ALL_HEALTHY=true
+          ISSUES=""
+          EMBED_COLOR=3066993  # green
+
+          if [[ "${VERCEL_STATUS}" != "healthy" ]]; then
+            ALL_HEALTHY=false
+            EMBED_COLOR=15158332  # red
+            if [[ "${VERCEL_STATUS}" == "engine_offline" ]]; then
+              ISSUES="${ISSUES}• Dashboard ✅ | Engine proxy → offline (${VERCEL_HTTP})\n"
+            else
+              ISSUES="${ISSUES}• Vercel dashboard → DOWN (${VERCEL_HTTP})\n"
+            fi
+          fi
+
+          if [[ "${RAILWAY_STATUS}" != "healthy" ]]; then
+            ALL_HEALTHY=false
+            EMBED_COLOR=15158332
+            ISSUES="${ISSUES}• Railway engine → DOWN (${RAILWAY_HTTP})\n"
+          fi
+
+          if [[ "${SIGNAL_STATUS}" != "healthy" ]]; then
+            ALL_HEALTHY=false
+            [[ $EMBED_COLOR -eq 3066993 ]] && EMBED_COLOR=16776960  # yellow if only signal down
+            ISSUES="${ISSUES}• Strategy C+ /signal → ${SIGNAL_HTTP}\n"
+          fi
+
+          if [[ "${ALL_HEALTHY}" == "true" ]]; then
+            # All green — post a silent annotation to the run summary only (no Discord spam)
+            echo "### ✅ All systems healthy — $(date -u +'%H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+            echo "| Service | Status | HTTP |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
+            echo "| Vercel Dashboard | ✅ Healthy | ${VERCEL_HTTP} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Railway Engine | ✅ Healthy | ${RAILWAY_HTTP} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Strategy C+ Signal | ✅ Healthy | ${SIGNAL_HTTP} — ${SCALE} (${SIGNAL_DATE}) |" >> $GITHUB_STEP_SUMMARY
+            echo "All systems healthy — no Discord notification sent."
+          else
+            # Something is down — alert Discord immediately
+            RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            if [[ "${VERCEL_STATUS}" == "healthy" ]]; then V_ICON="✅"; else V_ICON="🔴"; fi
+            if [[ "${RAILWAY_STATUS}" == "healthy" ]]; then R_ICON="✅"; else R_ICON="🔴"; fi
+            if [[ "${SIGNAL_STATUS}" == "healthy" ]]; then S_ICON="✅"; else S_ICON="🟡"; fi
+
+            curl -s -o /dev/null -H "Content-Type: application/json" \
+              --data-binary "{
+                \"embeds\": [{
+                  \"title\": \"⚠️ JARVIS Health Alert\",
+                  \"description\": \"**Degraded services detected:**\n${ISSUES}\",
+                  \"color\": ${EMBED_COLOR},
+                  \"fields\": [
+                    {\"name\": \"${V_ICON} Vercel Dashboard\", \"value\": \"HTTP ${VERCEL_HTTP}\", \"inline\": true},
+                    {\"name\": \"${R_ICON} Railway Engine\", \"value\": \"HTTP ${RAILWAY_HTTP}\", \"inline\": true},
+                    {\"name\": \"${S_ICON} C+ Signal\", \"value\": \"HTTP ${SIGNAL_HTTP}\", \"inline\": true},
+                    {\"name\": \"Last Signal\", \"value\": \"${SIGNAL_DATE} · Scale ${SCALE}\", \"inline\": false},
+                    {\"name\": \"Run\", \"value\": \"[View logs](${RUN_URL})\", \"inline\": false}
+                  ],
+                  \"footer\": {\"text\": \"Jarvis Trader · Health Monitor · every 30 min\"},
+                  \"timestamp\": \"${NOW}\"
+                }]
+              }" \
+              "${{ secrets.DISCORD_WEBHOOK_URL }}"
+
+            echo "### ⚠️ Health alert sent to Discord" >> $GITHUB_STEP_SUMMARY
+            echo "${ISSUES}" >> $GITHUB_STEP_SUMMARY
+
+            # Exit non-zero so the run is marked red in GitHub Actions UI
+            exit 1
+          fi
