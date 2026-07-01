@@ -333,6 +333,43 @@ def trade_shuffle_diag(
     }
 
 
+# ── deflated Sharpe diagnostic (Bailey & López de Prado) — REPORT ONLY ──────────
+#
+# NON-BLOCKING. Deflates a unit's realized-P&L Sharpe for the number of strategies /
+# lineages tried (the multiple-testing null: "the best of N random tries"). Attached
+# to the REPORT for observation only — NOT consumed by ``meets_graduation``;
+# graduation inputs (``forward_stats`` + family FDR) are deliberately untouched.
+# DSR is already gated in the gate-v2 optimizer path (``deflated_sharpe.py`` via
+# ``_gate_v2_trade_metrics``) but the live forward record — the unit that actually
+# trades — has had no DSR at all. This only surfaces the same statistic there.
+# Promoting it to a blocking graduation gate is a separate [safety-review] change,
+# to be made only after the values are observed on the thin live MES/MGC series.
+
+
+def dsr_diag(trades: list[dict], n_trials: int, ann_factor: float = 252.0) -> dict[str, Any]:
+    """Deflated Sharpe Ratio over a unit's realized per-trade P&L. Report-only diagnostic.
+
+    Mirrors ``trade_shuffle_diag``: attached to the report, NOT consumed by
+    ``meets_graduation``. ``n_trials`` is the number of independent lineages /
+    candidates tested (the multiple-testing count) — pass the family size. Sharpe is
+    scale-invariant, so per-trade P&L is used directly as the return series.
+    Fail-closed to ``dsr=0.0`` under ~2 trades. Lazy-imports the DSR module so
+    ``forward_test`` stays cheap to import.
+    """
+    from backtest.deflated_sharpe import deflated_sharpe_from_returns  # noqa: PLC0415
+
+    pnls = [float(t["pnl"]) for t in trades if t.get("pnl") is not None]
+    res = deflated_sharpe_from_returns(pnls, n_trials=max(1, int(n_trials)), ann_factor=ann_factor)
+    return {
+        "dsr": res["dsr"],
+        "raw_sharpe": res["raw_sharpe"],
+        "expected_max_sharpe": res["expected_max_sharpe"],
+        "passes_at_10pct": res["passes_at_10pct"],
+        "n_trades": res["n_obs"],
+        "n_trials": res["n_trials"],
+    }
+
+
 # ── the loop ───────────────────────────────────────────────────────────────────
 
 
@@ -408,6 +445,9 @@ def run_lineage_track(
                 "forward": stats,
                 "trade_shuffle": trade_shuffle_diag(
                     buckets[lineage]
+                ),  # report-only; not in graduation
+                "dsr": dsr_diag(
+                    buckets[lineage], n_trials=len(rows)
                 ),  # report-only; not in graduation
                 "survives_family_fdr": survives[i],
                 "graduated": graduated,
@@ -489,6 +529,7 @@ def run_forward_test(
                 "precise_attribution": precise,
                 "forward": stats,
                 "trade_shuffle": trade_shuffle_diag(r["trades"]),  # report-only; not in graduation
+                "dsr": dsr_diag(r["trades"], n_trials=len(rows)),  # report-only; not in graduation
                 "survives_family_fdr": survives[i],
                 "graduated": graduated,
                 "reason": reason,
@@ -527,8 +568,8 @@ def run_forward_test(
             "stamped on live paper entries (P2) -- the unit that actually trades; they "
             "graduate against the decision_registry. Default-material (unregistered:*) "
             "lineages can clear the stats but never graduate -- pre-register a lineage "
-            "before its forward window counts. ts_p (trade_shuffle p-value) is a "
-            "REPORT-ONLY Aronson sign-flip diagnostic; it does NOT affect graduation."
+            "before its forward window counts. ts_p (trade_shuffle p-value) and dsr "
+            "(deflated Sharpe) are REPORT-ONLY diagnostics; neither affects graduation."
         ),
     }
     if persist:  # pragma: no cover - file IO exercised live
@@ -548,8 +589,8 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- active candidates: {report['n_active_candidates']}  |  "
         f"graduated: **{report['n_graduated']}**",
         "",
-        "| candidate | sym | attribution | n_oos | p_edge | pf_ci_lo | ts_p | fdr | graduated |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| candidate | sym | attribution | n_oos | p_edge | pf_ci_lo | ts_p | dsr | fdr | graduated |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for c in report["candidates"]:
         f = c["forward"]
@@ -558,6 +599,7 @@ def _markdown(report: dict[str, Any]) -> str:
             f"| {c['id']} | {c['symbol']} | {c['attribution_level'] or '-'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
             f"{ts.get('p_value', '-')} | "
+            f"{c.get('dsr', {}).get('dsr', '-')} | "
             f"{'Y' if c['survives_family_fdr'] else '.'} | "
             f"{'YES' if c['graduated'] else 'no'} |"
         )
@@ -569,8 +611,8 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- lineages: {report.get('n_lineages', 0)}  |  "
         f"graduated: **{report.get('n_lineages_graduated', 0)}**",
         "",
-        "| lineage | type | pre-reg | n_oos | p_edge | pf_ci_lo | ts_p | fdr | graduated |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| lineage | type | pre-reg | n_oos | p_edge | pf_ci_lo | ts_p | dsr | fdr | graduated |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for lin in lineages:
         f = lin["forward"]
@@ -580,11 +622,12 @@ def _markdown(report: dict[str, Any]) -> str:
             f"{'Y' if lin['pre_registered'] else '.'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
             f"{ts.get('p_value', '-')} | "
+            f"{lin.get('dsr', {}).get('dsr', '-')} | "
             f"{'Y' if lin['survives_family_fdr'] else '.'} | "
             f"{'YES' if lin['graduated'] else 'no'} |"
         )
     if not lineages:
-        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |  |")
+        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |  |  |")
     lines += [
         "",
         "## Symbol context (all closed trades per symbol)",
