@@ -365,11 +365,9 @@ class JarvisLLMClient:
         # direct names -> Vertex IDs at the single wire point (_call_with_retry).
         # Unmapped names pass through unchanged. Absent flag => byte-identical to
         # the direct path.
-        self.use_vertex = (
-            self.provider != "ollama"
-            and os.getenv("JARVIS_CLAUDE_USE_VERTEX", "0").strip().lower()
-            in {"1", "true", "yes", "on"}
-        )
+        self.use_vertex = self.provider != "ollama" and os.getenv(
+            "JARVIS_CLAUDE_USE_VERTEX", "0"
+        ).strip().lower() in {"1", "true", "yes", "on"}
         self.vertex_project = os.getenv("ANTHROPIC_VERTEX_PROJECT_ID", "").strip()
         self.vertex_region = os.getenv("ANTHROPIC_VERTEX_REGION", "").strip()
         self.vertex_model_map: dict[str, str] = {}
@@ -420,9 +418,7 @@ class JarvisLLMClient:
                     f"region={self.vertex_region or 'ADC-default'})"
                 )
             except Exception as exc:  # pragma: no cover - defensive
-                logger.warning(
-                    "vertex failover disabled — could not build Vertex client: %s", exc
-                )
+                logger.warning("vertex failover disabled — could not build Vertex client: %s", exc)
                 self.vertex_failover_enabled = False
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
@@ -514,9 +510,7 @@ class JarvisLLMClient:
         Defensive getattr: some tests build the client via ``__new__`` without
         running ``__init__``, so fall back to the module default ceiling.
         """
-        ceiling = getattr(
-            self, "_llm_hard_timeout_seconds", _DEFAULT_LLM_HARD_TIMEOUT_SECONDS
-        )
+        ceiling = getattr(self, "_llm_hard_timeout_seconds", _DEFAULT_LLM_HARD_TIMEOUT_SECONDS)
         try:
             return await asyncio.wait_for(coro, timeout=ceiling)
         except (asyncio.TimeoutError, TimeoutError) as exc:
@@ -994,14 +988,12 @@ class JarvisLLMClient:
                     # family (best output continuity) and GCP-billed, so it is
                     # unaffected by the Anthropic credit outage. Falls through to
                     # the Gemini fallback below if Vertex is disabled or also fails.
-                    if (
-                        self.vertex_failover_enabled
-                        and self._failover_vertex_client is not None
-                    ):
+                    if self.vertex_failover_enabled and self._failover_vertex_client is not None:
                         logger.warning(
                             f"[{current_model}] credit-exhaustion for {agent_name} -- "
                             f"attempting Claude-on-Vertex failover"
                         )
+                        start_time = time.time()
                         try:
                             vertex_result = await self._bounded(
                                 self._call_vertex_failover(
@@ -1058,6 +1050,7 @@ class JarvisLLMClient:
                             f"[{current_model}] credit-exhaustion for {agent_name} -- "
                             f"attempting Gemini fallback ({google_model})"
                         )
+                        start_time = time.time()
                         try:
                             google_result = await self._bounded(
                                 self._call_google(
@@ -1104,13 +1097,12 @@ class JarvisLLMClient:
                     # disabled) — last-resort OpenAI before declaring the path
                     # unhealthy. Opus/Sonnet → gpt-4o, Haiku → gpt-4o-mini.
                     if self.openai_fallback_enabled:
-                        openai_model = self.OPENAI_FAILOVER_MAP.get(
-                            current_model, "gpt-4o-mini"
-                        )
+                        openai_model = self.OPENAI_FAILOVER_MAP.get(current_model, "gpt-4o-mini")
                         logger.warning(
                             f"[{current_model}] Anthropic+Gemini both failed for {agent_name} -- "
                             f"attempting OpenAI fallback ({openai_model})"
                         )
+                        start_time = time.time()
                         try:
                             openai_result = await self._bounded(
                                 self._call_openai(
@@ -1364,9 +1356,7 @@ class JarvisLLMClient:
             "Content-Type": "application/json",
         }
         async with httpx.AsyncClient(timeout=timeout) as http_client:
-            response = await http_client.post(
-                self.openai_endpoint, json=payload, headers=headers
-            )
+            response = await http_client.post(self.openai_endpoint, json=payload, headers=headers)
             if response.status_code >= 400:
                 try:
                     body = response.text[:500]
@@ -1386,9 +1376,7 @@ class JarvisLLMClient:
             raise RuntimeError(f"OpenAI response missing choices: {str(data)[:300]}")
         text = (choices[0].get("message") or {}).get("content", "")
         usage = data.get("usage") or {}
-        input_tokens = int(
-            usage.get("prompt_tokens") or self._estimate_tokens(system, messages)
-        )
+        input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
         output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
         return SimpleNamespace(
             usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
