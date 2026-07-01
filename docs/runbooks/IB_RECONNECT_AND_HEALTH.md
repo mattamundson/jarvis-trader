@@ -9,6 +9,11 @@
 
 **Limitation:** After max retries, connection stays failed until **process restart** or a future explicit `connect()` path. Treat **RISK-004** as “mitigated in code, not eliminated” — monitoring and alerts still required.
 
+> **Scope note:** this covers reconnecting to a Gateway that is *still logged in*. It does
+> **not** cover IBKR's daily forced logout of the Gateway process itself — nothing here can
+> reconnect to a session that no longer exists. For that (the #1 cause of overnight blackouts)
+> see [IB_GATEWAY_AUTO_LOGIN.md](IB_GATEWAY_AUTO_LOGIN.md).
+
 ## Operator actions
 
 1. Confirm IB Gateway **paper** on port **4002** (see [CURRENT_STATE.md](../CURRENT_STATE.md)).
