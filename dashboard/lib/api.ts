@@ -2381,3 +2381,53 @@ export async function formalizeInsight(
 export async function fetchMonthlyReview(limit = 30): Promise<MonthlyReview> {
   return fetchEngine<MonthlyReview>(`/journal/review/monthly?limit=${limit}`);
 }
+
+// ── Pine Screener (GreenStar2-style) ─────────────────────────────────────────
+// Backs the /screener page: pipes the read-only IB scanner movers universe
+// through the engine's screener filter chain (POST /ib-scanner/screen).
+
+export interface ScreenerFilterInput {
+  scan_code?: string;
+  symbols?: string[] | null;
+  max_symbols?: number;
+  x_from_50_min?: number | null;
+  x_from_50_max?: number | null;
+  rvol_min?: number | null;
+  x_from_lod_max?: number | null;
+  chg_pct_min?: number | null;
+  chg_open_pct_min?: number | null;
+  atr_pct_min?: number | null;
+  atr_pct_max?: number | null;
+  mm_min?: number | null;
+}
+
+export interface ScreenedRow {
+  symbol: string | null;
+  last_price: number | null;
+  atr_pct: number | null;
+  rvol: number | null;
+  x_from_50: number | null;
+  x_from_lod_pct: number | null;
+  chg_pct: number | null;
+  chg_open_pct: number | null;
+  mm_score: number;
+  bars_used: number;
+  passed: boolean;
+  reasons: string[];
+}
+
+export interface ScreenResponse {
+  enabled: boolean;
+  universe_source: string;
+  total_candidates: number;
+  passed_count: number;
+  focus: ScreenedRow[];
+  rejected: ScreenedRow[];
+  note: string;
+}
+
+export async function screenMovers(
+  input: ScreenerFilterInput
+): Promise<ScreenResponse> {
+  return postEngine<ScreenResponse>("/ib-scanner/screen", input);
+}
