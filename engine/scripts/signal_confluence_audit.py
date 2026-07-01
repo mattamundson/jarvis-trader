@@ -387,6 +387,7 @@ DIAGNOSE_PARAMS = {
     "composite": {"atr_trail": 2.0},
     "tpo": {"enter": 0.33, "stop_mult": 1.5, "atr_trail": 1.5},
     "saty": {"target_ratio": 1.5, "atr_trail": 2.0},
+    "atrtrail": {"factor": 3.5},
 }
 
 
