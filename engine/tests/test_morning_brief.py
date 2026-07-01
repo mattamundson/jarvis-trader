@@ -105,6 +105,9 @@ async def test_morning_brief_includes_avt_score_with_bars():
     )
     assert "AVT:" in result
     assert "AVT: N/A" not in result  # real bars -> a real read (long/short/flat)
+    # The active instruments (MES/MGC) carry their own report-only AVT read.
+    assert "MES: AVT" in result
+    assert "MGC: AVT" in result
 
 
 @pytest.mark.asyncio
