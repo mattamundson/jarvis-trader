@@ -1,9 +1,9 @@
 name: JARVIS TRADER CI
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, deploy/dashboard]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, deploy/dashboard]
 
 concurrency:
   group: jarvis-ci-${{ github.workflow }}-${{ github.ref }}

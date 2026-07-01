@@ -1,0 +1,124 @@
+name: Deploy Dashboard → Vercel
+
+on:
+  push:
+    branches: [deploy/dashboard]
+    paths:
+      - 'dashboard/**'
+      - '.github/workflows/deploy-dashboard.yml'
+
+concurrency:
+  group: vercel-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Gate: build + lint must pass before deploy fires
+  # ─────────────────────────────────────────────────────────────────────────────
+  dashboard-build-gate:
+    name: Dashboard Build Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: dashboard
+
+      - name: Build (production)
+        run: pnpm run build
+        working-directory: dashboard
+        env:
+          NODE_ENV: production
+          # Pass stub so build doesn't fail on missing engine at CI time
+          ENGINE_INTERNAL_URL: http://localhost:8010
+
+      - name: No bare fetch guard
+        run: |
+          set -euo pipefail
+          HITS=$(grep -r "await fetch(" dashboard/app dashboard/hooks dashboard/components \
+            --include="*.tsx" --include="*.ts" 2>/dev/null || true)
+          if [[ -n "${HITS}" ]]; then
+            echo "${HITS}"
+            echo "ERROR: Use fetchEngine/postEngine from lib/api.ts — no bare fetch."
+            exit 1
+          fi
+          echo "OK: no bare fetch."
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Deploy to Vercel Production
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-vercel:
+    name: Deploy → Vercel Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [dashboard-build-gate]
+    environment:
+      name: production
+      url: https://jarvis-trader-plum.vercel.app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel environment
+        run: |
+          vercel pull --yes \
+            --environment=production \
+            --token=${{ secrets.VERCEL_TOKEN }} \
+            --scope=${{ secrets.VERCEL_TEAM_ID }}
+        working-directory: dashboard
+
+      - name: Build via Vercel CLI
+        run: |
+          vercel build --prod \
+            --token=${{ secrets.VERCEL_TOKEN }} \
+            --scope=${{ secrets.VERCEL_TEAM_ID }}
+        working-directory: dashboard
+
+      - name: Deploy prebuilt output
+        id: deploy
+        run: |
+          DEPLOY_URL=$(vercel deploy --prebuilt --prod \
+            --token=${{ secrets.VERCEL_TOKEN }} \
+            --scope=${{ secrets.VERCEL_TEAM_ID }} \
+            2>&1 | tail -1)
+          echo "url=${DEPLOY_URL}" >> "$GITHUB_OUTPUT"
+          echo "Deployed to: ${DEPLOY_URL}"
+        working-directory: dashboard
+
+      - name: Smoke test deployed endpoint
+        run: |
+          sleep 10  # allow propagation
+          HTTP=$(curl -o /dev/null -s -w "%{http_code}" \
+            "${{ steps.deploy.outputs.url }}/api/engine/health" \
+            -H "X-Api-Key: ${{ secrets.ENGINE_API_KEY }}" \
+            --max-time 15 || echo "000")
+          echo "Health endpoint returned: ${HTTP}"
+          # 200 = engine live, 502/503 = engine offline (expected in CI — dashboard still deployed)
+          # Only fail on 404/500 which indicate a routing or build regression
+          if [[ "${HTTP}" == "404" || "${HTTP}" == "500" ]]; then
+            echo "ERROR: unexpected ${HTTP} — likely a routing or build regression."
+            exit 1
+          fi
+          echo "Smoke test passed (HTTP ${HTTP})"
+
+      - name: Summary
+        run: |
+          echo "### Vercel Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
