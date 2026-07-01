@@ -2431,3 +2431,31 @@ export async function screenMovers(
 ): Promise<ScreenResponse> {
   return postEngine<ScreenResponse>("/ib-scanner/screen", input);
 }
+
+// ── Engine clean-run durability (GET /ops/durability) ─────────────────────────
+// Reads the down-alert watchdog's outage ledger server-side and reports how long
+// the engine has run clean. Honest empty-state (has_data:false) when no ledger.
+// See engine/routers/durability_router.py + scripts/ops/durability.mjs.
+export interface DurabilityOutage {
+  downSince: string;
+  recoveredAt: string;
+  durationMs: number;
+  alerted: boolean;
+}
+
+export interface DurabilityResponse {
+  monitoring_since: string | null;
+  currently_down: boolean;
+  down_since: string | null;
+  outage_count: number;
+  current_streak_days: number | null;
+  longest_streak_days: number | null;
+  total_downtime_ms: number;
+  mtbf_ms: number | null;
+  last_outage: DurabilityOutage | null;
+  has_data: boolean;
+}
+
+export async function fetchDurability(): Promise<DurabilityResponse> {
+  return fetchEngine<DurabilityResponse>("/ops/durability");
+}
