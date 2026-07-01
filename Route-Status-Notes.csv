@@ -1,0 +1,8 @@
+"Route","Status","Notes"
+"GET /health","200 OK","—"
+"GET /v1/strategy_c/status","200 OK","available=true, stale=false, holdings_count=3"
+"GET /v1/strategy_c/signal","200 OK","Full signal + _meta injected"
+"GET /v1/strategy_c/metrics","200 OK","Sharpe 1.85, OOS retention 80.7%"
+"GET /v1/strategy_c/allocation_history","200 OK","467 weeks of history"
+"GET /v1/strategy_c/equity_curve","200 OK","468 data points"
+"POST /v1/strategy_c/refresh","200 OK","Background trigger works"
