@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 30; // platform-enforced ceiling: if the in-app 25s AbortController ever fails to fire (e.g. engine fully unreachable), fail here instead of hanging to Vercel's default 60s
 
 function getEngineBaseUrl(): string {
   return (
