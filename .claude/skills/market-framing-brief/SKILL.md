@@ -9,6 +9,55 @@ The user wants a discretionary, levels-and-scenarios market read for the **next*
 
 This skill does NOT trade, place orders, or modify code. It produces a written brief. The order-placing path is the engine pipeline + human approval, never this brief.
 
+## KNOWN DUPLICATE-EFFORT RISK — read before extending this skill
+
+Investigated 2026-06-30 (session ROI task #5), per meta-discipline.md "grep
+first" — this repo already has a **production, LLM-integrated "Corey" pipeline**
+that overlaps with part of what this skill does:
+
+- `engine/discord/commentary_processor.py` (`CoreyCommentaryProcessor`) —
+  converts Corey's **actual raw commentary** (ingested into the
+  `discord_corey_commentary` table, presumably via a Discord bot feed) into
+  structured session bias via LLM: session type, directional bias, key price
+  levels, IB context, trade triggers. Cached in `corey_session_bias`.
+- `engine/agents/corey_auction_analyst.py` (`CoreyAuctionAnalystAgent`) —
+  Stage-1 pipeline agent that turns that structured bias + live TradingView/
+  ThinkOrSwim bot-signal alignment into a scored `signal`/`confidence` for the
+  Bull/Bear debate stage. Feeds tie-break and contradiction-detection logic
+  downstream.
+- `discord.cli --trigger-commentary`, an MCP server surface, and a
+  `corey_compare` tool trigger this on demand. #209 (2026-06-30) just hardened
+  it with LLM failover (Vertex→Gemini→OpenAI) after a 2-day silent-degrade
+  incident (2026-06-29, exhausted Anthropic credit on the standalone path).
+- `GET /corey-alerts` (`engine/routers/discord_router.py`) surfaces it over HTTP.
+
+**Where this skill genuinely does NOT duplicate that path:**
+1. The engine's Corey pipeline needs Corey's commentary **already ingested**
+   (Discord bot feed). This skill's `compute_levels.py` deterministic fallback
+   (floor pivots from OHLC) works when no commentary is flowing at all — a
+   different failure mode, not a re-implementation.
+2. The engine's `CoreyAuctionAnalystAgent` emits a debate-stage `signal`/
+   `confidence` score, not a human-readable brief. This skill's MES
+   system-overlay (translate levels into the actual long-only SMA(50,200)
+   strategy, size to the −2% daily halt) has no engine-side equivalent.
+
+**Where it likely DOES duplicate effort:** if Corey's commentary IS flowing
+into `discord_corey_commentary` for the target session, `CoreyCommentaryProcessor`
+already extracts session bias/levels from the real text with an LLM — more
+precise than this skill's web-search approximation or its OHLC-geometry
+fallback (see the ROI-audit worked example: computed pivots landed within
+~5pts of a hand-drawn Corey level, but the engine path could extract the
+*exact* stated level, not an approximation of it).
+
+**Do not build further overlap into this skill** (e.g. don't add commentary
+scraping/parsing) without first checking `GET /corey-alerts` and
+`CoreyCommentaryProcessor.get_session_bias()` for the target date. If real
+commentary is available there, prefer it over this skill's approximation.
+This is flagged, not resolved — resolving it (e.g. having this skill call the
+engine's Corey path when reachable, and reserve its own logic for the
+no-commentary fallback case) is a product decision for Matt, not something to
+decide unilaterally.
+
 # Inputs
 
 - **Instruments**: default ES + NQ (the two index futures Corey covers). MES is the tradeable micro the system overlay sizes.
