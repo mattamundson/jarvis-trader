@@ -454,7 +454,9 @@ async def lifespan(app: FastAPI):
                     order_router.attach_ibkr(ib_paper_connector)
                     logger.info("✅ IBGatewayConnector (paper) connected background")
                 else:
-                    logger.warning("⚠️ IBGatewayConnector background connect failed after 3 attempts")
+                    logger.warning(
+                        "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                    )
         except Exception as e:
             logger.error(f"❌ Background data/IBKR init failed: {e}")
 
@@ -1129,6 +1131,7 @@ async def lifespan(app: FastAPI):
                 # and trips the watchdog again within 5-10 minutes.
                 try:
                     from zoneinfo import ZoneInfo
+
                     _ct = ZoneInfo("America/Chicago")
                     _now = datetime.now(_ct)
                     if _now.weekday() >= 5 or not (9 <= _now.hour < 16):
@@ -1259,19 +1262,29 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.error(f"[MGC-daily] Failed: {exc}", exc_info=True)
 
-    scheduler.add_job(
-        run_daily_mgc_signal,
-        CronTrigger(
-            day_of_week="mon-fri",
-            hour=23,
-            minute=0,
-            timezone="UTC",  # 23:00 UTC = 18:00 ET
-        ),
-        id="mgc_daily_signal",
-        name="MGC Daily Signal Scanner",
-        max_instances=1,
-        misfire_grace_time=600,
+    # MGC was eliminated in the 2026-06-26 honest re-gate (all 5 variants FAIL, paper
+    # disabled). This daily scanner writes pending ENTRY_NOW signals to pending_signals.json
+    # and fires WhatsApp alerts -- actionable noise/risk for an untradeable symbol. Gate it
+    # OFF by default; set MGC_DAILY_SCANNER_ENABLED=1 to restore the daily watch.
+    _mgc_daily_enabled = os.environ.get("MGC_DAILY_SCANNER_ENABLED", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
     )
+    if _mgc_daily_enabled:
+        scheduler.add_job(
+            run_daily_mgc_signal,
+            CronTrigger(
+                day_of_week="mon-fri",
+                hour=23,
+                minute=0,
+                timezone="UTC",  # 23:00 UTC = 18:00 ET
+            ),
+            id="mgc_daily_signal",
+            name="MGC Daily Signal Scanner",
+            max_instances=1,
+            misfire_grace_time=600,
+        )
     # Messaging health monitor — check Ollama every 60s
     try:
         from services.messaging_health import run_health_check
@@ -1798,9 +1811,7 @@ async def lifespan(app: FastAPI):
         # Declare which scanned symbols are futures; the rest are priced as equities.
         signal_scanner.set_futures_symbols(_futures_syms)
         if _equity_syms:
-            logger.info(
-                "Signal scanner: equity execution enabled for %s", _equity_syms
-            )
+            logger.info("Signal scanner: equity execution enabled for %s", _equity_syms)
         inject_scanner_deps(signal_scanner)
         if settings.WATCHLIST_SCAN_ENABLED:
             asyncio.create_task(signal_scanner.start())
@@ -2394,12 +2405,11 @@ async def lifespan(app: FastAPI):
                 if db_manager is not None:
                     try:
                         closed_today = [
-                            t for t in db_manager.get_closed_trades(limit=200)
+                            t
+                            for t in db_manager.get_closed_trades(limit=200)
                             if (t.get("exit_time") or "").startswith(today_str)
                         ]
-                        paper_daily_pnl = sum(
-                            float(t.get("pnl") or 0.0) for t in closed_today
-                        )
+                        paper_daily_pnl = sum(float(t.get("pnl") or 0.0) for t in closed_today)
                     except Exception as _db_exc:
                         logger.warning(
                             "[sync_safety_equity] paper_trades query failed: %s", _db_exc
@@ -2446,7 +2456,11 @@ async def lifespan(app: FastAPI):
                 open_trades = db_manager.get_open_trades()
                 if not open_trades:
                     return
-                from portfolio.tracker import INSTRUMENT_MULTIPLIERS as _MULT, _DEFAULT_MULTIPLIER as _DEF_MULT  # noqa: E501
+                from portfolio.tracker import (
+                    INSTRUMENT_MULTIPLIERS as _MULT,
+                    _DEFAULT_MULTIPLIER as _DEF_MULT,
+                )  # noqa: E501
+
                 for _trade in open_trades:
                     _stop = _trade.get("stop_loss")
                     if _stop is None:
@@ -2476,9 +2490,7 @@ async def lifespan(app: FastAPI):
                         logger.debug("[stop_monitor] price fetch %s: %s", _sym, _pe)
                         continue
                     _is_long = "buy" in _side
-                    _hit = (_is_long and _cur <= _stop_f) or (
-                        not _is_long and _cur >= _stop_f
-                    )
+                    _hit = (_is_long and _cur <= _stop_f) or (not _is_long and _cur >= _stop_f)
                     if not _hit:
                         continue
                     _mult = _MULT.get(_sym, _DEF_MULT)
@@ -2491,8 +2503,13 @@ async def lifespan(app: FastAPI):
                     logger.warning(
                         "[stop_monitor] STOP HIT %s %s id=%s entry=%.2f "
                         "stop=%.2f current=%.2f pnl=%.2f",
-                        _sym, _side, _tid[:8] if _tid else "?",
-                        _entry, _stop_f, _cur, _pnl,
+                        _sym,
+                        _side,
+                        _tid[:8] if _tid else "?",
+                        _entry,
+                        _stop_f,
+                        _cur,
+                        _pnl,
                     )
                     _closed = False
                     if paper_tracker is not None:
