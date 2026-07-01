@@ -251,6 +251,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Check for case-only duplicate filenames (Vercel's build FS is case-sensitive)
+        run: |
+          dupes=$(git ls-files | sort -f | uniq -Di)
+          if [ -n "$dupes" ]; then
+            echo "::error::These tracked paths differ only in case - passes on macOS/Windows, fails Vercel's case-sensitive Linux build:"
+            echo "$dupes"
+            exit 1
+          fi
 
       - name: Set up Node 22
         uses: actions/setup-node@v4
