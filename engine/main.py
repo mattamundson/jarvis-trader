@@ -1267,19 +1267,29 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.error(f"[MGC-daily] Failed: {exc}", exc_info=True)
 
-    scheduler.add_job(
-        run_daily_mgc_signal,
-        CronTrigger(
-            day_of_week="mon-fri",
-            hour=23,
-            minute=0,
-            timezone="UTC",  # 23:00 UTC = 18:00 ET
-        ),
-        id="mgc_daily_signal",
-        name="MGC Daily Signal Scanner",
-        max_instances=1,
-        misfire_grace_time=600,
+    # MGC was eliminated in the 2026-06-26 honest re-gate (all 5 variants FAIL, paper
+    # disabled). This daily scanner writes pending ENTRY_NOW signals to pending_signals.json
+    # and fires WhatsApp alerts -- actionable noise/risk for an untradeable symbol. Gate it
+    # OFF by default; set MGC_DAILY_SCANNER_ENABLED=1 to restore the daily watch.
+    _mgc_daily_enabled = os.environ.get("MGC_DAILY_SCANNER_ENABLED", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
     )
+    if _mgc_daily_enabled:
+        scheduler.add_job(
+            run_daily_mgc_signal,
+            CronTrigger(
+                day_of_week="mon-fri",
+                hour=23,
+                minute=0,
+                timezone="UTC",  # 23:00 UTC = 18:00 ET
+            ),
+            id="mgc_daily_signal",
+            name="MGC Daily Signal Scanner",
+            max_instances=1,
+            misfire_grace_time=600,
+        )
     # Messaging health monitor — check Ollama every 60s
     try:
         from services.messaging_health import run_health_check
