@@ -1,0 +1,7 @@
+"Metric","Target","Best Achieved (any combo)","Gap"
+"CAGR","17.4%","17.5% via Dual Momentum","Near-exact ✓"
+"Beta","0.67","0.68 via Dual Momentum","Near-exact ✓"
+"Beat SPY","~46%","46.5% via Dual Momentum","Exact ✓"
+"Vol","7.7%","~7.5–8.5% with vol targeting","Close ✓"
+"Sharpe","2.13","~1.0 after vol targeting","Gap ✗"
+"MDD","'-7.7%","'-13.9% best case","Gap ✗"

@@ -1,0 +1,7 @@
+"Layer","Scripts","Status"
+"L1 Regime","Saty ATR Levels, Saty Phase Oscillator, MTF Trendbar","indicators.py ✓ ported"
+"L2 Structure","Corey TPO Profile, TPO Score, IB v1, Rangefinder v2, Singlefinder v2, Gapfinder v1","tpo_profile.py, ib_signals.py, rangefinder.py, etc. ✓ ported"
+"L3 Bias","KAMA Next Signal, Saty Volume Stack, STC OB Style Cycle","indicators.py ✓ ported"
+"L4 Entry","OB Omega Keltner (5m/15m/30m), Keltner 3x, IB breakout, RF arrows","indicators.py ✓ ported"
+"L5 Sizing","COHEN MES Composite, COHEN STC Sub","composite_signals.py (467 lines) ✓ ported"
+"Supporting","TRIN Chetan, Gaps Chetan, 3 legacy ThinkScript studies","indicators.py, gaps_chetan.py ✓ ported"

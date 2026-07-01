@@ -1,0 +1,6 @@
+"Command","What it does"
+".\deploy\START_WINDOWS.ps1 start","Start the API (no window, runs in background)"
+".\deploy\START_WINDOWS.ps1 stop","Kill it cleanly"
+".\deploy\START_WINDOWS.ps1 restart","Stop + start"
+".\deploy\START_WINDOWS.ps1 status","Shows ONLINE/OFFLINE + PID"
+".\deploy\START_WINDOWS.ps1 logs","Live log tail (Ctrl+C to exit)"

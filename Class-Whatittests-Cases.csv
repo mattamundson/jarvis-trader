@@ -1,0 +1,8 @@
+"Class","What it tests","Cases"
+"TestInheritance","funnel_gate correctly inherits gate_v2's correct kills","3"
+"TestFalseNegativeCorrection","funnel_gate produces the RIGHT verdict on rank3-style cases gate_v2 wrongly killed","2"
+"TestBorderlineHandling","Strategies near tier boundaries go to Tier B with improvement hypotheses, not silent Tier C","3"
+"TestNaNTrap","Missing metrics fail loudly (gate_v2 silently passed several MGCs with NaN pf_ci_lower)","3"
+"TestContamination","Sentinel-100.5 contamination kills regardless of other metrics","1"
+"TestTierAPositive","Pristine strategy actually reaches Tier A","1"
+"TestDisagreementTracking","Both A↔FAIL and C↔PASS disagreements get flagged","2"

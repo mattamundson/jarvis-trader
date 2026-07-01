@@ -1,0 +1,5 @@
+"#","Upgrade","What it does"
+"1","Live API bridge","Add a lightweight Python FastAPI proxy (port 8020) that the dashboard calls every 30s via fetch(). It queries yfinance for real quotes and returns JSON. Replaces all static data."
+"2","Real instrument search","Wire the search bar to call /api/search?q=AAPL on the backend — which queries yfinance's ticker lookup. Returns live price + fundamentals for any valid symbol."
+"3","Auto-refresh signal panel","Every Friday at 4:05pm the cron fires — but the dashboard doesn't pick up the new signal. A setInterval polling /api/signal/latest would show the new scale + holdings immediately."
+"4","Options chain viewer","Type SPY or QQQ in search → show near-term expiry chains (calls + puts) with IV, delta, OI. Critical for your SPY positions."

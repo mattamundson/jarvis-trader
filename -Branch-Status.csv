@@ -1,0 +1,7 @@
+"#","Branch","Status"
+"#213","meanrev-v2","Draft — meanrev v2 signals + tests"
+"#214","docs/funnel-audits","Draft — initial forensic docs"
+"#215","funnel-skill","Draft — full skill under tools/jarvis-funnel/"
+"#216","ci/quality-gates","Draft — initial CI gates + PBO check"
+"#218","ci/quality-gates-v2","Draft — drift monitor + tuned health report"
+"#219","ci/quality-gates-v3","Draft — discipline + risk audits"

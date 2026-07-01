@@ -1,0 +1,5 @@
+"#","Upgrade","What it does"
+"5","Mini equity curve chart","Show Strategy C+ backtest equity curve using Chart.js or lightweight-charts. Visual proof of the 2.12 Sharpe. Investors will want this."
+"6","Real-time P&L tracker","Pull live prices for your paper positions, compute mark-to-market P&L in real time vs Plaid cost basis. Show drawdown meter."
+"7","WhatsApp / push alert integration","Already wired in the engine — surface those alerts in the dashboard as a notification feed. Show last 10 alerts with timestamps."
+"8","IBKR order status panel","Query the paper account via ibkr_executor and show open orders, fills, position delta vs target weights. The ""Monday MOO"" checklist becomes dynamic."

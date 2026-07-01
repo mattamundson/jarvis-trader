@@ -1,0 +1,8 @@
+"Anomaly","Before","After","Status"
+"2 — hypothesis_id collisions","1","0","✅ Fully fixed"
+"6 — doc-only cards","9","0","✅ Fully fixed (46 docs properly enriched existing cards instead)"
+"1 — volatility category bloat","41","37","Heuristic limit hit; LLM run will close the rest (27 atoms flagged ambiguous for LLM tiebreak)"
+"3 — missing instrument/timeframe","9 / 26","4 / 20","Improved 56% / 23%"
+"7 — instrument/filename mismatch","44","29","Improved 34%; remaining are mostly legit multi-instrument runners"
+"Library atoms isolated","0 separated","7 set aside","New: keltner_signals.py, donchian_signals.py, etc. correctly excluded from card creation"
+"Total cards","84","73","Cleaner inventory"

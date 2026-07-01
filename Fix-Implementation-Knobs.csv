@@ -1,0 +1,5 @@
+"Fix","Implementation","Knobs"
+"Vol-adjusted percentile trigger (replaces static 2σ)","Rolling 200-bar percentile rank of (close - sma) / atr. Fires only when dislocation is in the top 5% of trailing window. Auto-recalibrates to vol regime.","dislocation_lookback, dislocation_percentile_min"
+"Vol-targeted stop + time stop + trail-to-BE (replaces fixed 1.5×ATR)","Stop = max(stop_mult × ATR_14, stop_mult × ATR_p75(50)). Time-stop exits at market after N bars. Trail to breakeven at 50% of target distance.","stop_atr_long_window, stop_atr_long_percentile, time_stop_bars, trail_to_be_at_pct_of_target"
+"Strategy-level circuit breaker (replaces no risk control)","Trips on (a) rolling-5 PnL < -2× avg_winner, OR (b) 3 consecutive stops, OR (c) daily loss < -1% capital. Cooldown 5 bars.","5 cb_* parameters"
+"OU integration (utilizes the unused mean_reversion_ou.py)","Two modes: filter (BB+RSI trigger gated by OU half-life), zscore_trigger (pure OU z-score entries).","ou_mode, ou_min_half_life_bars, ou_max_half_life_bars, ou_zscore_threshold"
