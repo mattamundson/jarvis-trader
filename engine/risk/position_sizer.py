@@ -146,15 +146,31 @@ def kelly_fraction(win_rate: float, avg_win: float, avg_loss: float) -> float:
     return kelly
 
 
+# Drawdown at which sizing reaches 0x — reconciled to the config kill switch.
+# MUST stay in sync with config.MAX_DRAWDOWN_PCT (0.20 = 20%, $10K aggressive
+# profile, Amo-authorized 2026-06-25). Position_sizer is intentionally standalone
+# (no config import), so this constant mirrors that value; update both together.
+KILL_SWITCH_DD_PCT = 20.0
+
+
 def drawdown_scale_factor(current_drawdown_pct: float) -> float:
     """
     Risk scaling ladder based on current drawdown from peak.
 
+    Tapers NEW-position size down to zero at the ``KILL_SWITCH_DD_PCT`` (20%)
+    hard halt rather than cutting off early. Previously this zeroed sizing at
+    10%, which contradicted the 20% config kill switch and left the aggressive
+    profile's 10-20% band as dead zone; extended to 20% on Amo authorization
+    2026-06-25 so the sizer and the kill switch agree on where trading stops.
+
     Scaling tiers:
-      0-5% DD:   1.0x (full size)
-      5-8% DD:   0.75x
-      8-10% DD:  0.5x
-      10%+ DD:   0.0x (stop trading — kill switch territory)
+      0-5% DD:    1.0x (full size)
+      5-8% DD:    0.75x
+      8-10% DD:   0.5x
+      10-13% DD:  0.35x
+      13-16% DD:  0.25x
+      16-20% DD:  0.10x
+      20%+ DD:    0.0x (stop trading — matches config MAX_DRAWDOWN_PCT halt)
 
     Args:
         current_drawdown_pct: Drawdown from peak as % (e.g., 5.5)
@@ -171,5 +187,11 @@ def drawdown_scale_factor(current_drawdown_pct: float) -> float:
         return 0.75
     elif current_drawdown_pct < 10:
         return 0.5
+    elif current_drawdown_pct < 13:
+        return 0.35
+    elif current_drawdown_pct < 16:
+        return 0.25
+    elif current_drawdown_pct < KILL_SWITCH_DD_PCT:
+        return 0.10
     else:
         return 0.0

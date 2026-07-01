@@ -41,8 +41,12 @@ class TestDrawdownScaleFactor:
     def test_9pct_drawdown_half_size(self):
         assert drawdown_scale_factor(9.9) == 0.5
 
-    def test_10pct_drawdown_zero(self):
-        assert drawdown_scale_factor(10.0) == 0.0
+    def test_10pct_drawdown_tapers(self):
+        # Ladder extended to the 20% kill switch: 10% now tapers, not zero.
+        assert drawdown_scale_factor(10.0) == 0.35
+
+    def test_kill_switch_drawdown_zero(self):
+        assert drawdown_scale_factor(20.0) == 0.0
 
     def test_extreme_drawdown_zero(self):
         assert drawdown_scale_factor(50.0) == 0.0

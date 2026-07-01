@@ -248,16 +248,42 @@ class TestDrawdownScaling:
         assert scale == 0.5
 
     def test_drawdown_scale_at_10_percent(self):
-        """10% drawdown should stop trading (0.0x scale)."""
+        """10% drawdown now tapers to 0.35x (ladder extended to the 20% halt)."""
         scale = drawdown_scale_factor(10.0)
+
+        assert scale == 0.35
+
+    def test_drawdown_scale_between_13_and_16(self):
+        """14% drawdown should return 0.25x scale."""
+        scale = drawdown_scale_factor(14.0)
+
+        assert scale == 0.25
+
+    def test_drawdown_scale_between_16_and_20(self):
+        """18% drawdown should return 0.10x scale (still sizing below the halt)."""
+        scale = drawdown_scale_factor(18.0)
+
+        assert scale == 0.10
+
+    def test_drawdown_scale_at_kill_switch(self):
+        """20% drawdown = config kill switch: stop trading (0.0x)."""
+        scale = drawdown_scale_factor(20.0)
 
         assert scale == 0.0
 
     def test_drawdown_scale_deep_drawdown(self):
-        """>10% drawdown should return 0.0x scale (kill switch)."""
-        scale = drawdown_scale_factor(15.0)
+        """>20% drawdown should return 0.0x scale (past the kill switch)."""
+        scale = drawdown_scale_factor(25.0)
 
         assert scale == 0.0
+
+    def test_drawdown_scale_monotonic_non_increasing(self):
+        """Scale must never increase as drawdown deepens."""
+        prev = 1.1
+        for dd in range(0, 26):
+            s = drawdown_scale_factor(float(dd))
+            assert s <= prev
+            prev = s
 
     def test_drawdown_scale_negative_input(self):
         """Negative drawdown (profit) should return 1.0x."""
@@ -298,14 +324,26 @@ class TestDrawdownScalingIntegration:
         assert result_no_dd.contracts >= result_small_dd.contracts
         assert result_small_dd.contracts >= result_mid_dd.contracts
 
-    def test_deep_drawdown_stops_trading(self):
-        """10%+ drawdown should force 0 contracts."""
+    def test_deep_drawdown_tapers_not_stops(self):
+        """10.5% drawdown now tapers (0.35x) instead of hard-stopping."""
         result = calculate_position_size(
             equity=10000.0,
             risk_pct=1.0,
             atr=15.0,
             contract_multiplier=5.0,
             drawdown_pct=10.5,
+        )
+
+        assert result.scale_factor == 0.35
+
+    def test_kill_switch_drawdown_stops_trading(self):
+        """20%+ drawdown = the config kill switch: force 0 contracts, 0.0x."""
+        result = calculate_position_size(
+            equity=10000.0,
+            risk_pct=1.0,
+            atr=15.0,
+            contract_multiplier=5.0,
+            drawdown_pct=20.5,
         )
 
         assert result.contracts == 0
