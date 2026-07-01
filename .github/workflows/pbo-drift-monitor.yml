@@ -1,0 +1,88 @@
+name: PBO Drift Monitor
+
+# Detects drift between the PBO values in master's committed verdicts and
+# the PBO values from your most recent local backtests. Runs weekly.
+#
+# The workflow does NOT run backtests itself — those happen locally on your
+# machine. You commit a snapshot of your local verdicts to a dedicated
+# location, and this workflow diffs it against master. Any strategy whose
+# PBO has drifted materially since the last snapshot gets flagged in an
+# issue for you to investigate.
+#
+# Why it matters: PBO estimates should be stable across independent runs
+# on the same data. Large drift means either (a) the underlying data
+# changed (contamination, new bars), (b) the strategy's parameter grid
+# changed (different multiple-testing surface), or (c) the PBO computation
+# itself changed. All three warrant investigation.
+
+on:
+  schedule:
+    # Every Monday 12:00 UTC (60 min after branch-hygiene so they don't collide)
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+    inputs:
+      snapshot_ref:
+        description: "Git ref containing the local snapshot (default: master)"
+        default: "master"
+      drift_threshold:
+        description: "Absolute PBO delta that triggers a flag (default: 0.10)"
+        default: "0.10"
+
+concurrency:
+  group: pbo-drift
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift-scan:
+    name: Compare local snapshot vs master verdicts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run drift scan
+        id: scan
+        env:
+          SNAPSHOT_REF: ${{ github.event.inputs.snapshot_ref || 'master' }}
+          DRIFT_THRESHOLD: ${{ github.event.inputs.drift_threshold || '0.10' }}
+        run: |
+          python scripts/ci/pbo_drift_scan.py \
+            --master-dir engine/data/gate_v2_verdicts \
+            --snapshot-dir engine/data/local_pbo_snapshots \
+            --threshold "$DRIFT_THRESHOLD" \
+            --report drift_report.md
+          echo "report_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: File issue with drift report
+        if: steps.scan.outputs.report_ready == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '';
+            try {
+              body = fs.readFileSync('drift_report.md', 'utf8');
+            } catch (e) {
+              body = `_Drift report failed to generate: ${e}_`;
+            }
+            const week = new Date().toISOString().slice(0, 10);
+            // Only file if there's actual drift or errors — silent-pass otherwise
+            if (body.includes('NO_DRIFT_DETECTED') || body.trim().length === 0) {
+              console.log('No drift detected. Not filing an issue.');
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `PBO drift report — ${week}`,
+              body: body,
+              labels: ['maintenance', 'pbo-drift'],
+            });

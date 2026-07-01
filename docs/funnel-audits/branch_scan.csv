@@ -1,0 +1,5 @@
+branch,last_commit_iso,last_author,last_subject,n_files_changed,n_verdicts_touched,verdicts_pass_gate,verdicts_warn_gate,verdicts_block_gate,verdicts_missing_pbo,worst_pbo,worst_verdict_file
+feat/claude-on-vertex,2026-06-25T22:10:58-05:00,Matt Amundson,fix(llm): defensive use_vertex read in low-level wire path,86,1,0,0,0,0,,
+feat/live-fills-observability,2026-06-04T06:10:00-05:00,Matt Amundson,feat(dashboard): live execution cockpit (fidelity/slippage/approvals/fills),24,1,0,0,0,1,,
+patch09-llm-fallback,2026-05-24T16:02:24-05:00,Matt Amundson,"feat(backtest): three recommendations — RV env docs, briefing counter, M2K Donch",11,1,0,0,0,0,,
+worktree-generation-engine,2026-05-31T03:52:08-05:00,Matt Amundson,fix(paper-runner): self-init DB + UTF-8 output for standalone cycles,44,19,0,0,0,1,,
