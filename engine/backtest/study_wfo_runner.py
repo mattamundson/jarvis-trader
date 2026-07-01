@@ -49,6 +49,23 @@ from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 from backtest.cpcv import generate_cpcv_folds  # noqa: E402
 from backtest.studies import load_study  # noqa: E402
 
+# OOS access ledger is a diagnostic (ml-pitfalls-defense pitfall #4); warn-only,
+# never blocks a verdict. A missing/broken ledger must not affect gate-v2 output.
+try:
+    from analytics.oos_access_ledger import record_oos_access as _record_oos_access
+except Exception:  # pragma: no cover - diagnostic-only import
+    _record_oos_access = None
+
+
+def _log_oos_access(symbol: str, purpose: str) -> None:
+    """Best-effort record of an OOS-touching gate-v2 evaluation. Never raises."""
+    if _record_oos_access is None:
+        return
+    try:
+        _record_oos_access(symbol, purpose, now=datetime.now(timezone.utc))
+    except Exception:  # pragma: no cover - diagnostic-only, must not affect verdicts
+        pass
+
 # Vetted continuous 5m files per symbol (gitignored cache).
 DATA_FILES = {
     "MES": "MES_2024-09-22_2026-05-29_5m_cont.csv",
@@ -503,6 +520,7 @@ def run_one(
             cost = _cost_sweep(study, df, symbol, mode, champion, base_comm)
             gate = _compute_gate_v2(oos_results, n_combos, fixed, cost)
             gate["champion"] = champion
+            _log_oos_access(symbol, f"gate_v2_cpcv:{study_name}:{mode}")
 
         print(
             f"[{study_name.upper()}-{symbol}-{mode}] CPCV VERDICT {gate['verdict']} "
@@ -665,6 +683,7 @@ def run_one(
         cost = _cost_sweep(study, df, symbol, mode, champion, base_comm)
         gate = _compute_gate_v2(oos_results, n_combos, fixed, cost)
         gate["champion"] = champion
+        _log_oos_access(symbol, f"gate_v2:{study_name}:{mode}")
 
     # ------------------------------------------------------------------
     # POST-HOC regime-conditional breakdown (ADDITIVE, never gates verdict)
