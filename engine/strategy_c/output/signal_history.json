@@ -1,0 +1,27 @@
+{
+  "signals": [
+    {
+      "generated_at": "2026-06-26T04:24:08.727411",
+      "effective_date": "2026-06-26",
+      "combined_scale": 0.3764,
+      "pre_mtf_scale": 0.3273,
+      "holdings": {
+        "XLK": 0.1882,
+        "MTUM": 0.1882,
+        "SHY": 0.6236
+      },
+      "risk_regime": "RISK_ON",
+      "vol_scale": 0.2975,
+      "realized_vol_pct": 23.53,
+      "vol_regime": "ELEVATED",
+      "vix": 18.89,
+      "vix_regime": "NORMAL",
+      "composite_score": 0.6333,
+      "composite_regime": null,
+      "fear_score": 0.0361,
+      "macro_multiplier": 1.1
+    }
+  ],
+  "last_updated": "2026-07-01T00:52:51.800071+00:00",
+  "count": 1
+}
