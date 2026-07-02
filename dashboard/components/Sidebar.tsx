@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  ArrowUpRight,
   BookOpen,
   Brain,
   ChevronRight,
@@ -114,7 +115,6 @@ const NAV_GROUPS: NavGroup[] = [
     title: "System",
     items: [
       { label: "Trust Pane", href: "/trust-pane", icon: <Gauge className="h-3.5 w-3.5" /> },
-      { label: "Master", href: "/master", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { label: "Health", href: "/health", icon: <HeartPulse className="h-3.5 w-3.5" /> },
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },
       { label: "Settings", href: "/settings", icon: <Settings className="h-3.5 w-3.5" /> },
@@ -195,10 +195,28 @@ export function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-border">
-        <p className="font-mono text-[9px] text-muted-foreground/40 tracking-wider uppercase">
-          v5 · Paper Mode
-        </p>
+      <div className="border-t border-border">
+        {/* Master Jarvis is a separate product on a different backend (:8030), not a
+            trading surface. Walled off from the trading nav groups into a single
+            de-emphasized portal link (Phase 2 IA §5). */}
+        <Link
+          href="/master"
+          onClick={() => setMobileOpen(false)}
+          className={[
+            "flex items-center gap-2 mx-2 mt-2 px-3 py-2 rounded-md text-[10px] transition-colors",
+            isActive("/master")
+              ? "text-accent"
+              : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30",
+          ].join(" ")}
+        >
+          <ArrowUpRight className="h-3 w-3" />
+          <span className="font-mono tracking-wide uppercase">Personal · Master Jarvis</span>
+        </Link>
+        <div className="px-4 py-3">
+          <p className="font-mono text-[9px] text-muted-foreground/40 tracking-wider uppercase">
+            v5 · Paper Mode
+          </p>
+        </div>
       </div>
     </nav>
   );
