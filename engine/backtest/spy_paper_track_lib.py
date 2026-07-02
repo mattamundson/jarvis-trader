@@ -18,11 +18,14 @@ does NOT authorize paper routing.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # Ledgers live in the MAIN checkout so they persist across worktree prunes and the
 # live engine reads them. engine/data/*_paper_track/ is gitignored (runtime output).
@@ -116,19 +119,28 @@ def _load_spy_daily() -> pd.DataFrame:
         import sys
 
         sys.path.insert(0, str(_MAIN_ENGINE))
-        from backtest.data_loader import DataLoader
+        from backtest.data_loader import BacktestDataLoader
 
         end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         start = (last - pd.Timedelta(days=7)).strftime("%Y-%m-%d")
-        fresh = DataLoader().load("SPY", start, end, "1d")
+        fresh = BacktestDataLoader().load("SPY", start, end, "1d")
         if fresh is not None and not fresh.empty:
             add = _norm(fresh)
             add = add[add.index > last]
             if not add.empty:
                 df = pd.concat([df, add]).sort_index()
                 df = df[~df.index.duplicated(keep="last")]
-    except Exception:
-        pass
+                logger.info(
+                    "[spy_daily] extended cache to %s (+%d fresh bars)",
+                    df.index.max().date(),
+                    len(add),
+                )
+    except Exception as exc:
+        # Offline-safe by design: a missing/failed feed leaves the track dormant,
+        # never broken. But do NOT swallow silently — a stale series that looks
+        # healthy is worse than a logged warning (this exact path hid a wrong
+        # BacktestDataLoader import that froze SPY freshness for weeks).
+        logger.warning("[spy_daily] fresh-bar extension skipped: %r", exc)
 
     return df
 
@@ -156,14 +168,16 @@ def _closed_long_trades(sig: pd.DataFrame, capital: float) -> list[dict]:
             if a - 1 >= 0 and close[a - 1] > 0:
                 ep, xp = float(close[a - 1]), float(close[b])
                 ret = xp / ep - 1.0
-                trades.append({
-                    "entry_date": str(pd.Timestamp(idx[a - 1]).date()),
-                    "exit_date": str(pd.Timestamp(idx[b]).date()),
-                    "entry_price": round(ep, 4),
-                    "exit_price": round(xp, 4),
-                    "return": round(ret, 6),
-                    "pnl": round(capital * ret, 2),
-                })
+                trades.append(
+                    {
+                        "entry_date": str(pd.Timestamp(idx[a - 1]).date()),
+                        "exit_date": str(pd.Timestamp(idx[b]).date()),
+                        "entry_price": round(ep, 4),
+                        "exit_price": round(xp, 4),
+                        "return": round(ret, 6),
+                        "pnl": round(capital * ret, 2),
+                    }
+                )
         i += 1
     return trades
 
@@ -233,9 +247,12 @@ def tick(
     state["updated_at"] = datetime.now(timezone.utc).isoformat()
     _save_state(td, state)
     return {
-        "name": name, "inception": inception, "last_bar": last_bar,
+        "name": name,
+        "inception": inception,
+        "last_bar": last_bar,
         "closed_trades_all_history": len(all_trades),
-        "new_forward_recorded": new, "forward_total": len(recorded),
+        "new_forward_recorded": new,
+        "forward_total": len(recorded),
     }
 
 
