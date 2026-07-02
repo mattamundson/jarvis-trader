@@ -240,7 +240,7 @@ class TestGeminiPrimaryRouting:
     def test_decision_agents_use_gemini_pro(self, llm_client):
         """Trade-decision agents route to Gemini 2.5-pro (GEMINI_PRO_AGENTS),
         not the cheaper flash enrichment set (2026-07-02, Amo cost-reduction)."""
-        for agent in ("trader", "risk_manager", "fund_manager", "bull_researcher", "bear_researcher"):
+        for agent in ("trader", "risk_manager", "fund_manager", "bull_researcher", "bear_researcher", "advisor_debate"):
             assert agent in llm_client.GEMINI_PRO_AGENTS
             assert agent not in llm_client.GEMINI_PRIMARY_AGENTS
 

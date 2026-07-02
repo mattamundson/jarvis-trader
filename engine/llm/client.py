@@ -293,6 +293,7 @@ class JarvisLLMClient:
             "fund_manager",
             "bull_researcher",
             "bear_researcher",
+            "advisor_debate",
         }
     )
 
