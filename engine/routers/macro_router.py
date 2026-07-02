@@ -107,4 +107,31 @@ async def get_macro_series(series_id: str, periods: int = 24):
     return {"series_id": series_id.upper(), "data": history, "count": len(history)}
 
 
+@router.get("/macro/regime")
+async def get_macro_regime():
+    """Market-wide macro trend regime (RISK_ON/RISK_OFF/NEUTRAL/UNKNOWN).
+
+    Derived from the two real trend edges of the X-bookmark scan applied to SPY as
+    an S&P proxy: weekly Supertrend(ATR10, x3) + monthly 12mo-SMA momentum. ADVISORY
+    only — this never routes capital; the futures pipeline reads it only when the
+    ENABLE_MACRO_TREND_BIAS feature flag is on. 5-min cache over macro_regime's own
+    6h compute cache.
+    """
+    now = datetime.now()
+    cached = _macro_cache.get("regime")
+    if cached and (now - cached["_ts"]).total_seconds() < 300:
+        return {k: v for k, v in cached.items() if k != "_ts"}
+
+    try:
+        from backtest.macro_regime import compute_macro_regime
+
+        result = compute_macro_regime()
+    except Exception as e:
+        logger.warning("compute_macro_regime failed: %s", e)
+        raise HTTPException(500, f"macro regime computation failed: {e}") from e
+
+    _macro_cache["regime"] = {**result, "_ts": now}
+    return result
+
+
 # ── Backtest endpoint ──────────────────────────────────────────────────────────

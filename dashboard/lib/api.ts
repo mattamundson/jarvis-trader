@@ -1050,6 +1050,63 @@ export async function fetchStrategyLedger(): Promise<LedgerResponse> {
   return fetchEngine<LedgerResponse>("/strategy/ledger");
 }
 
+// ── Research candidates (GET /strategy/research-candidates) ───────────────────
+// X-bookmark edge-scan candidates + their RESEARCH gate-v2 verdicts. This is a
+// non-authorizing namespace (separate from the production ledger) — visibility only.
+export interface ResearchCandidate {
+  strategy: string | null;
+  symbol: string | null;
+  family: string | null;
+  strategy_class: string | null;
+  verdict: string | null;
+  passed_via: string | null;
+  pf_ci_lower: number | null;
+  p_edge: number | null;
+  mc_95th_dd_pct: number | null;
+  dsr: number | null;
+  source_bookmark_url: string | null;
+  author: string | null;
+  scan_date: string | null;
+  class_note: string | null;
+  created_at: string | null;
+  source_file: string | null;
+}
+
+export interface ResearchCandidatesResponse {
+  candidates: ResearchCandidate[];
+  total: number;
+  generated_at: string;
+}
+
+/** GET /strategy/research-candidates — X-bookmark edge-scan research candidates. */
+export async function fetchResearchCandidates(): Promise<ResearchCandidatesResponse> {
+  return fetchEngine<ResearchCandidatesResponse>("/strategy/research-candidates");
+}
+
+// ── Macro trend regime (GET /macro/regime) — X-bookmark trend edges on SPX ────
+// Market-wide RISK_ON/RISK_OFF/NEUTRAL/UNKNOWN from weekly Supertrend + monthly
+// momentum. ADVISORY only — folded into the futures pipeline context solely when
+// the ENABLE_MACRO_TREND_BIAS feature flag is on; never routes capital.
+export interface MacroRegime {
+  state: "RISK_ON" | "RISK_OFF" | "NEUTRAL" | "UNKNOWN";
+  weekly_trend: "UP" | "DOWN" | null;
+  monthly_momentum: "ABOVE" | "BELOW" | null;
+  asof: string | null;
+  spy_close: number | null;
+  bias_line: string;
+  stale_days?: number;
+  error?: string;
+  components: {
+    weekly_supertrend_atr10x3?: boolean;
+    monthly_sma12_momentum?: boolean;
+  };
+}
+
+/** GET /macro/regime — advisory macro trend bias state. */
+export async function fetchMacroRegime(): Promise<MacroRegime> {
+  return fetchEngine<MacroRegime>("/macro/regime");
+}
+
 // ── Production-gate scorecard (GET /strategy/gates/{symbol}, US-005) ──────────
 export interface GateResult {
   key: string;
