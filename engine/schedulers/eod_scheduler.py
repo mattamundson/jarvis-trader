@@ -422,6 +422,29 @@ class EODScheduler:
             logger.warning("[EOD] No db_manager — snapshot not persisted")
             snapshot["status"] = "no_db"
 
+        # Phantom detector (2026-07-02) — flag-only. Scan the closed ledger for
+        # suspicious trades (duplicate bookings, pnl/price inconsistency,
+        # contaminated-entry outliers) so Amo gets a fresh, evidence-tagged list
+        # to confirm-mark (mark_phantom_trades.py) BEFORE the next snapshot trusts
+        # them. It never mutates a row and never blocks the EOD flow; it only
+        # attaches the list to the snapshot and logs it. The list shrinks
+        # automatically as suspects are marked phantom (excluded next run).
+        if self._db is not None and hasattr(self._db, "get_trade_history"):
+            try:
+                from analytics.phantom_detector import (
+                    detect_suspect_closed_trades,
+                    format_suspect_report,
+                )
+
+                suspects = detect_suspect_closed_trades(self._db)
+                snapshot["suspects"] = [s.as_dict() for s in suspects]
+                if suspects:
+                    logger.warning("[EOD] %s", format_suspect_report(suspects))
+                else:
+                    logger.info("[EOD] phantom-detector: 0 suspect closed trades.")
+            except Exception as exc:
+                logger.error("[EOD] phantom detector failed: %s", exc)
+
         # Self-heal historical drift (2026-07-02). A phantom/duplicate trade is
         # often reclassified (manual mark_phantom_trades.py) DAYS after it was
         # booked status='closed' and counted by an EOD snapshot. The detective
