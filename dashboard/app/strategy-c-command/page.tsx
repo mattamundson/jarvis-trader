@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Strategy C+ Command Center — unified into the main JARVIS dashboard.
  *
