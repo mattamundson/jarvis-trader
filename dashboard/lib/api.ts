@@ -5,18 +5,9 @@ const ENGINE = "/api/engine";
 const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const RETRY_DELAY_MS = 2000; // 2 seconds
 
-// API key injected via NEXT_PUBLIC_ENGINE_API_KEY (set in dashboard/.env.local).
-// Run `python scripts/rotate_dev_api_key.py` from repo root to sync with engine/.env API_KEY.
-// Fallback matches engine/.env.example only — rotate before any network exposure.
-const API_KEY =
-  process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "jarvis-dev-key-change-me";
-
-function engineHeaders(extra?: HeadersInit): HeadersInit {
-  return {
-    "X-API-Key": API_KEY,
-    ...extra,
-  };
-}
+// The engine API key is injected server-side by the proxy route
+// (app/api/engine/[...path]/route.ts, via the non-public ENGINE_API_KEY env
+// var) — never here. Client code must not read or send it.
 
 async function fetchWithTimeout<T>(
   url: string,
@@ -71,14 +62,13 @@ export async function fetchEngine<T = any>(path: string, options?: RequestInit):
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     cache: "no-store",
     ...options,
-    headers: engineHeaders(options?.headers),
   });
 }
 
 export async function postEngine<T = any>(path: string, body?: unknown): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
-    headers: engineHeaders({ "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -95,7 +85,6 @@ export async function fetchEngineRaw(path: string, options?: RequestInit): Promi
       cache: "no-store",
       ...options,
       signal: controller.signal,
-      headers: engineHeaders(options?.headers),
     });
     return res;
   } finally {
