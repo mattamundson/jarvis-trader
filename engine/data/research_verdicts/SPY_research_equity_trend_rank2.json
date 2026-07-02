@@ -1,0 +1,36 @@
+{
+  "symbol": "SPY",
+  "family": "research_equity_trend",
+  "rank": 2,
+  "strategy": "supertrend_weekly_spx",
+  "strategy_class": "equity_swing",
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "UNSCORED",
+  "created_at": "2026-07-02T07:08:58.688874+00:00",
+  "gate_v2_metrics": {
+    "pf_ci_lower": 1.2231,
+    "p_edge": 1.0,
+    "mc_95th_dd_pct": 28.45,
+    "dsr": 0.999817
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.2231 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=28.45 > 6.0",
+      "dsr=0.999817 >= 0.1 (not selection-bias)"
+    ]
+  },
+  "provenance": {
+    "source_bookmark_url": "https://x.com/QuantifiedStrat/status/2071956929237123252",
+    "author": "@QuantifiedStrat",
+    "scan_date": "2026-07-02"
+  },
+  "class_note": "3/4 CORE (DSR 0.9998); fails only mc_95th_dd vs the 6% intraday-futures ceiling. Raises Sharpe over buy&hold (0.735 vs 0.685) and halves drawdown (-27% vs -55%)."
+}
