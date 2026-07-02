@@ -155,7 +155,7 @@ const TV_SYMBOL: Record<string, string> = {
   MES: "CME_MINI:MES1!", ES: "CME_MINI:ES1!",
   MNQ: "CME_MINI:MNQ1!", NQ: "CME_MINI:NQ1!",
   M2K: "CME_MINI:M2K1!",
-  MGC: "COMEX:MGC1!", GC: "COMEX:GC1!",
+  MGC: "COMEX_MINI:MGC1!", GC: "COMEX:GC1!",
   MCL: "NYMEX:MCL1!", CL: "NYMEX:CL1!",
 };
 function tvTicker(symbol: string): string | null {
