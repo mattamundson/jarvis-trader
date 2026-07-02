@@ -10,6 +10,7 @@ import {
   fetchHonestTrades,
   equityCurve,
   dedupCaveat,
+  DEFAULT_STARTING_CAPITAL,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
 import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
@@ -682,10 +683,14 @@ function PerformanceMetricsPanel() {
       ? Math.abs(Math.min(...mgcCurve.map((p) => p.drawdown)))
       : null;
 
-  // Derive peak for percentage expression
+  // Derive peak for percentage expression. Floored at DEFAULT_STARTING_CAPITAL
+  // so a tiny-but-positive peak (e.g. one small early MGC win) can't divide a
+  // later large-dollar loss into an absurd percentage -- denominate against
+  // account starting capital instead, same fix as lib/honestTrades.ts's
+  // maxDrawdownPct().
   const mgcPeak =
     mgcCurve && mgcCurve.length > 0
-      ? Math.max(...mgcCurve.map((p) => p.equity), 0)
+      ? Math.max(...mgcCurve.map((p) => p.equity), 0, DEFAULT_STARTING_CAPITAL)
       : null;
   const mgcMaxDdPct =
     mgcMaxDd != null && mgcPeak != null && mgcPeak > 0
