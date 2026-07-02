@@ -1814,9 +1814,15 @@ async def get_paper_account_stats(
     else:
         sharpe = None
 
-    # Calmar (annualised return / abs max drawdown)
+    # Calmar (annualised return / abs max drawdown). abs(max_dd) is floored at
+    # CALMAR_MIN_DD_FLOOR (0.5%) before dividing -- an account that's mostly
+    # winning with only a razor-thin dip (e.g. max_dd = -0.0001) combined with
+    # a healthy annualized return otherwise explodes into millions (e.g.
+    # 2,014,774.72). Below the floor, Calmar is undefined -- report None
+    # (dashboard renders "--") rather than a fabricated ratio.
+    CALMAR_MIN_DD_FLOOR = 0.005
     calmar: float | None = None
-    if max_dd is not None and max_dd < 0:
+    if max_dd is not None and max_dd < 0 and abs(max_dd) >= CALMAR_MIN_DD_FLOOR:
         ann_return = mean_pnl * 252
         calmar = ann_return / abs(max_dd)
 
