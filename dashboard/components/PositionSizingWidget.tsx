@@ -58,6 +58,39 @@ function contractBadgeLabel(n: number): string {
   return "Too Volatile";
 }
 
+/**
+ * One concrete recommendation derived from which constraint is binding.
+ * All numbers come straight from the shared ATR sizing result — nothing invented.
+ */
+function sizingRecommendation(
+  computedContracts: number,
+  effectiveContracts: number,
+  maxContractsCap: number
+): { text: string; tone: "emerald" | "amber" | "sky" } {
+  if (computedContracts <= 0) {
+    return {
+      tone: "amber",
+      text: `Recommend: skip or wait — current ATR leaves no contract inside the risk budget (0 fit). Re-check when volatility compresses.`,
+    };
+  }
+  if (computedContracts > maxContractsCap) {
+    return {
+      tone: "sky",
+      text: `Recommend: config cap is the binding limit — risk budget allows ${computedContracts}, capped to ${effectiveContracts}. Raise max_contracts (/settings/risk) to scale.`,
+    };
+  }
+  return {
+    tone: "emerald",
+    text: `Recommend: size ${effectiveContracts} — volatility is the binding limit and the ${maxContractsCap}-contract cap has headroom.`,
+  };
+}
+
+const RECO_TONE_CLASS: Record<"emerald" | "amber" | "sky", string> = {
+  emerald: "text-emerald-300",
+  amber: "text-amber-300",
+  sky: "text-sky-300",
+};
+
 // ── Stat Row ──────────────────────────────────────────────────────────────────
 
 function StatRow({
@@ -258,6 +291,24 @@ export function PositionSizingWidget() {
             </div>
           </div>
         </div>
+
+        {/* Concrete recommendation — derived from the binding constraint */}
+        {metrics && (
+          (() => {
+            const rec = sizingRecommendation(
+              metrics.computedContracts,
+              metrics.effectiveContracts,
+              maxContractsCap
+            );
+            return (
+              <p
+                className={`mt-3 font-mono text-[10px] leading-snug ${RECO_TONE_CLASS[rec.tone]}`}
+              >
+                {rec.text}
+              </p>
+            );
+          })()
+        )}
       </CardContent>
     </Card>
   );
