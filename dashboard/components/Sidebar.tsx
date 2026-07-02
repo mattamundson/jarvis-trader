@@ -99,6 +99,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Strategy Ledger", href: "/strategy-ledger", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "Strategy Research", href: "/strategy-research", icon: <Lightbulb className="h-3.5 w-3.5" /> },
       { label: "Learning", href: "/learning", icon: <Rss className="h-3.5 w-3.5" /> },
+      { label: "Research Log", href: "/research-log", icon: <FileText className="h-3.5 w-3.5" /> },
       { label: "Discord", href: "/discord", icon: <MessageSquare className="h-3.5 w-3.5" /> },
     ],
   },
