@@ -29,6 +29,7 @@ sys.path.insert(0, _HERE)
 
 import validate_strategy as vs  # noqa: E402
 from generate_sma12_momentum_signals import generate_sma12_momentum_signals  # noqa: E402
+from research_verdict import write_research_verdict  # noqa: E402
 
 # SPY daily lives in the main checkout's (gitignored) cache; absolute default.
 _DEFAULT_DATA = r"C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache/SPY_1993-01-29_2026-06-24_1d.csv"
@@ -52,7 +53,7 @@ def _metrics(monthly_strat_ret: pd.Series) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=_DEFAULT_DATA)
-    ap.add_argument("--out", default=os.path.join(_ENGINE, "data", "gate_v2_verdicts", "SPY_sma12momentum_rank1.json"))
+    ap.add_argument("--out", default=os.path.join(_ENGINE, "data", "research_reports", "SPY_sma12momentum_rank1.json"))
     args = ap.parse_args()
 
     daily = pd.read_csv(args.data, parse_dates=["timestamp"]).set_index("timestamp").sort_index()
@@ -93,9 +94,19 @@ def main() -> int:
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2)
 
+    rv_path = write_research_verdict(
+        strategy="sma12_monthly_momentum", symbol="SPY", family="research_equity_trend", rank=1,
+        report=report, verdict=verdict, strategy_class="equity_swing",
+        provenance={"source_bookmark_url": "https://x.com/QuantifiedStrat/status/2072002224553603121",
+                    "author": "@QuantifiedStrat", "scan_date": "2026-07-02"},
+        class_note=("3/4 CORE (PF-CI, p_edge, DSR pass); fails only mc_95th_dd vs the 6% "
+                    "intraday-futures ceiling. Halves buy&hold drawdown (-16.6% vs -50.8%)."),
+    )
+
     print(json.dumps({k: out[k] for k in ("strategy", "period", "n_in_market_trades", "n_regime_flips",
                                           "strategy_metrics", "buy_hold_metrics", "gate_v2")}, indent=2))
     print("written:", args.out)
+    print("research verdict:", rv_path)
     return 0
 
 

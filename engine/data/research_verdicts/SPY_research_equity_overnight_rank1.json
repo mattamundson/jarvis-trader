@@ -1,0 +1,36 @@
+{
+  "symbol": "SPY",
+  "family": "research_equity_overnight",
+  "rank": 1,
+  "strategy": "spy_overnight_hold",
+  "strategy_class": "equity_overnight",
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "UNSCORED",
+  "created_at": "2026-07-02T07:08:52.506432+00:00",
+  "gate_v2_metrics": {
+    "pf_ci_lower": 1.1226,
+    "p_edge": 1.0,
+    "mc_95th_dd_pct": 23.2117,
+    "dsr": 0.999104
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.1226 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=23.2117 > 6.0",
+      "dsr=0.999104 >= 0.1 (not selection-bias)"
+    ]
+  },
+  "provenance": {
+    "source_bookmark_url": "https://x.com/QuantifiedStrat/status/2070190285746036963",
+    "author": "@QuantifiedStrat",
+    "scan_date": "2026-07-02"
+  },
+  "class_note": "3/4 CORE; DD-only fail. Overnight-only captures ~all of SPY's 33yr return; intraday-only = 0.7% CAGR. PnL is GROSS of close/open spread + financing."
+}
