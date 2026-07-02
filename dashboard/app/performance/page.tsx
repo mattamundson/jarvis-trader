@@ -17,7 +17,6 @@ import { EntryQualityWidget } from "@/components/EntryQualityWidget";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 import { WinRateBySymbolWidget } from "@/components/WinRateBySymbolWidget";
 import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
-import { PnlCalendarWidget } from "@/components/PnlCalendarWidget";
 import HoldTimeWidget from "@/components/HoldTimeWidget";
 import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
 import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
@@ -771,11 +770,6 @@ export default function PerformancePage() {
         {/* Daily P&L Calendar */}
         <WidgetErrorBoundary name="Daily P&L Calendar">
           <DailyPnLCalendarWidget />
-        </WidgetErrorBoundary>
-
-        {/* P&L Calendar Heatmap -- 13-week GitHub-style grid */}
-        <WidgetErrorBoundary name="P&L Calendar Heatmap">
-          <PnlCalendarWidget />
         </WidgetErrorBoundary>
 
         {/* Win Rate by Hour of Day */}
