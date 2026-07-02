@@ -541,6 +541,14 @@ export interface PriceSnapshotEntry {
   change_pct: number | null;
   yf_ticker: string;
   error?: string;
+  // Data-provenance fields (Phase 1) — server-derived, additive. `is_live` is
+  // NEVER hardcoded true; a cached/delayed tier (csv_cache, polygon REST) reports
+  // is_live=false so the ticker can never show LIVE over stale data. `as_of` is
+  // epoch SECONDS. Optional: older engine builds / degraded entries omit them.
+  source?: string;
+  as_of?: number | null;
+  is_live?: boolean;
+  stale_after_s?: number;
 }
 
 export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
