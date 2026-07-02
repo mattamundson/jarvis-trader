@@ -55,8 +55,16 @@ function resolveWsUrl(): string {
   return engineHttp.replace(/^http/, "ws");
 }
 
+// /ws/pipeline requires api_key auth (browsers can't send custom headers on a
+// WS upgrade — see engine/routers/pipeline_ws_router.py). When connecting
+// same-origin (no NEXT_PUBLIC_ENGINE_URL override), the Next.js rewrite in
+// next.config.ts injects the server-only ENGINE_API_KEY and the client sends
+// no key at all. NEXT_PUBLIC_ENGINE_API_KEY only matters for the direct-connect
+// fallback (Vercel/ngrok, local :3010 override) and must be explicitly set —
+// no hardcoded default. See dashboard/DEPLOY_VERCEL.md "Known limitation —
+// WebSocket pages" for why that fallback still carries the key client-side.
 function resolveApiKey(): string {
-  return process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "jarvis-dev-key-change-me";
+  return process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "";
 }
 
 // ── usePipelineSocket hook ─────────────────────────────────────────────────
@@ -88,7 +96,9 @@ export function usePipelineSocket(
       if (!base) return;
 
       const key = resolveApiKey();
-      const url = `${base}/ws/pipeline?api_key=${encodeURIComponent(key)}`;
+      const url = key
+        ? `${base}/ws/pipeline?api_key=${encodeURIComponent(key)}`
+        : `${base}/ws/pipeline`;
 
       try {
         const ws = new WebSocket(url);
