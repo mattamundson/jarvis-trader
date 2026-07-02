@@ -1083,6 +1083,30 @@ export async function fetchResearchCandidates(): Promise<ResearchCandidatesRespo
   return fetchEngine<ResearchCandidatesResponse>("/strategy/research-candidates");
 }
 
+// ── Macro trend regime (GET /macro/regime) — X-bookmark trend edges on SPX ────
+// Market-wide RISK_ON/RISK_OFF/NEUTRAL/UNKNOWN from weekly Supertrend + monthly
+// momentum. ADVISORY only — folded into the futures pipeline context solely when
+// the ENABLE_MACRO_TREND_BIAS feature flag is on; never routes capital.
+export interface MacroRegime {
+  state: "RISK_ON" | "RISK_OFF" | "NEUTRAL" | "UNKNOWN";
+  weekly_trend: "UP" | "DOWN" | null;
+  monthly_momentum: "ABOVE" | "BELOW" | null;
+  asof: string | null;
+  spy_close: number | null;
+  bias_line: string;
+  stale_days?: number;
+  error?: string;
+  components: {
+    weekly_supertrend_atr10x3?: boolean;
+    monthly_sma12_momentum?: boolean;
+  };
+}
+
+/** GET /macro/regime — advisory macro trend bias state. */
+export async function fetchMacroRegime(): Promise<MacroRegime> {
+  return fetchEngine<MacroRegime>("/macro/regime");
+}
+
 // ── Production-gate scorecard (GET /strategy/gates/{symbol}, US-005) ──────────
 export interface GateResult {
   key: string;

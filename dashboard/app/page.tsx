@@ -36,6 +36,7 @@ import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidge
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
 import { BookmarkFeedPanel } from "@/components/BookmarkFeedPanel";
 import { StrategyResearchPanel } from "@/components/StrategyResearchPanel";
+import { MacroRegimeBadge } from "@/components/MacroRegimeBadge";
 import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import { EngineHealthWidget } from "@/components/EngineHealthWidget";
@@ -440,6 +441,11 @@ export default function DashboardPage() {
             {/* Strategy Research — X-bookmark edge-scan candidates + research gate-v2 verdicts */}
             <WidgetErrorBoundary name="Strategy Research">
               <StrategyResearchPanel />
+            </WidgetErrorBoundary>
+
+            {/* Macro Trend Regime — advisory SPX trend bias for the futures book (flag-gated) */}
+            <WidgetErrorBoundary name="Macro Trend Regime">
+              <MacroRegimeBadge />
             </WidgetErrorBoundary>
 
             {/* Strategy Parameters */}
