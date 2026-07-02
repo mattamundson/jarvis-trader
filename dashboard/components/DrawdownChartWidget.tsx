@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   equityCurve,
+  DEFAULT_STARTING_CAPITAL,
   type EquityPoint,
 } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
@@ -157,13 +158,23 @@ function DrawdownSVG({ series }: { series: number[] }) {
 // ── Drawdown series from honest equity curve ──────────────────────────────────
 // equityCurve returns { t, equity, drawdown } where drawdown <= 0 (distance
 // below running peak). Convert to a positive percentage series for the chart.
+//
+// Denominated against Math.max(peak, startingEquity) rather than the raw
+// cumulative-P&L peak alone -- a peak that is tiny-but-positive (e.g. a
+// small early win) previously divided a later large-dollar loss into a
+// near-zero base and produced an absurd percentage (e.g. "1981.7%").
+// DEFAULT_STARTING_CAPITAL floors the denominator so it can never explode.
 
-function deriveSeries(curve: EquityPoint[]): number[] {
+function deriveSeries(
+  curve: EquityPoint[],
+  startingEquity: number = DEFAULT_STARTING_CAPITAL,
+): number[] {
   return curve.map((pt) => {
     // peak = equity - drawdown (since drawdown <= 0)
     const peak = pt.equity - pt.drawdown;
-    if (peak <= 0) return 0;
-    return (Math.abs(pt.drawdown) / peak) * 100;
+    const denom = Math.max(peak, startingEquity);
+    if (denom <= 0) return 0;
+    return (Math.abs(pt.drawdown) / denom) * 100;
   });
 }
 
