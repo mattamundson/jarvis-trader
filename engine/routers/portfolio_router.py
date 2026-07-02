@@ -1728,6 +1728,8 @@ async def get_paper_account_stats(
     import math
     from datetime import date, timedelta
 
+    from analytics import metrics  # canonical guarded Sharpe/Calmar (PR #272 invariants)
+
     if account_id not in {"A", "B"}:
         raise HTTPException(status_code=400, detail="account_id must be 'A' or 'B'")
     if days < 1 or days > 730:
@@ -1806,19 +1808,12 @@ async def get_paper_account_stats(
     downside_dev = math.sqrt(sum(neg_sq) / len(neg_sq)) if neg_sq else None
     sortino: float | None = (mean_pnl / downside_dev * math.sqrt(252)) if downside_dev else None
 
-    # Sharpe (std dev of all returns)
-    if n_trades > 1:
-        variance = sum((p - mean_pnl) ** 2 for p in pnls) / (n_trades - 1)
-        std_dev = math.sqrt(variance)
-        sharpe: float | None = (mean_pnl / std_dev * math.sqrt(252)) if std_dev > 0 else None
-    else:
-        sharpe = None
+    # Sharpe (std dev of all returns) — canonical module (near-zero std-dev guard -> None)
+    sharpe: float | None = metrics.sharpe(pnls)
 
-    # Calmar (annualised return / abs max drawdown)
-    calmar: float | None = None
-    if max_dd is not None and max_dd < 0:
-        ann_return = mean_pnl * 252
-        calmar = ann_return / abs(max_dd)
+    # Calmar (annualised return / abs max drawdown) — canonical module
+    # (floors |max_dd| below 1e-6 -> None, killing the return/~0 blowup PR #272 fixed).
+    calmar: float | None = metrics.calmar(mean_pnl * 252, max_dd)
 
     return AccountStatsResponse(
         account_id=account_id,
