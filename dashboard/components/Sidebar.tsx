@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Cpu,
   Crosshair,
+  Database,
   FileText,
   Flame,
   FlaskConical,
@@ -34,6 +35,7 @@ import {
   Sliders,
   Star,
   SunMedium,
+  Target,
   TrendingUp,
   Trophy,
   Wallet,
@@ -55,6 +57,19 @@ interface NavGroup {
   items: NavItem[];
 }
 
+// Orphan audit (Phase 2 IA §6 — P2.6). Every real page.tsx route is now either in
+// a nav group below, an intentional redirect stub, a dynamic detail route, or is
+// justified link-only here. Routes deliberately NOT surfaced in nav:
+//   /jarvis          — pending P2.1 fold into flagship + redirect; not surfaced so
+//                      nav doesn't advertise a page about to be dissolved.
+//   /journal-review  — link-only by design: reached from /journal ("Review"),
+//                      /command-center, and /research-log. Folds into /performance +
+//                      /journal Review tab in P2.3; kept out of nav to avoid a 4th
+//                      journal-namespace link.
+//   /parallel-paper  — ENABLE_PARALLEL_PAPER-gated A/B compare; folds into /paper as
+//                      a tab (Phase 2 disposition). Off by default, so not in nav.
+//   /trades/[id]/review — dynamic per-trade detail, reached from Trade History/Journal.
+//   /trades/journal → /journal, /stats → /performance — intentional redirect stubs.
 const NAV_GROUPS: NavGroup[] = [
   {
     title: "Trading",
@@ -73,6 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Analysis", href: "/analysis", icon: <Brain className="h-3.5 w-3.5" /> },
       { label: "Intraday Regime", href: "/regime", icon: <Flame className="h-3.5 w-3.5" /> },
+      { label: "Hidden Pivots", href: "/hidden-pivots", icon: <Target className="h-3.5 w-3.5" /> },
       { label: "Backtest", href: "/backtest", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "Options Chain", href: "/options", icon: <Hash className="h-3.5 w-3.5" /> },
       { label: "Crypto", href: "/crypto", icon: <Waves className="h-3.5 w-3.5" /> },
@@ -116,6 +132,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Trust Pane", href: "/trust-pane", icon: <Gauge className="h-3.5 w-3.5" /> },
       { label: "Health", href: "/health", icon: <HeartPulse className="h-3.5 w-3.5" /> },
+      { label: "Data Integrity", href: "/data-integrity", icon: <Database className="h-3.5 w-3.5" /> },
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },
       { label: "Settings", href: "/settings", icon: <Settings className="h-3.5 w-3.5" /> },
       { label: "Validation", href: "/validation", icon: <Shield className="h-3.5 w-3.5" /> },
