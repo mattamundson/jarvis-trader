@@ -597,19 +597,6 @@ export interface PriceSnapshotEntry {
 
 export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
 
-/**
- * Last price + daily change for the given symbols (GET /prices/snapshot).
- * Goes through the engine proxy (REST), so it works on the remote/Vercel
- * deploy unlike the WS feed. Server-side cache is 60s (rate-limit guard), so
- * values refresh roughly once a minute during market hours. Reuses the shared
- * `PriceSnapshot` map type defined above.
- */
-export async function fetchPriceSnapshot(symbols: string[]): Promise<PriceSnapshot> {
-  if (symbols.length === 0) return {};
-  const q = encodeURIComponent(symbols.join(","));
-  return fetchEngine<PriceSnapshot>(`/prices/snapshot?symbols=${q}`);
-}
-
 export interface MacroSnapshot {
   vix?: number | null;
   fed_funds_rate?: number | null;
