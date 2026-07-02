@@ -1770,7 +1770,7 @@ export interface TradeDecisionSnapshot {
 
 export interface PipelineDecisionSnapshot {
   trade_decision?: TradeDecisionSnapshot;
-  risk_decision?: { approved?: boolean; reason?: string; checks_passed?: number };
+  risk_decision?: { approved?: boolean; reasoning?: string; checks_passed?: number };
   fund_decision?: { approved?: boolean; final_conviction?: number; reasoning?: string };
   debate_result?: DebateResult;
   analyst_reports?: {

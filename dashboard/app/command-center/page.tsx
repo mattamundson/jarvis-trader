@@ -33,6 +33,7 @@ import {
 import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
@@ -565,6 +566,15 @@ export default function CommandCenterPage() {
             <ApprovalPanel />
           </CardContent>
         </Card>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          PIPELINE REASONING — why each decision was made (expandable)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Pipeline Reasoning">
+          <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
