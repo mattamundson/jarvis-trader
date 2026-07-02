@@ -1,0 +1,129 @@
+{
+  "date": "2026-06-26",
+  "generated_ts": "2026-06-26T14:00:41.972232+00:00",
+  "symbols": {
+    "MES": {
+      "levels": {
+        "symbol": "MES",
+        "prior_close": 7404.75,
+        "prior_high": 7496.25,
+        "prior_low": 7365.25,
+        "pivot": 7422.0833,
+        "r1": 7478.9167,
+        "s1": 7347.9167,
+        "r2": 7553.0833,
+        "s2": 7291.0833,
+        "atr": 95.2763,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          7441.1456,
+          7463.6308,
+          7500.0263
+        ],
+        "targets_down": [
+          7368.3544,
+          7345.8692,
+          7309.4737
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    },
+    "MNQ": {
+      "levels": {
+        "symbol": "MNQ",
+        "prior_close": 29503.5,
+        "prior_high": 30264.25,
+        "prior_low": 29160.0,
+        "pivot": 29642.5833,
+        "r1": 30125.1667,
+        "s1": 29020.9167,
+        "r2": 30746.8333,
+        "s2": 28538.3333,
+        "atr": 675.7503,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          29761.6366,
+          29921.1137,
+          30179.2503
+        ],
+        "targets_down": [
+          29245.3634,
+          29085.8863,
+          28827.7497
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    },
+    "MGC": {
+      "levels": {
+        "symbol": "MGC",
+        "prior_close": 4025.8,
+        "prior_high": 4025.8,
+        "prior_low": 4025.8,
+        "pivot": 4025.8,
+        "r1": 4025.8,
+        "s1": 4025.8,
+        "r2": 4025.8,
+        "s2": 4025.8,
+        "atr": 88.3808,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          4059.5615,
+          4080.4193,
+          4114.1808
+        ],
+        "targets_down": [
+          3992.0385,
+          3971.1807,
+          3937.4192
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    }
+  },
+  "read": {
+    "bias": "bearish",
+    "conviction": 0.72,
+    "key_levels_committed": [
+      7404.75,
+      7380.25,
+      7368.35,
+      7347.92,
+      7309.47
+    ],
+    "scenario_if_above": "If MES sustains above pivot 7422.08, initial resistance forms at R1 7478.92. A breach here signals potential mean-reversion rally toward 7500.03, though I expect rejection given STRONG_BEAR regime and close well below SMA_fast. Limited upside conviction.",
+    "scenario_if_below": "Breakdown below prior_close 7404.75 validates bearish structure. First target S1 7347.92, then S2 7345.87\u2014both represent consolidation support. Break of 7345.87 opens path to 7309.47 (third downside target). Close below SMA_fast 7437.37 reinforces regime.",
+    "narrative": "MES trades deeply in RANGE_BOUND STRONG_BEAR regime: close 7380.25 sits 117bp below SMA_fast, 116bp below SMA_slow. Overnight setup favors sellers. Pivot at 7422.08 is offer resistance; I expect rejection and retest of prior_close or lower. Conviction modest but directionally clear\u2014bear bias until proven otherwise by sustained push above R1.",
+    "data_quality": "fresh"
+  }
+}
