@@ -27,6 +27,7 @@ sys.path.insert(0, _HERE)
 
 import validate_strategy as vs  # noqa: E402
 from generate_overnight_hold_signals import generate_overnight_hold_signals  # noqa: E402
+from research_verdict import write_research_verdict  # noqa: E402
 
 _DEFAULT_DATA = r"C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/backtest/cache/SPY_1993-01-29_2026-06-24_1d.csv"
 _CAPITAL = 10_000.0
@@ -49,7 +50,7 @@ def _metrics(daily_ret: pd.Series, ppy: int = 252) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=_DEFAULT_DATA)
-    ap.add_argument("--out", default=os.path.join(_ENGINE, "data", "gate_v2_verdicts", "SPY_overnighthold_rank1.json"))
+    ap.add_argument("--out", default=os.path.join(_ENGINE, "data", "research_reports", "SPY_overnighthold_rank1.json"))
     args = ap.parse_args()
 
     daily = pd.read_csv(args.data, parse_dates=["timestamp"]).set_index("timestamp").sort_index()
@@ -88,9 +89,19 @@ def main() -> int:
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2)
 
+    rv_path = write_research_verdict(
+        strategy="spy_overnight_hold", symbol="SPY", family="research_equity_overnight", rank=1,
+        report=report, verdict=verdict, strategy_class="equity_overnight",
+        provenance={"source_bookmark_url": "https://x.com/QuantifiedStrat/status/2070190285746036963",
+                    "author": "@QuantifiedStrat", "scan_date": "2026-07-02"},
+        class_note=("3/4 CORE; DD-only fail. Overnight-only captures ~all of SPY's 33yr return; "
+                    "intraday-only = 0.7% CAGR. PnL is GROSS of close/open spread + financing."),
+    )
+
     print(json.dumps({k: out[k] for k in ("strategy", "period", "n_nights", "strategy_metrics",
                                           "buy_hold_c2c_metrics", "intraday_only_metrics", "gate_v2")}, indent=2))
     print("written:", args.out)
+    print("research verdict:", rv_path)
     return 0
 
 

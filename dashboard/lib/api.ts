@@ -1050,6 +1050,39 @@ export async function fetchStrategyLedger(): Promise<LedgerResponse> {
   return fetchEngine<LedgerResponse>("/strategy/ledger");
 }
 
+// ── Research candidates (GET /strategy/research-candidates) ───────────────────
+// X-bookmark edge-scan candidates + their RESEARCH gate-v2 verdicts. This is a
+// non-authorizing namespace (separate from the production ledger) — visibility only.
+export interface ResearchCandidate {
+  strategy: string | null;
+  symbol: string | null;
+  family: string | null;
+  strategy_class: string | null;
+  verdict: string | null;
+  passed_via: string | null;
+  pf_ci_lower: number | null;
+  p_edge: number | null;
+  mc_95th_dd_pct: number | null;
+  dsr: number | null;
+  source_bookmark_url: string | null;
+  author: string | null;
+  scan_date: string | null;
+  class_note: string | null;
+  created_at: string | null;
+  source_file: string | null;
+}
+
+export interface ResearchCandidatesResponse {
+  candidates: ResearchCandidate[];
+  total: number;
+  generated_at: string;
+}
+
+/** GET /strategy/research-candidates — X-bookmark edge-scan research candidates. */
+export async function fetchResearchCandidates(): Promise<ResearchCandidatesResponse> {
+  return fetchEngine<ResearchCandidatesResponse>("/strategy/research-candidates");
+}
+
 // ── Production-gate scorecard (GET /strategy/gates/{symbol}, US-005) ──────────
 export interface GateResult {
   key: string;
