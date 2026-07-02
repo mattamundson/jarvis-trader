@@ -335,3 +335,104 @@ def build_gate_scorecard(symbol: str, family: Optional[str] = None) -> GatesResp
 )
 def get_strategy_gates(symbol: str, family: Optional[str] = Query(None)) -> GatesResponse:
     return build_gate_scorecard(symbol, family)
+
+
+# ── Research candidates (X-bookmark edge scan; NON-authorizing namespace) ─────
+#
+# Research verdicts live in engine/data/research_verdicts/ — deliberately SEPARATE
+# from gate_v2_verdicts/. gate_v2_policy.is_strategy_authorized reads ONLY
+# gate_v2_verdicts/, so a research verdict (even a spurious PASS) can never
+# authorize routing. This surface is read-only visibility for the edge pipeline.
+
+
+def _research_dir() -> Path:
+    """Research-verdicts dir, separate from the production authorization dir."""
+    return Path(__file__).resolve().parent.parent / "data" / "research_verdicts"
+
+
+class ResearchCandidate(BaseModel):
+    """One X-bookmark edge-scan candidate + its research gate-v2 verdict."""
+
+    strategy: Optional[str] = None
+    symbol: Optional[str] = None
+    family: Optional[str] = None
+    strategy_class: Optional[str] = None
+    verdict: Optional[str] = None
+    passed_via: Optional[str] = None
+    pf_ci_lower: Optional[float] = None
+    p_edge: Optional[float] = None
+    mc_95th_dd_pct: Optional[float] = None
+    dsr: Optional[float] = None
+    source_bookmark_url: Optional[str] = None
+    author: Optional[str] = None
+    scan_date: Optional[str] = None
+    class_note: Optional[str] = None
+    created_at: Optional[str] = None
+    source_file: Optional[str] = None
+
+
+class ResearchCandidatesResponse(BaseModel):
+    candidates: List[ResearchCandidate]
+    total: int
+    generated_at: str
+
+
+def _parse_research_verdict(path: Path) -> Optional[Dict[str, Any]]:
+    """Flatten one research verdict JSON. Returns None if malformed (never raise)."""
+    try:
+        body = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError, TypeError):
+        return None
+
+    # Only real research verdicts count — skip any stray file lacking the research
+    # markers so a mis-dropped verbose report can't surface as a junk candidate.
+    if "strategy_class" not in body and "provenance" not in body:
+        return None
+
+    metrics = body.get("gate_v2_metrics", {}) or {}
+    prov = body.get("provenance", {}) or {}
+    return {
+        "strategy": body.get("strategy"),
+        "symbol": body.get("symbol"),
+        "family": body.get("family"),
+        "strategy_class": body.get("strategy_class"),
+        "verdict": body.get("verdict"),
+        "passed_via": body.get("passed_via"),
+        "pf_ci_lower": metrics.get("pf_ci_lower"),
+        "p_edge": metrics.get("p_edge"),
+        "mc_95th_dd_pct": metrics.get("mc_95th_dd_pct"),
+        "dsr": metrics.get("dsr"),
+        "source_bookmark_url": prov.get("source_bookmark_url"),
+        "author": prov.get("author"),
+        "scan_date": prov.get("scan_date"),
+        "class_note": body.get("class_note"),
+        "created_at": body.get("created_at"),
+        "source_file": path.name,
+    }
+
+
+def load_research_candidates(research_dir: "Path | None" = None) -> List[Dict[str, Any]]:
+    """Read all research verdict JSONs into flat candidate rows."""
+    rd = research_dir or _research_dir()
+    rows: List[Dict[str, Any]] = []
+    if not rd.exists():
+        return rows
+    for path in sorted(rd.glob("*.json")):
+        row = _parse_research_verdict(path)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
+@router.get(
+    "/research-candidates",
+    response_model=ResearchCandidatesResponse,
+    summary="X-bookmark edge-scan research candidates (non-authorizing)",
+)
+def get_research_candidates() -> ResearchCandidatesResponse:
+    rows = load_research_candidates()
+    return ResearchCandidatesResponse(
+        candidates=[ResearchCandidate(**r) for r in rows],
+        total=len(rows),
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )

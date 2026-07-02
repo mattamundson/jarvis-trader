@@ -1,0 +1,40 @@
+{
+  "strategy": "supertrend_weekly_spx",
+  "symbol": "SPY",
+  "rank": 1,
+  "source": "x-bookmark edge scan 2026-07-02 (@QuantifiedStrat)",
+  "period": [
+    "1993-01-29",
+    "2026-06-26"
+  ],
+  "n_weeks": 1743,
+  "n_in_market_trades": 1249,
+  "n_buy_signals": 21,
+  "pct_time_in_market": 0.716,
+  "n_grid_trials": 12,
+  "strategy_metrics": {
+    "cagr": 0.0799,
+    "sharpe_ann": 0.735,
+    "max_dd": -0.272,
+    "final_mult": 13.15
+  },
+  "buy_hold_metrics": {
+    "cagr": 0.1072,
+    "sharpe_ann": 0.685,
+    "max_dd": -0.5461,
+    "final_mult": 30.41
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.2231 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=28.45 > 6.0",
+      "dsr=0.999817 >= 0.1 (not selection-bias)"
+    ]
+  },
+  "note": "Weekly long-only vol-trailing trend filter. Validated on weekly in-market PnL. Draft/research only -- does NOT authorize paper routing."
+}

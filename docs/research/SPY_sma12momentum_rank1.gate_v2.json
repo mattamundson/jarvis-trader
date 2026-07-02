@@ -1,0 +1,47 @@
+{
+  "strategy": "sma12_monthly_momentum",
+  "symbol": "SPY",
+  "rank": 1,
+  "source": "x-bookmark edge scan 2026-07-02 (@QuantifiedStrat)",
+  "period": [
+    "1993-01-31",
+    "2026-06-30"
+  ],
+  "n_months": 401,
+  "n_in_market_trades": 305,
+  "n_regime_flips": 37,
+  "n_grid_trials": 12,
+  "strategy_metrics": {
+    "cagr": 0.101,
+    "sharpe_ann": 0.95,
+    "max_dd": -0.1663,
+    "final_mult": 24.94
+  },
+  "buy_hold_metrics": {
+    "cagr": 0.1076,
+    "sharpe_ann": 0.768,
+    "max_dd": -0.5078,
+    "final_mult": 30.41
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.7385 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=21.9141 > 6.0",
+      "dsr=1.0 >= 0.1 (not selection-bias)"
+    ]
+  },
+  "report_keys": [
+    "bootstrap_block",
+    "bootstrap_iid",
+    "deflated_sharpe",
+    "drawdown_mc",
+    "raw",
+    "sharpe_ci"
+  ],
+  "note": "Monthly regime filter (not intraday). Validated on monthly in-market PnL. Draft/research only -- does NOT authorize paper routing."
+}
