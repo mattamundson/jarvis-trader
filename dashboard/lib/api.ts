@@ -2496,3 +2496,43 @@ export async function screenMovers(
 ): Promise<ScreenResponse> {
   return postEngine<ScreenResponse>("/ib-scanner/screen", input);
 }
+
+// ── Proactive Advisor Brief (Phase 5) ───────────────────────────────────────
+// Mirrors engine/analytics/session_brief.py. The backend assembles these ONLY
+// from reasoning the pipeline already produced — a reasoning-less decision
+// surfaces as an honest gap (`reasoning_available: false`), never fabricated.
+
+export interface SessionBriefStaleness {
+  as_of: string | null;
+  age_seconds: number | null;
+  is_stale: boolean;
+  unknown_age: boolean;
+}
+
+export interface SessionBriefAction {
+  symbol: string;
+  action: string;
+  confidence: number | null;
+  why: string;
+  reasoning_available: boolean;
+  reasoning_sources: string[];
+  staleness: SessionBriefStaleness;
+  data_degraded: boolean;
+}
+
+export interface SessionBriefResponse {
+  generated_at: string;
+  actions: SessionBriefAction[];
+  count: number;
+  degraded: boolean;
+  note: string | null;
+}
+
+export async function fetchSessionBrief(
+  limit = 10,
+  maxActions = 3
+): Promise<SessionBriefResponse> {
+  return fetchEngine<SessionBriefResponse>(
+    `/brief/session?limit=${limit}&max_actions=${maxActions}`
+  );
+}
