@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { MarketSessionStatusCard } from "@/components/MarketSessionStatusCard";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 // ── Category badge colors ────────────────────────────────────────────────────
 
@@ -339,7 +340,9 @@ export default function JournalPage() {
         <MarketSessionStatusCard />
 
         {/* ── Recent Trades ──────────────────────────────────────────────────── */}
-        <RecentTradesTableWidget />
+        <WidgetErrorBoundary name="Recent Trades">
+          <RecentTradesTableWidget />
+        </WidgetErrorBoundary>
 
         {/* ── Section 1: Research Log ────────────────────────────────────────── */}
         <Section

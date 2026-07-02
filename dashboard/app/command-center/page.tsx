@@ -35,6 +35,7 @@ import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 
 const fontDisplay = Orbitron({
@@ -793,7 +794,9 @@ export default function CommandCenterPage() {
         </Card>
 
         {/* Portfolio Correlation */}
-        <PortfolioCorrelationWidget />
+        <WidgetErrorBoundary name="Portfolio Correlation">
+          <PortfolioCorrelationWidget />
+        </WidgetErrorBoundary>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -1489,7 +1492,9 @@ export default function CommandCenterPage() {
           ROW 7 — SIGNAL FEED (full width)
       ═══════════════════════════════════════════════════════ */}
       <div className="mt-3">
-        <SignalFeedWidget />
+        <WidgetErrorBoundary name="Signal Feed">
+          <SignalFeedWidget />
+        </WidgetErrorBoundary>
       </div>
     </div>
   );
