@@ -215,6 +215,7 @@ class JarvisLLMClient:
         "claude-opus-4-6": {"input": 15.0, "output": 75.0},
         "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
         "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
+        "gemini-2.5-pro": {"input": 1.25, "output": 10.0},
         "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
         "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
         "gpt-4o": {"input": 5.0, "output": 15.0},
@@ -279,11 +280,28 @@ class JarvisLLMClient:
         }
     )
 
+    # Trade-DECISION agents routed to Gemini 2.5-pro as primary (2026-07-02, Amo).
+    # Cost reduction vs Claude Sonnet (~2-3x cheaper) while keeping the closest
+    # cheap-model quality for the agents that actually make the trade call. Claude
+    # remains the fallback if credits are re-funded. These take the same proactive
+    # Gemini-primary path as GEMINI_PRIMARY_AGENTS but resolve to gemini-2.5-pro
+    # (see call()), NOT gemini-2.5-flash.
+    GEMINI_PRO_AGENTS: frozenset[str] = frozenset(
+        {
+            "trader",
+            "risk_manager",
+            "fund_manager",
+            "bull_researcher",
+            "bear_researcher",
+        }
+    )
+
     MODEL_CONTEXT_LIMITS = {
         "claude-opus-4-7": 200_000,
         "claude-opus-4-6": 200_000,
         "claude-sonnet-4-6": 200_000,
         "claude-haiku-4-5-20251001": 200_000,
+        "gemini-2.5-pro": 1_000_000,
         "gemini-2.5-flash": 1_000_000,
         "gemini-2.0-flash": 1_000_000,
         "gpt-4o": 128_000,
@@ -849,9 +867,17 @@ class JarvisLLMClient:
         if (
             self.provider != "ollama"
             and self.google_fallback_enabled
-            and agent_name in self.GEMINI_PRIMARY_AGENTS
+            and (
+                agent_name in self.GEMINI_PRIMARY_AGENTS
+                or agent_name in self.GEMINI_PRO_AGENTS
+            )
         ):
-            google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
+            # Decision agents get gemini-2.5-pro (higher quality); enrichment
+            # agents keep the cheaper gemini-2.5-flash via GOOGLE_FAILOVER_MAP.
+            if agent_name in self.GEMINI_PRO_AGENTS:
+                google_model = "gemini-2.5-pro"
+            else:
+                google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
             try:
                 google_result = await self._bounded(
                     self._call_google(

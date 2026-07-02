@@ -237,9 +237,11 @@ class TestGeminiPrimaryRouting:
         }
         assert expected == llm_client.GEMINI_PRIMARY_AGENTS
 
-    def test_decision_agents_excluded(self, llm_client):
-        """Trade-decision agents must NOT be in GEMINI_PRIMARY_AGENTS."""
-        for agent in ("trader", "risk_manager", "fund_manager", "debate"):
+    def test_decision_agents_use_gemini_pro(self, llm_client):
+        """Trade-decision agents route to Gemini 2.5-pro (GEMINI_PRO_AGENTS),
+        not the cheaper flash enrichment set (2026-07-02, Amo cost-reduction)."""
+        for agent in ("trader", "risk_manager", "fund_manager", "bull_researcher", "bear_researcher"):
+            assert agent in llm_client.GEMINI_PRO_AGENTS
             assert agent not in llm_client.GEMINI_PRIMARY_AGENTS
 
     async def test_gemini_primary_routes_enrichment_agent(self, llm_client, monkeypatch):
@@ -303,9 +305,42 @@ class TestGeminiPrimaryRouting:
         assert result.model == "claude-sonnet-4-6"
 
     def test_non_primary_agent_skips_gemini(self, llm_client):
-        """Agents not in GEMINI_PRIMARY_AGENTS are NOT routed to Gemini proactively."""
-        for agent in ("trader", "risk_manager", "fund_manager", "unknown"):
+        """Agents in neither Gemini set are NOT routed to Gemini proactively."""
+        for agent in ("unknown", "some_other_agent"):
             assert agent not in llm_client.GEMINI_PRIMARY_AGENTS
+            assert agent not in llm_client.GEMINI_PRO_AGENTS
+
+    async def test_gemini_pro_routes_decision_agent(self, llm_client, monkeypatch):
+        """call() routes a decision agent to gemini-2.5-pro (not flash)."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        llm_client.provider = "anthropic"
+        llm_client.google_fallback_enabled = True
+        llm_client.google_api_key = "fake-google-key"
+
+        fake_result = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+            content=[SimpleNamespace(text="gemini pro response")],
+        )
+        mock_call_google = AsyncMock(return_value=fake_result)
+        mock_call_with_retry = AsyncMock()
+        monkeypatch.setattr(llm_client, "_call_google", mock_call_google)
+        monkeypatch.setattr(llm_client, "_call_with_retry", mock_call_with_retry)
+
+        result = await llm_client.call(
+            model="claude-sonnet-4-6",
+            system="decide the trade",
+            messages=[{"role": "user", "content": "MES setup"}],
+            agent_name="trader",
+        )
+
+        mock_call_google.assert_called_once()
+        # The proactive-Gemini call must use the pro model for a decision agent.
+        assert mock_call_google.call_args.kwargs.get("model") == "gemini-2.5-pro"
+        mock_call_with_retry.assert_not_called()
+        assert result.success is True
+        assert result.model == "gemini-2.5-pro"
 
 
 if __name__ == "__main__":
