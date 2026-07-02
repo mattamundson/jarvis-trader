@@ -2,7 +2,38 @@
 
 - **Session:** `322b0b9a-e7e4-4dad-a5b7-4eaa686ffc8b` (via `/jarvis-trader`)
 - **Branch:** `fix/corey-standalone-vertex-routing`
-- **Companion:** `CONVERSATION_2026-07-02_es-plan-price-feed-ibkr-data.md` (full narrative)
+- **Companions:**
+  - `CONVERSATION_2026-07-02_FULL-VERBATIM.md` — the **complete verbatim transcript** (every word).
+  - `CONVERSATION_2026-07-02_es-plan-price-feed-ibkr-data.md` — distilled narrative summary.
+
+---
+
+## ⚠️ UPDATE — post-handoff events (Gateway wedged; verbatim transcript built)
+
+Two things happened *after* the body of this handoff was first written:
+
+1. **IB Gateway API got wedged (self-inflicted).** While re-checking entitlement propagation,
+   a backgrounded `ib_probe.py` hung on clientId 99; the `TaskStop` kill was unclean, and IB
+   Gateway is prone to wedging on an unclean client disconnect. Result: the Gateway now
+   **accepts connections but times out on every request** (positions/orders/account/executions),
+   on both clientId 99 and a fresh 98 — so it is not a client-slot conflict. The engine's live
+   data went **blind** (`/prices/snapshot` + `/analyze/bars/MES` return empty) while `/health`
+   still reports `ibkr_connected:true` (green-health-masks-blind-data, per verification.md).
+   No zombie process remains (only one client on 4002). **Impact bounded:** paper mode,
+   kill-switch active, no live capital / no order routing affected.
+   **FIX = relog the IB Gateway** (File → Logout → login) — this both clears the wedged API AND
+   re-pulls entitlements (picks up the real-time sub if propagated). If engine data stays blind
+   after relog, engine restart is the lever (Tier-3, Amo-gated). Then a single clean probe
+   confirms real-time-vs-delayed.
+   **Lesson (reusable):** never run IB probes as a backgrounded pipe — foreground, single-shot.
+
+2. **Full verbatim transcript produced** at Amo's request — `CONVERSATION_2026-07-02_FULL-VERBATIM.md`
+   (extracted programmatically from the session JSONL; every message + tool call + result, with
+   injected skill/CLAUDE.md scaffolding and internal thinking excluded, secret-pattern redaction
+   applied — no secret values were present).
+
+**Superseding current-state note:** treat the price feed as **DOWN pending a Gateway relog**,
+not merely "delayed." The rest of §1 below described the pre-wedge state.
 
 ---
 
@@ -104,8 +135,45 @@ Outside the repo (machine state, for reference — NOT committed):
 
 ## 8. Suggested next action
 
-**Confirm the subscription's home in the Gateway's Market Data Subscription Manager** — that
-single check disambiguates *wait for propagation* (bundle present) vs *fix sharing* (bundle on
-the funded account, "share with paper" on). Everything else can ride: trade the 1h plan on
-delayed data (fully adequate), fold the `IB_ACCOUNT_ID` fix into the next restart, leave the TV
-patch shelved.
+**Relog the IB Gateway** (File → Logout → login) — as of the post-handoff update this is the
+single highest-value action: it clears the wedged Gateway API (restoring the engine's live
+data) AND re-pulls entitlements (picking up the real-time sub if it has propagated). While in
+there, glance at **Account → Management → Market Data Subscription Manager** to confirm the CME
+bundle shows for DUR162217 (present → wait for propagation; absent → the sub must sit on the
+funded account with "share with paper" enabled). After the relog, say "test" for a single clean
+probe. Everything else can ride: fold the `IB_ACCOUNT_ID` fix into the next restart, leave the
+TV patch shelved, trade the 1h plan on delayed data once the feed is back.
+
+## 9. Session artifacts — complete inventory
+
+**Committed to this repo (`docs/session-logs/`):**
+- `HANDOFF_2026-07-02_ibkr-realtime-data-entitlement.md` — this handoff.
+- `CONVERSATION_2026-07-02_FULL-VERBATIM.md` — complete verbatim transcript (160 turns, ~402 KB).
+- `CONVERSATION_2026-07-02_es-plan-price-feed-ibkr-data.md` — distilled narrative summary.
+
+**Machine artifacts (outside the repo — NOT committed, referenced for continuity):**
+- `~/.claude/loops/es-stc-trigger/run.ps1` (+ `state.json`) — armed STC watch-loop runner;
+  Windows task `Loopify-es-stc-trigger` (schtasks MINUTE/3, self-expires 15:00 CT).
+- `~/.claude/staged-patches/tradingview_feed.py` — apply-ready TV feed drop-in (Redis quote
+  VERIFIED; QuestDB bar resample fail-closed + UNVERIFIED). Shelved.
+- `scratchpad/ib_probe.py` — reusable read-only IB market-data probe (clientId 99; restored
+  after a temporary switch to 98 during the wedge diagnosis).
+- `scratchpad/extract_conversation.py` — the JSONL→markdown verbatim extractor used to build
+  the transcript above (reusable for future full-transcript exports).
+
+**Memory files written/updated (`~/.claude/projects/.../memory/`):**
+- `project_price_feed_three_faults_2026_07_01.md` — root cause + dated `STATUS UPDATE 2026-07-02`.
+- `project_es_stc_trigger_loop_2026_07_01.md` — the watch loop.
+- `MEMORY.md` — index lines updated.
+
+**What was accomplished this session (one-liners):**
+1. Produced a comprehensive live ES/MES morning trading plan (Corey-style, 7475 pivot).
+2. Compiled + armed the `es-stc-trigger` watch loop via `/loopify` (all six brakes).
+3. Diagnosed the ~11-min stale feed → **missing real-time CME entitlement** (IBKR Error 354),
+   PROVEN by direct probe; corrected an initial wrong "competing login" hypothesis.
+4. Relaunched the downed IB Gateway; identified the `.env` `IB_ACCOUNT_ID` mismatch (latent).
+5. Identified the correct fix (US Securities Snapshot & Futures Value Bundle NP; funded-acct +
+   share-to-paper) and the paper-account inheritance / propagation-lag mechanics.
+6. Confirmed `.env` mismatch is latent (engine `ibkr_queryable:true`), not urgent.
+7. Committed + pushed distilled handoff + narrative; then the full verbatim transcript.
+8. Diagnosed (and owned) a self-inflicted Gateway API wedge → fix = relog.
