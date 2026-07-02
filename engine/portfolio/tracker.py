@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -45,8 +44,10 @@ except ImportError:
     try:
         from engine.risk.exit_price_sanity import assert_exit_price_sane
     except ImportError:  # pragma: no cover - guard is additive; never hard-fail import
+
         def assert_exit_price_sane(symbol, entry_price, exit_price):  # type: ignore[misc]
             return None
+
 
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
@@ -236,9 +237,7 @@ class PortfolioTracker:
 
                 _sp = tag_strategy_params(_sp, candidate_id)
             except Exception as _tag_err:
-                logger.debug(
-                    "[TRACKER] candidate_id tag failed (non-fatal): %s", _tag_err
-                )
+                logger.debug("[TRACKER] candidate_id tag failed (non-fatal): %s", _tag_err)
                 _sp["candidate_id"] = candidate_id
         # Decision-identity tag (P2): stamp WHICH live decision configuration
         # produced this trade so the forward-test loop can attribute it to a
@@ -717,20 +716,26 @@ class PortfolioTracker:
 
     def _get_starting_balance(self) -> float:
         """
-        Return yesterday's closing equity as today's starting balance.
+        Return the pnl-FREE starting base (INITIAL_CAPITAL) for the account.
 
-        Computes INITIAL_CAPITAL + sum(pnl) for ALL closed paper trades whose
-        pnl is not NULL.  This ensures the daily P&L percentage is always
-        measured against the correct prior-day equity rather than the hardcoded
-        INITIAL_CAPITAL every day (Bug B4).
+        This is a *starting* balance by contract: every consumer computes
+        current equity as ``starting_balance + total_pnl`` (see
+        ``risk/pnl_monitor._read_memory`` line ~513 and
+        ``get_performance_summary`` line ~1381).  Baking cumulative closed P&L
+        in here caused a DOUBLE-COUNT — consumers added ``total_pnl`` a second
+        time, inflating portfolio_equity to ``initial + 2*total_pnl`` (e.g.
+        $20,163.67 on 2026-07-02 when TRUE equity was $15,081.84 = $10k initial
+        + $5,081.84 net closed P&L).  So this returns INITIAL_CAPITAL only, and
+        equity is counted exactly once at the call sites.
 
-        Result is cached on first call per calendar day so repeated calls
-        within the same trading session are O(1).
+        Tradeoff (formerly "Bug B4"): the daily_pnl_pct denominator reverts to
+        the initial deposit rather than prior-day equity.  That is
+        reporting-only — the live daily-loss GATE uses portfolio_equity (now
+        correct), not this field.  If prior-day-equity daily% is wanted, derive
+        it at the daily_pnl_pct site from portfolio_equity, NOT by re-inflating
+        this base (which reintroduces the double-count).
 
-        Falls back to INITIAL_CAPITAL when:
-          - No closed trades exist yet
-          - SQLite is unavailable
-          - Any exception is raised
+        Result is cached per calendar day so repeated calls are O(1).
         """
         # --- per-day cache ---
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -738,7 +743,7 @@ class PortfolioTracker:
         if cached_date == today_str:
             return getattr(self, "_starting_balance_cache", 0.0)
 
-        # --- load INITIAL_CAPITAL from config ---
+        # --- load INITIAL_CAPITAL from config (the pnl-free base) ---
         initial: float = 10_000.0
         try:
             from config import settings  # type: ignore[import]
@@ -747,43 +752,13 @@ class PortfolioTracker:
         except Exception:
             pass
 
-        # --- sum closed P&L from db_manager (B9-safe path) or raw SQLite ---
-        total_pnl: float = 0.0
-        try:
-            if self._db is not None:
-                rows = self._db.get_closed_trades(limit=100_000)
-                total_pnl = sum(
-                    float(r.get("pnl") or 0.0) for r in rows if r.get("pnl") is not None
-                )
-            else:
-                # Fallback: query the SQLite file directly using SQLITE_DB_PATH
-                try:
-                    from config import settings as _cfg  # type: ignore[import]
-
-                    db_path = getattr(_cfg, "SQLITE_DB_PATH", None)
-                except Exception:
-                    db_path = None
-                if db_path:
-                    conn = sqlite3.connect(str(db_path), timeout=5)
-                    cursor = conn.execute(
-                        "SELECT COALESCE(SUM(pnl), 0) FROM paper_trades WHERE pnl IS NOT NULL"
-                    )
-                    total_pnl = float(cursor.fetchone()[0] or 0.0)
-                    conn.close()
-        except Exception as exc:
-            logger.warning("[TRACKER] _get_starting_balance: pnl sum failed: %s", exc)
-            total_pnl = 0.0
-
-        balance = initial + total_pnl
+        # Counted-once contract: consumers add total_pnl themselves, so this
+        # base MUST stay pnl-free (2026-07-02 double-count fix).
+        balance = initial
         # Cache for the rest of the trading day
         self._starting_balance_date: str = today_str
         self._starting_balance_cache: float = balance
-        logger.debug(
-            "[TRACKER] starting_balance computed: initial=%.2f + pnl=%.2f = %.2f",
-            initial,
-            total_pnl,
-            balance,
-        )
+        logger.debug("[TRACKER] starting_balance (pnl-free base) = %.2f", balance)
         return balance
 
     # ── Public API — extended methods (used by db_manager callers) ────────────
@@ -1019,7 +994,10 @@ class PortfolioTracker:
                 logger.warning(
                     "[PAPER] Implausible close P&L for %s %s: pnl=%+.2f (>$%d) - "
                     "possible upstream P&L corruption",
-                    trade.symbol, trade_id[:8], _pnl_outlier, int(MAX_PLAUSIBLE_ABS_PNL_USD),
+                    trade.symbol,
+                    trade_id[:8],
+                    _pnl_outlier,
+                    int(MAX_PLAUSIBLE_ABS_PNL_USD),
                 )
                 try:
                     from events.bus import publish as _publish_outlier
