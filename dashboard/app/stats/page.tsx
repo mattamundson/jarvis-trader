@@ -17,6 +17,7 @@ import { RollingPerformanceWidget } from "@/components/RollingPerformanceWidget"
 import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { CommissionTrackerWidget } from "@/components/CommissionTrackerWidget";
 import { PnLStreakWidget } from "@/components/PnLStreakWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 function SectionDivider({ title }: { title: string }) {
   return (
@@ -67,57 +68,87 @@ export default function StatsPage() {
         {/* Row 1 — full width summary */}
         <SectionDivider title="Performance Overview" />
         <div className="w-full">
-          <PerformanceSummaryWidget />
+          <WidgetErrorBoundary name="Performance Summary">
+            <PerformanceSummaryWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Row 2 — 3 cols: win rate, profit factor, sharpe */}
         <SectionDivider title="Core Metrics" />
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <WinRateBySymbolWidget />
-          <ProfitFactorWidget />
-          <SharpeRatioWidget />
+          <WidgetErrorBoundary name="Win Rate By Symbol">
+            <WinRateBySymbolWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Profit Factor">
+            <ProfitFactorWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Sharpe Ratio">
+            <SharpeRatioWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Row 3 — 2 cols: weekly stats, monthly breakdown */}
         <SectionDivider title="Periodic Breakdown" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <WeeklyStatsWidget />
-          <MonthlyBreakdownWidget />
+          <WidgetErrorBoundary name="Weekly Stats">
+            <WeeklyStatsWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Monthly Breakdown">
+            <MonthlyBreakdownWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Row 4 — 2 cols: hourly breakdown, trade duration */}
         <SectionDivider title="Trade Timing" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <TradeHourlyBreakdownWidget />
-          <TradeDurationWidget />
+          <WidgetErrorBoundary name="Trade Hourly Breakdown">
+            <TradeHourlyBreakdownWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Trade Duration">
+            <TradeDurationWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Row 5 — 2 cols: daily P&L calendar, P&L histogram */}
         <SectionDivider title="P&L Distribution" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <DailyPnLCalendarWidget />
+          <WidgetErrorBoundary name="Daily P&L Calendar">
+            <DailyPnLCalendarWidget />
+          </WidgetErrorBoundary>
           <TradePnLHistogram />
         </div>
 
         {/* Row 6 — 2 cols: best/worst trades, symbol performance */}
         <SectionDivider title="Trade Quality" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <BestWorstTradesWidget />
-          <SymbolPerformanceWidget />
+          <WidgetErrorBoundary name="Best/Worst Trades">
+            <BestWorstTradesWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Symbol Performance">
+            <SymbolPerformanceWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Row 7 — 2 cols: rolling performance, drawdown chart */}
         <SectionDivider title="Risk & Drawdown" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <RollingPerformanceWidget />
-          <DrawdownChartWidget />
+          <WidgetErrorBoundary name="Rolling Performance">
+            <RollingPerformanceWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Drawdown Chart">
+            <DrawdownChartWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Row 8 — 2 cols: commission tracker, P&L streak */}
         <SectionDivider title="Costs & Streaks" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <CommissionTrackerWidget />
-          <PnLStreakWidget />
+          <WidgetErrorBoundary name="Commission Tracker">
+            <CommissionTrackerWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="P&L Streak">
+            <PnLStreakWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Footer */}

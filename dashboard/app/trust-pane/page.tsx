@@ -40,6 +40,7 @@ import {
   type AmoCommodity,
 } from "@/lib/amo-api";
 import { PostTradeExecutionWidget } from "@/components/PostTradeExecutionWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { BarDepthCard } from "@/components/BarDepthCard";
 import { PostTradeSnippet } from "@/components/PostTradeSnippet";
 
@@ -592,7 +593,9 @@ export default function TrustPanePage() {
             </Card>
 
             {/* 5. Post-trade execution quality (WS4B endpoints — PR #78) */}
-            <PostTradeExecutionWidget />
+            <WidgetErrorBoundary name="Post-Trade Execution">
+              <PostTradeExecutionWidget />
+            </WidgetErrorBoundary>
 
             {/* 6. Post-trade quality — book-wide MAE/MFE + entry-timing regret (J1/J2) */}
             <PostTradeSnippet />
