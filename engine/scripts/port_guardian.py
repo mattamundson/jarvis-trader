@@ -18,7 +18,8 @@ Usage (replaces direct uvicorn invocation in ecosystem.config.js):
 
 Exit codes:
     0  — port was free or orphan killed cleanly; uvicorn started
-    1  — port held by something we can't identify (refuse to kill)
+    1  — port held by something we won't kill: an unidentified process, or WSL2's
+         wslrelay mirroring an in-WSL 0.0.0.0 bind onto the Windows loopback (refuse)
     2  — kill attempted but port still bound after grace period
     3  — port held by a HEALTHY uvicorn we can't kill (likely elevated). Exits
          non-zero so PM2 marks the start as failed (correct: we did NOT start
@@ -156,6 +157,18 @@ def _looks_like_orphan_uvicorn(pid: int) -> bool:
     return name.lower() in {"python", "python3.12", "python3.11", "python3.10", "uvicorn"}
 
 
+def _is_wsl_relay(name: str | None) -> bool:
+    """True if the port holder is WSL2's localhost-forwarding relay (wslrelay.exe).
+
+    When a process INSIDE WSL binds ``0.0.0.0:PORT``, WSL2 mirrors it onto the Windows
+    loopback via ``wslrelay``. From Windows the port then looks held by ``wslrelay``,
+    which is NOT ours to kill -- killing it would tear down ALL WSL port forwarding.
+    Detecting it lets the guardian emit an actionable diagnosis instead of the generic
+    "not a python/uvicorn process" line, which flapped 81k+ times with no usable cause
+    on 2026-07-04 (a stray ``python3 -m http.server 8010`` in WSL squatted the port)."""
+    return bool(name) and name.lower() in {"wslrelay", "wslrelay.exe"}
+
+
 def _verify_free(port: int, retries: int = 5, delay: float = 0.5) -> bool:
     """Probe the port; return True if nothing answers."""
     for _ in range(retries):
@@ -277,6 +290,22 @@ def main() -> int:
             name = _process_name(pid) or "unknown"
             print(f"[port_guardian] port {PORT} held by PID {pid} ({name})", flush=True)
             if not _looks_like_orphan_uvicorn(pid):
+                if _is_wsl_relay(name):
+                    print(
+                        f"[port_guardian] port {PORT} is held by wslrelay (PID {pid}): a "
+                        f"process INSIDE WSL is bound to 0.0.0.0:{PORT} and WSL2 "
+                        f"localhost-forwarding is mirroring it onto Windows "
+                        f"127.0.0.1:{PORT}. Killing wslrelay would break ALL WSL port "
+                        f"forwarding, so REFUSING. Fix in WSL: run "
+                        f"`wsl ss -ltnp | grep :{PORT}` then kill the offending PID inside WSL.",
+                        flush=True,
+                    )
+                    _record_restart_event(
+                        "wsl-port-squat",
+                        {"pid": pid, "name": name, "port": PORT},
+                        RESTART_LOG,
+                    )
+                    return 1
                 print(
                     f"[port_guardian] PID {pid} is not a python/uvicorn process — "
                     "REFUSING to kill. Resolve manually.",
