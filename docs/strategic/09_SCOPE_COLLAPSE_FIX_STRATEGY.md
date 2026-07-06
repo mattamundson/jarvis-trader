@@ -107,12 +107,22 @@ next six go faster.
   proxy actually reads — previously it documented only `NEXT_PUBLIC_*`, so setting
   the documented vars alone left the proxy on the dead `localhost:8010` fallback.
 
-**Verified:** `./node_modules/.bin/tsc --noEmit` → exit 0.
+**Verification status (be precise — see CLAUDE.md "Verification discipline"):**
+- **Behavior-verified (cloud):** header logic extracted to `lib/engineProxyHeaders.ts`
+  and exercised by `tests/engineProxyHeaders.node.test.ts` (`pnpm run test:unit`, 6/6
+  pass) — asserts `Authorization: Basic base64(user:pass)` is emitted from
+  `ENGINE_TUNNEL_BASIC_AUTH`, `ngrok-skip-browser-warning: true` is always set, and
+  Authorization is omitted in local dev. `tsc --noEmit` → exit 0.
+- **UNVERIFIED — needs the box:** the live tunnel round-trip. A green Vercel deploy
+  proves it *compiles/ships*, NOT that it works. Nobody has yet observed the deployed
+  site return live JSON through the tunnel.
 
-**Acceptance criterion (on-box, to close F1):** with the three Vercel env vars set
-and the ngrok service up, `https://jarvis-trader-plum.vercel.app` renders live data
-instead of "engine offline"; a browser network trace of `/api/engine/health`
-returns JSON `200`, not a `401` or ngrok HTML.
+**Acceptance criterion (on-box, to actually close F1):** with the three Vercel env
+vars set and the ngrok service up, a browser network trace of
+`https://jarvis-trader-plum.vercel.app/api/engine/health` returns JSON `200` (not a
+`401` or ngrok HTML), and a data page renders real numbers cross-checked against the
+engine's own `/health` and `/portfolio` values — not just "not offline". Until that is
+observed, F1 is **shipped but not closed**.
 
 ---
 
