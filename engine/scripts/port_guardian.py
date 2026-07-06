@@ -61,6 +61,14 @@ PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring fa
 # non-zero exit if the server never comes up — so PM2 actually restarts a dead engine.
 READINESS_DEADLINE = 360      # seconds to wait for /health to serve before declaring the start dead
 READINESS_POLL = 5            # seconds between readiness probes
+# Probe timeout for a single /health poll. /health can momentarily spike to 5-12s
+# under machine contention (blocking SQLite reads on the async loop while the box
+# is saturated by peer sessions). A too-tight 2s timeout mis-reads a transient
+# spike on a *serving* engine as "dead" and force-restarts it — which adds load
+# and can cascade (4 such restarts 2026-07-06 22:11-22:40 UTC). 8s absorbs the
+# spike envelope while still catching a genuinely hung server within a poll or two.
+# Env-tunable so it can be tightened/loosened without a code change.
+READINESS_PROBE_TIMEOUT = float(os.getenv("PORT_GUARDIAN_PROBE_TIMEOUT", "8"))
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENGINE_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = ENGINE_DIR.parent
@@ -210,9 +218,16 @@ def _kill_pid(pid: int) -> bool:
 
 
 def _is_healthy(port: int) -> bool:
-    """True if /health returns HTTP 200 quickly."""
+    """True if /health returns HTTP 200 within READINESS_PROBE_TIMEOUT.
+
+    The timeout is deliberately generous (8s default) so a transient latency
+    spike on a *serving* engine is not mis-read as a dead server — see
+    READINESS_PROBE_TIMEOUT rationale.
+    """
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as r:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/health", timeout=READINESS_PROBE_TIMEOUT
+        ) as r:
             return r.status == 200
     except (urllib.error.URLError, TimeoutError, ConnectionResetError):
         return False
@@ -250,9 +265,21 @@ def _start_readiness_watchdog() -> None:
         if ready:
             print("[port_guardian] readiness confirmed — /health is serving", flush=True)
             return
+        # Diagnostic: distinguish "uvicorn bound the port but /health never answered
+        # in time" (slow/hung request path — port_bound=True) from "uvicorn never
+        # started / crashed on import" (port_bound=False). Without this the restart
+        # trail can't tell a latency cascade apart from a hard startup failure.
+        holders = _port_holders(PORT)
         _record_restart_event(
             "health-timeout",
-            {"port": PORT, "deadline_s": READINESS_DEADLINE},
+            {
+                "port": PORT,
+                "deadline_s": READINESS_DEADLINE,
+                "probe_timeout_s": READINESS_PROBE_TIMEOUT,
+                "poll_interval_s": READINESS_POLL,
+                "port_bound": bool(holders),
+                "holder_pids": holders,
+            },
             RESTART_LOG,
         )
         print(
