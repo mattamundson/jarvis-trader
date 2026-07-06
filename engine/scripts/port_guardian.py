@@ -18,8 +18,10 @@ Usage (replaces direct uvicorn invocation in ecosystem.config.js):
 
 Exit codes:
     0  — port was free or orphan killed cleanly; uvicorn started
-    1  — port held by something we won't kill: an unidentified process, or WSL2's
-         wslrelay mirroring an in-WSL 0.0.0.0 bind onto the Windows loopback (refuse)
+    1  — port held by something we won't kill: an unidentified process (exits
+         immediately), or WSL2's wslrelay mirroring an in-WSL 0.0.0.0 bind onto the
+         Windows loopback (refuse; sleeps WSL_SQUAT_BACKOFF s first so PM2 stops
+         hammering restarts while the WSL bind persists)
     2  — kill attempted but port still bound after grace period
     3  — port held by a HEALTHY uvicorn we can't kill (likely elevated). Exits
          non-zero so PM2 marks the start as failed (correct: we did NOT start
@@ -54,6 +56,10 @@ GRACE_SECONDS = 3
 HEALTHY_ORPHAN_BACKOFF = 30  # seconds to sleep before exiting when orphan is healthy
                               # but unkillable — gives PM2's restart_delay+min_uptime
                               # space to mark the slot as unstable instead of looping
+WSL_SQUAT_BACKOFF = 30        # seconds to sleep before exiting on a wslrelay port squat
+                              # (see _is_wsl_relay) so PM2's restart_delay+min_uptime slow
+                              # the crash-loop instead of hammering ~every 2s (the
+                              # 81k-restart incident, 2026-07-04)
 PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring failure
 # Readiness gate (P0.1): the guardian launches uvicorn IN-PROCESS and blocks, so PM2
 # only ever sees the guardian PID. If uvicorn never binds / never serves /health, PM2
@@ -305,6 +311,10 @@ def main() -> int:
                         {"pid": pid, "name": name, "port": PORT},
                         RESTART_LOG,
                     )
+                    # Back off before exiting non-zero so PM2's restart_delay + min_uptime
+                    # slow the crash-loop instead of relaunching us ~every 2s while the
+                    # WSL bind persists (mirrors the exit-3 HEALTHY_ORPHAN_BACKOFF).
+                    time.sleep(WSL_SQUAT_BACKOFF)
                     return 1
                 print(
                     f"[port_guardian] PID {pid} is not a python/uvicorn process — "
