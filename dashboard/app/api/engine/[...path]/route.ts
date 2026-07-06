@@ -16,6 +16,13 @@ function getEngineApiKey(): string | undefined {
   return process.env.ENGINE_API_KEY ?? process.env.NEXT_PUBLIC_ENGINE_API_KEY;
 }
 
+// user:pass credential matching the ngrok tunnel's basic-auth (ngrok.yml). Only
+// set on deployments where the engine sits behind the tunnel; absent for local dev
+// where the proxy targets 127.0.0.1:8010 directly.
+function getTunnelBasicAuth(): string | undefined {
+  return process.env.ENGINE_TUNNEL_BASIC_AUTH;
+}
+
 async function proxy(request: NextRequest, path: string[]): Promise<NextResponse> {
   const target = new URL(`${getEngineBaseUrl()}/${path.join("/")}`);
   target.search = request.nextUrl.search;
@@ -29,6 +36,19 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   if (engineApiKey) {
     headers.set("X-API-Key", engineApiKey);
   }
+
+  // Tunnel auth (DEPLOY_VERCEL.md): the ngrok free tier gates the tunnel with
+  // basic-auth and injects an HTML browser-warning interstitial for browser-like
+  // requests. Without both of these, every engine call through the tunnel is
+  // either 401'd or served ngrok's HTML splash instead of JSON, and the deployed
+  // dashboard renders "engine offline" everywhere. Set server-side only so the
+  // credential never reaches the browser bundle.
+  const tunnelBasicAuth = getTunnelBasicAuth();
+  if (tunnelBasicAuth) {
+    const encoded = Buffer.from(tunnelBasicAuth).toString("base64");
+    headers.set("Authorization", `Basic ${encoded}`);
+  }
+  headers.set("ngrok-skip-browser-warning", "true");
 
   const init: RequestInit = {
     method: request.method,
