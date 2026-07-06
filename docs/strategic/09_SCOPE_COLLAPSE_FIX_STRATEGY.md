@@ -1,0 +1,178 @@
+# 09 — Scope-Collapse Fix Strategy
+
+**Status:** Active | **Owner:** Matt | **Created:** 2026-07-06
+**Branch:** `claude/scope-collapse-fix-strategy-qdutz5`
+
+> This document exists because every session on the "make it all work" ask ends at
+> 5/10 and stops. This is the diagnosis of *why*, the sequenced fix plan, and the
+> reusable machinery to drive each system to a verifiable green — one at a time.
+
+---
+
+## 1. Root-cause diagnosis (one sentence)
+
+**Nothing is broken. Everything is wired but dead-configured.** Across all seven
+"doesn't work" systems, the code exists, is registered, and has tests. What is
+missing is the last non-code wire: an empty env var, a config default pointing at
+forbidden symbols, three paths that disagree, a scheduler that deletes itself
+weekly, a TTY prompt that blocks headless runs.
+
+### Why sessions collapse to "small enhancements"
+
+An agent greps, finds working code, "improves" it, and declares victory — because
+the break was never *in the code*. It was in the config wire nobody set. Result:
+you pay agents to polish engines whose fuel line isn't connected. The fix is not
+more code; it is **connecting wires and verifying against a pass/fail spec**.
+
+This was verified 2026-07-06 by four read-only diagnostic agents against the live
+tree (dashboards / strategies+pipeline / autonomy+self-prompting / integrations).
+
+---
+
+## 2. Per-system evidence
+
+| System | Real status | The actual blocker (file:line) |
+|---|---|---|
+| **JARVIS dashboard** | Wired, ~48 routes, builds | Vercel proxy never sent the ngrok headers `DEPLOY_VERCEL.md` requires → every engine call 401s / gets HTML splash. `app/api/engine/[...path]/route.ts` set only `X-API-Key`. **FIXED in this branch** (see §5). |
+| **amo-arbitrage** | Not in this repo | External Railway service (`app/api/amo/[...path]/route.ts:16`), reportedly up. Only a read-only Trust-Pane column lives here. Nothing to fix in-repo. |
+| **Trading strategies** | Pipeline fully wired to paper-exec | Default `FUTURES_WATCHLIST=MCL,MNQ,MES` but `DO_NOT_TRADE={MCL,MNQ,M2K}` force-`NO_TRADE`s 2 of 3 (`backtest/signals.py:113,186`). Default LLM provider is **Ollama** (`main.py:779`) — no local model ⇒ analysts silently HOLD (`main.py:798`). |
+| **Autonomous loop** | Real, persistent, wired at boot (`main.py:1726`) | `AUTONOMOUS_ACTIVE_SYMBOLS=MCL,MNQ` default (`scheduler/pipeline_autonomous.py:91`) — both `DO_NOT_TRADE`, so every tick no-ops. Running, doing nothing, by config. **Safety-gated change.** |
+| **JARVIS self-prompting** | Payload + guardrails + `claude -p` self-invoke all exist | Only unattended driver is a cloud Routine hand-created in the web UI that **auto-expires after 7 days** (`docs/runbooks/OVERNIGHT_ROUTINE_RUNBOOK.md:42-45`). No repo code re-creates it. "Worked then stopped" = it deleted itself. |
+| **CC ↔ Obsidian** | `/vault` router wired + tested (`main.py:2979`) | `JARVIS_VAULT_ROOT` empty → falls back to non-existent `~/my-vault`; all 4 vault jobs flag-gated OFF (`.env.example:254-271`). Lint job needs **no LLM** — cheapest first win. |
+| **X bookmarks** | Discord-mediated path real + tested + scheduled | Writes to **three colliding paths**: `main.py:2181` hardcoded `C:\...` vs `deep_analyzer/vault.py:12` `~/my-vault` vs `$JARVIS_VAULT_ROOT`. The literal "export my bookmarks" playbook has **no code** (`phase1_inventory.py`/`jarvis_funnel` do not exist). |
+| **Hermes** | Self-upgrade pipeline real | Blocked headless by interactive `input("Apply? [y/N]")` gate (`engine/discord/hermes_upgrade/applier.py:164`); external WSL runtime, not reachable from cloud sessions. |
+
+**Force multiplier:** unifying the three vault paths onto one root fixes **Obsidian
+AND X-bookmarks** at once.
+
+---
+
+## 3. The operating principle (how to not collapse again)
+
+Run this loop **once per system**. Do not batch systems.
+
+1. **Pick one system.**
+2. **Convert "doesn't work" into a concrete pass/fail acceptance spec** (§7 template).
+3. **Diagnose-only pass** (no fixing) that reproduces the real failure and grades
+   current state against the spec.
+4. **Fix-to-green pass**, one criterion at a time, each verified before the next.
+5. **Wire the autonomy layer LAST**, after the leaf systems are known-good. A loop
+   whose job is to operate broken systems only amplifies the breakage.
+
+One system green tonight beats seven at 6/10 — and it validates the workflow so the
+next six go faster.
+
+---
+
+## 4. Sequenced fix plan
+
+### 4a. Repo changes (doable + verifiable in a cloud session)
+
+| # | Fix | Verify | Systems unblocked |
+|---|---|---|---|
+| F1 | **Dashboard proxy headers + env-var reconciliation** | `tsc --noEmit`, then live site after redeploy | JARVIS dashboard — **DONE, §5** |
+| F2 | **Vault path unification** — one resolver used by `/vault` jobs, `deep_analyzer/vault.py`, and the bookmark renderer (`main.py:2181`) | existing `test_vault_*` | Obsidian + X-bookmarks |
+| F3 | **Hermes headless flag** — a `--yes`/non-interactive bypass for the `input()` gate (`applier.py:164`); dry-run stays default | unit import + dry-run | Hermes self-upgrade |
+| F4 | **Doc/config reconciliation** — kill stale `markets/orchestrator.py` ref in `engine/CLAUDE.md`; document vault + tunnel env vars | grep | correctness/expectations |
+
+### 4b. On-box steps (need your Windows/WSL runtime — exact commands provided)
+
+- **Obsidian first green (no LLM):** set `JARVIS_VAULT_ROOT=<real folder>` and
+  `ENABLE_VAULT_LINT=1` in `engine/.env` → `POST /vault/lint/run` →
+  read `00-Inbox/lint-<date>.md` back. `GET /vault/status` confirms folder counts.
+- **Strategies:** start Ollama (`OLLAMA_BASE_URL`) or set `ANTHROPIC_API_KEY` +
+  `JARVIS_LLM_PROVIDER` so analysts stop silently HOLDing.
+- **Durable overnight trigger:** replace the self-expiring cloud Routine with a
+  persistent trigger (GitHub Action cron or a self-renewing Routine) so
+  self-prompting survives past 7 days.
+
+### 4c. Safety-gated (never touched without explicit OK + `[safety-review]` tag)
+
+- Changing `AUTONOMOUS_ACTIVE_SYMBOLS` from `MCL,MNQ` to `MES,MGC` — this makes an
+  inert loop start *proposing trades*. Requires Tier-3 confirmation.
+- Anything in `engine/risk/`, `engine/config.py` safety params, kill-switch code.
+
+---
+
+## 5. What this branch already fixed (F1)
+
+**Dashboard engine proxy — `dashboard/app/api/engine/[...path]/route.ts`:**
+- Added `Authorization: Basic base64(ENGINE_TUNNEL_BASIC_AUTH)` — injected
+  server-side only, so the credential never enters the browser bundle. Guarded on
+  the env var being present (absent for local dev).
+- Added `ngrok-skip-browser-warning: true` so the free-tier ngrok interstitial is
+  skipped and the engine returns JSON, not an HTML splash.
+- `dashboard/.env.example` rewritten to document the **server-side proxy vars**
+  (`ENGINE_INTERNAL_URL`, `ENGINE_API_KEY`, `ENGINE_TUNNEL_BASIC_AUTH`) that the
+  proxy actually reads — previously it documented only `NEXT_PUBLIC_*`, so setting
+  the documented vars alone left the proxy on the dead `localhost:8010` fallback.
+
+**Verified:** `./node_modules/.bin/tsc --noEmit` → exit 0.
+
+**Acceptance criterion (on-box, to close F1):** with the three Vercel env vars set
+and the ngrok service up, `https://jarvis-trader-plum.vercel.app` renders live data
+instead of "engine offline"; a browser network trace of `/api/engine/health`
+returns JSON `200`, not a `401` or ngrok HTML.
+
+---
+
+## 6. Next-up recommendation
+
+After F1, do **F2 (vault path unification)** next: it is repo-resident, verifiable
+against existing tests, and unblocks two systems at once. Then the Obsidian on-box
+lint round-trip (§4b) is the first end-to-end green you can *see* — no LLM, no
+external service, ~2 minutes.
+
+---
+
+## 7. Reusable machinery — the two-pass prompts
+
+### Pass 1 — Diagnostic (read-only, no fixes)
+
+```
+# DIAGNOSTIC PASS — <SYSTEM> — READ-ONLY
+Diagnose why <SYSTEM> does not work. DIAGNOSIS ONLY — zero code changes.
+Only file you may write is ./_diag_<SYSTEM>.md.
+
+STEP 1 — Acceptance spec: read the code + its goals doc; propose 3-7 concrete,
+testable pass/fail criteria (a command or observable result, not a vibe). I approve.
+
+STEP 2 — Reproduce with read-only sub-agents (no writes, no recursion):
+ - Wiring agent: is it even wired? routes defined-but-not-registered, services
+   written-but-never-called, env/config never set, jobs never scheduled. CHECK FIRST.
+ - Runtime agent: actually run/trigger it; capture the REAL error/stack/blank output;
+   grade each criterion PASS/FAIL/BLOCKED with literal error text.
+ - Dependency/config agent: missing pkgs, wrong versions, absent env vars (record KEY
+   name only, never secret values), stale config.
+ - Integration-boundary agent (only if it spans a boundary): verify each side
+   independently; name which side breaks.
+
+STEP 3 — Write ./_diag_<SYSTEM>.md: the spec; per-criterion status + exact evidence;
+ranked root-cause hypotheses tied to evidence, distinguishing never-wired vs buggy vs
+config; the single next action per FAIL; and a separate list of out-of-scope
+enhancements you noticed (list only — do not build). STOP. Wait for spec approval.
+```
+
+### Pass 2 — Fix to green (after spec approval)
+
+```
+# FIX PASS — <SYSTEM> — DRIVE TO GREEN
+Work from ./_diag_<SYSTEM>.md and the approved spec. Goal: every criterion PASSES,
+shown with real output.
+
+RULES: single-threaded (sub-agents only for read checks, never writing code). Fix ONE
+criterion to green at a time; run the verification and paste passing output before the
+next. No new features/enhancements — log adjacent work to ./_backlog_<SYSTEM>.md and
+keep going. Preserve working behavior; follow existing conventions. No placeholder
+code. If a fix needs a value only I have (env var/path/key), stop and ask for that one
+thing. Two real options → present both + the splitting fact; don't pick unilaterally.
+
+SEQUENCE: restate spec as checklist → order fixes by dependency (wiring/config before
+logic) → per criterion: change, verify, show passing output, check box → when all
+green, run ALL once more top-to-bottom and show the full passing run. Do NOT touch any
+autonomy/loop layer on top of this system — leaf to known-good first.
+```
+
+---
+
+*Companion to `docs/strategic/README.md`. Update §5/§6 as each fix lands.*
