@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { applyEngineAuthHeaders } from "@/lib/engineProxyHeaders";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,23 +33,12 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   headers.delete("connection");
   headers.delete("content-length");
 
-  const engineApiKey = getEngineApiKey();
-  if (engineApiKey) {
-    headers.set("X-API-Key", engineApiKey);
-  }
-
-  // Tunnel auth (DEPLOY_VERCEL.md): the ngrok free tier gates the tunnel with
-  // basic-auth and injects an HTML browser-warning interstitial for browser-like
-  // requests. Without both of these, every engine call through the tunnel is
-  // either 401'd or served ngrok's HTML splash instead of JSON, and the deployed
-  // dashboard renders "engine offline" everywhere. Set server-side only so the
-  // credential never reaches the browser bundle.
-  const tunnelBasicAuth = getTunnelBasicAuth();
-  if (tunnelBasicAuth) {
-    const encoded = Buffer.from(tunnelBasicAuth).toString("base64");
-    headers.set("Authorization", `Basic ${encoded}`);
-  }
-  headers.set("ngrok-skip-browser-warning", "true");
+  // Inject engine + tunnel auth (X-API-Key, Authorization: Basic, ngrok-skip-
+  // browser-warning) server-side only. See lib/engineProxyHeaders.ts for why.
+  applyEngineAuthHeaders(headers, {
+    apiKey: getEngineApiKey(),
+    tunnelBasicAuth: getTunnelBasicAuth(),
+  });
 
   const init: RequestInit = {
     method: request.method,
