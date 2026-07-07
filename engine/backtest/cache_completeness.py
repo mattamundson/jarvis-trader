@@ -11,13 +11,17 @@ backtest that loads a holed slice silently computes a verdict on partial data.
 This module inspects the actual bar timestamps and reports, for any cache:
 - every gap above the per-interval cadence, tagged (duration, missing days,
   whether it spans a weekend, whether it is "suspicious"),
-- the count of suspicious gaps and an overall `trustworthy` flag,
+- the count of suspicious gaps, the subset that imply an unexplained full
+  missing weekday (`n_suspicious_full_day_gaps`), and an overall `trustworthy`
+  flag,
 - the largest contiguous suspicious-gap-free window (the trustworthy slice).
 
 WHAT IS *NOT* SUSPICIOUS (every futures series has these legitimately):
 - the daily ~1h CME maintenance break (a short intra-session gap),
 - weekends (Fri close -> Sun/Mon open: the missing calendar days are Sat/Sun),
-- exchange holidays the caller whitelists via `holiday_dates`.
+- exchange holidays the caller whitelists via `holiday_dates` (pass
+  `US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES` for both full closures and
+  reduced-hours early closes -- see both frozensets below).
 
 A gap IS suspicious when it implies missing *trading* data with no benign
 explanation:
@@ -28,17 +32,25 @@ explanation:
 Deliberately calendar-light: rather than hardcode the CME holiday schedule (which
 drifts), an unexplained mid-week hole is flagged and the caller may whitelist
 known holidays. Conservative by design -- for a data-TRUST gate, over-reporting a
-hole is the safe error.
+hole is the safe error. That said, `find_trustworthy_cache`'s no-required-window
+selection (see below) only treats an unexplained FULL missing weekday as
+disqualifying, not every reported intraday-only suspicious gap -- a single
+calendar-unexplained intraday anomaly in an otherwise-huge, current cache is a
+much weaker signal than an actual missing trading day, and must not make that
+cache lose to a tiny, coincidentally gap-free short window (2026-07-06 fix).
 
 CALIBRATION SCOPE (important)
 -----------------------------
 ``max_intraday_gap_hours`` defaults to 3h, tuned for the ~23h continuous-session
 intraday caches (``*_cont.csv``) the strategy factory actually consumes. For
-RTH-only instruments (ETFs like SPY/DIA, or 1h futures caches that only hold the
-pit session) the LEGITIMATE nightly gap is ~17h and every overnight is flagged --
-so ``trustworthy`` is unreliable for those and their results are advisory until a
-session-aware threshold lands. The continuous intraday verdicts ARE reliable, and
-that is the population this guard exists to protect.
+RTH-only instruments (ETFs like SPY/DIA) the LEGITIMATE nightly gap is ~17h and
+every overnight is flagged -- so ``trustworthy`` is unreliable for those and
+their results are advisory until a session-aware threshold lands. The plain 1h
+futures caches (``MES_*_1h.csv`` etc.) are actually near-continuous (~23h
+Globex sessions, not RTH-only as previously assumed here), so this guard DOES
+apply to them once ``US_MARKET_EARLY_CLOSES`` is included -- see the
+2026-07-06 vwap-sharpe incident, where the missing early-close whitelist (not
+an RTH mismatch) was the actual cause of false "holed" verdicts.
 """
 
 from __future__ import annotations
@@ -61,10 +73,27 @@ _WEEKEND = (5, 6)  # Saturday, Sunday (datetime.weekday)
 #: ES / MNQ caches follow). Pass as `holiday_dates` so genuine data holes aren't
 #: drowned out by legitimate exchange closures. Includes the 2025-01-09 Carter
 #: National Day of Mourning. Early-close half-days are intentionally OMITTED --
-#: they still produce bars, so they need no whitelist. Extend as years roll.
+#: see `US_MARKET_EARLY_CLOSES` below for those. Extend as years roll.
+#:
+#: 2026-07-06 correction: this list previously started at 2024-11-28, silently
+#: missing every full-closure holiday earlier in 2024 (New Year's, MLK,
+#: Presidents, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor
+#: Day). That gap caused `find_trustworthy_cache` to flag the real MES 1h
+#: cache's 2024-05-27 / 2024-06-19 / 2024-09-02 overnight-closure gaps as
+#: "suspicious" (see cache_completeness.CACHE_README or the vwap-sharpe
+#: 2026-07-06 incident) purely because the corresponding 2024 date wasn't
+#: whitelisted yet -- not because the data was actually holed.
 US_MARKET_HOLIDAYS = frozenset(
     date(*ymd)
     for ymd in [
+        (2024, 1, 1),
+        (2024, 1, 15),
+        (2024, 2, 19),
+        (2024, 3, 29),
+        (2024, 5, 27),
+        (2024, 6, 19),
+        (2024, 7, 4),
+        (2024, 9, 2),
         (2024, 11, 28),
         (2024, 12, 25),
         (2025, 1, 1),
@@ -88,6 +117,40 @@ US_MARKET_HOLIDAYS = frozenset(
         (2026, 9, 7),
         (2026, 11, 26),
         (2026, 12, 25),
+    ]
+)
+
+#: CME reduced-hours ("early close") session dates 2024-2026: quarterly
+#: triple-witching Fridays (3rd Friday of Mar/Jun/Sep/Dec, when the equity-index
+#: futures pit closes early), the day before Independence Day, and Christmas
+#: Eve. These do NOT fully close the exchange, but empirically the plain (non-
+#: `_cont`) 1h futures caches carry a genuine multi-hour bar gap on these dates
+#: (7-12.5h observed on real MES_*_1h.csv data 2024-2025) -- the opposite of
+#: the "still produce bars, so they need no whitelist" assumption this module
+#: previously documented for early closes. Pass alongside `US_MARKET_HOLIDAYS`
+#: (e.g. `US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES`) wherever a caller wants
+#: both closure classes explained away. Extend as years roll.
+US_MARKET_EARLY_CLOSES = frozenset(
+    date(*ymd)
+    for ymd in [
+        (2024, 3, 15),
+        (2024, 6, 21),
+        (2024, 7, 3),
+        (2024, 9, 20),
+        (2024, 12, 20),
+        (2024, 12, 24),
+        (2025, 3, 21),
+        (2025, 6, 20),
+        (2025, 7, 3),
+        (2025, 9, 19),
+        (2025, 12, 19),
+        (2025, 12, 24),
+        (2026, 3, 20),
+        (2026, 6, 19),
+        (2026, 7, 2),
+        (2026, 9, 18),
+        (2026, 12, 18),
+        (2026, 12, 24),
     ]
 )
 
@@ -173,6 +236,7 @@ def inspect_completeness(
         base.update(
             gaps=[],
             n_suspicious_gaps=0,
+            n_suspicious_full_day_gaps=0,
             trustworthy=False,  # cannot validate a 0/1-bar series
             trustworthy_window={
                 "start": ts[0] if ts else None,
@@ -186,6 +250,10 @@ def inspect_completeness(
     gaps: list[dict] = []
     # index boundaries (in `ts`) where a SUSPICIOUS gap splits the series.
     suspicious_breaks: list[int] = []
+    # count of suspicious gaps with >=1 full calendar day missing (unexplained
+    # weekday) -- a strictly worse signal than a long-but-same-day intraday
+    # gap. See `n_suspicious_full_day_gaps` below.
+    n_full_day_suspicious = 0
 
     for i in range(1, n):
         prev, cur = ts[i - 1], ts[i]
@@ -228,6 +296,8 @@ def inspect_completeness(
         )
         if suspicious:
             suspicious_breaks.append(i)
+            if missing:  # unexplained full weekday(s), not merely a long intraday gap
+                n_full_day_suspicious += 1
 
     # Largest contiguous suspicious-gap-free window (by bar count).
     seg_starts = [0] + suspicious_breaks
@@ -244,6 +314,7 @@ def inspect_completeness(
     base.update(
         gaps=gaps,
         n_suspicious_gaps=n_suspicious,
+        n_suspicious_full_day_gaps=n_full_day_suspicious,
         trustworthy=(n_suspicious == 0),
         trustworthy_window=best,
     )
@@ -333,7 +404,7 @@ def find_trustworthy_cache(
     *,
     required_start: Optional[date] = None,
     required_end: Optional[date] = None,
-    holiday_dates: Optional[Iterable[date]] = US_MARKET_HOLIDAYS,
+    holiday_dates: Optional[Iterable[date]] = US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES,
     **kwargs,
 ) -> dict:
     """Completeness-aware companion to ``_find_latest_cache``.
@@ -345,13 +416,26 @@ def find_trustworthy_cache(
     * with a required [start, end] window: the latest-end cache whose
       ``trustworthy_window`` COVERS that window; if none covers, falls back to the
       latest-end file with ``fallback=True`` so the caller can warn/refuse;
-    * with no window: the latest-end cache that is fully trustworthy (zero
-      suspicious gaps); if none is clean, the latest-end file with ``fallback=True``.
+    * with no window: the latest-end cache with zero suspicious gaps that imply an
+      actual missing weekday (``n_suspicious_full_day_gaps == 0``); if none
+      qualifies, the latest-end file with ``fallback=True``.
+
+    2026-07-06 fix: the no-window branch previously required ``n_suspicious_gaps
+    == 0`` (the WHOLE file perfectly gap-free). That let one isolated, calendar-
+    unexplained intraday gap (a stray vendor hiccup with no full day missing) in
+    an otherwise years-long, current cache lose to a tiny, coincidentally
+    landmine-free short window -- exactly the 2026-07-06 vwap-sharpe incident
+    (12,612-bar current MES cache rejected in favor of a 964-bar 2-month one).
+    The new criterion only disqualifies a cache for an unexplained FULL missing
+    weekday (a real hole); a lone intraday-only anomaly is reported but no
+    longer disqualifying. See ``test_find_latest_cache_complete.py`` for both
+    the repro and the guardrail that a genuine missing-weekday hole still loses.
 
     Returns a dict: ``path``, ``fallback`` (bool), ``reason``, ``trustworthy_window``,
-    ``n_suspicious_gaps``, ``latest_end_path`` (what ``_find_latest_cache`` would
-    have returned). Purely advisory -- it does NOT mutate ``_find_latest_cache``;
-    callers opt in. Raises FileNotFoundError if no file matches the glob.
+    ``n_suspicious_gaps``, ``n_suspicious_full_day_gaps``, ``latest_end_path``
+    (what ``_find_latest_cache`` would have returned). Purely advisory -- it does
+    NOT mutate ``_find_latest_cache``; callers opt in. Raises FileNotFoundError if
+    no file matches the glob.
     """
     d = Path(data_dir)
     candidates = sorted(d.glob(f"{prefix}_*{suffix}"))
@@ -382,6 +466,7 @@ def find_trustworthy_cache(
             "reason": reason,
             "trustworthy_window": rep["trustworthy_window"] if rep else None,
             "n_suspicious_gaps": rep["n_suspicious_gaps"] if rep else None,
+            "n_suspicious_full_day_gaps": rep["n_suspicious_full_day_gaps"] if rep else None,
             "latest_end_path": str(latest),
         }
 
@@ -409,14 +494,20 @@ def find_trustworthy_cache(
             latest_report,
         )
 
-    # No window: the latest-end fully-trustworthy cache.
+    # No window: the latest-end cache with no unexplained missing weekday. A
+    # cache can still carry a reported (but non-disqualifying) intraday-only
+    # suspicious gap -- see the module-level docstring's 2026-07-06 fix note.
     for p, rep in reports:
-        if rep is not None and rep["n_suspicious_gaps"] == 0:
-            reason = (
-                "latest end-date is fully trustworthy"
-                if p == latest
-                else "earlier end-date is fully trustworthy (latest end-date is holed)"
-            )
+        if rep is not None and rep["n_suspicious_full_day_gaps"] == 0:
+            if p == latest:
+                reason = "latest end-date has no unexplained missing weekday"
+            elif rep["n_suspicious_gaps"] == 0:
+                reason = "earlier end-date is fully trustworthy (latest end-date is holed)"
+            else:
+                reason = (
+                    "earlier end-date has no unexplained missing weekday "
+                    "(latest end-date does)"
+                )
             return _result(p, False, reason, rep)
     return _result(
         latest,
