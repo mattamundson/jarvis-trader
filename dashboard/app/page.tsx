@@ -42,6 +42,7 @@ import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import { EngineHealthWidget } from "@/components/EngineHealthWidget";
 import { ConfidenceGauge } from "@/components/ConfidenceGauge";
 import { HonestPnlCard } from "@/components/HonestPnlCard";
+import { EnginePnlTruthCard } from "@/components/EnginePnlTruthCard";
 import { SameDayPnLBadge } from "@/components/SameDayPnLBadge";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
@@ -282,6 +283,12 @@ export default function DashboardPage() {
           {/* Deduped realized record via the honest-metrics layer (not raw tables) */}
           <WidgetErrorBoundary name="Honest PnL">
             <HonestPnlCard />
+          </WidgetErrorBoundary>
+
+          {/* Engine-native honest realized P&L (/pnl/truth) — no master-api dependency,
+              stays truthful (TRUSTED/DEGRADED, never a fake $0) when :8030 is down */}
+          <WidgetErrorBoundary name="Engine PnL Truth">
+            <EnginePnlTruthCard />
           </WidgetErrorBoundary>
 
           {/* Same-day P&L reconciliation (C3): aggregate vs independent snapshot */}
