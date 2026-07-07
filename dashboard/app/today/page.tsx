@@ -370,6 +370,8 @@ export default function TodayPage() {
               value={`${pnlSign}$${Math.abs(pnlRealized).toFixed(2)}`}
               sub={eod
                 ? `${eod.wins_today}W / ${eod.losses_today}L · cum $${eod.cumulative_pnl_usd.toFixed(2)}`
+                : session
+                ? "raw session record · not deduped"
                 : undefined}
               valueColor={pnlColor}
             />
