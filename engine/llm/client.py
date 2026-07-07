@@ -1287,8 +1287,22 @@ class JarvisLLMClient:
         # OpenAI-compat reasoning_effort knob so the whole budget goes to the
         # answer. Tunable/escape-hatch via GEMINI_REASONING_EFFORT (none|low|
         # medium|high); "none" disables thinking. Non-2.5 models are unaffected.
+        #
+        # EXCEPT gemini-2.5-pro: Google rejects reasoning_effort="none" (budget 0)
+        # on pro with HTTP 400 "Budget 0 is invalid. This model only works in
+        # thinking mode." (verified live 2026-07-06 — a Google-side change since
+        # the 06-22 "pro verified 200 OK" note). pro is the decision-tier
+        # credit-exhaustion failover (GOOGLE_FAILOVER_MAP: opus/sonnet -> pro), so
+        # sending "none" would 400 every decision-tier failover. Pro keeps thinking
+        # on (knob omitted) unless GEMINI_REASONING_EFFORT is explicitly set to a
+        # non-"none" value; the token floor above lets the answer survive the spend.
         if model.startswith("gemini-2.5"):
-            effort = os.getenv("GEMINI_REASONING_EFFORT", "none").strip().lower()
+            is_pro = "pro" in model
+            default_effort = "" if is_pro else "none"
+            effort = os.getenv("GEMINI_REASONING_EFFORT", default_effort).strip().lower()
+            if is_pro and effort in ("", "none"):
+                # pro cannot disable thinking; omit the knob (thinking stays on).
+                effort = ""
             if effort:
                 payload["reasoning_effort"] = effort
         timeout = float(os.getenv("GOOGLE_TIMEOUT_SECONDS", "60"))
