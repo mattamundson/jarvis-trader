@@ -2189,11 +2189,15 @@ async def lifespan(app: FastAPI):
     # mode: existing files are skipped (preserves 2026-04-17 manual triage).
     try:
         from scripts.render_bookmarks_to_vault import render_vault as _render_vault
+        from vault.paths import vault_root as _vault_root
 
         _BOOKMARK_DB_PATH = os.environ.get("JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db")
+        # Default under the canonical vault root (honours JARVIS_VAULT_ROOT) instead
+        # of a hardcoded absolute path, so bookmarks land beside the other vault
+        # writers. Explicit BOOKMARK_VAULT_DIR still overrides.
         _BOOKMARK_VAULT_DIR = os.environ.get(
             "BOOKMARK_VAULT_DIR",
-            r"C:\Users\mattm\second-brain\wiki\discord-bookmarks",
+            str(_vault_root() / "discord-bookmarks"),
         )
 
         async def run_bookmark_vault_render() -> None:

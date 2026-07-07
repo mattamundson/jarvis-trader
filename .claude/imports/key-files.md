@@ -8,7 +8,7 @@
 | `engine/agents/pipeline.py` | 5-stage trading pipeline orchestrator |
 | `engine/risk/safety_layer.py` | Kill switch, hard limits, order validation (**Tier 3 to change**) |
 | `engine/backtest/signals.py` | STC signal logic — CANONICAL parameter source (**Tier 3 to change**) |
-| `engine/markets/orchestrator.py` | Multi-market orchestrator (futures, options, crypto) |
+| `engine/orchestrator/multi_market.py` | Multi-market orchestrator (futures, options, crypto) |
 | `engine/learning/` | Learning system — 4 modules (events, feedback, patterns, recommendations) |
 | `engine/strategies/rl_agent.py` | RL trading agent (PPO, MES only, experimental) |
 | `engine/strategies/rl_environment.py` | Gym trading environment (19 features from signals.py) |
