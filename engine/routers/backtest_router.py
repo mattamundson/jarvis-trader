@@ -1067,15 +1067,17 @@ async def get_pending_signals():
     from pathlib import Path
 
     pending_file = Path(__file__).parent.parent / "backtest" / "results" / "pending_signals.json"
+    # The dashboard's paper page reads this as a bare PendingSignal[] (it guards
+    # with Array.isArray), so return the list directly, not a {signals,count} wrapper.
     if not pending_file.exists():
-        return {"signals": [], "count": 0}
+        return []
 
     try:
         signals = _json.loads(pending_file.read_text(encoding="utf-8"))
     except Exception:
         signals = []
 
-    return {"signals": signals, "count": len(signals)}
+    return signals if isinstance(signals, list) else []
 
 
 @router.get("/paper/mgc-performance")
@@ -1090,8 +1092,11 @@ async def get_mgc_paper_performance():
 
         should_kill, kill_reason = tracker.check_kill_conditions()
         metrics["kill_threshold_breached"] = should_kill
+        # Frontend MGCPerformanceResponse reads kill_switch_active — mirror it.
+        metrics["kill_switch_active"] = should_kill
         metrics["kill_reason"] = kill_reason if should_kill else None
-        metrics["monthly_summary"] = tracker.monthly_summary()
+        # Frontend reads monthly_breakdown (Array<{month,trades,pnl,win_rate}>).
+        metrics["monthly_breakdown"] = tracker.monthly_summary()
         metrics["config"] = {
             "symbol": MGC_PAPER_CONFIG["symbol"],
             "interval": MGC_PAPER_CONFIG["interval"],
