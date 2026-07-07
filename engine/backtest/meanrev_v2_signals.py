@@ -71,8 +71,6 @@ Author: Funnel skill, meanrev_v2 (2026-06-26)
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 
