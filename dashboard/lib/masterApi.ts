@@ -147,10 +147,41 @@ export type RealizedPnl = {
   caveats: string[];
 };
 
+// master-api can hang instead of cleanly erroring (unlike a 401/503, which
+// the `!res.ok` check already handles). This function backs the shared
+// `useHonestTrades()` hook -- consumed by ~30 widgets across the home,
+// /performance, and /validation pages (AccountROIWidget, HonestPnlCard,
+// RecentTradesTableWidget, BacktestVsPaperWidget, and more) -- so an
+// unbounded `fetch()` here means every one of those widgets can get stuck on
+// "Loading..." indefinitely if master-api stalls. An explicit timeout
+// guarantees this always resolves or rejects within a bounded time, which
+// SWR (or a caller's own try/catch) turns into a visible error/empty state.
+const MASTER_API_TIMEOUT_MS = 15000; // 15 seconds
+
 export async function fetchRealizedPnl(): Promise<RealizedPnl> {
-  const res = await fetch(`${BASE}/master/trading/realized`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`trading realized ${res.status}`);
-  return res.json();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(new Error(`Request timed out after ${MASTER_API_TIMEOUT_MS / 1000}s: trading realized`)),
+    MASTER_API_TIMEOUT_MS,
+  );
+  try {
+    const res = await fetch(`${BASE}/master/trading/realized`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`trading realized ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    // Fall back to a friendly message if the runtime doesn't propagate the
+    // AbortSignal reason as the rejection value (see fetchWithTimeout in
+    // lib/api.ts for the same pattern on engine calls).
+    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
+      throw new Error(`Request timed out after ${MASTER_API_TIMEOUT_MS / 1000}s: trading realized`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ---- Scheduler (master-api in-process scheduler) ----

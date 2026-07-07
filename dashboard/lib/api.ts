@@ -15,12 +15,33 @@ function engineHeaders(extra?: HeadersInit): HeadersInit {
   return { ...extra };
 }
 
+/**
+ * Thrown for a non-2xx engine response. Carries the HTTP status so callers
+ * (fetchWithRetry) can distinguish a transient 5xx from a durable 4xx without
+ * parsing the message string.
+ */
+class EngineHttpError extends Error {
+  status: number;
+  constructor(status: number, url: string) {
+    super(`Engine error ${status}: ${url}`);
+    this.name = "EngineHttpError";
+    this.status = status;
+  }
+}
+
 async function fetchWithTimeout<T>(
   url: string,
   options?: RequestInit
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    // Pass an explicit reason so callers (and fetchWithRetry's error check)
+    // see a readable "request timed out" message instead of the browser's
+    // default "signal is aborted without reason" DOMException text (what
+    // abort() produces when called with no argument). Mirrors fetchEngineRaw.
+    () => controller.abort(new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`)),
+    FETCH_TIMEOUT_MS,
+  );
 
   try {
     const res = await fetch(url, {
@@ -29,10 +50,18 @@ async function fetchWithTimeout<T>(
     });
 
     if (!res.ok) {
-      throw new Error(`Engine error ${res.status}: ${url}`);
+      throw new EngineHttpError(res.status, url);
     }
 
     return res.json();
+  } catch (e) {
+    // Fall back to a friendly message if the runtime doesn't propagate the
+    // AbortSignal reason as the rejection value (older engines reject with a
+    // generic AbortError regardless of the reason passed to abort()).
+    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
+      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`);
+    }
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -48,13 +77,29 @@ async function fetchWithRetry<T>(
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
 
-    // Only retry on network errors, not on HTTP errors
     const isNetworkError =
       error.message.includes("Failed to fetch") ||
       error.message.includes("AbortError") ||
-      error.name === "AbortError";
+      error.name === "AbortError" ||
+      // fetchWithTimeout now aborts with an explicit reason (a plain Error,
+      // not a DOMException named "AbortError") so a timeout still needs its
+      // own check here to keep getting the same single retry as before.
+      error.message.includes("Request timed out after");
 
-    if (isNetworkError && attempt < 2) {
+    // Also retry on a transient 5xx (502/503/504). Several /performance
+    // widgets (hourly-stats, streaks, price bars) were observed getting a
+    // 503 on the very first request right after page load -- likely
+    // concurrency contention from ~35 widgets mounting and fetching at once
+    // -- followed by a clean 200 moments later. Without this, only SWR's own
+    // default error-retry (slower backoff, several seconds) recovered them,
+    // which read as "stuck loading" for 15s+. Retrying 5xx here immediately,
+    // the same way network errors already are, fixes that for every
+    // fetchEngine() caller uniformly instead of per-widget. 4xx errors are
+    // NOT retried -- they are not transient.
+    const isTransientServerError =
+      error instanceof EngineHttpError && error.status >= 500 && error.status < 600;
+
+    if ((isNetworkError || isTransientServerError) && attempt < 2) {
       // Single retry with 2s delay
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       return fetchWithRetry<T>(url, options, attempt + 1);
@@ -85,7 +130,14 @@ export async function postEngine<T = any>(path: string, body?: unknown): Promise
  */
 export async function fetchEngineRaw(path: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    // Pass an explicit reason so a caller's catch block sees a readable
+    // "request timed out" message instead of the browser's default
+    // "signal is aborted without reason" DOMException text (what abort()
+    // produces when called with no argument).
+    () => controller.abort(new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`)),
+    FETCH_TIMEOUT_MS,
+  );
   try {
     const res = await fetch(`${ENGINE}${path}`, {
       cache: "no-store",
@@ -93,6 +145,14 @@ export async function fetchEngineRaw(path: string, options?: RequestInit): Promi
       signal: controller.signal,
     });
     return res;
+  } catch (e) {
+    // Fall back to a friendly message if the runtime doesn't propagate the
+    // AbortSignal reason as the rejection value (older engines reject with a
+    // generic AbortError regardless of the reason passed to abort()).
+    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
+      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`);
+    }
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -831,10 +891,16 @@ export interface CircuitBreakerState {
   daily_pnl: number;
   /** Maximum allowed daily loss (negative number, e.g. -200) */
   daily_limit: number;
-  /** Current drawdown as a decimal (e.g. 0.012 = 1.2%) */
+  /** Current drawdown as a decimal, negative (e.g. -0.012 = -1.2%) */
   drawdown_pct: number;
-  /** Maximum drawdown threshold as a decimal (e.g. 0.10 = 10%) */
-  drawdown_limit: number;
+  /**
+   * Maximum drawdown threshold as a negative decimal (e.g. -0.20 = -20%).
+   * The real /safety/circuit-breakers response field is `drawdown_limit_pct`
+   * -- there is no `drawdown_limit` field. Reading the wrong name produced
+   * `undefined`, and `undefined * 100` rendered the panel's drawdown limit as
+   * "-NaN%".
+   */
+  drawdown_limit_pct: number;
   /** Whether the kill switch is currently active */
   kill_switch_active: boolean;
   /** True when no circuit breaker is tripped and trading may proceed */
@@ -1738,9 +1804,15 @@ export type UnrealizedPositionsResponse = UnrealizedPosition[];
 
 export interface HourlyStatItem {
   hour: number;
-  label: string;
+  /**
+   * Real engine response from /portfolio/paper/hourly-stats sends
+   * `hour_label` / `trade_count` (confirmed via live response), not
+   * `label` / `trades`. Reading the old names left every hour's label
+   * blank and the trade count as "undefinedt" in WinRateByHourWidget.
+   */
+  hour_label: string;
   win_rate: number;
-  trades: number;
+  trade_count: number;
 }
 
 export interface HourlyStatsResponse {
