@@ -1009,6 +1009,7 @@ class JarvisLLMClient:
                             f"[{current_model}] credit-exhaustion for {agent_name} -- "
                             f"attempting Claude-on-Vertex failover"
                         )
+                        start_time = time.time()
                         try:
                             vertex_result = await self._bounded(
                                 self._call_vertex_failover(
@@ -1065,6 +1066,7 @@ class JarvisLLMClient:
                             f"[{current_model}] credit-exhaustion for {agent_name} -- "
                             f"attempting Gemini fallback ({google_model})"
                         )
+                        start_time = time.time()
                         try:
                             google_result = await self._bounded(
                                 self._call_google(
@@ -1117,6 +1119,7 @@ class JarvisLLMClient:
                             f"[{current_model}] Anthropic+Gemini both failed for {agent_name} -- "
                             f"attempting OpenAI fallback ({openai_model})"
                         )
+                        start_time = time.time()
                         try:
                             openai_result = await self._bounded(
                                 self._call_openai(
