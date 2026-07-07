@@ -103,6 +103,16 @@ class FreqtradeBridge:
             logger.error(f"get_balance error: {exc}")
         return {}
 
+    async def get_config(self) -> dict:
+        """Get Freqtrade bot config summary (version, state, dry_run, bot_name)."""
+        try:
+            resp = await self._client.get(f"{self.base_url}/show_config", headers=self._headers())
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception as exc:
+            logger.error(f"get_config error: {exc}")
+        return {}
+
     async def start_trading(self) -> bool:
         """Start Freqtrade trading loop."""
         try:
