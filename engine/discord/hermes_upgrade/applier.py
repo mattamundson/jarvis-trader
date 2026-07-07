@@ -163,7 +163,19 @@ async def apply_one(
         try:
             ans = input(f"Apply [{entry.bookmark_id}]? [y/N/q]: ").strip().lower()
         except EOFError:
-            ans = "n"
+            # No interactive TTY (scheduled/headless run) and this entry is not
+            # auto-approvable. Do NOT treat as an explicit user skip — that writes
+            # a terminal "skipped" state and permanently hides the entry from a
+            # later interactive/authorized run. Defer instead: leave it retryable.
+            return ApplyResult(
+                bookmark_id=entry.bookmark_id,
+                success=False,
+                pre_apply_diff=diff,
+                post_apply_verification="",
+                rollback_path="",
+                notes="Deferred — no interactive TTY for approval (left pending)",
+                deferred=True,
+            )
         if ans == "q":
             print("Quitting.")
             sys.exit(0)
@@ -254,6 +266,17 @@ async def apply_many(
             )
 
         results.append(result)
+
+        # Headless deferral: no TTY to approve and not auto-approvable. Leave the
+        # entry in its current retryable state (pending/failed) and do NOT append
+        # to the applied-log — it was neither applied nor skipped.
+        if result.deferred:
+            logger.info(
+                "deferred (no TTY) %s — left %s for a later interactive run",
+                entry.bookmark_id,
+                entry.apply_status,
+            )
+            continue
 
         # Update entry state based on result
         notes_lc = (result.notes or "").lower()
