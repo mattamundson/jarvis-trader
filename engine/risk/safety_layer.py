@@ -1028,19 +1028,56 @@ class SafetyLayer:
                 rejection_reason="Daily loss pct limit reached - kill switch activated",
             )
 
-        # 2. Check absolute limit (e.g. -$100) against REALIZED P&L (per Battle Plan)
+        # 2. Check absolute limit (e.g. -$1,000) against REALIZED P&L (per Battle
+        #    Plan) — but only latch when >=2 realized trades closed today. A lone
+        #    breach is almost always a phantom/data error, since a real single
+        #    trade is already capped at MAX_TRADE_LOSS_USD ($50/ticket). On
+        #    2026-07-01 a single phantom -$266 latched this gate and halted
+        #    trading for the day. min-2-trades policy (Amo, 2026-07-02). The PCT
+        #    gate above (TOTAL P&L incl. open MTM) is intentionally UNCHANGED.
+        #    Fail-safe: an unknown count (no db) preserves the old always-latch.
         abs_limit = -getattr(self._config, "MAX_DAILY_LOSS_USD", 100.0)
         if realized_pnl < abs_limit:
-            self.activate_kill_switch(
-                KillSwitchReason.DAILY_LOSS_LIMIT,
-                f"Daily realized loss {realized_pnl:.2f} exceeded flat USD limit (${abs(abs_limit):.0f})",
-            )
-            return RiskCheckResult(
-                approved=False,
-                rejection_reason="Daily realized loss limit reached - kill switch activated",
-            )
+            trade_count = self._today_realized_trade_count()
+            if trade_count is not None and trade_count < 2:
+                logger.warning(
+                    "[SafetyLayer] Daily realized loss %.2f breached flat USD limit "
+                    "($%.0f) on only %d realized trade(s) today — likely a phantom; "
+                    "NOT latching (min-2-trades gate).",
+                    realized_pnl,
+                    abs(abs_limit),
+                    trade_count,
+                )
+            else:
+                count_str = "unknown" if trade_count is None else str(trade_count)
+                self.activate_kill_switch(
+                    KillSwitchReason.DAILY_LOSS_LIMIT,
+                    f"Daily realized loss {realized_pnl:.2f} exceeded flat USD limit "
+                    f"(${abs(abs_limit):.0f}) across {count_str} trades",
+                )
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason="Daily realized loss limit reached - kill switch activated",
+                )
 
         return RiskCheckResult(approved=True)
+
+    def _today_realized_trade_count(self) -> Optional[int]:
+        """Count of closed paper_trades that exited today (UTC), or None.
+
+        Feeds the flat USD daily-loss gate's min-2-trades guard. Returns None on
+        any failure or when no db_manager is wired, so the caller fails SAFE
+        (latches) rather than skipping a genuine breach.
+        """
+        db = self._db_manager
+        if db is None or not hasattr(db, "count_closed_trades_on_date"):
+            return None
+        try:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            return int(db.count_closed_trades_on_date(today))
+        except Exception as exc:
+            logger.debug("[SafetyLayer] realized trade-count lookup failed: %s", exc)
+            return None
 
     def _check_trade_loss_gate(self, order: OrderRequest) -> RiskCheckResult:
         """

@@ -126,3 +126,41 @@ async def test_reasoning_effort_blank_omits_knob(llm_client, monkeypatch):
     monkeypatch.setenv("GEMINI_REASONING_EFFORT", "")
     payload = await _captured_payload(llm_client, "gemini-2.5-flash", 500)
     assert "reasoning_effort" not in payload
+
+
+# --- gemini-2.5-pro cannot disable thinking ---
+# Bug (2026-07-06, live probe): gemini-2.5-pro rejects reasoning_effort="none"
+# with HTTP 400 "Budget 0 is invalid. This model only works in thinking mode."
+# pro is the decision-tier credit-exhaustion failover (GOOGLE_FAILOVER_MAP:
+# opus/sonnet -> gemini-2.5-pro), so sending "none" 400s every decision failover.
+# pro must keep thinking on (knob omitted) unless an explicit non-"none" effort
+# is set. flash is unaffected — it supports disabling thinking.
+
+
+@pytest.mark.asyncio
+async def test_25_pro_omits_reasoning_effort_by_default(llm_client):
+    # Regression: pro must NOT get reasoning_effort="none" (Google 400s it).
+    payload = await _captured_payload(llm_client, "gemini-2.5-pro", 500)
+    assert "reasoning_effort" not in payload
+
+
+@pytest.mark.asyncio
+async def test_25_pro_ignores_explicit_none(llm_client, monkeypatch):
+    # Even an explicit "none" is dropped for pro — it only works in thinking mode.
+    monkeypatch.setenv("GEMINI_REASONING_EFFORT", "none")
+    payload = await _captured_payload(llm_client, "gemini-2.5-pro", 500)
+    assert "reasoning_effort" not in payload
+
+
+@pytest.mark.asyncio
+async def test_25_pro_respects_explicit_nonzero_effort(llm_client, monkeypatch):
+    # A valid non-"none" effort is a supported (non-zero) thinking budget on pro.
+    monkeypatch.setenv("GEMINI_REASONING_EFFORT", "low")
+    payload = await _captured_payload(llm_client, "gemini-2.5-pro", 500)
+    assert payload["reasoning_effort"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_25_pro_still_floored(llm_client):
+    # The output-budget floor still applies to pro (thinking shares the budget).
+    assert await _captured_max_tokens(llm_client, "gemini-2.5-pro", 500) == 2048
