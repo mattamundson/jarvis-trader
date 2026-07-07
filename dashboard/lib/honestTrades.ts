@@ -223,22 +223,38 @@ export function equityCurve(trades: HonestTrade[]): EquityPoint[] {
 }
 
 /**
- * Max drawdown as a fraction of the running peak equity (0..1), from the deduped
- * record. Returns 0 when there is never a positive peak (a % drawdown is
- * undefined against a zero/negative base). Single source of truth for every
- * drawdown widget — do not re-derive this loop inline.
+ * Fallback starting-capital figure, used only when a caller doesn't have the
+ * live value (from /portfolio/stats/paper-phase-summary's `starting_balance`,
+ * i.e. settings.INITIAL_CAPITAL) on hand. Same convention as
+ * AccountROIWidget.tsx's STARTING_BALANCE_FALLBACK -- never authoritative.
  */
-export function maxDrawdownPct(trades: HonestTrade[]): number {
+export const DEFAULT_STARTING_CAPITAL = 10_000;
+
+/**
+ * Max drawdown as a fraction of account equity (0..1), from the deduped
+ * record. Denominated against `Math.max(runningPeak, startingEquity)` rather
+ * than the raw cumulative-P&L peak alone -- a peak that is merely
+ * tiny-but-positive (e.g. a small early win) previously produced an
+ * arbitrarily large drawdown fraction once a later large-dollar loss divided
+ * into it (e.g. 1981.7%). Pass the real starting balance when the caller has
+ * it (see PaperBalanceWidget.tsx / AccountROIWidget.tsx for the fetch
+ * pattern); otherwise DEFAULT_STARTING_CAPITAL floors the denominator so the
+ * result can never explode. Single source of truth for every drawdown
+ * widget — do not re-derive this loop inline.
+ */
+export function maxDrawdownPct(
+  trades: HonestTrade[],
+  startingEquity: number = DEFAULT_STARTING_CAPITAL,
+): number {
   let peak = 0;
-  let maxDd = 0;
+  let maxDdDollars = 0;
   for (const pt of equityCurve(trades)) {
     if (pt.equity > peak) peak = pt.equity;
-    if (peak > 0) {
-      const dd = (peak - pt.equity) / peak;
-      if (dd > maxDd) maxDd = dd;
-    }
+    const dd = peak - pt.equity;
+    if (dd > maxDdDollars) maxDdDollars = dd;
   }
-  return maxDd;
+  const denom = Math.max(peak, startingEquity);
+  return denom > 0 ? maxDdDollars / denom : 0;
 }
 
 /**

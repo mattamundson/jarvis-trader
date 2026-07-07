@@ -35,6 +35,17 @@ function fmtPct(val: number | null | undefined): string {
   return `${(val * 100).toFixed(1)}%`;
 }
 
+// Calmar is floored engine-side (portfolio_router.py CALMAR_MIN_DD_FLOOR) so a
+// near-zero max_dd no longer explodes the ratio, but clamp here too as
+// defense-in-depth against a future upstream regression -- same pattern as
+// fmtPct's magnitude clamp above.
+function fmtCalmar(val: number | null | undefined): string {
+  if (val == null) return "—";
+  if (!isFinite(val) || isNaN(val)) return "—";
+  if (Math.abs(val) > 1000) return "—(data err)";
+  return fmt(val);
+}
+
 function statColor(val: number | null | undefined, higherBetter = true): string {
   if (val == null) return "text-muted-foreground";
   const positive = higherBetter ? val > 0 : val < 0;
@@ -230,7 +241,7 @@ function AccountColumn({
             <div>
               <dt className="text-muted-foreground">Calmar</dt>
               <dd className={`font-semibold ${statColor(data.calmar)}`}>
-                {fmt(data.calmar)}
+                {fmtCalmar(data.calmar)}
               </dd>
             </div>
             <div>
