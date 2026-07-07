@@ -1029,7 +1029,10 @@ async def get_validation_checkpoint():
         wr_target = float(cfg["win_rate_pct"]) / 100.0
         trades_target = int(cfg["min_trades"])
         days_target = int(cfg["min_days"])
-        dd_target = float(cfg["max_drawdown_pct"]) / 100.0
+        # max_drawdown_pct is percent-scale (e.g. 12.06 == 12.06%), matching
+        # _compute_max_drawdown_pct()'s return value -- do not divide by 100 here.
+        # See _build_validation_gate_rows() above for the same (correct) convention.
+        dd_target = float(cfg["max_drawdown_pct"])
 
         gates = {}
 
