@@ -245,6 +245,12 @@ class PortfolioTracker:
         if decision_identity:
             _sp["decision_identity"] = decision_identity
         if self._db is not None:
+            # INVARIANT: one open paper_trades row per (symbol, side). The engine
+            # never pyramids, so any re-log of a still-open position collapses to
+            # the existing row inside insert_paper_trade's open-state guard —
+            # regardless of price drift or how far apart the re-emissions arrive.
+            # (A future scale-in feature would need a bar/decision discriminator
+            # added to that guard so genuine adds are not swallowed.)
             row_id = self._db.insert_paper_trade(
                 trade_id,
                 symbol=trade.symbol,
