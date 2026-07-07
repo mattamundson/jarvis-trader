@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 
+from vault.paths import vault_root as _vault_root
+
 from .models import AnalysisResult
 
-DEFAULT_VAULT_ROOT = Path(os.path.expanduser("~/my-vault"))
 MAX_FILENAME_CHARS = 100
 
 
@@ -71,7 +71,9 @@ def write_page(
     vault_root: Path | None = None,
 ) -> Path:
     """Write the analysis to Obsidian. Returns absolute file path."""
-    root = Path(vault_root) if vault_root else DEFAULT_VAULT_ROOT
+    # Fall back to the canonical resolver (honours JARVIS_VAULT_ROOT) rather than a
+    # duplicated ~/my-vault default, so every writer shares one vault root.
+    root = Path(vault_root) if vault_root else _vault_root()
     date_str = posted_at[:10]  # YYYY-MM-DD
     folder = root / "Discord-Feed" / date_str
     folder.mkdir(parents=True, exist_ok=True)

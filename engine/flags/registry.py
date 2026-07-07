@@ -89,6 +89,13 @@ FLAG_DEFINITIONS: List[Dict[str, Any]] = [
         "category": "security",
         "requires_restart": False,
     },
+    {
+        "name": "ENABLE_MACRO_TREND_BIAS",
+        "default": False,
+        "description": "Advisory macro trend bias (SPX weekly Supertrend + monthly momentum) folded into the pipeline regime context",
+        "category": "ai",
+        "requires_restart": False,
+    },
 ]
 
 # Build a fast lookup dict: name -> definition
