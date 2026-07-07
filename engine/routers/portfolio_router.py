@@ -1728,6 +1728,8 @@ async def get_paper_account_stats(
     import math
     from datetime import date, timedelta
 
+    from analytics import metrics  # canonical guarded Sharpe/Calmar (PR #272 invariants)
+
     if account_id not in {"A", "B"}:
         raise HTTPException(status_code=400, detail="account_id must be 'A' or 'B'")
     if days < 1 or days > 730:
@@ -1806,17 +1808,22 @@ async def get_paper_account_stats(
     downside_dev = math.sqrt(sum(neg_sq) / len(neg_sq)) if neg_sq else None
     sortino: float | None = (mean_pnl / downside_dev * math.sqrt(252)) if downside_dev else None
 
-    # Sharpe (std dev of all returns)
-    if n_trades > 1:
-        variance = sum((p - mean_pnl) ** 2 for p in pnls) / (n_trades - 1)
-        std_dev = math.sqrt(variance)
-        sharpe: float | None = (mean_pnl / std_dev * math.sqrt(252)) if std_dev > 0 else None
-    else:
-        sharpe = None
+    # Sharpe (std dev of all returns) — canonical module (near-zero std-dev guard -> None)
+    sharpe: float | None = metrics.sharpe(pnls)
 
-    # Calmar (annualised return / abs max drawdown)
+    # Calmar (annualised return / abs max drawdown). abs(max_dd) is floored at
+    # CALMAR_MIN_DD_FLOOR (0.5%) before dividing -- an account that's mostly
+    # winning with only a razor-thin dip (e.g. max_dd = -0.0001) combined with
+    # a healthy annualized return otherwise explodes into millions (e.g.
+    # 2,014,774.72). Below the floor, Calmar is undefined -- report None
+    # (dashboard renders "--") rather than a fabricated ratio.
+    # NOTE (#272<>#274 merge): keep PR #272's explicit block. The canonical
+    # metrics.calmar() floor was aligned 1e-6 -> 0.005 to match, so the two now
+    # agree; this inline additionally enforces the max_dd < 0 guard (count real
+    # drawdowns only). metrics.sharpe() above uses the canonical module.
+    CALMAR_MIN_DD_FLOOR = 0.005
     calmar: float | None = None
-    if max_dd is not None and max_dd < 0:
+    if max_dd is not None and max_dd < 0 and abs(max_dd) >= CALMAR_MIN_DD_FLOOR:
         ann_return = mean_pnl * 252
         calmar = ann_return / abs(max_dd)
 

@@ -59,6 +59,41 @@ function truncLabel(s: string, maxLen = 9): string {
   return s.length > maxLen ? s.slice(0, maxLen - 1) + "…" : s;
 }
 
+/**
+ * One concrete, honestly-derived recommendation from the window stats.
+ * Never fabricates: returns null when no analyst has attributable P&L, and
+ * every number in the text comes straight from `per_analyst` / `top_contributor_by_abs`.
+ */
+function buildRecommendation(
+  data: RiskAttributionResponse
+): { text: string; tone: "bull" | "bear" } | null {
+  const attributed = Object.entries(data.per_analyst).filter(
+    ([, s]) => Math.abs(s.total) > 0.01
+  );
+  if (attributed.length === 0) return null;
+
+  const [worstSlot, worstStat] = attributed.reduce((a, b) =>
+    b[1].total < a[1].total ? b : a
+  );
+  const top = data.top_contributor_by_abs;
+  const topStat = top ? data.per_analyst[top] : undefined;
+
+  if (worstStat.total < -0.01) {
+    return {
+      tone: "bear",
+      text: `Recommend: review ${worstSlot} — largest 30-day drag at ${fmt(
+        worstStat.total
+      )}${top ? `; ${top} leads at ${fmt(topStat?.total ?? 0)}` : ""}. Consider down-weighting ${worstSlot} if the drag persists.`,
+    };
+  }
+  return {
+    tone: "bull",
+    text: `Recommend: no analyst is a net 30-day drag${
+      top ? `; ${top} leads at ${fmt(topStat?.total ?? 0)}` : ""
+    }. Weights look healthy — hold current allocation.`,
+  };
+}
+
 // ── Stacked Bar Chart ─────────────────────────────────────────────────────────
 
 interface StackedBarChartProps {
@@ -310,6 +345,11 @@ export function RiskAttributionPanel() {
     { refreshInterval: REFRESH_MS, shouldRetryOnError: false }
   );
 
+  const recommendation = useMemo(
+    () => (data ? buildRecommendation(data) : null),
+    [data]
+  );
+
   return (
     <Card className="border-zinc-800 bg-zinc-950/60">
       <CardHeader className="py-3">
@@ -364,6 +404,20 @@ export function RiskAttributionPanel() {
 
             {/* Stats table */}
             <StatsTable data={data} />
+
+            {/* Concrete recommendation — derived from the same window stats */}
+            {recommendation && (
+              <p
+                className={[
+                  "text-[11px] leading-snug border-t border-zinc-800 pt-2",
+                  recommendation.tone === "bear"
+                    ? "text-rose-300"
+                    : "text-emerald-300",
+                ].join(" ")}
+              >
+                {recommendation.text}
+              </p>
+            )}
           </>
         )}
 

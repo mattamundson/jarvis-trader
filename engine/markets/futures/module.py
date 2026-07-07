@@ -177,6 +177,7 @@ class FuturesMarketModule(MarketModule):
             message=f"IB Gateway {'connected' if connected else 'disconnected'} | Paper mode",
             daily_pnl=self._daily_pnl,
             last_trade_at=self._last_cycle_at,
+            open_positions=len(self._tracker.get_open_positions()),
         )
 
     def halt(self, reason: str = "") -> None:

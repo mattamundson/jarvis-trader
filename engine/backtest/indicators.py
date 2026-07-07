@@ -175,6 +175,120 @@ def keltner_channels(
     return upper, basis, lower
 
 
+def keltner_channels_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    sma_len: int = 20,
+    atr_factor: float = 3.0,
+    developing: bool = True,
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """Multi-timeframe Keltner Channel — port of jp_keltner_multi_timeframe.ts.
+
+    The ThinkScript computes a Keltner (SMA basis +/- factor*SMA(TrueRange)) on a
+    user-selected ``iAggregationPeriod`` and plots it on the base chart. This
+    reproduces that: it aggregates the base bars to ``rule`` (e.g. "4h" =
+    FOUR_HOURS) and maps the higher-timeframe Keltner back onto every base bar.
+
+    developing=True matches TOS: the current higher-TF bar is the *developing*
+    aggregate of the base bars seen so far, so the line updates each base bar.
+    developing=False uses only completed higher-TF bars (one extra bar of lag).
+    Both are point-in-time safe — a base bar at t uses only base bars <= t.
+    With ``rule`` equal to the base bar frequency this collapses exactly to
+    ``keltner_channels``.
+
+    Returns (upper, basis, lower) Series on df.index.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("keltner_channels_mtf requires a DatetimeIndex")
+    idx = df.index
+    win = idx.floor(rule)
+    grp = df.groupby(win)
+    htf_close = grp["close"].last()
+    htf_high = grp["high"].max()
+    htf_low = grp["low"].min()
+    tr_htf = pd.concat(
+        [htf_high - htf_low,
+         (htf_high - htf_close.shift(1)).abs(),
+         (htf_low - htf_close.shift(1)).abs()],
+        axis=1,
+    ).max(axis=1)
+
+    def _to_base(s: pd.Series) -> pd.Series:
+        return pd.Series(s.reindex(win).to_numpy(), index=idx)
+
+    if developing:
+        prev_close = _to_base(htf_close.shift(1))  # last completed HTF close
+        dev_high = grp["high"].cummax()
+        dev_low = grp["low"].cummin()
+        tr_dev = pd.concat(
+            [dev_high - dev_low, (dev_high - prev_close).abs(), (dev_low - prev_close).abs()],
+            axis=1,
+        ).max(axis=1)
+        comp_close = _to_base(htf_close.shift(1).rolling(sma_len - 1).sum())
+        comp_tr = _to_base(tr_htf.shift(1).rolling(sma_len - 1).sum())
+        basis = (comp_close + df["close"]) / sma_len
+        shift = atr_factor * (comp_tr + tr_dev) / sma_len
+    else:
+        basis = _to_base(htf_close.rolling(sma_len).mean().shift(1))
+        shift = _to_base(atr_factor * tr_htf.rolling(sma_len).mean().shift(1))
+    return basis + shift, basis, basis - shift
+
+
+def keltner_cloud_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    sma_len: int = 20,
+    inner_factor: float = 1.5,
+    outer_factor: float = 2.0,
+    developing: bool = True,
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
+    """Dual-band multi-timeframe Keltner — port of the OB_OMEGA / JBOYD cloud.
+
+    The OB_OMEGA study plots two Keltner bands (inner 1.5x, outer 2.0x) on a
+    higher aggregation and shades the cloud between them. Reuses
+    ``keltner_channels_mtf`` (one aggregation, scaled to both factors) so the
+    basis and TR are computed once. The cloud shading itself is cosmetic; this
+    returns the band levels that matter for signals.
+
+    Returns (upper_outer, upper_inner, basis, lower_inner, lower_outer).
+    """
+    upper_inner, basis, lower_inner = keltner_channels_mtf(
+        df, rule=rule, sma_len=sma_len, atr_factor=inner_factor, developing=developing
+    )
+    scale = outer_factor / inner_factor
+    shift_inner = upper_inner - basis
+    upper_outer = basis + scale * shift_inner
+    lower_outer = basis - scale * shift_inner
+    return upper_outer, upper_inner, basis, lower_inner, lower_outer
+
+
+def macd_primer_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9,
+    developing: bool = True,
+) -> pd.Series:
+    """MACD primer (OB_OMEGA cloud color) on a higher aggregation.
+
+    Returns the MACD histogram (macd - signal) on the ``rule`` timeframe mapped
+    to base bars. Uses only completed higher-TF bars (shift(1)) so it is
+    point-in-time safe; ``developing`` is accepted for API symmetry but the
+    histogram always lags by one completed higher-TF bar.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("macd_primer_mtf requires a DatetimeIndex")
+    idx = df.index
+    win = idx.floor(rule)
+    htf_close = df.groupby(win)["close"].last()
+    ema_fast = htf_close.ewm(span=fast, adjust=False).mean()
+    ema_slow = htf_close.ewm(span=slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    hist = (macd - macd.ewm(span=signal, adjust=False).mean()).shift(1)
+    return pd.Series(hist.reindex(win).to_numpy(), index=idx)
+
+
 def ib_levels(
     high: pd.Series,
     low: pd.Series,
@@ -400,6 +514,121 @@ def volume_regime(volume: pd.Series, lookback: int = 20) -> pd.Series:
     result[ratio > 1.5] = "HIGH"
     result[ratio < 0.67] = "LOW"
     return result
+
+
+def _wilders_average(series: pd.Series, period: int) -> pd.Series:
+    """Wilder's smoothing, seeded with the SMA of the first `period` values.
+
+    Matches ThinkScript's AverageType.WILDERS (the recursive
+    prev*(n-1)/n + value/n form), identical to the seeding used by
+    ``wilder_atr`` above so the two stay consistent.
+    """
+    out = pd.Series(index=series.index, dtype=float)
+    if len(series) < period:
+        return out
+    out.iloc[: period - 1] = np.nan
+    out.iloc[period - 1] = series.iloc[:period].mean()
+    for i in range(period, len(series)):
+        out.iloc[i] = (out.iloc[i - 1] * (period - 1) + series.iloc[i]) / period
+    return out
+
+
+def atr_trailing_stop(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    period: int = 5,
+    factor: float = 3.5,
+    first_trade_long: bool = True,
+    trail_type: str = "modified",
+) -> Tuple[pd.Series, pd.Series]:
+    """ATR Trailing Stop — faithful reproduction of the ThinkorSwim built-in.
+
+    This is the dotted support/resistance line on Matt's /ES chart, legend
+    ``ATRTrailingStop (modified, 5, 3.5, long, WILDERS)``. It is a Sylvain
+    Vervoort style stop-and-reverse line: it trails below price while long and
+    above price while short, flipping state on a close through the line.
+
+    Args:
+        period           : ATR length (TOS default for this study = 5).
+        factor           : ATR multiplier (TOS default = 3.5).
+        first_trade_long : seed the very first bar's state long (TOS default).
+        trail_type       : "modified" uses the HiLo/HRef/LRef true-range
+                           variant (TOS default); "unmodified" uses classic
+                           true range.
+
+    Returns:
+        (trail, state) where ``trail`` is the stop line and ``state`` is +1.0
+        when long (line is support, below price) / -1.0 when short (line is
+        resistance, above price). Point-in-time safe: ``trail.iloc[i]`` uses
+        only bars <= i.
+    """
+    orig_index = close.index
+    high = high.astype(float).reset_index(drop=True)
+    low = low.astype(float).reset_index(drop=True)
+    close = close.astype(float).reset_index(drop=True)
+    prev_close = close.shift(1)
+    prev_high = high.shift(1)
+    prev_low = low.shift(1)
+
+    if trail_type == "modified":
+        hl_avg = (high - low).rolling(period).mean()
+        hilo = pd.concat([high - low, 1.5 * hl_avg], axis=1).min(axis=1)
+        href = np.where(
+            low <= prev_high,
+            high - prev_close,
+            (high - prev_close) - 0.5 * (low - prev_high),
+        )
+        lref = np.where(
+            high >= prev_low,
+            prev_close - low,
+            (prev_close - low) - 0.5 * (prev_low - high),
+        )
+        true_range = pd.concat(
+            [hilo, pd.Series(href, index=hilo.index), pd.Series(lref, index=hilo.index)],
+            axis=1,
+        ).max(axis=1)
+    else:
+        true_range = pd.concat(
+            [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+        ).max(axis=1)
+
+    loss = factor * _wilders_average(true_range, period)
+
+    n = len(close)
+    trail = np.full(n, np.nan)
+    state = np.full(n, np.nan)
+    started = False
+    for i in range(n):
+        if pd.isna(loss.iloc[i]):
+            continue
+        c = close.iloc[i]
+        if not started:
+            state[i] = 1.0 if first_trade_long else -1.0
+            trail[i] = c - loss.iloc[i] if first_trade_long else c + loss.iloc[i]
+            started = True
+            continue
+        prev_trail = trail[i - 1]
+        prev_state = state[i - 1]
+        if prev_state == 1.0:
+            if c > prev_trail:
+                state[i] = 1.0
+                trail[i] = max(prev_trail, c - loss.iloc[i])
+            else:
+                state[i] = -1.0
+                trail[i] = c + loss.iloc[i]
+        else:
+            if c < prev_trail:
+                state[i] = -1.0
+                trail[i] = min(prev_trail, c + loss.iloc[i])
+            else:
+                state[i] = 1.0
+                trail[i] = c - loss.iloc[i]
+
+    return (
+        pd.Series(trail, index=orig_index),
+        pd.Series(state, index=orig_index),
+    )
 
 
 def compute_vwap(df: "pd.DataFrame", session_reset: bool = True) -> "pd.Series":

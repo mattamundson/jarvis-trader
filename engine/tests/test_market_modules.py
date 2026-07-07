@@ -157,6 +157,22 @@ class TestFuturesMarketModuleInterface:
         assert health.status == MarketStatus.PAPER
         assert "connected" in health.message.lower()
 
+    def test_futures_health_check_reports_open_positions(
+        self, futures_module, mock_ib_gateway, mock_portfolio_tracker
+    ):
+        """
+        Regression test: health_check() must report the tracker's real open
+        position count, not silently default to 0 (HealthStatus.open_positions
+        defaults to 0; the futures module previously never set it). This was
+        the root cause of /portfolio/health reporting 0 while /portfolio/summary
+        (which reads the same tracker via get_positions()) correctly reported 2.
+        mock_portfolio_tracker.get_open_positions() returns 1 position (MES).
+        """
+        mock_ib_gateway.is_connected.return_value = True
+        health = futures_module.health_check()
+        assert health.open_positions == len(mock_portfolio_tracker.get_open_positions())
+        assert health.open_positions == 1
+
 
 class TestOptionsMarketModule:
     """Test OptionsMarketModule interface and lifecycle."""

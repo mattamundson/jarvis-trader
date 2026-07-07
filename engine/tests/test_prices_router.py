@@ -103,3 +103,54 @@ def test_get_price_snapshot_caching(client):
 
     assert data1["SPY"]["last_price"] == data2["SPY"]["last_price"]
     assert data1["SPY"]["last_price"] == 654.53
+
+
+def test_snapshot_entry_carries_provenance_static_source(client):
+    """A cached/delayed tier (polygon REST) must derive is_live=False.
+
+    Kills the "cache shown as LIVE" deception: the dashboard reads is_live/source
+    off each entry, so a non-live tier can never render a green LIVE badge.
+    """
+    import routers.prices_router as _pr
+
+    _pr._price_cache._cache.clear()  # isolate from other tests' cached SPY
+
+    mock_dm = MagicMock()
+
+    async def _get_current_price(sym, **_kw):
+        if sym.upper() == "SPY":
+            return {"last_price": 654.53, "prev_close": 654.0, "change_pct": 0.08, "source": "polygon"}
+        return {"last_price": None}
+
+    mock_dm.get_current_price = AsyncMock(side_effect=_get_current_price)
+
+    with patch.object(_pr, "_data_manager", mock_dm):
+        resp = client.get("/prices/snapshot?symbols=SPY")
+
+    assert resp.status_code == 200
+    spy = resp.json()["SPY"]
+    assert spy["source"] == "polygon"
+    assert spy["is_live"] is False  # polygon is a static tier — never live
+    assert "as_of" in spy and spy["as_of"] is not None
+
+
+def test_snapshot_entry_live_tier_is_live_true(client):
+    """A fresh live-tier value (polygon_stream) derives is_live=True."""
+    import routers.prices_router as _pr
+
+    _pr._price_cache._cache.clear()
+
+    mock_dm = MagicMock()
+
+    async def _get_current_price(sym, **_kw):
+        return {"last_price": 5301.25, "prev_close": 5300.0, "change_pct": 0.02, "source": "polygon_stream"}
+
+    mock_dm.get_current_price = AsyncMock(side_effect=_get_current_price)
+
+    with patch.object(_pr, "_data_manager", mock_dm):
+        resp = client.get("/prices/snapshot?symbols=MES")
+
+    assert resp.status_code == 200
+    mes = resp.json()["MES"]
+    assert mes["source"] == "polygon_stream"
+    assert mes["is_live"] is True

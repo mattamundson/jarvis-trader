@@ -6,9 +6,10 @@ from utils.thinkscript_registry_loader import load_registry
 
 def test_registry_loads_and_has_21_scripts():
     r = load_registry()
-    # 22 entries: 19 per-script + 2 COHEN + 1 legacy_utilities (3 archive files consolidated)
-    # The plan target of "21" predates COHEN inclusion; 22 is correct with both COHEN entries.
-    assert len(r.scripts) == 22, f"expected 22, got {len(r.scripts)}"
+    # 28 entries: 22 prior (19 per-script + 2 COHEN + 1 legacy_utilities) + 6
+    # jarvis-suite scripts (stc_signals, regime_filter, vwap_bands, risk_sizer,
+    # mission_control_lower, scan_stc_regime) mirroring canonical engine logic.
+    assert len(r.scripts) == 28, f"expected 28, got {len(r.scripts)}"
 
 
 def test_stc_entry_has_correct_python_counterpart():

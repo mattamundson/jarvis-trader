@@ -14,7 +14,9 @@ function getEngineBaseUrl(): string {
 }
 
 function getEngineApiKey(): string | undefined {
-  return process.env.ENGINE_API_KEY ?? process.env.NEXT_PUBLIC_ENGINE_API_KEY;
+  // Server-only var — never NEXT_PUBLIC_* — so the key is never inlined into
+  // the client bundle.
+  return process.env.ENGINE_API_KEY;
 }
 
 // user:pass credential matching the ngrok tunnel's basic-auth (ngrok.yml). Only
@@ -40,6 +42,20 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
     tunnelBasicAuth: getTunnelBasicAuth(),
   });
 
+  // When the engine is reached through an ngrok free-tier tunnel, ngrok injects
+  // an HTML "browser warning" interstitial for requests with browser-like
+  // headers (which this proxy forwards from the client). This header bypasses
+  // it so we always get the engine's JSON. Harmless for other tunnels.
+  headers.set("ngrok-skip-browser-warning", "true");
+
+  // If the tunnel (ngrok) enforces HTTP basic-auth, inject it server-side so the
+  // credential never reaches the browser. ENGINE_TUNNEL_BASIC_AUTH is "user:pass".
+  // No-op when unset (local dev / tunnels without basic-auth).
+  const tunnelAuth = process.env.ENGINE_TUNNEL_BASIC_AUTH;
+  if (tunnelAuth) {
+    headers.set("Authorization", `Basic ${Buffer.from(tunnelAuth).toString("base64")}`);
+  }
+
   const init: RequestInit = {
     method: request.method,
     headers,
@@ -51,10 +67,11 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   }
 
   const controller = new AbortController();
-  // 25s: cold-cache engine endpoints (TV/yfinance-backed prices, mtf,
+  // 60s: cold-cache engine endpoints (TV/yfinance-backed prices, mtf,
   // discord intelligence) exceed 5s on first hit and were 502ing every page
-  // load right after an engine restart.
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+  // load right after an engine restart. The Hidden Pivots full scan fetches
+  // bars for ~33 symbols and can run past 25s cold, so the ceiling is 60s.
+  const timeout = setTimeout(() => controller.abort(), 60_000);
 
   let upstream: Response;
   try {

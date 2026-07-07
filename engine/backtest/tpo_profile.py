@@ -186,4 +186,23 @@ def compute_tpo_profile(
     out["buyer_control_signal"] = out["buyer_control_signal"].fillna(False)
     out["seller_control_signal"] = out["seller_control_signal"].fillna(False)
 
+    # Measured-move targets (Corey TPOext1 / TPOrej2). These are the
+    # "This profile targets X / fail targets Y" levels on the chart. bal is the
+    # value-area balance midpoint; an imbalanced profile (bal vs vpoc) projects a
+    # 1.0x measured move from the VPOC. All inputs are prior-session (shifted) =>
+    # point-in-time safe.
+    bal = (out["va_high"] + out["va_low"]) / 2
+    poc = out["vpoc"]
+    up_move = (poc - out["profile_low"]) + poc       # 1.0x projection upward
+    down_move = poc - (out["profile_high"] - poc)    # 1.0x projection downward
+    bear = bal > poc
+    out["tpo_bal"] = bal
+    out["tpo_imbalance"] = np.where(bear, "BEAR_IMBAL", "BULL_IMBAL")
+    # Primary target: bear imbalance -> down, bull -> up. Fail target: opposite.
+    out["tpo_target"] = np.where(bear, down_move, up_move)
+    out["tpo_fail_target"] = np.where(bear, up_move, down_move)
+    # Null targets where the profile is undefined.
+    undefined = poc.isna() | out["profile_high"].isna() | out["profile_low"].isna()
+    out.loc[undefined, ["tpo_bal", "tpo_target", "tpo_fail_target"]] = np.nan
+
     return out

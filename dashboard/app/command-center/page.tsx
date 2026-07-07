@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { JetBrains_Mono, Orbitron } from "next/font/google";
@@ -30,12 +31,24 @@ import {
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
-import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { SessionBriefPanel } from "@/components/SessionBriefPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
+
+// Candlestick chart (lightweight-charts) — only renders once bar data resolves, so
+// load it on demand to keep lightweight-charts off the command-center landing critical path.
+const CandlestickChart = dynamic(
+  () =>
+    import("@/components/command-center/charts/CandlestickChart").then((m) => ({
+      default: m.CandlestickChart,
+    })),
+  { ssr: false, loading: () => <div className="h-[360px] animate-pulse rounded bg-slate-950/40" /> }
+);
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -567,6 +580,26 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
+          PIPELINE REASONING — why each decision was made (expandable)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Pipeline Reasoning">
+          <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          SESSION BRIEF — proactive advisor recommendations. Re-homed here from
+          the dissolved kitchen-sink overview page (#274 feature preserved on the
+          flagship HUD after the P2.1 redirect orphaned its old mount point).
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Session Brief">
+          <SessionBriefPanel />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
           ROW 1 — STATUS OVERVIEW (5 columns)
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-5 gap-3 mb-4">
@@ -793,7 +826,9 @@ export default function CommandCenterPage() {
         </Card>
 
         {/* Portfolio Correlation */}
-        <PortfolioCorrelationWidget />
+        <WidgetErrorBoundary name="Portfolio Correlation">
+          <PortfolioCorrelationWidget />
+        </WidgetErrorBoundary>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -1083,6 +1118,7 @@ export default function CommandCenterPage() {
                 No trade history from /portfolio/history/trades
               </div>
             ) : (
+              <>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs font-mono">
                   <thead>
@@ -1130,6 +1166,11 @@ export default function CommandCenterPage() {
                   </tbody>
                 </table>
               </div>
+              <p className="text-[10px] text-amber-500/70 font-mono mt-2">
+                Raw record (/portfolio/history/trades) — not deduped; per-trade
+                P&amp;L may include re-logged duplicates.
+              </p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -1489,7 +1530,9 @@ export default function CommandCenterPage() {
           ROW 7 — SIGNAL FEED (full width)
       ═══════════════════════════════════════════════════════ */}
       <div className="mt-3">
-        <SignalFeedWidget />
+        <WidgetErrorBoundary name="Signal Feed">
+          <SignalFeedWidget />
+        </WidgetErrorBoundary>
       </div>
     </div>
   );

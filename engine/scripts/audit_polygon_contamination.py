@@ -57,8 +57,21 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     "ZN": (90.0, 155.0),
     # SPY is an equity ETF, not a future. Included so the audit doesn't
     # flag it as UNKNOWN_SYMBOL. A stock ETF hitting its equity ticker
-    # correctly is the expected, non-contaminated path.
-    "SPY": (250.0, 800.0),
+    # correctly is the expected, non-contaminated path. Floor lowered to 20
+    # to accommodate dividend-adjusted deep history (SPY back to 1993 adjusts
+    # to ~$24); the prior floor of 250 falsely flagged legitimate old bars.
+    "SPY": (20.0, 800.0),
+    # Benchmark/reference equity ETFs (not futures). Same rationale as SPY:
+    # these are pulled deliberately for cross-asset comparison, so give each
+    # a generous band around its observed multi-decade dividend-adjusted range
+    # to keep the audit from flagging legitimate reference data as
+    # UNKNOWN_SYMBOL. Bands bracket real cached ranges with wide margin.
+    "DIA": (30.0, 700.0),  # Dow ETF; observed ~41-520
+    "QQQ": (12.0, 1_000.0),  # Nasdaq-100 ETF; observed ~17-745
+    "IWM": (12.0, 400.0),  # Russell 2000 ETF; observed ~24-298
+    "MDY": (18.0, 900.0),  # S&P MidCap 400 ETF; observed ~25-695
+    "EFA": (8.0, 150.0),  # MSCI EAFE ETF; observed ~15-105
+    "GLD": (30.0, 700.0),  # Gold ETF; observed ~41-496
     # FX micro futures quote the exchange rate itself (small numbers ~0.8-1.8),
     # so any equity-price leak ($10-$500+) lands far outside the band.
     # M6B = Micro GBP/USD; GBP/USD has ranged ~1.03 (2022 low) to ~1.60 (2014).
@@ -66,6 +79,7 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     # M6E = Micro EUR/USD; EUR/USD has ranged ~0.95 (2022 low) to ~1.60 (2008).
     "M6E": (0.80, 1.70),
 }
+
 
 # For MCL specifically, Colgate-Palmolive's daily close stays within ~1-2%
 # day-to-day. Crude oil's daily close commonly moves 2-4%. If the cache's

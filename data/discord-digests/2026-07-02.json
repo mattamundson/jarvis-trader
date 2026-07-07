@@ -1,0 +1,254 @@
+{
+  "date": "2026-07-02",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "bearish",
+    "conviction": 0.35,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 28
+  },
+  "sentiment_score": 0.04761904761904762,
+  "sentiment_label": "neutral",
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7515.5,
+      "target2": 7542.5,
+      "stop1": 7470.5,
+      "win_rate": 83.24,
+      "rr": 0.61,
+      "timestamp": "2026-07-02T13:32:02.775-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7577.75,
+      "target2": 7604.75,
+      "stop1": 7532.75,
+      "win_rate": 83.19,
+      "rr": 0.61,
+      "timestamp": "2026-07-02T08:40:02.449-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7549.75,
+      "target2": 7576.75,
+      "stop1": 7504.75,
+      "win_rate": 83.14,
+      "rr": 0.6,
+      "timestamp": "2026-07-02T03:35:02.766-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7537.0,
+      "target2": 7543.75,
+      "stop1": null,
+      "win_rate": 78.63,
+      "rr": 0.53,
+      "timestamp": "2026-07-01T19:00:02.251-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7559.0,
+      "target2": 7565.75,
+      "stop1": null,
+      "win_rate": 78.57,
+      "rr": 0.53,
+      "timestamp": "2026-07-01T21:46:03.647-05:00"
+    }
+  ],
+  "corey_quote": "Prior highs must become support to continue upside.",
+  "commentary_health": [
+    {
+      "date": "2026-07-03",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.6,
+      "message_count": 3
+    },
+    {
+      "date": "2026-07-02",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.35,
+      "message_count": 28
+    },
+    {
+      "date": "2026-07-01",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 17
+    },
+    {
+      "date": "2026-06-30",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.75,
+      "message_count": 13
+    },
+    {
+      "date": "2026-06-29",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.45,
+      "message_count": 45
+    },
+    {
+      "date": "2026-06-28",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 29
+    },
+    {
+      "date": "2026-06-26",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 26
+    },
+    {
+      "date": "2026-06-25",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.65,
+      "message_count": 62
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 29,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "anthropic",
+    "primary_provider": "anthropic",
+    "primary_healthy": true,
+    "providers_available": 4,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 92,
+    "failing_enabled": 4,
+    "failing_disabled": 0,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 7.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 15.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 15.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 6.3,
+        "newest": "2026-06-27T06:00:05.644150+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 1.9,
+        "newest": "2026-07-01T15:31:08.589953+00:00",
+        "files": 30,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.9,
+        "newest": "2026-07-02T15:34:40.871018+00:00",
+        "files": 18,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 6.3,
+        "newest": "2026-06-27T06:00:07.197560+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 15.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 15.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
