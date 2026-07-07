@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -68,6 +69,57 @@ INSTRUMENT_MULTIPLIERS: dict = {
     "GC": 100.0,
 }
 _DEFAULT_MULTIPLIER = 1.0
+
+
+class UnknownInstrumentMultiplierError(ValueError):
+    """Raised when a symbol has no configured contract multiplier.
+
+    Fail-closed by design: a futures fill priced at a silent 1x multiplier
+    mis-states P&L by 5x–1000x. Add the symbol to INSTRUMENT_MULTIPLIERS, or
+    set ALLOW_DEFAULT_MULTIPLIER=1 to force the 1x fallback with a loud log.
+    """
+
+
+def _resolve_multiplier(symbol: str) -> float:
+    """Return the contract multiplier for ``symbol``, fail-closed on unknowns.
+
+    Previously ``INSTRUMENT_MULTIPLIERS.get(symbol, 1.0)`` silently applied a
+    1x multiplier to any unlisted instrument, so an un-mapped futures symbol
+    would post a P&L off by its true multiplier. This raises instead, unless
+    ALLOW_DEFAULT_MULTIPLIER=1 is set (then it logs loudly and falls back).
+    """
+    mult = INSTRUMENT_MULTIPLIERS.get(symbol.upper())
+    if mult is not None:
+        return mult
+    if os.getenv("ALLOW_DEFAULT_MULTIPLIER", "0") == "1":
+        logger.error(
+            "[PAPER] No contract multiplier configured for %s — falling back to "
+            "%.1fx (ALLOW_DEFAULT_MULTIPLIER=1). P&L for this symbol may be wrong.",
+            symbol,
+            _DEFAULT_MULTIPLIER,
+        )
+        return _DEFAULT_MULTIPLIER
+    raise UnknownInstrumentMultiplierError(
+        f"No contract multiplier configured for {symbol!r}. Add it to "
+        f"INSTRUMENT_MULTIPLIERS (engine/portfolio/tracker.py) or set "
+        f"ALLOW_DEFAULT_MULTIPLIER=1 to force a 1x fallback."
+    )
+
+
+def _commission_per_contract() -> float:
+    """Flat per-contract round-trip commission (dollars), subtracted at close.
+
+    Configurable via COMMISSION_PER_CONTRACT (default $1.50, a realistic
+    retail micro-futures round-trip). This is a flat proxy across instruments;
+    historical rows closed before this term was introduced are pre-cost and
+    are NOT retroactively adjusted. Broker-confirmed closes (an explicit pnl
+    passed to close_paper_trade) are assumed to already include fees and are
+    left untouched.
+    """
+    try:
+        return float(os.getenv("COMMISSION_PER_CONTRACT", "1.50"))
+    except (TypeError, ValueError):
+        return 1.50
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -245,6 +297,12 @@ class PortfolioTracker:
         if decision_identity:
             _sp["decision_identity"] = decision_identity
         if self._db is not None:
+            # INVARIANT: one open paper_trades row per (symbol, side). The engine
+            # never pyramids, so any re-log of a still-open position collapses to
+            # the existing row inside insert_paper_trade's open-state guard —
+            # regardless of price drift or how far apart the re-emissions arrive.
+            # (A future scale-in feature would need a bar/decision discriminator
+            # added to that guard so genuine adds are not swallowed.)
             row_id = self._db.insert_paper_trade(
                 trade_id,
                 symbol=trade.symbol,
@@ -337,11 +395,13 @@ class PortfolioTracker:
         exit_time = datetime.now(timezone.utc).isoformat()
         action_lower = trade.action.lower()
         is_short = "sell" in action_lower or "short" in action_lower
-        multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
+        multiplier = _resolve_multiplier(trade.symbol)
         if is_short:
             computed_pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
         else:
             computed_pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+        # Subtract a flat round-trip commission (see _commission_per_contract).
+        computed_pnl -= _commission_per_contract() * abs(trade.quantity)
 
         # SQLite-first: write to DB before mutating in-memory state.
         # If this raises, _open is unchanged — no ghost position on restart.
@@ -892,15 +952,18 @@ class PortfolioTracker:
         # Compute all close fields before any writes
         resolved_exit_time = exit_time or datetime.now(timezone.utc).isoformat()
         if pnl is not None:
+            # Broker-confirmed figure — already net of fees; do not re-deduct.
             computed_pnl = float(pnl)
         else:
             action_lower = trade.action.lower()
             is_short = "sell" in action_lower or "short" in action_lower
-            multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
+            multiplier = _resolve_multiplier(trade.symbol)
             if is_short:
                 computed_pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
             else:
                 computed_pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+            # Subtract a flat round-trip commission (see _commission_per_contract).
+            computed_pnl -= _commission_per_contract() * abs(trade.quantity)
 
         # SQLite-first: if this raises, _open remains unchanged (Bug B9 / US-2004).
         if self._db is not None:

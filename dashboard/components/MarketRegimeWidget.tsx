@@ -275,6 +275,13 @@ export function MarketRegimeWidget() {
           </div>
         )}
 
+        {/* Provenance (P4.2): rule-based read, not the LLM pipeline — flag the
+            backend gap honestly rather than invent narrative reasoning. */}
+        <p className="text-[11px] text-muted-foreground pt-3 leading-snug">
+          Why: rule-based regime from STC multi-timeframe alignment. No LLM pipeline
+          reasoning is generated for this signal type.
+        </p>
+
         {/* Footer */}
         <p className="text-xs text-muted-foreground mt-3">
           Refreshes every 5m

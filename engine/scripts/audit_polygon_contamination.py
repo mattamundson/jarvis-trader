@@ -29,32 +29,32 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     # stock price (~$80-$90), so band alone cannot rule out contamination
     # for MCL/CL — use daily volatility as secondary signal below.
     "MCL": (25.0, 150.0),
-    "CL":  (25.0, 150.0),
+    "CL": (25.0, 150.0),
     # Nasdaq-100 futures. Equity "NQ" = Nasdaq Inc. (~$50-$75) — clearly
     # distinguishable by band.
     "MNQ": (8_000.0, 32_000.0),
-    "NQ":  (8_000.0, 32_000.0),
+    "NQ": (8_000.0, 32_000.0),
     "NQ_F": (8_000.0, 32_000.0),
     # S&P 500 futures. Equity "ES" = ESSA Pharma (~$1-$15 penny stock).
     # Band ceiling set above 2026 all-time highs (~$7036).
     "MES": (3_000.0, 8_500.0),
-    "ES":  (3_000.0, 8_500.0),
+    "ES": (3_000.0, 8_500.0),
     "ES_F": (3_000.0, 8_500.0),
     # Gold futures. Equity "GC" is various small caps (<$100).
     # Band ceiling set above 2026 all-time highs (~$5591).
     "MGC": (1_400.0, 6_500.0),
-    "GC":  (1_400.0, 6_500.0),
+    "GC": (1_400.0, 6_500.0),
     # Russell 2000 micro futures.
     "M2K": (1_000.0, 3_500.0),
     "RTY": (1_000.0, 3_500.0),
     # Dow micro futures.
     "MYM": (25_000.0, 55_000.0),
-    "YM":  (25_000.0, 55_000.0),
+    "YM": (25_000.0, 55_000.0),
     # Silver futures ($/oz).
-    "SI":  (12.0, 80.0),
+    "SI": (12.0, 80.0),
     # 10-year / 30-year treasuries (price points — different order).
-    "ZB":  (90.0, 185.0),
-    "ZN":  (90.0, 155.0),
+    "ZB": (90.0, 185.0),
+    "ZN": (90.0, 155.0),
     # Benchmark equity ETFs (and FX micro futures) also live in the backtest
     # cache. For an ETF the symbol *is* the equity, so there is no futures/equity
     # ticker collision to detect (unlike ES=ESSA Pharma or GC=small caps) -- these
@@ -87,13 +87,14 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     "M6E": (0.80, 1.70),    # Micro EUR/USD
 }
 
+
 # For MCL specifically, Colgate-Palmolive's daily close stays within ~1-2%
 # day-to-day. Crude oil's daily close commonly moves 2-4%. If the cache's
 # mean absolute daily return is below this threshold AND the price band is
 # in the overlap zone ($70-$95), we flag the file as SUSPECT rather than
 # CONTAMINATED.
 CRUDE_DAILY_VOL_FLOOR = 0.012  # 1.2% daily stdev is the ceiling for Colgate,
-                                # the floor for crude
+# the floor for crude
 
 
 def symbol_from_filename(name: str) -> str:
@@ -121,7 +122,9 @@ def read_closes(csv_path: Path) -> tuple[list[float], list[str]]:
             # The backtest data loader writes columns Date,Open,High,Low,Close,Volume.
             # Be permissive about casing.
             close_key = next((k for k in row if k and k.lower() == "close"), None)
-            date_key = next((k for k in row if k and k.lower() in {"date", "datetime", "timestamp"}), None)
+            date_key = next(
+                (k for k in row if k and k.lower() in {"date", "datetime", "timestamp"}), None
+            )
             if close_key is None:
                 continue
             try:
@@ -145,40 +148,62 @@ def daily_volatility_from_closes(closes: list[float]) -> float:
         return 0.0
     mean = sum(rets) / len(rets)
     var = sum((r - mean) ** 2 for r in rets) / len(rets)
-    return var ** 0.5
+    return var**0.5
 
 
 def classify(path: Path) -> dict:
     symbol = symbol_from_filename(path.name)
     closes, dates = read_closes(path)
     if not closes:
-        return {"path": path, "symbol": symbol, "verdict": "EMPTY", "reason": "no close column or no rows"}
+        return {
+            "path": path,
+            "symbol": symbol,
+            "verdict": "EMPTY",
+            "reason": "no close column or no rows",
+        }
     band = FUTURES_PRICE_BAND.get(symbol)
     if band is None:
-        return {"path": path, "symbol": symbol, "verdict": "UNKNOWN_SYMBOL", "reason": f"no band for {symbol}"}
+        return {
+            "path": path,
+            "symbol": symbol,
+            "verdict": "UNKNOWN_SYMBOL",
+            "reason": f"no band for {symbol}",
+        }
     low, high = band
     first, last = closes[0], closes[-1]
     mn, mx = min(closes), max(closes)
     in_band = low <= mn and mx <= high
     if not in_band:
         return {
-            "path": path, "symbol": symbol, "verdict": "CONTAMINATED",
+            "path": path,
+            "symbol": symbol,
+            "verdict": "CONTAMINATED",
             "reason": f"prices {mn:.2f}-{mx:.2f} outside futures band {low:.0f}-{high:.0f}",
-            "first": first, "last": last, "bars": len(closes),
+            "first": first,
+            "last": last,
+            "bars": len(closes),
         }
     # For crude oil in the overlap zone, sanity-check volatility.
     if symbol in {"MCL", "CL"} and 70 <= mn and mx <= 95:
         vol = daily_volatility_from_closes(closes)
         if vol < CRUDE_DAILY_VOL_FLOOR:
             return {
-                "path": path, "symbol": symbol, "verdict": "SUSPECT",
+                "path": path,
+                "symbol": symbol,
+                "verdict": "SUSPECT",
                 "reason": f"vol {vol:.4f} below crude floor {CRUDE_DAILY_VOL_FLOOR}; could be Colgate-Palmolive",
-                "first": first, "last": last, "bars": len(closes),
+                "first": first,
+                "last": last,
+                "bars": len(closes),
             }
     return {
-        "path": path, "symbol": symbol, "verdict": "CLEAN",
+        "path": path,
+        "symbol": symbol,
+        "verdict": "CLEAN",
         "reason": f"range {mn:.2f}-{mx:.2f} within {low:.0f}-{high:.0f}",
-        "first": first, "last": last, "bars": len(closes),
+        "first": first,
+        "last": last,
+        "bars": len(closes),
     }
 
 
@@ -198,7 +223,7 @@ def main() -> int:
 
     print(f"\n{'='*80}")
     print(f"Polygon Futures Contamination Audit — {len(csvs)} cache files")
-    print("="*80)
+    print("=" * 80)
 
     for verdict in ["CONTAMINATED", "SUSPECT", "UNKNOWN_SYMBOL", "EMPTY", "CLEAN"]:
         rows = by_verdict.get(verdict, [])
@@ -218,10 +243,10 @@ def main() -> int:
     if contaminated or suspect:
         print(f"RESULT: {len(contaminated)} CONTAMINATED, {len(suspect)} SUSPECT.")
         print("Recommended action: move flagged CSVs out of cache/ before next backtest.")
-        print("="*80)
+        print("=" * 80)
         return 1
     print("RESULT: cache is CLEAN. No futures files match equity-ticker price ranges.")
-    print("="*80)
+    print("=" * 80)
     return 0
 
 

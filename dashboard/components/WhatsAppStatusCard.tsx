@@ -109,22 +109,26 @@ export function WhatsAppStatusCard() {
 
   const { configured, lastAlert, totalAlerts, error } = state;
 
-  const connectionBadgeVariant: "bull" | "bear" | "info" | "neutral" =
+  // NOTE: `configured` reflects whether any alert has ever been *sent* (from
+  // /alerts/stats), NOT a live Twilio credential/handshake check. Label it as
+  // alert flow, and never render an affirmative "configured" badge when the
+  // engine is unreachable — an outage must not read as healthy.
+  const connectionBadgeVariant: "bull" | "warn" | "neutral" =
     error
-      ? "info"
+      ? "neutral"
       : configured === true
       ? "bull"
       : configured === false
-      ? "bear"
+      ? "warn"
       : "neutral";
 
   const connectionLabel =
     error
-      ? "Configured via Twilio"
+      ? "Engine Offline"
       : configured === true
-      ? "Connected"
+      ? "Alerts Active"
       : configured === false
-      ? "Disconnected"
+      ? "No Alerts Sent"
       : "Checking…";
 
   const recentType = lastAlert
@@ -192,7 +196,7 @@ export function WhatsAppStatusCard() {
           {/* Fallback note when engine is unreachable */}
           {error && (
             <p className="pt-2 text-[11px] text-muted-foreground">
-              Engine offline — WhatsApp configured via Twilio (TWILIO_ACCOUNT_SID / WHATSAPP_TO).
+              Engine offline — WhatsApp alert status unavailable.
             </p>
           )}
         </div>

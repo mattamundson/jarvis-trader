@@ -11,6 +11,7 @@ import { BacktestComparisonCard } from "@/components/BacktestComparisonCard";
 import { StrategyParamsCard } from "@/components/StrategyParamsCard";
 import { SignalAccuracyWidget } from "@/components/SignalAccuracyWidget";
 import { LongShortBalanceWidget } from "@/components/LongShortBalanceWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { DecisionBreakdownCard } from "@/components/DecisionBreakdownCard";
 import { LightweightSeriesChart, type SeriesPoint } from "@/components/charts/LightweightSeriesChart";
 
@@ -512,10 +513,14 @@ export default function BacktestPage() {
         <BacktestComparisonCard />
 
         {/* Signal Accuracy by direction */}
-        <SignalAccuracyWidget />
+        <WidgetErrorBoundary name="Signal Accuracy">
+          <SignalAccuracyWidget />
+        </WidgetErrorBoundary>
 
         {/* Long vs Short balance vs backtest benchmark */}
-        <LongShortBalanceWidget />
+        <WidgetErrorBoundary name="Long/Short Balance">
+          <LongShortBalanceWidget />
+        </WidgetErrorBoundary>
 
         {/* Decision breakdown from pipeline history */}
         <DecisionBreakdownCard />
