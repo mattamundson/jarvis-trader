@@ -36,6 +36,7 @@ import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 
@@ -574,6 +575,17 @@ export default function CommandCenterPage() {
       <div className="mb-4">
         <WidgetErrorBoundary name="Pipeline Reasoning">
           <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          SESSION BRIEF — proactive advisor recommendations. Re-homed here from
+          the dissolved kitchen-sink overview page (#274 feature preserved on the
+          flagship HUD after the P2.1 redirect orphaned its old mount point).
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Session Brief">
+          <SessionBriefPanel />
         </WidgetErrorBoundary>
       </div>
 
