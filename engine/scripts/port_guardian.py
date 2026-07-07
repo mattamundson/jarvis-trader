@@ -59,7 +59,12 @@ PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring fa
 # still reports "online" while nothing answers. A background watchdog polls /health up
 # to READINESS_DEADLINE (covers the ~229s steady-state startup with margin) and forces a
 # non-zero exit if the server never comes up — so PM2 actually restarts a dead engine.
-READINESS_DEADLINE = 360      # seconds to wait for /health to serve before declaring the start dead
+# Seconds to wait for /health to serve before declaring the start dead. Steady-state
+# boot is ~229s; 360s leaves margin. Under heavy machine contention boot can exceed
+# 360s (4 health-timeout restarts on 2026-07-06) — env-tunable so the ceiling can be
+# raised for contention headroom without a code change (the P0.5 health-latency fix
+# addresses the root cause; this is the operator knob).
+READINESS_DEADLINE = int(os.getenv("PORT_GUARDIAN_READINESS_DEADLINE", "360"))
 READINESS_POLL = 5            # seconds between readiness probes
 # Probe timeout for a single /health poll. /health can momentarily spike to 5-12s
 # under machine contention (blocking SQLite reads on the async loop while the box

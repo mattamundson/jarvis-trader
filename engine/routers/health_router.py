@@ -394,7 +394,11 @@ async def _health_inner() -> dict:
     db_ok = False
     try:
         if db_manager:
-            db_manager.health_check()
+            # Cheap liveness (SELECT 1), not the 8-COUNT(*) health_check whose counts
+            # /health discards — and run it off the event loop so even the once-per-
+            # TTL cache-miss recompute can't block the async loop under contention.
+            # DatabaseManager opens a fresh connection per call, so to_thread is safe.
+            await asyncio.to_thread(db_manager.ping)
             db_ok = True
     except Exception:
         pass
@@ -450,7 +454,7 @@ async def _health_inner() -> dict:
     pending_approvals = {"count": 0, "oldest_age_min": None}
     try:
         if db_manager:
-            stats = db_manager.get_pending_approval_stats()
+            stats = await asyncio.to_thread(db_manager.get_pending_approval_stats)
             oldest = stats.get("oldest_created_at")
             age_min = None
             if oldest:
