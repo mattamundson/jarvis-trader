@@ -364,6 +364,30 @@ class StrategyOptimizer:
         logger.info("Starting optimization loop: symbol=%s, interval=%s, max_iter=%d",
                     self.symbol, self.interval, max_iterations)
 
+        # OOS contamination guard (advisory) — ml-pitfalls-defense.md pitfall #4.
+        # Each optimization campaign re-consults the held-out data; record it in the
+        # OOS-access ledger (added in #234) and WARN if this quarter's cap is already
+        # spent. Diagnostic-first per the rule: this records + warns but never blocks
+        # the run, and never raises into the loop. Flipping to the enforcing
+        # record_if_within_budget() is the ledger author's reserved follow-up.
+        try:
+            from analytics.oos_access_ledger import budget_status, record_access
+
+            record_access(
+                purpose=f"optimizer:{self.symbol}:{self.interval}:{max_iterations}iter",
+                extra={"symbol": self.symbol, "interval": self.interval},
+            )
+            _oos = budget_status()
+            if _oos.exceeded:
+                logger.warning(
+                    "[OOSLedger] %s OOS-access budget spent: %d/%d in %s. Data-snooping "
+                    "risk — prefer locking the spec and forward-testing over another "
+                    "optimizer pass. Advisory only.",
+                    self.symbol, _oos.used, _oos.cap, _oos.quarter,
+                )
+        except (ImportError, OSError):
+            logger.debug("OOS ledger unavailable; continuing without accounting", exc_info=True)
+
         for _i in range(max_iterations):
             result = self.run_one_iteration()
 

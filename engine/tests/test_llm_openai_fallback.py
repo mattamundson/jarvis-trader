@@ -56,7 +56,8 @@ class TestOpenAIFallbackInit:
 
     def test_disabled_by_flag_zero(self, tmp_path, monkeypatch):
         client = _make_client(
-            tmp_path, monkeypatch,
+            tmp_path,
+            monkeypatch,
             OPENAI_API_KEY="sk-test-key",
             JARVIS_LLM_OPENAI_FALLBACK="0",
         )
@@ -64,7 +65,8 @@ class TestOpenAIFallbackInit:
 
     def test_disabled_by_flag_false(self, tmp_path, monkeypatch):
         client = _make_client(
-            tmp_path, monkeypatch,
+            tmp_path,
+            monkeypatch,
             OPENAI_API_KEY="sk-test-key",
             JARVIS_LLM_OPENAI_FALLBACK="false",
         )
@@ -77,7 +79,8 @@ class TestOpenAIFallbackInit:
     def test_custom_endpoint(self, tmp_path, monkeypatch):
         """Azure OpenAI or proxy endpoint override."""
         client = _make_client(
-            tmp_path, monkeypatch,
+            tmp_path,
+            monkeypatch,
             OPENAI_API_KEY="sk-x",
             OPENAI_ENDPOINT="https://my-azure.openai.azure.com/v1/chat/completions",
         )
@@ -90,7 +93,8 @@ class TestOpenAIFallbackInit:
     def test_ollama_provider_openai_key_still_configures(self, tmp_path, monkeypatch):
         """Ollama provider + OpenAI key: flag is enabled (key present, no override)."""
         client = _make_client(
-            tmp_path, monkeypatch,
+            tmp_path,
+            monkeypatch,
             JARVIS_LLM_PROVIDER="ollama",
             OPENAI_API_KEY="sk-x",
         )
@@ -106,9 +110,13 @@ class TestOpenAIFailoverMap:
         assert client.OPENAI_FAILOVER_MAP["claude-opus-4-7"] == "gpt-4o"
         assert client.OPENAI_FAILOVER_MAP["claude-opus-4-6"] == "gpt-4o"
 
-    def test_sonnet_maps_to_gpt4o_mini(self, tmp_path, monkeypatch):
+    def test_sonnet_maps_to_gpt4o(self, tmp_path, monkeypatch):
+        # Sonnet is a decision-grade tier (trader/risk_manager/debate agents),
+        # so it fails over to the equivalent-capability gpt-4o, NOT the cheap
+        # gpt-4o-mini tier — matching the OPENAI_FAILOVER_MAP comment and the
+        # GOOGLE_FAILOVER_MAP philosophy (Sonnet -> gemini-2.5-pro, the strong tier).
         client = _make_client(tmp_path, monkeypatch)
-        assert client.OPENAI_FAILOVER_MAP["claude-sonnet-4-6"] == "gpt-4o-mini"
+        assert client.OPENAI_FAILOVER_MAP["claude-sonnet-4-6"] == "gpt-4o"
 
     def test_haiku_maps_to_gpt4o_mini(self, tmp_path, monkeypatch):
         client = _make_client(tmp_path, monkeypatch)
@@ -137,8 +145,7 @@ class TestOpenAICostTable:
     def test_gpt4o_mini_cheaper_than_gpt4o(self, tmp_path, monkeypatch):
         client = _make_client(tmp_path, monkeypatch)
         assert (
-            client.COST_PER_MTOK["gpt-4o-mini"]["input"]
-            < client.COST_PER_MTOK["gpt-4o"]["input"]
+            client.COST_PER_MTOK["gpt-4o-mini"]["input"] < client.COST_PER_MTOK["gpt-4o"]["input"]
         )
 
     def test_context_limits_set(self, tmp_path, monkeypatch):
@@ -261,12 +268,11 @@ def _credit_exhaustion_error():
 
 class TestOpenAIFallbackChain:
     @pytest.mark.asyncio
-    async def test_openai_fires_when_anthropic_and_gemini_both_fail(
-        self, tmp_path, monkeypatch
-    ):
+    async def test_openai_fires_when_anthropic_and_gemini_both_fail(self, tmp_path, monkeypatch):
         """Full chain: Anthropic credit-exhaustion → Gemini exception → OpenAI succeeds."""
         client = _make_client(
-            tmp_path, monkeypatch,
+            tmp_path,
+            monkeypatch,
             GOOGLE_API_KEY="gemini-key",
             OPENAI_API_KEY="sk-openai-key",
         )
@@ -298,7 +304,8 @@ class TestOpenAIFallbackChain:
     async def test_openai_not_called_when_gemini_succeeds(self, tmp_path, monkeypatch):
         """If Gemini succeeds, OpenAI must not be called."""
         client = _make_client(
-            tmp_path, monkeypatch,
+            tmp_path,
+            monkeypatch,
             GOOGLE_API_KEY="gemini-key",
             OPENAI_API_KEY="sk-openai-key",
         )
@@ -336,7 +343,8 @@ class TestOpenAIFallbackChain:
         _LLM_PATH_STATE["healthy"] = True  # ensure clean start; test verifies transition to False
 
         client = _make_client(
-            tmp_path, monkeypatch,
+            tmp_path,
+            monkeypatch,
             GOOGLE_API_KEY="gemini-key",
             # No OPENAI_API_KEY
         )

@@ -157,6 +157,50 @@ class TestConfidenceAdjustmentMultiplierClamping:
         clamped = max(0.05, min(0.95, result))
         assert clamped == 0.05
 
+
+class _FakeFetchAllDB:
+    """Minimal db_manager exposing the sync fetch_all(sql, params) the live
+    engine's DatabaseManager (database/manager.py) actually provides — used to
+    prove the scorer no longer falls through to the no-op 1.0 multiplier."""
+
+    def __init__(self, rows):
+        self._rows = rows
+        self.calls = []
+
+    def fetch_all(self, sql, params=()):
+        self.calls.append((sql, params))
+        return list(self._rows)
+
+
+@pytest.mark.asyncio
+class TestFetchAllPath:
+    """The running engine's db_manager exposes fetch_all (not query/query_async).
+
+    Before the fix, _fetch_symbol_trades probed only query/query_async, fell to
+    the else branch, logged 'db_manager has no query method', and returned []
+    -> every adjustment was a silent 1.0 no-op on real trade history.
+    """
+
+    async def test_fetch_all_path_activates_multiplier(self):
+        # 20 winning trades -> win_rate 1.0, no losers -> r_ratio 1.0 -> 1.10 boost
+        rows = [{"pnl": 100.0} for _ in range(20)]
+        db = _FakeFetchAllDB(rows)
+        result = await get_confidence_adjustment("MES", db)
+        assert result == 1.10
+        # Proves it actually used fetch_all, scoped to this symbol's closed trades
+        assert db.calls, "fetch_all was never called"
+        sql, params = db.calls[0]
+        assert "status = 'closed'" in sql
+        assert "paper_trades" in sql
+        assert params == ("MES",)
+
+    async def test_fetch_all_below_min_trades_returns_1_0(self):
+        # Fewer than MIN_TRADES_REQUIRED -> neutral 1.0
+        rows = [{"pnl": 100.0} for _ in range(5)]
+        db = _FakeFetchAllDB(rows)
+        result = await get_confidence_adjustment("MES", db)
+        assert result == 1.0
+
     def test_conviction_clamping_middle(self):
         """Final conviction stays in range when within bounds."""
         initial = 0.50

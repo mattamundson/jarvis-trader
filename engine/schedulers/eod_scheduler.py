@@ -422,6 +422,61 @@ class EODScheduler:
             logger.warning("[EOD] No db_manager — snapshot not persisted")
             snapshot["status"] = "no_db"
 
+        # Phantom detector (2026-07-02) — flag-only. Scan the closed ledger for
+        # suspicious trades (duplicate bookings, pnl/price inconsistency,
+        # contaminated-entry outliers) so Amo gets a fresh, evidence-tagged list
+        # to confirm-mark (mark_phantom_trades.py) BEFORE the next snapshot trusts
+        # them. It never mutates a row and never blocks the EOD flow; it only
+        # attaches the list to the snapshot and logs it. The list shrinks
+        # automatically as suspects are marked phantom (excluded next run).
+        if self._db is not None and hasattr(self._db, "get_trade_history"):
+            try:
+                from analytics.phantom_detector import (
+                    detect_suspect_closed_trades,
+                    format_suspect_report,
+                )
+
+                suspects = detect_suspect_closed_trades(self._db)
+                snapshot["suspects"] = [s.as_dict() for s in suspects]
+                if suspects:
+                    logger.warning("[EOD] %s", format_suspect_report(suspects))
+                else:
+                    logger.info("[EOD] phantom-detector: 0 suspect closed trades.")
+            except Exception as exc:
+                logger.error("[EOD] phantom detector failed: %s", exc)
+
+        # Self-heal historical drift (2026-07-02). A phantom/duplicate trade is
+        # often reclassified (manual mark_phantom_trades.py) DAYS after it was
+        # booked status='closed' and counted by an EOD snapshot. The detective
+        # control (reconcile_daily_pnl) then flags the now-stale rows; here we
+        # apply the corrective control so the table self-corrects on the next EOD
+        # run — rebuilding drifted rows from the closed ledger with the same
+        # anchoring this writer uses. DB-only, reversible, idempotent, and never
+        # blocks the EOD flow (a heal failure is logged, not raised). NOTE: a
+        # heal zeroes the reporting-only max_drawdown/unrealized columns on
+        # rebuilt rows (per-day intraday DD isn't reconstructable from EOD closed
+        # rows); nothing load-bearing reads them (the kill-switch uses
+        # portfolio_equity, not daily_pnl.max_drawdown).
+        if self._db is not None and hasattr(self._db, "reconcile_daily_pnl"):
+            try:
+                recon = self._db.reconcile_daily_pnl()
+                if not recon.get("ok", True):
+                    repair = self._db.repair_daily_pnl(
+                        initial_capital=_DEFAULT_STARTING_BALANCE, dry_run=False
+                    )
+                    logger.warning(
+                        "[EOD] daily_pnl drift on %d date(s) — self-heal %s "
+                        "(%d rows changed, %d orphans removed, final_ending=%.2f)",
+                        recon.get("drift_count", 0),
+                        "APPLIED" if repair.get("applied") else "no-op",
+                        repair.get("rows_changed", 0),
+                        repair.get("orphans_removed", 0),
+                        repair.get("final_ending", 0.0),
+                    )
+                    snapshot["self_heal"] = repair
+            except Exception as exc:
+                logger.error("[EOD] daily_pnl self-heal failed: %s", exc)
+
         # Send WhatsApp EOD summary
         if self._notifier is not None:
             try:
@@ -742,14 +797,10 @@ class EODScheduler:
 
         # Surface a graduation loudly — it is the whole point of the loop and is
         # rare. Best-effort; a notifier failure must not fail the job.
-        if n_grad > 0 and self._notifier is not None and getattr(
-            self._notifier, "enabled", False
-        ):
+        if n_grad > 0 and self._notifier is not None and getattr(self._notifier, "enabled", False):
             try:
                 grads = [
-                    c.get("id", "?")
-                    for c in report.get("candidates", [])
-                    if c.get("graduated")
+                    c.get("id", "?") for c in report.get("candidates", []) if c.get("graduated")
                 ]
                 msg = (
                     "JARVIS forward-test: "

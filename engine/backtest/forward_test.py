@@ -333,6 +333,92 @@ def trade_shuffle_diag(
     }
 
 
+# ── deflated Sharpe diagnostic (Bailey & López de Prado) — REPORT ONLY ──────────
+#
+# NON-BLOCKING. Deflates a unit's realized-P&L Sharpe for the number of strategies /
+# lineages tried (the multiple-testing null: "the best of N random tries"). Attached
+# to the REPORT for observation only — NOT consumed by ``meets_graduation``;
+# graduation inputs (``forward_stats`` + family FDR) are deliberately untouched.
+# DSR is already gated in the gate-v2 optimizer path (``deflated_sharpe.py`` via
+# ``_gate_v2_trade_metrics``) but the live forward record — the unit that actually
+# trades — has had no DSR at all. This only surfaces the same statistic there.
+# Promoting it to a blocking graduation gate is a separate [safety-review] change,
+# to be made only after the values are observed on the thin live MES/MGC series.
+
+
+def dsr_diag(trades: list[dict], n_trials: int, ann_factor: float = 252.0) -> dict[str, Any]:
+    """Deflated Sharpe Ratio over a unit's realized per-trade P&L. Report-only diagnostic.
+
+    Mirrors ``trade_shuffle_diag``: attached to the report, NOT consumed by
+    ``meets_graduation``. ``n_trials`` is the number of independent lineages /
+    candidates tested (the multiple-testing count) — pass the family size. Sharpe is
+    scale-invariant, so per-trade P&L is used directly as the return series.
+    Fail-closed to ``dsr=0.0`` under ~2 trades. Lazy-imports the DSR module so
+    ``forward_test`` stays cheap to import.
+    """
+    from backtest.deflated_sharpe import deflated_sharpe_from_returns  # noqa: PLC0415
+
+    pnls = [float(t["pnl"]) for t in trades if t.get("pnl") is not None]
+    res = deflated_sharpe_from_returns(pnls, n_trials=max(1, int(n_trials)), ann_factor=ann_factor)
+    return {
+        "dsr": res["dsr"],
+        "raw_sharpe": res["raw_sharpe"],
+        "expected_max_sharpe": res["expected_max_sharpe"],
+        "passes_at_10pct": res["passes_at_10pct"],
+        "n_trades": res["n_obs"],
+        "n_trials": res["n_trials"],
+    }
+
+
+# ── statistical graduation gate (DSR + trade-shuffle MCPT) — DORMANT ─────────────
+#
+# Turns the two report-only diagnostics above into graduation GATES, but OFF by
+# default and abstaining on thin samples. When FORWARD_STAT_GATE_ENFORCE is truthy
+# AND a unit has >= STAT_GATE_MIN_TRADES realized trades, graduation additionally
+# requires DSR >= dsr_min AND trade-shuffle p < TRADE_SHUFFLE_P_MAX. It is AND-ed onto
+# meets_graduation, so it can only ever make graduation MORE restrictive — it never
+# rescues a non-graduating unit. Default-OFF + thin-sample abstain keep it inert on
+# today's 16-trade (MES) / 67-trade (MGC) series (ml-pitfalls-defense.md #3, #9:
+# observe the values live before letting them block). Enabling is an Amo Tier-3 flip.
+
+DSR_GATE_MIN = 0.10  # gate-v2 GATE_DSR (CORE)
+DSR_GATE_MIN_ALT = 0.30  # gate-v2 GATE_DSR_ALT
+TRADE_SHUFFLE_P_MAX = 0.05  # Aronson sign-flip null
+STAT_GATE_MIN_TRADES = 30  # abstain below this (thin-sample power, ml-pitfalls #9)
+
+
+def forward_stat_gate_enforced() -> bool:
+    """Whether the DSR + trade-shuffle graduation gate BLOCKS (vs report-only).
+
+    Shadow-default OFF (env unset → False), mirroring the promotion-gate house
+    convention. When off, graduation is exactly ``meets_graduation(...)`` as before.
+    Flipping ``FORWARD_STAT_GATE_ENFORCE`` truthy is an Amo Tier-3 act, to be made
+    only after the DSR / ts_p values are observed on the live series.
+    """
+    return os.getenv("FORWARD_STAT_GATE_ENFORCE", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def stat_gate_verdict(dsr_res: dict, shuffle_res: dict, *, dsr_min: float = DSR_GATE_MIN) -> dict:
+    """Dormant DSR + trade-shuffle graduation gate over a unit's diagnostics.
+
+    Returns ``{enforced, abstained, passes, reasons}``. ``passes`` is True (never
+    blocks) when the gate is off or the sample is below ``STAT_GATE_MIN_TRADES``;
+    otherwise it requires ``dsr >= dsr_min`` AND ``trade-shuffle p < TRADE_SHUFFLE_P_MAX``.
+    """
+    enforced = forward_stat_gate_enforced()
+    n_trades = int(dsr_res.get("n_trades", 0) or 0)
+    if not enforced or n_trades < STAT_GATE_MIN_TRADES:
+        return {"enforced": enforced, "abstained": True, "passes": True, "reasons": []}
+    reasons: list[str] = []
+    dsr = float(dsr_res.get("dsr", 0.0) or 0.0)
+    ts_p = float(shuffle_res.get("p_value", 1.0) or 1.0)
+    if dsr < dsr_min:
+        reasons.append(f"dsr {dsr:.3f} < {dsr_min}")
+    if ts_p >= TRADE_SHUFFLE_P_MAX:
+        reasons.append(f"ts_p {ts_p:.3f} >= {TRADE_SHUFFLE_P_MAX}")
+    return {"enforced": True, "abstained": False, "passes": not reasons, "reasons": reasons}
+
+
 # ── the loop ───────────────────────────────────────────────────────────────────
 
 
@@ -390,25 +476,31 @@ def run_lineage_track(
         stem = str(lineage).split("::", 1)[0]
         strategy_type = reg_types.get(stem, "-")  # unregistered -> context-only, no class
         grad_stats = {**stats, "survives_family_fdr": survives[i]}
-        graduated = pre_reg and dr.meets_graduation(grad_stats, reg)
+        ts_res = trade_shuffle_diag(buckets[lineage])
+        dsr_res = dsr_diag(buckets[lineage], n_trials=len(rows))
+        stat_gate = stat_gate_verdict(dsr_res, ts_res)  # dormant unless enforced
+        base_graduated = pre_reg and dr.meets_graduation(grad_stats, reg)
+        graduated = base_graduated and stat_gate["passes"]
         if not pre_reg:
             reason = (
                 "default-material (unregistered) lineage -- pre-register it before "
                 "its forward window is counted to enable graduation"
             )
-        elif graduated:
-            reason = "graduated: forward OOS record clears the decision-registry rule"
-        else:
+        elif not base_graduated:
             reason = "not yet graduated: forward record does not clear the rule"
+        elif not stat_gate["passes"]:
+            reason = "stat-gate block: " + "; ".join(stat_gate["reasons"])
+        else:
+            reason = "graduated: forward OOS record clears the decision-registry rule"
         out.append(
             {
                 "lineage": lineage,
                 "strategy_type": strategy_type,
                 "pre_registered": pre_reg,
                 "forward": stats,
-                "trade_shuffle": trade_shuffle_diag(
-                    buckets[lineage]
-                ),  # report-only; not in graduation
+                "trade_shuffle": ts_res,  # report-only diagnostic
+                "dsr": dsr_res,  # report-only diagnostic
+                "stat_gate": stat_gate,  # dormant DSR+MCPT gate (off by default)
                 "survives_family_fdr": survives[i],
                 "graduated": graduated,
                 "reason": reason,
@@ -471,16 +563,22 @@ def run_forward_test(
         cand, level, stats = r["cand"], r["level"], r["stats"]
         precise = level in _PRECISE_LEVELS
         grad_stats = {**stats, "survives_family_fdr": survives[i]}
-        graduated = precise and meets_graduation(grad_stats, reg)
+        ts_res = trade_shuffle_diag(r["trades"])
+        dsr_res = dsr_diag(r["trades"], n_trials=len(rows))
+        stat_gate = stat_gate_verdict(dsr_res, ts_res)  # dormant unless enforced
+        base_graduated = precise and meets_graduation(grad_stats, reg)
+        graduated = base_graduated and stat_gate["passes"]
         if not precise:
             reason = (
                 f"attribution is '{level or 'none'}' -- tag trades with candidate_id "
                 "to enable graduation (symbol level cannot disambiguate same-symbol candidates)"
             )
-        elif graduated:
-            reason = "graduated: forward OOS record clears the registry rule"
-        else:
+        elif not base_graduated:
             reason = "not yet graduated: forward record does not clear the rule"
+        elif not stat_gate["passes"]:
+            reason = "stat-gate block: " + "; ".join(stat_gate["reasons"])
+        else:
+            reason = "graduated: forward OOS record clears the registry rule"
         candidates_out.append(
             {
                 "id": cand["id"],
@@ -488,7 +586,9 @@ def run_forward_test(
                 "attribution_level": level,
                 "precise_attribution": precise,
                 "forward": stats,
-                "trade_shuffle": trade_shuffle_diag(r["trades"]),  # report-only; not in graduation
+                "trade_shuffle": ts_res,  # report-only diagnostic
+                "dsr": dsr_res,  # report-only diagnostic
+                "stat_gate": stat_gate,  # dormant DSR+MCPT gate (off by default)
                 "survives_family_fdr": survives[i],
                 "graduated": graduated,
                 "reason": reason,
@@ -527,8 +627,10 @@ def run_forward_test(
             "stamped on live paper entries (P2) -- the unit that actually trades; they "
             "graduate against the decision_registry. Default-material (unregistered:*) "
             "lineages can clear the stats but never graduate -- pre-register a lineage "
-            "before its forward window counts. ts_p (trade_shuffle p-value) is a "
-            "REPORT-ONLY Aronson sign-flip diagnostic; it does NOT affect graduation."
+            "before its forward window counts. ts_p (trade_shuffle p-value) and dsr "
+            "(deflated Sharpe) are report-only by default; they gate graduation only "
+            "when FORWARD_STAT_GATE_ENFORCE is on (dormant, Tier-3) and the sample is "
+            "thick enough — see stat_gate per row."
         ),
     }
     if persist:  # pragma: no cover - file IO exercised live
@@ -548,8 +650,8 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- active candidates: {report['n_active_candidates']}  |  "
         f"graduated: **{report['n_graduated']}**",
         "",
-        "| candidate | sym | attribution | n_oos | p_edge | pf_ci_lo | ts_p | fdr | graduated |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| candidate | sym | attribution | n_oos | p_edge | pf_ci_lo | ts_p | dsr | fdr | graduated |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for c in report["candidates"]:
         f = c["forward"]
@@ -558,6 +660,7 @@ def _markdown(report: dict[str, Any]) -> str:
             f"| {c['id']} | {c['symbol']} | {c['attribution_level'] or '-'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
             f"{ts.get('p_value', '-')} | "
+            f"{c.get('dsr', {}).get('dsr', '-')} | "
             f"{'Y' if c['survives_family_fdr'] else '.'} | "
             f"{'YES' if c['graduated'] else 'no'} |"
         )
@@ -569,8 +672,8 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- lineages: {report.get('n_lineages', 0)}  |  "
         f"graduated: **{report.get('n_lineages_graduated', 0)}**",
         "",
-        "| lineage | type | pre-reg | n_oos | p_edge | pf_ci_lo | ts_p | fdr | graduated |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| lineage | type | pre-reg | n_oos | p_edge | pf_ci_lo | ts_p | dsr | fdr | graduated |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for lin in lineages:
         f = lin["forward"]
@@ -580,11 +683,12 @@ def _markdown(report: dict[str, Any]) -> str:
             f"{'Y' if lin['pre_registered'] else '.'} | "
             f"{f['n_oos_windows']} | {f['p_edge']} | {f['pf_ci_lower']} | "
             f"{ts.get('p_value', '-')} | "
+            f"{lin.get('dsr', {}).get('dsr', '-')} | "
             f"{'Y' if lin['survives_family_fdr'] else '.'} | "
             f"{'YES' if lin['graduated'] else 'no'} |"
         )
     if not lineages:
-        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |  |")
+        lines.append("| _(no live trades carry a decision_identity yet)_ |  |  |  |  |  |  |  |  |")
     lines += [
         "",
         "## Symbol context (all closed trades per symbol)",

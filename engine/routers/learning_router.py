@@ -572,10 +572,16 @@ async def get_confidence_score(symbol: str):
         # Fetch trades for this symbol
         db_path = _get_db_path()
         cutoff = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        # paper_trades has no `outcome`/`created_at` columns; win/loss is derived
+        # from the pnl sign in _compute_local_metrics. Count only closed,
+        # realized-pnl rows and order by exit_time (matching _fetch_closed_trades
+        # above and learning/confidence_scorer). Before this fix the query raised
+        # "no such column: outcome" so this endpoint failed for every symbol.
         sql = """
-            SELECT pnl, outcome FROM paper_trades
-            WHERE symbol = ? AND exit_time >= ?
-            ORDER BY created_at DESC LIMIT 100
+            SELECT pnl FROM paper_trades
+            WHERE symbol = ? AND status = 'closed' AND pnl IS NOT NULL
+              AND COALESCE(exit_time, entry_time) >= ?
+            ORDER BY COALESCE(exit_time, entry_time) DESC LIMIT 100
         """
         trades = _query_db(db_path, sql, (symbol, cutoff))
 

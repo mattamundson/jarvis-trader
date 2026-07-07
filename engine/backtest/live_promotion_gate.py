@@ -79,6 +79,37 @@ def promotion_gate_enforced() -> bool:
     return os.getenv("PROMOTION_GATE_ENFORCE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def oos_cap_enforced() -> bool:
+    """Whether the OOS-contamination cap BLOCKS promotion (vs shadow-recorded).
+
+    Shadow-default OFF (env unset → ``False``), mirroring ``promotion_gate_enforced``.
+    When off, the ``oos_budget_ok`` pillar is always satisfied (dormant): the per-quarter
+    OOS-access cap stays a tracked ledger only (``analytics.oos_access_ledger``). Setting
+    ``OOS_CAP_ENFORCE`` truthy makes an exhausted quarterly OOS budget a hard promotion
+    block. House convention, mirrors ``PROMOTION_GATE_ENFORCE``; this flip is Amo Tier-3
+    and should wait until the per-quarter access budget is calibrated.
+    """
+    return os.getenv("OOS_CAP_ENFORCE", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _oos_budget_ok() -> bool:
+    """Read-only OOS-budget pillar for :func:`evaluate_promotion`.
+
+    Dormant (always True) when :func:`oos_cap_enforced` is off. When enforced, returns
+    ``True`` only if this quarter's OOS-access budget is not exhausted. Never records —
+    reads the ledger only. Fail-closed when enforced but the ledger is unreadable
+    (default-deny, matching the module's fail-safe philosophy).
+    """
+    if not oos_cap_enforced():
+        return True
+    try:
+        from analytics.oos_access_ledger import budget_status  # noqa: PLC0415
+
+        return not budget_status().exceeded
+    except Exception:
+        return False  # enforced but unverifiable → block (fail-safe)
+
+
 #: Strategy-class tag whose gate verdict may route through the beta-harvest variant.
 BETA_HARVEST_TAG = "beta_harvest"
 
@@ -150,6 +181,10 @@ def evaluate_promotion(evidence: dict[str, Any]) -> dict[str, Any]:
         criteria["ensemble_not_subneutral"] = (
             isinstance(brier, (int, float)) and brier < ENSEMBLE_BRIER_CEILING
         )
+
+    # OOS-contamination cap (research integrity). Dormant unless OOS_CAP_ENFORCE is on
+    # — default True so promotion behavior is unchanged until the cap is calibrated.
+    criteria["oos_budget_ok"] = _oos_budget_ok()
 
     blocks = [name for name, ok in criteria.items() if not ok]
     return {
