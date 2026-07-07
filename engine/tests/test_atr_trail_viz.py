@@ -27,7 +27,9 @@ def test_viz_payload_shape_and_json_safe():
     import json
     viz = compute_atr_trail_viz(_df(800), "MES", 5, 3.5, max_points=200)
     assert set(viz) >= {"price", "trail", "trades", "equity", "n_trades", "net_usd", "win_rate"}
-    assert len(viz["price"]) <= 210  # downsampled to ~max_points
+    # Downsampled to ~max_points, plus at most 2 extra points per trade (entry +
+    # exit) that fell off the stride and had to be added back in.
+    assert len(viz["price"]) <= 200 + 2 * viz["n_trades"] + 10
     # equity is monotonic in time and cumulative
     if viz["equity"]:
         ts = [e["t"] for e in viz["equity"]]
@@ -38,5 +40,17 @@ def test_viz_payload_shape_and_json_safe():
 
 def test_viz_downsamples_large_series():
     viz = compute_atr_trail_viz(_df(5000), "MES", 5, 3.5, max_points=1000)
-    assert len(viz["price"]) <= 1010
+    assert len(viz["price"]) <= 1000 + 2 * viz["n_trades"] + 10
     assert viz["bars"] == 5000
+
+
+def test_viz_every_trade_marker_has_a_price_anchor():
+    """Every trade entry/exit time must exist in the (possibly downsampled)
+    price series -- AtrTrailChart attaches markers to that series, and
+    lightweight-charts silently drops a marker with no matching point."""
+    viz = compute_atr_trail_viz(_df(5000), "MES", 5, 3.5, max_points=200)
+    price_times = {p["t"] for p in viz["price"]}
+    assert viz["trades"], "test fixture should produce at least one trade"
+    for t in viz["trades"]:
+        assert t["entry_t"] in price_times, "trade entry has no price-series anchor"
+        assert t["exit_t"] in price_times, "trade exit has no price-series anchor"

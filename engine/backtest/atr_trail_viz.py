@@ -85,7 +85,21 @@ def compute_atr_trail_viz(
     trail, state = atr_trailing_stop(df["high"], df["low"], df["close"], period=period, factor=factor)
     n = len(df)
     stride = max(1, math.ceil(n / max_points))
-    idx = range(0, n, stride)
+    strided_idx = set(range(0, n, stride))
+
+    raw = reconstruct_flip_trades(df, symbol, period, factor)
+
+    # Trade entry/exit bars MUST be present in the sampled price series -- it's
+    # the series AtrTrailChart attaches trade markers to, and lightweight-charts
+    # needs an exact point at a marker's time to render it. Without this, entries
+    # falling on a bar the stride skipped silently lose their arrow on any cache
+    # longer than max_points (the common case for multi-month 5m/1h caches).
+    trade_times = pd.DatetimeIndex(
+        [t["entry_time"] for t in raw] + [t["exit_time"] for t in raw]
+    )
+    trade_positions = set(df.index.get_indexer(trade_times)) if len(trade_times) else set()
+    trade_positions.discard(-1)  # defensive; these times come from df.index itself
+    idx = sorted(strided_idx | trade_positions)
 
     price = [{"t": _unix(df.index[i]), "c": float(df["close"].iloc[i])} for i in idx]
     trail_pts = [
@@ -93,8 +107,6 @@ def compute_atr_trail_viz(
         for i in idx
         if not pd.isna(trail.iloc[i])
     ]
-
-    raw = reconstruct_flip_trades(df, symbol, period, factor)
     trades = [
         {
             "entry_t": _unix(t["entry_time"]), "entry_px": t["entry_px"],
