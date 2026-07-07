@@ -15,8 +15,18 @@ suite, so this guard can never drift from the authoritative pytest check:
   * ``daily_pnl_single_writer`` -- no engine file outside the allowlist may emit
     a raw write to the daily_pnl table. SSOT: ``tests/test_daily_pnl_single_writer.py``
     (root cause of the 2026-06 phantom-P&L incident: a second writer with a
-    mismatched balance basis). NOTE: this guard's own source deliberately avoids
-    the literal write signature so the scan does not flag itself.
+    mismatched balance basis).
+  * ``bar_single_writer`` -- every write to the market-bars table must flow
+    through ``save_bars()``. SSOT: ``tests/test_no_direct_bar_writes.py`` (root
+    cause of the 2,655-row poisoning incident: a writer that bypassed the
+    write-time bar-quality gate).
+  * ``anthropic_url_literal`` -- no agent/discord file outside the allowlist may
+    embed the raw Anthropic REST URL (which bypasses the provider fallback
+    chain). SSOT: ``tests/test_no_direct_anthropic_posts.py`` (root cause of the
+    2026-06 credit-exhaustion outage class).
+
+NOTE: this guard's own source deliberately avoids the literal write signatures
+of the whole-engine invariants so the scans do not flag itself.
 
 Exit code: 0 if all invariants hold, 1 if any is violated. Offenders print one
 per line as ``<invariant-id>: <engine-relative-path>`` (or as JSON with
@@ -72,6 +82,47 @@ def find_daily_pnl_offenders(engine_root: Path | None = None) -> list[str]:
     return sorted(offenders)
 
 
+def find_bar_write_offenders(engine_root: Path | None = None) -> list[str]:
+    """Return engine-relative paths that write the market-bars table directly
+    without an allowlist entry, reusing tests/test_no_direct_bar_writes.py as the
+    SSOT for the write literal, the allowlist, and the excluded dirs."""
+    ssot = _load_module("tests/test_no_direct_bar_writes.py")
+    root = engine_root or ENGINE_ROOT
+    offenders: list[str] = []
+    for path in root.rglob("*.py"):
+        rel = path.relative_to(root).as_posix()
+        if any(rel == d or rel.startswith(d + "/") for d in ssot.EXCLUDE_DIRS):
+            continue
+        if rel in ssot.ALLOWLIST:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if ssot.WRITE_LITERAL in text:
+            offenders.append(rel)
+    return sorted(offenders)
+
+
+def find_anthropic_url_offenders(engine_root: Path | None = None) -> list[str]:
+    """Return engine-relative paths (under the scanned dirs) that embed the raw
+    Anthropic REST URL without an allowlist entry, reusing
+    tests/test_no_direct_anthropic_posts.py as the SSOT for the URL literal, the
+    scanned dirs, and the allowlist."""
+    ssot = _load_module("tests/test_no_direct_anthropic_posts.py")
+    root = engine_root or ENGINE_ROOT
+    offenders: list[str] = []
+    for scan_dir in ssot.SCAN_DIRS:
+        base = root / scan_dir
+        if not base.exists():
+            continue
+        for path in base.rglob("*.py"):
+            rel = path.relative_to(root).as_posix()
+            if rel in ssot.ALLOWLIST:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if ssot.URL_LITERAL in text:
+                offenders.append(rel)
+    return sorted(offenders)
+
+
 # Registry of enforced invariants: (id, finder, remediation hint).
 INVARIANTS = [
     (
@@ -80,6 +131,22 @@ INVARIANTS = [
         "un-allowlisted writer of the daily_pnl table -- route the write through "
         "DatabaseManager.upsert_daily_pnl() (inheriting the value guard) or add a "
         "documented ALLOWLIST entry in tests/test_daily_pnl_single_writer.py",
+    ),
+    (
+        "bar_single_writer",
+        find_bar_write_offenders,
+        "un-allowlisted direct writer of the market-bars table -- route the write "
+        "through save_bars() (engine/data/bars_repository.py, inheriting the "
+        "write-time bar-quality gate) or add a documented ALLOWLIST entry in "
+        "tests/test_no_direct_bar_writes.py",
+    ),
+    (
+        "anthropic_url_literal",
+        find_anthropic_url_offenders,
+        "raw Anthropic REST URL outside the allowlist -- route the call through "
+        "JarvisLLMClient.call() (engine/llm/client.py, inheriting the provider "
+        "fallback chain) or add a documented ALLOWLIST entry in "
+        "tests/test_no_direct_anthropic_posts.py",
     ),
 ]
 
