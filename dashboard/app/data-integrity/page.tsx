@@ -164,13 +164,17 @@ export default function DataIntegrityPage() {
         </div>
 
         <div className="p-6 border rounded-xl bg-card">
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-2">
             <Database className="w-6 h-6 text-primary" />
             <h2 className="text-xl font-semibold">Fabric Statistics</h2>
           </div>
+          <p className="text-[11px] text-muted-foreground italic mb-4">
+            Configured targets (not live-probed here) — see{" "}
+            <a href="/health" className="text-blue-400 underline">/health</a> for live subsystem state.
+          </p>
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground italic">
-              Phase 2.6 targets achieved. Monitoring real-time futures ticks (MES, MNQ) and Options Greeks.
+              Designed to monitor real-time futures ticks (MES, MNQ) and Options Greeks.
             </p>
             <div className="mt-4 flex gap-2">
               <Badge variant="neutral">ticks_buffer: 512</Badge>
