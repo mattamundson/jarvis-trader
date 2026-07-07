@@ -47,6 +47,7 @@ import { SameDayPnLBadge } from "@/components/SameDayPnLBadge";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
+import { DurabilityWidget } from "@/components/DurabilityWidget";
 import { MESSprintGate } from "@/components/MESSprintGate";
 import PendingApprovals from "@/components/PendingApprovals";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
@@ -294,6 +295,11 @@ export default function DashboardPage() {
           {/* Same-day P&L reconciliation (C3): aggregate vs independent snapshot */}
           <WidgetErrorBoundary name="Same Day PnL">
             <SameDayPnLBadge />
+          </WidgetErrorBoundary>
+
+          {/* Clean-run durability — days-clean from the down-alert outage ledger */}
+          <WidgetErrorBoundary name="Durability">
+            <DurabilityWidget />
           </WidgetErrorBoundary>
 
           {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
