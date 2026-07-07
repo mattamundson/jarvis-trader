@@ -429,6 +429,21 @@ async def _health_inner() -> dict:
     tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
     ibgateway_alive, ibgateway_port = _check_ibgateway_alive()
 
+    # Execution-connector honesty. `ibkr_execution_connected` comes from the
+    # execution connector's *cached* `is_connected` boolean (execution/
+    # ib_gateway_connector.py `_connected`) which is NOT reconciled against the
+    # live port probe — in paper mode it stays True even after the Gateway logs
+    # out, so /health can report execution-ready while `ibgateway_alive=false`.
+    # That stale True is the 2026-06-01 stop-enforcement-believed-connected class.
+    # Surface a reconciled truth (AND the live port probe) plus an explicit stale
+    # flag so consumers (stop enforcement, dashboard trust-pane) key off verified
+    # state, not the cached belief. Raw field kept for back-compat. Paging on a
+    # logged-out Gateway is already handled by IBDataWatchdog's notify_ib_disconnect;
+    # this only stops /health from *lying*, it does not re-alert.
+    _exec_connected_raw = bool(ib_health.get("execution_connected", False))
+    execution_connected_verified = _exec_connected_raw and bool(ibgateway_alive)
+    ib_execution_stale = _exec_connected_raw and not bool(ibgateway_alive)
+
     # Approval-queue visibility: a candidate that queues but is never approved
     # (e.g. because outbound notifications are silently failing) stalls the whole
     # live-fill path. Surface count + oldest age so a stuck queue is observable.
@@ -501,6 +516,11 @@ async def _health_inner() -> dict:
         "database": "connected" if db_ok else "error",
         "ibkr_connected": ib_health.get("status") == "connected",
         "ibkr_execution_connected": ib_health.get("execution_connected", False),
+        # Reconciled against the live port probe — the field consumers should trust.
+        "execution_connected_verified": execution_connected_verified,
+        # True when the connector believes it's connected but the Gateway port is
+        # dead (logged out) — a silent stop-enforcement hazard made observable.
+        "ib_execution_stale": ib_execution_stale,
         "ibkr_data_connected": ib_health.get("data_connected", False),
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,
