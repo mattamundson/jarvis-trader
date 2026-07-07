@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { JetBrains_Mono, Orbitron } from "next/font/google";
@@ -30,7 +31,6 @@ import {
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
-import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
@@ -39,6 +39,16 @@ import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWid
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
+
+// Candlestick chart (lightweight-charts) — only renders once bar data resolves, so
+// load it on demand to keep lightweight-charts off the command-center landing critical path.
+const CandlestickChart = dynamic(
+  () =>
+    import("@/components/command-center/charts/CandlestickChart").then((m) => ({
+      default: m.CandlestickChart,
+    })),
+  { ssr: false, loading: () => <div className="h-[360px] animate-pulse rounded bg-slate-950/40" /> }
+);
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
