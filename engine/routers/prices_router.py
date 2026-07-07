@@ -3,10 +3,12 @@ Market pricing endpoints with caching and rate limit handling.
 """
 
 import logging
+import time
 
 from fastapi import APIRouter
 
 from data.price_cache import PriceCache
+from data.provenance import DEFAULT_STALE_AFTER_S, derive_is_live
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +49,31 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
         try:
             if _data_manager is not None:
                 price_data = await _data_manager.get_current_price(original_symbol)
+                source = price_data.get("source", "data_manager")
+                as_of = time.time()
+                # Provenance is DERIVED, never hardcoded: a cached/delayed tier
+                # (csv_cache, polygon REST) is never live; an IBKR value is only
+                # live when its data leg is connected. Lets the dashboard render
+                # an honest LIVE/STATIC/STALE badge instead of "fetched recently".
+                ibkr_connected = bool(
+                    getattr(_data_manager, "ibkr", None)
+                    and _data_manager.ibkr.is_connected
+                )
                 data = {
                     "symbol": original_symbol,
                     "last_price": price_data.get("last_price"),
                     "prev_close": price_data.get("prev_close"),
                     "change_pct": price_data.get("change_pct"),
-                    "source": price_data.get("source", "data_manager"),
+                    "source": source,
+                    "as_of": as_of,
+                    "is_live": derive_is_live(
+                        source,
+                        as_of,
+                        DEFAULT_STALE_AFTER_S,
+                        ibkr_data_connected=ibkr_connected,
+                        now=as_of,
+                    ),
+                    "stale_after_s": DEFAULT_STALE_AFTER_S,
                 }
             else:
                 data = None
@@ -66,6 +87,10 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
                     "last_price": None,
                     "prev_close": None,
                     "change_pct": None,
+                    "source": "unavailable",
+                    "as_of": None,
+                    "is_live": False,
+                    "stale_after_s": DEFAULT_STALE_AFTER_S,
                     "error": "No data available",
                 }
         except Exception as e:
@@ -75,6 +100,10 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
                 "last_price": None,
                 "prev_close": None,
                 "change_pct": None,
+                "source": "unavailable",
+                "as_of": None,
+                "is_live": False,
+                "stale_after_s": DEFAULT_STALE_AFTER_S,
                 "error": str(e),
             }
 

@@ -541,6 +541,14 @@ export interface PriceSnapshotEntry {
   change_pct: number | null;
   yf_ticker: string;
   error?: string;
+  // Data-provenance fields (Phase 1) — server-derived, additive. `is_live` is
+  // NEVER hardcoded true; a cached/delayed tier (csv_cache, polygon REST) reports
+  // is_live=false so the ticker can never show LIVE over stale data. `as_of` is
+  // epoch SECONDS. Optional: older engine builds / degraded entries omit them.
+  source?: string;
+  as_of?: number | null;
+  is_live?: boolean;
+  stale_after_s?: number;
 }
 
 export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
@@ -2487,4 +2495,44 @@ export async function screenMovers(
   input: ScreenerFilterInput
 ): Promise<ScreenResponse> {
   return postEngine<ScreenResponse>("/ib-scanner/screen", input);
+}
+
+// ── Proactive Advisor Brief (Phase 5) ───────────────────────────────────────
+// Mirrors engine/analytics/session_brief.py. The backend assembles these ONLY
+// from reasoning the pipeline already produced — a reasoning-less decision
+// surfaces as an honest gap (`reasoning_available: false`), never fabricated.
+
+export interface SessionBriefStaleness {
+  as_of: string | null;
+  age_seconds: number | null;
+  is_stale: boolean;
+  unknown_age: boolean;
+}
+
+export interface SessionBriefAction {
+  symbol: string;
+  action: string;
+  confidence: number | null;
+  why: string;
+  reasoning_available: boolean;
+  reasoning_sources: string[];
+  staleness: SessionBriefStaleness;
+  data_degraded: boolean;
+}
+
+export interface SessionBriefResponse {
+  generated_at: string;
+  actions: SessionBriefAction[];
+  count: number;
+  degraded: boolean;
+  note: string | null;
+}
+
+export async function fetchSessionBrief(
+  limit = 10,
+  maxActions = 3
+): Promise<SessionBriefResponse> {
+  return fetchEngine<SessionBriefResponse>(
+    `/brief/session?limit=${limit}&max_actions=${maxActions}`
+  );
 }

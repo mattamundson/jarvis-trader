@@ -9,6 +9,7 @@ import { AgentFeed } from "@/components/AgentFeed";
 import { SentimentPanel } from "@/components/SentimentPanel";
 import { PerformancePanel } from "@/components/PerformancePanel";
 import { WatchlistBar } from "@/components/WatchlistBar";
+import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { PaperTradingPanel } from "@/components/PaperTradingPanel";
 import { TradeHistory } from "@/components/TradeHistory";
 import { DailyPnlPanel } from "@/components/DailyPnlPanel";
@@ -213,6 +214,11 @@ export default function DashboardPage() {
         {/* Macro / VIX header bar */}
         <WidgetErrorBoundary name="Macro Bar">
           <MacroBar macro={macro ?? null} />
+        </WidgetErrorBoundary>
+
+        {/* Session Brief — proactive advisor recommendations, above the fold */}
+        <WidgetErrorBoundary name="Session Brief">
+          <SessionBriefPanel />
         </WidgetErrorBoundary>
 
         {/* Watchlist ticker bar — live price feed */}
