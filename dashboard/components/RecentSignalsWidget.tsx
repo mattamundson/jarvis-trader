@@ -250,6 +250,15 @@ export function RecentSignalsWidget() {
           ))}
         </div>
       )}
+
+      {/* Provenance (P4.2): raw pre-pipeline scanner crossovers — flag the backend
+          gap honestly rather than invent narrative reasoning. */}
+      {!loading && !error && (
+        <p className="font-mono text-[10px] leading-snug text-muted-foreground">
+          Why: raw intraday STC crossovers from the scanner (pre-pipeline). No LLM
+          reasoning is attached to these signals.
+        </p>
+      )}
     </div>
   );
 }

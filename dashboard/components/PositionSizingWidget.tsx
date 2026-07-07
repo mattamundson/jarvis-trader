@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, type SafetyStatus } from "@/lib/api";
+import { calcAtrPositionSize } from "@/lib/position-sizing";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -18,6 +19,7 @@ interface RiskConfig {
 interface PositionSizingData {
   atr: number;
   riskConfig: RiskConfig;
+  accountValue: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -25,36 +27,23 @@ interface PositionSizingData {
 /** MES tick value: $1.25/tick, 4 ticks/point */
 const TICK_VALUE = 1.25;
 const TICKS_PER_POINT = 4;
-/** Default account size for formula display */
-const ACCOUNT_VALUE = 10_000;
+/** Fallback only — real value comes live from /safety/status portfolio_equity */
+const ACCOUNT_VALUE_FALLBACK = 10_000;
 
 function calcMetrics(data: PositionSizingData) {
-  const { atr, riskConfig } = data;
+  const { atr, riskConfig, accountValue } = data;
   const { max_contracts, risk_per_trade_pct, atr_stop_multiplier, atr_target_multiplier } = riskConfig;
 
-  const atrTicks = atr * TICKS_PER_POINT;
-  const stopTicks = Math.round(atr * atr_stop_multiplier * TICKS_PER_POINT * 10) / 10;
-  const targetTicks = Math.round(atr * atr_target_multiplier * TICKS_PER_POINT * 10) / 10;
-  const stopDollar = stopTicks * TICK_VALUE;
-  const targetDollar = targetTicks * TICK_VALUE;
-  const riskPerContract = stopTicks * TICK_VALUE;
-  const riskPerTrade = ACCOUNT_VALUE * risk_per_trade_pct;
-  const computedContracts = riskPerContract > 0
-    ? Math.floor(riskPerTrade / riskPerContract)
-    : 0;
-  const effectiveContracts = Math.min(computedContracts, max_contracts);
-
-  return {
-    atrTicks,
-    stopTicks,
-    targetTicks,
-    stopDollar,
-    targetDollar,
-    riskPerContract,
-    riskPerTrade,
-    computedContracts,
-    effectiveContracts,
-  };
+  return calcAtrPositionSize({
+    atr,
+    accountValue,
+    riskPct: risk_per_trade_pct,
+    atrStopMultiplier: atr_stop_multiplier,
+    atrTargetMultiplier: atr_target_multiplier,
+    maxContracts: max_contracts,
+    tickValue: TICK_VALUE,
+    ticksPerPoint: TICKS_PER_POINT,
+  });
 }
 
 function contractBadgeVariant(n: number): "bull" | "info" | "warn" {
@@ -68,6 +57,39 @@ function contractBadgeLabel(n: number): string {
   if (n === 1) return "Conservative";
   return "Too Volatile";
 }
+
+/**
+ * One concrete recommendation derived from which constraint is binding.
+ * All numbers come straight from the shared ATR sizing result — nothing invented.
+ */
+function sizingRecommendation(
+  computedContracts: number,
+  effectiveContracts: number,
+  maxContractsCap: number
+): { text: string; tone: "emerald" | "amber" | "sky" } {
+  if (computedContracts <= 0) {
+    return {
+      tone: "amber",
+      text: `Recommend: skip or wait — current ATR leaves no contract inside the risk budget (0 fit). Re-check when volatility compresses.`,
+    };
+  }
+  if (computedContracts > maxContractsCap) {
+    return {
+      tone: "sky",
+      text: `Recommend: config cap is the binding limit — risk budget allows ${computedContracts}, capped to ${effectiveContracts}. Raise max_contracts (/settings/risk) to scale.`,
+    };
+  }
+  return {
+    tone: "emerald",
+    text: `Recommend: size ${effectiveContracts} — volatility is the binding limit and the ${maxContractsCap}-contract cap has headroom.`,
+  };
+}
+
+const RECO_TONE_CLASS: Record<"emerald" | "amber" | "sky", string> = {
+  emerald: "text-emerald-300",
+  amber: "text-amber-300",
+  sky: "text-sky-300",
+};
 
 // ── Stat Row ──────────────────────────────────────────────────────────────────
 
@@ -110,17 +132,13 @@ export function PositionSizingWidget() {
 
   const fetchData = async () => {
     try {
-      // Fetch signal (ATR) and risk settings in parallel
-      const [signalRes, settingsRes] = await Promise.all([
-        fetchEngine(`/paper/mgc-signal`),
-        fetchEngine(`/settings/risk`),
+      // fetchEngine already returns parsed JSON (or throws on non-2xx) —
+      // fetch signal (ATR), risk settings, and live account value in parallel.
+      const [signal, settings, safetyStatus] = await Promise.all([
+        fetchEngine<{ atr?: number }>(`/paper/mgc-signal`),
+        fetchEngine<{ config?: Partial<RiskConfig> }>(`/settings/risk`),
+        fetchEngine<SafetyStatus>(`/safety/status`).catch(() => null),
       ]);
-
-      if (!signalRes.ok) throw new Error(`Signal fetch failed: ${signalRes.status}`);
-      if (!settingsRes.ok) throw new Error(`Settings fetch failed: ${settingsRes.status}`);
-
-      const signal = await signalRes.json();
-      const settings = await settingsRes.json();
 
       const atr: number = typeof signal.atr === "number" ? signal.atr : 0;
       const cfg = settings.config ?? {};
@@ -132,7 +150,12 @@ export function PositionSizingWidget() {
         atr_target_multiplier: typeof cfg.atr_target_multiplier === "number" ? cfg.atr_target_multiplier : 1.5,
       };
 
-      setData({ atr, riskConfig });
+      const accountValue =
+        typeof safetyStatus?.portfolio_equity === "number" && safetyStatus.portfolio_equity > 0
+          ? safetyStatus.portfolio_equity
+          : ACCOUNT_VALUE_FALLBACK;
+
+      setData({ atr, riskConfig, accountValue });
       setError(null);
       setLastFetch(new Date().toLocaleTimeString());
     } catch (e) {
@@ -153,6 +176,7 @@ export function PositionSizingWidget() {
   const targetMult = data ? data.riskConfig.atr_target_multiplier.toFixed(2) : "1.50";
   const maxContractsCap = data ? data.riskConfig.max_contracts : 3;
   const effectiveContracts = metrics ? metrics.effectiveContracts : 0;
+  const accountValue = data ? data.accountValue : ACCOUNT_VALUE_FALLBACK;
 
   return (
     <Card>
@@ -237,7 +261,8 @@ export function PositionSizingWidget() {
             floor(risk_per_trade / (ATR × {stopMult} × $1.25))
           </div>
           <div className="mt-1" style={{ color: "#666" }}>
-            risk_per_trade = account × {riskPct}% = ${(ACCOUNT_VALUE * (parseFloat(riskPct) / 100)).toFixed(0)} (on $10K)
+            risk_per_trade = account × {riskPct}% = ${(accountValue * (parseFloat(riskPct) / 100)).toFixed(0)}
+            {" "}(on ${accountValue.toLocaleString()})
           </div>
         </div>
 
@@ -266,6 +291,24 @@ export function PositionSizingWidget() {
             </div>
           </div>
         </div>
+
+        {/* Concrete recommendation — derived from the binding constraint */}
+        {metrics && (
+          (() => {
+            const rec = sizingRecommendation(
+              metrics.computedContracts,
+              metrics.effectiveContracts,
+              maxContractsCap
+            );
+            return (
+              <p
+                className={`mt-3 font-mono text-[10px] leading-snug ${RECO_TONE_CLASS[rec.tone]}`}
+              >
+                {rec.text}
+              </p>
+            );
+          })()
+        )}
       </CardContent>
     </Card>
   );

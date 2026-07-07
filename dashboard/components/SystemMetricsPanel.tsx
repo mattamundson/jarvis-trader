@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Database, Activity, Clock } from "lucide-react";
+import { StalenessIndicator } from "@/components/ui/staleness-indicator";
+import { Database, Activity } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 
 
@@ -87,19 +88,6 @@ function formatUptime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   return `${h}h ${m}m`;
-}
-
-function formatTimestamp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return iso;
-  }
 }
 
 export function SystemMetricsPanel() {
@@ -231,11 +219,8 @@ export function SystemMetricsPanel() {
 
           {/* Last updated */}
           {lastUpdated && (
-            <div className="flex items-center gap-1.5 ml-auto">
-              <Clock className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[11px] text-muted-foreground">
-                Updated {formatTimestamp(lastUpdated.toISOString())}
-              </span>
+            <div className="ml-auto">
+              <StalenessIndicator lastUpdated={lastUpdated} />
             </div>
           )}
         </div>

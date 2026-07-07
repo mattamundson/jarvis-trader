@@ -116,6 +116,8 @@ from routers.approval_queue_router import router as approval_queue_router
 from routers.approval_queue_router import inject_approval_queue_deps
 from routers.pipeline_router import router as pipeline_router
 from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
+from routers.session_brief_router import router as session_brief_router
+from routers.session_brief_router import inject_dependencies as inject_session_brief_deps
 from routers.pipeline_ws_router import router as pipeline_ws_router
 from routers.messaging_router import router as messaging_router
 from routers.messaging_router import inject_dependencies as inject_messaging_deps
@@ -1774,6 +1776,7 @@ async def lifespan(app: FastAPI):
         scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
     )
     inject_messaging_deps(db_manager, paper_tracker=paper_tracker, safety_layer=safety_layer)
+    inject_session_brief_deps(db_manager)
     # Morning brief deps
     inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
     inject_hp_deps(data_manager, settings)
@@ -3004,6 +3007,7 @@ app.include_router(options_router, prefix="/options", tags=["options"])
 app.include_router(approval_router)
 app.include_router(approval_queue_router)
 app.include_router(pipeline_router)
+app.include_router(session_brief_router)
 app.include_router(pipeline_ws_router)
 app.include_router(messaging_router)
 app.include_router(scanner_router)
