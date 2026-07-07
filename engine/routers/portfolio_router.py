@@ -1817,10 +1817,10 @@ async def get_paper_account_stats(
     # a healthy annualized return otherwise explodes into millions (e.g.
     # 2,014,774.72). Below the floor, Calmar is undefined -- report None
     # (dashboard renders "--") rather than a fabricated ratio.
-    # NOTE (#272<>#274 merge): kept PR #272's explicit 0.5% floor rather than the
-    # canonical metrics.calmar() (floor 1e-6), which is too permissive to suppress
-    # the exact max_dd=-0.0001 blowup #272 removed. metrics.sharpe() above still uses
-    # the canonical module. Follow-up: align metrics._MIN_MAX_DD_FOR_CALMAR to 0.005.
+    # NOTE (#272<>#274 merge): keep PR #272's explicit block. The canonical
+    # metrics.calmar() floor was aligned 1e-6 -> 0.005 to match, so the two now
+    # agree; this inline additionally enforces the max_dd < 0 guard (count real
+    # drawdowns only). metrics.sharpe() above uses the canonical module.
     CALMAR_MIN_DD_FLOOR = 0.005
     calmar: float | None = None
     if max_dd is not None and max_dd < 0 and abs(max_dd) >= CALMAR_MIN_DD_FLOOR:

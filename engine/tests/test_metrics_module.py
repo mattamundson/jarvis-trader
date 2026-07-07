@@ -80,6 +80,15 @@ def test_calmar_1206pct_drawdown_case():
     assert math.isfinite(result)
 
 
+def test_calmar_floor_is_pr272_half_percent():
+    # Floor aligned to PR #272's 0.5% integrity threshold. max_dd = -0.0001 (0.01%)
+    # is above the old 1e-6 floor but below 0.5% -> must be None, never the ~2M
+    # display blowup. Locks _MIN_MAX_DD_FOR_CALMAR = 0.005.
+    assert calmar(1000.0, -0.0001) is None      # PR #272's exact blowup input
+    assert calmar(1000.0, 0.004) is None         # just under the 0.5% floor
+    assert calmar(1000.0, 0.005) == 200000.0     # at the floor -> defined (1000/0.005)
+
+
 # ── sharpe ──────────────────────────────────────────────────────────────────
 
 

@@ -25,8 +25,12 @@ import math
 from collections.abc import Sequence
 
 # max_dd magnitudes below this are treated as "no meaningful drawdown" for Calmar.
-# Dividing an annual return by a ~0 drawdown is the -1e14 blowup PR #272 killed.
-_MIN_MAX_DD_FOR_CALMAR = 1e-6
+# Floor = 0.5% -- PR #272's integrity threshold. Dividing an annual return by a
+# razor-thin drawdown (e.g. max_dd = -0.0001 = 0.01%) explodes into millions
+# (the ~2M display blowup PR #272 removed), which is noise not signal. Below the
+# floor Calmar is undefined -> None. Aligned up from the original 1e-6, which was
+# too permissive to suppress PR #272's own worked example (0.0001 > 1e-6).
+_MIN_MAX_DD_FOR_CALMAR = 0.005
 # Below this the Sharpe denominator (return std-dev) is treated as zero.
 _EPS = 1e-12
 
