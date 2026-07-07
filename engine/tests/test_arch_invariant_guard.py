@@ -21,7 +21,12 @@ def _load_guard():
 def test_guard_module_loads():
     g = _load_guard()
     assert hasattr(g, "find_daily_pnl_offenders")
+    assert hasattr(g, "find_bar_write_offenders")
+    assert hasattr(g, "find_anthropic_url_offenders")
     assert hasattr(g, "scan")
+    # Every registered invariant maps to a callable finder + a hint string.
+    ids = {inv_id for inv_id, _, _ in g.INVARIANTS}
+    assert {"daily_pnl_single_writer", "bar_single_writer", "anthropic_url_literal"} <= ids
 
 
 def test_flags_unallowlisted_daily_pnl_writer(tmp_path):
@@ -42,6 +47,54 @@ def test_clean_tree_has_no_offenders(tmp_path):
         encoding="utf-8",
     )
     offenders = g.find_daily_pnl_offenders(engine_root=tmp_path)
+    assert offenders == []
+
+
+def test_flags_unallowlisted_bar_writer(tmp_path):
+    g = _load_guard()
+    (tmp_path / "rogue_bar_writer.py").write_text(
+        'conn.execute("INSERT OR IGNORE " + "INTO market_data_bars VALUES (?)", r)',
+        encoding="utf-8",
+    )
+    offenders = g.find_bar_write_offenders(engine_root=tmp_path)
+    assert "rogue_bar_writer.py" in offenders
+
+
+def test_bar_reader_is_not_flagged(tmp_path):
+    g = _load_guard()
+    # A SELECT read (not a write INTO the table) must not trip the bar invariant.
+    (tmp_path / "bar_reader.py").write_text(
+        'rows = conn.execute("SELECT ts FROM market_data_bars").fetchall()',
+        encoding="utf-8",
+    )
+    offenders = g.find_bar_write_offenders(engine_root=tmp_path)
+    assert offenders == []
+
+
+def test_flags_unallowlisted_anthropic_url(tmp_path):
+    g = _load_guard()
+    # The anthropic invariant scans only the SSOT's SCAN_DIRS (agents/, discord/).
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    # This test file lives in tests/ (excluded from every real-tree scan), so the
+    # contiguous URL literal here can never trip the live anthropic invariant.
+    (agents / "rogue_caller.py").write_text(
+        'URL = "https://api.anthropic.com/v1/messages"',
+        encoding="utf-8",
+    )
+    offenders = g.find_anthropic_url_offenders(engine_root=tmp_path)
+    assert "agents/rogue_caller.py" in offenders
+
+
+def test_anthropic_url_outside_scan_dirs_is_not_flagged(tmp_path):
+    g = _load_guard()
+    # A file with the URL literal OUTSIDE agents/ or discord/ is out of scope for
+    # this invariant (the SSOT scans only those two dirs) and must not trip.
+    (tmp_path / "utils_helper.py").write_text(
+        'URL = "https://api.anthropic.com/v1/messages"',
+        encoding="utf-8",
+    )
+    offenders = g.find_anthropic_url_offenders(engine_root=tmp_path)
     assert offenders == []
 
 
