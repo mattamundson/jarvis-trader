@@ -5,46 +5,58 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GitCompare } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  dedupCaveat,
+  exitDate,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface PaperTrading {
-  profit_factor: number;
-  sharpe_ratio: number;
-  win_rate: number;
-  total_trades: number;
-  total_pnl: number;
-}
-
-interface Backtested {
+/** Backtest-reference side of /analytics/performance/compare (engine key: "backtest"). */
+interface BacktestRef {
   profit_factor: number;
   sharpe_ratio: number;
   win_rate: number;
 }
 
+/** Each gate the engine reports as { required, met, current? }. */
+interface ThresholdGate {
+  required: number;
+  met?: boolean;
+  current?: number;
+}
+
+/**
+ * Engine's compare_to_backtest() validation_thresholds — nested gates, NOT flat
+ * min_* numbers. The engine gates PF, Sharpe, and trading DAYS; there is no
+ * win-rate or trade-count gate here.
+ */
 interface ValidationThresholds {
-  min_profit_factor: number;
-  min_sharpe: number;
-  min_win_rate: number;
-  min_trades: number;
+  profit_factor?: ThresholdGate;
+  sharpe_ratio?: ThresholdGate;
+  min_trading_days?: ThresholdGate;
 }
 
 interface CompareResponse {
-  paper_trading: PaperTrading;
-  backtested: Backtested;
-  degradation_factor: number;
+  backtest: BacktestRef;
   validation_thresholds: ValidationThresholds;
+  degradation_factor?: {
+    profit_factor: number | null;
+    sharpe_ratio: number | null;
+    note?: string;
+  };
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
 
 const REFRESH_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmt(v: number, decimals = 2): string {
-  return v.toFixed(decimals);
+function fmt(v: number | null | undefined, decimals = 2): string {
+  return v != null ? v.toFixed(decimals) : "—";
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -64,18 +76,22 @@ function SkeletonRow() {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function BacktestComparisonCard() {
-  const [data, setData] = useState<CompareResponse | null>(null);
+  const [ref, setRef] = useState<CompareResponse | null>(null);
+  const [honest, setHonest] = useState<HonestTradeSet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(
-        `/analytics/performance/compare`,
-        { cache: "no-store" }
-      );
-      const json = (await res.json()) as CompareResponse;
-      setData(json);
+      // Fetch both sources concurrently; honest trades is the paper side
+      const [refData, honestData] = await Promise.all([
+        fetchEngine<CompareResponse>(`/analytics/performance/compare`, {
+          cache: "no-store",
+        }),
+        fetchHonestTrades(),
+      ]);
+      setRef(refData);
+      setHonest(honestData);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -90,29 +106,33 @@ export function BacktestComparisonCard() {
     return () => clearInterval(interval);
   }, [load]);
 
-  // ── Derived pass/fail ──────────────────────────────────────────────────────
+  // ── Derived pass/fail (honest paper vs backtest thresholds) ───────────────
 
-  const paper = data?.paper_trading;
-  const thresholds = data?.validation_thresholds;
+  // The engine gates on PF, Sharpe, and trading DAYS — there is no win-rate or
+  // trade-count gate here. Win rate is shown as an informational paper-vs-
+  // backtest reference only.
+  const thresholds = ref?.validation_thresholds;
+  const minPf = thresholds?.profit_factor?.required ?? null;
+  const minSharpe = thresholds?.sharpe_ratio?.required ?? null;
+  const minDays = thresholds?.min_trading_days?.required ?? null;
 
-  const pfPass =
-    paper !== undefined &&
-    thresholds !== undefined &&
-    paper.profit_factor >= thresholds.min_profit_factor;
-  const sharpePass =
-    paper !== undefined &&
-    thresholds !== undefined &&
-    paper.sharpe_ratio >= thresholds.min_sharpe;
-  const winRatePass =
-    paper !== undefined &&
-    thresholds !== undefined &&
-    paper.win_rate >= thresholds.min_win_rate;
-  const tradesPass =
-    paper !== undefined &&
-    thresholds !== undefined &&
-    paper.total_trades >= thresholds.min_trades;
+  // Paper-side values come from the honest deduped record
+  const paperPf = honest?.profitFactor ?? null;
+  const paperWr = honest != null ? honest.winRate * 100 : null; // 0..100
+  // Trading days = distinct local close-dates in the deduped record (matches the
+  // engine's min_trading_days gate, not raw trade count).
+  const paperTradingDays = honest
+    ? new Set(honest.trades.map((t) => exitDate(t)).filter(Boolean)).size
+    : null;
 
-  const allPass = pfPass && sharpePass && winRatePass && tradesPass;
+  const pfPass = paperPf != null && minPf != null && paperPf >= minPf;
+  // Sharpe is not computable from the deduped record (no annualised Sharpe) —
+  // surfaced as "—"/N/A and excluded from the pass tally.
+  const daysPass =
+    paperTradingDays != null && minDays != null && paperTradingDays >= minDays;
+
+  // Only the gates the engine defines AND we can honestly evaluate.
+  const allPass = pfPass && daysPass;
 
   interface MetricRowDef {
     label: string;
@@ -122,42 +142,61 @@ export function BacktestComparisonCard() {
     badgeLabel: string;
   }
 
-  const metricRows: MetricRowDef[] = data
-    ? [
-        {
-          label: "Profit Factor",
-          paperValue: fmt(paper!.profit_factor),
-          targetValue: `≥ ${fmt(thresholds!.min_profit_factor)}`,
-          badgeVariant: pfPass ? "bull" : "bear",
-          badgeLabel: pfPass ? "PASS" : "FAIL",
-        },
-        {
-          label: "Sharpe Ratio",
-          paperValue: fmt(paper!.sharpe_ratio),
-          targetValue: `≥ ${fmt(thresholds!.min_sharpe)}`,
-          badgeVariant: sharpePass ? "bull" : "bear",
-          badgeLabel: sharpePass ? "PASS" : "FAIL",
-        },
-        {
-          label: "Win Rate %",
-          paperValue: `${fmt(paper!.win_rate, 1)}%`,
-          targetValue: `≥ ${fmt(thresholds!.min_win_rate, 1)}%`,
-          badgeVariant: winRatePass ? "bull" : "bear",
-          badgeLabel: winRatePass ? "PASS" : "FAIL",
-        },
-        {
-          label: "Total Trades",
-          paperValue: String(paper!.total_trades),
-          targetValue: `≥ ${thresholds!.min_trades}`,
-          badgeVariant: tradesPass ? "bull" : "warn",
-          badgeLabel: tradesPass ? "PASS" : "IN PROGRESS",
-        },
-      ]
-    : [];
+  // Backtest win rate may arrive as a fraction (0..1) or a percent (0..100);
+  // normalize to percent for the reference display.
+  const backtestWrPct =
+    ref?.backtest?.win_rate != null
+      ? ref.backtest.win_rate <= 1
+        ? ref.backtest.win_rate * 100
+        : ref.backtest.win_rate
+      : null;
 
-  const degradationPct = data
-    ? (data.degradation_factor * 100).toFixed(1)
-    : null;
+  const metricRows: MetricRowDef[] =
+    honest != null
+      ? [
+          {
+            label: "Profit Factor",
+            paperValue: fmt(paperPf),
+            targetValue: minPf != null ? `≥ ${fmt(minPf)}` : "—",
+            badgeVariant: pfPass ? "bull" : "bear",
+            badgeLabel: pfPass ? "PASS" : "FAIL",
+          },
+          {
+            label: "Sharpe Ratio",
+            paperValue: "—",
+            targetValue: minSharpe != null ? `≥ ${fmt(minSharpe)}` : "—",
+            // Sharpe not computable from deduped record — neutral, not FAIL
+            badgeVariant: "neutral",
+            badgeLabel: "N/A",
+          },
+          {
+            label: "Win Rate %",
+            paperValue: paperWr != null ? `${paperWr.toFixed(1)}%` : "—",
+            // No engine win-rate gate — show the backtest win rate as a reference.
+            targetValue:
+              backtestWrPct != null ? `bt ${backtestWrPct.toFixed(1)}%` : "—",
+            badgeVariant: "neutral",
+            badgeLabel: "REF",
+          },
+          {
+            label: "Trading Days",
+            paperValue:
+              paperTradingDays != null ? String(paperTradingDays) : "—",
+            targetValue: minDays != null ? `≥ ${minDays}` : "—",
+            badgeVariant: daysPass ? "bull" : "warn",
+            badgeLabel: daysPass ? "PASS" : "IN PROGRESS",
+          },
+        ]
+      : [];
+
+  // Degradation: honest PF vs backtest PF
+  const backtestPf = ref?.backtest?.profit_factor ?? null;
+  const degradationPct =
+    backtestPf != null && backtestPf > 0 && paperPf != null
+      ? ((paperPf / backtestPf) * 100).toFixed(1)
+      : null;
+
+  const caveat = honest ? dedupCaveat(honest) : null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -169,7 +208,7 @@ export function BacktestComparisonCard() {
             <GitCompare className="h-4 w-4" />
             Backtest vs. Paper Trading
           </CardTitle>
-          {!loading && data && (
+          {!loading && honest && (
             <Badge variant={allPass ? "bull" : "neutral"}>
               {allPass ? "VALIDATION PASS" : "NOT YET"}
             </Badge>
@@ -207,7 +246,7 @@ export function BacktestComparisonCard() {
                   <SkeletonRow />
                   <SkeletonRow />
                 </>
-              ) : !data ? (
+              ) : !honest ? (
                 <tr>
                   <td
                     colSpan={3}
@@ -245,19 +284,33 @@ export function BacktestComparisonCard() {
           </table>
         </div>
 
-        {/* Footer — degradation factor + overall status */}
-        {!loading && data && (
-          <div className="mt-3 pt-3 border-t border-border flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-xs text-muted-foreground">
-              Degradation factor:{" "}
-              <span className="font-mono font-medium text-foreground">
-                {degradationPct}%
-              </span>{" "}
-              of backtest performance achieved in live paper trading
-            </p>
-            <Badge variant={allPass ? "bull" : "neutral"}>
-              {allPass ? "VALIDATION PASS" : "NOT YET"}
-            </Badge>
+        {/* Footer — degradation factor + dedup caveat + overall status */}
+        {!loading && honest && (
+          <div className="mt-3 pt-3 border-t border-border space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-xs text-muted-foreground">
+                Degradation factor:{" "}
+                <span className="font-mono font-medium text-foreground">
+                  {degradationPct ?? "—"}{degradationPct != null ? "%" : ""}
+                </span>{" "}
+                of backtest PF achieved in live paper trading
+              </p>
+              <Badge variant={allPass ? "bull" : "neutral"}>
+                {allPass ? "VALIDATION PASS" : "NOT YET"}
+              </Badge>
+            </div>
+            {caveat && (
+              <p className="text-xs text-muted-foreground font-mono">
+                {caveat}
+              </p>
+            )}
+            {honest.caveats.length > 0 && (
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
+                {honest.caveats.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </CardContent>

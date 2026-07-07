@@ -9,14 +9,16 @@ Refresh interval: every 5 minutes during market hours.
 Model: Claude Sonnet 4.6
 """
 
-import json
 import logging
 import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Optional
 
 import httpx
+
+from utils.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,11 @@ class NewsReport:
     summary: str = ""
     reasoning: str = ""
 
+    # Data quality: "direct" = news from symbol itself, "proxy" = news from proxy equity,
+    # "unavailable" = no news found from any source
+    data_quality: str = "unavailable"
+    proxy_symbol: str = ""  # Populated when data_quality == "proxy"
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -58,6 +65,8 @@ class NewsReport:
             "headline_count": self.headline_count,
             "summary": self.summary,
             "reasoning": self.reasoning,
+            "data_quality": self.data_quality,
+            "proxy_symbol": self.proxy_symbol,
         }
 
 
@@ -69,47 +78,86 @@ class NewsAnalystAgent:
     Two-stage approach:
     1. Fetch 10-20 recent headlines from Finnhub (and optional data manager feed)
     2. LLM identifies per-headline sentiment, material events, and overall signal
+
+    Futures coverage: Finnhub does not carry news for micro-futures tickers (MCL,
+    MNQ, MES, MGC). When a direct fetch returns 0 results the agent automatically
+    retries with an equity proxy (e.g. MES → SPY) and marks the report as
+    data_quality="proxy" so downstream agents can weight accordingly.
     """
 
     FINNHUB_BASE = "https://finnhub.io/api/v1"
 
-    SYSTEM_PROMPT = """You are a professional financial news analyst for JARVIS TRADER,
-an autonomous trading system.
+    # Equity proxies for futures tickers that Finnhub cannot resolve directly.
+    # Values are (proxy_symbol, human_label) used in the LLM prompt note.
+    FUTURES_NEWS_PROXY: dict[str, tuple[str, str]] = {
+        "MCL": ("USO", "crude oil / MCL futures"),
+        "CL": ("USO", "crude oil / CL futures"),
+        "MNQ": ("QQQ", "Nasdaq-100 tech sector / MNQ futures"),
+        "NQ": ("QQQ", "Nasdaq-100 tech sector / NQ futures"),
+        "MES": ("SPY", "S&P 500 / MES futures"),
+        "ES": ("SPY", "S&P 500 / ES futures"),
+        "MGC": ("GLD", "gold / MGC futures"),
+        "GC": ("GLD", "gold / GC futures"),
+    }
 
-Analyze the provided news headlines for the given symbol.
-Your task:
-1. Assign a sentiment score (-1 to +1) to each headline
-2. Detect any material events: earnings, FDA decisions, M&A activity, legal/regulatory actions, macro events, or none
-3. Identify specific bullish catalysts (positive for price)
-4. Identify specific bearish catalysts (negative for price)
-5. Produce an overall news signal (-1.0 to +1.0) weighted by recency and materiality
-6. Assign a confidence score (0.0 to 1.0) — lower if news is ambiguous or sparse
+    SYSTEM_PROMPT = """You are a state-of-the-art Financial Intelligence Agent (FinGPT-pattern).
+Your goal is to perform deep-reasoning news analysis for JARVIS TRADER.
 
-Respond with valid JSON only. Do not add any explanation outside the JSON.
+### ANALYSIS FRAMEWORK:
+1. **Materiality Filter**: Distinguish between "noise" and "market-moving" events (Earnings, M&A, FDA, SEC filings).
+2. **Sentiment Quantification**: Assign a precise sentiment score (-1.0 to +1.0) to each headline, weighting recent news higher.
+3. **Catalyst Extraction**: Identify specific data points (e.g., "$2.5B revenue beat", "15% YoY growth", "Rate hike fears").
+4. **Proxy Context**: If analyzing a proxy, translate the news into implications for the target futures contract (e.g., SPY news -> MES futures impact).
+
+### OUTPUT REQUIREMENTS:
+- Produce a single, high-fidelity 'signal' representing expected immediate price pressure.
+- Justify the signal with 'reasoning' that cites specific headlines.
+- Respond with valid JSON only.
 """
 
-    def __init__(self, llm_client, data_manager=None):
+    def __init__(self, llm_client, data_manager=None, brave_client=None):
         """
         Args:
             llm_client: Object with .api_key attribute (Anthropic key) and
                         optionally .finnhub_key for Finnhub API access.
             data_manager: Optional data manager that may expose a news feed.
+            brave_client: Optional BraveSearchClient for live web news search.
         """
         self._llm = llm_client
         self._data = data_manager
+        self._brave: Optional[object] = brave_client
 
     async def analyze(self, symbol: str) -> "NewsReport":
-        """Full news analysis pipeline for a symbol"""
+        """Full news analysis pipeline for a symbol.
 
-        # 1. Fetch headlines
+        For futures symbols with no direct Finnhub coverage, automatically
+        retries with an equity proxy and marks the report as data_quality="proxy".
+        """
+        # 1. Try direct fetch
         headlines = await self._fetch_headlines(symbol)
+        proxy_symbol = ""
 
         if not headlines:
-            logger.warning(f"No news found for {symbol}")
+            # Check for a futures proxy before giving up
+            proxy_info = self.FUTURES_NEWS_PROXY.get(symbol.upper())
+            if proxy_info:
+                proxy_ticker, proxy_label = proxy_info
+                logger.info(
+                    f"No direct news for {symbol} — retrying with proxy {proxy_ticker} ({proxy_label})"
+                )
+                headlines = await self._fetch_headlines(proxy_ticker)
+                if headlines:
+                    proxy_symbol = proxy_ticker
+                    logger.info(
+                        f"Proxy fetch returned {len(headlines)} headlines for {symbol} via {proxy_ticker}"
+                    )
+
+        if not headlines:
+            logger.warning(f"No news found for {symbol} (direct or proxy)")
             return self._neutral_report(symbol, headline_count=0)
 
-        # 2. LLM synthesis
-        report = await self._llm_synthesize(symbol, headlines)
+        # 2. LLM synthesis — pass proxy info so the prompt can note it
+        report = await self._llm_synthesize(symbol, headlines, proxy_symbol=proxy_symbol)
         return report
 
     async def _fetch_headlines(self, symbol: str) -> list[dict]:
@@ -156,6 +204,25 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             except Exception as e:
                 logger.warning(f"Finnhub news fetch failed for {symbol}: {e}")
 
+        # --- Brave Search live web news ---
+        if self._brave is not None:
+            try:
+                brave_results = await self._brave.get_market_news(symbol)
+                for item in brave_results:
+                    headlines.append(
+                        {
+                            "headline": item.get("title", ""),
+                            "source": item.get("published") or item.get("source", "brave"),
+                            "datetime": item.get("age", ""),
+                            "summary": item.get("description", "")[:200],
+                        }
+                    )
+                logger.info(f"Brave Search added {len(brave_results)} headlines for {symbol}")
+            except Exception as e:
+                logger.warning(f"Brave Search news fetch failed for {symbol}: {e}")
+        else:
+            logger.debug(f"Brave Search not available for {symbol} — skipping live web search")
+
         # --- Optional data manager news feed ---
         if self._data and hasattr(self._data, "get_news"):
             try:
@@ -183,20 +250,42 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
                 unique.append(h)
         return unique[:20]
 
-    async def _llm_synthesize(self, symbol: str, headlines: list[dict]) -> "NewsReport":
-        """Use LLM to synthesize news headlines into a structured signal"""
+    async def _llm_synthesize(
+        self, symbol: str, headlines: list[dict], proxy_symbol: str = ""
+    ) -> "NewsReport":
+        """Use LLM to synthesize news headlines into a structured signal.
 
+        Args:
+            symbol: The instrument being analyzed (e.g. "MES").
+            headlines: List of headline dicts.
+            proxy_symbol: When non-empty, headlines came from this proxy equity
+                          rather than the instrument directly.
+        """
         # Format headlines for the prompt
         headlines_text = ""
         for i, h in enumerate(headlines, 1):
             ts = h.get("datetime", "")
             if isinstance(ts, int) and ts > 0:
                 ts = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
-            headlines_text += f"{i}. [{ts}] {h['headline']}\n"
+            source = h.get("source", "")
+            source_tag = f" ({source}, {ts})".rstrip(", ").rstrip("(").rstrip() if source or ts else ""
+            headlines_text += f"{i}. {h['headline']}{source_tag}\n"
             if h.get("summary"):
-                headlines_text += f"   Summary: {h['summary']}\n"
+                headlines_text += f"   {h['summary']}\n"
 
-        prompt = f"""Analyze these {len(headlines)} recent news items for {symbol}:
+        # Build optional proxy note for the LLM context
+        proxy_note = ""
+        if proxy_symbol:
+            proxy_info = self.FUTURES_NEWS_PROXY.get(symbol.upper())
+            proxy_label = proxy_info[1] if proxy_info else proxy_symbol
+            proxy_note = (
+                f"\nNote: Direct news for {symbol} was unavailable via Finnhub. "
+                f"The headlines below were sourced from {proxy_symbol} as a macro proxy "
+                f"for {proxy_label}. Interpret sentiment in the context of the underlying "
+                f"market rather than the ETF itself.\n"
+            )
+
+        prompt = f"""Analyze these {len(headlines)} recent news items for {symbol}:{proxy_note}
 
 {headlines_text}
 
@@ -212,51 +301,56 @@ Respond with JSON in exactly this format:
 }}"""
 
         try:
-            anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
-                "ANTHROPIC_API_KEY", ""
-            )
-            _t0 = time.time()
-
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": anthropic_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-sonnet-4-6",
-                        "max_tokens": 800,
-                        "system": self.SYSTEM_PROMPT,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
-                payload = resp.json()
-
-            _latency_ms = int((time.time() - _t0) * 1000)
-
-            # Track cost via JarvisLLMClient if available
-            usage = payload.get("usage", {})
-            if hasattr(self._llm, "track_raw_call"):
-                await self._llm.track_raw_call(
-                    model="claude-sonnet-4-6",
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
-                    latency_ms=_latency_ms,
+            if hasattr(self._llm, "call"):
+                # Primary: use JarvisLLMClient (retry, fallback, cost tracking built-in)
+                llm_result = await self._llm.call(
+                    model="claude-haiku-4-5-20251001",
+                    system=self.SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=800,
                     agent_name="news_analyst",
                 )
+                if not llm_result.success:
+                    raise RuntimeError(llm_result.error or "LLM call failed")
+                response_text = llm_result.content.strip()
+            else:
+                # Fallback: raw httpx when LLM client is not JarvisLLMClient
+                anthropic_key = getattr(self._llm, "api_key", None) or os.getenv(
+                    "ANTHROPIC_API_KEY", ""
+                )
+                _t0 = time.time()
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": anthropic_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": "claude-haiku-4-5-20251001",
+                            "max_tokens": 800,
+                            "system": self.SYSTEM_PROMPT,
+                            "messages": [{"role": "user", "content": prompt}],
+                        },
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+                _latency_ms = int((time.time() - _t0) * 1000)
+                if hasattr(self._llm, "track_raw_call"):
+                    await self._llm.track_raw_call(
+                        model="claude-haiku-4-5-20251001",
+                        input_tokens=payload.get("usage", {}).get("input_tokens", 0),
+                        output_tokens=payload.get("usage", {}).get("output_tokens", 0),
+                        latency_ms=_latency_ms,
+                        agent_name="news_analyst",
+                    )
+                response_text = payload["content"][0]["text"].strip()
 
-            response_text = payload["content"][0]["text"].strip()
-
-            # Strip markdown code blocks if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-
-            result = json.loads(response_text)
+            # Tolerant extraction: markdown fences, leading/trailing prose, and
+            # trailing commas now recover instead of failing to a zero-signal
+            # report (see utils.llm_json — 2026-06-04 synthesis-failure wave).
+            result = parse_llm_json(response_text)
 
             return NewsReport(
                 symbol=symbol,
@@ -269,6 +363,8 @@ Respond with JSON in exactly this format:
                 headline_count=len(headlines),
                 summary=result.get("summary", ""),
                 reasoning=result.get("reasoning", ""),
+                data_quality="proxy" if proxy_symbol else "direct",
+                proxy_symbol=proxy_symbol,
             )
 
         except Exception as e:
@@ -287,4 +383,6 @@ Respond with JSON in exactly this format:
             headline_count=headline_count,
             summary="No news data available",
             reasoning="Could not retrieve or analyze news — returning neutral signal",
+            data_quality="unavailable",
+            proxy_symbol="",
         )

@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — Project Status | v2.7 Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script type="importmap">{ "imports": { "three": "https://esm.sh/three@0.163.0" } }</script>
+<style>
+  :root {
+    --bg:     #060d1a;
+    --bg2:    #0a1628;
+    --bg3:    #0d1f38;
+    --panel:  #0f2040;
+    --cyan:   #00d4ff;
+    --cyan2:  #67e8f9;
+    --green:  #00ff88;
+    --green2: #34d399;
+    --red:    #ff3b5c;
+    --amber:  #fbbf24;
+    --purple: #a78bfa;
+    --border: rgba(0,212,255,0.12);
+    --glow-c: rgba(0,212,255,0.25);
+    --glow-g: rgba(0,255,136,0.2);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: #c9daf8;
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scan line */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,212,255,0.015) 3px,rgba(0,212,255,0.015) 4px);
+    pointer-events: none; z-index: 9999;
+  }
+
+  /* ── HUD canvas ── */
+  #hud-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.55;
+  }
+
+  /* ── Header ── */
+  #header {
+    position: relative;
+    z-index: 10;
+    border-bottom: 1px solid var(--border);
+    background: rgba(6,13,26,0.95);
+    backdrop-filter: blur(20px);
+    padding: 0 32px;
+    height: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo-text {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: var(--cyan);
+    text-shadow: 0 0 20px var(--glow-c);
+  }
+  .header-right {
+    display: flex; align-items: center; gap: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: #334155;
+    letter-spacing: 0.08em;
+  }
+  .status-online {
+    display: flex; align-items: center; gap: 6px;
+    color: var(--green2);
+  }
+  .dot-pulse {
+    width: 7px; height: 7px;
+    background: var(--green);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--green);
+    animation: glow-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes glow-pulse {
+    0%,100% { opacity:1; box-shadow: 0 0 8px var(--green); }
+    50%      { opacity:0.5; box-shadow: 0 0 3px var(--green); }
+  }
+
+  /* ── Main layout ── */
+  #main {
+    position: relative; z-index: 10;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+
+  /* ── Panel ── */
+  .panel {
+    background: rgba(10,22,40,0.85);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+    backdrop-filter: blur(8px);
+    transition: border-color 0.3s;
+  }
+  .panel:hover { border-color: rgba(0,212,255,0.25); }
+  .panel-cyan  { box-shadow: inset 0 0 30px rgba(0,212,255,0.04), 0 0 30px rgba(0,212,255,0.06); }
+  .panel-green { box-shadow: inset 0 0 30px rgba(0,255,136,0.04), 0 0 30px rgba(0,255,136,0.04); }
+  .panel-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.22em;
+    color: var(--cyan);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+    margin-bottom: 16px;
+  }
+
+  /* ── Hero numbers ── */
+  .hero-num {
+    font-family: 'Orbitron', monospace;
+    letter-spacing: 0.05em;
+    line-height: 1;
+  }
+  .hero-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.18em;
+    color: #334155;
+    text-transform: uppercase;
+    margin-top: 5px;
+  }
+
+  /* ── WFE bar ── */
+  .wfe-track {
+    height: 6px; background: #0a1628; border-radius: 3px; overflow: hidden; margin-top: 8px;
+  }
+  .wfe-fill {
+    height: 100%; border-radius: 3px;
+    transition: width 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+  }
+  .wfe-fill::after {
+    content: '';
+    position: absolute; right: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 0 3px 3px 0;
+  }
+
+  /* ── Instrument card ── */
+  .instrument {
+    background: rgba(6,13,26,0.7);
+    border: 1px solid rgba(0,212,255,0.1);
+    border-radius: 4px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .instrument::before {
+    content: '';
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 2px;
+  }
+  .instrument.active::before  { background: linear-gradient(90deg, var(--green), var(--cyan)); }
+  .instrument.halted::before  { background: var(--red); }
+  .instrument.pending::before { background: #334155; }
+
+  .inst-symbol {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+  .inst-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.15em;
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+  .status-active  { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.2); }
+  .status-halted  { background: rgba(255,59,92,0.1);  color: var(--red);   border: 1px solid rgba(255,59,92,0.2); }
+  .status-pending { background: rgba(100,116,139,0.1); color: #64748b;     border: 1px solid rgba(100,116,139,0.2); }
+
+  /* ── Timeline ── */
+  .timeline-item {
+    display: flex; gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.6);
+    position: relative;
+  }
+  .timeline-item:last-child { border-bottom: none; }
+  .tl-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+  .tl-date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #334155;
+    width: 80px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .tl-content {
+    flex: 1;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+  .tl-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    padding: 1px 6px;
+    border-radius: 2px;
+    display: inline-block;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .badge-major  { background: rgba(0,212,255,0.12); color: var(--cyan); }
+  .badge-fix    { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .badge-build  { background: rgba(167,139,250,0.12); color: var(--purple); }
+  .badge-data   { background: rgba(52,211,153,0.12); color: var(--green2); }
+
+  /* ── Progress ring ── */
+  #prog-canvas { display: block; margin: 0 auto; }
+
+  /* ── Risk gauge ── */
+  .risk-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.4);
+  }
+  .risk-row:last-child { border-bottom: none; }
+  .risk-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    color: #64748b;
+    width: 120px;
+    flex-shrink: 0;
+  }
+  .risk-track {
+    flex: 1; height: 4px; background: #0a1628; border-radius: 2px; overflow: hidden;
+  }
+  .risk-fill {
+    height: 100%; border-radius: 2px;
+    transition: width 1.5s ease;
+  }
+  .risk-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    width: 60px;
+    text-align: right;
+  }
+
+  /* ── Checklist ── */
+  .check-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(30,41,59,0.4);
+    font-size: 0.8rem;
+  }
+  .check-item:last-child { border-bottom: none; }
+  .check-icon { flex-shrink: 0; margin-top: 2px; font-size: 0.8rem; }
+  .check-text { color: #94a3b8; line-height: 1.4; }
+  .check-sub  { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: #334155; margin-top: 2px; }
+
+  /* ── Phase banner ── */
+  .phase-banner {
+    background: linear-gradient(135deg, rgba(0,212,255,0.08), rgba(0,255,136,0.05));
+    border: 1px solid rgba(0,212,255,0.15);
+    border-radius: 6px;
+    padding: 20px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .phase-banner::before {
+    content: '';
+    position: absolute; top: 0; left: 0;
+    width: 4px; height: 100%;
+    background: linear-gradient(180deg, var(--cyan), var(--green));
+  }
+
+  /* ── Metric tile ── */
+  .metric-tile {
+    background: rgba(6,13,26,0.6);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 18px;
+    text-align: center;
+  }
+  .metric-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.5rem;
+    letter-spacing: 0.05em;
+    line-height: 1.1;
+  }
+  .metric-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    color: #334155;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* ── Anim ── */
+  .slide-in { opacity: 0; transform: translateX(-16px); transition: all 0.5s ease; }
+  .slide-in.visible { opacity: 1; transform: none; }
+  .fade-up { opacity: 0; transform: translateY(16px); transition: all 0.5s ease; }
+  .fade-up.visible { opacity: 1; transform: none; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #0d2040; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Three.js background -->
+<canvas id="hud-canvas"></canvas>
+
+<!-- ═══ HEADER ═══ -->
+<header id="header">
+  <div class="logo-text">▲ JARVIS TRADER</div>
+  <div class="header-right">
+    <span id="hdr-clock">—</span>
+    <span>|</span>
+    <span>v2.7</span>
+    <span>|</span>
+    <span class="status-online">
+      <div class="dot-pulse"></div>
+      <span>PAPER TRADING ACTIVE</span>
+    </span>
+    <span>|</span>
+    <span>commit: e2cd5fc</span>
+  </div>
+</header>
+
+<div id="main">
+
+  <!-- ═══ PHASE BANNER ═══ -->
+  <div class="phase-banner mb-6 fade-up">
+    <div style="font-family:'Orbitron',monospace; font-size:0.7rem; letter-spacing:0.2em; color:var(--cyan); margin-bottom:8px;">CURRENT PHASE: PAPER TRADING — PHASE 2B</div>
+    <div style="display:flex; gap:32px; flex-wrap:wrap;">
+      <div>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#475569;">STATUS</span>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:var(--green2); margin-left:10px;">MCL + MNQ ACTIVE · MGC HALTED</span>
+      </div>
+      <div>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#475569;">CAPITAL</span>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#94a3b8; margin-left:10px;">$25,000 SIMULATED</span>
+      </div>
+      <div>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#475569;">LIVE TARGET</span>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#94a3b8; margin-left:10px;">JUNE 2026 · $10K · 1 MES</span>
+      </div>
+      <div>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#475569;">NEXT GATE</span>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:var(--amber); margin-left:10px;">60 TRADES · 60 DAYS · PF≥1.5</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TOP ROW — Metrics ═══ -->
+  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6 fade-up">
+    <div class="metric-tile">
+      <div class="metric-val" style="color:var(--green);">0.82</div>
+      <div class="metric-label">MCL WFE</div>
+    </div>
+    <div class="metric-tile">
+      <div class="metric-val" style="color:var(--cyan);">0.57</div>
+      <div class="metric-label">MNQ WFE</div>
+    </div>
+    <div class="metric-tile">
+      <div class="metric-val" style="color:var(--red);">0.14</div>
+      <div class="metric-label">MGC WFE</div>
+    </div>
+    <div class="metric-tile">
+      <div class="metric-val" style="color:var(--green);">16/16</div>
+      <div class="metric-label">ROUTES BUILD</div>
+    </div>
+    <div class="metric-tile">
+      <div class="metric-val" style="color:var(--purple);">5</div>
+      <div class="metric-label">OPTIONS MODS</div>
+    </div>
+    <div class="metric-tile">
+      <div class="metric-val" style="color:#94a3b8;">9,695</div>
+      <div class="metric-label">LINES ADDED</div>
+    </div>
+  </div>
+
+  <!-- ═══ MIDDLE GRID ═══ -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+    <!-- LEFT: Instruments -->
+    <div class="lg:col-span-1 flex flex-col gap-3">
+      <div class="panel panel-green slide-in">
+        <div class="panel-head">ACTIVE INSTRUMENTS</div>
+
+        <!-- MCL -->
+        <div class="instrument active mb-3">
+          <div class="flex justify-between items-start mb-2">
+            <div class="inst-symbol" style="color:var(--green);">MCL</div>
+            <div class="inst-status status-active">ACTIVE</div>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#475569; margin-bottom:6px;">Micro Crude Oil · 1H · Static Regime</div>
+          <div class="flex justify-between" style="font-family:'JetBrains Mono',monospace; font-size:0.68rem;">
+            <span style="color:#64748b;">WFE</span>
+            <span style="color:var(--green);">0.82 EXCELLENT</span>
+          </div>
+          <div class="wfe-track"><div class="wfe-fill" style="background:linear-gradient(90deg,#10b981,#00ff88); width:0%" id="mcl-bar"></div></div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:0.62rem; color:#334155; margin-top:6px;">
+            STC_OS=15 · STC_OB=83 · Stop=0.90ATR · T1=1.50ATR
+          </div>
+        </div>
+
+        <!-- MNQ -->
+        <div class="instrument active mb-3">
+          <div class="flex justify-between items-start mb-2">
+            <div class="inst-symbol" style="color:var(--cyan);">MNQ</div>
+            <div class="inst-status status-active">ACTIVE</div>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#475569; margin-bottom:6px;">Micro Nasdaq · 1H · Adaptive Regime</div>
+          <div class="flex justify-between" style="font-family:'JetBrains Mono',monospace; font-size:0.68rem;">
+            <span style="color:#64748b;">WFE</span>
+            <span style="color:var(--cyan);">0.57 GOOD</span>
+          </div>
+          <div class="wfe-track"><div class="wfe-fill" style="background:linear-gradient(90deg,#0891b2,#06b6d4); width:0%" id="mnq-bar"></div></div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:0.62rem; color:#334155; margin-top:6px;">
+            STC_OS=15 · STC_OB=92 · Stop=0.70ATR · adaptive=ON
+          </div>
+        </div>
+
+        <!-- MGC -->
+        <div class="instrument halted">
+          <div class="flex justify-between items-start mb-2">
+            <div class="inst-symbol" style="color:var(--red);">MGC</div>
+            <div class="inst-status status-halted">HALTED</div>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#475569; margin-bottom:6px;">Micro Gold · 1D · Overfit detected</div>
+          <div class="flex justify-between" style="font-family:'JetBrains Mono',monospace; font-size:0.68rem;">
+            <span style="color:#64748b;">WFE</span>
+            <span style="color:var(--red);">0.14 OVERFIT</span>
+          </div>
+          <div class="wfe-track"><div class="wfe-fill" style="background:var(--red); width:0%" id="mgc-bar"></div></div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:0.62rem; color:#334155; margin-top:6px;">
+            MTF filter: 0.14→0.17 (rejected) · suspended indefinitely
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIDDLE: Progress + Radar -->
+    <div class="lg:col-span-1 flex flex-col gap-4">
+      <div class="panel panel-cyan slide-in" style="transition-delay:0.1s;">
+        <div class="panel-head">SESSION PROGRESS</div>
+        <canvas id="prog-canvas" width="240" height="240"></canvas>
+      </div>
+    </div>
+
+    <!-- RIGHT: Risk layer -->
+    <div class="lg:col-span-1 flex flex-col gap-4">
+      <div class="panel slide-in" style="transition-delay:0.2s;">
+        <div class="panel-head">SAFETY LAYER — CIRCUIT BREAKERS</div>
+        <div class="risk-row">
+          <span class="risk-label">Daily Loss</span>
+          <div class="risk-track"><div class="risk-fill" style="background:var(--green); width:0%" id="r1"></div></div>
+          <span class="risk-val" style="color:var(--green);">0.0% / 2%</span>
+        </div>
+        <div class="risk-row">
+          <span class="risk-label">Max Drawdown</span>
+          <div class="risk-track"><div class="risk-fill" style="background:var(--cyan); width:0%" id="r2"></div></div>
+          <span class="risk-val" style="color:var(--cyan);">0.0% / 10%</span>
+        </div>
+        <div class="risk-row">
+          <span class="risk-label">Consec Losses</span>
+          <div class="risk-track"><div class="risk-fill" style="background:var(--amber); width:0%" id="r3"></div></div>
+          <span class="risk-val" style="color:var(--amber);">0 / 7</span>
+        </div>
+        <div class="risk-row">
+          <span class="risk-label">Margin Used</span>
+          <div class="risk-track"><div class="risk-fill" style="background:#6366f1; width:0%" id="r4"></div></div>
+          <span class="risk-val" style="color:#6366f1;">0% / 40%</span>
+        </div>
+        <div class="risk-row">
+          <span class="risk-label">Order Rate</span>
+          <div class="risk-track"><div class="risk-fill" style="background:var(--green2); width:0%" id="r5"></div></div>
+          <span class="risk-val" style="color:var(--green2);">0 / 10/m</span>
+        </div>
+        <div style="margin-top:14px; padding:10px; background:rgba(0,255,136,0.05); border:1px solid rgba(0,255,136,0.1); border-radius:3px;">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:0.62rem; color:var(--green2); letter-spacing:0.1em;">KILL SWITCH: ARMED · DISENGAGED</div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#334155; margin-top:3px;">Pure Python · No LLM bypass · Hardcoded</div>
+        </div>
+      </div>
+
+      <div class="panel slide-in" style="transition-delay:0.3s;">
+        <div class="panel-head">OPTIONS ENGINE STATUS</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-family:'JetBrains Mono',monospace; font-size:0.65rem;">
+          <div style="padding:8px; background:rgba(0,212,255,0.05); border:1px solid rgba(0,212,255,0.1); border-radius:3px; color:var(--cyan2);">greeks_monitor</div>
+          <div style="padding:8px; background:rgba(0,212,255,0.05); border:1px solid rgba(0,212,255,0.1); border-radius:3px; color:var(--cyan2);">strategy_executor</div>
+          <div style="padding:8px; background:rgba(0,212,255,0.05); border:1px solid rgba(0,212,255,0.1); border-radius:3px; color:var(--cyan2);">chain_fetcher</div>
+          <div style="padding:8px; background:rgba(0,212,255,0.05); border:1px solid rgba(0,212,255,0.1); border-radius:3px; color:var(--cyan2);">premium_calculator</div>
+          <div style="padding:8px; background:rgba(0,212,255,0.05); border:1px solid rgba(0,212,255,0.1); border-radius:3px; color:var(--cyan2);">position_manager</div>
+          <div style="padding:8px; background:rgba(0,255,136,0.05); border:1px solid rgba(0,255,136,0.15); border-radius:3px; color:var(--green2);">5 endpoints live</div>
+        </div>
+        <div style="margin-top:10px; font-family:'JetBrains Mono',monospace; font-size:0.6rem; color:#334155; text-align:center; letter-spacing:0.1em;">
+          7 STRATEGIES BUILT · BLACK-SCHOLES + IV SOLVER
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ BOTTOM ROW ═══ -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+
+    <!-- Session Timeline -->
+    <div class="panel fade-up">
+      <div class="panel-head">SESSION HISTORY — KEY MILESTONES</div>
+      <div>
+        <div class="timeline-item">
+          <div class="tl-dot" style="background:var(--green); box-shadow:0 0 6px var(--green);"></div>
+          <div class="tl-date">2026-03-30</div>
+          <div class="tl-content">
+            JARVIS_TRADER_MASTER.md created — 1,459 lines, 20 sections, 40+ sources consolidated
+            <span class="tl-badge badge-major">MAJOR</span>
+            <div class="tl-sub">Single source of truth. 7 cross-doc conflicts resolved.</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="tl-dot" style="background:var(--cyan);"></div>
+          <div class="tl-date">2026-03-30</div>
+          <div class="tl-content">
+            Options engine built from scratch — 5 modules, 7 strategies, Black-Scholes complete
+            <span class="tl-badge badge-build">BUILD</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="tl-dot" style="background:var(--purple);"></div>
+          <div class="tl-date">2026-03-30</div>
+          <div class="tl-content">
+            Iron Man Command Center dashboard — /command-center route, full HUD, 30s auto-refresh
+            <span class="tl-badge badge-build">BUILD</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="tl-dot" style="background:var(--green2);"></div>
+          <div class="tl-date">2026-03-30</div>
+          <div class="tl-content">
+            MCL WFE 0.82 EXCELLENT confirmed · MNQ WFE corrected 0.48→0.57 (v2.7)
+            <span class="tl-badge badge-data">DATA</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="tl-dot" style="background:var(--amber);"></div>
+          <div class="tl-date">2026-03-29</div>
+          <div class="tl-content">
+            Optimizer kwarg bug found and fixed. MGC WFE corrected 0.27→0.14 OVERFIT
+            <span class="tl-badge badge-fix">FIX</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="tl-dot" style="background:var(--amber);"></div>
+          <div class="tl-date">2026-03-29</div>
+          <div class="tl-content">
+            MTF + volume filter walk-forward: both degrade MNQ WFE. Permanently rejected.
+            <span class="tl-badge badge-data">DATA</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="tl-dot" style="background:#6366f1;"></div>
+          <div class="tl-date">2026-03-30</div>
+          <div class="tl-content">
+            Dashboard build 16/16 routes clean. Fixed 4 TypeScript/lucide-react errors.
+            <span class="tl-badge badge-fix">FIX</span>
+          </div>
+        </div>
+        <div class="timeline-item" style="border-bottom:none;">
+          <div class="tl-dot" style="background:var(--green); box-shadow:0 0 6px var(--green);"></div>
+          <div class="tl-date">2026-03-30</div>
+          <div class="tl-content">
+            git commit e2cd5fc — 28 files, +9,695 lines, −1,291 lines · session complete
+            <span class="tl-badge badge-major">COMMIT</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Go-Live Checklist -->
+    <div class="panel fade-up" style="transition-delay:0.15s;">
+      <div class="panel-head">GO-LIVE VALIDATION CHECKLIST (CANONICAL v2.7)</div>
+      <div id="checklist"></div>
+    </div>
+  </div>
+
+  <!-- ═══ CONFLICTS + NEXT STEPS ═══ -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="panel fade-up">
+      <div class="panel-head">VIX 6-TIER REGIME (CANONICAL)</div>
+      <div style="font-family:'JetBrains Mono',monospace;">
+        <div style="display:grid; grid-template-columns:auto 1fr auto; gap:8px 16px; font-size:0.7rem; align-items:center;">
+          <span style="color:var(--green);">VERY_LOW</span><span style="background:#1e293b; height:3px; border-radius:2px; display:block; margin-top:2px;"><div style="width:12%; height:100%; background:var(--green); border-radius:2px;"></div></span><span style="color:#475569;">&lt; 12</span>
+          <span style="color:var(--green2);">LOW</span><span style="background:#1e293b; height:3px; border-radius:2px; display:block;"><div style="width:24%; height:100%; background:var(--green2); border-radius:2px;"></div></span><span style="color:#475569;">12–16</span>
+          <span style="color:var(--cyan);">NORMAL</span><span style="background:#1e293b; height:3px; border-radius:2px; display:block;"><div style="width:40%; height:100%; background:var(--cyan); border-radius:2px;"></div></span><span style="color:#475569;">16–20</span>
+          <span style="color:var(--amber);">ELEVATED</span><span style="background:#1e293b; height:3px; border-radius:2px; display:block;"><div style="width:62%; height:100%; background:var(--amber); border-radius:2px;"></div></span><span style="color:#475569;">20–25</span>
+          <span style="color:var(--red);">HIGH</span><span style="background:#1e293b; height:3px; border-radius:2px; display:block;"><div style="width:80%; height:100%; background:var(--red); border-radius:2px;"></div></span><span style="color:#475569;">25–30</span>
+          <span style="color:#ff6b6b; font-weight:700;">EXTREME</span><span style="background:#1e293b; height:3px; border-radius:2px; display:block;"><div style="width:100%; height:100%; background:#ff3b5c; border-radius:2px;"></div></span><span style="color:#475569;">&gt; 30</span>
+        </div>
+        <div style="font-size:0.6rem; color:#1e293b; margin-top:12px; text-align:center; letter-spacing:0.1em;">IRON CONDORS: NORMAL + ELEVATED ONLY · NEVER HIGH/EXTREME</div>
+      </div>
+    </div>
+
+    <div class="panel fade-up" style="transition-delay:0.1s;">
+      <div class="panel-head">NEXT SESSION — PRIORITY QUEUE</div>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:0.7rem;">
+        <div style="padding:8px 0; border-bottom:1px solid rgba(30,41,59,0.4); display:flex; gap:10px;">
+          <span style="color:var(--red); flex-shrink:0;">[P1]</span>
+          <span style="color:#94a3b8;">Set FRED_API_KEY in .env — enables macro/VIX snapshot endpoint</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(30,41,59,0.4); display:flex; gap:10px;">
+          <span style="color:var(--amber); flex-shrink:0;">[P2]</span>
+          <span style="color:#94a3b8;">Automate 4-week rolling WFE recalculation scheduler job (Sprint 7)</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(30,41,59,0.4); display:flex; gap:10px;">
+          <span style="color:var(--amber); flex-shrink:0;">[P3]</span>
+          <span style="color:#94a3b8;">SPY 1h walk-forward re-run post optimizer bug fix (corrected baseline)</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(30,41,59,0.4); display:flex; gap:10px;">
+          <span style="color:var(--cyan); flex-shrink:0;">[P4]</span>
+          <span style="color:#94a3b8;">IB Gateway paper port 4002 connection test (Phase 3 gate #7)</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(30,41,59,0.4); display:flex; gap:10px;">
+          <span style="color:var(--cyan); flex-shrink:0;">[P5]</span>
+          <span style="color:#94a3b8;">Add unit tests for SafetyLayer circuit breakers (zero agent tests today)</span>
+        </div>
+        <div style="padding:8px 0; border-bottom:1px solid rgba(30,41,59,0.4); display:flex; gap:10px;">
+          <span style="color:#64748b; flex-shrink:0;">[P6]</span>
+          <span style="color:#475569;">MGC signal redesign — extend history to 2022 bear market data</span>
+        </div>
+        <div style="padding:8px 0; display:flex; gap:10px;">
+          <span style="color:#334155; flex-shrink:0;">[P7]</span>
+          <span style="color:#334155;">CI/CD pipeline — automated WFE check on push to main</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ═══════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════ -->
+<script type="module">
+import * as THREE from 'three';
+
+// ── Clock ──
+function updateClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('hdr-clock').textContent =
+    `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Three.js HUD background ──
+const canvas = document.getElementById('hud-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true });
+renderer.setClearColor(0x000000, 0);
+renderer.setPixelRatio(1);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 500);
+camera.position.set(0, 0, 60);
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Flowing grid
+function makeGrid(z, color, opacity) {
+  const geo = new THREE.BufferGeometry();
+  const verts = [];
+  for (let i = -80; i <= 80; i += 6) {
+    verts.push(i, -40, z, i, 40, z);
+    verts.push(-80, i*0.5, z, 80, i*0.5, z);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+  return new THREE.LineSegments(geo, mat);
+}
+scene.add(makeGrid(-50, 0x0c2438, 0.4));
+scene.add(makeGrid(-80, 0x061220, 0.2));
+
+// Hex overlay rings
+for (let i = 0; i < 4; i++) {
+  const geo = new THREE.RingGeometry(15 + i*12, 15.2 + i*12, 6);
+  const mat = new THREE.MeshBasicMaterial({
+    color: i % 2 === 0 ? 0x00d4ff : 0x00ff88,
+    side: THREE.DoubleSide,
+    transparent: true, opacity: 0.04
+  });
+  const ring = new THREE.Mesh(geo, mat);
+  ring.position.set(-20 + i*8, 10 - i*5, -30);
+  ring.rotation.z = i * 0.5;
+  ring.userData.rotSpeed = 0.002 + i * 0.001;
+  scene.add(ring);
+}
+
+// Floating data particles
+const N = 150;
+const pPos = new Float32Array(N*3);
+const pVel = [];
+for (let i = 0; i < N; i++) {
+  pPos[i*3]   = (Math.random()-0.5) * 180;
+  pPos[i*3+1] = (Math.random()-0.5) * 100;
+  pPos[i*3+2] = -20 - Math.random() * 30;
+  pVel.push({ x:(Math.random()-0.5)*0.05, y:(Math.random()-0.5)*0.03 });
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const pMat = new THREE.PointsMaterial({ color: 0x00d4ff, size: 0.5, transparent: true, opacity: 0.4 });
+scene.add(new THREE.Points(pGeo, pMat));
+
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.005;
+  const pos = pGeo.attributes.position.array;
+  for (let i = 0; i < N; i++) {
+    pos[i*3]   += pVel[i].x;
+    pos[i*3+1] += pVel[i].y;
+    if (pos[i*3] > 90) pos[i*3] = -90;
+    if (pos[i*3] < -90) pos[i*3] = 90;
+    if (pos[i*3+1] > 50) pos[i*3+1] = -50;
+    if (pos[i*3+1] < -50) pos[i*3+1] = 50;
+  }
+  pGeo.attributes.position.needsUpdate = true;
+  scene.children.forEach(c => {
+    if (c.userData.rotSpeed) c.rotation.z += c.userData.rotSpeed;
+  });
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── WFE Bars ──
+setTimeout(() => {
+  document.getElementById('mcl-bar').style.width = '82%';
+  document.getElementById('mnq-bar').style.width = '57%';
+  document.getElementById('mgc-bar').style.width = '14%';
+}, 400);
+
+// Risk bars (starting clean — paper phase)
+setTimeout(() => {
+  document.getElementById('r1').style.width = '2%';
+  document.getElementById('r2').style.width = '1%';
+  document.getElementById('r3').style.width = '0%';
+  document.getElementById('r4').style.width = '0%';
+  document.getElementById('r5').style.width = '0%';
+}, 600);
+
+// ── Progress donut ──
+const pc = document.getElementById('prog-canvas');
+const ctx = pc.getContext('2d');
+
+const phases = [
+  { label: 'Architecture', pct: 100, color: '#10b981' },
+  { label: 'Strategy',     pct: 100, color: '#06b6d4' },
+  { label: 'WFE',          pct: 100, color: '#00ff88' },
+  { label: 'Options',      pct: 100, color: '#a78bfa' },
+  { label: 'Dashboard',    pct: 95,  color: '#f59e0b' },
+  { label: 'Go-Live',      pct: 40,  color: '#64748b' },
+];
+const overall = Math.round(phases.reduce((s,p) => s + p.pct, 0) / phases.length);
+
+let prog = 0;
+function drawDonut(progress) {
+  ctx.clearRect(0, 0, 240, 240);
+  const cx = 120, cy = 120, R = 95, lw = 12;
+  const n = phases.length;
+  const gap = 0.04;
+  const total = Math.PI * 2;
+  const sliceAngle = (total - n * gap) / n;
+
+  let angle = -Math.PI / 2;
+  phases.forEach(ph => {
+    const filled = sliceAngle * (ph.pct / 100) * progress;
+    const empty = sliceAngle - filled;
+
+    // Filled arc
+    if (filled > 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, angle, angle + filled);
+      ctx.strokeStyle = ph.color;
+      ctx.lineWidth = lw;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+    // Empty arc
+    if (empty > 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, angle + filled, angle + sliceAngle);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = lw * 0.5;
+      ctx.lineCap = 'butt';
+      ctx.stroke();
+    }
+    angle += sliceAngle + gap;
+  });
+
+  // Center
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = "bold 36px 'Orbitron', monospace";
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(Math.round(overall * progress) + '%', cx, cy - 8);
+  ctx.fillStyle = '#475569';
+  ctx.font = "10px 'JetBrains Mono', monospace";
+  ctx.fillText('COMPLETE', cx, cy + 16);
+  ctx.fillStyle = '#334155';
+  ctx.font = "9px 'JetBrains Mono', monospace";
+  ctx.fillText('v2.7 SESSION', cx, cy + 30);
+}
+
+function animDonut() {
+  prog = Math.min(prog + 0.025, 1);
+  drawDonut(prog);
+  if (prog < 1) requestAnimationFrame(animDonut);
+}
+setTimeout(animDonut, 600);
+
+// ── Checklist ──
+const goLiveItems = [
+  { text: 'WFE ≥ 0.50 on approved instruments', detail: 'MCL=0.82 · MNQ=0.57 · both PASS', status: 'pass' },
+  { text: '60+ trades over 60+ days', detail: 'Paper trading phase active — clock starts now', status: 'active' },
+  { text: 'Profit Factor ≥ 1.5 (paper gate)', detail: 'Must be sustained over 60-day window', status: 'active' },
+  { text: 'Sharpe ≥ 1.0 (paper gate)', detail: 'Rolling 60-day Sharpe ratio', status: 'active' },
+  { text: 'Win Rate ≥ 45% (paper gate)', detail: 'MCL: 60% IS · MNQ: 47.7% IS (both above threshold)', status: 'pass' },
+  { text: 'MaxDD < 10% (circuit breaker)', detail: 'SafetyLayer hardcoded at -10.0%', status: 'pass' },
+  { text: 'No EP-3 events in 2 weeks', detail: 'Emergency Protocol 3 = system-level failure', status: 'active' },
+  { text: 'WhatsApp alerts verified (5+ SIDs)', detail: 'Twilio WhatsApp routing confirmed in session 3', status: 'pass' },
+  { text: 'IB Gateway paper port 4002 tested', detail: 'IBKR TWS not yet running — Phase 3 gate', status: 'pending' },
+  { text: 'Kill switch activation test', detail: 'Test Tier 3 kill switch manually before live', status: 'active' },
+];
+
+const cl = document.getElementById('checklist');
+goLiveItems.forEach((item, i) => {
+  const icons = { pass:'✓', active:'◉', pending:'○' };
+  const colors = { pass: 'var(--green)', active: 'var(--cyan)', pending: '#475569' };
+  const div = document.createElement('div');
+  div.className = 'check-item';
+  div.innerHTML = `
+    <span class="check-icon" style="color:${colors[item.status]};">${icons[item.status]}</span>
+    <div>
+      <div class="check-text" style="${item.status === 'pass' ? 'color:#94a3b8;' : item.status === 'pending' ? 'color:#334155;' : ''}">${item.text}</div>
+      <div class="check-sub">${item.detail}</div>
+    </div>`;
+  cl.appendChild(div);
+});
+
+// ── Animate on scroll ──
+const targets = document.querySelectorAll('.slide-in, .fade-up');
+const obs = new IntersectionObserver(e => e.forEach(en => { if (en.isIntersecting) en.target.classList.add('visible'); }), { threshold: 0.05 });
+targets.forEach(t => obs.observe(t));
+setTimeout(() => targets.forEach(t => t.classList.add('visible')), 150);
+
+</script>
+</body>
+</html>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     

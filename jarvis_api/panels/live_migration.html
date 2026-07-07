@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIVE MIGRATION · GO/NO-GO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-void: #020814;
+    --bg-deep: #040d1e;
+    --bg-panel: #060f24;
+    --bg-card: #071228;
+    --bg-card2: #081530;
+    --blue: #00d4ff;
+    --cyan: #00fff5;
+    --gold: #ffd700;
+    --amber: #ff8c00;
+    --red: #ff2244;
+    --green: #00ff88;
+    --purple: #7b2fff;
+    --text-primary: #e8f4ff;
+    --text-secondary: #7ab0d4;
+    --text-dim: #3a6080;
+    --border: rgba(0,212,255,0.15);
+    --border-bright: rgba(0,212,255,0.5);
+    --glow-blue: 0 0 20px rgba(0,212,255,0.4);
+    --glow-cyan: 0 0 20px rgba(0,255,245,0.3);
+    --glow-gold: 0 0 20px rgba(255,215,0,0.4);
+    --glow-green: 0 0 15px rgba(0,255,136,0.4);
+    --glow-red: 0 0 15px rgba(255,34,68,0.5);
+    --glow-amber: 0 0 15px rgba(255,140,0,0.5);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-void);
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,212,255,0.013) 2px,
+      rgba(0,212,255,0.013) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrapper { position: relative; z-index: 1; padding: 24px; max-width: 1200px; margin: 0 auto; }
+
+  /* ─── CARD ─── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+    margin-bottom: 16px;
+  }
+  .card::before, .card::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    border-color: rgba(0,212,255,0.4);
+    border-style: solid;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .card::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+  .card::after  { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,212,255,0.03);
+  }
+  .card-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .card-body { padding: 18px; }
+
+  /* ─── PANEL HEADER ─── */
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid rgba(255,34,68,0.3);
+    background: linear-gradient(90deg, rgba(255,34,68,0.08) 0%, rgba(0,212,255,0.04) 100%);
+    margin-bottom: 20px;
+  }
+  .panel-title-group { display: flex; align-items: center; gap: 14px; }
+  .panel-main-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--red);
+    letter-spacing: 3px;
+    text-shadow: var(--glow-red);
+  }
+  .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    padding: 3px 10px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .badge-red {
+    background: rgba(255,34,68,0.15);
+    border: 1px solid rgba(255,34,68,0.5);
+    color: var(--red);
+    text-shadow: var(--glow-red);
+    animation: badge-pulse 2s ease-in-out infinite;
+  }
+  @keyframes badge-pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .badge-green { background: rgba(0,255,136,0.12); border: 1px solid rgba(0,255,136,0.4); color: var(--green); }
+  .badge-amber { background: rgba(255,140,0,0.12); border: 1px solid rgba(255,140,0,0.4); color: var(--amber); }
+  .badge-blue { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.3); color: var(--blue); }
+
+  /* ─── PHASE STEPPER ─── */
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 20px 24px;
+    overflow-x: auto;
+  }
+  .phase {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+  }
+  .phase:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 20px;
+    width: 100%;
+    height: 2px;
+    background: rgba(0,212,255,0.1);
+    z-index: 0;
+  }
+  .phase-dot {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 2px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    position: relative;
+    z-index: 1;
+    background: var(--bg-card);
+    transition: all 0.3s;
+  }
+  .phase-dot.done { border-color: var(--green); color: var(--green); box-shadow: var(--glow-green); }
+  .phase-dot.active { border-color: var(--amber); color: var(--amber); box-shadow: var(--glow-amber); animation: phase-pulse 2s ease-in-out infinite; }
+  .phase-dot.pending { border-color: var(--text-dim); color: var(--text-dim); }
+  .phase-dot.locked { border-color: rgba(255,34,68,0.4); color: var(--red); opacity: 0.6; }
+  @keyframes phase-pulse {
+    0%,100% { box-shadow: 0 0 10px rgba(255,140,0,0.4); }
+    50% { box-shadow: 0 0 20px rgba(255,140,0,0.7); }
+  }
+  .phase-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-align: center;
+  }
+  .phase-name.done { color: var(--green); }
+  .phase-name.active { color: var(--amber); }
+  .phase-name.pending { color: var(--text-dim); }
+  .phase-name.locked { color: rgba(255,34,68,0.6); }
+  .phase-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    text-align: center;
+    color: var(--text-dim);
+  }
+  .phase-connector {
+    flex: 0 0 60px;
+    height: 2px;
+    background: rgba(0,212,255,0.1);
+    position: relative;
+    top: -28px;
+  }
+  .phase-connector.done { background: linear-gradient(90deg, var(--green), rgba(0,255,136,0.3)); }
+  .phase-connector.active { background: linear-gradient(90deg, var(--amber), rgba(255,140,0,0.2)); }
+
+  /* ─── ACCORDION ─── */
+  .accordion-section { margin-bottom: 8px; }
+  .accordion-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(0,212,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .accordion-header:hover { border-color: rgba(0,212,255,0.35); background: rgba(0,212,255,0.07); }
+  .accordion-header.open { border-color: rgba(0,212,255,0.35); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .accordion-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-primary);
+  }
+  .accordion-meta { display: flex; align-items: center; gap: 10px; }
+  .accordion-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+  .accordion-chevron {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+  .accordion-header.open .accordion-chevron { transform: rotate(180deg); }
+  .accordion-body {
+    display: none;
+    border: 1px solid rgba(0,212,255,0.35);
+    border-top: none;
+    border-bottom-left-radius: 3px;
+    border-bottom-right-radius: 3px;
+    background: rgba(0,0,0,0.2);
+    padding: 4px 0;
+  }
+  .accordion-body.open { display: block; }
+
+  /* ─── CHECKLIST ITEMS ─── */
+  .check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 9px 16px;
+    border-bottom: 1px solid rgba(0,212,255,0.06);
+    transition: background 0.15s;
+  }
+  .check-item:last-child { border-bottom: none; }
+  .check-item:hover { background: rgba(0,212,255,0.03); }
+  .check-icon {
+    width: 18px; height: 18px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    margin-top: 1px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .check-icon.pass { background: rgba(0,255,136,0.12); border: 1px solid rgba(0,255,136,0.4); color: var(--green); }
+  .check-icon.in-progress { background: rgba(255,140,0,0.1); border: 1px solid rgba(255,140,0,0.4); color: var(--amber); }
+  .check-icon.blocked { background: rgba(255,34,68,0.08); border: 1px solid rgba(255,34,68,0.3); color: var(--red); }
+  .check-icon.pending-icon { background: rgba(0,212,255,0.07); border: 1px solid rgba(0,212,255,0.25); color: var(--text-dim); }
+  .check-label { flex: 1; }
+  .check-main {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.3;
+  }
+  .check-detail {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    letter-spacing: 0.5px;
+  }
+  .check-detail.ok { color: var(--green); }
+  .check-detail.warn { color: var(--amber); }
+  .check-detail.blocked { color: var(--red); }
+
+  /* ─── GO/NO-GO VERDICT ─── */
+  .verdict-panel {
+    background: rgba(255,34,68,0.07);
+    border: 1px solid rgba(255,34,68,0.3);
+    border-radius: 4px;
+    padding: 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .verdict-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--red), transparent);
+    animation: verdict-scan 3s linear infinite;
+  }
+  @keyframes verdict-scan {
+    0% { opacity: 0; }
+    50% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .verdict-main {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    line-height: 1;
+    color: var(--red);
+    text-shadow: var(--glow-red);
+    animation: verdict-pulse 2s ease-in-out infinite;
+  }
+  @keyframes verdict-pulse {
+    0%,100% { text-shadow: 0 0 20px rgba(255,34,68,0.6); }
+    50% { text-shadow: 0 0 40px rgba(255,34,68,0.9); }
+  }
+  .verdict-sub {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--amber);
+    letter-spacing: 4px;
+    margin-top: 8px;
+    text-shadow: var(--glow-amber);
+  }
+  .verdict-meta {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,34,68,0.2);
+  }
+  .verdict-meta-item { text-align: center; }
+  .verdict-meta-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .verdict-meta-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 2px;
+  }
+  .verdict-meta-value.gold { color: var(--gold); text-shadow: var(--glow-gold); }
+  .verdict-meta-value.blue { color: var(--blue); text-shadow: var(--glow-blue); }
+  .verdict-meta-value.amber { color: var(--amber); text-shadow: var(--glow-amber); }
+
+  /* ─── PROGRESS BAR ─── */
+  .progress-bar-wrap { margin-top: 16px; }
+  .progress-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  .progress-track {
+    height: 8px;
+    background: rgba(0,212,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1s ease;
+    position: relative;
+  }
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 20px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+    border-radius: 4px;
+  }
+  .progress-fill.amber { background: linear-gradient(90deg, var(--amber), rgba(255,140,0,0.6)); box-shadow: 0 0 8px rgba(255,140,0,0.4); }
+  .progress-fill.green { background: linear-gradient(90deg, var(--green), rgba(0,255,136,0.6)); box-shadow: 0 0 8px rgba(0,255,136,0.4); }
+
+  /* ─── RISK BUDGET ─── */
+  .risk-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .risk-cell {
+    background: rgba(255,34,68,0.05);
+    border: 1px solid rgba(255,34,68,0.15);
+    border-radius: 3px;
+    padding: 12px;
+    text-align: center;
+    transition: border-color 0.2s;
+  }
+  .risk-cell:hover { border-color: rgba(255,34,68,0.35); }
+  .risk-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 7px;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .risk-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--red);
+    letter-spacing: 1px;
+    line-height: 1;
+  }
+  .risk-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 3px;
+  }
+
+  /* ─── FOOTER ─── */
+  .status-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    border-top: 1px solid var(--border);
+    background: rgba(0,0,0,0.3);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    border-radius: 0 0 4px 4px;
+  }
+  .status-footer .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .status-footer .dot.red { background: var(--red); box-shadow: var(--glow-red); animation: dot-blink 1s ease-in-out infinite; }
+  .status-footer .dot.green { background: var(--green); box-shadow: var(--glow-green); }
+  @keyframes dot-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- ─── PANEL HEADER ─── -->
+  <div class="panel-header">
+    <div class="panel-title-group">
+      <div class="panel-main-title">LIVE MIGRATION · GO/NO-GO</div>
+      <span class="badge badge-red">LOCKED</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-secondary);">
+      <span>EST. LIVE DATE</span>
+      <span style="color:var(--gold);font-weight:600;text-shadow:var(--glow-gold);">MAY 21, 2026</span>
+    </div>
+  </div>
+
+  <!-- ─── PHASE STEPPER ─── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Migration Phase Tracker</span>
+      <span class="badge badge-blue">PHASE 2 / 4</span>
+    </div>
+    <div class="stepper">
+
+      <!-- Phase 1: Setup -->
+      <div class="phase">
+        <div class="phase-dot done">1</div>
+        <div class="phase-name done">SETUP</div>
+        <div class="phase-sub">✓ COMPLETE</div>
+      </div>
+
+      <div class="phase-connector done"></div>
+
+      <!-- Phase 2: Paper Validation -->
+      <div class="phase">
+        <div class="phase-dot active">2</div>
+        <div class="phase-name active">PAPER VALIDATION</div>
+        <div class="phase-sub">⟳ DAY 2 / 30</div>
+      </div>
+
+      <div class="phase-connector active"></div>
+
+      <!-- Phase 3: Review -->
+      <div class="phase">
+        <div class="phase-dot pending">3</div>
+        <div class="phase-name pending">REVIEW</div>
+        <div class="phase-sub">◷ PENDING</div>
+      </div>
+
+      <div class="phase-connector"></div>
+
+      <!-- Phase 4: Live Trading -->
+      <div class="phase">
+        <div class="phase-dot locked">4</div>
+        <div class="phase-name locked">LIVE TRADING</div>
+        <div class="phase-sub">⊘ LOCKED</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─── CHECKLIST ACCORDION ─── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Checklist — All Systems</span>
+      <span class="badge badge-amber">7 / 13 PASS</span>
+    </div>
+    <div class="card-body" style="padding:12px 16px;">
+
+      <!-- INFRASTRUCTURE -->
+      <div class="accordion-section">
+        <div class="accordion-header open" onclick="toggleAccordion(this)">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="accordion-title">INFRASTRUCTURE</span>
+          </div>
+          <div class="accordion-meta">
+            <span class="accordion-badge badge-green">5 / 5 PASS</span>
+            <span class="accordion-chevron">▼</span>
+          </div>
+        </div>
+        <div class="accordion-body open">
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Python engine deployed</div>
+              <div class="check-detail ok">FastAPI · port 8010 · online</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">IBKR Gateway configured</div>
+              <div class="check-detail ok">Paper account · port 4002 · DUP662235</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">API Bridge deployed</div>
+              <div class="check-detail ok">Port 8020 · health endpoint OK</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Weekly cron wired</div>
+              <div class="check-detail ok">Friday 4:05 PM CDT · verified Apr 22</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Dry-run passed</div>
+              <div class="check-detail ok">Apr 22, 2026 · all systems nominal</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STRATEGY PERFORMANCE -->
+      <div class="accordion-section">
+        <div class="accordion-header open" onclick="toggleAccordion(this)">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="accordion-title">STRATEGY PERFORMANCE</span>
+          </div>
+          <div class="accordion-meta">
+            <span class="accordion-badge badge-amber">3 / 5 PASS</span>
+            <span class="accordion-chevron">▼</span>
+          </div>
+        </div>
+        <div class="accordion-body open">
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Backtest Sharpe ≥ 2.0</div>
+              <div class="check-detail ok">Achieved 2.12 — Strategy C+ v3.0</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Max drawdown ≤ 15%</div>
+              <div class="check-detail ok">Achieved -8.4% — well within limit</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Profit factor ≥ 1.5</div>
+              <div class="check-detail ok">Achieved 1.87 — backtest validated</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon in-progress">⟳</div>
+            <div class="check-label">
+              <div class="check-main">Paper validation — 30 consecutive days</div>
+              <div class="check-detail warn">2 / 30 complete — 28 days remaining</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon in-progress">⟳</div>
+            <div class="check-label">
+              <div class="check-main">Paper win rate ≥ 55%</div>
+              <div class="check-detail warn">Monitoring — 50% so far (1/2 active days)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RISK CONTROLS -->
+      <div class="accordion-section">
+        <div class="accordion-header" onclick="toggleAccordion(this)">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="accordion-title">RISK CONTROLS</span>
+          </div>
+          <div class="accordion-meta">
+            <span class="accordion-badge badge-amber">3 / 5 PASS</span>
+            <span class="accordion-chevron">▼</span>
+          </div>
+        </div>
+        <div class="accordion-body">
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Position sizing</div>
+              <div class="check-detail ok">Vol-targeted 7% — active</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Kill switch wired</div>
+              <div class="check-detail ok">CircuitBreakerPanel — ARMED</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pass">✓</div>
+            <div class="check-label">
+              <div class="check-main">Paper mode enforced</div>
+              <div class="check-detail ok">Account DUP662235 — paper only</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon blocked">◷</div>
+            <div class="check-label">
+              <div class="check-main">Live account funded</div>
+              <div class="check-detail blocked">Pending paper completion — $10K capital reserved</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon blocked">◷</div>
+            <div class="check-label">
+              <div class="check-main">Live port 4001 configured</div>
+              <div class="check-detail blocked">Blocked until paper validation passes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COMPLIANCE -->
+      <div class="accordion-section">
+        <div class="accordion-header" onclick="toggleAccordion(this)">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="accordion-title">COMPLIANCE</span>
+          </div>
+          <div class="accordion-meta">
+            <span class="accordion-badge" style="background:rgba(255,34,68,0.1);border:1px solid rgba(255,34,68,0.35);color:var(--red);">0 / 3 PASS</span>
+            <span class="accordion-chevron">▼</span>
+          </div>
+        </div>
+        <div class="accordion-body">
+          <div class="check-item">
+            <div class="check-icon pending-icon">◷</div>
+            <div class="check-label">
+              <div class="check-main">30-day paper trade log reviewed</div>
+              <div class="check-detail">Scheduled for May 21, 2026</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pending-icon">◷</div>
+            <div class="check-label">
+              <div class="check-main">Risk parameters signed off</div>
+              <div class="check-detail">Pending — requires manual approval</div>
+            </div>
+          </div>
+          <div class="check-item">
+            <div class="check-icon pending-icon">◷</div>
+            <div class="check-label">
+              <div class="check-main">Live account ID confirmed</div>
+              <div class="check-detail">Pending — account not yet provisioned</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─── VERDICT + RISK BUDGET ROW ─── -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+    <!-- Verdict Panel -->
+    <div class="verdict-panel">
+      <div class="verdict-main">NO-GO</div>
+      <div class="verdict-sub">28 DAYS REMAINING</div>
+
+      <div class="progress-bar-wrap" style="margin-top:16px;">
+        <div class="progress-bar-label">
+          <span>PAPER VALIDATION PROGRESS</span>
+          <span style="color:var(--amber)">6.7%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill amber" style="width:6.7%"></div>
+        </div>
+      </div>
+
+      <div class="verdict-meta">
+        <div class="verdict-meta-item">
+          <div class="verdict-meta-label">EST. LIVE DATE</div>
+          <div class="verdict-meta-value gold">MAY 21</div>
+        </div>
+        <div class="verdict-meta-item">
+          <div class="verdict-meta-label">DAYS DONE</div>
+          <div class="verdict-meta-value blue">2 / 30</div>
+        </div>
+        <div class="verdict-meta-item">
+          <div class="verdict-meta-label">COMPLETION</div>
+          <div class="verdict-meta-value amber">6.7%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Risk Budget -->
+    <div class="card" style="margin-bottom:0;">
+      <div class="card-header">
+        <span class="card-title">Risk Budget — $10K Paper Capital</span>
+        <span class="badge badge-blue">PAPER</span>
+      </div>
+      <div class="card-body">
+        <div class="risk-grid">
+          <div class="risk-cell">
+            <div class="risk-label">Max Loss / Trade</div>
+            <div class="risk-value">$200</div>
+            <div class="risk-pct">2% of capital</div>
+          </div>
+          <div class="risk-cell">
+            <div class="risk-label">Max Daily Loss</div>
+            <div class="risk-value">$500</div>
+            <div class="risk-pct">5% of capital</div>
+          </div>
+          <div class="risk-cell">
+            <div class="risk-label">Max Weekly Loss</div>
+            <div class="risk-value">$1,000</div>
+            <div class="risk-pct">10% of capital</div>
+          </div>
+          <div class="risk-cell">
+            <div class="risk-label">Kill Switch At</div>
+            <div class="risk-value">$1,500</div>
+            <div class="risk-pct">15% drawdown</div>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding:10px 12px;background:rgba(0,255,136,0.04);border:1px solid rgba(0,255,136,0.15);border-radius:3px;">
+          <div style="font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px;">CURRENT DRAWDOWN STATUS</div>
+          <div class="progress-bar-label" style="margin-bottom:5px;">
+            <span>DRAWDOWN</span>
+            <span style="color:var(--green)">0.0%</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill green" style="width:0.1%"></div>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-dim);margin-top:6px;">$0 lost of $500 max daily · kill switch ARMED</div>
+        </div>
+
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <div style="flex:1;padding:8px;background:rgba(0,212,255,0.05);border:1px solid var(--border);border-radius:3px;text-align:center;">
+            <div style="font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:2px;color:var(--text-dim);">VOL TARGET</div>
+            <div style="font-family:'Orbitron',sans-serif;font-size:14px;color:var(--blue);margin-top:3px;">7%</div>
+          </div>
+          <div style="flex:1;padding:8px;background:rgba(0,212,255,0.05);border:1px solid var(--border);border-radius:3px;text-align:center;">
+            <div style="font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:2px;color:var(--text-dim);">PAPER CAP</div>
+            <div style="font-family:'Orbitron',sans-serif;font-size:14px;color:var(--gold);margin-top:3px;">$10K</div>
+          </div>
+          <div style="flex:1;padding:8px;background:rgba(0,212,255,0.05);border:1px solid var(--border);border-radius:3px;text-align:center;">
+            <div style="font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:2px;color:var(--text-dim);">LIVE CAP</div>
+            <div style="font-family:'Orbitron',sans-serif;font-size:14px;color:var(--text-dim);margin-top:3px;">TBD</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── STATUS FOOTER ─── -->
+  <div class="status-footer" style="margin-top:16px;">
+    <div class="dot red"></div>
+    <span>LIVE TRADING LOCKED</span>
+    <span>·</span>
+    <div class="dot green"></div>
+    <span>PAPER VALIDATION IN PROGRESS</span>
+    <span>·</span>
+    <span>UNLOCK DATE: MAY 21, 2026</span>
+    <span>·</span>
+    <span id="migFooterTime">—</span>
+  </div>
+
+</div><!-- /wrapper -->
+
+<script>
+// ─── ACCORDION ───
+function toggleAccordion(header) {
+  const body = header.nextElementSibling;
+  const isOpen = header.classList.contains('open');
+  header.classList.toggle('open', !isOpen);
+  body.classList.toggle('open', !isOpen);
+}
+
+// ─── CLOCK ───
+function updateMigClock() {
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const el = document.getElementById('migFooterTime');
+  if (el) el.textContent = ts;
+}
+setInterval(updateMigClock, 1000);
+updateMigClock();
+
+// ─── DAYS REMAINING LIVE COUNTER ───
+function updateCountdown() {
+  const target = new Date('2026-05-21T16:00:00-05:00');
+  const now = new Date();
+  const diffMs = target - now;
+  if (diffMs > 0) {
+    const days = Math.floor(diffMs / (1000*60*60*24));
+    const hrs  = Math.floor((diffMs % (1000*60*60*24)) / (1000*60*60));
+    // Could update a countdown element here if needed
+  }
+}
+setInterval(updateCountdown, 60000);
+updateCountdown();
+</script>
+</body>
+</html>

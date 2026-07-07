@@ -1,0 +1,30 @@
+{
+  "schema": "agentcompanies/v1",
+  "name": "Jarvis Trader Dev",
+  "description": "10-agent autonomous trading system — paper trading validation through live deployment",
+  "goal": "Complete paper trading validation (30-day minimum, Sharpe > 1.0, max drawdown < 15%) then deploy live",
+  "homepage": "https://github.com/mattamundson/jarvis-trader",
+  "adapter": "jarvis-trading-pipeline",
+  "budget": {
+    "monthly_cents": 10000,
+    "per_agent_cents": 1000,
+    "warn_threshold": 0.8,
+    "hard_stop_threshold": 1.0
+  },
+  "governance": {
+    "tier3_actions": ["enable_live_trading", "modify_risk_params", "emergency_kill_switch"],
+    "require_approval": true
+  },
+  "agents": [
+    { "id": "technical-analyst",    "role": "Technical Analysis",      "adapter": "claude-code", "budget_cents": 800 },
+    { "id": "news-analyst",         "role": "News & Sentiment",        "adapter": "claude-code", "budget_cents": 600 },
+    { "id": "social-analyst",       "role": "Social Sentiment",        "adapter": "claude-code", "budget_cents": 600 },
+    { "id": "fundamental-analyst",  "role": "Fundamental Analysis",    "adapter": "claude-code", "budget_cents": 600 },
+    { "id": "bull-researcher",      "role": "Bull Case Research",      "adapter": "claude-code", "budget_cents": 800 },
+    { "id": "bear-researcher",      "role": "Bear Case Research",      "adapter": "claude-code", "budget_cents": 800 },
+    { "id": "debate-moderator",     "role": "Bull/Bear Debate",        "adapter": "claude-code", "budget_cents": 600 },
+    { "id": "risk-manager",         "role": "Risk Assessment",         "adapter": "claude-code", "budget_cents": 800 },
+    { "id": "trader",               "role": "Trade Decision",          "adapter": "claude-code", "budget_cents": 600 },
+    { "id": "portfolio-manager",    "role": "Portfolio Management",    "adapter": "claude-code", "budget_cents": 800 }
+  ]
+}

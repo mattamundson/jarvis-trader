@@ -75,8 +75,112 @@ def log_daily_pnl(market: str = "", pnl: float = 0.0, target: float = 0.0, **kwa
 
 
 def notify_kill_switch(market: str = "", reason: str = "", **kwargs) -> None:
-    """Log kill switch activation (extend to add WhatsApp/email alerts)."""
+    """Log kill switch activation and send WhatsApp alert."""
     logger.critical(f"[KILL SWITCH] {market}: {reason}")
+    try:
+        import asyncio
+
+        from notifications.openclaw_notifier import notify_kill_switch as _oc_ks
+
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_oc_ks(market=market, reason=reason))
+        else:
+            loop.run_until_complete(_oc_ks(market=market, reason=reason))
+    except Exception:
+        pass  # Non-blocking, best-effort
+
+
+def whatsapp_signal(signal: Any = None, market: str = "", **kwargs) -> None:
+    """Send WhatsApp alert for BUY/SELL signals (not HOLD/CLOSE)."""
+    if not signal or signal.action not in ("BUY", "SELL"):
+        return
+    try:
+        import asyncio
+
+        from notifications.openclaw_notifier import notify_signal as _oc_sig
+
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(
+                _oc_sig(
+                    symbol=signal.symbol,
+                    action=signal.action,
+                    confidence=signal.confidence,
+                    reason=signal.reason,
+                    market=market,
+                )
+            )
+        else:
+            loop.run_until_complete(
+                _oc_sig(
+                    symbol=signal.symbol,
+                    action=signal.action,
+                    confidence=signal.confidence,
+                    reason=signal.reason,
+                    market=market,
+                )
+            )
+    except Exception:
+        pass  # Non-blocking, best-effort
+
+
+def whatsapp_trade_closed(result: Any = None, market: str = "", **kwargs) -> None:
+    """Send WhatsApp alert when a trade closes with realized P&L."""
+    if not result or not result.executed:
+        return
+    try:
+        import asyncio
+
+        from notifications.openclaw_notifier import notify_trade_closed as _oc_tc
+
+        loop = asyncio.get_event_loop()
+        entry = getattr(result, "entry_price", 0.0) or 0.0
+        if loop.is_running():
+            loop.create_task(
+                _oc_tc(
+                    symbol=result.signal.symbol,
+                    action=result.signal.action,
+                    entry_price=entry,
+                    exit_price=result.fill_price,
+                    pnl=result.realized_pnl,
+                    quantity=result.fill_qty,
+                )
+            )
+        else:
+            loop.run_until_complete(
+                _oc_tc(
+                    symbol=result.signal.symbol,
+                    action=result.signal.action,
+                    entry_price=entry,
+                    exit_price=result.fill_price,
+                    pnl=result.realized_pnl,
+                    quantity=result.fill_qty,
+                )
+            )
+    except Exception:
+        pass  # Non-blocking, best-effort
+
+
+def drawdown_alert(market: str = "", pnl: float = 0.0, target: float = 0.0, **kwargs) -> None:
+    """Send WhatsApp alert if daily loss exceeds 50% of daily target."""
+    if target <= 0 or pnl >= 0:
+        return
+    if abs(pnl) < target * 0.5:
+        return
+    try:
+        import asyncio
+
+        from notifications.openclaw_notifier import notify_target as _oc_target
+
+        msg = f"⚠️ DRAWDOWN ALERT {market}: -${abs(pnl):.0f} (target ${target:.0f})"
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_oc_target(market=market, pnl=pnl, target=-target, message=msg))
+        else:
+            loop.run_until_complete(_oc_target(market=market, pnl=pnl, target=-target, message=msg))
+    except Exception:
+        pass  # Non-blocking, best-effort
 
 
 def notify_target_reached(
@@ -84,13 +188,29 @@ def notify_target_reached(
 ) -> None:
     """Log when daily target is reached."""
     logger.info(f"[TARGET REACHED] {market}: ${pnl:,.2f} ≥ ${target:,.2f} 🎯")
+    # OpenClaw WhatsApp alert
+    try:
+        import asyncio
+
+        from notifications.openclaw_notifier import notify_target as _oc_target
+
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_oc_target(market=market, pnl=pnl, target=target))
+        else:
+            loop.run_until_complete(_oc_target(market=market, pnl=pnl, target=target))
+    except Exception:
+        pass  # Non-blocking, best-effort
 
 
 def register_default_hooks(registry: HookRegistry) -> None:
     """Register all built-in hooks on the provided registry."""
     registry.on(SIGNAL_GENERATED, log_signal)
+    registry.on(SIGNAL_GENERATED, whatsapp_signal)
     registry.on(TRADE_CLOSED, log_trade_closed)
+    registry.on(TRADE_CLOSED, whatsapp_trade_closed)
     registry.on(DAILY_PNL_UPDATE, log_daily_pnl)
+    registry.on(DAILY_PNL_UPDATE, drawdown_alert)
     registry.on(KILL_SWITCH_TRIGGERED, notify_kill_switch)
     registry.on(TARGET_REACHED, notify_target_reached)
     logger.info("Default trading hooks registered")

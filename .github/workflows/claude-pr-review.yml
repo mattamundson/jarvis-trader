@@ -1,0 +1,84 @@
+name: Claude PR Review
+
+# Runs Claude Code review on every PR targeting protected branches.
+# Source pattern: anthropics/claude-code-action (official), per
+# https://code.claude.com/docs/en/github-actions
+on:
+  pull_request:
+    # ready_for_review added so the review (which already skips drafts below) fires
+    # when a draft is marked ready, not only on new commits.
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main, master, develop]
+
+# Tight, scoped permissions — never write-all.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  # Required by claude-code-action@v1: it exchanges an OIDC token during
+  # setupGitHubToken(). Without id-token:write the action fails every run with
+  # "Could not fetch an OIDC token. Did you remember to add id-token: write...".
+  id-token: write
+
+concurrency:
+  group: claude-pr-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Claude Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Skip drafts and Dependabot to conserve Anthropic spend.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.actor != 'dependabot[bot]'
+    steps:
+      # Self-healing gate: when ANTHROPIC_API_KEY is absent (no repo secret) or
+      # credits are exhausted, the review action used to fail every run, turning
+      # "Claude Code Review: red" into permanent noise that trains alarm fatigue
+      # (master sat red for days while real failures hid behind it). Detect the
+      # missing key and skip the review steps so the job passes green. The moment
+      # the secret is added back, the gate flips and the review runs unchanged.
+      - name: Check for Anthropic API key
+        id: keycheck
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Claude review skipped::ANTHROPIC_API_KEY is not configured — skipping the Claude PR review. This is intentional, not a failure. Add the repo secret to re-enable."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.keycheck.outputs.available == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        if: steps.keycheck.outputs.available == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # v1 schema: review instructions go under `prompt` (not the removed `direct_prompt`).
+          prompt: |
+            You are reviewing a pull request for jarvis-trader, an AI-powered futures trading engine.
+
+            Focus areas (in priority order):
+            1. SAFETY: Any change to engine/config.py hardcoded limits, kill switch logic,
+               position sizing, or stop-loss handling -- call out explicitly.
+            2. CORRECTNESS: Logic bugs, off-by-ones, missing error handling, unhandled async exceptions.
+            3. SECRETS: Any hardcoded API keys, tokens, or credentials (flag even if they look like placeholders).
+            4. TESTS: Does the change include or update tests? If it touches engine/, it should.
+            5. STYLE: Ruff/mypy-worthy issues the CI might miss.
+
+            Keep comments actionable. Skip nitpicks. Do NOT rubber-stamp safety-adjacent code.
+          # v1 schema: model + tool restriction move into claude_args as CLI flags
+          # (the removed `model` and `allowed_tools` inputs are no longer accepted).
+          # Read-only review: restrict to read tools so the action cannot mutate repo state.
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools Read,Grep,Glob

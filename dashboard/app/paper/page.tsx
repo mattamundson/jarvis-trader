@@ -1,10 +1,18 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
-import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals } from "@/lib/api";
+import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals, fetchKillSwitchStatus } from "@/lib/api";
 import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload, KillSwitchStatus } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  equityCurve,
+  dedupCaveat,
+  DEFAULT_STARTING_CAPITAL,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
 import { RiskStatusWidget } from "@/components/RiskStatusWidget";
 import { CircuitBreakerWidget } from "@/components/CircuitBreakerWidget";
@@ -15,18 +23,68 @@ import { SessionSummaryWidget } from "@/components/SessionSummaryWidget";
 import { TodaySummaryWidget } from "@/components/TodaySummaryWidget";
 import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
+import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
+import ValidationCheckpointWidget from "@/components/ValidationCheckpointWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
 }
 
+type EngineHealthPayload = { status?: string };
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function PaperTradingPage() {
+  const { data: health, error: healthError, isLoading: healthLoading } = useSWR<EngineHealthPayload>(
+    "/health",
+    fetcher,
+    { refreshInterval: 30_000, revalidateOnFocus: true }
+  );
+
+  // Same live source that gates MGC's ACTIVE/HALTED badge on /command-center —
+  // drives the suspension banner below instead of a static hardcoded WFE value.
+  const { data: paperStatus, error: paperStatusError } = useSWR<
+    Record<string, { status?: string; wfe?: number; reason?: string }>
+  >("/backtest/paper-status", fetcher, { refreshInterval: 120_000, shouldRetryOnError: false });
+  const mgcStatus = paperStatus?.["MGC_1d"];
+  const mgcHalted = (mgcStatus?.status || "").toUpperCase() !== "ACTIVE";
+
+  let engineHealthLabel = "ENGINE …";
+  let engineHealthStyle: React.CSSProperties = {
+    borderColor: "#88888844",
+    backgroundColor: "#88888810",
+    color: "#888888",
+  };
+  if (healthError) {
+    engineHealthLabel = "ENGINE offline";
+    engineHealthStyle = {
+      borderColor: "#ff444466",
+      backgroundColor: "#ff444410",
+      color: "#ff6666",
+    };
+  } else if (!healthLoading && health) {
+    if (health.status === "ok") {
+      engineHealthLabel = "ENGINE ok";
+      engineHealthStyle = {
+        borderColor: "#00aaff44",
+        backgroundColor: "#00aaff12",
+        color: "#00ccff",
+      };
+    } else {
+      engineHealthLabel = `ENGINE ${health.status ?? "?"}`;
+      engineHealthStyle = {
+        borderColor: "#ffaa0044",
+        backgroundColor: "#ffaa0010",
+        color: "#ffcc66",
+      };
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1600px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
               <Activity className="h-5 w-5 text-accent" />
@@ -36,26 +94,33 @@ export default function PaperTradingPage() {
                 JARVIS TRADER
               </h1>
               <p className="text-xs text-muted-foreground">
-                MGC Daily Paper Trading — SUSPENDED
+                MGC Daily Paper Trading{mgcHalted ? " — SUSPENDED" : ""}
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+              <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
                 <ArrowLeft className="h-3 w-3" />
                 Dashboard
-              </a>
-              <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Analysis
-              </a>
-              <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Backtest
-              </a>
-              <a href="/paper" className="text-xs text-accent font-semibold transition-colors">
+              </Link>
+              <Link href="/paper" className="text-xs text-accent font-semibold transition-colors">
                 Paper Trading
-              </a>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-2">
+            <span
+              className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
+              style={engineHealthStyle}
+              title="GET /health — same check as WORKING_TODAY smoke"
+            >
+              {engineHealthLabel}
+            </span>
             <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
               style={{ borderColor: "#00ff8833", backgroundColor: "#00ff8810", color: "#00ff88" }}>
               PAPER MODE
@@ -64,44 +129,79 @@ export default function PaperTradingPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-4 space-y-4">
-        {/* WFE Halt Banner */}
-        <div className="rounded-xl p-4 font-mono"
-          style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
-          <div className="flex items-start gap-3">
-            <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
-              PAPER TRADING SUSPENDED
-            </span>
-            <span className="text-[10px]" style={{ color: "#ff8888" }}>
-              MGC 1d WFE corrected to 0.14 (was 0.27) — below 0.30 threshold. Status: OVERFIT.
-              Paper trading suspended pending MTF filter validation.
-            </span>
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-4 space-y-4">
+        {/* Halt banner — driven by the live /backtest/paper-status MGC_1d row
+            (the same source that gates the MGC ACTIVE/HALTED badge on
+            /command-center), not a hardcoded WFE value. */}
+        {mgcHalted && (
+          <div className="rounded-xl p-4 font-mono"
+            style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
+            <div className="flex items-start gap-3">
+              <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
+                PAPER TRADING SUSPENDED
+              </span>
+              <span className="text-[10px]" style={{ color: "#ff8888" }}>
+                {paperStatusError
+                  ? "Could not reach /backtest/paper-status to confirm trading status."
+                  : mgcStatus
+                    ? `MGC 1d — ${mgcStatus.reason || `status="${mgcStatus.status}"`}${
+                        typeof mgcStatus.wfe === "number" ? ` (wfe=${mgcStatus.wfe})` : ""
+                      }.`
+                    : "MGC 1d status unavailable from the engine."}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Open Positions — safety-critical, first widget at top of page */}
-        <OpenPositionsWidget />
+        <WidgetErrorBoundary name="Open Positions">
+          <OpenPositionsWidget />
+        </WidgetErrorBoundary>
 
         {/* Risk Status — always visible at top of page */}
-        <RiskStatusWidget />
+        <WidgetErrorBoundary name="Risk Status">
+          <RiskStatusWidget />
+        </WidgetErrorBoundary>
+
+        {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
+        <WidgetErrorBoundary name="Paper Approved Validation">
+          <PaperApprovedValidationWidget />
+        </WidgetErrorBoundary>
+
+        {/* Overall validation checkpoint (30-day window progress) */}
+        <WidgetErrorBoundary name="Validation Checkpoint">
+          <ValidationCheckpointWidget />
+        </WidgetErrorBoundary>
 
         {/* Circuit breaker / safety status */}
-        <CircuitBreakerWidget />
+        <WidgetErrorBoundary name="Circuit Breaker">
+          <CircuitBreakerWidget />
+        </WidgetErrorBoundary>
 
         {/* Today's session summary */}
-        <TodaySummaryWidget />
+        <WidgetErrorBoundary name="Today Summary">
+          <TodaySummaryWidget />
+        </WidgetErrorBoundary>
 
         {/* ATR-based position sizing */}
-        <PositionSizingWidget />
+        <WidgetErrorBoundary name="Position Sizing">
+          <PositionSizingWidget />
+        </WidgetErrorBoundary>
 
         {/* Current signal state: entry signal, direction, regime, STC, ATR levels */}
-        <SignalQueueWidget />
+        <WidgetErrorBoundary name="Signal Queue">
+          <SignalQueueWidget />
+        </WidgetErrorBoundary>
 
         {/* Recent pipeline signals */}
-        <RecentSignalsWidget />
+        <WidgetErrorBoundary name="Recent Signals">
+          <RecentSignalsWidget />
+        </WidgetErrorBoundary>
 
         {/* Market regime / MTF analysis */}
-        <MarketRegimeWidget />
+        <WidgetErrorBoundary name="Market Regime">
+          <MarketRegimeWidget />
+        </WidgetErrorBoundary>
 
         {/* Top row: Signal + Performance */}
         <div className="grid grid-cols-12 gap-4">
@@ -123,10 +223,14 @@ export default function PaperTradingPage() {
         <TradeLoggerPanel />
 
         {/* Recent AI Decisions */}
-        <RecentDecisionsWidget />
+        <WidgetErrorBoundary name="Recent Decisions">
+          <RecentDecisionsWidget />
+        </WidgetErrorBoundary>
 
         {/* Today's session summary (P&L, trades, win rate, best/worst trade) */}
-        <SessionSummaryWidget />
+        <WidgetErrorBoundary name="Session Summary">
+          <SessionSummaryWidget />
+        </WidgetErrorBoundary>
       </main>
     </div>
   );
@@ -275,8 +379,8 @@ function SignalStat({ label, value, color }: { label: string; value: string; col
 
 function KillSwitchPanel() {
   const { data: ks, error, mutate } = useSWR<KillSwitchStatus>(
-    "/paper/kill-switch",
-    fetcher,
+    "kill-switch-status",
+    fetchKillSwitchStatus,
     { refreshInterval: 30_000, shouldRetryOnError: false }
   );
   const [acting, setActing] = useState(false);
@@ -569,11 +673,75 @@ function SignalQueuePanel() {
 // ── Section 3: Performance Metrics ───────────────────────────────────────────
 
 function PerformanceMetricsPanel() {
-  const { data: perf, error } = useSWR<MGCPerformanceResponse>(
+  // Kill switch + monthly breakdown still from the raw endpoint (legit data)
+  const { data: perf, error: perfError } = useSWR<MGCPerformanceResponse>(
     "/paper/mgc-performance",
     fetcher,
     { refreshInterval: 30_000, shouldRetryOnError: false }
   );
+
+  // Honest deduped trade record — source of truth for aggregate metrics
+  const [honest, setHonest] = useState<HonestTradeSet | null>(null);
+  const [honestError, setHonestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchHonestTrades()
+      .then((set) => {
+        if (!cancelled) setHonest(set);
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setHonestError(e instanceof Error ? e.message : "honest record unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Filter to MGC only — the panel is explicitly MGC-scoped
+  const mgcTrades = honest ? honest.trades.filter((t) => t.symbol === "MGC") : null;
+
+  // Derive MGC-scoped metrics from the honest subset
+  const mgcNet = mgcTrades ? mgcTrades.reduce((s, t) => s + t.pnl, 0) : null;
+  const mgcWins = mgcTrades ? mgcTrades.filter((t) => t.pnl > 0).length : null;
+  const mgcCount = mgcTrades ? mgcTrades.length : null;
+  const mgcWr = mgcCount != null && mgcCount > 0 && mgcWins != null ? mgcWins / mgcCount : null;
+  const mgcGrossWin = mgcTrades
+    ? mgcTrades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0)
+    : null;
+  const mgcGrossLoss = mgcTrades
+    ? Math.abs(mgcTrades.filter((t) => t.pnl < 0).reduce((s, t) => s + t.pnl, 0))
+    : null;
+  const mgcPf =
+    mgcGrossLoss != null && mgcGrossLoss > 0 && mgcGrossWin != null
+      ? mgcGrossWin / mgcGrossLoss
+      : null;
+
+  // Max drawdown from equity curve on the MGC subset
+  const mgcCurve = mgcTrades ? equityCurve(mgcTrades) : null;
+  const mgcMaxDd =
+    mgcCurve && mgcCurve.length > 0
+      ? Math.abs(Math.min(...mgcCurve.map((p) => p.drawdown)))
+      : null;
+
+  // Derive peak for percentage expression. Floored at DEFAULT_STARTING_CAPITAL
+  // so a tiny-but-positive peak (e.g. one small early MGC win) can't divide a
+  // later large-dollar loss into an absurd percentage -- denominate against
+  // account starting capital instead, same fix as lib/honestTrades.ts's
+  // maxDrawdownPct().
+  const mgcPeak =
+    mgcCurve && mgcCurve.length > 0
+      ? Math.max(...mgcCurve.map((p) => p.equity), 0, DEFAULT_STARTING_CAPITAL)
+      : null;
+  const mgcMaxDdPct =
+    mgcMaxDd != null && mgcPeak != null && mgcPeak > 0
+      ? mgcMaxDd / mgcPeak
+      : null;
+
+  const caveat = honest
+    ? `MGC subset · ${dedupCaveat({ ...honest, trades: mgcTrades ?? [] })}`
+    : null;
 
   const pfColor = (pf: number | null | undefined) => {
     if (pf == null) return "#555";
@@ -583,6 +751,8 @@ function PerformanceMetricsPanel() {
   };
 
   const killActive = perf?.kill_switch_active ?? false;
+
+  const anyError = honestError ?? (perfError && !perf ? "Engine offline" : null);
 
   return (
     <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4">
@@ -595,42 +765,75 @@ function PerformanceMetricsPanel() {
             style={{ borderColor: "#00d4ff33", backgroundColor: "#00d4ff10", color: "#00d4ff" }}>
             MGC 1D
           </span>
+          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
+            style={{ borderColor: "#88888833", backgroundColor: "#88888810", color: "#888" }}>
+            DEDUPED
+          </span>
         </div>
-        {/* Kill Switch Status */}
+        {/* Kill Switch Status — from raw endpoint (legit, not over-counted) */}
         <span className="font-mono text-[9px] px-2 py-0.5 rounded border font-bold"
           style={{
             borderColor: killActive ? "#ff444440" : "#00ff8840",
             backgroundColor: killActive ? "#ff444415" : "#00ff8815",
             color: killActive ? "#ff4444" : "#00ff88",
           }}>
-          KILL SWITCH: {killActive ? "TRIGGERED" : "ACTIVE"}
+          KILL SWITCH: {killActive ? "TRIGGERED" : "INACTIVE"}
         </span>
       </div>
 
-      {error && !perf && (
+      {anyError && (
         <div className="rounded-lg p-3 mb-3 font-mono text-xs" style={{ backgroundColor: "#ff444410", color: "#ff4444" }}>
-          Engine offline — performance data unavailable
+          {anyError} — performance data unavailable
         </div>
       )}
 
-      {/* Metrics Grid */}
+      {/* Metrics Grid — honest deduped values (MGC subset) */}
       <div className="grid grid-cols-5 gap-2 mb-4">
-        <MetricCard label="Total Trades" value={perf?.total_trades != null ? String(perf.total_trades) : "--"} />
-        <MetricCard label="Win Rate"
-          value={perf?.win_rate != null ? `${(perf.win_rate * 100).toFixed(1)}%` : "--"}
-          color={perf?.win_rate != null && perf.win_rate >= 0.5 ? "#00ff88" : "#ffcc00"} />
-        <MetricCard label="Profit Factor"
-          value={perf?.profit_factor != null ? perf.profit_factor.toFixed(2) : "--"}
-          color={pfColor(perf?.profit_factor)} />
-        <MetricCard label="Net P&L"
-          value={perf?.net_pnl != null ? `$${perf.net_pnl.toFixed(2)}` : "--"}
-          color={perf?.net_pnl != null ? (perf.net_pnl >= 0 ? "#00ff88" : "#ff4444") : undefined} />
-        <MetricCard label="Max Drawdown"
-          value={perf?.max_drawdown != null ? `${(perf.max_drawdown * 100).toFixed(1)}%` : "--"}
-          color={perf?.max_drawdown != null && perf.max_drawdown > 0.05 ? "#ff4444" : "#ffcc00"} />
+        <MetricCard
+          label="Total Trades"
+          value={mgcCount != null ? String(mgcCount) : "--"}
+        />
+        <MetricCard
+          label="Win Rate"
+          value={mgcWr != null ? `${(mgcWr * 100).toFixed(1)}%` : "--"}
+          color={mgcWr != null && mgcWr >= 0.5 ? "#00ff88" : "#ffcc00"}
+        />
+        <MetricCard
+          label="Profit Factor"
+          value={mgcPf != null ? mgcPf.toFixed(2) : "--"}
+          color={pfColor(mgcPf)}
+        />
+        <MetricCard
+          label="Net P&L"
+          value={mgcNet != null ? `$${mgcNet.toFixed(2)}` : "--"}
+          color={mgcNet != null ? (mgcNet >= 0 ? "#00ff88" : "#ff4444") : undefined}
+        />
+        <MetricCard
+          label="Max Drawdown"
+          value={
+            mgcMaxDdPct != null
+              ? `${(mgcMaxDdPct * 100).toFixed(1)}%`
+              : mgcMaxDd != null
+              ? `$${mgcMaxDd.toFixed(0)}`
+              : "--"
+          }
+          color={
+            mgcMaxDdPct != null && mgcMaxDdPct > 0.05
+              ? "#ff4444"
+              : "#ffcc00"
+          }
+        />
       </div>
 
-      {/* Monthly Breakdown */}
+      {/* Dedup caveat */}
+      {caveat && (
+        <p className="font-mono text-[9px] mb-3" style={{ color: "#666" }}>
+          {caveat}
+          {honest && honest.caveats.length > 0 && " · " + honest.caveats.join(" · ")}
+        </p>
+      )}
+
+      {/* Monthly Breakdown — from raw endpoint (structural, not aggregate metrics) */}
       {perf?.monthly_breakdown && perf.monthly_breakdown.length > 0 && (
         <div className="font-mono text-xs">
           <div className="mb-2">
@@ -660,7 +863,7 @@ function PerformanceMetricsPanel() {
         </div>
       )}
 
-      {!perf && !error && (
+      {!honest && !anyError && (
         <div className="rounded-lg p-6 text-center" style={{ backgroundColor: "#0d0d1a" }}>
           <span className="font-mono text-xs" style={{ color: "#555" }}>
             Loading performance metrics...

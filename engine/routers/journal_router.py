@@ -12,12 +12,16 @@ To register in main.py, add:
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from database.schema import DatabaseManager
+
+logger = logging.getLogger("jarvis_trader.routers.journal")
 
 # ---------------------------------------------------------------------------
 # Module-level db_manager reference — injected at startup via set_db_manager()
@@ -304,6 +308,128 @@ class DeleteNoteResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Paper Trade Journal — Pydantic models (US-1404)
+# ---------------------------------------------------------------------------
+
+
+class TradeJournalEntry(BaseModel):
+    """A single paper trade with full signal provenance and attribution."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    trade_id: str
+    symbol: str
+    side: str
+    quantity: float
+    entry_price: float
+    exit_price: Optional[float] = None
+    entry_time: str
+    exit_time: Optional[str] = None
+    pnl: Optional[float] = None
+    status: str
+    strategy_params: Optional[str] = None
+    notes: Optional[str] = None
+    # Signal provenance (US-1404)
+    regime: Optional[str] = None
+    structure_position: Optional[str] = None
+    bias: Optional[str] = None
+    composite_score: Optional[float] = None
+    stc_contrib: Optional[int] = None
+    orb_contrib: Optional[int] = None
+    vwap_contrib: Optional[int] = None
+    # Trade attribution (US-2130)
+    regime_tier: Optional[int] = None
+    deciding_stage: Optional[str] = None
+    bull_score: Optional[float] = None
+    bear_score: Optional[float] = None
+    debate_confidence: Optional[float] = None
+
+
+# ---------------------------------------------------------------------------
+# Paper Trade Journal — Endpoints (US-1404)
+# ---------------------------------------------------------------------------
+
+# ── Shared helper for trade journal queries ────────────────────────────────
+
+
+def _query_trade_journal_entries(
+    symbol: Optional[str] = None,
+    regime: Optional[str] = None,
+    limit: int = 50,
+) -> List[TradeJournalEntry]:
+    """
+    Query paper trades with full signal provenance and attribution.
+    Shared by both /trade-journal and /trades endpoints.
+    """
+    try:
+        from database import get_db as get_db_manager
+
+        db = get_db_manager()
+        conn = db._connect()  # type: ignore[attr-defined]
+
+        # Build query
+        query = "SELECT * FROM paper_trades WHERE 1=1"
+        params: List[str | int] = []
+
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+
+        if regime:
+            query += " AND regime = ?"
+            params.append(regime)
+
+        query += " ORDER BY entry_time DESC LIMIT ?"
+        params.append(limit)
+
+        cursor = conn.execute(query, params)
+        rows = cursor.fetchall()
+
+        # Convert rows to dicts
+        col_names = [description[0] for description in cursor.description]
+        trades = [dict(zip(col_names, row, strict=False)) for row in rows]
+
+        conn.close()
+        return [TradeJournalEntry(**t) for t in trades]
+
+    except sqlite3.OperationalError as e:
+        logger.error("Database error querying trade journal: %s", e)
+        raise HTTPException(status_code=500, detail="Database error") from e
+    except Exception as e:
+        logger.error("Unexpected error in trade journal query: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+
+
+# ── GET /journal/trade-journal and related ─────────────────────────────────
+
+
+@router.get(
+    "/trade-journal",
+    response_model=List[TradeJournalEntry],
+    summary="Get paper trades with full signal provenance and attribution",
+)
+def get_trade_journal(
+    symbol: Optional[str] = Query(None, description="Filter by symbol (e.g., MCL, MNQ)"),
+    regime: Optional[str] = Query(None, description="Filter by regime (e.g., TRENDING_BULL)"),
+    limit: int = Query(50, ge=1, le=200, description="Max trades to return"),
+) -> List[TradeJournalEntry]:
+    """
+    Get all paper trades with full signal provenance (regime, structure, bias,
+    composite_score, signal contributions) and trade attribution (regime tier,
+    deciding stage, bull/bear scores, debate confidence).
+
+    Optional filters:
+      - **symbol**: MCL, MNQ, etc.
+      - **regime**: TRENDING_BULL, TRENDING_BEAR, RANGE_BOUND, etc.
+      - **limit**: max 200 (default 50)
+
+    Returns trades ordered by entry_time DESC (most recent first).
+    """
+    return _query_trade_journal_entries(symbol=symbol, regime=regime, limit=limit)
+
+
+# ---------------------------------------------------------------------------
 # Journal Notes — Endpoints
 # ---------------------------------------------------------------------------
 
@@ -408,3 +534,90 @@ def delete_journal_note(note_id: int) -> DeleteNoteResponse:
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Journal note {note_id} not found.")
     return DeleteNoteResponse(deleted=True)
+
+
+# ── GET /journal/regime-stats ──────────────────────────────────────────────
+
+
+@router.get(
+    "/regime-stats",
+    response_model=None,
+    summary="Win rate broken down by regime",
+)
+def get_regime_stats() -> dict:
+    """
+    Query closed paper trades grouped by regime (extracted from strategy_params JSON).
+
+    Returns a list of regime buckets with:
+      regime, trade_count, win_count, loss_count, win_rate, avg_pnl, total_pnl
+
+    Regime label comes from strategy_params.regime JSON key written by pipeline_router.
+    Trades with no regime are bucketed as 'unknown'.
+    """
+    from datetime import datetime as _dt
+
+    db = _get_db()
+    sql = """
+        SELECT
+            COALESCE(
+                json_extract(strategy_params, '$.regime'),
+                'unknown'
+            )                                              AS regime,
+            COUNT(*)                                       AS trade_count,
+            SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END)     AS win_count,
+            SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END)    AS loss_count,
+            ROUND(
+                SUM(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(*),
+                2
+            )                                              AS win_rate_pct,
+            ROUND(AVG(pnl), 4)                             AS avg_pnl,
+            ROUND(SUM(pnl), 4)                             AS total_pnl
+        FROM paper_trades
+        WHERE status = 'closed'
+          AND pnl IS NOT NULL
+        GROUP BY regime
+        ORDER BY trade_count DESC
+    """
+    try:
+        with db._lock:
+            conn = db._connect()
+            try:
+                rows = conn.execute(sql).fetchall()
+            finally:
+                conn.close()
+
+        regimes = []
+        for row in rows:
+            row_dict = (
+                dict(row)
+                if hasattr(row, "keys")
+                else {
+                    "regime": row[0],
+                    "trade_count": row[1],
+                    "win_count": row[2],
+                    "loss_count": row[3],
+                    "win_rate_pct": row[4],
+                    "avg_pnl": row[5],
+                    "total_pnl": row[6],
+                }
+            )
+            regimes.append(
+                {
+                    "regime": row_dict.get("regime") or "unknown",
+                    "trade_count": int(row_dict.get("trade_count") or 0),
+                    "win_count": int(row_dict.get("win_count") or 0),
+                    "loss_count": int(row_dict.get("loss_count") or 0),
+                    "win_rate_pct": float(row_dict.get("win_rate_pct") or 0.0),
+                    "avg_pnl": float(row_dict.get("avg_pnl") or 0.0),
+                    "total_pnl": float(row_dict.get("total_pnl") or 0.0),
+                }
+            )
+
+        return {
+            "regimes": regimes,
+            "total_closed_trades": sum(r["trade_count"] for r in regimes),
+            "timestamp": _dt.utcnow().isoformat() + "Z",
+        }
+    except Exception as exc:
+        logger.error(f"[Journal] regime-stats error: {exc}")
+        raise HTTPException(500, f"Regime stats error: {exc}") from exc

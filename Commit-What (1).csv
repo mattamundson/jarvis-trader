@@ -1,0 +1,7 @@
+"Commit","What"
+"b769afe","executor bug fix — log_paper_trade dict→list guard"
+"0a7ff6a","root-level Dockerfile for Railway"
+"8b84682","engine/ Railway config"
+"b96a5a7","CORS env var fix"
+"0d4baf9","error sweep — 54 components"
+"8f0eedf","full dashboard build — all 15 tasks"

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   AlertCircle,
-  Clock,
   Loader2,
   Terminal,
   Wifi,
@@ -11,6 +10,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchEngine } from "@/lib/api";
 
@@ -35,19 +35,6 @@ function maskAccountId(id: string): string {
   const last = id.slice(-2);
   const stars = "*".repeat(Math.max(3, id.length - 4));
   return `${first}${stars}${last}`;
-}
-
-function formatTimestamp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return iso;
-  }
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -79,18 +66,18 @@ export function IbGatewayDetailCard() {
   const [data, setData] = useState<IBConnectionTestResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [engineDown, setEngineDown] = useState(false);
-  const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
   async function fetchStatus() {
     try {
       const payload = await fetchEngine<IBConnectionTestResult>(`/ib/connection-test`);
       setData(payload);
       setEngineDown(false);
-      setLastChecked(new Date().toISOString());
+      setLastChecked(new Date());
     } catch {
       setEngineDown(true);
       setData(null);
-      setLastChecked(new Date().toISOString());
+      setLastChecked(new Date());
     } finally {
       setLoading(false);
     }
@@ -163,7 +150,7 @@ export function IbGatewayDetailCard() {
           <div className="flex items-start gap-2 rounded-lg border border-bear/30 bg-bear/5 p-3">
             <AlertCircle className="h-4 w-4 text-bear shrink-0 mt-0.5" />
             <p className="text-xs text-bear">
-              Engine unreachable — verify the engine is running on port 8010.
+              Engine unreachable — verify the engine is running and reachable through the dashboard proxy.
             </p>
           </div>
         )}
@@ -312,9 +299,8 @@ export function IbGatewayDetailCard() {
 
         {/* Last checked */}
         {lastChecked && (
-          <div className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground/60">
-            <Clock className="h-3 w-3" />
-            <span>Last checked {formatTimestamp(lastChecked)}</span>
+          <div className="flex items-center justify-end">
+            <StalenessIndicator lastUpdated={lastChecked} />
           </div>
         )}
       </CardContent>

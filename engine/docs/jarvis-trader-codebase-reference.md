@@ -147,7 +147,7 @@ class TradingConfig(BaseSettings):
 
     # ── Agent Models ──────────────────────────────────────────────────────
     ANALYST_MODEL: str = Field("claude-sonnet-4-6", description="Model for analyst agents")
-    TRADER_MODEL: str = Field("claude-opus-4-6", description="Model for trader/risk/fund manager")
+    TRADER_MODEL: str = Field("claude-opus-4-7", description="Model for trader/risk/fund manager")
     FAST_MODEL: str = Field("claude-haiku-4-5-20251001", description="Model for fast/cheap ops")
 
     # ── Databases ─────────────────────────────────────────────────────────

@@ -1,20 +1,14 @@
 """
 JARVIS TRADER — Learning System (Phase 6)
-Automatic pattern extraction, trade classification, strategy tuning, and session memory.
+
+Note: Experimental modules have been moved to _experimental/ subdirectory.
+See engine/learning/_experimental/README.md for details.
+
+Phase 2 candidates available via learning_router API endpoints but not
+integrated into the core trading pipeline.
 """
 
-from .pattern_extractor import Pattern, PatternExtractor
-from .session_memory import Lesson, SessionMemory
-from .strategy_tuner import StrategyTuner, Suggestion
-from .trade_classifier import TradeClassification, TradeClassifier
+# Experimental modules (Phase 2 candidates) are in _experimental/
+# Import as needed: from learning._experimental import PatternExtractor, etc.
 
-__all__ = [
-    "Pattern",
-    "PatternExtractor",
-    "TradeClassification",
-    "TradeClassifier",
-    "Suggestion",
-    "StrategyTuner",
-    "Lesson",
-    "SessionMemory",
-]
+__all__ = []

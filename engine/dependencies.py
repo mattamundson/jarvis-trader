@@ -8,6 +8,9 @@ main.py initializes these during lifespan, then all routers share them.
 from datetime import datetime
 from typing import Dict
 
+# Pipeline WhatsApp cooldown state lives in
+# ``notifications.pipeline_alert_cooldown`` (single source of truth).
+
 # Market Data Manager
 data_manager = None
 
@@ -33,9 +36,7 @@ ws_manager = None
 
 # Shared utility state
 _start_time: datetime = None
-_last_alert_time: Dict[str, datetime] = {}
 _macro_cache: Dict[str, dict] = {}
-ALERT_COOLDOWN_HOURS = 2
 
 
 def inject_all_dependencies(

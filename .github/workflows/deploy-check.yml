@@ -3,11 +3,15 @@ on:
   push:
     branches: [main, master]
 
+concurrency:
+  group: jarvis-deploy-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pre-deploy-check:
     name: Pre-Deploy Verification
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -18,20 +22,20 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'engine/requirements-core.txt'
 
-      - name: Set up Node 20
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: 10.33.2  # pinned: "latest" drifted to pnpm 11 which hard-fails on ignored builds
 
       - name: Install Python dependencies
         run: |
           pip install -q -r engine/requirements-core.txt
-          pip install -q pytest-cov==5.0.0 mypy==1.8.0 types-requests ruff==0.8.0
+          pip install -q mypy==1.8.0 types-requests ruff==0.8.0
 
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
@@ -42,20 +46,30 @@ jobs:
           echo "=== Running Python Linting ==="
           cd engine
           ruff check . --config ruff.toml
-          ruff format --check . --config ruff.toml
+          # ruff format --check intentionally not enforced (see ci.yml note).
           cd ..
 
           echo "=== Running Type Checking (non-blocking debt) ==="
           mypy engine/ --ignore-missing-imports --config-file engine/pyproject.toml \
             --explicit-package-bases --namespace-packages || echo "::warning::mypy debt — tighten in follow-up"
 
-          echo "=== Running Tests (Tier-1 gate) ==="
-          pytest engine/tests/test_signals.py engine/tests/test_rolling_wfe.py \
-            engine/tests/test_cold_start_degraded.py \
-            -v --tb=short
+          echo "=== Running Tests (fast then slow — parity with ci.yml engine-test) ==="
+          pytest engine/tests/ -m "not slow" \
+            -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
+          pytest engine/tests/ -m slow \
+            -v --tb=short --cov=engine --cov-append --cov-report=term-missing --cov-report=xml \
+            || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow pass"; exit 0; fi; exit "$ec"; }
 
           echo "=== Building Dashboard ==="
           cd dashboard && pnpm run build && cd ..
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 30
 
       - name: Verify environment safety
         run: |

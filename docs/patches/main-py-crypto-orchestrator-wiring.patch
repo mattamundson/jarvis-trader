@@ -1,0 +1,61 @@
+# Patch: wire CryptoMarketModule into the MultiMarketOrchestrator startup
+#
+# Status   : deliberately NOT applied to main.py in the 2026-04-16 commit
+#            series because main.py already has ~180 lines of uncommitted
+#            changes from prior sessions. Applying mine on top would bundle
+#            the two when the user wants them reviewed separately.
+#
+# How to apply (when the prior-session main.py changes are ready to commit):
+#   cd /c/Users/mattm/ThinkorSwim/jarvis-trader
+#   git apply docs/patches/main-py-crypto-orchestrator-wiring.patch
+#   # (or paste the `+` lines directly into the block at engine/main.py:1261)
+#
+# What it does:
+#   - After the futures module is registered with MultiMarketOrchestrator,
+#     conditionally register CryptoMarketModule when CRYPTO_ENABLED=True AND
+#     "crypto" is in settings.get_enabled_markets().
+#   - Attach the crypto module to OrderRouter so spot-crypto orders route
+#     to it instead of failing with "broker not connected".
+#   - Failure to init the crypto module is non-fatal (matches the existing
+#     try/except pattern around orchestrator setup).
+#   - Final log line now reports the actual registered module list instead
+#     of hard-coding "1 module (futures)".
+
+diff --git a/engine/main.py b/engine/main.py
+--- a/engine/main.py
++++ b/engine/main.py
+@@
+         _orchestrator.register(_futures_module)
++
++        # Conditional: register CryptoMarketModule when explicitly opted in.
++        # Both flags must align: CRYPTO_ENABLED=True AND "crypto" in
++        # ENABLED_MARKETS. Module.is_enabled() checks the same condition.
++        _registered_modules = ["futures"]
++        if settings.CRYPTO_ENABLED and "crypto" in settings.get_enabled_markets():
++            try:
++                from markets.crypto.module import CryptoMarketModule
++
++                _crypto_module = CryptoMarketModule()
++                _orchestrator.register(_crypto_module)
++                order_router.attach_crypto(_crypto_module)
++                _registered_modules.append(f"crypto:{_crypto_module.backend}")
++                logger.info(
++                    "✅ CryptoMarketModule registered (backend=%s)",
++                    _crypto_module.backend,
++                )
++            except Exception as _crypto_err:
++                logger.warning(
++                    "CryptoMarketModule init failed (non-fatal): %s",
++                    _crypto_err,
++                )
++
+         set_orchestrator(_orchestrator)
+         await _orchestrator.start()
+-        logger.info("MultiMarketOrchestrator started with 1 module (futures: MCL, MNQ, MES)")
++        logger.info(
++            "MultiMarketOrchestrator started with %d module(s): %s",
++            len(_registered_modules),
++            ", ".join(_registered_modules),
++        )
+     except Exception as _orch_err:
+         logger.warning("MultiMarketOrchestrator init failed (non-fatal): %s", _orch_err)

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS TRADER — Strategy canon review</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
+  <style>
+    :root {
+      --bg: #0c0e12;
+      --panel: #141820;
+      --border: #2a3140;
+      --text: #e8eaef;
+      --muted: #8b95a8;
+      --accent: #3d9cf0;
+      --accent-dim: #2563a8;
+      --ok: #34d399;
+      --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      font-size: 15px;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: linear-gradient(180deg, #0f1218 0%, rgba(12,14,18,0.96) 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.25rem;
+      backdrop-filter: blur(8px);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    header p {
+      margin: 0.25rem 0 0;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.6rem;
+    }
+    nav a {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+      color: var(--accent);
+      text-decoration: none;
+      padding: 0.35rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--panel);
+    }
+    nav a:hover { border-color: var(--accent-dim); color: #7ec8ff; }
+    main { max-width: 52rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+    section {
+      margin-bottom: 3rem;
+      scroll-margin-top: 5.5rem;
+    }
+    section h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      border-left: 3px solid var(--accent);
+      padding-left: 0.75rem;
+      margin: 0 0 1rem;
+      color: #fff;
+    }
+    .prose {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.35rem;
+    }
+    .prose h1, .prose h2, .prose h3, .prose h4 {
+      margin-top: 1.35rem;
+      margin-bottom: 0.5rem;
+      color: #f0f2f6;
+    }
+    .prose h1 { font-size: 1.25rem; }
+    .prose h2 { font-size: 1.1rem; border: none; padding: 0; }
+    .prose h3 { font-size: 1rem; color: var(--muted); }
+    .prose p { margin: 0.65rem 0; }
+    .prose ul, .prose ol { margin: 0.5rem 0; padding-left: 1.35rem; }
+    .prose li { margin: 0.35rem 0; }
+    .prose code {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.82em;
+      background: #0a0c10;
+      padding: 0.12em 0.35em;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+    }
+    .prose pre {
+      background: #0a0c10;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+    .prose pre code { background: none; border: none; padding: 0; }
+    .prose table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin: 1rem 0;
+    }
+    .prose th, .prose td {
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.55rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    .prose th { background: #1a1f2e; color: var(--ok); font-weight: 600; }
+    .prose tr:nth-child(even) td { background: rgba(0,0,0,0.15); }
+    .prose a { color: var(--accent); }
+    .prose hr { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+    .prose blockquote {
+      margin: 0.75rem 0;
+      padding-left: 1rem;
+      border-left: 3px solid var(--warn);
+      color: var(--muted);
+    }
+    .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.35rem 0; }
+    footer {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--muted);
+      font-size: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>JARVIS TRADER — Strategy canon</h1>
+    <p>Generated from <code>docs/strategy/TRADING_RULES.md</code> + <code>EQUATIONS.md</code> — open this file in a browser (online for math fonts).</p>
+    <nav>
+      <a href="#trading-rules">Trading rules</a>
+      <a href="#equations">Equations</a>
+    </nav>
+  </header>
+  <main>
+    <section id="trading-rules">
+      <h2>1. Trading rules &amp; thesis</h2>
+      <div class="prose" id="rules-body"></div>
+    </section>
+    <section id="equations">
+      <h2>2. Mathematics (equation reference)</h2>
+      <div class="prose" id="equations-body"></div>
+    </section>
+  </main>
+  <footer>
+    Regenerate: <code>python scripts/build_strategy_review_html.py</code>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/showdown@2.1.0/dist/showdown.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+  <script>
+    const RULES_MD = "# JARVIS TRADER — Formal trading rules & strategy thesis\n\n**Version:** 1.0  \n**Date:** 2026-04-03  \n**Canonical code:** [`engine/backtest/signals.py`](../../engine/backtest/signals.py), [`engine/backtest/composite_signals.py`](../../engine/backtest/composite_signals.py), [`engine/config.py`](../../engine/config.py)  \n**Math reference:** [EQUATIONS.md](./EQUATIONS.md) — LaTeX-style formulas aligned to those modules.  \n**HTML review bundle:** [STRATEGY_CANON_REVIEW.html](./STRATEGY_CANON_REVIEW.html) — browser view of this doc + equations (regenerate: `python scripts/build_strategy_review_html.py`).  \n**Next review:** After 30-day paper milestone or any change to `INSTRUMENT_PARAMS` / safety limits.\n\n---\n\n## Table of contents\n\n1. [Entry and exit rules](#1-entry-and-exit-rules)  \n2. [Position sizing](#2-position-sizing)  \n3. [Regime filters and layer flow](#3-regime-filters-and-layer-flow)  \n4. [MCL vs MNQ](#4-mcl-vs-mnq)  \n5. [Time-of-day and session policy](#5-time-of-day-and-session-policy)  \n6. [Edge thesis and falsifiers](#6-edge-thesis-and-falsifiers)  \n7. [Cross-check vs project docs](#7-cross-check-vs-claudemd--project-docs)\n\n---\n\n## 1. Entry and exit rules\n\n### 1.1 Two signal paths (must not be conflated)\n\n| Path | Symbols | Entry function | Role |\n|------|---------|----------------|------|\n| **Standard 5-layer** | All symbols not in composite set, and STC base math | `generate_signals()` in `signals.py` | Layer1–4 + per-symbol `INSTRUMENT_PARAMS` for STC OS/OB and ATR multiples |\n| **Composite (Cohen-style)** | `MES`, `MCL`, `MNQ` only (`COMPOSITE_INSTRUMENTS`) | `generate_composite_signals()` in `composite_signals.py` | STC (**gated**) + ORB + VWAP, regime-weighted; **different** stops/targets than pure STC |\n\nRouting: `generate_instrument_signals(df, symbol, **kwargs)` calls composite for MES/MCL/MNQ, else `generate_signals()`.\n\n### 1.2 Standard path — every condition that yields `ENTRY_NOW`\n\nAll paths require **non-NEUTRAL bias** from `layer3_bias` except where noted. **Regime** is first adjusted by `regime_filter` (see §3).\n\n**A. Exhausted regime**\n\n- If `layer1_regime` is `EXHAUSTED` and `atr_consumed_pct > 90` and phase extended (`phase_val > 61.8` or `< -61.8`): signal `FADE_EXTREME` (not `ENTRY_NOW`).\n- Otherwise in `EXHAUSTED`: `NO_TRADE`.\n\n**B. Structure-aligned trend (buy side)**\n\n- `structure_position == BUYER_CONTROL` (above VAH **and** above IB high)\n- `bias` in `STRONG_BULL`, `LEAN_BULL`\n- `regime == TRENDING_BULL`  \n→ `ENTRY_NOW`\n\n**C. Structure-aligned trend (sell side)**\n\n- `structure_position == SELLER_CONTROL` (below VAL **and** below IB low)\n- `bias` in `STRONG_BEAR`, `LEAN_BEAR`\n- `regime == TRENDING_BEAR`  \n→ `ENTRY_NOW`\n\n**D. IB high breakout**\n\n- `above_ib_high` true this bar, `prev_above_ib_high` false (first close above prior bar’s IB high proxy)\n- `bias` in `STRONG_BULL`, `LEAN_BULL`  \n→ `ENTRY_NOW`\n\n**E. IB low breakdown**\n\n- `below_ib_low` true, `structure_position == SELLER_CONTROL`, bearish bias  \n→ `ENTRY_NOW`\n\n**F. STC crossover (classic)**\n\n- Long: `bias` in `STRONG_BULL`, `LEAN_BULL` **and** `stc_cross_up` (cross above oversold threshold).\n- Short: `bias` in `STRONG_BEAR`, `LEAN_BEAR` **and** `stc_cross_down` (cross below overbought threshold).  \n→ `ENTRY_NOW`\n\n**Other labels (not immediate entries):** `WAIT_FOR_PULLBACK` (STC mid-zone 20–80), `NO_TRADE`, plus post-filters that **replace** `ENTRY_NOW`: `LOW_VOLUME_BLOCK`, `MTF_BLOCKED`, `NEWS_BLACKOUT`.\n\n### 1.3 Composite path — `ENTRY_NOW` conditions\n\n- **Volatile** `regime_type` (from `RegimeClassifier`): no entries; conflicting raw signals become `COMPOSITE_VOLATILE_BLOCK`.\n- **STC gate:** `stc_cross_up` / `stc_cross_down` must be true for long/short respectively (ORB/VWAP only add score; they cannot enter alone).\n- **Score:** `long_score` or `short_score` ≥ `entry_threshold` (default **0.35**), using regime weights: TRENDING STC 0.60 / ORB 0.30 / VWAP 0.10; RANGING STC 0.50 / ORB 0.20 / VWAP 0.30.\n- **R:R filter:** `composite_rr` must be ≥ **`MIN_RR = 1.2`** (entries below that are forced to `NO_TRADE`).\n- Composite sets **its own** stop/target ATR multiples: `COMP_STOP_ATR = 1.00`, `COMP_T1_ATR = 2.50`, `COMP_T2_ATR = 4.00` (not the same as `INSTRUMENT_PARAMS`).\n\n### 1.4 Exit mechanics (stops, targets, EOD)\n\n**Standard + composite (column semantics)**\n\n- **Stop:** `stop_level` — long: `close - stop_atr * ATR`; short: `close + stop_atr * ATR` (composite uses fixed 1.0 ATR for its branch as above).\n- **Targets:** `target_1`, `target_2`, `target_3` from `t1_atr`, `t2_atr`, `t3_atr` × ATR (composite fills T1/T2; T3 may carry through from STC base where applicable).\n\n**Backtest engine** ([`engine/backtest/backtester.py`](../../engine/backtest/backtester.py)): processes stop/target hits bar-by-bar and **EOD close** at day boundary (`_check_eod_close`).\n\n**Paper runner** ([`engine/backtest/paper_runner.py`](../../engine/backtest/paper_runner.py)): stop checked first; targets **scale out** (≈1/3 at T1, 1/2 of remainder at T2, rest at T3); **breakeven** stop after T1 hit.\n\n**LLM pipeline** ([`engine/agents/pipeline.py`](../../engine/agents/pipeline.py)): does **not** recompute `signals.py` rows; `trade_decision` comes from agents (e.g. Technical analyst may expose `stop_price`, `limit_price`, `target_*`). Quantitative alignment is **best-effort**—operators should treat **`signals.py` + backtest** as canonical for rule formalization, and pipeline output as an overlay that must stay within [`engine/risk/safety_layer.py`](../../engine/risk/safety_layer.py) + `TradingConfig`.\n\n### 1.5 Rules table (template + approved micros)\n\n| Item | MNQ (standard via router) | MCL (standard via router) | Notes |\n|------|---------------------------|---------------------------|--------|\n| **Routing** | Composite if `generate_instrument_signals` | Composite if `generate_instrument_signals` | Both in `COMPOSITE_INSTRUMENTS` → composite path for **backtests** that call `generate_instrument_signals` |\n| **STC OS / OB** | 15 / 92 | 15 / 83 | From `INSTRUMENT_PARAMS` when `symbol` passed into underlying `generate_signals` inside composite |\n| **Stop (× ATR)** | 0.70 | 0.90 | Per-symbol; **not** universal 0.70 |\n| **T1 / T2 / T3** | 1.00 / 1.80 / 2.618 | 1.50 / 2.618 / 4.00 | Long: below/above close per long/short rules |\n| **Regime filter flag** | True (block EXHAUSTED/COMPRESSION as entries) | True | Overridden inside composite STC leg with `regime_filter=False` then composite applies its own VOLATILE block |\n| **Invalidation** | NEUTRAL bias; EXHAUSTED (except fade); optional volume/MTF/news flags | Same | Composite adds score + R:R + STC gate |\n\n*If your run uses **only** `generate_signals(symbol=\"MNQ\")` without composite, use the MNQ row as pure 5-layer STC with composite-specific ORB/VWAP **off**.*\n\n---\n\n## 2. Position sizing\n\n### 2.1 Layer 5 (`compute_position_size`)\n\n**Inputs:** `bias`, `regime` (from **layer1** labels: `TRENDING_BULL`, `TRENDING_BEAR`, `RANGE_BOUND`, etc.), `structure_position` (`BUYER_CONTROL`, `SELLER_CONTROL`, `NEUTRAL_STRUCTURE`, …), `base_risk_pct`.\n\n**Multipliers** (applied to `base_risk_pct`):\n\n| Condition | Multiplier |\n|-----------|------------|\n| Strong bias + trending + directional structure | `SIZING_FULL` 1.00 |\n| Strong bias + trending (any structure) | `SIZING_HIGH` 0.80 |\n| Lean bias **or** not trending | `SIZING_HALF` 0.50 |\n| Else | `SIZING_MIN` 0.25 |\n\n**Used in:** [`paper_runner`](../../engine/backtest/paper_runner.py) / [`paper_tracker`](../../engine/backtest/paper_tracker.py) for **quantitative** paper paths—not automatically in LLM `final_quantity`.\n\n### 2.2 Hard caps (`TradingConfig` + safety)\n\nFrom [`engine/config.py`](../../engine/config.py): `MAX_POSITION_SIZE_PCT` (5%), `MAX_CONTRACTS_PER_INSTRUMENT` (2 micros), `MAX_SINGLE_ORDER_VALUE` ($5k), `MAX_MARGIN_UTILIZATION` (40%), `MAX_CORRELATED_EXPOSURE_PCT` (20%), consecutive-loss scaling thresholds (`CONSECUTIVE_LOSS_*`), `PRICE_COLLAR_PCT`, `MAX_ORDERS_PER_MINUTE`. **Enforcement** is in the hardcoded safety layer—not LLM.\n\n### 2.3 Pipeline `final_quantity`\n\n[`_resolve_final_action`](../../engine/agents/pipeline.py) takes quantity from **fund manager** (`contracts` / `quantity`) when risk approved; else from **trade decision**; default **0** on hold. So live/paper **LLM path** sizing is **agent-driven**, then clamped by safety. This is **mixed**: quantitative stack has Layer 5; pipeline has discretionary/structured agent output.\n\n### 2.4 Gaps (documentation-only recommendations)\n\n- **Single source of truth:** Either document that operators must align fund-manager contract count with `compute_position_size` output from the same bar, or add a future integration ticket to pass signal-row sizing into the pipeline.\n- **Per-symbol max:** `MAX_CONTRACTS_PER_INSTRUMENT` is global—no MCL vs MNQ split in config today.\n\n---\n\n## 3. Regime filters and layer flow\n\n### 3.1 Layer 1 (`layer1_regime`)\n\n**Outputs:** `EXHAUSTED`, `COMPRESSION`, `TRENDING_BULL`, `TRENDING_BEAR`, `RANGE_BOUND`.\n\n**Logic (simplified):** `atr_consumed_pct > 90` → `EXHAUSTED`; compression phase + low consumption → `COMPRESSION`; bullish/bearish EMA trend + phase + consumption bands → trending; else `RANGE_BOUND`.\n\n**`regime_filter` in `generate_signals`:** When **True**, `EXHAUSTED` / `COMPRESSION` are **not** downgraded—`layer4_entry` still sees them (entries largely blocked in EXHAUSTED except fade). When **False**, those two are rewritten to `RANGE_BOUND` before `layer4_entry` (optimizer / composite STC leg behavior).\n\n### 3.2 Layers 2–4 (operator view)\n\n- **Layer 2** `layer2_structure`: auction proxy—VPOC/VAH/VAL/IB high-low from OHLCV; position `BUYER_CONTROL` / `SELLER_CONTROL` / `NEUTRAL_STRUCTURE`.\n- **Layer 3** `layer3_bias`: votes across KAMA, STC signal, volume skew, EMA ribbon → `STRONG_*`, `LEAN_*`, `NEUTRAL`.\n- **Layer 4** `layer4_entry`: combines regime + bias + structure + STC crosses per §1.2.\n\n### 3.3 Optional gates in `generate_signals`\n\n| Flag | Effect |\n|------|--------|\n| `adaptive_regime` | Per-bar STC OS/OB via `RegimeClassifier`; recomputes crosses |\n| `volume_filter` | Low volume vs MA → `LOW_VOLUME_BLOCK` |\n| `mtf_df` | MTF alignment → else `MTF_BLOCKED` |\n| `news_blackout` | Economic calendar window → `NEWS_BLACKOUT` |\n\n**Production/paper defaults:** Typical **hourly backtest and paper_runner** paths use symbol-specific params; **not all** flags are enabled globally—confirm each entrypoint (e.g. `main.py` intraday job passes explicit flags). LLM pipeline **does not** automatically apply these flags to agent reasoning.\n\n### 3.4 Flow (onboarding)\n\n```mermaid\nflowchart TD\n  bars[OHLCV_bars] --> indicators[compute_all_indicators]\n  indicators --> L1[layer1_regime]\n  indicators --> L2[layer2_structure]\n  indicators --> L3[layer3_bias]\n  L1 --> rf[regime_filter_optional]\n  rf --> L4[layer4_entry]\n  L2 --> L4\n  L3 --> L4\n  L4 --> post[volume_MTF_news_optional]\n  post --> levels[stop_target_ATR_levels]\n```\n\n**Composite parallel flow:** `generate_composite_signals` → STC (`generate_signals` with `adaptive_regime=True`, `regime_filter=False`) + ORB + VWAP → weighted score → STC gate → R:R filter → VOLATILE block.\n\n---\n\n## 4. MCL vs MNQ\n\n### 4.1 `INSTRUMENT_PARAMS` (from code)\n\n| Symbol | STC_OS | STC_OB | Stop ATR | T1 | T2 | T3 | Regime filter |\n|--------|--------|--------|-----------|----|----|-----|----------------|\n| **MNQ** | 15 | 92 | 0.70 | 1.00 | 1.80 | 2.618 | True |\n| **MCL** | 15 | 83 | 0.90 | 1.50 | 2.618 | 4.00 | True |\n\n### 4.2 Economics narrative\n\n- **MNQ:** Higher beta / noise; **wider STC OB (92)** and **tighter stop (0.70 ATR)** and **tighter T1 (1.00)** reflect Nasdaq microstructure and optimizer notes in-code (noise filtering).\n- **MCL:** **Wider stop (0.90)** and **wider T1 (1.50)** match crude’s swing characteristics and documented R:R intent in comments.\n\n**Intentional split:** Yes—parameters are **per-symbol research tuples**, not one-size-fits-all.\n\n### 4.3 Validation / approval status (from root `CLAUDE.md`)\n\n- **MCL 1h WFE 0.82 — APPROVED** (paper active).  \n- **MNQ 1h WFE 0.57 — APPROVED** (paper active).  \n- **MES** — strategy doc parameters exist but **DO NOT TRADE** per project status (overfit / gate failure).  \nAlign operator discipline with `CLAUDE.md` **Validated Instruments** table before enabling symbols in production configs.\n\n### 4.4 Decision items\n\n- Keep **split params** (recommended) vs converge templates only if new joint walk-forward justifies it.  \n- Any change to `INSTRUMENT_PARAMS` requires backtest + WFE re-gate and safety review if sizing/limits touched.\n\n---\n\n## 5. Time-of-day and session policy\n\n### 5.1 Scanner ([`signal_scanner.py`](../../engine/scanner/signal_scanner.py))\n\n- **Futures week:** Sunday **5:00 PM CT** through Friday **4:00 PM CT** (loop uses approximate CT offset from UTC).\n- **Saturday:** no scan.\n- **RTH no-new-entry windows (ET, approximate offset UTC-5 in code):** no entries **9:30–9:35 ET**; no entries **3:45–4:00 PM ET** (last 15 minutes).\n\n### 5.2 Signal layer vs scanner\n\n- **`signals.py`** does **not** embed the same RTH first/last 15-minute windows; those apply when the **scanner** invokes the pipeline.\n- **Manual** `POST /pipeline/run` or other callers can still run **without** those windows—**operational gap** to manage via SOP or future shared gate.\n\n### 5.3 Session policy (proposal)\n\n- **NY session** prioritized for micro equity index and crude liquidity; **Asia/London** left to discretionary pause unless data shows edge (document outcomes in paper journal).  \n- **Config hook:** `SESSION_FLATTEN_TIME_ET` in `TradingConfig` (3:45 PM ET) aligns with flatten/risk culture—ensure scanner, paper, and live policies stay consistent over time.\n\n---\n\n## 6. Edge thesis and falsifiers\n\n### 6.1 Thesis (one paragraph)\n\nThe stack combines **multi-factor confluence** (trend/phase/volume/structure/STC) to trade **directional continuation and controlled reversals** in liquid micro futures, with **explicit risk geometry** (ATR-scaled stops and targets) and **regime gating** to avoid trading exhaustion/compression blindly. **Composite** symbols add **independent confirmation** (ORB + VWAP) so entries are not driven by a single indicator. Edge is **statistical**: positive expectancy emerges from the interaction of selective entries, bounded loss per trade, and scaling rules—not from single-bar prediction.\n\n### 6.2 Measurable checks\n\nProject validation gates (from `CLAUDE.md`): e.g. **PF ≥ 2.0**, **Sharpe ≥ 1.5**, **WR ≥ 55%**, **≥ 60 trades**, **≥ 30 days**, **DD ≤ 15%** (paper validation targets—treat as north-star for formal sign-off).  \nPer-symbol **WFE** and **halt list** (e.g. MES, MGC) are **hard gates** before promoting symbols.\n\n### 6.3 What would falsify the thesis\n\n- **Persistent WFE collapse** on approved symbols while in-sample stays strong (overfit).  \n- **Live/paper divergence** beyond slippage/fees after controlled sample size.  \n- **Risk-adjusted metrics** failing validation gates with no regime explanation.  \n- **Kill switch / daily loss / drawdown** trips from strategy behavior rather than operational bugs (indicates edge not scaled to risk).\n\n**References (no code changes here):** [`engine/risk/safety_layer.py`](../../engine/risk/safety_layer.py), `TradingConfig` kill/drawdown fields.\n\n---\n\n## 7. Cross-check vs CLAUDE.md / project docs\n\n| Claim (typical summary) | This document / code | Verdict |\n|-------------------------|----------------------|---------|\n| STC OS=15, OB=83, ATR stop 0.70× | Defaults in `signals.py` module text use 15/83/0.70 for **generic** copy; **MNQ OB=92**, **MCL stop=0.90** in `INSTRUMENT_PARAMS` | **Nuance:** headline is **simplified**; approved micros use **table in §4.1** |\n| 5-layer regime filter | Layers 1–4 explicit; Layer 5 is **sizing** not regime | **Agree** with framework naming; clarify Layer 5 = sizing |\n| MES / validation | Params exist for MES in `INSTRUMENT_PARAMS` but **DO NOT TRADE** in CLAUDE | **Agree** — status overrides raw params |\n\n---\n\n*End of document.*\n";
+    const EQUATIONS_MD = "# JARVIS TRADER — Strategy mathematics (equation reference)\n\n**Companion:** [TRADING_RULES.md](./TRADING_RULES.md) (operational rules).  \n**Source of truth:** Python implementations in [`engine/backtest/indicators.py`](../../engine/backtest/indicators.py) and [`engine/backtest/signals.py`](../../engine/backtest/signals.py); composite in [`engine/backtest/composite_signals.py`](../../engine/backtest/composite_signals.py).\n\nNotation: bar $t$ uses OHLCV $(O_t,H_t,L_t,C_t,V_t)$. Series use pandas conventions; EWM uses `adjust=False` (standard α = 2/(span+1) recurrence).\n\n---\n\n## 1. True Range and ATR variants\n\n### 1.1 True Range (per bar)\n\n\n$$\n\n\\mathrm{TR}_t = \\max\\bigl(H_t - L_t,\\ |H_t - C_{t-1}|,\\ |L_t - C_{t-1}|\\bigr)\n\n$$\n\n\n### 1.2 Wilder ATR (period $n$, default $n=14$)\n\nUsed in phase oscillator and (via different smoothing) contrasted with SMA ATR below.\n\n- Initialize at index $n-1$: $\\mathrm{ATR}_{n-1} = \\frac{1}{n}\\sum_{i=0}^{n-1} \\mathrm{TR}_i$.\n- For $t \\ge n$:\n\n\n$$\n\n\\mathrm{ATR}^{\\mathrm{W}}_t = \\frac{(n-1)\\,\\mathrm{ATR}^{\\mathrm{W}}_{t-1} + \\mathrm{TR}_t}{n}\n\n$$\n\n\n**Code:** `wilder_atr(..., period=14)`.\n\n### 1.3 SMA ATR (period $n$, default $n=20$ in Keltner)\n\n\n$$\n\n\\mathrm{ATR}^{\\mathrm{SMA}}_t = \\frac{1}{n}\\sum_{i=t-n+1}^{t} \\mathrm{TR}_i\n\n$$\n\n\n**Code:** `sma_atr` (rolling mean of TR).\n\n---\n\n## 2. Kaufman Adaptive Moving Average (KAMA)\n\nPeriod $n=10$, fast span 2, slow span 30 (defaults).\n\n- **Direction change over $n$ bars:** $\\Delta_t = |C_t - C_{t-n}|$.\n- **Volatility:** $V_t = \\sum_{i=t-n+1}^{t} |C_i - C_{i-1}|$.\n- **Efficiency ratio:** $\\mathrm{ER}_t = \\Delta_t / V_t$ if $V_t>0$, else $0$.\n- **Smoothing constant:** $sc_t = \\bigl(\\mathrm{ER}_t(\\alpha_f - \\alpha_s) + \\alpha_s\\bigr)^2$ with $\\alpha_f = 2/(2+1)$, $\\alpha_s = 2/(30+1)$ from fast/slow periods.\n\nRecurrence for $t \\ge n$:\n\n\n$$\n\n\\mathrm{KAMA}_t = \\mathrm{KAMA}_{t-1} + sc_t\\,(C_t - \\mathrm{KAMA}_{t-1})\n\n$$\n\n\n**Signal:** long if $C_t > \\mathrm{KAMA}_t$, short if $C_t < \\mathrm{KAMA}_t$, else neutral.\n\n**Code:** `kama`.\n\n---\n\n## 3. Schaff Trend Cycle (STC)\n\nParameters: fast $=23$, slow $=50$, $K=10$, $D=3$.\n\n1. **MACD line:** $\\mathrm{MACD}_t = \\mathrm{EMA}_{23}(C)_t - \\mathrm{EMA}_{50}(C)_t$ (pandas `ewm(span=..., adjust=False)`).\n\n2. **Stochastic of a series $X$ over $K$ bars:**\n\n\n$$\n\n\\mathrm{Stoch}_K(X)_t = \\begin{cases}\n100 \\cdot \\dfrac{X_t - \\min_{[t-K+1,t]} X}{\\max_{[t-K+1,t]} X - \\min_{[t-K+1,t]} X} & \\text{if denom} \\neq 0 \\\\\n50 & \\text{otherwise}\n\\end{cases}\n\n$$\n\n\n3. **First smooth:** $D^{(1)}_t = \\mathrm{EMA}_{D}(\\mathrm{Stoch}_K(\\mathrm{MACD}))_t$ with $D=3$.\n\n4. **Second stochastic:** $K^{(2)}_t = \\mathrm{Stoch}_K(D^{(1)})_t$.\n\n5. **STC output:** $\\mathrm{STC}_t = \\mathrm{EMA}_{D}(K^{(2)})_t$, clipped to $[0,100]$.\n\n**Cross definitions** (after optional per-symbol oversold $S_{\\mathrm{OS}}$ / overbought $S_{\\mathrm{OB}}$ from `INSTRUMENT_PARAMS`):\n\n- **Cross up:** $\\mathrm{STC}_t > S_{\\mathrm{OS}}$ and $\\mathrm{STC}_{t-1} \\le S_{\\mathrm{OS}}$.\n- **Cross down:** $\\mathrm{STC}_t < S_{\\mathrm{OB}}$ and $\\mathrm{STC}_{t-1} \\ge S_{\\mathrm{OB}}$.\n\n**Code:** `stc`, `generate_signals` (threshold overrides).\n\n---\n\n## 4. Phase oscillator and compression\n\nEMA length 21, Wilder ATR 14, Bollinger length 21, std multiplier 2.\n\n\n$$\n\n\\mathrm{EMA}^{(21)}_t = \\mathrm{EMA}_{21}(C)_t,\\quad \\mathrm{ATR}_t = \\mathrm{ATR}^{\\mathrm{W}}_{14,t}\n\n$$\n\n\n\n$$\n\n\\mathrm{Phase}_t = \\mathrm{clip}_{[-100,100]}\\left( \\frac{C_t - \\mathrm{EMA}^{(21)}_t}{3\\,\\mathrm{ATR}_t + \\varepsilon} \\cdot 100 \\right)\n\n$$\n\n\nBollinger on close: mid $M_t = \\mathrm{SMA}_{21}(C)_t$, $\\sigma_t = \\mathrm{std}_{21}(C)_t$, band width $W^{\\mathrm{BB}}_t = (M_t + 2\\sigma_t) - (M_t - 2\\sigma_t)$. ATR band width $W^{\\mathrm{ATR}}_t = 2\\,\\mathrm{ATR}_t$.\n\n**Compression:** $\\mathrm{Compression}_t = \\mathbb{1}[W^{\\mathrm{BB}}_t < W^{\\mathrm{ATR}}_t]$.\n\n**Code:** `phase_oscillator`.\n\n---\n\n## 5. Volume stack (buy/sell split)\n\nLet $\\mathrm{rng}_t = H_t - L_t$ (if 0, code uses 50/50 split).\n\n\n$$\n\n\\mathrm{BuyVol}_t = V_t \\cdot \\frac{C_t - L_t}{\\mathrm{rng}_t},\\quad\n\\mathrm{SellVol}_t = V_t \\cdot \\frac{H_t - C_t}{\\mathrm{rng}_t}\n\n$$\n\n\n\n$$\n\n\\mathrm{BuyPct}_t = 100 \\cdot \\frac{\\mathrm{BuyVol}_t}{\\mathrm{BuyVol}_t + \\mathrm{SellVol}_t}\n\n$$\n\n\n**Signals:** buyer_dominant if $\\mathrm{BuyPct}>60$, seller_dominant if $<40$, else balanced.\n\n**Code:** `volume_stack`.\n\n---\n\n## 6. Keltner channels\n\nBasis (default SMA 20 on close), ATR = SMA of TR over 20, factor $f \\in \\{1.5, 2.0, 3.0\\}$ for inner/outer/extreme:\n\n\n$$\n\n\\mathrm{Basis}_t = \\mathrm{SMA}_{20}(C)_t,\\quad\n\\mathrm{Upper}_t = \\mathrm{Basis}_t + f \\cdot \\mathrm{ATR}^{\\mathrm{SMA}}_{20,t},\\quad\n\\mathrm{Lower}_t = \\mathrm{Basis}_t - f \\cdot \\mathrm{ATR}^{\\mathrm{SMA}}_{20,t}\n\n$$\n\n\n**Code:** `keltner_channels`.\n\n---\n\n## 7. CCI (period 50)\n\nTypical price $T_t = (H_t + L_t + C_t)/3$, $\\mu_t = \\mathrm{SMA}_{50}(T)_t$, mean deviation $\\mathrm{MD}_t = \\frac{1}{50}\\sum_{i=t-49}^{t} |T_i - \\bar T_{t,50}|$ (implementation uses rolling apply).\n\n\n$$\n\n\\mathrm{CCI}_t = \\frac{T_t - \\mu_t}{0.015 \\cdot \\mathrm{MD}_t}\n\n$$\n\n\n**Code:** `cci`.\n\n---\n\n## 8. ATR range consumed (%)\n\nUsed in Layer 1 regime.\n\n\n$$\n\n\\mathrm{Consumed}_t = \\min\\left(200,\\ \\frac{|C_t - C_{t-1}|}{\\mathrm{ATR}_t} \\cdot 100\\right)\n\n$$\n\n\n(0 if $\\mathrm{ATR}_t \\le 0$.)\n\n**Code:** `range_consumed_pct` in `indicators.py`; column `atr_consumed_pct` in `compute_all_indicators`.\n\n---\n\n## 9. EMA ribbon (8 / 21 / 34)\n\n\n$$\n\nE^{(s)}_t = \\mathrm{EMA}_s(C)_t,\\quad s \\in \\{8,21,34\\}\n\n$$\n\n\n**Trend:** bullish if $E^{(8)} > E^{(21)} > E^{(34)}$, bearish if all reversed, else neutral.\n\n**Code:** `ema_ribbon`.\n\n---\n\n## 10. Structure proxies (Layer 2 inputs)\n\nRolling window $W=20$ (from `signals.compute_all_indicators`):\n\n- **VPOC proxy (VWAP of window):** $\\mathrm{VPOC}_t = \\sum_{i=t-19}^{t} C_i V_i \\big/ \\sum_{i=t-19}^{t} V_i$.\n- **VAH / VAL proxies:** 85th percentile of recent highs, 15th percentile of recent lows over $W$.\n- **IB high/low proxy (per bar):** $\\mathrm{IBHigh}_t = H_{t-1}$, $\\mathrm{IBLow}_t = L_{t-1}$.\n\nBoolean structure flags: above_vah, below_val, above_ib_high, below_ib_low from close vs those levels.\n\n**Code:** `signals.py` inside `compute_all_indicators`.\n\n---\n\n## 11. Layer 1 regime (piecewise)\n\nLet $c=\\mathrm{Consumed}_t$, phase $=\\mathrm{Phase}_t$, compression flag, `ema_trend` $\\in$ {bullish, bearish, neutral}.\n\n1. If $c > 90$ → **EXHAUSTED**\n2. Else if compression and $c < 50$ → **COMPRESSION**\n3. Else if `ema_trend` bullish and $c < 70$ and phase $> 0$ → **TRENDING_BULL**\n4. Else if `ema_trend` bearish and $c < 70$ and phase $< 0$ → **TRENDING_BEAR**\n5. Else → **RANGE_BOUND**\n\nIf `regime_filter` is False in `generate_signals`, **EXHAUSTED** and **COMPRESSION** are relabeled **RANGE_BOUND** before Layer 4.\n\n**Code:** `layer1_regime`.\n\n---\n\n## 12. Layer 3 bias (scoring)\n\nInteger votes from four components (KAMA, STC signal category, volume_signal, ema_trend). Count bull vs bear; thresholds:\n\n- $\\mathrm{bull} \\ge 4$ → STRONG_BULL; $\\mathrm{bull} \\ge 3$ or $(\\mathrm{bull}=2$ and ema bullish) → LEAN_BULL\n- Symmetric for bear\n- Else NEUTRAL\n\n**Code:** `layer3_bias`.\n\n---\n\n## 13. Stop and target levels (standard `generate_signals`)\n\nLet $\\mathrm{ATR}_t$ be Wilder ATR(14), $s_s,t_s,t_1,t_2,t_3$ from `INSTRUMENT_PARAMS[symbol]` (stop and target ATR multipliers). Define long side from **bias** (not entry direction): `is_long` = bias in {STRONG_BULL, LEAN_BULL}.\n\n**Long:**\n\n\n$$\n\n\\mathrm{Stop}_t = C_t - s_s \\cdot \\mathrm{ATR}_t,\\quad\nT^{(k)}_t = C_t + t_k \\cdot \\mathrm{ATR}_t,\\ k \\in \\{1,2,3\\}\n\n$$\n\n\n**Short** (LEAN/STRONG bear):\n\n\n$$\n\n\\mathrm{Stop}_t = C_t + s_s \\cdot \\mathrm{ATR}_t,\\quad\nT^{(k)}_t = C_t - t_k \\cdot \\mathrm{ATR}_t\n\n$$\n\n\n**Code:** `generate_signals` after layer loop.\n\n---\n\n## 14. Optional volume gate\n\n$\\overline{V}_t = \\frac{1}{N}\\sum_{i=t-N+1}^{t} V_i$ (default $N=20$). Entry allowed only if $V_t > \\overline{V}_t$ when `volume_filter=True`.\n\n**Code:** `generate_signals`.\n\n---\n\n## 15. Layer 5 — risk scaling\n\nInputs: `bias`, `regime` (trending bull/bear vs other), `structure_position`, `base_risk_pct`.\n\nLet $m \\in \\{1.0,\\ 0.8,\\ 0.5,\\ 0.25\\}$ per the branching in `compute_position_size` (strong+ trending + directional structure → 1.0; strong + trending → 0.8; lean or not trending → 0.5; else 0.25).\n\n\n$$\n\n\\mathrm{risk\\_pct}_t = \\mathrm{round}(m \\cdot \\mathrm{base\\_risk\\_pct}, 6)\n\n$$\n\n\n**Code:** `compute_position_size`, constants `SIZING_*`.\n\n---\n\n## 16. Composite signals (`composite_signals.py`)\n\n### 16.1 Regime weights\n\nFor each bar, $r \\in$ {TRENDING, RANGING, VOLATILE} with weights $(w_{\\mathrm{stc}}, w_{\\mathrm{orb}}, w_{\\mathrm{vwap}})$:\n\n- TRENDING: $(0.60, 0.30, 0.10)$\n- RANGING: $(0.50, 0.20, 0.30)$\n- VOLATILE: $(0,0,0)$\n\n### 16.2 Encoded legs (0/1)\n\n$L_{\\mathrm{stc}}, S_{\\mathrm{stc}}$ from STC cross up/down; ORB LONG/SHORT; VWAP LONG/SHORT as booleans.\n\n### 16.3 Scores\n\n\n$$\n\n\\mathrm{LongScore}_t = w_{\\mathrm{stc}} L_{\\mathrm{stc}} + w_{\\mathrm{orb}} L_{\\mathrm{orb}} + w_{\\mathrm{vwap}} L_{\\mathrm{vwap}}\n\n$$\n\n\n$$\n\n\\mathrm{ShortScore}_t = w_{\\mathrm{stc}} S_{\\mathrm{stc}} + w_{\\mathrm{orb}} S_{\\mathrm{orb}} + w_{\\mathrm{vwap}} S_{\\mathrm{vwap}}\n\n$$\n\n\n**Entry (long)** if $\\mathrm{LongScore}_t \\ge \\theta$ (default $\\theta=0.35$), **STC long fires**, and regime ≠ VOLATILE; symmetric for short; tie-break if both.\n\n### 16.4 Composite stop / targets (fixed ATR multiples on composite branch)\n\nConstants `COMP_STOP_ATR = 1.0`, `COMP_T1_ATR = 2.5`, `COMP_T2_ATR = 4.0`.\n\nLong: $\\mathrm{Stop} = C_t - 1.0 \\cdot \\mathrm{ATR}_t$, $T_1 = C_t + 2.5 \\cdot \\mathrm{ATR}_t$, $T_2 = C_t + 4.0 \\cdot \\mathrm{ATR}_t$; short mirrored.\n\n### 16.5 Composite reward-to-risk at T1\n\nLong: $\\mathrm{RR} = \\dfrac{T_1 - C_t}{C_t - \\mathrm{Stop}}$ (if risk $>0$). Entries with $\\mathrm{RR} < \\mathrm{MIN\\_RR}$ (code: **1.2**) are removed.\n\n**Code:** `generate_composite_signals`.\n\n---\n\n## 17. Symbol parameters (ATR multipliers and STC thresholds)\n\nPer-symbol tuple $(S_{\\mathrm{OS}}, S_{\\mathrm{OB}}, s_s, t_1, t_2, t_3, \\mathrm{regime\\_filter})$ in `INSTRUMENT_PARAMS` — see [TRADING_RULES.md §4](./TRADING_RULES.md) for MCL/MNQ numeric values.\n\n---\n\n*Document generated to mirror `indicators.py` / `signals.py` / `composite_signals.py` as of repo state; if code changes, update this file in the same PR.*\n";
+    const conv = new showdown.Converter({ tables: true, strikethrough: true, tasklists: true });
+    document.getElementById("rules-body").innerHTML = conv.makeHtml(RULES_MD);
+    document.getElementById("equations-body").innerHTML = conv.makeHtml(EQUATIONS_MD);
+    renderMathInElement(document.getElementById("equations-body"), {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "$", right: "$", display: false },
+      ],
+      throwOnError: false,
+    });
+  </script>
+</body>
+</html>

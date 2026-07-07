@@ -1,0 +1,54 @@
+{
+  "project": "Sprint 21-B: RL Run 10 — Strong-Exit Config",
+  "branchName": "feat/rl-run10-strong-exit",
+  "description": "Fix RL agent hold behavior. Run 9 failed: avg_bars=109, PF=0.07, t1_hit=0%. Run 10 uses strong hold_cost=-0.010 and t1_bonus=0.50 to force fast exits. Cap all trades at 50 bars max.",
+  "userStories": [
+    {
+      "id": "US-2110",
+      "title": "Update rl_config.py for Run 10 — strong hold cost + T1 bonus",
+      "description": "As a researcher, I want Run 10 reward parameters set so that the RL agent is strongly penalized for holding and rewarded for hitting T1 targets.",
+      "acceptanceCriteria": [
+        "engine/strategies/rl_config.py REWARD_CONFIG['hold_cost'] == -0.010",
+        "engine/strategies/rl_config.py REWARD_CONFIG['t1_bonus'] == 0.50",
+        "A comment 'Run 10: strong-exit config' is present in the file",
+        "ruff check engine/strategies/rl_config.py passes",
+        "python3 -c 'from engine.strategies.rl_config import REWARD_CONFIG; assert REWARD_CONFIG[\"hold_cost\"]==-0.010; assert REWARD_CONFIG[\"t1_bonus\"]==0.50; print(\"OK\")' succeeds"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Current values: hold_cost=-0.002, t1_bonus=0.20 (from Run 9). Run 9 generated 109-bar avg holds and 0% T1 hit rate — agent learned to never act. Strong penalties needed."
+    },
+    {
+      "id": "US-2111",
+      "title": "Add MAX_BARS_IN_TRADE=50 hard limit to rl_environment.py",
+      "description": "As a risk manager, I want positions force-closed after 50 bars so that the RL agent cannot hold positions indefinitely regardless of learned behavior.",
+      "acceptanceCriteria": [
+        "engine/strategies/rl_environment.py MAX_BARS_IN_TRADE constant = 50",
+        "step() method force-closes position when bars_in_trade >= MAX_BARS_IN_TRADE",
+        "info dict contains 'forced_close': True when hard limit triggered",
+        "Forced close applies the exit penalty from REWARD_CONFIG",
+        "All existing RL tests pass (no regressions)",
+        "ruff check engine/strategies/rl_environment.py passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Run 9 generated 109-bar avg holds. Without a hard cap the agent can hold for 100-200 bars even with strong hold_cost. 50-bar cap aligns with 1-session RTH window."
+    },
+    {
+      "id": "US-2112",
+      "title": "Update rl_evaluator.py to report avg_bars and t1_hit_rate gates",
+      "description": "As a researcher, I want the evaluator to explicitly check the Run 10 gates so I can see pass/fail at a glance after training.",
+      "acceptanceCriteria": [
+        "engine/strategies/rl_evaluator.py reports avg_bars_in_trade in evaluation output",
+        "engine/strategies/rl_evaluator.py reports t1_hit_rate in evaluation output",
+        "Gate check: avg_bars_in_trade < 50 logged as PASS/FAIL",
+        "Gate check: t1_hit_rate > 0.05 (5%) logged as PASS/FAIL",
+        "ruff check engine/strategies/rl_evaluator.py passes",
+        "pytest tests/ -k rl passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Currently evaluator reports basic metrics. Adding explicit gate reporting makes Run 10 evaluation self-documenting."
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useEngineStatus } from "@/hooks/useEngineStatus";
+import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 
 const DISMISS_DURATION_MS = 60_000;
 
@@ -31,10 +32,6 @@ export function EngineOfflineBanner() {
     setDismissedUntil(Date.now() + DISMISS_DURATION_MS);
   }
 
-  const checkedLabel = lastChecked
-    ? lastChecked.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    : null;
-
   return (
     <div
       role="alert"
@@ -60,16 +57,13 @@ export function EngineOfflineBanner() {
           ENGINE OFFLINE{" "}
           <span className="font-normal opacity-70">—</span>{" "}
           <span className="font-normal" style={{ color: "#3d2800" }}>
-            {process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010"} not responding. Start engine to resume live data.
+            Engine API not responding (dashboard uses the /api/engine proxy). Start the FastAPI engine and see docs/troubleshooting.md.
           </span>
         </p>
 
-        {checkedLabel && (
-          <span
-            className="shrink-0 font-mono text-xs hidden sm:inline"
-            style={{ color: "#7a5c00" }}
-          >
-            Last checked: {checkedLabel}
+        {lastChecked && (
+          <span className="shrink-0 hidden sm:inline">
+            <StalenessIndicator lastUpdated={lastChecked} />
           </span>
         )}
       </div>

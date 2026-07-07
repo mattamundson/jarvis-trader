@@ -1,0 +1,79 @@
+//@version=5
+indicator("JARVIS Market Cycle", overlay=false, max_labels_count=500, max_lines_count=500)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+i_len = input.int(20, "Cycle Detection Period", minval=5, maxval=100)
+
+// ── EMA alignment ─────────────────────────────────────────────────────────────
+ema_fast  = ta.ema(close, 8)
+ema_mid   = ta.ema(close, 21)
+ema_slow  = ta.ema(close, 34)
+
+bull_aligned = ema_fast > ema_mid and ema_mid > ema_slow
+bear_aligned = ema_fast < ema_mid and ema_mid < ema_slow
+
+// ── Volatility / contraction ──────────────────────────────────────────────────
+atr_val    = ta.atr(14)
+contracting = atr_val < ta.ema(atr_val, i_len)
+
+// ── Price position in recent range ────────────────────────────────────────────
+range_high = ta.highest(high, i_len)
+range_low  = ta.lowest(low,  i_len)
+range_span = range_high - range_low
+range_pct  = range_span != 0 ? (close - range_low) / range_span : 0.5
+
+// ── Cycle phase classification ────────────────────────────────────────────────
+is_markup       = bull_aligned and not contracting
+is_distribution = range_pct > 0.7 and contracting
+is_markdown     = bear_aligned and not contracting
+is_accumulation = range_pct < 0.3 and contracting
+
+// Priority: markup/markdown first, then distribution/accumulation, else neutral
+cycle_score = is_markup ? 1 : is_markdown ? -1 : is_distribution ? 2 : is_accumulation ? -2 : 0
+
+cycle_phase_str = cycle_score ==  1 ? "MARKUP"       :
+                  cycle_score ==  2 ? "DISTRIBUTION"  :
+                  cycle_score == -1 ? "MARKDOWN"      :
+                  cycle_score == -2 ? "ACCUMULATION"  : "NEUTRAL"
+
+ema_bias_str = bull_aligned ? "BULL" : bear_aligned ? "BEAR" : "MIXED"
+
+// ── Colours ───────────────────────────────────────────────────────────────────
+col = cycle_score ==  1 ? color.new(color.lime,  20) :
+      cycle_score ==  2 ? color.new(color.orange, 20) :
+      cycle_score == -1 ? color.new(color.red,    20) :
+      cycle_score == -2 ? color.new(color.aqua,   20) :
+                          color.new(color.gray,   40)
+
+// ── Plots ─────────────────────────────────────────────────────────────────────
+hline(0, "Zero", color=color.new(color.white, 70), linestyle=hline.style_dashed)
+hline( 1, "+1 Markup",       color=color.new(color.lime,   70), linestyle=hline.style_dotted)
+hline( 2, "+2 Distribution", color=color.new(color.orange, 70), linestyle=hline.style_dotted)
+hline(-1, "-1 Markdown",     color=color.new(color.red,    70), linestyle=hline.style_dotted)
+hline(-2, "-2 Accumulation", color=color.new(color.aqua,   70), linestyle=hline.style_dotted)
+
+plot(cycle_score, "Cycle Phase", color=col, style=plot.style_histogram, linewidth=2)
+plot(cycle_score, "Cycle Line",  color=col, linewidth=1)
+
+// Range pct as a faint overlay in [-1, 1] space (centered at 0)
+range_centered = (range_pct - 0.5) * 2
+plot(range_centered, "Range Position", color=color.new(color.white, 70), linewidth=1)
+
+// ── MCP readback labels (barstate.islast only) ────────────────────────────────
+if barstate.islast
+    y = -2.8
+    label.new(bar_index, y,      "CYCLE_PHASE: "    + cycle_phase_str,
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 0.4, "CYCLE_SCORE: "   + str.tostring(cycle_score),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 0.8, "EMA_ALIGNED: "   + ema_bias_str,
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 1.2, "CONTRACTING: "   + str.tostring(contracting),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)
+    label.new(bar_index, y - 1.6, "RANGE_PCT: "     + str.tostring(math.round(range_pct, 2)),
+              style=label.style_label_up, color=color.new(color.navy, 20),
+              textcolor=color.white, size=size.small)

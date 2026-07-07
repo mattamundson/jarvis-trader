@@ -1,0 +1,120 @@
+{
+  "date": "2026-05-07",
+  "session_bias": {
+    "session_type": "trend_day",
+    "directional_bias": "bullish",
+    "conviction": 0.85,
+    "ib_bias": "above_ib",
+    "data_quality": "fresh",
+    "message_count": 9
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7407.25,
+      "target2": 7414.0,
+      "stop1": null,
+      "win_rate": 83.65,
+      "rr": 0.58,
+      "timestamp": "2026-05-07T10:11:04.208-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7400.0,
+      "target2": 7406.75,
+      "stop1": null,
+      "win_rate": 83.62,
+      "rr": 0.58,
+      "timestamp": "2026-05-07T09:38:19.533-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7401.5,
+      "target2": 7408.25,
+      "stop1": null,
+      "win_rate": 83.59,
+      "rr": 0.58,
+      "timestamp": "2026-05-07T03:33:01.647-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7406.75,
+      "target2": 7413.5,
+      "stop1": null,
+      "win_rate": 83.55,
+      "rr": 0.58,
+      "timestamp": "2026-05-07T02:34:01.216-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7402.5,
+      "target2": 7409.25,
+      "stop1": null,
+      "win_rate": 83.55,
+      "rr": 0.58,
+      "timestamp": "2026-05-07T08:18:00.887-05:00"
+    }
+  ],
+  "corey_quote": "The longer a market goes without pulling back, the more violent the pullback becomes\u2014right now that pressure is building.",
+  "commentary_health": [
+    {
+      "date": "2026-05-08",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 9
+    },
+    {
+      "date": "2026-05-07",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 9
+    },
+    {
+      "date": "2026-05-06",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 13
+    },
+    {
+      "date": "2026-05-05",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 7
+    },
+    {
+      "date": "2026-05-04",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 29
+    },
+    {
+      "date": "2026-04-30",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 29
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+//@version=5
+indicator("JARVIS Single Fills", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+color col_bear = input.color(color.new(color.red,   60), "Bear Single Fill Color")
+color col_bull = input.color(color.new(color.green, 60), "Bull Single Fill Color")
+int   max_singles = input.int(5, "Max Singles Per Side", minval=1, maxval=10)
+
+// ─── Session Detection ────────────────────────────────────────────────────────
+// RTH session: 09:30–16:00 ET
+rth_start = timestamp("America/New_York", year, month, dayofmonth,  9, 30)
+rth_end   = timestamp("America/New_York", year, month, dayofmonth, 16,  0)
+in_rth    = time >= rth_start and time < rth_end
+
+// ─── Day Reset Logic ──────────────────────────────────────────────────────────
+day_changed = dayofmonth != dayofmonth[1] or month != month[1]
+
+// ─── Single Print Detection ───────────────────────────────────────────────────
+// Bear single: gap UP between bars — low[0] > high[1]
+//   The unfilled zone is [high[1], low[0]]  (below current bar's low)
+// Bull single: gap DOWN between bars — high[0] < low[1]
+//   The unfilled zone is [high[0], low[1]]  (above current bar's high)
+
+is_bear_single = in_rth and not day_changed and low  > high[1]
+is_bull_single = in_rth and not day_changed and high < low[1]
+
+bear_zone_top    = low        // top of bear single zone
+bear_zone_bottom = high[1]    // bottom of bear single zone
+bull_zone_bottom = high       // bottom of bull single zone
+bull_zone_top    = low[1]     // top of bull single zone
+
+// ─── Storage Arrays ───────────────────────────────────────────────────────────
+// Each single is stored as {top, bottom, bar_index_created}
+var float[] bear_highs = array.new_float()
+var float[] bear_lows  = array.new_float()
+var float[] bull_highs = array.new_float()
+var float[] bull_lows  = array.new_float()
+
+// Boxes for visual rendering
+var box[] bear_boxes = array.new_box()
+var box[] bull_boxes = array.new_box()
+
+// ─── Day Reset — clear all singles and drawings ───────────────────────────────
+if day_changed
+    // Clear arrays
+    array.clear(bear_highs)
+    array.clear(bear_lows)
+    array.clear(bull_highs)
+    array.clear(bull_lows)
+    // Delete boxes
+    for b in bear_boxes
+        box.delete(b)
+    for b in bull_boxes
+        box.delete(b)
+    array.clear(bear_boxes)
+    array.clear(bull_boxes)
+
+// ─── Fill Detection — remove singles price has passed through ─────────────────
+// A single is "filled" when price closes through the zone
+_remove_filled_singles(highs, lows, boxes, cur_high, cur_low) =>
+    i = 0
+    while i < array.size(highs)
+        sh = array.get(highs, i)
+        sl = array.get(lows,  i)
+        // Filled if close passes into the zone
+        filled = cur_low <= sl or cur_high >= sh
+        if filled
+            box.delete(array.get(boxes, i))
+            array.remove(highs,  i)
+            array.remove(lows,   i)
+            array.remove(boxes,  i)
+        else
+            i += 1
+
+_remove_filled_singles(bear_highs, bear_lows, bear_boxes, high, low)
+_remove_filled_singles(bull_highs, bull_lows, bull_boxes, high, low)
+
+// ─── Add New Singles ──────────────────────────────────────────────────────────
+if is_bear_single
+    // Evict oldest if at capacity
+    if array.size(bear_highs) >= max_singles
+        box.delete(array.shift(bear_boxes))
+        array.shift(bear_highs)
+        array.shift(bear_lows)
+    // Add new
+    new_box = box.new(bar_index - 1, bear_zone_top, bar_index + 50, bear_zone_bottom,
+                      border_color=col_bear, bgcolor=col_bear,
+                      extend=extend.right)
+    array.push(bear_highs, bear_zone_top)
+    array.push(bear_lows,  bear_zone_bottom)
+    array.push(bear_boxes, new_box)
+
+if is_bull_single
+    if array.size(bull_highs) >= max_singles
+        box.delete(array.shift(bull_boxes))
+        array.shift(bull_highs)
+        array.shift(bull_lows)
+    new_box = box.new(bar_index - 1, bull_zone_top, bar_index + 50, bull_zone_bottom,
+                      border_color=col_bull, bgcolor=col_bull,
+                      extend=extend.right)
+    array.push(bull_highs, bull_zone_top)
+    array.push(bull_lows,  bull_zone_bottom)
+    array.push(bull_boxes, new_box)
+
+// ─── MCP Output Labels (barstate.islast only) ─────────────────────────────────
+var label lbl_bear_high    = na
+var label lbl_bear_low     = na
+var label lbl_bull_high    = na
+var label lbl_bull_low     = na
+var label lbl_bear_count   = na
+var label lbl_bull_count   = na
+var label lbl_nearest      = na
+
+_del_make(lbl, txt, price) =>
+    label.delete(lbl)
+    label.new(bar_index, price, txt,
+              style=label.style_none,
+              textcolor=color.new(color.white, 20),
+              size=size.small)
+
+if barstate.islast
+    bear_n = array.size(bear_highs)
+    bull_n = array.size(bull_highs)
+
+    // Most recent single = last element in array
+    bear_top    = bear_n > 0 ? array.get(bear_highs, bear_n - 1) : na
+    bear_bot    = bear_n > 0 ? array.get(bear_lows,  bear_n - 1) : na
+    bull_top    = bull_n > 0 ? array.get(bull_highs, bull_n - 1) : na
+    bull_bot    = bull_n > 0 ? array.get(bull_lows,  bull_n - 1) : na
+
+    // Label offset so labels don't stack on top of each other
+    offset = (high - low) * 3
+
+    lbl_bear_count := _del_make(lbl_bear_count,
+                                "BEAR_SINGLES_COUNT: " + str.tostring(bear_n),
+                                close + offset * 4)
+
+    lbl_bull_count := _del_make(lbl_bull_count,
+                                "BULL_SINGLES_COUNT: " + str.tostring(bull_n),
+                                close + offset * 3)
+
+    if not na(bear_top)
+        lbl_bear_high := _del_make(lbl_bear_high,
+                                   "BEAR_SINGLE_HIGH: " + str.tostring(bear_top, "#.##"),
+                                   bear_top)
+        lbl_bear_low  := _del_make(lbl_bear_low,
+                                   "BEAR_SINGLE_LOW: "  + str.tostring(bear_bot, "#.##"),
+                                   bear_bot)
+    else
+        label.delete(lbl_bear_high)
+        label.delete(lbl_bear_low)
+        lbl_bear_high := na
+        lbl_bear_low  := na
+
+    if not na(bull_top)
+        lbl_bull_high := _del_make(lbl_bull_high,
+                                   "BULL_SINGLE_HIGH: " + str.tostring(bull_top, "#.##"),
+                                   bull_top)
+        lbl_bull_low  := _del_make(lbl_bull_low,
+                                   "BULL_SINGLE_LOW: "  + str.tostring(bull_bot, "#.##"),
+                                   bull_bot)
+    else
+        label.delete(lbl_bull_high)
+        label.delete(lbl_bull_low)
+        lbl_bull_high := na
+        lbl_bull_low  := na
+
+    // Nearest single to current price
+    nearest = "NONE"
+    if not na(bear_top) and not na(bull_top)
+        bear_mid   = (bear_top + bear_bot) / 2
+        bull_mid   = (bull_top + bull_bot) / 2
+        dist_bear  = math.abs(close - bear_mid)
+        dist_bull  = math.abs(close - bull_mid)
+        nearest   := dist_bear < dist_bull ? "BEAR" : "BULL"
+    else if not na(bear_top)
+        nearest := "BEAR"
+    else if not na(bull_top)
+        nearest := "BULL"
+
+    lbl_nearest := _del_make(lbl_nearest,
+                             "NEAREST_SINGLE: " + nearest,
+                             close + offset * 2)

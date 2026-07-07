@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 # Series: DGS10 (ten_year_yield) is the most commonly requested — keep accurate.
 FRED_SNAPSHOT_DEFAULTS: dict[str, float] = {
     "FEDFUNDS": 4.33,  # Federal Funds Rate
-    "GS10": 4.30,  # 10-Year Treasury Yield (GS10, monthly)
-    "GS2": 4.05,  # 2-Year Treasury Yield
-    "VIXCLS": 20.0,  # CBOE VIX (daily close)
+    "GS10": 4.294,  # 10-Year Treasury Yield (GS10, monthly)
+    "GS2": 3.595,  # 2-Year Treasury Yield
+    "VIXCLS": 18.92,  # CBOE VIX (daily close)
     "UNRATE": 4.1,  # Unemployment Rate
 }
 
@@ -66,6 +66,10 @@ class FREDDataService:
             return Fred()
         except ImportError:
             logger.warning("fredapi not installed")
+            return None
+        except Exception as e:
+            # fredapi raises ValueError when no API key is configured
+            logger.warning("fredapi client init failed (no API key?): %s — using defaults", e)
             return None
 
     def get_series(self, series_id: str, periods: int = 12) -> Optional[pd.Series]:
@@ -239,3 +243,75 @@ def get_fred_service() -> FREDDataService:
     if _fred_service is None:
         _fred_service = FREDDataService()
     return _fred_service
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# yfinance-based live macro fetch (no API key required)
+# Used as primary source when FRED API key is not configured.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_live_macro_yfinance() -> dict:
+    """
+    Fetch live macro data via yfinance tickers.
+    No API key required. Falls back to FRED_SNAPSHOT_DEFAULTS on any failure.
+
+    Returns dict with same schema as FREDDataService.get_macro_snapshot().
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # yfinance ticker → (fred_key, label, scale_factor)
+    # ^TNX = 10Y yield in percent-points (e.g. 4.294 = 4.294%)
+    # ^IRX = 13-week T-bill annualised yield in percent-points
+    # ^VIX = VIX index
+    TICKER_MAP = {
+        "^TNX": ("GS10",    "10-Year Treasury Yield", 1.0),
+        "^IRX": ("GS2",     "13-week T-bill proxy",   1.0),   # IRX already in percent
+        "^VIX": ("VIXCLS",  "CBOE VIX",               1.0),
+    }
+
+    values: dict[str, float] = {}
+    try:
+        import yfinance as yf
+        for ticker, (fred_key, _label, scale) in TICKER_MAP.items():
+            try:
+                hist = yf.Ticker(ticker).history(period="5d")
+                if not hist.empty:
+                    raw = float(hist["Close"].iloc[-1])
+                    values[fred_key] = round(raw * scale, 4)
+                    logger.info("Live macro %s (%s): %.4f", fred_key, ticker, values[fred_key])
+            except Exception as exc:
+                logger.warning("yfinance %s failed: %s", ticker, exc)
+    except ImportError:
+        logger.warning("yfinance not installed — macro using defaults")
+
+    # Fill any missing values from snapshot defaults
+    for key, default in FRED_SNAPSHOT_DEFAULTS.items():
+        if key not in values:
+            values[key] = default
+
+    # Fed funds not available via yfinance — use FRED default (changes infrequently)
+    fed_funds = values.get("FEDFUNDS", FRED_SNAPSHOT_DEFAULTS["FEDFUNDS"])
+    ten_year  = values.get("GS10",     FRED_SNAPSHOT_DEFAULTS["GS10"])
+    two_year  = values.get("GS2",      FRED_SNAPSHOT_DEFAULTS["GS2"])
+    vix       = values.get("VIXCLS",   FRED_SNAPSHOT_DEFAULTS["VIXCLS"])
+    unemp     = values.get("UNRATE",   FRED_SNAPSHOT_DEFAULTS["UNRATE"])
+
+    yield_curve = round(ten_year - two_year, 4) if ten_year and two_year else 0.25
+
+    snapshot = {
+        "timestamp": __import__("datetime").datetime.now().isoformat(),
+        "source": "yfinance (^TNX, ^IRX, ^VIX) + FRED defaults",
+        "fed_funds_rate":  {"value": fed_funds, "unit": "%", "description": "Federal Funds Rate (FRED default)"},
+        "ten_year_yield":  {"value": ten_year,  "unit": "%", "description": "10-Year Treasury Yield (^TNX)"},
+        "two_year_yield":  {"value": two_year,  "unit": "%", "description": "2-Year Yield proxy (^IRX)"},
+        "vix":             {"value": vix,       "unit": "index", "description": "CBOE VIX (^VIX)"},
+        "unemployment":    {"value": unemp,     "unit": "%", "description": "Unemployment Rate (FRED default)"},
+        "yield_curve_2_10": {
+            "value": yield_curve,
+            "unit": "%",
+            "description": "Yield Curve 10Y-2Y",
+            "inverted": yield_curve < 0,
+        },
+    }
+    return snapshot

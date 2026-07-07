@@ -6,6 +6,7 @@ Provides technical analysis, OHLCV bars, LLM statistics, and sentiment scoring.
 
 import logging
 
+import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -14,6 +15,8 @@ from api.models import (
     RedditSentimentResponse,
     TechnicalAnalysisResponse,
 )
+from backtest.indicators import compute_vwap
+from backtest.indicators import stc as compute_stc
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +84,27 @@ async def run_technical_analysis(req: AnalysisRequest):
 
 
 @router.get("/analyze/bars/{symbol}", response_model=BarsResponse)
-async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: bool = False):
-    """Get OHLCV bars for a symbol"""
+async def get_bars(
+    symbol: str,
+    timeframe: str | None = None,
+    interval: str | None = None,
+    days: int = 7,
+    futures: bool = False,
+    limit: int = 200,
+):
+    """Get OHLCV bars for a symbol, including VWAP and STC per bar.
+
+    `interval` is accepted as an alias for `timeframe` (matches pandas/ohlcv convention).
+    Precedence: explicit `timeframe` > `interval` > default `5m`.
+
+    `limit` caps how many trailing bars are returned (default 200). Callers that
+    need a long SMA warmup (e.g. the paper runner's SMA-200 crossover, which needs
+    >200 1h bars) request more; clamped to 1000 to bound payload size.
+    """
     if not data_manager:
         raise HTTPException(503, "Data manager not initialized")
+
+    timeframe = timeframe or interval or "5m"
 
     try:
         df = await data_manager.get_bars(
@@ -93,11 +113,65 @@ async def get_bars(symbol: str, timeframe: str = "5m", days: int = 7, futures: b
         if df.empty:
             raise HTTPException(404, f"No data available for {symbol}")
 
+        # Compute VWAP (session-reset daily)
+        try:
+            df["vwap"] = compute_vwap(df, session_reset=True)
+        except Exception as vwap_err:
+            logger.warning(f"[ANALYSIS] VWAP computation failed for {symbol}: {vwap_err}")
+            df["vwap"] = float("nan")
+
+        # Compute STC oscillator (STC 23/50/10/3 matching strategy config)
+        try:
+            df["stc"] = compute_stc(df["close"], fast=23, slow=50, k_period=10, d_period=3)
+        except Exception as stc_err:
+            logger.warning(f"[ANALYSIS] STC computation failed for {symbol}: {stc_err}")
+            df["stc"] = float("nan")
+
+        # Compute EMA ribbon (8/21/34) for chart overlay — exponential moving averages
+        try:
+            df["ema_8"] = df["close"].ewm(span=8, adjust=False).mean()
+            df["ema_21"] = df["close"].ewm(span=21, adjust=False).mean()
+            df["ema_34"] = df["close"].ewm(span=34, adjust=False).mean()
+        except Exception as ema_err:
+            logger.warning(f"[ANALYSIS] EMA computation failed for {symbol}: {ema_err}")
+            df["ema_8"] = float("nan")
+            df["ema_21"] = float("nan")
+            df["ema_34"] = float("nan")
+
+        # Tail `limit` bars (clamped) and build response, NaN -> None for JSON safety
+        tail_df = df.tail(max(1, min(limit, 1000)))
+        bars_records = tail_df.to_dict(orient="records")
+        for bar in bars_records:
+            for key in ("vwap", "stc", "ema_8", "ema_21", "ema_34"):
+                val = bar.get(key)
+                if val is not None and (isinstance(val, float) and (val != val)):  # nan check
+                    bar[key] = None
+                elif val is not None and isinstance(val, float) and not np.isfinite(val):
+                    bar[key] = None
+
+        # Compute summary fields from last bar
+        last_close = float(tail_df["close"].iloc[-1]) if len(tail_df) else None
+        last_vwap = (
+            float(tail_df["vwap"].iloc[-1])
+            if len(tail_df) and not tail_df["vwap"].isna().iloc[-1]
+            else None
+        )
+
         return {
             "symbol": symbol,
             "timeframe": timeframe,
-            "bars": df.tail(200).to_dict(orient="records"),
+            "bars": bars_records,
             "count": len(df),
+            "vwap_current": last_vwap,
+            "vwap_trend": (
+                "above"
+                if last_close is not None and last_vwap is not None and last_close > last_vwap
+                else (
+                    "below"
+                    if last_close is not None and last_vwap is not None and last_close < last_vwap
+                    else None
+                )
+            ),
         }
     except HTTPException:
         raise
@@ -122,6 +196,8 @@ async def get_llm_stats(days_back: int = 0):
         avg_latency_ms: Average API latency in milliseconds
         per_model: Dict[model_name] -> {calls, input_tokens, output_tokens, cost_usd}
         per_agent: Dict[agent_name] -> {calls, cost_usd}
+        per_provider: Dict[provider] -> {calls, input_tokens, output_tokens, cost_usd}
+            where provider is direct|vertex|google|vertex-gemini|ollama|external
     """
     if not cost_tracker:
         raise HTTPException(500, "Cost tracker not initialized")

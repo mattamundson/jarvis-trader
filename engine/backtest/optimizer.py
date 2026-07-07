@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -63,9 +63,70 @@ class OptResult:
     win_rate: float
     profit_factor: float
     sharpe: float
+    calmar_ratio: float
+    exposure_time_pct: float
     total_return_pct: float
     max_dd_pct: float
     score: float  # composite ranking score
+    verdict: str = "UNKNOWN"  # ELIGIBLE | DISCARD_RISK | DISCARD_PROFIT | INVALID
+    violations: list = field(default_factory=list)
+
+
+def validate_backtest_result(stats: dict) -> dict:
+    """
+    Two-layer validation: RISK gate (drawdown) + PROFIT gate (quality).
+    Returns verdict: ELIGIBLE | DISCARD_RISK | DISCARD_PROFIT | INVALID
+    """
+    n_trades = stats.get("n_trades", 0)
+    if n_trades == 0 or stats.get("profit_factor") is None:
+        return {
+            "verdict": "INVALID",
+            "risk_passed": False,
+            "profit_passed": False,
+            "violations": ["Zero trades or null metrics"],
+        }
+
+    violations = []
+
+    # RISK GATE: drawdown
+    max_dd = abs(stats.get("max_drawdown_pct", 0))
+    if max_dd > 15.0:
+        violations.append(f"Max DD {max_dd:.1f}% exceeds 15% limit")
+    risk_passed = len(violations) == 0
+
+    # PROFIT GATE
+    profit_violations = []
+    if n_trades < 20:
+        profit_violations.append(f"Only {n_trades} trades (need ≥20)")
+    if stats.get("exposure_time_pct", 100) < 25.0:
+        profit_violations.append(f"Exposure {stats.get('exposure_time_pct', 100):.1f}% < 25%")
+    if stats.get("sharpe", 0) < 1.2:
+        profit_violations.append(f"Sharpe {stats.get('sharpe', 0):.2f} < 1.2")
+    if stats.get("calmar_ratio", 0) < 0.8:
+        profit_violations.append(f"Calmar {stats.get('calmar_ratio', 0):.2f} < 0.8")
+    if stats.get("profit_factor", 0) < 1.8:
+        profit_violations.append(f"PF {stats.get('profit_factor', 0):.2f} < 1.8")
+    # CVaR gate: expected shortfall at 95% should not exceed -5% per day
+    cvar_daily = stats.get("cvar_95", 0)
+    if cvar_daily < -0.05:
+        profit_violations.append(f"CVaR-95 {cvar_daily:.2%} exceeds -5% daily threshold")
+
+    profit_passed = len(profit_violations) == 0
+    all_violations = violations + profit_violations
+
+    if not risk_passed:
+        verdict = "DISCARD_RISK"
+    elif not profit_passed:
+        verdict = "DISCARD_PROFIT"
+    else:
+        verdict = "ELIGIBLE"
+
+    return {
+        "verdict": verdict,
+        "risk_passed": risk_passed,
+        "profit_passed": profit_passed,
+        "violations": all_violations,
+    }
 
 
 def build_daily_bias(df_daily: pd.DataFrame) -> pd.Series:
@@ -329,6 +390,16 @@ def run_optimization(
             continue
 
         score = _score(r)
+        # Build validation-compatible stats dict for dual-gate check
+        stats_for_validation = {
+            "n_trades": r.total_trades,
+            "profit_factor": r.profit_factor if r.profit_factor != float("inf") else 999.0,
+            "max_drawdown_pct": r.max_drawdown_pct * 100,  # convert fraction → pct
+            "sharpe": r.sharpe_ratio,
+            "calmar_ratio": r.calmar_ratio,
+            "exposure_time_pct": r.exposure_time_pct,
+        }
+        validation = validate_backtest_result(stats_for_validation)
         results.append(
             OptResult(
                 stc_oversold=params["stc_oversold"],
@@ -340,9 +411,13 @@ def run_optimization(
                 win_rate=round(r.win_rate, 1),
                 profit_factor=round(min(r.profit_factor, 999.0), 2),
                 sharpe=round(r.sharpe_ratio, 2),
+                calmar_ratio=round(r.calmar_ratio, 2),
+                exposure_time_pct=round(r.exposure_time_pct, 1),
                 total_return_pct=round(r.total_return_pct, 3),
                 max_dd_pct=round(r.max_drawdown_pct, 3),
                 score=round(score, 4),
+                verdict=validation["verdict"],
+                violations=validation["violations"],
             )
         )
 
@@ -365,6 +440,14 @@ def run_optimization(
             f"{r.trades:>6}  {r.win_rate:>5.1f}  {r.profit_factor:>6.2f}  "
             f"{r.sharpe:>6.2f}  {r.total_return_pct:>6.3f}  {r.score:>7.4f}"
         )
+
+    # ── Verdict summary (dual-gate validation) ────────────────────────────
+    eligible_count = sum(1 for r in results if r.verdict == "ELIGIBLE")
+    print(f"\n[VERDICT SUMMARY] {eligible_count}/{len(results)} parameter sets ELIGIBLE")
+    top5_by_pf = sorted(results, key=lambda x: x.profit_factor, reverse=True)[:5]
+    for r in top5_by_pf:
+        violation_str = "; ".join(r.violations) if r.violations else "All gates pass"
+        print(f"  [{r.verdict}] PF={r.profit_factor:.2f} Calmar={r.calmar_ratio:.2f} Exp={r.exposure_time_pct:.0f}%  | {violation_str}")
 
     # ── Identify best parameters per metric ───────────────────────────────
     valid = [r for r in results if r.trades >= 3]

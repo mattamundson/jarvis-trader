@@ -1,0 +1,625 @@
+{
+  "symbol": "M2K",
+  "family": "trend",
+  "rank": 1,
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "n_core_passed": 2,
+  "n_alt_passed": 2,
+  "created_at": "2026-05-06T10:06:47.087248+00:00",
+  "aux_freshness": {
+    "rolling_wfo": "2026-05-06T10:06:47.087248+00:00",
+    "fixed_params": "2026-05-06T10:06:47.087248+00:00",
+    "cost_sweep": "2026-05-06T10:06:47.087248+00:00"
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "FAIL",
+    "n_core_passed": 2,
+    "n_core_criteria": 4,
+    "n_alt_passed": 2,
+    "n_alt_criteria": 5,
+    "core_reasons": [
+      "FAIL mbb_pf_ci_lower=0.4705 >= 1.1",
+      "FAIL p_positive_edge=0.2727 >= 0.95",
+      "mc_95th_dd_pct=1.1874 <= 5.0",
+      "dsr=0.000000 >= 0.1 (not selection-bias)"
+    ],
+    "alt_reasons": [
+      "FAIL dsr=0.000000 >= 0.3 (alt floor)",
+      "FAIL rolling_wfo=WEAK in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=0.216 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=1.1874 <= 7.0 (alt ceiling)"
+    ],
+    "reasons": [
+      "FAIL mbb_pf_ci_lower=0.4705 >= 1.1",
+      "FAIL p_positive_edge=0.2727 >= 0.95",
+      "mc_95th_dd_pct=1.1874 <= 5.0",
+      "dsr=0.000000 >= 0.1 (not selection-bias)",
+      "FAIL dsr=0.000000 >= 0.3 (alt floor)",
+      "FAIL rolling_wfo=WEAK in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=0.216 >= 1.2",
+      "cost_survives_through=catastrophic >= realistic",
+      "mc_95th_dd_pct=1.1874 <= 7.0 (alt ceiling)"
+    ]
+  },
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 1,
+    "step_months": 1,
+    "n_windows": 18,
+    "n_oos_windows": 18,
+    "n_oos_windows_with_trades": 11,
+    "total_oos_trades": 15,
+    "grid_combos": 27,
+    "grid_fast_period": [
+      50,
+      60,
+      70
+    ],
+    "grid_slow_period": [
+      190,
+      200,
+      210
+    ],
+    "grid_atr_trail_mult": [
+      1.5,
+      2.0,
+      2.5
+    ]
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 0.4705,
+    "p_edge": 0.2727,
+    "mc_95th_dd": 0.011874,
+    "mc_95th_dd_pct": 1.1874,
+    "dsr": 0.0,
+    "wfo_consistency": "WEAK",
+    "fixed_params_min_pf": 0.2161,
+    "fixed_params_mean_pf": 0.9293,
+    "fixed_params_max_pf": 1.9219,
+    "n_combos_with_trades": 27,
+    "combo_results": [
+      {
+        "fast": 50,
+        "slow": 190,
+        "atr_trail_mult": 1.5,
+        "pf": 1.5895,
+        "trades": 38
+      },
+      {
+        "fast": 50,
+        "slow": 190,
+        "atr_trail_mult": 2.0,
+        "pf": 1.2735,
+        "trades": 38
+      },
+      {
+        "fast": 50,
+        "slow": 190,
+        "atr_trail_mult": 2.5,
+        "pf": 0.7773,
+        "trades": 23
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "pf": 1.4597,
+        "trades": 35
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 0.7886,
+        "trades": 21
+      },
+      {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "pf": 0.9184,
+        "trades": 24
+      },
+      {
+        "fast": 50,
+        "slow": 210,
+        "atr_trail_mult": 1.5,
+        "pf": 1.9219,
+        "trades": 33
+      },
+      {
+        "fast": 50,
+        "slow": 210,
+        "atr_trail_mult": 2.0,
+        "pf": 1.5322,
+        "trades": 33
+      },
+      {
+        "fast": 50,
+        "slow": 210,
+        "atr_trail_mult": 2.5,
+        "pf": 1.1384,
+        "trades": 19
+      },
+      {
+        "fast": 60,
+        "slow": 190,
+        "atr_trail_mult": 1.5,
+        "pf": 0.4401,
+        "trades": 15
+      },
+      {
+        "fast": 60,
+        "slow": 190,
+        "atr_trail_mult": 2.0,
+        "pf": 1.18,
+        "trades": 37
+      },
+      {
+        "fast": 60,
+        "slow": 190,
+        "atr_trail_mult": 2.5,
+        "pf": 0.8124,
+        "trades": 18
+      },
+      {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "pf": 0.8898,
+        "trades": 34
+      },
+      {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 0.778,
+        "trades": 21
+      },
+      {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "pf": 0.7761,
+        "trades": 19
+      },
+      {
+        "fast": 60,
+        "slow": 210,
+        "atr_trail_mult": 1.5,
+        "pf": 0.8238,
+        "trades": 34
+      },
+      {
+        "fast": 60,
+        "slow": 210,
+        "atr_trail_mult": 2.0,
+        "pf": 1.1873,
+        "trades": 34
+      },
+      {
+        "fast": 60,
+        "slow": 210,
+        "atr_trail_mult": 2.5,
+        "pf": 0.9186,
+        "trades": 21
+      },
+      {
+        "fast": 70,
+        "slow": 190,
+        "atr_trail_mult": 1.5,
+        "pf": 0.9687,
+        "trades": 34
+      },
+      {
+        "fast": 70,
+        "slow": 190,
+        "atr_trail_mult": 2.0,
+        "pf": 0.8785,
+        "trades": 22
+      },
+      {
+        "fast": 70,
+        "slow": 190,
+        "atr_trail_mult": 2.5,
+        "pf": 0.2161,
+        "trades": 17
+      },
+      {
+        "fast": 70,
+        "slow": 200,
+        "atr_trail_mult": 1.5,
+        "pf": 0.8501,
+        "trades": 18
+      },
+      {
+        "fast": 70,
+        "slow": 200,
+        "atr_trail_mult": 2.0,
+        "pf": 0.8542,
+        "trades": 18
+      },
+      {
+        "fast": 70,
+        "slow": 200,
+        "atr_trail_mult": 2.5,
+        "pf": 0.5315,
+        "trades": 15
+      },
+      {
+        "fast": 70,
+        "slow": 210,
+        "atr_trail_mult": 1.5,
+        "pf": 0.5753,
+        "trades": 19
+      },
+      {
+        "fast": 70,
+        "slow": 210,
+        "atr_trail_mult": 2.0,
+        "pf": 0.6075,
+        "trades": 19
+      },
+      {
+        "fast": 70,
+        "slow": 210,
+        "atr_trail_mult": 2.5,
+        "pf": 0.4025,
+        "trades": 14
+      }
+    ],
+    "cost_survives_through": "catastrophic",
+    "cost_tier_results": {
+      "optimistic": {
+        "pf": 1.9513,
+        "trades": 33,
+        "passes": true
+      },
+      "realistic": {
+        "pf": 1.9219,
+        "trades": 33,
+        "passes": true
+      },
+      "pessimistic": {
+        "pf": 1.8881,
+        "trades": 33,
+        "passes": true
+      },
+      "catastrophic": {
+        "pf": 1.8287,
+        "trades": 33,
+        "passes": true
+      }
+    }
+  },
+  "thresholds": {
+    "pf_ci_lower": 1.1,
+    "p_edge": 0.95,
+    "mc_95th_dd_core": 0.05,
+    "mc_95th_dd_alt": 0.07,
+    "dsr_core": 0.1,
+    "dsr_alt": 0.3,
+    "fixed_params_min_pf_alt": 1.2,
+    "wfo_consistency_alt": [
+      "MODERATE",
+      "STRONG"
+    ],
+    "cost_survives_through_min": "realistic"
+  },
+  "champion_params": {
+    "fast": 50,
+    "slow": 210,
+    "atr_trail_mult": 1.5
+  },
+  "windows": [
+    {
+      "window": 1,
+      "is_period": "2024-04 -> 2024-10",
+      "oos_period": "2024-10 -> 2024-11",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5
+      },
+      "is_pf": Infinity,
+      "is_trades": 3,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 2,
+      "is_period": "2024-05 -> 2024-11",
+      "oos_period": "2024-11 -> 2024-12",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.5
+      },
+      "is_pf": Infinity,
+      "is_trades": 4,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 3,
+      "is_period": "2024-06 -> 2024-12",
+      "oos_period": "2024-12 -> 2025-01",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.5
+      },
+      "is_pf": Infinity,
+      "is_trades": 4,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0003,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 4,
+      "is_period": "2024-07 -> 2025-01",
+      "oos_period": "2025-01 -> 2025-02",
+      "best_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail_mult": 2.5
+      },
+      "is_pf": Infinity,
+      "is_trades": 5,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 5,
+      "is_period": "2024-08 -> 2025-02",
+      "oos_period": "2025-02 -> 2025-03",
+      "best_params": {
+        "fast": 50,
+        "slow": 190,
+        "atr_trail_mult": 2.5
+      },
+      "is_pf": 5.528,
+      "is_trades": 5,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 6,
+      "is_period": "2024-09 -> 2025-03",
+      "oos_period": "2025-03 -> 2025-04",
+      "best_params": {
+        "fast": 50,
+        "slow": 190,
+        "atr_trail_mult": 2.5
+      },
+      "is_pf": 7.157,
+      "is_trades": 4,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0013,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 7,
+      "is_period": "2024-10 -> 2025-04",
+      "oos_period": "2025-04 -> 2025-05",
+      "best_params": {
+        "fast": 60,
+        "slow": 210,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 5.314,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 8,
+      "is_period": "2024-11 -> 2025-05",
+      "oos_period": "2025-05 -> 2025-06",
+      "best_params": {
+        "fast": 60,
+        "slow": 210,
+        "atr_trail_mult": 2.0
+      },
+      "is_pf": 3.496,
+      "is_trades": 6,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0086,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 9,
+      "is_period": "2024-12 -> 2025-06",
+      "oos_period": "2025-06 -> 2025-07",
+      "best_params": {
+        "fast": 70,
+        "slow": 190,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 1.809,
+      "is_trades": 9,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0099,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 10,
+      "is_period": "2025-01 -> 2025-07",
+      "oos_period": "2025-07 -> 2025-08",
+      "best_params": {
+        "fast": 60,
+        "slow": 190,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 1.478,
+      "is_trades": 10,
+      "oos_pf": 0.0,
+      "oos_dd": 0.02,
+      "oos_sharpe": -1141.201,
+      "oos_trades": 2
+    },
+    {
+      "window": 11,
+      "is_period": "2025-02 -> 2025-08",
+      "oos_period": "2025-08 -> 2025-09",
+      "best_params": {
+        "fast": 60,
+        "slow": 190,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 1.413,
+      "is_trades": 10,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 12,
+      "is_period": "2025-03 -> 2025-09",
+      "oos_period": "2025-09 -> 2025-10",
+      "best_params": {
+        "fast": 70,
+        "slow": 210,
+        "atr_trail_mult": 2.5
+      },
+      "is_pf": Infinity,
+      "is_trades": 2,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0012,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 13,
+      "is_period": "2025-04 -> 2025-10",
+      "oos_period": "2025-10 -> 2025-11",
+      "best_params": {
+        "fast": 50,
+        "slow": 210,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 5.543,
+      "is_trades": 9,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0002,
+      "oos_sharpe": 59.114,
+      "oos_trades": 2
+    },
+    {
+      "window": 14,
+      "is_period": "2025-05 -> 2025-11",
+      "oos_period": "2025-11 -> 2025-12",
+      "best_params": {
+        "fast": 50,
+        "slow": 200,
+        "atr_trail_mult": 2.5
+      },
+      "is_pf": 8.581,
+      "is_trades": 5,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0091,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 15,
+      "is_period": "2025-06 -> 2025-12",
+      "oos_period": "2025-12 -> 2026-01",
+      "best_params": {
+        "fast": 50,
+        "slow": 210,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 4.32,
+      "is_trades": 10,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 16,
+      "is_period": "2025-07 -> 2026-01",
+      "oos_period": "2026-01 -> 2026-02",
+      "best_params": {
+        "fast": 50,
+        "slow": 210,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 8.463,
+      "is_trades": 10,
+      "oos_pf": 5.176,
+      "oos_dd": 0.0004,
+      "oos_sharpe": 7.59,
+      "oos_trades": 2
+    },
+    {
+      "window": 17,
+      "is_period": "2025-08 -> 2026-02",
+      "oos_period": "2026-02 -> 2026-03",
+      "best_params": {
+        "fast": 50,
+        "slow": 210,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 10.345,
+      "is_trades": 9,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0104,
+      "oos_sharpe": -13.796,
+      "oos_trades": 2
+    },
+    {
+      "window": 18,
+      "is_period": "2025-09 -> 2026-03",
+      "oos_period": "2026-03 -> 2026-03",
+      "best_params": {
+        "fast": 50,
+        "slow": 210,
+        "atr_trail_mult": 1.5
+      },
+      "is_pf": 3.046,
+      "is_trades": 11,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    }
+  ],
+  "contract_spec": {
+    "symbol": "M2K",
+    "multiplier": 5.0,
+    "tick_size": 0.1,
+    "commission": 0.62,
+    "capital": 50000.0,
+    "note": "M2K DO_NOT_TRADE pending gate v2 PASS + live authorization"
+  },
+  "lineage": {
+    "family": "trend",
+    "rank": 1,
+    "mes_rank11": "PASS via alt \u2014 dsr=1.0, wfo=STRONG, mc_dd=0.81%, fixed=1.35; champion fast=60,slow=200,trail=2.0",
+    "hypothesis": "MES-like SMA trend edge should transfer to Russell 2000 micro (small-cap equity, similar trend regime structure)"
+  }
+}

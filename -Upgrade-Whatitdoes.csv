@@ -1,0 +1,5 @@
+"#","Upgrade","What it does"
+"9","LLM market commentary","Every morning, run a GPT/Claude call summarizing the overnight macro (VIX, yield curve, CoT changes) and inject it as a JARVIS voice brief panel"
+"10","Regime transition alerts","If VIX crosses 20, regime flips from RISK_ON → RISK_OFF — dashboard flashes red, sends push notification, automatically recalculates holdings"
+"11","Multi-strategy view","Add tabs for Strategy C, COHEN v2, and future strategies (v3). Show side-by-side Sharpe, drawdown, current signal"
+"12","Paper → Live migration tracker","A progress bar: Day 2 of 30 paper validation → Day 30 → Live go/no-go dashboard with checklist"

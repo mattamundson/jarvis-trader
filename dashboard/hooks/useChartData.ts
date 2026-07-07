@@ -1,6 +1,6 @@
 "use client";
 import useSWR from "swr";
-import { fetchEngine } from "@/lib/api";
+import { fetchBars, fetchEngine } from "@/lib/api";
 import type {
   OHLCVBar,
   TechnicalAnalysisResult,
@@ -9,7 +9,7 @@ import type {
   PipelineHistoryEntry,
 } from "@/lib/api";
 
-export type ChartSymbol = "MCL" | "MNQ" | "MGC";
+export type ChartSymbol = "MES" | "MCL" | "MNQ" | "MGC";
 export type ChartTimeframe = "5m" | "15m" | "1h" | "4h" | "1d";
 
 // Aliases used by stub components
@@ -31,13 +31,13 @@ const TIMEFRAME_DAYS: Record<ChartTimeframe, number> = {
 export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
   const days = TIMEFRAME_DAYS[timeframe];
 
-  // OHLCV bars
-  const { data: rawBars, error: barsError, isLoading: barsLoading } = useSWR<OHLCVBar[]>(
+  // OHLCV bars — normalized via the shared fetchBars(), which reads the engine's
+  // `timestamp` field. A duplicate inline parse here previously read `time`
+  // (the engine sends `timestamp`), so every bar got time=undefined and the
+  // chart silently emptied. Reuse fetchBars so there is one source of truth.
+  const { data: bars = [], error: barsError, isLoading: barsLoading } = useSWR<OHLCVBar[]>(
     [`/analyze/bars/${symbol}`, timeframe, days],
-    (): Promise<OHLCVBar[]> =>
-      fetchEngine<OHLCVBar[]>(
-        `/analyze/bars/${symbol}?timeframe=${timeframe}&days=${days}&futures=true`
-      ).catch(() => [] as OHLCVBar[]),
+    () => fetchBars(symbol, { timeframe, days }),
     { refreshInterval: 60_000, revalidateOnFocus: false }
   );
 
@@ -82,22 +82,6 @@ export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
       fetchEngine<PipelineHistoryEntry[]>("/pipeline/history").catch(() => null),
     { refreshInterval: 30_000, revalidateOnFocus: false }
   );
-
-  // Parse bars into lightweight-charts format
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bars: OHLCVBar[] = Array.isArray(rawBars)
-    ? rawBars
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((b: any) => ({
-          time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
-          open: Number(b.open),
-          high: Number(b.high),
-          low: Number(b.low),
-          close: Number(b.close),
-          volume: b.volume ? Number(b.volume) : undefined,
-        }))
-        .sort((a, b) => a.time - b.time)
-    : [];
 
   // Find current symbol signal from scan
   const currentSignal = scanData?.symbols?.find((s) => s.symbol === symbol) ?? null;

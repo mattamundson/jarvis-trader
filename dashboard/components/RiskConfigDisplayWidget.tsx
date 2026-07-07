@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
@@ -47,9 +47,7 @@ async function fetchConfig(): Promise<{ config: RiskConfig; source: string } | n
 
   for (const endpoint of endpoints) {
     try {
-      const res = await fetch(`/api/engine${endpoint}`, { cache: "no-store" });
-      if (!res.ok) continue;
-      const data = await res.json() as Record<string, unknown>;
+      const data = await fetchEngine<Record<string, unknown>>(endpoint, { cache: "no-store" });
 
       // /health may nest config; check for direct fields or nested
       if (
@@ -129,7 +127,7 @@ export function RiskConfigDisplayWidget() {
   const [isLoading, setIsLoading] = useState(true);
   const [usingDefaults, setUsingDefaults] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     const result = await fetchConfig();
     if (result) {
       setConfig(result.config);
@@ -139,7 +137,7 @@ export function RiskConfigDisplayWidget() {
       setUsingDefaults(true);
     }
     setIsLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     void load();
@@ -149,7 +147,7 @@ export function RiskConfigDisplayWidget() {
     }, 300_000); // 5 minutes
 
     return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [load]);
 
   // ── Derived display values ───────────────────────────────────────────────
 

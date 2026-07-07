@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PAPER VALIDATION · DAY 2 OF 30</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-void: #020814;
+    --bg-deep: #040d1e;
+    --bg-panel: #060f24;
+    --bg-card: #071228;
+    --bg-card2: #081530;
+    --blue: #00d4ff;
+    --cyan: #00fff5;
+    --gold: #ffd700;
+    --amber: #ff8c00;
+    --red: #ff2244;
+    --green: #00ff88;
+    --purple: #7b2fff;
+    --text-primary: #e8f4ff;
+    --text-secondary: #7ab0d4;
+    --text-dim: #3a6080;
+    --border: rgba(0,212,255,0.15);
+    --border-bright: rgba(0,212,255,0.5);
+    --glow-blue: 0 0 20px rgba(0,212,255,0.4);
+    --glow-cyan: 0 0 20px rgba(0,255,245,0.3);
+    --glow-gold: 0 0 20px rgba(255,215,0,0.4);
+    --glow-green: 0 0 15px rgba(0,255,136,0.4);
+    --glow-red: 0 0 15px rgba(255,34,68,0.5);
+    --glow-amber: 0 0 15px rgba(255,140,0,0.5);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-void);
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,212,255,0.013) 2px,
+      rgba(0,212,255,0.013) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrapper { position: relative; z-index: 1; padding: 24px; max-width: 1200px; margin: 0 auto; }
+
+  /* ─── CARD ─── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+    margin-bottom: 16px;
+  }
+  .card::before, .card::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    border-color: rgba(0,212,255,0.4);
+    border-style: solid;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .card::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+  .card::after  { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+  .card:hover { border-color: rgba(0,212,255,0.35); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,212,255,0.03);
+  }
+  .card-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .card-body { padding: 18px; }
+
+  /* ─── PANEL HEADER ─── */
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border-bright);
+    background: linear-gradient(90deg, rgba(255,140,0,0.08) 0%, rgba(0,212,255,0.04) 100%);
+    margin-bottom: 20px;
+  }
+  .panel-title-group { display: flex; align-items: center; gap: 14px; }
+  .panel-main-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--amber);
+    letter-spacing: 3px;
+    text-shadow: var(--glow-amber);
+  }
+  .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    padding: 3px 10px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .badge-amber {
+    background: rgba(255,140,0,0.15);
+    border: 1px solid rgba(255,140,0,0.5);
+    color: var(--amber);
+    text-shadow: var(--glow-amber);
+  }
+  .badge-green {
+    background: rgba(0,255,136,0.12);
+    border: 1px solid rgba(0,255,136,0.4);
+    color: var(--green);
+  }
+  .panel-header-right {
+    display: flex; align-items: center; gap: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .live-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: var(--glow-amber);
+    animation: pulse-amber 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse-amber {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.7); }
+  }
+
+  /* ─── TOP ROW GRID ─── */
+  .top-row {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  /* ─── PROGRESS ARC ─── */
+  .arc-card { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 20px; }
+  .arc-svg-wrap { position: relative; width: 200px; height: 200px; }
+  .arc-svg-wrap svg { position: absolute; top: 0; left: 0; }
+  .arc-center-text {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+  }
+  .arc-number {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 32px;
+    font-weight: 900;
+    color: var(--amber);
+    text-shadow: var(--glow-amber);
+    line-height: 1;
+    letter-spacing: 2px;
+  }
+  .arc-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 3px;
+    margin-top: 4px;
+  }
+  .arc-sublabel {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 12px;
+    letter-spacing: 1px;
+  }
+  .arc-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--amber);
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  /* ─── STATS GRID ─── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 16px;
+  }
+  .stat-cell {
+    background: rgba(0,212,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 12px 14px;
+    text-align: center;
+    transition: border-color 0.2s;
+  }
+  .stat-cell:hover { border-color: rgba(0,212,255,0.3); }
+  .stat-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    line-height: 1;
+  }
+  .stat-value.positive { color: var(--green); text-shadow: var(--glow-green); }
+  .stat-value.neutral { color: var(--blue); text-shadow: var(--glow-blue); }
+  .stat-value.amber { color: var(--amber); text-shadow: var(--glow-amber); }
+  .stat-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  /* ─── CALENDAR ─── */
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    padding: 2px;
+  }
+  .cal-day {
+    aspect-ratio: 1;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    background: rgba(0,0,0,0.3);
+    min-height: 52px;
+  }
+  .cal-day:hover { border-color: rgba(0,212,255,0.4); transform: scale(1.04); }
+  .cal-day.green { background: rgba(0,255,136,0.1); border-color: rgba(0,255,136,0.4); }
+  .cal-day.green:hover { box-shadow: 0 0 12px rgba(0,255,136,0.25); }
+  .cal-day.red { background: rgba(255,34,68,0.1); border-color: rgba(255,34,68,0.4); }
+  .cal-day.amber { background: rgba(255,140,0,0.1); border-color: rgba(255,140,0,0.4); }
+  .cal-day.pending { opacity: 0.35; cursor: default; }
+  .cal-day.pending:hover { transform: none; border-color: var(--border); }
+  .cal-day.selected { box-shadow: 0 0 0 2px var(--blue); }
+  .cal-day-num {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    line-height: 1;
+  }
+  .cal-day.green .cal-day-num { color: var(--green); }
+  .cal-day.red .cal-day-num { color: var(--red); }
+  .cal-day.amber .cal-day-num { color: var(--amber); }
+  .cal-day-pnl {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    margin-top: 3px;
+    letter-spacing: 0.5px;
+  }
+  .cal-day.green .cal-day-pnl { color: var(--green); }
+  .cal-day.red .cal-day-pnl { color: var(--red); }
+  .cal-day.amber .cal-day-pnl { color: var(--amber); }
+  .cal-day.pending .cal-day-pnl { color: var(--text-dim); }
+
+  /* ─── DAY DETAIL ─── */
+  .day-detail {
+    background: rgba(0,212,255,0.05);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin-top: 12px;
+    display: none;
+  }
+  .day-detail.visible { display: block; }
+  .day-detail-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--blue);
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+  .day-trade-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(0,212,255,0.08);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .day-trade-row:last-child { border-bottom: none; }
+  .day-trade-row .sym { color: var(--text-primary); font-weight: 600; }
+  .day-trade-row .pnl-pos { color: var(--green); }
+  .day-trade-row .pnl-neg { color: var(--red); }
+
+  /* ─── CRITERIA CHECKLIST ─── */
+  .criteria-list { list-style: none; }
+  .criteria-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(0,212,255,0.07);
+  }
+  .criteria-item:last-child { border-bottom: none; }
+  .criteria-icon {
+    width: 20px; height: 20px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    margin-top: 1px;
+  }
+  .criteria-icon.pass { background: rgba(0,255,136,0.15); border: 1px solid rgba(0,255,136,0.4); color: var(--green); }
+  .criteria-icon.pending-icon { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.3); color: var(--blue); }
+  .criteria-icon.warn { background: rgba(255,140,0,0.12); border: 1px solid rgba(255,140,0,0.4); color: var(--amber); }
+  .criteria-icon.fail { background: rgba(255,34,68,0.12); border: 1px solid rgba(255,34,68,0.4); color: var(--red); }
+  .criteria-text { flex: 1; }
+  .criteria-main {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.4;
+  }
+  .criteria-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .criteria-status.good { color: var(--green); }
+  .criteria-status.warn { color: var(--amber); }
+  .criteria-status.info { color: var(--blue); }
+
+  /* ─── TIMELINE ─── */
+  .timeline-wrap { padding: 8px 0; }
+  .timeline-bar-outer {
+    position: relative;
+    height: 6px;
+    background: rgba(0,212,255,0.1);
+    border-radius: 3px;
+    margin: 32px 0 40px;
+  }
+  .timeline-bar-fill {
+    position: absolute;
+    left: 0; top: 0;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--amber), rgba(255,140,0,0.5));
+    box-shadow: 0 0 10px rgba(255,140,0,0.4);
+    transition: width 1s ease;
+  }
+  .timeline-milestone {
+    position: absolute;
+    top: -24px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .milestone-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid;
+    background: var(--bg-card);
+    position: absolute;
+    top: 24px;
+    transform: translateX(-50%);
+  }
+  .milestone-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 7px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .milestone-date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    position: absolute;
+    top: 44px;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+  .milestone-dot.done { border-color: var(--green); background: var(--green); box-shadow: var(--glow-green); }
+  .milestone-label.done { color: var(--green); }
+  .milestone-dot.active { border-color: var(--amber); background: var(--amber); box-shadow: var(--glow-amber); animation: pulse-amber 1.5s ease-in-out infinite; }
+  .milestone-label.active { color: var(--amber); }
+  .milestone-dot.pending { border-color: var(--text-dim); }
+  .milestone-label.pending { color: var(--text-dim); }
+
+  /* ─── STATUS FOOTER ─── */
+  .status-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    border-top: 1px solid var(--border);
+    background: rgba(0,0,0,0.3);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .status-footer .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .status-footer .dot.green { background: var(--green); box-shadow: var(--glow-green); }
+  .status-footer .dot.amber { background: var(--amber); box-shadow: var(--glow-amber); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- ─── PANEL HEADER ─── -->
+  <div class="panel-header">
+    <div class="panel-title-group">
+      <div class="panel-main-title">PAPER VALIDATION · DAY 2 OF 30</div>
+      <span class="badge badge-amber" id="paperBadge">PAPER</span>
+    </div>
+    <div class="panel-header-right">
+      <div class="live-dot" id="apiDot"></div>
+      <span id="apiStatusText">POLLING API</span>
+      <span>·</span>
+      <span id="lastPollTime">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- ─── TOP ROW: Arc + Stats ─── -->
+  <div class="top-row">
+
+    <!-- Progress Arc -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Progress Ring</span>
+        <span class="badge badge-amber">EARLY PHASE</span>
+      </div>
+      <div class="card-body arc-card">
+        <div class="arc-svg-wrap">
+          <!-- SVG arc: radius 88, circumference ~552.9 -->
+          <svg viewBox="0 0 200 200" width="200" height="200">
+            <!-- Background track -->
+            <circle cx="100" cy="100" r="88"
+              fill="none"
+              stroke="rgba(0,212,255,0.08)"
+              stroke-width="10"
+            />
+            <!-- Decorative tick marks -->
+            <g stroke="rgba(0,212,255,0.12)" stroke-width="1">
+              <!-- 30 tick marks for 30 days -->
+            </g>
+            <!-- Progress arc (amber, 2/30 = 6.67%) -->
+            <!-- circumference = 2π×88 ≈ 552.92 -->
+            <!-- 2/30 × 552.92 = 36.86 -->
+            <!-- rotate -90° so starts at top -->
+            <circle id="progressArc" cx="100" cy="100" r="88"
+              fill="none"
+              stroke="#ff8c00"
+              stroke-width="10"
+              stroke-linecap="round"
+              stroke-dasharray="36.86 552.92"
+              stroke-dashoffset="0"
+              transform="rotate(-90 100 100)"
+              style="filter: drop-shadow(0 0 8px rgba(255,140,0,0.7))"
+            />
+            <!-- Inner decorative ring -->
+            <circle cx="100" cy="100" r="74"
+              fill="none"
+              stroke="rgba(0,212,255,0.07)"
+              stroke-width="1"
+              stroke-dasharray="4 4"
+            />
+            <!-- Tiny milestone dots around the arc -->
+            <!-- Day 15 marker at 180° (halfway) -->
+            <circle cx="100" cy="12" r="3"
+              fill="rgba(0,212,255,0.3)"
+              transform="rotate(180 100 100)"
+            />
+            <!-- Day 20 marker at 240° -->
+            <circle cx="100" cy="12" r="3"
+              fill="rgba(0,255,136,0.4)"
+              transform="rotate(240 100 100)"
+            />
+          </svg>
+          <div class="arc-center-text">
+            <div class="arc-number" id="arcNumber">2 / 30</div>
+            <div class="arc-label">PAPER DAYS</div>
+          </div>
+        </div>
+        <div class="arc-sublabel">VALIDATION PROGRESS</div>
+        <div class="arc-pct" id="arcPct">6.7% COMPLETE</div>
+      </div>
+    </div>
+
+    <!-- Running Stats -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Running Statistics</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-dim)">LIVE UPDATE</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <div class="stat-label">Total P&L</div>
+          <div class="stat-value positive" id="totalPnl">+$3</div>
+          <div class="stat-sub">2 days active</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Win Days</div>
+          <div class="stat-value neutral" id="winDays">1 / 2</div>
+          <div class="stat-sub">50.0% win rate</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Avg Daily P&L</div>
+          <div class="stat-value positive" id="avgPnl">+$1.50</div>
+          <div class="stat-sub">per active day</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Best Day</div>
+          <div class="stat-value positive" id="bestDay">+$3</div>
+          <div class="stat-sub">Day 1 — Apr 21</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Worst Day</div>
+          <div class="stat-value amber" id="worstDay">$0</div>
+          <div class="stat-sub">Day 2 — TBD</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Win Streak</div>
+          <div class="stat-value positive" id="winStreak">1</div>
+          <div class="stat-sub">current</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── CALENDAR GRID ─── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Daily P&amp;L Calendar — 30 Day Period</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-dim)">Apr 21 – May 20, 2026 · Click day for details</span>
+    </div>
+    <div class="card-body">
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="day-detail" id="dayDetail">
+        <div class="day-detail-title" id="dayDetailTitle">DAY 1 — APRIL 21, 2026</div>
+        <div id="dayDetailContent"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BOTTOM ROW: Criteria + Timeline ─── -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+    <!-- Criteria Checklist -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Go-Live Criteria Checklist</span>
+        <span id="criteriaPassBadge" class="badge" style="background:rgba(255,140,0,0.12);border:1px solid rgba(255,140,0,0.4);color:var(--amber)">2 / 7 PASS</span>
+      </div>
+      <div class="card-body">
+        <ul class="criteria-list">
+          <li class="criteria-item">
+            <div class="criteria-icon warn">◷</div>
+            <div class="criteria-text">
+              <div class="criteria-main">30 consecutive paper trading days</div>
+              <div class="criteria-status warn">2 / 30 days complete — 28 remaining</div>
+            </div>
+          </li>
+          <li class="criteria-item">
+            <div class="criteria-icon warn">◷</div>
+            <div class="criteria-text">
+              <div class="criteria-main">Win rate ≥ 55%</div>
+              <div class="criteria-status warn">Monitoring — 50% so far (1/2 days)</div>
+            </div>
+          </li>
+          <li class="criteria-item">
+            <div class="criteria-icon pass">✓</div>
+            <div class="criteria-text">
+              <div class="criteria-main">Max drawdown &lt; 5% of paper capital</div>
+              <div class="criteria-status good">0% drawdown — $10K capital intact</div>
+            </div>
+          </li>
+          <li class="criteria-item">
+            <div class="criteria-icon pending-icon">⊘</div>
+            <div class="criteria-text">
+              <div class="criteria-main">Sharpe ratio (30d) ≥ 1.5</div>
+              <div class="criteria-status info">Insufficient data — need 30 days</div>
+            </div>
+          </li>
+          <li class="criteria-item">
+            <div class="criteria-icon pass">✓</div>
+            <div class="criteria-text">
+              <div class="criteria-main">No execution errors</div>
+              <div class="criteria-status good">0 errors — all orders filled correctly</div>
+            </div>
+          </li>
+          <li class="criteria-item">
+            <div class="criteria-icon warn">◷</div>
+            <div class="criteria-text">
+              <div class="criteria-main">IBKR gateway stable 7 consecutive days</div>
+              <div class="criteria-status warn">2 / 7 days — stable since Apr 21</div>
+            </div>
+          </li>
+          <li class="criteria-item">
+            <div class="criteria-icon pending-icon">⊘</div>
+            <div class="criteria-text">
+              <div class="criteria-main">Manual review approved</div>
+              <div class="criteria-status info">Pending — scheduled for May 21</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Validation Timeline</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--amber)">DAY 2 / 30</span>
+      </div>
+      <div class="card-body">
+        <div class="timeline-wrap">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);margin-bottom:8px;letter-spacing:1px;">PAPER START → MIDPOINT → FULL REVIEW → GO/NO-GO</div>
+          <div class="timeline-bar-outer">
+            <div class="timeline-bar-fill" style="width:6.7%"></div>
+            <!-- Milestone 1: Paper Start — 0% -->
+            <div class="milestone-dot done" style="left:0%"></div>
+            <div class="milestone-label done" style="position:absolute;top:-22px;left:0%;transform:translateX(-2px);font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;">START</div>
+            <div class="milestone-date" style="left:0%;transform:translateX(-2px);">APR 21</div>
+
+            <!-- Milestone 2: Midpoint — 50% -->
+            <div class="milestone-dot pending" style="left:50%;"></div>
+            <div class="milestone-label pending" style="position:absolute;top:-22px;left:50%;transform:translateX(-50%);font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;color:var(--text-dim);">MIDPOINT</div>
+            <div class="milestone-date" style="left:50%;transform:translateX(-50%);">MAY 6</div>
+
+            <!-- Milestone 3: Full Review — 100% -->
+            <div class="milestone-dot pending" style="left:100%;"></div>
+            <div class="milestone-label pending" style="position:absolute;top:-22px;left:100%;transform:translateX(-100%);font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;color:var(--text-dim);">GO/NO-GO</div>
+            <div class="milestone-date" style="left:100%;transform:translateX(-100%);">MAY 21</div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <div style="font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px;">ESTIMATED LIVE DATE</div>
+            <div style="font-family:'Orbitron',sans-serif;font-size:20px;font-weight:800;color:var(--gold);text-shadow:var(--glow-gold);letter-spacing:3px;">MAY 21, 2026</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-secondary);margin-top:4px;">28 trading days remaining · subject to Go/No-Go approval</div>
+          </div>
+
+          <div style="margin-top:16px;padding:12px 14px;background:rgba(255,140,0,0.06);border:1px solid rgba(255,140,0,0.2);border-radius:3px;">
+            <div style="font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px;">DAYS REMAINING BREAKDOWN</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;">
+              <div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-dim);">Paper Phase</div>
+                <div style="font-family:'Orbitron',sans-serif;font-size:14px;color:var(--amber);">28 days</div>
+              </div>
+              <div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-dim);">Review Window</div>
+                <div style="font-family:'Orbitron',sans-serif;font-size:14px;color:var(--blue);">0 days</div>
+              </div>
+              <div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-dim);">Status</div>
+                <div style="font-family:'Orbitron',sans-serif;font-size:14px;color:var(--red);">NO-GO</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── STATUS FOOTER ─── -->
+  <div class="status-footer">
+    <div class="dot amber"></div>
+    <span>PAPER VALIDATION ACTIVE</span>
+    <span>·</span>
+    <div class="dot green"></div>
+    <span>IBKR PAPER GATEWAY ONLINE</span>
+    <span>·</span>
+    <span id="footerTime">—</span>
+    <span>·</span>
+    <span>LAST POLL: <span id="footerPoll">—</span></span>
+  </div>
+
+</div><!-- /wrapper -->
+
+<script>
+// ─── TRADE DATA ───
+const PAPER_DATA = {
+  days: [
+    {
+      day: 1,
+      date: 'APR 21, 2026',
+      status: 'green',
+      pnl: +3,
+      trades: [
+        { sym: 'SPY', action: 'LONG → CLOSE', qty: 10, pnl: +3.00 }
+      ]
+    },
+    {
+      day: 2,
+      date: 'APR 22, 2026',
+      status: 'amber',
+      pnl: null,
+      trades: []
+    }
+  ]
+};
+
+// ─── BUILD CALENDAR ───
+function buildCalendar() {
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  for (let d = 1; d <= 30; d++) {
+    const dayData = PAPER_DATA.days.find(x => x.day === d);
+    const div = document.createElement('div');
+    div.className = 'cal-day';
+    let status = 'pending';
+    let pnlText = '';
+
+    if (dayData) {
+      status = dayData.status;
+      pnlText = dayData.pnl !== null
+        ? (dayData.pnl >= 0 ? '+$' + dayData.pnl.toFixed(0) : '-$' + Math.abs(dayData.pnl).toFixed(0))
+        : 'TBD';
+    }
+
+    div.classList.add(status);
+    div.innerHTML = `
+      <div class="cal-day-num">${d}</div>
+      <div class="cal-day-pnl">${pnlText || (d > 2 ? '·' : '')}</div>
+    `;
+
+    if (dayData) {
+      div.addEventListener('click', () => showDayDetail(dayData, div));
+    }
+    grid.appendChild(div);
+  }
+}
+
+// ─── DAY DETAIL ───
+function showDayDetail(dayData, el) {
+  document.querySelectorAll('.cal-day').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+
+  const detail = document.getElementById('dayDetail');
+  const title = document.getElementById('dayDetailTitle');
+  const content = document.getElementById('dayDetailContent');
+
+  title.textContent = `DAY ${dayData.day} — ${dayData.date}`;
+
+  if (dayData.trades.length === 0) {
+    content.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">No trades recorded yet — session in progress</div>`;
+  } else {
+    const pnlColor = dayData.pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+    const pnlFmt = dayData.pnl >= 0 ? `+$${dayData.pnl.toFixed(2)}` : `-$${Math.abs(dayData.pnl).toFixed(2)}`;
+    content.innerHTML = dayData.trades.map(t => `
+      <div class="day-trade-row">
+        <span class="sym">${t.sym}</span>
+        <span>${t.action}</span>
+        <span>×${t.qty}</span>
+        <span class="${t.pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${t.pnl >= 0 ? '+$' : '-$'}${Math.abs(t.pnl).toFixed(2)}</span>
+      </div>
+    `).join('') + `
+      <div class="day-trade-row" style="margin-top:4px;padding-top:8px;border-top:1px solid rgba(0,212,255,0.15);">
+        <span style="color:var(--text-dim)">DAILY TOTAL</span>
+        <span></span>
+        <span></span>
+        <span class="${pnlColor}" style="font-weight:700">${pnlFmt}</span>
+      </div>
+    `;
+  }
+
+  detail.classList.add('visible');
+}
+
+// ─── CLOCK ───
+function updateClock() {
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  document.getElementById('footerTime').textContent = ts;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── API POLLING ───
+async function pollIBKRStatus() {
+  const pollEl = document.getElementById('footerPoll');
+  const statusEl = document.getElementById('apiStatusText');
+  const dotEl = document.getElementById('apiDot');
+  const now = new Date();
+  const ts = now.toLocaleTimeString('en-US', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+  try {
+    const resp = await fetch('http://localhost:8020/api/ibkr/status', { signal: AbortSignal.timeout(5000) });
+    if (resp.ok) {
+      const data = await resp.json();
+      pollEl.textContent = ts;
+      statusEl.textContent = 'API ONLINE';
+      dotEl.style.background = 'var(--green)';
+      dotEl.style.boxShadow = 'var(--glow-green)';
+    } else {
+      throw new Error('non-200');
+    }
+  } catch (e) {
+    pollEl.textContent = ts + ' (offline)';
+    statusEl.textContent = 'API OFFLINE';
+    dotEl.style.background = 'var(--red)';
+    dotEl.style.boxShadow = 'var(--glow-red)';
+  }
+
+  document.getElementById('lastPollTime').textContent = ts;
+}
+
+// Poll every 60 seconds
+pollIBKRStatus();
+setInterval(pollIBKRStatus, 60000);
+
+// ─── INIT ───
+buildCalendar();
+</script>
+</body>
+</html>

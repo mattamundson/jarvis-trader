@@ -6,25 +6,28 @@ pydantic-settings==2.8.1
 
 # LLM & AI
 anthropic==0.50.0
+google-genai==1.72.0
 langchain==0.3.23
 langchain-anthropic==0.3.10
 langgraph==0.3.21
 langchain-community==0.3.21
 
 # Trading & Market Data
-ib_async==0.9.86          # Interactive Brokers (successor to ib_insync)
-schwab-py==1.4.2          # Charles Schwab Trader API
+ib_async>=1.0.0          # Interactive Brokers (successor to ib_insync)
+schwab-py==1.5.1          # Charles Schwab Trader API
 alpaca-py==0.35.0         # Alpaca (for paper trading / data)
 polygon-api-client==1.14.4 # Polygon.io market data
-yfinance==0.2.54          # Yahoo Finance (free historical data)
+py-clob-client==0.4.0      # Polymarket CLOB
+py_order_utils==0.3.2      # pinned: <0.3.0 needs pysha3 (no Py3.12 wheels); 0.3.x drops .config — guard in main.py:149 absorbs ImportError
+openbb>=4.0.0             # OpenBB SDK
 
 # Technical Analysis
-pandas-ta==0.3.14b        # 150+ indicators
+pandas-ta>=0.3.14         # 150+ indicators
 ta-lib==0.4.32            # TA-Lib C library (must install binary first)
 
 # Data Processing
-pandas==2.2.3
-numpy==2.2.4
+pandas>=3.0,<4.0          # converged to 3.x 2026-06-26 (kept in sync with requirements-core.txt; PR #161 str-Enum fix)
+numpy>=2.2.6
 scipy==1.15.2
 
 # Backtesting
@@ -51,6 +54,7 @@ fredapi==0.5.2            # FRED economic data
 
 # Scheduling
 apscheduler==3.11.0
+tzlocal==5.3.1  # APScheduler local-timezone dep; pin explicitly (not pulled transitively in the CI core install)
 
 # Monitoring
 prometheus-client==0.21.1

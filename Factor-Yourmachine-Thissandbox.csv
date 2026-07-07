@@ -1,0 +1,7 @@
+"Factor","Your machine","This sandbox"
+"Compute","Whatever you have (likely much more)","2 vCPU / 8 GB RAM"
+"Data access","Already wired (Polygon, IB)","Would need to re-fetch every run"
+"Existing framework","All your validation code is there","Would need to re-clone"
+"Reproducibility","You can re-run anytime","Sandbox is ephemeral"
+"Cost","Free CPU time","Token cost for orchestration"
+"Iteration speed","Fast — local Python","Slow — round-trips through me"

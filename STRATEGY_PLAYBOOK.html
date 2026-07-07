@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — Strategy Playbook</title>
+<style>
+  :root { --bg:#0a0e17; --s:#111827; --s2:#1a2332; --b:#1e2d3d; --t:#e2e8f0; --td:#8892a4; --a:#3b82f6; --g:#10b981; --r:#ef4444; --am:#f59e0b; --p:#8b5cf6; --c:#06b6d4; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--t);line-height:1.6;min-height:100vh}
+  .hdr{background:linear-gradient(135deg,#111827,#1a1f3a);border-bottom:1px solid var(--b);padding:1.5rem 2rem}
+  .hdr-top{display:flex;align-items:center;justify-content:space-between}
+  .logo{display:flex;align-items:center;gap:.75rem}
+  .logo-i{width:36px;height:36px;background:linear-gradient(135deg,var(--a),var(--p));border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;color:#fff}
+  .logo-t{font-size:1.2rem;font-weight:700}.logo-t span{color:var(--a)}
+  .badge{padding:.3rem .7rem;border-radius:16px;font-size:.75rem;font-weight:600;display:inline-block}
+  .bg{background:rgba(16,185,129,.1);color:var(--g);border:1px solid rgba(16,185,129,.2)}
+  .br{background:rgba(239,68,68,.1);color:var(--r);border:1px solid rgba(239,68,68,.2)}
+  .ba{background:rgba(245,158,11,.1);color:var(--am);border:1px solid rgba(245,158,11,.2)}
+  .bb{background:rgba(59,130,246,.1);color:var(--a);border:1px solid rgba(59,130,246,.2)}
+  .bp{background:rgba(139,92,246,.1);color:var(--p);border:1px solid rgba(139,92,246,.2)}
+  .ctn{max-width:1400px;margin:0 auto;padding:1.5rem}
+  .tabs{display:flex;gap:.2rem;background:var(--s);border-radius:10px;padding:4px;margin-bottom:1.5rem;border:1px solid var(--b);overflow-x:auto}
+  .tab{padding:.5rem 1rem;border-radius:8px;border:none;background:0;color:var(--td);cursor:pointer;font-size:.8rem;font-weight:500;white-space:nowrap;transition:.2s}
+  .tab:hover{color:var(--t);background:var(--s2)}.tab.active{background:var(--a);color:#fff}
+  .pnl{display:none}.pnl.active{display:block}
+  .g{display:grid;gap:1rem;margin-bottom:1.5rem}
+  .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+  .c{background:var(--s);border:1px solid var(--b);border-radius:10px;padding:1.25rem}
+  .ct{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--td);margin-bottom:.75rem}
+  .sv{font-size:1.8rem;font-weight:800;line-height:1;margin-bottom:.2rem}
+  .sl{font-size:.8rem;color:var(--td)}
+  table{width:100%;border-collapse:collapse;font-size:.82rem}
+  th{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--b);color:var(--td);font-weight:600;font-size:.7rem;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:.5rem .6rem;border-bottom:1px solid rgba(30,45,61,.4)}
+  .st{font-size:.95rem;font-weight:700;margin-bottom:.75rem;padding-bottom:.4rem;border-bottom:1px solid var(--b)}
+  .flow{display:flex;align-items:center;gap:0;overflow-x:auto;padding:.75rem 0}
+  .fs{background:var(--s2);border:1px solid var(--b);border-radius:8px;padding:.5rem .7rem;min-width:110px;text-align:center;font-size:.72rem;flex-shrink:0}
+  .fs.hi{border-color:var(--g);background:rgba(16,185,129,.08)}
+  .fs.bl{border-color:var(--r);background:rgba(239,68,68,.08)}
+  .fa{color:var(--td);font-size:1.1rem;flex-shrink:0;padding:0 .2rem}
+  .fl{font-weight:600;margin-bottom:.15rem;display:block}.fsub{color:var(--td);font-size:.65rem}
+  code{background:rgba(59,130,246,.08);color:var(--a);padding:.1rem .4rem;border-radius:4px;font-size:.8rem;font-family:'Fira Code',monospace}
+  .hl{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.15);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem}
+  @media(max-width:768px){.g2,.g3,.g4{grid-template-columns:1fr}.flow{flex-direction:column;align-items:stretch}.fa{transform:rotate(90deg);text-align:center}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-top">
+    <div class="logo"><div class="logo-i">J</div><div class="logo-t">STRATEGY <span>PLAYBOOK</span></div></div>
+    <span class="badge bb">v1.0 — April 3, 2026</span>
+  </div>
+  <div style="margin-top:.5rem;color:var(--td);font-size:.85rem">The Tony Stark Framework: Regime-Adaptive, Structure-Aware Momentum</div>
+</div>
+
+<div class="ctn">
+<div class="tabs">
+  <button class="tab active" onclick="sw('edge')">The Edge</button>
+  <button class="tab" onclick="sw('layers')">5 Layers</button>
+  <button class="tab" onclick="sw('params')">Parameters</button>
+  <button class="tab" onclick="sw('risk')">Risk Mgmt</button>
+  <button class="tab" onclick="sw('rules')">Trade Rules</button>
+  <button class="tab" onclick="sw('inst')">Instruments</button>
+  <button class="tab" onclick="sw('gaps')">Honest Gaps</button>
+</div>
+
+<!-- EDGE -->
+<div id="edge" class="pnl active">
+  <div class="g g3">
+    <div class="c" style="border-left:3px solid var(--g)">
+      <div class="ct">Advantage 1</div>
+      <div style="font-weight:700;margin-bottom:.4rem">Multi-Layer Confluence</div>
+      <div class="sl">4 independent layers must align before entry. Filters out 80-90% of trades, leaving only highest-conviction setups. Low frequency (65-86 trades/21mo) is a feature.</div>
+    </div>
+    <div class="c" style="border-left:3px solid var(--a)">
+      <div class="ct">Advantage 2</div>
+      <div style="font-weight:700;margin-bottom:.4rem">Regime Awareness</div>
+      <div class="sl">Classifies each bar into 5 regimes. EXHAUSTED (ATR>90%) and COMPRESSION are blocked. This single filter eliminated the majority of losing trades in optimization.</div>
+    </div>
+    <div class="c" style="border-left:3px solid var(--p)">
+      <div class="ct">Advantage 3</div>
+      <div style="font-weight:700;margin-bottom:.4rem">Walk-Forward Validated</div>
+      <div class="sl">Only trades instruments where WFE &ge; 0.50. MCL retains 82% of in-sample edge in unseen data. That's the signal something real is being captured, not curve-fitting.</div>
+    </div>
+  </div>
+
+  <div class="c">
+    <div class="ct">The Signal Flow</div>
+    <div class="flow">
+      <div class="fs hi"><span class="fl">Layer 1</span><span class="fsub">Regime Map</span></div>
+      <div class="fa">&rarr;</div>
+      <div class="fs hi"><span class="fl">Layer 2</span><span class="fsub">Structure (Auction)</span></div>
+      <div class="fa">&rarr;</div>
+      <div class="fs hi"><span class="fl">Layer 3</span><span class="fsub">Bias (4 votes)</span></div>
+      <div class="fa">&rarr;</div>
+      <div class="fs hi"><span class="fl">Layer 4</span><span class="fsub">Entry Timing</span></div>
+      <div class="fa">&rarr;</div>
+      <div class="fs" style="border-color:var(--am);background:rgba(245,158,11,.08)"><span class="fl">Layer 5</span><span class="fsub">Position Size</span></div>
+      <div class="fa">&rarr;</div>
+      <div class="fs" style="border-color:var(--p);background:rgba(139,92,246,.08)"><span class="fl">Human Gate</span><span class="fsub">Approve/Reject</span></div>
+      <div class="fa">&rarr;</div>
+      <div class="fs" style="border-color:var(--c);background:rgba(6,182,212,.08)"><span class="fl">IB Gateway</span><span class="fsub">Paper Fill</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- LAYERS -->
+<div id="layers" class="pnl">
+  <div class="c" style="margin-bottom:1rem">
+    <div class="st">Layer 1 — Regime Map (Master Gate)</div>
+    <table>
+      <tr><th>Regime</th><th>Condition</th><th>Action</th></tr>
+      <tr><td style="color:var(--g);font-weight:700">TRENDING_BULL</td><td>EMA 8&gt;21&gt;34, phase&gt;0, consumed&lt;70%</td><td><span class="badge bg">ENTRIES ALLOWED</span></td></tr>
+      <tr><td style="color:var(--r);font-weight:700">TRENDING_BEAR</td><td>EMA 8&lt;21&lt;34, phase&lt;0, consumed&lt;70%</td><td><span class="badge bg">ENTRIES ALLOWED</span></td></tr>
+      <tr><td style="color:var(--am);font-weight:700">RANGE_BOUND</td><td>Mixed EMA, no clear direction</td><td><span class="badge ba">LIMITED</span></td></tr>
+      <tr><td style="color:var(--r)">COMPRESSION</td><td>Phase compression, consumed&lt;50%</td><td><span class="badge br">BLOCKED</span></td></tr>
+      <tr><td style="color:var(--r)">EXHAUSTED</td><td>ATR consumed &gt; 90%</td><td><span class="badge br">BLOCKED / FADE</span></td></tr>
+    </table>
+  </div>
+
+  <div class="g g2">
+    <div class="c">
+      <div class="st">Layer 2 — Structure Map</div>
+      <table>
+        <tr><th>Position</th><th>Condition</th></tr>
+        <tr><td style="color:var(--g);font-weight:600">BUYER_CONTROL</td><td>Price &gt; VAH AND &gt; IB High</td></tr>
+        <tr><td style="color:var(--r);font-weight:600">SELLER_CONTROL</td><td>Price &lt; VAL AND &lt; IB Low</td></tr>
+        <tr><td style="color:var(--td)">NEUTRAL</td><td>Inside value area or mixed</td></tr>
+      </table>
+      <div style="margin-top:.6rem;font-size:.78rem;color:var(--td)">BUYER_CONTROL + TRENDING_BULL + bullish bias = immediate ENTRY_NOW (no STC crossover required)</div>
+    </div>
+
+    <div class="c">
+      <div class="st">Layer 3 — Directional Bias</div>
+      <table>
+        <tr><th>Indicator</th><th>Bull</th><th>Bear</th></tr>
+        <tr><td>KAMA(10)</td><td>Close &gt; KAMA</td><td>Close &lt; KAMA</td></tr>
+        <tr><td>STC</td><td>Oversold/Rising</td><td>Overbought/Falling</td></tr>
+        <tr><td>Volume Stack</td><td>Buy% &gt; 60</td><td>Buy% &lt; 40</td></tr>
+        <tr><td>EMA Trend</td><td>8&gt;21&gt;34</td><td>8&lt;21&lt;34</td></tr>
+      </table>
+      <div style="margin-top:.4rem;font-size:.78rem">4 votes = STRONG | 3 votes = LEAN | mixed = NEUTRAL (no trade)</div>
+    </div>
+  </div>
+
+  <div class="g g2">
+    <div class="c">
+      <div class="st">Layer 4 — Entry Timing</div>
+      <table>
+        <tr><th>Priority</th><th>Trigger</th></tr>
+        <tr><td>1. Structure-Boosted</td><td>BUYER_CONTROL + bias + trending &rarr; ENTRY_NOW</td></tr>
+        <tr><td>1b. IB Breakout</td><td>Price crosses IB High + bullish &rarr; ENTRY_NOW</td></tr>
+        <tr><td>2. STC Crossover</td><td>STC crosses OS/OB threshold + bias &rarr; ENTRY_NOW</td></tr>
+        <tr><td>3. Wait</td><td>STC 20-80 &rarr; WAIT_FOR_PULLBACK</td></tr>
+        <tr><td>4. No Trade</td><td>Neutral bias or blocked regime</td></tr>
+      </table>
+    </div>
+
+    <div class="c">
+      <div class="st">Layer 5 — Position Sizing</div>
+      <table>
+        <tr><th>Alignment</th><th>Size</th></tr>
+        <tr><td>Strong + Trending + Structure</td><td style="color:var(--g);font-weight:700">1.00x FULL</td></tr>
+        <tr><td>Strong + Trending</td><td style="color:var(--a)">0.80x HIGH</td></tr>
+        <tr><td>Lean bias or non-trending</td><td style="color:var(--am)">0.50x HALF</td></tr>
+        <tr><td>Everything else</td><td style="color:var(--td)">0.25x MIN</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- PARAMS -->
+<div id="params" class="pnl">
+  <div class="g g2">
+    <div class="c" style="border-left:3px solid var(--c)">
+      <div class="st">MCL — Micro Crude Oil (1h)</div>
+      <table>
+        <tr><td>STC Oversold</td><td><code>15</code></td></tr>
+        <tr><td>STC Overbought</td><td><code>83</code></td></tr>
+        <tr><td>Stop</td><td><code>0.90 ATR</code></td></tr>
+        <tr><td>Target 1</td><td><code>1.50 ATR</code> (R:R = 1.67)</td></tr>
+        <tr><td>Target 2</td><td><code>2.618 ATR</code></td></tr>
+        <tr><td>Target 3</td><td><code>4.00 ATR</code></td></tr>
+        <tr><td>Regime Filter</td><td><span class="badge bg">ON</span></td></tr>
+        <tr><td>Contract Multiplier</td><td>$100/point</td></tr>
+      </table>
+      <div class="hl" style="margin-top:.75rem">Sensitivity found Stop=0.70 is a DEAD ZONE (8 trades). Monitor if 0.90 generates enough trades. Consider 0.84 if trade count is too low.</div>
+    </div>
+
+    <div class="c" style="border-left:3px solid var(--p)">
+      <div class="st">MNQ — Micro Nasdaq (1h)</div>
+      <table>
+        <tr><td>STC Oversold</td><td><code>15</code></td></tr>
+        <tr><td>STC Overbought</td><td><code>92</code> <span class="badge bp">WIDER</span></td></tr>
+        <tr><td>Stop</td><td><code>0.70 ATR</code></td></tr>
+        <tr><td>Target 1</td><td><code>1.00 ATR</code> (R:R = 1.43)</td></tr>
+        <tr><td>Target 2</td><td><code>1.80 ATR</code></td></tr>
+        <tr><td>Target 3</td><td><code>2.618 ATR</code></td></tr>
+        <tr><td>Regime Filter</td><td><span class="badge bg">ON</span></td></tr>
+        <tr><td>Contract Multiplier</td><td>$2/point</td></tr>
+      </table>
+      <div class="hl" style="margin-top:.75rem">STC_OB=92 was consensus across ALL top 10 optimizer results. This is the single most important parameter for MNQ — filters Nasdaq noise.</div>
+    </div>
+  </div>
+
+  <div class="c">
+    <div class="st">STC Core (All Instruments)</div>
+    <div class="g g4">
+      <div style="text-align:center"><div class="sv" style="color:var(--c)">23</div><div class="sl">Fast Period</div></div>
+      <div style="text-align:center"><div class="sv" style="color:var(--c)">50</div><div class="sl">Slow Period</div></div>
+      <div style="text-align:center"><div class="sv" style="color:var(--c)">10</div><div class="sl">K Period</div></div>
+      <div style="text-align:center"><div class="sv" style="color:var(--c)">3</div><div class="sl">D Period</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- RISK -->
+<div id="risk" class="pnl">
+  <div class="c" style="border:1px solid var(--r);margin-bottom:1rem">
+    <div class="st" style="color:var(--r)">Hard Limits (Safety Layer — Non-Negotiable)</div>
+    <div class="g g4">
+      <div style="text-align:center"><div class="sv" style="color:var(--r)">-2%</div><div class="sl">Daily Loss Halt</div></div>
+      <div style="text-align:center"><div class="sv" style="color:var(--r)">-10%</div><div class="sl">Drawdown Kill Switch</div></div>
+      <div style="text-align:center"><div class="sv" style="color:var(--am)">2</div><div class="sl">Max Contracts/Instrument</div></div>
+      <div style="text-align:center"><div class="sv" style="color:var(--am)">1</div><div class="sl">Max Overnight</div></div>
+    </div>
+  </div>
+
+  <div class="g g2">
+    <div class="c">
+      <div class="st">Drawdown Risk Ladder</div>
+      <table>
+        <tr><th>Drawdown</th><th>Position Size</th></tr>
+        <tr><td>0-5%</td><td style="color:var(--g);font-weight:700">1.00x Full</td></tr>
+        <tr><td>5-8%</td><td style="color:var(--am)">0.75x</td></tr>
+        <tr><td>8-10%</td><td style="color:var(--r)">0.50x</td></tr>
+        <tr><td>10%+</td><td style="color:var(--r);font-weight:700">KILL SWITCH</td></tr>
+      </table>
+    </div>
+
+    <div class="c">
+      <div class="st">VIX Overlay</div>
+      <table>
+        <tr><th>VIX</th><th>Regime</th><th>Size</th></tr>
+        <tr><td>&lt; 12</td><td>CALM</td><td>1.00x</td></tr>
+        <tr><td>12-20</td><td>NORMAL</td><td>1.00x</td></tr>
+        <tr><td>20-30</td><td style="color:var(--am)">CAUTION</td><td>0.75x</td></tr>
+        <tr><td>30-40</td><td style="color:var(--r)">ELEVATED</td><td>0.50x</td></tr>
+        <tr><td>&ge; 40</td><td style="color:var(--r);font-weight:700">EXTREME</td><td style="color:var(--r);font-weight:700">PAUSED</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="c">
+    <div class="st">Consecutive Loss Protection</div>
+    <div class="g g3">
+      <div style="text-align:center"><div class="sv" style="color:var(--am)">3</div><div class="sl">losses &rarr; 0.50x size</div></div>
+      <div style="text-align:center"><div class="sv" style="color:var(--r)">5</div><div class="sl">losses &rarr; 0.25x size</div></div>
+      <div style="text-align:center"><div class="sv" style="color:var(--r);font-weight:800">7</div><div class="sl">losses &rarr; 24hr halt</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- RULES -->
+<div id="rules" class="pnl">
+  <div class="g g2">
+    <div class="c">
+      <div class="st" style="color:var(--g)">Entry Rules</div>
+      <ol style="font-size:.82rem;padding-left:1.2rem;display:flex;flex-direction:column;gap:.4rem">
+        <li>All 4 layers must align (regime + structure + bias + timing)</li>
+        <li>REQUIRE_HUMAN_APPROVAL = True (every trade)</li>
+        <li>Market orders for micro futures</li>
+        <li>Entry on NEXT bar open (no same-bar entries)</li>
+        <li>No entries during news blackout (FOMC, CPI, NFP, GDP)</li>
+        <li>No entries when VIX &ge; 40</li>
+      </ol>
+    </div>
+
+    <div class="c">
+      <div class="st" style="color:var(--r)">Exit Rules</div>
+      <ol style="font-size:.82rem;padding-left:1.2rem;display:flex;flex-direction:column;gap:.4rem">
+        <li><strong>Stop Loss</strong>: ATR-based, set at entry. Non-negotiable.</li>
+        <li><strong>Target 1</strong>: Scale out 50% of position</li>
+        <li><strong>Target 2</strong>: Exit remaining 50%</li>
+        <li><strong>Target 3</strong>: Runner (trail stop to breakeven if T2 hit)</li>
+        <li><strong>EOD Review</strong>: 3:30 PM CT — manual review of open positions</li>
+        <li><strong>Kill Switch</strong>: -2% daily or -10% DD &rarr; force close ALL</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="c">
+    <div class="st">No-Trade Conditions</div>
+    <div class="g g3">
+      <div style="font-size:.82rem"><span class="badge br">EXHAUSTED</span> ATR consumed &gt; 90%</div>
+      <div style="font-size:.82rem"><span class="badge br">COMPRESSION</span> Direction unknown</div>
+      <div style="font-size:.82rem"><span class="badge br">NEUTRAL</span> Mixed indicator votes</div>
+      <div style="font-size:.82rem"><span class="badge br">VIX &ge; 40</span> Extreme volatility</div>
+      <div style="font-size:.82rem"><span class="badge br">NEWS</span> 30min before/after FOMC/CPI/NFP/GDP</div>
+      <div style="font-size:.82rem"><span class="badge br">7 LOSSES</span> 24-hour halt triggered</div>
+    </div>
+  </div>
+</div>
+
+<!-- INSTRUMENTS -->
+<div id="inst" class="pnl">
+  <div class="g g2">
+    <div class="c" style="border-left:3px solid var(--g)">
+      <div class="ct">PRIMARY — APPROVED</div>
+      <div style="font-size:1.3rem;font-weight:800;color:var(--g);margin-bottom:.3rem">MCL <span style="font-size:.8rem;font-weight:400;color:var(--td)">Micro Crude Oil 1h</span></div>
+      <table>
+        <tr><td>WFE</td><td style="color:var(--g);font-weight:700">0.82</td></tr>
+        <tr><td>OOS Windows Profitable</td><td>4 of 6</td></tr>
+        <tr><td>OOS Profit Factor</td><td>1.21</td></tr>
+        <tr><td>Projected Trades</td><td>~65 / 21 months</td></tr>
+        <tr><td>Monte Carlo</td><td>100% probability profitable</td></tr>
+      </table>
+    </div>
+
+    <div class="c" style="border-left:3px solid var(--a)">
+      <div class="ct">SECONDARY — APPROVED</div>
+      <div style="font-size:1.3rem;font-weight:800;color:var(--a);margin-bottom:.3rem">MNQ <span style="font-size:.8rem;font-weight:400;color:var(--td)">Micro Nasdaq 1h</span></div>
+      <table>
+        <tr><td>WFE</td><td style="color:var(--a);font-weight:700">0.57</td></tr>
+        <tr><td>In-Sample Trades</td><td>86</td></tr>
+        <tr><td>In-Sample PF</td><td>1.51</td></tr>
+        <tr><td>Win Rate</td><td>50%</td></tr>
+        <tr><td>Max Drawdown</td><td>5.2%</td></tr>
+        <tr><td>Sensitivity</td><td>94/100 ROBUST</td></tr>
+        <tr><td>Monte Carlo</td><td>100% probability profitable</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="c" style="margin-top:1rem">
+    <div class="ct" style="color:var(--r)">HALTED / DO NOT TRADE</div>
+    <table>
+      <tr><th>Symbol</th><th>TF</th><th>WFE</th><th>Reason</th></tr>
+      <tr><td style="color:var(--r);font-weight:600">MES</td><td>1h</td><td>0.09</td><td>No out-of-sample edge</td></tr>
+      <tr><td style="color:var(--r);font-weight:600">MGC</td><td>1d</td><td>0.14</td><td>Overfit (73% IS-to-OOS degradation)</td></tr>
+      <tr><td style="color:var(--r)">M2K</td><td>all</td><td>N/A</td><td>PF &lt; 1.0 on both timeframes</td></tr>
+      <tr><td style="color:var(--r)">MCL</td><td>1d</td><td>N/A</td><td>PF = 0.21 catastrophic</td></tr>
+      <tr><td style="color:var(--r)">MES</td><td>1d</td><td>N/A</td><td>PF = 0.75, targets unreachable</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- GAPS -->
+<div id="gaps" class="pnl">
+  <div class="c" style="margin-bottom:1rem;border-left:3px solid var(--am)">
+    <div class="st">What We Don't Know (Honest Assessment)</div>
+    <div style="display:flex;flex-direction:column;gap:.75rem;font-size:.85rem">
+      <div><strong style="color:var(--am)">The backtest-to-live gap is real.</strong> MCL's in-sample PF of 1.81 will likely degrade to OOS levels around PF 1.21. The 30-day paper validation measures the real-world PF before risking live capital.</div>
+      <div><strong style="color:var(--am)">MNQ's walk-forward is less convincing.</strong> Standard WFE is 0.57 (acceptable) but OOS profit factor is 0.97 — barely breakeven. Sensitivity (94/100) and Monte Carlo (100%) provide confidence, but 30 days of paper data tells the real story.</div>
+      <div><strong style="color:var(--am)">Composite signals don't work yet.</strong> STC+ORB+VWAP fusion backtests show PF 0.15-0.28. Needs fundamental rethinking before activation.</div>
+      <div><strong style="color:var(--am)">We're trading 2 instruments with $10K.</strong> A single bad crude oil inventory day could hit the -2% daily loss limit. This is not a portfolio — it's two correlated bets.</div>
+      <div><strong style="color:var(--am)">Market regime can change.</strong> WFE was calculated on 2024-2026 data. A structural shift could invalidate the MCL edge. System re-runs WFE every 90 days.</div>
+    </div>
+  </div>
+
+  <div class="c">
+    <div class="st">Paper Validation Gates (All Must Pass)</div>
+    <table>
+      <tr><th>Gate</th><th>Target</th><th>Current</th><th>Status</th></tr>
+      <tr><td>Profit Factor</td><td>&ge; 2.0</td><td>TBD</td><td><span class="badge bb">Day 2</span></td></tr>
+      <tr><td>Sharpe Ratio</td><td>&ge; 1.5</td><td>TBD</td><td><span class="badge bb">Day 2</span></td></tr>
+      <tr><td>Win Rate</td><td>&ge; 55%</td><td>TBD</td><td><span class="badge bb">Day 2</span></td></tr>
+      <tr><td>Trade Count</td><td>&ge; 60</td><td>3</td><td><span class="badge ba">5%</span></td></tr>
+      <tr><td>Days Trading</td><td>&ge; 30</td><td>2</td><td><span class="badge ba">7%</span></td></tr>
+      <tr><td>Max Drawdown</td><td>&le; 15%</td><td>TBD</td><td><span class="badge bb">Day 2</span></td></tr>
+    </table>
+    <div style="margin-top:.5rem;font-size:.78rem;color:var(--td)">Start: April 2 | Target: May 2 | Account: IB Paper DUP662235 | Capital: $10,000</div>
+  </div>
+</div>
+</div>
+
+<script>
+function sw(id){document.querySelectorAll('.pnl').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById(id).classList.add('active');event.target.classList.add('active')}
+</script>
+</body>
+</html>

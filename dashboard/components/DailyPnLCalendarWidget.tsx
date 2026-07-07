@@ -1,21 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { fetchEngine } from "@/lib/api";
+import { dailyPnl } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: "BUY" | "SELL";
-  realized_pnl: number | null;
-  status: "OPEN" | "CLOSED" | "CANCELLED";
-  entry_time: string;
-  exit_time: string | null;
-}
 
 interface DailyPnLMap {
   [date: string]: number; // YYYY-MM-DD -> sum of realized_pnl
@@ -96,80 +87,20 @@ function cellClasses(pnl: number | undefined, isToday: boolean): string {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function DailyPnLCalendarWidget() {
-  const [dailyPnl, setDailyPnl] = useState<DailyPnLMap | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(120_000);
+  const error = !!loadError;
 
-  async function fetchData() {
-    // 1. Try primary endpoint
-    try {
-      const primaryRes = await fetchEngine(`/analytics/daily-pnl`);
-      if (primaryRes.ok) {
-        const data: unknown = await primaryRes.json();
-        if (
-          data !== null &&
-          typeof data === "object" &&
-          !Array.isArray(data)
-        ) {
-          setDailyPnl(data as DailyPnLMap);
-          setLoading(false);
-          setError(false);
-          return;
+  // dailyPnl() returns {date, pnl, count}[] grouped by close date
+  const dailyPnlMap: DailyPnLMap | null = set
+    ? (() => {
+        const records = dailyPnl(set.trades);
+        const map: DailyPnLMap = {};
+        for (const r of records) {
+          map[r.date] = (map[r.date] ?? 0) + r.pnl;
         }
-      }
-    } catch {
-      // fall through to fallback
-    }
-
-    // 2. Fallback: compute from closed trades
-    try {
-      const tradesRes = await fetch(
-        `/portfolio/history/trades?status=CLOSED&limit=500`
-      );
-      if (!tradesRes.ok) throw new Error("trades fetch failed");
-
-      const raw: unknown = await tradesRes.json();
-      let trades: TradeRecord[];
-      if (Array.isArray(raw)) {
-        trades = raw as TradeRecord[];
-      } else if (
-        raw !== null &&
-        typeof raw === "object" &&
-        Array.isArray((raw as { trades?: unknown }).trades)
-      ) {
-        trades = (raw as { trades: TradeRecord[] }).trades;
-      } else {
-        trades = [];
-      }
-
-      const map: DailyPnLMap = {};
-      for (const t of trades) {
-        if (
-          t.status !== "CLOSED" ||
-          t.realized_pnl == null ||
-          !t.exit_time
-        ) {
-          continue;
-        }
-        const date = t.exit_time.slice(0, 10); // YYYY-MM-DD
-        map[date] = (map[date] ?? 0) + t.realized_pnl;
-      }
-
-      setDailyPnl(map);
-      setLoading(false);
-      setError(false);
-    } catch {
-      setError(true);
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 120_000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        return map;
+      })()
+    : null;
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
@@ -179,7 +110,7 @@ export function DailyPnLCalendarWidget() {
   // Compute summary stats from days that have data
   const pnlValues: number[] = [];
   for (const d of calDays) {
-    const v = dailyPnl?.[toYMD(d)];
+    const v = dailyPnlMap?.[toYMD(d)];
     if (v !== undefined) pnlValues.push(v);
   }
 
@@ -250,7 +181,7 @@ export function DailyPnLCalendarWidget() {
         )}
 
         {/* ── Empty state ── */}
-        {!loading && !error && dailyPnl !== null && calDays.length === 0 && (
+        {!loading && !error && dailyPnlMap !== null && calDays.length === 0 && (
           <div className="flex items-center justify-center h-32">
             <span className="font-mono text-xs text-muted-foreground">
               No trade data yet
@@ -259,7 +190,7 @@ export function DailyPnLCalendarWidget() {
         )}
 
         {/* ── Calendar ── */}
-        {!loading && !error && dailyPnl !== null && calDays.length > 0 && (
+        {!loading && !error && dailyPnlMap !== null && calDays.length > 0 && (
           <>
             {/* Day-of-week header */}
             <div className="grid grid-cols-5 gap-1 mb-1">
@@ -286,7 +217,7 @@ export function DailyPnLCalendarWidget() {
               {/* Day cells */}
               {calDays.map((d) => {
                 const ymd = toYMD(d);
-                const pnl = dailyPnl[ymd];
+                const pnl = dailyPnlMap[ymd];
                 const isToday = ymd === todayStr;
                 const cls = cellClasses(pnl, isToday);
                 const tooltip =
@@ -312,7 +243,7 @@ export function DailyPnLCalendarWidget() {
                     Best Day
                   </span>
                   <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums">
-                    {bestDay !== null ? formatPnl(bestDay) : "\u2014"}
+                    {bestDay !== null ? formatPnl(bestDay) : "—"}
                   </span>
                 </div>
                 <div className="flex flex-col items-center gap-0.5">
@@ -320,7 +251,7 @@ export function DailyPnLCalendarWidget() {
                     Worst Day
                   </span>
                   <span className="font-mono text-sm font-bold text-red-400 tabular-nums">
-                    {worstDay !== null ? formatPnl(worstDay) : "\u2014"}
+                    {worstDay !== null ? formatPnl(worstDay) : "—"}
                   </span>
                 </div>
                 <div className="flex flex-col items-center gap-0.5">
@@ -334,7 +265,7 @@ export function DailyPnLCalendarWidget() {
                         : "text-red-400"
                     }`}
                   >
-                    {avgDay !== null ? formatPnl(avgDay) : "\u2014"}
+                    {avgDay !== null ? formatPnl(avgDay) : "—"}
                   </span>
                 </div>
               </div>

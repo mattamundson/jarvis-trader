@@ -1,18 +1,24 @@
 "use client";
 
-import useSWR from "swr";
 import { Clock, TrendingUp, TrendingDown } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import type { TradeRecord } from "@/lib/api";
+import {
+  dedupCaveat,
+  durationMinutes,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
+
+// Columns dropped vs. prior raw version:
+//   - Qty (not in honest record)
+//   - Price (not in honest record — only direction + P&L are available)
+//   - TradeReviewPanel (required trade_id from raw engine record)
+// Replaced: timestamp → exit_time; grade still available.
 
 const REFRESH_MS = 30_000;
-
-function fetcher<T>(path: string): Promise<T> {
-  return fetchEngine<T>(path);
-}
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
@@ -26,14 +32,41 @@ function formatDateTime(iso: string | null): string {
   return `${date} ${time}`;
 }
 
-export function TradeHistory() {
-  const { data: trades, isLoading, error } = useSWR<TradeRecord[]>(
-    "/portfolio/history/trades?limit=50",
-    fetcher,
-    { refreshInterval: REFRESH_MS }
-  );
+const GRADE_STYLES: Record<string, string> = {
+  A: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
+  B: "bg-teal-500/15 text-teal-400 border border-teal-500/30",
+  C: "bg-yellow-500/15 text-yellow-400 border border-yellow-500/30",
+  D: "bg-orange-500/15 text-orange-400 border border-orange-500/30",
+  F: "bg-red-500/15 text-red-400 border border-red-500/30",
+};
 
-  const rows = trades ?? [];
+function GradeBadge({ grade }: { grade: string | null }) {
+  if (grade && GRADE_STYLES[grade]) {
+    return (
+      <span
+        className={`inline-flex items-center justify-center w-6 h-6 rounded text-[10px] font-bold ${GRADE_STYLES[grade]}`}
+      >
+        {grade}
+      </span>
+    );
+  }
+  return <span className="text-muted-foreground/40">—</span>;
+}
+
+export function TradeHistory() {
+  const { honest: set, isLoading, error: loadError } = useHonestTrades(REFRESH_MS);
+  const error = loadError
+    ? loadError instanceof Error
+      ? loadError.message
+      : String(loadError)
+    : null;
+
+  // Sort by exit_time descending (most recent first)
+  const rows: HonestTrade[] = set
+    ? [...set.trades]
+        .filter((t) => t.exit_time)
+        .sort((a, b) => Date.parse(b.exit_time!) - Date.parse(a.exit_time!))
+    : [];
 
   return (
     <Card>
@@ -44,7 +77,7 @@ export function TradeHistory() {
             Trade History
           </CardTitle>
           <span className="text-xs text-muted-foreground tabular-nums">
-            {rows.length > 0 ? `${rows.length} records` : ""}
+            {set ? `${rows.length} records · ${dedupCaveat(set)}` : ""}
           </span>
         </div>
       </CardHeader>
@@ -58,7 +91,7 @@ export function TradeHistory() {
 
         {error && !isLoading && (
           <p className="text-center text-xs text-bear py-6">
-            Failed to load trade history — engine may be offline.
+            Failed to load trade history — {error}
           </p>
         )}
 
@@ -74,54 +107,52 @@ export function TradeHistory() {
               <thead>
                 <tr className="border-b border-border">
                   <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                    Date / Time
+                    Exit Time
                   </th>
                   <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider">
                     Symbol
                   </th>
                   <th className="pb-2 pr-3 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                    Side
-                  </th>
-                  <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                    Qty
-                  </th>
-                  <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                    Entry
-                  </th>
-                  <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                    Exit
+                    Direction
                   </th>
                   <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider">
                     P&L
                   </th>
-                  <th className="pb-2 text-left font-semibold text-muted-foreground uppercase tracking-wider">
-                    Status
+                  <th className="pb-2 pr-3 text-right font-semibold text-muted-foreground uppercase tracking-wider">
+                    Duration
+                  </th>
+                  <th className="pb-2 text-center font-semibold text-muted-foreground uppercase tracking-wider">
+                    Grade
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
                 {rows.map((trade) => {
-                  const pnl = trade.realized_pnl;
+                  const pnl = trade.pnl;
                   const pnlColor =
-                    pnl == null
-                      ? "text-muted-foreground"
-                      : pnl > 0
+                    pnl > 0
                       ? "text-bull"
                       : pnl < 0
                       ? "text-bear"
                       : "text-muted-foreground";
                   const PnlIcon =
-                    pnl != null && pnl > 0
-                      ? TrendingUp
-                      : pnl != null && pnl < 0
-                      ? TrendingDown
-                      : null;
+                    pnl > 0 ? TrendingUp : pnl < 0 ? TrendingDown : null;
+                  const dur = durationMinutes(trade);
+                  const durStr =
+                    dur === null
+                      ? "—"
+                      : dur < 60
+                      ? `${Math.round(dur)}m`
+                      : `${Math.floor(dur / 60)}h ${Math.round(dur % 60)}m`;
 
                   return (
-                    <tr key={trade.id} className="hover:bg-muted/20 transition-colors">
-                      {/* Date/Time */}
+                    <tr
+                      key={trade.id}
+                      className="hover:bg-muted/20"
+                    >
+                      {/* Exit Time */}
                       <td className="py-2 pr-3 font-mono text-muted-foreground whitespace-nowrap">
-                        {formatDateTime(trade.entry_time)}
+                        {formatDateTime(trade.exit_time)}
                       </td>
 
                       {/* Symbol */}
@@ -131,45 +162,29 @@ export function TradeHistory() {
                         </span>
                       </td>
 
-                      {/* Side */}
+                      {/* Direction */}
                       <td className="py-2 pr-3">
-                        <span
-                          className={`font-mono font-bold ${
-                            trade.side === "BUY" ? "text-bull" : "text-bear"
-                          }`}
-                        >
-                          {trade.side}
-                        </span>
-                      </td>
-
-                      {/* Qty */}
-                      <td className="py-2 pr-3 text-right tabular-nums text-foreground">
-                        {trade.quantity}
-                      </td>
-
-                      {/* Entry Price */}
-                      <td className="py-2 pr-3 text-right tabular-nums text-foreground">
-                        {formatCurrency(trade.entry_price)}
-                      </td>
-
-                      {/* Exit Price */}
-                      <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
-                        {trade.exit_price != null
-                          ? formatCurrency(trade.exit_price)
-                          : "—"}
+                        <Badge variant={trade.direction === "LONG" ? "bull" : "bear"}>
+                          {trade.direction}
+                        </Badge>
                       </td>
 
                       {/* P&L */}
                       <td className={`py-2 pr-3 text-right tabular-nums font-medium ${pnlColor}`}>
                         <span className="flex items-center justify-end gap-1">
                           {PnlIcon && <PnlIcon className="h-3 w-3 shrink-0" />}
-                          {pnl != null ? formatCurrency(pnl) : "—"}
+                          {formatCurrency(pnl)}
                         </span>
                       </td>
 
-                      {/* Status */}
-                      <td className="py-2">
-                        <StatusBadge status={trade.status} />
+                      {/* Duration */}
+                      <td className="py-2 pr-3 text-right font-mono text-muted-foreground tabular-nums">
+                        {durStr}
+                      </td>
+
+                      {/* Grade */}
+                      <td className="py-2 text-center">
+                        <GradeBadge grade={trade.grade} />
                       </td>
                     </tr>
                   );
@@ -181,10 +196,4 @@ export function TradeHistory() {
       </CardContent>
     </Card>
   );
-}
-
-function StatusBadge({ status }: { status: TradeRecord["status"] }) {
-  if (status === "OPEN") return <Badge variant="info">OPEN</Badge>;
-  if (status === "CLOSED") return <Badge variant="bull">CLOSED</Badge>;
-  return <Badge variant="warn">CANCELLED</Badge>;
 }

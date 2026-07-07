@@ -92,19 +92,18 @@ export function AlertSummaryWidget() {
   async function fetchData() {
     try {
       const [historyRes, statsRes] = await Promise.allSettled([
-        fetchEngine(`/alerts/history?limit=10`),
-        fetchEngine(`/alerts/stats`),
+        fetchEngine<AlertHistoryResponse>(`/alerts/history?limit=10`),
+        fetchEngine<AlertStatsResponse>(`/alerts/stats`),
       ]);
 
-      if (historyRes.status === "fulfilled" && historyRes.value.ok) {
-        const data: AlertHistoryResponse = await historyRes.value.json();
+      if (historyRes.status === "fulfilled") {
+        const data = historyRes.value;
         setAlerts(data.alerts ?? []);
         setHistoryTotal(data.total ?? 0);
       }
 
-      if (statsRes.status === "fulfilled" && statsRes.value.ok) {
-        const data: AlertStatsResponse = await statsRes.value.json();
-        setStats(data);
+      if (statsRes.status === "fulfilled") {
+        setStats(statsRes.value);
       }
     } catch {
       // Graceful fallback — keep previous state

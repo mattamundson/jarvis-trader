@@ -1,77 +1,70 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import {
+  type HonestTradeSet,
+  dedupCaveat,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
-
-interface TradeRecord {
-  id: string | number;
-  symbol: string;
-  pnl: number | null | undefined;
-  status: string;
-}
-
-interface TradesResponse {
-  trades: TradeRecord[];
-}
+// ── Metric derivation ─────────────────────────────────────────────────────────
 
 interface RRMetrics {
   avgWin: number;
   avgLoss: number;
-  riskReward: number;
+  riskReward: number | null;
   totalTrades: number;
-  profitFactor: number;
+  profitFactor: number | null;
   expectancy: number;
-  winRate: number;
+  winRate: number; // 0..1
 }
 
-function computeMetrics(trades: TradeRecord[]): RRMetrics {
-  const valid = trades.filter(
-    (t) => t.status === "CLOSED" && t.pnl !== null && t.pnl !== undefined
-  );
+function deriveMetrics(set: HonestTradeSet): RRMetrics {
+  const { trades, winRate, profitFactor, net } = set;
 
-  const winners = valid.filter((t) => (t.pnl as number) > 0);
-  const losers = valid.filter((t) => (t.pnl as number) < 0);
-
-  const totalTrades = winners.length + losers.length;
+  const winners = trades.filter((t) => t.pnl > 0);
+  const losers = trades.filter((t) => t.pnl < 0);
 
   const avgWin =
     winners.length > 0
-      ? winners.reduce((sum, t) => sum + (t.pnl as number), 0) / winners.length
+      ? winners.reduce((s, t) => s + t.pnl, 0) / winners.length
       : 0;
 
   const avgLoss =
     losers.length > 0
-      ? Math.abs(
-          losers.reduce((sum, t) => sum + (t.pnl as number), 0) / losers.length
-        )
+      ? Math.abs(losers.reduce((s, t) => s + t.pnl, 0) / losers.length)
       : 0;
 
-  const riskReward = avgLoss > 0 ? avgWin / avgLoss : 0;
+  // R:R = avgWin / |avgLoss|; null when no losses to ratio against
+  const riskReward: number | null =
+    avgLoss < 0.01 ? null : avgWin === 0 ? 0 : avgWin / avgLoss;
 
-  const sumWinners = winners.reduce((sum, t) => sum + (t.pnl as number), 0);
-  const sumLosers = Math.abs(
-    losers.reduce((sum, t) => sum + (t.pnl as number), 0)
-  );
+  // expectancy = net / n  (equivalent to winRate*avgWin - lossRate*avgLoss)
+  const totalTrades = trades.length;
+  const expectancy = totalTrades > 0 ? net / totalTrades : 0;
 
-  const profitFactor =
-    sumLosers > 0 ? sumWinners / sumLosers : sumWinners > 0 ? Infinity : 0;
-
-  const winRate = totalTrades > 0 ? winners.length / totalTrades : 0;
-  const expectancy = totalTrades > 0
-    ? winRate * avgWin - (1 - winRate) * avgLoss
-    : 0;
-
-  return { avgWin, avgLoss, riskReward, totalTrades, profitFactor, expectancy, winRate };
+  return {
+    avgWin,
+    avgLoss,
+    riskReward,
+    totalTrades,
+    profitFactor,
+    expectancy,
+    winRate,
+  };
 }
 
-function rrBadgeVariant(rr: number): "bull" | "warn" | "bear" {
+// ── Badge helpers ─────────────────────────────────────────────────────────────
+
+function rrBadgeVariant(rr: number | null): "bull" | "warn" | "bear" | "neutral" {
+  if (rr === null) return "neutral";
   if (rr >= 2.0) return "bull";
   if (rr >= 1.0) return "warn";
   return "bear";
 }
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 interface StatCellProps {
   label: string;
@@ -88,35 +81,17 @@ function StatCell({ label, value, valueClass = "text-foreground" }: StatCellProp
   );
 }
 
+// ── Widget ────────────────────────────────────────────────────────────────────
+
 export function TradeRiskRewardWidget() {
-  const [metrics, setMetrics] = useState<RRMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(300_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
-  const fetchTrades = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/portfolio/history/trades?limit=500&status=CLOSED`
-      );
-      const raw: unknown = await res.json();
-      const trades: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as TradesResponse).trades ?? []);
-      const computed = computeMetrics(trades);
-      setMetrics(computed);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load trades");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 300_000);
-    return () => clearInterval(interval);
-  }, [fetchTrades]);
+  const metrics = set ? deriveMetrics(set) : null;
+  const rrDisplay =
+    metrics?.riskReward === null || metrics?.riskReward === undefined
+      ? "—"
+      : `${metrics.riskReward.toFixed(2)}:1`;
 
   return (
     <Card>
@@ -125,7 +100,7 @@ export function TradeRiskRewardWidget() {
           <CardTitle>Risk:Reward Analysis</CardTitle>
           {metrics && !loading && !error && (
             <Badge variant={rrBadgeVariant(metrics.riskReward)}>
-              {metrics.riskReward.toFixed(2)}:1
+              {rrDisplay}
             </Badge>
           )}
         </div>
@@ -133,7 +108,7 @@ export function TradeRiskRewardWidget() {
       <CardContent>
         {loading && (
           <p className="text-xs text-muted-foreground animate-pulse">
-            Loading trade history…
+            Loading trade history&hellip;
           </p>
         )}
 
@@ -155,10 +130,12 @@ export function TradeRiskRewardWidget() {
                 R:R Ratio
               </p>
               <p className="text-4xl font-bold font-mono tabular-nums text-foreground leading-none">
-                {metrics.riskReward.toFixed(2)}:1
+                {rrDisplay}
               </p>
               <Badge variant={rrBadgeVariant(metrics.riskReward)} className="mt-1">
-                {metrics.riskReward >= 2.0
+                {metrics.riskReward === null
+                  ? "No Loss Data"
+                  : metrics.riskReward >= 2.0
                   ? "Excellent"
                   : metrics.riskReward >= 1.0
                   ? "Acceptable"
@@ -181,14 +158,16 @@ export function TradeRiskRewardWidget() {
               <StatCell
                 label="Profit Factor"
                 value={
-                  metrics.profitFactor === Infinity
-                    ? "∞"
-                    : metrics.profitFactor.toFixed(2) + "x"
+                  metrics.profitFactor === null
+                    ? "—"
+                    : metrics.profitFactor === Infinity
+                    ? "&#8734;"
+                    : `${metrics.profitFactor.toFixed(2)}x`
                 }
                 valueClass={
-                  metrics.profitFactor >= 2.0
+                  metrics.profitFactor !== null && metrics.profitFactor >= 2.0
                     ? "text-green-400"
-                    : metrics.profitFactor >= 1.0
+                    : metrics.profitFactor !== null && metrics.profitFactor >= 1.0
                     ? "text-yellow-400"
                     : "text-red-400"
                 }
@@ -203,7 +182,8 @@ export function TradeRiskRewardWidget() {
             {/* Footer */}
             <div className="flex items-center justify-between pt-1 border-t border-border/50 text-xs text-muted-foreground">
               <span>
-                {metrics.totalTrades} trades &bull;{" "}
+                {set ? dedupCaveat(set) : `${metrics.totalTrades} trades`}
+                {" • "}
                 {(metrics.winRate * 100).toFixed(1)}% win rate
               </span>
               <span className="text-muted-foreground/60 italic">

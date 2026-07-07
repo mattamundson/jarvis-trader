@@ -1,16 +1,8 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import type { LucideIcon } from "lucide-react";
 import { Activity, TrendingUp, Award, BarChart2, Percent } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
@@ -19,7 +11,9 @@ import { BacktestComparisonCard } from "@/components/BacktestComparisonCard";
 import { StrategyParamsCard } from "@/components/StrategyParamsCard";
 import { SignalAccuracyWidget } from "@/components/SignalAccuracyWidget";
 import { LongShortBalanceWidget } from "@/components/LongShortBalanceWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { DecisionBreakdownCard } from "@/components/DecisionBreakdownCard";
+import { LightweightSeriesChart, type SeriesPoint } from "@/components/charts/LightweightSeriesChart";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -120,8 +114,8 @@ function fmt(v: number | undefined, decimals = 2): string {
   return v.toFixed(decimals);
 }
 
-function shortDate(iso: string): string {
-  return iso.slice(0, 10);
+function shortDate(iso: string | null | undefined): string {
+  return iso != null ? iso.slice(0, 10) : "—";
 }
 
 // Build a downsample equity curve from the full_metrics or trades_list
@@ -193,42 +187,26 @@ function EquityMiniChart({ result }: { result: BacktestResult }) {
   const isPositive =
     (result.full_metrics?.total_return_pct ?? result.total_return ?? 0) >= 0;
   const strokeColor = isPositive ? "#22c55e" : "#ef4444";
-  const fillColor = isPositive ? "#22c55e" : "#ef4444";
+
+  // Same equity values; idx → synthetic ascending daily timestamps so the
+  // TradingView renderer accepts an index-based (non-dated) curve. Time axis
+  // is hidden because the X axis is trade-index, not a calendar.
+  const series: SeriesPoint[] = data.map((p) => ({
+    time: (Date.UTC(2000, 0, 1) / 1000 + p.idx * 86400) as SeriesPoint["time"],
+    value: p.value,
+  }));
 
   return (
-    <ResponsiveContainer width="100%" height={80}>
-      <AreaChart data={data} margin={{ top: 4, right: 2, bottom: 0, left: 2 }}>
-        <defs>
-          <linearGradient id={`grad-${result._filename}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={fillColor} stopOpacity={0.3} />
-            <stop offset="95%" stopColor={fillColor} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis dataKey="idx" hide />
-        <YAxis domain={["auto", "auto"]} hide />
-        <Tooltip
-          contentStyle={{
-            background: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "8px",
-            fontSize: "11px",
-            color: "hsl(var(--foreground))",
-          }}
-          formatter={(v: number) => [`$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, "Equity"]}
-          labelFormatter={() => ""}
-        />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke={strokeColor}
-          strokeWidth={1.5}
-          fill={`url(#grad-${result._filename})`}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
+    <LightweightSeriesChart
+      data={series}
+      type="area"
+      color={strokeColor}
+      topColor={`${strokeColor}4D`}
+      bottomColor={`${strokeColor}00`}
+      height={80}
+      valueFormat="dollar"
+      hideTimeAxis
+    />
   );
 }
 
@@ -398,9 +376,14 @@ function OptimizerPanel({ results }: { results: BacktestResult[] }) {
 
         {/* Daily Optimal (from backtest memory) */}
         <div className="rounded-lg border border-border bg-background p-4">
-          <p className="text-xs font-semibold text-yellow-400 mb-3">
+          <p className="text-xs font-semibold text-yellow-400 mb-2">
             SPY 1D — Daily Optimal (from optimizer run)
           </p>
+          <div className="mb-3 flex items-center gap-2 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider"
+            style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}>
+            <span className="font-bold">Frozen snapshot</span>
+            <span style={{ color: "#9a8030" }}>optimizer result — not live</span>
+          </div>
           <ParamTable params={dailyOptimal as Record<string, unknown>} />
           <div className="mt-3 pt-3 border-t border-border/50 grid grid-cols-3 gap-2">
             <Metric label="PF" value="3.56" color="text-green-400" />
@@ -487,7 +470,7 @@ export default function BacktestPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1400px] flex items-center gap-3 px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center gap-3 px-6 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
             <Activity className="h-5 w-5 text-accent" />
           </div>
@@ -496,20 +479,20 @@ export default function BacktestPage() {
             <p className="text-xs text-muted-foreground">Historical strategy performance</p>
           </div>
           <nav className="hidden lg:flex items-center gap-4 ml-6">
-            <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Dashboard
-            </a>
-            <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               Analysis
-            </a>
-            <a href="/backtest" className="text-xs text-accent transition-colors font-medium">
+            </Link>
+            <Link href="/backtest" className="text-xs text-accent transition-colors font-medium">
               Backtest
-            </a>
+            </Link>
           </nav>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         {/* Strategy Parameters reference card */}
         <StrategyParamsCard />
 
@@ -522,7 +505,7 @@ export default function BacktestPage() {
         )}
         {error && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
-            Engine offline or no backtest results found. Start engine on port 8010.
+            Engine offline or no backtest results found. Start the FastAPI engine and verify the dashboard proxy is configured.
           </div>
         )}
 
@@ -530,10 +513,14 @@ export default function BacktestPage() {
         <BacktestComparisonCard />
 
         {/* Signal Accuracy by direction */}
-        <SignalAccuracyWidget />
+        <WidgetErrorBoundary name="Signal Accuracy">
+          <SignalAccuracyWidget />
+        </WidgetErrorBoundary>
 
         {/* Long vs Short balance vs backtest benchmark */}
-        <LongShortBalanceWidget />
+        <WidgetErrorBoundary name="Long/Short Balance">
+          <LongShortBalanceWidget />
+        </WidgetErrorBoundary>
 
         {/* Decision breakdown from pipeline history */}
         <DecisionBreakdownCard />

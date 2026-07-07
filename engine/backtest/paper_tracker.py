@@ -1,18 +1,28 @@
 """
-JARVIS TRADER — MGC Paper Trading Performance Tracker
-======================================================
+JARVIS TRADER — Paper Trading Tracker (SINGLE SOURCE OF TRUTH)
+==============================================================
+Consolidation note (US-1407): UNIFIED STATE — SQLite only, no JSONL dual-write.
+- paper_runner.py writes all completed trades here via add_trade()
+- All trades are stored in SQLite paper_trades table (engine/database/)
+- No JSON files are created or written by this module
+- paper_config.py is configuration only (no state)
+- validation_tracker.py is read-only (reads from SQLite)
+- paper_trade_logger.py is an alternative logger for PortfolioTracker mirroring
+
 Tracks paper trades for walk-forward validated strategies, computes rolling
 performance metrics, and enforces kill thresholds to halt trading when the
 strategy degrades below acceptable levels.
 
-Storage: JSON file at engine/backtest/results/paper_trades_MGC.json
+Storage: SQLite table paper_trades at engine/data/jarvis_trader.db
 Kill conditions checked after every trade close.
 
 Usage:
     from backtest.paper_tracker import PaperTradeTracker
-    from backtest.paper_config import MGC_PAPER_CONFIG
+    from backtest.paper_config import MCL_PAPER_CONFIG
+    from database.manager import init_db
 
-    tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
+    db = init_db()
+    tracker = PaperTradeTracker(MCL_PAPER_CONFIG, db_manager=db)
     tracker.add_trade({
         "entry_date": "2026-03-29",
         "exit_date": "2026-04-01",
@@ -29,34 +39,37 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 from collections import defaultdict
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+from backtest.signals import compute_position_size
+
+if TYPE_CHECKING:
+    from database.manager import DatabaseManager
 
 logger = logging.getLogger("jarvis_trader.paper_tracker")
-
-# Default storage directory
-_RESULTS_DIR = Path(__file__).parent / "results"
 
 
 class PaperTradeTracker:
     """
     Paper trading performance tracker with kill-threshold enforcement.
 
+    All state is stored exclusively in SQLite (paper_trades table).
+    No JSON files are created or maintained.
+
     Parameters
     ----------
     config : dict
-        Paper trading configuration (e.g., MGC_PAPER_CONFIG from paper_config.py).
+        Paper trading configuration (e.g., MCL_PAPER_CONFIG from paper_config.py).
         Must contain: symbol, initial_capital, kill_threshold, multiplier,
         commission_per_contract, slippage_ticks, tick_size.
-    store_path : Path, optional
-        Override the default JSON storage path.
+    db_manager : DatabaseManager, optional
+        Database manager instance. If not provided, one will be lazily created.
     """
 
-    def __init__(self, config: dict, store_path: Optional[Path] = None):
+    def __init__(self, config: dict, db_manager: Optional["DatabaseManager"] = None):
         self._config = config
         self._symbol = config["symbol"]
         self._initial_capital = config["initial_capital"]
@@ -66,21 +79,21 @@ class PaperTradeTracker:
         self._tick_size = config.get("tick_size", 0.10)
         self._kill_threshold = config.get("kill_threshold", {})
 
-        # Storage
-        if store_path is not None:
-            self._store_path = store_path
-        else:
-            _RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-            self._store_path = _RESULTS_DIR / f"paper_trades_{self._symbol}.json"
+        # Lazy initialize database if not provided
+        if db_manager is None:
+            from database.manager import init_db
 
-        # Load existing trades
-        self._trades: List[dict] = self._load_trades()
+            self._db = init_db()
+        else:
+            self._db = db_manager
+
+        # Load existing trades from database
+        self._trades: List[dict] = self._load_trades_from_db()
 
         logger.info(
-            "PaperTradeTracker initialized for %s — %d existing trades, store=%s",
+            "PaperTradeTracker initialized for %s — %d existing trades (SQLite)",
             self._symbol,
             len(self._trades),
-            self._store_path,
         )
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -99,6 +112,15 @@ class PaperTradeTracker:
             exit_reason     : str (e.g., "target_1", "stop_loss", "eod_exit", "signal_reversal")
             regime_type     : str (e.g., "trending", "ranging", "volatile")
 
+        Optional signal provenance keys (for US-1404):
+            regime          : str (e.g., "TRENDING_BULL", "RANGING", etc.)
+            structure_position : str (e.g., "BUYER_CONTROL", "SELLER_CONTROL")
+            bias            : str (e.g., "STRONG", "LEAN", "NEUTRAL")
+            composite_score : float (Cohen composite score)
+            stc_contrib     : int (0/1 — STC oscillator signal)
+            orb_contrib     : int (0/1 — ORB signal)
+            vwap_contrib    : int (0/1 — VWAP signal)
+
         Computed fields added automatically:
             pnl             : float (net of commission and slippage)
             pnl_pct         : float (% of initial capital)
@@ -111,6 +133,27 @@ class PaperTradeTracker:
         trade.setdefault("side", "long")
         trade.setdefault("exit_reason", "unknown")
         trade.setdefault("regime_type", "unknown")
+
+        # Signal provenance defaults (nullable)
+        trade.setdefault("regime", None)
+        trade.setdefault("structure_position", None)
+        trade.setdefault("bias", None)
+        trade.setdefault("composite_score", None)
+        trade.setdefault("stc_contrib", None)
+        trade.setdefault("orb_contrib", None)
+        trade.setdefault("vwap_contrib", None)
+
+        # Compute risk_pct_used from signal conviction
+        base_risk_pct = 0.02  # 2% base risk
+        bias = trade.get("bias") or "NEUTRAL"
+        regime = trade.get("regime") or "RANGING"
+        structure_position = trade.get("structure_position") or "NEUTRAL"
+        trade["risk_pct_used"] = compute_position_size(
+            bias=bias,
+            regime=regime,
+            structure_position=structure_position,
+            base_risk_pct=base_risk_pct,
+        )
 
         # Compute P&L
         entry = float(trade["entry_price"])
@@ -133,10 +176,10 @@ class PaperTradeTracker:
         trade["recorded_at"] = datetime.now().isoformat()
 
         self._trades.append(trade)
-        self._save_trades()
+        self._persist_trade_to_db(trade)
 
         logger.info(
-            "[PAPER-MGC] Trade recorded: %s %s entry=%.2f exit=%.2f pnl=$%.2f (%+.2f%%) reason=%s regime=%s",
+            "[PAPER] Trade recorded: %s %s entry=%.2f exit=%.2f pnl=$%.2f (%+.2f%%) reason=%s regime=%s",
             side.upper(),
             self._symbol,
             entry,
@@ -151,7 +194,7 @@ class PaperTradeTracker:
         should_kill, reason = self.check_kill_conditions()
         if should_kill:
             logger.critical(
-                "[PAPER-MGC] KILL THRESHOLD BREACHED: %s — Paper trading should be halted.",
+                "[PAPER] KILL THRESHOLD BREACHED: %s — Paper trading should be halted.",
                 reason,
             )
 
@@ -181,7 +224,7 @@ class PaperTradeTracker:
         if not self._trades:
             return self._empty_metrics()
 
-        pnls = [t["pnl"] for t in self._trades]
+        pnls = [float(t.get("pnl") or 0.0) for t in self._trades]
         wins = [p for p in pnls if p > 0]
         losses = [p for p in pnls if p <= 0]
 
@@ -207,9 +250,10 @@ class PaperTradeTracker:
         )
         for t in self._trades:
             regime = t.get("regime_type", "unknown")
+            pnl = float(t.get("pnl") or 0.0)
             regime_stats[regime]["trades"] += 1
-            regime_stats[regime]["total_pnl"] += t["pnl"]
-            if t["pnl"] > 0:
+            regime_stats[regime]["total_pnl"] += pnl
+            if pnl > 0:
                 regime_stats[regime]["wins"] += 1
 
         regime_breakdown = {}
@@ -309,7 +353,7 @@ class PaperTradeTracker:
                 )
 
         # ── Check 3: Max drawdown circuit breaker ─────────────────────────
-        pnls = [t["pnl"] for t in self._trades]
+        pnls = [float(t.get("pnl") or 0.0) for t in self._trades]
         peak = 0.0
         equity = 0.0
         max_dd = 0.0
@@ -350,7 +394,8 @@ class PaperTradeTracker:
                 continue
             # Extract YYYY-MM
             month_key = exit_date[:7]  # "2026-03" from "2026-03-29"
-            monthly_pnl[month_key] += t["pnl"]
+            pnl = float(t.get("pnl") or 0.0)
+            monthly_pnl[month_key] += pnl
 
         # Convert to percentages of initial capital
         return {
@@ -358,48 +403,126 @@ class PaperTradeTracker:
             for month, pnl in sorted(monthly_pnl.items())
         }
 
-    # ── Persistence ───────────────────────────────────────────────────────────
+    # ── Persistence (SQLite only) ─────────────────────────────────────────────
 
-    def _load_trades(self) -> List[dict]:
-        """Load trades from the JSON store file."""
-        if not self._store_path.exists():
-            return []
+    def _load_trades_from_db(self) -> List[dict]:
+        """Load all closed trades for this symbol from SQLite."""
         try:
-            with self._store_path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-                elif isinstance(data, dict) and "trades" in data:
-                    return data["trades"]
-                else:
-                    logger.warning(
-                        "Unexpected JSON structure in %s, starting fresh", self._store_path
-                    )
-                    return []
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.error("Failed to load paper trades from %s: %s", self._store_path, exc)
+            trades = self._db.get_closed_trades(symbol=self._symbol, limit=10000)
+            logger.info(f"Loaded {len(trades)} closed trades for {self._symbol} from SQLite")
+            return trades
+        except Exception as exc:
+            logger.error(f"Failed to load trades from SQLite: {exc}")
             return []
 
-    def _save_trades(self) -> None:
-        """Persist all trades to the JSON store file."""
-        self._store_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "symbol": self._symbol,
-            "config": {
-                "initial_capital": self._initial_capital,
-                "risk_per_trade": self._config.get("risk_per_trade"),
-                "adaptive_regime": self._config.get("adaptive_regime"),
-                "interval": self._config.get("interval"),
-            },
-            "updated_at": datetime.now().isoformat(),
-            "total_trades": len(self._trades),
-            "trades": self._trades,
-        }
+    def _persist_trade_to_db(self, trade: dict) -> None:
+        """
+        Write a single closed trade to SQLite.
+
+        Converts the flat trade_dict into paper_trades table insert.
+        """
         try:
-            with self._store_path.open("w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2, default=str)
-        except OSError as exc:
-            logger.error("Failed to save paper trades to %s: %s", self._store_path, exc)
+            # Map paper_tracker trade format to database schema
+            symbol = trade.get("symbol", self._symbol)
+            entry_date = trade.get("entry_date", "")
+            exit_date = trade.get("exit_date", "")
+            entry_price = float(trade.get("entry_price", 0.0))
+            exit_price = float(trade.get("exit_price", 0.0))
+            side = trade.get("side", "long").lower()
+            contracts = int(trade.get("contracts", 1))
+            pnl = float(trade.get("pnl", 0.0))
+            exit_reason = trade.get("exit_reason", "unknown")
+            regime_type = trade.get("regime_type", "unknown")
+            recorded_at = trade.get("recorded_at", datetime.now().isoformat())
+
+            # Build trade_id as symbol_date_side for idempotency
+            trade_id = f"{symbol}_{entry_date}_{side}_{entry_price}"
+
+            # Merge relevant signal fields into strategy_params
+            strategy_params = {
+                "exit_reason": exit_reason,
+                "regime_type": regime_type,
+                "contracts": contracts,
+                "pnl_pct": trade.get("pnl_pct", 0.0),
+                "recorded_at": recorded_at,
+            }
+
+            # Add optional signal provenance fields if present
+            for key in [
+                "regime",
+                "structure_position",
+                "bias",
+                "composite_score",
+                "stc_contrib",
+                "orb_contrib",
+                "vwap_contrib",
+                "risk_pct_used",
+            ]:
+                if key in trade and trade[key] is not None:
+                    strategy_params[key] = trade[key]
+
+            # Upsert: try to insert; if trade_id exists, it's already recorded
+            existing = self._db.get_trade_by_id(trade_id)
+            if existing is None:
+                self._db.insert_trade(
+                    trade_id=trade_id,
+                    symbol=symbol,
+                    side=side,
+                    quantity=float(contracts),
+                    entry_price=entry_price,
+                    entry_time=entry_date,
+                    status="closed",
+                    strategy_params=strategy_params,
+                    notes="",
+                )
+                # Update exit info
+                self._db.close_trade(
+                    trade_id=trade_id,
+                    exit_price=exit_price,
+                    pnl=pnl,
+                    exit_time=exit_date,
+                    notes=None,
+                )
+                logger.debug(
+                    f"[DB] persisted closed trade: {symbol} {side} "
+                    f"{entry_price:.2f}→{exit_price:.2f} pnl={pnl:.2f}"
+                )
+            else:
+                logger.debug(f"[DB] trade {trade_id} already exists, skipping insert")
+        except Exception as exc:
+            logger.error(f"Failed to persist trade to SQLite: {exc}", exc_info=True)
+
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        """
+        Return all open positions for this symbol from SQLite.
+
+        Returns list of dicts with keys: trade_id, symbol, side, quantity, entry_price,
+        entry_time, status, strategy_params, notes.
+        """
+        try:
+            trades = self._db.get_open_trades(symbol=self._symbol)
+            return trades
+        except Exception as exc:
+            logger.error(f"Failed to get open positions: {exc}")
+            return []
+
+    def get_closed_trades(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Return the most recent closed trades for this symbol from SQLite.
+
+        Parameters
+        ----------
+        limit : int
+            Maximum number of trades to return (default 100).
+
+        Returns list of dicts with same structure as get_open_positions.
+        """
+        try:
+            trades = self._db.get_closed_trades(symbol=self._symbol, limit=limit)
+            return trades
+        except Exception as exc:
+            logger.error(f"Failed to get closed trades: {exc}")
+            return []
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

@@ -340,3 +340,90 @@ Test Suite Verification and Fixes
 ### Remaining Work
 Signal tests require technical indicator tuning (warmup periods, indicator parameters).
 These are non-critical enhancements that do not block paper trading phase.
+
+## 2026-04-02 - US-1203 ✅ COMPLETE
+- Patched engine/routers/pipeline_router.py _run_pipeline_and_log()
+- Added requires_human = bool(result.get("requires_human", True)) check
+- When requires_human=True: calls _db_manager.insert_pending_approval() with pipeline snapshot
+- When requires_human=False: existing _paper_tracker.add_paper_trade() path unchanged
+- Telegram signal alert fires for ALL directional decisions regardless of requires_human
+- **Learnings:**
+  - pipeline_result_for_approval_snapshot() in approval/snapshot.py produces the correct JSON blob
+  - _db_manager is already injected into pipeline_router via inject_dependencies() in main.py
+  - The 4-branch if/elif structure covers: human+db, human+no-db, auto+tracker, auto+no-tracker
+---
+
+## 2026-04-03 07:30 - US-1403 Layer 5 Conviction-Aware Position Sizing
+- compute_position_size() added to engine/backtest/signals.py (line 694)
+  - 4-tier sizing: FULL(1.0x), HIGH(0.80x), HALF(0.50x), MIN(0.25x)
+  - STRONG+TRENDING+DIRECTIONAL_STRUCTURE = full, STRONG+TRENDING = high, LEAN/RANGING = half, else = min
+- Paper tracker wired: engine/backtest/paper_tracker.py imports and calls at trade insert (line 141-146)
+- Migration 011: risk_pct_used REAL column added to paper_trades (nullable, backward compat)
+- Validation router: avg_conviction_score field added to /paper-validation/gates (base_risk_pct=0.02)
+- **Learnings for future iterations:**
+  - The paper_tracker add_trade() method uses dict-based trades, not Pydantic — new fields are just dict keys
+  - Migration numbering: 010 was taken by trade journal provenance columns, so conviction sizing is 011
+  - base_risk_pct=0.02 is the canonical risk parameter — matches TradingConfig defaults
+---
+
+---
+
+## 2026-05-06 — US-F2 Verification (Ralph Loop)
+
+**Status:** Already implemented; PRD note was stale. Marked passing.
+
+**Files inspected:**
+- engine/agents/social_analyst.py (line 677: `_scan_institutional_flow`)
+- engine/routers/options_router.py (existing /iv-rank endpoint)
+- engine/backtest/options_backtester.py
+- engine/tests/test_options_backtester.py
+
+**Acceptance criteria — all met:**
+- `_scan_institutional_flow()` at social_analyst.py:677
+- 6 steps implemented (large trades → trend filter → IV rank → bullish/bearish → directional bias → concentration penalty)
+- IV rank > 70 returns flow_bias=0 (lines 696-702)
+- Flow data injected into LLM prompt context (lines 166-170)
+- Graceful fallback when options data unavailable (lines 687-688, 749, 738-739)
+- 38/38 tests pass (test_options_backtester + test_social_analyst_praw)
+
+**Learnings:**
+- Some PRD stories may be implemented but never marked `passes: true`. Always
+  verify against code before assuming work is open.
+- The 6-step pipeline references @xynth_m's institutional desk workflow; the
+  IV-rank-too-high gate (>70) is the safety guard against premium-chasing.
+- `_get_large_options_trades()` falls back through MarketDataManager;
+  graceful return of [] when no options data source — this is what allows
+  the rest of the pipeline to handle "no data" cleanly.
+
+---
+
+## 2026-05-06 — US-H1 Implementation (Ralph Loop)
+
+**Status:** Implemented unified run_stage1() dispatch + 25 unit tests.
+
+**Files changed:**
+- engine/agents/managed_agent_bridge.py — added run_stage1() dispatcher
+- engine/tests/test_managed_agent_bridge.py — new (25 tests)
+
+**Acceptance criteria — all met:**
+- ManagedAgentBridge class exists in engine/agents/managed_agent_bridge.py
+- USE_MANAGED_AGENTS env var toggles between paths (case-insensitive truthy detection)
+- run_stage1() implements both paths via single dispatcher
+- Bridge logs which path is active on every dispatch (CUSTOM/MANAGED)
+- All existing tests pass (38/38 social_analyst + options_backtester)
+- Plus 25 new tests for the bridge dispatcher
+
+**Learnings:**
+- The existing managed_agent_bridge.py had run_stage1_managed() but no unified
+  run_stage1() dispatcher. AC literally required "run_stage1() implements both
+  paths" — added the dispatcher as a single async method that takes both
+  custom-path and managed-path kwargs and routes based on env var.
+- Custom path requires custom_runner=callable kwarg; raises ValueError if
+  missing rather than silently no-op'ing. Loud failure > silent skip.
+- Return shapes intentionally differ: custom path returns dict (matches
+  TradingPipeline._run_analysts), managed path returns Stage1AnalysisResult
+  dataclass for richer per-analyst error tracking. Documented in docstring.
+- Two pre-existing ruff nits in run_stage1_managed (B905 zip strict=, B904
+  raise ... from e) fixed as bonus cleanup since they were one-liners.
+
+---

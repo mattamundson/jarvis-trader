@@ -576,3 +576,134 @@ class TestSignalRobustness:
             assert len(signals) > 0
         except Exception as e:
             pytest.fail(f"generate_signals should handle zero volume: {e}")
+
+
+# ── RV filter env-var wiring (Phase B+ addition, 2026-04-21) ──────────────
+def _make_mes_cross_df():
+    """Decline-then-rise series that produces a genuine SMA(50)/SMA(200) golden cross.
+
+    Phase 1 (210 bars declining): SMA(200) becomes valid and SMA(50) falls below it.
+    Phase 2 (300 bars rising): SMA(50) crosses above SMA(200) — genuine golden cross.
+    Monotonic linspace no longer works after the spurious-first-bar-cross fix.
+    """
+    import numpy as np
+    import pandas as pd
+
+    close = np.concatenate([np.linspace(5200, 4800, 210), np.linspace(4800, 5800, 300)])
+    idx = pd.date_range("2024-06-01", periods=len(close), freq="1h")
+    return pd.DataFrame(
+        {"open": close, "high": close + 5, "low": close - 5, "close": close}, index=idx
+    )
+
+
+def test_mes_rv_filter_env_var_default_off(monkeypatch):
+    """MES_MIN_RV_ANNUALIZED unset → no filter (0.0) passed to trend_signals."""
+    from backtest.signals import generate_instrument_signals
+
+    monkeypatch.delenv("MES_MIN_RV_ANNUALIZED", raising=False)
+
+    df = _make_mes_cross_df()
+    out = generate_instrument_signals(df, symbol="MES")
+    assert "rv_20_ann_pct" in out.columns
+    # Filter off means: as long as trend conditions hit, entries fire
+    assert (out["entry_signal"] == "ENTRY_NOW").sum() >= 1
+
+
+def test_mes_rv_filter_env_var_invalid_safe(monkeypatch):
+    """Malformed MES_MIN_RV_ANNUALIZED → fall back to 0.0 (no filter)."""
+    from backtest.signals import generate_instrument_signals
+
+    monkeypatch.setenv("MES_MIN_RV_ANNUALIZED", "not_a_number")
+    df = _make_mes_cross_df()
+    # Must not raise — invalid env silently defaults to 0.0
+    out = generate_instrument_signals(df, symbol="MES")
+    assert (out["entry_signal"] == "ENTRY_NOW").sum() >= 1
+
+
+def test_mes_rv_filter_env_var_high_blocks_entries(monkeypatch):
+    """Unreachable MES_MIN_RV_ANNUALIZED=999 → zero entries even with genuine crosses."""
+    from backtest.signals import generate_instrument_signals
+
+    monkeypatch.setenv("MES_MIN_RV_ANNUALIZED", "999.0")
+    df = _make_mes_cross_df()
+    out = generate_instrument_signals(df, symbol="MES")
+    assert (out["entry_signal"] == "ENTRY_NOW").sum() == 0
+
+
+# ── VIX filter (2026-05-24 addition) ─────────────────────────────────────────
+
+
+def _make_vix_df(dates: pd.DatetimeIndex, level: float) -> pd.DataFrame:
+    """Daily VIX DataFrame at a fixed level across all dates."""
+    daily_dates = pd.date_range(dates.min().normalize(), dates.max().normalize(), freq="D")
+    return pd.DataFrame({"close": level}, index=daily_dates)
+
+
+def test_vix_filter_passes_within_range():
+    """Golden cross with VIX=20 (inside [13,30]) → ENTRY_NOW fires."""
+    from backtest.trend_signals import generate_sma_trend_signals
+
+    df = _make_mes_cross_df()
+    vix_df = _make_vix_df(df.index, level=20.0)
+    out = generate_sma_trend_signals(
+        df, fast=50, slow=200, vix_df=vix_df, vix_min=13.0, vix_max=30.0
+    )
+    assert (
+        out["entry_signal"] == "ENTRY_NOW"
+    ).sum() >= 1, "VIX=20 is inside [13,30] — golden cross should produce ENTRY_NOW"
+
+
+def test_vix_filter_blocks_when_too_low():
+    """Golden cross with VIX=10 (below vix_min=13) → no entries."""
+    from backtest.trend_signals import generate_sma_trend_signals
+
+    df = _make_mes_cross_df()
+    vix_df = _make_vix_df(df.index, level=10.0)
+    out = generate_sma_trend_signals(
+        df, fast=50, slow=200, vix_df=vix_df, vix_min=13.0, vix_max=30.0
+    )
+    assert (
+        out["entry_signal"] == "ENTRY_NOW"
+    ).sum() == 0, "VIX=10 is below vix_min=13 — all entries must be suppressed"
+
+
+def test_vix_filter_blocks_when_too_high():
+    """Golden cross with VIX=50 (above vix_max=30) → no entries."""
+    from backtest.trend_signals import generate_sma_trend_signals
+
+    df = _make_mes_cross_df()
+    vix_df = _make_vix_df(df.index, level=50.0)
+    out = generate_sma_trend_signals(
+        df, fast=50, slow=200, vix_df=vix_df, vix_min=13.0, vix_max=30.0
+    )
+    assert (
+        out["entry_signal"] == "ENTRY_NOW"
+    ).sum() == 0, "VIX=50 is above vix_max=30 — all entries must be suppressed"
+
+
+def test_vix_filter_none_is_backward_compatible():
+    """vix_df=None (default) → behavior identical to no filter."""
+    from backtest.trend_signals import generate_sma_trend_signals
+
+    df = _make_mes_cross_df()
+    out_no_filter = generate_sma_trend_signals(df, fast=50, slow=200)
+    out_vix_none = generate_sma_trend_signals(df, fast=50, slow=200, vix_df=None)
+    pd.testing.assert_series_equal(
+        out_no_filter["entry_signal"],
+        out_vix_none["entry_signal"],
+        check_names=False,
+    )
+
+
+def test_vix_level_column_populated_when_vix_df_provided():
+    """vix_level column is non-NaN when vix_df is provided."""
+    from backtest.trend_signals import generate_sma_trend_signals
+
+    df = _make_mes_cross_df()
+    vix_df = _make_vix_df(df.index, level=18.5)
+    out = generate_sma_trend_signals(df, fast=50, slow=200, vix_df=vix_df)
+    # After warmup region, all bars should have a valid VIX level
+    warmup_bars = 200
+    assert (
+        out["vix_level"].iloc[warmup_bars:].notna().all()
+    ), "vix_level must be populated for all bars after warmup when vix_df is provided"

@@ -1,0 +1,148 @@
+// JARVIS_ATR_Levels.pine
+// Port of Saty_ATR_LevelsSTUDY.ts
+// Outputs labels readable by data_get_pine_labels() and lines by data_get_pine_lines()
+// MCP tools: study_filter="JARVIS ATR Levels"
+
+//@version=5
+indicator(title="JARVIS ATR Levels", shorttitle="JARVIS ATR Levels", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+atr_length  = input.int(14,    title="ATR Length",    minval=1)
+show_fibs   = input.bool(true, title="Show Fib Levels")
+show_ext    = input.bool(true, title="Show Extension Levels")
+show_emas   = input.bool(true, title="Show EMAs")
+
+// ─── Daily data ───────────────────────────────────────────────────────────────
+prev_close  = request.security(syminfo.tickerid, "D", close[1],       lookahead=barmerge.lookahead_on)
+atr_daily   = request.security(syminfo.tickerid, "D", ta.atr(atr_length)[1], lookahead=barmerge.lookahead_on)
+today_high  = request.security(syminfo.tickerid, "D", high,           lookahead=barmerge.lookahead_on)
+today_low   = request.security(syminfo.tickerid, "D", low,            lookahead=barmerge.lookahead_on)
+today_open  = request.security(syminfo.tickerid, "D", open,           lookahead=barmerge.lookahead_on)
+
+// ─── Computed levels ──────────────────────────────────────────────────────────
+// Fibonacci multiples
+fib_236 = 0.236
+fib_382 = 0.382
+fib_500 = 0.500
+fib_618 = 0.618
+fib_786 = 0.786
+
+// Core ATR bands
+neg1 = prev_close - 1.0 * atr_daily
+pos1 = prev_close + 1.0 * atr_daily
+neg2 = prev_close - 2.0 * atr_daily
+pos2 = prev_close + 2.0 * atr_daily
+neg3 = prev_close - 3.0 * atr_daily
+pos3 = prev_close + 3.0 * atr_daily
+
+// Trigger levels (±0.236 ATR)
+lower_trig = prev_close - fib_236 * atr_daily
+upper_trig = prev_close + fib_236 * atr_daily
+
+// Fibonacci levels
+neg_382 = prev_close - fib_382 * atr_daily
+pos_382 = prev_close + fib_382 * atr_daily
+neg_500 = prev_close - fib_500 * atr_daily
+pos_500 = prev_close + fib_500 * atr_daily
+neg_618 = prev_close - fib_618 * atr_daily
+pos_618 = prev_close + fib_618 * atr_daily
+neg_786 = prev_close - fib_786 * atr_daily
+pos_786 = prev_close + fib_786 * atr_daily
+
+// Extension levels (1.236 – 3.000)
+ext_levels_neg = array.from(
+     prev_close - 1.236 * atr_daily, prev_close - 1.382 * atr_daily,
+     prev_close - 1.500 * atr_daily, prev_close - 1.618 * atr_daily,
+     prev_close - 1.786 * atr_daily, prev_close - 2.000 * atr_daily,
+     prev_close - 2.236 * atr_daily, prev_close - 2.382 * atr_daily,
+     prev_close - 2.500 * atr_daily, prev_close - 2.618 * atr_daily,
+     prev_close - 2.786 * atr_daily, prev_close - 3.000 * atr_daily)
+
+ext_levels_pos = array.from(
+     prev_close + 1.236 * atr_daily, prev_close + 1.382 * atr_daily,
+     prev_close + 1.500 * atr_daily, prev_close + 1.618 * atr_daily,
+     prev_close + 1.786 * atr_daily, prev_close + 2.000 * atr_daily,
+     prev_close + 2.236 * atr_daily, prev_close + 2.382 * atr_daily,
+     prev_close + 2.500 * atr_daily, prev_close + 2.618 * atr_daily,
+     prev_close + 2.786 * atr_daily, prev_close + 3.000 * atr_daily)
+
+// True range percentage of ATR
+true_range  = math.max(high - low, math.abs(high - close[1]), math.abs(low - close[1]))
+tr_pct      = atr_daily > 0 ? math.round(true_range / atr_daily * 100) : 0
+
+// ─── EMAs ─────────────────────────────────────────────────────────────────────
+ema8  = ta.ema(close, 8)
+ema21 = ta.ema(close, 21)
+ema34 = ta.ema(close, 34)
+
+plot(show_emas ? ema8  : na, title="EMA 8",  color=color.new(color.yellow, 0),  linewidth=1)
+plot(show_emas ? ema21 : na, title="EMA 21", color=color.new(color.orange, 0),  linewidth=1)
+plot(show_emas ? ema34 : na, title="EMA 34", color=color.new(color.red,    0),  linewidth=2)
+
+// ─── Persistent line handles ──────────────────────────────────────────────────
+var line ln_close      = na
+var line ln_lower_trig = na
+var line ln_upper_trig = na
+var line ln_neg1       = na
+var line ln_pos1       = na
+var line ln_neg2       = na
+var line ln_pos2       = na
+var line ln_neg3       = na
+var line ln_pos3       = na
+var line ln_neg_382    = na
+var line ln_pos_382    = na
+var line ln_neg_500    = na
+var line ln_pos_500    = na
+var line ln_neg_618    = na
+var line ln_pos_618    = na
+var line ln_neg_786    = na
+var line ln_pos_786    = na
+
+// ─── Draw / redraw lines on every bar ────────────────────────────────────────
+_draw_line(var line ln, float price, color col, int lw) =>
+    if not na(ln)
+        line.delete(ln)
+    line.new(bar_index - 1, price, bar_index, price, extend=extend.both, color=col, width=lw)
+
+ln_close      := _draw_line(ln_close,      prev_close,  color.new(color.white,  0), 2)
+ln_lower_trig := _draw_line(ln_lower_trig, lower_trig,  color.new(color.red,    0), 1)
+ln_upper_trig := _draw_line(ln_upper_trig, upper_trig,  color.new(color.green,  0), 1)
+ln_neg1       := _draw_line(ln_neg1,       neg1,        color.new(color.red,   20), 2)
+ln_pos1       := _draw_line(ln_pos1,       pos1,        color.new(color.green, 20), 2)
+ln_neg2       := _draw_line(ln_neg2,       neg2,        color.new(color.red,   40), 2)
+ln_pos2       := _draw_line(ln_pos2,       pos2,        color.new(color.green, 40), 2)
+ln_neg3       := _draw_line(ln_neg3,       neg3,        color.new(color.red,   60), 2)
+ln_pos3       := _draw_line(ln_pos3,       pos3,        color.new(color.green, 60), 2)
+
+if show_fibs
+    ln_neg_382 := _draw_line(ln_neg_382, neg_382, color.new(color.orange, 50), 1)
+    ln_pos_382 := _draw_line(ln_pos_382, pos_382, color.new(color.lime,   50), 1)
+    ln_neg_500 := _draw_line(ln_neg_500, neg_500, color.new(color.orange, 40), 1)
+    ln_pos_500 := _draw_line(ln_pos_500, pos_500, color.new(color.lime,   40), 1)
+    ln_neg_618 := _draw_line(ln_neg_618, neg_618, color.new(color.orange, 30), 1)
+    ln_pos_618 := _draw_line(ln_pos_618, pos_618, color.new(color.lime,   30), 1)
+    ln_neg_786 := _draw_line(ln_neg_786, neg_786, color.new(color.orange, 20), 1)
+    ln_pos_786 := _draw_line(ln_pos_786, pos_786, color.new(color.lime,   20), 1)
+
+if show_ext
+    for i = 0 to array.size(ext_levels_neg) - 1
+        line.new(bar_index - 1, array.get(ext_levels_neg, i),
+                 bar_index,     array.get(ext_levels_neg, i),
+                 extend=extend.both, color=color.new(color.red,   70), width=1)
+        line.new(bar_index - 1, array.get(ext_levels_pos, i),
+                 bar_index,     array.get(ext_levels_pos, i),
+                 extend=extend.both, color=color.new(color.green, 70), width=1)
+
+// ─── Labels on last bar (MCP readable) ────────────────────────────────────────
+if barstate.islast
+    label.new(bar_index, prev_close,  "ATR: "         + str.tostring(atr_daily,   "#.####"),  style=label.style_none, textcolor=color.white, size=size.small)
+    label.new(bar_index, prev_close,  "TR_PCT: "      + str.tostring(tr_pct,       "#"),       style=label.style_none, textcolor=color.white, size=size.small)
+    label.new(bar_index, neg1,        "NEG1: "        + str.tostring(neg1,         "#.##"),    style=label.style_none, textcolor=color.red,   size=size.small)
+    label.new(bar_index, pos1,        "POS1: "        + str.tostring(pos1,         "#.##"),    style=label.style_none, textcolor=color.green, size=size.small)
+    label.new(bar_index, neg2,        "NEG2: "        + str.tostring(neg2,         "#.##"),    style=label.style_none, textcolor=color.red,   size=size.small)
+    label.new(bar_index, pos2,        "POS2: "        + str.tostring(pos2,         "#.##"),    style=label.style_none, textcolor=color.green, size=size.small)
+    label.new(bar_index, neg3,        "NEG3: "        + str.tostring(neg3,         "#.##"),    style=label.style_none, textcolor=color.red,   size=size.small)
+    label.new(bar_index, pos3,        "POS3: "        + str.tostring(pos3,         "#.##"),    style=label.style_none, textcolor=color.green, size=size.small)
+    label.new(bar_index, lower_trig,  "LOWER_TRIG: "  + str.tostring(lower_trig,  "#.##"),    style=label.style_none, textcolor=color.red,   size=size.small)
+    label.new(bar_index, upper_trig,  "UPPER_TRIG: "  + str.tostring(upper_trig,  "#.##"),    style=label.style_none, textcolor=color.green, size=size.small)
+    label.new(bar_index, prev_close,  "PREV_CLOSE: "  + str.tostring(prev_close,  "#.##"),    style=label.style_none, textcolor=color.white, size=size.small)

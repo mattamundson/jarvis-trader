@@ -1,30 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
-
+import {
+  exitDate,
+  dedupCaveat,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface DailyPnlRecord {
-  date: string;
-  realized_pnl: number;
-  cumulative_pnl: number;
-  num_trades: number;
-}
 
 interface MonthBucket {
   key: string; // "YYYY-MM"
   label: string; // "Mar 2026"
   total_pnl: number;
+  /** distinct close-date count within the month */
   trading_days: number;
   total_trades: number;
   win_days: number;
   loss_days: number;
+  /** best single-trade P&L in the month */
   best_day: number;
+  /** worst single-trade P&L in the month */
   worst_day: number;
 }
 
@@ -48,12 +48,22 @@ function pnlVariant(value: number): "bull" | "bear" | "neutral" {
   return "neutral";
 }
 
-function groupByMonth(records: DailyPnlRecord[]): MonthBucket[] {
+/**
+ * Group honest trades by YYYY-MM of their exit date.
+ * "win_days"/"loss_days" are counted at the day level (by close date),
+ * not the trade level — preserving the original widget's meaning of
+ * "how many calendar days was this month green/red."
+ */
+function groupByMonth(trades: HonestTrade[]): MonthBucket[] {
   const map = new Map<string, MonthBucket>();
 
-  for (const rec of records) {
-    // date is an ISO string like "2026-03-15" or "2026-03-15T00:00:00"
-    const key = rec.date.slice(0, 7); // "YYYY-MM"
+  // First pass: aggregate per trade
+  const dayPnl = new Map<string, number>(); // "YYYY-MM-DD" -> daily pnl
+
+  for (const t of trades) {
+    const d = exitDate(t);
+    if (!d) continue;
+    const key = d.slice(0, 7); // "YYYY-MM"
 
     if (!map.has(key)) {
       map.set(key, {
@@ -70,26 +80,28 @@ function groupByMonth(records: DailyPnlRecord[]): MonthBucket[] {
     }
 
     const bucket = map.get(key)!;
-    bucket.total_pnl += rec.realized_pnl;
-    bucket.total_trades += rec.num_trades;
+    bucket.total_pnl += t.pnl;
+    bucket.total_trades += 1;
 
-    if (rec.num_trades > 0) {
-      bucket.trading_days += 1;
-    }
-    if (rec.realized_pnl > 0) {
-      bucket.win_days += 1;
-    } else if (rec.realized_pnl < 0) {
-      bucket.loss_days += 1;
-    }
-    if (rec.realized_pnl > bucket.best_day) {
-      bucket.best_day = rec.realized_pnl;
-    }
-    if (rec.realized_pnl < bucket.worst_day) {
-      bucket.worst_day = rec.realized_pnl;
-    }
+    // Track per-trade extremes for best/worst columns
+    if (t.pnl > bucket.best_day) bucket.best_day = t.pnl;
+    if (t.pnl < bucket.worst_day) bucket.worst_day = t.pnl;
+
+    // Accumulate day P&L for win_days / loss_days
+    dayPnl.set(d, (dayPnl.get(d) ?? 0) + t.pnl);
   }
 
-  // Fix up buckets with no trading data (best_day/worst_day still at sentinel values)
+  // Second pass: compute day-level win/loss counts and trading_days per month
+  for (const [date, pnl] of dayPnl) {
+    const key = date.slice(0, 7);
+    const bucket = map.get(key);
+    if (!bucket) continue;
+    bucket.trading_days += 1;
+    if (pnl > 0) bucket.win_days += 1;
+    else if (pnl < 0) bucket.loss_days += 1;
+  }
+
+  // Fix sentinels for months with no trades (shouldn't happen, but guard)
   for (const bucket of map.values()) {
     if (bucket.best_day === -Infinity) bucket.best_day = 0;
     if (bucket.worst_day === Infinity) bucket.worst_day = 0;
@@ -126,37 +138,9 @@ function Skeleton() {
 // ── Widget ────────────────────────────────────────────────────────────────────
 
 export function MonthlyBreakdownWidget() {
-  const [months, setMonths] = useState<MonthBucket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const raw: unknown = await fetchEngine(
-          `/portfolio/history/daily-pnl?limit=365`
-        );
-        const records: DailyPnlRecord[] = Array.isArray(raw) ? raw : [];
-        if (!cancelled) {
-          setMonths(groupByMonth(records));
-          setError(false);
-        }
-      } catch {
-        if (!cancelled) setError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    load();
-    const id = setInterval(load, 5 * 60 * 1000); // refresh every 5 minutes
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+  const { honest: tradeSet, isLoading: loading, error: loadError } = useHonestTrades(5 * 60 * 1000);
+  const error = !!loadError;
+  const months = tradeSet ? groupByMonth(tradeSet.trades) : [];
 
   if (loading) return <Skeleton />;
 
@@ -190,8 +174,8 @@ export function MonthlyBreakdownWidget() {
                     { label: "Month", align: "text-left" },
                     { label: "Trading Days", align: "text-right" },
                     { label: "Total P&L", align: "text-right" },
-                    { label: "Best Day", align: "text-right" },
-                    { label: "Worst Day", align: "text-right" },
+                    { label: "Best Trade", align: "text-right" },
+                    { label: "Worst Trade", align: "text-right" },
                     { label: "Win Days", align: "text-right" },
                   ].map(({ label, align }) => (
                     <th
@@ -233,14 +217,14 @@ export function MonthlyBreakdownWidget() {
                       </Badge>
                     </td>
 
-                    {/* Best Day */}
+                    {/* Best Trade */}
                     <td className="py-2 px-2 text-right">
                       <Badge variant={pnlVariant(m.best_day)}>
                         {formatPnl(m.best_day)}
                       </Badge>
                     </td>
 
-                    {/* Worst Day */}
+                    {/* Worst Trade */}
                     <td className="py-2 px-2 text-right">
                       <Badge variant={pnlVariant(m.worst_day)}>
                         {formatPnl(m.worst_day)}
@@ -272,6 +256,12 @@ export function MonthlyBreakdownWidget() {
                 ))}
               </tbody>
             </table>
+            {/* Dedup caveat footer */}
+            {tradeSet && (
+              <p className="px-2 pt-2 text-[10px] text-muted-foreground">
+                {dedupCaveat(tradeSet)}
+              </p>
+            )}
           </div>
         )}
       </CardContent>

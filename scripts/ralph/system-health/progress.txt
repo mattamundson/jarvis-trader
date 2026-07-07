@@ -1,0 +1,230 @@
+# Ralph Progress - System Health Loop (started 2026-06-10)
+
+## Codebase Patterns
+- LLM calls MUST route through JarvisLLMClient.call() (engine/llm/client.py) - it owns the Vertex->Gemini->OpenAI fallback chain. Direct httpx POSTs to api.anthropic.com bypass it (B1/B2/B4 root cause).
+- Credit-exhaustion detection: _is_credit_exhaustion() llm/client.py:151; fallback chain at :992-1130.
+- Engine venv: engine/.venv/Scripts/python.exe. pytest from repo root with engine. namespace.
+- Worktree guard caches at session start: author files via PowerShell Set-Content (bgIsolation:none is set in both settings files).
+- Pathspec commits ALWAYS (peer sessions): git commit -m "msg" -- path1 path2; new files: git add <paths> && git commit -- <paths>.
+- [safety-review] tag required: engine/config.py, engine/risk/, kill_switch, trader.py sizing/decision paths.
+- Verify engine after restart: /health status=ok AND tradingview_mcp_healthy AND llm_path_healthy (rules/verification.md).
+- Amo-gated (do NOT attempt): Anthropic credits, SimpleFIN re-auth, Discord user token, GCP Marketplace, push needs allowlisted command only.
+
+## Audit evidence (2026-06-10 23:44)
+- Trader/MGC+MES decisions failing: agents.trader "LLM decision failed" - raw httpx 400 from api.anthropic.com (trader.py:729).
+- google_fallback_count=4 proves client-routed agents fall back fine.
+- feature_flags: "no such table" warning at boot; registry at engine/flags/registry.py.
+- finance-sync log silent since 6/6 while task failed daily (NativeCommandError pre-empts Write-Log).
+- 35 python processes; port 8010 single LISTEN owner (clean).
+- Disk C: 226GB free. Tasks otherwise 0x0 after SAC heal.
+---
+
+## 2026-06-11 ~00:05 - B1 (CRITICAL trader fallback)
+- Replaced raw httpx POST (trader.py:725-760) with self._llm.call(model, system, messages, max_tokens, agent_name="trader"); fail-safe HOLD kept (success=False -> RuntimeError -> except -> _hold_decision).
+- Removed orphaned imports (os, time, httpx). Updated 3 tests that patched agents.trader.httpx.AsyncClient -> now mock trader._llm.call. Added TestDecideLLMTransport: routing assert (agent_name/model kwargs), success=False -> HOLD, source guard (no api.anthropic.com literal in trader.py - including comments!).
+- **Learnings:**
+  - trader fixture llm is MagicMock; set trader._llm.call = AsyncMock(...) directly, no patch() needed.
+  - Source-guard tests catch the URL in YOUR OWN comments - word comments carefully.
+  - _apply_tool_inspection mocked via side_effect=lambda **kw: (kw["decision"], False).
+---
+
+## 2026-06-11 ~00:20 - B2 (fund_manager + risk_manager fallback routing)
+- Same patch shape as B1 in both files; result var named result_llm (fund_manager already had a local result). 5 orphan imports autofixed.
+- New tests: engine/tests/test_b2_llm_transport.py (6: routing kwargs, fail-safe semantics, source guards).
+- DISCOVERY: 3 test_safety_layer.py failures are PRE-EXISTING env leakage (verified via stash+rerun on clean tree) -> filed as B8. 211/214 pass there regardless of my diff.
+- **Learnings:** before blaming your diff for a failing suite, stash and rerun - the 3 failures reproduced on clean tree in 0.9s.
+---
+
+## 2026-06-11 ~00:35 - B3 (feature_flags table self-creation)
+- _ensure_table() in FeatureFlags.__init__: CREATE TABLE IF NOT EXISTS (name PK to satisfy existing ON CONFLICT(name)); try/except->warning so degraded DB cannot block boot.
+- tests/test_feature_flags_cold_db.py: 4 tests on a REAL cold sqlite file (existing suite uses _MockDB which falls through unknown SQL - harmless).
+- **Learnings:** registry.py is CRLF - patchers must detect line endings (src contains \r\n -> convert old/new strings). trader.py was LF. Check before exact-match replace.
+---
+
+## 2026-06-11 ~00:55 - B4 (remaining direct-Anthropic agents) + B1/B3 LIVE VERIFY
+- Audit (Explore agent): bull/bear ALREADY client-routed (2026-06-02 migration); news/social have conditional self._llm.call routing (else-branch dead in prod since boot validates .call); tail_risk_researcher + managed_agent_bridge are DARK by default (TAIL_RISK_RESEARCHER_ENABLED / USE_MANAGED_AGENTS env-gated off) -> documented + deferred; commentary_processor was the only LIVE direct POST.
+- commentary_processor: optional llm_client param; routes via .call(agent_name="corey_commentary") when injected; direct POST kept ONLY for standalone contexts (cli.py, mcp_server.py, briefing.py construct without client). corey_auction_analyst passes engine client down.
+- LIVE VERIFY (after restart with B1+B2+B3): MGC pipeline run completed end-to-end 61.1s errors=0; [Trader] decision action=buy conf=0.80 (vs "LLM decision failed" before); BUY qty=1 queued for human approval 005f9f51; RL gate logs honest "Disabled (ENABLE_RL_TRADING=False)"; flags API 200 with 9 flags.
+- **Learnings:** managed_agent_bridge hardcodes /v1/messages despite the /v1/agents constant; if ever lit up it needs custom handling (no client equivalent for managed agents API).
+---
+
+## 2026-06-11 ~01:10 - B5 (finance-sync silent logging)
+- ~/scripts/run-finance-sync.ps1: Invoke-SyncModule wraps python calls with EAP=Continue (stderr=data not terminating), judges by $LASTEXITCODE, logs bounded tail; top-level catch logs FATAL. Original archived (~/Archive/2026/finance-sync-script/).
+- Verified under powershell.exe (PS 5.1, as the task runs): exit=1 + "simplefin exit=1" log line written. Before: failures left zero log lines.
+- **Learnings:** ~/scripts is outside the repo - archive originals before editing; keep .ps1 pure ASCII for PS 5.1.
+---
+
+## 2026-06-11 ~01:25 - B6 (MES fidelity quarantine) - closed VERIFIED-CLEAN
+- Checked all 3 surfaces: paper_trades (0 rows in window), trade_outcomes (1 row, April MCL, pre-window), IB positions (flat - no residual RL MES).
+- RL executor never persisted to the tracker; engine was also down 6/8-6/10. Nothing to exclude -> no dead machinery built.
+- **Learnings:** verify the contamination actually LANDED before building quarantine plumbing. /brokers/positions needs X-API-Key (env var name is API_KEY in engine/.env).
+---
+
+## 2026-06-11 ~01:40 - B8 (safety suite env leak)
+- conftest mock_settings: pinned ALLOW_PAPER_SIMULATED_ORDERS=False (TradingConfig() reads live .env; the 6/4 R4 flag flip is what turned the sacred suite red). No safety_layer.py changes.
+- 333/333 green: safety_layer, sim-gating, risk_safety x3, phase3_edge_mode, pending_approvals, order_ref_tagging, fill_reconciliation, risk_coverage.
+- **Learnings:** TradingConfig() in fixtures = live .env leakage; pin every behavior-gating flag the fixture relies on. The "env-dependent failures" bucket from PR #13 traces to exactly this class.
+---
+
+## 2026-06-11 ~01:45 - B7 (StrategyRD heal verify) - PHASE 1 COMPLETE (8/8)
+- StrategyRD 0x0 with real 15.7KB run log (gate evals present). All B-stories pass.
+---
+
+## 2026-06-11 ~01:55 - I1 (LLM single-leg digest alarm)
+- digest_generator: _assess_llm_health pure parser + _llm_provider_health stdlib-urllib fetch (engine-down -> engine_reachable=false, alert=false: liveness is the watchdogs job). WARNING log on alert. Live-verified against the real single-leg engine (gemini_fallbacks=32).
+- **Learnings:** digest task runs `-m engine.discord.digest_generator` from REPO ROOT (engine. namespace); running the file directly breaks the dual-path imports. Keep digest deps stdlib-only.
+---
+
+## 2026-06-11 - I2
+- Verified the dashboard real-time WS path end-to-end and hardened latent traps (commit 3a42030).
+- KEY FINDING: the I2 premise (WS 403 -> polling fallback) was STALE. PR #24 fixed it;
+  APIKeyMiddleware is BaseHTTPMiddleware so WS upgrades were never auth-gated. Live proof:
+  headless Chrome on :3010 -> engine /ws/status connections: 1 at t+4s.
+- Files changed: dashboard/lib/engine-websocket-context.tsx, dashboard/next.config.ts,
+  dashboard/lib/use-websocket.ts (localhost->127.0.0.1 fallbacks + corrected proxy comments).
+- **Learnings for future iterations:**
+  - /ws/status connections: 0 does NOT mean WS is broken -- it means no browser tab is open.
+    Always e2e-test with a real browser before declaring a WS defect.
+  - Next.js rewrites proxy WS upgrades in `next dev` only, NOT `next start`. Prod WS requires
+    NEXT_PUBLIC_ENGINE_URL baked at build time (it is: chunk layout-71bb4ef has 127.0.0.1:8010).
+  - TV CDP Chrome on :9222 is Electron-ish -- Target.createTarget returns "Not supported".
+    Use real Chrome headless: & "C:\Program Files\Google\Chrome\Application\chrome.exe"
+    --headless=new --user-data-dir=<tmp> <url>. Clean up forked chrome.exe pids by
+    matching CommandLine on the user-data-dir.
+  - lib/use-websocket.ts and lib/websocket-example.tsx are DEAD CODE; live path is
+    hooks/useWebSocket -> EngineWebSocketProvider (mounted in app/layout.tsx).
+  - This .tsx tree is LF with occasional stray CRLF lines -- patcher must try both
+    variants per replacement, not whole-file detection.
+---
+
+## 2026-06-11 - I3
+- Post-init invariant self-check shipped (commit 22923ee): one INFO block + per-item
+  WARNINGs at the end of heavy background init.
+- Files: engine/startup_checks.py (+6 _selfcheck_* fns), engine/main.py (hook),
+  engine/tests/test_startup_selfcheck.py (11 tests).
+- **Learnings for future iterations:**
+  - startup_checks.py already had the CheckResult pass/warn/fail pattern -- extend it,
+    never add a parallel checks module.
+  - FeatureFlags singleton: flags.registry._instance; tests monkeypatch that attr
+    directly with a fake exposing list_flags()/is_enabled().
+  - No LLM-client singleton exists (each agent constructs JarvisLLMClient) -- boot
+    checks must be keys/flags-only; live provider health belongs to /health + digest.
+  - mypy pre-commit advisory about analytics/sepa_trend_template.py dual module name
+    is pre-existing noise, not caused by current changes.
+---
+
+## 2026-06-11 - I4
+- Task-health rollup in digest shipped (commit 46e5d1e): parses task-health-latest.txt
+  from the existing Jarvis-TaskHealth-Daily monitor; alerts on failing enabled tasks
+  AND on a stale report.
+- **Learnings for future iterations:**
+  - The digest module is the established alert-lift channel (calibration I-, LLM I1,
+    tasks I4): pure _assess_* fn + best-effort reader + digest field + WARNING in main().
+  - Live smoke surfaced 4 NON-FinanceSync failing tasks needing end-of-loop triage:
+    Jarvis-DailyLiveReadiness 0x2, Jarvis-DailyPostTradeReport 0x1,
+    Jarvis-PaperCollect 0x1, Jarvis-VerdictRefresh-Weekly 0x1.
+  - check-task-health.ps1 report format is stable ASCII; regex-parse the
+    "--- ENABLED tasks" section only (disabled section is informational).
+---
+
+## 2026-06-11 - I5
+- Python orphan hygiene shipped: classified 31 live python procs (16 = claude-session
+  MCP pairs, rest services); extended ~/scripts/sweep-orphan-claude-procs.ps1 with an
+  opt-in MCP-stray rule (hourly Jarvis-OrphanProcSweep task runs it with -Apply).
+- Original script archived: ~/Archive/2026/orphan-sweep-script/ (script is OUTSIDE the
+  repo -- no git history; archive is the rollback).
+- **Learnings for future iterations:**
+  - Windows venv python.exe is a LAUNCHER SHIM that spawns the base interpreter as a
+    child -- every venv process shows as a pair. Dead-parent sweeps reap the shim first,
+    the real interpreter one pass later (cascade is self-healing).
+  - Dead parent ALONE is NOT an orphan signal: pid 4092 amo-arbitrage uvicorn had a dead
+    parent but owns the :8000 LISTEN socket. Triple guard: opt-in patterns + never-kill
+    regex + skip TCP-LISTEN holders.
+  - Nested Start-Process quoting mangles args reliably -- spawn via a temp -File script.
+  - PS5.1 parse-validate with [Parser]::ParseFile via -File (inline -Command strips $).
+---
+
+## 2026-06-11 - I6
+- Premise stale (wiring exists + tested); verified live, locked the writer/reader
+  agent_feedback.db path seam with a regression test (commit ff8519c).
+- **Learnings for future iterations:**
+  - brier_30d_rolling=null means <5 scored outcomes/agent in 30d, NOT unwired. The
+    distinction None (no data) vs 0.0 (perfect) is deliberate -- never "fix" null to 0.
+  - Pattern confirmed twice now (I2, I6): pre-loop audit findings can be fixed by the
+    time a story runs -- ALWAYS re-verify the premise live before implementing.
+  - Brier numbers arrive automatically once B1's trader fix produces closed paper
+    trades (writer: analytics/agent_feedback.py on trade close).
+---
+
+## 2026-06-11 - I7
+- analytics package converted to PEP 562 lazy exports; stdlib-only consumers survive
+  a pandas/native-DLL block (the SAC failure mode).
+- **Learnings for future iterations:**
+  - Test lazy-import contracts with FRESH-INTERPRETER subprocesses (sys.modules
+    assertions are meaningless in the warm pytest process).
+  - Simulate a blocked native package with a sys.meta_path finder that RAISES
+    ImportError in find_spec for the target name -- cleaner than uninstalling.
+  - Check for attribute-style submodule consumers (pkg.submodule.X) before going
+    lazy; here all consumers import submodules directly, so zero risk.
+---
+
+## 2026-06-11 - I8
+- Architecture regression test live: URL-literal scan over engine/agents/** +
+  engine/discord/** with documented 7-file allowlist + guard-presence checks.
+- **Learnings for future iterations:**
+  - Scan for the URL LITERAL (https://api.anthropic.com), not the bare host --
+    comments and error-string parsers mention the host legitimately.
+  - news_analyst/social_analyst have client-first guarded fallbacks (NOT live
+    bypasses): raw POST only when injected client lacks .call(). Do not "fix" them.
+  - Run a new invariant test BEFORE allowlisting -- its first failures both prove
+    detection works and enumerate the candidate allowlist.
+---
+
+## 2026-06-11 - I9
+- Verdict freshness monitor in digest shipped; live: MES 0.0d / MGC 2.6d, no alert.
+- **Learnings for future iterations:**
+  - gate_v2_verdicts/*.json files are GIT-TRACKED: use the created_at JSON field for
+    age, never file mtime (checkout refreshes mtimes and fakes freshness).
+  - Verdict JSON schema: symbol/verdict/created_at(ISO with offset)/passed_via etc.
+  - When a pure assessor takes now but the reader uses real datetime.now(), write
+    test fixtures relative to REAL now for reader tests (pinned NOW only works for
+    the pure function).
+---
+
+## 2026-06-11 - I10
+- pm2 crashloop alarm REPAIRED (not built new): existing watcher had a dead Telegram
+  channel (nonexistent op item), threshold 5, and exit-2-on-alert turning its own
+  task red. Fixed all three; channel verified with a real delivered DM.
+- **Learnings for future iterations:**
+  - "Alert configured" != "alert deliverable": the watcher logged "telegram skipped
+    (no creds)" for its ENTIRE life. Always verify the last hop with a real send.
+  - Telegram refs that WORK: token = engine/.env TELEGRAM_BOT_TOKEN (or 1P
+    Telegram-Bot-Jarvis/password); chat = numeric 8676240038. engine/.env
+    TELEGRAM_CHAT_ID is a USERNAME -- Bot API rejects it for DMs.
+  - Monitors must exit 0 when they successfully deliver a finding (exit codes are
+    for infra errors only) or the task-health rollup flags the monitor itself.
+---
+
+## 2026-06-11 01:40 - POST-LOOP: scanner duplicate-entry fix (359539e)
+- Final verification surfaced a live defect OUTSIDE the 18 stories: the
+  paper_mode_bypass in scanner/signal_scanner.py had no open-position
+  check, so the hourly scan re-entered the persisting trend signal every
+  cycle (MES+MGC duplicated at 00:04 and 01:04, identical entry prices,
+  conf=0.00). Duplicates leak past paper_runner's symbol-keyed dict as
+  zombie-open rows -> fidelity/Brier contamination (B6/B8 class).
+- Fix: dedup guard before add_paper_trade (get_open_positions() filtered
+  by symbol; skip with executed=False reason=paper_position_already_open;
+  pending approval still created). 5 new tests in
+  tests/test_scanner_position_dedup.py; sacred safety 192/192 green.
+- **Learnings for future iterations:**
+  - "All stories pass" is not the same as "system verified" - the final
+    end-to-end sweep (live DB vs logs vs IB) is what caught this.
+  - Engine hourly scans anchor to process start time, so a duplicate-pair
+    cadence that tracks the pm2 restart timestamp fingerprints the scanner
+    (not the runner) as the writer.
+  - restart_engine.ps1 is per-op Amo-gated even inside an autonomous loop;
+    fixes land in code immediately but activation waits for the restart.
+  - OPEN: 2 duplicate rows (c4f1d10b MES, 12885bb0 MGC @ 01:04) need an
+    Amo cleanup decision; conf=0.00-executes (no confidence floor in the
+    bypass) is a separate design question.
+---

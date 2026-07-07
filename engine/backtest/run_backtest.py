@@ -1,10 +1,9 @@
 """
 JARVIS TRADER — Backtest CLI Runner
 
-Usage:
-    cd engine
-    .venv/Scripts/python -m backtest.run_backtest --symbol SPY --start 2024-01-01 --end 2025-12-31
-    .venv/Scripts/python -m backtest.run_backtest --symbol MES --start 2024-01-01 --capital 50000
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_backtest.py --symbol MES --start 2024-01-01 --end 2026-03-31
+    .venv/Scripts/python backtest/run_backtest.py --symbol MES --start 2024-01-01 --capital 50000
 """
 
 from __future__ import annotations

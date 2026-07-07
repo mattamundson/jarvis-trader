@@ -1,7 +1,7 @@
 """
 JARVIS TRADER — Intraday Data Fetcher
-Fetches intraday (1h, 15m, 5m) data in small chunks to avoid Yahoo Finance
-rate limits. Saves to backtest/cache/ for use by backtester and optimizer.
+Fetches intraday (1h, 15m, 5m) data via Polygon.io.
+Saves to backtest/cache/ for use by backtester and optimizer.
 
 Usage:
     python -m backtest.fetch_intraday --symbol SPY --interval 1h --days 180
@@ -12,17 +12,11 @@ from __future__ import annotations
 
 import argparse
 import os
-import time
 from datetime import datetime, timedelta
 
 import pandas as pd
-import yfinance as yf
 
 from backtest.data_loader import CACHE_DIR, FUTURES_MAP
-
-# yfinance max days per chunk per interval
-CHUNK_DAYS = {"1m": 7, "5m": 55, "15m": 55, "30m": 55, "1h": 60, "1d": 365}
-SLEEP_SECS = 3  # between chunks
 
 
 def _fetch_via_polygon(
@@ -107,7 +101,6 @@ def fetch_intraday(
     days: int = 180,
     force: bool = False,
 ) -> pd.DataFrame | None:
-    ticker_sym = FUTURES_MAP.get(symbol.upper(), symbol)
     cache_file = CACHE_DIR / f"{symbol}_{interval}_{days}d.csv"
 
     if cache_file.exists() and not force:
@@ -118,86 +111,15 @@ def fetch_intraday(
         print(f"[Fetcher] Cache hit: {cache_file.name} ({len(df)} bars)")
         return df
 
-    # Try Polygon first (no rate limit issues, unlimited history)
+    # Fetch from Polygon (no rate limit issues, unlimited history)
     df = _fetch_via_polygon(symbol, interval, days)
     if df is not None and not df.empty:
         df.to_csv(cache_file, index=False)
         print(f"[Fetcher] Saved {len(df)} bars to {cache_file.name}")
         return df
 
-    # Fall back to yfinance (chunked to avoid rate limits)
-    chunk = CHUNK_DAYS.get(interval, 60)
-    end = datetime.now()
-    start = end - timedelta(days=days)
-
-    all_frames = []
-    cursor = start
-    total_chunks = (days + chunk - 1) // chunk
-    fetched = 0
-
-    print(
-        f"[Fetcher] Fetching {symbol} ({ticker_sym}) {interval} — {days} days in {total_chunks} chunks..."
-    )
-
-    while cursor < end:
-        chunk_end = min(cursor + timedelta(days=chunk), end)
-        start_str = cursor.strftime("%Y-%m-%d")
-        end_str = chunk_end.strftime("%Y-%m-%d")
-
-        for attempt in range(3):
-            try:
-                t = yf.Ticker(ticker_sym)
-                raw = t.history(start=start_str, end=end_str, interval=interval, auto_adjust=True)
-                if raw is not None and not raw.empty:
-                    all_frames.append(raw)
-                    fetched += 1
-                    print(
-                        f"  chunk {fetched}/{total_chunks}: {start_str}→{end_str} ({len(raw)} bars) ✓"
-                    )
-                else:
-                    print(
-                        f"  chunk {fetched + 1}/{total_chunks}: {start_str}→{end_str} empty — skipping"
-                    )
-                break
-            except Exception as e:
-                if "Rate" in str(e) or "429" in str(e):
-                    wait = 10 * (attempt + 1)
-                    print(f"  Rate limited — waiting {wait}s...")
-                    time.sleep(wait)
-                else:
-                    print(f"  Error: {e}")
-                    break
-
-        cursor = chunk_end + timedelta(days=1)
-        if cursor < end:
-            time.sleep(SLEEP_SECS)
-
-    if not all_frames:
-        print(f"[Fetcher] No data retrieved for {symbol}")
-        return None
-
-    df = pd.concat(all_frames)
-    df = df[~df.index.duplicated(keep="first")].sort_index()
-
-    # Normalize columns
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [c[0].lower() for c in df.columns]
-    else:
-        df.columns = [c.lower() for c in df.columns]
-
-    required = {"open", "high", "low", "close", "volume"}
-    if not required.issubset(set(df.columns)):
-        print(f"[Fetcher] Missing columns: {required - set(df.columns)}")
-        return None
-
-    df = df[["open", "high", "low", "close", "volume"]].copy()
-    df.index = pd.to_datetime(df.index)
-    df["timestamp"] = df.index
-    df = df.dropna(subset=["open", "high", "low", "close"])
-
-    df.to_csv(cache_file, index=False)
-    print(f"[Fetcher] Saved {len(df)} bars to {cache_file.name}")
-    return df
+    print(f"[Fetcher] No data retrieved for {symbol} — check POLYGON_API_KEY")
+    return None
 
 
 def main():
@@ -213,7 +135,7 @@ def main():
         print(f"\nReady: {len(df)} {args.interval} bars for {args.symbol}")
         print(f"Date range: {df.index[0]} → {df.index[-1]}")
     else:
-        print("\nFetch failed — try again when Yahoo Finance rate limit clears")
+        print("\nFetch failed — check POLYGON_API_KEY is set in engine/.env")
 
 
 if __name__ == "__main__":

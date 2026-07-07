@@ -1,0 +1,59 @@
+{
+  "project": "Calibration feedback-loop repair",
+  "branchName": "master",
+  "description": "Paper-close outcomes never reached trade_outcomes because the scanner open-path omitted analyst_signals from strategy_params, so _record_agent_feedback silently no-op'd (tracker.py:880). Fix the wiring, audit other open paths, verify end-to-end, then audit why the gates starve trading activity.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Persist analyst_signals at the scanner open-path",
+      "description": "Scanner (source=scanner) must persist per-analyst signals into strategy_params at open so the close path writes a trade_outcomes row.",
+      "acceptanceCriteria": [
+        "signal_scanner.py builds analyst_signals via shared build_analyst_signals_map and includes it in strategy_params",
+        "Test asserts the 7-agent extraction; ruff clean; pytest green"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Done in 47eaeb2. Helper added to agent_feedback.py; 3 tests green."
+    },
+    {
+      "id": "US-002",
+      "title": "Audit remaining open-paths for analyst_signals persistence",
+      "description": "Ensure every calibration-relevant open path (parallel_paper.py, tracker.py direct adds, shadow_mode.py) persists analyst_signals or is documented as excluded.",
+      "acceptanceCriteria": [
+        "Each strategy_params builder reviewed; calibration-relevant ones persist analyst_signals",
+        "Excluded paths carry a one-line rationale comment",
+        "ruff clean; pytest green"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "End-to-end verification of close->trade_outcomes wiring",
+      "description": "Prove a closed trade carrying analyst_signals lands a trade_outcomes row and surfaces in /analytics/calibration.",
+      "acceptanceCriteria": [
+        "Integration test: open(with signals)->close->trade_outcomes row with correct direction/pnl/signals",
+        "Engine restarted; /analytics/calibration reachable; integrity fields clean",
+        "Findings appended to progress.txt"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Trades 178/179/180 NOT backfillable (signals never captured at open). Forward-looking fix; state honestly."
+    },
+    {
+      "id": "US-004",
+      "title": "Audit why the gates starve trading activity",
+      "description": "Understand why only MGC is authorized and whether it is signaling. Read-only; no safety/config edits.",
+      "acceptanceCriteria": [
+        "Per-instrument verdict + blocking reason reported",
+        "Whether MGC produced an entry signal since Jun 2 and why/why not",
+        "Concrete options surfaced; no edits to engine/config.py or engine/risk/"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Plan item B; safety files off-limits without [safety-review]."
+    }
+  ]
+}
+

@@ -1,45 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { RefreshCw, BarChart2 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
-
-
-// ── Trade record shape returned by GET /portfolio/history/trades ─────────────
-interface TradeRecord {
-  id: number;
-  trade_id: string;
-  symbol: string;
-  side: string;
-  quantity: number;
-  entry_price: number;
-  exit_price: number | null;
-  entry_time: string;
-  exit_time: string | null;
-  pnl: number;
-  status: string;
-  strategy_params: unknown;
-  notes: string;
-}
-
-interface TradeHistoryResponse {
-  trades: TradeRecord[];
-  count: number;
-  note?: string;
-  error?: string;
-}
-
-// ── Per-symbol aggregated stats ───────────────────────────────────────────────
-interface SymbolStats {
-  symbol: string;
-  totalTrades: number;
-  winCount: number;
-  winRate: number;
-  totalPnl: number;
-  avgPnl: number;
-}
+import {
+  bySymbolStats,
+  dedupCaveat,
+  type HonestTradeSet,
+  type SymbolStat,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,67 +38,18 @@ function pnlColor(value: number): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function TopSymbolsWidget() {
-  const [stats, setStats] = useState<SymbolStats[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: set, isLoading: loading, error: loadError, mutate } = useHonestTrades(0);
+  const error = loadError
+    ? loadError instanceof Error
+      ? loadError.message
+      : String(loadError)
+    : null;
+  const stats: SymbolStat[] = set ? bySymbolStats(set.trades) : [];
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  async function fetchData() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(
-        `/portfolio/history/trades?status=CLOSED&limit=200`
-      );
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const raw: unknown = await res.json();
-      const trades: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as TradeHistoryResponse).trades ?? []);
-
-      // Group by symbol
-      const symbolMap = new Map<string, { wins: number; losses: number; totalPnl: number; count: number }>();
-
-      for (const trade of trades) {
-        const sym = trade.symbol?.toUpperCase() ?? "UNKNOWN";
-        const pnl = typeof trade.pnl === "number" ? trade.pnl : 0;
-        const existing = symbolMap.get(sym) ?? { wins: 0, losses: 0, totalPnl: 0, count: 0 };
-        existing.count += 1;
-        existing.totalPnl += pnl;
-        if (pnl > 0) existing.wins += 1;
-        symbolMap.set(sym, existing);
-      }
-
-      const aggregated: SymbolStats[] = Array.from(symbolMap.entries()).map(
-        ([symbol, v]) => ({
-          symbol,
-          totalTrades: v.count,
-          winCount: v.wins,
-          winRate: v.count > 0 ? (v.wins / v.count) * 100 : 0,
-          totalPnl: v.totalPnl,
-          avgPnl: v.count > 0 ? v.totalPnl / v.count : 0,
-        })
-      );
-
-      // Sort by total P&L descending
-      aggregated.sort((a, b) => b.totalPnl - a.totalPnl);
-
-      setStats(aggregated);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (set) setLastUpdated(new Date());
+  }, [set]);
 
   return (
     <Card>
@@ -145,7 +67,7 @@ export function TopSymbolsWidget() {
             </span>
           )}
           <button
-            onClick={fetchData}
+            onClick={() => mutate()}
             disabled={loading}
             className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-mono transition-colors disabled:opacity-40"
             style={{
@@ -206,48 +128,51 @@ export function TopSymbolsWidget() {
                 </tr>
               </thead>
               <tbody>
-                {stats.map((row) => (
-                  <tr
-                    key={row.symbol}
-                    className="hover:bg-white/[0.02] transition-colors"
-                    style={{ borderBottom: "1px solid #111" }}
-                  >
-                    {/* Symbol */}
-                    <td className="py-2.5 px-3 text-left">
-                      <span className="font-bold" style={{ color: "#e0e0e0" }}>
-                        {row.symbol}
-                      </span>
-                    </td>
+                {stats.map((row) => {
+                  const avgPnl = row.trades > 0 ? row.net / row.trades : 0;
+                  return (
+                    <tr
+                      key={row.symbol}
+                      className="hover:bg-white/[0.02] transition-colors"
+                      style={{ borderBottom: "1px solid #111" }}
+                    >
+                      {/* Symbol */}
+                      <td className="py-2.5 px-3 text-left">
+                        <span className="font-bold" style={{ color: "#e0e0e0" }}>
+                          {row.symbol}
+                        </span>
+                      </td>
 
-                    {/* Trades */}
-                    <td className="py-2.5 px-3 text-right tabular-nums" style={{ color: "#888" }}>
-                      {row.totalTrades}
-                    </td>
+                      {/* Trades */}
+                      <td className="py-2.5 px-3 text-right tabular-nums" style={{ color: "#888" }}>
+                        {row.trades}
+                      </td>
 
-                    {/* Win% badge */}
-                    <td className="py-2.5 px-3 text-right">
-                      <div className="flex justify-end">
-                        <Badge variant={winRateBadge(row.winRate)}>
-                          {row.winRate.toFixed(1)}%
-                        </Badge>
-                      </div>
-                    </td>
+                      {/* Win% badge */}
+                      <td className="py-2.5 px-3 text-right">
+                        <div className="flex justify-end">
+                          <Badge variant={winRateBadge(row.winRate * 100)}>
+                            {(row.winRate * 100).toFixed(1)}%
+                          </Badge>
+                        </div>
+                      </td>
 
-                    {/* Total P&L */}
-                    <td className="py-2.5 px-3 text-right tabular-nums font-bold">
-                      <span style={{ color: pnlColor(row.totalPnl) }}>
-                        {fmt$(row.totalPnl)}
-                      </span>
-                    </td>
+                      {/* Total P&L */}
+                      <td className="py-2.5 px-3 text-right tabular-nums font-bold">
+                        <span style={{ color: pnlColor(row.net) }}>
+                          {fmt$(row.net)}
+                        </span>
+                      </td>
 
-                    {/* Avg P&L */}
-                    <td className="py-2.5 px-3 text-right tabular-nums">
-                      <span style={{ color: pnlColor(row.avgPnl) }}>
-                        {fmt$(row.avgPnl)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                      {/* Avg P&L */}
+                      <td className="py-2.5 px-3 text-right tabular-nums">
+                        <span style={{ color: pnlColor(avgPnl) }}>
+                          {fmt$(avgPnl)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
@@ -257,17 +182,16 @@ export function TopSymbolsWidget() {
               style={{ borderTop: "1px solid #1a1a2e" }}
             >
               <span className="font-mono text-[10px]" style={{ color: "#555" }}>
-                {stats.length} symbol{stats.length !== 1 ? "s" : ""} •{" "}
-                {stats.reduce((s, r) => s + r.totalTrades, 0)} total closed trades
+                {set ? dedupCaveat(set) : `${stats.length} symbol${stats.length !== 1 ? "s" : ""}`}
               </span>
               <span
                 className="font-mono text-[10px] font-bold tabular-nums"
                 style={{
-                  color: pnlColor(stats.reduce((s, r) => s + r.totalPnl, 0)),
+                  color: pnlColor(stats.reduce((s, r) => s + r.net, 0)),
                 }}
               >
                 Net P&L:{" "}
-                {fmt$(stats.reduce((s, r) => s + r.totalPnl, 0))}
+                {fmt$(stats.reduce((s, r) => s + r.net, 0))}
               </span>
             </div>
           </div>

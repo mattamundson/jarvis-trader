@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T7 — Intelligence Feed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #00d4ff;
+    --cyan: #00fff5;
+    --gold: #ffd700;
+    --amber: #ff8c00;
+    --red: #ff2244;
+    --green: #00ff88;
+    --bg: #020814;
+    --panel-bg: #040d1a;
+    --panel-border: rgba(0, 212, 255, 0.18);
+    --text-dim: rgba(0, 212, 255, 0.45);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--blue);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  .panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    max-height: 100vh;
+  }
+
+  /* HEADER */
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .header-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--blue);
+    animation: dotPulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @keyframes dotPulse {
+    0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(0,212,255,0.6); }
+    50% { opacity:0.6; box-shadow:0 0 0 5px rgba(0,212,255,0); }
+  }
+  .panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: var(--blue);
+  }
+  .unread-badge {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: var(--blue);
+    color: var(--bg);
+    min-width: 20px;
+    text-align: center;
+    transition: all 0.3s;
+  }
+  .unread-badge.zero {
+    background: rgba(0,212,255,0.2);
+    color: var(--text-dim);
+  }
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mark-read-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 4px 9px;
+    border-radius: 3px;
+    border: 1px solid rgba(0,212,255,0.25);
+    background: rgba(0,212,255,0.06);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .mark-read-btn:hover {
+    border-color: var(--blue);
+    color: var(--blue);
+    background: rgba(0,212,255,0.1);
+  }
+  .header-time { font-size: 10px; color: var(--text-dim); }
+
+  /* SEARCH BAR */
+  .search-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+  }
+  .search-input {
+    flex: 1;
+    background: rgba(0,212,255,0.04);
+    border: 1px solid rgba(0,212,255,0.18);
+    border-radius: 4px;
+    padding: 7px 11px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--blue);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input::placeholder { color: var(--text-dim); }
+  .search-input:focus { border-color: rgba(0,212,255,0.5); }
+  .filter-chips {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .filter-chip {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.06em;
+  }
+  .filter-chip.active { opacity: 1; }
+  .filter-chip.inactive { opacity: 0.35; }
+  .filter-chip.signal { border-color: var(--blue); color: var(--blue); }
+  .filter-chip.signal.active { background: rgba(0,212,255,0.1); }
+  .filter-chip.ok { border-color: var(--green); color: var(--green); }
+  .filter-chip.ok.active { background: rgba(0,255,136,0.08); }
+  .filter-chip.warn { border-color: var(--amber); color: var(--amber); }
+  .filter-chip.warn.active { background: rgba(255,140,0,0.08); }
+  .filter-chip.error { border-color: var(--red); color: var(--red); }
+  .filter-chip.error.active { background: rgba(255,34,68,0.08); }
+  .filter-chip.info { border-color: var(--text-dim); color: var(--text-dim); }
+  .filter-chip.info.active { background: rgba(0,212,255,0.04); }
+
+  /* FEED */
+  .feed-container {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 200px;
+    max-height: 520px;
+    padding-right: 4px;
+  }
+  .alert-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 9px 11px;
+    border-radius: 4px;
+    border-left: 3px solid;
+    background: rgba(0,0,0,0.15);
+    position: relative;
+    transition: background 0.2s;
+    cursor: default;
+  }
+  .alert-item:hover { background: rgba(0,212,255,0.05); }
+  .alert-item.unread::after {
+    content: '';
+    position: absolute;
+    right: 10px; top: 50%;
+    transform: translateY(-50%);
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--blue);
+    box-shadow: 0 0 6px var(--blue);
+  }
+  .alert-item.new-anim {
+    animation: newAlert 0.45s ease;
+  }
+  @keyframes newAlert {
+    0% { opacity: 0; transform: translateY(-12px); max-height: 0; }
+    100% { opacity: 1; transform: translateY(0); max-height: 200px; }
+  }
+
+  /* TYPE COLORS */
+  .alert-item.signal { border-left-color: var(--blue); }
+  .alert-item.ok     { border-left-color: var(--green); }
+  .alert-item.warn   { border-left-color: var(--amber); }
+  .alert-item.error  { border-left-color: var(--red); background: rgba(255,34,68,0.04); }
+  .alert-item.info   { border-left-color: rgba(0,212,255,0.3); }
+
+  .alert-left { display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0; }
+  .alert-type-icon {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .alert-type-icon.signal { background: rgba(0,212,255,0.12); border: 1px solid rgba(0,212,255,0.3); }
+  .alert-type-icon.ok     { background: rgba(0,255,136,0.12); border: 1px solid rgba(0,255,136,0.3); }
+  .alert-type-icon.warn   { background: rgba(255,140,0,0.12); border: 1px solid rgba(255,140,0,0.3); }
+  .alert-type-icon.error  { background: rgba(255,34,68,0.12); border: 1px solid rgba(255,34,68,0.3); }
+  .alert-type-icon.info   { background: rgba(0,212,255,0.06); border: 1px solid rgba(0,212,255,0.15); }
+
+  .alert-body { flex: 1; min-width: 0; }
+  .alert-header-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+  .alert-type-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+  .alert-type-label.signal { background: rgba(0,212,255,0.15); color: var(--blue); }
+  .alert-type-label.ok     { background: rgba(0,255,136,0.15); color: var(--green); }
+  .alert-type-label.warn   { background: rgba(255,140,0,0.15); color: var(--amber); }
+  .alert-type-label.error  { background: rgba(255,34,68,0.15); color: var(--red); }
+  .alert-type-label.info   { background: rgba(0,212,255,0.08); color: var(--text-dim); }
+
+  .alert-time-label { font-size: 9px; color: var(--text-dim); }
+  .alert-msg { font-size: 11px; color: rgba(0,212,255,0.85); line-height: 1.45; word-break: break-word; }
+
+  /* WHATSAPP NOTE */
+  .whatsapp-note {
+    flex-shrink: 0;
+    margin-top: 12px;
+    padding: 9px 12px;
+    background: rgba(37,211,102,0.06);
+    border: 1px solid rgba(37,211,102,0.2);
+    border-radius: 4px;
+    font-size: 10px;
+    color: rgba(37,211,102,0.8);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .wa-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .wa-text { line-height: 1.4; }
+  .wa-code {
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(37,211,102,0.1);
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 9px;
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    display: none;
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  .empty-state.visible { display: block; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.2); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <!-- HEADER -->
+  <div class="panel-header">
+    <div class="header-dot"></div>
+    <span class="panel-title">INTELLIGENCE FEED</span>
+    <span class="unread-badge" id="unreadBadge">8</span>
+    <div class="header-actions">
+      <button class="mark-read-btn" onclick="markAllRead()">MARK ALL READ</button>
+      <span class="header-time" id="headerTime">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- SEARCH + FILTERS -->
+  <div class="search-bar">
+    <input class="search-input" type="text" placeholder="Search alerts…" id="searchInput" oninput="applyFilters()">
+  </div>
+  <div class="filter-chips" id="filterChips" style="margin-bottom:10px;">
+    <div class="filter-chip signal active" data-type="signal" onclick="toggleFilter(this)">SIGNAL</div>
+    <div class="filter-chip ok active" data-type="ok" onclick="toggleFilter(this)">OK</div>
+    <div class="filter-chip warn active" data-type="warn" onclick="toggleFilter(this)">WARN</div>
+    <div class="filter-chip error active" data-type="error" onclick="toggleFilter(this)">ERROR</div>
+    <div class="filter-chip info active" data-type="info" onclick="toggleFilter(this)">INFO</div>
+  </div>
+
+  <!-- FEED -->
+  <div class="feed-container" id="feedContainer">
+    <div class="empty-state" id="emptyState">No alerts match your filters</div>
+  </div>
+
+  <!-- WHATSAPP NOTE -->
+  <div class="whatsapp-note">
+    <span class="wa-icon">📲</span>
+    <div class="wa-text">
+      <strong>WHATSAPP ALERTS WIRED</strong> — Push notifications active via
+      <span class="wa-code">engine/alerts/whatsapp.py</span>
+      · All SIGNAL and WARN events auto-forwarded
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = 'http://localhost:8020/api/alerts';
+const POLL_INTERVAL = 15000;
+
+const TYPE_ICONS = {
+  signal: '◈', ok: '✓', warn: '⚠', error: '✕', info: '·'
+};
+
+const INITIAL_ALERTS = [
+  { id: 1, time: '16:05:21', type: 'signal', msg: 'Strategy C+ weekly signal generated — Scale 60.9% RISK_ON', unread: true },
+  { id: 2, time: '08:54:01', type: 'ok',     msg: 'IBKR dry-run PASSED — DUP662235 paper account', unread: true },
+  { id: 3, time: '08:52:44', type: 'signal', msg: 'Holdings computed: XLK 30.5% / QQQ 30.5% / SHY 39.1%', unread: true },
+  { id: 4, time: '08:51:00', type: 'info',   msg: 'Macro tailwind detected — yield curve +0.699% → scale ×1.10', unread: true },
+  { id: 5, time: '08:49:22', type: 'info',   msg: 'CoT: ES -115,762 NEUTRAL | NQ +10,821 NEUTRAL', unread: true },
+  { id: 6, time: '08:47:11', type: 'warn',   msg: 'SPY 04/23 715C expires TOMORROW — review position', unread: true },
+  { id: 7, time: '08:46:00', type: 'ok',     msg: 'Paper validation Day 2/30 — all systems nominal', unread: true },
+  { id: 8, time: '04/21 16:05', type: 'signal', msg: 'Previous signal: Scale 58.2% RISK_ON (prior week)', unread: true },
+];
+
+let alerts = [...INITIAL_ALERTS];
+let nextId = 100;
+let activeFilters = new Set(['signal','ok','warn','error','info']);
+
+function countUnread() {
+  return alerts.filter(a => a.unread).length;
+}
+
+function updateUnreadBadge() {
+  const count = countUnread();
+  const badge = document.getElementById('unreadBadge');
+  badge.textContent = count;
+  badge.className = 'unread-badge' + (count === 0 ? ' zero' : '');
+}
+
+function markAllRead() {
+  alerts.forEach(a => a.unread = false);
+  updateUnreadBadge();
+  renderFeed();
+}
+
+function toggleFilter(el) {
+  const type = el.dataset.type;
+  if (activeFilters.has(type)) {
+    activeFilters.delete(type);
+    el.classList.remove('active');
+    el.classList.add('inactive');
+  } else {
+    activeFilters.add(type);
+    el.classList.add('active');
+    el.classList.remove('inactive');
+  }
+  applyFilters();
+}
+
+function applyFilters() {
+  const query = document.getElementById('searchInput').value.toLowerCase().trim();
+  const visible = alerts.filter(a => {
+    if (!activeFilters.has(a.type)) return false;
+    if (query && !a.msg.toLowerCase().includes(query) && !a.time.includes(query)) return false;
+    return true;
+  });
+  renderFeed(visible);
+}
+
+function renderFeed(items) {
+  const data = items || alerts;
+  const container = document.getElementById('feedContainer');
+  const empty = document.getElementById('emptyState');
+
+  // Remove old items
+  const existing = container.querySelectorAll('.alert-item');
+  existing.forEach(e => e.remove());
+
+  if (data.length === 0) {
+    empty.classList.add('visible');
+    return;
+  }
+  empty.classList.remove('visible');
+
+  data.forEach((a, idx) => {
+    const div = document.createElement('div');
+    div.className = `alert-item ${a.type}${a.unread ? ' unread' : ''}${a.isNew ? ' new-anim' : ''}`;
+    div.dataset.id = a.id;
+    div.innerHTML = `
+      <div class="alert-left">
+        <div class="alert-type-icon ${a.type}">${TYPE_ICONS[a.type] || '·'}</div>
+      </div>
+      <div class="alert-body">
+        <div class="alert-header-row">
+          <span class="alert-type-label ${a.type}">${a.type.toUpperCase()}</span>
+          <span class="alert-time-label">${a.time}</span>
+        </div>
+        <div class="alert-msg">${a.msg}</div>
+      </div>
+    `;
+    div.addEventListener('click', () => {
+      const target = alerts.find(x => x.id === a.id);
+      if (target) target.unread = false;
+      div.classList.remove('unread');
+      updateUnreadBadge();
+    });
+    container.appendChild(div);
+  });
+}
+
+function addAlert(alert) {
+  alert.id = nextId++;
+  alert.isNew = true;
+  alerts.unshift(alert);
+  // Clear isNew after animation
+  setTimeout(() => { alert.isNew = false; }, 500);
+  applyFilters();
+  updateUnreadBadge();
+}
+
+// Poll API
+async function pollAlerts() {
+  try {
+    const res = await fetch(API_URL, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (data && data.alerts && Array.isArray(data.alerts)) {
+      data.alerts.forEach(a => {
+        if (!alerts.find(x => x.msg === a.msg && x.time === a.time)) {
+          addAlert({ ...a, unread: true });
+        }
+      });
+    }
+  } catch { /* use static */ }
+}
+
+function updateClock() {
+  document.getElementById('headerTime').textContent =
+    new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+
+// Init
+renderFeed();
+updateUnreadBadge();
+updateClock();
+setInterval(updateClock, 1000);
+setInterval(() => { pollAlerts(); }, POLL_INTERVAL);
+pollAlerts();
+</script>
+</body>
+</html>

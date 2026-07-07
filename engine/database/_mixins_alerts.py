@@ -44,7 +44,7 @@ class AlertsMixin:
         symbol:
             Optional ticker symbol (None for non-trade alerts).
         status:
-            'sent' | 'failed' | 'suppressed'
+            ``sent`` | ``failed`` | ``suppressed`` | ``suppressed_cooldown`` (pipeline rate limit)
         error:
             Error text when status='failed', None otherwise.
         """

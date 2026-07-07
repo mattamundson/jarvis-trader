@@ -66,9 +66,14 @@ class ConsecutiveLossTracker:
         get_halt_reason() -> str : Human-readable halt reason
     """
 
+    # Module-relative default: engine/risk/loss_tracker.py -> engine/data.
+    # Resolving from __file__ keeps the fallback correct regardless of the
+    # process cwd (production passes data_dir="data" explicitly via main.py).
+    _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
     def __init__(
         self,
-        data_dir: str | Path = "/sessions/blissful-stoic-curie/mnt/jarvis-trader/engine/data",
+        data_dir: str | Path | None = None,
         consecutive_loss_half_size: int = 3,
         consecutive_loss_quarter_size: int = 5,
         consecutive_loss_halt: int = 7,
@@ -77,8 +82,9 @@ class ConsecutiveLossTracker:
         """
         Parameters
         ----------
-        data_dir : str | Path
-            Directory for persisting loss_tracker.json
+        data_dir : str | Path | None
+            Directory for persisting loss_tracker.json. None -> engine/data
+            (resolved relative to this module).
         consecutive_loss_half_size : int
             Number of consecutive losses before position size → 0.5x
         consecutive_loss_quarter_size : int
@@ -88,7 +94,7 @@ class ConsecutiveLossTracker:
         consecutive_loss_halt_hours : int
             Duration (hours) to halt trading
         """
-        self._data_dir = Path(data_dir)
+        self._data_dir = Path(data_dir) if data_dir is not None else self._DEFAULT_DATA_DIR
         self._data_dir.mkdir(parents=True, exist_ok=True)
 
         self._state_file = self._data_dir / "loss_tracker.json"

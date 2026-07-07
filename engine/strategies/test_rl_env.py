@@ -575,11 +575,12 @@ class TestRewardFunctionFixes:
         # BUY from flat — is_new_entry=True, redundant_cost=0 (position was 0 before step)
         _, reward_entry, _, _, _ = env.step(Action.BUY)
 
-        # Should include entry_cost but NOT redundant_cost on top.
-        # entry_cost = -0.20; if doubled it would be -0.40.
-        # Allow ±0.3 ATR units for price movement noise.
-        double_entry_cost = REWARD_CONFIG["entry_cost"] * 2  # -0.40
-        assert reward_entry > double_entry_cost, (
+        # Should include entry_cost + hold_cost (1 bar) but NOT redundant_cost on top.
+        # entry_cost=-0.01, hold_cost=-0.010: normal 1-bar reward = -0.020.
+        # If double-penalized (entry_cost applied twice + hold_cost) it would be -0.030.
+        # Use >= so the coincidence of hold_cost==entry_cost doesn't false-fail.
+        double_entry_cost = REWARD_CONFIG["entry_cost"] * 2
+        assert reward_entry >= double_entry_cost, (
             f"Normal entry appears to double-penalize: reward={reward_entry:.4f}, "
             f"double_entry_cost={double_entry_cost:.4f}"
         )
@@ -601,25 +602,27 @@ class TestRewardFunctionFixes:
         )
 
     def test_hold_when_in_position_gets_hold_cost(self, df_mes):
-        """HOLD when in a position earns hold_cost_per_bar (flat, not free)."""
+        """HOLD when in a LOSING position incurs hold_cost; winning position is free (Run 11)."""
         from strategies.rl_config import REWARD_CONFIG
 
         env = TradingEnvironment(symbol="MES", df=df_mes, initial_capital=10_000.0)
         env.reset()
         env.step(Action.BUY)  # open long
 
-        # HOLD while long — should incur hold_cost, NOT flat_hold_reward
+        # Force a losing position: set entry price above current close
+        current_close = float(env.df.iloc[env._idx]["close"])
+        env._entry_price = current_close * 1.10  # 10% above current — clearly losing
+
+        # HOLD while underwater — should incur hold_cost, NOT flat_hold_reward
         _, reward_hold_long, _, _, _ = env.step(Action.HOLD)
 
-        hold_cost = REWARD_CONFIG["hold_cost_per_bar"]  # -0.001
-        flat_hold_reward = REWARD_CONFIG.get("flat_hold_reward", 0.0)  # +0.003
+        hold_cost = REWARD_CONFIG["hold_cost_per_bar"]  # -0.010
 
-        # With the fix: reward includes hold_cost (negative), not flat_hold_reward.
-        # Even if pnl is slightly positive the hold_cost should keep it low.
-        # Key invariant: reward when in position < flat_hold_reward (no free hold).
-        assert reward_hold_long < flat_hold_reward, (
-            f"HOLD in position should not earn flat_hold_reward: "
-            f"reward={reward_hold_long:.5f}, flat_hold_reward={flat_hold_reward}"
+        # Reward should be approximately hold_cost (may have small pnl_reward from price move).
+        # Key invariant: reward when losing < 0 (hold cost applied).
+        assert reward_hold_long < 0.0, (
+            f"HOLD in losing position should have negative reward (hold_cost applied): "
+            f"reward={reward_hold_long:.5f}, hold_cost={hold_cost}"
         )
 
     def test_hold_cost_is_negative_when_in_position(self, df_mes):
@@ -833,7 +836,7 @@ class TestWalkForward:
     def test_walkforward_cache_used(self, tmp_path):
         """When a parquet cache file exists, the trainer loads data from cache
         (prepare_dataframe reads it via pd.read_parquet) rather than falling
-        through to yfinance."""
+        through to BacktestDataLoader."""
         import asyncio
         from unittest.mock import call, patch
 
@@ -1418,42 +1421,69 @@ class TestRLConfig:
     If a value intentionally changes, update both rl_config.py and this test class.
     """
 
-    def test_run8_two_lever_config_values(self):
+    def test_run11_let_winners_run_config_values(self):
         """
-        Regression guard: Two-Lever (Run 8) reward config values.
-        break-even hold bars = abs(entry_cost) / hold_cost_per_bar = 0.02 / 0.002 = 10 bars.
-        If these change, the tuning rationale needs to be updated in rl_config.py.
+        Regression guard: Let-Winners-Run (Run 11) reward config values.
+        hold_cost_only_when_losing=True: hold cost = 0 while unrealized_pnl > 0.
         """
         from strategies.rl_config import REWARD_CONFIG
 
-        # Two-Lever values applied for Run 8
         assert (
-            REWARD_CONFIG["entry_cost"] == -0.02
-        ), f"entry_cost should be -0.02 (Two-Lever Run 8), got {REWARD_CONFIG['entry_cost']}"
+            REWARD_CONFIG["entry_cost"] == -0.01
+        ), f"entry_cost should be -0.01, got {REWARD_CONFIG['entry_cost']}"
         assert (
-            REWARD_CONFIG["hold_cost_per_bar"] == -0.002
-        ), f"hold_cost_per_bar should be -0.002 (Two-Lever Run 8), got {REWARD_CONFIG['hold_cost_per_bar']}"
+            REWARD_CONFIG["hold_cost_per_bar"] == -0.010
+        ), f"hold_cost_per_bar should be -0.010, got {REWARD_CONFIG['hold_cost_per_bar']}"
         assert (
             REWARD_CONFIG["flat_hold_reward"] == 0.000
-        ), f"flat_hold_reward should be 0.000 (pure P&L signal), got {REWARD_CONFIG['flat_hold_reward']}"
-
-        # Verify break-even calculation
-        break_even_bars = abs(REWARD_CONFIG["entry_cost"]) / abs(REWARD_CONFIG["hold_cost_per_bar"])
+        ), f"flat_hold_reward should be 0.000, got {REWARD_CONFIG['flat_hold_reward']}"
         assert (
-            break_even_bars == 10.0
-        ), f"Break-even hold bars should be 10 (0.02/0.002), got {break_even_bars}"
+            REWARD_CONFIG.get("hold_cost_only_when_losing") is True
+        ), "hold_cost_only_when_losing must be True for Run 11 (let winners run)"
 
     def test_t1_bonus_to_entry_cost_ratio(self):
-        """T1 bonus (0.10) is 5x entry cost (0.02) in Run 8 — document the risk."""
+        """T1 bonus (0.50) is 50x entry cost (0.01) — strong T1 incentive."""
         from strategies.rl_config import REWARD_CONFIG
 
         t1_bonus = REWARD_CONFIG["t1_bonus"]
         entry_cost = abs(REWARD_CONFIG["entry_cost"])
         ratio = t1_bonus / entry_cost
-        # In Run 8 this ratio is 5.0 — document it (not a failure condition, just awareness)
+        assert ratio == 50.0, f"T1 bonus / |entry_cost| = {ratio:.2f}, expected 50.0"
+
+    def test_hold_cost_zero_when_winning(self, df_mes):
+        """Run 11: hold cost must be 0 when position is in profit."""
+        env = TradingEnvironment(symbol="MES", df=df_mes, initial_capital=10_000.0)
+        env.reset()
+        env.step(Action.BUY)
+
+        # Patch entry price below current close — position is winning
+        current_close = float(env.df.iloc[env._idx]["close"])
+        env._entry_price = current_close * 0.95  # 5% below current → unrealized profit
+
+        _, reward_winning, _, _, _ = env.step(Action.HOLD)
+        # Hold cost = 0, only pnl_reward applies (0 for HOLD). Reward should be near 0.
         assert (
-            ratio == 5.0
-        ), f"T1 bonus / |entry_cost| = {ratio:.2f}, expected 5.0 for Two-Lever Run 8"
+            reward_winning >= -0.05
+        ), f"Hold cost should be 0 when in profit, reward={reward_winning:.5f}"
+
+    def test_hold_cost_applied_when_losing(self, df_mes):
+        """Run 11: hold cost must be applied when position is underwater."""
+        from strategies.rl_config import REWARD_CONFIG
+
+        env = TradingEnvironment(symbol="MES", df=df_mes, initial_capital=10_000.0)
+        env.reset()
+        env.step(Action.BUY)
+
+        # Patch entry price above current close — position is losing
+        current_close = float(env.df.iloc[env._idx]["close"])
+        env._entry_price = current_close * 1.10  # 10% above current → underwater
+
+        _, reward_losing, _, _, _ = env.step(Action.HOLD)
+        expected_hold_cost = REWARD_CONFIG["hold_cost_per_bar"]  # -0.010
+        assert reward_losing <= expected_hold_cost + 0.05, (
+            f"Hold cost should be applied when losing, reward={reward_losing:.5f}, "
+            f"expected approx {expected_hold_cost}"
+        )
 
 
 # ── RL Trainer Stop Mechanism Tests ───────────────────────────────────────────

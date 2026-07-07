@@ -7,6 +7,8 @@ All tests use synthetic data — no network calls required.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -92,7 +94,7 @@ class TestRLConfig:
         assert VALIDATION_GATES["max_drawdown"] < 1.0
         assert VALIDATION_GATES["min_hold_rate"] >= 0.0
 
-        assert N_FEATURES == 18, f"Expected 18 features, got {N_FEATURES}"
+        assert N_FEATURES == 23, f"Expected 23 features, got {N_FEATURES}"
         assert N_ACTIONS == 4, f"Expected 4 actions, got {N_ACTIONS}"
 
     def test_action_enum_values(self):
@@ -250,3 +252,19 @@ class TestSafetyLayerBlocks:
         assert safety.is_killed is True
         status = safety.get_status()
         assert status.get("is_killed") is True
+
+    def test_kill_switch_sync_no_coroutine_runtime_warnings(self, mock_safety_layer):
+        """activate/deactivate from sync context must not discard coroutines (no RuntimeWarning)."""
+        from risk.safety_layer import KillSwitchReason
+
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always", category=RuntimeWarning)
+            mock_safety_layer.activate_kill_switch(KillSwitchReason.MANUAL, "sync test")
+            mock_safety_layer.deactivate_kill_switch("tester")
+
+        bad = [
+            w
+            for w in recorded
+            if issubclass(w.category, RuntimeWarning) and "never awaited" in str(w.message).lower()
+        ]
+        assert not bad, f"Unexpected RuntimeWarning(s): {[str(w.message) for w in bad]}"

@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 import { Database } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, fetchEngineRaw } from "@/lib/api";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -57,13 +58,6 @@ function formatUptime(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
-function formatSecondsSince(date: Date): string {
-  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diff < 60) return `${diff} second${diff !== 1 ? "s" : ""} ago`;
-  const mins = Math.floor(diff / 60);
-  return `${mins} minute${mins !== 1 ? "s" : ""} ago`;
-}
-
 const TABLE_LABELS: { key: keyof DbTables; label: string }[] = [
   { key: "trades", label: "Trades" },
   { key: "decisions", label: "Decisions" },
@@ -85,9 +79,6 @@ export function DatabaseStatusWidget() {
     error: false,
     lastChecked: null,
   });
-
-  // Ticker for "last checked X seconds ago"
-  const [, setTick] = useState(0);
 
   async function fetchStatus() {
     try {
@@ -119,9 +110,7 @@ export function DatabaseStatusWidget() {
       } else {
         // /health returned OK but no database key — try fallback
         try {
-          const fallback = await fetch(
-            `/portfolio/history/trades?limit=1`
-          );
+          const fallback = await fetchEngineRaw(`/portfolio/history/trades?limit=1`);
           setState({
             connected: fallback.ok,
             path: null,
@@ -161,12 +150,6 @@ export function DatabaseStatusWidget() {
     const pollInterval = setInterval(fetchStatus, 60_000);
     return () => clearInterval(pollInterval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Clock tick — update "last checked" display every second
-  useEffect(() => {
-    const tickInterval = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(tickInterval);
   }, []);
 
   // ── Badge logic ───────────────────────────────────────────────────────────
@@ -307,9 +290,7 @@ export function DatabaseStatusWidget() {
 
             {/* Last checked */}
             {state.lastChecked && (
-              <p className="text-[11px] text-muted-foreground">
-                Last checked: {formatSecondsSince(state.lastChecked)}
-              </p>
+              <StalenessIndicator lastUpdated={state.lastChecked} />
             )}
           </div>
         )}

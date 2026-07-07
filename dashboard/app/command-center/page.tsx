@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { JetBrains_Mono, Orbitron } from "next/font/google";
@@ -18,12 +19,36 @@ import {
   WifiOff,
   Power,
   ChevronRight,
+  BookOpen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, fetchJournalStats, fetchBars, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  type HonestTradeSet,
+  dedupCaveat,
+} from "@/lib/honestTrades";
+import { INSTRUMENTS, WFE_ROWS } from "./constants";
+import { SignalFeedWidget } from "@/components/SignalFeedWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
+import ApprovalPanel from "@/components/ApprovalPanel";
+import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { SessionBriefPanel } from "@/components/SessionBriefPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { useToast } from "@/lib/toast-context";
+
+// Candlestick chart (lightweight-charts) — only renders once bar data resolves, so
+// load it on demand to keep lightweight-charts off the command-center landing critical path.
+const CandlestickChart = dynamic(
+  () =>
+    import("@/components/command-center/charts/CandlestickChart").then((m) => ({
+      default: m.CandlestickChart,
+    })),
+  { ssr: false, loading: () => <div className="h-[360px] animate-pulse rounded bg-slate-950/40" /> }
+);
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -43,6 +68,8 @@ interface HealthData {
   kill_switch_active: boolean;
   uptime_seconds: number;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
 }
@@ -208,44 +235,6 @@ function getMarketSession(): SessionInfo {
   };
 }
 
-// ── Instrument Config ─────────────────────────────────────────────────────
-
-const INSTRUMENTS = [
-  {
-    symbol: "MCL",
-    tf: "1h",
-    status: "APPROVED" as const,
-    wfe: 0.82,
-    regime: "BULL",
-    lastSignal: "LONG",
-    atr: "~0.42",
-  },
-  {
-    symbol: "MNQ",
-    tf: "1h",
-    status: "APPROVED" as const,
-    wfe: 0.57,
-    regime: "NEUTRAL",
-    lastSignal: "FLAT",
-    atr: "~18.5",
-  },
-  {
-    symbol: "MGC",
-    tf: "1d",
-    status: "HALTED" as const,
-    wfe: 0.88,
-    regime: "OVERFIT",
-    lastSignal: "—",
-    atr: "~9.2",
-  },
-];
-
-const WFE_ROWS = [
-  { symbol: "MCL", tf: "1h", wfe: 0.82, threshold: 0.3, status: "PASS" as const },
-  { symbol: "MNQ", tf: "1h", wfe: 0.57, threshold: 0.3, status: "PASS" as const },
-  { symbol: "MGC", tf: "1d", wfe: 0.88, threshold: 0.3, status: "OVERFIT" as const },
-];
-
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function fmtUSD(n: number | undefined | null): string {
@@ -297,15 +286,46 @@ function fetcher<T>(path: string): Promise<T> {
 
 // ── Page Component ────────────────────────────────────────────────────────
 
-export default function CommandCenterPage() {
-  const session = getMarketSession();
-  const refreshInterval = session.isActive ? 30_000 : 5 * 60_000;
+// Stable placeholder session used on the server and the first client paint so
+// that both renders produce identical HTML (no React hydration error #418).
+// getMarketSession() calls new Date() which differs between server (UTC) and
+// client (local timezone + a few ms clock drift), causing a text-content mismatch.
+const SESSION_PLACEHOLDER: SessionInfo = {
+  label: "LOADING…",
+  color: "text-slate-500",
+  badge: "bg-slate-800 text-slate-400 border-slate-700",
+  isActive: false,
+};
 
-  const [now, setNow] = useState(new Date());
+export default function CommandCenterPage() {
+  // Start null so SSR and the client's first paint match (no new Date() during
+  // render); the real clock starts after mount. Prevents React hydration error #418.
+  const [now, setNow] = useState<Date | null>(null);
+  // session is also deferred to post-mount: getMarketSession() reads new Date()
+  // which differs server (UTC) vs client (local tz) → hydration mismatch.
+  const [session, setSession] = useState<SessionInfo>(SESSION_PLACEHOLDER);
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    // Initialise both clock and session together so they are always in sync.
+    const tick = () => {
+      setNow(new Date());
+      setSession(getMarketSession());
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const refreshInterval = session.isActive ? 30_000 : 5 * 60_000;
+
+  // Live price chart symbol (defaults to the first tracked instrument)
+  const [chartSym, setChartSym] = useState<string>(INSTRUMENTS[0]?.symbol ?? "MES");
+  const { data: ccBars } = useSWR<OHLCVBar[]>(
+    `cc-bars-${chartSym}`,
+    () => fetchBars(chartSym, { timeframe: "15m", days: 14, futures: true }),
+    { refreshInterval: 60_000, revalidateOnFocus: false }
+  );
+
+  const { addToast } = useToast();
 
   const {
     data: health,
@@ -350,15 +370,31 @@ export default function CommandCenterPage() {
     { refreshInterval }
   );
 
+  const { data: journalStats } = useSWR<JournalTradeStats>(
+    "/journal/review/stats?limit=30",
+    fetcher,
+    { refreshInterval: 60_000, shouldRetryOnError: false }
+  );
+
+  // Honest deduped set for the journal HUD row (win_rate + EV/trade).
+  // /journal/review/stats over-counts re-logged winners; fetchHonestTrades
+  // applies dedup at read time. All other command-center cards are LEGIT.
+  const { data: honestSet } = useSWR<HonestTradeSet>(
+    "honest-trades-cc",
+    fetchHonestTrades,
+    { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
+  );
+
   const engineOnline = !healthErr && !!health;
   const killSwitchActive = health?.kill_switch_active ?? false;
 
   const liveWfeRows = useMemo(() => {
     if (!paperStatus) return WFE_ROWS;
     const keys: { k: string; symbol: string; tf: string; threshold: number }[] = [
+      { k: "MES_1h", symbol: "MES", tf: "1h", threshold: 0.3 },
+      { k: "MGC_1d", symbol: "MGC", tf: "1d", threshold: 0.3 },
       { k: "MCL_1h", symbol: "MCL", tf: "1h", threshold: 0.3 },
       { k: "MNQ_1h", symbol: "MNQ", tf: "1h", threshold: 0.3 },
-      { k: "MGC_1d", symbol: "MGC", tf: "1d", threshold: 0.3 },
     ];
     return keys.map(({ k, symbol, tf, threshold }) => {
       const row = paperStatus[k];
@@ -401,23 +437,41 @@ export default function CommandCenterPage() {
   const ordersProgress = Math.min((ordersPerMin / 40) * 100, 100);
 
   const handleKillSwitch = useCallback(async () => {
+    const activating = !killSwitchActive;
     if (
       !confirm(
-        "Activate KILL SWITCH? This will halt all trading immediately."
+        activating
+          ? "Activate KILL SWITCH? This will halt all trading immediately."
+          : "Deactivate the kill switch and allow trading to resume?"
       )
     )
       return;
     try {
-      await fetchEngine("/safety/kill-switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ activate: true }),
-      });
+      // Use the verified helper — it hits /safety/kill-switch/activate +
+      // /deactivate (the bare /safety/kill-switch route is a 404).
+      await toggleKillSwitch(
+        activating ? "activate" : "deactivate",
+        activating ? "Manual kill from command center" : undefined
+      );
+      addToast(
+        activating
+          ? "Kill switch ACTIVATED — all trading halted."
+          : "Kill switch deactivated — trading re-armed.",
+        activating ? "warning" : "success"
+      );
       mutateHealth();
-    } catch {
-      // silently handle — kill switch endpoint may not exist yet
+    } catch (err) {
+      // A safety control that fails must fail LOUDLY — never swallow.
+      addToast(
+        `Kill switch ${
+          activating ? "activation" : "deactivation"
+        } FAILED — trading may NOT be halted. ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
+        "error"
+      );
     }
-  }, [mutateHealth]);
+  }, [killSwitchActive, addToast, mutateHealth]);
 
   return (
     <div
@@ -456,15 +510,17 @@ export default function CommandCenterPage() {
           {/* Live clock */}
           <div className="text-right">
             <div className="text-xl font-mono text-cyan-300 tabular-nums tracking-widest">
-              {now.toLocaleTimeString("en-US", { hour12: false })}
+              {now ? now.toLocaleTimeString("en-US", { hour12: false }) : "--:--:--"}
             </div>
             <div className="text-xs text-slate-500 font-mono">
-              {now.toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+              {now
+                ? now.toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : ""}
             </div>
           </div>
 
@@ -507,9 +563,46 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
-          ROW 1 — STATUS OVERVIEW (4 columns)
+          TRADE APPROVALS — human-in-the-loop gate
       ═══════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="mb-4">
+        <Card className="border border-amber-500/30 bg-zinc-900/50">
+          <CardHeader className="pb-1.5 pt-3 px-4">
+            <CardTitle className="text-xs font-mono text-amber-400 tracking-widest flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3" />
+              TRADE APPROVALS
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <ApprovalPanel />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          PIPELINE REASONING — why each decision was made (expandable)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Pipeline Reasoning">
+          <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          SESSION BRIEF — proactive advisor recommendations. Re-homed here from
+          the dissolved kitchen-sink overview page (#274 feature preserved on the
+          flagship HUD after the P2.1 redirect orphaned its old mount point).
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Session Brief">
+          <SessionBriefPanel />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ROW 1 — STATUS OVERVIEW (5 columns)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-5 gap-3 mb-4">
         {/* Portfolio */}
         <Card className="bg-slate-900/60 border border-cyan-900/50">
           <CardHeader className="pb-1.5 pt-3 px-4">
@@ -585,10 +678,46 @@ export default function CommandCenterPage() {
                       : "bg-red-950 text-red-400 border border-red-800"
                   }`}
                 >
-                  {inst.status === "APPROVED" ? `WFE=${inst.wfe}` : "HALTED"}
+                  {inst.status === "APPROVED" ? `DSR=${inst.wfe}` : "HALTED"}
                 </Badge>
               </div>
             ))}
+          </CardContent>
+        </Card>
+
+        {/* Live Price Chart */}
+        <Card className="bg-slate-900/60 border border-cyan-900/50 xl:col-span-2">
+          <CardHeader className="pb-1.5 pt-3 px-4">
+            <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center justify-between gap-1.5">
+              <span className="flex items-center gap-1.5">
+                <TrendingUp className="w-3 h-3" />
+                PRICE ACTION · {chartSym} · 15m
+              </span>
+              <span className="flex gap-1">
+                {INSTRUMENTS.map((inst) => (
+                  <button
+                    key={inst.symbol}
+                    onClick={() => setChartSym(inst.symbol)}
+                    className={`px-1.5 py-0.5 rounded font-mono text-[10px] border transition-colors ${
+                      chartSym === inst.symbol
+                        ? "bg-cyan-950 text-cyan-300 border-cyan-700"
+                        : "bg-slate-900 text-slate-500 border-slate-700 hover:text-slate-300"
+                    }`}
+                  >
+                    {inst.symbol}
+                  </button>
+                ))}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            {ccBars && ccBars.length ? (
+              <CandlestickChart bars={ccBars} height={360} />
+            ) : (
+              <p className="text-xs text-slate-500 font-mono py-8 text-center">
+                No bar data available for {chartSym}.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -695,6 +824,11 @@ export default function CommandCenterPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Portfolio Correlation */}
+        <WidgetErrorBoundary name="Portfolio Correlation">
+          <PortfolioCorrelationWidget />
+        </WidgetErrorBoundary>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -739,7 +873,7 @@ export default function CommandCenterPage() {
                     TRADING HALTED
                   </span>
                   <span className="font-mono text-xs text-slate-500 text-center">
-                    WFE={inst.wfe} — OVERFIT DETECTED
+                    DSR={inst.wfe} — OVERFIT DETECTED
                     <br />
                     Regime-adaptive boost insufficient
                   </span>
@@ -748,14 +882,14 @@ export default function CommandCenterPage() {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                   <div>
                     <div className="text-xs text-slate-500 mb-0.5">
-                      WFE Score
+                      Deflated Sharpe
                     </div>
                     <div className="font-mono text-lg text-cyan-400 font-bold leading-none">
                       {inst.wfe}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Regime</div>
+                    <div className="text-xs text-slate-500 mb-0.5">Regime (static)</div>
                     <div
                       className={`font-mono text-sm font-bold ${
                         inst.regime === "BULL"
@@ -984,6 +1118,7 @@ export default function CommandCenterPage() {
                 No trade history from /portfolio/history/trades
               </div>
             ) : (
+              <>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs font-mono">
                   <thead>
@@ -1031,6 +1166,11 @@ export default function CommandCenterPage() {
                   </tbody>
                 </table>
               </div>
+              <p className="text-[10px] text-amber-500/70 font-mono mt-2">
+                Raw record (/portfolio/history/trades) — not deduped; per-trade
+                P&amp;L may include re-logged duplicates.
+              </p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -1040,7 +1180,7 @@ export default function CommandCenterPage() {
           <CardHeader className="pb-2 pt-3 px-4">
             <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
               <RefreshCw className="w-3 h-3" />
-              WALK-FORWARD EFFICIENCY MONITOR
+              GATE-V2 DEFLATED SHARPE MONITOR
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3 space-y-4">
@@ -1084,8 +1224,11 @@ export default function CommandCenterPage() {
             ))}
 
             <div className="pt-2 border-t border-slate-800/50 space-y-1.5">
+              <p className="text-[10px] text-slate-600 italic">
+                Configured schedule/method (static, not live-probed):
+              </p>
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-500">Next WFE Recalc</span>
+                <span className="text-slate-500">Next Recalc</span>
                 <span className="text-cyan-400">Sunday 06:00 CT</span>
               </div>
               <div className="flex justify-between text-xs font-mono">
@@ -1145,7 +1288,7 @@ export default function CommandCenterPage() {
             </div>
             <div className="flex justify-between items-baseline">
               <span className="text-xs text-slate-500">Open Positions</span>
-              <span className="font-mono text-xs text-slate-400">0</span>
+              <span className="font-mono text-xs text-slate-400">N/A — inactive</span>
             </div>
             <div className="mt-2 p-2 rounded bg-slate-800/50 border border-slate-700/40">
               <p className="text-xs text-slate-500 font-mono leading-relaxed">
@@ -1255,16 +1398,19 @@ export default function CommandCenterPage() {
               <span className="text-xs text-slate-500">IBKR Gateway</span>
               <Badge
                 className={`text-xs font-mono py-0 border ${
-                  health?.ibkr_connected
+                  (health?.ibkr_execution_connected ?? health?.ibkr_connected)
                     ? "bg-green-950 text-green-400 border-green-800"
                     : "bg-red-950 text-red-400 border-red-800"
                 }`}
+                title="Reports execution-connector state when /health exposes ibkr_execution_connected; falls back to legacy ibkr_connected (OR of execution + data) on older engines."
               >
-                {health?.ibkr_connected ? "CONNECTED" : "DISCONNECTED"}
+                {(health?.ibkr_execution_connected ?? health?.ibkr_connected) ? "CONNECTED" : "DISCONNECTED"}
               </Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-500">Database</span>
+              <span className="text-xs text-slate-500" title="Engine /health reachability — not a direct database probe.">
+                Engine Reachable
+              </span>
               <Badge
                 className={`text-xs font-mono py-0 border ${
                   engineOnline
@@ -1291,6 +1437,107 @@ export default function CommandCenterPage() {
             </Button>
           </CardContent>
         </Card>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ROW 6 — JOURNAL REVIEW STATS
+          Win Rate + EV/Trade: migrated to honest deduped source.
+          Trades count + Diagnosis: kept from journalStats (LEGIT — not P&L aggregates).
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mt-3 mb-3">
+        <a href="/journal-review" className="block">
+          <Card className="bg-slate-900/60 border border-cyan-900/50 hover:border-cyan-600/60 transition-colors cursor-pointer">
+            <CardHeader className="pb-1.5 pt-3 px-4">
+              <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+                <BookOpen className="w-3 h-3" />
+                JOURNAL REVIEW
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              {!journalStats ? (
+                <span className="text-xs text-slate-500 font-mono">Loading…</span>
+              ) : (
+                <>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div>
+                      {/* Trades count from journalStats — LEGIT (not a P&L aggregate) */}
+                      <div className="text-xs text-slate-500 mb-0.5">Trades</div>
+                      <div className="font-mono text-sm text-white font-bold">
+                        {journalStats.total_trades}
+                      </div>
+                    </div>
+                    <div>
+                      {/* Win Rate — migrated to honest deduped source */}
+                      <div className="text-xs text-slate-500 mb-0.5">Win Rate</div>
+                      {honestSet ? (
+                        <div
+                          className={`font-mono text-sm font-bold ${
+                            honestSet.winRate >= 0.5
+                              ? "text-green-400"
+                              : honestSet.winRate >= 0.35
+                              ? "text-yellow-400"
+                              : "text-red-400"
+                          }`}
+                        >
+                          {(honestSet.winRate * 100).toFixed(0)}%
+                        </div>
+                      ) : (
+                        <div className="font-mono text-sm text-slate-500">—</div>
+                      )}
+                    </div>
+                    <div>
+                      {/* EV / Trade — migrated to honest deduped source (net / trade count) */}
+                      <div className="text-xs text-slate-500 mb-0.5">EV / Trade</div>
+                      {honestSet && honestSet.trades.length > 0 ? (
+                        <div
+                          className={`font-mono text-sm font-bold ${
+                            honestSet.net / honestSet.trades.length >= 0
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }`}
+                        >
+                          {honestSet.net / honestSet.trades.length >= 0 ? "+" : ""}
+                          {(honestSet.net / honestSet.trades.length).toFixed(0)}
+                        </div>
+                      ) : (
+                        <div className="font-mono text-sm text-slate-500">—</div>
+                      )}
+                    </div>
+                    <div>
+                      {/* Diagnosis from journalStats — LEGIT (categorical field, not a P&L aggregate) */}
+                      <div className="text-xs text-slate-500 mb-0.5">Diagnosis</div>
+                      <Badge
+                        className={`text-xs font-mono py-0 border ${
+                          journalStats.diagnosis === "solid"
+                            ? "bg-green-950 text-green-400 border-green-800"
+                            : journalStats.diagnosis === "insufficient_data"
+                            ? "bg-slate-800 text-slate-400 border-slate-700"
+                            : "bg-red-950 text-red-400 border-red-800"
+                        }`}
+                      >
+                        {journalStats.diagnosis.replace("_", " ").toUpperCase()}
+                      </Badge>
+                    </div>
+                  </div>
+                  {honestSet && (
+                    <p className="mt-2 text-[10px] text-slate-600 font-mono">
+                      {dedupCaveat(honestSet)} · win rate + EV sourced from deduped record
+                    </p>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </a>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ROW 7 — SIGNAL FEED (full width)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mt-3">
+        <WidgetErrorBoundary name="Signal Feed">
+          <SignalFeedWidget />
+        </WidgetErrorBoundary>
       </div>
     </div>
   );

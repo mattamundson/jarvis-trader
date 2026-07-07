@@ -1,0 +1,120 @@
+{
+  "date": "2026-05-17",
+  "session_bias": null,
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7441.25,
+      "target2": 7468.25,
+      "stop1": 7396.25,
+      "win_rate": 82.62,
+      "rr": 0.6,
+      "timestamp": "2026-05-17T17:10:03.879-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 102.71,
+      "target2": 103.79,
+      "stop1": 100.91,
+      "win_rate": 81.47,
+      "rr": 0.58,
+      "timestamp": "2026-05-17T17:16:07.925-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7433.5,
+      "target2": 7440.25,
+      "stop1": null,
+      "win_rate": 81.24,
+      "rr": 0.57,
+      "timestamp": "2026-05-17T17:41:01.817-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7429.25,
+      "target2": 7436.0,
+      "stop1": null,
+      "win_rate": 81.2,
+      "rr": 0.57,
+      "timestamp": "2026-05-17T17:30:01.056-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7426.5,
+      "target2": 7433.25,
+      "stop1": null,
+      "win_rate": 81.17,
+      "rr": 0.57,
+      "timestamp": "2026-05-17T17:02:01.587-05:00"
+    }
+  ],
+  "corey_quote": null,
+  "commentary_health": [
+    {
+      "date": "2026-05-18",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 59
+    },
+    {
+      "date": "2026-05-15",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 37
+    },
+    {
+      "date": "2026-05-14",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 33
+    },
+    {
+      "date": "2026-05-13",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 33
+    },
+    {
+      "date": "2026-05-12",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 27
+    },
+    {
+      "date": "2026-05-11",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 28
+    },
+    {
+      "date": "2026-05-10",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    }
+  ]
+}

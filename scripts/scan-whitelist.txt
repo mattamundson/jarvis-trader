@@ -1,0 +1,101 @@
+# scan-whitelist.txt — paths to skip during credential scans
+#
+# Used by scan-credentials.ps1. One pattern per line.
+# Patterns are matched against the path SUBSTRING (case-insensitive).
+# Lines starting with # are comments. Empty lines are ignored.
+#
+# Add entries here as you discover false-positive sources. Anything that
+# legitimately contains secret-LIKE strings (test fixtures, training data,
+# example .env files, AI tool extension caches with bundled samples) goes
+# below.
+
+# AI editor extension caches (bundled with sample/example secrets in
+# extensions, not real keys). Peer-session 2026-05-03 found heavy false
+# positives in these.
+.antigravity
+.cursor
+.windsurf
+.augment
+
+# VS Code extension bundles (pylance, jupyter, remote-containers, etc.)
+# ship minified JS that contains AWS-key-shaped substrings as part of regex
+# tables and AWS SDK code, not real keys. 2026-05-04 snapshot caught 6+ in
+# .vscode\extensions\ms-python.vscode-pylance, ms-toolsai.jupyter,
+# ms-vscode-remote.remote-containers.
+.vscode\extensions
+
+# master-jarvis hermes codebase — intentionally contains the WORD "password"
+# in many places (env var reads, redaction code, IMAP/SMTP/Matrix login
+# helpers, doc samples). 2026-05-04 spot-check confirmed:
+# - agent/redact.py: contains the regex strings that DETECT "password" patterns
+# - gateway/platforms/email.py: legit os.getenv("EMAIL_PASSWORD")
+# - tests/: dummy keys (the canonical AWS docs sample plus xoxb-test, ghp_test) for fixtures
+# - website/docs/: sample keys in user-guide markdown
+# - tools/: code that handles credential strings
+# Hermes has its own pre-commit hooks; trusting that boundary here.
+master-jarvis\hermes
+
+# pip vendored libraries inside pipx — `password=` literal appears in
+# auth.py, urllib3 auth helpers, rich console prompts, etc. Not secrets,
+# just code that handles passwords.
+master-jarvis\pipx\shared\Lib\site-packages
+master-jarvis\pipx\venvs
+
+# Claude Website Pages snapshot — local copies of Anthropic public docs
+# (scaling-guide.md, security-best-practices.md). The doc text discusses
+# password storage and matches the password=... regex.
+05_SOURCE_FILES\Claude Website Pages
+05_SOURCE_FILES\Product Catalog Source FIles
+
+# Year-binned archive — files moved here by ~/scripts/bin-loose-files.ps1
+# which explicitly skips forbidden cred paths. Archive is by definition
+# inactive (12-month auto-purge). Re-scanning every week wastes ~30% of
+# scan time on files we've already cleared.
+.archive\loose-files
+
+# Broken-venv leftover dirs from failed venv rebuilds. They contain vendored
+# pip packages with the literal "password=" pattern (auth.py, urllib3, etc.)
+# that scan-credentials matches. Naming conventions seen so far:
+#   .venv.broken-<unix-timestamp>          (repair-engine-venv.ps1)
+#   .venv.failed-rebuild-<unix-timestamp>  (newer variant)
+# Safe to delete the parent dir wholesale when no longer needed.
+\.venv.broken-
+\.venv.failed-rebuild-
+
+# Old Claude Code backup dirs (CLAUDE_BACKUP-style timestamped). They contain
+# session-state snapshots that may include OAuth tokens that have since been
+# refreshed. Whitelist for scan purposes; delete the snapshot entirely after
+# verifying the OAuth has been refreshed (similar to the master-jarvis/.claude
+# - Copy/ pattern handled 2026-05-04).
+\.claude-backup-
+
+# Personal-agent-skills extracted tree — files were copied here AFTER
+# verifying each was clean (no scan-credentials findings). The source still
+# exists at ~/Projects/personal_agent/ and is delete-after-Phase-0; until
+# then both copies would double-count the same handful of clean files
+# (the dirty ones stayed in source).
+Code\personal-agent-skills
+
+# Aider keeps oauth tokens in oauth-keys.env (covered by ForbiddenPaths
+# check) but also has caches, history.db, etc. that match patterns harmlessly.
+.aider
+
+# Cursor Agent CLI install (versioned bundles include sample configs).
+cursor-agent
+
+# Local pip / pnpm / npm caches that ship with sample env files in package
+# fixtures.
+pip-cache
+.npm
+.yarn-cache
+
+# Test fixtures for any project — explicitly allowed to contain dummy keys.
+__fixtures__
+test-fixtures
+testdata
+
+# Example projects + tutorials.
+examples\
+example\
+samples\
+tutorials\

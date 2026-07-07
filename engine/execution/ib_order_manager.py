@@ -143,6 +143,42 @@ class IBOrderManager:
         )
         return result
 
+    async def submit_bracket_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        price: float,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        order_type: str = "MKT",
+        limit_price: Optional[float] = None,
+    ) -> dict:
+        """
+        Place an atomic bracket order via SafetyLayer.
+        """
+        logger.info(
+            "IBOrderManager.submit_bracket_order | symbol=%s action=%s qty=%d "
+            "price=%.2f SL=%.2f TP=%.2f",
+            symbol, action.upper(), quantity, price, stop_loss or 0, take_profit or 0
+        )
+
+        if self._safety.is_killed:
+            return {"approved": False, "reason": "Kill switch active"}
+
+        result = await self._safety.submit_paper_bracket_order(
+            symbol=symbol,
+            action=action,
+            quantity=quantity,
+            price=price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            order_type=order_type,
+            limit_price=limit_price,
+        )
+
+        return result
+
     # ── Position Sync ─────────────────────────────────────────────────────────
 
     async def sync_positions_from_ib(self) -> list[dict]:

@@ -75,7 +75,7 @@ class StrategyRecommendRequest(BaseModel):
 
 @router.get("/chain/{symbol}", tags=["options"])
 async def get_options_chain(symbol: str, expiry_index: int = 0):
-    """Fetch the live options chain for a symbol via yfinance.
+    """Fetch the live options chain for a symbol via MarketDataManager.
 
     Query param ``expiry_index`` selects which expiry (0 = nearest).
     Returns calls, puts, Greeks, IV rank, and underlying price.
@@ -83,34 +83,28 @@ async def get_options_chain(symbol: str, expiry_index: int = 0):
     logger.info("[options_router] GET /options/chain/%s expiry_index=%d", symbol, expiry_index)
 
     try:
-        from options.chain_fetcher import _YFINANCE_AVAILABLE, fetch_chain_yfinance  # noqa: F401
+        from options.chain_fetcher import fetch_chain  # noqa: F401
     except ImportError as exc:
         logger.error("[options_router] chain_fetcher import failed: %s", exc)
         raise HTTPException(status_code=503, detail="Options chain module unavailable.") from exc
 
-    if not _YFINANCE_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="yfinance is not installed. Run: pip install yfinance",
-        )
-
     try:
-        # Resolve the requested expiry date string via the ticker
-        import yfinance as yf
+        # Resolve available expiries via data_manager
+        from data.market_data import MarketDataManager
 
-        ticker = yf.Ticker(symbol.upper())
-        available = ticker.options
-        if not available:
+        data_manager = MarketDataManager()
+        expirations = await data_manager.get_options_expirations(symbol.upper())
+        if not expirations:
             raise HTTPException(
                 status_code=404,
                 detail=f"No options data available for symbol '{symbol}'.",
             )
 
-        if expiry_index >= len(available):
+        if expiry_index >= len(expirations):
             expiry_index = 0  # fall back to nearest
 
-        expiry_dates = [available[expiry_index]]
-        chain = fetch_chain_yfinance(symbol.upper(), expiry_dates=expiry_dates)
+        expiry_dates = [expirations[expiry_index]]
+        chain = fetch_chain(symbol.upper(), expiry_dates=expiry_dates, data_manager=data_manager)
 
     except HTTPException:
         raise
@@ -182,20 +176,16 @@ async def get_iv_rank(symbol: str):
     logger.info("[options_router] GET /options/iv-rank/%s", symbol)
 
     try:
-        from options.chain_fetcher import _YFINANCE_AVAILABLE
         from options.chain_fetcher import get_iv_rank as _get_iv_rank
     except ImportError as exc:
         logger.error("[options_router] chain_fetcher import failed: %s", exc)
         raise HTTPException(status_code=503, detail="Options chain module unavailable.") from exc
 
-    if not _YFINANCE_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="yfinance is not installed. Run: pip install yfinance",
-        )
-
     try:
-        iv_rank = _get_iv_rank(symbol.upper(), days=252)
+        from data.market_data import MarketDataManager
+
+        data_manager = MarketDataManager()
+        iv_rank = _get_iv_rank(symbol.upper(), days=252, data_manager=data_manager)
     except Exception as exc:
         logger.exception("[options_router] get_iv_rank error for %s: %s", symbol, exc)
         raise HTTPException(status_code=502, detail=f"Failed to compute IV rank: {exc}") from exc
@@ -365,6 +355,80 @@ async def get_options_positions(status: Optional[str] = "OPEN"):
 
 
 # ---------------------------------------------------------------------------
+# Options Analyst endpoints (stage 6 — added 2026-05-20)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/skew/{symbol}", tags=["options", "analyst"])
+async def get_options_skew(symbol: str):
+    """Return put/call skew and IV term-structure summary for a symbol.
+
+    Useful for inspecting the raw signals that feed into the OptionsAnalyst
+    without running the full pipeline.  Requires an active chain fetcher.
+    """
+    logger.info("[options_router] GET /options/skew/%s", symbol)
+
+    result: dict = {"symbol": symbol.upper(), "timestamp": datetime.utcnow().isoformat()}
+
+    try:
+        from options.chain_fetcher import get_pc_skew, get_term_structure  # type: ignore[import]
+
+        skew = get_pc_skew(symbol.upper())
+        result["pc_skew"] = skew
+        result["skew_available"] = skew is not None
+    except ImportError:
+        result["pc_skew"] = None
+        result["skew_available"] = False
+        result["skew_note"] = "chain_fetcher not available"
+    except Exception as exc:
+        logger.debug("[options_router] skew fetch error: %s", exc)
+        result["pc_skew"] = None
+        result["skew_available"] = False
+
+    try:
+        from options.chain_fetcher import get_term_structure  # type: ignore[import]
+
+        term = get_term_structure(symbol.upper())
+        result["term_structure"] = term
+        result["term_available"] = term is not None
+    except ImportError:
+        result["term_structure"] = None
+        result["term_available"] = False
+    except Exception as exc:
+        logger.debug("[options_router] term_structure fetch error: %s", exc)
+        result["term_structure"] = None
+        result["term_available"] = False
+
+    return result
+
+
+@router.get("/analyst/{symbol}", tags=["options", "analyst"])
+async def get_options_analyst_verdict(symbol: str, spot_price: Optional[float] = None):
+    """Run the OptionsAnalyst directly and return its verdict.
+
+    Useful for debugging the stage-6 signal without triggering the full
+    pipeline.  The analyst respects ``ENABLE_OPTIONS_ANALYST`` — when the
+    flag is ``0`` it returns a neutral/disabled dict rather than an error.
+    """
+    logger.info("[options_router] GET /options/analyst/%s spot_price=%s", symbol, spot_price)
+
+    try:
+        from agents.options_analyst import OptionsAnalyst, is_options_analyst_enabled
+
+        analyst = OptionsAnalyst()
+        result = await analyst.analyze(symbol.upper(), spot_price=spot_price)
+        return {
+            "symbol": symbol.upper(),
+            "enabled": is_options_analyst_enabled(),
+            "verdict": result,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    except Exception as exc:
+        logger.exception("[options_router] analyst verdict error for %s: %s", symbol, exc)
+        raise HTTPException(status_code=500, detail=f"OptionsAnalyst error: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
 # Multi-Market Module Endpoints (added 2026-04-01)
 # ---------------------------------------------------------------------------
 
@@ -433,3 +497,160 @@ async def options_module_status():
             "status": "error",
             "message": str(exc),
         }
+
+
+# ---------------------------------------------------------------------------
+# GET /options/module/scan  &  /options/module/pnl  (dashboard /options page)
+# ---------------------------------------------------------------------------
+
+# VIXRegime.value → the lowercase regime string the dashboard reads
+# (frontend has no "extreme" case, so EXTREME collapses to "high").
+_VIX_REGIME_DISPLAY = {"LOW": "low", "NORMAL": "normal", "HIGH": "high", "EXTREME": "high"}
+
+# Scanner's internal regime label → a frontend-recognised strategy_type
+# (strategyLabel() understands iron_condor / bull_put_spread / skip).
+_SCANNER_REGIME_STRATEGY = {
+    "low_vix": "iron_condor",
+    "normal": "bull_put_spread",
+    "high_vix": "skip",
+}
+
+# Overall display regime → the headline strategy_selected for the scan card.
+_DISPLAY_REGIME_STRATEGY = {
+    "low": "iron_condor",
+    "normal": "bull_put_spread",
+    "high": "skip",
+}
+
+
+def _estimate_scan_premium(iv_rank: float, current_price: float) -> float:
+    """Heuristic estimated credit per spread (dollars), NOT a live quote.
+
+    A short premium-selling spread at ~30 DTE collects roughly 0.4% of the
+    underlying, scaled by how rich IV is (iv_rank/50). ×100 for the option
+    contract multiplier. The dashboard column is explicitly labelled
+    "Est. Premium" — this is a transparent proxy, not fabricated live data.
+    """
+    try:
+        return round(current_price * 0.004 * (max(iv_rank, 0.0) / 50.0) * 100, 2)
+    except Exception:
+        return 0.0
+
+
+@router.get("/module/scan", tags=["options", "multi-market"])
+async def options_module_scan():
+    """Latest options-scan opportunities in the dashboard's OptionsScanResponse
+    shape. Degrades to an empty (not 404/500) payload when the scanner or its
+    data dependencies are unavailable."""
+    import asyncio
+
+    empty = {"scan_results": [], "vix_regime": "normal", "strategy_selected": "—"}
+
+    # Headline VIX regime from the live VIX (independent of scan hits).
+    vix_regime = "normal"
+    try:
+        from data.market_data import MarketDataManager
+        from options.strategy_executor import classify_vix_regime
+
+        vix_data = await MarketDataManager().get_vix()
+        vix = float(vix_data.get("value", 20.0) or 20.0)
+        vix_regime = _VIX_REGIME_DISPLAY.get(classify_vix_regime(vix).value, "normal")
+    except Exception as exc:
+        logger.debug("[options_router] module_scan vix lookup failed: %s", exc)
+
+    try:
+        from markets.options.scanner import OptionsScanner
+    except ImportError:
+        return {**empty, "vix_regime": vix_regime}
+
+    def _run_scan():
+        # The scanner calls loop.run_until_complete internally, so it can't run
+        # on the request's already-running loop. Give this worker thread its own
+        # loop and run the (blocking) scan there.
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return OptionsScanner().scan()
+        finally:
+            loop.close()
+
+    try:
+        results = await asyncio.get_running_loop().run_in_executor(None, _run_scan)
+    except Exception as exc:
+        logger.debug("[options_router] module_scan scanner failed: %s", exc)
+        return {**empty, "vix_regime": vix_regime}
+
+    scan_results = [
+        {
+            "symbol": r.symbol,
+            "strategy_type": _SCANNER_REGIME_STRATEGY.get(r.regime, "iron_condor"),
+            "iv_rank": round(r.iv_rank, 1),
+            "expiry_date": r.expiry,
+            "estimated_premium": _estimate_scan_premium(r.iv_rank, r.current_price),
+        }
+        for r in (results or [])
+    ]
+
+    return {
+        "scan_results": scan_results,
+        "vix_regime": vix_regime,
+        "strategy_selected": _DISPLAY_REGIME_STRATEGY.get(vix_regime, "—"),
+    }
+
+
+@router.get("/module/pnl", tags=["options", "multi-market"])
+async def options_module_pnl():
+    """Options P&L in the dashboard's OptionsPnLResponse shape.
+
+    Open positions come from the real OptionsPositionManager store; daily P&L
+    from the orchestrator module when registered. Degrades to zeros/empty when
+    the module is off or the store is empty — never a 404/500.
+    """
+    open_mapped: list[dict] = []
+    unrealised_total = 0.0
+    realized_total = 0.0
+
+    mgr = None
+    try:
+        from options.position_manager import OptionsPositionManager
+
+        mgr = OptionsPositionManager()
+        open_positions = mgr.get_positions(status="OPEN")
+        for p in open_positions:
+            open_mapped.append(
+                {
+                    "symbol": p.symbol,
+                    "strategy": p.strategy,
+                    "entry_price": p.entry_premium,
+                    "current_price": p.current_premium,
+                    "pnl": p.unrealised_pnl,
+                    "dte": p.dte,
+                }
+            )
+        unrealised_total = round(sum(p.unrealised_pnl for p in open_positions), 2)
+    except Exception as exc:
+        logger.debug("[options_router] module_pnl open-positions failed: %s", exc)
+
+    if mgr is not None:
+        try:
+            closed = mgr.get_positions(status="CLOSED")
+            realized_total = round(sum((p.realised_pnl or 0.0) for p in closed), 2)
+        except Exception as exc:
+            logger.debug("[options_router] module_pnl closed-positions failed: %s", exc)
+
+    daily_pnl = 0.0
+    try:
+        from orchestrator import get_orchestrator
+
+        orch = get_orchestrator()
+        module = orch.get_module("options") if orch else None
+        if module is not None:
+            daily_pnl = float(await module.get_daily_pnl() or 0.0)
+    except Exception as exc:
+        logger.debug("[options_router] module_pnl daily_pnl failed: %s", exc)
+
+    return {
+        "daily_pnl": daily_pnl,
+        "total_pnl": round(realized_total + unrealised_total, 2),
+        "open_positions": open_mapped,
+    }

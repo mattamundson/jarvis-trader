@@ -73,7 +73,34 @@ class MGCTradeLogRequest(BaseModel):
     regime_type: str = "unknown"
 
 
-@router.get("/backtest/results")
+def _sanitize_floats(obj):
+    """
+    Recursively replace inf/nan float values with None so json.dumps() never
+    raises ValueError ('Out of range float values are not JSON compliant').
+
+    Python's json.loads() silently accepts inf/nan written as bare tokens in
+    some JSON files produced by the backtest engine (profit_factor can be inf
+    when gross_loss == 0). Starlette's JSONResponse uses the stdlib json.dumps
+    which rejects those values, causing a 500 *after* response headers are sent
+    (shows up as plain-text "Internal Server Error" rather than a JSON error).
+    """
+    import math
+
+    if isinstance(obj, float):
+        if math.isinf(obj) or math.isnan(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
+
+
+@router.get(
+    "/backtest/results",
+    description="Return all saved backtest result JSON files from backtest/results directory with filename metadata.",
+)
 async def get_backtest_results():
     """Return all saved backtest result JSON files from backtest/results/."""
     try:
@@ -87,8 +114,27 @@ async def get_backtest_results():
         for json_file in sorted(results_dir.glob("*.json")):
             try:
                 data = json.loads(json_file.read_text(encoding="utf-8"))
-                data["_filename"] = json_file.name
-                results.append(data)
+                if isinstance(data, dict):
+                    data["_filename"] = json_file.name
+                elif isinstance(data, list):
+                    # Top-level arrays get wrapped so the response stays uniform
+                    data = {"_filename": json_file.name, "_array": data}
+                else:
+                    data = {"_filename": json_file.name, "_scalar": data}
+                sanitized = _sanitize_floats(data)
+                # Belt-and-suspenders: verify the sanitized entry is JSON-safe
+                # with allow_nan=False. If it still has inf/nan, a numpy-subclass
+                # leaked past isinstance(float). Drop the entry and log loudly.
+                try:
+                    json.dumps(sanitized, allow_nan=False)
+                except ValueError as enc_err:
+                    logger.error(
+                        "[BACKTEST] %s leaked inf/nan past sanitizer: %s — dropping entry",
+                        json_file.name,
+                        enc_err,
+                    )
+                    continue
+                results.append(sanitized)
             except Exception as e:
                 logger.warning(f"Failed to parse {json_file.name}: {e}")
 
@@ -98,23 +144,100 @@ async def get_backtest_results():
         raise HTTPException(500, f"Failed to get backtest results: {e}") from e
 
 
-@router.post("/backtest/run")
+@router.get(
+    "/backtest/atr-trail/trades",
+    description=(
+        "ATR trailing-stop FLIP (TOS ATRTrailingStopLE/SE) trades on cached bars: "
+        "price + trail line (with state), every entry/exit, and the equity curve. "
+        "Powers the dashboard ATR-trail visualizer."
+    ),
+)
+async def get_atr_trail_trades(
+    symbol: str = "MES",
+    timeframe: str = "5m",
+    period: int = 5,
+    factor: float = 3.5,
+    max_points: int = 3000,
+):
+    """Read the freshest cached bars for symbol/timeframe and return the viz payload."""
+    try:
+        import pandas as pd
+
+        from backtest.atr_trail_viz import compute_atr_trail_viz
+
+        cache = Path(__file__).resolve().parent.parent / "backtest" / "cache"
+        # Broad glob so it also matches the IBKR continuous file (..._5m_cont.csv).
+        matches = list(cache.glob(f"{symbol}_*_{timeframe}*.csv"))
+        if not matches:
+            raise HTTPException(
+                404, f"No cached {symbol} {timeframe} bars in {cache}. Run the IBKR fetch first."
+            )
+        path = max(matches, key=lambda p: p.stat().st_mtime)  # freshest pull
+
+        df = pd.read_csv(path)
+        df.columns = [c.lower() for c in df.columns]
+        ts_col = next((c for c in ("timestamp", "datetime", "date", "time") if c in df.columns), None)
+        if ts_col is None:
+            raise HTTPException(422, f"{path.name} has no timestamp column for the bar index.")
+        df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
+        df = df.set_index(ts_col).sort_index()
+
+        viz = compute_atr_trail_viz(df, symbol, period, factor, max_points)
+        viz["source_file"] = path.name
+        return _sanitize_floats(viz)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[BACKTEST] ATR-trail viz failed: {e}")
+        raise HTTPException(500, f"ATR-trail viz failed: {e}") from e
+
+
+@router.post(
+    "/backtest/run",
+    description="Run a single backtest for a symbol over a date range with specified capital and risk per trade.",
+)
 async def run_backtest(request: BacktestRequest):
     """Run a backtest for a symbol over the specified date range."""
     try:
 
         def _run():
-            from backtest import BacktestDataLoader, Backtester, generate_signals
+            from backtest import BacktestDataLoader, Backtester
+            from backtest.signals import generate_instrument_signals
 
             loader = BacktestDataLoader()
             df = loader.load(request.symbol, request.start, request.end, request.interval)
             if df is None or df.empty:
                 raise ValueError(f"No data for {request.symbol}")
-            df = generate_signals(df)
+            df = generate_instrument_signals(df, symbol=request.symbol)
             multiplier = loader.get_multiplier(request.symbol)
+            from backtest.signals import TREND_INSTRUMENTS
+            from backtest.trend_signals import get_sma_trend_params
+
+            is_trend = request.symbol.upper() in TREND_INSTRUMENTS
+            trend_params = get_sma_trend_params(request.symbol) if is_trend else None
             backtester = Backtester(
                 initial_capital=request.capital,
                 risk_per_trade=request.risk_per_trade,
+                trailing_stop=is_trend,
+                trailing_atr_mult=trend_params["atr_trail_mult"] if trend_params else 0.70,
+                # Trend strategies: no partial exits (WFO closes whole position at death
+                # cross or stop); strict trail (update every bar like WFO, no excursion
+                # gate); disable kill-switch so all 36 signals can fire.
+                t1_exit_pct=1.0 if is_trend else 0.50,
+                t2_exit_pct=0.0 if is_trend else 0.30,
+                strict_trailing=is_trend,
+                # Trend strategies hold overnight (SMA crossovers last days/weeks);
+                # intraday EOD-close would chop positions daily, diverging from WFO.
+                eod_close=not is_trend,
+                # Trend strategies exit ONLY on trailing stop or death cross —
+                # never at a fixed ATR target (which would cap winners).
+                use_targets=not is_trend,
+                # Fixed 1 contract matches WFO equal-weight basis. ATR-scaled sizing
+                # inverts trend edge: low-ATR false signals → more contracts (amplified
+                # losses); high-ATR trend signals → fewer contracts (dampened wins).
+                fixed_contracts=1 if is_trend else None,
+                max_drawdown=0.99 if is_trend else 0.05,
+                max_daily_loss=0.99 if is_trend else 0.02,
             )
             result = backtester.run(df, request.symbol, multiplier)
             return result.to_dict()
@@ -131,7 +254,10 @@ async def run_backtest(request: BacktestRequest):
         raise HTTPException(500, f"Backtest execution failed: {e}") from e
 
 
-@router.post("/backtest/walk-forward")
+@router.post(
+    "/backtest/walk-forward",
+    description="Execute walk-forward validation on a symbol with optional adaptive regime, volume filter, and multi-timeframe filter.",
+)
 async def run_walk_forward(request: WalkForwardRequest):
     """Execute walk-forward validation on a symbol over a date range."""
     try:
@@ -193,7 +319,10 @@ async def run_walk_forward(request: WalkForwardRequest):
         raise HTTPException(500, f"Walk-forward validation failed: {e}") from e
 
 
-@router.post("/backtest/regime-analysis")
+@router.post(
+    "/backtest/regime-analysis",
+    description="Analyze backtest results broken down by market regime with win rates, profit factors, and regime verdicts.",
+)
 async def analyze_regime(request: RegimeAnalysisRequest):
     """Analyze backtest results broken down by market regime."""
     try:
@@ -314,19 +443,23 @@ async def analyze_regime(request: RegimeAnalysisRequest):
         raise HTTPException(500, f"Regime analysis failed: {e}") from e
 
 
-@router.get("/backtest/regime-status")
+@router.get(
+    "/backtest/regime-status",
+    description="Get current regime classification for MNQ and MGC with regime breakdown and adaptive STC settings.",
+)
 async def get_regime_status():
     """Current regime classification for tracked symbols."""
     try:
-        import yfinance as yf
-
         from backtest.regime import RegimeClassifier
 
         results = {}
 
-        # --- MNQ 1h (via NQ=F) ---
+        # --- MNQ 1h ---
         try:
-            nq = yf.download("NQ=F", period="10d", interval="1h", progress=False)
+            if data_manager is not None:
+                nq = await data_manager.get_bars("MNQ", lookback_days=10, timeframe="1h")
+            else:
+                nq = None
             if nq is not None and len(nq) >= 20:
                 rc = RegimeClassifier()
                 nq_classified = rc.classify(nq)
@@ -339,16 +472,19 @@ async def get_regime_status():
                     "regime_breakdown_30d": {str(k): round(v, 1) for k, v in regime_counts.items()},
                 }
             else:
-                raise ValueError("Insufficient NQ data")
+                raise ValueError("Insufficient MNQ data")
         except Exception:
             results["MNQ_1h"] = {
                 "current_regime": "RANGING",
                 "regime_breakdown_30d": {"TRENDING": 15.3, "RANGING": 80.5, "VOLATILE": 4.2},
             }
 
-        # --- MGC 1d (via GC=F) ---
+        # --- MGC 1d ---
         try:
-            gc = yf.download("GC=F", period="60d", interval="1d", progress=False)
+            if data_manager is not None:
+                gc = await data_manager.get_bars("MGC", lookback_days=90, timeframe="1d")
+            else:
+                gc = None
             if gc is not None and len(gc) >= 20:
                 rc = RegimeClassifier()
                 gc_classified = rc.classify(gc)
@@ -362,7 +498,7 @@ async def get_regime_status():
                     "adaptive_stc_ob": int(last_row.get("adaptive_stc_ob", 92)),
                 }
             else:
-                raise ValueError("Insufficient GC data")
+                raise ValueError("Insufficient MGC data")
         except Exception:
             results["MGC_1d"] = {
                 "current_regime": "TRENDING",
@@ -387,96 +523,129 @@ async def get_regime_status():
         }
 
 
-@router.get("/backtest/paper-status")
+@router.get(
+    "/backtest/paper-status",
+    description="Get Walk-Forward Efficiency (WFE) and paper-trading readiness status for MCL, MNQ, MGC, and MES symbols.",
+)
 async def get_paper_status():
-    """Walk-Forward Efficiency (WFE) and paper-trading readiness for each symbol."""
+    """Paper-trading readiness derived from LIVE gate-v2 verdicts — not a static dict.
+
+    Source of truth is `gate_v2_policy.is_strategy_authorized` (which unifies
+    VALIDATION_ONLY_INSTRUMENTS, paper_config.enabled, and a non-stale gate-v2
+    PASS verdict) plus the freshest verdict snapshot per symbol. This keeps the
+    dashboard from disagreeing with what the engine will actually trade.
+
+    Status semantics:
+      ACTIVE     — is_strategy_authorized() is True (enabled + fresh PASS verdict)
+      NO-TRADE   — a fresh verdict exists (possibly PASS) but the symbol is not
+                   authorized (paper_config disabled / validation-only)
+      FAIL       — a fresh verdict exists and is not PASS
+      NO-VERDICT — no fresh (<=14d) verdict on file (fail-safe: not authorized)
+
+    The numeric `wfe` field is retained for frontend compatibility and now
+    carries the deflated Sharpe (a current 0-1 quality metric) for ACTIVE rows;
+    gate-v2-native fields (verdict / pf_ci_lower / mc_95th_dd_pct / dsr) are
+    added alongside for a future verdict-native UI pass.
+    """
     try:
-        return {
-            "MCL_1h": {
-                "status": "ACTIVE",
-                "wfe": 0.82,
-                "wfe_label": "EXCELLENT",
-                "cleared_date": "2026-04-01",
-                "risk_per_trade": "0.25%",
-                "config": "static_regime=ON, stop=0.90x ATR, T1=1.50x ATR",
-            },
-            "MNQ_1h": {
-                "status": "ACTIVE",
-                "wfe": 0.57,
-                "wfe_label": "GOOD",
-                "cleared_date": "2026-04-01",
-                "risk_per_trade": "0.25%",
-                "config": "adaptive_regime=ON, stop=0.70x ATR, T1=1.00x ATR",
-            },
-            "MGC_1d": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-04-01",
-                "reason": "WFE=0.00, 0/14 valid windows (2022-2026 extended walk-forward)",
-            },
-            "MES_1h": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-04-01",
-                "reason": "Static WFE=0.09 (overfit) + adaptive WFE=0.00 (0/6 valid windows). STC+ATR incompatible with S&P 500 1h. Redesign required: ORB or VWAP.",
-            },
-            "SPY_1h": {
-                "status": "CLOSED",
-                "wfe": 0.00,
-                "wfe_label": "FAILED",
-                "closed_date": "2026-03-28",
-                "reason": "WFE=0.00, 0/6 valid windows. Same underlying as MES.",
-            },
-        }
+        from backtest.gate_v2_policy import get_last_verdict, is_strategy_authorized
+
+        # UI key -> (symbol, timeframe label). Trend edges (MES/MGC) are the live
+        # forward-proving book; MCL/MNQ are kept so the panel shows them dead.
+        ui_rows = [
+            ("MES_1h", "MES", "1h"),
+            ("MGC_1d", "MGC", "1d"),
+            ("MCL_1h", "MCL", "1h"),
+            ("MNQ_1h", "MNQ", "1h"),
+        ]
+
+        out: dict[str, dict] = {}
+        for key, symbol, _tf in ui_rows:
+            snap = get_last_verdict(symbol)
+            authorized, reason = is_strategy_authorized(symbol)
+            metrics = snap.gate_v2_metrics if snap else {}
+            dsr = float(metrics.get("dsr", 0.0) or 0.0)
+
+            if authorized:
+                status = "ACTIVE"
+                label = f"PASS via {snap.passed_via or 'core'}" if snap else "authorized"
+            elif snap is not None and snap.verdict == "PASS":
+                status, label = "NO-TRADE", reason
+            elif snap is not None:
+                status, label = "FAIL", "gate-v2 FAIL"
+            else:
+                status, label = "NO-VERDICT", "no fresh verdict (<=14d)"
+
+            # Legacy color column reflects authorization: only ACTIVE rows show
+            # their quality score; the true dsr is always in the native field.
+            row: dict = {
+                "status": status,
+                "wfe": round(dsr, 4) if status == "ACTIVE" else 0.0,
+                "wfe_label": label,
+                "gate": "v2",
+                "authorized": authorized,
+                "verdict": snap.verdict if snap else "NONE",
+                "passed_via": snap.passed_via if snap else None,
+                "family": snap.family if snap else None,
+                "rank": snap.rank if snap else None,
+                "created_at": snap.created_at if snap else None,
+                "pf_ci_lower": metrics.get("pf_ci_lower"),
+                "mc_95th_dd_pct": metrics.get("mc_95th_dd_pct"),
+                "dsr": metrics.get("dsr"),
+            }
+            if status == "ACTIVE":
+                row["cleared_date"] = (snap.created_at or "")[:10] if snap else None
+                row["config"] = f"gate-v2 {snap.family} rank{snap.rank}" if snap else None
+            else:
+                row["reason"] = label
+            out[key] = row
+
+        return out
     except Exception as e:
         logger.error(f"[BACKTEST] Paper status check failed: {e}")
         raise HTTPException(500, f"Failed to get paper status: {e}") from e
 
 
-@router.get("/paper/mgc-signal")
+@router.get(
+    "/paper/mgc-signal",
+    description="Generate today's MGC (Gold Micro) signal using the validated daily strategy with adaptive regime filtering.",
+)
 async def get_mgc_signal():
     """Generate today's MGC (Gold Micro) signal using the validated strategy."""
     try:
+        # Fetch data async before running CPU-bound signal generation
+        if data_manager is None:
+            raise HTTPException(503, "Data manager not initialized")
 
-        def _generate_signal():
-            import yfinance as yf
+        gc = await data_manager.get_bars("MGC", lookback_days=200, timeframe="1d")
+        if gc is None or len(gc) < 50:
+            raise HTTPException(
+                503,
+                f"Insufficient MGC data ({len(gc) if gc is not None else 0} bars)",
+            )
 
+        # Normalize column names to lowercase
+        gc = gc.copy()
+        gc.columns = [c.lower() for c in gc.columns]
+
+        def _generate_signal(df):
             from backtest.paper_config import MGC_PAPER_CONFIG
             from backtest.signals import generate_signals
 
-            # Fetch data
-            gc = yf.download("GC=F", period="200d", interval="1d", progress=False)
-            if gc is None or len(gc) < 50:
-                return {
-                    "error": "Insufficient GC=F data from yfinance",
-                    "bars_received": len(gc) if gc is not None else 0,
-                }
-
-            # Flatten MultiIndex columns if present
-            if hasattr(gc.columns, "nlevels") and gc.columns.nlevels > 1:
-                gc.columns = gc.columns.get_level_values(0)
-
-            # Normalize column names to lowercase
-            gc.columns = [c.lower() for c in gc.columns]
-
             # Run full signal pipeline with adaptive regime
-            df = generate_signals(
-                gc,
+            df_signals = generate_signals(
+                df,
                 symbol="MGC",
                 adaptive_regime=True,
                 regime_filter=True,
             )
 
-            if df.empty:
+            if df_signals.empty:
                 return {"error": "Signal generation returned empty DataFrame"}
 
-            # Extract last bar
-            last = df.iloc[-1]
+            last = df_signals.iloc[-1]
             config = MGC_PAPER_CONFIG
 
-            # Determine direction from bias
             bias = str(last.get("bias", "NEUTRAL"))
             if bias in ("STRONG_BULL", "LEAN_BULL"):
                 direction = "LONG"
@@ -488,7 +657,6 @@ async def get_mgc_signal():
             entry_signal = str(last.get("entry_signal", "NO_TRADE"))
             regime_type = str(last.get("regime_type", "UNKNOWN"))
 
-            # Map signal to simplified output
             if entry_signal == "ENTRY_NOW":
                 signal = "ENTRY_NOW"
             elif entry_signal == "WAIT_FOR_PULLBACK":
@@ -498,11 +666,10 @@ async def get_mgc_signal():
             else:
                 signal = "NO_ENTRY"
 
-            # Get date from index
             signal_date = (
-                str(df.index[-1].date())
-                if hasattr(df.index[-1], "date")
-                else str(df.index[-1])[:10]
+                str(df_signals.index[-1].date())
+                if hasattr(df_signals.index[-1], "date")
+                else str(df_signals.index[-1])[:10]
             )
 
             return {
@@ -527,7 +694,7 @@ async def get_mgc_signal():
 
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as pool:
-            result = await loop.run_in_executor(pool, _generate_signal)
+            result = await loop.run_in_executor(pool, _generate_signal, gc)
         if "error" in result:
             raise HTTPException(503, result["error"])
         return result
@@ -538,7 +705,10 @@ async def get_mgc_signal():
         raise HTTPException(500, f"MGC signal generation failed: {e}") from e
 
 
-@router.post("/paper/mgc-log-trade")
+@router.post(
+    "/paper/mgc-log-trade",
+    description="Log a completed MGC paper trade with entry/exit prices and check if kill conditions are breached.",
+)
 async def log_mgc_paper_trade(req: MGCTradeLogRequest):
     """Log a completed MGC paper trade and return updated performance metrics."""
     try:
@@ -594,7 +764,10 @@ async def log_mgc_paper_trade(req: MGCTradeLogRequest):
         raise HTTPException(500, f"Failed to log MGC paper trade: {e}") from e
 
 
-@router.get("/paper/runner-status")
+@router.get(
+    "/paper/runner-status",
+    description="Return live status from paper_runner.py with active instruments, open positions, and most recent closed trade.",
+)
 async def get_paper_runner_status():
     """
     Return live status from paper_runner.py for all active instruments.
@@ -610,10 +783,121 @@ async def get_paper_runner_status():
     }
 
 
+# ── Monte Carlo ──────────────────────────────────────────────────────────────
+
+
+class MonteCarloRequest(BaseModel):
+    """Request for Monte Carlo simulation on backtest results."""
+
+    results_file: str
+    simulations: int = 1_000
+    max_slippage_ticks: float = 0.0
+    symbol: str = None
+    initial_capital: float = 100_000.0
+
+
+@router.post("/backtest/monte-carlo")
+async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
+    """Run Monte Carlo simulation on backtest results to validate strategy robustness."""
+    try:
+        from backtest.monte_carlo import _load_result_from_json, run_monte_carlo
+
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent.parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = (
+                    Path(__file__).parent.parent / "backtest" / "results" / req.results_file
+                )
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        logger.info(f"[MONTE-CARLO] Loading {results_path.name}")
+        bt_result = _load_result_from_json(str(results_path))
+
+        symbol = req.symbol
+        if not symbol:
+            stem = results_path.stem
+            for part in stem.split("_"):
+                if part.isupper() and len(part) <= 4:
+                    symbol = part
+                    break
+        if not symbol:
+            symbol = "MES"
+
+        logger.info(f"[MONTE-CARLO] Running {req.simulations:,} simulations for {symbol}")
+        mc_results = run_monte_carlo(
+            bt_result,
+            n_simulations=req.simulations,
+            initial_capital=req.initial_capital,
+            max_slippage_ticks=req.max_slippage_ticks,
+            symbol=symbol,
+            seed=42,
+        )
+
+        return mc_results
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO] File error: {e}")
+        raise HTTPException(404, f"Results file not found: {e}") from e
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO] Simulation failed: {e}")
+        raise HTTPException(500, f"Monte Carlo simulation failed: {e}") from e
+
+
+@router.post("/backtest/monte-carlo/chart")
+async def generate_monte_carlo_chart(req: MonteCarloRequest) -> dict:
+    """Generate an interactive HTML equity curve fan chart from Monte Carlo results."""
+    try:
+        from backtest.monte_carlo_viz import save_fan_chart
+
+        results_path = Path(req.results_file)
+        if not results_path.is_absolute():
+            alt_path = Path(__file__).parent.parent / "backtest" / "results" / results_path.name
+            if alt_path.exists():
+                results_path = alt_path
+            elif not results_path.exists():
+                results_path = (
+                    Path(__file__).parent.parent / "backtest" / "results" / req.results_file
+                )
+
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+
+        stem = results_path.stem
+        mc_json_path = results_path.parent / f"{stem}_monte_carlo.json"
+        if not mc_json_path.exists():
+            raise FileNotFoundError(
+                f"Monte Carlo JSON not found. Run /backtest/monte-carlo first to generate {mc_json_path.name}"
+            )
+
+        logger.info(f"[MONTE-CARLO-VIZ] Generating chart from {mc_json_path.name}")
+        html_path = save_fan_chart(str(mc_json_path))
+
+        return {
+            "chart_path": str(html_path),
+            "status": "success",
+            "message": f"Chart generated: {Path(html_path).name}",
+        }
+
+    except FileNotFoundError as e:
+        logger.error(f"[MONTE-CARLO-VIZ] File error: {e}")
+        raise HTTPException(404, f"Error: {e}") from e
+    except Exception as e:
+        logger.error(f"[MONTE-CARLO-VIZ] Chart generation failed: {e}")
+        raise HTTPException(500, f"Chart generation failed: {e}") from e
+
+
 # ── TOS Signal Comparison endpoints ──────────────────────────────────────────
 
 
-@router.post("/backtest/compare-tos")
+@router.post(
+    "/backtest/compare-tos",
+    description="Compare a TOS strategy report CSV against JARVIS backtest signals to validate STC math and identify divergences.",
+)
 async def compare_tos_signals(
     file: Annotated[UploadFile, File()],
     symbol: str = Form("MNQ"),
@@ -694,7 +978,10 @@ async def compare_tos_signals(
         raise HTTPException(500, f"TOS comparison failed: {e}") from e
 
 
-@router.get("/backtest/comparison-results")
+@router.get(
+    "/backtest/comparison-results",
+    description="List all saved TOS comparison results from previous compare-tos runs with match rates and summaries.",
+)
 async def get_comparison_results():
     """
     List all saved TOS comparison results from previous compare-tos runs.
@@ -732,7 +1019,10 @@ async def get_comparison_results():
         raise HTTPException(500, f"Failed to list comparison results: {e}") from e
 
 
-@router.post("/backtest/validate-stc-math")
+@router.post(
+    "/backtest/validate-stc-math",
+    description="Compute STC values for a date range to manually validate against TOS charts for mathematical correctness.",
+)
 async def validate_stc_math(
     symbol: str = "MNQ",
     timeframe: str = "1h",
@@ -768,3 +1058,56 @@ async def validate_stc_math(
     except Exception as e:
         logger.error(f"[STC-VALIDATE] Failed: {e}")
         raise HTTPException(500, f"STC math validation failed: {e}") from e
+
+
+@router.get("/paper/pending-signals")
+async def get_pending_signals():
+    """Return pending entry signals generated by the daily MGC scanner."""
+    import json as _json
+    from pathlib import Path
+
+    pending_file = Path(__file__).parent.parent / "backtest" / "results" / "pending_signals.json"
+    # The dashboard's paper page reads this as a bare PendingSignal[] (it guards
+    # with Array.isArray), so return the list directly, not a {signals,count} wrapper.
+    if not pending_file.exists():
+        return []
+
+    try:
+        signals = _json.loads(pending_file.read_text(encoding="utf-8"))
+    except Exception:
+        signals = []
+
+    return signals if isinstance(signals, list) else []
+
+
+@router.get("/paper/mgc-performance")
+async def get_mgc_paper_performance():
+    """Return current MGC paper trading performance metrics."""
+    try:
+        from backtest.paper_config import MGC_PAPER_CONFIG
+        from backtest.paper_tracker import PaperTradeTracker
+
+        tracker = PaperTradeTracker(MGC_PAPER_CONFIG)
+        metrics = tracker.get_metrics()
+
+        should_kill, kill_reason = tracker.check_kill_conditions()
+        metrics["kill_threshold_breached"] = should_kill
+        # Frontend MGCPerformanceResponse reads kill_switch_active — mirror it.
+        metrics["kill_switch_active"] = should_kill
+        metrics["kill_reason"] = kill_reason if should_kill else None
+        # Frontend reads monthly_breakdown (Array<{month,trades,pnl,win_rate}>).
+        metrics["monthly_breakdown"] = tracker.monthly_summary()
+        metrics["config"] = {
+            "symbol": MGC_PAPER_CONFIG["symbol"],
+            "interval": MGC_PAPER_CONFIG["interval"],
+            "adaptive_regime": MGC_PAPER_CONFIG["adaptive_regime"],
+            "risk_per_trade": MGC_PAPER_CONFIG["risk_per_trade"],
+            "initial_capital": MGC_PAPER_CONFIG["initial_capital"],
+            "wfe": 0.88,
+        }
+
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[PAPER-MGC] Performance query failed: {e}")
+        raise HTTPException(500, f"Failed to get MGC performance: {e}") from e

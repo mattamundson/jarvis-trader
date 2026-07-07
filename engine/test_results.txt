@@ -1,0 +1,1882 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-8.3.5, pluggy-1.6.0 -- C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\mattm\ThinkorSwim\jarvis-trader\engine
+configfile: pyproject.toml
+plugins: anyio-4.13.0, asyncio-0.26.0, cov-5.0.0, timeout-2.3.1
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+timeout: 30.0s
+timeout method: thread
+timeout func_only: False
+collecting ... collected 1412 items
+
+tests/test_allow_paper_simulated_gating.py::test_opt_in_allows_check_order_when_live_off PASSED [  0%]
+tests/test_allow_paper_simulated_gating.py::test_allow_flag_does_not_bypass_human_when_live_on PASSED [  0%]
+tests/test_allow_paper_simulated_gating.py::test_default_still_blocks_when_live_off PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_trades_analytics_returns_200 PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_trades_analytics_has_all_fields PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_trades_analytics_error PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_signal_quality_returns_200 PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_signal_quality_with_filters PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_signal_quality_error PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_performance_returns_200 PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_validation_report_returns_200 PASSED [  0%]
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_trades_by_breakouts PASSED [  0%]
+tests/test_api_contract_minimal.py::test_paper_positions_shape PASSED    [  0%]
+tests/test_api_contract_minimal.py::test_history_trades_list PASSED      [  0%]
+tests/test_api_contract_minimal.py::test_safety_status_shape PASSED      [  1%]
+tests/test_api_contract_minimal.py::test_circuit_breakers_shape PASSED   [  1%]
+tests/test_api_contract_minimal.py::test_paper_phase_summary_shape PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_insert_and_list_pending_approvals PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_approve_endpoint_resolves_approval PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_approve_routes_order_to_ib PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_reject_endpoint_resolves_approval PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_double_approve_returns_409 PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_approve_unknown_id_returns_404 PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_kill_switch_blocks_approve PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_approve_with_price_override PASSED [  1%]
+tests/test_approval_to_order_e2e.py::TestApprovalToOrderE2E::test_get_single_pending_approval PASSED [  1%]
+tests/test_approvals.py::TestInsertPendingApproval::test_insert_returns_uuid PASSED [  1%]
+tests/test_approvals.py::TestInsertPendingApproval::test_insert_uppercase_symbol PASSED [  1%]
+tests/test_approvals.py::TestInsertPendingApproval::test_insert_lowercase_action PASSED [  2%]
+tests/test_approvals.py::TestInsertPendingApproval::test_insert_none_entry_price PASSED [  2%]
+tests/test_approvals.py::TestInsertPendingApproval::test_insert_sets_status_pending PASSED [  2%]
+tests/test_approvals.py::TestListPendingApprovals::test_list_pending_returns_inserted PASSED [  2%]
+tests/test_approvals.py::TestListPendingApprovals::test_list_pending_excludes_resolved PASSED [  2%]
+tests/test_approvals.py::TestListPendingApprovals::test_list_pending_respects_limit PASSED [  2%]
+tests/test_approvals.py::TestListPendingApprovals::test_list_pending_orders_newest_first PASSED [  2%]
+tests/test_approvals.py::TestGetPendingApproval::test_get_pending_approval_by_id PASSED [  2%]
+tests/test_approvals.py::TestGetPendingApproval::test_get_pending_approval_not_found PASSED [  2%]
+tests/test_approvals.py::TestGetPendingApproval::test_get_pending_approval_returns_all_columns PASSED [  2%]
+tests/test_approvals.py::TestResolvePendingApproval::test_resolve_approve PASSED [  2%]
+tests/test_approvals.py::TestResolvePendingApproval::test_resolve_reject PASSED [  2%]
+tests/test_approvals.py::TestResolvePendingApproval::test_resolve_with_trade_id PASSED [  2%]
+tests/test_approvals.py::TestResolvePendingApproval::test_resolve_with_ib_order_id PASSED [  2%]
+tests/test_approvals.py::TestResolvePendingApproval::test_double_resolve_returns_false PASSED [  3%]
+tests/test_approvals.py::TestResolvePendingApproval::test_resolve_nonexistent_id_returns_false PASSED [  3%]
+tests/test_approvals.py::TestPipelineSnapshot::test_pipeline_snapshot_roundtrip PASSED [  3%]
+tests/test_approvals.py::TestPipelineSnapshot::test_pipeline_snapshot_with_complex_types PASSED [  3%]
+tests/test_approvals.py::TestPipelineSnapshot::test_pipeline_snapshot_empty_dict PASSED [  3%]
+tests/test_approvals.py::TestDatabaseInitialization::test_initialize_creates_table PASSED [  3%]
+tests/test_approvals.py::TestDatabaseInitialization::test_multiple_initializations_are_safe PASSED [  3%]
+tests/test_approvals.py::TestEdgeCases::test_special_characters_in_symbol PASSED [  3%]
+tests/test_approvals.py::TestEdgeCases::test_large_quantity PASSED       [  3%]
+tests/test_approvals.py::TestEdgeCases::test_zero_quantity PASSED        [  3%]
+tests/test_approvals.py::TestEdgeCases::test_very_large_entry_price PASSED [  3%]
+tests/test_approvals.py::TestEdgeCases::test_long_rejection_reason PASSED [  3%]
+tests/test_approvals.py::TestEdgeCases::test_limit_boundary_min PASSED   [  3%]
+tests/test_approvals.py::TestEdgeCases::test_limit_boundary_max PASSED   [  3%]
+tests/test_approvals.py::TestEdgeCases::test_limit_zero_treated_as_one PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestHealthEndpoints::test_health_no_auth PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestHealthEndpoints::test_health_full_no_auth PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestApiKeyAuthentication::test_missing_api_key_on_protected_endpoint PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestApiKeyAuthentication::test_invalid_api_key_on_protected_endpoint PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestApiKeyAuthentication::test_valid_api_key_on_protected_endpoint PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestApiKeyAuthentication::test_api_key_case_sensitive PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestApiKeyAuthentication::test_api_key_exact_match_required PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestOpenAPIDocsExemption::test_docs_endpoint_no_auth PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestOpenAPIDocsExemption::test_openapi_json_no_auth PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestOpenAPIDocsExemption::test_redoc_no_auth PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestRateLimiting::test_safety_status_rate_limit_header PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestRateLimiting::test_exceed_rate_limit_returns_429 PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestAuthIntegration::test_auth_checked_before_route_handler PASSED [  4%]
+tests/test_auth_and_rate_limit.py::TestAuthIntegration::test_api_key_on_all_post_endpoints PASSED [  5%]
+tests/test_close_stale_positions.py::test_close_stale_returns_zero_when_no_stale_positions PASSED [  5%]
+tests/test_close_stale_positions.py::test_close_stale_closes_matching_positions PASSED [  5%]
+tests/test_close_stale_positions.py::test_close_stale_ignores_different_entry_price PASSED [  5%]
+tests/test_close_stale_positions.py::test_close_stale_ignores_different_symbol PASSED [  5%]
+tests/test_cold_start_degraded.py::test_safety_status_without_dependencies_returns_503 PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeMultiplier::test_strong_edge_1_35 PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeMultiplier::test_solid_edge_1_20 PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeMultiplier::test_slight_edge_1_10 PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeMultiplier::test_poor_performance_0_65 PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeMultiplier::test_below_average_0_80 PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeMultiplier::test_neutral_1_0 PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeTradeMetrics::test_empty_trades_list PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeTradeMetrics::test_single_winning_trade PASSED [  5%]
+tests/test_confidence_scorer.py::TestComputeTradeMetrics::test_single_losing_trade PASSED [  6%]
+tests/test_confidence_scorer.py::TestComputeTradeMetrics::test_mixed_trades_pnl_positive PASSED [  6%]
+tests/test_confidence_scorer.py::TestComputeTradeMetrics::test_mixed_trades_outcome_field PASSED [  6%]
+tests/test_confidence_scorer.py::TestComputeTradeMetrics::test_r_ratio_calculation PASSED [  6%]
+tests/test_confidence_scorer.py::TestGetConfidenceAdjustment::test_returns_1_0_when_db_manager_is_none PASSED [  6%]
+tests/test_confidence_scorer.py::TestGetConfidenceAdjustment::test_returns_1_0_when_invalid_symbol PASSED [  6%]
+tests/test_confidence_scorer.py::TestGetConfidenceAdjustment::test_returns_1_0_on_exception PASSED [  6%]
+tests/test_confidence_scorer.py::TestConfidenceAdjustmentMultiplierClamping::test_conviction_clamping_upper PASSED [  6%]
+tests/test_confidence_scorer.py::TestConfidenceAdjustmentMultiplierClamping::test_conviction_clamping_lower PASSED [  6%]
+tests/test_confidence_scorer.py::TestConfidenceAdjustmentMultiplierClamping::test_conviction_clamping_middle PASSED [  6%]
+tests/test_confidence_scorer.py::TestConfidenceScenarios::test_scenario_strong_symbol PASSED [  6%]
+tests/test_confidence_scorer.py::TestConfidenceScenarios::test_scenario_poor_symbol PASSED [  6%]
+tests/test_config_router.py::test_overview_returns_200 PASSED            [  6%]
+tests/test_config_router.py::test_overview_has_categories PASSED         [  6%]
+tests/test_config_router.py::test_overview_has_total_fields PASSED       [  7%]
+tests/test_config_router.py::test_overview_sensitive_keys_masked PASSED  [  7%]
+tests/test_config_router.py::test_overview_nonsensitive_keys_not_masked PASSED [  7%]
+tests/test_config_router.py::test_overview_feature_flags_category_present PASSED [  7%]
+tests/test_config_router.py::test_overview_feature_flags_contains_enable_kairos PASSED [  7%]
+tests/test_config_router.py::test_overview_safety_category_present PASSED [  7%]
+tests/test_config_router.py::test_overview_items_have_required_fields PASSED [  7%]
+tests/test_config_router.py::test_health_check_returns_200 PASSED        [  7%]
+tests/test_config_router.py::test_health_check_has_configured_dict PASSED [  7%]
+tests/test_config_router.py::test_health_check_configured_has_six_critical_keys PASSED [  7%]
+tests/test_config_router.py::test_health_check_live_trading_false_by_default PASSED [  7%]
+tests/test_config_router.py::test_health_check_require_human_approval_true_by_default PASSED [  7%]
+tests/test_config_router.py::test_health_check_paper_trading_field_present PASSED [  7%]
+tests/test_config_validation.py::TestFuturesWatchlistParsing::test_futures_watchlist_csv_format PASSED [  7%]
+tests/test_config_validation.py::TestFuturesWatchlistParsing::test_futures_watchlist_json_format PASSED [  8%]
+tests/test_config_validation.py::TestFuturesWatchlistParsing::test_futures_watchlist_list_passthrough PASSED [  8%]
+tests/test_config_validation.py::TestSafetyDefaults::test_live_trading_default_false PASSED [  8%]
+tests/test_config_validation.py::TestSafetyDefaults::test_human_approval_default_true PASSED [  8%]
+tests/test_config_validation.py::TestSafetyDefaults::test_paper_trading_default_true PASSED [  8%]
+tests/test_config_validation.py::TestSafetyDefaults::test_safety_defaults_non_negotiable PASSED [  8%]
+tests/test_config_validation.py::TestBrokerDefaults::test_ibkr_port_default_paper PASSED [  8%]
+tests/test_config_validation.py::TestBrokerDefaults::test_ibkr_client_id_from_env PASSED [  8%]
+tests/test_config_validation.py::TestFuturesLimits::test_max_contracts_per_instrument PASSED [  8%]
+tests/test_config_validation.py::TestFuturesLimits::test_max_overnight_contracts PASSED [  8%]
+tests/test_config_validation.py::TestConsecutiveLossTracking::test_consecutive_loss_thresholds PASSED [  8%]
+tests/test_consolidator.py::TestConsolidator::test_consolidate_no_trades_returns_no_trades PASSED [  8%]
+tests/test_consolidator.py::TestConsolidator::test_consolidate_defaults_to_today PASSED [  8%]
+tests/test_consolidator.py::TestConsolidator::test_extract_patterns_from_trades PASSED [  8%]
+tests/test_consolidator.py::TestConsolidator::test_extract_patterns_time_of_day PASSED [  8%]
+tests/test_consolidator.py::TestConsolidator::test_extract_patterns_direction_bias PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_extract_patterns_returns_list PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_extract_patterns_short_direction PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_score_accuracy_correct PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_score_accuracy_empty PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_score_accuracy_all_wins PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_score_accuracy_all_losses PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_score_accuracy_total_pnl PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_get_active_patterns_no_db PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_get_signal_accuracy_no_db PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_get_signal_accuracy_custom_days PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_upsert_pattern_no_db_is_noop PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_prune_stale_no_db_is_noop PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_pattern_has_required_fields PASSED [  9%]
+tests/test_consolidator.py::TestConsolidator::test_win_rate_clamped_to_valid_range PASSED [ 10%]
+tests/test_context_manager.py::TestEstimateTokens::test_estimate_tokens_basic PASSED [ 10%]
+tests/test_context_manager.py::TestEstimateTokens::test_estimate_tokens_scales_with_length PASSED [ 10%]
+tests/test_context_manager.py::TestEstimateTokens::test_estimate_tokens_never_zero PASSED [ 10%]
+tests/test_context_manager.py::TestEstimateTokens::test_estimate_tokens_static_method PASSED [ 10%]
+tests/test_context_manager.py::TestTierDetection::test_tier_detection_none PASSED [ 10%]
+tests/test_context_manager.py::TestTierDetection::test_tier_detection_trim PASSED [ 10%]
+tests/test_context_manager.py::TestTierDetection::test_tier_detection_time_clear PASSED [ 10%]
+tests/test_context_manager.py::TestTierDetection::test_tier_detection_summarize PASSED [ 10%]
+tests/test_context_manager.py::TestTierDetection::test_tier_detection_emergency PASSED [ 10%]
+tests/test_context_manager.py::TestTierDetection::test_budget_fields PASSED [ 10%]
+tests/test_context_manager.py::TestTierDetection::test_unknown_model_uses_default_window PASSED [ 10%]
+tests/test_context_manager.py::TestTrimOHLCV::test_trim_ohlcv_removes_arrays PASSED [ 10%]
+tests/test_context_manager.py::TestTrimOHLCV::test_trim_ohlcv_preserves_non_ohlcv_content PASSED [ 10%]
+tests/test_context_manager.py::TestTrimOHLCV::test_trim_ohlcv_preserves_message_role PASSED [ 11%]
+tests/test_context_manager.py::TestTrimOHLCV::test_compact_trim_tier_calls_trim PASSED [ 11%]
+tests/test_context_manager.py::TestClearStaleAnalysis::test_stale_messages_removed PASSED [ 11%]
+tests/test_context_manager.py::TestClearStaleAnalysis::test_fresh_messages_kept PASSED [ 11%]
+tests/test_context_manager.py::TestClearStaleAnalysis::test_untagged_messages_always_kept PASSED [ 11%]
+tests/test_context_manager.py::TestClearStaleAnalysis::test_system_messages_never_cleared PASSED [ 11%]
+tests/test_context_manager.py::TestEmergencyCompaction::test_emergency_compaction_preserves_system PASSED [ 11%]
+tests/test_context_manager.py::TestEmergencyCompaction::test_emergency_with_only_system_message PASSED [ 11%]
+tests/test_context_manager.py::TestEmergencyCompaction::test_emergency_with_no_system_message PASSED [ 11%]
+tests/test_context_manager.py::TestStatsTracking::test_stats_tracking PASSED [ 11%]
+tests/test_context_manager.py::TestStatsTracking::test_stats_initial_state PASSED [ 11%]
+tests/test_context_manager.py::TestStatsTracking::test_stats_tokens_saved_accumulates PASSED [ 11%]
+tests/test_context_manager.py::TestStatsTracking::test_recent_events_capped_at_10 PASSED [ 11%]
+tests/test_context_manager.py::TestMarkAgentMessage::test_mark_adds_timestamp_and_agent PASSED [ 11%]
+tests/test_context_manager.py::TestMarkAgentMessage::test_mark_does_not_mutate_original PASSED [ 12%]
+tests/test_context_manager.py::TestMarkAgentMessage::test_mark_records_agent_timestamp PASSED [ 12%]
+tests/test_context_manager.py::TestReset::test_reset_clears_agent_timestamps PASSED [ 12%]
+tests/test_context_manager.py::TestReset::test_reset_does_not_clear_compaction_events PASSED [ 12%]
+tests/test_context_manager.py::TestReset::test_reset_sets_pipeline_start_time PASSED [ 12%]
+tests/test_context_manager.py::TestPipelineIntegration::test_pipeline_accepts_context_manager PASSED [ 12%]
+tests/test_context_manager.py::TestPipelineIntegration::test_pipeline_without_context_manager_defaults_none PASSED [ 12%]
+tests/test_context_manager.py::TestPromptCachingAndTokenLimits::test_add_cache_control_to_system_prompt_adds_cache_control PASSED [ 12%]
+tests/test_context_manager.py::TestPromptCachingAndTokenLimits::test_add_cache_control_disabled_when_compaction_off PASSED [ 12%]
+tests/test_context_manager.py::TestPromptCachingAndTokenLimits::test_get_agent_max_tokens_known_agent PASSED [ 12%]
+tests/test_context_manager.py::TestPromptCachingAndTokenLimits::test_get_agent_max_tokens_unknown_agent_defaults_1500 PASSED [ 12%]
+tests/test_context_manager.py::TestPromptCachingAndTokenLimits::test_get_agent_max_tokens_reflects_config_override PASSED [ 12%]
+tests/test_db_backup.py::test_backup_initialization PASSED               [ 12%]
+tests/test_db_backup.py::test_backup_creates_file PASSED                 [ 12%]
+tests/test_db_backup.py::test_backup_with_missing_database PASSED        [ 13%]
+tests/test_db_backup.py::test_backup_preserves_data PASSED               [ 13%]
+tests/test_db_backup.py::test_cleanup_old_backups PASSED                 [ 13%]
+tests/test_db_backup.py::test_cleanup_respects_retention_window PASSED   [ 13%]
+tests/test_db_backup.py::test_get_status PASSED                          [ 13%]
+tests/test_db_backup.py::test_backup_manager_singleton PASSED            [ 13%]
+tests/test_db_backup.py::test_backup_thread_safety PASSED                [ 13%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_get_features_returns_dict_with_required_keys PASSED [ 13%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_signal_active_is_zero_when_no_data PASSED [ 13%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_win_rate_falls_back_to_neutral_when_no_data PASSED [ 13%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_win_rate_in_valid_range PASSED [ 13%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_signal_active_is_one_when_recent_signal PASSED [ 13%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_proximity_entry_in_valid_range PASSED [ 13%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_proximity_target_in_valid_range PASSED [ 13%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_alignment_is_one_when_signal_matches_bias PASSED [ 14%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_alignment_is_negative_one_when_opposite PASSED [ 14%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_symbol_map_mes_to_es PASSED [ 14%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_get_feature_list_returns_ordered_list PASSED [ 14%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_zero_atr_defaults_to_one PASSED [ 14%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_clear_cache PASSED [ 14%]
+tests/test_discord_learning.py::TestDiscordSignalContext::test_all_feature_values_are_numeric PASSED [ 14%]
+tests/test_discord_learning.py::TestSentimentProvider::test_instantiation_with_temp_db PASSED [ 14%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_sentiment_returns_float_no_data PASSED [ 14%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_sentiment_float_in_range PASSED [ 14%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_sentiment_with_bullish_commentary PASSED [ 14%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_sentiment_with_bearish_commentary PASSED [ 14%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_sentiment_accepts_iso_string PASSED [ 14%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_regime_multiplier_returns_float PASSED [ 14%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_regime_multiplier_in_range PASSED [ 15%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_regime_multiplier_with_iso_string PASSED [ 15%]
+tests/test_discord_learning.py::TestSentimentProvider::test_neutral_day_gives_multiplier_of_one PASSED [ 15%]
+tests/test_discord_learning.py::TestSentimentProvider::test_score_message_helper PASSED [ 15%]
+tests/test_discord_learning.py::TestSentimentProvider::test_get_sentiment_uses_cache_when_available PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_instantiation PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_get_levels_returns_none_when_no_data PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_get_levels_returns_dict_with_data PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_get_levels_has_expected_keys PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_get_levels_with_string_date PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_get_levels_with_datetime_object PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_symbol_map_mes_to_es PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_get_levels_caches_result PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_clear_cache PASSED [ 15%]
+tests/test_discord_learning.py::TestIBLevelProvider::test_level_values_are_numeric PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_instantiation PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_extract_empty_trades_returns_empty_list PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_extract_returns_list PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_extract_with_sufficient_trades_finds_patterns PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_extracted_pattern_has_required_fields PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_below_min_frequency_no_pattern PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_extract_handles_missing_entry_time_gracefully PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_extract_datetime_objects_work PASSED [ 16%]
+tests/test_discord_learning.py::TestPatternExtractor::test_streak_patterns_detected PASSED [ 16%]
+tests/test_discord_learning.py::TestTradeClassifier::test_instantiation PASSED [ 16%]
+tests/test_discord_learning.py::TestTradeClassifier::test_classify_returns_trade_classification PASSED [ 16%]
+tests/test_discord_learning.py::TestTradeClassifier::test_classify_returns_valid_grade PASSED [ 16%]
+tests/test_discord_learning.py::TestTradeClassifier::test_excellent_trade_gets_high_grade PASSED [ 16%]
+tests/test_discord_learning.py::TestTradeClassifier::test_losing_trade_grades_f PASSED [ 16%]
+tests/test_discord_learning.py::TestTradeClassifier::test_setup_quality_in_range PASSED [ 17%]
+tests/test_discord_learning.py::TestTradeClassifier::test_execution_quality_in_range PASSED [ 17%]
+tests/test_discord_learning.py::TestTradeClassifier::test_classify_returns_non_empty_factors PASSED [ 17%]
+tests/test_discord_learning.py::TestTradeClassifier::test_high_slippage_reduces_execution_quality PASSED [ 17%]
+tests/test_discord_learning.py::TestTradeClassifier::test_trade_id_preserved PASSED [ 17%]
+tests/test_discord_learning.py::TestTradeClassifier::test_classify_handles_minimal_dict PASSED [ 17%]
+tests/test_discord_learning.py::TestTradeClassifier::test_is_safety_param_not_available_on_classifier PASSED [ 17%]
+tests/test_discord_learning.py::TestStrategyTuner::test_instantiation PASSED [ 17%]
+tests/test_discord_learning.py::TestStrategyTuner::test_suggest_adjustments_returns_list PASSED [ 17%]
+tests/test_discord_learning.py::TestStrategyTuner::test_insufficient_trades_returns_empty PASSED [ 17%]
+tests/test_discord_learning.py::TestStrategyTuner::test_empty_params_returns_empty PASSED [ 17%]
+tests/test_discord_learning.py::TestStrategyTuner::test_low_win_rate_generates_suggestions PASSED [ 17%]
+tests/test_discord_learning.py::TestStrategyTuner::test_suggestions_have_required_fields PASSED [ 17%]
+tests/test_discord_learning.py::TestStrategyTuner::test_never_suggests_safety_params PASSED [ 17%]
+tests/test_discord_learning.py::TestStrategyTuner::test_is_safety_param PASSED [ 18%]
+tests/test_discord_learning.py::TestStrategyTuner::test_is_tunable_param PASSED [ 18%]
+tests/test_discord_learning.py::TestStrategyTuner::test_clamp_suggestion_respects_bounds PASSED [ 18%]
+tests/test_discord_learning.py::TestStrategyTuner::test_clamp_suggestion_unknown_param_passthrough PASSED [ 18%]
+tests/test_discord_learning.py::TestStrategyTuner::test_suggestions_are_conservative_max_10pct_change PASSED [ 18%]
+tests/test_discord_learning.py::TestStrategyTuner::test_symbol_parameter_mes_used_in_calling_code PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_instantiation PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_initial_lessons_is_list PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_record_session_returns_true PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_record_session_stores_lessons PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_get_all_lessons_returns_list PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_get_all_lessons_contains_recorded_lessons PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_get_lessons_filters_by_condition PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_get_lessons_unknown_condition_returns_empty PASSED [ 18%]
+tests/test_discord_learning.py::TestSessionMemory::test_lesson_has_correct_fields PASSED [ 19%]
+tests/test_discord_learning.py::TestSessionMemory::test_outcome_positive_when_more_wins PASSED [ 19%]
+tests/test_discord_learning.py::TestSessionMemory::test_outcome_negative_when_more_losses PASSED [ 19%]
+tests/test_discord_learning.py::TestSessionMemory::test_clear_lessons_removes_all PASSED [ 19%]
+tests/test_discord_learning.py::TestSessionMemory::test_persistence_to_json PASSED [ 19%]
+tests/test_discord_learning.py::TestSessionMemory::test_add_lesson_via_record_session PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_patterns_returns_200 PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_patterns_response_shape PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_patterns_no_symbol_returns_200 PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_patterns_lookback_days_param PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_suggestions_returns_200 PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_suggestions_response_shape PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_suggestions_no_symbol_returns_200 PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_memory_returns_200 PASSED [ 19%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_memory_response_shape PASSED [ 20%]
+tests/test_discord_learning.py::TestLearningRouter::test_get_memory_with_condition_filter PASSED [ 20%]
+tests/test_discord_learning.py::TestLearningRouter::test_post_memory_valid_body_returns_200 PASSED [ 20%]
+tests/test_discord_learning.py::TestLearningRouter::test_post_memory_response_shape PASSED [ 20%]
+tests/test_discord_learning.py::TestLearningRouter::test_post_memory_empty_lesson_returns_400 PASSED [ 20%]
+tests/test_discord_learning.py::TestLearningRouter::test_post_memory_missing_lesson_returns_422 PASSED [ 20%]
+tests/test_discord_learning.py::TestLearningRouter::test_post_then_get_memory_shows_new_lesson PASSED [ 20%]
+tests/test_discord_learning.py::TestLearningRouter::test_classify_endpoint_missing_trade_id_returns_422 PASSED [ 20%]
+tests/test_discord_learning.py::TestLearningRouter::test_classify_endpoint_unknown_trade_id_returns_404 PASSED [ 20%]
+tests/test_discord_learning.py::TestEdgeCases::test_sentiment_score_message_caution_keywords PASSED [ 20%]
+tests/test_discord_learning.py::TestEdgeCases::test_sentiment_score_message_mixed PASSED [ 20%]
+tests/test_discord_learning.py::TestEdgeCases::test_discord_signal_context_nonexistent_db_returns_defaults PASSED [ 20%]
+tests/test_discord_learning.py::TestEdgeCases::test_ib_level_provider_nonexistent_db_returns_none PASSED [ 20%]
+tests/test_discord_learning.py::TestEdgeCases::test_pattern_extractor_with_invalid_datetime_strings PASSED [ 20%]
+tests/test_discord_learning.py::TestEdgeCases::test_trade_classifier_handles_loss_trade PASSED [ 21%]
+tests/test_discord_learning.py::TestEdgeCases::test_strategy_tuner_empty_trades PASSED [ 21%]
+tests/test_discord_learning.py::TestEdgeCases::test_ib_levels_mnq_to_nq_map PASSED [ 21%]
+tests/test_events_bus.py::test_publish_adds_event_to_deque PASSED        [ 21%]
+tests/test_events_bus.py::test_get_recent_returns_max_limit PASSED       [ 21%]
+tests/test_events_bus.py::test_buffer_caps_at_150 PASSED                 [ 21%]
+tests/test_events_bus.py::test_detect_regime_change_first_occurrence PASSED [ 21%]
+tests/test_events_bus.py::test_detect_regime_change_when_changed PASSED  [ 21%]
+tests/test_events_bus.py::test_detect_regime_change_returns_none_when_same PASSED [ 21%]
+tests/test_events_bus.py::test_event_has_required_fields PASSED          [ 21%]
+tests/test_exception_handler.py::TestGlobalExceptionHandler::test_unhandled_exception_returns_clean_json_500 PASSED [ 21%]
+tests/test_exception_handler.py::TestGlobalExceptionHandler::test_exception_response_does_not_contain_traceback PASSED [ 21%]
+tests/test_exception_handler.py::TestGlobalExceptionHandler::test_successful_request_passes_through PASSED [ 21%]
+tests/test_exception_handler.py::TestGlobalExceptionHandler::test_different_exception_types PASSED [ 21%]
+tests/test_exception_handler.py::TestGlobalExceptionHandler::test_each_error_has_unique_request_id PASSED [ 22%]
+tests/test_exception_handler.py::TestGlobalExceptionHandler::test_existing_try_except_in_routes_still_work PASSED [ 22%]
+tests/test_experiment_loop.py::test_experiment_log_instantiation PASSED  [ 22%]
+tests/test_experiment_loop.py::test_experiment_log_roundtrip PASSED      [ 22%]
+tests/test_experiment_loop.py::test_search_strategy_returns_valid_config PASSED [ 22%]
+tests/test_feature_flags.py::TestFlagDefaults::test_flag_default_enabled PASSED [ 22%]
+tests/test_feature_flags.py::TestFlagDefaults::test_flag_default_disabled PASSED [ 22%]
+tests/test_feature_flags.py::TestFlagDefaults::test_unknown_flag_returns_false PASSED [ 22%]
+tests/test_feature_flags.py::TestRuntimeOverrides::test_set_flag_runtime_override PASSED [ 22%]
+tests/test_feature_flags.py::TestRuntimeOverrides::test_runtime_overrides_config PASSED [ 22%]
+tests/test_feature_flags.py::TestRuntimeOverrides::test_reset_flag PASSED [ 22%]
+tests/test_feature_flags.py::TestRuntimeOverrides::test_set_flag_invalid_name_raises PASSED [ 22%]
+tests/test_feature_flags.py::TestRuntimeOverrides::test_reset_flag_invalid_name_raises PASSED [ 22%]
+tests/test_feature_flags.py::TestListFlags::test_list_flags_returns_all PASSED [ 22%]
+tests/test_feature_flags.py::TestListFlags::test_list_flags_structure PASSED [ 23%]
+tests/test_feature_flags.py::TestListFlags::test_list_flags_source_config_when_no_override PASSED [ 23%]
+tests/test_feature_flags.py::TestListFlags::test_list_flags_source_runtime_after_override PASSED [ 23%]
+tests/test_feature_flags.py::TestListFlags::test_list_flags_correct_defaults PASSED [ 23%]
+tests/test_feature_flags.py::TestListFlags::test_list_flags_requires_restart_metadata PASSED [ 23%]
+tests/test_feature_flags.py::TestListFlags::test_list_flags_categories PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_register_listener PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_emit_calls_all_listeners PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_emit_passes_payload_to_handlers PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_multiple_listeners_for_different_events PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_emit_handles_async_handlers PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_emit_sync_only_calls_sync_handlers PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_emit_sync_from_sync_context PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_unknown_event_handled_gracefully PASSED [ 23%]
+tests/test_foundation.py::TestHookRegistry::test_handler_exception_doesnt_crash_emit PASSED [ 24%]
+tests/test_foundation.py::TestHookRegistry::test_unregister_listener PASSED [ 24%]
+tests/test_foundation.py::TestHookRegistry::test_emit_increments_counter PASSED [ 24%]
+tests/test_foundation.py::TestHookRegistry::test_get_stats_returns_handler_counts PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_initial_allocation_splits_correctly PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_ramp_up_increases_allocation PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_ramp_up_multiple_steps PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_ramp_up_caps_at_100_percent PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_record_daily_pnl PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_rebalance_after_pnl_changes PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_performance_history_rolling_30_days PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_get_summary_returns_all_markets PASSED [ 24%]
+tests/test_foundation.py::TestCapitalAllocator::test_summary_includes_ramp_factor PASSED [ 24%]
+tests/test_foundation.py::TestCorrelationMonitor::test_tracks_positions_correctly PASSED [ 24%]
+tests/test_foundation.py::TestCorrelationMonitor::test_calculates_directional_exposure PASSED [ 25%]
+tests/test_foundation.py::TestCorrelationMonitor::test_net_exposure_includes_shorts PASSED [ 25%]
+tests/test_foundation.py::TestCorrelationMonitor::test_blocks_new_position_above_threshold PASSED [ 25%]
+tests/test_foundation.py::TestCorrelationMonitor::test_gets_status PASSED [ 25%]
+tests/test_foundation.py::TestCorrelationMonitor::test_zero_capital_handles_gracefully PASSED [ 25%]
+tests/test_foundation.py::TestCorrelationMonitor::test_short_positions_reduce_net_exposure PASSED [ 25%]
+tests/test_foundation.py::TestCorrelationMonitor::test_custom_threshold PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_per_market_halt_at_minus_2_percent PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_portfolio_halt_at_minus_5_percent PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_portfolio_halt_halts_all_markets PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_market_halt_doesnt_halt_portfolio PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_halt_callback_invoked PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_reset_daily_clears_pnl PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_reset_daily_clears_halts PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_get_status_returns_market_states PASSED [ 25%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_unknown_market_handled_gracefully PASSED [ 26%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_portfolio_loss_percentage_calculation PASSED [ 26%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_market_loss_percentage_calculated_correctly PASSED [ 26%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_multiple_updates_same_market PASSED [ 26%]
+tests/test_foundation.py::TestCrossMarketRiskManager::test_aggregate_portfolio_pnl PASSED [ 26%]
+tests/test_ib_gateway_connector_offline.py::test_submit_paper_order_routes_to_connector PASSED [ 26%]
+tests/test_ib_gateway_connector_offline.py::test_get_positions_list_shape PASSED [ 26%]
+tests/test_ib_gateway_connector_offline.py::test_ib_order_manager_with_connector PASSED [ 26%]
+tests/test_ib_gateway_connector_safety_wiring.py::test_place_paper_order_after_safety_no_double_reject SKIPPED [ 26%]
+tests/test_ib_gateway_connector_safety_wiring.py::test_get_positions_list_shape_for_order_manager SKIPPED [ 26%]
+tests/test_ib_gateway_connector_safety_wiring.py::test_ib_order_manager_uses_gateway SKIPPED [ 26%]
+tests/test_ib_gateway_offline_extended.py::test_place_paper_order_after_safety_no_double_reject PASSED [ 26%]
+tests/test_ib_gateway_offline_extended.py::test_get_positions_list_shape_for_order_manager PASSED [ 26%]
+tests/test_ib_gateway_offline_extended.py::test_ib_order_manager_uses_gateway PASSED [ 26%]
+tests/test_ib_monitor.py::TestIBMonitor::test_check_ib_health_returns_true_when_connected PASSED [ 27%]
+tests/test_ib_monitor.py::TestIBMonitor::test_check_ib_health_returns_false_when_disconnected_during_market_hours PASSED [ 27%]
+tests/test_ib_monitor.py::TestIBMonitor::test_check_ib_health_returns_true_when_not_market_hours PASSED [ 27%]
+tests/test_ib_monitor.py::TestIBMonitor::test_is_market_hours_returns_false_on_saturday PASSED [ 27%]
+tests/test_ib_monitor.py::TestIBMonitor::test_check_ib_health_returns_true_when_connector_is_none PASSED [ 27%]
+tests/test_ib_monitor.py::TestIBMonitor::test_check_ib_health_does_not_raise_when_connector_raises_exception PASSED [ 27%]
+tests/test_ib_monitor.py::TestIsMarketHours::test_market_hours_true_on_weekday_during_market PASSED [ 27%]
+tests/test_ib_monitor.py::TestIsMarketHours::test_market_hours_false_before_market_open PASSED [ 27%]
+tests/test_ib_monitor.py::TestIsMarketHours::test_market_hours_false_after_market_close PASSED [ 27%]
+tests/test_ib_reconnect.py::TestConnectionStateEnum::test_connection_state_values PASSED [ 27%]
+tests/test_ib_reconnect.py::TestConnectionStateEnum::test_connection_state_enum_members PASSED [ 27%]
+tests/test_ib_reconnect.py::TestConnectionStateInitialization::test_connector_initial_state_failed PASSED [ 27%]
+tests/test_ib_reconnect.py::TestConnectionStateInitialization::test_connector_initial_not_connected PASSED [ 27%]
+tests/test_ib_reconnect.py::TestConnectStateTransition::test_connect_sets_connected_state PASSED [ 27%]
+tests/test_ib_reconnect.py::TestConnectStateTransition::test_connect_resets_reconnect_attempts PASSED [ 28%]
+tests/test_ib_reconnect.py::TestConnectStateTransition::test_connect_starts_heartbeat PASSED [ 28%]
+tests/test_ib_reconnect.py::TestDisconnectStateTransition::test_disconnect_sets_failed_state PASSED [ 28%]
+tests/test_ib_reconnect.py::TestDisconnectStateTransition::test_disconnect_cancels_heartbeat PASSED [ 28%]
+tests/test_ib_reconnect.py::TestReconnectExponentialBackoff::test_reconnect_attempt_1_backoff PASSED [ 28%]
+tests/test_ib_reconnect.py::TestReconnectExponentialBackoff::test_reconnect_attempt_2_backoff PASSED [ 28%]
+tests/test_ib_reconnect.py::TestReconnectExponentialBackoff::test_reconnect_attempt_3_backoff PASSED [ 28%]
+tests/test_ib_reconnect.py::TestReconnectExponentialBackoff::test_reconnect_max_attempts_exhausted PASSED [ 28%]
+tests/test_ib_reconnect.py::TestReconnectExponentialBackoff::test_reconnect_success_increments_counter PASSED [ 28%]
+tests/test_ib_reconnect.py::TestHeartbeatMonitoring::test_heartbeat_interval_60_seconds PASSED [ 28%]
+tests/test_ib_reconnect.py::TestHeartbeatMonitoring::test_heartbeat_detects_disconnection PASSED [ 28%]
+tests/test_ib_reconnect.py::TestHeartbeatMonitoring::test_heartbeat_task_cancellation PASSED [ 28%]
+tests/test_ib_reconnect.py::TestSafetyLayerNotification::test_notify_connection_state_on_connect PASSED [ 28%]
+tests/test_ib_reconnect.py::TestSafetyLayerNotification::test_notify_connection_state_on_disconnect PASSED [ 28%]
+tests/test_ib_reconnect.py::TestSafetyLayerNotification::test_notify_connection_state_graceful_fallback PASSED [ 29%]
+tests/test_ib_reconnect.py::TestOnDisconnectCallback::test_set_on_disconnect_callback PASSED [ 29%]
+tests/test_ib_reconnect.py::TestOnDisconnectCallback::test_callback_registration_accepts_callable PASSED [ 29%]
+tests/test_ib_reconnect.py::TestConnectionStateRecovery::test_live_mode_sets_failed_state PASSED [ 29%]
+tests/test_ib_reconnect.py::TestConnectionStateRecovery::test_reconnect_state_transitions PASSED [ 29%]
+tests/test_integration.py::TestSQLitePersistence::test_close_trade_returns_false_for_unknown_id PASSED [ 29%]
+tests/test_integration.py::TestSQLitePersistence::test_daily_pnl_latest PASSED [ 29%]
+tests/test_integration.py::TestSQLitePersistence::test_daily_pnl_snapshot PASSED [ 29%]
+tests/test_integration.py::TestSQLitePersistence::test_db_initializes_cleanly PASSED [ 29%]
+tests/test_integration.py::TestSQLitePersistence::test_position_update_returns_false_for_unknown PASSED [ 29%]
+tests/test_integration.py::TestSQLitePersistence::test_position_upsert PASSED [ 29%]
+tests/test_integration.py::TestSQLitePersistence::test_trade_lifecycle PASSED [ 29%]
+tests/test_integration.py::TestSQLitePersistence::test_trade_persists_across_restart PASSED [ 29%]
+tests/test_integration.py::TestPositionSizing::test_fallback_on_none_atr PASSED [ 29%]
+tests/test_integration.py::TestPositionSizing::test_fallback_on_zero_atr PASSED [ 30%]
+tests/test_integration.py::TestPositionSizing::test_max_contracts_cap PASSED [ 30%]
+tests/test_integration.py::TestPositionSizing::test_mes_standard PASSED  [ 30%]
+tests/test_integration.py::TestPositionSizing::test_small_account_fallback PASSED [ 30%]
+tests/test_integration.py::TestPositionSizing::test_unknown_symbol PASSED [ 30%]
+tests/test_integration.py::TestTrackerSQLiteIntegration::test_tracker_close_persists_to_db PASSED [ 30%]
+tests/test_integration.py::TestTrackerSQLiteIntegration::test_tracker_close_raises_on_unknown_id PASSED [ 30%]
+tests/test_integration.py::TestTrackerSQLiteIntegration::test_tracker_fallback_without_db PASSED [ 30%]
+tests/test_integration.py::TestTrackerSQLiteIntegration::test_tracker_pnl_long PASSED [ 30%]
+tests/test_integration.py::TestTrackerSQLiteIntegration::test_tracker_pnl_short PASSED [ 30%]
+tests/test_integration.py::TestTrackerSQLiteIntegration::test_tracker_uses_db_when_provided PASSED [ 30%]
+tests/test_integration.py::TestPortfolioEndpoints::test_circuit_breakers_endpoint PASSED [ 30%]
+tests/test_integration.py::TestPortfolioEndpoints::test_daily_pnl_endpoint PASSED [ 30%]
+tests/test_integration.py::TestPortfolioEndpoints::test_decisions_recent_endpoint PASSED [ 30%]
+tests/test_integration.py::TestPortfolioEndpoints::test_health_endpoint PASSED [ 31%]
+tests/test_integration.py::TestPortfolioEndpoints::test_history_trades_endpoint PASSED [ 31%]
+tests/test_integration.py::TestPortfolioEndpoints::test_performance_endpoint PASSED [ 31%]
+tests/test_integration.py::TestPortfolioEndpoints::test_portfolio_endpoint PASSED [ 31%]
+tests/test_integration.py::TestPortfolioEndpoints::test_safety_status_endpoint PASSED [ 31%]
+tests/test_integration.py::TestWebhookRouter::test_webhook_get_test_endpoint PASSED [ 31%]
+tests/test_integration.py::TestWebhookRouter::test_webhook_post_hold_ignored PASSED [ 31%]
+tests/test_integration.py::TestWebhookRouter::test_webhook_post_invalid_json PASSED [ 31%]
+tests/test_integration.py::TestWebhookRouter::test_webhook_post_long_signal PASSED [ 31%]
+tests/test_integration.py::TestWebhookRouter::test_webhook_secret_validation PASSED [ 31%]
+tests/test_integration.py::TestSignalPipeline::test_pipeline_history_empty PASSED [ 31%]
+tests/test_integration.py::TestSignalPipeline::test_pipeline_history_limit_param PASSED [ 31%]
+tests/test_integration.py::TestSignalPipeline::test_pipeline_history_schema PASSED [ 31%]
+tests/test_integration.py::TestSignalPipeline::test_pipeline_history_symbol_filter PASSED [ 31%]
+tests/test_integration.py::TestSignalPipeline::test_pipeline_run_signal_invalid_action PASSED [ 32%]
+tests/test_integration.py::TestSignalPipeline::test_pipeline_run_signal_no_pipeline PASSED [ 32%]
+tests/test_integration.py::TestWebhookDedup::test_duplicate_rejected PASSED [ 32%]
+tests/test_integration.py::TestWebhookDedup::test_first_signal_accepted PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_alerts_history PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_alerts_stats PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_import_trades_bad_body PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_import_trades_empty PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_import_trades_single PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_rolling_performance PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_session_today PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_streak_stats PASSED [ 32%]
+tests/test_integration.py::TestSession4Endpoints::test_system_preflight PASSED [ 32%]
+tests/test_integration.py::TestSession4ExtendedEndpoints::test_commissions PASSED [ 32%]
+tests/test_integration.py::TestSession4ExtendedEndpoints::test_import_trades_over_limit PASSED [ 33%]
+tests/test_integration.py::TestSession4ExtendedEndpoints::test_trades_by_day PASSED [ 33%]
+tests/test_integration.py::TestSession4ExtendedEndpoints::test_trades_by_hour PASSED [ 33%]
+tests/test_integration.py::TestSession4ExtendedEndpoints::test_trades_by_symbol PASSED [ 33%]
+tests/test_integration.py::TestSession4ExtendedEndpoints::test_watchlist_scan PASSED [ 33%]
+tests/test_integration.py::TestSession4ExtendedEndpoints::test_weekly_stats PASSED [ 33%]
+tests/test_integration.py::TestSession4ExtendedEndpoints::test_whatsapp_test_notification PASSED [ 33%]
+tests/test_integration.py::TestSession4ContinuationEndpoints::test_analytics_trades_by_hour PASSED [ 33%]
+tests/test_integration.py::TestSession4ContinuationEndpoints::test_market_session PASSED [ 33%]
+tests/test_integration.py::TestSession4ContinuationEndpoints::test_portfolio_stats_weekly PASSED [ 33%]
+tests/test_integration.py::TestSession4ContinuationEndpoints::test_position_sizing_calculate PASSED [ 33%]
+tests/test_integration.py::TestSession4ContinuationEndpoints::test_rolling_performance_30d PASSED [ 33%]
+tests/test_integration.py::TestSession4ContinuationEndpoints::test_rolling_performance_7d PASSED [ 33%]
+tests/test_integration.py::TestSession4ContinuationEndpoints::test_rolling_performance_invalid_days PASSED [ 33%]
+tests/test_integration.py::TestSession4ContinuationEndpoints::test_validation_readiness_check PASSED [ 33%]
+tests/test_integration_rl_endpoints.py::TestHealthEndpoints::test_basic_health_returns_200 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestHealthEndpoints::test_basic_health_schema SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestHealthEndpoints::test_full_health_returns_200 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestHealthEndpoints::test_full_health_schema SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestHealthEndpoints::test_full_health_subsystems SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestHealthEndpoints::test_full_health_database_ok SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLStatusEndpoints::test_strategies_rl_status_returns_200 SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLStatusEndpoints::test_strategies_rl_status_schema SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLStatusEndpoints::test_strategies_rl_status_field_types SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLStatusEndpoints::test_strategies_rl_status_additional_fields SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLStatusEndpoints::test_rl_status_compact_returns_200 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLStatusEndpoints::test_rl_status_compact_schema SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLStatusEndpoints::test_rl_status_compact_running_is_bool SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLStatusEndpoints::test_strategies_rl_status_current_run_structure SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 34%]
+tests/test_integration_rl_endpoints.py::TestRLExecutorStatus::test_executor_status_returns_200 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLExecutorStatus::test_executor_status_schema SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLExecutorStatus::test_executor_status_executors_is_dict SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLExecutorStatus::test_executor_status_count_matches_dict SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLExecutorStatus::test_executor_status_no_executor_running SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_endpoint_exists SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_500_is_known_bug SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_returns_200_after_fix SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_schema SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_contains_mes_run4 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_symbol_filter SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_symbol_filter_field_null_when_no_filter SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_symbol_filter_field_set_when_filtered SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_model_entry_fields SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 35%]
+tests/test_integration_rl_endpoints.py::TestRLModels::test_rl_models_invalid_symbol_returns_empty_list_not_404 SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 36%]
+tests/test_integration_rl_endpoints.py::TestRLHealth::test_rl_health_returns_200 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestRLHealth::test_rl_health_schema SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestRLHealth::test_rl_health_dependencies_available SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestRLHealth::test_rl_health_ready_is_bool SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestRLRunResults::test_results_404_for_unknown_run SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestRLRunResults::test_results_404_body_has_detail SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestRLRunResults::test_results_active_run_returns_200 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestRLRunResults::test_results_active_run_schema SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestPreflightChecks::test_preflight_returns_200 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestPreflightChecks::test_preflight_null_is_known_bug SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestPreflightChecks::test_preflight_schema_after_fix SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestPreflightChecks::test_preflight_checks_list_after_fix SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 36%]
+tests/test_integration_rl_endpoints.py::TestPreflightChecks::test_preflight_expected_check_names_after_fix SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 36%]
+tests/test_integration_rl_endpoints.py::TestPreflightChecks::test_preflight_check_structure_after_fix SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 37%]
+tests/test_integration_rl_endpoints.py::TestRLEvaluateEndpoint::test_strategies_rl_evaluate_requires_body SKIPPEDestart after deploy) [ 37%]
+tests/test_integration_rl_endpoints.py::TestRLEvaluateEndpoint::test_strategies_rl_evaluate_missing_required_fields SKIPPEDestart after
+deploy)                                                                  [ 37%]
+tests/test_integration_rl_endpoints.py::TestRLEvaluateEndpoint::test_strategies_rl_evaluate_422_has_detail SKIPPEDestart after deploy) [ 37%]
+tests/test_integration_rl_endpoints.py::TestRLEvaluateEndpoint::test_rl_evaluate_requires_model_path SKIPPEDestart after deploy) [ 37%]
+tests/test_integration_rl_endpoints.py::TestCrossEndpointConsistency::test_rl_status_consistent_across_endpoints SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 37%]
+tests/test_integration_rl_endpoints.py::TestCrossEndpointConsistency::test_rl_status_progress_consistent SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 37%]
+tests/test_integration_rl_endpoints.py::TestCrossEndpointConsistency::test_full_health_version_matches_basic_health SKIPPEDtegies/rl/status
+and /rl/health (see live_engine_probe.jarvis_rl_integration_ready))      [ 37%]
+tests/test_integration_rl_endpoints.py::TestFixedBugs::test_rl_models_returns_list_not_500 SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 37%]
+tests/test_integration_rl_endpoints.py::TestFixedBugs::test_preflight_returns_dict_not_null SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 37%]
+tests/test_integration_rl_endpoints.py::TestFixedBugs::test_preflight_has_required_check_names SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 37%]
+tests/test_integration_rl_endpoints.py::TestFixedBugs::test_pnl_monitor_has_valid_starting_balance SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 37%]
+tests/test_integration_rl_endpoints.py::TestFixedBugs::test_ib_gateway_health_check_no_attribute_error SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 37%]
+tests/test_integration_rl_endpoints.py::TestFixedBugs::test_circuit_breakers_not_falsely_tripped SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 37%]
+tests/test_integration_rl_endpoints.py::TestDeployFlow::test_deploy_missing_model_path SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 38%]
+tests/test_integration_rl_endpoints.py::TestDeployFlow::test_deploy_status_not_deployed SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 38%]
+tests/test_integration_rl_endpoints.py::TestDeployFlow::test_deploy_requires_symbol SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 38%]
+tests/test_integration_rl_endpoints.py::TestDeployFlow::test_undeploy_not_deployed SKIPPEDtegies/rl/status and /rl/health (see
+live_engine_probe.jarvis_rl_integration_ready))                          [ 38%]
+tests/test_integration_rl_endpoints.py::TestDeployFlow::test_deploy_invalid_path_returns_400_not_500 SKIPPEDtegies/rl/status and /rl/health
+(see live_engine_probe.jarvis_rl_integration_ready))                     [ 38%]
+tests/test_integration_rl_endpoints.py::TestDeployFlow::test_deploy_bad_path_detail_mentions_model_file SKIPPEDtegies/rl/status and
+/rl/health (see live_engine_probe.jarvis_rl_integration_ready))          [ 38%]
+tests/test_kairos.py::TestObservationLog::test_append_and_read_today PASSED [ 38%]
+tests/test_kairos.py::TestObservationLog::test_append_multiple_observations PASSED [ 38%]
+tests/test_kairos.py::TestObservationLog::test_read_empty_date_returns_empty_list PASSED [ 38%]
+tests/test_kairos.py::TestObservationLog::test_read_invalid_date_returns_empty_list PASSED [ 38%]
+tests/test_kairos.py::TestObservationLog::test_get_recent_filters_old_observations PASSED [ 38%]
+tests/test_kairos.py::TestObservationLog::test_get_recent_all_within_window PASSED [ 38%]
+tests/test_kairos.py::TestObservationLog::test_count_by_severity_correct_counts PASSED [ 38%]
+tests/test_kairos.py::TestObservationLog::test_count_by_severity_empty_log PASSED [ 38%]
+tests/test_kairos.py::TestObservationLog::test_base_dir_created_automatically PASSED [ 39%]
+tests/test_kairos.py::TestObservationLog::test_severity_values_serialised_as_strings PASSED [ 39%]
+tests/test_kairos.py::TestRegimeChangeWatcher::test_no_observation_on_first_tick PASSED [ 39%]
+tests/test_kairos.py::TestRegimeChangeWatcher::test_fires_on_regime_change PASSED [ 39%]
+tests/test_kairos.py::TestRegimeChangeWatcher::test_no_fire_same_regime PASSED [ 39%]
+tests/test_kairos.py::TestRegimeChangeWatcher::test_state_updated_after_check PASSED [ 39%]
+tests/test_kairos.py::TestRegimeChangeWatcher::test_multiple_symbols_independent PASSED [ 39%]
+tests/test_kairos.py::TestRegimeChangeWatcher::test_handles_empty_symbols PASSED [ 39%]
+tests/test_kairos.py::TestRegimeChangeWatcher::test_handles_missing_regime_key PASSED [ 39%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_no_observation_on_first_tick PASSED [ 39%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_fires_on_oversold_crossover PASSED [ 39%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_fires_on_overbought_crossover PASSED [ 39%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_no_fire_neutral_zone PASSED [ 39%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_no_fire_already_oversold_stays_oversold PASSED [ 39%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_handles_empty_symbols PASSED [ 40%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_handles_missing_stc_key PASSED [ 40%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_per_symbol_ob_threshold_mnq PASSED [ 40%]
+tests/test_kairos.py::TestSTCCrossoverWatcher::test_state_updated_after_check PASSED [ 40%]
+tests/test_kairos.py::TestRiskLimitWatcher::test_fires_warning_at_80pct_daily_loss PASSED [ 40%]
+tests/test_kairos.py::TestRiskLimitWatcher::test_fires_critical_at_90pct_daily_loss PASSED [ 40%]
+tests/test_kairos.py::TestRiskLimitWatcher::test_no_fire_at_safe_levels PASSED [ 40%]
+tests/test_kairos.py::TestRiskLimitWatcher::test_fires_info_on_high_drawdown PASSED [ 40%]
+tests/test_kairos.py::TestRiskLimitWatcher::test_handles_empty_risk_status PASSED [ 40%]
+tests/test_kairos.py::TestRiskLimitWatcher::test_handles_missing_risk_status_key PASSED [ 40%]
+tests/test_kairos.py::TestRiskLimitWatcher::test_handles_non_dict_risk_status PASSED [ 40%]
+tests/test_kairos.py::TestRiskLimitWatcher::test_no_fire_when_pnl_positive PASSED [ 40%]
+tests/test_kairos.py::TestVIXSpikeWatcher::test_no_observation_on_first_tick PASSED [ 40%]
+tests/test_kairos.py::TestVIXSpikeWatcher::test_fires_warning_on_large_move PASSED [ 40%]
+tests/test_kairos.py::TestVIXSpikeWatcher::test_fires_critical_on_very_large_move PASSED [ 41%]
+tests/test_kairos.py::TestVIXSpikeWatcher::test_no_fire_on_small_move PASSED [ 41%]
+tests/test_kairos.py::TestVIXSpikeWatcher::test_handles_missing_vix PASSED [ 41%]
+tests/test_kairos.py::TestVIXSpikeWatcher::test_handles_none_vix PASSED  [ 41%]
+tests/test_kairos.py::TestVolumeAnomalyWatcher::test_no_observation_during_warmup PASSED [ 41%]
+tests/test_kairos.py::TestVolumeAnomalyWatcher::test_fires_info_at_1_5x_average PASSED [ 41%]
+tests/test_kairos.py::TestVolumeAnomalyWatcher::test_fires_warning_at_2_5x_average PASSED [ 41%]
+tests/test_kairos.py::TestVolumeAnomalyWatcher::test_no_fire_on_normal_volume PASSED [ 41%]
+tests/test_kairos.py::TestVolumeAnomalyWatcher::test_handles_missing_volume_key PASSED [ 41%]
+tests/test_kairos.py::TestSpreadWideningWatcher::test_no_observation_during_calibration PASSED [ 41%]
+tests/test_kairos.py::TestSpreadWideningWatcher::test_fires_on_widened_spread PASSED [ 41%]
+tests/test_kairos.py::TestSpreadWideningWatcher::test_no_fire_on_normal_spread PASSED [ 41%]
+tests/test_kairos.py::TestSpreadWideningWatcher::test_handles_missing_spread_key PASSED [ 41%]
+tests/test_kairos.py::TestCorrelationBreakWatcher::test_no_observation_on_first_tick PASSED [ 41%]
+tests/test_kairos.py::TestCorrelationBreakWatcher::test_fires_on_large_divergence PASSED [ 41%]
+tests/test_kairos.py::TestCorrelationBreakWatcher::test_no_fire_on_correlated_move PASSED [ 42%]
+tests/test_kairos.py::TestCorrelationBreakWatcher::test_handles_missing_symbol_data PASSED [ 42%]
+tests/test_kairos.py::TestCorrelationBreakWatcher::test_handles_missing_price_key PASSED [ 42%]
+tests/test_kairos.py::TestBaseWatcherHelper::test_obs_returns_observation_with_correct_fields PASSED [ 42%]
+tests/test_kairos.py::TestBaseWatcherHelper::test_obs_default_data_is_empty_dict PASSED [ 42%]
+tests/test_kairos.py::TestKairosDaemonStatus::test_status_before_start PASSED [ 42%]
+tests/test_kairos.py::TestKairosDaemonStatus::test_register_watcher_appears_in_status PASSED [ 42%]
+tests/test_kairos.py::TestKairosDaemonStatus::test_tick_calls_all_watchers PASSED [ 42%]
+tests/test_learning.py::TestPatternExtractor::test_extract_returns_list PASSED [ 42%]
+tests/test_learning.py::TestPatternExtractor::test_extract_empty_trades PASSED [ 42%]
+tests/test_learning.py::TestPatternExtractor::test_extract_time_patterns PASSED [ 42%]
+tests/test_learning.py::TestPatternExtractor::test_extract_regime_patterns PASSED [ 42%]
+tests/test_learning.py::TestPatternExtractor::test_pattern_structure PASSED [ 42%]
+tests/test_learning.py::TestPatternExtractor::test_min_frequency_threshold PASSED [ 42%]
+tests/test_learning.py::TestPatternExtractor::test_datetime_parsing PASSED [ 43%]
+tests/test_learning.py::TestTradeClassifier::test_classify_returns_classification PASSED [ 43%]
+tests/test_learning.py::TestTradeClassifier::test_classification_has_grade PASSED [ 43%]
+tests/test_learning.py::TestTradeClassifier::test_classification_has_qualities PASSED [ 43%]
+tests/test_learning.py::TestTradeClassifier::test_winning_trade_grades_high PASSED [ 43%]
+tests/test_learning.py::TestTradeClassifier::test_losing_trade_grades_low PASSED [ 43%]
+tests/test_learning.py::TestTradeClassifier::test_classification_has_factors PASSED [ 43%]
+tests/test_learning.py::TestTradeClassifier::test_r_multiple_calculation PASSED [ 43%]
+tests/test_learning.py::TestTradeClassifier::test_slippage_impacts_execution PASSED [ 43%]
+tests/test_learning.py::TestStrategyTuner::test_suggest_adjustments_returns_list PASSED [ 43%]
+tests/test_learning.py::TestStrategyTuner::test_insufficient_trades_returns_empty PASSED [ 43%]
+tests/test_learning.py::TestStrategyTuner::test_no_params_returns_empty PASSED [ 43%]
+tests/test_learning.py::TestStrategyTuner::test_low_win_rate_suggests_changes PASSED [ 43%]
+tests/test_learning.py::TestStrategyTuner::test_suggestions_are_conservative PASSED [ 43%]
+tests/test_learning.py::TestStrategyTuner::test_never_suggests_safety_params PASSED [ 44%]
+tests/test_learning.py::TestStrategyTuner::test_tunable_params_recognized PASSED [ 44%]
+tests/test_learning.py::TestStrategyTuner::test_clamp_suggestion_respects_bounds PASSED [ 44%]
+tests/test_learning.py::TestStrategyTuner::test_suggestion_structure PASSED [ 44%]
+tests/test_learning.py::TestSessionMemory::test_record_session_returns_bool PASSED [ 44%]
+tests/test_learning.py::TestSessionMemory::test_record_session_stores_lessons PASSED [ 44%]
+tests/test_learning.py::TestSessionMemory::test_get_lessons_filters_by_condition PASSED [ 44%]
+tests/test_learning.py::TestSessionMemory::test_lesson_structure PASSED  [ 44%]
+tests/test_learning.py::TestSessionMemory::test_outcome_classification PASSED [ 44%]
+tests/test_learning.py::TestSessionMemory::test_get_all_lessons PASSED   [ 44%]
+tests/test_learning.py::TestSessionMemory::test_persistence_to_json PASSED [ 44%]
+tests/test_learning.py::TestSessionMemory::test_clear_lessons PASSED     [ 44%]
+tests/test_learning.py::TestSessionMemory::test_invalid_condition_returns_empty PASSED [ 44%]
+tests/test_learning.py::TestFeedback::test_process_winning_trade PASSED  [ 44%]
+tests/test_learning.py::TestFeedback::test_process_losing_trade PASSED   [ 45%]
+tests/test_learning.py::TestFeedback::test_process_breakeven_trade PASSED [ 45%]
+tests/test_learning.py::TestFeedback::test_feedback_to_dict PASSED       [ 45%]
+tests/test_learning.py::TestPatterns::test_trade_pattern_creation PASSED [ 45%]
+tests/test_learning.py::TestPatterns::test_trade_pattern_to_dict PASSED  [ 45%]
+tests/test_learning.py::TestPatterns::test_update_patterns_from_feedback_winner PASSED [ 45%]
+tests/test_learning.py::TestPatterns::test_update_patterns_from_feedback_loser PASSED [ 45%]
+tests/test_learning.py::TestPatterns::test_update_patterns_missing_symbol PASSED [ 45%]
+tests/test_llm_client.py::TestCostCalculation::test_opus_cost_calculation PASSED [ 45%]
+tests/test_llm_client.py::TestCostCalculation::test_sonnet_cost_calculation PASSED [ 45%]
+tests/test_llm_client.py::TestCostCalculation::test_haiku_cost_calculation PASSED [ 45%]
+tests/test_llm_client.py::TestCostTracking::test_log_call PASSED         [ 45%]
+tests/test_llm_client.py::TestCostTracking::test_daily_summary PASSED    [ 45%]
+tests/test_llm_client.py::TestCostTracking::test_monthly_summary PASSED  [ 45%]
+tests/test_llm_client.py::TestFallbackChain::test_fallback_chain_mapping PASSED [ 46%]
+tests/test_llm_client.py::TestLLMCallResult::test_successful_call_result PASSED [ 46%]
+tests/test_llm_client.py::TestLLMCallResult::test_failed_call_result PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_no_sensitive_data_unchanged PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_anthropic_api_key_masked PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_whatsapp_number_masked PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_long_signal_masked_with_sanitize_signals PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_short_signal_masked_with_sanitize_signals PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_long_signal_not_masked_without_sanitize_signals PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_entry_price_masked_with_signals PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_stop_price_masked_with_signals PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_contracts_masked_with_signals PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_pnl_masked_with_signals PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_empty_string_unchanged PASSED [ 46%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_none_converted_to_string PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_twilio_account_sid_masked PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_ib_account_number_masked PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_does_not_crash_on_unicode PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_multiple_api_keys_in_one_message PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_signal_patterns_not_applied_by_default PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_signal_patterns_applied_when_requested PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_target_price_masked_with_signals PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_return_type_always_string PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_whatsapp_international_number PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_sensitive_patterns_list_not_empty PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizeMessage::test_signal_patterns_list_not_empty PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizingFormatter::test_formatter_is_logging_formatter PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizingFormatter::test_formats_normal_record PASSED [ 47%]
+tests/test_log_sanitizer.py::TestSanitizingFormatter::test_sanitizes_api_key_in_record PASSED [ 48%]
+tests/test_log_sanitizer.py::TestSanitizingFormatter::test_never_crashes PASSED [ 48%]
+tests/test_log_sanitizer.py::TestSanitizingFormatter::test_sanitize_signals_false_does_not_mask_prices PASSED [ 48%]
+tests/test_log_sanitizer.py::TestSanitizingFormatter::test_sanitize_signals_true_masks_prices PASSED [ 48%]
+tests/test_log_sanitizer.py::TestSanitizingFormatter::test_formatter_with_dict_args PASSED [ 48%]
+tests/test_log_sanitizer.py::TestSanitizingFormatter::test_formatter_with_tuple_args PASSED [ 48%]
+tests/test_log_sanitizer.py::TestInstallSanitizingFormatter::test_install_does_not_crash PASSED [ 48%]
+tests/test_log_sanitizer.py::TestInstallSanitizingFormatter::test_install_with_signals_does_not_crash PASSED [ 48%]
+tests/test_log_sanitizer.py::TestInstallSanitizingFormatter::test_install_idempotent PASSED [ 48%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_initial_state PASSED [ 48%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_record_single_loss PASSED [ 48%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_record_multiple_losses PASSED [ 48%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_position_size_half PASSED [ 48%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_position_size_quarter PASSED [ 48%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_trading_halt_at_threshold PASSED [ 49%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_halt_reason PASSED [ 49%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_winner_resets_counter PASSED [ 49%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_symbol_isolation PASSED [ 49%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_manual_reset_global PASSED [ 49%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_manual_reset_symbol PASSED [ 49%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_state_persistence PASSED [ 49%]
+tests/test_loss_tracker.py::TestConsecutiveLossTracker::test_status_report PASSED [ 49%]
+tests/test_loss_tracker.py::TestSafetyLayerWithLossTracker::test_order_approved_with_no_losses PASSED [ 49%]
+tests/test_loss_tracker.py::TestSafetyLayerWithLossTracker::test_position_size_reduction_warning PASSED [ 49%]
+tests/test_loss_tracker.py::TestSafetyLayerWithLossTracker::test_order_rejected_when_halted PASSED [ 49%]
+tests/test_loss_tracker.py::TestSafetyLayerWithLossTracker::test_record_trade_result_api PASSED [ 49%]
+tests/test_loss_tracker.py::TestSafetyLayerWithLossTracker::test_loss_tracker_status_api PASSED [ 49%]
+tests/test_loss_tracker.py::TestSafetyLayerWithLossTracker::test_reset_loss_tracker_api PASSED [ 49%]
+tests/test_loss_tracker.py::TestPositionSizingReduction::test_quantity_reduced_with_multiplier PASSED [ 50%]
+tests/test_loss_tracker.py::TestPositionSizingReduction::test_quarter_size_reduction PASSED [ 50%]
+tests/test_market_data_ibkr.py::test_qualified_contract_skips_qualify_when_conid_present PASSED [ 50%]
+tests/test_market_data_ibkr.py::test_qualified_contract_calls_qualify_when_no_conid PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_implements_abc PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_connect_success PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_connect_already_connected PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_connect_failure PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_get_positions PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_get_daily_pnl PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_run_strategy_cycle PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_shutdown PASSED [ 50%]
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_health_check PASSED [ 50%]
+tests/test_market_modules.py::TestOptionsMarketModule::test_options_implements_abc PASSED [ 50%]
+tests/test_market_modules.py::TestOptionsMarketModule::test_options_connect PASSED [ 50%]
+tests/test_market_modules.py::TestOptionsMarketModule::test_options_get_positions PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsMarketModule::test_options_get_daily_pnl PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsMarketModule::test_options_run_strategy_cycle PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsMarketModule::test_options_shutdown PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsMarketModule::test_options_health_check PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsScanner::test_scanner_iv_rank_threshold PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsScanner::test_scanner_underlyings PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsScanner::test_scanner_dte_constants PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsAutoRoller::test_roller_close_at_50_percent_profit PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsAutoRoller::test_roller_hold_below_profit_threshold PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsAutoRoller::test_roller_stop_loss_at_2x_loss PASSED [ 51%]
+tests/test_market_modules.py::TestOptionsAutoRoller::test_roller_roll_at_21_dte PASSED [ 51%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_implements_abc PASSED [ 51%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_connect_success PASSED [ 51%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_connect_disabled PASSED [ 52%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_connect_freqtrade_not_running PASSED [ 52%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_get_positions PASSED [ 52%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_get_daily_pnl PASSED [ 52%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_run_strategy_cycle PASSED [ 52%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_shutdown PASSED [ 52%]
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_health_check PASSED [ 52%]
+tests/test_market_modules.py::TestFreqtradeBridge::test_bridge_authenticate PASSED [ 52%]
+tests/test_market_modules.py::TestFreqtradeBridge::test_bridge_is_running PASSED [ 52%]
+tests/test_market_modules.py::TestFreqtradeBridge::test_bridge_get_trades PASSED [ 52%]
+tests/test_market_modules.py::TestFreqtradeBridge::test_bridge_get_profit PASSED [ 52%]
+tests/test_market_modules.py::TestPolymarketModule::test_polymarket_implements_abc PASSED [ 52%]
+tests/test_market_modules.py::TestPolymarketModule::test_polymarket_disabled_by_default PASSED [ 52%]
+tests/test_market_modules.py::TestPolymarketModule::test_polymarket_connect_when_disabled PASSED [ 52%]
+tests/test_market_modules.py::TestPolymarketModule::test_polymarket_get_positions PASSED [ 53%]
+tests/test_market_modules.py::TestPolymarketModule::test_polymarket_get_daily_pnl PASSED [ 53%]
+tests/test_market_modules.py::TestPolymarketModule::test_polymarket_shutdown PASSED [ 53%]
+tests/test_market_modules.py::TestPolymarketModule::test_polymarket_health_check PASSED [ 53%]
+tests/test_market_modules.py::TestMarketModuleABCCompliance::test_all_modules_have_required_methods PASSED [ 53%]
+tests/test_market_modules.py::TestMarketModuleABCCompliance::test_market_status_enum PASSED [ 53%]
+tests/test_market_modules.py::TestMarketModuleABCCompliance::test_health_status_dataclass PASSED [ 53%]
+tests/test_market_modules.py::TestMarketModuleABCCompliance::test_position_dataclass PASSED [ 53%]
+tests/test_market_modules.py::TestMarketModuleABCCompliance::test_trade_signal_dataclass PASSED [ 53%]
+tests/test_market_modules.py::TestMarketModuleABCCompliance::test_trade_result_dataclass PASSED [ 53%]
+tests/test_middleware_integration.py::TestExceptionHandler::test_unhandled_exception_returns_json_500 PASSED [ 53%]
+tests/test_middleware_integration.py::TestExceptionHandler::test_exception_includes_request_id PASSED [ 53%]
+tests/test_middleware_integration.py::TestExceptionHandler::test_request_ids_are_unique PASSED [ 53%]
+tests/test_middleware_integration.py::TestExceptionHandler::test_response_content_type_is_json PASSED [ 53%]
+tests/test_middleware_integration.py::TestExceptionHandler::test_no_traceback_in_response_body PASSED [ 54%]
+tests/test_middleware_integration.py::TestExceptionHandler::test_health_route_no_error PASSED [ 54%]
+tests/test_middleware_integration.py::TestAPIKeyMiddleware::test_missing_api_key_returns_401 PASSED [ 54%]
+tests/test_middleware_integration.py::TestAPIKeyMiddleware::test_invalid_api_key_returns_401 PASSED [ 54%]
+tests/test_middleware_integration.py::TestAPIKeyMiddleware::test_valid_api_key_passes_through PASSED [ 54%]
+tests/test_middleware_integration.py::TestAPIKeyMiddleware::test_api_key_case_insensitive PASSED [ 54%]
+tests/test_middleware_integration.py::TestMiddlewareIntegration::test_api_key_rejects_before_exception_handler PASSED [ 54%]
+tests/test_middleware_integration.py::TestMiddlewareIntegration::test_existing_route_try_except_takes_precedence PASSED [ 54%]
+tests/test_middleware_integration.py::TestMiddlewareIntegration::test_fastapi_http_exception_not_caught_by_handler PASSED [ 54%]
+tests/test_middleware_integration.py::TestMiddlewareIntegration::test_exception_handler_logged_on_unhandled PASSED [ 54%]
+tests/test_morning_brief.py::test_assemble_morning_brief_empty_positions PASSED [ 54%]
+tests/test_morning_brief.py::test_assemble_morning_brief_contains_symbols PASSED [ 54%]
+tests/test_morning_brief.py::test_assemble_morning_brief_no_raise_none_prices PASSED [ 54%]
+tests/test_morning_brief.py::test_unrealized_pnl_long_mcl PASSED         [ 54%]
+tests/test_morning_brief.py::test_unrealized_pnl_short_mnq PASSED        [ 55%]
+tests/test_nightly_discord_schedule.py::TestNightlyDiscordSchedule::test_nightly_discord_module_importable PASSED [ 55%]
+tests/test_nightly_discord_schedule.py::TestNightlyDiscordSchedule::test_run_import_function_exists PASSED [ 55%]
+tests/test_nightly_discord_schedule.py::TestNightlyDiscordSchedule::test_run_sentiment_etl_function_exists PASSED [ 55%]
+tests/test_nightly_discord_schedule.py::TestNightlyDiscordSchedule::test_scheduler_has_nightly_discord_job PASSED [ 55%]
+tests/test_nightly_discord_schedule.py::TestNightlyDiscordSchedule::test_trigger_response_model PASSED [ 55%]
+tests/test_nightly_discord_schedule.py::TestNightlyDiscordSchedule::test_nightly_discord_import_returns_dict PASSED [ 55%]
+tests/test_nightly_discord_schedule.py::TestNightlyDiscordSchedule::test_sentiment_etl_returns_dict PASSED [ 55%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_register_module PASSED [ 55%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_register_multiple_modules PASSED [ 55%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_get_nonexistent_module PASSED [ 55%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_start_all_modules PASSED [ 55%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_stop_all_modules PASSED [ 55%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_empty_orchestrator_handles_gracefully PASSED [ 55%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorCycles::test_run_all_cycles_executes_each_module PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorCycles::test_run_cycles_skips_disabled_modules PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorCycles::test_run_cycles_returns_signal_counts PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorCycles::test_module_failure_during_cycle_doesnt_crash_orchestrator PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorPortfolioAggregation::test_get_portfolio_summary_basic PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorPortfolioAggregation::test_get_portfolio_summary_aggregates_multiple_markets PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorPortfolioAggregation::test_portfolio_summary_includes_module_stats PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorPortfolioAggregation::test_portfolio_summary_handles_module_error_gracefully PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorSingleton::test_get_orchestrator_initially_none PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorSingleton::test_set_and_get_orchestrator PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorSingleton::test_orchestrator_singleton_persists PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorHaltResume::test_halt_all_sets_halted_state PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorHaltResume::test_halted_orchestrator_doesnt_run_cycles PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorHaltResume::test_resume_clears_halt_state PASSED [ 56%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorHaltResume::test_health_check_returns_all_modules PASSED [ 57%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorUptime::test_uptime_seconds_calculated_after_start PASSED [ 57%]
+tests/test_orchestrator.py::TestMultiMarketOrchestratorUptime::test_uptime_zero_before_start PASSED [ 57%]
+tests/test_orchestrator_correlation.py::TestPositionCorrelationMonitor::test_single_open_position_uses_default_max PASSED [ 57%]
+tests/test_orchestrator_correlation.py::TestPositionCorrelationMonitor::test_both_correlated_pair_open_reduces_max PASSED [ 57%]
+tests/test_orchestrator_correlation.py::TestPositionCorrelationMonitor::test_low_correlation_pair_unaffected PASSED [ 57%]
+tests/test_orchestrator_correlation.py::TestPositionCorrelationMonitor::test_mcl_position_with_correlated_pair_open PASSED [ 57%]
+tests/test_orchestrator_correlation.py::TestPositionCorrelationMonitor::test_closed_position_no_longer_affects_sizing PASSED [ 57%]
+tests/test_orchestrator_correlation.py::TestPositionCorrelationMonitor::test_get_open_symbols PASSED [ 57%]
+tests/test_orchestrator_correlation.py::TestPositionCorrelationMonitor::test_get_correlation_exposure PASSED [ 57%]
+tests/test_orchestrator_correlation.py::TestPositionCorrelationMonitor::test_case_insensitive_symbol_matching PASSED [ 57%]
+tests/test_p0_verify_mirror.py::test_public_health PASSED                [ 57%]
+tests/test_p0_verify_mirror.py::test_full_health_p0_tolerance PASSED     [ 57%]
+tests/test_p0_verify_mirror.py::test_authenticated_style_routes_match_p0_script PASSED [ 57%]
+tests/test_paper_runner_engine_sync.py::test_paper_runner_posts_to_portfolio_paper_trade PASSED [ 58%]
+tests/test_paper_trade_logger_tracker_mirror.py::test_mirror_open_close_long_round_trip PASSED [ 58%]
+tests/test_paper_trade_logger_tracker_mirror.py::test_mirror_disabled_json_only PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_full_paper_trading_cycle PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_risk_manager_veto_blocks_excessive_position PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_kill_switch_triggers_at_minus_2_percent_daily_loss PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_kill_switch_triggers_at_minus_10_percent_drawdown PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_paper_tracker_pnl_calculation PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_safety_layer_position_and_margin_checks PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_pipeline_error_handling_graceful_degradation PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_paper_tracker_metrics PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_order_request_validation PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingFlow::test_concurrent_order_rate_limiting PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingIntegration::test_paper_tracker_persistence PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingIntegration::test_risk_check_result_structure PASSED [ 58%]
+tests/test_paper_trading_flow.py::TestPaperTradingIntegration::test_trading_config_defaults PASSED [ 59%]
+tests/test_paper_validation.py::TestTradeRecording::test_load_single_winning_trade PASSED [ 59%]
+tests/test_paper_validation.py::TestTradeRecording::test_load_winning_and_losing_trades PASSED [ 59%]
+tests/test_paper_validation.py::TestWinRate::test_win_rate_zero_trades PASSED [ 59%]
+tests/test_paper_validation.py::TestWinRate::test_win_rate_all_winning PASSED [ 59%]
+tests/test_paper_validation.py::TestWinRate::test_win_rate_all_losing PASSED [ 59%]
+tests/test_paper_validation.py::TestWinRate::test_win_rate_mixed PASSED  [ 59%]
+tests/test_paper_validation.py::TestProfitFactor::test_profit_factor_no_trades PASSED [ 59%]
+tests/test_paper_validation.py::TestProfitFactor::test_profit_factor_only_winners PASSED [ 59%]
+tests/test_paper_validation.py::TestProfitFactor::test_profit_factor_only_losers PASSED [ 59%]
+tests/test_paper_validation.py::TestProfitFactor::test_profit_factor_mixed PASSED [ 59%]
+tests/test_paper_validation.py::TestValidationThresholds::test_validation_fails_before_30_days PASSED [ 59%]
+tests/test_paper_validation.py::TestValidationThresholds::test_validation_status_structure PASSED [ 59%]
+tests/test_paper_validation.py::TestConsecutiveLosses::test_consecutive_loss_counter_resets_on_win PASSED [ 59%]
+tests/test_paper_validation.py::TestConsecutiveLosses::test_max_consecutive_losses_tracked PASSED [ 60%]
+tests/test_paper_validation.py::TestDashboardData::test_dashboard_data_format PASSED [ 60%]
+tests/test_paper_validation.py::TestDashboardData::test_dashboard_overall_pass PASSED [ 60%]
+tests/test_paper_validation.py::TestSerialization::test_load_metrics_from_tracker_file PASSED [ 60%]
+tests/test_paper_validation.py::TestGetAllTrades::test_get_all_trades_empty PASSED [ 60%]
+tests/test_paper_validation.py::TestGetAllTrades::test_get_all_trades_populated PASSED [ 60%]
+tests/test_paper_validation.py::TestValidationGateConfig::test_pass_thresholds_is_shared_config_object PASSED [ 60%]
+tests/test_paper_validation.py::TestValidationGateConfig::test_canonical_numeric_targets PASSED [ 60%]
+tests/test_pending_approval_notify.py::test_notify_calls_emit_and_whatsapp PASSED [ 60%]
+tests/test_pending_approval_notify.py::test_notify_telegram_when_enabled PASSED [ 60%]
+tests/test_pending_approval_notify.py::test_notify_discord_webhook_when_env_set PASSED [ 60%]
+tests/test_pending_approvals.py::test_insert_list_get_pending PASSED     [ 60%]
+tests/test_pending_approvals.py::test_resolve_double_approve_fails PASSED [ 60%]
+tests/test_pending_approvals.py::test_approval_router_approve_flow PASSED [ 60%]
+tests/test_pending_approvals.py::test_approval_router_reject PASSED      [ 61%]
+tests/test_pipeline_e2e.py::TestPipelineBasics::test_pipeline_produces_valid_result PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestPipelineBasics::test_pipeline_symbol_propagates PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestPipelineBasics::test_pipeline_is_futures_flag PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestAnalystStages::test_all_analysts_called PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestAnalystStages::test_analyst_reports_present_in_result PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestAnalystStages::test_pipeline_survives_analyst_failure PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestAnalystStages::test_analyst_exception_logged_as_error PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestDebateStage::test_debate_called_with_analyst_reports PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestDebateStage::test_missing_debate_agents_handled PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestTraderStage::test_trader_produces_trade_decision PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestTraderStage::test_missing_trader_agent_defaults_to_hold PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestTraderStage::test_trader_exception_defaults_to_hold PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestRiskManagerStage::test_risk_manager_approves_valid_trade PASSED [ 61%]
+tests/test_pipeline_e2e.py::TestRiskManagerStage::test_risk_manager_veto_blocks_fund_manager PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestRiskManagerStage::test_missing_risk_manager_auto_approves PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestFundManagerStage::test_fund_manager_final_approval PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestFundManagerStage::test_fund_manager_reduces_quantity PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestPipelineKillSwitch::test_pipeline_respects_kill_switch PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestPipelineKillSwitch::test_safety_status_passed_to_trader PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestFinalActionResolution::test_final_action_buy_when_approved PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestFinalActionResolution::test_final_action_hold_when_risk_vetoes PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestPipelineTiming::test_pipeline_records_timestamps PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestPipelineTiming::test_pipeline_generates_summary PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestPipelinePortfolio::test_pipeline_default_portfolio_on_missing_provider PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestPipelinePortfolio::test_portfolio_passed_to_risk_manager PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestPipelineAllStagesPresent::test_pipeline_all_stages_present PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestPipelineAllStagesPresent::test_pipeline_result_integrity PASSED [ 62%]
+tests/test_pipeline_e2e.py::TestSTCPreFilter::test_stc_mid_range_pre_filters_without_calling_llm_agents PASSED [ 63%]
+tests/test_pipeline_e2e.py::TestSTCPreFilter::test_stc_at_oversold_does_not_pre_filter PASSED [ 63%]
+tests/test_pipeline_profiler.py::test_start_end_stage_records_time PASSED [ 63%]
+tests/test_pipeline_profiler.py::test_get_report_returns_all_stages PASSED [ 63%]
+tests/test_pipeline_profiler.py::test_slowest_stage_identified PASSED    [ 63%]
+tests/test_pipeline_profiler.py::test_finish_run_stores_in_history PASSED [ 63%]
+tests/test_pipeline_profiler.py::test_get_average_times_correct PASSED   [ 63%]
+tests/test_pipeline_profiler.py::test_history_bounded_by_max PASSED      [ 63%]
+tests/test_pipeline_profiler.py::test_empty_profiler_returns_empty PASSED [ 63%]
+tests/test_pipeline_profiler.py::test_multiple_runs_tracked PASSED       [ 63%]
+tests/test_pipeline_run_human_gate.py::test_requires_human_inserts_pending_skips_paper PASSED [ 63%]
+tests/test_pipeline_run_human_gate.py::test_without_human_logs_paper_no_pending_row PASSED [ 63%]
+tests/test_portfolio_paper_trade_post.py::test_paper_trade_open_returns_trade_id PASSED [ 63%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_basic_position_size_normal_inputs PASSED [ 63%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_respects_max_contracts_limit PASSED [ 64%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_respects_max_position_pct_limit PASSED [ 64%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_zero_equity_returns_zero PASSED [ 64%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_negative_equity_returns_zero PASSED [ 64%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_zero_atr_returns_zero PASSED [ 64%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_negative_atr_returns_zero PASSED [ 64%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_zero_risk_pct_returns_zero PASSED [ 64%]
+tests/test_position_sizer.py::TestBasicPositionSize::test_small_account_floor PASSED [ 64%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_positive_win_rate PASSED [ 64%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_break_even_win_rate PASSED [ 64%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_losing_win_rate PASSED [ 64%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_zero_loss PASSED [ 64%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_zero_win PASSED [ 64%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_invalid_win_rate_low PASSED [ 64%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_invalid_win_rate_high PASSED [ 65%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_favorable_odds PASSED [ 65%]
+tests/test_position_sizer.py::TestKellyFraction::test_kelly_fraction_capped_at_quarter_kelly PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_no_drawdown PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_small_drawdown PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_at_5_percent PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_between_5_and_8 PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_at_8_percent PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_between_8_and_10 PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_at_10_percent PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_deep_drawdown PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScaling::test_drawdown_scale_negative_input PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScalingIntegration::test_position_size_reduces_with_drawdown PASSED [ 65%]
+tests/test_position_sizer.py::TestDrawdownScalingIntegration::test_deep_drawdown_stops_trading PASSED [ 65%]
+tests/test_position_sizer.py::TestPositionSizeDataclass::test_position_size_creation PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterSignal::test_disabled_filter_always_passes PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterSignal::test_stc_below_os_boundary PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterSignal::test_stc_above_ob_boundary PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterSignal::test_stc_in_mid_range PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterSignal::test_default_thresholds_from_config PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterSignal::test_edge_cases PASSED    [ 66%]
+tests/test_pre_filter.py::TestPreFilterDecision::test_filtered_returns_hold_dict PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterDecision::test_passed_returns_none PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterDecision::test_decision_dict_includes_thresholds PASSED [ 66%]
+tests/test_pre_filter.py::TestPreFilterDecision::test_decision_dict_uses_config_defaults PASSED [ 66%]
+tests/test_price_cache.py::test_price_cache_set_and_get PASSED           [ 66%]
+tests/test_price_cache.py::test_price_cache_miss PASSED                  [ 66%]
+tests/test_price_cache.py::test_price_cache_expired PASSED               [ 66%]
+tests/test_price_cache.py::test_price_cache_get_expired_fallback PASSED  [ 66%]
+tests/test_price_cache.py::test_retry_with_backoff_success PASSED        [ 67%]
+tests/test_price_cache.py::test_retry_with_backoff_rate_limit_429 PASSED [ 67%]
+tests/test_price_cache.py::test_retry_with_backoff_transient_error PASSED [ 67%]
+tests/test_price_cache.py::test_cache_clear PASSED                       [ 67%]
+tests/test_prices_router.py::test_get_price_snapshot_empty_symbols SKIPPED [ 67%]
+tests/test_prices_router.py::test_get_price_snapshot_single_symbol SKIPPED [ 67%]
+tests/test_prices_router.py::test_get_price_snapshot_multiple_symbols SKIPPED [ 67%]
+tests/test_prices_router.py::test_get_price_snapshot_futures SKIPPEDnv)  [ 67%]
+tests/test_prices_router.py::test_get_price_snapshot_caching PASSED      [ 67%]
+tests/test_prices_router_offline.py::test_offline_get_price_snapshot_empty_symbols PASSED [ 67%]
+tests/test_prices_router_offline.py::test_offline_get_price_snapshot_single_symbol PASSED [ 67%]
+tests/test_prices_router_offline.py::test_offline_get_price_snapshot_multiple_symbols PASSED [ 67%]
+tests/test_prices_router_offline.py::test_offline_get_price_snapshot_futures PASSED [ 67%]
+tests/test_profiling_router.py::TestProfilingRouter::test_summary_returns_200 PASSED [ 67%]
+tests/test_profiling_router.py::TestProfilingRouter::test_summary_includes_stages PASSED [ 68%]
+tests/test_profiling_router.py::TestProfilingRouter::test_summary_returns_503_if_no_profiler PASSED [ 68%]
+tests/test_profiling_router.py::TestProfilingRouter::test_averages_returns_200 PASSED [ 68%]
+tests/test_profiling_router.py::TestProfilingRouter::test_averages_respects_last_n PASSED [ 68%]
+tests/test_profiling_router.py::TestProfilingRouter::test_history_returns_200 PASSED [ 68%]
+tests/test_profiling_router.py::TestProfilingRouter::test_history_includes_capacity_fields PASSED [ 68%]
+tests/test_profiling_router.py::TestProfilingRouter::test_history_respects_last_n PASSED [ 68%]
+tests/test_rate_limiting.py::TestHealthEndpointsUnlimited::test_health_no_rate_limit PASSED [ 68%]
+tests/test_rate_limiting.py::TestHealthEndpointsUnlimited::test_health_full_no_rate_limit PASSED [ 68%]
+tests/test_rate_limiting.py::TestAnalyticsRateLimit120PerMinute::test_analytics_trades_has_rate_limit PASSED [ 68%]
+tests/test_rate_limiting.py::TestAnalyticsRateLimit120PerMinute::test_analytics_performance_has_rate_limit PASSED [ 68%]
+tests/test_rate_limiting.py::TestTradingRateLimitFeasibility::test_trading_endpoints_exist PASSED [ 68%]
+tests/test_rate_limiting.py::TestDefaultRateLimitFeasibility::test_system_preflight_has_rate_limit PASSED [ 68%]
+tests/test_rate_limiting.py::TestRateLimitExceededBehavior::test_rate_limit_exceeded_returns_429 PASSED [ 68%]
+tests/test_rate_limiting.py::TestRateLimitExceededBehavior::test_rate_limit_response_is_json PASSED [ 69%]
+tests/test_rate_limiting.py::TestRateLimitMiddlewareIntegration::test_limiter_available_from_middleware PASSED [ 69%]
+tests/test_rate_limiting.py::TestRateLimitMiddlewareIntegration::test_rate_limit_tiers_configured PASSED [ 69%]
+tests/test_rl_evaluate_offline.py::TestRLEvaluateOffline::test_evaluate_missing_body_422 PASSED [ 69%]
+tests/test_rl_evaluate_offline.py::TestRLEvaluateOffline::test_evaluate_empty_body_422 PASSED [ 69%]
+tests/test_rl_evaluate_offline.py::TestRLEvaluateOffline::test_evaluate_missing_start_422 PASSED [ 69%]
+tests/test_rl_evaluate_offline.py::TestRLEvaluateOffline::test_evaluate_missing_end_422 PASSED [ 69%]
+tests/test_rl_module.py::TestRLConfig::test_rl_config_valid PASSED       [ 69%]
+tests/test_rl_module.py::TestRLConfig::test_action_enum_values PASSED    [ 69%]
+tests/test_rl_module.py::TestRLConfig::test_get_instrument_params_defaults PASSED [ 69%]
+tests/test_rl_module.py::TestRLEnvironment::test_rl_environment_reset PASSED [ 69%]
+tests/test_rl_module.py::TestRLEnvironment::test_rl_environment_step_hold PASSED [ 69%]
+tests/test_rl_module.py::TestRLEnvironment::test_rl_environment_step PASSED [ 69%]
+tests/test_rl_module.py::TestRLEnvironment::test_rl_environment_buy_sell_close PASSED [ 69%]
+tests/test_rl_module.py::TestRLEnvironment::test_rl_environment_episode_metrics PASSED [ 70%]
+tests/test_rl_module.py::TestRLEnvironment::test_rl_environment_full_episode_no_crash PASSED [ 70%]
+tests/test_rl_module.py::TestSafetyLayerBlocks::test_safety_layer_blocks_when_killed PASSED [ 70%]
+tests/test_rl_module.py::TestSafetyLayerBlocks::test_safety_layer_blocks_untrained_agent PASSED [ 70%]
+tests/test_rl_module.py::TestSafetyLayerBlocks::test_kill_switch_reason_manual PASSED [ 70%]
+tests/test_rl_module.py::TestSafetyLayerBlocks::test_kill_switch_sync_no_coroutine_runtime_warnings PASSED [ 70%]
+tests/test_rl_status_offline.py::TestRLResultsOffline::test_results_active_run_returns_200 PASSED [ 70%]
+tests/test_rl_status_offline.py::TestRLResultsOffline::test_results_active_run_schema PASSED [ 70%]
+tests/test_rl_status_offline.py::TestPnLMonitorOffline::test_pnl_monitor_has_valid_starting_balance PASSED [ 70%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_fresh_state_has_no_instruments PASSED [ 70%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_days_since_last_run_returns_none_on_first_run PASSED [ 70%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_is_due_true_on_fresh_state PASSED [ 70%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_is_due_false_after_recent_run PASSED [ 70%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_is_due_true_after_old_run PASSED [ 70%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_days_since_last_run_is_accurate PASSED [ 71%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_persists_wfe PASSED [ 71%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_tracks_delta PASSED [ 71%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_increments_run_count PASSED [ 71%]
+tests/test_rolling_wfe.py::TestRollingWFEState::test_corrupted_state_file_falls_back_gracefully PASSED [ 71%]
+tests/test_rolling_wfe.py::TestEvaluateWFE::test_mcl_excellent PASSED    [ 71%]
+tests/test_rolling_wfe.py::TestEvaluateWFE::test_mcl_good PASSED         [ 71%]
+tests/test_rolling_wfe.py::TestEvaluateWFE::test_mcl_marginal PASSED     [ 71%]
+tests/test_rolling_wfe.py::TestEvaluateWFE::test_mcl_halt PASSED         [ 71%]
+tests/test_rolling_wfe.py::TestEvaluateWFE::test_mnq_good PASSED         [ 71%]
+tests/test_rolling_wfe.py::TestEvaluateWFE::test_mnq_marginal_above_halt PASSED [ 71%]
+tests/test_rolling_wfe.py::TestEvaluateWFE::test_mnq_halt PASSED         [ 71%]
+tests/test_rolling_wfe.py::TestEvaluateWFE::test_negative_wfe_always_halt PASSED [ 71%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_all_approved_instruments_present PASSED [ 71%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mgc_not_approved PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mcl_baseline_wfe_canonical PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mnq_baseline_wfe_canonical PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mnq_adaptive_regime_enabled PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mnq_mtf_filter_disabled PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mnq_volume_filter_disabled PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mcl_adaptive_disabled PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mcl_halt_threshold PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_mnq_halt_threshold PASSED [ 72%]
+tests/test_rolling_wfe.py::TestInstrumentConfigs::test_cadence_days_is_28 PASSED [ 72%]
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_dry_run_returns_summary PASSED [ 72%]
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_dry_run_uses_last_known_wfe PASSED [ 72%]
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_scheduler_skips_when_not_due PASSED [ 72%]
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_force_overrides_cadence PASSED [ 72%]
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_halt_verdict_sets_halt_required_flag PASSED [ 73%]
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_good_verdict_sets_halt_required_false PASSED [ 73%]
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_failed_wfe_run_returns_error_status PASSED [ 73%]
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_unknown_instrument_is_ignored PASSED [ 73%]
+tests/test_routes_wired.py::test_routes_wired PASSED                     [ 73%]
+tests/test_routes_wired.py::test_route_methods_valid PASSED              [ 73%]
+tests/test_routes_wired.py::test_router_imports_complete PASSED          [ 73%]
+tests/test_safety_layer.py::TestKillSwitch::test_kill_switch_blocks_all_orders PASSED [ 73%]
+tests/test_safety_layer.py::TestKillSwitch::test_deactivate_kill_switch PASSED [ 73%]
+tests/test_safety_layer.py::TestKillSwitch::test_kill_switch_persists_across_orders PASSED [ 73%]
+tests/test_safety_layer.py::TestLiveTrading::test_live_trading_disabled_blocks PASSED [ 73%]
+tests/test_safety_layer.py::TestLiveTrading::test_live_trading_enabled_allows_valid_orders PASSED [ 73%]
+tests/test_safety_layer.py::TestHumanApproval::test_human_approval_required_blocks PASSED [ 73%]
+tests/test_safety_layer.py::TestHumanApproval::test_bypass_human_approval_when_disabled PASSED [ 73%]
+tests/test_safety_layer.py::TestDailyLossLimit::test_daily_loss_limit_blocks_when_exceeded PASSED [ 74%]
+tests/test_safety_layer.py::TestDailyLossLimit::test_daily_loss_limit_allows_within_threshold PASSED [ 74%]
+tests/test_safety_layer.py::TestMaxDrawdown::test_max_drawdown_blocks_when_exceeded PASSED [ 74%]
+tests/test_safety_layer.py::TestMaxDrawdown::test_max_drawdown_allows_within_threshold PASSED [ 74%]
+tests/test_safety_layer.py::TestMaxDrawdown::test_drawdown_warning_at_80_percent PASSED [ 74%]
+tests/test_safety_layer.py::TestSingleOrderValue::test_single_order_value_cap_enforcement PASSED [ 74%]
+tests/test_safety_layer.py::TestPositionSize::test_position_size_limit_enforcement PASSED [ 74%]
+tests/test_safety_layer.py::TestPositionSize::test_position_size_allows_within_limit PASSED [ 74%]
+tests/test_safety_layer.py::TestOrderRateThrottle::test_order_rate_throttle_blocks_excess_orders PASSED [ 74%]
+tests/test_safety_layer.py::TestOrderRateThrottle::test_order_rate_allows_below_threshold PASSED [ 74%]
+tests/test_safety_layer.py::TestFuturesContractLimit::test_futures_contract_limit_enforcement PASSED [ 74%]
+tests/test_safety_layer.py::TestFuturesContractLimit::test_futures_contract_limit_allows_within_limit PASSED [ 74%]
+tests/test_safety_layer.py::TestNaNPriceHandling::test_nan_price_in_order_request PASSED [ 74%]
+tests/test_safety_layer.py::TestNaNPriceHandling::test_zero_equity_handling PASSED [ 74%]
+tests/test_safety_layer.py::TestZeroVolumeHandling::test_zero_volume_on_order_estimation PASSED [ 75%]
+tests/test_safety_layer.py::TestMissingDataGraceful::test_missing_pnl_monitor_falls_back PASSED [ 75%]
+tests/test_safety_layer.py::TestMultipleRuleInteraction::test_first_failure_stops_subsequent_checks PASSED [ 75%]
+tests/test_safety_layer.py::TestMultipleRuleInteraction::test_all_checks_passed_sequence PASSED [ 75%]
+tests/test_scanner.py::TestFuturesMarketHours::test_outside_market_hours_saturday PASSED [ 75%]
+tests/test_scanner.py::TestFuturesMarketHours::test_during_market_hours_monday PASSED [ 75%]
+tests/test_scanner.py::TestSignalScanner::test_scanner_initialization PASSED [ 75%]
+tests/test_scanner.py::TestSignalScanner::test_scanner_status PASSED     [ 75%]
+tests/test_scanner.py::TestSignalScanner::test_scanner_start PASSED      [ 75%]
+tests/test_scanner.py::TestSignalScanner::test_scanner_pause_resume PASSED [ 75%]
+tests/test_scanner.py::TestSignalScanner::test_scan_symbol_hold_signal PASSED [ 75%]
+tests/test_scanner.py::TestSignalScanner::test_scan_symbol_buy_signal PASSED [ 75%]
+tests/test_scanner.py::TestSignalScanner::test_scan_symbol_sell_signal PASSED [ 75%]
+tests/test_scanner.py::TestSignalScanner::test_scan_symbol_pipeline_error PASSED [ 75%]
+tests/test_scanner.py::TestAPIKeyValidation::test_validate_with_all_keys_present PASSED [ 75%]
+tests/test_scanner.py::TestAPIKeyValidation::test_validate_missing_critical_key PASSED [ 76%]
+tests/test_scanner.py::TestAPIKeyValidation::test_validate_placeholder_values PASSED [ 76%]
+tests/test_scanner.py::TestAPIKeyValidation::test_validate_partial_optional_keys PASSED [ 76%]
+tests/test_scanner.py::TestAPIKeyValidation::test_validate_whatsapp_requires_all_four_keys PASSED [ 76%]
+tests/test_schedulers.py::TestEODSchedulerInitialization::test_eod_scheduler_init_with_all_dependencies PASSED [ 76%]
+tests/test_schedulers.py::TestEODSchedulerInitialization::test_eod_scheduler_init_without_dependencies PASSED [ 76%]
+tests/test_schedulers.py::TestEODSchedulerInitialization::test_eod_scheduler_init_with_partial_dependencies PASSED [ 76%]
+tests/test_schedulers.py::TestEODSchedulerSnapshot::test_run_eod_snapshot_without_db PASSED [ 76%]
+tests/test_schedulers.py::TestEODSchedulerSnapshot::test_run_eod_snapshot_with_db PASSED [ 76%]
+tests/test_schedulers.py::TestEODSchedulerSnapshot::test_run_eod_snapshot_handles_tracker_exception PASSED [ 76%]
+tests/test_schedulers.py::TestWeeklyReview::test_run_weekly_review_without_db PASSED [ 76%]
+tests/test_schedulers.py::TestWeeklyReview::test_run_weekly_review_with_data PASSED [ 76%]
+tests/test_schedulers.py::TestSchedulerJobRegistration::test_register_with_scheduler_creates_jobs PASSED [ 76%]
+tests/test_schedulers.py::TestSchedulerJobRegistration::test_eod_snapshot_job_registered PASSED [ 76%]
+tests/test_schedulers.py::TestSchedulerDegradation::test_scheduler_init_without_external_deps PASSED [ 77%]
+tests/test_schedulers.py::TestSchedulerDegradation::test_eod_operations_without_external_services PASSED [ 77%]
+tests/test_schedulers.py::TestTodaySummary::test_get_today_summary_without_dependencies PASSED [ 77%]
+tests/test_schedulers.py::TestTodaySummary::test_get_today_summary_with_tracker PASSED [ 77%]
+tests/test_schedulers.py::TestMorningBriefing::test_run_morning_briefing_without_notifier PASSED [ 77%]
+tests/test_schedulers.py::TestMorningBriefing::test_run_morning_briefing_with_disabled_notifier PASSED [ 77%]
+tests/test_schedulers.py::TestVIXAlertCheck::test_run_vix_alert_check_without_notifier PASSED [ 77%]
+tests/test_schedulers.py::TestSchedulerLifecycle::test_scheduler_status_response_shape PASSED [ 77%]
+tests/test_schwab.py::test_connector_instantiates PASSED                 [ 77%]
+tests/test_schwab.py::test_not_connected_initially PASSED                [ 77%]
+tests/test_schwab.py::test_state_is_disconnected_on_init PASSED          [ 77%]
+tests/test_schwab.py::test_is_connected_requires_connected_state_and_client PASSED [ 77%]
+tests/test_schwab.py::test_is_connected_true_when_state_connected_and_client_set PASSED [ 77%]
+tests/test_schwab.py::test_is_connected_false_for_all_non_connected_states PASSED [ 77%]
+tests/test_schwab.py::test_assert_schwab_ready_raises_when_false PASSED  [ 78%]
+tests/test_schwab.py::test_assert_schwab_ready_passes_when_true PASSED   [ 78%]
+tests/test_schwab.py::test_initialize_blocked_when_schwab_not_ready PASSED [ 78%]
+tests/test_schwab.py::test_get_account_summary_returns_error_dict_when_not_connected PASSED [ 78%]
+tests/test_schwab.py::test_get_quotes_returns_empty_dict_when_not_connected PASSED [ 78%]
+tests/test_schwab.py::test_get_options_chain_returns_error_dict_when_not_connected PASSED [ 78%]
+tests/test_schwab.py::test_get_open_orders_returns_empty_list_when_not_connected PASSED [ 78%]
+tests/test_schwab.py::test_cancel_all_orders_returns_zero_when_not_connected PASSED [ 78%]
+tests/test_schwab.py::test_place_paper_order_returns_dict_when_not_connected PASSED [ 78%]
+tests/test_schwab.py::test_disconnect_resets_state PASSED                [ 78%]
+tests/test_schwab.py::test_get_auth_instructions_returns_string PASSED   [ 78%]
+tests/test_schwab.py::test_order_router_futures_routing PASSED           [ 78%]
+tests/test_schwab.py::test_order_router_futures_routing_case_insensitive PASSED [ 78%]
+tests/test_schwab.py::test_order_router_options_detection PASSED         [ 78%]
+tests/test_schwab.py::test_order_router_status_no_brokers PASSED         [ 79%]
+tests/test_schwab.py::test_order_router_status_reflects_connected_schwab PASSED [ 79%]
+tests/test_schwab.py::test_order_router_attach_connectors PASSED         [ 79%]
+tests/test_schwab.py::test_order_router_raises_without_ibkr_for_futures PASSED [ 79%]
+tests/test_schwab.py::test_order_router_raises_without_schwab_for_equity PASSED [ 79%]
+tests/test_schwab.py::test_order_router_raises_without_any_broker_for_options PASSED [ 79%]
+tests/test_schwab.py::test_order_router_routes_futures_to_ibkr_when_connected PASSED [ 79%]
+tests/test_schwab.py::test_order_router_routes_equity_to_schwab_when_connected PASSED [ 79%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_performance_endpoint PASSED [ 79%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_rolling_performance_7d PASSED [ 79%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_rolling_performance_30d PASSED [ 79%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_rolling_performance_invalid_days PASSED [ 79%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_portfolio_stats_weekly PASSED [ 79%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_analytics_trades_by_hour PASSED [ 79%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_market_session PASSED [ 80%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_position_sizing_calculate PASSED [ 80%]
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_validation_readiness_check PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_rolling_performance PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_session_today PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_alerts_history PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_alerts_stats PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_system_preflight PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_streak_stats PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_import_trades_empty PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_import_trades_single PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4Endpoints::test_import_trades_bad_body PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4ExtendedEndpoints::test_trades_by_day PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4ExtendedEndpoints::test_trades_by_symbol PASSED [ 80%]
+tests/test_session4_contract.py::TestSession4ExtendedEndpoints::test_trades_by_hour PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ExtendedEndpoints::test_weekly_stats PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ExtendedEndpoints::test_commissions PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ExtendedEndpoints::test_watchlist_scan PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ExtendedEndpoints::test_import_trades_over_limit PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ExtendedEndpoints::test_whatsapp_test_notification PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_rolling_performance_7d PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_rolling_performance_30d PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_rolling_performance_invalid_days PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_portfolio_stats_weekly PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_analytics_trades_by_hour PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_market_session PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_position_sizing_calculate PASSED [ 81%]
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_validation_readiness_check PASSED [ 81%]
+tests/test_session4_extended_offline.py::TestSession4ExtendedOffline::test_commissions PASSED [ 82%]
+tests/test_session4_extended_offline.py::TestSession4ExtendedOffline::test_import_trades_over_limit PASSED [ 82%]
+tests/test_session4_extended_offline.py::TestSession4ExtendedOffline::test_trades_by_day PASSED [ 82%]
+tests/test_session4_extended_offline.py::TestSession4ExtendedOffline::test_trades_by_hour PASSED [ 82%]
+tests/test_session4_extended_offline.py::TestSession4ExtendedOffline::test_trades_by_symbol PASSED [ 82%]
+tests/test_session4_extended_offline.py::TestSession4ExtendedOffline::test_watchlist_scan PASSED [ 82%]
+tests/test_session4_extended_offline.py::TestSession4ExtendedOffline::test_weekly_stats PASSED [ 82%]
+tests/test_session4_extended_offline.py::TestSession4ExtendedOffline::test_whatsapp_test_notification PASSED [ 82%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_rolling_performance PASSED [ 82%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_session_today PASSED [ 82%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_alerts_history PASSED [ 82%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_alerts_stats PASSED [ 82%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_system_preflight PASSED [ 82%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_streak_stats PASSED [ 82%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_import_trades_empty PASSED [ 83%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_import_trades_single PASSED [ 83%]
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_import_trades_bad_body PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_empty_trades_returns_empty_report PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_accuracy_calculation PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_avg_pnl_per_signal PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_time_of_day_analysis PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_per_symbol_breakdown PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_per_regime_breakdown PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_signal_to_entry_timing PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_entry_to_peak_timing PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_recommendation_generation_low_accuracy PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_recommendation_generation_high_accuracy PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_recommendation_symbol_divergence PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_recommendation_positive_pnl PASSED [ 83%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_missing_signal_time_uses_entry_time PASSED [ 84%]
+tests/test_signal_quality.py::TestSignalQualityAnalyzer::test_clamping_negative_timedeltas PASSED [ 84%]
+tests/test_signals.py::TestComputeAllIndicators::test_compute_all_indicators_adds_expected_columns PASSED [ 84%]
+tests/test_signals.py::TestComputeAllIndicators::test_atr_values_positive PASSED [ 84%]
+tests/test_signals.py::TestComputeAllIndicators::test_stc_values_in_range PASSED [ 84%]
+tests/test_signals.py::TestComputeAllIndicators::test_ema_ribbon_ordering_bullish PASSED [ 84%]
+tests/test_signals.py::TestSTCCrossover::test_stc_crossover_generates_long PASSED [ 84%]
+tests/test_signals.py::TestSTCCrossover::test_stc_crossover_generates_short PASSED [ 84%]
+tests/test_signals.py::TestSTCCrossover::test_stc_oversold_signal PASSED [ 84%]
+tests/test_signals.py::TestRegimeFilter::test_regime_filter_blocks_exhausted PASSED [ 84%]
+tests/test_signals.py::TestRegimeFilter::test_regime_filter_allows_entry_in_trending PASSED [ 84%]
+tests/test_signals.py::TestRegimeFilter::test_regime_filter_bypass_flag PASSED [ 84%]
+tests/test_signals.py::TestATRStops::test_atr_stop_calculation_long PASSED [ 84%]
+tests/test_signals.py::TestATRStops::test_atr_stop_calculation_short PASSED [ 84%]
+tests/test_signals.py::TestATRStops::test_atr_stop_respects_instrument_params PASSED [ 85%]
+tests/test_signals.py::TestATRTargets::test_atr_target_calculation_long PASSED [ 85%]
+tests/test_signals.py::TestATRTargets::test_atr_target_calculation_short PASSED [ 85%]
+tests/test_signals.py::TestATRTargets::test_target_respects_instrument_t1_atr PASSED [ 85%]
+tests/test_signals.py::TestLayer3Bias::test_bias_strong_bull_all_aligned PASSED [ 85%]
+tests/test_signals.py::TestLayer3Bias::test_bias_strong_bear_all_aligned PASSED [ 85%]
+tests/test_signals.py::TestLayer3Bias::test_bias_neutral_mixed_indicators PASSED [ 85%]
+tests/test_signals.py::TestLayer1Regime::test_regime_trending_bull PASSED [ 85%]
+tests/test_signals.py::TestLayer1Regime::test_regime_trending_bear PASSED [ 85%]
+tests/test_signals.py::TestLayer1Regime::test_regime_range_bound PASSED  [ 85%]
+tests/test_signals.py::TestLayer2Structure::test_structure_buyer_control PASSED [ 85%]
+tests/test_signals.py::TestLayer2Structure::test_structure_seller_control PASSED [ 85%]
+tests/test_signals.py::TestLayer4Entry::test_entry_now_when_fully_aligned PASSED [ 85%]
+tests/test_signals.py::TestLayer4Entry::test_no_trade_when_neutral PASSED [ 85%]
+tests/test_signals.py::TestLayer4Entry::test_wait_for_pullback_mid_range PASSED [ 86%]
+tests/test_signals.py::TestSignalOutputColumns::test_generate_signals_output_columns PASSED [ 86%]
+tests/test_signals.py::TestSignalOutputColumns::test_structure_position_boolean_columns PASSED [ 86%]
+tests/test_signals.py::TestSignalRobustness::test_signals_handle_small_dataframe PASSED [ 86%]
+tests/test_signals.py::TestSignalRobustness::test_signals_handle_nan_prices PASSED [ 86%]
+tests/test_signals.py::TestSignalRobustness::test_signals_zero_volume_bar PASSED [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_set_and_get PASSED    [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_miss_returns_none PASSED [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_ttl_expiry PASSED     [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_has_returns_true_for_valid PASSED [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_has_returns_false_for_missing PASSED [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_invalidate_removes_key PASSED [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_invalidate_nonexistent_is_noop PASSED [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_clear_removes_all PASSED [ 86%]
+tests/test_speculation.py::TestPrefetchCache::test_stats PASSED          [ 87%]
+tests/test_speculation.py::TestPrefetchCache::test_stats_counts_expired PASSED [ 87%]
+tests/test_speculation.py::TestPrefetchCache::test_keys_by_prefix PASSED [ 87%]
+tests/test_speculation.py::TestPrefetchCache::test_keys_by_prefix_excludes_expired PASSED [ 87%]
+tests/test_speculation.py::TestPrefetchCache::test_overwrite_key_resets_ttl PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_speculate_no_data_manager PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_speculate_increments_count PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_speculate_returns_errors_list PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_get_status PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_get_status_last_speculation_none_initially PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_get_status_last_speculation_set_after_cycle PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_cache_hit_recording PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_get_cached_indicators_miss PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_set_and_get_cached_indicators PASSED [ 87%]
+tests/test_speculation.py::TestSpeculationEngine::test_get_cached_bars_miss PASSED [ 88%]
+tests/test_speculation.py::TestSpeculationEngine::test_set_and_get_cached_bars PASSED [ 88%]
+tests/test_speculation.py::TestSpeculationEngine::test_singleton_pattern PASSED [ 88%]
+tests/test_speculation.py::TestSpeculationEngine::test_singleton_default_none PASSED [ 88%]
+tests/test_speculation.py::TestSpeculationEngine::test_prefetch_market_data_no_data_manager PASSED [ 88%]
+tests/test_speculation.py::TestSpeculationEngine::test_prefetch_market_data_returns_cached PASSED [ 88%]
+tests/test_speculation.py::TestSpeculationEngine::test_precompute_indicators_no_bars_returns_none PASSED [ 88%]
+tests/test_speculation.py::TestSpeculationEngine::test_precompute_indicators_with_mock_data_manager PASSED [ 88%]
+tests/test_sprint14.py::test_conviction_full PASSED                      [ 88%]
+tests/test_sprint14.py::test_conviction_high PASSED                      [ 88%]
+tests/test_sprint14.py::test_conviction_half PASSED                      [ 88%]
+tests/test_sprint14.py::test_conviction_minimum PASSED                   [ 88%]
+tests/test_sprint14.py::test_scanner_signals_latest_endpoint_exists PASSED [ 88%]
+tests/test_sprint14.py::test_scanner_signals_latest_imports PASSED       [ 88%]
+tests/test_sprint14.py::test_trade_journal_endpoint_exists PASSED        [ 89%]
+tests/test_sprint14.py::test_trade_journal_has_parameters PASSED         [ 89%]
+tests/test_sprint14.py::test_trade_journal_returns_list PASSED           [ 89%]
+tests/test_sprint14.py::test_rolling_wfe_endpoint_exists PASSED          [ 89%]
+tests/test_sprint14.py::test_rolling_wfe_response_schema PASSED          [ 89%]
+tests/test_sprint14.py::test_rolling_wfe_instrument_schema PASSED        [ 89%]
+tests/test_sprint14.py::test_closed_paper_trades_endpoint_exists PASSED  [ 89%]
+tests/test_sprint14.py::test_closed_trade_response_schema PASSED         [ 89%]
+tests/test_sprint14.py::test_gates_endpoint_exists PASSED                [ 89%]
+tests/test_sprint14.py::test_gates_response_has_conviction_score PASSED  [ 89%]
+tests/test_sprint14.py::test_gates_response_schema PASSED                [ 89%]
+tests/test_sprint14.py::test_validation_gate_schema PASSED               [ 89%]
+tests/test_sprint14.py::test_paper_tracker_no_jsonl_writes PASSED        [ 89%]
+tests/test_sprint14.py::test_migrate_jsonl_to_sqlite_importable PASSED   [ 89%]
+tests/test_sprint14.py::test_migrate_jsonl_to_sqlite_has_signature PASSED [ 90%]
+tests/test_startup_checks.py::TestCheckResultDataclass::test_check_result_creation PASSED [ 90%]
+tests/test_startup_checks.py::TestCheckResultDataclass::test_check_result_string_representation PASSED [ 90%]
+tests/test_startup_checks.py::TestAPIKeyCheck::test_api_key_not_set_fails PASSED [ 90%]
+tests/test_startup_checks.py::TestAPIKeyCheck::test_api_key_placeholder_fails PASSED [ 90%]
+tests/test_startup_checks.py::TestAPIKeyCheck::test_api_key_valid_passes PASSED [ 90%]
+tests/test_startup_checks.py::TestIBKRPortCheck::test_ibkr_port_4002_passes PASSED [ 90%]
+tests/test_startup_checks.py::TestIBKRPortCheck::test_ibkr_port_4001_fails PASSED [ 90%]
+tests/test_startup_checks.py::TestIBKRPortCheck::test_ibkr_port_unexpected_warns PASSED [ 90%]
+tests/test_startup_checks.py::TestLiveTradingCheck::test_live_trading_enabled_fails PASSED [ 90%]
+tests/test_startup_checks.py::TestLiveTradingCheck::test_live_trading_disabled_passes PASSED [ 90%]
+tests/test_startup_checks.py::TestHumanApprovalCheck::test_human_approval_disabled_fails PASSED [ 90%]
+tests/test_startup_checks.py::TestHumanApprovalCheck::test_human_approval_enabled_passes PASSED [ 90%]
+tests/test_startup_checks.py::TestDatabaseCheck::test_database_exists_passes PASSED [ 90%]
+tests/test_startup_checks.py::TestDatabaseCheck::test_database_missing_warns PASSED [ 91%]
+tests/test_startup_checks.py::TestPolygonKeyCheck::test_polygon_key_set_passes PASSED [ 91%]
+tests/test_startup_checks.py::TestPolygonKeyCheck::test_polygon_key_missing_warns PASSED [ 91%]
+tests/test_startup_checks.py::TestFREDKeyCheck::test_fred_key_set_passes PASSED [ 91%]
+tests/test_startup_checks.py::TestFREDKeyCheck::test_fred_key_missing_warns PASSED [ 91%]
+tests/test_startup_checks.py::TestDiskSpaceCheck::test_disk_space_check_succeeds PASSED [ 91%]
+tests/test_startup_checks.py::TestRunAllStartupChecks::test_run_all_checks_with_good_config PASSED [ 91%]
+tests/test_startup_checks.py::TestRunAllStartupChecks::test_run_all_checks_detects_failures PASSED [ 91%]
+tests/test_task_board.py::test_start_run_initializes_all_10_stages PASSED [ 91%]
+tests/test_task_board.py::test_start_run_all_stages_pending PASSED       [ 91%]
+tests/test_task_board.py::test_start_run_sets_metadata PASSED            [ 91%]
+tests/test_task_board.py::test_start_stage_transitions_to_running PASSED [ 91%]
+tests/test_task_board.py::test_start_stage_sets_started_at PASSED        [ 91%]
+tests/test_task_board.py::test_start_stage_unknown_stage_is_noop PASSED  [ 91%]
+tests/test_task_board.py::test_complete_stage_transitions_to_done PASSED [ 91%]
+tests/test_task_board.py::test_complete_stage_sets_duration_ms PASSED    [ 92%]
+tests/test_task_board.py::test_complete_stage_sets_result_summary PASSED [ 92%]
+tests/test_task_board.py::test_complete_stage_without_start_sets_no_duration PASSED [ 92%]
+tests/test_task_board.py::test_error_stage_transitions_to_error PASSED   [ 92%]
+tests/test_task_board.py::test_error_stage_sets_error_message PASSED     [ 92%]
+tests/test_task_board.py::test_error_stage_sets_duration_ms_when_started PASSED [ 92%]
+tests/test_task_board.py::test_skip_stage_transitions_to_skipped PASSED  [ 92%]
+tests/test_task_board.py::test_overall_status_running_when_any_running PASSED [ 92%]
+tests/test_task_board.py::test_overall_status_error_when_any_error PASSED [ 92%]
+tests/test_task_board.py::test_overall_status_error_takes_priority_over_running PASSED [ 92%]
+tests/test_task_board.py::test_overall_status_complete_when_all_done_or_skipped PASSED [ 92%]
+tests/test_task_board.py::test_overall_status_pending_when_all_pending PASSED [ 92%]
+tests/test_task_board.py::test_overall_status_complete_for_empty_board PASSED [ 92%]
+tests/test_task_board.py::test_done_count_is_correct PASSED              [ 92%]
+tests/test_task_board.py::test_error_count_is_correct PASSED             [ 93%]
+tests/test_task_board.py::test_total_stages_is_10 PASSED                 [ 93%]
+tests/test_task_board.py::test_reset_clears_all_state PASSED             [ 93%]
+tests/test_task_board.py::test_reset_makes_run_id_none PASSED            [ 93%]
+tests/test_task_board.py::test_reset_resets_done_and_error_counts PASSED [ 93%]
+tests/test_task_board.py::test_get_task_board_returns_same_instance PASSED [ 93%]
+tests/test_task_board.py::test_set_task_board_instance_replaces_singleton PASSED [ 93%]
+tests/test_task_board.py::test_concurrent_start_stage_does_not_raise PASSED [ 93%]
+tests/test_task_board.py::test_concurrent_mixed_operations_do_not_raise PASSED [ 93%]
+tests/test_tilt_detector.py::TestCleanState::test_no_tilt_initially PASSED [ 93%]
+tests/test_tilt_detector.py::TestCleanState::test_get_position_multiplier_clean PASSED [ 93%]
+tests/test_tilt_detector.py::TestCleanState::test_get_status_keys PASSED [ 93%]
+tests/test_tilt_detector.py::TestConsecutiveLosses::test_2_losses_no_tilt PASSED [ 93%]
+tests/test_tilt_detector.py::TestConsecutiveLosses::test_3_losses_caution PASSED [ 93%]
+tests/test_tilt_detector.py::TestConsecutiveLosses::test_5_losses_warning PASSED [ 94%]
+tests/test_tilt_detector.py::TestConsecutiveLosses::test_7_losses_halt PASSED [ 94%]
+tests/test_tilt_detector.py::TestConsecutiveLosses::test_win_after_loss_resets_consecutive PASSED [ 94%]
+tests/test_tilt_detector.py::TestRapidTrades::test_4_trades_no_rapid_flag PASSED [ 94%]
+tests/test_tilt_detector.py::TestRapidTrades::test_5_trades_in_30min_fires PASSED [ 94%]
+tests/test_tilt_detector.py::TestRapidTrades::test_rapid_trades_adds_score PASSED [ 94%]
+tests/test_tilt_detector.py::TestRevengeSizing::test_size_increase_after_loss_detected PASSED [ 94%]
+tests/test_tilt_detector.py::TestRevengeSizing::test_no_size_increase_not_detected PASSED [ 94%]
+tests/test_tilt_detector.py::TestRevengeSizing::test_size_increase_after_win_not_revenge PASSED [ 94%]
+tests/test_tilt_detector.py::TestRapidReentry::test_reentry_same_symbol_after_stop_detected PASSED [ 94%]
+tests/test_tilt_detector.py::TestRapidReentry::test_reentry_different_symbol_not_flagged PASSED [ 94%]
+tests/test_tilt_detector.py::TestRiskVetoes::test_1_veto_no_flag PASSED  [ 94%]
+tests/test_tilt_detector.py::TestRiskVetoes::test_2_vetoes_flag PASSED   [ 94%]
+tests/test_tilt_detector.py::TestDrawdownAcceleration::test_flat_drawdown_no_flag PASSED [ 94%]
+tests/test_tilt_detector.py::TestDrawdownAcceleration::test_accelerating_drawdown_flagged PASSED [ 95%]
+tests/test_tilt_detector.py::TestSeverityMapping::test_score_below_0_3_no_tilt PASSED [ 95%]
+tests/test_tilt_detector.py::TestSeverityMapping::test_score_0_3_to_0_5_caution PASSED [ 95%]
+tests/test_tilt_detector.py::TestSeverityMapping::test_score_0_5_to_0_7_warning PASSED [ 95%]
+tests/test_tilt_detector.py::TestSeverityMapping::test_score_0_7_to_0_85_critical_quarter PASSED [ 95%]
+tests/test_tilt_detector.py::TestCooldown::test_cooldown_set_on_7_losses PASSED [ 95%]
+tests/test_tilt_detector.py::TestCooldown::test_cooldown_active_returns_halted_state PASSED [ 95%]
+tests/test_tilt_detector.py::TestCooldown::test_expired_cooldown_clears PASSED [ 95%]
+tests/test_tilt_detector.py::TestReset::test_reset_clears_all_state PASSED [ 95%]
+tests/test_tilt_detector.py::TestReset::test_reset_clears_cooldown PASSED [ 95%]
+tests/test_tilt_detector.py::TestLossTrackerIntegration::test_uses_loss_tracker_consecutive_count PASSED [ 95%]
+tests/test_tilt_detector.py::TestLossTrackerIntegration::test_falls_back_to_in_memory_if_loss_tracker_fails PASSED [ 95%]
+tests/test_tilt_detector.py::TestSafetyLayerIntegration::test_safety_layer_has_tilt_detector_attribute PASSED [ 95%]
+tests/test_tilt_detector.py::TestSafetyLayerIntegration::test_tilt_detector_injection PASSED [ 95%]
+tests/test_tilt_detector.py::TestSafetyLayerIntegration::test_check_order_blocked_when_tilt_halted PASSED [ 96%]
+tests/test_tilt_detector.py::TestSafetyLayerIntegration::test_check_order_warning_when_tilt_caution PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateSharpeRatio::test_sharpe_positive PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateSharpeRatio::test_sharpe_zero_std_positive PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateSharpeRatio::test_sharpe_zero_std_zero PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateSharpeRatio::test_sharpe_negative PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateSharpeRatio::test_sharpe_empty PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateSharpeRatio::test_sharpe_single PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateSharpeRatio::test_sharpe_with_rf PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateProfitFactor::test_pf_normal PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateProfitFactor::test_pf_no_losses PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateProfitFactor::test_pf_no_wins PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateProfitFactor::test_pf_empty PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateProfitFactor::test_pf_breakeven PASSED [ 96%]
+tests/test_trade_analytics.py::TestCalculateMaxDrawdown::test_dd_normal PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateMaxDrawdown::test_dd_monotonic PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateMaxDrawdown::test_dd_full_loss PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateMaxDrawdown::test_dd_half_loss PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateMaxDrawdown::test_dd_empty PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateMaxDrawdown::test_dd_single PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateWinRate::test_wr_normal PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateWinRate::test_wr_all_wins PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateWinRate::test_wr_all_losses PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateWinRate::test_wr_empty PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateWinRate::test_wr_with_zero_pnl PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateExpectancy::test_exp_normal PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateExpectancy::test_exp_losses PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateExpectancy::test_exp_breakeven PASSED [ 97%]
+tests/test_trade_analytics.py::TestCalculateExpectancy::test_exp_empty PASSED [ 98%]
+tests/test_trade_analytics.py::TestCalculateAnalytics::test_analytics_normal PASSED [ 98%]
+tests/test_trade_analytics.py::TestCalculateAnalytics::test_analytics_empty PASSED [ 98%]
+tests/test_trade_analytics.py::TestCalculateAnalytics::test_analytics_single_win PASSED [ 98%]
+tests/test_trade_analytics.py::TestCalculateAnalytics::test_analytics_all_losses PASSED [ 98%]
+tests/test_trade_analytics.py::TestCalculateAnalytics::test_analytics_fails_gates PASSED [ 98%]
+tests/test_trade_analytics.py::TestCalculateAnalytics::test_analytics_passes_gates PASSED [ 98%]
+tests/test_trade_analytics.py::TestCalculateAnalytics::test_analytics_missing_pnl PASSED [ 98%]
+tests/test_trade_analytics.py::TestCalculateAnalytics::test_analytics_fields PASSED [ 98%]
+tests/test_unrealized_pnl.py::test_unrealized_empty_positions PASSED     [ 98%]
+tests/test_unrealized_pnl.py::test_unrealized_long_mcl PASSED            [ 98%]
+tests/test_unrealized_pnl.py::test_unrealized_short_mnq PASSED           [ 98%]
+tests/test_unrealized_pnl.py::test_unrealized_pnl_none_when_no_data_manager PASSED [ 98%]
+tests/test_unrealized_pnl.py::test_stop_distance_computed PASSED         [ 98%]
+tests/test_validation_checkpoint.py::test_accumulating_status_no_trades PASSED [ 99%]
+tests/test_validation_checkpoint.py::test_win_rate_computed_correctly PASSED [ 99%]
+tests/test_validation_checkpoint.py::test_profit_factor_computed PASSED  [ 99%]
+tests/test_validation_checkpoint.py::test_trades_gate_pass PASSED        [ 99%]
+tests/test_validation_checkpoint.py::test_on_track_status PASSED         [ 99%]
+tests/test_wfe_router.py::TestGetWeekStart::test_monday_returns_same_date PASSED [ 99%]
+tests/test_wfe_router.py::TestGetWeekStart::test_tuesday_returns_monday PASSED [ 99%]
+tests/test_wfe_router.py::TestGetWeekStart::test_sunday_returns_previous_monday PASSED [ 99%]
+tests/test_wfe_router.py::TestGetWeekStart::test_none_uses_current_date PASSED [ 99%]
+tests/test_wfe_router.py::TestComputeSnapshotStats::test_empty_trades_returns_zeros PASSED [ 99%]
+tests/test_wfe_router.py::TestComputeSnapshotStats::test_single_winning_trade PASSED [ 99%]
+tests/test_wfe_router.py::TestComputeSnapshotStats::test_multiple_trades_mixed PASSED [ 99%]
+tests/test_wfe_router.py::TestWFERouter::test_post_snapshot_creates_snapshot PASSED [ 99%]
+tests/test_wfe_router.py::TestWFERouter::test_get_snapshots_returns_list PASSED [ 99%]
+tests/test_wfe_router.py::TestWFERouter::test_get_snapshots_with_symbol_filter PASSED [100%]
+
+============================== warnings summary ===============================
+.venv\Lib\site-packages\pandas_ta\__init__.py:37
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.venv\Lib\site-packages\pandas_ta\__init__.py:37: Pandas4Warning: The 'mode.copy_on_write' option is deprecated. Copy-on-Write can no longer be disabled (it is always enabled with pandas >= 3.0), and setting the option has no impact. This option will be removed in pandas 4.0.
+    from pandas_ta.core import AnalysisIndicators
+
+tests/test_analytics_router.py::TestAnalyticsRouter::test_get_performance_returns_200
+tests/test_rate_limiting.py::TestAnalyticsRateLimit120PerMinute::test_analytics_performance_has_rate_limit
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_performance_endpoint
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\routers\analytics_router.py:347: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow().isoformat() + "Z",
+
+tests/test_auth_and_rate_limit.py::TestOpenAPIDocsExemption::test_openapi_json_no_auth
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.venv\Lib\site-packages\fastapi\openapi\utils.py:246: UserWarning: Duplicate Operation ID get_rolling_performance_analytics_performance_rolling_get for function get_rolling_performance at C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\main.py
+    warnings.warn(message, stacklevel=1)
+
+tests/test_auth_and_rate_limit.py::TestOpenAPIDocsExemption::test_openapi_json_no_auth
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.venv\Lib\site-packages\fastapi\openapi\utils.py:246: UserWarning: Duplicate Operation ID get_upcoming_earnings_market_earnings_get for function get_upcoming_earnings at C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\main.py
+    warnings.warn(message, stacklevel=1)
+
+tests/test_auth_and_rate_limit.py::TestOpenAPIDocsExemption::test_openapi_json_no_auth
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.venv\Lib\site-packages\fastapi\openapi\utils.py:246: UserWarning: Duplicate Operation ID run_pipeline_pipeline_run_post for function run_pipeline at C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\main.py
+    warnings.warn(message, stacklevel=1)
+
+tests/test_auth_and_rate_limit.py::TestOpenAPIDocsExemption::test_openapi_json_no_auth
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.venv\Lib\site-packages\fastapi\openapi\utils.py:246: UserWarning: Duplicate Operation ID get_trades_by_day_analytics_trades_by_day_get for function get_trades_by_day at C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\main.py
+    warnings.warn(message, stacklevel=1)
+
+tests/test_auth_and_rate_limit.py::TestOpenAPIDocsExemption::test_openapi_json_no_auth
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\.venv\Lib\site-packages\fastapi\openapi\utils.py:246: UserWarning: Duplicate Operation ID get_trades_by_symbol_analytics_trades_by_symbol_get for function get_trades_by_symbol at C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\main.py
+    warnings.warn(message, stacklevel=1)
+
+tests/test_db_backup.py::test_backup_creates_file
+tests/test_db_backup.py::test_backup_with_missing_database
+tests/test_db_backup.py::test_backup_preserves_data
+tests/test_db_backup.py::test_get_status
+tests/test_db_backup.py::test_backup_thread_safety
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\backup\db_backup.py:77: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_db_backup.py::test_cleanup_old_backups
+tests/test_db_backup.py::test_cleanup_respects_retention_window
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\backup\db_backup.py:143: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    cutoff = datetime.utcnow()
+
+tests/test_db_backup.py::test_cleanup_respects_retention_window
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_db_backup.py:138: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    old_time = (datetime.utcnow() - timedelta(days=31)).timestamp()
+
+tests/test_discord_learning.py: 5 warnings
+tests/test_learning.py: 5 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\learning\_experimental\pattern_extractor.py:113: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    last_seen=datetime.utcnow(),
+
+tests/test_discord_learning.py: 5 warnings
+tests/test_learning.py: 6 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\learning\_experimental\pattern_extractor.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    last_seen=datetime.utcnow(),
+
+tests/test_discord_learning.py: 15 warnings
+tests/test_learning.py: 4 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\learning\_experimental\pattern_extractor.py:179: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    last_seen=datetime.utcnow(),
+
+tests/test_discord_learning.py: 16 warnings
+tests/test_learning.py: 20 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\learning\_experimental\session_memory.py:131: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_updated": datetime.utcnow().isoformat(),
+
+tests/test_discord_learning.py::TestLearningRouter::test_get_patterns_returns_200
+tests/test_discord_learning.py::TestLearningRouter::test_get_patterns_response_shape
+tests/test_discord_learning.py::TestLearningRouter::test_get_patterns_no_symbol_returns_200
+tests/test_discord_learning.py::TestLearningRouter::test_get_patterns_lookback_days_param
+tests/test_discord_learning.py::TestLearningRouter::test_get_suggestions_returns_200
+tests/test_discord_learning.py::TestLearningRouter::test_get_suggestions_response_shape
+tests/test_discord_learning.py::TestLearningRouter::test_get_suggestions_no_symbol_returns_200
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\routers\learning_router.py:57: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d %H:%M:%S")
+
+tests/test_discord_learning.py::TestLearningRouter::test_post_memory_valid_body_returns_200
+tests/test_discord_learning.py::TestLearningRouter::test_post_memory_response_shape
+tests/test_discord_learning.py::TestLearningRouter::test_post_then_get_memory_shows_new_lesson
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\routers\learning_router.py:389: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+tests/test_foundation.py: 21 warnings
+  <string>:8: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+
+tests/test_foundation.py: 17 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\risk\cross_market_risk.py:94: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    market_state.last_updated = datetime.utcnow()
+
+tests/test_ib_gateway_connector_offline.py: 3 warnings
+tests/test_ib_gateway_offline_extended.py: 3 warnings
+tests/test_ib_reconnect.py: 11 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\execution\ib_gateway_connector.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._last_heartbeat = datetime.utcnow()
+
+tests/test_ib_gateway_connector_offline.py::test_submit_paper_order_routes_to_connector
+tests/test_ib_gateway_connector_offline.py::test_get_positions_list_shape
+tests/test_ib_gateway_connector_offline.py::test_get_positions_list_shape
+tests/test_ib_gateway_connector_offline.py::test_ib_order_manager_with_connector
+tests/test_ib_gateway_offline_extended.py::test_place_paper_order_after_safety_no_double_reject
+tests/test_ib_gateway_offline_extended.py::test_get_positions_list_shape_for_order_manager
+tests/test_ib_gateway_offline_extended.py::test_get_positions_list_shape_for_order_manager
+tests/test_ib_gateway_offline_extended.py::test_ib_order_manager_uses_gateway
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\execution\ib_gateway_connector.py:788: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat() + "Z",
+
+tests/test_ib_gateway_connector_offline.py::test_submit_paper_order_routes_to_connector
+tests/test_ib_gateway_connector_offline.py::test_get_positions_list_shape
+tests/test_ib_gateway_connector_offline.py::test_ib_order_manager_with_connector
+tests/test_ib_gateway_offline_extended.py::test_place_paper_order_after_safety_no_double_reject
+tests/test_ib_gateway_offline_extended.py::test_get_positions_list_shape_for_order_manager
+tests/test_ib_gateway_offline_extended.py::test_ib_order_manager_uses_gateway
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\execution\ib_gateway_connector.py:459: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    fill_time = datetime.utcnow().isoformat() + "Z"
+
+tests/test_ib_gateway_connector_offline.py::test_submit_paper_order_routes_to_connector
+tests/test_ib_gateway_connector_offline.py::test_get_positions_list_shape
+tests/test_ib_gateway_connector_offline.py::test_ib_order_manager_with_connector
+tests/test_ib_gateway_offline_extended.py::test_place_paper_order_after_safety_no_double_reject
+tests/test_ib_gateway_offline_extended.py::test_get_positions_list_shape_for_order_manager
+tests/test_ib_gateway_offline_extended.py::test_ib_order_manager_uses_gateway
+tests/test_paper_trade_logger_tracker_mirror.py::test_mirror_open_close_long_round_trip
+tests/test_paper_trade_logger_tracker_mirror.py::test_mirror_open_close_long_round_trip
+tests/test_paper_trade_logger_tracker_mirror.py::test_mirror_disabled_json_only
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\execution\paper_trade_logger.py:148: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": trade_data.get("fill_time", datetime.utcnow().isoformat() + "Z"),
+
+tests/test_ib_gateway_connector_offline.py: 3 warnings
+tests/test_ib_gateway_offline_extended.py: 3 warnings
+tests/test_ib_reconnect.py: 5 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\execution\ib_gateway_connector.py:288: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._last_heartbeat = datetime.utcnow()
+
+tests/test_learning.py::TestPatternExtractor::test_extract_time_patterns
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\learning\_experimental\pattern_extractor.py:195: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    last_seen=datetime.utcnow(),
+
+tests/test_market_modules.py::TestFuturesMarketModuleInterface::test_futures_run_strategy_cycle
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\markets\futures\module.py:127: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._last_cycle_at = datetime.utcnow()
+
+tests/test_market_modules.py::TestOptionsMarketModule::test_options_run_strategy_cycle
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\markets\options\module.py:86: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._last_cycle_at = datetime.utcnow()
+
+tests/test_market_modules.py::TestCryptoMarketModule::test_crypto_run_strategy_cycle
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\markets\crypto\module.py:135: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._last_cycle_at = datetime.utcnow()
+
+tests/test_market_modules.py::TestMarketModuleABCCompliance::test_trade_result_dataclass
+  <string>:10: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_start_all_modules
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_empty_orchestrator_handles_gracefully
+tests/test_orchestrator.py::TestMultiMarketOrchestratorUptime::test_uptime_seconds_calculated_after_start
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\orchestrator\multi_market.py:67: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._start_time = datetime.utcnow()
+
+tests/test_orchestrator.py::TestMultiMarketOrchestratorBasics::test_empty_orchestrator_handles_gracefully
+tests/test_orchestrator.py::TestMultiMarketOrchestratorUptime::test_uptime_seconds_calculated_after_start
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\orchestrator\multi_market.py:148: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "uptime_seconds": (datetime.utcnow() - self._start_time).total_seconds()
+
+tests/test_paper_validation.py: 12 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_paper_validation.py:41: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "updated_at": datetime.utcnow().isoformat(),
+
+tests/test_paper_validation.py::TestDashboardData::test_dashboard_data_format
+tests/test_paper_validation.py::TestDashboardData::test_dashboard_overall_pass
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\paper\validation_tracker.py:491: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat(),
+
+tests/test_rolling_wfe.py::TestRollingWFEState::test_is_due_false_after_recent_run
+tests/test_rolling_wfe.py::TestRollingWFEState::test_days_since_last_run_is_accurate
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_tracks_delta
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_increments_run_count
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:57: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_run": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+
+tests/test_rolling_wfe.py::TestRollingWFEState::test_is_due_false_after_recent_run
+tests/test_rolling_wfe.py::TestRollingWFEState::test_days_since_last_run_is_accurate
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_tracks_delta
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_increments_run_count
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:65: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_run": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+
+tests/test_rolling_wfe.py::TestRollingWFEState::test_is_due_false_after_recent_run
+tests/test_rolling_wfe.py::TestRollingWFEState::test_days_since_last_run_is_accurate
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_tracks_delta
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_increments_run_count
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:73: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_global_run": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+
+tests/test_rolling_wfe.py: 12 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\backtest\rolling_wfe_scheduler.py:142: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return (datetime.utcnow() - last_dt).days
+
+tests/test_rolling_wfe.py::TestRollingWFEState::test_is_due_true_after_old_run
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:85: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_run": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+
+tests/test_rolling_wfe.py::TestRollingWFEState::test_is_due_true_after_old_run
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:93: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_global_run": (datetime.utcnow() - timedelta(days=30)).isoformat(),
+
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_persists_wfe
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:140: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    run_ts=datetime.utcnow().isoformat(),
+
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_tracks_delta
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:156: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    run_ts=datetime.utcnow().isoformat(),
+
+tests/test_rolling_wfe.py::TestRollingWFEState::test_update_instrument_increments_run_count
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:169: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    run_ts=datetime.utcnow().isoformat(),
+
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_dry_run_returns_summary
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_dry_run_uses_last_known_wfe
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_scheduler_skips_when_not_due
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_force_overrides_cadence
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_halt_verdict_sets_halt_required_flag
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_good_verdict_sets_halt_required_false
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_failed_wfe_run_returns_error_status
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_unknown_instrument_is_ignored
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\backtest\rolling_wfe_scheduler.py:312: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_dry_run_returns_summary
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_halt_verdict_sets_halt_required_flag
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_good_verdict_sets_halt_required_false
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\backtest\rolling_wfe_scheduler.py:274: RuntimeWarning: coroutine 'WhatsAppNotifier.send' was never awaited
+    notifier.send(msg)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_scheduler_skips_when_not_due
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:329: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_run": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_scheduler_skips_when_not_due
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:334: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_global_run": (datetime.utcnow() - timedelta(days=3)).isoformat(),
+
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_force_overrides_cadence
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:354: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_run": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+
+tests/test_rolling_wfe.py::TestRunSchedulerDryRun::test_force_overrides_cadence
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_rolling_wfe.py:359: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "last_global_run": (datetime.utcnow() - timedelta(days=1)).isoformat(),
+
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_rolling_performance_7d
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_rolling_performance_30d
+tests/test_session4_contract.py::TestSession4Endpoints::test_rolling_performance
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_rolling_performance_7d
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_rolling_performance_30d
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_rolling_performance
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\routers\analytics_router.py:389: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_rolling_performance_7d
+tests/test_session4_continuation_offline.py::TestSession4ContinuationOffline::test_rolling_performance_30d
+tests/test_session4_contract.py::TestSession4Endpoints::test_rolling_performance
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_rolling_performance_7d
+tests/test_session4_contract.py::TestSession4ContinuationEndpoints::test_rolling_performance_30d
+tests/test_session4_offline_strict.py::TestSession4OfflineStrict::test_rolling_performance
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\routers\analytics_router.py:417: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow().isoformat() + "Z",
+
+tests/test_task_board.py: 27 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\agents\task_board.py:49: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._run_started_at = datetime.utcnow().isoformat()
+
+tests/test_task_board.py: 568 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\agents\task_board.py:69: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self._tasks[stage].started_at = datetime.utcnow().isoformat()
+
+tests/test_task_board.py: 31 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\agents\task_board.py:76: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    t.completed_at = datetime.utcnow().isoformat()
+
+tests/test_task_board.py: 30 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\agents\task_board.py:80: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    t.duration_ms = (datetime.utcnow() - start).total_seconds() * 1000
+
+tests/test_task_board.py: 20 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\agents\task_board.py:87: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    t.completed_at = datetime.utcnow().isoformat()
+
+tests/test_task_board.py: 20 warnings
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\agents\task_board.py:91: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    t.duration_ms = (datetime.utcnow() - start).total_seconds() * 1000
+
+tests/test_validation_checkpoint.py::test_win_rate_computed_correctly
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_validation_checkpoint.py:73: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_validation_checkpoint.py::test_win_rate_computed_correctly
+tests/test_validation_checkpoint.py::test_profit_factor_computed
+tests/test_validation_checkpoint.py::test_trades_gate_pass
+tests/test_validation_checkpoint.py::test_on_track_status
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\routers\paper_validation_router.py:961: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    today = datetime.utcnow().date()
+
+tests/test_validation_checkpoint.py::test_profit_factor_computed
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_validation_checkpoint.py:126: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_validation_checkpoint.py::test_trades_gate_pass
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_validation_checkpoint.py:179: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_validation_checkpoint.py::test_on_track_status
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\tests\test_validation_checkpoint.py:210: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_wfe_router.py::TestGetWeekStart::test_none_uses_current_date
+tests/test_wfe_router.py::TestWFERouter::test_post_snapshot_creates_snapshot
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\routers\wfe_router.py:83: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    date = datetime.utcnow()
+
+tests/test_wfe_router.py::TestWFERouter::test_post_snapshot_creates_snapshot
+tests/test_wfe_router.py::TestWFERouter::test_post_snapshot_creates_snapshot
+  C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\routers\wfe_router.py:222: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    datetime.utcnow().isoformat(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_ib_gateway_connector_safety_wiring.py:40: IB Gateway not running on port 4002 — skipping live connection test
+SKIPPED [1] tests\test_ib_gateway_connector_safety_wiring.py:73: IB Gateway not running on port 4002 — skipping test
+SKIPPED [1] tests\test_ib_gateway_connector_safety_wiring.py:100: IB Gateway not running on port 4002 — skipping test
+SKIPPED [1] tests\test_integration_rl_endpoints.py:145: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:153: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:161: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:166: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:174: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:186: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:202: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:207: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:221: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:238: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:246: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:251: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:260: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:268: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:287: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:292: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:302: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:310: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:319: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:364: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:373: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:388: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:393: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:403: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:414: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:424: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:437: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:450: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:473: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:501: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:506: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:519: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:530: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:545: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:552: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:558: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:571: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:603: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:608: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:625: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:635: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:645: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:667: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:699: Live engine must return 422 for empty POST /strategies/rl/evaluate — restart after deploy
+SKIPPED [1] tests\test_integration_rl_endpoints.py:710: Live engine must return 422 for empty POST /strategies/rl/evaluate — restart after deploy
+SKIPPED [1] tests\test_integration_rl_endpoints.py:722: Live engine must return 422 for empty POST /strategies/rl/evaluate — restart after deploy
+SKIPPED [1] tests\test_integration_rl_endpoints.py:733: Live engine must return 422 for empty POST /strategies/rl/evaluate — restart after deploy
+SKIPPED [1] tests\test_integration_rl_endpoints.py:754: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:767: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:778: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:805: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:816: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:827: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:848: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:863: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:875: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:902: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:928: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:957: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:974: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:1004: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [1] tests\test_integration_rl_endpoints.py:1040: RL integration surface not ready at http://localhost:8010 — need /strategies/rl/status and /rl/health (see live_engine_probe.jarvis_rl_integration_ready)
+SKIPPED [4] tests\test_prices_router.py:31: data_manager not initialized — no IBKR/Polygon connection in test env
+========= 1343 passed, 69 skipped, 980 warnings in 194.18s (0:03:14) ==========

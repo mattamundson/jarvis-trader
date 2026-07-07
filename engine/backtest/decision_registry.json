@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "registered_at": "2026-06-15",
+  "purpose": "Pre-registers LLM DECISION LINEAGES for forward-test attribution -- the live analogue of candidate_registry.json (which registers mechanical strategies). A lineage is a per-symbol semantic family of decision configurations asserted to be the SAME edge hypothesis. Graduation is evaluated per (lineage x symbol). See docs/design/llm-decision-identity-attribution.md.",
+  "methodology": "DEFAULT-MATERIAL: any config_hash not listed under a lineage's member_config_hashes is its own singleton lineage (unregistered:<hash8>::<SYMBOL>) and never inherits a registered lineage's forward record. Folding a hash into a lineage is an explicit, dated edit governed by that lineage's material_change_policy -- a material change (model major version, analyst add/remove, gate move, prompt-intent change) MUST start a new lineage with a zero forward record. Lineages must be pre-registered BEFORE their forward window is counted; all active lineages form one BH-FDR family (q=0.10).",
+  "graduation_rule": {
+    "min_forward_oos_windows": 6,
+    "min_forward_pf_ci_lower": 1.10,
+    "min_forward_p_edge": 0.95,
+    "must_survive_family_fdr": true,
+    "q": 0.10,
+    "note": "Per (lineage x symbol). Necessary, not sufficient, for live sizing -- gate-v2 routing still governs."
+  },
+  "allowed_status": ["forward_testing", "graduated", "rejected", "paused"],
+  "lineages": [
+    {
+      "id": "mes_m2k_spread_v1",
+      "status": "forward_testing",
+      "strategy_type": "spread",
+      "inception": "2026-06-24",
+      "legs": ["MES", "M2K"],
+      "composite_symbol": "MES_M2K_SPREAD",
+      "hypothesis": "Dollar-neutral MES/M2K log-spread mean-reverts around its 40-bar z-score. Strongest relative-value pair found (data/spread_pairs_results.md): H1 genuinely profitable (PF 1.25) so it clears the chronological split ES-NQ failed, cost-robust to 4bp, edge mid-sample not just tail. Pre-registered with an EMPTY forward window; observe-only dark track confirms persistence on OOS time before any promotion.",
+      "locked_params": {"window": 40, "entry": 2.0, "exit": 0.5, "stop": 4.0, "cost_bps_per_leg": 2.0, "notional_per_leg": 20000.0},
+      "material_change_policy": "Any change to window/entry/exit/stop, the cost model, or the leg pair is a material change that MUST start a NEW lineage with a zero forward record."
+    },
+    {
+      "id": "tom_spy_v1",
+      "status": "forward_testing",
+      "strategy_type": "calendar",
+      "inception": "2026-06-24",
+      "rule": "turn_of_month",
+      "vehicle": "SPY",
+      "hypothesis": "Long equity-index beta across the turn-of-month window harvests a stationary calendar premium. SPY 1993-2026 Sharpe 1.07 gross / 0.79 net@2bps, positive in every 5yr era incl 2008/2020, stationary H1 1.23 / H2 1.20 (project_session_anomaly_tom_edge_2026_06_24). FAILs core gate-v2 only on p_edge<0.95 (mis-calibrated for low-freq long-beta harvest -> R2 beta-harvest variant). Pre-registered to satisfy paper_shadow_passed before any beta-harvest promotion.",
+      "locked_params": {"window_rule": "last_1_first_3_trading_days", "cost_bps": 2.0},
+      "material_change_policy": "Any change to the turn-of-month window definition or the vehicle is a material change that MUST start a NEW lineage with a zero forward record."
+    },
+    {
+      "id": "preholiday_spy_v1",
+      "status": "forward_testing",
+      "strategy_type": "calendar",
+      "inception": "2026-06-25",
+      "rule": "pre_holiday",
+      "vehicle": "SPY",
+      "hypothesis": "Long equity-index beta on the session BEFORE a market holiday harvests a calendar premium. STANDOUT of the free-daily calendar discovery: robust across all 5 ETFs, SPY+GLD pass gate-v2 ALT (stronger than turn-of-month). SPY 1993-2026 over 302 pre-holiday days: mean 7.91 bps/day net@2bps, Sharpe 1.32 net, PF 1.28, maxDD 7.75% (computed 2026-06-25). Pre-holiday days are inferred gap-free from the trading index (no hardcoded calendar). Pre-registered with an EMPTY forward window to satisfy paper_shadow_passed before any promotion.",
+      "locked_params": {"rule": "abnormal_gap_to_next_session", "vehicle": "SPY", "cost_bps": 2.0},
+      "material_change_policy": "Any change to the pre-holiday detection rule or the vehicle is a material change that MUST start a NEW lineage with a zero forward record."
+    }
+  ]
+}

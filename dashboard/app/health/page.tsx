@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import {
   Activity,
@@ -23,10 +24,12 @@ import { fetchEngine } from "@/lib/api";
 import { PreFlightWidget } from "@/components/PreFlightWidget";
 import { SystemMetricsPanel } from "@/components/SystemMetricsPanel";
 import { AlertSummaryWidget } from "@/components/AlertSummaryWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { ConnectionHealthCard } from "@/components/ConnectionHealthCard";
 import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
+import { SystemLivenessCard } from "@/components/SystemLivenessCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -366,7 +369,7 @@ export default function HealthPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1200px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
               <Activity className="h-5 w-5 text-accent" />
@@ -376,39 +379,39 @@ export default function HealthPage() {
               <p className="text-xs text-muted-foreground">IBKR Futures + Schwab Options</p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Dashboard
-              </a>
-              <a href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/analysis" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Analysis
-              </a>
-              <a href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Backtest
-              </a>
-              <a href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Performance
-              </a>
-              <a href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Validation
-              </a>
-              <a href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/journal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Journal
-              </a>
-              <a href="/paper" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/paper" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Paper Trading
-              </a>
-              <a href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/watchlist" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Watchlist
-              </a>
-              <a href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Scorecard
-              </a>
-              <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              </Link>
+              <Link href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Settings
-              </a>
-              <a href="/health" className="text-xs text-foreground font-semibold border-b border-accent pb-0.5">
+              </Link>
+              <Link href="/health" className="text-xs text-foreground font-semibold border-b border-accent pb-0.5">
                 Health
-              </a>
+              </Link>
             </nav>
           </div>
 
@@ -430,7 +433,10 @@ export default function HealthPage() {
       </header>
 
       {/* Page content */}
-      <main className="mx-auto max-w-[1200px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] px-6 py-6 space-y-6">
+        {/* Both-systems liveness (C5) — engine + data + watchdog + LLM at a glance */}
+        <SystemLivenessCard />
+
         {/* Connection health — most critical info at the top */}
         <ConnectionHealthCard />
 
@@ -514,13 +520,15 @@ export default function HealthPage() {
             <XCircle className="h-8 w-8 text-bear mx-auto" />
             <p className="text-sm font-semibold text-bear">Engine unreachable</p>
             <p className="text-xs text-muted-foreground">
-              Could not fetch /health/full — verify the engine is running on port 8010
+              Could not fetch /health/full — verify the engine is running and the dashboard proxy can reach it.
             </p>
           </div>
         )}
 
         {/* Pre-Flight Widget */}
-        <PreFlightWidget />
+        <WidgetErrorBoundary name="Pre-Flight">
+          <PreFlightWidget />
+        </WidgetErrorBoundary>
 
         {/* Subsystem grid */}
         {data && (
@@ -539,7 +547,9 @@ export default function HealthPage() {
         <SystemMetricsPanel />
 
         {/* Alert Summary Widget — recent alert log + stats */}
-        <AlertSummaryWidget />
+        <WidgetErrorBoundary name="Alert Summary">
+          <AlertSummaryWidget />
+        </WidgetErrorBoundary>
 
         {/* Database Statistics — record counts across trades, decisions, alerts */}
         <DatabaseStatsCard />

@@ -1,0 +1,358 @@
+{
+  "symbol": "MNQ",
+  "family": "breakout",
+  "rank": 3,
+  "verdict": "FAIL",
+  "core_verdict": "FAIL",
+  "alt_verdict": "FAIL",
+  "passed_via": null,
+  "created_at": "2026-05-05T23:34:43.132260+00:00",
+  "params_fixed": {
+    "vol_mult": 0.0,
+    "vol_ma_period": 20
+  },
+  "wfo_config": {
+    "train_months": 6,
+    "test_months": 1,
+    "step_months": 1,
+    "n_windows": 18,
+    "n_oos_windows": 18,
+    "grid_combos": 16,
+    "grid_donchian_period": [
+      10,
+      15,
+      20,
+      25
+    ],
+    "grid_stop_atr_mult": [
+      0.75,
+      1.0,
+      1.5,
+      2.0
+    ]
+  },
+  "gate_v2_metrics": {
+    "pf_ci_lower": 0.4358,
+    "p_edge": 0.3333,
+    "mc_95th_dd": 0.054886,
+    "dsr": 0.0,
+    "wfo_consistency": "WEAK",
+    "fixed_params_min_pf": 0.0971,
+    "fixed_params_mean_pf": 0.541,
+    "fixed_params_max_pf": 1.7783
+  },
+  "thresholds": {
+    "pf_ci_lower": 1.1,
+    "p_edge": 0.95,
+    "mc_95th_dd_core": 0.05,
+    "mc_95th_dd_alt": 0.07,
+    "dsr": 0.1,
+    "fixed_params_min_pf_alt": 1.2,
+    "wfo_consistency_alt": "STRONG"
+  },
+  "windows": [
+    {
+      "window": 1,
+      "is_period": "2024-04 -> 2024-10",
+      "oos_period": "2024-10 -> 2024-11",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.714,
+      "is_trades": 104,
+      "oos_pf": 0.972,
+      "oos_dd": 0.0446,
+      "oos_sharpe": -0.169,
+      "oos_trades": 9
+    },
+    {
+      "window": 2,
+      "is_period": "2024-05 -> 2024-11",
+      "oos_period": "2024-11 -> 2024-12",
+      "best_params": {
+        "donchian_period": 25,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 2.292,
+      "is_trades": 99,
+      "oos_pf": 2.7,
+      "oos_dd": 0.0309,
+      "oos_sharpe": 4.66,
+      "oos_trades": 26
+    },
+    {
+      "window": 3,
+      "is_period": "2024-06 -> 2024-12",
+      "oos_period": "2024-12 -> 2025-01",
+      "best_params": {
+        "donchian_period": 25,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.905,
+      "is_trades": 72,
+      "oos_pf": 27.948,
+      "oos_dd": 0.0021,
+      "oos_sharpe": 12.736,
+      "oos_trades": 4
+    },
+    {
+      "window": 4,
+      "is_period": "2024-07 -> 2025-01",
+      "oos_period": "2025-01 -> 2025-02",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 2.412,
+      "is_trades": 78,
+      "oos_pf": 0.146,
+      "oos_dd": 0.0182,
+      "oos_sharpe": -10.932,
+      "oos_trades": 5
+    },
+    {
+      "window": 5,
+      "is_period": "2024-08 -> 2025-02",
+      "oos_period": "2025-02 -> 2025-03",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.909,
+      "is_trades": 101,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0013,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 6,
+      "is_period": "2024-09 -> 2025-03",
+      "oos_period": "2025-03 -> 2025-04",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.86,
+      "is_trades": 76,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 7,
+      "is_period": "2024-10 -> 2025-04",
+      "oos_period": "2025-04 -> 2025-05",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.94,
+      "is_trades": 60,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 8,
+      "is_period": "2024-11 -> 2025-05",
+      "oos_period": "2025-05 -> 2025-06",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 2.285,
+      "is_trades": 52,
+      "oos_pf": 0.11,
+      "oos_dd": 0.0117,
+      "oos_sharpe": -15.07,
+      "oos_trades": 4
+    },
+    {
+      "window": 9,
+      "is_period": "2024-12 -> 2025-06",
+      "oos_period": "2025-06 -> 2025-07",
+      "best_params": {
+        "donchian_period": 25,
+        "stop_atr_mult": 1.0,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.699,
+      "is_trades": 17,
+      "oos_pf": 0.114,
+      "oos_dd": 0.0471,
+      "oos_sharpe": -14.183,
+      "oos_trades": 11
+    },
+    {
+      "window": 10,
+      "is_period": "2025-01 -> 2025-07",
+      "oos_period": "2025-07 -> 2025-08",
+      "best_params": {
+        "donchian_period": 10,
+        "stop_atr_mult": 0.75,
+        "vol_mult": 0.0
+      },
+      "is_pf": 0.638,
+      "is_trades": 19,
+      "oos_pf": 1.12,
+      "oos_dd": 0.0564,
+      "oos_sharpe": 0.643,
+      "oos_trades": 40
+    },
+    {
+      "window": 11,
+      "is_period": "2025-02 -> 2025-08",
+      "oos_period": "2025-08 -> 2025-09",
+      "best_params": {
+        "donchian_period": 10,
+        "stop_atr_mult": 0.75,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.264,
+      "is_trades": 49,
+      "oos_pf": 0.944,
+      "oos_dd": 0.0546,
+      "oos_sharpe": -0.31,
+      "oos_trades": 31
+    },
+    {
+      "window": 12,
+      "is_period": "2025-03 -> 2025-09",
+      "oos_period": "2025-09 -> 2025-10",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.5,
+        "vol_mult": 0.0
+      },
+      "is_pf": 2.646,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 13,
+      "is_period": "2025-04 -> 2025-10",
+      "oos_period": "2025-10 -> 2025-11",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.5,
+        "vol_mult": 0.0
+      },
+      "is_pf": 2.646,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 14,
+      "is_period": "2025-05 -> 2025-11",
+      "oos_period": "2025-11 -> 2025-12",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.5,
+        "vol_mult": 0.0
+      },
+      "is_pf": 2.646,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 15,
+      "is_period": "2025-06 -> 2025-12",
+      "oos_period": "2025-12 -> 2026-01",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.5,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.11,
+      "is_trades": 8,
+      "oos_pf": Infinity,
+      "oos_dd": 0.0001,
+      "oos_sharpe": 0.0,
+      "oos_trades": 1
+    },
+    {
+      "window": 16,
+      "is_period": "2025-07 -> 2026-01",
+      "oos_period": "2026-01 -> 2026-02",
+      "best_params": {
+        "donchian_period": 20,
+        "stop_atr_mult": 1.5,
+        "vol_mult": 0.0
+      },
+      "is_pf": 2.646,
+      "is_trades": 7,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 17,
+      "is_period": "2025-08 -> 2026-02",
+      "oos_period": "2026-02 -> 2026-03",
+      "best_params": {
+        "donchian_period": 10,
+        "stop_atr_mult": 1.5,
+        "vol_mult": 0.0
+      },
+      "is_pf": 3.703,
+      "is_trades": 9,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "window": 18,
+      "is_period": "2025-09 -> 2026-03",
+      "oos_period": "2026-03 -> 2026-03",
+      "best_params": {
+        "donchian_period": 10,
+        "stop_atr_mult": 0.75,
+        "vol_mult": 0.0
+      },
+      "is_pf": 1.126,
+      "is_trades": 62,
+      "oos_pf": 0.0,
+      "oos_dd": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    }
+  ],
+  "aux_freshness": {
+    "data_file": "MNQ_2024-01-01_2026-03-28_1h.csv",
+    "n_total_oos_trades": 132
+  },
+  "rank1_comparison": {
+    "rank1_pf_ci_lower": 1.0696,
+    "rank1_fixed_params_min_pf": 1.186,
+    "rank1_mc_95th_dd_pct": 5.2917,
+    "rank1_wfo_consistency": "STRONG",
+    "rank1_alt_fail_reason": "fixed_params_min_pf=1.186 < 1.20 (gap=0.014)",
+    "rank2_lesson": "vol_mult >= 1.5 kills all OOS signal (0 trades); vol filters forbidden",
+    "rank3_hypothesis": "tighter stop_atr_mult (0.75-1.0) raises R:R on worst windows"
+  },
+  "n_core_passed": 0,
+  "n_alt_passed": 0
+}

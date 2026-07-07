@@ -46,8 +46,26 @@ export function MTFConfirmationWidget({ symbol = "MES" }: { symbol?: string }) {
   useEffect(() => {
     const load = async () => {
       try {
-        const payload = await fetchEngine(`/analytics/mtf?symbol=${symbol}`);
-        setData(payload);
+        const payload: Record<string, unknown> = await fetchEngine(`/analytics/mtf?symbol=${symbol}`);
+        // Normalize: engine returns `timeframes` dict, widget expects `signals` array
+        if (payload && !payload.signals && payload.timeframes && typeof payload.timeframes === "object") {
+          const signals: TFSignal[] = Object.entries(payload.timeframes as Record<string, unknown>).map(
+            ([tf, val]) => {
+              const v = val as Record<string, unknown>;
+              return {
+                timeframe: tf,
+                stc_value: (v.stc_value as number) ?? 0,
+                stc_signal: (v.stc_signal as "BULLISH" | "BEARISH" | "NEUTRAL") ?? "NEUTRAL",
+                price: (v.price as number) ?? 0,
+                source: (v.source as string) ?? "live",
+              };
+            }
+          );
+          setData({ ...(payload as unknown as MTFData), signals });
+        } else {
+          const normalized = payload as unknown as MTFData;
+          setData({ ...normalized, signals: normalized.signals ?? [] });
+        }
       } catch {
         setData(null);
       } finally {
@@ -97,16 +115,19 @@ export function MTFConfirmationWidget({ symbol = "MES" }: { symbol?: string }) {
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge variant={variant}>{data.alignment}</Badge>
+            {/* stub source must not read as a live aligned/misaligned call */}
+            <Badge variant={data.source === "stub" ? "neutral" : variant}>{data.alignment}</Badge>
             {data.source === "stub" && (
-              <span className="text-xs text-muted-foreground">(stub)</span>
+              <span className="rounded border border-muted-foreground/30 bg-muted/20 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-widest text-muted-foreground/70">
+                Not wired · Phase 3
+              </span>
             )}
           </div>
           <span className="text-xs text-muted-foreground">
             {data.aligned_timeframes}/{data.total_timeframes} aligned
           </span>
         </div>
-        <div className="space-y-1.5">
+        <div className={`space-y-1.5 ${data.source === "stub" ? "opacity-50" : ""}`}>
           {data.signals.map((sig) => (
             <div key={sig.timeframe} className="flex items-center gap-2 text-xs">
               <span className="font-mono text-muted-foreground w-7">{sig.timeframe}</span>

@@ -1,0 +1,128 @@
+
+## [2026-04-04] - US-2401 - Confidence Scoring
+- Implemented engine/learning/confidence_scorer.py
+  * get_confidence_adjustment(symbol, db_manager) returns multiplier in [0.60, 1.40]
+  * Queries paper_trades table for symbol history (limit 100 most recent trades)
+  * Computes win_rate, avg_winner/loser, r_ratio from trade outcomes
+  * Multiplier logic:
+    - 1.35: win_rate >= 0.65 AND r_ratio >= 1.8 (strong edge)
+    - 1.20: win_rate >= 0.60 AND r_ratio >= 1.5 (solid edge)
+    - 1.10: win_rate >= 0.55 (slight edge)
+    - 0.65: win_rate <= 0.35 (poor performance)
+    - 0.80: win_rate <= 0.42 (below average)
+    - 1.0: neutral (default)
+  * Wrapped in try/except: returns 1.0 on any error, never raises
+  * Async with graceful sync fallback for db_manager
+
+- Modified engine/agents/pipeline.py
+  * Added import: from learning.confidence_scorer import get_confidence_adjustment
+  * Added Stage 6: Confidence Adjustment (post-Stage 5 FundManager)
+  * Applies multiplier to fund_decision['final_conviction'] if present
+  * Clamps result to [0.05, 0.95]
+  * Adds 'confidence_adjustment' field to pipeline_result dict
+  * Falls back gracefully if scorer unavailable
+
+- Added GET /learning/confidence/{symbol} endpoint to engine/routers/learning_router.py
+  * Returns: {symbol, confidence_adjustment, trade_count, win_rate, r_ratio, sample_sufficient, note}
+  * Queries paper_trades for symbol trades in last 30 days
+  * Uses MIN_TRADES_REQUIRED (20) gate before computing multiplier
+  * Returns 1.0 adjustment if sample insufficient
+  * Wrapped in try/except with HTTP 500 error handling
+
+- Created engine/tests/test_confidence_scorer.py with 12 tests
+  * 6 multiplier tier tests: 1.35, 1.20, 1.10, 0.65, 0.80, 1.0
+  * 6 trade metrics tests: empty, single win, single loss, mixed trades, r_ratio calc
+  * 3 edge case tests: None db_manager, invalid symbol, exception handling
+  * 3 clamping tests: upper (0.95), lower (0.05), middle
+  * 2 scenario tests: strong symbol (70% WR, 2.0R), poor symbol (30% WR)
+
+- All syntax checks pass (confidence_scorer.py, test file)
+- Updated prd.json: US-2401 passes = true
+
+## [2026-04-04] - US-2503 - Discord Signal Context in TechnicalAnalyst
+- Implemented engine/agents/technical_analyst.py async method _get_discord_context(symbol, current_price, atr)
+  * Lazy imports DiscordSignalContext from engine/discord/signal_context.py inside method
+  * Non-blocking with try/except — returns '' on any error (graceful fallback)
+  * Calls ctx.get_features() with Chicago timezone, current price, ATR, NEUTRAL bias
+  * Returns '' if discord_signal_active == 0 (no active signal)
+  * Returns formatted DISCORD INTELLIGENCE section when signal active:
+    - Shows "Bot 30-Day Win Rate: {win_rate:.0%}"
+    - Shows proximity to entry: "{proximity_entry:+.2f} ATR units"
+    - Shows proximity to target: "{proximity_target:.2f} ATR units away"
+    - Alignment string: 'ALIGNED' (1.0), 'OPPOSED' (-1.0), or 'NEUTRAL' (0.0)
+
+- Modified _llm_synthesize() method to inject discord_context
+  * Added discord_context block after learning_context block (mirrors learning pattern)
+  * Calls await self._get_discord_context(symbol, current_price, atr)
+  * Inserts formatted string into LLM prompt immediately after learning_context
+  * Falls back gracefully if discord_context unavailable — uses logger.debug only
+
+- Added imports: from zoneinfo import ZoneInfo (Python 3.9+ stdlib)
+
+- Created engine/tests/test_discord_prompt_injection.py (10 tests)
+  * Test inactive signal returns empty string
+  * Test active signal returns formatted string
+  * Test alignment strings: ALIGNED, OPPOSED, NEUTRAL
+  * Test exception handling returns empty string
+  * Test analyze() method returns valid result with/without discord context
+  * All tests use mocking to isolate from real database
+
+- Engine file size: 620 lines (well under 800 max)
+- All syntax checks pass (py_compile)
+
+**Learnings for future iterations:**
+- DiscordSignalContext.get_features() returns dict with signal_active as 0 or 1 (not boolean)
+- Need to use > 0.5 check for alignment to differentiate ALIGNED/OPPOSED/NEUTRAL
+- Always use lazy imports inside async methods to avoid circular imports and startup overhead
+- Pattern: context blocks follow learning_context pattern — try/except, logger.debug on error, graceful fallback to ''
+- When injecting into LLM prompts, insert new context blocks after existing context but before data sections
+---
+
+## [2026-04-04] - US-2504 - Wire discord_context into rl_trainer + Discord Intelligence Dashboard Panel
+- Implemented Discord context wiring in RL trainer
+  * Modified engine/strategies/rl_trainer.py train_symbol() and train_walkforward()
+  * Both methods now instantiate DiscordSignalContext() at start (with try/except fallback to None)
+  * All 5 build_env() calls in train_symbol() now pass discord_context parameter
+  * walk-forward method passes discord_context to _train_and_evaluate_window() and IS evaluation
+  * Graceful degradation: if Discord DB unavailable, trains with neutral features (indices 18-22 = 0)
+
+- Added GET /discord/intelligence endpoint to engine/routers/discord_router.py
+  * Returns {symbols: {MCL: {...features}, MNQ: {...features}}, last_updated: ISO8601}
+  * Each symbol features dict has 5 Discord context values (signal_active, win_rate, entry_proximity, target_proximity, alignment)
+  * Wrapped in try/except HTTP 500 with fallback to neutral features if DB unavailable
+  * Uses ZoneInfo('America/Chicago') timezone consistently
+  * Non-blocking: price=0.0, atr=1.0 defaults for status panel (not tied to live price)
+
+- Created dashboard/components/DiscordIntelligenceWidget.tsx
+  * "use client" component using EngineWidget pattern
+  * Fetches /discord/intelligence every 30 seconds (30_000ms)
+  * Shows 2-column card grid for MCL and MNQ
+  * Each symbol card displays:
+    - Symbol name + signal status badge (ACTIVE/INACTIVE)
+    - 30-day win rate as percentage
+    - Entry proximity and target distance in ATR units
+    - Alignment badge (ALIGNED/OPPOSED/NEUTRAL)
+  * Badge variants strict: bull | bear | neutral (per coding standards)
+  * Graceful empty state when Discord data unavailable
+
+- Added DiscordIntelligenceStatus interface to dashboard/lib/api.ts
+  * Typed Record<string, {5 discord feature fields}>
+  * last_updated as ISO timestamp string
+  * Matches engine response structure exactly
+
+- Created engine/tests/test_rl_discord_wiring.py (6 tests)
+  * Test 1: DiscordSignalContext import succeeds
+  * Test 2: DiscordSignalContext instantiation succeeds
+  * Test 3: build_env(discord_context=None) works without error
+  * Test 4: build_env(discord_context=DiscordSignalContext()) works without error
+  * Test 5: observation_space shape is (23,) with discord_context passed
+  * Test 6: observation_space shape is (23,) with discord_context=None (neutral features)
+  * Test 7: GET /discord/intelligence returns 200 with symbols dict and MCL/MNQ keys
+
+- All changes follow Sprint 25 architecture:
+  * Lazy imports to avoid startup cost
+  * Non-blocking with graceful fallback (None → neutral features)
+  * No modifications to safety layer or Tier 3 files
+  * Consistent with existing patterns (try/except, logging, error handling)
+
+- Updated prd.json: US-2504 passes = true

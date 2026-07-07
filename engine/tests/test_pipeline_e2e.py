@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from agents.pipeline import TradingPipeline
 
 
@@ -53,7 +55,7 @@ class MockNewsAnalyst(MockAgent):
 class MockDebateAgent(MockAgent):
     """Mock debate orchestrator."""
 
-    async def run_debate(self, symbol, analyst_reports, bull, bear):
+    async def run_debate(self, symbol, analyst_reports, bull, bear, **kwargs):
         self.call_count += 1
         return {
             "verdict": "bull",
@@ -137,24 +139,35 @@ def mock_agents_dict():
 @pytest.fixture
 def disable_cache(monkeypatch):
     """Disable caching for all tests by mocking cache functions to return False."""
+    import agents.pipeline
 
-    async def mock_should_use_cache(symbol):
-        return False
+    # Ensure the cache functions exist in the pipeline module namespace
+    # They may not be present if the cache import failed
+    if not hasattr(agents.pipeline, "should_use_cache"):
 
-    async def mock_get_cached_signal(symbol):
-        return None
+        async def mock_should_use_cache(symbol):
+            return False
 
-    async def mock_cache_signal(symbol, result):
-        pass
+        agents.pipeline.should_use_cache = mock_should_use_cache
 
-    # Patch the cache functions in the pipeline module
-    monkeypatch.setattr(
-        "agents.pipeline.should_use_cache", AsyncMock(side_effect=mock_should_use_cache)
-    )
-    monkeypatch.setattr(
-        "agents.pipeline.get_cached_signal", AsyncMock(side_effect=mock_get_cached_signal)
-    )
-    monkeypatch.setattr("agents.pipeline.cache_signal", AsyncMock(side_effect=mock_cache_signal))
+    if not hasattr(agents.pipeline, "get_cached_signal"):
+
+        async def mock_get_cached_signal(symbol):
+            return None
+
+        agents.pipeline.get_cached_signal = mock_get_cached_signal
+
+    if not hasattr(agents.pipeline, "cache_signal"):
+
+        async def mock_cache_signal(symbol, result):
+            pass
+
+        agents.pipeline.cache_signal = mock_cache_signal
+
+    # Now monkeypatch them to always return the safe test values
+    monkeypatch.setattr("agents.pipeline.should_use_cache", AsyncMock(return_value=False))
+    monkeypatch.setattr("agents.pipeline.get_cached_signal", AsyncMock(return_value=None))
+    monkeypatch.setattr("agents.pipeline.cache_signal", AsyncMock(return_value=None))
     return None
 
 
@@ -240,8 +253,11 @@ class TestAnalystStages:
         assert "social" in reports
         assert "fundamental" in reports
 
-        # Each report should be a dict (from to_dict() or raw)
+        # Each analyst report should be a dict (regime_status is a regime object, not a report)
+        non_report_keys = {"regime_status"}
         for name, report in reports.items():
+            if name in non_report_keys:
+                continue
             assert isinstance(report, dict), f"{name} report should be dict"
 
     @pytest.mark.asyncio
@@ -619,3 +635,87 @@ class TestPipelineAllStagesPresent:
         assert result["trade_decision"]["action"] == "BUY"
         assert result["risk_decision"]["approved"] is True
         assert result["fund_decision"]["execute"] is True
+
+
+class TestSTCPreFilter:
+    """Unit tests for the STC mid-range pre-filter in analyze_and_decide()."""
+
+    def _make_ohlcv_df(self, rows: int = 30, stc_val: float = 50.0):
+        """Return a minimal DataFrame that generate_instrument_signals can consume."""
+        import numpy as np
+        import pandas as pd
+
+        idx = pd.date_range("2026-01-01", periods=rows, freq="1h")
+        df = pd.DataFrame(
+            {
+                "open": np.full(rows, 5800.0),
+                "high": np.full(rows, 5810.0),
+                "low": np.full(rows, 5790.0),
+                "close": np.full(rows, 5800.0),
+                "volume": np.full(rows, 1000.0),
+                "stc_val": np.full(rows, stc_val),
+            },
+            index=idx,
+        )
+        return df
+
+    @pytest.mark.asyncio
+    async def test_stc_mid_range_pre_filters_without_calling_llm_agents(
+        self, mock_agents_dict, mock_safety_layer, disable_cache
+    ):
+        """When STC is mid-range (33–73 for MCL OS=23/OB=83), pipeline returns HOLD
+        immediately with pre_filtered=True — no LLM agents should be invoked."""
+        import pandas as pd
+
+        # Attach a mock _data to the technical agent
+        stc_mid = 50.0  # clearly within 25–73 mid-range
+        sig_df = self._make_ohlcv_df(rows=30, stc_val=stc_mid)
+
+        mock_data = MagicMock()
+        mock_data.get_bars = AsyncMock(return_value=sig_df)
+        mock_agents_dict["technical"]._data = mock_data
+
+        pipeline = TradingPipeline(mock_agents_dict, mock_safety_layer)
+
+        # The pre-filter uses `from backtest.signals import generate_instrument_signals`
+        # inside a try block, so patch the function at its source module.
+        with patch("backtest.signals.generate_instrument_signals", return_value=sig_df):
+            result = await pipeline.analyze_and_decide("MCL", is_futures=True)
+
+        assert result["final_action"] == "hold"
+        assert result.get("pre_filtered") is True
+        assert result["pre_filter_reason"] == "STC mid-range pre-filter"
+        assert result["pre_filter_stc"] == stc_mid
+        assert result["pre_filter_stc_os"] == 23
+        assert result["pre_filter_stc_ob"] == 83
+        # No LLM agents should have been called
+        assert mock_agents_dict["technical"].call_count == 0
+        assert mock_agents_dict["trader"].call_count == 0
+        assert mock_agents_dict["risk_manager"].call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_stc_at_oversold_does_not_pre_filter(
+        self, mock_agents_dict, mock_safety_layer, disable_cache
+    ):
+        """When STC is AT or below OS=23 (skip-range LOW), the pre-filter must NOT
+        trigger — the OS crossover is an actionable signal and must reach Stage 1.
+
+        US-1602 updated MCL params: OS=23 (stc_os), OB=83. LOW boundary = stc_os = 23.
+        STC=14 is below LOW=23 → passes through. STC=50 is inside 23-83 → pre-filtered.
+        """
+        stc_at_os = 14.0  # 14 <= 23 (STC_MIDRANGE_SKIP_LOW for MCL), so NOT filtered
+        sig_df = self._make_ohlcv_df(rows=30, stc_val=stc_at_os)
+
+        mock_data = MagicMock()
+        mock_data.get_bars = AsyncMock(return_value=sig_df)
+        mock_agents_dict["technical"]._data = mock_data
+
+        pipeline = TradingPipeline(mock_agents_dict, mock_safety_layer)
+
+        with patch("backtest.signals.generate_instrument_signals", return_value=sig_df):
+            result = await pipeline.analyze_and_decide("MCL", is_futures=True)
+
+        # Must NOT have pre_filtered flag (went through full pipeline)
+        assert result.get("pre_filtered") is not True
+        # Stage 1 technical analyst must have been called
+        assert mock_agents_dict["technical"].call_count >= 1

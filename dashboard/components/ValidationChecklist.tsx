@@ -4,23 +4,17 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
-const STARTING_BALANCE = 10_000;
+import {
+  fetchHonestTrades,
+  equityCurve,
+  maxDrawdownPct,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+
 const REFRESH_MS = 300_000; // 5 minutes
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface PerformanceData {
-  profit_factor?: number;
-  sharpe_ratio?: number;
-  win_rate?: number;
-  total_trades?: number;
-}
-
-interface DailyPnlEntry {
-  cumulative_pnl?: number;
-  pnl?: number;
-  date?: string;
-}
 
 interface TradingDaysData {
   trading_days_completed?: number;
@@ -45,37 +39,21 @@ interface ValidationState {
   loading: boolean;
   error: string | null;
   lastUpdated: Date | null;
+  caveat: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function computeMaxDrawdown(entries: DailyPnlEntry[]): number | null {
-  if (!entries || entries.length === 0) return null;
-
-  // Build cumulative PnL series — prefer cumulative_pnl field, else sum pnl
-  const series: number[] = [];
-  let running = 0;
-  for (const entry of entries) {
-    if (typeof entry.cumulative_pnl === "number") {
-      series.push(entry.cumulative_pnl);
-    } else if (typeof entry.pnl === "number") {
-      running += entry.pnl;
-      series.push(running);
-    }
-  }
-
-  if (series.length === 0) return null;
-
-  let peak = series[0];
-  let maxDD = 0;
-
-  for (const val of series) {
-    if (val > peak) peak = val;
-    const dd = (peak - val) / STARTING_BALANCE;
-    if (dd > maxDD) maxDD = dd;
-  }
-
-  return maxDD * 100; // return as percentage
+/**
+ * Max drawdown as a percentage, derived from the honest deduped equity curve.
+ * Returns the largest peak-to-trough drop as % of the running equity peak.
+ * Returns null when the equity curve has no points or the peak never goes above 0.
+ */
+function computeMaxDrawdownFromHonest(set: HonestTradeSet): number | null {
+  // null distinguishes "no data" from a real 0% in the checklist; otherwise
+  // defer to the canonical helper (same running-peak math as the old inline loop).
+  if (equityCurve(set.trades).length === 0) return null;
+  return maxDrawdownPct(set.trades) * 100;
 }
 
 function fmt(value: number | null | undefined, decimals = 2): string {
@@ -91,41 +69,36 @@ export function ValidationChecklist() {
     loading: true,
     error: null,
     lastUpdated: null,
+    caveat: null,
   });
 
   const fetchData = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: prev.criteria.length === 0, error: null }));
 
-    const [perfResult, pnlResult, daysResult] = await Promise.allSettled([
-      fetchEngine<PerformanceData>("/analytics/performance"),
-      fetchEngine<DailyPnlEntry[] | { data?: DailyPnlEntry[] }>("/portfolio/history/daily-pnl?limit=90"),
+    const [honestResult, daysResult] = await Promise.allSettled([
+      fetchHonestTrades(),
       fetchEngine<TradingDaysData>("/portfolio/stats/trading-days"),
     ]);
 
-    // ── Extract performance metrics ──────────────────────────────────────────
-    const perf: PerformanceData =
-      perfResult.status === "fulfilled" ? perfResult.value : {};
+    // ── Extract honest deduped metrics ───────────────────────────────────────
+    let profitFactor: number | null = null;
+    let winRate: number | null = null;
+    let totalTrades: number | null = null;
+    let maxDrawdown: number | null = null;
+    let caveat: string | null = null;
+    let honestOk = false;
 
-    const profitFactor = typeof perf.profit_factor === "number" ? perf.profit_factor : null;
-    const sharpeRatio = typeof perf.sharpe_ratio === "number" ? perf.sharpe_ratio : null;
-    const winRateRaw = typeof perf.win_rate === "number" ? perf.win_rate : null;
-    const winRate =
-      winRateRaw !== null ? (winRateRaw < 1 ? winRateRaw * 100 : winRateRaw) : null;
-    const totalTrades = typeof perf.total_trades === "number" ? perf.total_trades : null;
-
-    // ── Extract daily PnL ────────────────────────────────────────────────────
-    let pnlEntries: DailyPnlEntry[] = [];
-    if (pnlResult.status === "fulfilled") {
-      const raw = pnlResult.value;
-      if (Array.isArray(raw)) {
-        pnlEntries = raw;
-      } else if (raw && typeof raw === "object" && Array.isArray((raw as { data?: DailyPnlEntry[] }).data)) {
-        pnlEntries = (raw as { data: DailyPnlEntry[] }).data;
-      }
+    if (honestResult.status === "fulfilled") {
+      const set = honestResult.value;
+      profitFactor = set.profitFactor;
+      winRate = set.winRate * 100; // convert 0..1 to percentage
+      totalTrades = set.trades.length;
+      maxDrawdown = computeMaxDrawdownFromHonest(set);
+      caveat = dedupCaveat(set);
+      honestOk = true;
     }
-    const maxDrawdown = computeMaxDrawdown(pnlEntries);
 
-    // ── Extract trading days ─────────────────────────────────────────────────
+    // ── Extract trading days (still from engine — not in honest record) ──────
     let tradingDays: number | null = null;
     if (daysResult.status === "fulfilled") {
       const d = daysResult.value;
@@ -145,22 +118,27 @@ export function ValidationChecklist() {
         name: "Profit Factor",
         target: "≥ 2.0",
         current:
+          !honestOk ? "No data" :
           profitFactor !== null ? `${fmt(profitFactor)} vs ≥2.0` : "No data",
         status: profitFactor === null ? "PENDING" : profitFactor >= 2.0 ? "PASS" : "FAIL",
         pass: profitFactor === null ? null : profitFactor >= 2.0,
       },
       {
+        // Annualized Sharpe is NOT in the deduped honest record — only fields
+        // available are: symbol, direction, entry_time, exit_time, pnl_usd, grade.
+        // Surfacing "—" prevents a fabricated PASS. Gating on this criterion is
+        // suspended until a time-series source is wired.
         name: "Sharpe Ratio",
         target: "≥ 1.5",
-        current:
-          sharpeRatio !== null ? `${fmt(sharpeRatio)} vs ≥1.5` : "No data",
-        status: sharpeRatio === null ? "PENDING" : sharpeRatio >= 1.5 ? "PASS" : "FAIL",
-        pass: sharpeRatio === null ? null : sharpeRatio >= 1.5,
+        current: "— (not computed from deduped record)",
+        status: "PENDING",
+        pass: null,
       },
       {
         name: "Win Rate",
         target: "≥ 55%",
         current:
+          !honestOk ? "No data" :
           winRate !== null ? `${fmt(winRate, 1)}% vs ≥55%` : "No data",
         status: winRate === null ? "PENDING" : winRate >= 55 ? "PASS" : "FAIL",
         pass: winRate === null ? null : winRate >= 55,
@@ -169,6 +147,7 @@ export function ValidationChecklist() {
         name: "Total Trades",
         target: "≥ 30",
         current:
+          !honestOk ? "No data" :
           totalTrades !== null ? `${totalTrades} vs ≥30` : "No data",
         status: totalTrades === null ? "PENDING" : totalTrades >= 30 ? "PASS" : "FAIL",
         pass: totalTrades === null ? null : totalTrades >= 30,
@@ -177,19 +156,16 @@ export function ValidationChecklist() {
         name: "Max Drawdown",
         target: "< 15%",
         current:
-          pnlResult.status !== "fulfilled"
-            ? "No data"
-            : maxDrawdown === null
-            ? "No data"
-            : `${fmt(maxDrawdown, 1)}% vs <15%`,
+          !honestOk ? "No data" :
+          maxDrawdown === null ? "No data" : `${fmt(maxDrawdown, 1)}% vs <15%`,
         status:
-          pnlResult.status !== "fulfilled" || maxDrawdown === null
+          !honestOk || maxDrawdown === null
             ? "PENDING"
             : maxDrawdown < 15
             ? "PASS"
             : "FAIL",
         pass:
-          pnlResult.status !== "fulfilled" || maxDrawdown === null
+          !honestOk || maxDrawdown === null
             ? null
             : maxDrawdown < 15,
       },
@@ -216,6 +192,7 @@ export function ValidationChecklist() {
       loading: false,
       error: null,
       lastUpdated: new Date(),
+      caveat,
     });
   }, []);
 
@@ -340,9 +317,16 @@ export function ValidationChecklist() {
 
             {/* Footer note */}
             <div className="mt-4 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-              <p className="text-xs text-muted-foreground">
-                Paper trading target: April–May 2026 &nbsp;|&nbsp; Live trading: June 2026
-              </p>
+              <div className="flex flex-col gap-0.5">
+                <p className="text-xs text-muted-foreground">
+                  Paper trading target: April–May 2026 &nbsp;|&nbsp; Live trading: June 2026
+                </p>
+                {state.caveat && (
+                  <p className="text-[10px] text-warn font-mono">
+                    {state.caveat} · Sharpe suspended (not computable from deduped record)
+                  </p>
+                )}
+              </div>
               {state.lastUpdated && (
                 <p className="text-[10px] text-muted-foreground font-mono">
                   Updated {state.lastUpdated.toLocaleTimeString()}

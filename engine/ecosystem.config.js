@@ -21,6 +21,7 @@
  *
  * Ports:
  *   jarvis-engine:           8010 (FastAPI)
+ *   jarvis-bridge-api:       8020 (FastAPI quotes/options bridge)
  *   jarvis-rolling-wfe:      cron (no port — scheduler only)
  *   jarvis-paper-runner:     cron (no port — scheduler only)
  *   jarvis-health-check:     cron (no port — health monitoring)
@@ -42,10 +43,14 @@ const PYTHON = path.join(ENGINE_DIR, ".venv", "Scripts", "python.exe");
 module.exports = {
   apps: [
     // ── FastAPI Engine ─────────────────────────────────────────────────────────
+    // NOTE: launched via scripts/port_guardian.py instead of uvicorn directly.
+    // Guardian kills any orphaned python/uvicorn process holding port 8010 before
+    // exec'ing uvicorn. Prevents the 2026-04-14 crash-loop class of bug where a
+    // PowerShell-launched orphan blocks PM2 restarts. See docs/troubleshooting.md.
     {
       name: "jarvis-engine",
       script: PYTHON,
-      args: "-m uvicorn main:app --host 0.0.0.0 --port 8010",
+      args: "scripts/port_guardian.py",
       cwd: ENGINE_DIR,
       interpreter: "none",
 
@@ -105,6 +110,30 @@ module.exports = {
       out_file: path.join(ENGINE_DIR, "logs", "rolling-wfe-out.log"),
       merge_logs: true,
 
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Weekly Paper Tearsheet (US-007, 2026-06-12) ───────────────────────────
+    // QuantStats tearsheet + METRICS_SNAPSHOT.json for the paper account so QS
+    // history accumulates without manual runs. Saturday 07:00 (after Friday close).
+    {
+      name: "jarvis-weekly-tearsheet",
+      script: PYTHON,
+      args: path.join(ENGINE_DIR, "..", "scripts", "jarvis_tearsheet.py") + " --source paper",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "0 7 * * 6",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "weekly-tearsheet-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "weekly-tearsheet-out.log"),
+      merge_logs: true,
       exec_interpreter: "none",
       exec_mode: "fork",
     },
@@ -203,6 +232,213 @@ module.exports = {
       merge_logs: true,
 
       exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Nightly Discord Export + Ingest ────────────────────────────────────────
+    // Runs DiscordChatExporter on the two live Corey channels (general,
+    // market-updates), then chains into nightly_discord.py to ingest the fresh
+    // JSON into SQLite + run sentiment ETL. Closes T2.1 staleness (agents were
+    // reading discord_corey_commentary that was 15 days stale).
+    //
+    // Prereqs (user action): install DiscordChatExporter.Cli to
+    // C:\Users\mattm\tools\DiscordChatExporter.Cli\ (or set DCE_CLI_PATH env).
+    //
+    // Runs nightly at 02:00 America/Chicago — after all US sessions close,
+    // before morning-brief at 06:30. --after=7d keeps per-run payload <5 MB.
+    {
+      name: "jarvis-discord-export",
+      script: PYTHON,
+      args: "-m scripts.nightly_discord_export",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+
+      cron_restart: "0 2 * * *",
+      autorestart: false,
+
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "discord-export-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "discord-export-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Vault: Daily Synthesis Brief (#1) ─────────────────────────────────────
+    // 06:00 CT — Claude reads the last 7 days of vault notes and writes a
+    // synthesis (connections / pattern / contradiction / best capture) to
+    // 00-Inbox/brief-YYYY-MM-DD.md. Inert unless ENABLE_VAULT_SYNTHESIS=1.
+    {
+      name: "jarvis-vault-synthesis",
+      script: PYTHON,
+      args: "scripts/vault_synthesis_brief.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "0 6 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-synthesis-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-synthesis-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Vault: Wikilink Lint Pass ─────────────────────────────────────────────
+    // 06:30 CT — structural integrity scan (no LLM): finds broken [[wikilinks]]
+    // and orphan notes, writes 00-Inbox/lint-YYYY-MM-DD.md. Inert unless
+    // ENABLE_VAULT_LINT=1.
+    {
+      name: "jarvis-vault-lint",
+      script: PYTHON,
+      args: "scripts/vault_lint.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "30 6 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-lint-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-lint-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Vault: Thesis Contradiction Check (#5) ────────────────────────────────
+    // 07:00 CT — Claude scans 02-Theses against the last 30 days of 01-Sources
+    // for conflict only, writes 00-Inbox/contradictions-YYYY-MM-DD.md. Inert
+    // unless ENABLE_VAULT_CONTRADICTION=1.
+    {
+      name: "jarvis-vault-contradiction",
+      script: PYTHON,
+      args: "scripts/vault_contradiction_check.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "0 7 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-contradiction-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-contradiction-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Vault: Midnight GitHub Backup (#9) ────────────────────────────────────
+    // 00:00 CT — commits + pushes the Obsidian vault (its own git repo at the
+    // vault root, NOT this repo) to its private remote. Inert unless
+    // ENABLE_VAULT_BACKUP=1 and the vault has been `git init`'d with a remote.
+    {
+      name: "jarvis-vault-backup",
+      script: PYTHON,
+      args: "scripts/backup_vault_to_github.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "0 0 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-backup-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-backup-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── API Bridge (port 8020) ────────────────────────────────────────────────
+    // yFinance quotes/regime/options/pnl bridge consumed by the Strategy C+
+    // Command Center (dashboard/static/strategy_c_dashboard.html). Was previously
+    // unmanaged (audit finding F-9): the Command Center ibkr/options/pnl tabs were
+    // dead whenever nobody started it by hand. Bound to 127.0.0.1, no --reload.
+    {
+      name: "jarvis-bridge-api",
+      script: PYTHON,
+      args: "-m uvicorn main:app --host 127.0.0.1 --port 8020",
+      cwd: path.join(ENGINE_DIR, "api"),
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 20,
+      min_uptime: "10s",
+      restart_delay: 5000,
+
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "bridge-api-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "bridge-api-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Next.js Dashboard ─────────────────────────────────────────────────────
+    // Serves the React dashboard at http://localhost:3010
+    // Uses pnpm start (production build) — run `pnpm build` in dashboard/ first.
+    //
+    // NOTE: script must be ``cmd /c pnpm run start`` on Windows, NOT ``pnpm`` directly.
+    // PM2 on Node 24 tries to ``require("pnpm.cmd")`` as a JS module and hits
+    // ``SyntaxError: Invalid or unexpected token`` on the ``@ECHO off`` line.
+    // Wrapping through ``cmd.exe`` lets the .cmd shim run normally.
+    {
+      name: "jarvis-dashboard",
+      script: "cmd",
+      args: "/c pnpm run start",
+      cwd: path.join(ENGINE_DIR, "..", "dashboard"),
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      min_uptime: "10s",
+      restart_delay: 3000,
+
+      env: {
+        NODE_ENV: "production",
+        PORT: "3010",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "dashboard-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "dashboard-out.log"),
+      merge_logs: true,
       exec_mode: "fork",
     },
   ],

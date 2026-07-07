@@ -1,0 +1,145 @@
+{
+  "project": "JARVIS Trader — Sprint 12",
+  "branchName": "master",
+  "description": "Sprint 12: Signal feed UI, dashboard API hygiene, SPY walk-forward validation, rolling WFE monitoring, Schwab OAuth, security P0 key rotation, broker position reconciliation, and performance analytics expansion.",
+  "userStories": [
+    {
+      "id": "US-S12-001",
+      "title": "Real-time signal feed on /command-center",
+      "description": "As a trader, I want a live signal feed widget on the command center so I can see the most recent trading decisions from the pipeline without navigating away.",
+      "acceptance_criteria": [
+        "dashboard/app/command-center/ contains SignalFeedWidget component polling GET /api/v1/decisions/recent every 30 seconds via fetchEngine",
+        "Each row displays: symbol, direction badge (LONG=green, SHORT=red, HOLD=gray), conviction score (0-100), ISO timestamp, and R:R ratio",
+        "Widget renders in Iron Man HUD dark terminal aesthetic — dark background, monospace font, colored badges, subtle scan-line or glow effect",
+        "Widget gracefully shows empty state when no recent decisions exist",
+        "Widget shows last-updated timestamp and a loading/error state if the endpoint is unreachable",
+        "cd dashboard && pnpm run build passes with 0 TypeScript errors after adding component"
+      ],
+      "priority": "P1",
+      "estimated_complexity": "M",
+      "dependencies": [],
+      "passes": false
+    },
+    {
+      "id": "US-S12-002",
+      "title": "Fix hardcoded localhost:8010 in dashboard",
+      "description": "As a developer, I want all dashboard API calls to go exclusively through fetchEngine/postEngine so that environment-based API routing works correctly and no hardcoded URLs exist.",
+      "acceptance_criteria": [
+        "grep -r 'localhost:8010' dashboard/app dashboard/components dashboard/lib --include='*.ts' --include='*.tsx' returns zero matches",
+        "grep -r 'localhost:8010' dashboard/app dashboard/components dashboard/lib --include='*.ts' --include='*.tsx' returns zero matches (verified by CI grep step)",
+        "All identified hardcoded fetch calls replaced with fetchEngine or postEngine from lib/api.ts",
+        "cd dashboard && pnpm run build passes with 0 TypeScript errors after replacements",
+        "No new direct fetch calls to port 8010 introduced — enforced by grep check in pre-commit hook or CI"
+      ],
+      "priority": "P0",
+      "estimated_complexity": "S",
+      "dependencies": [],
+      "passes": false
+    },
+    {
+      "id": "US-S12-003",
+      "title": "SPY 1h walk-forward validation",
+      "description": "As a quant, I want SPY 1h to be formally evaluated with our walk-forward framework so its status can be set to APPROVED or NOT APPROVED based on objective WFE data.",
+      "acceptance_criteria": [
+        "Walk-forward run executed: cd engine && .venv/Scripts/python -m backtest.walk_forward --symbol SPY --interval 1h --train-months 6 --test-months 3",
+        "Results stored in engine/data/wfe_results/SPY_1h.json containing: symbol, interval, wfe, windows_run, window_details, run_date",
+        "If WFE >= 0.50: engine/backtest/signals.py INSTRUMENT_PARAMS updated to include SPY 1h entry with STC_OS=15, STC_OB=88, stop=0.30, t1=1.00, wfe=<actual>, status=APPROVED",
+        "If WFE < 0.50: engine/data/wfe_results/SPY_1h.json status field set to NOT_APPROVED with reason documented",
+        "MEMORY.md SPY 1h row updated from 'TBD / PENDING WF' to actual WFE value and final status",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v shows no regressions from any signals.py changes"
+      ],
+      "priority": "P1",
+      "estimated_complexity": "M",
+      "dependencies": [],
+      "passes": false
+    },
+    {
+      "id": "US-S12-004",
+      "title": "Rolling WFE monitoring endpoint",
+      "description": "As a trader, I want an API endpoint that returns the current WFE for each instrument, when it was last calculated, and when it is next due, so I can ensure strategy validity is continuously monitored.",
+      "acceptance_criteria": [
+        "GET /api/v1/instruments/wfe-status returns JSON array with one entry per approved instrument: { symbol, interval, wfe, status, last_calculated, next_due, alert }",
+        "next_due is calculated as last_calculated + 28 days (4-week rolling recalculation cycle)",
+        "alert field is true when wfe < 0.40 OR when next_due is within 3 days of today",
+        "Endpoint is backed by engine/data/wfe_cache.json — file is created/updated whenever a walk-forward run completes",
+        "engine/routers/instruments_router.py contains the endpoint and is registered in main.py",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with no regressions"
+      ],
+      "priority": "P1",
+      "estimated_complexity": "M",
+      "dependencies": ["US-S12-003"],
+      "passes": false
+    },
+    {
+      "id": "US-S12-005",
+      "title": "Schwab OAuth activation",
+      "description": "As a trader, I want the Schwab connector to complete an OAuth browser flow so that the system can authenticate with Schwab's API and the connection status is visible in the engine.",
+      "acceptance_criteria": [
+        "GET /api/v1/schwab/status returns JSON: { connected: bool, token_expires_at: str|null, scopes: list|null, error: str|null }",
+        "POST /api/v1/schwab/connect triggers the OAuth browser flow at developer.schwab.com and returns { auth_url: str } for the client to open",
+        "On successful OAuth callback, engine/data/.schwab_token.json is created and persists across restarts",
+        "engine/execution/schwab_connector.py reads .schwab_token.json on startup and sets SCHWAB_READY=True when token is valid",
+        "engine/routers/schwab_router.py contains both endpoints and is registered in main.py",
+        "SCHWAB_READY remains False and no orders are routed to Schwab until live trading phase — safety invariant unmodified"
+      ],
+      "priority": "P2",
+      "estimated_complexity": "L",
+      "dependencies": [],
+      "passes": false
+    },
+    {
+      "id": "US-S12-006",
+      "title": "Security P0 — API key rotation",
+      "description": "As a system owner, I want all potentially exposed API keys to be revoked and regenerated so that no unauthorized access to third-party services is possible from historical exposure.",
+      "acceptance_criteria": [
+        "Anthropic API key revoked at console.anthropic.com and new key generated",
+        "Polygon API key revoked at polygon.io dashboard and new key generated",
+        "Twilio auth token regenerated at console.twilio.com",
+        "Google OAuth client secret regenerated at console.cloud.google.com",
+        "engine/.env updated with all four new credentials",
+        "cd engine && .venv/Scripts/python -m uvicorn main:app --port 8010 starts clean with no authentication errors in logs",
+        "bash scripts/hooks/check-secrets.sh returns 0 new findings — .secrets.baseline updated if needed",
+        "All new keys confirmed absent from git history (git log --all -S '<key_prefix>' returns no matches)"
+      ],
+      "priority": "P0",
+      "estimated_complexity": "S",
+      "dependencies": [],
+      "passes": false
+    },
+    {
+      "id": "US-S12-007",
+      "title": "Broker position reconciliation",
+      "description": "As a trader, I want a single endpoint that returns combined open positions from both IBKR and Schwab alongside our paper tracker so I can verify our internal state matches the brokers.",
+      "acceptance_criteria": [
+        "GET /api/v1/brokers/positions returns JSON array of positions: { symbol, quantity, avg_price, current_price, unrealized_pnl, source, reconciled }",
+        "source field identifies broker: 'IBKR', 'Schwab', or 'paper_tracker'",
+        "reconciled field is true when paper_tracker position matches broker position within 1 contract tolerance",
+        "Endpoint gracefully handles IBKR or Schwab being unavailable — returns partial results with source-level error field",
+        "engine/routers/brokers_router.py contains the endpoint and is registered in main.py",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes with no regressions"
+      ],
+      "priority": "P2",
+      "estimated_complexity": "L",
+      "dependencies": ["US-S12-005"],
+      "passes": false
+    },
+    {
+      "id": "US-S12-008",
+      "title": "Performance analytics expansion",
+      "description": "As a trader, I want the /performance dashboard page to include win rate by hour of day, consecutive wins/losses tracker, and average hold time by signal type so I can identify temporal patterns and signal quality trends.",
+      "acceptance_criteria": [
+        "dashboard/app/performance/page.tsx adds WinRateByHourChart: bar chart showing win rate % for each hour 0-23, data sourced via fetchEngine from GET /api/v1/performance/win-rate-by-hour",
+        "dashboard/app/performance/page.tsx adds ConsecutiveStreakTracker panel: shows current streak (wins or losses), longest win streak, longest loss streak",
+        "dashboard/app/performance/page.tsx adds AvgHoldTimeBySignal table: rows for LONG/SHORT/HOLD signal types with avg hold time in minutes and trade count",
+        "engine/routers/performance_router.py adds GET /api/v1/performance/win-rate-by-hour and GET /api/v1/performance/hold-time-by-signal endpoints",
+        "All new data fetched via fetchEngine — no hardcoded URLs",
+        "cd dashboard && pnpm run build passes with 0 TypeScript errors",
+        "New charts match the Iron Man HUD dark terminal aesthetic of the existing /performance page"
+      ],
+      "priority": "P1",
+      "estimated_complexity": "L",
+      "dependencies": [],
+      "passes": false
+    }
+  ]
+}

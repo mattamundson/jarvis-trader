@@ -7,13 +7,15 @@ Schema:
   llm_calls(
     id INTEGER PRIMARY KEY,
     timestamp TEXT,           -- ISO 8601 UTC timestamp
-    model TEXT,               -- e.g. "claude-opus-4-6"
+    model TEXT,               -- e.g. "claude-opus-4-7"
     input_tokens INTEGER,     -- Input token count
     output_tokens INTEGER,    -- Output token count
     cost_usd REAL,            -- Cost in USD
     latency_ms INTEGER,       -- Latency in milliseconds
     agent_name TEXT,          -- Which agent made the call
-    success BOOLEAN           -- True if call succeeded
+    success BOOLEAN,          -- True if call succeeded
+    provider TEXT             -- Serving provider: 'direct'|'vertex'|'google'|
+                              --   'vertex-gemini'|'ollama'|'external' (Task 9)
   )
 """
 
@@ -57,10 +59,21 @@ class CostTracker:
                 cost_usd REAL DEFAULT 0.0,
                 latency_ms INTEGER DEFAULT 0,
                 agent_name TEXT DEFAULT 'unknown',
-                success BOOLEAN DEFAULT 1
+                success BOOLEAN DEFAULT 1,
+                provider TEXT DEFAULT 'direct'
             )
             """
         )
+
+        # Task 9 migration: add the provider column to pre-existing databases.
+        # ALTER TABLE ADD COLUMN is additive and backfills existing rows with the
+        # default ('direct'), so this is safe to run against a live DB on the next
+        # CostTracker instantiation (engine restart) — no data loss, no behavior
+        # change for callers that omit the new argument.
+        cursor.execute("PRAGMA table_info(llm_calls)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if "provider" not in existing_cols:
+            cursor.execute("ALTER TABLE llm_calls ADD COLUMN provider TEXT DEFAULT 'direct'")
 
         # Index by timestamp for range queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON llm_calls(timestamp)")
@@ -68,6 +81,8 @@ class CostTracker:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_model ON llm_calls(model)")
         # Index by agent for per-agent summaries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_agent ON llm_calls(agent_name)")
+        # Index by provider for the direct-vs-Vertex A/B breakdown
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider ON llm_calls(provider)")
 
         conn.commit()
         conn.close()
@@ -82,6 +97,7 @@ class CostTracker:
         latency_ms: int,
         agent_name: str,
         success: bool,
+        provider: str = "direct",
     ) -> None:
         """
         Log a single LLM API call.
@@ -95,6 +111,10 @@ class CostTracker:
             latency_ms: Latency in milliseconds
             agent_name: Calling agent name
             success: True if successful
+            provider: Serving provider for this call (default 'direct'). One of
+                'direct' (Anthropic API), 'vertex' (Claude-on-Vertex), 'google'
+                (Gemini AI-Studio), 'vertex-gemini' (Gemini-on-Vertex), 'ollama',
+                or 'external'. Powers the per-provider cost A/B (Task 9).
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -102,8 +122,9 @@ class CostTracker:
         cursor.execute(
             """
             INSERT INTO llm_calls
-            (timestamp, model, input_tokens, output_tokens, cost_usd, latency_ms, agent_name, success)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (timestamp, model, input_tokens, output_tokens, cost_usd, latency_ms,
+             agent_name, success, provider)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 timestamp,
@@ -114,6 +135,7 @@ class CostTracker:
                 latency_ms,
                 agent_name,
                 success,
+                provider,
             ),
         )
 
@@ -183,6 +205,25 @@ class CostTracker:
         for agent, count, cost in cursor.fetchall():
             agent_stats[agent] = {"calls": count, "cost_usd": cost or 0.0}
 
+        # Cost per provider (direct vs Vertex vs Gemini — the Task 9 A/B view)
+        cursor.execute(
+            """
+            SELECT provider, COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(cost_usd)
+            FROM llm_calls
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY provider
+            """,
+            (start_ts, end_ts),
+        )
+        provider_stats = {}
+        for provider, count, input_tok, output_tok, cost in cursor.fetchall():
+            provider_stats[provider or "direct"] = {
+                "calls": count,
+                "input_tokens": input_tok or 0,
+                "output_tokens": output_tok or 0,
+                "cost_usd": round(cost or 0.0, 4),
+            }
+
         # Success rate
         cursor.execute(
             """
@@ -212,6 +253,7 @@ class CostTracker:
             "avg_latency_ms": round(avg_latency, 1),
             "per_model": model_stats,
             "per_agent": agent_stats,
+            "per_provider": provider_stats,
         }
 
     async def get_monthly_summary(self, months_back: int = 0) -> dict:
@@ -297,6 +339,23 @@ class CostTracker:
         for model, count, cost in cursor.fetchall():
             per_model[model] = {"calls": count, "cost_usd": round(cost or 0.0, 4)}
 
+        # Per-provider cost (direct vs Vertex vs Gemini — the Task 9 A/B view)
+        cursor.execute(
+            """
+            SELECT provider, COUNT(*), SUM(cost_usd)
+            FROM llm_calls
+            WHERE timestamp >= ? AND timestamp < ?
+            GROUP BY provider
+            """,
+            (month_start_ts, month_end_ts),
+        )
+        per_provider = {}
+        for provider, count, cost in cursor.fetchall():
+            per_provider[provider or "direct"] = {
+                "calls": count,
+                "cost_usd": round(cost or 0.0, 4),
+            }
+
         conn.close()
 
         return {
@@ -305,6 +364,7 @@ class CostTracker:
             "total_cost_usd": round(total_cost, 4),
             "daily_breakdown": daily_breakdown,
             "per_model": per_model,
+            "per_provider": per_provider,
         }
 
     async def close(self):

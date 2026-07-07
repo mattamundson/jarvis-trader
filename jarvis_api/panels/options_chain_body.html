@@ -1,0 +1,567 @@
+<!-- ═══════════════════════════════════════════════════════════════
+     T4 — OPTIONS INTELLIGENCE · OPTIONS CHAIN VIEWER
+     Panel snippet — inject into main dashboard grid
+     ═══════════════════════════════════════════════════════════════ -->
+
+<style>
+  /* ── Options Chain Panel Styles (prefix: .op-) ── */
+  .op-panel {
+    background: var(--bg-card, #071228);
+    border: 1px solid rgba(0,212,255,0.15);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .op-panel:hover { border-color: rgba(0,212,255,0.35); }
+  .op-panel::before, .op-panel::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    border-color: rgba(0,212,255,0.5);
+    border-style: solid;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .op-panel::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+  .op-panel::after  { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+
+  .op-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(0,212,255,0.1);
+    background: rgba(0,212,255,0.03);
+  }
+  .op-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: #e8f4ff;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .op-badge-live {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    padding: 3px 10px;
+    border-radius: 2px;
+    background: rgba(0,255,136,0.1);
+    border: 1px solid rgba(0,255,136,0.4);
+    color: #00ff88;
+    text-transform: uppercase;
+    animation: op-pulse 2s ease-in-out infinite;
+  }
+  @keyframes op-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+  }
+
+  .op-body {
+    padding: 12px 16px 14px;
+  }
+
+  /* Symbol input bar */
+  .op-symbol-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    align-items: center;
+  }
+  .op-symbol-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #7ab0d4;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .op-symbol-input {
+    flex: 1;
+    background: rgba(0,212,255,0.06);
+    border: 1px solid rgba(0,212,255,0.25);
+    border-radius: 3px;
+    color: #00d4ff;
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    max-width: 100px;
+  }
+  .op-symbol-input:focus {
+    border-color: rgba(0,212,255,0.6);
+    box-shadow: 0 0 12px rgba(0,212,255,0.2);
+  }
+  .op-load-btn {
+    background: rgba(0,212,255,0.12);
+    border: 1px solid rgba(0,212,255,0.4);
+    color: #00d4ff;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 6px 14px;
+    border-radius: 2px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+  .op-load-btn:hover {
+    background: rgba(0,212,255,0.2);
+    box-shadow: 0 0 12px rgba(0,212,255,0.25);
+  }
+  .op-load-btn:active { transform: scale(0.97); }
+
+  /* Meta bar */
+  .op-meta {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    background: rgba(0,212,255,0.04);
+    border: 1px solid rgba(0,212,255,0.1);
+    border-radius: 3px;
+  }
+  .op-meta-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #7ab0d4;
+  }
+  .op-meta-val {
+    color: #e8f4ff;
+    font-weight: 600;
+  }
+  .op-meta-highlight { color: #00d4ff; }
+  .op-meta-move { color: #ffd700; }
+
+  /* Chain table */
+  .op-chain-wrap {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 340px;
+  }
+  .op-chain-wrap::-webkit-scrollbar { width: 4px; height: 4px; }
+  .op-chain-wrap::-webkit-scrollbar-track { background: rgba(0,212,255,0.05); }
+  .op-chain-wrap::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.3); border-radius: 2px; }
+
+  .op-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+  .op-table thead th {
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #3a6080;
+    text-transform: uppercase;
+    padding: 5px 6px;
+    border-bottom: 1px solid rgba(0,212,255,0.15);
+    white-space: nowrap;
+    text-align: center;
+    background: rgba(0,212,255,0.03);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .op-table thead th.calls-hdr { color: #00ff88; }
+  .op-table thead th.puts-hdr  { color: #ff2244; }
+  .op-table thead th.strike-hdr { color: #ffd700; }
+
+  .op-row td {
+    padding: 5px 6px;
+    border-bottom: 1px solid rgba(0,212,255,0.06);
+    text-align: center;
+    vertical-align: middle;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .op-row:hover td { background: rgba(0,212,255,0.06) !important; }
+
+  /* ATM row highlight */
+  .op-row.atm td {
+    background: rgba(255,215,0,0.07) !important;
+    border-top: 1px solid rgba(255,215,0,0.25);
+    border-bottom: 1px solid rgba(255,215,0,0.25);
+  }
+  .op-row.atm .op-strike-cell {
+    color: #ffd700 !important;
+    text-shadow: 0 0 8px rgba(255,215,0,0.5);
+    font-weight: 700;
+  }
+
+  /* ITM highlights */
+  .op-row.itm-call .op-call-side td { background: rgba(0,255,136,0.04); }
+  .op-row.itm-put  .op-put-side td  { background: rgba(255,34,68,0.04); }
+
+  .op-strike-cell {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: #e8f4ff;
+    padding: 5px 12px !important;
+    background: rgba(0,212,255,0.05);
+    border-left: 1px solid rgba(0,212,255,0.15);
+    border-right: 1px solid rgba(0,212,255,0.15);
+  }
+
+  .op-call-val { color: #00ff88; }
+  .op-put-val  { color: #ff6680; }
+  .op-neutral  { color: #7ab0d4; }
+  .op-delta-pos { color: #00d4ff; }
+  .op-delta-neg { color: #ff8c00; }
+
+  /* IV bar */
+  .op-iv-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: center;
+  }
+  .op-iv-val {
+    font-size: 9px;
+    color: #7ab0d4;
+    min-width: 30px;
+    text-align: right;
+  }
+  .op-iv-bar {
+    width: 36px;
+    height: 5px;
+    background: rgba(0,212,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .op-iv-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .op-loading {
+    text-align: center;
+    padding: 30px;
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    color: #00d4ff;
+    letter-spacing: 2px;
+    opacity: 0.7;
+  }
+  .op-loading::after {
+    content: '';
+    animation: op-dots 1.5s steps(3, end) infinite;
+  }
+  @keyframes op-dots {
+    0%   { content: '.'; }
+    33%  { content: '..'; }
+    66%  { content: '...'; }
+    100% { content: ''; }
+  }
+
+  .op-expiry-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .op-expiry-tab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 3px 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(0,212,255,0.2);
+    color: #7ab0d4;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+  }
+  .op-expiry-tab:hover { border-color: rgba(0,212,255,0.5); color: #00d4ff; }
+  .op-expiry-tab.active {
+    background: rgba(0,212,255,0.12);
+    border-color: rgba(0,212,255,0.5);
+    color: #00d4ff;
+  }
+
+  .op-status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #3a6080;
+  }
+  .op-status-ok { color: #00ff88; }
+  .op-status-demo { color: #ff8c00; }
+</style>
+
+<div class="op-panel card">
+  <div class="op-header card-header">
+    <span class="op-title card-title">OPTIONS INTELLIGENCE</span>
+    <span class="op-badge-live">● LIVE CHAIN</span>
+  </div>
+  <div class="op-body card-body">
+
+    <!-- Symbol input -->
+    <div class="op-symbol-bar">
+      <span class="op-symbol-label">SYMBOL ▶</span>
+      <input class="op-symbol-input" id="op-symbol-input" type="text" value="SPY" maxlength="8" placeholder="SPY" />
+      <button class="op-load-btn" id="op-load-btn" onclick="opLoadChain()">LOAD CHAIN</button>
+    </div>
+
+    <!-- Meta info bar -->
+    <div class="op-meta" id="op-meta">
+      <span class="op-meta-item">UNDERLYING: <span class="op-meta-val op-meta-highlight" id="op-underlying">$711.21</span></span>
+      <span class="op-meta-item">EXPIRY: <span class="op-meta-val" id="op-expiry">APR 24, 2026</span></span>
+      <span class="op-meta-item">DTE: <span class="op-meta-val" id="op-dte">2</span></span>
+      <span class="op-meta-item">IMPLIED MOVE: <span class="op-meta-val op-meta-move" id="op-impl-move">±1.8%</span></span>
+    </div>
+
+    <!-- Expiry tabs -->
+    <div class="op-expiry-tabs" id="op-expiry-tabs">
+      <button class="op-expiry-tab active">APR 24</button>
+      <button class="op-expiry-tab">MAY 2</button>
+      <button class="op-expiry-tab">MAY 16</button>
+      <button class="op-expiry-tab">JUN 20</button>
+    </div>
+
+    <!-- Chain table -->
+    <div class="op-chain-wrap" id="op-chain-wrap">
+      <div class="op-loading" id="op-loading" style="display:none;">LOADING CHAIN DATA</div>
+      <table class="op-table" id="op-chain-table">
+        <thead>
+          <tr>
+            <!-- Calls side -->
+            <th class="calls-hdr">VOL</th>
+            <th class="calls-hdr">OI</th>
+            <th class="calls-hdr">DELTA</th>
+            <th class="calls-hdr">IV</th>
+            <th class="calls-hdr">BID</th>
+            <th class="calls-hdr">ASK</th>
+            <th class="calls-hdr">LAST</th>
+            <!-- Strike -->
+            <th class="strike-hdr" style="text-align:center;">STRIKE</th>
+            <!-- Puts side -->
+            <th class="puts-hdr">LAST</th>
+            <th class="puts-hdr">BID</th>
+            <th class="puts-hdr">ASK</th>
+            <th class="puts-hdr">IV</th>
+            <th class="puts-hdr">DELTA</th>
+            <th class="puts-hdr">OI</th>
+            <th class="puts-hdr">VOL</th>
+          </tr>
+        </thead>
+        <tbody id="op-chain-body">
+          <!-- populated by JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="op-status-bar">
+      <span id="op-data-source" class="op-status-demo">● DEMO DATA · STATIC FALLBACK</span>
+      <span id="op-updated-at">UPDATED: —</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // ── Static demo data for SPY at $711.21 ──
+  const DEMO_PRICE = 711.21;
+  const DEMO_EXPIRY = 'APR 24, 2026';
+  const DEMO_DTE = 2;
+
+  const DEMO_STRIKES = [700, 705, 710, 715, 720, 725, 730];
+
+  // calls[i] = {last, bid, ask, iv, delta, oi, vol}
+  const DEMO_CALLS = [
+    { last: 11.80, bid: 11.65, ask: 11.95, iv: 0.182, delta: 0.82, oi: 12400, vol: 3820 },
+    { last:  7.25, bid:  7.10, ask:  7.40, iv: 0.195, delta: 0.68, oi: 18750, vol: 6240 },
+    { last:  3.45, bid:  3.30, ask:  3.60, iv: 0.208, delta: 0.51, oi: 34200, vol: 14800 },
+    { last:  1.12, bid:  1.05, ask:  1.18, iv: 0.228, delta: 0.31, oi: 29600, vol: 9340 },
+    { last:  0.35, bid:  0.32, ask:  0.38, iv: 0.256, delta: 0.14, oi: 21100, vol: 5620 },
+    { last:  0.11, bid:  0.09, ask:  0.13, iv: 0.298, delta: 0.06, oi: 14200, vol: 2810 },
+    { last:  0.04, bid:  0.02, ask:  0.05, iv: 0.342, delta: 0.02, oi:  8900, vol: 1120 },
+  ];
+
+  const DEMO_PUTS = [
+    { last:  0.08, bid:  0.06, ask:  0.10, iv: 0.195, delta: -0.18, oi:  9200, vol: 1640 },
+    { last:  0.28, bid:  0.25, ask:  0.32, iv: 0.210, delta: -0.32, oi: 17300, vol: 4290 },
+    { last:  0.85, bid:  0.80, ask:  0.90, iv: 0.222, delta: -0.49, oi: 31400, vol: 12600 },
+    { last:  2.65, bid:  2.55, ask:  2.75, iv: 0.240, delta: -0.69, oi: 24800, vol: 7180 },
+    { last:  5.90, bid:  5.75, ask:  6.05, iv: 0.262, delta: -0.86, oi: 15600, vol: 3410 },
+    { last: 10.30, bid: 10.10, ask: 10.50, iv: 0.295, delta: -0.94, oi:  8400, vol: 1280 },
+    { last: 14.95, bid: 14.70, ask: 15.20, iv: 0.335, delta: -0.98, oi:  4200, vol:  590 },
+  ];
+
+  function ivColor(iv) {
+    // iv 0.15 → green, 0.35+ → red
+    const t = Math.min(1, Math.max(0, (iv - 0.15) / 0.20));
+    const r = Math.round(0 + t * 255);
+    const g = Math.round(255 - t * 200);
+    const b = Math.round(136 * (1 - t));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function ivBarHTML(iv) {
+    const pct = Math.min(100, ((iv - 0.15) / 0.25) * 100);
+    return `
+      <div class="op-iv-bar-wrap">
+        <span class="op-iv-val">${(iv * 100).toFixed(1)}%</span>
+        <div class="op-iv-bar">
+          <div class="op-iv-fill" style="width:${pct}%;background:${ivColor(iv)};"></div>
+        </div>
+      </div>`;
+  }
+
+  function fmtNum(n, dec) {
+    return n.toFixed(dec !== undefined ? dec : 2);
+  }
+  function fmtOI(n) {
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return '' + n;
+  }
+
+  function renderChain(price, strikes, calls, puts) {
+    const tbody = document.getElementById('op-chain-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    // Find ATM
+    let atmIdx = 0;
+    let minDiff = Infinity;
+    strikes.forEach(function(s, i) {
+      const d = Math.abs(s - price);
+      if (d < minDiff) { minDiff = d; atmIdx = i; }
+    });
+
+    strikes.forEach(function(strike, i) {
+      const c = calls[i];
+      const p = puts[i];
+      const isATM = (i === atmIdx);
+      const isITMCall = strike < price;
+      const isITMPut  = strike > price;
+
+      let rowClass = 'op-row';
+      if (isATM) rowClass += ' atm';
+      if (isITMCall) rowClass += ' itm-call';
+      if (isITMPut)  rowClass += ' itm-put';
+
+      const itmCallBg = isITMCall && !isATM ? 'background:rgba(0,255,136,0.04);' : '';
+      const itmPutBg  = isITMPut  && !isATM ? 'background:rgba(255,34,68,0.04);'  : '';
+
+      const tr = document.createElement('tr');
+      tr.className = rowClass;
+      tr.innerHTML = `
+        <td style="${itmCallBg}" class="op-neutral">${fmtOI(c.vol)}</td>
+        <td style="${itmCallBg}" class="op-neutral">${fmtOI(c.oi)}</td>
+        <td style="${itmCallBg}" class="op-delta-pos">+${fmtNum(c.delta, 2)}</td>
+        <td style="${itmCallBg}">${ivBarHTML(c.iv)}</td>
+        <td style="${itmCallBg}" class="op-call-val">${fmtNum(c.bid)}</td>
+        <td style="${itmCallBg}" class="op-call-val">${fmtNum(c.ask)}</td>
+        <td style="${itmCallBg}" class="op-call-val" style="font-weight:600;">${fmtNum(c.last)}</td>
+        <td class="op-strike-cell">${strike}</td>
+        <td style="${itmPutBg}" class="op-put-val">${fmtNum(p.last)}</td>
+        <td style="${itmPutBg}" class="op-put-val">${fmtNum(p.bid)}</td>
+        <td style="${itmPutBg}" class="op-put-val">${fmtNum(p.ask)}</td>
+        <td style="${itmPutBg}">${ivBarHTML(p.iv)}</td>
+        <td style="${itmPutBg}" class="op-delta-neg">${fmtNum(p.delta, 2)}</td>
+        <td style="${itmPutBg}" class="op-neutral">${fmtOI(p.oi)}</td>
+        <td style="${itmPutBg}" class="op-neutral">${fmtOI(p.vol)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function updateMeta(price, expiry, dte) {
+    const underlyingEl = document.getElementById('op-underlying');
+    const expiryEl     = document.getElementById('op-expiry');
+    const dteEl        = document.getElementById('op-dte');
+    const implMoveEl   = document.getElementById('op-impl-move');
+    if (underlyingEl) underlyingEl.textContent = '$' + price.toFixed(2);
+    if (expiryEl) expiryEl.textContent = expiry;
+    if (dteEl) dteEl.textContent = dte;
+    // Implied move: ATM straddle / price (rough approx using ATM call + put)
+    // Use index 3 (ATM) or closest
+    const straddle = DEMO_CALLS[2].last + DEMO_PUTS[2].last; // ~$4.30
+    const implMove = (straddle / price * 100).toFixed(1);
+    if (implMoveEl) implMoveEl.textContent = '±' + implMove + '%';
+  }
+
+  function setStatus(live, timestamp) {
+    const src = document.getElementById('op-data-source');
+    const upd = document.getElementById('op-updated-at');
+    if (src) {
+      src.textContent = live ? '● LIVE DATA · API CONNECTED' : '● DEMO DATA · STATIC FALLBACK';
+      src.className   = live ? 'op-status-ok' : 'op-status-demo';
+    }
+    if (upd) {
+      const t = timestamp || new Date();
+      upd.textContent = 'UPDATED: ' + t.toLocaleTimeString('en-US', {hour12: false});
+    }
+  }
+
+  function loadDemoData() {
+    renderChain(DEMO_PRICE, DEMO_STRIKES, DEMO_CALLS, DEMO_PUTS);
+    updateMeta(DEMO_PRICE, DEMO_EXPIRY, DEMO_DTE);
+    setStatus(false, new Date());
+  }
+
+  window.opLoadChain = function() {
+    const sym = (document.getElementById('op-symbol-input').value || 'SPY').toUpperCase().trim();
+    const loading = document.getElementById('op-loading');
+    const table   = document.getElementById('op-chain-table');
+    if (loading) loading.style.display = 'block';
+    if (table)   table.style.display   = 'none';
+
+    fetch('http://localhost:8020/api/options?symbol=' + sym + '&expiry=nearest')
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        if (loading) loading.style.display = 'none';
+        if (table)   table.style.display   = '';
+        // Parse API response — expected: {price, expiry, dte, strikes, calls, puts}
+        const price   = data.price   || DEMO_PRICE;
+        const expiry  = data.expiry  || DEMO_EXPIRY;
+        const dte     = data.dte     || DEMO_DTE;
+        const strikes = data.strikes || DEMO_STRIKES;
+        const calls   = data.calls   || DEMO_CALLS;
+        const puts    = data.puts    || DEMO_PUTS;
+        renderChain(price, strikes, calls, puts);
+        updateMeta(price, expiry, dte);
+        setStatus(true, new Date());
+      })
+      .catch(function() {
+        // API not available — fall back to demo data
+        if (loading) loading.style.display = 'none';
+        if (table)   table.style.display   = '';
+        loadDemoData();
+      });
+  };
+
+  // Expiry tab switching (UI only)
+  document.querySelectorAll('.op-expiry-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.op-expiry-tab').forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      // In a real implementation, this would reload the chain for the selected expiry
+    });
+  });
+
+  // Initialize with demo data
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadDemoData);
+  } else {
+    loadDemoData();
+  }
+})();
+</script>

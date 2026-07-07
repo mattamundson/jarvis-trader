@@ -1,0 +1,222 @@
+//@version=5
+indicator("JARVIS Corey TPO Profile", shorttitle="JARVIS-TPO", overlay=true,
+     max_labels_count=500, max_lines_count=500)
+
+// ---------------------------------------------------------------------------
+// Note: Pine Script does not provide native TPO (Time-Price Opportunity) data.
+// This indicator approximates the key TPO profile outputs using volume-weighted
+// price analysis. VWAP serves as the POC proxy (highest volume cluster),
+// and the value area is estimated from the session's price distribution.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Inputs
+// ---------------------------------------------------------------------------
+i_lookback     = input.int(20,   "Bars for Profile",    minval=5,   maxval=200)
+i_va_pct       = input.float(0.70, "Value Area %",      minval=0.5, maxval=0.95, step=0.05)
+i_show_box     = input.bool(true,  "Show Value Area Box")
+i_show_lines   = input.bool(true,  "Show POC/VAH/VAL Lines")
+i_extend_right = input.int(20,   "Extend Lines (bars)", minval=0,   maxval=100)
+i_imbal_thresh = input.float(0.25, "Imbalance Threshold (ATR mult)", minval=0.1, maxval=3.0)
+
+// ---------------------------------------------------------------------------
+// Session range and profile calculation
+// ---------------------------------------------------------------------------
+range_high = ta.highest(high, i_lookback)
+range_low  = ta.lowest(low,   i_lookback)
+
+// POC approximation: VWAP over the lookback window is the best available proxy
+// for the volume-weighted center of mass (equivalent to TPO POC)
+poc_level = ta.vwap(close)
+
+// Value area approximation:
+// The 70% value area in TPO is centered on the POC and captures the price
+// range where ~70% of time/volume was spent. We approximate this using
+// the standard deviation of price * a scaling factor derived from the VA pct.
+// A normal distribution: 70% is within ~1.04 sigma, 80% within ~1.28 sigma.
+price_std   = ta.stdev(close, i_lookback)
+va_sigma    = 1.04  // multiplier for 70% coverage under normal distribution
+va_half     = price_std * va_sigma * (i_va_pct / 0.70)
+
+vah_level = poc_level + va_half
+val_level = poc_level - va_half
+
+// Clamp VAH/VAL within the session range
+vah_clamped = math.min(vah_level, range_high)
+val_clamped = math.max(val_level, range_low)
+
+// Value area width
+va_width = vah_clamped - val_clamped
+
+// Price location flags
+price_in_va   = close >= val_clamped and close <= vah_clamped
+price_vs_poc  = close > poc_level * 1.0002 ? "ABOVE" :
+                close < poc_level * 0.9998 ? "BELOW" : "AT"
+
+// ---------------------------------------------------------------------------
+// Imbalance detection (approximation)
+// Bear imbalance: recent strong gap/thrust UP — supply imbalance above
+// Bull imbalance: recent strong gap/thrust DOWN — demand imbalance below
+// Uses ATR-scaled moves to identify single-print / imbalance zones
+// ---------------------------------------------------------------------------
+atr_val    = ta.atr(14)
+bar_range  = high - low
+bar_thrust = math.abs(close - open)
+
+// Bear imbalance: candle range significantly above ATR with close near low
+// Suggests distribution / excess up top
+bear_candle     = bar_range > atr_val * i_imbal_thresh and close < (high + low) / 2.0
+bear_imbal_lvl  = bear_candle ? high : float(na)
+
+// Bull imbalance: candle range significantly above ATR with close near high
+// Suggests absorption / excess down below
+bull_candle     = bar_range > atr_val * i_imbal_thresh and close > (high + low) / 2.0
+bull_imbal_lvl  = bull_candle ? low : float(na)
+
+// Track most recent imbalance levels
+var float last_bear_imbal = na
+var float last_bull_imbal = na
+
+if not na(bear_imbal_lvl)
+    last_bear_imbal := bear_imbal_lvl
+if not na(bull_imbal_lvl)
+    last_bull_imbal := bull_imbal_lvl
+
+// ---------------------------------------------------------------------------
+// Persistent line drawing (delete + redraw on last bar)
+// ---------------------------------------------------------------------------
+var line line_poc = na
+var line line_vah = na
+var line line_val = na
+var box  box_va   = na
+
+if barstate.islast
+    // Clean up previous drawings
+    if not na(line_poc)
+        line.delete(line_poc)
+    if not na(line_vah)
+        line.delete(line_vah)
+    if not na(line_val)
+        line.delete(line_val)
+    if not na(box_va)
+        box.delete(box_va)
+
+    right_bar = bar_index + i_extend_right
+
+    if i_show_lines
+        // POC — red solid
+        line_poc := line.new(bar_index - i_lookback, poc_level,
+                             right_bar, poc_level,
+                             color=color.new(color.red, 0),
+                             width=2,
+                             style=line.style_solid)
+
+        // VAH — green solid
+        line_vah := line.new(bar_index - i_lookback, vah_clamped,
+                             right_bar, vah_clamped,
+                             color=color.new(color.green, 0),
+                             width=1,
+                             style=line.style_solid)
+
+        // VAL — green dashed
+        line_val := line.new(bar_index - i_lookback, val_clamped,
+                             right_bar, val_clamped,
+                             color=color.new(color.green, 0),
+                             width=1,
+                             style=line.style_dashed)
+
+    if i_show_box
+        // Value area box (semi-transparent)
+        box_va := box.new(bar_index - i_lookback, vah_clamped,
+                          right_bar, val_clamped,
+                          border_color=color.new(color.green, 50),
+                          border_width=1,
+                          bgcolor=color.new(color.green, 90))
+
+// ---------------------------------------------------------------------------
+// Imbalance level plots (visible on all bars)
+// ---------------------------------------------------------------------------
+plot(last_bear_imbal, title="Bear Imbalance",
+     color=color.new(color.orange, 40), linewidth=1, style=plot.style_circles)
+plot(last_bull_imbal, title="Bull Imbalance",
+     color=color.new(color.aqua,   40), linewidth=1, style=plot.style_circles)
+
+// ---------------------------------------------------------------------------
+// MCP readback labels — barstate.islast only
+// Format: "KEY: value"
+// All price levels rounded to syminfo.mintick precision
+// ---------------------------------------------------------------------------
+if barstate.islast
+    tick = syminfo.mintick
+
+    lbl_poc = str.tostring(math.round(poc_level   / tick) * tick, format.mintick)
+    lbl_vah = str.tostring(math.round(vah_clamped / tick) * tick, format.mintick)
+    lbl_val = str.tostring(math.round(val_clamped / tick) * tick, format.mintick)
+    lbl_vaw = str.tostring(math.round(va_width    / tick) * tick, format.mintick)
+    lbl_pva = str.tostring(price_in_va)
+    lbl_poc_rel = price_vs_poc
+    lbl_bear = na(last_bear_imbal) ? "na" :
+               str.tostring(math.round(last_bear_imbal / tick) * tick, format.mintick)
+    lbl_bull = na(last_bull_imbal) ? "na" :
+               str.tostring(math.round(last_bull_imbal / tick) * tick, format.mintick)
+
+    // Stack labels vertically above the last bar
+    label_x = bar_index + 2
+
+    label.new(label_x, poc_level + va_width * 3.2,
+         text="POC: " + lbl_poc,
+         style=label.style_label_left,
+         color=color.new(color.red, 60),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(label_x, poc_level + va_width * 2.8,
+         text="VAH: " + lbl_vah,
+         style=label.style_label_left,
+         color=color.new(color.green, 60),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(label_x, poc_level + va_width * 2.4,
+         text="VAL: " + lbl_val,
+         style=label.style_label_left,
+         color=color.new(color.green, 60),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(label_x, poc_level + va_width * 2.0,
+         text="VA_WIDTH: " + lbl_vaw,
+         style=label.style_label_left,
+         color=color.new(color.gray, 60),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(label_x, poc_level + va_width * 1.6,
+         text="PRICE_IN_VA: " + lbl_pva,
+         style=label.style_label_left,
+         color=price_in_va ? color.new(color.green, 60) : color.new(color.red, 60),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(label_x, poc_level + va_width * 1.2,
+         text="PRICE_VS_POC: " + lbl_poc_rel,
+         style=label.style_label_left,
+         color=lbl_poc_rel == "ABOVE" ? color.new(color.green, 60) :
+               lbl_poc_rel == "BELOW" ? color.new(color.red,   60) :
+               color.new(color.yellow, 60),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(label_x, poc_level + va_width * 0.8,
+         text="BEAR_IMBAL: " + lbl_bear,
+         style=label.style_label_left,
+         color=color.new(color.orange, 60),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(label_x, poc_level + va_width * 0.4,
+         text="BULL_IMBAL: " + lbl_bull,
+         style=label.style_label_left,
+         color=color.new(color.aqua, 60),
+         textcolor=color.white,
+         size=size.small)

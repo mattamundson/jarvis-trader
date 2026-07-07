@@ -21,6 +21,8 @@ from .models import (
     # IB Gateway
     IBConnectionTestResponse,
     IBConnectResponse,
+    JarvisQuickAnalysisRequest,
+    JarvisQuickAnalysisResponse,
     KillSwitchToggleResponse,
     NewsSentimentResponse,
     OrderActionEnum,
@@ -80,6 +82,8 @@ __all__ = [
     "KillSwitchToggleResponse",
     # Analysis
     "TechnicalAnalysisResponse",
+    "JarvisQuickAnalysisRequest",
+    "JarvisQuickAnalysisResponse",
     "BarsResponse",
     "RedditSentimentResponse",
     "NewsSentimentResponse",

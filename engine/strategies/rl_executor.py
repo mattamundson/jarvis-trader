@@ -6,7 +6,7 @@ predicts action, applies SafetyLayer gate, routes to IBKR paper trading.
 
 Architecture:
     APScheduler (every 1h at bar close: :59, Mon-Fri 07:00-15:00 CT)
-      → fetch latest 150 bars for symbol via yfinance or data_manager
+      → fetch latest 150 bars for symbol via data_manager (IBKR → Polygon → CSV cache)
       → compute_all_indicators()
       → build observation vector (18 features)
       → RL agent.predict(obs) → action (HOLD/BUY/SELL/CLOSE)
@@ -46,15 +46,8 @@ except ImportError:
     BackgroundScheduler = None  # type: ignore[assignment,misc]
     CronTrigger = None  # type: ignore[assignment,misc]
 
-try:
-    import yfinance as yf
-
-    YFINANCE_AVAILABLE = True
-except ImportError:
-    YFINANCE_AVAILABLE = False
-    yf = None  # type: ignore[assignment]
-
 from backtest.signals import compute_all_indicators
+from discord.signal_context import DiscordSignalContext
 from strategies.rl_config import (
     ACTION_NAMES,
     Action,
@@ -63,18 +56,6 @@ from strategies.rl_environment import extract_features
 
 logger = logging.getLogger(__name__)
 
-# ── Symbol → yfinance ticker mapping ─────────────────────────────────────────
-# Micro futures use continuous contract tickers
-_YF_TICKER_MAP: dict[str, str] = {
-    "MES": "MES=F",
-    "MNQ": "MNQ=F",
-    "MCL": "MCL=F",
-    "MGC": "MGC=F",
-    "ES": "ES=F",
-    "NQ": "NQ=F",
-    "CL": "CL=F",
-    "GC": "GC=F",
-}
 
 # ── Module-level executor registry ───────────────────────────────────────────
 # Keyed by symbol (upper-case). Allows API layer to retrieve/stop any executor.
@@ -112,7 +93,7 @@ class RLExecutor:
     symbol      : Futures symbol (MES, MNQ, MCL …)
     model_path  : Path to saved PPO model (without .zip extension)
     data_manager: Optional MarketDataManager — used to fetch bars from IBKR
-                  if available; falls back to yfinance when None or disconnected.
+                  if available; falls back to BacktestDataLoader when None or disconnected.
     safety_layer: Optional SafetyLayer — used for pre-trade risk gate.
                   When None, orders are only simulated (no IBKR submission).
     """
@@ -148,6 +129,9 @@ class RLExecutor:
         # Lazy-loaded model (loaded once on first run or at start())
         self._agent = None  # RLTradingAgent instance
         self._model_loaded: bool = False
+
+        # Discord signal context for 5 additional RL features (indices 18-22)
+        self._discord_ctx = DiscordSignalContext()
 
         logger.info("[RLExecutor] Created executor for %s | model_path=%s", self.symbol, model_path)
 
@@ -204,18 +188,21 @@ class RLExecutor:
 
         Priority:
           1. data_manager (IBKR) when connected
-          2. yfinance as fallback
+          2. data_manager.get_bars (Polygon) as fallback
+          3. BacktestDataLoader (CSV cache) as final fallback
 
         Returns a raw OHLCV DataFrame with lower-case column names,
         or None on failure.
         """
-        ticker = _YF_TICKER_MAP.get(self.symbol, f"{self.symbol}=F")
-
         # Try IBKR data_manager first
         if self._data_manager is not None:
             try:
                 ibkr = getattr(self._data_manager, "ibkr", None)
-                if ibkr is not None and ibkr.isConnected():
+                # IBKRDataConnector exposes is_connected() (snake_case); the
+                # camelCase isConnected() is ib_insync's raw IB API and does NOT
+                # exist on our wrapper — calling it raised AttributeError every
+                # cycle, so the IBKR bar path was dead and always fell to Polygon.
+                if ibkr is not None and ibkr.is_connected():
                     # Run the async IB fetch in a fresh event loop slice;
                     # the executor runs in a BackgroundScheduler thread.
                     loop = _get_or_create_event_loop()
@@ -234,53 +221,77 @@ class RLExecutor:
                         return df
             except Exception as exc:
                 logger.warning(
-                    "[RLExecutor] IBKR fetch failed for %s (%s) — falling back to yfinance",
+                    "[RLExecutor] IBKR fetch failed for %s (%s) — trying Polygon",
                     self.symbol,
                     exc,
                 )
 
-        # Fallback: yfinance
-        if not YFINANCE_AVAILABLE:
-            logger.error("[RLExecutor] yfinance not available and IBKR not connected.")
-            return None
-
-        try:
-            raw = yf.download(ticker, period="60d", interval="1h", progress=False, auto_adjust=True)
-            if raw is None or len(raw) < 60:
-                logger.warning(
-                    "[RLExecutor] yfinance returned only %d bars for %s",
-                    len(raw) if raw is not None else 0,
-                    self.symbol,
+            # Try Polygon via data_manager.get_bars
+            try:
+                loop = _get_or_create_event_loop()
+                df = loop.run_until_complete(
+                    self._data_manager.get_bars(
+                        symbol=self.symbol,
+                        lookback_days=60,
+                        timeframe="1h",
+                        is_futures=True,
+                    )
                 )
-                return None
+                if df is not None and len(df) >= 60:
+                    df.columns = [c.lower() for c in df.columns]
+                    df = df.tail(n).reset_index(drop=True)
+                    logger.debug(
+                        "[RLExecutor] Fetched %d bars via Polygon for %s", len(df), self.symbol
+                    )
+                    return df
+            except Exception as exc:
+                logger.warning(
+                    "[RLExecutor] Polygon fetch failed for %s (%s) — falling back to CSV cache",
+                    self.symbol,
+                    exc,
+                )
 
-            # Flatten multi-level columns if present (yfinance ≥0.2 quirk)
-            if isinstance(raw.columns, pd.MultiIndex):
-                raw.columns = raw.columns.get_level_values(0)
+        # Final fallback: BacktestDataLoader (CSV cache)
+        try:
+            from datetime import datetime, timedelta
 
-            df = raw[["Open", "High", "Low", "Close", "Volume"]].copy()
-            df.columns = ["open", "high", "low", "close", "volume"]
-            df = df.dropna().reset_index(drop=True)
-            df = df.tail(n).reset_index(drop=True)
-            logger.debug("[RLExecutor] Fetched %d bars via yfinance for %s", len(df), self.symbol)
-            return df
+            from backtest.data_loader import BacktestDataLoader
 
+            end_date = datetime.utcnow().strftime("%Y-%m-%d")
+            start_date = (datetime.utcnow() - timedelta(days=60)).strftime("%Y-%m-%d")
+            loader = BacktestDataLoader()
+            df = loader.load(self.symbol, start_date, end_date, "1h")
+            if df is not None and len(df) >= 60:
+                if isinstance(df.columns, pd.Index):
+                    df.columns = [c.lower() for c in df.columns]
+                df = df.tail(n).reset_index(drop=True)
+                logger.debug(
+                    "[RLExecutor] Fetched %d bars via CSV cache for %s", len(df), self.symbol
+                )
+                return df
         except Exception as exc:
-            logger.error("[RLExecutor] yfinance fetch failed for %s: %s", self.symbol, exc)
-            return None
+            logger.error(
+                "[RLExecutor] BacktestDataLoader fetch failed for %s: %s", self.symbol, exc
+            )
+
+        logger.error("[RLExecutor] All data sources failed for %s — cannot fetch bars", self.symbol)
+        return None
 
     # ── Observation builder ───────────────────────────────────────────────
 
     def _compute_obs(self, df: pd.DataFrame) -> tuple[Optional[np.ndarray], Optional[pd.DataFrame]]:
         """
-        Run compute_all_indicators on *df* and build the 18-feature observation
+        Run compute_all_indicators on *df* and build the 23-feature observation
         vector for the most recent bar (last row), using the executor's current
         paper position state.
+
+        Features 0-17: base technical indicators (from extract_features)
+        Features 18-22: Discord signal context (from DiscordSignalContext)
 
         Returns
         -------
         (obs, df_indicators)
-            obs          : np.ndarray of shape (N_FEATURES,), or None on failure.
+            obs          : np.ndarray of shape (23,), or None on failure.
             df_indicators: Fully processed DataFrame with all indicator columns,
                            or None on failure.  Callers can read the last-bar
                            close price directly from this instead of re-running
@@ -295,7 +306,8 @@ class RLExecutor:
                 return None, None
 
             idx = len(df_ind) - 1
-            obs = extract_features(
+            last_row = df_ind.iloc[idx]
+            base_obs = extract_features(
                 df=df_ind,
                 idx=idx,
                 position=self._paper_position,
@@ -303,6 +315,28 @@ class RLExecutor:
                 bars_in_trade=self._bars_in_trade,
                 symbol=self.symbol,
             )
+
+            # Append Discord signal context features (indices 18-22)
+            try:
+                # After reset_index(drop=True) the index is an integer — fall back to now()
+                raw_name = last_row.name
+                if hasattr(raw_name, "to_pydatetime"):
+                    last_ts = raw_name.to_pydatetime()
+                else:
+                    last_ts = datetime.now(timezone.utc)
+                atr_val = float(last_row.get("atr", 1.0) or 1.0)
+                price_val = float(last_row.get("close", 0.0) or 0.0)
+                discord_feats = self._discord_ctx.get_feature_list(
+                    symbol=self.symbol,
+                    timestamp=last_ts,
+                    price=price_val,
+                    atr=atr_val,
+                )
+                discord_arr = np.array(discord_feats, dtype=np.float32)
+            except Exception:
+                discord_arr = np.array([0.0, 0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+
+            obs = np.concatenate([base_obs, discord_arr])
             return obs, df_ind
 
         except KeyError as exc:
@@ -447,6 +481,48 @@ class RLExecutor:
                 self.symbol,
                 current_price,
             )
+
+        # Fire WhatsApp notifications for BUY/SELL entries and CLOSE exits
+        try:
+            import asyncio as _aio
+
+            from notifications.openclaw_notifier import (
+                notify_signal as _oc_sig,
+            )
+            from notifications.openclaw_notifier import (
+                notify_trade_closed as _oc_tc,
+            )
+
+            _loop = _aio.get_event_loop()
+            if action_name in ("BUY", "SELL"):
+                _coro = _oc_sig(
+                    symbol=self.symbol,
+                    action=action_name,
+                    confidence=0.0,
+                    reason=f"RL model → pos {self._paper_position}→{new_position}",
+                    market=self.symbol,
+                )
+            elif action_name == "CLOSE":
+                _entry = self._entry_price or current_price
+                _pnl_est = (current_price - _entry) * (1 if self._paper_position == 1 else -1)
+                _coro = _oc_tc(
+                    symbol=self.symbol,
+                    action=ib_action,
+                    entry_price=_entry,
+                    exit_price=current_price,
+                    pnl=_pnl_est,
+                    quantity=1,
+                )
+            else:
+                _coro = None
+
+            if _coro is not None:
+                if _loop.is_running():
+                    _loop.create_task(_coro)
+                else:
+                    _loop.run_until_complete(_coro)
+        except Exception:
+            pass  # Non-blocking, best-effort
 
         # Update paper position state
         if new_position is not None:

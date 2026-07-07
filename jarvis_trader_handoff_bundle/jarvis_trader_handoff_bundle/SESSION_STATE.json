@@ -1,0 +1,35 @@
+{
+  "project": "jarvis-trader",
+  "last_updated": "REPLACE_WITH_ISO_TIMESTAMP",
+  "session_type": "handoff",
+  "current_priority": "REPLACE_WITH_CURRENT_PRIORITY",
+  "repo_root": "C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader",
+  "branch": "UNKNOWN",
+  "running_services": [],
+  "stopped_services": [],
+  "broken_items": [],
+  "in_progress": [],
+  "blockers": [],
+  "key_decisions": [],
+  "todo": [
+    {
+      "task": "REPLACE_WITH_TASK",
+      "status": "TODO",
+      "priority": 1,
+      "notes": ""
+    }
+  ],
+  "git": {
+    "status": "PENDING",
+    "log_oneline_20": "PENDING",
+    "diff_stat": "PENDING"
+  },
+  "resume_instructions": [
+    "Open repo root.",
+    "Read HANDOFF_OpenAI_SESSION.md.",
+    "Read NEXT_STEPS.md.",
+    "Read SESSION_STATE.json.",
+    "Run git status, git log --oneline -20, git diff --stat.",
+    "Continue highest-priority unfinished task."
+  ]
+}

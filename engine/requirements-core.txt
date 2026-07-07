@@ -6,7 +6,7 @@
 #   vectorbt       — heavy Cython deps
 #   nautilus_trader — complex build requirements
 #   langchain*     — not used in core pipeline, add later if needed
-#   ib_async       — add when IBKR account is ready
+#   schwab-py      — add when Schwab account is ready  (ib_async now in core)
 #   schwab-py      — add when Schwab account is ready
 #   questdb        — optional time-series DB, add when needed
 #   prometheus-client — optional monitoring, add when needed
@@ -16,7 +16,8 @@
 prometheus-fastapi-instrumentator==6.1.0  # Prometheus metrics export for FastAPI
 
 # ── Core Framework ─────────────────────────────────────────────────────────
-fastapi==0.115.12
+fastapi==0.135.3          # upgraded from 0.115.12 to support starlette 1.0.0 (mcp dependency)
+python-multipart==0.0.20  # File/Form routes (FastAPI)
 uvicorn[standard]==0.34.0
 pydantic==2.11.2
 pydantic-settings==2.8.1
@@ -24,19 +25,29 @@ slowapi==0.1.9            # Rate limiting for FastAPI
 
 # ── LLM ────────────────────────────────────────────────────────────────────
 anthropic==0.50.0
+google-auth==2.50.0       # required by anthropic AsyncAnthropicVertex (Claude-on-Vertex transport)
+google-genai==1.72.0      # Gemini / Vertex AI via the current Google Gen AI SDK
+claude-agent-sdk==0.1.57  # Claude Managed Agents SDK (public beta, 2026-04-08)
+
+# ── IB Gateway ─────────────────────────────────────────────────────────────
+ib_async==2.1.0            # Interactive Brokers API (paper port 4002)
 
 # ── Market Data ────────────────────────────────────────────────────────────
-yfinance==0.2.54          # Yahoo Finance — free historical OHLCV, no key needed
 polygon-api-client==1.14.4 # Polygon.io — optional, needs API key
 alpaca-py==0.35.0         # Alpaca — paper trading data, free with API key
+schwab-py==1.5.1          # Charles Schwab Trader API (1.4.2 yanked / unavailable on PyPI)
 
 # ── Technical Analysis ─────────────────────────────────────────────────────
-pandas-ta==0.4.67b0       # 150+ indicators, pure Python (no C binary needed)
+pandas-ta==0.4.67b0       # 150+ indicators. Windows: requires alligator.py:6 patch (comment `from posix import pread` — see project_engine_boot_state_2026_05_04_eve.md)
+
+# ── ML / Predictions ───────────────────────────────────────────────────────
+xgboost==3.2.0            # Used by engine/learning/model_drawer.py — Win amd64 wheel (101.7 MB)
 
 # ── Data Processing ────────────────────────────────────────────────────────
-pandas>=2.2.3
+pandas>=3.0,<4.0          # converged to 3.x 2026-06-26 (dev/local already on 3.0.2; PR #161 str-Enum fix). <4.0 guards the Pandas4 break the deprecation warnings foreshadow.
 numpy>=2.2.6
 scipy>=1.15.2
+quantstats==0.0.81        # Portfolio analytics (Sortino/Calmar/max-DD/monthly returns). Used by engine/backtest/stark_forge.py + engine/reports/quantstats_metrics.py.
 
 # ── Databases ──────────────────────────────────────────────────────────────
 asyncpg==0.31.0           # Async PostgreSQL driver (pure Python, no build needed)
@@ -48,15 +59,27 @@ httpx==0.28.1
 websockets==14.2
 aiohttp==3.11.14
 
+# ── Messaging / Alerts ─────────────────────────────────────────────────────
+twilio==9.10.9            # WhatsApp approval webhook + outbound alerts (whatsapp_router.py)
+winotify==1.1.0           # Windows desktop toast for signal broadcast (notifications/windows_toast.py); opt-in WINDOWS_TOAST_ENABLED
+
 # ── Sentiment & News ───────────────────────────────────────────────────────
 finnhub-python==2.4.22    # Finnhub — free tier: 60 req/min
 praw==7.8.1               # Reddit API (for WSB/r/stocks)
+readability-lxml==0.8.4.1 # Article extraction (from readability import Document) — discord/deep_analyzer/handlers/url.py
 
 # ── Economic Data ──────────────────────────────────────────────────────────
 fredapi==0.5.2            # FRED — Federal Reserve data, free, no key needed
 
 # ── Scheduling ─────────────────────────────────────────────────────────────
 apscheduler==3.11.0
+tzlocal==5.3.1            # APScheduler local-timezone dep; pin explicitly (not pulled transitively in the CI core install -> ModuleNotFoundError in scheduler tests)
+
+# ── RL / session tests (full pytest on CI) ─────────────────────────────────
+gymnasium==1.0.0          # TradingEnvironment + test_rl_module
+torch>=2.5.1              # stable-baselines3 backend (CPU wheels on Linux CI)
+stable-baselines3==2.7.1  # RL tests; 2.4.x pins numpy<2.0 (conflicts with numpy>=2.2.x)
+pytz==2024.2              # journal/session routes (test_session4_*)
 
 # ── Utilities ──────────────────────────────────────────────────────────────
 python-dotenv==1.1.0
@@ -64,6 +87,16 @@ loguru==0.7.3
 rich==13.9.4              # Pretty terminal output
 tenacity==9.0.0           # Retry logic with exponential backoff
 
+# ── Strategy optimization ──────────────────────────────────────────────────
+# scikit-optimize powers /wfe/optimize-bayesian (engine/backtest/bayesian_optimizer.py).
+# Without this pin, the endpoint silently falls back to random search.
+scikit-optimize==0.10.2
+
 # ── Testing ────────────────────────────────────────────────────────────────
 pytest==8.3.5
 pytest-asyncio==0.26.0
+pytest-timeout==2.3.1
+pytest-cov==5.0.0  # tier-1 CI uses --cov=engine
+hypothesis==6.152.4  # property-based tests (test_gate_v2_properties, etc.)
+respx==0.23.1        # HTTP mocking for httpx — required by test_discord_deep_analyzer/* (CI collection)
+pypdf==6.11.0        # PDF parsing — imported by discord deep-analyzer document handler + its tests

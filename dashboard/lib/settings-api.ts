@@ -1,5 +1,6 @@
 // Settings API — kill switch, risk config, IB gateway controls
-// All calls proxy through Next.js rewrites → http://localhost:8010
+// All calls proxy through fetchEngine/postEngine in @/lib/api.ts
+// NEVER hardcode an absolute engine URL or make fetch calls directly.
 
 import { fetchEngine, postEngine } from "@/lib/api";
 
@@ -61,6 +62,8 @@ export async function getSafetyConfig(): Promise<SafetyConfig> {
 export interface IBGatewayStatus {
   status: string;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   paper_mode: boolean;
   live_trading: boolean;
   kill_switch_active: boolean;

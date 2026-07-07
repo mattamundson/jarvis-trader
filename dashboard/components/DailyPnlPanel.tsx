@@ -2,24 +2,16 @@
 
 import { useMemo } from "react";
 import useSWR from "swr";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ReferenceLine,
-  ResponsiveContainer,
-} from "recharts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { fetchEngine } from "@/lib/api";
+import { fetchDailyPnlHistoryNormalized } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import type { DailyPnlRecord } from "@/lib/api";
+import { LightweightSeriesChart, type SeriesPoint } from "@/components/charts/LightweightSeriesChart";
 
 const REFRESH_MS = 30_000;
 
-function fetcher<T>(path: string): Promise<T> {
-  return fetchEngine<T>(path);
+async function dailyPnlFetcher(): Promise<DailyPnlRecord[]> {
+  return fetchDailyPnlHistoryNormalized({ days: 30 });
 }
 
 function formatShortDate(iso: string): string {
@@ -29,8 +21,8 @@ function formatShortDate(iso: string): string {
 
 export function DailyPnlPanel() {
   const { data: records, isLoading, error } = useSWR<DailyPnlRecord[]>(
-    "/portfolio/history/daily-pnl?days=30",
-    fetcher,
+    "portfolio/history/daily-pnl-normalized-30",
+    dailyPnlFetcher,
     { refreshInterval: REFRESH_MS }
   );
 
@@ -44,6 +36,12 @@ export function DailyPnlPanel() {
   const totalRealized = rows.reduce((sum, r) => sum + r.realized_pnl, 0);
   const profitDays = rows.filter((r) => r.realized_pnl > 0).length;
   const lossDays = rows.filter((r) => r.realized_pnl < 0).length;
+
+  // Same cumulative_pnl values, handed to the TradingView renderer as an area series.
+  const series: SeriesPoint[] = useMemo(
+    () => rows.map((r) => ({ time: r.date, value: r.cumulative_pnl })),
+    [rows],
+  );
 
   return (
     <Card>
@@ -104,49 +102,15 @@ export function DailyPnlPanel() {
 
             {/* Cumulative equity area chart */}
             {rows.length > 1 && (
-              <div className="h-36">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={rows}
-                    margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="dailyPnlGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={gradientColor} stopOpacity={0.3} />
-                        <stop offset="95%" stopColor={gradientColor} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis
-                      dataKey="date"
-                      hide
-                      tickFormatter={formatShortDate}
-                    />
-                    <YAxis domain={["auto", "auto"]} hide />
-                    <ReferenceLine y={0} stroke="hsl(222 47% 14%)" strokeDasharray="3 3" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(222 47% 9%)",
-                        border: "1px solid hsl(222 47% 14%)",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                      }}
-                      labelFormatter={(label: string) => formatShortDate(label)}
-                      formatter={(value: number, name: string) => [
-                        formatCurrency(value),
-                        name === "cumulative_pnl" ? "Cumulative" : "Daily",
-                      ]}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="cumulative_pnl"
-                      stroke={gradientColor}
-                      strokeWidth={1.5}
-                      fill="url(#dailyPnlGrad)"
-                      dot={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <LightweightSeriesChart
+                data={series}
+                type="area"
+                color={gradientColor}
+                topColor={`${gradientColor}4D`}
+                bottomColor={`${gradientColor}00`}
+                height={144}
+                valueFormat="dollar"
+              />
             )}
 
             {/* Daily breakdown table */}

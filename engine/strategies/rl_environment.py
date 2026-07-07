@@ -4,7 +4,8 @@ JARVIS TRADER — RL Trading Environment
 Gymnasium-compatible trading environment that uses jarvis-trader's
 existing signal pipeline as the observation space.
 
-State  : 18 float features derived from signals.py compute_all_indicators()
+State  : 23 float features — 18 from signals.py compute_all_indicators()
+         + 5 Discord signal context features (indices 18-22)
 Actions: HOLD=0, BUY=1, SELL=2, CLOSE=3  (Discrete 4)
 Reward : P&L / ATR  −  hold cost  −  entry cost
 
@@ -14,11 +15,17 @@ Usage:
     env = build_env("MES", df)   # df = processed DataFrame from signals.py
     obs, info = env.reset()
     obs, reward, terminated, truncated, info = env.step(Action.BUY)
+
+    # With Discord signal context (optional — backward compatible):
+    from engine.discord.signal_context import DiscordSignalContext
+    ctx = DiscordSignalContext()
+    env = build_env("MES", df, discord_context=ctx)
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -37,14 +44,15 @@ except ImportError:
     _GymBase = object  # type: ignore
 
 from backtest.signals import compute_all_indicators, layer1_regime
+from discord.signal_context import DiscordSignalContext
 from strategies.rl_config import (
     EMA_TREND_SCORES,
+    MAX_BARS_IN_TRADE,
     MAX_EPISODE_BARS,
     N_ACTIONS,
     N_FEATURES,
     REGIME_SCORES,
     REWARD_CONFIG,
-    VOLUME_SIGNAL_SCORES,
     Action,
     get_instrument_params,
 )
@@ -64,7 +72,10 @@ def extract_features(
     symbol: str,
 ) -> np.ndarray:
     """
-    Extract the 18-feature state vector from a single DataFrame row.
+    Extract the 18-feature base state vector from a single DataFrame row.
+
+    Discord signal context features (indices 18-22) are appended separately
+    in TradingEnvironment._get_obs() when a discord_context is provided.
 
     Parameters
     ----------
@@ -77,7 +88,7 @@ def extract_features(
 
     Returns
     -------
-    np.ndarray of shape (N_FEATURES,), dtype float32
+    np.ndarray of shape (18,), dtype float32 — base features only
     """
     row = df.iloc[idx]
     stc_os, stc_ob = get_instrument_params(symbol)[:2]
@@ -114,7 +125,11 @@ def extract_features(
     stc_below_ob = 1.0 if stc_raw < stc_ob else 0.0
 
     # ── ATR / volatility ────────────────────────────────────────────────────
-    atr_14 = float(atr)
+    # atr_14 replaced by cci_50_norm: commodity-specific overbought/oversold signal.
+    # Raw ATR is scale-dependent (MCL ~1.5, MES ~20) and redundant with atr_normalized.
+    # CCI > 100 = overbought, CCI < -100 = oversold; clip to [-200, 200] → divide by 200.
+    cci_raw = float(row.get("cci_50", 0.0) or 0.0)
+    cci_50_norm = float(max(-1.0, min(1.0, cci_raw / 200.0)))
     atr_normalized = float(atr / close) if close > 0 else 0.0
 
     window_start_atr = max(0, idx - 19)
@@ -138,8 +153,10 @@ def extract_features(
     vol_avg = float(vol_window.mean()) if len(vol_window) > 0 else 1.0
     volume_vs_avg = float(volume / vol_avg) if vol_avg > 0 else 1.0
 
-    vol_sig_str = str(row.get("volume_signal", "balanced") or "balanced")
-    volume_signal = VOLUME_SIGNAL_SCORES.get(vol_sig_str, 0.0)
+    # buy_pct_cont replaces categorical volume_signal: continuous [0, 1] buying pressure.
+    # 0.0 = all sellers, 0.5 = balanced, 1.0 = all buyers. Higher resolution than 3-state.
+    buy_pct_raw = float(row.get("buy_pct", 50.0) or 50.0)
+    volume_signal = float(buy_pct_raw / 100.0)  # normalize [0, 100] → [0, 1]
 
     # ── Position state ───────────────────────────────────────────────────────
     current_position = float(position)
@@ -160,7 +177,7 @@ def extract_features(
             stc_slope,
             stc_above_os,
             stc_below_ob,
-            atr_14,
+            cci_50_norm,  # was: atr_14 (raw, scale-dependent) → CCI normalized [-1,1]
             atr_normalized,
             atr_vs_20d_avg,
             regime_score,
@@ -189,12 +206,16 @@ class TradingEnvironment(_GymBase):
 
     Parameters
     ----------
-    symbol        : Futures symbol (MES, MNQ, MCL)
-    df            : DataFrame with OHLCV + all indicators from compute_all_indicators()
-    initial_capital: Starting capital for P&L tracking
-    max_position  : Maximum position size in contracts (default 1)
+    symbol          : Futures symbol (MES, MNQ, MCL)
+    df              : DataFrame with OHLCV + all indicators from compute_all_indicators()
+    initial_capital : Starting capital for P&L tracking
+    max_position    : Maximum position size in contracts (default 1)
+    discord_context : Optional DiscordSignalContext instance. When provided, appends
+                      5 Discord signal features (indices 18-22) to each observation.
+                      When None (default), those indices are filled with zeros for
+                      full backward compatibility.
 
-    Observation space : Box(shape=(18,), dtype=float32)
+    Observation space : Box(shape=(23,), dtype=float32)  — 18 base + 5 discord
     Action space      : Discrete(4) — HOLD, BUY, SELL, CLOSE
     """
 
@@ -206,6 +227,7 @@ class TradingEnvironment(_GymBase):
         max_position: int = 1,
         max_episode_bars: int = MAX_EPISODE_BARS,
         reward_config: dict | None = None,
+        discord_context: Optional[DiscordSignalContext] = None,
     ):
         if not GYM_AVAILABLE:
             raise ImportError("gymnasium is required: pip install gymnasium")
@@ -221,6 +243,7 @@ class TradingEnvironment(_GymBase):
         self._episode_end: int = self.n_bars  # updated each reset()
 
         self._reward_cfg = {**REWARD_CONFIG, **(reward_config or {})}
+        self.discord_context = discord_context  # None → backward-compat zeros at indices 18-22
 
         params = get_instrument_params(self.symbol)
         self.stc_os = params[0]
@@ -311,6 +334,7 @@ class TradingEnvironment(_GymBase):
 
         realized_pnl = 0.0
         is_new_entry = False
+        forced_close = False
 
         # ── Execute action ───────────────────────────────────────────────
         if action == Action.BUY:
@@ -364,6 +388,29 @@ class TradingEnvironment(_GymBase):
         if self._position != 0:
             self._bars_in_trade += 1
 
+        # Forced close: hard cap on bars in trade (Run 10 — prevents 100+ bar holds)
+        if self._position != 0 and self._bars_in_trade >= MAX_BARS_IN_TRADE:
+            forced_close = True
+            force_close = (
+                float(self.df.iloc[self._idx]["close"]) if self._idx < len(self.df) else close
+            )
+            if self._position == 1:
+                forced_pnl = force_close - self._entry_price
+            else:
+                forced_pnl = self._entry_price - force_close
+            realized_pnl += forced_pnl
+            self._record_trade(forced_pnl)
+            self._position = 0
+            self._entry_price = 0.0
+            self._bars_in_trade = 0
+            logger.debug(
+                "Forced close at bar %d — held %d bars (cap=%d), pnl=%.4f",
+                self._idx,
+                MAX_BARS_IN_TRADE,
+                MAX_BARS_IN_TRADE,
+                forced_pnl,
+            )
+
         # Track flat-HOLD rate (more meaningful than blended hold_rate)
         if self._position == 0:
             self._bars_flat += 1
@@ -380,6 +427,7 @@ class TradingEnvironment(_GymBase):
             realized_pnl=realized_pnl,
             atr=atr,
             is_new_entry=is_new_entry,
+            forced_close=forced_close,
         )
         self._total_reward += reward
 
@@ -399,7 +447,7 @@ class TradingEnvironment(_GymBase):
             self._position = 0
 
         obs = self._get_obs() if not terminated else np.zeros(N_FEATURES, dtype=np.float32)
-        info = self._get_info(realized_pnl=realized_pnl)
+        info = self._get_info(realized_pnl=realized_pnl, forced_close=forced_close)
 
         return obs, reward, terminated, False, info
 
@@ -419,7 +467,7 @@ class TradingEnvironment(_GymBase):
 
     def _get_obs(self) -> np.ndarray:
         idx = min(self._idx, self.n_bars - 1)
-        return extract_features(
+        base_obs = extract_features(
             df=self.df,
             idx=idx,
             position=self._position,
@@ -428,7 +476,37 @@ class TradingEnvironment(_GymBase):
             symbol=self.symbol,
         )
 
-    def _get_info(self, realized_pnl: float = 0.0) -> dict:
+        # Append 5 Discord signal context features (indices 18-22).
+        # Falls back to safe defaults when discord_context is None or query fails.
+        if self.discord_context is not None:
+            try:
+                row = self.df.iloc[idx]
+                # Resolve timestamp: use DataFrame index if it is datetime-typed
+                if hasattr(self.df.index, "dtype") and hasattr(self.df.index[idx], "to_pydatetime"):
+                    timestamp = self.df.index[idx].to_pydatetime()
+                elif isinstance(self.df.index[idx], datetime):
+                    timestamp = self.df.index[idx]
+                else:
+                    timestamp = datetime.now()
+                price = float(row.get("close", row.get("Close", 0.0)))
+                atr = float(row.get("atr", 1.0) or 1.0)
+                discord_feats = self.discord_context.get_feature_list(
+                    symbol=self.symbol,
+                    timestamp=timestamp,
+                    price=price,
+                    atr=atr,
+                    jarvis_bias="NEUTRAL",  # can be enhanced later to use regime_score
+                )
+                discord_arr = np.array(discord_feats, dtype=np.float32)
+            except Exception:
+                discord_arr = np.array([0.0, 0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+        else:
+            # No discord context — fill with neutral defaults (0.5 for win rate, 0 elsewhere)
+            discord_arr = np.array([0.0, 0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+
+        return np.concatenate([base_obs, discord_arr])
+
+    def _get_info(self, realized_pnl: float = 0.0, forced_close: bool = False) -> dict:
         return {
             "idx": self._idx,
             "position": self._position,
@@ -439,6 +517,7 @@ class TradingEnvironment(_GymBase):
             "realized_pnl": realized_pnl,
             "total_reward": self._total_reward,
             "n_trades": len(self._episode_trades),
+            "forced_close": forced_close,
         }
 
     def _calculate_reward(
@@ -447,14 +526,38 @@ class TradingEnvironment(_GymBase):
         realized_pnl: float,
         atr: float,
         is_new_entry: bool,
+        forced_close: bool = False,
     ) -> float:
         cfg = self._reward_cfg
+
+        # PBR (TensorTrade ML/AI Novel #3): subtract real broker commission from
+        # realized_pnl in dollars BEFORE the ATR-normalised reward calculation,
+        # so the agent learns to clear the commission floor (~$1.30/contract MCL).
+        # Charged only on closing trades (realized_pnl != 0); is_new_entry trades
+        # have realized_pnl == 0 and pay nothing here. Defaults to 0.0 to keep
+        # legacy training runs reproducible (see rl_config.REWARD_CONFIG).
+        commission = (
+            cfg.get("commission_usd_per_contract", 0.0)
+            * cfg.get("contracts_per_trade", 1)
+        )
+        if realized_pnl != 0.0 and commission > 0.0:
+            realized_pnl = realized_pnl - commission
 
         # Primary: P&L in ATR units (scale-invariant across instruments)
         pnl_reward = (realized_pnl / atr * cfg["pnl_atr_weight"]) if atr > 0 else 0.0
 
         # Flat holding cost per bar when in a position (NOT compounding — was a bug)
-        hold_cost = cfg["hold_cost_per_bar"] if self._position != 0 else 0.0
+        # Run 11: when hold_cost_only_when_losing=True, charge hold cost only while
+        # position is underwater. Free holds while winning → agent can reach T1.
+        if self._position != 0:
+            if cfg.get("hold_cost_only_when_losing", False) and self._entry_price > 0:
+                current_close = float(self.df.iloc[self._idx]["close"])
+                unrealized_pnl = (current_close - self._entry_price) * self._position
+                hold_cost = cfg["hold_cost_per_bar"] if unrealized_pnl <= 0 else 0.0
+            else:
+                hold_cost = cfg["hold_cost_per_bar"]
+        else:
+            hold_cost = 0.0
 
         # Small reward for HOLDing when flat — teaches patience, pushes hold_rate up
         flat_hold_reward = (
@@ -488,8 +591,17 @@ class TradingEnvironment(_GymBase):
             t1_bonus = cfg["t1_bonus"]
             self._t1_hits += 1
 
+        # Penalty for forced close at MAX_BARS_IN_TRADE limit (Run 10)
+        forced_close_penalty = cfg.get("entry_cost", -0.01) if forced_close else 0.0
+
         return float(
-            pnl_reward + hold_cost + flat_hold_reward + entry_cost + redundant_cost + t1_bonus
+            pnl_reward
+            + hold_cost
+            + flat_hold_reward
+            + entry_cost
+            + redundant_cost
+            + t1_bonus
+            + forced_close_penalty
         )
 
     def _record_trade(self, pnl: float) -> None:
@@ -610,8 +722,17 @@ def build_env(
     max_position: int = 1,
     max_episode_bars: int = MAX_EPISODE_BARS,
     reward_config: dict | None = None,
+    discord_context: Optional[DiscordSignalContext] = None,
 ) -> "TradingEnvironment":
-    """Factory: create a TradingEnvironment from a processed DataFrame."""
+    """
+    Factory: create a TradingEnvironment from a processed DataFrame.
+
+    Parameters
+    ----------
+    discord_context : Optional DiscordSignalContext. When provided, features 18-22
+                      are populated from the Discord signal DB. When None (default),
+                      features 18-22 are zeros/neutral — backward compatible.
+    """
     return TradingEnvironment(
         symbol=symbol,
         df=df,
@@ -619,4 +740,5 @@ def build_env(
         max_position=max_position,
         max_episode_bars=max_episode_bars,
         reward_config=reward_config,
+        discord_context=discord_context,
     )

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useState } from "react";
 import { Activity, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import { WeeklyStatsWidget } from "@/components/WeeklyStatsWidget";
@@ -16,6 +17,26 @@ import { EntryQualityWidget } from "@/components/EntryQualityWidget";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 import { WinRateBySymbolWidget } from "@/components/WinRateBySymbolWidget";
 import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
+import HoldTimeWidget from "@/components/HoldTimeWidget";
+import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
+import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
+import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
+import { QuantStatsPanel } from "@/components/QuantStatsPanel";
+// P2.3 IA: folded in from the retired /stats page (the 10 analytics widgets not
+// already rendered above). /stats now redirects here.
+import { PerformanceSummaryWidget } from "@/components/PerformanceSummaryWidget";
+import { ProfitFactorWidget } from "@/components/ProfitFactorWidget";
+import { SharpeRatioWidget } from "@/components/SharpeRatioWidget";
+import { TradeHourlyBreakdownWidget } from "@/components/TradeHourlyBreakdownWidget";
+import { TradePnLHistogram } from "@/components/TradePnLHistogram";
+import { BestWorstTradesWidget } from "@/components/BestWorstTradesWidget";
+import { SymbolPerformanceWidget } from "@/components/SymbolPerformanceWidget";
+import { RollingPerformanceWidget } from "@/components/RollingPerformanceWidget";
+import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
+import { PnLStreakWidget } from "@/components/PnLStreakWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
+import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 
 // ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
@@ -265,6 +286,15 @@ function BacktestMatrix() {
         title="Corrected Performance -- In Sample (Jun 2024 - Mar 2026)"
         subtitle="STC + ATR Stops/Targets | All returns gross of commissions ($2.50/contract + 1 tick slippage)"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical backtest</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen in-sample research benchmark as of 2026-03-30 — not live trading results
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
@@ -341,6 +371,15 @@ function WalkForwardChart() {
         title="Walk-Forward Efficiency -- Static vs Adaptive"
         subtitle="Regime-adaptive mode: RegimeClassifier switches STC params per market regime | Bars scale to WFE 1.0 = 100%"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical backtest</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen WFE study as of 2026-03-30 — not live trading results
+        </span>
+      </div>
 
       {/* Threshold reference lines */}
       <div className="relative mb-6">
@@ -460,6 +499,15 @@ function ImprovementTracker() {
         title="Signal Improvement Tracker"
         subtitle="Each improvement tested via walk-forward validation before acceptance"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical snapshot</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen improvement audit as of 2026-03-30 — not live results
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
@@ -524,6 +572,15 @@ function DoNotTradeList() {
         title="Do Not Trade -- Permanently Removed"
         subtitle="Instruments that failed walk-forward validation or show structural unsuitability for STC strategy"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical snapshot</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen DNT list as of 2026-03-30 — see gate-v2 verdicts in Strategy Ledger for current status
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
@@ -577,6 +634,44 @@ function DoNotTradeList() {
   );
 }
 
+// ── Live Price (per-symbol, our real-time bars) ───────────────────────────────
+
+function LivePriceSection() {
+  const [open, setOpen] = useState(true);
+  const [sym, setSym] = useState<ChartSymbol>("MES");
+  const [tf, setTf] = useState<ChartTimeframe>("1h");
+
+  return (
+    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <SectionHeader
+          title="Live Price -- Per Symbol"
+          subtitle="Real-time JARVIS bars (our data, not TradingView's delayed futures embed) with closed-trade markers"
+        />
+        {open ? (
+          <ChevronUp className="h-4 w-4" style={{ color: "#555" }} />
+        ) : (
+          <ChevronDown className="h-4 w-4" style={{ color: "#555" }} />
+        )}
+      </button>
+      {open && (
+        <div className="mt-2">
+          <PriceChartPanel
+            symbol={sym}
+            timeframe={tf}
+            onSymbolChange={setSym}
+            onTimeframeChange={setTf}
+            height={380}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PerformancePage() {
@@ -587,7 +682,7 @@ export default function PerformancePage() {
         className="sticky top-0 z-50 backdrop-blur"
         style={{ backgroundColor: "rgba(5,5,5,0.95)", borderBottom: "1px solid #1a1a2e" }}
       >
-        <div className="mx-auto max-w-[1600px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-lg"
@@ -604,67 +699,93 @@ export default function PerformancePage() {
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <a href="/" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Dashboard
-              </a>
-              <a href="/analysis" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/analysis" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Analysis
-              </a>
-              <a href="/backtest" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/backtest" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Backtest
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/performance"
                 className="text-xs font-semibold pb-0.5"
                 style={{ color: "#e0e0e0", borderBottom: "1px solid #00ff88" }}
               >
                 Performance
-              </a>
-              <a href="/validation" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/validation" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Validation
-              </a>
-              <a href="/journal" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/journal" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Journal
-              </a>
-              <a href="/paper" className="text-xs font-semibold transition-colors" style={{ color: "#00ff88" }}>
+              </Link>
+              <Link href="/paper" className="text-xs font-semibold transition-colors" style={{ color: "#00ff88" }}>
                 Paper Trading
-              </a>
-              <a href="/watchlist" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/watchlist" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Watchlist
-              </a>
-              <a href="/scorecard" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/scorecard" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Scorecard
-              </a>
-              <a href="/settings" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/settings" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Settings
-              </a>
-              <a href="/health" className="text-xs transition-colors" style={{ color: "#888" }}>
+              </Link>
+              <Link href="/health" className="text-xs transition-colors" style={{ color: "#888" }}>
                 Health
-              </a>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">
-            <a
+            <Link
               href="/"
               className="flex items-center gap-1.5 text-xs transition-colors"
               style={{ color: "#888" }}
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to Dashboard
-            </a>
+            </Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+        {/* Portfolio Tearsheet — QuantStats institutional metrics */}
+        <WidgetErrorBoundary name="Tearsheet">
+          <QuantStatsPanel />
+        </WidgetErrorBoundary>
+
         {/* Account ROI */}
-        <AccountROIWidget />
+        <WidgetErrorBoundary name="Account ROI">
+          <AccountROIWidget />
+        </WidgetErrorBoundary>
 
         {/* Weekly P&L */}
-        <WeeklyPnLCard />
+        <WidgetErrorBoundary name="Weekly P&L">
+          <WeeklyPnLCard />
+        </WidgetErrorBoundary>
 
         {/* Daily P&L Calendar */}
-        <DailyPnLCalendarWidget />
+        <WidgetErrorBoundary name="Daily P&L Calendar">
+          <DailyPnLCalendarWidget />
+        </WidgetErrorBoundary>
+
+        {/* Win Rate by Hour of Day */}
+        <WidgetErrorBoundary name="Win Rate by Hour">
+          <WinRateByHourWidget />
+        </WidgetErrorBoundary>
+
+        {/* Streak Tracker */}
+        <WidgetErrorBoundary name="Streak Tracker">
+          <StreakTrackerWidget />
+        </WidgetErrorBoundary>
+
+        {/* Regime Attribution */}
+        <WidgetErrorBoundary name="Regime Attribution">
+          <RegimeAttributionWidget />
+        </WidgetErrorBoundary>
 
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -680,12 +801,13 @@ export default function PerformancePage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span
-              className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded"
+            <Link
+              href="/strategy-ledger"
+              className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded hover:opacity-80 transition-opacity"
               style={{ backgroundColor: "#ffcc0018", border: "1px solid #ffcc0040", color: "#ffcc00" }}
             >
-              VERDICT: 2 APPROVED — MCL 1h + MNQ 1h PAPER TRADING
-            </span>
+              2026-03-30 SNAPSHOT (historical) — see live gate-v2 verdicts in Strategy Ledger →
+            </Link>
             <span
               className="font-mono text-[10px] tracking-wider px-2 py-1 rounded"
               style={{ backgroundColor: "#00d4ff10", border: "1px solid #00d4ff33", color: "#00d4ff" }}
@@ -703,14 +825,30 @@ export default function PerformancePage() {
           <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
         </div>
 
+        {/* Live per-symbol price chart — our own real-time futures bars */}
+        <LivePriceSection />
+
+        {/* Hold time analytics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <WidgetErrorBoundary name="Hold Time">
+            <HoldTimeWidget />
+          </WidgetErrorBoundary>
+        </div>
+
         {/* Weekly live performance summary */}
-        <WeeklyStatsWidget />
+        <WidgetErrorBoundary name="Weekly Stats">
+          <WeeklyStatsWidget />
+        </WidgetErrorBoundary>
 
         {/* Commission cost tracker */}
-        <CommissionTrackerWidget />
+        <WidgetErrorBoundary name="Commission Tracker">
+          <CommissionTrackerWidget />
+        </WidgetErrorBoundary>
 
         {/* Trade duration analysis */}
-        <TradeDurationWidget />
+        <WidgetErrorBoundary name="Trade Duration">
+          <TradeDurationWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 1: Backtest Performance Matrix */}
         <BacktestMatrix />
@@ -725,28 +863,80 @@ export default function PerformancePage() {
         <DoNotTradeList />
 
         {/* Section 5: Monthly Breakdown */}
-        <MonthlyBreakdownWidget />
+        <WidgetErrorBoundary name="Monthly Breakdown">
+          <MonthlyBreakdownWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 6: Drawdown Chart */}
-        <DrawdownChart />
+        <WidgetErrorBoundary name="Drawdown Chart">
+          <DrawdownChart />
+        </WidgetErrorBoundary>
 
         {/* Section 7: Top Symbols by P&L */}
-        <TopSymbolsWidget />
+        <WidgetErrorBoundary name="Top Symbols">
+          <TopSymbolsWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 8: Avg Trade Hold Time */}
-        <AvgTradeTimeWidget />
+        <WidgetErrorBoundary name="Avg Trade Time">
+          <AvgTradeTimeWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 9: Equity Curve */}
-        <EquityCurveWidget />
+        <WidgetErrorBoundary name="Equity Curve">
+          <EquityCurveWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 10: Entry Quality */}
-        <EntryQualityWidget />
+        <WidgetErrorBoundary name="Entry Quality">
+          <EntryQualityWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 11: Recent Closed Trades */}
-        <RecentTradesTableWidget />
+        <WidgetErrorBoundary name="Recent Closed Trades">
+          <RecentTradesTableWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 12: Win Rate by Symbol */}
-        <WinRateBySymbolWidget />
+        <WidgetErrorBoundary name="Win Rate by Symbol">
+          <WinRateBySymbolWidget />
+        </WidgetErrorBoundary>
+
+        {/* Section 13: Extended Analytics (folded in from the retired /stats page, P2.3 IA) */}
+        <WidgetErrorBoundary name="Performance Summary">
+          <PerformanceSummaryWidget />
+        </WidgetErrorBoundary>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <WidgetErrorBoundary name="Profit Factor">
+            <ProfitFactorWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Sharpe Ratio">
+            <SharpeRatioWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="P&L Streak">
+            <PnLStreakWidget />
+          </WidgetErrorBoundary>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <WidgetErrorBoundary name="Trade Hourly Breakdown">
+            <TradeHourlyBreakdownWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Trade P&L Histogram">
+            <TradePnLHistogram />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Best/Worst Trades">
+            <BestWorstTradesWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Symbol Performance">
+            <SymbolPerformanceWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Rolling Performance">
+            <RollingPerformanceWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Drawdown Chart">
+            <DrawdownChartWidget />
+          </WidgetErrorBoundary>
+        </div>
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>

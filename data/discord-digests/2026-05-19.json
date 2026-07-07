@@ -1,0 +1,120 @@
+{
+  "date": "2026-05-19",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "neutral",
+    "conviction": 0.55,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 85
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 104.72,
+      "target2": 105.8,
+      "stop1": 102.92,
+      "win_rate": 82.52,
+      "rr": 0.6,
+      "timestamp": "2026-05-19T14:22:06.25-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 104.8,
+      "target2": 105.88,
+      "stop1": 103.0,
+      "win_rate": 82.47,
+      "rr": 0.59,
+      "timestamp": "2026-05-19T13:45:04.327-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 104.32,
+      "target2": 105.4,
+      "stop1": 102.52,
+      "win_rate": 82.41,
+      "rr": 0.59,
+      "timestamp": "2026-05-19T12:17:04.112-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 104.07,
+      "target2": 105.15,
+      "stop1": 102.27,
+      "win_rate": 82.35,
+      "rr": 0.59,
+      "timestamp": "2026-05-19T09:15:06.141-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 104.18,
+      "target2": 105.26,
+      "stop1": 102.38,
+      "win_rate": 82.3,
+      "rr": 0.6,
+      "timestamp": "2026-05-19T06:02:01.179-05:00"
+    }
+  ],
+  "corey_quote": "When both sides fail, the market is preparing for a bigger move. Right now that setup is in place.",
+  "commentary_health": [
+    {
+      "date": "2026-05-20",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.45,
+      "message_count": 85
+    },
+    {
+      "date": "2026-05-19",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 85
+    },
+    {
+      "date": "2026-05-15",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 37
+    },
+    {
+      "date": "2026-05-14",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 33
+    },
+    {
+      "date": "2026-05-13",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 33
+    },
+    {
+      "date": "2026-05-12",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 27
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "experiment_id": "REPLACE_EXPERIMENT_ID",
+  "val_bpb": 0.0,
+  "peak_vram_mb": 0.0,
+  "training_seconds": 0.0,
+  "total_tokens_m": 0.0,
+  "mfu_percent": 0.0,
+  "num_steps": 0,
+  "num_params_m": 0.0,
+  "depth": 0
+}

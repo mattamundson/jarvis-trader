@@ -1,8 +1,8 @@
 """
 JARVIS TRADER — Regime Analysis CLI
 
-Usage:
-    python -m backtest.run_regime_analysis \
+Usage (from engine/ directory):
+    .venv/Scripts/python backtest/run_regime_analysis.py \
         --results-file results/MCL_1h_2024-06-01_2026-03-27.json \
         --data-file cache/MCL_1h_730d.csv
 

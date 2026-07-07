@@ -1,0 +1,724 @@
+<!-- ═══════════════════════════════════════════════════════════════
+     T6 — P&L TRACKER · REAL-TIME
+     Panel snippet — inject into main dashboard grid
+     ═══════════════════════════════════════════════════════════════ -->
+
+<style>
+  /* ── P&L Tracker Panel Styles (prefix: .pnl-) ── */
+  .pnl-panel {
+    background: var(--bg-card, #071228);
+    border: 1px solid rgba(0,212,255,0.15);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .pnl-panel:hover { border-color: rgba(0,212,255,0.35); }
+  .pnl-panel::before, .pnl-panel::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    border-color: rgba(0,212,255,0.5);
+    border-style: solid;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .pnl-panel::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+  .pnl-panel::after  { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+
+  /* Expiry warning — pulsing red border override */
+  .pnl-panel.pnl-expiry-warn {
+    border-color: rgba(255,34,68,0.6);
+    animation: pnl-warn-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pnl-warn-pulse {
+    0%, 100% { border-color: rgba(255,34,68,0.6); box-shadow: 0 0 0 rgba(255,34,68,0); }
+    50% { border-color: rgba(255,34,68,1); box-shadow: 0 0 18px rgba(255,34,68,0.35); }
+  }
+
+  .pnl-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(0,212,255,0.1);
+    background: rgba(0,212,255,0.03);
+  }
+  .pnl-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: #e8f4ff;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .pnl-badge-paper {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    padding: 3px 10px;
+    border-radius: 2px;
+    background: rgba(255,140,0,0.12);
+    border: 1px solid rgba(255,140,0,0.4);
+    color: #ff8c00;
+    text-transform: uppercase;
+  }
+  .pnl-ts {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #3a6080;
+    margin-left: 6px;
+  }
+
+  .pnl-body {
+    padding: 12px 16px 14px;
+  }
+
+  /* ── Expiry warning banner ── */
+  .pnl-warn-banner {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    background: rgba(255,34,68,0.1);
+    border: 1px solid rgba(255,34,68,0.4);
+    border-radius: 3px;
+    margin-bottom: 12px;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    color: #ff2244;
+    letter-spacing: 1.5px;
+    animation: pnl-banner-flash 1.5s ease-in-out infinite;
+  }
+  .pnl-warn-banner.visible { display: flex; }
+  @keyframes pnl-banner-flash {
+    0%, 100% { background: rgba(255,34,68,0.10); }
+    50%       { background: rgba(255,34,68,0.18); }
+  }
+  .pnl-warn-icon { font-size: 12px; }
+
+  /* ── Hero P&L number ── */
+  .pnl-hero {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+  .pnl-hero-main {
+    flex: 1;
+  }
+  .pnl-label-sm {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #3a6080;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+    display: block;
+  }
+  .pnl-big-number {
+    font-family: 'Orbitron', monospace;
+    font-size: 30px;
+    font-weight: 900;
+    letter-spacing: -1px;
+    transition: color 0.5s, text-shadow 0.5s;
+    line-height: 1;
+  }
+  .pnl-big-number.pos {
+    color: #00ff88;
+    text-shadow: 0 0 24px rgba(0,255,136,0.5), 0 0 4px rgba(0,255,136,0.8);
+  }
+  .pnl-big-number.neg {
+    color: #ff2244;
+    text-shadow: 0 0 24px rgba(255,34,68,0.5), 0 0 4px rgba(255,34,68,0.8);
+  }
+  .pnl-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 2px;
+    display: block;
+  }
+  .pnl-pct.pos { color: #00ff88; }
+  .pnl-pct.neg { color: #ff2244; }
+
+  .pnl-hero-side {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 120px;
+  }
+  .pnl-side-item {
+    display: flex;
+    flex-direction: column;
+  }
+  .pnl-side-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    color: #00d4ff;
+  }
+  .pnl-side-val.spy { color: #ffd700; }
+
+  /* ── Drawdown meter ── */
+  .pnl-dd-section {
+    margin-bottom: 14px;
+  }
+  .pnl-dd-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .pnl-dd-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #3a6080;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .pnl-dd-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #ff2244;
+    font-weight: 600;
+  }
+  .pnl-dd-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255,34,68,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid rgba(255,34,68,0.15);
+  }
+  .pnl-dd-fill {
+    height: 100%;
+    background: linear-gradient(90deg, rgba(255,34,68,0.5), #ff2244);
+    border-radius: 3px;
+    transition: width 0.8s ease;
+    box-shadow: 0 0 6px rgba(255,34,68,0.4);
+  }
+
+  /* ── Portfolio Beta ── */
+  .pnl-beta-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 7px 10px;
+    background: rgba(0,212,255,0.04);
+    border: 1px solid rgba(0,212,255,0.1);
+    border-radius: 3px;
+  }
+  .pnl-beta-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #3a6080;
+    letter-spacing: 1px;
+  }
+  .pnl-beta-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: #00d4ff;
+  }
+  .pnl-beta-bar {
+    flex: 1;
+    height: 4px;
+    background: rgba(0,212,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .pnl-beta-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00d4ff, #00fff5);
+    border-radius: 2px;
+    transition: width 0.8s ease;
+  }
+  .pnl-total-row {
+    display: flex;
+    gap: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #7ab0d4;
+    margin-left: auto;
+  }
+  .pnl-total-val { color: #e8f4ff; font-weight: 600; }
+
+  /* ── Positions table ── */
+  .pnl-pos-section { }
+  .pnl-pos-header-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .pnl-pos-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    color: #7ab0d4;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+
+  .pnl-pos-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+  .pnl-pos-table thead th {
+    font-family: 'Orbitron', monospace;
+    font-size: 7.5px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #3a6080;
+    text-transform: uppercase;
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(0,212,255,0.12);
+    text-align: right;
+    background: rgba(0,212,255,0.02);
+  }
+  .pnl-pos-table thead th:first-child { text-align: left; }
+
+  .pnl-pos-row td {
+    padding: 7px 6px;
+    border-bottom: 1px solid rgba(0,212,255,0.06);
+    text-align: right;
+    vertical-align: middle;
+    transition: background 0.15s;
+  }
+  .pnl-pos-row:last-child td { border-bottom: none; }
+  .pnl-pos-row:hover td { background: rgba(0,212,255,0.04); }
+  .pnl-pos-row td:first-child { text-align: left; }
+
+  .pnl-sym {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: #e8f4ff;
+  }
+  .pnl-type-call {
+    display: inline-block;
+    padding: 1px 6px;
+    background: rgba(0,255,136,0.12);
+    border: 1px solid rgba(0,255,136,0.3);
+    color: #00ff88;
+    border-radius: 2px;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .pnl-type-put {
+    display: inline-block;
+    padding: 1px 6px;
+    background: rgba(255,34,68,0.12);
+    border: 1px solid rgba(255,34,68,0.3);
+    color: #ff2244;
+    border-radius: 2px;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .pnl-strike {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #ffd700;
+    font-weight: 600;
+  }
+  .pnl-dte-ok { color: #00d4ff; }
+  .pnl-dte-warn {
+    color: #ff2244;
+    font-weight: 700;
+    animation: pnl-dte-blink 1s step-end infinite;
+  }
+  @keyframes pnl-dte-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .pnl-val-pos { color: #00ff88; }
+  .pnl-val-neg { color: #ff2244; }
+  .pnl-val-neutral { color: #7ab0d4; }
+
+  /* ── Totals row ── */
+  .pnl-totals-row td {
+    padding: 8px 6px;
+    border-top: 1px solid rgba(0,212,255,0.2) !important;
+    background: rgba(0,212,255,0.04) !important;
+  }
+  .pnl-totals-row td:first-child {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    color: #7ab0d4;
+    letter-spacing: 1.5px;
+  }
+
+  .pnl-status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #3a6080;
+  }
+  .pnl-status-live { color: #00ff88; }
+  .pnl-status-demo { color: #ff8c00; }
+  .pnl-poll-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: #00ff88;
+    border-radius: 50%;
+    margin-right: 5px;
+    animation: pnl-poll-blink 2s ease-in-out infinite;
+  }
+  @keyframes pnl-poll-blink {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+</style>
+
+<div class="pnl-panel card" id="pnl-panel">
+  <div class="pnl-header card-header">
+    <span class="pnl-title card-title">P&amp;L TRACKER</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="pnl-badge-paper card-badge">● PAPER</span>
+      <span class="pnl-ts" id="pnl-timestamp">—</span>
+    </div>
+  </div>
+  <div class="pnl-body card-body">
+
+    <!-- Expiry warning banner -->
+    <div class="pnl-warn-banner" id="pnl-warn-banner">
+      <span class="pnl-warn-icon">⚠</span>
+      <span id="pnl-warn-text">POSITION EXPIRING WITHIN 24 HOURS — ACTION REQUIRED</span>
+    </div>
+
+    <!-- Hero P&L -->
+    <div class="pnl-hero">
+      <div class="pnl-hero-main">
+        <span class="pnl-label-sm">TOTAL P&amp;L</span>
+        <div class="pnl-big-number neg" id="pnl-big-num">-$65.00</div>
+        <span class="pnl-pct neg" id="pnl-big-pct">-13.8%</span>
+      </div>
+      <div class="pnl-hero-side">
+        <div class="pnl-side-item">
+          <span class="pnl-label-sm">PORTFOLIO VALUE</span>
+          <span class="pnl-side-val" id="pnl-port-val">$341.05</span>
+        </div>
+        <div class="pnl-side-item">
+          <span class="pnl-label-sm">SPY PRICE</span>
+          <span class="pnl-side-val spy" id="pnl-spy-price">$711.21</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawdown meter -->
+    <div class="pnl-dd-section">
+      <div class="pnl-dd-header">
+        <span class="pnl-dd-label">DRAWDOWN FROM PEAK</span>
+        <span class="pnl-dd-val" id="pnl-dd-val">-13.8%</span>
+      </div>
+      <div class="pnl-dd-bar">
+        <div class="pnl-dd-fill" id="pnl-dd-fill" style="width:13.8%;"></div>
+      </div>
+    </div>
+
+    <!-- Portfolio beta -->
+    <div class="pnl-beta-row">
+      <span class="pnl-beta-label">PORTFOLIO BETA</span>
+      <span class="pnl-beta-val" id="pnl-beta">1.00</span>
+      <div class="pnl-beta-bar">
+        <div class="pnl-beta-fill" id="pnl-beta-fill" style="width:50%;"></div>
+      </div>
+      <div class="pnl-total-row">
+        <span>COST: <span class="pnl-total-val" id="pnl-total-cost">$406.05</span></span>
+        <span>VALUE: <span class="pnl-total-val" id="pnl-total-val">$341.05</span></span>
+      </div>
+    </div>
+
+    <!-- Positions table -->
+    <div class="pnl-pos-section">
+      <div class="pnl-pos-header-row">
+        <span class="pnl-pos-title">POSITIONS</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="pnl-pos-table" id="pnl-pos-table">
+          <thead>
+            <tr>
+              <th style="text-align:left;">SYMBOL</th>
+              <th>TYPE</th>
+              <th>STRIKE</th>
+              <th>EXPIRY</th>
+              <th>DTE</th>
+              <th>QTY</th>
+              <th>COST</th>
+              <th>VALUE</th>
+              <th>P&amp;L $</th>
+              <th>P&amp;L %</th>
+            </tr>
+          </thead>
+          <tbody id="pnl-pos-body">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="pnl-status-bar">
+      <span id="pnl-data-src" class="pnl-status-demo">● DEMO DATA · STATIC FALLBACK</span>
+      <span><span class="pnl-poll-dot" id="pnl-poll-dot"></span><span id="pnl-poll-status">POLLING EVERY 10s</span></span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // ── Static fallback data ──
+  const STATIC_DATA = {
+    spy_price: 711.21,
+    total_cost: 406.05,
+    total_value: 341.05,
+    total_pnl: -65.00,
+    total_pnl_pct: -13.80,
+    portfolio_beta: 1.00,
+    positions: [
+      {
+        symbol: 'SPY',
+        type: 'CALL',
+        strike: 715,
+        expiry: '2026-04-25',
+        expiry_label: 'APR 25',
+        dte: 3,
+        qty: 1,
+        cost: 143.00,
+        value: 143.00,
+        pnl: 0.00,
+        pnl_pct: 0.00,
+        beta: 1.0,
+      },
+      {
+        symbol: 'SPY',
+        type: 'PUT',
+        strike: 710,
+        expiry: '2026-04-24',
+        expiry_label: 'APR 24',
+        dte: 2,
+        qty: 1,
+        cost: 65.00,
+        value: 0.00,
+        pnl: -65.00,
+        pnl_pct: -100.00,
+        beta: 1.0,
+      },
+      // Additional filler positions for richness
+      {
+        symbol: 'SPY',
+        type: 'CALL',
+        strike: 720,
+        expiry: '2026-05-02',
+        expiry_label: 'MAY 02',
+        dte: 10,
+        qty: 2,
+        cost: 198.05,
+        value: 198.05,
+        pnl: 0.00,
+        pnl_pct: 0.00,
+        beta: 1.0,
+      },
+    ]
+  };
+
+  function pnlClass(val) { return val >= 0 ? 'pnl-val-pos' : 'pnl-val-neg'; }
+  function fmtDollar(n) {
+    const sign = n >= 0 ? '+' : '-';
+    return sign + '$' + Math.abs(n).toFixed(2);
+  }
+  function fmtPct(n) {
+    const sign = n >= 0 ? '+' : '';
+    return sign + n.toFixed(1) + '%';
+  }
+
+  function renderPositions(positions) {
+    const tbody = document.getElementById('pnl-pos-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    let hasExpiring = false;
+
+    positions.forEach(function(pos) {
+      const urgent = pos.dte <= 1;
+      if (urgent) hasExpiring = true;
+
+      const tr = document.createElement('tr');
+      tr.className = 'pnl-pos-row';
+      tr.innerHTML = `
+        <td><span class="pnl-sym">${pos.symbol}</span></td>
+        <td><span class="${pos.type === 'CALL' ? 'pnl-type-call' : 'pnl-type-put'}">${pos.type}</span></td>
+        <td><span class="pnl-strike">$${pos.strike}</span></td>
+        <td class="pnl-val-neutral">${pos.expiry_label}</td>
+        <td class="${urgent ? 'pnl-dte-warn' : 'pnl-dte-ok'}">${pos.dte}d</td>
+        <td class="pnl-val-neutral">${pos.qty}</td>
+        <td class="pnl-val-neutral">$${pos.cost.toFixed(2)}</td>
+        <td class="pnl-val-neutral">$${pos.value.toFixed(2)}</td>
+        <td class="${pnlClass(pos.pnl)}">${fmtDollar(pos.pnl)}</td>
+        <td class="${pnlClass(pos.pnl_pct)}">${fmtPct(pos.pnl_pct)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // Totals row
+    const totalCost  = positions.reduce(function(s, p) { return s + p.cost; }, 0);
+    const totalValue = positions.reduce(function(s, p) { return s + p.value; }, 0);
+    const totalPnl   = positions.reduce(function(s, p) { return s + p.pnl; }, 0);
+    const totalPct   = totalCost > 0 ? (totalPnl / totalCost * 100) : 0;
+
+    const tfoot = document.createElement('tr');
+    tfoot.className = 'pnl-pos-row pnl-totals-row';
+    tfoot.innerHTML = `
+      <td>TOTAL</td>
+      <td></td><td></td><td></td><td></td>
+      <td></td>
+      <td>$${totalCost.toFixed(2)}</td>
+      <td>$${totalValue.toFixed(2)}</td>
+      <td class="${pnlClass(totalPnl)}">${fmtDollar(totalPnl)}</td>
+      <td class="${pnlClass(totalPct)}">${fmtPct(totalPct)}</td>
+    `;
+    tbody.appendChild(tfoot);
+
+    return hasExpiring;
+  }
+
+  // Animated counter for big P&L number
+  function animateCounter(el, targetVal, duration) {
+    const start = parseFloat(el.dataset.current || 0);
+    const delta = targetVal - start;
+    const startTime = performance.now();
+    function tick(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out-cubic
+      const cur = start + delta * eased;
+      el.dataset.current = cur;
+      const sign = cur >= 0 ? '+' : '-';
+      el.textContent = sign + '$' + Math.abs(cur).toFixed(2);
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function renderData(data) {
+    // Hero P&L
+    const bigNum = document.getElementById('pnl-big-num');
+    const bigPct = document.getElementById('pnl-big-pct');
+    const portVal = document.getElementById('pnl-port-val');
+    const spyPrice = document.getElementById('pnl-spy-price');
+    const ddVal  = document.getElementById('pnl-dd-val');
+    const ddFill = document.getElementById('pnl-dd-fill');
+    const betaEl = document.getElementById('pnl-beta');
+    const betaFill = document.getElementById('pnl-beta-fill');
+    const totalCostEl = document.getElementById('pnl-total-cost');
+    const totalValEl  = document.getElementById('pnl-total-val');
+
+    const pnl = data.total_pnl || 0;
+    const pct = data.total_pnl_pct || 0;
+    const isPos = pnl >= 0;
+
+    if (bigNum) {
+      bigNum.className = 'pnl-big-number ' + (isPos ? 'pos' : 'neg');
+      animateCounter(bigNum, pnl, 800);
+    }
+    if (bigPct) {
+      bigPct.className = 'pnl-pct ' + (isPos ? 'pos' : 'neg');
+      bigPct.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+    }
+    if (portVal) portVal.textContent = '$' + (data.total_value || 0).toFixed(2);
+    if (spyPrice) spyPrice.textContent = '$' + (data.spy_price || 711.21).toFixed(2);
+
+    // Drawdown
+    const ddPct = Math.abs(Math.min(0, pct));
+    if (ddVal)  ddVal.textContent = '-' + ddPct.toFixed(1) + '%';
+    if (ddFill) ddFill.style.width = Math.min(100, ddPct) + '%';
+
+    // Beta
+    const beta = data.portfolio_beta || 1.0;
+    if (betaEl) betaEl.textContent = beta.toFixed(2);
+    if (betaFill) betaFill.style.width = Math.min(100, beta * 50) + '%';
+
+    // Totals
+    if (totalCostEl) totalCostEl.textContent = '$' + (data.total_cost || 0).toFixed(2);
+    if (totalValEl)  totalValEl.textContent  = '$' + (data.total_value || 0).toFixed(2);
+
+    // Positions
+    const hasExpiring = renderPositions(data.positions || []);
+
+    // Expiry warning
+    const warnBanner = document.getElementById('pnl-warn-banner');
+    const panel = document.getElementById('pnl-panel');
+    if (hasExpiring) {
+      if (warnBanner) warnBanner.classList.add('visible');
+      if (panel) panel.classList.add('pnl-expiry-warn');
+    } else {
+      if (warnBanner) warnBanner.classList.remove('visible');
+      if (panel) panel.classList.remove('pnl-expiry-warn');
+    }
+
+    // Timestamp
+    const ts = document.getElementById('pnl-timestamp');
+    if (ts) ts.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+  }
+
+  function setLiveStatus(isLive) {
+    const src = document.getElementById('pnl-data-src');
+    if (src) {
+      src.textContent = isLive ? '● LIVE DATA · API CONNECTED' : '● DEMO DATA · STATIC FALLBACK';
+      src.className = isLive ? 'pnl-status-live' : 'pnl-status-demo';
+    }
+  }
+
+  function fetchPnL() {
+    const dot = document.getElementById('pnl-poll-dot');
+    if (dot) dot.style.background = '#00d4ff'; // flash on poll
+
+    fetch('http://localhost:8020/api/pnl')
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        renderData(data);
+        setLiveStatus(true);
+        if (dot) setTimeout(function() { dot.style.background = '#00ff88'; }, 300);
+      })
+      .catch(function() {
+        // Fall back to static data
+        renderData(STATIC_DATA);
+        setLiveStatus(false);
+        if (dot) setTimeout(function() { dot.style.background = '#ff8c00'; }, 300);
+      });
+  }
+
+  // Initial render with static data, then try API
+  function init() {
+    renderData(STATIC_DATA);
+    setLiveStatus(false);
+    // Timestamp
+    const ts = document.getElementById('pnl-timestamp');
+    if (ts) ts.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+
+    // Try live API
+    fetchPnL();
+
+    // Poll every 10 seconds
+    setInterval(fetchPnL, 10000);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>

@@ -1,0 +1,15 @@
+name: mcl_crude_long_hp
+version: 1
+parameters:
+  entry_max_vix: 28
+  min_confluence: 0.65
+  size_mult: 1.2
+required_tools:
+  - market_data
+  - ib_paper_trader
+  - hidden_pivots
+steps:
+  - collect_data
+  - validate_hp_bias
+  - confluence_check
+  - size_and_enter

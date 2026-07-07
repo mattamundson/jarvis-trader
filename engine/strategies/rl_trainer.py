@@ -21,6 +21,7 @@ from typing import Optional
 
 import pandas as pd
 
+from discord.signal_context import DiscordSignalContext
 from strategies.rl_agent import RLTradingAgent
 from strategies.rl_config import (
     DEFAULT_INTERVAL,
@@ -35,6 +36,9 @@ from strategies.rl_config import (
 from strategies.rl_environment import build_env, prepare_dataframe
 
 logger = logging.getLogger(__name__)
+
+# Module-level Discord context singleton (shared across all training runs)
+_discord_ctx = DiscordSignalContext()
 
 
 # ── Stop event (module-level so the API can trigger graceful abort) ───────────
@@ -88,7 +92,7 @@ class RLTrainer:
     Parameters
     ----------
     data_manager : MarketDataManager instance (injected at startup)
-                   If None, falls back to yfinance via direct download.
+                   If None, falls back to BacktestDataLoader (Polygon-backed).
     """
 
     def __init__(self, data_manager=None):
@@ -198,8 +202,14 @@ class RLTrainer:
                 df=df_train,
                 max_episode_bars=MAX_EPISODE_BARS,
                 reward_config=reward_config,
+                discord_context=_discord_ctx,
             )
-            test_env = build_env(symbol=symbol, df=df_test, max_episode_bars=len(df_test))
+            test_env = build_env(
+                symbol=symbol,
+                df=df_test,
+                max_episode_bars=len(df_test),
+                discord_context=_discord_ctx,
+            )
 
             # ── 5. Train agent ───────────────────────────────────────────────
             if _stop_event.is_set():
@@ -546,6 +556,22 @@ class RLTrainer:
             else:
                 recommendation = "reject"
 
+            # ── 7b. Compute WFE = mean_oos_pf / mean_is_pf ──────────────────
+            oos_pfs = [w["metrics"].get("profit_factor", 0.0) for w in window_results]
+            is_pfs = [w.get("is_metrics", {}).get("profit_factor", 0.0) for w in window_results]
+            mean_oos_pf = sum(oos_pfs) / max(len(oos_pfs), 1)
+            mean_is_pf = sum(is_pfs) / max(len(is_pfs), 1)
+            if mean_is_pf <= 0.0:
+                wfe = 0.0
+            else:
+                wfe = min(max(mean_oos_pf / mean_is_pf, 0.0), 2.0)
+            wfe = round(wfe, 4)
+
+            logger.info(
+                f"[RLTrainer.WF] WFE={wfe:.2f} "
+                f"(OOS_PF={mean_oos_pf:.2f} / IS_PF={mean_is_pf:.2f})"
+            )
+
             # ── 8. Build final result ────────────────────────────────────────
             result = {
                 "status": "complete",
@@ -556,6 +582,7 @@ class RLTrainer:
                 "windows": window_results,
                 "all_pass": all_pass,
                 "pass_rate": round(pass_rate, 4),
+                "wfe": wfe,
                 "aggregate_metrics": aggregate_metrics,
                 "best_model_path": walkforward_best_path,
                 "recommendation": recommendation,
@@ -605,6 +632,7 @@ class RLTrainer:
         timesteps: int,
         window_idx: int,
         reward_config: dict | None = None,
+        discord_context=None,
     ) -> dict:
         """
         Synchronous train + evaluate for a single walk-forward window.
@@ -620,13 +648,33 @@ class RLTrainer:
             df=df_train,
             max_episode_bars=MAX_EPISODE_BARS,
             reward_config=reward_config,
+            discord_context=discord_context,
         )
-        test_env = build_env(symbol=symbol, df=df_test, max_episode_bars=len(df_test))
+        test_env = build_env(
+            symbol=symbol,
+            df=df_test,
+            max_episode_bars=len(df_test),
+            discord_context=discord_context,
+        )
 
         agent = RLTradingAgent(symbol=symbol, env=train_env)
         training_summary = agent.train(timesteps)
 
         metrics = agent.evaluate(test_env, n_episodes=1)
+
+        # IS evaluation — evaluate trained agent on full training data to get IS profit_factor
+        # Used by train_walkforward to compute WFE = avg(OOS_pf) / avg(IS_pf)
+        try:
+            is_eval_env = build_env(
+                symbol=symbol,
+                df=df_train,
+                max_episode_bars=len(df_train),
+                discord_context=discord_context,
+            )
+            is_metrics = agent.evaluate(is_eval_env, n_episodes=1)
+        except Exception as is_err:
+            logger.warning(f"[RLTrainer.WF] Window {window_idx} IS eval failed: {is_err}")
+            is_metrics = {}
 
         # Save this window's model so best can be identified later
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -642,6 +690,7 @@ class RLTrainer:
             "train_bars": len(df_train),
             "test_bars": len(df_test),
             "metrics": metrics,
+            "is_metrics": is_metrics,
             "model_path": model_path,
             "training_summary": training_summary,
         }
@@ -656,8 +705,8 @@ class RLTrainer:
         Fetch OHLCV data.
 
         Priority:
-        1. MarketDataManager (IBKR → Polygon → yfinance) if injected
-        2. yfinance direct download as fallback
+        1. MarketDataManager (IBKR → Polygon) if injected
+        2. BacktestDataLoader (Polygon + CSV cache) as fallback
         """
         if self._data_manager is not None:
             try:
@@ -671,64 +720,41 @@ class RLTrainer:
                     return self._normalize_columns(df)
             except Exception as e:
                 logger.warning(
-                    f"[RLTrainer] MarketDataManager failed: {e}, falling back to yfinance"
+                    f"[RLTrainer] MarketDataManager failed: {e} — falling back to BacktestDataLoader"
                 )
 
-        # yfinance fallback — uses equity symbols as proxy (ES=MES≈SPY, NQ=MNQ≈QQQ)
-        return await asyncio.to_thread(self._fetch_yfinance, symbol, lookback_days, interval)
+        # BacktestDataLoader fallback (Polygon-backed, CSV-cached)
+        return await asyncio.to_thread(self._fetch_via_loader, symbol, lookback_days, interval)
 
-    def _fetch_yfinance(
+    def _fetch_via_loader(
         self,
         symbol: str,
         lookback_days: int,
         interval: str,
     ) -> Optional[pd.DataFrame]:
-        """Fetch via yfinance as fallback. Maps futures to equity proxies."""
+        """Fetch via BacktestDataLoader as fallback."""
         try:
-            import yfinance as yf
+            from datetime import datetime, timedelta
 
-            FUTURES_TO_YF = {
-                "MES": "MES=F",
-                "MNQ": "MNQ=F",
-                "MCL": "MCL=F",
-                "MGC": "MGC=F",
-                "MYM": "YM=F",
-            }
-            ticker = FUTURES_TO_YF.get(symbol.upper(), symbol)
+            from backtest.data_loader import BacktestDataLoader
 
-            # yfinance interval mapping
-            yf_interval = {
-                "1h": "1h",
-                "4h": "1h",
-                "1d": "1d",
-            }.get(interval, "1h")
+            end_date = datetime.utcnow().strftime("%Y-%m-%d")
+            start_date = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
-            period = f"{min(lookback_days, 730)}d"  # yfinance max ~2yr for intraday
-            df = yf.download(ticker, period=period, interval=yf_interval, progress=False)
+            loader = BacktestDataLoader()
+            df = loader.load(symbol, start_date, end_date, interval)
 
-            if df.empty:
-                logger.warning(f"[RLTrainer] yfinance returned empty DataFrame for {ticker}")
+            if df is None or df.empty:
+                logger.warning(
+                    f"[RLTrainer] BacktestDataLoader returned empty DataFrame for {symbol}"
+                )
                 return None
 
-            # yfinance 0.2.x returns MultiIndex columns like ('Close', 'ES=F') — flatten to single level
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-
-            df = df.rename(
-                columns={
-                    "Open": "open",
-                    "High": "high",
-                    "Low": "low",
-                    "Close": "close",
-                    "Volume": "volume",
-                }
-            )
-            df = df[["open", "high", "low", "close", "volume"]].copy()
-            df = df.dropna()
-            return df.reset_index(drop=True)
+            df = df.reset_index(drop=True)
+            return self._normalize_columns(df)
 
         except Exception as e:
-            logger.error(f"[RLTrainer] yfinance fetch failed: {e}")
+            logger.error(f"[RLTrainer] BacktestDataLoader fetch failed: {e}")
             return None
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:

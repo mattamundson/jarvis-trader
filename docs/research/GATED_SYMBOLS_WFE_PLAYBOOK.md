@@ -6,9 +6,10 @@
 
 | Symbol | TF | Notes |
 |--------|-----|--------|
-| **MES** | research | Low WFE in prior runs — use for methodology / stress tests only until new WFE passes threshold. |
-| **MGC** | 1d | Halted / overfit — metrics for documentation only unless re-validated. |
-| **MCL / MNQ** | 1h | Approved for paper attention per CLAUDE.md. |
+| **MES** | 1h | **APPROVED** — active paper since Tier-3 flip 2026-05-24 (gate v2 ALT, p_edge 0.75). Supersedes prior low-WFE status. |
+| **MGC** | 1h | **APPROVED** — active paper since Tier-3 flip 2026-05-24 (gate v2 ALT, p_edge 0.6842). Supersedes prior 1d halt. |
+| **MCL / MNQ** | 1h | **HALTED** (`DO_NOT_TRADE`) — strategy hypotheses exhausted / fail gate v2. |
+| **M2K** | 1h | **REJECTED** — SMA/ORB/Donchian rank-1 all FAIL 2026-05-24. |
 
 ## Playbook: new symbol or timeframe
 

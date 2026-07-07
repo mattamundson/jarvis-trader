@@ -1,16 +1,15 @@
 """
-Build 2025 daily OHLCV cache without redundant Yahoo calls.
+Build 2025 daily OHLCV cache.
 - SPY: resample from SPY_1h_730d.csv (already in cache).
-- MES: Yahoo ES=F 1d for MES multiplier logic (single request; may rate-limit).
+- MES: Polygon.io ES daily data, with SPY-return proxy as fallback.
 """
 
 from __future__ import annotations
 
-import time
+import os
 from pathlib import Path
 
 import pandas as pd
-import yfinance as yf
 
 CACHE_DIR = Path(__file__).parent / "cache"
 START = "2025-01-01"
@@ -62,7 +61,6 @@ def mes_daily_from_spy_returns_proxy() -> Path:
     es_last = float(es["close"].iloc[-1])
     spy_last = float(spy24["close"].iloc[-1])
 
-    spy25.iloc[0]
     prev_spy_c = spy_last
     prev_es_c = es_last
 
@@ -90,45 +88,48 @@ def mes_daily_from_spy_returns_proxy() -> Path:
     return out
 
 
-def mes_daily_from_yahoo() -> Path:
-    raw = None
-    for attempt in range(5):
-        time.sleep(35 + attempt * 45)
-        try:
-            raw = yf.download(
-                "ES=F",
-                start=START,
-                end=END,
-                interval="1d",
-                progress=False,
-                auto_adjust=True,
-            )
-        except Exception:
-            raw = None
-        if raw is not None and not raw.empty:
-            break
-        t = yf.Ticker("ES=F")
-        try:
-            hist = t.history(start=START, end=END, interval="1d", auto_adjust=True)
-        except Exception:
-            hist = pd.DataFrame()
-        if hist is not None and not hist.empty:
-            raw = hist
-            break
-    if raw is None or raw.empty:
-        print("[warn] Yahoo ES=F failed after retries — building MES daily from SPY return proxy")
+def mes_daily_from_polygon() -> Path:
+    """Fetch ES (MES proxy) daily data from Polygon.io, fall back to SPY return proxy."""
+    from datetime import datetime
+
+    api_key = os.environ.get("POLYGON_API_KEY", "")
+    if not api_key or api_key == "your_polygon_key_here":
+        print("[warn] POLYGON_API_KEY not set — building MES daily from SPY return proxy")
         return mes_daily_from_spy_returns_proxy()
-    if isinstance(raw.columns, pd.MultiIndex):
-        raw.columns = [c[0].lower() for c in raw.columns]
-    else:
-        raw.columns = [str(c).lower() for c in raw.columns]
-    df = raw[["open", "high", "low", "close", "volume"]].copy()
-    df.index = pd.to_datetime(df.index)
-    df["timestamp"] = df.index.normalize()
-    df = df.reset_index(drop=True)
-    out = CACHE_DIR / f"MES_{START}_{END}_1d.csv"
-    df.to_csv(out, index=False)
-    return out
+
+    try:
+        from polygon import RESTClient
+    except ImportError:
+        print("[warn] polygon-api-client not installed — building MES daily from SPY return proxy")
+        return mes_daily_from_spy_returns_proxy()
+
+    print(f"[info] Fetching MES daily bars from Polygon.io ({START} -> {END})...")
+    try:
+        client = RESTClient(api_key)
+        bars = []
+        for agg in client.list_aggs("MES", 1, "day", START, END, limit=50000):
+            bars.append(
+                {
+                    "timestamp": datetime.fromtimestamp(agg.timestamp / 1000).strftime("%Y-%m-%d"),
+                    "open": agg.open,
+                    "high": agg.high,
+                    "low": agg.low,
+                    "close": agg.close,
+                    "volume": agg.volume,
+                }
+            )
+        if not bars:
+            print("[warn] Polygon returned no MES bars — building from SPY return proxy")
+            return mes_daily_from_spy_returns_proxy()
+        df = pd.DataFrame(bars)
+        df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp")
+        out = CACHE_DIR / f"MES_{START}_{END}_1d.csv"
+        df.to_csv(out, index=False)
+        print(f"[ok] Polygon MES: {len(df)} rows")
+        return out
+    except Exception as exc:
+        print(f"[warn] Polygon MES fetch failed ({exc}) — building from SPY return proxy")
+        return mes_daily_from_spy_returns_proxy()
 
 
 def main():
@@ -144,7 +145,7 @@ def main():
     if not args.mes_only:
         p1 = spy_daily_from_hourly()
         print(f"[ok] {p1.name} ({len(pd.read_csv(p1))} rows)")
-    p2 = mes_daily_from_yahoo()
+    p2 = mes_daily_from_polygon()
     print(f"[ok] {p2.name} ({len(pd.read_csv(p2))} rows)")
 
 

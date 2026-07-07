@@ -1,0 +1,463 @@
+{
+  "symbol": "MES",
+  "rank": 7,
+  "params": {
+    "fast": 50,
+    "slow": 200,
+    "atr_trail_mult": 2.0
+  },
+  "n_trades": 35,
+  "n_unmatched": 0,
+  "regime_stats": {
+    "TRENDING": {
+      "n": 4,
+      "pf": 999.0,
+      "wr": 100.0,
+      "sharpe": 25.791,
+      "net_pnl": 428.25,
+      "avg_pnl": 107.06,
+      "ret_pct": 4.28
+    },
+    "RANGING": {
+      "n": 30,
+      "pf": 1.478,
+      "wr": 40.0,
+      "sharpe": 1.82,
+      "net_pnl": 475.48,
+      "avg_pnl": 15.85,
+      "ret_pct": 4.75
+    },
+    "VOLATILE": {
+      "n": 1,
+      "pf": 0.0,
+      "wr": 0.0,
+      "sharpe": 0.0,
+      "net_pnl": -33.38,
+      "avg_pnl": -33.38,
+      "ret_pct": -0.33
+    }
+  },
+  "adx_stats": {
+    "weak (<20)": {
+      "n": 12,
+      "pf": 2.923,
+      "wr": 50.0,
+      "sharpe": 4.618,
+      "net_pnl": 689.94,
+      "avg_pnl": 57.5,
+      "ret_pct": 6.9
+    },
+    "mid (20-25)": {
+      "n": 8,
+      "pf": 3.943,
+      "wr": 62.5,
+      "sharpe": 8.393,
+      "net_pnl": 375.62,
+      "avg_pnl": 46.95,
+      "ret_pct": 3.76
+    },
+    "strong (>=25)": {
+      "n": 15,
+      "pf": 0.64,
+      "wr": 33.3,
+      "sharpe": -2.782,
+      "net_pnl": -195.21,
+      "avg_pnl": -13.01,
+      "ret_pct": -1.95
+    }
+  },
+  "conditional_failures": [
+    "adx:strong (>=25) unprofitable (PF 0.64, n=15, 43% of trades)"
+  ],
+  "regime_concentrations": [
+    "RANGING (86%)"
+  ],
+  "tagged_trades": [
+    {
+      "entry_time": "2024-08-01 11:00:00",
+      "exit_time": "2024-08-01 14:00:00",
+      "entry": 5577.0,
+      "exit": 5566.5,
+      "pnl": -56.24,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.42,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-08-12 20:00:00",
+      "exit_time": "2024-08-13 10:00:00",
+      "entry": 5367.75,
+      "exit": 5375.428571428572,
+      "pnl": 34.65285714285779,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.28,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-03 07:00:00",
+      "exit_time": "2024-09-03 08:00:00",
+      "entry": 5662.25,
+      "exit": 5641.5,
+      "pnl": -107.49,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.17,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-09-12 20:00:00",
+      "exit_time": "2024-09-13 13:00:00",
+      "entry": 5596.5,
+      "exit": 5605.107142857143,
+      "pnl": 39.29571428571558,
+      "reason": "trail_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 24.32,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2024-10-09 15:00:00",
+      "exit_time": "2024-10-10 12:00:00",
+      "entry": 5838.5,
+      "exit": 5824.357142857143,
+      "pnl": -74.45428571428441,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 27.07,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-11-06 20:00:00",
+      "exit_time": "2024-11-07 19:00:00",
+      "entry": 5957.75,
+      "exit": 5986.107142857143,
+      "pnl": 138.04571428571558,
+      "reason": "trail_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 43.78,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-11-25 01:00:00",
+      "exit_time": "2024-11-25 13:00:00",
+      "entry": 6013.25,
+      "exit": 6018.642857142857,
+      "pnl": 23.224285714284417,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 17.79,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2024-12-13 13:00:00",
+      "exit_time": "2024-12-13 15:00:00",
+      "entry": 6082.0,
+      "exit": 6072.678571428572,
+      "pnl": -50.34714285714221,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 25.42,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2024-12-26 16:00:00",
+      "exit_time": "2024-12-27 07:00:00",
+      "entry": 6100.5,
+      "exit": 6077.0,
+      "pnl": -121.24,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.31,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-07 13:00:00",
+      "exit_time": "2025-01-07 15:00:00",
+      "entry": 6037.5,
+      "exit": 6020.0,
+      "pnl": -91.24,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 19.47,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-01-16 18:00:00",
+      "exit_time": "2025-01-17 13:00:00",
+      "entry": 5973.5,
+      "exit": 6002.214285714285,
+      "pnl": 139.8314285714266,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 29.24,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-01-29 20:00:00",
+      "exit_time": "2025-01-30 15:00:00",
+      "entry": 6068.5,
+      "exit": 6079.107142857143,
+      "pnl": 49.29571428571558,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.26,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-02-06 13:00:00",
+      "exit_time": "2025-02-06 15:00:00",
+      "entry": 6101.0,
+      "exit": 6087.821428571428,
+      "pnl": -69.63285714285779,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 31.71,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-03-19 06:00:00",
+      "exit_time": "2025-03-19 13:00:00",
+      "entry": 5624.75,
+      "exit": 5624.785714285715,
+      "pnl": -3.5614285714266227,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.43,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-11 16:00:00",
+      "exit_time": "2025-04-14 15:00:00",
+      "entry": 5369.75,
+      "exit": 5436.0,
+      "pnl": 327.51,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.42,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-04-24 04:00:00",
+      "exit_time": "2025-04-25 10:00:00",
+      "entry": 5394.25,
+      "exit": 5508.535714285715,
+      "pnl": 567.6885714285734,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 18.71,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-05-28 17:00:00",
+      "exit_time": "2025-05-28 19:00:00",
+      "entry": 5921.5,
+      "exit": 5900.0,
+      "pnl": -111.24,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 15.61,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-06-16 16:00:00",
+      "exit_time": "2025-06-16 18:00:00",
+      "entry": 6038.25,
+      "exit": 6035.75,
+      "pnl": -16.24,
+      "reason": "cross_down",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.19,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-06-17 09:00:00",
+      "exit_time": "2025-06-17 17:00:00",
+      "entry": 6000.5,
+      "exit": 5987.821428571428,
+      "pnl": -67.13285714285779,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 22.17,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-06-24 02:00:00",
+      "exit_time": "2025-06-25 15:00:00",
+      "entry": 6107.5,
+      "exit": 6145.0,
+      "pnl": 183.76,
+      "reason": "trail_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 20.16,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-07-17 19:00:00",
+      "exit_time": "2025-07-18 10:00:00",
+      "entry": 6342.0,
+      "exit": 6341.714285714285,
+      "pnl": -5.168571428573378,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 26.83,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-08-08 10:00:00",
+      "exit_time": "2025-08-08 13:00:00",
+      "entry": 6385.5,
+      "exit": 6383.857142857143,
+      "pnl": -11.954285714284415,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 14.77,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-08-26 06:00:00",
+      "exit_time": "2025-08-27 13:00:00",
+      "entry": 6447.0,
+      "exit": 6477.535714285715,
+      "pnl": 148.93857142857337,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 24.71,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-09-05 06:00:00",
+      "exit_time": "2025-09-05 12:00:00",
+      "entry": 6526.5,
+      "exit": 6521.428571428572,
+      "pnl": -29.097142857142206,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 42.33,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-09-30 11:00:00",
+      "exit_time": "2025-10-01 03:00:00",
+      "entry": 6701.5,
+      "exit": 6709.607142857143,
+      "pnl": 36.79571428571558,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 29.77,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-10-21 09:00:00",
+      "exit_time": "2025-10-21 13:00:00",
+      "entry": 6768.5,
+      "exit": 6763.535714285715,
+      "pnl": -28.56142857142662,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 34.97,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-11-12 00:00:00",
+      "exit_time": "2025-11-12 14:00:00",
+      "entry": 6877.0,
+      "exit": 6881.071428571428,
+      "pnl": 16.61714285714221,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 28.95,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2025-11-26 00:00:00",
+      "exit_time": "2025-11-26 15:00:00",
+      "entry": 6789.75,
+      "exit": 6803.928571428572,
+      "pnl": 67.1528571428578,
+      "reason": "trail_stop",
+      "regime_at_entry": "TRENDING",
+      "adx_at_entry": 21.16,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2025-12-11 18:00:00",
+      "exit_time": "2025-12-12 14:00:00",
+      "entry": 6896.25,
+      "exit": 6890.321428571428,
+      "pnl": -33.382857142857794,
+      "reason": "trail_stop",
+      "regime_at_entry": "VOLATILE",
+      "adx_at_entry": 16.27,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2025-12-22 06:00:00",
+      "exit_time": "2025-12-22 15:00:00",
+      "entry": 6906.5,
+      "exit": 6910.321428571428,
+      "pnl": 15.367142857142207,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 30.0,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-01-07 02:00:00",
+      "exit_time": "2026-01-07 15:00:00",
+      "entry": 6987.0,
+      "exit": 6981.607142857143,
+      "pnl": -30.704285714284413,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 36.88,
+      "adx_bucket": "strong (>=25)"
+    },
+    {
+      "entry_time": "2026-01-26 21:00:00",
+      "exit_time": "2026-01-27 14:00:00",
+      "entry": 6977.0,
+      "exit": 6990.571428571428,
+      "pnl": 64.11714285714221,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.47,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-02-10 13:00:00",
+      "exit_time": "2026-02-10 14:00:00",
+      "entry": 6984.0,
+      "exit": 6975.892857142857,
+      "pnl": -44.27571428571559,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 20.73,
+      "adx_bucket": "mid (20-25)"
+    },
+    {
+      "entry_time": "2026-02-25 14:00:00",
+      "exit_time": "2026-02-25 23:00:00",
+      "entry": 6942.0,
+      "exit": 6952.035714285715,
+      "pnl": 46.438571428573375,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 13.07,
+      "adx_bucket": "weak (<20)"
+    },
+    {
+      "entry_time": "2026-03-18 07:00:00",
+      "exit_time": "2026-03-18 11:00:00",
+      "entry": 6803.5,
+      "exit": 6788.964285714285,
+      "pnl": -76.41857142857337,
+      "reason": "trail_stop",
+      "regime_at_entry": "RANGING",
+      "adx_at_entry": 47.34,
+      "adx_bucket": "strong (>=25)"
+    }
+  ],
+  "elapsed_sec": 1.3
+}

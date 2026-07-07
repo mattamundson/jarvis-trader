@@ -5,6 +5,7 @@ FastAPI dependency for X-API-Key header validation.
 Health, docs, and OpenAPI endpoints are exempt from authentication.
 """
 
+import hmac
 import logging
 from typing import Annotated, Optional
 
@@ -18,9 +19,19 @@ logger = logging.getLogger("jarvis_trader.auth")
 EXEMPT_PATHS = {
     "/health",
     "/health/full",
+    "/health/llm",
+    "/health/watchdog",
+    "/health/pm2",
+    "/health/apis",
     "/docs",
     "/openapi.json",
     "/redoc",
+    # Prometheus exposition — read-only metrics, loopback-bound. Scraped keyless
+    # so the Prometheus container needs no engine API key. The ASGI mount
+    # 307-redirects /metrics -> /metrics/, so BOTH forms must be exempt or the
+    # scrape lands on /metrics/ and gets 401. See monitoring.metrics.
+    "/metrics",
+    "/metrics/",
 }
 
 
@@ -60,8 +71,8 @@ async def verify_api_key(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Validate API key
-    if x_api_key != settings.API_KEY:
+    # Validate API key using constant-time comparison (prevent timing attacks)
+    if not hmac.compare_digest(x_api_key, settings.API_KEY):
         logger.warning(f"Invalid X-API-Key attempt for path: {path}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -69,5 +80,5 @@ async def verify_api_key(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    logger.debug(f"✅ Valid API key for path: {path}")
+    logger.debug(f"Valid API key for path: {path}")
     return x_api_key

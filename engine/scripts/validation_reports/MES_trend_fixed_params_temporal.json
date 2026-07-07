@@ -1,0 +1,52 @@
+{
+  "symbol": "MES",
+  "family": "trend",
+  "params": {
+    "fast": 50,
+    "slow": 200,
+    "atr_trail_mult": 2.0
+  },
+  "n_segments": 2,
+  "start": "2024-06-01",
+  "end": "2026-03-27",
+  "segments": [
+    {
+      "segment": 1,
+      "start": "2024-06-02",
+      "end": "2025-04-30",
+      "n_bars": 5173,
+      "pf": 2.298,
+      "wr": 50.0,
+      "total_trades": 16,
+      "net_pnl": 745.34,
+      "ret_pct": 7.45,
+      "thin": false
+    },
+    {
+      "segment": 2,
+      "start": "2025-04-30",
+      "end": "2026-03-27",
+      "n_bars": 5174,
+      "pf": 1.275,
+      "wr": 42.11,
+      "total_trades": 19,
+      "net_pnl": 125.01,
+      "ret_pct": 1.25,
+      "thin": false
+    }
+  ],
+  "segment_pfs": [
+    2.298,
+    1.275
+  ],
+  "stats": {
+    "min_pf": 1.275,
+    "max_pf": 2.298,
+    "mean_pf": 1.786,
+    "all_profitable": true,
+    "pct_profitable": 1.0,
+    "total_trades": 35
+  },
+  "verdict": "MODERATE",
+  "elapsed_sec": 0.7
+}

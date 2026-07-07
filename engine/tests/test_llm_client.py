@@ -49,7 +49,7 @@ class TestCostCalculation:
     def test_opus_cost_calculation(self, llm_client):
         """Test cost calculation for Opus model."""
         cost = llm_client._calculate_cost(
-            model="claude-opus-4-6",
+            model="claude-opus-4-7",
             input_tokens=100_000,  # 0.1M
             output_tokens=50_000,  # 0.05M
         )
@@ -94,7 +94,7 @@ class TestCostTracking:
         """Test logging a single call."""
         await cost_tracker.log_call(
             timestamp=datetime.now(timezone.utc).isoformat(),
-            model="claude-opus-4-6",
+            model="claude-opus-4-7",
             input_tokens=100,
             output_tokens=50,
             cost_usd=1.50,
@@ -121,7 +121,7 @@ class TestCostTracking:
         for i in range(5):
             await cost_tracker.log_call(
                 timestamp=now.isoformat(),
-                model="claude-opus-4-6",
+                model="claude-opus-4-7",
                 input_tokens=1000,
                 output_tokens=500,
                 cost_usd=0.05,
@@ -135,7 +135,7 @@ class TestCostTracking:
         assert stats["total_calls"] == 5
         assert stats["total_cost_usd"] == pytest.approx(0.25, rel=0.01)
         assert stats["success_rate"] == pytest.approx(0.8, rel=0.01)
-        assert "claude-opus-4-6" in stats["per_model"]
+        assert "claude-opus-4-7" in stats["per_model"]
 
     @pytest.mark.asyncio
     async def test_monthly_summary(self, cost_tracker):
@@ -172,7 +172,7 @@ class TestFallbackChain:
 
     def test_fallback_chain_mapping(self, llm_client):
         """Test that fallback chain is correctly defined."""
-        assert llm_client.FALLBACK_CHAIN["claude-opus-4-6"] == "claude-sonnet-4-6"
+        assert llm_client.FALLBACK_CHAIN["claude-opus-4-7"] == "claude-sonnet-4-6"
         assert llm_client.FALLBACK_CHAIN["claude-sonnet-4-6"] == "claude-haiku-4-5-20251001"
         assert llm_client.FALLBACK_CHAIN["claude-haiku-4-5-20251001"] is None
 
@@ -186,7 +186,7 @@ class TestLLMCallResult:
 
         result = LLMCallResult(
             success=True,
-            model="claude-opus-4-6",
+            model="claude-opus-4-7",
             input_tokens=100,
             output_tokens=50,
             cost_usd=0.10,
@@ -196,7 +196,7 @@ class TestLLMCallResult:
         )
 
         assert result.success is True
-        assert result.model == "claude-opus-4-6"
+        assert result.model == "claude-opus-4-7"
         assert result.input_tokens == 100
         assert result.latency_ms == 800
 
@@ -206,7 +206,7 @@ class TestLLMCallResult:
 
         result = LLMCallResult(
             success=False,
-            model="claude-opus-4-6",
+            model="claude-opus-4-7",
             input_tokens=0,
             output_tokens=0,
             cost_usd=0.0,
@@ -218,6 +218,94 @@ class TestLLMCallResult:
         assert result.success is False
         assert result.retries == 3
         assert "Rate limit" in result.error
+
+
+class TestGeminiPrimaryRouting:
+    """Tests for proactive Gemini primary routing (non-decision agents)."""
+
+    def test_gemini_primary_agents_set(self, llm_client):
+        """Enrichment agents are in GEMINI_PRIMARY_AGENTS."""
+        expected = {
+            "news_analyst",
+            "social_analyst",
+            "deep_analyzer",
+            "technical_analyst",
+            "fundamental_analyst",
+            "hermes-upgrade-classifier",
+            "bookmark_clusterer",
+            "kairos_dreaming",
+        }
+        assert expected == llm_client.GEMINI_PRIMARY_AGENTS
+
+    def test_decision_agents_excluded(self, llm_client):
+        """Trade-decision agents must NOT be in GEMINI_PRIMARY_AGENTS."""
+        for agent in ("trader", "risk_manager", "fund_manager", "debate"):
+            assert agent not in llm_client.GEMINI_PRIMARY_AGENTS
+
+    async def test_gemini_primary_routes_enrichment_agent(self, llm_client, monkeypatch):
+        """call() uses Gemini primary when agent_name is in GEMINI_PRIMARY_AGENTS."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        llm_client.provider = "anthropic"
+        llm_client.google_fallback_enabled = True
+        llm_client.google_api_key = "fake-google-key"
+
+        fake_result = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+            content=[SimpleNamespace(text="gemini response")],
+        )
+        mock_call_google = AsyncMock(return_value=fake_result)
+        mock_call_with_retry = AsyncMock()
+        monkeypatch.setattr(llm_client, "_call_google", mock_call_google)
+        monkeypatch.setattr(llm_client, "_call_with_retry", mock_call_with_retry)
+
+        result = await llm_client.call(
+            model="claude-sonnet-4-6",
+            system="summarize this news",
+            messages=[{"role": "user", "content": "NVDA up 5%"}],
+            agent_name="news_analyst",
+        )
+
+        mock_call_google.assert_called_once()
+        mock_call_with_retry.assert_not_called()
+        assert result.success is True
+        assert result.model == "gemini-2.5-flash"
+
+    async def test_gemini_failure_falls_through_to_anthropic(self, llm_client, monkeypatch):
+        """When Gemini primary fails, call() falls through to Anthropic retry loop."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        llm_client.provider = "anthropic"
+        llm_client.google_fallback_enabled = True
+        llm_client.google_api_key = "fake-google-key"
+
+        mock_call_google = AsyncMock(side_effect=RuntimeError("Gemini timeout"))
+        anthropic_result = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=12, output_tokens=6),
+            content=[SimpleNamespace(text="anthropic response")],
+        )
+        mock_call_with_retry = AsyncMock(return_value=anthropic_result)
+        monkeypatch.setattr(llm_client, "_call_google", mock_call_google)
+        monkeypatch.setattr(llm_client, "_call_with_retry", mock_call_with_retry)
+
+        result = await llm_client.call(
+            model="claude-sonnet-4-6",
+            system="summarize this news",
+            messages=[{"role": "user", "content": "NVDA up 5%"}],
+            agent_name="news_analyst",
+        )
+
+        mock_call_google.assert_called_once()
+        mock_call_with_retry.assert_called_once()
+        assert result.success is True
+        assert result.model == "claude-sonnet-4-6"
+
+    def test_non_primary_agent_skips_gemini(self, llm_client):
+        """Agents not in GEMINI_PRIMARY_AGENTS are NOT routed to Gemini proactively."""
+        for agent in ("trader", "risk_manager", "fund_manager", "unknown"):
+            assert agent not in llm_client.GEMINI_PRIMARY_AGENTS
 
 
 if __name__ == "__main__":

@@ -1,0 +1,107 @@
+//@version=5
+indicator("JARVIS VPOC Tracker", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_session    = input.session("0930-1600", "RTH Session")
+i_show_lines = input.bool(true, "Show VPOC Lines")
+i_rnd        = input.float(0.25, "Price Rounding (tick size)", minval=0.01, step=0.01)
+
+// ─── Colours ──────────────────────────────────────────────────────────────────
+COL_TODAY = color.new(color.yellow,  0)
+COL_PREV  = color.new(color.orange, 20)
+COL_LBL   = color.new(color.white,   0)
+
+// ─── State ────────────────────────────────────────────────────────────────────
+// We track, per session, a running high-water-mark of volume-at-price.
+// "Volume at price" is approximated as: for each bar, volume is attributed to
+// the rounded close price.  The bar with the highest volume seen so far in the
+// session is treated as the VPOC.
+
+var float session_vpoc     = na   // today's VPOC price
+var float session_max_vol  = 0.0  // max volume seen at any level this session
+var float prev_vpoc        = na   // yesterday's VPOC (carried over at session end)
+var float session_open_bar = na   // bar_index at session open (for line drawing)
+
+// ─── Line / label handles ─────────────────────────────────────────────────────
+var line  ln_today    = na
+var line  ln_prev     = na
+var label lb_today    = na
+var label lb_prev     = na
+
+// MCP readback labels
+var label lb_mcp_today  = na
+var label lb_mcp_yest   = na
+var label lb_mcp_delta  = na
+var label lb_mcp_dir    = na
+var label lb_mcp_vs     = na
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+round_to(price, tick) =>
+    math.round(price / tick) * tick
+
+// Session boundary detection — fires on the very first bar of each RTH session.
+// Uses syminfo.session to handle instrument-specific hours, but allows override.
+in_session = not na(time(timeframe.period, i_session))
+
+// Detect session open: first bar where in_session flips true.
+session_opened = in_session and not in_session[1]
+
+// ─── Per-bar accumulation ─────────────────────────────────────────────────────
+if session_opened
+    // Roll today → yesterday at the start of a fresh session
+    prev_vpoc       := session_vpoc
+    session_vpoc    := round_to(close, i_rnd)
+    session_max_vol := volume
+    session_open_bar := bar_index
+
+if in_session and not session_opened
+    // Compare current bar's volume to running max.
+    // If this bar's close-rounded price has seen more volume than any prior
+    // level, promote it to VPOC.
+    // NOTE: This is a simplified single-bar approximation, not a true binned
+    // accumulation (Pine lacks mutable maps).  It reliably captures the
+    // heaviest-volume single bar, which correlates tightly with TPO-based VPOC.
+    if volume > session_max_vol
+        session_max_vol := volume
+        session_vpoc    := round_to(close, i_rnd)
+        session_open_bar := nz(session_open_bar, bar_index)
+
+// ─── Drawing (update every bar so lines extend to current price) ──────────────
+if i_show_lines and not na(session_vpoc)
+    line.delete(ln_today)
+    label.delete(lb_today)
+    open_x = nz(int(session_open_bar), bar_index)
+    ln_today := line.new(open_x, session_vpoc, bar_index, session_vpoc, color=COL_TODAY, width=2, style=line.style_solid)
+    lb_today := label.new(bar_index, session_vpoc, "VPOC", style=label.style_label_left, color=COL_TODAY, textcolor=color.black, size=size.small)
+
+if i_show_lines and not na(prev_vpoc)
+    line.delete(ln_prev)
+    label.delete(lb_prev)
+    ln_prev := line.new(bar_index - 50, prev_vpoc, bar_index, prev_vpoc, color=COL_PREV, width=1, style=line.style_dashed)
+    lb_prev := label.new(bar_index, prev_vpoc, "pVPOC", style=label.style_label_left, color=COL_PREV, textcolor=color.black, size=size.small)
+
+// ─── MCP readback labels (last bar only) ─────────────────────────────────────
+if barstate.islast
+    label.delete(lb_mcp_today)
+    label.delete(lb_mcp_yest)
+    label.delete(lb_mcp_delta)
+    label.delete(lb_mcp_dir)
+    label.delete(lb_mcp_vs)
+
+    // Compute delta + direction
+    vpoc_delta    = not na(prev_vpoc) and not na(session_vpoc) ? session_vpoc - prev_vpoc : float(na)
+    delta_str     = not na(vpoc_delta) ? str.tostring(vpoc_delta, "#.##") : "N/A"
+    delta_dir_str = not na(vpoc_delta) ? (vpoc_delta > 0 ? "UP" : vpoc_delta < 0 ? "DOWN" : "FLAT") : "N/A"
+
+    // Price vs today's VPOC
+    price_vs_str  = not na(session_vpoc) ? (close > session_vpoc ? "ABOVE" : close < session_vpoc ? "BELOW" : "AT") : "N/A"
+
+    // Place labels just below the lowest visible price, stacked
+    ref_y = ta.lowest(low, 20)
+    step  = syminfo.mintick * 50   // vertical spacing between readback labels
+
+    lb_mcp_today := label.new(bar_index, ref_y - step * 1, "VPOC_TODAY: "     + (not na(session_vpoc) ? str.tostring(session_vpoc, "#.##") : "N/A"), style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+    lb_mcp_yest  := label.new(bar_index, ref_y - step * 2, "VPOC_YESTERDAY: " + (not na(prev_vpoc)    ? str.tostring(prev_vpoc,    "#.##") : "N/A"), style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+    lb_mcp_delta := label.new(bar_index, ref_y - step * 3, "VPOC_DELTA: "     + delta_str,                                                           style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+    lb_mcp_dir   := label.new(bar_index, ref_y - step * 4, "VPOC_DELTA_DIR: " + delta_dir_str,                                                       style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+    lb_mcp_vs    := label.new(bar_index, ref_y - step * 5, "PRICE_VS_VPOC: "  + price_vs_str,                                                        style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)

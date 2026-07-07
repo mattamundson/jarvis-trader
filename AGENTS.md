@@ -1,101 +1,105 @@
-# JARVIS Trader — Virtual Engineering Team
+# AGENTS.md
 
-Powered by gstack v0.15.1.0. Skills live at `.claude/skills/gstack/`.
+Project memory and coding rules live in `CLAUDE.md` (root), `engine/CLAUDE.md`, and
+`dashboard/CLAUDE.md` — read those first. This file adds environment notes for cloud agents.
 
-## Sprint Workflow
+## Cursor Cloud specific instructions
 
-```
-Think → Plan → Build → Review → Test → Ship → Reflect
-```
+Two services make up the product: the **engine** (FastAPI, Python 3.12, port 8010) and the
+**dashboard** (Next.js 15, port 3010). The dashboard proxies all engine calls through
+`/api/engine/[...path]`, so it only needs the engine running on `localhost:8010`.
 
-| Stage | Skill | When to Use |
-|-------|-------|-------------|
-| Think | `/office-hours` | Before any new trading feature or agent |
-| Plan | `/plan-ceo-review` | Does this feature belong in a live trading system? |
-| Plan | `/plan-eng-review` | Lock data flow, safety layer interactions, edge cases |
-| Plan | `/plan-design-review` | Any new dashboard page or component |
-| Plan | `/autoplan` | Run all three plan reviews automatically |
-| Build | *(code)* | Implement against the locked plan |
-| Review | `/review` | **Required** before any merge touching `engine/risk/safety_layer.py` |
-| Review | `/codex` | Cross-model second opinion for complex algorithm changes |
-| Review | `/cso` | Periodic OWASP + STRIDE security audit of FastAPI engine |
-| Test | `/qa` | Browser QA on dashboard at http://localhost:3010 |
-| Test | `/qa-only` | QA report only — no auto-fixes |
-| Test | `/benchmark` | Measure LLM pipeline latency before/after changes |
-| Ship | `/ship` | Run tests → review → push → PR (replaces manual git workflow) |
-| Ship | `/land-and-deploy` | Merge → deploy → canary verify |
-| Reflect | `/retro` | Weekly retro with shipping streaks |
-| Reflect | `/learn` | Capture per-session learnings |
-| Reflect | `/document-release` | Update docs to match what shipped |
+### Environment / dependencies
 
-## Safety-Critical Rules
+- The Python venv lives at `engine/.venv` (Linux path `engine/.venv/bin/...`, not the
+  Windows `engine/.venv/Scripts/...` paths referenced throughout `CLAUDE.md`/docs).
+- The startup update script provisions deps from `engine/requirements-core.txt` (NOT
+  `engine/requirements.txt`). `requirements.txt` pins `questdb==1.2.1`, which has no
+  Python 3.12 wheel and breaks the full install; `requirements-core.txt` is the
+  CI-canonical set that resolves and includes the test deps (`hypothesis`, `respx`,
+  `pypdf`). Heavy/optional libs (`ta-lib`, `vectorbt`, `nautilus_trader`, `langchain`,
+  `openbb`) are intentionally excluded — engine modules guard those imports.
+- `engine/.env` and `dashboard/.env.local` are gitignored and already created in the VM
+  with a local dev `API_KEY` (the two values match so the dashboard can reach the engine).
+  If `engine/.env` is missing, the engine exits at startup with "Missing Required
+  Environment Variables". Recreate it with at least `API_KEY=<any value>` plus
+  `MAX_DRAWDOWN_PCT=0.20` (the paper-phase override; `test_drawdown_recurrence_prevention`
+  asserts the runtime value is `0.20`, while `config.py`'s code default is `0.10`).
+- `ANTHROPIC_API_KEY` is unset, so the LLM agent pipeline (`/pipeline/run`) cannot produce
+  decisions — every pipeline call fails the LLM provider chain. Everything else (safety
+  layer, health, portfolio, backtest tooling, dashboard) works without it. Add the key to
+  `engine/.env` to exercise the pipeline.
 
-These apply on top of normal gstack workflow:
+### Running the services
 
-- `/review` is **mandatory** before merging any PR that touches:
-  - `engine/risk/safety_layer.py`
-  - `engine/config.py` (TradingConfig risk params)
-  - `engine/backtest/signals.py`
-  - Any IB Gateway or Schwab connector code
-- Use `/investigate` instead of `print()` debugging for agent pipeline failures
-- Use `/canary` after deploying engine changes that affect live paper trading
-- `/careful` is always active for this repo (destructive command warnings)
+- Engine: from `engine/`, `.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010`.
+  Do NOT use `--reload` (duplicates IB connections). IB Gateway (port 4002) is not present,
+  so repeated `ConnectionRefusedError` to `127.0.0.1:4002` in the log is expected and
+  non-fatal — the data watchdog just retries.
+- Dashboard: from `dashboard/`, `pnpm dev` (port 3010). Use `pnpm` only (npm is broken).
+- Auth: all engine routes require header `X-API-Key: <API_KEY from engine/.env>`.
 
-## Browser Testing
+### LLM provider — local Ollama option (no cloud key)
 
-The `/browse` skill controls real Chromium. Use `$B <command>` directly:
+The engine's `JarvisLLMClient` (`engine/llm/client.py`) defaults to `JARVIS_LLM_PROVIDER=ollama`
+and needs NO `ANTHROPIC_API_KEY` in that mode — it routes agent calls to a local Ollama
+runtime (`OLLAMA_HOST`, `OLLAMA_MODEL`). To validate the agent/LLM path without cloud keys:
 
-```bash
-# Snapshot the dashboard
-$B goto http://localhost:3010
-$B snapshot
+- Run `ollama serve` (installed at `/usr/local/bin/ollama`); pull a small model
+  (`ollama pull llama3.2:1b`).
+- In `engine/.env` set `JARVIS_LLM_PROVIDER=ollama`, `OLLAMA_HOST=http://127.0.0.1:11434`,
+  `OLLAMA_MODEL=llama3.2:1b`, then restart the engine. `/health` then reports
+  `primary_provider: ollama` and a served call flips `active_provider` to `ollama`.
+- **CPU/Firecracker gotcha:** the VM advertises AVX-512 but Ollama's auto-selected AVX-512
+  CPU runner **segfaults on warmup** here. The AVX-512 `libggml-cpu-*` variants were moved to
+  `/usr/local/lib/ollama/_disabled_avx512/` so it falls back to the stable AVX2 (`haswell`)
+  backend. If Ollama is reinstalled/upgraded, re-hide those variants.
+- CPU inference of even a 1B model is slow (~30–70s/call); a full 10-agent pipeline run is
+  impractical on CPU. For real Claude behavior set `ANTHROPIC_API_KEY` instead (and remove the
+  `JARVIS_LLM_PROVIDER=ollama` line so the Anthropic path is used).
+- Note: a full `/pipeline/run` also needs market-data bars (IB Gateway or `POLYGON_API_KEY`);
+  without them the pipeline short-circuits before the LLM stages regardless of provider.
 
-# Click through a trade workflow
-$B click "New Trade"
-$B snapshot
+#### Vertex AI (Claude on Google Cloud) — preferred non-Anthropic-key path
 
-# Fill a form
-$B fill "#symbol" "MCL"
-$B click "Submit"
-```
+Runs the same Claude models via GCP (no Anthropic API key), using `AsyncAnthropicVertex`
++ google-auth ADC (`engine/llm/client.py:_build_vertex_client`). Both deps are installed.
+To activate (a ready, commented block is in `engine/.env`):
+1. Comment out `JARVIS_LLM_PROVIDER=ollama` (`use_vertex` requires provider != "ollama").
+2. Set `JARVIS_CLAUDE_USE_VERTEX=1`, `ANTHROPIC_VERTEX_PROJECT_ID`, `ANTHROPIC_VERTEX_REGION`
+   (e.g. `us-east5`).
+3. Provide GCP ADC: either `GOOGLE_APPLICATION_CREDENTIALS=<service-account.json path>` or
+   `gcloud auth application-default login`. The service account needs the **Vertex AI User**
+   role, and **Claude models must be enabled in Vertex Model Garden** for that project/region.
+4. Restart; `/health` should report `primary_provider: vertex`. Keep Ollama as a local
+   fallback until Vertex is confirmed (don't remove it before ADC works, or the LLM path
+   breaks with no provider).
 
-Dashboard runs on port 3010. Engine API runs on port 8010.
+### External service: master-api (:8030)
 
-## JARVIS Trader Architecture → gstack Skill Map
+The dashboard talks to a SEPARATE `master-api` service at server-only `MASTER_API_URL`
+(default `http://127.0.0.1:8030`), proxied through `app/api/master/[...path]/route.ts`
+and called from `dashboard/lib/masterApi.ts` (same-origin `/api/master/...`, no client-side
+URL or key). This service is NOT in this repo and is not started by the engine/dashboard.
+When it is absent (the default in this environment):
 
-| Component | Relevant Skills |
-|-----------|----------------|
-| 5-stage LLM pipeline | `/review`, `/investigate`, `/benchmark` |
-| Next.js dashboard | `/qa`, `/design-review`, `/browse` |
-| FastAPI engine | `/review`, `/cso`, `/qa` |
-| Learning system | `/review`, `/investigate` |
-| Multi-market orchestrator | `/plan-eng-review`, `/review` |
-| Release workflow | `/ship`, `/land-and-deploy`, `/document-release` |
+- `/master`, `/master/finances`, `/master/trading` show "Master API unreachable on :8030"
+  banners (expected).
+- The "honest deduped trade record" (`useHonestTrades` → `/master/trading/realized`) is
+  unavailable, so widgets on `/stats`, `/journal`, `/performance`, and `/backtest` render
+  "Failed to fetch"/"unavailable" states. These are NOT engine bugs — they need master-api.
 
-## Available Skills (33 total)
+`/strategy-c` showing `Engine error 404: /v1/strategy_c/signal` is also expected when no
+live Strategy-C signal has been generated; the page prints the command to create one.
 
-```
-/autoplan          /benchmark         /browse
-/canary            /careful           /checkpoint
-/codex             /connect-chrome    /cso
-/design-consultation  /design-html    /design-review
-/design-shotgun    /document-release  /freeze
-/gstack-upgrade    /guard             /health
-/investigate       /land-and-deploy   /learn
-/office-hours      /plan-ceo-review   /plan-design-review
-/plan-eng-review   /qa                /qa-only
-/retro             /review            /setup-browser-cookies
-/setup-deploy      /ship              /unfreeze
-```
+### Lint / test / build
 
-## First-Time Setup
-
-```bash
-# Build browse/design binaries (requires Bun v1.0+)
-cd .claude/skills/gstack && ./setup
-
-# Windows/WSL2:
-wsl -- bash -c "cd /mnt/c/Users/mattm/ThinkorSwim/jarvis-trader/.claude/skills/gstack && ./setup"
-```
-
-See `.claude/skills/gstack/GSTACK-INSTALL.md` for full setup guide.
+- Engine lint: from `engine/`, `.venv/bin/ruff check . --config ruff.toml`.
+- Engine tests: from `engine/`, `.venv/bin/python -m pytest tests/ -m "not slow"`
+  (~2 min, 7000+ tests). `manual`/`integration_ib` tests auto-skip without IB Gateway.
+- Dashboard typecheck: from `dashboard/`, `./node_modules/.bin/tsc --noEmit` (this is the
+  type/lint gate — `pnpm lint` / `next lint` is unconfigured and prompts interactively).
+- Dashboard build: from `dashboard/`, `pnpm run build`. Gotcha: running a production build
+  while `pnpm dev` is live corrupts `.next` (dev then 500s with "Cannot find module
+  './<chunk>.js'"). Stop the dev server first, build, then `rm -rf .next` and restart
+  `pnpm dev` (or use `pnpm run build:clean`).

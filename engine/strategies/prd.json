@@ -1,0 +1,76 @@
+{
+  "project": "n-autoresearch Experiment Loop Infrastructure",
+  "branchName": "feat/experiment-loop",
+  "description": "Build the missing experiment loop infrastructure that turns the n-autoresearch pattern into a first-class JARVIS capability: experiment logger, composite score, WFE computation, CLI runner, and search strategy advisor",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Experiment Logger (experiment_log.py)",
+      "description": "As JARVIS, I want a structured experiment log so each RL run is recorded with its config delta, metrics, composite score, and keep/reset decision — replacing the manual rl_config.py comments",
+      "acceptanceCriteria": [
+        "engine/strategies/experiment_log.py created",
+        "ExperimentLog class with log_experiment(), get_best(), get_near_misses(), list_all()",
+        "Persists to JSONL file at engine/data/rl_experiments/experiment_log.jsonl",
+        "Each record has: run_id, timestamp, symbol, category, hypothesis, reward_config_delta, metrics (pf, wfe, sharpe, n_trades, pass_rate, recommendation), composite_score, kept (bool)",
+        "compute_experiment_score(wfe, pf, sharpe, n_trades) function that returns float",
+        "Near-miss detection: within 0.05 WFE or 0.20 PF of best",
+        "Typecheck passes (mypy --strict compatible types)"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "JSONL = one JSON object per line, append-only. No DB dependency."
+    },
+    {
+      "id": "US-002",
+      "title": "WFE computation in train_walkforward result",
+      "description": "As JARVIS, I want actual Walk-Forward Efficiency (WFE = OOS_return / IS_return) computed and returned by train_walkforward so experiment scores are grounded in real efficiency, not just pass_rate",
+      "acceptanceCriteria": [
+        "rl_trainer.py train_walkforward result dict includes 'wfe' key (float 0.0-1.0+)",
+        "WFE computed as: mean_oos_return / mean_is_return clamped to [0.0, 2.0]",
+        "Returns 0.0 if IS return is zero or negative (degenerate case)",
+        "Existing result dict fields unchanged (backward compatible)",
+        "Logged in trainer output: '[RLTrainer.WF] WFE=0.82'"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "WFE formula: avg(OOS pf across windows) / avg(IS pf across windows). IS metrics come from training_summary in each window result."
+    },
+    {
+      "id": "US-003",
+      "title": "Experiment CLI runner (run_experiment.py)",
+      "description": "As JARVIS (or a 10-agent session), I want a CLI script that implements the full 11-step n-autoresearch loop for a single RL experiment — edit config, train, measure, score, compare, log, recommend keep/reset",
+      "acceptanceCriteria": [
+        "engine/strategies/run_experiment.py created",
+        "CLI args: --symbol MCL --category reward_shape --hypothesis 'text' --config '{\"hold_cost\": -0.008}' --timesteps 100000 --windows 8",
+        "Calls train_walkforward with the reward_config override",
+        "Computes composite score via compute_experiment_score()",
+        "Compares against best experiment from ExperimentLog",
+        "Logs result to ExperimentLog",
+        "Prints clear summary: RUN N | CATEGORY | SCORE | vs BEST | KEEP/RESET",
+        "Exit code 0=keep, 1=reset (for shell scripting)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Does NOT auto-commit or auto-reset git. Prints recommendation only. git keep/reset is manual per n-autoresearch discipline."
+    },
+    {
+      "id": "US-004",
+      "title": "Search strategy advisor (search_strategy.py)",
+      "description": "As JARVIS, I want a search strategy function that reads the experiment log and recommends the next experiment category and mode (explore/exploit/combine/ablation)",
+      "acceptanceCriteria": [
+        "engine/strategies/search_strategy.py created",
+        "suggest_next_experiment(symbol) returns: {mode, category, rationale, suggested_delta}",
+        "Explore mode: any category with < 3 experiments",
+        "Exploit mode: best-scoring category, suggest tighter delta around best config",
+        "Combine mode: two near-miss experiments from different categories",
+        "Ablation mode: triggered if no improvement in last 5 experiments",
+        "Printable summary for CLI use",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Lightweight — reads experiment_log.jsonl, no ML needed. Pure decision logic."
+    }
+  ]
+}

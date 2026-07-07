@@ -3,16 +3,18 @@
 import { RefreshCw } from "lucide-react";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 
-const SYMBOLS: ChartSymbol[] = ["MCL", "MNQ", "MGC"];
+const SYMBOLS: ChartSymbol[] = ["MES", "MCL", "MNQ", "MGC"];
 const TIMEFRAMES: ChartTimeframe[] = ["5m", "15m", "1h", "4h", "1d"];
 
 const SYMBOL_LABELS: Record<ChartSymbol, string> = {
+  MES: "Micro S&P",
   MCL: "Micro Crude",
   MNQ: "Micro Nasdaq",
   MGC: "Micro Gold",
 };
 
 const SYMBOL_STATUS: Record<ChartSymbol, { label: string; color: string }> = {
+  MES: { label: "APPROVED", color: "#00ff88" },
   MCL: { label: "APPROVED", color: "#00ff88" },
   MNQ: { label: "APPROVED", color: "#00ff88" },
   MGC: { label: "HALTED", color: "#ff4466" },

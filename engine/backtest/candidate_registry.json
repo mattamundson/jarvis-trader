@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "registered_at": "2026-06-12",
+  "methodology": "Pre-registration locks the candidate set BEFORE forward-testing so out-of-sample paper results are judged against a frozen hypothesis. Screening many strategy x instrument x param-grid combinations manufactures false positives (see engine/backtest/family_fdr.py: 0 of 34 OOS-scored verdicts survive whole-campaign BH-FDR). Freezing the candidates and their params here prevents post-hoc multiple-testing inflation: a candidate may only GRADUATE to tradeable by accumulating independent forward (paper) OOS windows that meet the graduation rule below. Do NOT add a candidate without a dated entry and an explicit hypothesis; do NOT mutate params after registration (register a new id instead).",
+  "source": "engine/data/gate_v2_verdicts/*.json + engine/data/family_fdr_report.json (ranked by binomial OOS p-value, closest-to-robust first)",
+  "graduation_rule": {
+    "min_forward_oos_windows": 6,
+    "min_forward_pf_ci_lower": 1.10,
+    "min_forward_p_edge": 0.95,
+    "must_survive_family_fdr": true,
+    "q": 0.10,
+    "note": "Forward windows must be INDEPENDENT of the in-sample WFO windows. Graduation is necessary, not sufficient, for live sizing -- gate-v2 (GATE_V2_ENFORCE_ROUTING) still governs routing."
+  },
+  "allowed_status": ["forward_testing", "graduated", "rejected", "paused"],
+  "deployed_live_note": "deployed_live=true marks the single candidate per symbol whose EXACT mechanical champion params the live entry path is currently trading -- the paper-entry path then stamps that candidate_id onto each new trade so forward-testing attributes at the precise (graduating) level. CURRENTLY ALL FALSE BY DESIGN: the live autonomous pipeline decides entries via an LLM/agent conviction (scheduler/pipeline_autonomous.py -> _trading_pipeline.analyze_and_decide -> fund_decision/trade_decision), NOT by running a mechanical registry candidate's rules (50/120 EMA + RV/ATR). No live trade legitimately maps to a registry candidate today; tagging would credit a mechanical strategy for trades it never generated and manufacture a fake graduation record. Flip a candidate to true ONLY when the live path genuinely routes that exact mechanical strategy. At most one candidate per symbol may be true; zero or ambiguous (>1) -> untagged (symbol-level context only).",
+  "candidates": [
+    {
+      "id": "MGC_trend_rv_filter_rank1",
+      "symbol": "MGC",
+      "family": "trend_rv_filter",
+      "status": "forward_testing",
+      "deployed_live": false,
+      "rank_basis": "family_fdr p_binom rank #1 (closest-to-robust); the single most credible edge nucleus",
+      "hypothesis": "On MGC, a 50/120 EMA trend entry, gated by realized volatility >= 9% annualized and trailed at 2.0x ATR, carries positive out-of-sample expectancy.",
+      "params": {"fast": 50, "slow": 120, "atr_trail_mult": 2.0, "min_rv_annualized": 9.0},
+      "lock_in_sample": {
+        "gate_verdict": "PASS",
+        "passed_via": "core",
+        "pf_ci_lower": 3.1819,
+        "p_edge": 1.0,
+        "dsr": 1.0,
+        "mc_95th_dd": 0.006531,
+        "n_oos_windows": 7,
+        "total_oos_trades": 26,
+        "p_binom": 0.0078
+      },
+      "caveats": "rv_filter threshold adopted from MES 36-trade analysis; MGC calibration pending 60+ live MGC paper trades. Only 7 OOS windows -> binomial just misses the strict BH line."
+    },
+    {
+      "id": "MGC_trend_rank4",
+      "symbol": "MGC",
+      "family": "trend",
+      "status": "forward_testing",
+      "deployed_live": false,
+      "rank_basis": "family_fdr p_binom rank #4; gate-PASS (alt routing)",
+      "hypothesis": "On MGC, an unfiltered 50/120 EMA trend entry trailed at 2.0x ATR carries positive out-of-sample expectancy.",
+      "params": {"fast": 50, "slow": 120, "atr_trail_mult": 2.0},
+      "lock_in_sample": {
+        "gate_verdict": "PASS",
+        "passed_via": "alt",
+        "pf_ci_lower": 2.5968,
+        "p_edge": 0.6842,
+        "dsr": 1.0,
+        "mc_95th_dd": 0.030347,
+        "n_oos_windows": 19,
+        "total_oos_trades": 67,
+        "p_binom": 0.0835
+      },
+      "caveats": "19 OOS windows (more robust sample than rank1) but lower p_edge (0.68) -> 13/19 windows profitable."
+    },
+    {
+      "id": "MGC_trend_adx_filter_rank1",
+      "symbol": "MGC",
+      "family": "trend_adx_filter",
+      "status": "forward_testing",
+      "deployed_live": false,
+      "rank_basis": "family_fdr p_binom rank #6; gate-PASS (alt routing); completes the MGC trend nucleus",
+      "hypothesis": "On MGC, a 50/120 EMA trend entry gated by ADX(14) >= 20 and trailed at 2.0x ATR carries positive out-of-sample expectancy.",
+      "params": {"fast": 50, "slow": 120, "atr_trail_mult": 2.0, "adx_min": 20.0, "adx_period": 14},
+      "lock_in_sample": {
+        "gate_verdict": "PASS",
+        "passed_via": "alt",
+        "pf_ci_lower": 1.9766,
+        "p_edge": 0.6111,
+        "dsr": 1.0,
+        "mc_95th_dd": 0.01059,
+        "n_oos_windows": 19,
+        "total_oos_trades": 39,
+        "p_binom": 0.1796
+      },
+      "caveats": "Weakest of the three MGC PASS variants on p_edge (0.61). Kept to test whether the ADX gate adds or subtracts vs the unfiltered rank4."
+    },
+    {
+      "id": "MES_trend_rank11",
+      "symbol": "MES",
+      "family": "trend",
+      "status": "forward_testing",
+      "deployed_live": false,
+      "rank_basis": "family_fdr p_binom rank #2 (strongest non-MGC); gate INSUFFICIENT_SAMPLE",
+      "hypothesis": "On MES, a trend-following entry (rank11 champion grid) carries positive out-of-sample expectancy once enough trades accumulate to clear the sample-adequacy gate.",
+      "params": {"note": "champion grid per gate_v2_verdicts/MES_trend_rank11.json; locked by id, not re-optimized"},
+      "lock_in_sample": {
+        "gate_verdict": "INSUFFICIENT_SAMPLE",
+        "pf_ci_lower": 2.5,
+        "p_edge": 0.75,
+        "dsr": 0.999996,
+        "n_oos_windows": 19,
+        "p_binom": 0.0318
+      },
+      "caveats": "Flagged INSUFFICIENT_SAMPLE -> the gate distrusts the trade count. Forward-testing is precisely how the sample grows; do NOT treat as tradeable until the gate clears AND graduation rule is met."
+    },
+    {
+      "id": "MES_trend_rv_filter_rank2",
+      "symbol": "MES",
+      "family": "trend_rv_filter",
+      "status": "forward_testing",
+      "deployed_live": false,
+      "rank_basis": "family_fdr p_binom rank #3; gate INSUFFICIENT_SAMPLE",
+      "hypothesis": "On MES, an RV-filtered trend entry (rank2 champion grid) carries positive out-of-sample expectancy once the sample clears the adequacy gate.",
+      "params": {"note": "champion grid per gate_v2_verdicts/MES_trend_rv_filter_rank2.json; locked by id, not re-optimized"},
+      "lock_in_sample": {
+        "gate_verdict": "INSUFFICIENT_SAMPLE",
+        "pf_ci_lower": 1.905,
+        "p_edge": 0.8333,
+        "dsr": 1.0,
+        "n_oos_windows": 7,
+        "p_binom": 0.0625
+      },
+      "caveats": "Only 7 OOS windows and INSUFFICIENT_SAMPLE. High p_edge (0.83) is encouraging but unproven."
+    },
+    {
+      "id": "MES_sma_trend_vix_pctile_blockCrisis_v1",
+      "symbol": "MES",
+      "family": "trend_vix_pctile",
+      "status": "paused",
+      "deployed_live": false,
+      "rank_basis": "DRAFT pre-registration (PR #120 follow-up); not yet ranked -- awaits a local walk-forward verdict before it can enter forward_testing.",
+      "hypothesis": "On MES, suppressing the SMA(60,200) golden-cross trend entry while VIX sits in the top percentile tier (Crisis, >85th of trailing 252d) preserves the rank11 trend edge with fewer degrees of freedom than the fixed vix_min/vix_max gate, by adapting to volatility-regime drift instead of fixed VIX prints.",
+      "params": {"fast": 60, "slow": 200, "atr_trail_mult": 2.0, "vix_regime_block": ["Crisis"], "vix_regime_lookback": 252, "momentum_window": 63},
+      "lock_in_sample": {
+        "gate_verdict": "PENDING",
+        "pf_ci_lower": null,
+        "p_edge": null,
+        "n_oos_windows": null,
+        "note": "Populate from engine/data/gate_v2_verdicts/MES_trend_vix_pctile_rank1.json after running backtest/run_mes_trend_vix_pctile_rank1.py where the MES cache + yfinance live. Baseline to beat: MES_trend_vix_rank1 p_edge=0.75 (ALT PASS)."
+      },
+      "activation_protocol": "DRAFT, INERT at status 'paused' (get_active_candidates returns only forward_testing; deployed_live=false). Flip to 'forward_testing' ONLY after the local rank1 run yields a gate-v2 PASS and its in-sample stats are copied into lock_in_sample. If that run's champion blocked-tier set differs from ['Crisis'], register a NEW id rather than mutating these frozen params.",
+      "caveats": "Params locked a-priori to block ONLY the Crisis tier (minimal DOF, AgentQuant default). Not yet validated -- no verdict exists until the runner is executed locally."
+    }
+  ]
+}

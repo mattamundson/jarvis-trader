@@ -110,7 +110,7 @@ All 25 routers found in `engine/routers/` are included in `engine/main.py`:
 6. ✅ journal_router
 7. ✅ macro_router
 8. ✅ market_router
-9. ✅ notifications_router
+9. ✅ notifications/VIX — routes on `main.py` (orphan `notifications_router.py` removed)
 10. ✅ options_router
 11. ✅ pipeline_router
 12. ✅ polymarket_router

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw } from "lucide-react";
@@ -74,14 +74,13 @@ export function CurrentSignalWidget({ symbol = "MES" }: { symbol?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
+      const json = await fetchEngine<MtfData>(
         `/analytics/mtf?symbol=${encodeURIComponent(symbol)}`
       );
-      const json = (await res.json()) as MtfData;
       setData(json);
       setLastUpdated(new Date());
     } catch (err) {
@@ -89,14 +88,13 @@ export function CurrentSignalWidget({ symbol = "MES" }: { symbol?: string }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [symbol]);
 
   useEffect(() => {
     fetchData();
     const id = setInterval(fetchData, 120_000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol]);
+  }, [fetchData]);
 
   const recVariant: "bull" | "bear" | "warn" =
     data ? (REC_VARIANT[data.recommendation] ?? "warn") : "warn";
@@ -218,6 +216,13 @@ export function CurrentSignalWidget({ symbol = "MES" }: { symbol?: string }) {
                 </>
               )}
             </div>
+
+            {/* Provenance (P4.2): rule-based signal, not the LLM pipeline — flag the
+                backend gap honestly rather than invent narrative reasoning. */}
+            <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+              Why: rule-based STC crossover with multi-timeframe alignment. No LLM
+              pipeline reasoning is generated for this signal type.
+            </p>
           </>
         )}
       </CardContent>

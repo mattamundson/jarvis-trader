@@ -1,83 +1,74 @@
 {
-  "project": "JARVIS Trader — Roadmap Phase 6 + Cleanup",
+  "project": "JARVIS Task Drain — May 9 Sprint",
   "branchName": "main",
-  "description": "Complete 4 remaining roadmap items: RL Learning System, integration test fixes, capital config update to $10K, and Polymarket dashboard page.",
+  "description": "Close 5 open tasks: 3 already-resolved (verify + close), 1 commit, 1 code fix.",
   "userStories": [
     {
-      "id": "US-001",
-      "title": "RL Evaluator + API endpoints (Phase 6 completion)",
-      "description": "As a developer, I want the RL strategy system fully wired with an evaluator module and 4 API endpoints so it can be used from the dashboard.",
+      "id": "US-031",
+      "title": "Close: signal gap already resolved",
+      "description": "Task #31 was resolved on May 8 when paper_tracker was injected into SignalScanner. Verify and close.",
       "acceptanceCriteria": [
-        "engine/strategies/rl_evaluator.py created with OOSEvaluator class: load saved model, run on date range, return full metrics (Sharpe, PF, WR, MaxDD, HOLD rate)",
-        "engine/main.py adds 4 router imports and endpoints: POST /strategies/rl/train, GET /strategies/rl/status, GET /strategies/rl/results/{run_id}, POST /strategies/rl/evaluate",
-        "engine/tests/test_rl_module.py created with at minimum: test_rl_environment_step, test_rl_config_valid, test_safety_layer_blocks_unsafe_action",
-        "cd engine && .venv/Scripts/python -m pytest tests/test_rl_module.py -v passes",
-        "Engine starts without import errors after adding RL router"
+        "Confirm scanner decisions exist in DB after May 8",
+        "Task #31 marked completed"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "COMPLETE 2026-04-01. Created rl_evaluator.py (OOSEvaluator), routers/strategies_router.py (4 endpoints), tests/test_rl_module.py (12 tests, 12/12 pass). gymnasium + stable-baselines3 installed in venv. Router wired into main.py with prefix /api/v1."
+      "notes": "No code change needed — paper_tracker injection fix was applied 2026-05-08"
     },
     {
-      "id": "US-002",
-      "title": "Strategies dashboard page (RL UI)",
-      "description": "As a trader, I want a /strategies page in the dashboard showing RL training status, walk-forward results, and action distribution.",
+      "id": "US-034",
+      "title": "Close: MES/MGC routing already verified",
+      "description": "Task #34 — gate v2 verdicts confirmed PASS-via-alt. Files exist: engine/data/gate_v2_verdicts/. Close the task.",
       "acceptanceCriteria": [
-        "dashboard/app/strategies/page.tsx is a full implementation (not a stub) with: RL training trigger button, training status section, walk-forward results table (symbol, window, Sharpe, PF, WR, HOLD rate), action distribution breakdown",
-        "All data fetched via fetchEngine from the 4 new RL API endpoints",
-        "cd dashboard && pnpm run build passes with 0 TypeScript errors",
-        "Page matches dark terminal aesthetic of the rest of the dashboard"
+        "Read MES, MCL, MNQ verdict files — all verdict=PASS",
+        "Task #34 marked completed"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "dashboard/app/strategies/page.tsx is a full 1100+ line implementation. All required sections present: RL System Status (TrainingStatusPanel + StartTrainingPanel + HealthPanel), Walk-Forward Results Table (WalkForwardResultsPanel with Symbol/Window/Sharpe/PF/WR/HOLD Rate/Status columns, bull/warn/bear status badges), Action Distribution (ActionDistributionPanel with HOLD/BUY/SELL/CLOSE progress bars), RL vs STC Comparison (RLvsSTC with 4-metric side-by-side table). All data via fetchEngine/postEngine. tsc --noEmit: 0 errors in strategies/page.tsx. Pre-existing unrelated errors exist in command-center components (missing @react-three/fiber, lightweight-charts deps) but none from this file."
+      "notes": "Verdict files already on disk from May 9 run"
     },
     {
-      "id": "US-003",
-      "title": "Fix 4 failing integration tests",
-      "description": "As a developer, I want all integration tests passing so the CI baseline is clean before adding new tests.",
+      "id": "US-033",
+      "title": "Close: Jarvis-DiscordAutoImport is healthy",
+      "description": "Task #33 — scheduled task confirmed healthy: Status=Ready, Last Result=0, Last Run=5/9/2026 6:09am. Close.",
       "acceptanceCriteria": [
-        "test_import_trades_single passes — fix: paper_trades schema missing 'action' column. Add migration or update test fixture to match actual schema",
-        "test_market_session passes — fix: 404 means endpoint missing. Add /api/v1/market/session or update test URL to match actual endpoint",
-        "test_position_sizing_calculate passes — fix: 404. Add endpoint or update URL",
-        "test_validation_readiness_check passes — fix: 404. Add endpoint or update URL",
-        "test_whatsapp_test_notification: mark with @pytest.mark.skipif when TWILIO_ACCOUNT_SID not set (env-dependent, not a code bug)",
-        "cd engine && .venv/Scripts/python -m pytest tests/test_integration.py -v shows 0 failures (skips allowed for env-dependent tests)"
+        "Task #33 marked completed"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "COMPLETE (2026-04-02): Fixed 5 issues. (1) reports_router.py import_paper_trades: mapped 'action' field to 'side' column, added trade_id UUID generation, replaced 'strategy' with strategy_params JSON. (2) pipeline_router.py whatsapp/test: added 'sent' and 'timestamp' fields to not_configured response. (3) market_router.py: added GET /market/session endpoint. (4) safety_router.py: added GET /position-sizing/calculate endpoint. (5) validation_router.py: added GET /validation/readiness-check endpoint + wired validation_router into main.py. Result: 32 passed, 34 skipped, 0 failed."
+      "notes": "Already confirmed from schtasks query — no action needed"
     },
     {
-      "id": "US-004",
-      "title": "Capital config update to $10,000",
-      "description": "As a trader, I want all capital references updated from $100,000 to $10,000 to reflect actual account size.",
+      "id": "US-032",
+      "title": "Commit untracked/modified engine files",
+      "description": "Task #32 — stage and commit 4 modified + 5 untracked engine files. Exclude .mypy_cache and strategy_c runtime artifact.",
       "acceptanceCriteria": [
-        "engine/execution/ib_gateway_connector.py: update mock equity/cash from 100000.0 to 10000.0 (lines 75-76)",
-        "engine/backtest/backtester.py: update default initial_capital from 100_000.0 to 10_000.0 (line 214)",
-        "engine/backtest/monte_carlo.py: update default initial_capital from 100_000.0 to 10_000.0 (line 67)",
-        "engine/backtest/run_monte_carlo.py: update CLI default from 100_000 to 10_000 (line 65)",
-        "Grep confirms no remaining 100_000 or 100000 capital references in engine/ (excluding .venv)",
-        "cd engine && .venv/Scripts/python -m pytest tests/ -v passes (no regressions from capital change)"
+        "engine/config.py staged",
+        "engine/data/market_data.py staged",
+        "engine/data/polygon_stream.py staged",
+        "engine/backtest/compare_verdicts.py staged",
+        "engine/data/compare_verdicts_config.yaml staged",
+        "engine/data/gate_v2_verdicts/*.json staged",
+        "engine/data/post_trade_reports/2026-05-08.md staged",
+        "Clean commit with conventional message",
+        "Task #32 marked completed"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Total capital = $10,000 across all markets per MEMORY.md. agents/trader.py already uses 10_000.0 (good). markets/futures/module.py already uses 10000.0 (good). All other capital defaults updated: ib_gateway_connector.py (equity/cash/buying_power), backtester.py, monte_carlo.py (function default + CLI + docstring + fallback), monte_carlo_viz.py, optimizer.py, run_all_backtests.py, run_backtest.py, run_monte_carlo.py, sensitivity.py (function + CLI), walk_forward.py (function + CLI), eod_scheduler.py, tests/conftest.py. 266/289 tests pass; 23 pre-existing failures in test_safety_layer.py/test_loss_tracker.py (NoneType.approved AttributeError unrelated to capital change)."
+      "notes": "Do NOT stage .mypy_cache or strategy_c/output/strategy_c_plus_live_signal.json"
     },
     {
-      "id": "US-005",
-      "title": "Polymarket dashboard page — production quality",
-      "description": "As a trader, I want the Polymarket page to be a production-quality display of the module status with regulatory context, not a stub.",
+      "id": "US-030",
+      "title": "Fix gbrain-trading bridge exit 99 large-sync variant",
+      "description": "Task #30 — sync.ps1 exit-99 handler misses 'Large sync (727 files). Importing text, deferring embeddings.' Add this third variant alongside existing deletion-only and empty-output variants.",
       "acceptanceCriteria": [
-        "dashboard/app/polymarket/page.tsx renders: module status (DISABLED with regulatory note), Kalshi alternative suggestion, market listing section (empty state when disabled), enable/disable toggle only visible when POLYMARKET_ENABLED env var is set",
-        "Page uses correct API endpoint — verify against engine/markets/polymarket/module.py and main.py for actual health/status route",
-        "Regulatory disclaimer prominently displayed: 'Polymarket has U.S. regulatory restrictions (CFTC settled 2022). Module disabled by default.'",
-        "cd dashboard && pnpm run build passes with 0 TypeScript errors",
-        "Page looks production-quality matching dark terminal aesthetic — NOT a stub or placeholder"
+        "sync.ps1 lines 157-175 updated: $isLargeTextSync condition added",
+        "Commit the change to second-brain repo",
+        "Task #30 marked completed"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "dashboard/app/polymarket/page.tsx exists (347 lines, 1 DISABLED reference). engine/markets/polymarket/ has: module.py, client.py, scanner.py, strategies.py, risk.py. Check if any /polymarket/* routes exist in main.py before building UI."
+      "notes": "File: C:/Users/mattm/master-jarvis/second-brain/scripts/gbrain-bridge/sync.ps1"
     }
   ]
 }
