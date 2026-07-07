@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   equityCurve,
+  maxDrawdownPct,
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
@@ -74,9 +75,10 @@ export function MaxDrawdownTrackerWidget() {
   const maxDrawdownUsd =
     curve.length > 0 ? Math.min(...curve.map((p) => p.drawdown)) : 0; // <= 0
 
-  // Express as % of peak (avoid division by zero when peak <= 0)
-  const drawdownPct =
-    peakEquity > 0 ? (Math.abs(maxDrawdownUsd) / peakEquity) * 100 : 0;
+  // Express as % of account equity via the shared, floor-guarded helper --
+  // dividing by the raw trading-profit peak alone (peakEquity) could produce
+  // an absurd percentage when that peak was only tiny-but-positive.
+  const drawdownPct = honestSet ? maxDrawdownPct(honestSet.trades) * 100 : 0;
 
   const recoveryPct = calcRecoveryPct(drawdownPct);
   const gaugeWidth = Math.min(100, (drawdownPct / CIRCUIT_BREAKER_LIMIT_PCT) * 100);

@@ -33,8 +33,11 @@ import {
 import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { SessionBriefPanel } from "@/components/SessionBriefPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 
 const fontDisplay = Orbitron({
@@ -567,6 +570,26 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
+          PIPELINE REASONING — why each decision was made (expandable)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Pipeline Reasoning">
+          <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          SESSION BRIEF — proactive advisor recommendations. Re-homed here from
+          the dissolved kitchen-sink overview page (#274 feature preserved on the
+          flagship HUD after the P2.1 redirect orphaned its old mount point).
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Session Brief">
+          <SessionBriefPanel />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
           ROW 1 — STATUS OVERVIEW (5 columns)
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-5 gap-3 mb-4">
@@ -793,7 +816,9 @@ export default function CommandCenterPage() {
         </Card>
 
         {/* Portfolio Correlation */}
-        <PortfolioCorrelationWidget />
+        <WidgetErrorBoundary name="Portfolio Correlation">
+          <PortfolioCorrelationWidget />
+        </WidgetErrorBoundary>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -1489,7 +1514,9 @@ export default function CommandCenterPage() {
           ROW 7 — SIGNAL FEED (full width)
       ═══════════════════════════════════════════════════════ */}
       <div className="mt-3">
-        <SignalFeedWidget />
+        <WidgetErrorBoundary name="Signal Feed">
+          <SignalFeedWidget />
+        </WidgetErrorBoundary>
       </div>
     </div>
   );

@@ -13,7 +13,9 @@ function getEngineBaseUrl(): string {
 }
 
 function getEngineApiKey(): string | undefined {
-  return process.env.ENGINE_API_KEY ?? process.env.NEXT_PUBLIC_ENGINE_API_KEY;
+  // Server-only var — never NEXT_PUBLIC_* — so the key is never inlined into
+  // the client bundle.
+  return process.env.ENGINE_API_KEY;
 }
 
 async function proxy(request: NextRequest, path: string[]): Promise<NextResponse> {

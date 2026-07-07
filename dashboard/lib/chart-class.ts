@@ -46,7 +46,7 @@ const TV_TICKER: Record<string, string> = {
   // futures (only used by the context map / explicit opt-in — NOT the default path)
   MES: "CME_MINI:MES1!",
   MNQ: "CME_MINI:MNQ1!",
-  MGC: "COMEX:MGC1!",
+  MGC: "COMEX_MINI:MGC1!",
   MCL: "NYMEX:MCL1!",
   M2K: "CME_MINI:M2K1!",
   ES: "CME_MINI:ES1!",
@@ -56,7 +56,7 @@ const TV_TICKER: Record<string, string> = {
   QQQ: "NASDAQ:QQQ",
   IWM: "AMEX:IWM",
   DIA: "AMEX:DIA",
-  VIX: "CBOE:VIX",
+  VIX: "TVC:VIX",
   DXY: "TVC:DXY",
   TLT: "NASDAQ:TLT",
   GLD: "AMEX:GLD",
@@ -75,7 +75,7 @@ export function tvTickerFor(symbol: string): string {
 export const MARKET_CONTEXT: Array<{ label: string; tv: string }> = [
   { label: "S&P 500 · SPY", tv: "AMEX:SPY" },
   { label: "Nasdaq 100 · QQQ", tv: "NASDAQ:QQQ" },
-  { label: "Volatility · VIX", tv: "CBOE:VIX" },
+  { label: "Volatility · VIX", tv: "TVC:VIX" },
   { label: "US Dollar · DXY", tv: "TVC:DXY" },
   { label: "Bitcoin · BTCUSD", tv: "BINANCE:BTCUSDT" },
   { label: "10Y Treasuries · TLT", tv: "NASDAQ:TLT" },
