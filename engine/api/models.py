@@ -134,6 +134,18 @@ class HealthResponse(BaseModel):
         None,
         description="Whether the IBKR market-data connector is connected — independent lifecycle from the execution connector",
     )
+    ibkr_data_last_ok: Optional[float] = Field(
+        None,
+        description="Epoch (time.time()) of the last successful IB market-data serve. Set on each IB bar serve; None until the first serve. Read by the data-leg watchdog.",
+    )
+    ibkr_data_age_seconds: Optional[int] = Field(
+        None,
+        description="Seconds since the last successful IB market-data serve (None if never served).",
+    )
+    ibkr_data_stale: bool = Field(
+        False,
+        description="True when the data leg is nominally connected but its last serve is older than JARVIS_DATA_WATCHDOG_STALENESS (default 600s) — the 'connected but stale bars' condition the data-leg watchdog alerts on.",
+    )
     ibgateway_alive: Optional[bool] = Field(
         None,
         description="Whether IB Gateway is accepting TCP connections on the configured IB port (process-level liveness). Distinct from ibkr_*_connected: the Gateway can be up (port open) while a connector has dropped (recoverable via POST /data/reconnect), or the Gateway itself can be down (port closed) — the failure mode that left trade #178's stop unenforced for 13h.",
