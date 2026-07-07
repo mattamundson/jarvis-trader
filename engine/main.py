@@ -3166,6 +3166,44 @@ app.websocket("/ws/events")(events_handler)
 _decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
 
 
+def _build_data_provenance(dm, symbol: str) -> dict | None:
+    """Snapshot *what data* a decision was based on, for honest persistence.
+
+    Answers post-hoc audits like "was this fill made on live IBKR data or a
+    stale CSV-cache fallback?" (the 2026-06-29 frozen-MES-5300 class). Sourced
+    entirely from the data manager's *existing* observability so it adds no new
+    probe and no new state:
+
+    - ``last_bar_source`` — the most-recent data tier that served bars
+      (``ibkr`` | ``sqlite_cache`` | ``polygon`` | ``csv_cache`` | ``none``).
+      This is GLOBAL on the manager, not per-symbol, so it is *approximate*
+      when several symbols are served concurrently; named honestly so a reader
+      never over-trusts it.
+    - ``serve_age_s`` — seconds since bars were last served *for this symbol*
+      (per-symbol via ``symbol_freshness()``, accurate). ``None`` if this symbol
+      has not been served yet this run.
+
+    Fully defensive: returns ``None`` when the data manager is unavailable and
+    never raises into the decision path (a provenance failure must never block
+    or corrupt a decision). Deliberately reads the manager's existing surface
+    rather than adding a public accessor, to avoid colliding with in-flight
+    market_data.py work.
+    """
+    if dm is None:
+        return None
+    prov: dict = {}
+    try:
+        prov["last_bar_source"] = getattr(dm, "_last_bar_source", None)
+    except Exception:
+        prov["last_bar_source"] = None
+    try:
+        fresh = dm.symbol_freshness()
+        prov["serve_age_s"] = fresh.get(symbol.upper()) if isinstance(fresh, dict) else None
+    except Exception:
+        prov["serve_age_s"] = None
+    return prov
+
+
 def _log_decision(
     symbol: str,
     action: str,
@@ -3178,6 +3216,13 @@ def _log_decision(
     full_pipeline_data: dict | None = None,
 ) -> None:
     """Append a decision to the in-memory ring buffer AND persist to SQLite."""
+    # Data-truth: stamp *what data* this decision was based on (tier + per-symbol
+    # serve-age) so a post-hoc audit can tell a live-IBKR decision from one made
+    # on a stale CSV-cache fallback (the 2026-06-29 frozen-MES-5300 class). The
+    # engine already has read-time freshness gates (entry_price_sanity); this
+    # records the provenance the gate saw, it does NOT change any trade decision.
+    provenance = _build_data_provenance(data_manager, symbol)
+
     entry: dict = {
         "id": len(_decision_log) + 1,
         "timestamp": datetime.now().isoformat(),
@@ -3186,20 +3231,26 @@ def _log_decision(
         "confidence": confidence,
         "source": source,
         "summary": summary,
+        "data_provenance": provenance,
     }
     _decision_log.append(entry)
     if len(_decision_log) > 100:
         _decision_log.pop(0)
 
-    # Persist to SQLite (non-blocking best-effort — never crash the caller)
+    # Persist to SQLite (non-blocking best-effort — never crash the caller).
+    # Provenance rides inside signal_data_json (no schema migration): merge into
+    # a *copy* so we never mutate the caller's dict.
     if db_manager:
         try:
+            sig = signal_data if signal_data is not None else {"source": source, "summary": summary}
+            if provenance is not None and isinstance(sig, dict):
+                sig = {**sig, "data_provenance": provenance}
             db_manager.insert_decision(
                 symbol=symbol,
                 action=action,
                 confidence=confidence,
                 regime=regime,
-                signal_data=signal_data or {"source": source, "summary": summary},
+                signal_data=sig,
                 reasoning=reasoning or summary,
                 full_pipeline_data=full_pipeline_data,
             )
