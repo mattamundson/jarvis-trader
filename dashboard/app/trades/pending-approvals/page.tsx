@@ -8,7 +8,9 @@ import {
   getPendingApprovals,
   postApprovePending,
   postRejectPending,
+  fetchEngine,
   type PendingApprovalRow,
+  type SafetyStatus,
 } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -17,6 +19,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const REFRESH_MS = 20_000;
+/** Fallback base ONLY when the engine can't report live equity — never the
+ *  authoritative figure. Live value comes from /safety/status portfolio_equity. */
+const ACCOUNT_VALUE_FALLBACK = 10_000;
 
 interface ApprovalConfirmDialog {
   isOpen: boolean;
@@ -48,6 +53,21 @@ export default function PendingApprovalsPage() {
     { refreshInterval: REFRESH_MS }
   );
 
+  // Live account base for the risk math on this screen. The percentages a human
+  // approves against MUST reflect the real account, not a hardcoded literal —
+  // /safety/status.portfolio_equity is the live figure; the fallback applies
+  // only when the engine can't report it.
+  const { data: safety } = useSWR<SafetyStatus>(
+    "safety-status-for-approvals",
+    () => fetchEngine<SafetyStatus>("/safety/status"),
+    { refreshInterval: 60_000 }
+  );
+  const accountValueIsLive =
+    typeof safety?.portfolio_equity === "number" && safety.portfolio_equity > 0;
+  const accountValue = accountValueIsLive
+    ? (safety!.portfolio_equity as number)
+    : ACCOUNT_VALUE_FALLBACK;
+
   useWebSocket(undefined, (event) => {
     if (event.type === "pending_approval_created") {
       void mutate();
@@ -58,7 +78,7 @@ export default function PendingApprovalsPage() {
     const price = (row.entry_price ?? parseFloat(overridePrice[row.approval_id] || "0")) || 0;
     const qty = row.quantity || 0;
     const notional = price * qty;
-    const portfolioValue = 10000; // Default paper trading capital
+    const portfolioValue = accountValue; // live equity (fallback only when engine offline)
     const positionSizePercent = (notional / portfolioValue) * 100;
 
     // Estimate margin impact (typically 5-10% for futures micro contracts)
@@ -75,7 +95,7 @@ export default function PendingApprovalsPage() {
       estimatedNotional: notional,
       stopLevel,
     };
-  }, [overridePrice]);
+  }, [overridePrice, accountValue]);
 
   const onApproveClick = useCallback((row: PendingApprovalRow) => {
     setConfirmDialog({
@@ -248,7 +268,13 @@ export default function PendingApprovalsPage() {
 
                 {/* Risk Summary */}
                 <div className="bg-muted/30 rounded-md p-3 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground">Risk Summary</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-muted-foreground">Risk Summary</p>
+                    <p className="text-[10px] font-mono text-muted-foreground">
+                      base ${accountValue.toLocaleString()}
+                      {accountValueIsLive ? " (live)" : " (default — engine offline)"}
+                    </p>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div>
                       <p className="text-muted-foreground">Position Size</p>
