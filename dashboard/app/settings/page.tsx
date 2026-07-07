@@ -512,13 +512,19 @@ function RiskParametersPanel({ data }: { data: SafetyConfig | undefined }) {
 
 // ── IB Gateway Panel ──────────────────────────────────────────────────────
 
-function IBGatewayPanel({ data }: { data: IBGatewayStatus | undefined; config: SafetyConfig | undefined }) {
+function IBGatewayPanel({
+  data,
+  config,
+}: {
+  data: IBGatewayStatus | undefined;
+  config: SafetyConfig | undefined;
+}) {
   // Prefer execution-connector state when /health exposes it (newer engines).
   // Falls back to legacy ibkr_connected (OR of execution + data) on older engines.
   // The execution path is what actually routes orders — this surface needs to
   // reflect that, not the data-feed connector that's separately healthy.
   const connected = (data?.ibkr_execution_connected ?? data?.ibkr_connected) ?? false;
-  const paperMode = data?.paper_mode ?? true;
+  const paperMode = config?.ibkr_paper_mode ?? data?.paper_mode ?? true;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
@@ -551,18 +557,18 @@ function IBGatewayPanel({ data }: { data: IBGatewayStatus | undefined; config: S
               </span>
             )}
             <span className="text-xs text-muted-foreground">
-              Port 4002 (paper trading only)
+              Port {config?.ibkr_port ?? "—"} ({paperMode ? "paper trading only" : "live"})
             </span>
           </div>
         </div>
       </div>
 
       <div className="space-y-0">
-        <ConfigRow label="Host" value="127.0.0.1" mono />
-        <ConfigRow label="Port" value={4002} mono />
-        <ConfigRow label="Client ID" value={1} mono />
-        <ConfigRow label="Mode" value="Paper trading only" />
-        <ConfigRow label="Live trading locked" value={true} />
+        <ConfigRow label="Host" value={config?.ibkr_host ?? "—"} mono />
+        <ConfigRow label="Port" value={config?.ibkr_port ?? "—"} mono />
+        <ConfigRow label="Client ID" value={config?.ibkr_client_id ?? "—"} mono />
+        <ConfigRow label="Mode" value={paperMode ? "Paper trading only" : "Live trading"} />
+        <ConfigRow label="Live trading locked" value={!(config?.live_trading_enabled ?? false)} />
       </div>
 
       {data?.account_id && (

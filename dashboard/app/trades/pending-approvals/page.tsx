@@ -81,7 +81,10 @@ export default function PendingApprovalsPage() {
     const portfolioValue = accountValue; // live equity (fallback only when engine offline)
     const positionSizePercent = (notional / portfolioValue) * 100;
 
-    // Estimate margin impact (typically 5-10% for futures micro contracts)
+    // Flat 5% heuristic (typical for futures micro contracts). No real
+    // per-instrument margin-spec source is wired yet (engine/backtest/
+    // contract_specs.py has multiplier/tick/commission but no margin field) —
+    // this is a disclosed approximation, not a real margin lookup.
     const marginRequired = notional * 0.05;
     const marginImpactPercent = (marginRequired / portfolioValue) * 100;
 
@@ -289,7 +292,12 @@ export default function PendingApprovalsPage() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Margin Impact</p>
+                      <p
+                        className="text-muted-foreground"
+                        title="Flat 5% of notional — a rough futures-margin approximation, not a real per-instrument margin lookup (no margin-spec source is wired yet)."
+                      >
+                        Est. Margin Impact
+                      </p>
                       <p
                         className={`font-mono font-semibold ${
                           risk.marginImpactPercent > 40 ? "text-bear" : ""
