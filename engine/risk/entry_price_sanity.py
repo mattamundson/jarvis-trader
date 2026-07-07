@@ -34,6 +34,8 @@ _ENV_MIN_ATR = "ENTRY_PRICE_SANITY_MIN_ATR"
 _ENV_REF_ENABLE = "ENABLE_PRICE_REF_CONTAMINATION_CHECK"
 _ENV_REF_DEVIATION = "ENTRY_PRICE_SANITY_MAX_REF_DEVIATION_PCT"
 _ENV_REQUIRE_LIVE = "ENTRY_PRICE_SANITY_REQUIRE_LIVE_SOURCE"
+_ENV_FRESHNESS_ENABLE = "ENABLE_ENTRY_PRICE_FRESHNESS"
+_ENV_MAX_BAR_AGE = "ENTRY_PRICE_MAX_BAR_AGE_SECONDS"
 _DEFAULT_MAX_ATR_DELTA = 1.0
 
 # Price-source provenance: the relative entry-sanity checks (ATR delta + recent
@@ -64,6 +66,20 @@ _ATR_PERIOD = 14
 # Bars sampled for the robust recent-price reference (median is outlier-robust,
 # so a handful of contaminated bars among mostly-good ones does not move it).
 _REF_RECENT_BARS = 48
+# Bar-timestamp freshness ceiling. The provenance + ATR + era anchors are all
+# blind to the ONE case where a stale CSV cache (a) tags itself as a live source
+# (or carries no source tag, so the provenance anchor treats it as live) AND
+# (b) is internally self-consistent — every bar is from the same wrong era, so
+# entry ≈ market ≈ recent-median and all three relative checks pass. The 2026-06-29
+# MES auto-approve contamination was exactly this: fills booked at a months-old
+# cached ~5300 while the real market was ~7497. The orthogonal signal those checks
+# structurally cannot see is the bar's own AGE: a price carried on a bar from hours
+# ago is stale no matter how plausible the number. 7200s = 2h tolerates the ~1h CME
+# maintenance break plus margin; a multi-hour freeze (or weekend-spanning stale
+# cache) trips it. Fail-safe: tripping only ever REFUSES (NO_TRADE), never permits —
+# so a false positive (e.g. just after a weekend reopen, before fresh bars print)
+# simply skips a paper fill rather than risking a contaminated one.
+_DEFAULT_MAX_BAR_AGE_SECONDS = 7200
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +174,85 @@ def is_offline_fallback_source(source: Optional[str]) -> bool:
     (treated as live) so the anchor never blocks a genuine live fill.
     """
     return (source or "").strip().lower() in _OFFLINE_FALLBACK_SOURCES
+
+
+def is_bar_freshness_check_enabled() -> bool:
+    """Return True unless ENABLE_ENTRY_PRICE_FRESHNESS is set to 0/false/no/off.
+
+    Opt-out semantics (safe-by-default), read fresh each call so it can be toggled
+    at runtime. Gates the bar-timestamp freshness anchor that catches a stale/frozen
+    feed whose price value is self-consistent and live-looking (the 2026-06-29
+    frozen-MES-5300 auto-approve contamination), which the relative anchors miss.
+    """
+    raw = os.environ.get(_ENV_FRESHNESS_ENABLE, "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def _get_max_bar_age_seconds() -> int:
+    """Read ENTRY_PRICE_MAX_BAR_AGE_SECONDS from env, default 7200 (2h), floor 60."""
+    raw = os.environ.get(_ENV_MAX_BAR_AGE, "").strip()
+    try:
+        val = int(raw)
+        if val >= 60:
+            return val
+    except (TypeError, ValueError):
+        pass
+    return _DEFAULT_MAX_BAR_AGE_SECONDS
+
+
+def latest_bar_age_seconds(
+    df: "pd.DataFrame", now: Optional["pd.Timestamp"] = None
+) -> Optional[float]:
+    """Age in seconds of the most recent bar's timestamp; None if undeterminable.
+
+    Pure over ``df`` + injected ``now`` (defaults to the current UTC time). Reads
+    the timestamp from a DatetimeIndex first, then falls back to a
+    timestamp/time/date/datetime column. Any naive timestamp is assumed UTC. A
+    None return means "no usable timestamp" — the caller treats that as
+    "freshness indeterminate, skip this anchor" rather than rejecting, so
+    timestamp-less synthetic frames don't false-trip while real bars (which
+    always carry their original timestamps, old ones included) are judged.
+    """
+    if df is None or getattr(df, "empty", True):
+        return None
+    ts = None
+    idx = getattr(df, "index", None)
+    try:
+        if idx is not None and len(idx) > 0:
+            candidate = idx[-1]
+            # Only accept an index value that looks like a real datetime.
+            if hasattr(candidate, "year") or isinstance(candidate, pd.Timestamp):
+                ts = candidate
+    except Exception:
+        ts = None
+    if ts is None:
+        cols = getattr(df, "columns", [])
+        for col in ("timestamp", "time", "date", "datetime"):
+            if col in cols:
+                try:
+                    ts = df[col].iloc[-1]
+                except Exception:
+                    ts = None
+                break
+    if ts is None:
+        return None
+    try:
+        ts = pd.Timestamp(ts)
+    except Exception:
+        return None
+    if ts.tz is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    now_ts = pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz="UTC")
+    if now_ts.tz is None:
+        now_ts = now_ts.tz_localize("UTC")
+    else:
+        now_ts = now_ts.tz_convert("UTC")
+    try:
+        return float((now_ts - ts).total_seconds())
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +507,7 @@ async def check_entry_price_sanity(
     # -- Fetch ATR + robust recent-price reference via bars (one fetch) --
     atr: Optional[float] = None
     recent_ref: Optional[float] = None
+    bars = None
     try:
         bars = await data_manager.get_bars(
             symbol, lookback_days=30, timeframe="1h", is_futures=is_futures
@@ -421,6 +517,35 @@ async def check_entry_price_sanity(
             recent_ref = robust_recent_reference(bars)
     except Exception as exc:
         logger.warning("[ENTRY_PRICE_SANITY] get_bars/atr failed for %s: %s", symbol, exc)
+
+    # -- Bar-timestamp freshness anchor (absolute, orthogonal to price value) --
+    # Reuses the bars already fetched above (zero extra I/O). The provenance, ATR
+    # and era anchors can all be fooled by a stale cache that looks live and is
+    # internally self-consistent; the bar's own age cannot be. Fire only when the
+    # timestamp is determinable (real bars always carry one — old timestamps
+    # included); skip-with-warning when it isn't, so timestamp-less callers fall
+    # through to the relative anchors rather than false-tripping. Refusing here is
+    # fail-safe NO_TRADE — it can only block a fill, never permit a new one.
+    if is_bar_freshness_check_enabled() and bars is not None and not getattr(bars, "empty", True):
+        age = latest_bar_age_seconds(bars)
+        if age is None:
+            logger.warning(
+                "[ENTRY_PRICE_SANITY] %s: latest-bar timestamp undeterminable — "
+                "freshness anchor skipped (relative anchors still apply).",
+                symbol,
+            )
+        else:
+            max_age = _get_max_bar_age_seconds()
+            if age > max_age:
+                reason = (
+                    f"[{symbol}] entry_price={entry_price} validated against a STALE bar: "
+                    f"latest bar is {int(age)}s old (> {max_age}s ceiling). The price feed is "
+                    f"frozen/stale (cache fallback while the live feed is degraded) — refusing "
+                    f"to trade on a stale bar regardless of how plausible the number looks "
+                    f"(fail-safe NO_TRADE)."
+                )
+                logger.error("[ENTRY_PRICE_SANITY] rejected (stale bar): %s", reason)
+                return False, reason
 
     is_sane, reason = is_entry_price_sane(
         symbol=symbol,

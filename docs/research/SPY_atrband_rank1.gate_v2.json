@@ -1,0 +1,58 @@
+{
+  "strategy": "atr_band_breakout",
+  "symbol": "SPY",
+  "rank": 1,
+  "source": "x-bookmark edge scan 2026-07-02 (@QuantifiedStrat)",
+  "period": [
+    "1993-01-29",
+    "2026-06-24"
+  ],
+  "polarity_test": {
+    "breakout_long_only": {
+      "cagr": 0.0183,
+      "sharpe_ann": 0.307,
+      "max_dd": -0.2842,
+      "final_mult": 1.83
+    },
+    "breakout_long_short": {
+      "cagr": -0.0364,
+      "sharpe_ann": -0.207,
+      "max_dd": -0.779,
+      "final_mult": 0.29
+    },
+    "meanrev_long_only": {
+      "cagr": 0.0399,
+      "sharpe_ann": 0.513,
+      "max_dd": -0.2805,
+      "final_mult": 3.69
+    },
+    "meanrev_long_short": {
+      "cagr": 0.0447,
+      "sharpe_ann": 0.53,
+      "max_dd": -0.2922,
+      "final_mult": 4.3
+    }
+  },
+  "best_config": "meanrev_long_short",
+  "n_in_market_bars": 1427,
+  "n_grid_trials": 24,
+  "buy_hold_metrics": {
+    "cagr": 0.1078,
+    "sharpe_ann": 0.644,
+    "max_dd": -0.5519,
+    "final_mult": 30.41
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.1324 >= 1.1",
+      "p_positive_edge=0.9989 >= 0.95",
+      "FAIL mc_95th_dd_pct=27.4111 > 6.0",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
+    ]
+  },
+  "note": "Polarity resolved empirically by best-Sharpe across 4 configs (ma20/k2.5/atr14). Best config's per-bar in-market PnL fed to gate v2. Draft/research only -- no paper routing."
+}

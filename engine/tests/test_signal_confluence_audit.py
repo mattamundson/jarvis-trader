@@ -27,7 +27,7 @@ from scripts.signal_confluence_audit import (  # noqa: E402
 
 class TestArmWiring:
     def test_expected_arms_registered(self):
-        assert set(ARMS) == {"trend", "composite", "tpo", "saty"}
+        assert set(ARMS) == {"trend", "composite", "tpo", "saty", "atrtrail"}
         for grid_fn, apply_fn in ARMS.values():
             assert callable(grid_fn) and callable(apply_fn)
 

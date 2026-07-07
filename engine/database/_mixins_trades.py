@@ -180,6 +180,27 @@ class TradesMixin:
             finally:
                 conn.close()
 
+    def count_closed_trades_on_date(self, date: str) -> int:
+        """Count ``status='closed'`` paper_trades whose exit_time falls on the
+        given UTC date (YYYY-MM-DD).
+
+        Used by the safety layer's flat daily-loss gate to avoid latching the
+        kill switch on a single outlier (almost always a phantom, since a real
+        single trade is capped at MAX_TRADE_LOSS_USD). Excludes
+        phantom/cancelled rows via the ``status='closed'`` filter.
+        """
+        sql = (
+            "SELECT COUNT(*) AS n FROM paper_trades "
+            "WHERE status='closed' AND exit_time IS NOT NULL AND date(exit_time) = ?"
+        )
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql, (date,)).fetchone()
+                return int(row["n"]) if row else 0
+            finally:
+                conn.close()
+
     def get_trade_by_id(self, trade_id: str) -> Optional[Dict]:
         """Return a single trade row by its UUID trade_id, or None."""
         sql = "SELECT * FROM paper_trades WHERE trade_id = ?"

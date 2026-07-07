@@ -35,6 +35,41 @@ def test_trade_shuffle_diag_skips_none_pnl():
     assert res["n_trades"] == 2
 
 
+def test_dsr_diag_shape():
+    res = ft.dsr_diag([{"pnl": 1.0}, {"pnl": -0.5}, {"pnl": 2.0}, {"pnl": 0.3}], n_trials=5)
+    assert set(res) == {
+        "dsr",
+        "raw_sharpe",
+        "expected_max_sharpe",
+        "passes_at_10pct",
+        "n_trades",
+        "n_trials",
+    }
+    assert res["n_trades"] == 4
+    assert res["n_trials"] == 5
+    assert 0.0 <= res["dsr"] <= 1.0
+
+
+def test_dsr_diag_skips_none_pnl():
+    res = ft.dsr_diag([{"pnl": 1.0}, {"pnl": None}, {"pnl": 2.0}], n_trials=3)
+    assert res["n_trades"] == 2
+
+
+def test_dsr_diag_fail_closed_under_two_trades():
+    res = ft.dsr_diag([{"pnl": 1.0}], n_trials=3)
+    assert res["dsr"] == 0.0
+    assert res["passes_at_10pct"] is False
+
+
+def test_dsr_diag_deflates_with_more_trials():
+    trades = [{"pnl": p} for p in (1.0, 0.8, 1.2, 0.9, 1.1, 0.7, 1.3, 0.95)]
+    few = ft.dsr_diag(trades, n_trials=1)
+    many = ft.dsr_diag(trades, n_trials=100)
+    # More trials -> higher expected-max Sharpe bar -> DSR cannot increase.
+    assert many["expected_max_sharpe"] >= few["expected_max_sharpe"]
+    assert many["dsr"] <= few["dsr"]
+
+
 def test_lineage_report_attaches_diag_without_changing_graduation(monkeypatch):
     # Stub the decision registry so the test is independent of registry files, and
     # force graduation to a known constant so we can prove the diagnostic does not move it.
@@ -50,7 +85,10 @@ def test_lineage_report_attaches_diag_without_changing_graduation(monkeypatch):
     row = rows[0]
     assert "trade_shuffle" in row
     assert "p_value" in row["trade_shuffle"]
-    # The diagnostic must not override the stubbed graduation verdict.
+    # The DSR diagnostic is attached alongside the sign-flip one...
+    assert "dsr" in row
+    assert "dsr" in row["dsr"]
+    # ...and neither diagnostic may override the stubbed graduation verdict.
     assert row["graduated"] is False
 
 
@@ -74,3 +112,4 @@ def test_markdown_includes_ts_p_column(monkeypatch):
     }
     md = ft._markdown(report)
     assert "ts_p" in md
+    assert "dsr" in md
