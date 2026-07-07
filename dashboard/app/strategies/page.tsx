@@ -1,8 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Brain, ArrowLeft, Play, RefreshCw, CheckCircle, XCircle, Clock, Zap, Activity, Cpu, StopCircle } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
+import { SectionHeader } from "./SectionHeader";
+import { HowItWorksPanel } from "./HowItWorksPanel";
+import { StrategyDiscoveryBrowser } from "@/components/StrategyDiscoveryBrowser";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -180,24 +184,6 @@ function Badge({ label, color }: { label: string; color: string }) {
     >
       {label}
     </span>
-  );
-}
-
-function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div className="mb-4">
-      <h3
-        className="font-mono text-sm font-bold tracking-[0.15em] uppercase"
-        style={{ color: "#00ff88" }}
-      >
-        {title}
-      </h3>
-      {subtitle && (
-        <p className="font-mono text-[10px] mt-1" style={{ color: "#555" }}>
-          {subtitle}
-        </p>
-      )}
-    </div>
   );
 }
 
@@ -732,7 +718,9 @@ function WalkForwardResultsPanel({ models, latestResult }: { models: SavedModel[
 
 // ── RL vs STC Comparison ──────────────────────────────────────────────────────
 
-// Static STC backtest benchmarks from validated walk-forward (performance page data)
+// HARDCODED STC backtest benchmarks captured from a prior validated walk-forward.
+// These are static constants, NOT recomputed live — keep them clearly labelled as
+// such wherever they render next to live RL OOS metrics (no implied parity).
 const STC_BENCHMARKS: Record<string, { pf: number; sharpe: number; wr: number; symbol: string; tf: string }> = {
   MNQ: { pf: 1.46, sharpe: 0.19, wr: 47.7, symbol: "MNQ", tf: "1h" },
   MCL: { pf: 1.83, sharpe: 0.15, wr: 60.0, symbol: "MCL", tf: "1h" },
@@ -749,7 +737,7 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
           subtitle="Side-by-side: RL agent OOS metrics vs existing STC pipeline backtest benchmarks."
         />
         <p className="font-mono text-xs" style={{ color: "#333" }}>
-          Train a symbol to see RL vs STC comparison. STC benchmarks loaded from validated walk-forward.
+          Train a symbol to see RL vs STC comparison. STC benchmarks are static constants from a prior validated walk-forward (not recomputed live).
         </p>
       </section>
     );
@@ -831,7 +819,7 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
         <table className="w-full font-mono text-xs">
           <thead>
             <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
-              {["Metric", "RL Agent (OOS)", "STC Pipeline (BT)", "Delta"].map((h) => (
+              {["Metric", "RL Agent (OOS)", "STC Pipeline (static BT)", "Delta"].map((h) => (
                 <th
                   key={h}
                   className={`pb-2 px-3 font-semibold uppercase tracking-wider ${h === "Metric" ? "text-left" : "text-center"}`}
@@ -945,58 +933,6 @@ function ModelsListPanel({ models }: { models: SavedModel[] }) {
           </table>
         </div>
       )}
-    </section>
-  );
-}
-
-// ── How It Works Panel ────────────────────────────────────────────────────────
-
-function HowItWorksPanel() {
-  const steps = [
-    { icon: "1", label: "Fetch Data", desc: "IBKR → Polygon → yfinance fallback. 4yr train + 6mo OOS test." },
-    { icon: "2", label: "Compute Indicators", desc: "signals.py compute_all_indicators() → 18-feature state space (STC, ATR, regime, volume)." },
-    { icon: "3", label: "Train PPO", desc: "stable-baselines3 MlpPolicy. Reward = P&L/ATR − hold_cost − entry_cost." },
-    { icon: "4", label: "Evaluate OOS", desc: "Run agent on test set. Check all 6 validation gates." },
-    { icon: "5", label: "Save + Validate", desc: "Model saved to data/rl_models/. Must PASS all gates before paper trading." },
-  ];
-
-  return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
-      <SectionHeader title="How It Works" subtitle="PPO reinforcement learning pipeline" />
-      <div className="flex flex-wrap gap-3">
-        {steps.map(({ icon, label, desc }) => (
-          <div
-            key={icon}
-            className="flex items-start gap-3 rounded-lg p-3 flex-1 min-w-[180px]"
-            style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}
-          >
-            <div
-              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold"
-              style={{ backgroundColor: "#00ff8820", color: "#00ff88" }}
-            >
-              {icon}
-            </div>
-            <div>
-              <div className="font-mono text-xs font-bold mb-0.5" style={{ color: "#e0e0e0" }}>{label}</div>
-              <div className="font-mono text-[10px]" style={{ color: "#555" }}>{desc}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3" style={{ borderTop: "1px solid #1a1a2e" }}>
-        {[
-          { label: "State Features", value: "18" },
-          { label: "Action Space", value: "4  HOLD/BUY/SELL/CLOSE" },
-          { label: "Algorithm", value: "PPO  MlpPolicy" },
-          { label: "Safety", value: "SafetyLayer  every action" },
-        ].map(({ label, value }) => (
-          <div key={label}>
-            <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>{label}</div>
-            <div className="font-mono text-xs font-bold" style={{ color: "#00d4ff" }}>{value}</div>
-          </div>
-        ))}
-      </div>
     </section>
   );
 }
@@ -2022,7 +1958,7 @@ export default function StrategiesPage() {
       }
       setError(null);
     } catch {
-      setError("Engine offline — start with: cd engine && uvicorn main:app --port 8010");
+      setError("Engine offline — start the FastAPI engine and confirm the dashboard proxy can reach it.");
     }
   }, []);
 
@@ -2156,7 +2092,7 @@ export default function StrategiesPage() {
         className="sticky top-0 z-50 backdrop-blur"
         style={{ backgroundColor: "rgba(5,5,5,0.95)", borderBottom: "1px solid #1a1a2e" }}
       >
-        <div className="mx-auto max-w-[1600px] flex items-center justify-between px-6 py-3">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-lg"
@@ -2200,15 +2136,15 @@ export default function StrategiesPage() {
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
             </button>
-            <a href="/" className="flex items-center gap-1.5 text-xs transition-colors" style={{ color: "#888" }}>
+            <Link href="/" className="flex items-center gap-1.5 text-xs transition-colors" style={{ color: "#888" }}>
               <ArrowLeft className="h-3.5 w-3.5" />
               Back
-            </a>
+            </Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2303,6 +2239,9 @@ export default function StrategiesPage() {
           wfRunning={wfGridRunning}
           onRunWalkForward={handleRunWalkForward}
         />
+
+        {/* Strategy Discovery Browser */}
+        <StrategyDiscoveryBrowser />
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>

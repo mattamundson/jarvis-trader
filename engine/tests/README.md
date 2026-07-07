@@ -272,6 +272,20 @@ pytest tests/ --cov=engine --cov-report=html
 pytest tests/test_pipeline_e2e.py -v  # Has @pytest.mark.asyncio
 ```
 
+### IB Gateway (`integration_ib` marker)
+
+From repo root (venv active, cwd `engine/` or use `engine/tests/...` paths as in CI):
+
+```bash
+# Offline connector + gating — no IB required
+pytest engine/tests/test_ib_gateway_connector_offline.py -q
+
+# Live paper port 4002 — skips if Gateway not running
+pytest engine/tests/test_ib_gateway_connector_safety_wiring.py -m integration_ib -v
+```
+
+`pytest --markers` lists `integration_ib` (see `engine/pyproject.toml`).
+
 ### Run with Verbose Output
 
 ```bash

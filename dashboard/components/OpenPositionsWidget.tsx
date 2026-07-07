@@ -43,7 +43,7 @@ interface PaperPositionsResponse {
 
 /** Maps action string to LONG / SHORT label. */
 function getDirection(action: string): "LONG" | "SHORT" {
-  const a = action.toLowerCase();
+  const a = (action ?? "").toLowerCase();
   if (a === "buy" || a === "buy_to_open" || a === "buy_to_cover") return "LONG";
   return "SHORT";
 }

@@ -42,10 +42,11 @@ SCHEMA (data/paper_trades.json):
 
 import json
 import logging
+import warnings
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Optional
+from typing import Any, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -57,21 +58,47 @@ class PaperTradeLogger:
     Thread-safe paper trade logger.
 
     Logs all simulated trades to a JSON file for later analysis.
-    Provides query methods for trade history, daily summaries, and P&L tracking.
+    Optionally mirrors full flat→open→flat cycles onto ``PortfolioTracker`` (mode B).
     """
 
-    def __init__(self, settings):
+    def __init__(
+        self,
+        settings: Any,
+        portfolio_tracker: Optional[Any] = None,
+        *,
+        mirror_to_tracker: bool = True,
+        trades_file: Optional[Path] = None,
+    ):
         """
-        Initialize the paper trade logger.
-
         Args:
-            settings: TradingConfig with data directory path
+            settings: TradingConfig (retained for callers; paths are repo-relative).
+            portfolio_tracker: Optional ``PortfolioTracker`` for API-aligned book (B).
+            mirror_to_tracker: If False, only writes ``data/paper_trades.json``.
+            trades_file: Override JSON path (tests); default ``data/paper_trades.json`` under repo.
         """
+        warnings.warn(
+            "PaperTradeLogger JSON path (data/paper_trades.json) is deprecated; "
+            "SQLite (engine/data/jarvis_trader.db paper_trades table) is the source of truth. "
+            "This logger is retained for historical audit only.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._settings = settings
-        self._data_dir = Path(__file__).parent.parent.parent / "data"
+        self._portfolio_tracker = portfolio_tracker
+        self._mirror_to_tracker = bool(portfolio_tracker is not None and mirror_to_tracker)
+        if trades_file is not None:
+            self._trades_file = trades_file
+            self._data_dir = trades_file.parent
+        else:
+            # paper_trade_logger.py lives at engine/execution/paper_trade_logger.py
+            # parent       = engine/execution/
+            # parent.parent = engine/          <-- correct root for data/
+            self._data_dir = Path(__file__).parent.parent / "data"
+            self._trades_file = self._data_dir / "paper_trades.json"
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._trades_file = self._data_dir / "paper_trades.json"
         self._lock = Lock()  # Ensure atomic writes
+        self._net_by_symbol: dict[str, float] = {}
+        self._open_trade_id_by_symbol: dict[str, Optional[str]] = {}
 
         # Initialize file if it doesn't exist
         if not self._trades_file.exists():
@@ -171,8 +198,105 @@ class PaperTradeLogger:
                 trade_record["order_id"],
             )
 
+            await self._maybe_mirror_to_tracker(
+                symbol=str(trade_record["symbol"]),
+                signed_qty=float(trade_data.get("quantity", 0)),
+                filled_price=float(filled_price),
+                order_id=str(trade_record["order_id"] or ""),
+            )
+
         except Exception as exc:
             logger.error("Failed to log trade: %s", exc, exc_info=True)
+
+    async def _maybe_mirror_to_tracker(
+        self,
+        symbol: str,
+        signed_qty: float,
+        filled_price: float,
+        order_id: str,
+    ) -> None:
+        """Mirror full 0→position→0 nets onto PortfolioTracker; partials stay JSON-only."""
+        if not self._mirror_to_tracker or self._portfolio_tracker is None:
+            return
+
+        sym = symbol.upper()
+        prev = float(self._net_by_symbol.get(sym, 0.0))
+        new = prev + signed_qty
+        self._net_by_symbol[sym] = new
+        notes = f"paper_trade_logger:{order_id}"
+
+        try:
+            if prev == 0.0 and new != 0.0:
+                action = "buy" if signed_qty > 0 else "sell"
+                # Forward-test attribution: if the live scanner is trading a
+                # deployed registry candidate for this symbol, tag the trade with
+                # its candidate_id so the forward-test loop can attribute it at
+                # the precise (graduating) level. Fail-open and tag-only -- this
+                # never changes whether/how the trade opens.
+                candidate_id = None
+                try:
+                    from backtest.candidate_registry import live_candidate_for_symbol
+
+                    candidate_id = live_candidate_for_symbol(sym)
+                except Exception as _cid_err:  # pragma: no cover - defensive
+                    logger.debug(
+                        "PaperTradeLogger: candidate resolve failed for %s (non-fatal): %s",
+                        sym,
+                        _cid_err,
+                    )
+                # Decision-identity (P2): fingerprint of the running LLM decision
+                # config that produced this trade, resolved to a per-symbol lineage.
+                # config_hash is a property of the running config, so computing it
+                # at open time == the config that just decided. Fail-open.
+                decision_identity = None
+                try:
+                    from agents.decision_identity import current_decision_identity
+
+                    decision_identity = current_decision_identity(sym)
+                except Exception as _did_err:  # pragma: no cover - defensive
+                    logger.debug(
+                        "PaperTradeLogger: decision_identity failed for %s (non-fatal): %s",
+                        sym,
+                        _did_err,
+                    )
+                tid = self._portfolio_tracker.open_trade(
+                    sym,
+                    action,
+                    abs(signed_qty),
+                    filled_price,
+                    notes=notes,
+                    candidate_id=candidate_id,
+                    decision_identity=decision_identity,
+                )
+                self._open_trade_id_by_symbol[sym] = tid
+            elif prev != 0.0 and new == 0.0:
+                tid = self._open_trade_id_by_symbol.get(sym)
+                if tid:
+                    try:
+                        self._portfolio_tracker.close_trade(tid, filled_price)
+                    except ValueError as exc:
+                        # ExitPriceSanityError — a corrupt broker fill price.
+                        # Fail-closed: skip the tracker mirror (the guard already
+                        # logged CRITICAL) rather than crashing the fill loop.
+                        logger.critical(
+                            "PaperTradeLogger: exit-sanity rejected close mirror for %s @ %s: %s",
+                            sym, filled_price, exc,
+                        )
+                self._open_trade_id_by_symbol[sym] = None
+            elif prev != 0.0 and new != 0.0:
+                logger.debug(
+                    "PaperTradeLogger: tracker mirror skipped for %s (partial net prev=%s new=%s)",
+                    sym,
+                    prev,
+                    new,
+                )
+        except Exception as exc:
+            logger.error(
+                "PaperTradeLogger: tracker mirror failed for %s: %s",
+                sym,
+                exc,
+                exc_info=True,
+            )
 
     def _update_summary(self, data: dict) -> None:
         """
@@ -257,7 +381,7 @@ class PaperTradeLogger:
 
     # ── Query Methods ──────────────────────────────────────────────────────────
 
-    async def get_all_trades(self) -> list[dict]:
+    async def get_all_trades(self) -> list[dict[str, Any]]:
         """
         Get all trades ever logged.
 
@@ -268,7 +392,7 @@ class PaperTradeLogger:
             try:
                 if self._trades_file.exists():
                     data = json.loads(self._trades_file.read_text())
-                    return data.get("trades", [])
+                    return cast(list[dict[str, Any]], data.get("trades", []))
             except Exception as exc:
                 logger.error("Failed to read trades file: %s", exc, exc_info=True)
         return []

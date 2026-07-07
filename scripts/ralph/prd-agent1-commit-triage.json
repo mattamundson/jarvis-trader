@@ -1,0 +1,161 @@
+{
+  "project": "JARVIS TRADER \u2014 Agent 1: Commit Triage & Foundation",
+  "branchName": "ralph/commit-triage",
+  "description": "Triage all 12 uncommitted modified files in correct dependency order. Install SQLite MCP. Configure intelligence tools. Leave repo in clean, committable state with tests passing.",
+  "userStories": [
+    {
+      "id": "US-CT-001",
+      "title": "Commit safety layer P0 fix",
+      "description": "As a developer, I want the ConsecutiveLossTracker wiring and loss scaling tiers committed so that the safety system is fully functional and in git history.",
+      "acceptanceCriteria": [
+        "engine/main.py ConsecutiveLossTracker wiring is committed",
+        "engine/risk/safety_layer.py loss scaling tiers (3\u21920.5x, 5\u21920.25x, 7\u2192halt) are committed",
+        "Run engine tests: cd engine && .venv/Scripts/python -m pytest tests/test_safety_layer.py -v \u2014 all pass",
+        "Commit message: fix: ConsecutiveLossTracker wiring + loss scaling tiers (3\u21920.5x, 5\u21920.25x, 7\u2192halt)"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "HIGHEST PRIORITY \u2014 these are P0 safety fixes. Run safety-reviewer subagent from .claude/agents/ before committing."
+    },
+    {
+      "id": "US-CT-002",
+      "title": "Commit skill playbooks and SKILL.md updates",
+      "description": "As a developer, I want the jarvis-trader skill updates committed so that future Claude sessions have the latest session guidance.",
+      "acceptanceCriteria": [
+        ".claude/skills/jarvis-trader/SKILL.md changes committed",
+        ".claude/skills/jarvis-trader/playbooks/add-feature.md committed",
+        ".claude/skills/jarvis-trader/playbooks/debug.md committed",
+        "Commit message: docs: update jarvis-trader skill playbooks"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Low risk \u2014 documentation only"
+    },
+    {
+      "id": "US-CT-003",
+      "title": "Commit engine bug fixes (scanner, router, agent)",
+      "description": "As a developer, I want the scanner, paper validation router, and bull researcher fixes committed.",
+      "acceptanceCriteria": [
+        "engine/scanner/signal_scanner.py (+14 lines) committed",
+        "engine/routers/paper_validation_router.py (+6 lines) committed",
+        "engine/agents/bull_researcher.py (1-line fix) committed",
+        "Run engine tests: cd engine && .venv/Scripts/python -m pytest tests/ -v \u2014 all pass",
+        "Commit message: fix: signal scanner, paper validation router, bull researcher corrections"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Verify CRLF warning on paper_validation_router.py \u2014 check .gitattributes"
+    },
+    {
+      "id": "US-CT-004",
+      "title": "Commit new .claude/rules files",
+      "description": "As a developer, I want the three new coding rules files committed so they are available to future Claude Code sessions.",
+      "acceptanceCriteria": [
+        ".claude/rules/backtest-signals.md committed",
+        ".claude/rules/dashboard-typescript.md committed",
+        ".claude/rules/engine-python.md committed",
+        "Commit message: docs: add backtest-signals, dashboard-typescript, engine-python rules"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Check these files don't contain secrets before committing: bash scripts/hooks/check-secrets.sh"
+    },
+    {
+      "id": "US-CT-005",
+      "title": "Commit new agent definitions and import files",
+      "description": "As a developer, I want the 4 custom subagent definitions and 4 import files committed.",
+      "acceptanceCriteria": [
+        ".claude/agents/ directory with all 4 agent files committed",
+        ".claude/imports/ directory with all 4 import files committed",
+        "CLAUDE.local.md committed (if not sensitive)",
+        "Commit message: feat: add custom subagents (safety-reviewer, backtest-runner, dashboard-qa, pipeline-debugger)"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Check CLAUDE.local.md for any local secrets before committing"
+    },
+    {
+      "id": "US-CT-006",
+      "title": "Commit new engine modules",
+      "description": "As a developer, I want the openclaw notifier and session context script committed.",
+      "acceptanceCriteria": [
+        "engine/notifications/openclaw_notifier.py committed",
+        "scripts/session-context.py committed",
+        "Commit message: feat: add openclaw notifier, session context script"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-CT-007",
+      "title": "Commit CLAUDE.md rewrite",
+      "description": "As a developer, I want the CLAUDE.md rewrite committed (it's 195 lines net, -153 lines from verbose sections moved to imports).",
+      "acceptanceCriteria": [
+        "CLAUDE.md committed \u2014 verify CRLF is handled (check .gitattributes text=auto)",
+        "File still references @.claude/imports/ for verbose sections",
+        "Commit message: docs: restructure CLAUDE.md \u2014 verbose sections to imports/"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "CRLF warning expected \u2014 check .gitattributes has *.md text=auto"
+    },
+    {
+      "id": "US-CT-008",
+      "title": "Commit paper trades data and RL session state",
+      "description": "As a developer, I want the paper trades JSON and RL session memory committed.",
+      "acceptanceCriteria": [
+        "data/paper_trades.json committed (362 new lines \u2014 CRLF warning expected)",
+        "engine/learning/data/session_memory.json committed (RL Run 10 state)",
+        "Commit message: chore(data): sync paper trades and RL session state"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Run: bash scripts/hooks/check-secrets.sh before this commit"
+    },
+    {
+      "id": "US-CT-009",
+      "title": "Investigate and resolve tradingview-mcp submodule",
+      "description": "As a developer, I want to understand what changed in the tradingview-mcp submodule and decide whether to commit or reset it.",
+      "acceptanceCriteria": [
+        "Run: cd tradingview-mcp && git log --oneline -5 && git diff HEAD",
+        "If changes are intentional: commit submodule pointer update",
+        "If changes are accidental: git checkout HEAD -- tradingview-mcp",
+        "Document decision in progress.txt",
+        "Commit message (if updating): chore: update tradingview-mcp submodule"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-CT-010",
+      "title": "Configure SQLite MCP server",
+      "description": "As a developer, I want the SQLite MCP configured so Claude can query the jarvis_trader database directly.",
+      "acceptanceCriteria": [
+        "~/.claude/mcp.json exists and has sqlite entry pointing to correct DB path",
+        "DB path: C:/Users/mattm/ThinkorSwim/jarvis-trader/engine/data/jarvis_trader.db",
+        "Verify DB file exists at that path (or find correct path with find command)",
+        "Document sqlite MCP config in progress.txt"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "If DB not at expected path, find actual path: find C:/Users/mattm/ThinkorSwim/jarvis-trader -name '*.db'"
+    },
+    {
+      "id": "US-CT-011",
+      "title": "Verify clean repo state and run full test suite",
+      "description": "As a developer, I want confirmation that all commits are clean, tests pass, and the repo is in good shape.",
+      "acceptanceCriteria": [
+        "git status shows no unexpected modified files",
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v \u2014 0 failures",
+        "cd dashboard && pnpm run build \u2014 16/16 routes, 0 TypeScript errors",
+        "bash scripts/hooks/check-secrets.sh \u2014 no new secrets",
+        "Document final state in progress.txt"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

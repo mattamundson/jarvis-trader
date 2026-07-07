@@ -1,59 +1,44 @@
 """
 JARVIS TRADER — Backtest Data Loader
-Fetches historical OHLCV data via yfinance with futures symbol mapping.
-Results are cached to disk to avoid Yahoo Finance rate limits on repeated runs.
+Fetches historical OHLCV data via Polygon.io with futures symbol mapping.
+Results are cached to disk to avoid API rate limits on repeated runs.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
-import yfinance as yf
 
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
 
 FUTURES_MAP: Dict[str, str] = {
-    # Micro futures → yfinance continuous contract
-    "MES": "ES=F",
-    "MNQ": "NQ=F",
-    "MCL": "CL=F",
-    "MGC": "GC=F",
-    "M2K": "RTY=F",
-    "MYM": "YM=F",
+    # Micro futures → Polygon continuous contract tickers
+    "MES": "MES",
+    "MNQ": "MNQ",
+    "MCL": "MCL",
+    "MGC": "MGC",
+    "M2K": "M2K",
+    "MYM": "MYM",
     # Standard futures
-    "ES": "ES=F",
-    "NQ": "NQ=F",
-    "CL": "CL=F",
-    "GC": "GC=F",
-    "RTY": "RTY=F",
-    "YM": "YM=F",
-    "SI": "SI=F",
-    "ZB": "ZB=F",
-    "ZN": "ZN=F",
+    "ES": "ES",
+    "NQ": "NQ",
+    "CL": "CL",
+    "GC": "GC",
+    "RTY": "RTY",
+    "YM": "YM",
+    "SI": "SI",
+    "ZB": "ZB",
+    "ZN": "ZN",
 }
 
-CONTRACT_MULTIPLIERS: Dict[str, float] = {
-    "MES": 5.0,  # $5 per point
-    "ES": 50.0,  # $50 per point
-    "MNQ": 2.0,  # $2 per point
-    "NQ": 20.0,  # $20 per point
-    "MCL": 100.0,  # $100 per barrel (micro = 100 barrels)
-    "CL": 1000.0,  # $1000 per barrel
-    "MGC": 10.0,  # $10 per oz
-    "GC": 100.0,  # $100 per oz
-    "M2K": 5.0,  # $5 per point
-    "RTY": 50.0,  # $50 per point
-    "MYM": 0.5,  # $0.50 per point
-    "YM": 5.0,  # $5 per point
-    # ETFs (no multiplier)
-    "SPY": 1.0,
-    "QQQ": 1.0,
-    "IWM": 1.0,
-}
+# Multipliers are derived from the canonical CONTRACT_SPECS source.
+# See engine/backtest/contract_specs.py for the single source of truth.
+from .contract_specs import CONTRACT_MULTIPLIERS  # noqa: E402,F401
 
 
 class BacktestDataLoader:
@@ -100,121 +85,134 @@ class BacktestDataLoader:
                 continue
         return None
 
-    def _fetch_direct_yahoo(self, ticker: str, start: str, end: str, interval: str) -> pd.DataFrame:
+    def _fetch_via_polygon(self, ticker: str, start: str, end: str, interval: str) -> pd.DataFrame:
         """
-        Bypass yfinance rate limits by hitting Yahoo Finance v8 API directly.
-        Uses browser User-Agent to avoid detection.
-        Fetches in 60-day chunks for 1h data (Yahoo limit), concatenates.
+        Fetch OHLCV data from Polygon.io REST API.
+        Requires POLYGON_API_KEY env var or set in engine/.env.
+        Free tier: 5 calls/min, unlimited history.
         """
-        from datetime import datetime, timedelta
+        from datetime import datetime
 
-        import requests
-
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "application/json",
-        }
-
-        base_url = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-
-        # For 1h intervals Yahoo caps each request at ~60 days; use smaller chunks
-        # to stay well under the limit. For daily/weekly data use larger windows.
-        if interval in ("1h", "60m", "30m", "15m", "5m", "2m", "1m"):
-            chunk_days = 58
-        else:
-            chunk_days = 365
-
-        start_dt = datetime.strptime(start, "%Y-%m-%d")
-        end_dt = datetime.strptime(end, "%Y-%m-%d")
-
-        all_frames: list[pd.DataFrame] = []
-        chunk_start = start_dt
-
-        while chunk_start < end_dt:
-            chunk_end = min(chunk_start + timedelta(days=chunk_days), end_dt)
-            period1 = int(chunk_start.timestamp())
-            period2 = int(chunk_end.timestamp())
-
-            url = base_url.format(ticker=ticker)
-            params = {
-                "interval": interval,
-                "period1": period1,
-                "period2": period2,
-                "includePrePost": "false",
-                "events": "div,splits",
-            }
-
-            try:
-                resp = requests.get(url, headers=headers, params=params, timeout=15)
-                resp.raise_for_status()
-                data = resp.json()
-
-                result = data.get("chart", {}).get("result")
-                if not result:
-                    error = data.get("chart", {}).get("error")
-                    print(
-                        f"[DataLoader] v8 API returned no result for chunk "
-                        f"{chunk_start.date()}–{chunk_end.date()}: {error}"
-                    )
-                    chunk_start = chunk_end
-                    continue
-
-                meta = result[0]
-                timestamps = meta.get("timestamp", [])
-                quotes = meta.get("indicators", {}).get("quote", [{}])[0]
-
-                if not timestamps:
-                    chunk_start = chunk_end
-                    continue
-
-                chunk_df = pd.DataFrame(
-                    {
-                        "timestamp": pd.to_datetime(timestamps, unit="s", utc=True).tz_localize(
-                            None
-                        ),
-                        "open": quotes.get("open", []),
-                        "high": quotes.get("high", []),
-                        "low": quotes.get("low", []),
-                        "close": quotes.get("close", []),
-                        "volume": quotes.get("volume", []),
-                    }
-                )
-                chunk_df = chunk_df.dropna(subset=["open", "high", "low", "close"])
-                all_frames.append(chunk_df)
-                print(
-                    f"[DataLoader] v8 chunk {chunk_start.date()}–{chunk_end.date()}: "
-                    f"{len(chunk_df)} bars"
-                )
-
-            except Exception as exc:
-                print(
-                    f"[DataLoader] v8 API error for chunk "
-                    f"{chunk_start.date()}–{chunk_end.date()}: {exc}"
-                )
-
-            chunk_start = chunk_end
-
-        if not all_frames:
+        api_key = os.environ.get("POLYGON_API_KEY", "")
+        if not api_key or api_key == "your_polygon_key_here":
+            print("[DataLoader] POLYGON_API_KEY not set — cannot fetch from Polygon")
             return pd.DataFrame()
 
-        df = pd.concat(all_frames, ignore_index=True)
-        df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp")
-        df = df.set_index("timestamp")
-        df["timestamp"] = df.index
-        return df
+        try:
+            from polygon import RESTClient
+        except ImportError:
+            print("[DataLoader] polygon-api-client not installed: pip install polygon-api-client")
+            return pd.DataFrame()
+
+        tf_map = {
+            "1m": ("minute", 1),
+            "5m": ("minute", 5),
+            "15m": ("minute", 15),
+            "30m": ("minute", 30),
+            "1h": ("hour", 1),
+            "1d": ("day", 1),
+        }
+        timespan, multiplier = tf_map.get(interval, ("hour", 1))
+
+        print(f"[DataLoader] Fetching {ticker} from Polygon.io ({interval}, {start} -> {end})...")
+        try:
+            client = RESTClient(api_key)
+            bars = []
+            for agg in client.list_aggs(
+                ticker,
+                multiplier,
+                timespan,
+                start,
+                end,
+                limit=50000,
+            ):
+                bars.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(agg.timestamp / 1000),
+                        "open": agg.open,
+                        "high": agg.high,
+                        "low": agg.low,
+                        "close": agg.close,
+                        "volume": agg.volume,
+                    }
+                )
+
+            if not bars:
+                print(f"[DataLoader] Polygon returned no bars for {ticker}")
+                return pd.DataFrame()
+
+            df = pd.DataFrame(bars)
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df = df.set_index("timestamp").sort_index()
+            df["timestamp"] = df.index
+            print(f"[DataLoader] Polygon: {len(df)} bars for {ticker}")
+            return df
+
+        except Exception as exc:
+            print(f"[DataLoader] Polygon failed: {exc}")
+            return pd.DataFrame()
+
+    def _screen_bar_quality(
+        self, df: Optional[pd.DataFrame], symbol: str, interval: str
+    ) -> Optional[pd.DataFrame]:
+        """Drop contaminated bars before the backtester ever sees them.
+
+        Reuses the pure ``bar_quality_gate.screen_bars`` screen (the same logic
+        that guards live storage) to catch the impossible-OHLC / range-explosion
+        / lone-tick classes that produced the fake "PF 22" backtest edges.
+
+        Unlike the live storage path — which defaults to *shadow* mode so prod
+        rows are never silently dropped during rollout — backtests **always**
+        drop rejected rows: a backtest computed on a known-poison tick is
+        meaningless, so cleaning is non-negotiable. The drop is loud (printed),
+        never silent. Honour the same ``BAR_QUALITY_GATE_ENABLED`` kill-switch.
+
+        Screens on every load (not just on write) because cache files predate
+        the gate and may already hold contamination from before it existed.
+        """
+        if df is None or df.empty:
+            return df
+        try:
+            from data.bar_quality_gate import gate_enabled, screen_bars
+        except Exception:
+            return df
+        if not gate_enabled():
+            return df
+
+        ts = df["timestamp"] if "timestamp" in df.columns else df.index
+        vol = df["volume"] if "volume" in df.columns else [0] * len(df)
+        # Row layout expected by screen_bars: (sym, interval, ts, o, h, l, c, vol, source, fetched_at)
+        rows = [
+            (symbol, interval, t, o, h, low, c, v, "backtest_cache", "")
+            for t, o, h, low, c, v in zip(
+                list(ts), df["open"], df["high"], df["low"], df["close"], list(vol), strict=True
+            )
+        ]
+        rejects = screen_bars(rows)
+        if not rejects:
+            return df
+
+        by_reason: Dict[str, int] = {}
+        for rj in rejects:
+            by_reason[rj.reason] = by_reason.get(rj.reason, 0) + 1
+        summary = ", ".join(f"{k}={v}" for k, v in sorted(by_reason.items()))
+        print(
+            f"[DataLoader][bar_quality] {symbol} {interval} - DROPPED "
+            f"{len(rejects)}/{len(df)} contaminated bars ({summary})"
+        )
+        bad = {rj.index for rj in rejects}
+        keep_pos = [i for i in range(len(df)) if i not in bad]
+        return df.iloc[keep_pos]
 
     def load(
         self, symbol: str, start: str, end: str, interval: str = "1d"
     ) -> Optional[pd.DataFrame]:
         """
-        Load OHLCV data for a symbol.
-        Maps futures symbols to yfinance format automatically.
+        Load OHLCV data for a symbol via Polygon.io.
+        Maps futures symbols via FUTURES_MAP automatically.
         Returns DataFrame with lowercase columns: open, high, low, close, volume, timestamp.
-        Caches results to disk to avoid Yahoo Finance rate limits on repeated runs.
+        Caches results to disk to avoid API rate limits on repeated runs.
+        Every returned frame is screened by the bar-quality gate first.
         """
         cache_file = self._cache_path(symbol, start, end, interval)
 
@@ -249,38 +247,35 @@ class BacktestDataLoader:
                         print(f"[DataLoader] Saved canonical cache: {cache_file.name}")
                     except Exception:
                         pass
-                return df
+                return self._screen_bar_quality(df, symbol, interval)
             except Exception as e:
                 print(f"[DataLoader] Cache read failed ({e}), re-fetching...")
 
         ticker = FUTURES_MAP.get(symbol.upper(), symbol)
 
-        raw = None
+        # Polygon free plan returns the WRONG asset for futures tickers
+        # (e.g. CL = Colgate-Palmolive stock, not crude oil). Block the call
+        # entirely for known-bad symbols. See market_data.POLYGON_FUTURES_BLOCKLIST
+        # and docs/data-source-audit-2026-04-16.md (incident T1.1 / T1.5).
         try:
-            raw = yf.download(
-                ticker, start=start, end=end, interval=interval, progress=False, auto_adjust=True
+            from data.market_data import POLYGON_FUTURES_BLOCKLIST
+        except ImportError:
+            POLYGON_FUTURES_BLOCKLIST = frozenset()
+        if symbol.upper() in POLYGON_FUTURES_BLOCKLIST or ticker.upper() in POLYGON_FUTURES_BLOCKLIST:
+            print(
+                f"[DataLoader] Polygon SKIPPED for {symbol} (futures, blocklisted "
+                "since 2026-04-16 incident — Polygon free plan has no futures data). "
+                "Use IBKR-sourced cache or upgrade plan."
             )
-        except Exception as e:
-            print(f"[DataLoader] yf.download failed ({e}), retrying via Ticker.history...")
+            return None
 
-        # Fallback 2: Ticker.history() uses a different code path — avoids some rate limits
-        if raw is None or raw.empty:
-            try:
-                t = yf.Ticker(ticker)
-                raw = t.history(start=start, end=end, interval=interval, auto_adjust=True)
-            except Exception as e2:
-                print(f"[DataLoader] Ticker.history also failed: {e2}")
-
-        # Fallback 3: Direct Yahoo v8 API bypass
-        if raw is None or raw.empty:
-            print(f"[DataLoader] Trying direct Yahoo v8 API for {ticker}...")
-            raw = self._fetch_direct_yahoo(ticker, start, end, interval)
+        raw = self._fetch_via_polygon(ticker, start, end, interval)
 
         if raw is None or raw.empty:
             print(f"[DataLoader] No data returned for {ticker} ({start} to {end})")
             return None
 
-        # Normalize columns — handle both flat and MultiIndex (yfinance >= 0.2.x)
+        # Normalize columns
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = [c[0].lower() for c in raw.columns]
         else:
@@ -297,6 +292,7 @@ class BacktestDataLoader:
         df.index = pd.to_datetime(df.index)
         df["timestamp"] = df.index
         df = df.dropna(subset=["open", "high", "low", "close"])
+        df = self._screen_bar_quality(df, symbol, interval)
 
         print(f"[DataLoader] Loaded {len(df)} bars for {symbol} ({ticker})")
 

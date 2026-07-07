@@ -1,0 +1,27 @@
+# compare_verdicts threshold configuration
+#
+# Default thresholds apply when no symbol-specific override is present.
+# Per-symbol sections override only the keys listed; all others fall back to default.
+#
+# Requires PyYAML in the engine venv:  pip install pyyaml
+#
+# Keys:
+#   param_drift_threshold  — champion param is "drifted" if it changes by > this fraction
+#   rating_drop_pf_ci      — pf_ci_lower fell by more than this fraction  (0.15 = 15%)
+#   rating_drop_dsr        — dsr fell by more than this fraction           (0.20 = 20%)
+#   rating_drop_mc_dd      — mc_95th_dd_pct rose by more than this fraction (0.50 = 50%)
+
+default:
+  param_drift_threshold: 0.10
+  rating_drop_pf_ci: 0.15
+  rating_drop_dsr: 0.20
+  rating_drop_mc_dd: 0.50
+
+# Per-symbol overrides — uncomment and adjust as needed.
+# MES has a tighter drawdown tolerance (already low at 0.8%); relax pf_ci sensitivity.
+# MES:
+#   rating_drop_pf_ci: 0.20    # allow up to 20% pf_ci drop before flagging
+
+# MGC has higher drawdown (1.2%); tighten mc_dd sensitivity.
+# MGC:
+#   rating_drop_mc_dd: 0.30    # flag if mc_dd rises by 30% instead of 50%

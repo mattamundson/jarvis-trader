@@ -1,27 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, TrendingUp, Zap, Timer } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
+import { Clock, TrendingUp, Zap, Timer, Info } from "lucide-react";
+import {
+  durationMinutes,
+  dedupCaveat,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: string;
-  quantity: number;
-  entry_price: number;
-  exit_price: number | null;
-  realized_pnl: number | null;
-  status: string;
-  entry_time: string;
-  exit_time: string | null;
-  notes: string | null;
-}
 
 interface BucketStats {
   label: string;
@@ -39,6 +30,7 @@ interface AvgTradeTimeData {
   slowestSymbol: string;
   totalClosed: number;
   buckets: Record<BucketName, BucketStats>;
+  caveat: string;
 }
 
 type BucketName = "scalp" | "short" | "swing" | "extended";
@@ -64,46 +56,37 @@ function getBucketName(minutes: number): BucketName {
   return "extended";
 }
 
-function computeData(trades: TradeRecord[]): AvgTradeTimeData | null {
-  const closed = trades.filter(
-    (t) => t.status === "CLOSED" && t.exit_time != null
-  );
+function computeData(trades: HonestTrade[], set: HonestTradeSet): AvgTradeTimeData | null {
+  const durations: { minutes: number; trade: HonestTrade }[] = [];
 
-  if (closed.length === 0) return null;
-
-  const durations: { minutes: number; trade: TradeRecord }[] = [];
-
-  for (const t of closed) {
-    const entry = new Date(t.entry_time).getTime();
-    const exit = new Date(t.exit_time!).getTime();
-    const minutes = (exit - entry) / 60000;
-    if (!isNaN(minutes) && minutes > 0) {
-      durations.push({ minutes, trade: t });
-    }
+  for (const t of trades) {
+    const m = durationMinutes(t);
+    // guard null and non-positive durations
+    if (m === null || m <= 0) continue;
+    durations.push({ minutes: m, trade: t });
   }
 
   if (durations.length === 0) return null;
 
-  const minutes = durations.map((d) => d.minutes);
-  const avgMinutes = minutes.reduce((a, b) => a + b, 0) / minutes.length;
+  const mins = durations.map((d) => d.minutes);
+  const avgMinutes = mins.reduce((a, b) => a + b, 0) / mins.length;
 
   const minEntry = durations.reduce((a, b) => (a.minutes < b.minutes ? a : b));
   const maxEntry = durations.reduce((a, b) => (a.minutes > b.minutes ? a : b));
 
   const buckets: Record<BucketName, BucketStats> = {
-    scalp: { label: "Scalp", range: "< 5 min", count: 0, wins: 0, totalPnl: 0 },
-    short: { label: "Short", range: "5–30 min", count: 0, wins: 0, totalPnl: 0 },
-    swing: { label: "Swing", range: "30–120 min", count: 0, wins: 0, totalPnl: 0 },
-    extended: { label: "Extended", range: "> 2 hr", count: 0, wins: 0, totalPnl: 0 },
+    scalp:    { label: "Scalp",    range: "< 5 min",    count: 0, wins: 0, totalPnl: 0 },
+    short:    { label: "Short",    range: "5–30 min",   count: 0, wins: 0, totalPnl: 0 },
+    swing:    { label: "Swing",    range: "30–120 min", count: 0, wins: 0, totalPnl: 0 },
+    extended: { label: "Extended", range: "> 2 hr",     count: 0, wins: 0, totalPnl: 0 },
   };
 
   for (const { minutes: m, trade } of durations) {
     const key = getBucketName(m);
     const bucket = buckets[key];
     bucket.count += 1;
-    const pnl = trade.realized_pnl ?? 0;
-    bucket.totalPnl += pnl;
-    if (pnl > 0) bucket.wins += 1;
+    bucket.totalPnl += trade.pnl;
+    if (trade.pnl > 0) bucket.wins += 1;
   }
 
   return {
@@ -114,6 +97,7 @@ function computeData(trades: TradeRecord[]): AvgTradeTimeData | null {
     slowestSymbol: maxEntry.trade.symbol,
     totalClosed: durations.length,
     buckets,
+    caveat: dedupCaveat(set),
   };
 }
 
@@ -141,10 +125,17 @@ function BucketRow({
   maxCount: number;
 }) {
   const winRate = bucket.count > 0 ? (bucket.wins / bucket.count) * 100 : 0;
-  const barWidth = maxCount > 0 ? Math.max((bucket.count / maxCount) * 100, bucket.count > 0 ? 4 : 0) : 0;
+  const barWidth =
+    maxCount > 0
+      ? Math.max((bucket.count / maxCount) * 100, bucket.count > 0 ? 4 : 0)
+      : 0;
 
   const pnlColor =
-    bucket.totalPnl > 0 ? "text-green-400" : bucket.totalPnl < 0 ? "text-red-400" : "text-muted-foreground";
+    bucket.totalPnl > 0
+      ? "text-green-400"
+      : bucket.totalPnl < 0
+      ? "text-red-400"
+      : "text-muted-foreground";
 
   return (
     <div className="space-y-1">
@@ -176,35 +167,9 @@ function BucketRow({
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export default function AvgTradeTimeWidget() {
-  const [data, setData] = useState<AvgTradeTimeData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(
-          `/portfolio/history/trades?status=CLOSED&limit=200`,
-          { cache: "no-store" }
-        );
-        const json: unknown = await res.json();
-        const trades: TradeRecord[] = Array.isArray(json) ? json : (json as { trades?: TradeRecord[] }).trades ?? [];
-        const computed = computeData(trades);
-        setData(computed);
-        setError(false);
-        setLastRefresh(new Date());
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, []);
+  const { honest: honestSet, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = !!loadError;
+  const data = honestSet ? computeData(honestSet.trades, honestSet) : null;
 
   // ── Loading state ──────────────────────────────────────────────────────────
 
@@ -270,7 +235,16 @@ export default function AvgTradeTimeWidget() {
 
   // ── Populated state ────────────────────────────────────────────────────────
 
-  const { avgMinutes, fastestMinutes, slowestMinutes, fastestSymbol, slowestSymbol, totalClosed, buckets } = data;
+  const {
+    avgMinutes,
+    fastestMinutes,
+    slowestMinutes,
+    fastestSymbol,
+    slowestSymbol,
+    totalClosed,
+    buckets,
+    caveat,
+  } = data;
 
   const bucketOrder: BucketName[] = ["scalp", "short", "swing", "extended"];
   const maxCount = Math.max(...bucketOrder.map((k) => buckets[k].count), 1);
@@ -339,7 +313,11 @@ export default function AvgTradeTimeWidget() {
             const b = buckets[key];
             const wr = b.count > 0 ? (b.wins / b.count) * 100 : null;
             const wrColor =
-              wr === null ? "text-muted-foreground" : wr >= 50 ? "text-green-400" : "text-red-400";
+              wr === null
+                ? "text-muted-foreground"
+                : wr >= 50
+                ? "text-green-400"
+                : "text-red-400";
             return (
               <div key={key} className="text-center space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">{b.label}</p>
@@ -356,12 +334,17 @@ export default function AvgTradeTimeWidget() {
         </div>
 
         {/* Footer */}
-        <p className="text-xs text-muted-foreground">
-          Auto-refreshes every 60s
-          {lastRefresh && (
-            <span> &bull; Last: {lastRefresh.toLocaleTimeString()}</span>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Auto-refreshes every 60s
+          </p>
+          {caveat && (
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <Info className="h-3 w-3 shrink-0" />
+              {caveat}
+            </p>
           )}
-        </p>
+        </div>
       </CardContent>
     </Card>
   );

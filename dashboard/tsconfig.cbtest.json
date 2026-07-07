@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "tests/MasterApiCircuitBreaker.test.ts",
+    "lib/masterApi.ts",
+    "app/master/page.tsx"
+  ]
+}

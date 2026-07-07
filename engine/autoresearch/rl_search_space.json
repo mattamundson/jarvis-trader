@@ -1,0 +1,22 @@
+{
+  "version": "v1-2026-04-10",
+  "description": "Ranked hyperparam search space for jarvis-trader RL training. DEFERRED — do not run sweeps until paper trading validates composite_score.",
+  "params": [
+    {"name": "stc_oversold", "type": "int", "bounds": [10, 25], "baseline": 15, "notes": "STC oversold threshold"},
+    {"name": "stc_overbought", "type": "int", "bounds": [75, 92], "baseline": 83, "notes": "STC overbought threshold"},
+    {"name": "stop_atr_multiplier", "type": "float", "bounds": [0.5, 1.5], "baseline": 0.70, "notes": "ATR multiplier for stop loss"},
+    {"name": "t1_atr", "type": "float", "bounds": [0.5, 2.0], "baseline": 1.0, "notes": "Target 1 ATR multiplier"},
+    {"name": "t2_atr", "type": "float", "bounds": [1.0, 3.0], "baseline": 1.5, "notes": "Target 2 ATR multiplier"},
+    {"name": "t3_atr", "type": "float", "bounds": [1.5, 4.0], "baseline": 2.5, "notes": "Target 3 ATR multiplier"},
+    {"name": "ppo_learning_rate", "type": "float", "bounds": [1e-5, 1e-3], "baseline": 3e-4, "notes": "PPO Adam learning rate"},
+    {"name": "ppo_gamma", "type": "float", "bounds": [0.9, 0.999], "baseline": 0.99, "notes": "PPO discount factor"},
+    {"name": "ppo_ent_coef", "type": "float", "bounds": [0.0, 0.05], "baseline": 0.01, "notes": "PPO entropy coefficient"},
+    {"name": "ppo_clip_range", "type": "float", "bounds": [0.1, 0.3], "baseline": 0.2, "notes": "PPO clip range"},
+    {"name": "max_bars_in_trade", "type": "int", "bounds": [20, 100], "baseline": 50, "notes": "Max bars per trade before forced exit"}
+  ],
+  "guards": {
+    "min_trades_per_year": 50,
+    "max_drawdown_pct": 0.10,
+    "rationale": "Prevents the composite_score optimizer from gaming Sharpe by becoming inactive."
+  }
+}

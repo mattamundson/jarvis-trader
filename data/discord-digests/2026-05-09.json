@@ -1,0 +1,66 @@
+{
+  "date": "2026-05-09",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "bullish",
+    "conviction": 0.65,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 10
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": "Above 7402: price is accepted higher, buyers are in control, continuation becomes likely. Below 7402: breakouts fail, sellers retain influence, rotations continue.",
+  "commentary_health": [
+    {
+      "date": "2026-05-10",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 10
+    },
+    {
+      "date": "2026-05-09",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 10
+    },
+    {
+      "date": "2026-05-08",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 10
+    },
+    {
+      "date": "2026-05-07",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 9
+    },
+    {
+      "date": "2026-05-06",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 13
+    },
+    {
+      "date": "2026-05-05",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 7
+    },
+    {
+      "date": "2026-05-04",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 29
+    }
+  ]
+}

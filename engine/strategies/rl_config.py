@@ -45,7 +45,7 @@ STATE_FEATURES = [
     "stc_above_os",  # 1 if stc_val > STC_OS threshold else 0
     "stc_below_ob",  # 1 if stc_val < STC_OB threshold else 0
     # ATR / volatility
-    "atr_14",  # raw ATR-14 value
+    "cci_50_norm",  # CCI-50 clipped to [-200,200] then /200 → [-1,1]; overbought/oversold
     "atr_normalized",  # atr / close
     "atr_vs_20d_avg",  # atr / rolling(20).mean() of atr
     # Regime & trend
@@ -54,14 +54,20 @@ STATE_FEATURES = [
     "phase_value",  # phase_val / 100  →  [-1, 1] approx
     # Volume
     "volume_vs_avg",  # volume / rolling(10).mean()
-    "volume_signal",  # buy_pct: buyer_dominant=1, balanced=0, seller_dominant=-1
+    "buy_pct_cont",  # continuous buying pressure [0,1] (was categorical volume_signal 3-state)
     # Position state (internal environment tracking)
     "current_position",  # 1=long, 0=flat, -1=short
     "unrealized_pnl_atr",  # unrealized_pnl / atr  (negative when underwater)
     "bars_in_trade",  # number of bars since position opened (normalized /100)
+    # Discord signal context (indices 18-22)
+    "discord_signal_active",  # index 18: 0/1 — signal in last 4 bars
+    "discord_win_rate_context",  # index 19: 0.0-1.0 — rolling 30-day win rate
+    "discord_proximity_entry",  # index 20: -1.0 to 1.0 — (price-entry)/ATR
+    "discord_proximity_target",  # index 21: 0.0-2.0 — abs(price-t1)/ATR
+    "discord_alignment",  # index 22: -1/0/1 — signal alignment with JARVIS
 ]
 
-N_FEATURES = len(STATE_FEATURES)  # 18
+N_FEATURES = len(STATE_FEATURES)  # 23
 
 # ── Regime Score Mapping ──────────────────────────────────────────────────────
 
@@ -103,34 +109,49 @@ def get_instrument_params(symbol: str) -> tuple:
     return RL_INSTRUMENT_PARAMS.get(symbol.upper(), DEFAULT_INSTRUMENT_PARAMS)
 
 
+# ── Trade Duration Cap ────────────────────────────────────────────────────────
+# Hard limit on bars in a single trade. Environment forces close at this threshold.
+# Run 10: added after Run 9 OOS showed avg_bars_in_trade=109 (must be <50).
+MAX_BARS_IN_TRADE: int = 50
+
 # ── Reward Configuration ──────────────────────────────────────────────────────
+# Run 10: strong-exit config
 
 REWARD_CONFIG = {
     # Primary: P&L normalized by ATR so reward is scale-invariant across instruments
     "pnl_atr_weight": 1.0,
-    # Holding cost per bar when in a position (encourages closing losers quickly)
-    # Run 9: reduced from -0.002 → -0.001.
-    # Run 8 result (MES, 500k steps): HOLD=66.1%, episode reward ~+7 (stagnant).
-    # The -0.002 hold_cost was over-penalising positions, causing the agent to
-    # close trades too early then default back to HOLD-when-flat. Halving hold_cost
-    # lets the agent carry winners longer while the reduced entry_cost (-0.01)
-    # simultaneously lowers the barrier to open new positions. Together these
-    # two levers should pull HOLD into the 40-60% target band.
-    "hold_cost_per_bar": -0.001,
+    # Holding cost per bar when in a position.
+    # Run 11: hold cost only applies while position is LOSING (unrealized_pnl <= 0).
+    # Zero hold cost while winning — agent is free to hold profitable positions to T1.
+    # Encodes the trading rule: "cut losers, let winners run."
+    # Run 10 diagnosis: always-on hold_cost=-0.010 taught agent to close at bar 3-5
+    # for tiny positive PnL (break-even=1 bar), never reaching T1 (t1_hit_rate=2.2%).
+    "hold_cost_per_bar": -0.010,
+    # When True: hold_cost only charged while unrealized_pnl <= 0 (losing position).
+    # When False (Run 10 behavior): hold_cost charged every bar in position.
+    "hold_cost_only_when_losing": True,
     # Entry cost fired on each new BUY or SELL (discourages overtrading)
-    # Run 9: halved from -0.02 → -0.01.
-    # At -0.02, break-even hold = 10 bars. At -0.01, break-even = 5 bars.
-    # Lower barrier per trade incentivises ~2 entries per day on a 390-step
-    # (6.5 hour) episode. MGC Run 8 (HOLD=44.5%, positive reward) used the same
-    # -0.002 / -0.02 pair and achieved the closest-to-target result — the MES
-    # agent needs the entry_cost halved further to match that behaviour.
     "entry_cost": -0.01,
     # Bonus for reaching T1 ATR target (reinforces quality exits)
-    "t1_bonus": 0.10,
-    # No flat reward — pure P&L signal (unchanged from Runs 7-8).
-    # Agent never earned flat_hold_reward in prior runs; keeping at zero to
-    # avoid re-introducing the passive-income trap from Runs 1-5.
+    "t1_bonus": 0.50,
+    # No flat reward — pure P&L signal (unchanged from Runs 7-11).
     "flat_hold_reward": 0.000,
+    # ── Commission-aware reward (TensorTrade PBR-inspired, ML/AI Novel #3) ──
+    # Real broker commission deducted from realized_pnl in DOLLARS before ATR
+    # normalisation. Default 0.0 preserves the existing behaviour (Runs 1-11
+    # were commission-blind). Set per-instrument when running paper-eligible
+    # discovery (MCL≈$1.30, MNQ≈$0.45, MES≈$0.50 round-trip on IBKR micros).
+    # Source: docs/digest/ml-ai-synthesis.md Novel #3 (tensortrade-org).
+    "commission_usd_per_contract": 0.0,
+    "contracts_per_trade": 1,
+}
+
+# Per-instrument commission overrides (round-trip on IBKR micros).
+# Apply via REWARD_CONFIG.update(COMMISSION_BY_INSTRUMENT[symbol]) before training.
+COMMISSION_BY_INSTRUMENT = {
+    "MCL": {"commission_usd_per_contract": 1.30, "contracts_per_trade": 1},
+    "MNQ": {"commission_usd_per_contract": 0.45, "contracts_per_trade": 1},
+    "MES": {"commission_usd_per_contract": 0.50, "contracts_per_trade": 1},
 }
 
 # ── Run History Summary ───────────────────────────────────────────────────────
@@ -149,8 +170,23 @@ REWARD_CONFIG = {
 #   Run 8    : entry_cost=-0.02, hold_cost=-0.002 (Two-Lever adjustment)
 #              → MES: HOLD=66.1%, reward ~+7 (stagnant, still above target)
 #              → MGC (same params): HOLD=44.5%, reward +9.95 (rising) — BEST
-#   Run 9    : entry_cost=-0.01, hold_cost=-0.001 (see REWARD_CONFIG above)
-#              → Goal: MES HOLD in 40-60% range, n_trades >= 60 per episode
+#   Run 9    : entry_cost=-0.01, hold_cost=-0.001
+#              → OOS FAILED: avg_bars_in_trade=109, t1_hit_rate=0%, PF=0.074
+#              → Root cause: hold_cost too weak; agent held 109 bars on avg
+#   Run 10 (Strong-Exit): entry_cost=-0.01, hold_cost=-0.010, t1_bonus=0.50
+#              → COMPLETED: avg_bars=8.5 ✅ hold_rate=27.3% ✅ n_trades=90 ✅
+#              → FAILED: PF=0.620 ❌ sharpe=-1.966 ❌ t1_hit_rate=2.2% ❌
+#              → Diagnosis: always-on hold_cost closed winners early (bar 3-5);
+#                break-even=1 bar pressure outweighed t1_bonus incentive
+#   Run 11 (Feature-Redesign + Let-Winners-Run): hold_cost_only_when_losing=True
+#              → Feature 7: atr_14 (raw) replaced by cci_50_norm (commodity OB/OS, [-1,1])
+#              → Feature 14: volume_signal (3-state categorical) replaced by buy_pct_cont ([0,1])
+#              → CCI_50 detects overbought/oversold in crude oil better than raw ATR
+#              → Continuous buy_pct provides 6,414 unique values vs 3-state categorical
+#   Run 11 actual config: hold_cost_only_when_losing=True
+#              → hold_cost=-0.010 charged only while unrealized_pnl<=0
+#              → Holding a winning position is FREE — only losing holds penalized
+#              → Goal: t1_hit_rate>15%, PF>1.5, sharpe>1.0
 #
 # REWARD ARCHITECTURE REVIEW
 # ---------------------------

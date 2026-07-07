@@ -1,0 +1,107 @@
+{
+  "raw": {
+    "n_trades": 52,
+    "net_pnl": 604.29,
+    "pf": 1.4629,
+    "ret_pct": 6.04
+  },
+  "bootstrap_iid": {
+    "median_pf": 1.4509,
+    "pf_ci_95_low": 0.7813,
+    "pf_ci_95_high": 2.6402,
+    "p_positive_edge": 0.884,
+    "n_trades": 52
+  },
+  "bootstrap_block": {
+    "median_pf": 1.2372,
+    "pf_ci_95_low": 0.7486,
+    "pf_ci_95_high": 1.9218,
+    "p_positive_edge": 0.8038,
+    "block_size": 8,
+    "n_trades": 52
+  },
+  "sharpe_ci": {
+    "median_sharpe": 2.6654,
+    "sharpe_ci_95_low": -1.7189,
+    "sharpe_ci_95_high": 6.8749,
+    "p_positive_sharpe": 0.888,
+    "n_trades": 52
+  },
+  "drawdown_mc": {
+    "observed_max_dd_pct": 2.8353,
+    "mc_50th": 2.9698,
+    "mc_95th": 4.7646,
+    "mc_99th": 5.7073,
+    "n_trades": 52
+  },
+  "deflated_sharpe": {
+    "raw_sharpe": 2.650295,
+    "expected_max_sharpe": 0.0,
+    "sharpe_std_error": 0.156537,
+    "dsr": 1.0,
+    "passes_at_10pct": true,
+    "n_trials": 1,
+    "n_obs": 52,
+    "skew": 0.519649,
+    "kurt": 1.926483
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "FAIL",
+    "n_core_passed": 2,
+    "n_core_criteria": 4,
+    "n_alt_passed": 3,
+    "n_alt_criteria": 5,
+    "core_reasons": [
+      "FAIL mbb_pf_ci_lower=0.7486 < 1.1",
+      "FAIL p_positive_edge=0.884 < 0.95",
+      "mc_95th_dd_pct=4.7646 <= 6.0",
+      "dsr=1.0 >= 0.1 (not selection-bias)"
+    ],
+    "alt_reasons": [
+      "dsr=1.0 >= 0.3 (alt floor)",
+      "FAIL rolling_wfo=WEAK not in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=0.397 < 1.2",
+      "cost_survives_through=stressed >= realistic",
+      "mc_95th_dd_pct=4.7646 <= 7.0 (alt ceiling)"
+    ],
+    "reasons": [
+      "FAIL mbb_pf_ci_lower=0.7486 < 1.1",
+      "FAIL p_positive_edge=0.884 < 0.95",
+      "mc_95th_dd_pct=4.7646 <= 6.0",
+      "dsr=1.0 >= 0.1 (not selection-bias)",
+      "dsr=1.0 >= 0.3 (alt floor)",
+      "FAIL rolling_wfo=WEAK not in ['MODERATE', 'STRONG']",
+      "FAIL fixed_params_min_pf=0.397 < 1.2",
+      "cost_survives_through=stressed >= realistic",
+      "mc_95th_dd_pct=4.7646 <= 7.0 (alt ceiling)"
+    ],
+    "n_passed": 2,
+    "n_criteria": 4
+  },
+  "aux_evidence": {
+    "rolling_wfo_verdict": "WEAK",
+    "fixed_params_min_pf": 0.397,
+    "cost_survives_through": "stressed"
+  },
+  "strategy": {
+    "symbol": "MCL",
+    "interval": "1h",
+    "params": {
+      "bb_period": 20,
+      "bb_std": 2.0,
+      "rsi_long": 30.0,
+      "rsi_short": 70.0,
+      "stop_atr_mult": 1.5,
+      "regime_filter_mode": "bbwidth",
+      "regime_filter_bbwidth_pct": 40.0,
+      "regime_filter_adx_threshold": 20.0
+    },
+    "start": "2024-06-01",
+    "end": "2026-03-27",
+    "rank_in_grid": 1
+  },
+  "elapsed_sec": 0.89
+}

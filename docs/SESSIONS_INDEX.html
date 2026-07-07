@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — Sessions Index</title>
+<style>
+  :root {
+    --bg:#0b0d12; --bg2:#13161f; --bg3:#1a1f2c;
+    --fg:#e8eaf2; --fg-dim:#9aa3b8; --fg-dim2:#6b7388;
+    --accent:#5eead4; --accent2:#22d3ee;
+    --bull:#34d399; --bear:#f87171; --warn:#fbbf24; --info:#60a5fa;
+    --border:#2a3144; --border2:#3a4258;
+    --mono:'SF Mono','Consolas','Cascadia Code','Liberation Mono',monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  body{max-width:1080px;margin:0 auto;padding:48px 32px}
+  @media(max-width:700px){body{padding:24px 16px}}
+  h1{font-size:30px;font-weight:700;letter-spacing:-.02em;color:var(--fg);margin-bottom:8px}
+  h1 .badge{display:inline-block;font-size:11px;font-family:var(--mono);color:var(--accent);background:rgba(94,234,212,.12);padding:4px 10px;border-radius:20px;vertical-align:middle;margin-left:12px;border:1px solid rgba(94,234,212,.3);font-weight:500}
+  h2{font-size:20px;font-weight:600;color:var(--fg);margin:48px 0 16px;letter-spacing:-.01em;padding-bottom:8px;border-bottom:1px solid var(--border)}
+  p{color:var(--fg-dim);margin-bottom:14px;max-width:78ch}
+  p strong{color:var(--fg);font-weight:600}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);background:var(--bg3);color:var(--accent2);padding:1px 6px;border-radius:4px;font-size:12px}
+  ul{color:var(--fg-dim);margin:8px 0 14px 22px}
+  li{margin-bottom:4px}
+  .subtitle{color:var(--fg-dim);font-size:15px;margin-bottom:32px;max-width:78ch}
+  .nav-top{display:flex;gap:18px;margin-bottom:32px;padding-bottom:20px;border-bottom:1px solid var(--border);font-size:13px}
+  .nav-top a{color:var(--fg-dim);font-family:var(--mono)}
+  .nav-top a:hover{color:var(--accent2)}
+  .sessions{display:flex;flex-direction:column;gap:14px;margin:16px 0 32px}
+  .session{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px 22px;transition:border-color .14s,transform .14s}
+  .session:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .session a.title{display:block;font-size:17px;font-weight:600;color:var(--fg);letter-spacing:-.01em;margin-bottom:4px}
+  .session .meta{font-size:11.5px;color:var(--fg-dim2);font-family:var(--mono);margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap}
+  .session .meta .pill{display:inline-block;padding:2px 8px;border-radius:12px;background:rgba(94,234,212,.1);color:var(--accent);border:1px solid rgba(94,234,212,.25)}
+  .session p{color:var(--fg-dim);font-size:13.5px;margin-bottom:8px;max-width:none}
+  .session .highlights{font-size:12.5px;color:var(--fg-dim);margin-top:10px}
+  .session .highlights strong{color:var(--fg);font-weight:600}
+  .session a.open{display:inline-block;margin-top:6px;font-size:12px;font-family:var(--mono);color:var(--accent2)}
+  footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--border);color:var(--fg-dim2);font-size:12px}
+</style>
+</head>
+<body>
+
+<nav class="nav-top">
+  <a href="JARVIS_TRADER_HERMES_COMPLETE.html">← Complete system overview</a>
+  <span style="color:var(--fg-dim2)">·</span>
+  <a href="runbooks/STARK_MODE_OPERATING_PHILOSOPHY.md">Stark Mode philosophy</a>
+  <span style="color:var(--fg-dim2)">·</span>
+  <a href="JARVIS_TRADER_STARK_MODE_README.md">Top-level README</a>
+</nav>
+
+<h1>Sessions index <span class="badge">JARVIS TRADER · session log</span></h1>
+<p class="subtitle">Per-session deliverable HTMLs. Each is a frozen historical snapshot of what shipped on that date — never edited after the session ends. For the canonical evergreen view of the system, see <a href="JARVIS_TRADER_HERMES_COMPLETE.html">JARVIS_TRADER_HERMES_COMPLETE.html</a>.</p>
+
+<h2>2026</h2>
+
+<div class="sessions">
+
+  <div class="session">
+    <a href="session-logs/2026-06-30-vix-pctile-phase4/README.md" class="title">VIX percentile Phase 4 — AgentQuant integration + activation tooling</a>
+    <div class="meta">
+      <span>2026-06-30</span>
+      <span class="pill">4 PRs merged</span>
+      <span>claude/* → master</span>
+    </div>
+    <p>Completed the AgentQuant percentile-VIX integration and shipped the guarded activation path for the frozen MES candidate. Archived as a full verbatim conversation transcript (not the frozen-HTML format) under <code>session-logs/</code>.</p>
+    <div class="highlights">
+      <strong>Highlights:</strong> percentile VIX regime classifier + momentum overlay · SPX/XSP/VIX options + VX/VXM futures specs · VIX-regime entry gate primitive (opt-in trend wiring) · MES percentile-tier WFO runner (#120) · <code>GET /regime/vix-percentile</code> endpoint + <code>regime_snapshot()</code> · <code>VixPercentileRegimeCard</code> dashboard widget · frozen inert candidate <code>MES_sma_trend_vix_pctile_blockCrisis_v1</code> (#137) · guarded <code>activate_mes_vix_pctile_candidate.py</code> (#155) · full session transcript archived (#200). Notable: caught a case-sensitivity build break (renamed to <code>VixPercentileRegimeCard</code>) and fixed a safety-gate false-positive via rebase rather than a false <code>[safety-review]</code> tag.
+    </div>
+    <a href="session-logs/2026-06-30-vix-pctile-phase4/README.md" class="open">open →</a>
+  </div>
+
+  <div class="session">
+    <a href="SESSION_2026-05-21_stark_mode.html" class="title">Stark Mode — autonomous loop activation</a>
+    <div class="meta">
+      <span>2026-05-21</span>
+      <span class="pill">~90 commits</span>
+      <span>feat/tradingview-mcp-gamma-kraken</span>
+    </div>
+    <p>Single-day transformation from a manual-trigger pipeline into a unified autonomous trading system across Claude Code, Hermes voice/text, and the dashboard. Closed the end-to-end approval loop with Discord reactions + IB bracket orders + broker-side risk management.</p>
+    <div class="highlights">
+      <strong>Highlights:</strong> autonomous scheduler activated (tick=600s, threshold=0.75) · Discord reaction watcher live (bot 1507172328021430403) · IB bracket orders default-on · /jarvis/ask command bridge + 10 intents · 12 Hermes skills shipped · /ws/pipeline real-time push · risk attribution engine · Bayesian gate-v2 calibrator · trading journal auto-generator · QuestDB shadow scaffold · predictive maintenance · parallel-paper A/B · MES+MGC validation-only · Phase 3 readiness 7/10 → 8/10 (C10 PASS via 95.55% safety coverage) · 4,581 vault files extracted from Discord channel 1490851279180660819 · 18 runbooks added · Stark Mode operating philosophy + JARVIS soul.md.
+    </div>
+    <a href="SESSION_2026-05-21_stark_mode.html" class="open">open →</a>
+  </div>
+
+</div>
+
+<h2>Conventions</h2>
+<p><strong>Filename pattern:</strong> <code>SESSION_&lt;YYYY-MM-DD&gt;_&lt;short_topic&gt;.html</code></p>
+<p><strong>Lifecycle:</strong> session HTMLs are <em>frozen historical snapshots</em> — once a session ends, the file is never edited. New sessions create new files; this index gets a new entry at the top.</p>
+<p><strong>What belongs in a session HTML:</strong></p>
+<ul>
+  <li>What shipped (commits, files, surfaces) on that specific date</li>
+  <li>Activation-state changes (which env flags flipped on/off)</li>
+  <li>Decisions made + their rationale (since they decay fastest from <code>git log</code>)</li>
+  <li>Risks discovered + mitigation status</li>
+  <li>Operator cheatsheet for what changed</li>
+  <li>Recommended next steps coming out of the session</li>
+</ul>
+<p><strong>What belongs in the complete overview instead:</strong></p>
+<ul>
+  <li>Every engine endpoint, analyst, strategy, table, broker, dashboard page</li>
+  <li>Full Hermes ecosystem inventory</li>
+  <li>Every runbook + every scheduled task</li>
+  <li>Current evergreen reference state — updated as the system evolves</li>
+</ul>
+
+<footer>
+  <p>Generated 2026-05-21 · jarvis-trader/feat/tradingview-mcp-gamma-kraken · <code>docs/SESSIONS_INDEX.html</code></p>
+  <p>← <a href="JARVIS_TRADER_HERMES_COMPLETE.html">Complete overview</a></p>
+</footer>
+
+</body>
+</html>

@@ -35,17 +35,8 @@ class TestFuturesMarketModuleInterface:
     """Test FuturesMarketModule implements MarketModule ABC correctly."""
 
     @pytest.fixture
-    def mock_ib_gateway(self):
-        """Mock IB Gateway manager."""
-        mock = AsyncMock()
-        mock.is_connected = Mock(return_value=True)
-        mock.connect.return_value = True
-        mock.disconnect.return_value = None
-        return mock
-
-    @pytest.fixture
     def mock_portfolio_tracker(self):
-        """Mock portfolio tracker."""
+        """Override conftest mock_paper_tracker with richer position data."""
         mock = MagicMock()
         mock.get_open_positions.return_value = [
             {
@@ -66,7 +57,7 @@ class TestFuturesMarketModuleInterface:
 
     @pytest.fixture
     def mock_safety_layer(self):
-        """Mock safety layer."""
+        """Mock safety layer (from conftest)."""
         return MagicMock()
 
     @pytest.fixture
@@ -166,17 +157,30 @@ class TestFuturesMarketModuleInterface:
         assert health.status == MarketStatus.PAPER
         assert "connected" in health.message.lower()
 
+    def test_futures_health_check_reports_open_positions(
+        self, futures_module, mock_ib_gateway, mock_portfolio_tracker
+    ):
+        """
+        Regression test: health_check() must report the tracker's real open
+        position count, not silently default to 0 (HealthStatus.open_positions
+        defaults to 0; the futures module previously never set it). This was
+        the root cause of /portfolio/health reporting 0 while /portfolio/summary
+        (which reads the same tracker via get_positions()) correctly reported 2.
+        mock_portfolio_tracker.get_open_positions() returns 1 position (MES).
+        """
+        mock_ib_gateway.is_connected.return_value = True
+        health = futures_module.health_check()
+        assert health.open_positions == len(mock_portfolio_tracker.get_open_positions())
+        assert health.open_positions == 1
+
 
 class TestOptionsMarketModule:
     """Test OptionsMarketModule interface and lifecycle."""
 
     @pytest.fixture
-    def mock_ib_gateway_options(self):
-        """Mock IB Gateway for options."""
-        mock = AsyncMock()
-        mock.is_connected = Mock(return_value=True)
-        mock.connect.return_value = True
-        return mock
+    def mock_ib_gateway_options(self, mock_ib_gateway):
+        """Reuse conftest mock_ib_gateway for options testing."""
+        return mock_ib_gateway
 
     @pytest.fixture
     def options_module(self, mock_ib_gateway_options):
@@ -269,7 +273,7 @@ class TestOptionsAutoRoller:
         action = roller.evaluate_position(
             position_id="pos1",
             symbol="SPY",
-            expiry_date="2026-05-15",
+            expiry_date="2027-06-01",  # far future — DTE always > 21
             initial_credit=100.0,
             current_debit_to_close=50.0,  # 50% profit
         )
@@ -281,7 +285,7 @@ class TestOptionsAutoRoller:
         action = roller.evaluate_position(
             position_id="pos1",
             symbol="SPY",
-            expiry_date="2026-05-15",
+            expiry_date="2027-06-01",  # far future — DTE always > 21
             initial_credit=100.0,
             current_debit_to_close=75.0,  # 25% profit
         )
@@ -292,7 +296,7 @@ class TestOptionsAutoRoller:
         action = roller.evaluate_position(
             position_id="pos1",
             symbol="SPY",
-            expiry_date="2026-05-15",
+            expiry_date="2027-06-01",  # far future — DTE always > 21
             initial_credit=100.0,
             current_debit_to_close=200.0,  # 2x loss
         )

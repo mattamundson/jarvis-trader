@@ -1,0 +1,23 @@
+{
+  "symbol": "MES",
+  "test_date": "2026-04-04",
+  "diagnostics": {
+    "1h": {
+      "wfe": 0.09,
+      "pf": 0.492,
+      "sharpe": 0,
+      "wr": 0.3492,
+      "n_trades": 0,
+      "return_pct": 0
+    },
+    "1d": {
+      "wfe": 0.09,
+      "pf": 0.0,
+      "sharpe": 0,
+      "wr": 0.0,
+      "n_trades": 0,
+      "return_pct": 0
+    }
+  },
+  "note": "MES baseline across 1h and 1d intervals. WFE values are placeholder from known status."
+}

@@ -1,0 +1,42 @@
+{
+  "symbol": "MNQ",
+  "family": "trend",
+  "rank": 1,
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "UNSCORED",
+  "n_core_passed": 1,
+  "n_alt_passed": 0,
+  "created_at": "2026-04-25T06:00:05.343650+00:00",
+  "aux_freshness": {
+    "rolling_wfo": "2026-04-21T08:37:19.901588+00:00",
+    "fixed_params": null,
+    "cost_sweep": null
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "n_core_passed": 1,
+    "n_core_criteria": 4,
+    "n_alt_passed": 0,
+    "n_alt_criteria": 5,
+    "core_reasons": [
+      "FAIL mbb_pf_ci_lower=0.6752 < 1.1",
+      "FAIL p_positive_edge=0.7958 < 0.95",
+      "FAIL mc_95th_dd_pct=13.4587 > 6.0",
+      "dsr=0.159496 >= 0.1 (not selection-bias)"
+    ],
+    "alt_reasons": [],
+    "reasons": [
+      "FAIL mbb_pf_ci_lower=0.6752 < 1.1",
+      "FAIL p_positive_edge=0.7958 < 0.95",
+      "FAIL mc_95th_dd_pct=13.4587 > 6.0",
+      "dsr=0.159496 >= 0.1 (not selection-bias)"
+    ],
+    "n_passed": 1,
+    "n_criteria": 4
+  }
+}

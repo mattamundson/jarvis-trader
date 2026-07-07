@@ -4,18 +4,13 @@ import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
-
-
-// ── Static backtest reference values ─────────────────────────────────────────
-
-const BACKTEST = {
-  profitFactor: 5.27,
-  sharpeRatio: 4.16,
-  winRate: 67.3,
-  totalTrades: 847,
-  avgRR: 2.14,
-  totalReturn: 47.2,
-} as const;
+import { fetchHonestTrades } from "@/lib/honestTrades";
+import {
+  type BacktestBaselineRow,
+  fmtBaselineNum,
+  pickApprovedBacktestBaseline,
+  type ScorecardBacktestBaseline,
+} from "@/lib/scorecardBaseline";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,8 +21,6 @@ interface PaperMetrics {
   sharpe_ratio?: number;
   win_rate?: number;
   total_trades?: number;
-  avg_rr?: number;
-  total_return?: number;
 }
 
 // ── Badge logic ───────────────────────────────────────────────────────────────
@@ -35,12 +28,6 @@ interface PaperMetrics {
 function pfVariant(pf: number): BadgeVariant {
   if (pf >= 2.0) return "bull";
   if (pf >= 1.5) return "warn";
-  return "bear";
-}
-
-function sharpeVariant(s: number): BadgeVariant {
-  if (s >= 1.5) return "bull";
-  if (s >= 1.0) return "warn";
   return "bear";
 }
 
@@ -56,29 +43,55 @@ function tradesVariant(t: number): BadgeVariant {
   return "info";
 }
 
-// ── Helper to normalize win rate ──────────────────────────────────────────────
-
 function normalizeWinRate(raw: number): number {
-  // API may return 0.673 (fraction) or 67.3 (percent)
   return raw > 1 ? raw : raw * 100;
+}
+
+function fmtBacktestCell(
+  loadingBt: boolean,
+  n: number | null,
+  decimals = 2
+): string {
+  if (loadingBt) return "…";
+  return fmtBaselineNum(n, decimals);
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BacktestVsPaperWidget() {
   const [paper, setPaper] = useState<PaperMetrics | null>(null);
+  const [baseline, setBaseline] = useState<ScorecardBacktestBaseline | null>(null);
+  const [loadingBt, setLoadingBt] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function fetchMetrics() {
     try {
-      const data = await fetchEngine(`/analytics/performance`);
-      setPaper(data);
+      // Paper column from the honest deduped record (was /analytics/performance,
+      // which over-counts re-logged winners -> fabricated PF 2.95 / 19 trades).
+      //
+      // fetchHonestTrades() -> masterApi's fetchRealizedPnl() carries its own
+      // 15s AbortController timeout (see lib/masterApi.ts), so a stalled
+      // master-api rejects into the catch block below within a bounded time
+      // instead of leaving `loading` true forever -- the "renders
+      // placeholders forever" symptom this widget must never reproduce.
+      const [honest, btRows] = await Promise.all([
+        fetchHonestTrades(),
+        fetchEngine<BacktestBaselineRow[]>(`/backtest/results`).catch(() => [] as BacktestBaselineRow[]),
+      ]);
+      setPaper({
+        profit_factor: honest.profitFactor ?? undefined,
+        sharpe_ratio: undefined, // annualized Sharpe not in the deduped record
+        win_rate: honest.winRate * 100,
+        total_trades: honest.trades.length,
+      });
+      setBaseline(pickApprovedBacktestBaseline(btRows));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch");
     } finally {
       setLoading(false);
+      setLoadingBt(false);
     }
   }
 
@@ -88,11 +101,14 @@ export function BacktestVsPaperWidget() {
     return () => clearInterval(id);
   }, []);
 
-  // Resolved paper values
   const pf = paper?.profit_factor ?? null;
-  const sharpe = paper?.sharpe_ratio ?? null;
   const wr = paper?.win_rate != null ? normalizeWinRate(paper.win_rate) : null;
   const trades = paper?.total_trades ?? null;
+
+  const btPf = baseline?.profitFactor ?? null;
+  const btSr = baseline?.sharpeRatio ?? null;
+  const btWr = baseline?.winRatePct ?? null;
+  const btTrades = baseline?.totalTrades ?? null;
 
   return (
     <Card>
@@ -103,7 +119,7 @@ export function BacktestVsPaperWidget() {
               Backtest vs Paper Reality
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              STC Strategy — Target Validation
+              Backtest column from saved engine results (MCL/MNQ preferred)
             </p>
           </div>
           {loading && (
@@ -144,11 +160,10 @@ export function BacktestVsPaperWidget() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              {/* Profit Factor */}
               <tr className="hover:bg-muted/20 transition-colors">
                 <td className="py-2.5 pr-4 font-medium text-foreground">Profit Factor</td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                  {BACKTEST.profitFactor.toFixed(2)}
+                  {fmtBacktestCell(loadingBt, btPf)}
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
                   {loading ? (
@@ -170,37 +185,32 @@ export function BacktestVsPaperWidget() {
                 </td>
               </tr>
 
-              {/* Sharpe Ratio */}
               <tr className="hover:bg-muted/20 transition-colors">
                 <td className="py-2.5 pr-4 font-medium text-foreground">Sharpe Ratio</td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                  {BACKTEST.sharpeRatio.toFixed(2)}
+                  {fmtBacktestCell(loadingBt, btSr)}
                 </td>
-                <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
-                  {loading ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : error || sharpe == null ? (
-                    <span className="text-muted-foreground">N/A</span>
-                  ) : (
-                    sharpe.toFixed(2)
-                  )}
+                <td
+                  className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground"
+                  title="Annualized Sharpe is not derivable from the deduped trade record"
+                >
+                  —
                 </td>
                 <td className="py-2.5 text-center">
-                  {!loading && !error && sharpe != null ? (
-                    <Badge variant={sharpeVariant(sharpe)} className="text-[10px]">
-                      {sharpeVariant(sharpe) === "bull" ? "ON TRACK" : sharpeVariant(sharpe) === "warn" ? "MARGINAL" : "BELOW"}
-                    </Badge>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">—</span>
-                  )}
+                  <span className="text-muted-foreground text-xs">not computed</span>
                 </td>
               </tr>
 
-              {/* Win Rate */}
               <tr className="hover:bg-muted/20 transition-colors">
                 <td className="py-2.5 pr-4 font-medium text-foreground">Win Rate</td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                  {BACKTEST.winRate.toFixed(1)}%
+                  {loadingBt ? (
+                    "…"
+                  ) : btWr != null ? (
+                    `${btWr.toFixed(1)}%`
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
                   {loading ? (
@@ -222,11 +232,16 @@ export function BacktestVsPaperWidget() {
                 </td>
               </tr>
 
-              {/* Total Trades */}
               <tr className="hover:bg-muted/20 transition-colors">
                 <td className="py-2.5 pr-4 font-medium text-foreground">Total Trades</td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                  {BACKTEST.totalTrades.toLocaleString()}
+                  {loadingBt ? (
+                    "…"
+                  ) : btTrades != null ? (
+                    btTrades.toLocaleString()
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono tabular-nums font-semibold text-foreground">
                   {loading ? (
@@ -243,8 +258,8 @@ export function BacktestVsPaperWidget() {
                       {tradesVariant(trades) === "bull"
                         ? "SUFFICIENT"
                         : tradesVariant(trades) === "warn"
-                        ? "BUILDING"
-                        : "TOO FEW"}
+                          ? "BUILDING"
+                          : "TOO FEW"}
                     </Badge>
                   ) : (
                     <span className="text-muted-foreground text-xs">—</span>
@@ -256,7 +271,8 @@ export function BacktestVsPaperWidget() {
         </div>
 
         <p className="mt-3 text-[11px] text-muted-foreground italic">
-          Paper targets set at 38% of backtest thresholds to account for real market conditions
+          Paper column from the honest deduped trade record (read-time deduped); backtest column
+          from saved engine results. Paper targets set at 38% of backtest thresholds.
         </p>
 
         {error && (

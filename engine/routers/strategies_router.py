@@ -12,8 +12,6 @@ Endpoints:
     POST /strategies/rl/evaluate      — run OOS evaluation on saved model
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import uuid
@@ -21,9 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from middleware.rate_limit import get_limiter
 from strategies.rl_config import (
     DEFAULT_INTERVAL,
     RUN7_SCENARIOS,
@@ -35,6 +34,9 @@ from strategies.rl_trainer import RLTrainer, _training_status, get_training_stat
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/strategies", tags=["strategies"])
+
+# Get limiter instance for rate limiting
+limiter = get_limiter()
 
 # ── Module-level dependency singletons ────────────────────────────────────────
 # Injected at startup by main.py via inject_deps().
@@ -195,8 +197,13 @@ async def _run_walkforward(run_id: str, req: WalkForwardRequest) -> None:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
-@router.post("/rl/train")
+@router.post(
+    "/rl/train",
+    description="Start background PPO training for a symbol with configurable timesteps and reward scenario.",
+)
+@limiter.limit("10/minute")
 async def start_rl_training(
+    request: Request,
     req: TrainRequest,
     background_tasks: BackgroundTasks,
 ) -> dict:
@@ -261,8 +268,12 @@ async def start_rl_training(
     }
 
 
-@router.post("/rl/stop")
-async def stop_rl_training() -> dict:
+@router.post(
+    "/rl/stop",
+    description="Request graceful abort of the active training run with window-aware stopping for walk-forward validation.",
+)
+@limiter.limit("10/minute")
+async def stop_rl_training(request: Request) -> dict:
     """
     Request graceful abort of the active training run.
 
@@ -291,9 +302,14 @@ async def stop_rl_training() -> dict:
     }
 
 
-@router.post("/rl/train-walkforward")
+@router.post(
+    "/rl/train-walkforward",
+    description="Start walk-forward training with rolling windows where ALL windows must pass validation gates for deployment recommendation.",
+)
+@limiter.limit("10/minute")
 async def train_walkforward(
-    request: WalkForwardRequest,
+    request: Request,
+    req: WalkForwardRequest,
     background_tasks: BackgroundTasks,
 ) -> dict:
     """
@@ -315,22 +331,22 @@ async def train_walkforward(
     GET /strategies/rl/results/{run_id} returns final aggregate results.
     """
     # Validate reward_scenario before queuing
-    if request.reward_scenario and request.reward_scenario.upper() not in RUN7_SCENARIOS:
+    if req.reward_scenario and req.reward_scenario.upper() not in RUN7_SCENARIOS:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Unknown reward_scenario '{request.reward_scenario}'. "
+                f"Unknown reward_scenario '{req.reward_scenario}'. "
                 f"Valid values: {', '.join(sorted(RUN7_SCENARIOS.keys()))}"
             ),
         )
 
     # Block duplicate runs for same symbol
     current = get_training_status()
-    if current.get("running") and current.get("symbol") == request.symbol.upper():
+    if current.get("running") and current.get("symbol") == req.symbol.upper():
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Training already running for {request.symbol}. "
+                f"Training already running for {req.symbol}. "
                 "Wait for it to complete or check /strategies/rl/status."
             ),
         )
@@ -338,11 +354,11 @@ async def train_walkforward(
     run_id = str(uuid.uuid4())
     _run_registry[run_id] = {
         "run_id": run_id,
-        "symbol": request.symbol.upper(),
-        "interval": request.interval,
+        "symbol": req.symbol.upper(),
+        "interval": req.interval,
         "mode": "walkforward",
-        "n_windows": request.n_windows,
-        "reward_scenario": request.reward_scenario.upper() if request.reward_scenario else None,
+        "n_windows": req.n_windows,
+        "reward_scenario": req.reward_scenario.upper() if req.reward_scenario else None,
         "status": "queued",
         "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
@@ -350,27 +366,30 @@ async def train_walkforward(
         "error": None,
     }
 
-    background_tasks.add_task(_run_walkforward, run_id, request)
+    background_tasks.add_task(_run_walkforward, run_id, req)
     logger.info(
         f"[StrategiesRouter] Walk-forward queued run_id={run_id} "
-        f"symbol={request.symbol} n_windows={request.n_windows} "
-        f"timesteps_per_window={request.timesteps_per_window}"
+        f"symbol={req.symbol} n_windows={req.n_windows} "
+        f"timesteps_per_window={req.timesteps_per_window}"
     )
 
     return {
         "run_id": run_id,
         "status": "started",
-        "symbol": request.symbol.upper(),
-        "n_windows": request.n_windows,
+        "symbol": req.symbol.upper(),
+        "n_windows": req.n_windows,
         "message": (
-            f"Walk-forward training started for {request.symbol} "
-            f"({request.n_windows} windows). "
+            f"Walk-forward training started for {req.symbol} "
+            f"({req.n_windows} windows). "
             f"Poll GET /api/v1/strategies/rl/status for per-window progress."
         ),
     }
 
 
-@router.get("/rl/status")
+@router.get(
+    "/rl/status",
+    description="Return current RL training status with progress percentage, recent runs, and walk-forward window results.",
+)
 async def get_rl_training_status() -> dict:
     """
     Return current RL training status from the trainer's module-level state.
@@ -412,7 +431,10 @@ async def get_rl_training_status() -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/rl/models")
+@router.get(
+    "/rl/models",
+    description="List all saved RL model files on disk with optional symbol filter and metadata for each model.",
+)
 async def list_rl_models(symbol: Optional[str] = None) -> dict:
     """
     List all saved RL model files on disk.
@@ -435,7 +457,10 @@ async def list_rl_models(symbol: Optional[str] = None) -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/rl/results/{run_id}")
+@router.get(
+    "/rl/results/{run_id}",
+    description="Return walk-forward results for a specific training run with metrics, windows, and deployment recommendation.",
+)
 async def get_rl_results(run_id: str) -> dict:
     """
     Return walk-forward results for a specific training run.
@@ -482,8 +507,12 @@ async def get_rl_results(run_id: str) -> dict:
     return response
 
 
-@router.post("/rl/evaluate")
-async def run_rl_evaluation(req: EvaluateRequest) -> dict:
+@router.post(
+    "/rl/evaluate",
+    description="Run out-of-sample evaluation on a saved RL model with full metrics and validation gate assessment.",
+)
+@limiter.limit("10/minute")
+async def run_rl_evaluation(request: Request, req: EvaluateRequest) -> dict:
     """
     Run out-of-sample evaluation on a saved RL model.
 
@@ -496,6 +525,9 @@ async def run_rl_evaluation(req: EvaluateRequest) -> dict:
     - **end_date**: ISO date e.g. "2026-04-01"
     - **model_path**: Optional path to model file (auto-resolved if omitted)
     """
+    if req is None:
+        raise HTTPException(status_code=422, detail="Request body is required")
+
     try:
         from strategies.rl_evaluator import OOSEvaluator
 
@@ -512,6 +544,8 @@ async def run_rl_evaluation(req: EvaluateRequest) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="RL evaluator not available") from exc
     except Exception as exc:
         logger.error(f"[StrategiesRouter] Evaluation failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -532,9 +566,14 @@ class DeployRequest(BaseModel):
     )
 
 
-@router.post("/rl/deploy")
+@router.post(
+    "/rl/deploy",
+    description="Activate or deactivate a trained RL model for live hourly execution with SafetyLayer integration.",
+)
+@limiter.limit("10/minute")
 async def deploy_model(
-    request: DeployRequest,
+    request: Request,
+    req: DeployRequest,
     background_tasks: BackgroundTasks,
 ) -> dict:
     """
@@ -552,19 +591,19 @@ async def deploy_model(
     """
     from strategies.rl_executor import RLExecutor, _executor_registry, _executor_registry_lock
 
-    symbol = request.symbol.upper()
+    symbol = req.symbol.upper()
 
-    if request.active:
+    if req.active:
         # Validate model_path exists before touching the executor registry.
         # RLExecutor._load_model() silently falls back to simulation mode when
         # the file is missing, so without this guard the caller would receive
         # HTTP 200 even for a bad path.
-        _model_file = Path(request.model_path)
-        if not _model_file.exists() and not Path(f"{request.model_path}.zip").exists():
+        _model_file = Path(req.model_path)
+        if not _model_file.exists() and not Path(f"{req.model_path}.zip").exists():
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Model file not found: '{request.model_path}' "
+                    f"Model file not found: '{req.model_path}' "
                     "(neither the exact path nor the .zip variant exists). "
                     "Train a model first via POST /strategies/rl/train."
                 ),
@@ -576,7 +615,7 @@ async def deploy_model(
         # the executor uses IBKR data and submits orders through the safety gate.
         executor = RLExecutor(
             symbol=symbol,
-            model_path=request.model_path,
+            model_path=req.model_path,
             safety_layer=_safety_layer,
             data_manager=_data_manager,
         )
@@ -601,12 +640,12 @@ async def deploy_model(
         background_tasks.add_task(executor.start)
 
         logger.info(
-            "[StrategiesRouter] Deployed RL executor for %s | model=%s", symbol, request.model_path
+            "[StrategiesRouter] Deployed RL executor for %s | model=%s", symbol, req.model_path
         )
         return {
             "status": "deployed",
             "symbol": symbol,
-            "model_path": request.model_path,
+            "model_path": req.model_path,
             "message": (
                 f"Executor deployed for {symbol}. Fires at :59 every hour "
                 "Mon-Fri 07:00-15:00 CT. Use GET /strategies/rl/executor/status to monitor."
@@ -632,7 +671,10 @@ async def deploy_model(
         }
 
 
-@router.get("/rl/executor/status")
+@router.get(
+    "/rl/executor/status",
+    description="Return status snapshot for all currently running RL executors with model state and execution metrics.",
+)
 async def executor_status() -> dict:
     """
     Return status snapshot for all currently running RL executors.
@@ -654,8 +696,12 @@ async def executor_status() -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.post("/rl/executor/run-now")
-async def run_executor_now(symbol: str) -> dict:
+@router.post(
+    "/rl/executor/run-now",
+    description="Manually trigger one execution cycle for a running executor outside the normal :59 schedule.",
+)
+@limiter.limit("10/minute")
+async def run_executor_now(request: Request, symbol: str = None) -> dict:
     """
     Manually trigger one execution cycle for a running executor.
 
@@ -685,9 +731,19 @@ async def run_executor_now(symbol: str) -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@router.get("/rl/health")
+@router.get(
+    "/rl/health",
+    description="Health check for the RL strategy module dependencies including stable-baselines3 and PyTorch.",
+)
 async def rl_strategy_health() -> dict:
-    """Health check for the RL strategy module dependencies."""
+    """Health check for the RL strategy module dependencies.
+
+    Schema matches dashboard/app/strategies/page.tsx (uses ``*_available``)
+    and tests/test_integration_rl_endpoints.py::TestRLHealth. Older bare
+    ``gymnasium`` / ``stable_baselines3`` keys were dropped — they had no
+    remaining callers and every consumer expects the ``_available`` suffix
+    plus a roll-up ``ready`` boolean.
+    """
     try:
         import gymnasium  # noqa
 
@@ -706,4 +762,62 @@ async def rl_strategy_health() -> dict:
         "gymnasium_available": gym_ok,
         "stable_baselines3_available": sb3_ok,
         "ready": gym_ok and sb3_ok,
+    }
+
+
+# ── MES Experiment Search Endpoints ───────────────────────────────────────────
+
+
+@router.get(
+    "/experiments/mes/status",
+    description="Return current MES experiment search status, best WFE found, and Sprint 18 recommendation.",
+)
+async def get_mes_experiment_status() -> dict:
+    """Return current MES experiment search status."""
+    import json
+    import os
+
+    log_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "strategies",
+        "experiment_log.json",
+    )
+
+    experiments: list[dict] = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path) as f:
+                experiments = json.load(f)
+        except Exception:
+            experiments = []
+
+    best_wfe = 0.0
+    best_config: dict = {}
+    if experiments:
+        best = max(experiments, key=lambda r: r.get("wfe", 0.0))
+        best_wfe = best.get("wfe", 0.0)
+        best_config = best.get("config_used", {})
+
+    gate_threshold = 0.50
+    wfe_gate_passed = best_wfe >= gate_threshold
+
+    sprint18_recommendation = (
+        "Pivot to 4h timeframe experiments — no MES edge found in 1h STC configs"
+        if experiments and best_wfe < 0.15
+        else (
+            "Continue 1h experiments — promising region found, run 11-30 in Sprint 18"
+            if best_wfe >= 0.30
+            else "Run experiments 11-30 in Sprint 18 across broader parameter space"
+        )
+        if experiments
+        else "Run experiments 1-10 first via: python -m strategies.run_experiment --symbol MES --config strategies/mes_search_space.json --n 10"
+    )
+
+    return {
+        "experiments_run": len(experiments),
+        "best_wfe": round(best_wfe, 4),
+        "best_config": best_config,
+        "wfe_gate_passed": wfe_gate_passed,
+        "gate_threshold": gate_threshold,
+        "sprint18_recommendation": sprint18_recommendation,
     }

@@ -1,0 +1,73 @@
+{
+  "raw": {
+    "n_trades": 14,
+    "net_pnl": 1217.97,
+    "pf": 3.7147,
+    "ret_pct": 12.18
+  },
+  "bootstrap_iid": {
+    "median_pf": 3.7335,
+    "pf_ci_95_low": 0.9295,
+    "pf_ci_95_high": 14.9427,
+    "p_positive_edge": 0.9697,
+    "n_trades": 14
+  },
+  "bootstrap_block": {
+    "median_pf": 5.4086,
+    "pf_ci_95_low": 1.7285,
+    "pf_ci_95_high": 21.5027,
+    "p_positive_edge": 0.9965,
+    "block_size": 4,
+    "n_trades": 14
+  },
+  "sharpe_ci": {
+    "median_sharpe": 7.6984,
+    "sharpe_ci_95_low": -0.417,
+    "sharpe_ci_95_high": 15.0625,
+    "p_positive_sharpe": 0.9708,
+    "n_trades": 14
+  },
+  "drawdown_mc": {
+    "observed_max_dd_pct": 1.0656,
+    "mc_50th": 1.899,
+    "mc_95th": 3.1229,
+    "mc_99th": 3.6933,
+    "n_trades": 14
+  },
+  "deflated_sharpe": {
+    "raw_sharpe": 7.181105,
+    "expected_max_sharpe": 0.0,
+    "sharpe_std_error": 1.631018,
+    "dsr": 0.999995,
+    "passes_at_10pct": true,
+    "n_trials": 1,
+    "n_obs": 14,
+    "skew": 1.208242,
+    "kurt": 4.277934
+  },
+  "gate_v2": {
+    "verdict": "MARGINAL",
+    "reasons": [
+      "FAIL pf_ci_lower=0.9295 < 1.1",
+      "p_positive_edge=0.9697 >= 0.95",
+      "mc_95th_dd_pct=3.1229 <= 5.0",
+      "dsr=0.999995 >= 0.1 (not selection-bias)"
+    ],
+    "n_passed": 3,
+    "n_criteria": 4
+  },
+  "strategy": {
+    "symbol": "MES",
+    "interval": "1h",
+    "params": {
+      "fast": 50,
+      "slow": 200,
+      "atr_trail_mult": 2.0,
+      "min_rv_annualized": 13.0
+    },
+    "start": "2024-06-01",
+    "end": "2026-03-27",
+    "rank_in_grid": 1
+  },
+  "elapsed_sec": 1.35
+}

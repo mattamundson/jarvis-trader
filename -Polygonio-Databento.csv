@@ -1,0 +1,8 @@
+"","Polygon.io","Databento"
+"Price","$29/mo (Starter)","~$25–50 for a one-time pull"
+"Futures coverage","ES, NQ, CL ✓","ES, NQ, CL ✓ (CME native)"
+"1h bar history","2+ years ✓","2+ years ✓"
+"Data quality","Good","Institutional grade"
+"Python SDK","pip install polygon-api-client","pip install databento"
+"Billing model","Monthly subscription","Pay-per-query (GB downloaded)"
+"Free tier","Delayed data only","$0 to start, pay for what you pull"

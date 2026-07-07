@@ -80,10 +80,11 @@ export function RecentSignalsWidget() {
 
   const fetchData = useCallback(async () => {
     try {
-      const payload = await fetchEngine(`/signals/recent?limit=10`, {
+      const payload = await fetchEngine(`/scanner/signals/latest?limit=10`, {
         cache: "no-store",
       });
-      setData(payload);
+      // Scanner route reports `count`; normalize to the widget's `total`.
+      setData({ ...payload, total: payload?.total ?? payload?.count });
       setError(null);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (e) {
@@ -248,6 +249,15 @@ export function RecentSignalsWidget() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Provenance (P4.2): raw pre-pipeline scanner crossovers — flag the backend
+          gap honestly rather than invent narrative reasoning. */}
+      {!loading && !error && (
+        <p className="font-mono text-[10px] leading-snug text-muted-foreground">
+          Why: raw intraday STC crossovers from the scanner (pre-pipeline). No LLM
+          reasoning is attached to these signals.
+        </p>
       )}
     </div>
   );

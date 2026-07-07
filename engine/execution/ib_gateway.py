@@ -1,15 +1,23 @@
 """
-JARVIS TRADER — IB Gateway Connection Module
-=============================================
-Paper trading only. Port 4002. Live trading (port 4001) is permanently disabled.
+JARVIS TRADER — IB API Connection Module
+========================================
+Paper trading only. Supports both IB Gateway (port 4002) and TWS (port 7497).
+Live trading ports — Gateway 4001 and TWS 7496 — are permanently disabled.
 
 Library: ib_async (successor to ib_insync — same API, actively maintained).
          Imported as `ib_insync` alias for backward compatibility.
 
 Usage:
+    # IB Gateway paper (default)
     config = IBGatewayConfig(account="DU1234567")
     gw = IBGatewayManager(config)
     await gw.connect()
+
+    # TWS paper
+    config = IBGatewayConfig(port=7497, account="DU1234567")
+    gw = IBGatewayManager(config)
+    await gw.connect()
+
     order_id = await gw.place_paper_order("MES", "BUY", 1)
     await gw.disconnect()
 """
@@ -19,8 +27,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
@@ -43,10 +52,13 @@ def _nearest_front_month(reference: Optional[date] = None) -> str:
 
 def _nearest_quarterly_expiry(reference: Optional[date] = None) -> str:
     """
-    Return the nearest active quarterly expiry as "YYYYMMDD".
+    Return the nearest active quarterly expiry as "YYYYMM".
+
+    IB accepts the contract month in YYYYMM format and resolves the exact
+    expiry date itself. Using YYYYMMDD caused "No security definition" errors
+    because IB treats that as an exact date rather than a contract month.
 
     Quarterly months: March (3), June (6), September (9), December (12).
-    Approximate expiry: third Friday ~21st of expiry month.
     """
     ref = reference or date.today()
     quarterly_months = [3, 6, 9, 12]
@@ -54,9 +66,9 @@ def _nearest_quarterly_expiry(reference: Optional[date] = None) -> str:
     for month in quarterly_months:
         candidate = date(ref.year, month, expiry_day_approx)
         if candidate > ref:
-            return candidate.strftime("%Y%m%d")
+            return f"{ref.year}{month:02d}"
     # All quarterly months in current year passed — use March of next year
-    return date(ref.year + 1, 3, expiry_day_approx).strftime("%Y%m%d")
+    return f"{ref.year + 1}03"
 
 
 logger = logging.getLogger(__name__)
@@ -83,6 +95,7 @@ try:
         Future,
         LimitOrder,
         MarketOrder,
+        Option,
         Stock,
         StopLimitOrder,
         StopOrder,
@@ -125,16 +138,19 @@ except ImportError:
 # Values: (ib_local_symbol_root, exchange, currency, multiplier)
 
 FUTURES_SYMBOL_MAP: dict[str, dict] = {
+    # MES — Micro E-mini S&P 500. IB requires exchange="CME" (not GLOBEX) for
+    # contract qualification. Symbol is "MES" (not the standard "ES" underlying).
     "MES": {
-        "underlying": "ES",
-        "exchange": "GLOBEX",
+        "underlying": "MES",
+        "exchange": "CME",
         "currency": "USD",
         "secType": "FUT",
         "multiplier": "5",
     },
+    # MNQ — Micro E-mini Nasdaq-100. exchange="CME" required for qualification.
     "MNQ": {
-        "underlying": "NQ",
-        "exchange": "GLOBEX",
+        "underlying": "MNQ",
+        "exchange": "CME",
         "currency": "USD",
         "secType": "FUT",
         "multiplier": "2",
@@ -176,38 +192,55 @@ FUTURES_SYMBOL_MAP: dict[str, dict] = {
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-# SAFETY: Live trading (port 4001) is permanently disabled in this module.
-LIVE_TRADING_PORT = 4001  # Referenced only to explicitly reject it
-PAPER_TRADING_PORT = 4002  # The only permitted port
+# SAFETY: Live trading ports are permanently disabled in this module.
+# Gateway live = 4001, TWS live = 7496. Both are rejected at construction.
+LIVE_TRADING_PORTS = frozenset({4001, 7496})
+PAPER_TRADING_PORTS = frozenset({4002, 7497})  # Gateway paper, TWS paper
+
+# Backward-compat singletons — point at the original Gateway-only values for
+# any external caller importing them. Internal logic uses the *_PORTS sets.
+LIVE_TRADING_PORT = 4001
+PAPER_TRADING_PORT = 4002
+
+
+def _broker_label(port: int) -> str:
+    """Return 'Gateway' or 'TWS' for log messages based on configured port."""
+    if port in (4001, 4002):
+        return "Gateway"
+    if port in (7496, 7497):
+        return "TWS"
+    return "IB"
 
 
 @dataclass
 class IBGatewayConfig:
     """
-    Configuration for IB Gateway paper-trading connection.
+    Configuration for an IB API paper-trading connection.
 
-    Port is hardcoded to 4002 (paper). Attempting to set 4001 raises ValueError.
+    Default port is 4002 (Gateway paper). Set port=7497 to target TWS paper.
+    Live ports — 4001 (Gateway) and 7496 (TWS) — raise ValueError at construction.
     """
 
     host: str = "127.0.0.1"
-    port: int = PAPER_TRADING_PORT  # Paper trading ONLY — do not change to 4001
+    port: int = PAPER_TRADING_PORT  # 4002 (Gateway paper) by default; 7497 = TWS paper
     client_id: int = 1
     timeout: float = 10.0
     readonly: bool = False
     account: str = ""  # IB paper account ID, e.g. "DU1234567"
 
     def __post_init__(self) -> None:
-        # SAFETY: Live trading (port 4001) is permanently disabled in this module.
-        if self.port == LIVE_TRADING_PORT:
+        # SAFETY: Live trading ports (Gateway 4001, TWS 7496) are permanently disabled.
+        if self.port in LIVE_TRADING_PORTS:
             raise ValueError(
-                "SAFETY VIOLATION: Port 4001 (live trading) is permanently disabled "
-                "in IBGatewayManager. Paper trading only — use port 4002."
+                f"SAFETY VIOLATION: Port {self.port} (live trading) is permanently "
+                "disabled in IBGatewayManager. Paper trading only — use 4002 (Gateway) "
+                "or 7497 (TWS)."
             )
-        if self.port != PAPER_TRADING_PORT:
+        if self.port not in PAPER_TRADING_PORTS:
             logger.warning(
-                "Non-standard IB Gateway port %d. Expected %d (paper).",
+                "Non-standard IB API port %d. Expected one of %s (paper).",
                 self.port,
-                PAPER_TRADING_PORT,
+                sorted(PAPER_TRADING_PORTS),
             )
 
 
@@ -245,11 +278,12 @@ class IBGatewayManager:
         if config is None:
             config = IBGatewayConfig()
 
-        # SAFETY: Live trading (port 4001) is permanently disabled in this module.
-        if config.port == LIVE_TRADING_PORT:
+        # SAFETY: Live trading ports (Gateway 4001, TWS 7496) are permanently disabled.
+        if config.port in LIVE_TRADING_PORTS:
             raise ValueError(
-                "SAFETY VIOLATION: Port 4001 (live trading) is permanently disabled "
-                "in IBGatewayManager. Paper trading only — use port 4002."
+                f"SAFETY VIOLATION: Port {config.port} (live trading) is permanently "
+                "disabled in IBGatewayManager. Paper trading only — use 4002 (Gateway) "
+                "or 7497 (TWS)."
             )
 
         self._config = config
@@ -259,7 +293,8 @@ class IBGatewayManager:
         self._last_error: Optional[str] = None
 
         logger.info(
-            "IBGatewayManager created | host=%s port=%d client_id=%d account=%s",
+            "IBGatewayManager created | broker=%s host=%s port=%d client_id=%d account=%s",
+            _broker_label(config.port),
             config.host,
             config.port,
             config.client_id,
@@ -270,16 +305,19 @@ class IBGatewayManager:
 
     async def connect(self) -> bool:
         """
-        Connect to IB Gateway (paper trading, port 4002).
+        Connect to the configured IB API endpoint (Gateway paper 4002 or TWS paper 7497).
 
         Returns True on success, False on failure.
         Sets self._status to CONNECTED or ERROR accordingly.
         """
-        # SAFETY: Live trading (port 4001) is permanently disabled in this module.
-        if self._config.port == LIVE_TRADING_PORT:
-            logger.critical("SAFETY VIOLATION in connect(): port 4001 rejected. Aborting.")
+        # SAFETY: Live trading ports (Gateway 4001, TWS 7496) are permanently disabled.
+        if self._config.port in LIVE_TRADING_PORTS:
+            logger.critical(
+                "SAFETY VIOLATION in connect(): port %d (live trading) rejected. Aborting.",
+                self._config.port,
+            )
             self._status = IBConnectionStatus.ERROR
-            self._last_error = "Port 4001 (live trading) is permanently disabled"
+            self._last_error = f"Port {self._config.port} (live trading) is permanently disabled"
             return False
 
         if not IB_INSYNC_AVAILABLE:
@@ -298,7 +336,8 @@ class IBGatewayManager:
 
         self._status = IBConnectionStatus.CONNECTING
         logger.info(
-            "Connecting to IB Gateway | %s:%d client_id=%d",
+            "Connecting to IB %s | %s:%d client_id=%d",
+            _broker_label(self._config.port),
             self._config.host,
             self._config.port,
             self._config.client_id,
@@ -398,6 +437,7 @@ class IBGatewayManager:
         Supports:
           - Micro-futures from FUTURES_SYMBOL_MAP (MES, MNQ, etc.)
           - Plain equities (fallback — uses SMART routing)
+          - Options in format SYMBOL_YYMMDD[C/P]STRIKE
 
         Returns a Contract object or None if IB is unavailable.
         """
@@ -406,13 +446,13 @@ class IBGatewayManager:
 
         upper = symbol.upper()
 
+        # 1. Options Check (e.g. AAPL_260522C190)
+        if "_" in upper and any(c in upper for c in ("C", "P")):
+            return self._resolve_option_contract(upper)
+
+        # 2. Futures Check
         if upper in FUTURES_SYMBOL_MAP:
             spec = FUTURES_SYMBOL_MAP[upper]
-
-            # MCL (Micro Crude Oil) uses monthly expiry; all others use quarterly.
-            # Providing lastTradeDateOrContractMonth prevents IB Error 321
-            # ("Error validating request") which occurs when the contract spec is
-            # ambiguous because both exchange AND expiry are unspecified.
             if upper == "MCL":
                 contract_month = _nearest_front_month()
             else:
@@ -434,10 +474,93 @@ class IBGatewayManager:
             )
             return contract
 
-        # Generic equity fallback
+        # 3. Generic equity fallback
         contract = Stock(symbol=upper, exchange="SMART", currency="USD")
         logger.debug("Resolved %s → Stock(SMART)", symbol)
         return contract
+
+    def _resolve_option_contract(self, symbol: str) -> Optional[Option]:
+        """
+        Parse an option symbol (e.g. AAPL_260522C190) into an Option contract.
+        """
+        try:
+            # Format: UNDERLYING_YYMMDDCSTRIKE
+            parts = symbol.split("_")
+            underlying = parts[0]
+            rest = parts[1]
+
+            # Find C or P index
+            right_idx = rest.find("C")
+            if right_idx == -1:
+                right_idx = rest.find("P")
+
+            if right_idx == -1:
+                return None
+
+            expiry = "20" + rest[:right_idx]  # 260522 -> 20260522
+            right = rest[right_idx]  # C or P
+            strike = float(rest[right_idx + 1 :])
+
+            return Option(
+                symbol=underlying,
+                lastTradeDateOrContractMonth=expiry,
+                strike=strike,
+                right=right,
+                exchange="SMART",
+                currency="USD",
+            )
+        except Exception as exc:
+            logger.warning("Failed to resolve option contract for %s: %s", symbol, exc)
+            return None
+
+    async def get_options_greeks(self, symbol: str) -> dict:
+        """
+        Fetch real-time Greeks for a specific option symbol.
+        """
+        if self._ib is None or not self.is_connected():
+            return {"error": "Not connected"}
+
+        contract = self._resolve_contract(symbol)
+        if not contract or not isinstance(contract, Option):
+            return {"error": f"Invalid option symbol: {symbol}"}
+
+        qualified = await self._qualify_contract(contract)
+        if not qualified:
+            return {"error": f"Could not qualify contract: {symbol}"}
+
+        try:
+            # Request market data for Greeks
+            # We use snapshotted data for one-off requests
+            ticker = self._ib.reqMktData(qualified, "100,101,104,106", snapshot=True)
+
+            # Wait for data to populate (max 5s)
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 5.0:
+                if ticker.modelGreeks is not None:
+                    break
+                await asyncio.sleep(0.1)
+
+            greeks = ticker.modelGreeks
+            if greeks is None:
+                # Fallback to marketGreeks if model is unavailable
+                greeks = ticker.marketGreeks
+
+            if greeks is None:
+                return {"error": "Greeks unavailable for this contract", "symbol": symbol}
+
+            return {
+                "symbol": symbol,
+                "delta": greeks.delta,
+                "gamma": greeks.gamma,
+                "theta": greeks.theta,
+                "vega": greeks.vega,
+                "implied_vol": greeks.impliedVol,
+                "und_price": greeks.undPrice,
+                "timestamp": datetime.now().isoformat(),
+            }
+        except Exception as exc:
+            logger.error("get_options_greeks failed for %s: %s", symbol, exc)
+            return {"error": str(exc)}
 
     async def _qualify_contract(self, contract) -> Optional[object]:
         """
@@ -463,8 +586,11 @@ class IBGatewayManager:
         self, action: str, quantity: int
     ) -> Optional[tuple[str, str]]:
         """Validate safety and input preconditions. Returns (action_upper, order_type_upper) or None."""
-        if self._config.port == LIVE_TRADING_PORT:
-            logger.critical("place_paper_order: port 4001 rejected — live trading disabled")
+        if self._config.port in LIVE_TRADING_PORTS:
+            logger.critical(
+                "place_paper_order: port %d rejected — live trading disabled",
+                self._config.port,
+            )
             return None
         if not IB_INSYNC_AVAILABLE:
             logger.error("place_paper_order: ib_async not installed")
@@ -488,42 +614,55 @@ class IBGatewayManager:
         quantity: int,
         limit_price: Optional[float],
         aux_price: Optional[float],
+        order_ref: Optional[str] = None,
     ) -> Optional[object]:
-        """Build appropriate IB order object. Returns order or None."""
+        """Build appropriate IB order object. Returns order or None.
+
+        ``order_ref``, when provided, is set as the IB ``orderRef`` tag so that
+        JARVIS-originated fills can be distinguished from the paper account's
+        pre-seeded demo activity (DUP662235 carries demo positions) during
+        reconciliation — see ``ibkr_reconciler`` / the execution-fidelity gate.
+        """
+        order: Optional[object]
         if order_type_upper == "MKT":
-            return MarketOrder(action=action_upper, totalQuantity=quantity)
-        if order_type_upper == "LMT":
+            order = MarketOrder(action=action_upper, totalQuantity=quantity)
+        elif order_type_upper == "LMT":
             if limit_price is None:
                 logger.error("place_paper_order: limit_price required for LMT order")
                 return None
-            return LimitOrder(
+            order = LimitOrder(
                 action=action_upper,
                 totalQuantity=quantity,
                 lmtPrice=limit_price,
             )
-        if order_type_upper == "STP":
+        elif order_type_upper == "STP":
             if aux_price is None:
                 logger.error("place_paper_order: aux_price (stop price) required for STP order")
                 return None
-            return StopOrder(
+            order = StopOrder(
                 action=action_upper,
                 totalQuantity=quantity,
                 stopPrice=aux_price,
             )
-        if order_type_upper in ("STP_LMT", "STPLMT"):
+        elif order_type_upper in ("STP_LMT", "STPLMT"):
             if aux_price is None or limit_price is None:
                 logger.error(
                     "place_paper_order: both aux_price and limit_price required for STP_LMT"
                 )
                 return None
-            return StopLimitOrder(
+            order = StopLimitOrder(
                 action=action_upper,
                 totalQuantity=quantity,
                 lmtPrice=limit_price,
                 stopPrice=aux_price,
             )
-        logger.error("place_paper_order: unsupported order_type '%s'", order_type_upper)
-        return None
+        else:
+            logger.error("place_paper_order: unsupported order_type '%s'", order_type_upper)
+            return None
+
+        if order_ref:
+            order.orderRef = order_ref
+        return order
 
     async def place_paper_order(
         self,
@@ -533,17 +672,27 @@ class IBGatewayManager:
         order_type: str = "MKT",
         limit_price: Optional[float] = None,
         aux_price: Optional[float] = None,
+        parent_order_id: Optional[int] = None,
+        order_ref: Optional[str] = None,
     ) -> Optional[int]:
         """
         Place an order on the IB paper account (port 4002 only).
 
         Args:
-            symbol:      JARVIS symbol (e.g. "MES", "MNQ", "AAPL")
-            action:      "BUY" or "SELL"
-            quantity:    Number of contracts / shares (positive integer)
-            order_type:  "MKT", "LMT", "STP", "STP_LMT"
-            limit_price: Required for LMT and STP_LMT orders
-            aux_price:   Stop price for STP and STP_LMT orders
+            symbol:          JARVIS symbol (e.g. "MES", "MNQ", "AAPL")
+            action:          "BUY" or "SELL"
+            quantity:        Number of contracts / shares (positive integer)
+            order_type:      "MKT", "LMT", "STP", "STP_LMT"
+            limit_price:     Required for LMT and STP_LMT orders
+            aux_price:       Stop price for STP and STP_LMT orders
+            parent_order_id: IB orderId of the parent entry when placing a
+                             child STP — sets Order.parentId so IB links the
+                             child to the entry fill atomically at the broker.
+            order_ref:       IB ``orderRef`` tag. Defaults to a generated
+                             ``JARVIS-<uuid>`` so every JARVIS-routed fill is
+                             distinguishable from the account's pre-seeded demo
+                             activity during reconciliation. Pass an explicit
+                             value to link related orders (e.g. entry + child).
 
         Returns:
             IB order ID (int) on success, None on failure.
@@ -554,14 +703,22 @@ class IBGatewayManager:
 
         order_type_upper = order_type.upper()
 
+        # Tag every JARVIS-routed order so reconciliation can filter our fills
+        # out of the demo-seed portfolio. Inert until ALLOW_PAPER_SIMULATED_ORDERS
+        # is enabled (this real-IB path is only used when the flag is True).
+        if order_ref is None:
+            order_ref = f"JARVIS-{uuid.uuid4().hex[:12]}"
+
         logger.info(
-            "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s",
+            "place_paper_order | symbol=%s action=%s qty=%d type=%s lmt=%s aux=%s parent=%s ref=%s",
             symbol,
             action_upper,
             quantity,
             order_type_upper,
             limit_price,
             aux_price,
+            parent_order_id,
+            order_ref,
         )
 
         try:
@@ -576,7 +733,8 @@ class IBGatewayManager:
                 return None
 
             ib_order = self._build_order_object(
-                order_type_upper, action_upper, quantity, limit_price, aux_price
+                order_type_upper, action_upper, quantity, limit_price, aux_price,
+                order_ref=order_ref,
             )
             if ib_order is None:
                 return None
@@ -584,16 +742,21 @@ class IBGatewayManager:
             if self._config.account:
                 ib_order.account = self._config.account
 
+            if parent_order_id is not None:
+                ib_order.parentId = int(parent_order_id)
+
             trade = self._ib.placeOrder(contract, ib_order)
             order_id: int = trade.order.orderId
 
             logger.info(
-                "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d",
+                "Order placed | symbol=%s action=%s qty=%d type=%s order_id=%d parent=%s ref=%s",
                 symbol,
                 action_upper,
                 quantity,
                 order_type_upper,
                 order_id,
+                parent_order_id,
+                order_ref,
             )
             return order_id
 
@@ -646,7 +809,7 @@ class IBGatewayManager:
         Return all open orders as a list of dicts.
 
         Each dict contains:
-          order_id, symbol, action, quantity, order_type,
+          order_id, parent_id, symbol, action, quantity, order_type,
           limit_price, aux_price, status, filled, remaining
         """
         if not IB_INSYNC_AVAILABLE or not self.is_connected():
@@ -664,6 +827,7 @@ class IBGatewayManager:
                 result.append(
                     {
                         "order_id": order.orderId,
+                        "parent_id": getattr(order, "parentId", 0) or None,
                         "symbol": contract.symbol,
                         "action": order.action,
                         "quantity": order.totalQuantity,
@@ -681,6 +845,23 @@ class IBGatewayManager:
         except Exception as exc:
             logger.error("get_open_orders failed: %s", exc, exc_info=True)
             return []
+
+    async def get_order_status(self, order_id: str) -> dict:
+        """Return status dict for a single order, including parent_order_id.
+
+        Used by SafetyLayer._verify_parent_linkage to confirm broker-side
+        STP/TP children carry the correct parentId before reporting stp_linked.
+        """
+        orders = await self.get_open_orders()
+        for o in orders:
+            if str(o.get("order_id")) == str(order_id):
+                return {
+                    "order_id": o["order_id"],
+                    "parent_order_id": o.get("parent_id"),
+                    "status": o.get("status"),
+                    "symbol": o.get("symbol"),
+                }
+        return {}
 
     # ── Account summary ───────────────────────────────────────────────────
 
@@ -773,6 +954,58 @@ class IBGatewayManager:
         """
         summary = await self.get_account_summary()
         return float(summary.get("NetLiquidation", 0.0))
+
+    async def get_executions(self) -> list[dict]:
+        """
+        Return recent IB execution fills as a list of dicts.
+
+        Calls reqExecutionsAsync() with no filter to fetch all fills from the
+        current and recent sessions (IB typically surfaces the current day +
+        prior session fills while the session is live).
+
+        Each dict: exec_id, account, symbol, sec_type, expiry, side (BOT/SLD),
+        quantity, price, avg_price, commission, exchange, currency, fill_time,
+        order_id, order_ref.
+
+        ``order_ref`` carries the IB orderRef stamped by place_paper_order
+        (JARVIS-<uuid>), letting the reconciler distinguish JARVIS-originated
+        fills from the DUP662235 demo-seed activity.
+        """
+        if not IB_INSYNC_AVAILABLE or not self.is_connected():
+            logger.warning("get_executions: not connected")
+            return []
+
+        try:
+            fills = await self._ib.reqExecutionsAsync()
+            result = []
+            for fill in fills:
+                contract = fill.contract
+                execution = fill.execution
+                commission_report = fill.commissionReport
+                result.append(
+                    {
+                        "exec_id": execution.execId,
+                        "account": execution.acctNumber,
+                        "symbol": contract.symbol,
+                        "sec_type": contract.secType,
+                        "expiry": getattr(contract, "lastTradeDateOrContractMonth", ""),
+                        "side": execution.side,  # "BOT" or "SLD"
+                        "quantity": execution.shares,
+                        "price": execution.price,
+                        "avg_price": execution.avgPrice,
+                        "commission": getattr(commission_report, "commission", None),
+                        "exchange": execution.exchange,
+                        "currency": contract.currency,
+                        "fill_time": str(execution.time),
+                        "order_id": execution.orderId,
+                        "order_ref": getattr(execution, "orderRef", "") or "",
+                    }
+                )
+            return result
+
+        except Exception as exc:
+            logger.error("get_executions failed: %s", exc, exc_info=True)
+            return []
 
     # ── Health check ──────────────────────────────────────────────────────
 

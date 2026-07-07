@@ -7,6 +7,7 @@ Run: pytest engine/tests/test_api_contract_minimal.py -v
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,14 +19,28 @@ from slowapi.errors import RateLimitExceeded
 from middleware.rate_limit import limiter, rate_limit_exception_handler
 from portfolio.tracker import PortfolioTracker
 from risk.safety_layer import SafetyLayer
+from routers import health_router as hr_mod
 from routers import portfolio_router as pr_mod
 from routers import safety_router as sr_mod
 
 
 @pytest.fixture()
 def contract_client():
+    # Shared singleton limiter — other test modules exhaust buckets before this file runs.
+    limiter.reset()
+
     old_pt, old_db = pr_mod.paper_tracker, pr_mod.db_manager
     old_sl, old_lt = sr_mod._safety_layer, sr_mod._loss_tracker
+    old_hr = (
+        hr_mod._start_time,
+        hr_mod.data_manager,
+        hr_mod.safety_layer,
+        hr_mod.db_manager,
+        hr_mod.paper_tracker,
+        hr_mod.pnl_monitor,
+        hr_mod.trading_pipeline,
+        hr_mod.schwab_connector,
+    )
 
     app = FastAPI()
     app.state.limiter = limiter
@@ -44,14 +59,28 @@ def contract_client():
 
     sr_mod.inject_dependencies(layer, _LT())
 
+    fake_ib = SimpleNamespace(is_connected=False)
+    hr_mod.inject_dependencies(
+        datetime.now(timezone.utc),
+        SimpleNamespace(ibkr=fake_ib),
+        layer,
+        None,
+        tracker,
+        None,
+        None,
+        None,
+    )
+
     app.include_router(pr_mod.router, prefix="/portfolio")
     app.include_router(sr_mod.router)
+    app.include_router(hr_mod.router)
 
     client = TestClient(app)
     yield client
 
     pr_mod.inject_dependencies(old_pt, old_db)
     sr_mod.inject_dependencies(old_sl, old_lt)
+    hr_mod.inject_dependencies(*old_hr)
 
 
 def test_paper_positions_shape(contract_client: TestClient) -> None:
@@ -68,6 +97,25 @@ def test_history_trades_list(contract_client: TestClient) -> None:
     assert isinstance(r.json(), list)
 
 
+def test_health_contract_shape(contract_client: TestClient) -> None:
+    r = contract_client.get("/health")
+    assert r.status_code == 200
+    body = r.json()
+    for key in (
+        "status",
+        "version",
+        "timestamp",
+        "live_trading",
+        "kill_switch_active",
+        "paper_mode",
+        "database",
+        "ibkr_connected",
+        "schwab_connected",
+        "uptime_seconds",
+    ):
+        assert key in body, f"missing contract key: {key}"
+
+
 def test_safety_status_shape(contract_client: TestClient) -> None:
     r = contract_client.get("/safety/status")
     assert r.status_code == 200
@@ -80,4 +128,34 @@ def test_circuit_breakers_shape(contract_client: TestClient) -> None:
     r = contract_client.get("/safety/circuit-breakers")
     assert r.status_code == 200
     body = r.json()
-    assert "all_clear" in body
+    for key in ("all_clear", "kill_switch_active", "daily_limit_breached", "drawdown_breached"):
+        assert key in body, f"missing contract key: {key}"
+
+
+def test_paper_phase_summary_shape(contract_client: TestClient) -> None:
+    """GET /portfolio/stats/paper-phase-summary matches dashboard PaperPhaseSummary."""
+    r = contract_client.get("/portfolio/stats/paper-phase-summary")
+    assert r.status_code == 200
+    body = r.json()
+    for key in (
+        "phase",
+        "start_date",
+        "starting_balance",
+        "current_balance",
+        "total_return_pct",
+        "total_pnl",
+        "trading_days",
+        "target_trading_days",
+        "trades_completed",
+        "validation_status",
+    ):
+        assert key in body
+    assert isinstance(body["phase"], str)
+    assert isinstance(body["starting_balance"], (int, float))
+    assert isinstance(body["current_balance"], (int, float))
+    assert isinstance(body["total_return_pct"], (int, float))
+    assert isinstance(body["total_pnl"], (int, float))
+    assert isinstance(body["trading_days"], int)
+    assert isinstance(body["target_trading_days"], int)
+    assert isinstance(body["trades_completed"], int)
+    assert isinstance(body["validation_status"], str)

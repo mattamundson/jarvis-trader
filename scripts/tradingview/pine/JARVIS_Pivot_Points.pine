@@ -1,0 +1,100 @@
+// JARVIS Pivot Points
+// Port of ThinkScript_study_20230523STUDY.ts (ThinkorSwim)
+// Classic floor pivot points — daily resolution
+// Outputs labels and lines readable by TradingView MCP tools:
+//   data_get_pine_labels(study_filter="JARVIS Pivot Points")
+//   data_get_pine_lines (study_filter="JARVIS Pivot Points")
+//@version=5
+indicator(title="JARVIS Pivot Points", shorttitle="JARVIS_PIVOTS", overlay=true,
+         max_labels_count=500, max_lines_count=500)
+
+// --- Request daily OHLC (previous session) ---
+prev_close = request.security(syminfo.tickerid, "D", close[1],  lookahead=barmerge.lookahead_on)
+prev_high  = request.security(syminfo.tickerid, "D", high[1],   lookahead=barmerge.lookahead_on)
+prev_low   = request.security(syminfo.tickerid, "D", low[1],    lookahead=barmerge.lookahead_on)
+
+// --- Classic Floor Pivot Calculation ---
+pp = (prev_high + prev_low + prev_close) / 3.0
+hl = prev_high - prev_low
+
+r1 = 2.0 * pp - prev_low
+r2 = pp + hl
+r3 = prev_high + 2.0 * (pp - prev_low)
+r4 = r3 + hl
+
+s1 = 2.0 * pp - prev_high
+s2 = pp - hl
+s3 = prev_low - 2.0 * (prev_high - pp)
+s4 = s3 - hl
+
+// --- Plot continuous level references (thin, low-alpha) ---
+plot(pp, title="PP",  color=color.new(color.white,  40), linewidth=1)
+plot(r1, title="R1",  color=color.new(color.red,    50), linewidth=1)
+plot(r2, title="R2",  color=color.new(color.red,    60), linewidth=1)
+plot(r3, title="R3",  color=color.new(color.red,    70), linewidth=1)
+plot(r4, title="R4",  color=color.new(color.red,    80), linewidth=1)
+plot(s1, title="S1",  color=color.new(color.green,  50), linewidth=1)
+plot(s2, title="S2",  color=color.new(color.green,  60), linewidth=1)
+plot(s3, title="S3",  color=color.new(color.green,  70), linewidth=1)
+plot(s4, title="S4",  color=color.new(color.green,  80), linewidth=1)
+
+// --- MCP-Readable Output (last bar only) ---
+// line.new() and label.new() produce the objects that MCP reads via
+// data_get_pine_lines and data_get_pine_labels
+if barstate.islast
+    bi = bar_index
+    dist_from_pp = close - pp
+
+    // ---- Pivot Point ----
+    line.new(bi - 20, pp, bi, pp, color=color.new(color.white, 30), width=2, extend=extend.right)
+    label.new(bi, pp, text="PP: " + str.tostring(math.round(pp, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.white, size=size.small)
+
+    // ---- Resistance 1 ----
+    line.new(bi - 20, r1, bi, r1, color=color.new(color.red, 20), width=2, extend=extend.right)
+    label.new(bi, r1, text="R1: " + str.tostring(math.round(r1, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.new(color.red, 0), size=size.small)
+
+    // ---- Resistance 2 ----
+    line.new(bi - 20, r2, bi, r2, color=color.new(color.red, 35), width=2, extend=extend.right)
+    label.new(bi, r2, text="R2: " + str.tostring(math.round(r2, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.new(color.red, 0), size=size.small)
+
+    // ---- Resistance 3 ----
+    line.new(bi - 20, r3, bi, r3, color=color.new(color.red, 50), width=2, extend=extend.right)
+    label.new(bi, r3, text="R3: " + str.tostring(math.round(r3, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.new(color.red, 0), size=size.small)
+
+    // ---- Resistance 4 ----
+    line.new(bi - 20, r4, bi, r4, color=color.new(color.red, 65), width=2, extend=extend.right)
+    label.new(bi, r4, text="R4: " + str.tostring(math.round(r4, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.new(color.red, 0), size=size.small)
+
+    // ---- Support 1 ----
+    line.new(bi - 20, s1, bi, s1, color=color.new(color.green, 20), width=2, extend=extend.right)
+    label.new(bi, s1, text="S1: " + str.tostring(math.round(s1, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.new(color.lime, 0), size=size.small)
+
+    // ---- Support 2 ----
+    line.new(bi - 20, s2, bi, s2, color=color.new(color.green, 35), width=2, extend=extend.right)
+    label.new(bi, s2, text="S2: " + str.tostring(math.round(s2, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.new(color.lime, 0), size=size.small)
+
+    // ---- Support 3 ----
+    line.new(bi - 20, s3, bi, s3, color=color.new(color.green, 50), width=2, extend=extend.right)
+    label.new(bi, s3, text="S3: " + str.tostring(math.round(s3, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.new(color.lime, 0), size=size.small)
+
+    // ---- Support 4 ----
+    line.new(bi - 20, s4, bi, s4, color=color.new(color.green, 65), width=2, extend=extend.right)
+    label.new(bi, s4, text="S4: " + str.tostring(math.round(s4, 2)),
+     style=label.style_label_left, color=color.new(color.black, 70), textcolor=color.new(color.lime, 0), size=size.small)
+
+    // ---- Context labels (distance from PP, prior range) ----
+    label.new(bi, pp - (hl * 0.15),
+     text="DIST_PP: " + str.tostring(math.round(dist_from_pp, 2)),
+     style=label.style_label_left, color=color.new(color.gray, 70), textcolor=color.silver, size=size.tiny)
+
+    label.new(bi, pp - (hl * 0.30),
+     text="PREV_RANGE: " + str.tostring(math.round(hl, 2)),
+     style=label.style_label_left, color=color.new(color.gray, 75), textcolor=color.silver, size=size.tiny)

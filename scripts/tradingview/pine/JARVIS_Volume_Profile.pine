@@ -1,0 +1,140 @@
+//@version=5
+indicator("JARVIS Volume Profile", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_lookback   = input.int(50,  "Bars to Profile", minval=10,  maxval=200)
+i_bins       = input.int(20,  "Price Bins",      minval=10,  maxval=50)
+i_va_pct     = input.float(0.70, "Value Area %", minval=0.50, maxval=0.90, step=0.01)
+i_show_lines = input.bool(true, "Show POC/VA Lines")
+
+// ─── Colours ──────────────────────────────────────────────────────────────────
+COL_POC  = color.new(color.yellow, 0)
+COL_VAH  = color.new(color.green,  0)
+COL_VAL  = color.new(color.red,    0)
+COL_LBL  = color.new(color.white,  0)
+
+// ─── Persistent drawing handles (cleared each recalc on last bar) ─────────────
+var line  ln_poc = na
+var line  ln_vah = na
+var line  ln_val = na
+var label lb_poc = na
+var label lb_vah = na
+var label lb_val = na
+
+// ─── MCP readback labels (created once on last bar) ───────────────────────────
+var label lb_mcp_poc      = na
+var label lb_mcp_vah      = na
+var label lb_mcp_val      = na
+var label lb_mcp_width    = na
+var label lb_mcp_bull_vol = na
+var label lb_mcp_bear_vol = na
+var label lb_mcp_bias     = na
+
+// ─── Main calculation (only on last confirmed bar) ────────────────────────────
+if barstate.islast
+    // ── 1. Determine price range ──────────────────────────────────────────────
+    h = ta.highest(high,  i_lookback)
+    l = ta.lowest(low,    i_lookback)
+    price_range = h - l
+
+    // Guard: skip if flat market
+    if price_range > 0
+        bin_size = price_range / i_bins
+
+        // ── 2. Allocate bin arrays ────────────────────────────────────────────
+        var float[] bin_vols   = array.new_float(0)
+        var float[] bin_prices = array.new_float(0)
+        array.clear(bin_vols)
+        array.clear(bin_prices)
+
+        for i = 0 to i_bins - 1
+            array.push(bin_vols,   0.0)
+            array.push(bin_prices, l + (i + 0.5) * bin_size)
+
+        // ── 3. Fill bins from historical bars ─────────────────────────────────
+        bull_vol = 0.0
+        bear_vol = 0.0
+
+        for i = 0 to i_lookback - 1
+            b = math.floor((close[i] - l) / bin_size)
+            b_clamped = math.max(0, math.min(i_bins - 1, b))
+            array.set(bin_vols, b_clamped, array.get(bin_vols, b_clamped) + volume[i])
+            if close[i] >= open[i]
+                bull_vol += volume[i]
+            else
+                bear_vol += volume[i]
+
+        // ── 4. Locate POC ─────────────────────────────────────────────────────
+        max_vol  = array.max(bin_vols)
+        poc_idx  = array.indexof(bin_vols, max_vol)
+        poc      = array.get(bin_prices, poc_idx)
+
+        // ── 5. Expand value area outward from POC ────────────────────────────
+        total_vol  = array.sum(bin_vols)
+        target_vol = total_vol * i_va_pct
+        va_vol     = max_vol
+        vah_idx    = poc_idx
+        val_idx    = poc_idx
+
+        for _i = 0 to i_bins  // max iterations = number of bins
+            if va_vol >= target_vol
+                break
+            vol_up = vah_idx < i_bins - 1 ? array.get(bin_vols, vah_idx + 1) : 0.0
+            vol_dn = val_idx  > 0          ? array.get(bin_vols, val_idx  - 1) : 0.0
+            if vol_up >= vol_dn and vah_idx < i_bins - 1
+                vah_idx += 1
+                va_vol  += vol_up
+            else if val_idx > 0
+                val_idx -= 1
+                va_vol  += vol_dn
+            else
+                break
+
+        // Extend VAH/VAL to outer edge of their bin
+        vah       = array.get(bin_prices, vah_idx) + bin_size * 0.5
+        val_price = array.get(bin_prices, val_idx) - bin_size * 0.5
+        va_width  = vah - val_price
+
+        // ── 6. Volume bias ────────────────────────────────────────────────────
+        total_bv   = bull_vol + bear_vol
+        bull_pct   = total_bv > 0 ? (bull_vol / total_bv) * 100 : 50.0
+        bear_pct   = 100.0 - bull_pct
+        bias_str   = bull_pct > 55.0 ? "BULL" : bull_pct < 45.0 ? "BEAR" : "NEUTRAL"
+
+        // ── 7. Draw POC / VAH / VAL lines ────────────────────────────────────
+        if i_show_lines
+            line.delete(ln_poc)
+            line.delete(ln_vah)
+            line.delete(ln_val)
+            label.delete(lb_poc)
+            label.delete(lb_vah)
+            label.delete(lb_val)
+
+            bar_start = bar_index - i_lookback
+            ln_poc := line.new(bar_start, poc,       bar_index, poc,       color=COL_POC, width=2, style=line.style_solid)
+            ln_vah := line.new(bar_start, vah,       bar_index, vah,       color=COL_VAH, width=1, style=line.style_dashed)
+            ln_val := line.new(bar_start, val_price, bar_index, val_price, color=COL_VAL, width=1, style=line.style_dashed)
+
+            lb_poc := label.new(bar_index, poc,       "POC",      style=label.style_label_left, color=COL_POC, textcolor=color.black, size=size.small)
+            lb_vah := label.new(bar_index, vah,       "VAH",      style=label.style_label_left, color=COL_VAH, textcolor=color.black, size=size.small)
+            lb_val := label.new(bar_index, val_price, "VAL",      style=label.style_label_left, color=COL_VAL, textcolor=color.black, size=size.small)
+
+        // ── 8. MCP readback labels (bottom of chart, invisible to trader) ─────
+        lbl_x = bar_index
+        lbl_y = l - price_range * 0.15   // place below the visible range
+
+        label.delete(lb_mcp_poc)
+        label.delete(lb_mcp_vah)
+        label.delete(lb_mcp_val)
+        label.delete(lb_mcp_width)
+        label.delete(lb_mcp_bull_vol)
+        label.delete(lb_mcp_bear_vol)
+        label.delete(lb_mcp_bias)
+
+        lb_mcp_poc      := label.new(lbl_x, lbl_y - bin_size * 0, "VP_POC: "      + str.tostring(poc,       "#.##"),   style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+        lb_mcp_vah      := label.new(lbl_x, lbl_y - bin_size * 1, "VP_VAH: "      + str.tostring(vah,       "#.##"),   style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+        lb_mcp_val      := label.new(lbl_x, lbl_y - bin_size * 2, "VP_VAL: "      + str.tostring(val_price, "#.##"),   style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+        lb_mcp_width    := label.new(lbl_x, lbl_y - bin_size * 3, "VP_VA_WIDTH: " + str.tostring(va_width,  "#.##"),   style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+        lb_mcp_bull_vol := label.new(lbl_x, lbl_y - bin_size * 4, "VP_BULL_VOL: " + str.tostring(bull_pct,  "#.#"),    style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+        lb_mcp_bear_vol := label.new(lbl_x, lbl_y - bin_size * 5, "VP_BEAR_VOL: " + str.tostring(bear_pct,  "#.#"),    style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)
+        lb_mcp_bias     := label.new(lbl_x, lbl_y - bin_size * 6, "VP_BIAS: "     + bias_str,                          style=label.style_label_left, color=color.new(color.gray, 80), textcolor=COL_LBL, size=size.tiny)

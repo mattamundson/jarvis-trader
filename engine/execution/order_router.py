@@ -1,387 +1,252 @@
 """
-JARVIS TRADER — Unified Order Router
-=====================================
-Routes orders to the correct broker based on instrument type and configuration.
-  - Futures        → IBKRExecutor (live) or IBGatewayConnector (paper trading)
-  - Equity Options → SchwabConnector (live) or IBGatewayConnector (paper trading)
-  - Equity         → SchwabConnector (fallback to IBKRExecutor if unavailable)
+Order Router — dispatches orders to the correct broker based on instrument type.
 
-Paper Trading Mode:
-  When PAPER_TRADING=True and PAPER_TRADING_BROKER="IB_GATEWAY":
-    All orders route through IBGatewayConnector for simulation and logging.
-    Orders are logged to data/paper_trades.json instead of sent to real brokers.
+Routing rules:
+  Futures (MES, MNQ, MCL, MGC, ES, NQ, GC, CL, etc.) -> IBKR
+  Equities (SPY, QQQ, AAPL, etc.) -> Schwab
+  Options -> Schwab (preferred), fallback IBKR
+  Spot crypto (BTCUSD, ETHUSD, ...) -> CryptoMarketModule (Kraken or Freqtrade)
 
-Design principle: the router is intentionally dumb. It reads instrument type
-from the OrderRequest and dispatches — no strategy logic lives here.
+Note: CME micro crypto futures tickers `BTC` / `ETH` (→ MBT/MET contracts) stay
+in FUTURES_SYMBOLS because they ARE futures. Only the USD-suffixed spot
+symbols are routed to the crypto module.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from engine.execution.ib_gateway_connector import IBGatewayConnector
-    from engine.execution.ibkr_executor import IBKRExecutor
-    from engine.execution.schwab_connector import SchwabConnector
+    from execution.ib_gateway_connector import IBGatewayConnector
+    from execution.schwab_connector import SchwabConnector
+    from markets.crypto.module import CryptoMarketModule
 
 logger = logging.getLogger(__name__)
 
-# PostgreSQL logging (imported here to avoid circular dependency issues)
-_repository = None
+# Spot crypto tickers routed to the crypto module rather than any broker.
+# Kept in sync with utils.position_sizing.CRYPTO_SPOT_SYMBOLS (duplicated here
+# to avoid a circular import at module load).
+CRYPTO_SPOT_SYMBOLS = {
+    "BTCUSD",
+    "ETHUSD",
+    "SOLUSD",
+    "XBTUSD",  # Kraken alias for BTCUSD
+}
 
-__all__ = ["OrderRouter"]
+# Futures symbols that must go to IBKR
+FUTURES_SYMBOLS = {
+    "MES",
+    "ES",
+    "MNQ",
+    "NQ",
+    "MCL",
+    "CL",
+    "MGC",
+    "GC",
+    "MYM",
+    "YM",
+    "M2K",
+    "RTY",
+    "MBT",
+    "BTC",
+    "MET",
+    "ETH",
+    "ZN",
+    "ZB",
+    "ZF",
+    "ZT",
+    "6E",
+    "6B",
+    "6J",
+}
+
+FUTURES_PREFIXES = ("M", "E", "C", "Z", "6")  # heuristic for unrecognized symbols
 
 
 class OrderRouter:
-    """
-    Single entry-point for all order submission across brokers.
-
-    Supports multiple broker connectors:
-      - IBKRExecutor: Live futures trading via Interactive Brokers
-      - IBGatewayConnector: Paper trading mode (simulated orders with JSON logging)
-      - SchwabConnector: Live equity/options trading via Charles Schwab
-
-    All broker handles are optional — the router degrades gracefully if one
-    connector failed to initialize (e.g. IBKR Gateway not running).
-
-    Paper trading routing:
-      If PAPER_TRADING=True, IBGatewayConnector takes priority for all orders.
-      Otherwise routes by instrument type (futures → IBKR, options → Schwab, etc.)
-    """
-
     def __init__(
         self,
-        ibkr: "IBKRExecutor | None",
-        schwab: "SchwabConnector | None",
-        ib_gateway: "IBGatewayConnector | None",
-        safety_layer,
-        settings,
+        ibkr: Optional["IBGatewayConnector"] = None,
+        schwab: Optional["SchwabConnector"] = None,
+        crypto_module: Optional["CryptoMarketModule"] = None,
     ):
-        self._ibkr = ibkr
-        self._schwab = schwab
-        self._ib_gateway = ib_gateway
-        self._safety_layer = safety_layer
-        self._settings = settings
+        self.ibkr = ibkr
+        self.schwab = schwab
+        self.crypto_module = crypto_module
 
-    # ── Routing ───────────────────────────────────────────────────────────────
+    def attach_ibkr(self, connector: "IBGatewayConnector") -> None:
+        self.ibkr = connector
 
-    async def route_order(self, order, portfolio_equity: float) -> dict:
+    def attach_schwab(self, connector: "SchwabConnector") -> None:
+        self.schwab = connector
+
+    def attach_crypto(self, module: "CryptoMarketModule") -> None:
+        self.crypto_module = module
+
+    def is_futures(self, symbol: str) -> bool:
+        return symbol.upper() in FUTURES_SYMBOLS
+
+    def is_crypto_spot(self, symbol: str) -> bool:
+        return symbol.upper() in CRYPTO_SPOT_SYMBOLS
+
+    def is_options(self, order: dict) -> bool:
+        return order.get("asset_type", "").upper() in ("OPT", "OPTION", "OPTIONS")
+
+    async def route_order(self, order: dict) -> dict:
         """
-        Route an order to the correct broker and return the execution result.
-
-        Paper Trading (PAPER_TRADING=True):
-          All orders route through IBGatewayConnector (simulated fills, JSON logging)
-
-        Live Trading (PAPER_TRADING=False):
-          Routes by instrument type:
-            - Futures        → IBKRExecutor
-            - Equity Options → SchwabConnector
-            - Equity         → SchwabConnector (fallback to IBKR)
-
-        `order` may be either an OrderRequest dataclass or a plain dict with an
-        `is_futures` / `is_options` key so the router can make the dispatch
-        decision without importing every agent's order format.
-
-        Returns a result dict with at minimum:
-          {"status": "placed" | "rejected" | "error", ...}
-        """
-        # Support both dataclass and dict
-        is_futures = getattr(order, "is_futures", None) or (
-            isinstance(order, dict) and order.get("is_futures", False)
-        )
-        is_options = getattr(order, "is_options", None) or (
-            isinstance(order, dict) and order.get("is_options", False)
-        )
-        symbol = getattr(order, "symbol", None) or (
-            isinstance(order, dict) and order.get("symbol", "UNKNOWN")
-        )
-
-        logger.info(
-            "OrderRouter.route_order | symbol=%s is_futures=%s is_options=%s equity=$%.0f",
-            symbol,
-            is_futures,
-            is_options,
-            portfolio_equity,
-        )
-
-        # ── PAPER TRADING MODE (all orders → IBGatewayConnector) ───────────────
-        if self._settings.PAPER_TRADING:
-            if self._ib_gateway is None or not self._ib_gateway.is_connected:
-                logger.error("Paper trading mode enabled but IBGatewayConnector not connected")
-                result = {
-                    "status": "error",
-                    "reason": "IBGatewayConnector not connected for paper trading",
-                    "symbol": symbol,
-                }
-                await self._log_order_result(order, result, is_futures, is_options)
-                return result
-
-            logger.info(
-                "Paper trading mode: routing order for %s → IBGatewayConnector",
-                symbol,
-            )
-            order_dict = order if isinstance(order, dict) else _order_request_to_dict(order)
-            result = await self._ib_gateway.submit_order(order_dict, portfolio_equity)
-            await self._log_order_result(order, result, is_futures, is_options)
-            return result
-
-        # ── LIVE TRADING MODE (route by instrument type) ────────────────────────
-
-        # Futures → IBKR
-        if is_futures:
-            if self._ibkr is None or not self._ibkr.is_connected:
-                logger.error("Futures order for %s — IBKR not connected", symbol)
-                result = {
-                    "status": "error",
-                    "reason": "IBKR not connected — cannot execute futures order",
-                    "symbol": symbol,
-                }
-                await self._log_order_result(order, result, is_futures, is_options)
-                return result
-            logger.info("Routing futures order for %s → IBKR", symbol)
-            result = await self._ibkr.submit_futures_order(order, portfolio_equity)
-            await self._log_order_result(order, result, is_futures, is_options)
-            return result
-
-        # Options → Schwab
-        if is_options:
-            if self._schwab is None or not self._schwab.is_connected:
-                logger.error("Options order for %s — Schwab not connected", symbol)
-                result = {
-                    "status": "error",
-                    "reason": "Schwab not connected — cannot execute options order",
-                    "symbol": symbol,
-                }
-                await self._log_order_result(order, result, is_futures, is_options)
-                return result
-            logger.info("Routing options order for %s → Schwab", symbol)
-            order_dict = order if isinstance(order, dict) else _order_request_to_dict(order)
-            result = await self._schwab.submit_options_order(order_dict, portfolio_equity)
-            await self._log_order_result(order, result, is_futures, is_options)
-            return result
-
-        # Equity → Schwab (fallback to IBKR)
-        if self._schwab and self._schwab.is_connected:
-            logger.info("Routing equity order for %s → Schwab", symbol)
-            order_dict = order if isinstance(order, dict) else _order_request_to_dict(order)
-            result = await self._schwab.submit_options_order(order_dict, portfolio_equity)
-            await self._log_order_result(order, result, is_futures, is_options)
-            return result
-
-        if self._ibkr and self._ibkr.is_connected:
-            logger.warning(
-                "Schwab unavailable — routing equity order for %s → IBKR (fallback)", symbol
-            )
-            result = await self._ibkr.submit_futures_order(order, portfolio_equity)
-            await self._log_order_result(order, result, is_futures, is_options)
-            return result
-
-        logger.error("No broker available for equity order: %s", symbol)
-        result = {
-            "status": "error",
-            "reason": "No broker connected for equity order",
-            "symbol": symbol,
-        }
-        # Log rejected order to PostgreSQL
-        await self._log_order_result(order, result, is_futures, is_options)
-        return result
-
-    async def _log_order_result(
-        self, order: dict, result: dict, is_futures: bool, is_options: bool
-    ) -> None:
-        """
-        Log order execution result to PostgreSQL for audit trail.
-
-        Gracefully handles database unavailability — never blocks execution.
+        Dispatch an order dict to the appropriate broker.
 
         Args:
-            order: Original order dict
-            result: Result from broker executor
-            is_futures: Whether this is a futures order
-            is_options: Whether this is an options order
-        """
-        try:
-            global _repository
-            if _repository is None:
-                from database import repository
-
-                _repository = repository
-
-            symbol = order.get("symbol", "UNKNOWN") if isinstance(order, dict) else "UNKNOWN"
-            quantity = order.get("quantity", 0) if isinstance(order, dict) else 0
-            order_type = order.get("order_type", "market") if isinstance(order, dict) else "market"
-            status = result.get("status", "unknown")
-            broker = "ibkr" if is_futures else "schwab" if is_options else "ibkr"
-
-            # Log to PostgreSQL
-            order_id = await _repository.insert_order(
-                {
-                    "symbol": symbol,
-                    "quantity": quantity,
-                    "order_type": order_type,
-                    "limit_price": order.get("limit_price") if isinstance(order, dict) else None,
-                    "stop_price": order.get("stop_price") if isinstance(order, dict) else None,
-                    "is_futures": is_futures,
-                    "is_options": is_options,
-                    "status": status,
-                    "broker": broker,
-                    "broker_order_id": result.get("order_id") or result.get("broker_order_id"),
-                    "notes": result.get("reason") or result.get("error"),
-                }
-            )
-            logger.debug(f"[DB] Order {order_id} logged: {symbol} {quantity} {status}")
-
-        except Exception as e:
-            # Never block order execution due to logging errors
-            logger.warning(f"[DB] Failed to log order to PostgreSQL: {e}")
-
-    # ── Kill-Switch Support ───────────────────────────────────────────────────
-
-    async def cancel_all_orders(self) -> dict:
-        """
-        Cancel ALL open orders on ALL connected brokers.
-        Called by the kill switch — must be as fast and fault-tolerant as possible.
+            order: dict with at minimum:
+                {"symbol": str, "action": str, "quantity": int}
+                Optional: "order_type" (default "MKT"), "limit_price", "asset_type"
 
         Returns:
-          {
-            "ibkr_cancelled": N,
-            "schwab_cancelled": M,
-            "ib_gateway_cancelled": K,
-            "total_cancelled": N + M + K
-          }
+            Fill confirmation dict from the executing connector.
+
+        Raises:
+            RuntimeError if the required broker is not connected.
         """
-        ibkr_cancelled = 0
-        schwab_cancelled = 0
-        ib_gateway_cancelled = 0
-        errors = []
+        symbol = order.get("symbol", "").upper()
 
-        if self._ibkr and self._ibkr.is_connected:
-            try:
-                ibkr_cancelled = await self._ibkr.cancel_all_orders()
-                logger.info("Kill switch: IBKR cancelled %d orders", ibkr_cancelled)
-            except Exception as exc:
-                logger.error("Kill switch: IBKR cancel_all_orders failed: %s", exc, exc_info=True)
-                errors.append(f"IBKR: {exc}")
-
-        if self._schwab and self._schwab.is_connected:
-            try:
-                schwab_cancelled = await self._schwab.cancel_all_orders()
-                logger.info("Kill switch: Schwab cancelled %d orders", schwab_cancelled)
-            except Exception as exc:
-                logger.error("Kill switch: Schwab cancel_all_orders failed: %s", exc, exc_info=True)
-                errors.append(f"Schwab: {exc}")
-
-        if self._ib_gateway and self._ib_gateway.is_connected:
-            try:
-                ib_gateway_cancelled = await self._ib_gateway.cancel_all_orders()
-                logger.info(
-                    "Kill switch: IBGatewayConnector cancelled %d orders", ib_gateway_cancelled
+        if self.is_crypto_spot(symbol):
+            if self.crypto_module is None:
+                raise RuntimeError(
+                    f"Crypto module not attached — cannot route spot order for {symbol}. "
+                    "Set CRYPTO_ENABLED=True and attach CryptoMarketModule to the router."
                 )
-            except Exception as exc:
-                logger.error(
-                    "Kill switch: IBGatewayConnector cancel_all_orders failed: %s",
-                    exc,
-                    exc_info=True,
-                )
-                errors.append(f"IBGatewayConnector: {exc}")
+            from markets.base import TradeSignal  # lazy import to avoid cycles
+            signal = TradeSignal(
+                symbol=symbol,
+                action=order.get("action", "buy").lower(),
+                quantity=float(order.get("quantity", 0)),
+                confidence=float(order.get("confidence", 1.0)),
+                strategy=order.get("strategy", "manual"),
+                market="crypto",
+                reason=order.get("reason", ""),
+                params={
+                    "order_type": order.get("order_type"),
+                    "limit_price": order.get("limit_price"),
+                },
+            )
+            logger.info("Routing %s order to CryptoMarketModule", symbol)
+            result = await self.crypto_module.execute_signal(signal)
+            return {
+                "status": "placed" if result.executed else "error",
+                "fill_id": result.order_id,
+                "symbol": symbol,
+                "action": signal.action,
+                "quantity": signal.quantity,
+                "broker": "crypto",
+                "error": result.error,
+            }
 
-        result = {
-            "ibkr_cancelled": ibkr_cancelled,
-            "schwab_cancelled": schwab_cancelled,
-            "ib_gateway_cancelled": ib_gateway_cancelled,
-            "total_cancelled": ibkr_cancelled + schwab_cancelled + ib_gateway_cancelled,
-        }
-        if errors:
-            result["errors"] = errors
+        if self.is_futures(symbol):
+            if not self.ibkr or not self.ibkr.is_connected():
+                raise RuntimeError(f"IBKR not connected — cannot route futures order for {symbol}")
+            logger.info("Routing %s order to IBKR", symbol)
+            fill_id = await self.ibkr.place_paper_order(
+                symbol=symbol,
+                action=order.get("action", "BUY"),
+                quantity=int(order.get("quantity", 1)),
+                order_type=order.get("order_type", "MKT"),
+                limit_price=order.get("limit_price"),
+            )
+            return {
+                "status": "placed" if fill_id else "error",
+                "fill_id": fill_id,
+                "symbol": symbol,
+                "action": order.get("action", "BUY"),
+                "quantity": int(order.get("quantity", 1)),
+                "broker": "ibkr",
+            }
 
-        logger.warning("cancel_all_orders complete: %s", result)
-        return result
+        elif self.is_options(order):
+            equity = order.get("portfolio_equity", 10000.0) # Default
+            if self.schwab and self.schwab.is_connected:
+                logger.info("Routing %s options order to Schwab", symbol)
+                if order.get("is_spread"):
+                    return await self.schwab.submit_options_spread_order(order, portfolio_equity=equity)
+                return await self.schwab.submit_options_order(order, portfolio_equity=equity)
+            elif self.ibkr and self.ibkr.is_connected():
+                logger.info("Routing %s options order to IBKR (Schwab unavailable)", symbol)
+                return await self.ibkr.place_paper_order(order)
+            else:
+                raise RuntimeError("No broker connected for options order")
 
-    # ── Portfolio Aggregation ─────────────────────────────────────────────────
+        else:
+            # Equity
+            if not self.schwab or not self.schwab.is_connected:
+                raise RuntimeError(f"Schwab not connected — cannot route equity order for {symbol}")
+            logger.info("Routing %s equity order to Schwab", symbol)
+            return await self.schwab.place_paper_order(order)
 
-    async def get_combined_portfolio(self) -> dict:
+    async def route_bracket_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        entry_type: str = "MKT",
+        limit_price: Optional[float] = None,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+    ) -> dict:
         """
-        Merge position data from all brokers into a single portfolio view.
-
-        In paper trading mode: returns simulated positions from IBGatewayConnector
-        In live trading mode: merges positions from IBKR and Schwab
-
-        The safety layer holds the authoritative equity figure (synced from
-        broker every 60 s). This method provides the position-level detail.
+        Route a bracket order (Entry + SL + TP) to the correct broker.
         """
-        ibkr_summary: dict = {}
-        schwab_summary: dict = {}
-        ib_gateway_summary: dict = {}
+        sym_upper = symbol.upper()
 
-        if self._ibkr and self._ibkr.is_connected:
-            try:
-                ibkr_summary = await self._ibkr.get_account_summary()
-            except Exception as exc:
-                logger.error("get_combined_portfolio: IBKR summary failed: %s", exc)
-                ibkr_summary = {"error": str(exc)}
+        if self.is_futures(sym_upper):
+            if not self.ibkr or not self.ibkr.is_connected():
+                raise RuntimeError(f"IBKR not connected — cannot route futures bracket for {symbol}")
 
-        if self._schwab and self._schwab.is_connected:
-            try:
-                schwab_summary = await self._schwab.get_account_summary()
-            except Exception as exc:
-                logger.error("get_combined_portfolio: Schwab summary failed: %s", exc)
-                schwab_summary = {"error": str(exc)}
+            logger.info("Routing %s bracket order to IBKR", symbol)
+            return await self.ibkr.place_bracket_order(
+                symbol=symbol,
+                action=action,
+                quantity=quantity,
+                entry_type=entry_type,
+                limit_price=limit_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+            )
 
-        if self._ib_gateway and self._ib_gateway.is_connected:
-            try:
-                ib_gateway_summary = await self._ib_gateway.get_account_summary()
-            except Exception as exc:
-                logger.error("get_combined_portfolio: IBGatewayConnector summary failed: %s", exc)
-                ib_gateway_summary = {"error": str(exc)}
+        raise NotImplementedError(f"Bracket orders not yet supported for non-futures: {symbol}")
 
-        # Merge positions into a flat list, tagging each with broker
-        combined_positions = []
-        for pos in ibkr_summary.get("positions", []):
-            combined_positions.append({**pos, "broker": "ibkr"})
-        for pos in schwab_summary.get("positions", []):
-            combined_positions.append({**pos, "broker": "schwab"})
-        for pos in ib_gateway_summary.get("positions", []):
-            combined_positions.append({**pos, "broker": "ib_gateway"})
+    async def cancel_order(self, order_id: str) -> dict:
+        """
+        Cancel an order by ID. Dispatches to the appropriate broker.
+        """
+        # For now, IDs are UUIDs (IBKR paper) or numeric (IBKR live / Schwab)
+        # We'll try IBKR first as it's the primary broker for active trades.
+        if self.ibkr and self.ibkr.is_connected():
+            return await self.ibkr.cancel_order(order_id)
 
-        # Sum equity across brokers where available
-        ibkr_equity = ibkr_summary.get("equity") or 0.0
-        schwab_equity = schwab_summary.get("equity") or 0.0
-        ib_gateway_equity = ib_gateway_summary.get("equity") or 0.0
+        if self.schwab and self.schwab.is_connected:
+            return await self.schwab.cancel_order(order_id)
 
+        return {"status": "error", "reason": "No connected broker found to cancel order"}
+
+    async def modify_order(self, order_id: str, new_price: float) -> dict:
+        """
+        Modify an existing order's price.
+        """
+        if self.ibkr and self.ibkr.is_connected():
+            return await self.ibkr.modify_order(order_id, new_price)
+
+        if self.schwab and self.schwab.is_connected:
+            return await self.schwab.modify_order(order_id, new_price)
+
+        return {"status": "error", "reason": "No connected broker found to modify order"}
+
+    def status(self) -> dict:
         return {
-            "total_equity": (ibkr_equity + schwab_equity + ib_gateway_equity) or None,
-            "ibkr": ibkr_summary,
-            "schwab": schwab_summary,
-            "ib_gateway": ib_gateway_summary,
-            "positions": combined_positions,
-            "position_count": len(combined_positions),
-            "safety_layer_status": self._safety_layer.get_status(),
-        }
-
-    # ── Broker Status ─────────────────────────────────────────────────────────
-
-    def get_broker_status(self) -> dict:
-        """Quick connectivity summary for health checks and dashboard."""
-        return {
-            "ibkr_connected": self._ibkr.is_connected if self._ibkr else False,
-            "schwab_connected": self._schwab.is_connected if self._schwab else False,
-            "ib_gateway_connected": self._ib_gateway.is_connected if self._ib_gateway else False,
-            "paper_trading_mode": self._settings.PAPER_TRADING,
-            "kill_switch_active": self._safety_layer.is_killed,
+            "ibkr_connected": bool(self.ibkr and self.ibkr.is_connected()),
+            "schwab_connected": bool(self.schwab and self.schwab.is_connected),
+            "futures_broker": ("ibkr" if self.ibkr and self.ibkr.is_connected() else "unavailable"),
+            "equity_broker": (
+                "schwab" if self.schwab and self.schwab.is_connected else "unavailable"
+            ),
         }
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _order_request_to_dict(order) -> dict:
-    """Convert an OrderRequest dataclass to the dict format expected by SchwabConnector."""
-    return {
-        "symbol": order.symbol,
-        "action": "buy_to_open" if order.quantity > 0 else "sell_to_close",
-        "option_symbol": getattr(order, "option_symbol", order.symbol),
-        "quantity": abs(order.quantity),
-        "order_type": order.order_type,
-        "limit_price": order.limit_price,
-        "is_options": order.is_options,
-        "is_futures": order.is_futures,
-    }
+__all__ = ["OrderRouter", "FUTURES_SYMBOLS"]

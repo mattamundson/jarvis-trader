@@ -58,38 +58,42 @@ class OptionsScanner:
 
     def _scan_symbol(self, symbol: str) -> Optional[ScanResult]:
         """Scan one symbol. Returns ScanResult if criteria met, else None."""
+        import asyncio
+
         try:
+            from data.market_data import MarketDataManager
             from options.chain_fetcher import fetch_nearest_expiries, get_iv_rank
         except ImportError:
-            logger.warning("options.chain_fetcher not available")
+            logger.warning("options.chain_fetcher or market_data not available")
             return None
 
         try:
-            iv_rank = get_iv_rank(symbol)
+            data_manager = MarketDataManager()
+
+            iv_rank = get_iv_rank(symbol, data_manager=data_manager)
             if iv_rank < self.min_iv_rank:
                 logger.debug(f"{symbol}: IV Rank {iv_rank:.1f} < {self.min_iv_rank} — skip")
                 return None
 
-            expiries = fetch_nearest_expiries(symbol, count=1, min_dte=25, max_dte=50)
+            expiries = fetch_nearest_expiries(symbol, count=1, data_manager=data_manager)
             if not expiries:
                 return None
 
-            import yfinance as yf
-
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="1d")
-            if hist.empty:
+            # Spot price via data_manager
+            loop = asyncio.get_event_loop()
+            price_data = loop.run_until_complete(data_manager.get_current_price(symbol))
+            current_price = float(price_data.get("last_price", 0) or 0)
+            if current_price <= 0:
                 return None
-            current_price = float(hist["Close"].iloc[-1])
 
-            expiry = expiries[0]
+            expiry = expiries[0].expiry.strftime("%Y-%m-%d")
             from datetime import date
 
             dte = (datetime.strptime(expiry, "%Y-%m-%d").date() - date.today()).days
 
-            # Get VIX for regime
-            vix_data = yf.Ticker("^VIX").history(period="1d")
-            vix = float(vix_data["Close"].iloc[-1]) if not vix_data.empty else 20.0
+            # VIX via data_manager
+            vix_data = loop.run_until_complete(data_manager.get_vix())
+            vix = float(vix_data.get("value", 20.0) or 20.0)
             if vix < 15:
                 regime = "low_vix"
             elif vix > 25:

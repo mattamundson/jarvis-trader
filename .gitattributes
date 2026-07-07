@@ -1,0 +1,21 @@
+# Normalize text to LF in the repo; editors on Windows still work locally.
+* text=auto eol=lf
+
+# Windows scripts: keep CRLF so PowerShell/cmd behave when checked out on Windows.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Structured text — always LF
+*.csv text eol=lf
+*.json text eol=lf
+
+# Binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.pdf binary

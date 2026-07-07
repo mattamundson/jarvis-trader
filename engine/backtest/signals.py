@@ -11,13 +11,29 @@ Layers wired:
 
 from __future__ import annotations
 
+import logging
+import os
 from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
 
-from .indicators import (
+logger = logging.getLogger(__name__)
+
+try:
+    from discord.ib_levels import IBLevelProvider as _IBLevelProvider
+
+    _ib_provider = _IBLevelProvider()
+    _IB_AVAILABLE = True
+except Exception:
+    _ib_provider = None  # type: ignore[assignment]
+    _IB_AVAILABLE = False
+
+from .indicators import (  # noqa: E402
     cci,
+    classify_trin,
+    compute_adx,
+    compute_vwap,
     ema_ribbon,
     kama,
     keltner_channels,
@@ -42,14 +58,14 @@ INSTRUMENT_PARAMS: Dict[str, tuple] = {
         True,
     ),  # STC_OB=92 filters Nasdaq noise; 86 trades, PF 1.51
     "MCL": (
-        15,
+        23,
         83,
-        0.90,
-        1.50,
+        0.50,
+        1.00,
         2.618,
         4.00,
         True,
-    ),  # Stop=0.90, T1=1.50 → R:R=1.67; 65 trades, PF 1.81
+    ),  # Sprint 16: WF consensus params (WFE=0.82, OOS PF=1.21); OS raised 15→23, stop 0.90→0.50, T1 1.50→1.00
     "MGC": (
         17,
         88,
@@ -68,17 +84,119 @@ INSTRUMENT_PARAMS: Dict[str, tuple] = {
         2.618,
         True,
     ),  # SPY 1h optimizer consensus (2024-06→2026-03): PF 3.79, 23 trades
-    "MES": (
-        15,
-        83,
-        0.50,
-        2.00,
-        3.236,
-        4.00,
-        False,
-    ),  # MES 1h optimizer consensus (2024-06→2026-03): PF 1.69, 23 trades
+    # MES → routed via TREND_INSTRUMENTS to trend_signals.generate_sma_trend_signals()
     # Defaults used for all other symbols: STC_OS=15, STC_OB=83, Stop=0.70, T1=1.00, regime ON
 }
+
+# Instruments that use composite signal generation (STC+ORB+VWAP regime-adaptive).
+# Sprint 16: MCL and MNQ moved back to standard generate_signals() — the WF validation
+# used the standard path (WFE=0.82/0.57), and the composite path produced broken
+# exit_date=None artifacts. MES moved to SMA trend-following (2026-04-20 pivot).
+COMPOSITE_INSTRUMENTS: set[str] = set()  # no active composite instruments
+
+# Instruments that use SMA trend-following signal generation.
+# MES pivot (2026-04-20): WFO winner SMA(50,200)+2.0×ATR, train PF 2.06 / test PF 1.69.
+TREND_INSTRUMENTS = {"MES", "MGC"}
+
+# Instruments with no validated edge on cached OHLC 2024-06→2026-03. The pipeline
+# emits forced NO_TRADE signals for these symbols until a per-symbol edge is
+# re-derived. Rationale: multi_symbol_trend_wfo.py (2026-04-20) showed 0 WFO
+# winners for MCL/MNQ on the MES SMA(50,200) config; composite path scored
+# PF 0.13 — net-negative. Paper-trading a negative-expectancy strategy
+# contaminates the learning/feedback feedback loop.
+# Decision frame: memory/project_per_symbol_strategy_decision.md (Option B).
+#
+# Per-symbol exhaustion as of 2026-05-06:
+#   MCL — Mean-Rev hyp A/B/C + SMA Trend hyp D/E all FAIL (5 hypotheses exhausted)
+#   MNQ — SMA Trend ranks 1-2 + Breakout ranks 1-7 + ORB rank 1 all FAIL
+#   M2K — SMA Trend ranks 1-2 + ORB rank 1 all FAIL
+DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
+
+# Env-var feature flag for Phase 3 FULL (gate v2 routing enforcement).
+# Default OFF — ships dormant, user activates after verifying verdict
+# files exist and the policy module reads them correctly.
+# See: memory/project_gate_v2_proposal.md, engine/backtest/gate_v2_policy.py
+_GATE_V2_ROUTING_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _is_gate_v2_routing_enforced() -> bool:
+    """Check `GATE_V2_ENFORCE_ROUTING` env var (case-insensitive truthy set)."""
+    return os.environ.get("GATE_V2_ENFORCE_ROUTING", "").strip().lower() in _GATE_V2_ROUTING_TRUTHY
+
+
+def _force_no_trade(result):
+    """Override entry/exit columns to NO_TRADE / NO_EXIT while preserving
+    all other columns + the index. Shared by DO_NOT_TRADE and gate_v2
+    enforcement paths."""
+    result = result.copy()
+    result["entry_signal"] = "NO_TRADE"
+    if "exit_signal" in result.columns:
+        result["exit_signal"] = "NO_EXIT"
+    return result
+
+
+def generate_instrument_signals(df, symbol: str, **kwargs):
+    """Route to trend, composite, or standard signal generation based on instrument.
+
+    Post-processing (applied universally regardless of routing path):
+      1. DO_NOT_TRADE_SYMBOLS — static blocklist, always forces NO_TRADE.
+      2. Gate v2 routing enforcement (optional, env-flagged) — force NO_TRADE
+         when `GATE_V2_ENFORCE_ROUTING` is set and the symbol lacks a fresh
+         PASS verdict per `gate_v2_policy.is_ungate_eligible`.
+
+    DO_NOT_TRADE takes precedence — MCL/MNQ stay blocked even if a
+    gate_v2 PASS verdict exists. Gate v2 enforcement fails open: a missing
+    or stale verdict forces NO_TRADE, never an implicit allow.
+    """
+    if symbol in TREND_INSTRUMENTS:
+        from backtest.trend_signals import generate_sma_trend_signals, get_sma_trend_params
+
+        params = get_sma_trend_params(symbol)
+        if params:
+            # Config-controlled RV filter (off by default; see commit 5816aae).
+            # Env var MES_MIN_RV_ANNUALIZED enables the filter for live backtests
+            # without redeploying code — set to "9.0" or "13.0" after forward
+            # validation confirms improvement on 60+ trades.
+            env_rv = os.environ.get(f"{symbol.upper()}_MIN_RV_ANNUALIZED", "0.0")
+            try:
+                default_rv = float(env_rv)
+            except (TypeError, ValueError):
+                default_rv = 0.0
+            # Allow caller overrides (e.g. optimizer varying fast/slow/min_rv_annualized)
+            merged = {
+                **params,
+                "min_rv_annualized": default_rv,
+                **{
+                    k: v
+                    for k, v in kwargs.items()
+                    if k in ("fast", "slow", "atr_trail_mult", "min_rv_annualized")
+                },
+            }
+            result = generate_sma_trend_signals(df, **merged)
+        else:
+            result = generate_signals(df, symbol=symbol, **kwargs)
+    elif symbol in COMPOSITE_INSTRUMENTS:
+        from backtest.composite_signals import generate_composite_signals
+
+        result = generate_composite_signals(df, symbol=symbol, **kwargs)
+    else:
+        result = generate_signals(df, symbol=symbol, **kwargs)
+
+    # Override layer 1: static blocklist wins first.
+    if symbol in DO_NOT_TRADE_SYMBOLS:
+        return _force_no_trade(result)
+
+    # Override layer 2: optional gate_v2 dynamic enforcement.
+    if _is_gate_v2_routing_enforced():
+        # Lazy import so the policy module's dependencies aren't loaded
+        # for callers that never enable enforcement.
+        from backtest.gate_v2_policy import is_ungate_eligible
+
+        if not is_ungate_eligible(symbol):
+            return _force_no_trade(result)
+
+    return result
+
 
 # Default STC thresholds
 STC_OS = 15  # Oversold threshold
@@ -235,6 +353,16 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # IB proxy for daily bars: prior bar's high/low acts as the
     # "Initial Balance" range that price must accept or reject today.
+    # TODO(Phase 2): replace this shift(1) proxy with compute_initial_balance()
+    #   from engine/backtest/ib_signals.py.  That function requires intraday
+    #   (1-min or 5-min) bars with a DatetimeIndex so it can isolate the
+    #   first `open_minutes` of each RTH session.  generate_signals() currently
+    #   operates on daily OHLC bars, so the wiring requires either (a) passing
+    #   an intraday df alongside the daily df, or (b) pre-computing IB columns
+    #   before calling generate_signals and merging on date.  Until the data
+    #   pipeline supports intraday lookups here, the shift(1) proxy is the
+    #   correct fallback.  See thinkorswim-scripts/docs/corey_ib_v1.md for
+    #   the full IB spec and engine/backtest/ib_signals.py for the port.
     df["ib_high"] = df["high"].shift(1)
     df["ib_low"] = df["low"].shift(1)
 
@@ -247,11 +375,58 @@ def compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["above_ib_high"] = df["close"] > df["ib_high"]
     df["below_ib_low"] = df["close"] < df["ib_low"]
 
+    # ── RSI (period=14) for consensus module ─────────────────────────────
+    from .indicators import rsi as _rsi
+
+    df["rsi_14"] = _rsi(df["close"], period=14)
+
+    # ── VWAP (session-reset daily) ────────────────────────────────────────
+    try:
+        df["vwap"] = compute_vwap(df, session_reset=True)
+    except Exception:
+        df["vwap"] = float("nan")
+
+    # ── ADX (period=14) ───────────────────────────────────────────────────
+    try:
+        adx_result = compute_adx(df, period=14)
+        df["adx"] = adx_result["adx"]
+        df["adx_norm"] = adx_result["adx_norm"]
+        df["plus_di"] = adx_result["plus_di"]
+        df["minus_di"] = adx_result["minus_di"]
+    except Exception:
+        df["adx"] = float("nan")
+        df["adx_norm"] = float("nan")
+        df["plus_di"] = float("nan")
+        df["minus_di"] = float("nan")
+
+    # ── ATR SMA (20-bar) for consensus module ─────────────────────────────
+    df["atr_sma20"] = df["atr"].rolling(20).mean()
+
+    # ── Rate of Change (momentum, period=10) ──────────────────────────────
+    from .indicators import compute_roc as _roc
+
+    df["roc_10"] = _roc(df["close"], period=10)
+
+    # ── VWAP z-score (mean-reversion distance) ────────────────────────────
+    if "vwap" in df.columns and "atr" in df.columns:
+        from .indicators import compute_vwap_zscore as _vwap_z
+
+        df["vwap_zscore"] = _vwap_z(df["close"], df["vwap"], df["atr"])
+    else:
+        df["vwap_zscore"] = float("nan")
+
     return df
 
 
-def layer1_regime(row: pd.Series) -> str:
-    """Determine market regime from Layer 1 indicators."""
+def layer1_regime(row: pd.Series, trin_value: Optional[float] = None) -> str:
+    """
+    Determine market regime from Layer 1 indicators.
+
+    Args:
+        row: DataFrame row with indicator values.
+        trin_value: Optional TRIN (Arms Index) value from IB Gateway RTH data.
+                    Only available during regular trading hours — pass None otherwise.
+    """
     consumed = row.get("atr_consumed_pct", 0)
     phase = row.get("phase_val", 0)
     compression = row.get("phase_compression", False)
@@ -262,10 +437,21 @@ def layer1_regime(row: pd.Series) -> str:
     if compression and consumed < 50:
         return "COMPRESSION"
     if ema_trend == "bullish" and consumed < 70 and phase > 0:
-        return "TRENDING_BULL"
-    if ema_trend == "bearish" and consumed < 70 and phase < 0:
-        return "TRENDING_BEAR"
-    return "RANGE_BOUND"
+        regime = "TRENDING_BULL"
+    elif ema_trend == "bearish" and consumed < 70 and phase < 0:
+        regime = "TRENDING_BEAR"
+    else:
+        regime = "RANGE_BOUND"
+
+    # Apply TRIN modifier — only when TRIN data is available (RTH hours)
+    if trin_value is not None:
+        trin_class = classify_trin(trin_value)
+        if trin_class == "BLOWOFF_TOP" and regime == "TRENDING_BULL":
+            regime = "EXHAUSTED"  # Downgrade — extreme buying often precedes reversal
+        elif trin_class == "CAPITULATION" and regime == "TRENDING_BEAR":
+            regime = "EXHAUSTED"  # Downgrade — potential reversal zone
+
+    return regime
 
 
 def layer2_structure(row: pd.Series) -> dict:
@@ -302,6 +488,28 @@ def layer2_structure(row: pd.Series) -> dict:
     elif below_val and below_ib_low:
         result["position"] = "SELLER_CONTROL"
 
+    # Discord IB level fields (additive — None when not injected)
+    result["discord_ibu50"] = (
+        float(row["discord_ibu50"])
+        if "discord_ibu50" in row and row["discord_ibu50"] is not None
+        else None
+    )
+    result["discord_ibu100"] = (
+        float(row["discord_ibu100"])
+        if "discord_ibu100" in row and row["discord_ibu100"] is not None
+        else None
+    )
+    result["discord_ibd50"] = (
+        float(row["discord_ibd50"])
+        if "discord_ibd50" in row and row["discord_ibd50"] is not None
+        else None
+    )
+    result["discord_ibd100"] = (
+        float(row["discord_ibd100"])
+        if "discord_ibd100" in row and row["discord_ibd100"] is not None
+        else None
+    )
+
     return result
 
 
@@ -337,15 +545,45 @@ def layer3_bias(row: pd.Series) -> str:
     elif ema == "bearish":
         bear_count += 1
 
+    # VWAP position adds to directional score
+    try:
+        vwap_val = row.get("vwap")
+        if vwap_val is not None and not pd.isna(vwap_val):
+            close_price = float(row.get("close", 0))
+            vwap_f = float(vwap_val)
+            if vwap_f > 0:
+                if close_price > vwap_f * 1.001:
+                    bull_count += 1  # price above VWAP = bullish
+                elif close_price < vwap_f * 0.999:
+                    bear_count += 1  # price below VWAP = bearish
+    except Exception:
+        pass  # VWAP is advisory
+
     if bull_count >= 4:
-        return "STRONG_BULL"
+        bias = "STRONG_BULL"
     elif bull_count >= 3 or (bull_count == 2 and ema == "bullish"):
-        return "LEAN_BULL"
+        bias = "LEAN_BULL"
     elif bear_count >= 4:
-        return "STRONG_BEAR"
+        bias = "STRONG_BEAR"
     elif bear_count >= 3 or (bear_count == 2 and ema == "bearish"):
-        return "LEAN_BEAR"
-    return "NEUTRAL"
+        bias = "LEAN_BEAR"
+    else:
+        bias = "NEUTRAL"
+
+    # ADX directional filter: downgrade STRONG signals in non-trending markets
+    try:
+        adx_value = row.get("adx")
+        if adx_value is not None and not pd.isna(adx_value):
+            ADX_STRONG_THRESHOLD = 20.0  # Must show directional movement for STRONG signals
+            if float(adx_value) < ADX_STRONG_THRESHOLD:
+                if bias == "STRONG_BULL":
+                    bias = "LEAN_BULL"
+                elif bias == "STRONG_BEAR":
+                    bias = "LEAN_BEAR"
+    except Exception:
+        pass  # ADX filter is advisory — never block on failure
+
+    return bias
 
 
 def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str:
@@ -412,16 +650,81 @@ def layer4_entry(row: pd.Series, regime: str, bias: str, structure: dict) -> str
     stc_cross_up = row.get("stc_cross_up", False)
     stc_cross_down = row.get("stc_cross_down", False)
 
+    entry_signal = "NO_TRADE"
     if bias in ("STRONG_BULL", "LEAN_BULL") and stc_cross_up:
-        return "ENTRY_NOW"
-    if bias in ("STRONG_BEAR", "LEAN_BEAR") and stc_cross_down:
-        return "ENTRY_NOW"
+        entry_signal = "ENTRY_NOW"
+    elif bias in ("STRONG_BEAR", "LEAN_BEAR") and stc_cross_down:
+        entry_signal = "ENTRY_NOW"
+    else:
+        stc_val = row.get("stc_val", 50)
+        if 20 <= stc_val <= 80:
+            entry_signal = "WAIT_FOR_PULLBACK"
 
-    stc_val = row.get("stc_val", 50)
-    if 20 <= stc_val <= 80:
-        return "WAIT_FOR_PULLBACK"
+    # Consensus filter: downgrade ENTRY_NOW if 6-factor consensus disagrees
+    if entry_signal == "ENTRY_NOW":
+        try:
+            from backtest.consensus import compute_consensus
 
-    return "NO_TRADE"
+            stc_current = float(row.get("stc_val", 50))
+            ema_fast = float(row.get("ema_8", row.get("close", 0)))
+            ema_slow = float(row.get("ema_21", row.get("close", 0)))
+            # ema_slow_prev not available in row — approximate with ema_34 as proxy
+            # (ema_34 lags ema_21, so ema_21 > ema_34 means ema_21 is still rising)
+            ema_slow_prev = float(row.get("ema_34", ema_slow))
+            rsi_raw = row.get("rsi_14", 50.0)
+            rsi_val = float(rsi_raw) if rsi_raw is not None and not pd.isna(rsi_raw) else 50.0
+            atr_val = (
+                float(row.get("atr", 1.0)) if not pd.isna(row.get("atr", float("nan"))) else 1.0
+            )
+            atr_sma_val = (
+                float(row.get("atr_sma20", atr_val))
+                if not pd.isna(row.get("atr_sma20", float("nan")))
+                else atr_val
+            )
+            vwap_val_raw = row.get("vwap", None)
+            vwap_val = (
+                float(vwap_val_raw)
+                if vwap_val_raw is not None and not pd.isna(vwap_val_raw)
+                else float(row.get("close", 0))
+            )
+            adx_norm_raw = row.get("adx_norm", None)
+            adx_norm_val = (
+                float(adx_norm_raw)
+                if adx_norm_raw is not None and not pd.isna(adx_norm_raw)
+                else 0.25
+            )
+            roc_val = (
+                float(row.get("roc_10", 0.0))
+                if not pd.isna(row.get("roc_10", float("nan")))
+                else 0.0
+            )
+            vwap_z_val = (
+                float(row.get("vwap_zscore", 0.0))
+                if not pd.isna(row.get("vwap_zscore", float("nan")))
+                else 0.0
+            )
+
+            consensus = compute_consensus(
+                ema_fast=ema_fast,
+                ema_slow=ema_slow,
+                ema_slow_prev=ema_slow_prev,
+                rsi=rsi_val,
+                atr=atr_val,
+                atr_sma=atr_sma_val,
+                vwap=vwap_val,
+                close=float(row.get("close", 0)),
+                adx_norm=adx_norm_val,
+                stc_value=stc_current,
+                roc=roc_val,
+                vwap_zscore=vwap_z_val,
+            )
+
+            if not consensus.threshold_met or consensus.direction == "HOLD":
+                entry_signal = "WAIT_FOR_PULLBACK"  # Downgrade: consensus not met
+        except Exception:
+            pass  # Consensus is advisory — never block on error
+
+    return entry_signal
 
 
 def generate_signals(
@@ -480,6 +783,40 @@ def generate_signals(
         use 480 (8 hours) to block the entire trading day of the event.
     """
     df = compute_all_indicators(df)
+
+    # ── Discord IB extension levels (additive enrichment) ────────────────
+    # Populate discord_ibu50/ibu100/ibd50/ibd100 columns from historical
+    # IB reports in discord_ib_reports. One DB lookup per unique date (cached).
+    # layer2_structure() reads these columns; they are None when unavailable.
+    if _IB_AVAILABLE and symbol is not None:
+        try:
+            discord_sym = {"MNQ": "NQ", "MCL": "CL", "MES": "ES", "MGC": "GC"}.get(
+                symbol.upper(), symbol.upper()
+            )
+            for col in ("discord_ibu50", "discord_ibu100", "discord_ibd50", "discord_ibd100"):
+                if col not in df.columns:
+                    df[col] = None
+
+            # Batch by date — one query per unique trading date
+            if hasattr(df.index, "date"):
+                unique_dates = df.index.date
+            else:
+                unique_dates = [None] * len(df)
+
+            _date_cache: dict = {}
+            for i, bar_date in enumerate(unique_dates):
+                if bar_date is None:
+                    continue
+                if bar_date not in _date_cache:
+                    _date_cache[bar_date] = _ib_provider.get_levels(discord_sym, bar_date)
+                lvl = _date_cache[bar_date]
+                if lvl:
+                    df.iloc[i, df.columns.get_loc("discord_ibu50")] = lvl.get("ibu50")
+                    df.iloc[i, df.columns.get_loc("discord_ibu100")] = lvl.get("ibu100")
+                    df.iloc[i, df.columns.get_loc("discord_ibd50")] = lvl.get("ibd50")
+                    df.iloc[i, df.columns.get_loc("discord_ibd100")] = lvl.get("ibd100")
+        except Exception:
+            pass  # IB level enrichment is additive — never block signal generation
 
     # ── Optional regime-adaptive STC classification ───────────────────────
     if adaptive_regime:
@@ -666,4 +1003,87 @@ def generate_signals(
     else:
         df["news_blocked"] = False
 
+    return df
+
+
+# ── Layer 5 — Conviction-Aware Position Sizing ────────────────────────────────
+# Scales base risk percentage by the alignment strength across Layers 1-4.
+# Safety layer hard limits (config.py) still apply — this is pre-safety sizing.
+SIZING_FULL = 1.00  # STRONG bias + TRENDING + directional structure
+SIZING_HIGH = 0.80  # STRONG bias + TRENDING (any structure)
+SIZING_HALF = 0.50  # LEAN bias OR RANGING regime
+SIZING_MIN = 0.25  # All other cases (minimum viable position)
+
+
+def compute_position_size(
+    bias: str,
+    regime: str,
+    structure_position: str,
+    base_risk_pct: float,
+) -> float:
+    """
+    Layer 5: compute risk-scaled position size from signal conviction.
+    Returns the actual risk_pct to use (a fraction of base_risk_pct × multiplier).
+
+    Parameters
+    ----------
+    bias : str
+        Bias from layer 3 (STRONG_BULL, STRONG_BEAR, LEAN_BULL, LEAN_BEAR, NEUTRAL)
+    regime : str
+        Regime from layer 1 (TRENDING_BULL, TRENDING_BEAR, RANGING, VOLATILE, etc)
+    structure_position : str
+        Structure position from layer 2 (BUYER_CONTROL, SELLER_CONTROL, NEUTRAL, etc)
+    base_risk_pct : float
+        Base risk percentage (e.g., 0.02 for 2% risk per trade)
+
+    Returns
+    -------
+    float
+        Actual risk percentage to use, scaled by conviction multiplier
+    """
+    strong_bias = bias in ("STRONG_BULL", "STRONG_BEAR")
+    lean_bias = bias in ("LEAN_BULL", "LEAN_BEAR")
+    trending = regime in ("TRENDING_BULL", "TRENDING_BEAR")
+    directional_structure = structure_position in ("BUYER_CONTROL", "SELLER_CONTROL")
+
+    if strong_bias and trending and directional_structure:
+        multiplier = SIZING_FULL
+    elif strong_bias and trending:
+        multiplier = SIZING_HIGH
+    elif lean_bias or not trending:
+        multiplier = SIZING_HALF
+    else:
+        multiplier = SIZING_MIN
+
+    return round(base_risk_pct * multiplier, 6)
+
+
+def inject_ib_levels(df: pd.DataFrame, symbol: str, db_path: str | None = None) -> pd.DataFrame:
+    """Opt-in: inject Discord IB levels as additive discord_ columns. No-op on any error."""
+    for c in ("discord_ibu50", "discord_ibu100", "discord_ibd50", "discord_ibd100"):
+        if c not in df.columns:
+            df[c] = None
+    try:
+        from discord.ib_levels import IBLevelProvider
+
+        sym = IBLevelProvider.SYMBOL_MAP.get(symbol.upper(), symbol.upper())
+        p = _ib_provider if _IB_AVAILABLE and db_path is None else IBLevelProvider(db_path=db_path)
+        dates = df.index.date if hasattr(df.index, "date") else [None] * len(df)
+        seen: dict = {}
+        for i, dt in enumerate(dates):
+            if dt and dt not in seen:
+                try:
+                    seen[dt] = p.get_levels(sym, dt)
+                except Exception:
+                    seen[dt] = None
+            lv = seen.get(dt)
+            if lv:
+                for k, c in zip(
+                    ("ibu50", "ibu100", "ibd50", "ibd100"),
+                    ("discord_ibu50", "discord_ibu100", "discord_ibd50", "discord_ibd100"),
+                    strict=False,
+                ):
+                    df.at[df.index[i], c] = lv.get(k)
+    except Exception as exc:
+        logger.warning(f"[IB_LEVELS] inject_ib_levels error: {exc}")
     return df

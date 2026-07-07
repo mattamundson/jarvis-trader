@@ -1,0 +1,4 @@
+"Approach","Where it runs","What it can do","Constraints"
+"GitHub Actions workflow (.github/workflows/*.yml)","Inside the repo","Branch cleanup on PR merge, lint/test on PR open, posting AI-generated review comments via the Actions runner","Need to be committed and pushed to the repo. Anthropic/OpenAI API key as a GitHub Secret. Cost = your GitHub Actions minutes + the LLM API."
+"Perplexity Computer cron","This product","Periodically check the repo via the GitHub connector, summarize state, send you an in-app notification, run analysis","Cannot directly act on the repo (no write tools available to cron here that I've confirmed). Mostly notification + analysis, not enforcement."
+"Hybrid","Both","Actions does the enforcement (cleanup, blocking checks); cron does the human-facing summaries and AI review commentary","Most flexible, also most setup work"

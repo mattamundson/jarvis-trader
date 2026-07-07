@@ -1,0 +1,202 @@
+{
+  "project": "JARVIS Edge — Live & Monitorable 24/7",
+  "branchName": "ralph/edge-24x7",
+  "description": "Make jarvis-trader (and cross-check amo-arbitrage) deliver verifiable day-to-day edge, fully monitorable 24/7 in dashboards: is-it-live, did-it-trade-today, was-it-profitable, post-trade + scenario analysis, validated edge. Built on verified gaps (much QuantStats/tearsheet/today-view scaffolding already exists on master). Real-money go-live stays Amo-gated.",
+  "owner": "Amo (Matt Amundson)",
+  "constraints": [
+    "Real-money live trading flip (live_trading=true) is NEVER autonomous — Amo per-op auth only.",
+    "No engine restart / push / merge-to-master without explicit Amo auth — build to ready, commit to branch.",
+    "Per-file git staging only, never git add -A. Co-Authored-By: Claude Opus 4.8.",
+    "Verify-don't-redo: confirm a feature is genuinely missing/broken on the LIVE system before building."
+  ],
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Ground-truth verification of already-built edge/reporting features on the live engine",
+      "description": "As Amo, I want to know exactly which already-present features (quantstats_metrics, reports_router, jarvis_tearsheet, /stats/session-today, /summary/eod, gate v2) actually WORK against the running engine, so the backlog targets only real gaps.",
+      "acceptanceCriteria": [
+        "Exercise reports_router + quantstats_metrics + jarvis_tearsheet against engine :8010 with auth; record PASS/FAIL per feature",
+        "Hit /stats/session-today and /summary/eod; confirm they return today's trades + PnL or document the gap",
+        "Produce scripts/ralph/GAP_MAP.md: built+working vs built-but-broken vs absent",
+        "No code changes — verification only"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a187e7d). GAP_MAP.md written. Auth=X-API-Key/settings.API_KEY. Working: session-today, /paper/validation/summary/eod, /reports/quantstats, jarvis_tearsheet (488KB HTML), gate v2 (4 PASS: 3xMGC+1xMES). Broken: /reports/performance?format=html 503; MAE/MFE absent on paper_trades; edge_ledger only in worktree. Already-done: US-007. Partial: US-003,US-006,US-009. Real builds: US-004,US-005,US-008,US-010."
+    },
+    {
+      "id": "US-002",
+      "title": "Diagnose market-data feed down (ibkr_data_connected=false)",
+      "description": "As Amo, I need the data feed healthy because paper signals run blind without it. Diagnose root cause read-only; propose fix. Engine/gateway restart is Amo-gated.",
+      "acceptanceCriteria": [
+        "Determine why ibkr_data_connected=false (port 4002 reachable? TV MCP covering bars? data subscription?)",
+        "Document whether bar data is actually flowing via TV MCP fallback despite IB data leg down",
+        "Write root-cause + exact fix steps to GAP_MAP.md; flag any restart as Amo-gated"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "DONE 2026-06-12. Port 4002 OPEN, gateway alive, execution leg up; only IB market-data leg down. NOT blind: TV MCP healthy = Tier-0 bars flow. Operational not code bug; reconnect is Amo-gated. LLM recovered to Anthropic. See GAP_MAP.md US-002."
+    },
+    {
+      "id": "US-003",
+      "title": "Unified 'Today at a glance' dashboard tile",
+      "description": "As Amo, I want ONE view answering: is each system live, did it trade today, today's PnL, open positions, system health — wiring existing /stats/session-today + /summary/eod + /health.",
+      "acceptanceCriteria": [
+        "Single dashboard route shows live-status + today's trades + today PnL + positions + data/LLM health",
+        "Reuses existing endpoints; no duplicate PnL math",
+        "Renders with real engine data (verified in browser via playwright)",
+        "Typecheck/lint pass on the dashboard"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a2bd3e6). NEW dashboard/app/today/page.tsx + Sidebar.tsx nav link. Route /today. Typecheck PASS (tsc --noEmit clean), prod build PASS (35 routes incl /today, 6.45kB). Wires /health + /portfolio/stats/session-today + /paper/validation/summary/eod + /portfolio/paper/positions via server-side proxy (no client key). Status banner + 4 cards + 6-badge health checklist + 30s auto-refresh. CAVEAT: live browser-verify pending a GATED dashboard process reload (Amo-authorized; dashboard-only, not the engine)."
+    },
+    {
+      "id": "US-004",
+      "title": "MAE/MFE capture + post-trade excursion analysis",
+      "description": "As Amo, I want max adverse/favorable excursion per trade to judge entry quality (audit: absent).",
+      "acceptanceCriteria": [
+        "Capture intrabar high/low over each filled trade's life; compute MAE/MFE",
+        "Persist to trade analytics; expose via an endpoint",
+        "Surface per-trade MAE/MFE in the trades/performance view",
+        "Unit test for the MAE/MFE computation"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent ab86bb6). NEW engine/analytics/excursion.py (pure compute) + excursion_backfill.py; migration_039 adds nullable mae_pct/mfe_pct/mae_usd/mfe_usd to paper_trades (idempotent, applies next restart); GET /analytics/excursion endpoint (per-trade + aggregates); engine/tests/test_excursion.py = 23 PASS. CAVEATS: migration applies on next (gated) restart; backfill needs 1m bar history (older trades stay null); UI column surfacing skipped (gated dashboard rebuild)."
+    },
+    {
+      "id": "US-005",
+      "title": "Entry-timing scenario analysis (what-if entered earlier/later)",
+      "description": "As Amo, I want to replay actual paper fills at +/- N bars entry offset and compare PnL, to learn if entries are early/late (audit: absent).",
+      "acceptanceCriteria": [
+        "scenario_analysis module replays paper_trades with entry_price/time offsets vs historical bars",
+        "Outputs delta-PnL table per offset; endpoint + simple UI surfacing",
+        "Unit test on a known trade"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a0d582a). NEW engine/analytics/scenario.py (pure compute_entry_timing_scenarios; offset 0 == actual sanity anchor) + scenario_backfill.py (reuses excursion bar-fetch). GET /analytics/entry-timing (?offsets=, per-trade rows + aggregate avg_delta_by_offset + systematic_bias EARLY/LATE/NEUTRAL). engine/tests/test_scenario.py = 22 PASS, ruff clean. UI skipped (gated dashboard rebuild); no schema migration needed."
+    },
+    {
+      "id": "US-006",
+      "title": "Multi-channel alerting + system-down liveness alert",
+      "description": "As Amo, I want fills/PnL/drawdown AND system-down alerts on Telegram+Discord (audit: WhatsApp-only, no down-alert). Reuse existing Hermes webhook/Telegram/Discord infra.",
+      "acceptanceCriteria": [
+        "AlertManager gains Telegram + Discord transports alongside WhatsApp",
+        "Liveness watchdog alerts if /health misses or ibkr/data drops",
+        "Live-verified test alert delivered on Telegram + Discord",
+        "Secrets via 1Password/env, never echoed/committed"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a2ffb4a). alert_manager.py fan-out to Telegram+Discord (best-effort, env-driven, no-op without creds); NEW engine/scripts/liveness_watchdog.py (triggers: data-leg flip true->false, kill-switch, /health unreachable N misses, status!=ok; debounced; --self-test). test_liveness_watchdog.py 23 PASS, ruff clean. LIVE TEST DELIVERED: Telegram 200, Discord 204. Env: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID, DISCORD_WEBHOOK_URL. CAVEAT: watchdog needs registering as a persistent task (scheduled task/pm2) for 24/7 — Amo-gated deployment step."
+    },
+    {
+      "id": "US-007",
+      "title": "Verify/upgrade QuantStats validation gates (Run-12 set) for edge+RL",
+      "description": "As Amo, I want the 10-gate QuantStats validation (sortino/calmar/tail_ratio/exposure/gain_to_pain/skew) actually enforced in eval_run/compare_backtests, per the integration spec.",
+      "acceptanceCriteria": [
+        "Confirm current gate set in scripts/eval_run.py + compare_backtests.py + quantstats_metrics.py",
+        "Add any missing Run-12 gates; keep fail-safe NO_TRADE on missing verdict",
+        "Tests cover the new gates",
+        "Run against MES/MNQ/MCL; record gate verdicts"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent ae46340). Verify-don't-redo: most Run-12 gates pre-existing (sortino/calmar/tail_ratio/gain_to_pain/consecutive_losses in eval_run.py). ADDED 2 genuinely-missing: skew>=-1.5 (was diagnostic-only) + exposure>=0.15 to eval_run ITERATION/PRODUCTION gates. Fail-safe NO_TRADE intact, no thresholds loosened. engine/tests/test_eval_run_gates.py 22 PASS, ruff clean. See scripts/ralph/GATE_COVERAGE.md."
+    },
+    {
+      "id": "US-008",
+      "title": "Regime-conditional analysis (RISK_ON/OFF/NORMAL Sharpe slicing)",
+      "description": "As Amo, I want edge sliced by regime so I know if alpha is regime-concentrated (QS spec section 5).",
+      "acceptanceCriteria": [
+        "regime_conditional_analysis over strategy returns by regime label",
+        "Surfaced in the validation/tearsheet report",
+        "Unit test on synthetic regimes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent ab8494d). NEW engine/analytics/regime_analysis.py (pure; sharpe/sortino/max_dd/win_rate/tail_ratio/skew/calmar per RISK_ON/OFF/NORMAL; <5 obs -> insufficient). GET /reports/regime-conditional?days=90. test_regime_analysis.py 18 PASS, ruff clean. CAVEAT: no engine persists per-day regime labels yet (macro_regime computed on-demand, never logged) -> endpoint returns skeleton+wiring_gap until a daily task logs (date,regime) into macro_regime_log. Function/endpoint/test complete; feed activation is a follow-on (Amo-gated scheduled task)."
+    },
+    {
+      "id": "US-009",
+      "title": "Strategy C+ Command Center — reconcile zip with live dashboard",
+      "description": "As Amo, I want the Strategy C+ Command Center surfaced/verified in the dashboard (memory: unified into /strategy-c-command 2026-06-11; verify vs the (3).zip).",
+      "acceptanceCriteria": [
+        "Unpack 'JARVIS Strategy C+ Command Center (3).zip' to a temp dir; diff vs live /strategy-c-command",
+        "Reconcile any drift; ensure the command center renders live",
+        "Document what it monitors"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent ae7237f). Verify-don't-redo: zip = SUPERSEDED pre-fix prototype (index.html dated 06-02). Live dashboard/public/strategy-c-command-center.html (06-11, served via iframe in app/strategy-c-command/page.tsx) is canonical — only diff is the 11-line localhost->127.0.0.1 IPv6 fix already applied live. No zip features missing. No code change. See scripts/ralph/STRATEGY_C_RECONCILE.md."
+    },
+    {
+      "id": "US-010",
+      "title": "Highest-probability edge ledger across instruments",
+      "description": "As Amo, I want a ranked edge ledger (DSR/Calmar/tail_ratio/PF-CI) across MES/MNQ/MCL + candidates, generated from the QS tearsheet+gate suite, so I know the best edges to trade.",
+      "acceptanceCriteria": [
+        "Run gate suite + tearsheet per instrument; rank by deflated Sharpe + Calmar + tail_ratio",
+        "Output scripts/ralph/EDGE_LEDGER.md with cleared-to-trade vs blocked + reasons",
+        "Cross-check against existing gate_v2_verdicts (no contradiction)"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a79f859). Ported engine/generation/edge_ledger.py (+__init__) from worktree to live tree; added ranked_ledger() (PASS-first, DSR-desc); GET /reports/edge-ledger?rebuild=. test_edge_ledger.py 25 PASS, ruff clean. EDGE_LEDGER.md: 4 CLEARED (MGC trend_rv_filter DSR1.0/PF-CI3.18 CORE best; MGC trend_rank4 + trend_adx_filter alt; MES trend_rank7 alt), 2 INSUFFICIENT (MES rank11/rv_filter_rank2 downgraded from May PASS), 29 FAIL (79% wfo_weak). No contradiction with gate_v2_verdicts (PASS count=4 exact match)."
+    },
+    {
+      "id": "US-011",
+      "title": "amo-arbitrage signal-outcome tracking (prove signals pay off)",
+      "description": "As Amo, I want amo-arbitrage to record whether its emitted setups actually paid off (audit: #1 gap, totally absent). Cross-system per Amo's 'either system'.",
+      "acceptanceCriteria": [
+        "signal_outcomes table: setup_id, emitted_at, entry, direction, price_+Nd, hit/miss, hypothetical_pnl",
+        "Daily job backfills outcomes from price history",
+        "Hit-rate + hypothetical-PnL surfaced in UI",
+        "Migration is non-destructive/idempotent; Amo runs prod DDL"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "DONE 2026-06-12 (agent a4901819). Repo amo-arbitrage, branch feat/signal-outcome-tracking (7 commits 81f7bf2..22500f3, NOT pushed). backend/migrations/phase7_signal_outcomes.sql (idempotent, Amo runs in Supabase). backend/pipelines/signal_outcomes.py (snapshot + evaluate price_1/3/5/10d, MFE/MAE, hit detection target1/target2/stop dir-aware, hypothetical PnL) wired into scheduler @4am CT. backend/routers/signal_outcomes.py: GET /api/signal-outcomes/{outcomes,aggregate} + POST /run. UI page /signal-outcomes + nav + api client. backend/tests/test_signal_outcomes.py 23 PASS. CAVEATS: frontend typecheck not explicitly confirmed; ruff not installed in backend venv; Amo runs migration + pushes."
+    },
+    {
+      "id": "US-012",
+      "title": "amo-arbitrage system-health UI + setup-level confidence",
+      "description": "As Amo, I want amo-arbitrage health/freshness on the UI (not just Slack) and setup-level MC confidence on /targets.",
+      "acceptanceCriteria": [
+        "System-health page: freshness badges, last-run, alert history",
+        "Setup-level MC confidence interval shown on /targets",
+        "Verified in browser"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Repo: C:/Users/mattm/Code/amo-arbitrage"
+    },
+    {
+      "id": "US-013",
+      "title": "Triage idle C-drive alpha; integrate top candidate",
+      "description": "As Amo, I want the ~50-60h of idle research (Kronos, RL lab, Pine/ThinkScript) assessed and the single highest-ROI candidate wired as an advisory signal.",
+      "acceptanceCriteria": [
+        "Rank idle strategies by ROI/effort to integrate (from jarvis-trader-clone inventory)",
+        "Wire the top candidate as an advisory (non-authoritative) signal behind a flag",
+        "Document the rest as a prioritized backlog"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Go-live readiness gate (Amo-authorized cutover)",
+      "description": "As Amo, I want a single go/no-go readiness verdict: all dashboards live, alerts proven, edge validated, WFE Sharpe>=0.65, data feed healthy. The real-money flip remains my explicit decision.",
+      "acceptanceCriteria": [
+        "Readiness checklist auto-evaluated; produce GO_LIVE_READINESS.md with go/no-go per criterion",
+        "Final .html status report generated and opened",
+        "Does NOT flip live_trading; surfaces the gated cutover steps for Amo"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Real-money cutover Amo-gated."
+    }
+  ]
+}

@@ -5,16 +5,40 @@ import type { NextConfig } from "next";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
-  // Monorepo: silence Next multi-lockfile root warning (repo root may have other lockfiles)
-  outputFileTracingRoot: path.join(__dirname, ".."),
-  // Allow API calls to the Python engine — destination reads NEXT_PUBLIC_ENGINE_URL
-  // so local dev, staging, and production can all point to different hosts.
+  // Pin Watchpack/output-file-tracing root to this dashboard dir.
+  // Without this, Next.js walks up looking for a workspace lockfile and can
+  // fall back to C:\, which produces EINVAL lstat errors on hiberfil.sys etc.
+  // The dashboard owns its own pnpm-lock.yaml, so __dirname is the correct root.
+  outputFileTracingRoot: __dirname,
   async rewrites() {
-    const engineUrl = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8010";
+    const engineUrl = (
+      process.env.ENGINE_INTERNAL_URL ??
+      process.env.ENGINE_URL_INTERNAL ??
+      // 127.0.0.1, not localhost: Windows resolves localhost to ::1 first
+      // and the engine binds IPv4 only.
+      "http://127.0.0.1:8010"
+    ).replace(/\/$/, "");
+
+    // /ws/pipeline requires api_key auth (engine/routers/pipeline_ws_router.py).
+    // Inject the server-only ENGINE_API_KEY here so a same-origin client never
+    // has to carry it — mirrors the header injection in
+    // app/api/engine/[...path]/route.ts. Must precede the general /ws/:path*
+    // rule below (rewrites are matched in array order).
+    const engineApiKey = process.env.ENGINE_API_KEY;
+    const pipelineWsRewrite = engineApiKey
+      ? [
+          {
+            source: "/ws/pipeline",
+            destination: `${engineUrl}/ws/pipeline?api_key=${encodeURIComponent(engineApiKey)}`,
+          },
+        ]
+      : [];
+
     return [
+      ...pipelineWsRewrite,
       {
-        source: "/api/engine/:path*",
-        destination: `${engineUrl}/:path*`,
+        source: "/ws/:path*",
+        destination: `${engineUrl}/ws/:path*`,
       },
     ];
   },

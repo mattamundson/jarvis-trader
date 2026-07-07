@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T9 — J.A.R.V.I.S. Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --blue: #00d4ff;
+    --cyan: #00fff5;
+    --gold: #ffd700;
+    --amber: #ff8c00;
+    --red: #ff2244;
+    --green: #00ff88;
+    --bg: #020814;
+    --panel-bg: #040d1a;
+    --panel-border: rgba(0, 212, 255, 0.18);
+    --text-dim: rgba(0, 212, 255, 0.45);
+    --jarvis-green: #00e87a;
+    --jarvis-green-dim: rgba(0,232,122,0.5);
+    --jarvis-green-glow: rgba(0,232,122,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--blue);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  .panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 16px;
+    position: relative;
+  }
+
+  /* HEADER */
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+  }
+  .arc-reactor {
+    width: 22px; height: 22px;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .arc-reactor svg {
+    width: 100%; height: 100%;
+    animation: arcSpin 4s linear infinite;
+  }
+  @keyframes arcSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .arc-core {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 6px; height: 6px;
+    transform: translate(-50%, -50%);
+    background: var(--cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--cyan), 0 0 16px rgba(0,255,245,0.4);
+    animation: corePulse 1.5s ease-in-out infinite;
+  }
+  @keyframes corePulse {
+    0%,100% { transform: translate(-50%,-50%) scale(1); }
+    50% { transform: translate(-50%,-50%) scale(1.3); }
+  }
+  .panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: var(--blue);
+  }
+  .header-meta { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .header-time { font-size: 10px; color: var(--text-dim); }
+  .gen-status {
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .gen-status.ready { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); color: var(--green); }
+  .gen-status.generating { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.3); color: var(--blue); animation: statusBlink 0.8s ease-in-out infinite; }
+  @keyframes statusBlink { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+  /* BRIEF META */
+  .brief-meta {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .meta-cell {
+    background: rgba(0,212,255,0.04);
+    border: 1px solid rgba(0,212,255,0.12);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+  .meta-label { font-size: 8px; color: var(--text-dim); letter-spacing: 0.1em; margin-bottom: 3px; font-family:'Orbitron',sans-serif; }
+  .meta-value { font-size: 11px; color: var(--blue); font-weight: 500; }
+  .meta-value.gold { color: var(--gold); }
+  .meta-value.green { color: var(--green); }
+
+  /* CONFIDENCE BAR */
+  .confidence-wrap { margin-bottom: 14px; }
+  .conf-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+  }
+  .conf-label { font-size: 9px; color: var(--text-dim); letter-spacing: 0.1em; font-family:'Orbitron',sans-serif; flex-shrink:0; }
+  .conf-pct { font-size: 11px; color: var(--green); font-weight: 600; margin-left: auto; }
+  .conf-track {
+    height: 5px;
+    background: rgba(0,212,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid rgba(0,212,255,0.1);
+  }
+  .conf-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--green));
+    transition: width 1.5s ease;
+    position: relative;
+  }
+  .conf-fill::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: white;
+    box-shadow: 0 0 5px white;
+    border-radius: 2px;
+  }
+
+  /* TERMINAL DISPLAY */
+  .terminal-wrap {
+    background: #010a16;
+    border: 1px solid rgba(0,232,122,0.2);
+    border-radius: 5px;
+    padding: 0;
+    margin-bottom: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .terminal-wrap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,232,122,0.012) 2px,
+      rgba(0,232,122,0.012) 4px
+    );
+    pointer-events: none;
+  }
+  .terminal-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-bottom: 1px solid rgba(0,232,122,0.12);
+    background: rgba(0,232,122,0.04);
+  }
+  .term-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .term-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    color: var(--jarvis-green-dim);
+    margin-left: 4px;
+  }
+  .term-scan-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: rgba(0,232,122,0.25);
+    animation: scanDown 4s linear infinite;
+    pointer-events: none;
+    z-index: 1;
+  }
+  @keyframes scanDown {
+    0% { top: 0; opacity: 0.6; }
+    100% { top: 100%; opacity: 0; }
+  }
+  .terminal-body {
+    padding: 14px;
+    min-height: 220px;
+    position: relative;
+  }
+  .brief-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--jarvis-green);
+    white-space: pre-wrap;
+    text-shadow: 0 0 8px rgba(0,232,122,0.4);
+    word-break: break-word;
+  }
+  .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 14px;
+    background: var(--jarvis-green);
+    vertical-align: bottom;
+    margin-left: 1px;
+    animation: cursorBlink 1s step-end infinite;
+  }
+  @keyframes cursorBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+  .cursor.hidden { display: none; }
+  .cursor.visible { display: inline-block; }
+
+  /* RISK FLAGS */
+  .risk-section { margin-bottom: 14px; }
+  .section-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .risk-flags { display: flex; flex-direction: column; gap: 5px; }
+  .risk-flag {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--amber);
+    padding: 6px 10px;
+    background: rgba(255,140,0,0.06);
+    border: 1px solid rgba(255,140,0,0.18);
+    border-radius: 4px;
+  }
+  .risk-flag-icon { font-size: 10px; flex-shrink: 0; }
+
+  /* PREV BRIEFS */
+  .prev-briefs { margin-bottom: 14px; }
+  .brief-hist-item {
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    margin-bottom: 6px;
+    overflow: hidden;
+  }
+  .brief-hist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 11px;
+    background: rgba(0,212,255,0.04);
+    cursor: pointer;
+    transition: background 0.2s;
+    user-select: none;
+  }
+  .brief-hist-header:hover { background: rgba(0,212,255,0.08); }
+  .brief-hist-date { font-size: 10px; color: var(--blue); }
+  .brief-hist-regime { font-size: 9px; color: var(--green); font-family:'Orbitron',sans-serif; letter-spacing:0.08em; }
+  .brief-hist-toggle { font-size: 10px; color: var(--text-dim); transition: transform 0.2s; }
+  .brief-hist-toggle.open { transform: rotate(180deg); }
+  .brief-hist-body {
+    display: none;
+    padding: 10px 12px;
+    font-size: 10px;
+    color: rgba(0,212,255,0.65);
+    line-height: 1.5;
+    border-top: 1px solid var(--panel-border);
+    background: rgba(0,0,0,0.1);
+  }
+  .brief-hist-body.open { display: block; }
+
+  /* NEXT BRIEF */
+  .next-brief-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: rgba(0,212,255,0.04);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    margin-bottom: 14px;
+    font-size: 10px;
+  }
+  .next-label { color: var(--text-dim); font-family:'Orbitron',sans-serif; font-size:8px; letter-spacing:0.1em; }
+  .next-time { color: var(--gold); font-size: 12px; font-weight: 600; }
+  .next-countdown { color: var(--text-dim); font-size: 10px; }
+
+  /* BUTTONS */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    padding: 9px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.25s;
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+  }
+  .btn-primary {
+    border: 1px solid var(--blue);
+    background: rgba(0,212,255,0.08);
+    color: var(--blue);
+  }
+  .btn-primary:hover {
+    background: rgba(0,212,255,0.15);
+    box-shadow: 0 0 16px rgba(0,212,255,0.25);
+  }
+  .btn-generate {
+    border: 1px solid var(--green);
+    background: rgba(0,255,136,0.08);
+    color: var(--green);
+  }
+  .btn-generate:hover {
+    background: rgba(0,255,136,0.15);
+    box-shadow: 0 0 16px rgba(0,255,136,0.25);
+  }
+  .btn-generate:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-secondary {
+    border: 1px solid var(--text-dim);
+    background: transparent;
+    color: var(--text-dim);
+  }
+  .btn-secondary:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.2); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <!-- HEADER -->
+  <div class="panel-header">
+    <div class="arc-reactor">
+      <svg viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="11" cy="11" r="9" stroke="rgba(0,255,245,0.3)" stroke-width="1"/>
+        <circle cx="11" cy="11" r="6" stroke="rgba(0,212,255,0.5)" stroke-width="1" stroke-dasharray="3 3"/>
+        <circle cx="11" cy="11" r="3" stroke="var(--cyan)" stroke-width="1.5"/>
+      </svg>
+      <div class="arc-core"></div>
+    </div>
+    <span class="panel-title">J.A.R.V.I.S. BRIEF</span>
+    <div class="header-meta">
+      <span class="gen-status ready" id="genStatus">READY</span>
+      <span class="header-time" id="headerTime">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- BRIEF META -->
+  <div class="brief-meta">
+    <div class="meta-cell">
+      <div class="meta-label">GENERATED</div>
+      <div class="meta-value" id="metaTimestamp">APR 22, 2026 08:45</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-label">ENGINE</div>
+      <div class="meta-value gold" id="metaEngine">Strategy C+ v3.0</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-label">CONFIDENCE</div>
+      <div class="meta-value green" id="metaConfidence">72%</div>
+    </div>
+  </div>
+
+  <!-- CONFIDENCE -->
+  <div class="confidence-wrap">
+    <div class="conf-row">
+      <span class="conf-label">SIGNAL CONFIDENCE</span>
+      <span class="conf-pct" id="confPct">72%</span>
+    </div>
+    <div class="conf-track">
+      <div class="conf-fill" id="confFill" style="width:72%"></div>
+    </div>
+  </div>
+
+  <!-- TERMINAL -->
+  <div class="terminal-wrap">
+    <div class="term-scan-line"></div>
+    <div class="terminal-titlebar">
+      <div class="term-dot" style="background:var(--red);opacity:0.7"></div>
+      <div class="term-dot" style="background:var(--amber);opacity:0.7"></div>
+      <div class="term-dot" style="background:var(--green);opacity:0.7"></div>
+      <span class="term-title">JARVIS SYSTEM — STRATEGY C+ ENGINE v3.0</span>
+    </div>
+    <div class="terminal-body">
+      <div class="brief-text" id="briefText"></div><span class="cursor visible" id="cursor"></span>
+    </div>
+  </div>
+
+  <!-- RISK FLAGS -->
+  <div class="risk-section">
+    <div class="section-label">RISK FLAGS</div>
+    <div class="risk-flags" id="riskFlags"></div>
+  </div>
+
+  <!-- NEXT BRIEF -->
+  <div class="next-brief-row">
+    <div>
+      <div class="next-label">NEXT BRIEF SCHEDULED</div>
+      <div class="next-time">Friday 16:05 CDT</div>
+    </div>
+    <div class="next-countdown" id="nextCountdown">—</div>
+  </div>
+
+  <!-- PREVIOUS BRIEFS -->
+  <div class="prev-briefs">
+    <div class="section-label">PREVIOUS BRIEFS</div>
+    <div id="prevBriefs"></div>
+  </div>
+
+  <!-- BUTTONS -->
+  <div class="btn-row">
+    <button class="btn btn-generate" id="generateBtn" onclick="generateBrief()">⟳ GENERATE BRIEF</button>
+    <button class="btn btn-primary" onclick="copyBrief()">⎘ COPY BRIEF</button>
+    <button class="btn btn-secondary" onclick="regenerateBrief()">↺ REGENERATE</button>
+  </div>
+</div>
+
+<script>
+const API_URL = 'http://localhost:8020/api/commentary';
+
+const FALLBACK_BRIEF = {
+  timestamp: "2026-04-22T08:45:00",
+  regime: "RISK_ON",
+  vix: 18.92,
+  scale: 0.609,
+  holdings: { XLK: 0.305, QQQ: 0.305, SHY: 0.391 },
+  confidence: 0.72,
+  brief: `JARVIS MORNING BRIEF — APR 22, 2026 — 08:45 CDT
+
+Good morning. Current market conditions are favorable for risk-on positioning.
+
+The VIX sits at 18.92, down 2.97% — volatility is compressing, which historically precedes continuation moves in equity markets. The yield curve spread of +0.699% remains a macro tailwind, applying a 1.10× scale multiplier to Strategy C+.
+
+ES futures are trading at 5,432 (+0.94%) with CoT positioning neutral at -115,762 net contracts. NQ futures show slight institutional accumulation (+10,821 net long).
+
+Strategy C+ current allocation: XLK 30.5%, QQQ 30.5%, SHY 39.1% (defensive buffer). Combined scale 60.9% reflects moderate conviction — below full deployment threshold of 80%. Recommend maintaining current paper allocation through Monday MOO execution.
+
+Risk factors: SPY options expire this week — review 715C and 700P positions.
+Next signal refresh: Friday 16:05 CDT.`,
+  risk_flags: [
+    "SPY 04/23 715C expires TOMORROW — review position",
+    "VIX at 18.92 — approaching amber threshold (20)"
+  ],
+  next_signal: "Friday 16:05 CDT"
+};
+
+const PREV_BRIEFS = [
+  {
+    date: "APR 21, 2026 — 16:05",
+    regime: "RISK_ON",
+    summary: "Scale 58.2% — week opened with neutral CoT readings. Macro yield curve positive but VIX compressed. Holdings maintained XLK/QQQ tilt, reduced equity exposure slightly vs prior week. No risk flags generated."
+  },
+  {
+    date: "APR 14, 2026 — 16:05",
+    regime: "RISK_ON",
+    summary: "Scale 61.4% — regime stable RISK_ON following FOMC week. ES accumulated +12,430 net long from prior reading. Macro tailwind continued. Full equity tilt, SHY at minimum defensive allocation 35%."
+  },
+  {
+    date: "APR 07, 2026 — 16:05",
+    regime: "TRANSITIONING",
+    summary: "Scale 48.1% — VIX spiked briefly to 22.4 mid-week. Regime entered transition state, scale reduced to 48%. SHY defensive allocation elevated to 42%. System correctly anticipated reversal — no permanent regime shift detected."
+  }
+];
+
+let currentBrief = { ...FALLBACK_BRIEF };
+let typingTimer = null;
+let isTyping = false;
+
+// TYPING ANIMATION
+function typeText(text, el, cursorEl, onComplete) {
+  if (typingTimer) clearInterval(typingTimer);
+  el.textContent = '';
+  let i = 0;
+  isTyping = true;
+  cursorEl.className = 'cursor visible';
+  document.getElementById('genStatus').className = 'gen-status generating';
+  document.getElementById('genStatus').textContent = 'GENERATING…';
+  document.getElementById('generateBtn').disabled = true;
+
+  typingTimer = setInterval(() => {
+    if (i < text.length) {
+      el.textContent += text[i];
+      i++;
+      // scroll terminal to bottom
+      const tb = el.closest('.terminal-body');
+      if (tb) tb.scrollTop = tb.scrollHeight;
+    } else {
+      clearInterval(typingTimer);
+      isTyping = false;
+      document.getElementById('genStatus').className = 'gen-status ready';
+      document.getElementById('genStatus').textContent = 'READY';
+      document.getElementById('generateBtn').disabled = false;
+      if (onComplete) onComplete();
+    }
+  }, 14); // ~70 chars/sec
+}
+
+function renderBrief(data, animate) {
+  const el = document.getElementById('briefText');
+  const cur = document.getElementById('cursor');
+
+  // Meta
+  const ts = new Date(data.timestamp);
+  const dateStr = ts.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }).toUpperCase();
+  const timeStr = ts.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12:false });
+  document.getElementById('metaTimestamp').textContent = `${dateStr} ${timeStr}`;
+  document.getElementById('metaConfidence').textContent = Math.round((data.confidence||0.72)*100) + '%';
+  const confPct = Math.round((data.confidence||0.72)*100);
+  document.getElementById('confPct').textContent = confPct + '%';
+  document.getElementById('confFill').style.width = confPct + '%';
+
+  // Risk flags
+  const rf = document.getElementById('riskFlags');
+  rf.innerHTML = '';
+  (data.risk_flags || []).forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'risk-flag';
+    div.innerHTML = `<span class="risk-flag-icon">⚠</span><span>${f}</span>`;
+    rf.appendChild(div);
+  });
+
+  if (animate) {
+    typeText(data.brief, el, cur, null);
+  } else {
+    el.textContent = data.brief;
+    cur.className = 'cursor visible';
+  }
+}
+
+function renderPrevBriefs() {
+  const container = document.getElementById('prevBriefs');
+  container.innerHTML = '';
+  PREV_BRIEFS.forEach((b, i) => {
+    const item = document.createElement('div');
+    item.className = 'brief-hist-item';
+    item.innerHTML = `
+      <div class="brief-hist-header" onclick="toggleBriefHist(${i})">
+        <span class="brief-hist-date">${b.date}</span>
+        <span class="brief-hist-regime">${b.regime}</span>
+        <span class="brief-hist-toggle" id="bht-${i}">▼</span>
+      </div>
+      <div class="brief-hist-body" id="bhb-${i}">${b.summary}</div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function toggleBriefHist(i) {
+  const body = document.getElementById(`bhb-${i}`);
+  const toggle = document.getElementById(`bht-${i}`);
+  body.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
+
+// Clock
+function updateClock() {
+  document.getElementById('headerTime').textContent =
+    new Date().toLocaleTimeString('en-US', { hour12: false });
+  updateCountdown();
+}
+
+function updateCountdown() {
+  // Next brief: Friday 16:05
+  const now = new Date();
+  const friday = new Date(now);
+  const day = now.getDay();
+  const daysToFri = (5 - day + 7) % 7 || 7;
+  friday.setDate(now.getDate() + daysToFri);
+  friday.setHours(16, 5, 0, 0);
+  const diff = friday - now;
+  if (diff > 0) {
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    document.getElementById('nextCountdown').textContent = `in ${d}d ${h}h ${m}m`;
+  }
+}
+
+async function generateBrief() {
+  document.getElementById('genStatus').className = 'gen-status generating';
+  document.getElementById('genStatus').textContent = 'FETCHING…';
+  try {
+    const res = await fetch(API_URL, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    currentBrief = data;
+    document.getElementById('metaEngine').textContent = data.engine || 'Strategy C+ v3.0';
+    renderBrief(data, true);
+  } catch {
+    currentBrief = { ...FALLBACK_BRIEF };
+    renderBrief(FALLBACK_BRIEF, true);
+  }
+}
+
+function regenerateBrief() {
+  if (isTyping) {
+    if (typingTimer) clearInterval(typingTimer);
+    isTyping = false;
+  }
+  renderBrief(currentBrief, true);
+}
+
+async function copyBrief() {
+  try {
+    await navigator.clipboard.writeText(currentBrief.brief || FALLBACK_BRIEF.brief);
+    const btn = document.querySelector('.btn-primary');
+    const orig = btn.textContent;
+    btn.textContent = '✓ COPIED';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    setTimeout(() => { btn.textContent = orig; btn.style.color=''; btn.style.borderColor=''; }, 1800);
+  } catch {
+    alert('Copy failed — check clipboard permissions.');
+  }
+}
+
+// Init
+renderBrief(FALLBACK_BRIEF, true);
+renderPrevBriefs();
+updateClock();
+setInterval(updateClock, 1000);
+</script>
+</body>
+</html>

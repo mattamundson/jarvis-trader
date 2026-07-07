@@ -14,26 +14,23 @@ from risk.safety_layer import OrderRequest, SafetyLayer
 
 
 @pytest.fixture
-def mock_settings():
-    """Isolated test config — overrides all safety gates for order-approval tests."""
-    config = TradingConfig()
-    config.LIVE_TRADING_ENABLED = True
-    config.REQUIRE_HUMAN_APPROVAL = False
-    config.MAX_DAILY_LOSS_PCT = 0.02
-    config.MAX_DRAWDOWN_PCT = 0.10
-    config.MAX_POSITION_SIZE_PCT = 0.05
-    config.MAX_SINGLE_ORDER_VALUE = 5000.0
-    config.MAX_ORDERS_PER_MINUTE = 10
-    config.MAX_CONTRACTS_PER_INSTRUMENT = 2
-    config.MAX_MARGIN_UTILIZATION = 0.40
-    config.PRICE_COLLAR_PCT = 0.05
-    config.MAX_CORRELATED_EXPOSURE_PCT = 0.20
-    # Consecutive-loss thresholds matching tracker fixture below
-    config.CONSECUTIVE_LOSS_HALF_SIZE = 3
-    config.CONSECUTIVE_LOSS_QUARTER_SIZE = 5
-    config.CONSECUTIVE_LOSS_HALT = 7
-    config.CONSECUTIVE_LOSS_HALT_HOURS = 24
-    return config
+def loss_tracker_settings(mock_settings):
+    """Override conftest mock_settings for loss tracker tests."""
+    # Enable live trading mode for loss tracker order-approval tests
+    mock_settings.LIVE_TRADING_ENABLED = True
+    mock_settings.REQUIRE_HUMAN_APPROVAL = False
+    # Configure consecutive-loss thresholds
+    mock_settings.CONSECUTIVE_LOSS_HALF_SIZE = 3
+    mock_settings.CONSECUTIVE_LOSS_QUARTER_SIZE = 5
+    mock_settings.CONSECUTIVE_LOSS_HALT = 7
+    mock_settings.CONSECUTIVE_LOSS_HALT_HOURS = 24
+    # Bypass the overnight contract cap so these consecutive-loss / position-
+    # sizing tests are wall-clock-independent. The default MAX_OVERNIGHT_CONTRACTS=1
+    # rejects the qty=2 MES orders below whenever the suite runs after 15:00 CT,
+    # masking the consecutive-loss reason the assertions expect. Same idiom as
+    # test_safety_layer.py (TestContractLimits bypass at MAX_OVERNIGHT_CONTRACTS=5).
+    mock_settings.MAX_OVERNIGHT_CONTRACTS = 5
+    return mock_settings
 
 
 class TestConsecutiveLossTracker:
@@ -183,10 +180,10 @@ class TestSafetyLayerWithLossTracker:
     """Integration tests for SafetyLayer with ConsecutiveLossTracker"""
 
     @pytest.fixture
-    def components(self, mock_settings):
+    def components(self, loss_tracker_settings):
         """Create SafetyLayer with loss tracker using isolated test config."""
         # Allow larger quantities so contract-limit check does not mask loss-tracker tests
-        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
+        loss_tracker_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
         with tempfile.TemporaryDirectory() as tmpdir:
             tracker = ConsecutiveLossTracker(
                 data_dir=tmpdir,
@@ -194,7 +191,7 @@ class TestSafetyLayerWithLossTracker:
                 consecutive_loss_quarter_size=5,
                 consecutive_loss_halt=7,
             )
-            layer = SafetyLayer(mock_settings, loss_tracker=tracker)
+            layer = SafetyLayer(loss_tracker_settings, loss_tracker=tracker)
             yield layer, tracker
 
     def test_order_approved_with_no_losses(self, components):
@@ -292,10 +289,10 @@ class TestPositionSizingReduction:
     """Test position sizing reduction logic in detail"""
 
     @pytest.fixture
-    def components(self, mock_settings):
+    def components(self, loss_tracker_settings):
         """Create SafetyLayer with loss tracker using isolated test config."""
         # Allow larger quantities so contract-limit check does not mask loss-tracker tests
-        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
+        loss_tracker_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
         with tempfile.TemporaryDirectory() as tmpdir:
             tracker = ConsecutiveLossTracker(
                 data_dir=tmpdir,
@@ -303,7 +300,7 @@ class TestPositionSizingReduction:
                 consecutive_loss_quarter_size=5,
                 consecutive_loss_halt=7,
             )
-            layer = SafetyLayer(mock_settings, loss_tracker=tracker)
+            layer = SafetyLayer(loss_tracker_settings, loss_tracker=tracker)
             yield layer, tracker
 
     def test_quantity_reduced_with_multiplier(self, components):

@@ -47,48 +47,59 @@ logger = logging.getLogger(__name__)
 # ── Training Callback ─────────────────────────────────────────────────────────
 
 
-class TrainingProgressCallback(BaseCallback):
-    """
-    Logs episode reward and action distribution at each checkpoint interval.
-    Stores progress for retrieval via the API.
-    """
+if SB3_AVAILABLE:
 
-    def __init__(self, log_interval: int = 1000, verbose: int = 0):
-        super().__init__(verbose=verbose)
-        self.log_interval = log_interval
-        self.episode_rewards: list[float] = []
-        self.action_counts: dict[str, int] = dict.fromkeys(ACTION_NAMES.values(), 0)
-        self._last_log_step = 0
+    class TrainingProgressCallback(BaseCallback):
+        """
+        Logs episode reward and action distribution at each checkpoint interval.
+        Stores progress for retrieval via the API.
+        """
 
-    def _on_step(self) -> bool:
-        # Track actions
-        if hasattr(self, "locals") and "actions" in self.locals:
-            for act in np.atleast_1d(self.locals["actions"]):
-                name = ACTION_NAMES.get(int(act), "UNKNOWN")
-                self.action_counts[name] = self.action_counts.get(name, 0) + 1
+        def __init__(self, log_interval: int = 1000, verbose: int = 0):
+            super().__init__(verbose=verbose)
+            self.log_interval = log_interval
+            self.episode_rewards: list[float] = []
+            self.action_counts: dict[str, int] = dict.fromkeys(ACTION_NAMES.values(), 0)
+            self._last_log_step = 0
 
-        # Log at interval
-        if self.num_timesteps - self._last_log_step >= self.log_interval:
-            self._last_log_step = self.num_timesteps
-            if self.model.ep_info_buffer:
-                mean_reward = np.mean([ep["r"] for ep in self.model.ep_info_buffer])
-                self.episode_rewards.append(float(mean_reward))
-                logger.debug(
-                    f"[RL] Step {self.num_timesteps:,} | "
-                    f"Mean ep reward: {mean_reward:.4f} | "
-                    f"Actions: {self.action_counts}"
-                )
-        return True
+        def _on_step(self) -> bool:
+            # Track actions
+            if hasattr(self, "locals") and "actions" in self.locals:
+                for act in np.atleast_1d(self.locals["actions"]):
+                    name = ACTION_NAMES.get(int(act), "UNKNOWN")
+                    self.action_counts[name] = self.action_counts.get(name, 0) + 1
 
-    def get_summary(self) -> dict:
-        total = sum(self.action_counts.values()) or 1
-        return {
-            "timesteps": self.num_timesteps,
-            "episode_rewards": self.episode_rewards[-20:],  # last 20 checkpoints
-            "action_distribution": {k: round(v / total, 4) for k, v in self.action_counts.items()},
-        }
+            # Log at interval
+            if self.num_timesteps - self._last_log_step >= self.log_interval:
+                self._last_log_step = self.num_timesteps
+                if self.model.ep_info_buffer:
+                    mean_reward = np.mean([ep["r"] for ep in self.model.ep_info_buffer])
+                    self.episode_rewards.append(float(mean_reward))
+                    logger.debug(
+                        f"[RL] Step {self.num_timesteps:,} | "
+                        f"Mean ep reward: {mean_reward:.4f} | "
+                        f"Actions: {self.action_counts}"
+                    )
+            return True
+
+        def get_summary(self) -> dict:
+            total = sum(self.action_counts.values()) or 1
+            return {
+                "timesteps": self.num_timesteps,
+                "episode_rewards": self.episode_rewards[-20:],  # last 20 checkpoints
+                "action_distribution": {
+                    k: round(v / total, 4) for k, v in self.action_counts.items()
+                },
+            }
 
 
+else:
+
+    class TrainingProgressCallback:  # noqa
+        """Dummy stub when stable-baselines3 is not available."""
+
+        def __init__(self, *args, **kwargs):
+            pass
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 

@@ -14,6 +14,8 @@ Usage:
 
 from __future__ import annotations
 
+from typing import Optional
+
 import pandas as pd
 
 
@@ -83,30 +85,30 @@ class MTFFilter:
         self,
         df_1h: pd.DataFrame,
         df_4h: pd.DataFrame,
+        df_1d: Optional[pd.DataFrame] = None,
     ) -> pd.Series:
         """
         Determine MTF alignment for each 1h bar.
-
-        Parameters
-        ----------
-        df_1h : pd.DataFrame
-            1h DataFrame that has been through generate_signals()
-            (must have 'bias' and 'entry_signal' columns).
-        df_4h : pd.DataFrame
-            4h DataFrame that has been through compute_all_indicators()
-            (must have 'stc_signal', 'stc_cross_up', 'stc_cross_down').
-
-        Returns
-        -------
-        pd.Series[bool]
-            True = 4h aligns (entry allowed), False = blocked.
-            Non-entry bars are always True.
+        Includes 4h trend and optional daily regime checks.
         """
         htf = self._align_htf_to_ltf(df_1h, df_4h)
         aligned = pd.Series(True, index=df_1h.index)
 
-        # Only evaluate alignment for bars with actual entry signals
-        is_entry = df_1h["entry_signal"] == "ENTRY_NOW"
+        # 1. Daily Regime Check (Phase 6.6)
+        if df_1d is not None:
+            # Reindex daily onto 1h
+            from backtest.regime_classifier import RegimeClassifierV2
+            classifier = RegimeClassifierV2()
+            daily_regime = classifier.classify(df_1d)["regime_v2"]
+            daily_aligned = daily_regime.reindex(df_1h.index, method="ffill")
+
+            # Block ALL entries in CRISIS or highly VOLATILE daily regimes
+            # unless specifically allowed by strategy
+            daily_blocked = daily_aligned.isin(["CRISIS", "VOLATILE"])
+            aligned[daily_blocked] = False
+
+        # Only evaluate 4h alignment for remaining bars with actual entry signals
+        is_entry = (df_1h["entry_signal"] == "ENTRY_NOW") & aligned
         if not is_entry.any():
             return aligned
 
@@ -130,3 +132,4 @@ class MTFFilter:
             aligned[is_short_entry & ~short_allow] = False
 
         return aligned
+

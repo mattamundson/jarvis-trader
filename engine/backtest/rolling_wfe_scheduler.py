@@ -182,8 +182,8 @@ def run_wfe_for_instrument(
         return None
 
     try:
-        loader = BacktestDataLoader(symbol=symbol, interval=cfg["interval"])
-        df = loader.load(start=cfg["start"], end=end_date)
+        loader = BacktestDataLoader()
+        df = loader.load(symbol=symbol, start=cfg["start"], end=end_date, interval=cfg["interval"])
         if df is None or len(df) < 200:
             logger.error(
                 f"  [{symbol}] Insufficient data: {len(df) if df is not None else 0} bars."
@@ -271,7 +271,14 @@ def send_alert(symbol: str, wfe: float, verdict: str, prev_wfe: Optional[float])
             # Stable / minor change — no alert
             return
 
-        notifier.send(msg)
+        # WhatsAppNotifier.send is async; the scheduler is sync, so we drive
+        # it through asyncio.run.  Bug history: prior to 2026-05-07 this was
+        # `notifier.send(msg)` — the unawaited coroutine was silently dropped
+        # and rolling-WFE HALT/OVERFIT alerts never reached the user
+        # (mypy: unused-coroutine).
+        import asyncio
+
+        asyncio.run(notifier.send(msg))
         logger.info(f"  [{symbol}] WhatsApp alert sent: {verdict}")
 
     except Exception as e:

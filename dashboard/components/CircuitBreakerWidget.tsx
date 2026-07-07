@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import EngineWidget from "@/components/EngineWidget";
 
 interface CircuitBreakerData {
   daily_pnl: number;
@@ -56,246 +55,190 @@ function BreachedDot({ breached }: { breached: boolean }) {
 }
 
 export function CircuitBreakerWidget() {
-  const [data, setData] = useState<CircuitBreakerData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const json = await fetchEngine<CircuitBreakerData>("/safety/circuit-breakers");
-        setData(json);
-        setError(null);
-        setLastUpdated(new Date().toLocaleTimeString());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Fetch failed");
-      }
-    }
-
-    fetchData();
-    const id = setInterval(fetchData, 15_000);
-    return () => clearInterval(id);
-  }, []);
-
-  // ── Derived display values ─────────────────────────────────────────────────
-  const anyTripped = data
-    ? data.daily_limit_breached || data.drawdown_breached || data.kill_switch_active
-    : false;
-
-  // Daily loss progress: 0% = no loss at all, 100% = limit hit
-  // daily_pnl is negative when losing; daily_limit is negative (e.g. -200)
-  const dailyLossProgress =
-    data && data.daily_limit !== 0
-      ? Math.min(1, Math.max(0, Math.abs(Math.min(0, data.daily_pnl)) / Math.abs(data.daily_limit)))
-      : 0;
-
-  const dailyPnlSign = data ? (data.daily_pnl >= 0 ? "+" : "") : "";
-  const displayDailyPnl = data ? `${dailyPnlSign}$${data.daily_pnl.toFixed(0)}` : "--";
-  const displayDailyLimit = data ? `-$${Math.abs(data.daily_limit).toFixed(0)} limit` : "--";
-
-  const displayDrawdown = data ? `${(data.drawdown_pct * 100).toFixed(2)}%` : "--";
-  const displayDrawdownLimit = data
-    ? `${(Math.abs(data.drawdown_limit_pct) * 100).toFixed(1)}% limit`
-    : "--";
-
-  const progressBarColor =
-    dailyLossProgress >= 1
-      ? "#ff4444"
-      : dailyLossProgress > 0.5
-      ? "#ffcc00"
-      : "#00ff88";
-
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle>Circuit Breakers</CardTitle>
-          <div className="flex items-center gap-2">
-            {data && (
-              <Badge variant={anyTripped ? "bear" : "bull"}>
-                {anyTripped ? "TRADING HALTED" : "ALL CLEAR"}
-              </Badge>
-            )}
-            {error && (
-              <Badge variant="warn">Engine Offline</Badge>
-            )}
-            {lastUpdated && (
-              <span className="font-mono text-[9px] text-muted-foreground/60">
-                {lastUpdated}
-              </span>
-            )}
-          </div>
-        </div>
-      </CardHeader>
+    <EngineWidget<CircuitBreakerData>
+      endpoint="/safety/circuit-breakers"
+      title="Circuit Breakers"
+      refreshInterval={15_000}
+      render={(data) => {
+        const anyTripped = data.daily_limit_breached || data.drawdown_breached || data.kill_switch_active;
 
-      <CardContent className="space-y-4">
-        {/* Error state */}
-        {error && !data && (
-          <div
-            className="rounded-lg p-3 font-mono text-xs"
-            style={{
-              backgroundColor: "#ff444410",
-              border: "1px solid #ff444430",
-              color: "#ff4444",
-            }}
-          >
-            {error} — circuit breaker data unavailable
-          </div>
-        )}
+        const dailyLossProgress =
+          data.daily_limit !== 0
+            ? Math.min(1, Math.max(0, Math.abs(Math.min(0, data.daily_pnl)) / Math.abs(data.daily_limit)))
+            : 0;
 
-        {/* Loading state */}
-        {!data && !error && (
-          <div className="space-y-2 animate-pulse">
-            <div className="h-4 w-full rounded bg-muted" />
-            <div className="h-4 w-4/5 rounded bg-muted" />
-            <div className="h-4 w-3/5 rounded bg-muted" />
-          </div>
-        )}
+        const dailyPnlSign = data.daily_pnl >= 0 ? "+" : "";
+        const displayDailyPnl = `${dailyPnlSign}$${data.daily_pnl.toFixed(0)}`;
+        const displayDailyLimit = `-$${Math.abs(data.daily_limit).toFixed(0)} limit`;
 
-        {data && (
-          <>
-            {/* Row 1: Daily Loss Limit */}
-            <div className="flex items-center gap-3">
-              <BreachedDot breached={data.daily_limit_breached} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Daily Loss Limit
-                  </span>
-                  <span
-                    className="font-mono text-xs font-bold tabular-nums"
-                    style={{
-                      color: data.daily_limit_breached
-                        ? "#ff4444"
-                        : data.daily_pnl < 0
-                        ? "#ffcc00"
-                        : "#00ff88",
-                    }}
-                  >
-                    {displayDailyPnl}{" "}
-                    <span className="text-muted-foreground/60 font-normal">
-                      / {displayDailyLimit}
-                    </span>
-                  </span>
-                </div>
-                {/* Progress bar */}
-                <div
-                  className="h-1.5 w-full rounded-full overflow-hidden"
-                  style={{ backgroundColor: "#1a1a2e" }}
-                >
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${dailyLossProgress * 100}%`,
-                      backgroundColor: progressBarColor,
-                    }}
-                  />
+        const displayDrawdown = `${(data.drawdown_pct * 100).toFixed(2)}%`;
+        const displayDrawdownLimit = `${(Math.abs(data.drawdown_limit_pct) * 100).toFixed(1)}% limit`;
+
+        const progressBarColor =
+          dailyLossProgress >= 1
+            ? "#ff4444"
+            : dailyLossProgress > 0.5
+            ? "#ffcc00"
+            : "#00ff88";
+
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle>Circuit Breakers</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge variant={anyTripped ? "bear" : "bull"}>
+                    {anyTripped ? "TRADING HALTED" : "ALL CLEAR"}
+                  </Badge>
                 </div>
               </div>
-              {data.daily_limit_breached && (
-                <Badge variant="bear">TRIPPED</Badge>
-              )}
-            </div>
+            </CardHeader>
 
-            {/* Row 2: Max Drawdown */}
-            <div className="flex items-center gap-3">
-              <BreachedDot breached={data.drawdown_breached} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Max Drawdown
-                  </span>
-                  <span
-                    className="font-mono text-xs font-bold tabular-nums"
-                    style={{
-                      color: data.drawdown_breached
-                        ? "#ff4444"
-                        : data.drawdown_pct > Math.abs(data.drawdown_limit_pct) * 0.5
-                        ? "#ffcc00"
-                        : "#00ff88",
-                    }}
-                  >
-                    {displayDrawdown}{" "}
-                    <span className="text-muted-foreground/60 font-normal">
-                      / {displayDrawdownLimit}
+            <CardContent className="space-y-4">
+              {/* Row 1: Daily Loss Limit */}
+              <div className="flex items-center gap-3">
+                <BreachedDot breached={data.daily_limit_breached} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Daily Loss Limit
                     </span>
-                  </span>
-                </div>
-              </div>
-              {data.drawdown_breached && (
-                <Badge variant="bear">TRIPPED</Badge>
-              )}
-            </div>
-
-            {/* Row 3: Kill Switch */}
-            <div className="flex items-center gap-3">
-              <StatusDot active={data.kill_switch_active} danger />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Kill Switch
-                  </span>
-                  <span
-                    className="font-mono text-xs font-bold uppercase tracking-wider"
-                    style={{
-                      color: data.kill_switch_active ? "#ff4444" : "#00ff88",
-                    }}
-                  >
-                    {data.kill_switch_active ? "ACTIVE" : "INACTIVE"}
-                    {data.kill_switch_active && data.kill_switch_reason && (
-                      <span className="ml-1 font-normal text-muted-foreground/60 normal-case tracking-normal">
-                        ({data.kill_switch_reason})
+                    <span
+                      className="font-mono text-xs font-bold tabular-nums"
+                      style={{
+                        color: data.daily_limit_breached
+                          ? "#ff4444"
+                          : data.daily_pnl < 0
+                          ? "#ffcc00"
+                          : "#00ff88",
+                      }}
+                    >
+                      {displayDailyPnl}{" "}
+                      <span className="text-muted-foreground/60 font-normal">
+                        / {displayDailyLimit}
                       </span>
-                    )}
+                    </span>
+                  </div>
+                  {/* Progress bar */}
+                  <div
+                    className="h-1.5 w-full rounded-full overflow-hidden"
+                    style={{ backgroundColor: "#1a1a2e" }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${dailyLossProgress * 100}%`,
+                        backgroundColor: progressBarColor,
+                      }}
+                    />
+                  </div>
+                </div>
+                {data.daily_limit_breached && (
+                  <Badge variant="bear">TRIPPED</Badge>
+                )}
+              </div>
+
+              {/* Row 2: Max Drawdown */}
+              <div className="flex items-center gap-3">
+                <BreachedDot breached={data.drawdown_breached} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Max Drawdown
+                    </span>
+                    <span
+                      className="font-mono text-xs font-bold tabular-nums"
+                      style={{
+                        color: data.drawdown_breached
+                          ? "#ff4444"
+                          : data.drawdown_pct > Math.abs(data.drawdown_limit_pct) * 0.5
+                          ? "#ffcc00"
+                          : "#00ff88",
+                      }}
+                    >
+                      {displayDrawdown}{" "}
+                      <span className="text-muted-foreground/60 font-normal">
+                        / {displayDrawdownLimit}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+                {data.drawdown_breached && (
+                  <Badge variant="bear">TRIPPED</Badge>
+                )}
+              </div>
+
+              {/* Row 3: Kill Switch */}
+              <div className="flex items-center gap-3">
+                <StatusDot active={data.kill_switch_active} danger />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Kill Switch
+                    </span>
+                    <span
+                      className="font-mono text-xs font-bold uppercase tracking-wider"
+                      style={{
+                        color: data.kill_switch_active ? "#ff4444" : "#00ff88",
+                      }}
+                    >
+                      {data.kill_switch_active ? "ACTIVE" : "INACTIVE"}
+                      {data.kill_switch_active && data.kill_switch_reason && (
+                        <span className="ml-1 font-normal text-muted-foreground/60 normal-case tracking-normal">
+                          ({data.kill_switch_reason})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+                {data.kill_switch_active ? (
+                  <Badge variant="bear">ACTIVE</Badge>
+                ) : (
+                  <Badge variant="neutral">INACTIVE</Badge>
+                )}
+              </div>
+
+              {/* TRADING HALTED warning section */}
+              {anyTripped && (
+                <div
+                  className="rounded-lg p-3 font-mono text-sm font-bold text-center"
+                  style={{
+                    backgroundColor: "#ff444415",
+                    border: "2px solid #ff444440",
+                    color: "#ff4444",
+                  }}
+                  role="alert"
+                  aria-live="assertive"
+                >
+                  Trading Halted
+                  <div className="mt-1 font-normal text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {[
+                      data.daily_limit_breached && "Daily loss limit exceeded",
+                      data.drawdown_breached && "Max drawdown exceeded",
+                      data.kill_switch_active && "Kill switch active",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                </div>
+              )}
+
+              {/* Footer: source + refresh note */}
+              <div className="flex items-center justify-between pt-1">
+                {data.pnl_source && (
+                  <span className="font-mono text-[9px] text-muted-foreground/50">
+                    source: {data.pnl_source}
                   </span>
-                </div>
-              </div>
-              {data.kill_switch_active ? (
-                <Badge variant="bear">ACTIVE</Badge>
-              ) : (
-                <Badge variant="neutral">INACTIVE</Badge>
-              )}
-            </div>
-
-            {/* TRADING HALTED warning section */}
-            {anyTripped && (
-              <div
-                className="rounded-lg p-3 font-mono text-sm font-bold text-center"
-                style={{
-                  backgroundColor: "#ff444415",
-                  border: "2px solid #ff444440",
-                  color: "#ff4444",
-                }}
-                role="alert"
-                aria-live="assertive"
-              >
-                ⚠ TRADING HALTED
-                <div className="mt-1 font-normal text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {[
-                    data.daily_limit_breached && "Daily loss limit exceeded",
-                    data.drawdown_breached && "Max drawdown exceeded",
-                    data.kill_switch_active && "Kill switch active",
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </div>
-              </div>
-            )}
-
-            {/* Footer: source + refresh note */}
-            <div className="flex items-center justify-between pt-1">
-              {data.pnl_source && (
-                <span className="font-mono text-[9px] text-muted-foreground/50">
-                  source: {data.pnl_source}
+                )}
+                <span className="font-mono text-[9px] text-muted-foreground/50 ml-auto">
+                  auto-refresh 15s
                 </span>
-              )}
-              <span className="font-mono text-[9px] text-muted-foreground/50 ml-auto">
-                auto-refresh 15s
-              </span>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      }}
+    />
   );
 }

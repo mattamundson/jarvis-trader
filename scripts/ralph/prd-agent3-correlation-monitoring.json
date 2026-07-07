@@ -1,0 +1,103 @@
+{
+  "project": "JARVIS TRADER — Agent 3: Portfolio Correlation Monitoring",
+  "branchName": "ralph/correlation-monitoring",
+  "description": "Add position correlation monitoring to the multi-market orchestrator. MNQ and MES are equity index futures with ~0.95 correlation. Running both simultaneously creates concentrated exposure that the current system does not account for. This adds correlation-aware position sizing and a new risk endpoint.",
+  "userStories": [
+    {
+      "id": "US-CORR-001",
+      "title": "Map current multi-market orchestrator structure",
+      "description": "As a developer, I want to understand the current orchestrator before modifying it to avoid breaking existing MCL/MNQ trading.",
+      "acceptanceCriteria": [
+        "Read engine/markets/orchestrator.py fully",
+        "Document in progress.txt: how instruments are registered, how positions are tracked, where sizing decisions are made",
+        "Identify the exact functions/methods to modify for correlation-aware sizing",
+        "Identify any existing tests in engine/tests/ that cover orchestrator behavior",
+        "No code changes in this story — analysis only"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Do not break existing MCL/MNQ behavior. The correlation rule only applies to equity index pairs (MNQ+MES)."
+    },
+    {
+      "id": "US-CORR-002",
+      "title": "Add correlation matrix to orchestrator",
+      "description": "As the risk system, I want a static correlation matrix defined in the orchestrator so position sizing can account for instrument correlations.",
+      "acceptanceCriteria": [
+        "Add INSTRUMENT_CORRELATION dict to engine/markets/orchestrator.py or engine/config.py",
+        "Values: MCL-MNQ: 0.10, MCL-MES: 0.10, MNQ-MES: 0.95 (equity index correlation)",
+        "Add method get_portfolio_correlation_exposure() that returns current cross-instrument exposure",
+        "Method considers open positions only (not pending orders)",
+        "Unit test: test_correlation_exposure_calculation in engine/tests/test_orchestrator.py (create if not exists)",
+        "Typecheck: cd engine && .venv/Scripts/python -m mypy engine/markets/orchestrator.py --ignore-missing-imports",
+        "Commit: feat: add instrument correlation matrix to multi-market orchestrator"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Keep the correlation values in config.py not hardcoded in orchestrator.py — follow existing patterns"
+    },
+    {
+      "id": "US-CORR-003",
+      "title": "Implement correlation-aware position sizing rule",
+      "description": "As the risk system, I want MNQ and MES position sizes automatically reduced when both instruments have simultaneous open positions.",
+      "acceptanceCriteria": [
+        "When MNQ has open position AND MES has open position: max_contracts for each reduces to 1 (from 2)",
+        "When only one of MNQ/MES has position: max_contracts stays at 2",
+        "MCL is unaffected by this rule",
+        "Rule is applied in position sizing calculation BEFORE order submission",
+        "Rule is logged: 'Correlation reduction applied: MNQ+MES both open, max_contracts → 1'",
+        "Unit test for rule application",
+        "Commit: feat: correlation-aware position sizing — MNQ+MES max 1 contract each when both open"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "This rule must pass through the SafetyLayer before execution — verify it doesn't conflict with existing risk checks"
+    },
+    {
+      "id": "US-CORR-004",
+      "title": "Add GET /portfolio/risk endpoint",
+      "description": "As the dashboard, I want a REST endpoint that returns current portfolio correlation exposure so it can be displayed in the UI.",
+      "acceptanceCriteria": [
+        "New endpoint: GET /portfolio/risk",
+        "Response schema: {\"instruments\": [...], \"correlation_matrix\": {...}, \"active_positions\": [...], \"correlation_reduction_active\": bool, \"total_margin_utilization\": float, \"daily_pnl_pct\": float}",
+        "Endpoint is read-only and does not modify any state",
+        "Add to appropriate router in engine/routers/",
+        "Add to main.py router registration if new router",
+        "Smoke test: curl http://localhost:8010/portfolio/risk",
+        "Commit: feat: add GET /portfolio/risk endpoint with correlation matrix"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Follow existing router patterns. Use fetchEngine in dashboard — do not hardcode localhost:8010"
+    },
+    {
+      "id": "US-CORR-005",
+      "title": "Add correlation warning to RiskManagerAgent",
+      "description": "As the RiskManagerAgent, I want to include correlation exposure in my risk assessment so high-correlation positions are flagged in the pipeline output.",
+      "acceptanceCriteria": [
+        "RiskManagerAgent reads correlation exposure from orchestrator",
+        "When correlation_reduction_active=True, adds warning to risk assessment: 'CORRELATION WARNING: MNQ+MES simultaneous position — size reduced to 1 contract each'",
+        "Warning is visible in pipeline output (Stage 4)",
+        "Does not add VETO for correlation — only a warning. The sizing rule already handles it.",
+        "Commit: feat: add correlation exposure warning to RiskManagerAgent"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-CORR-006",
+      "title": "Run full test suite and verify no regressions",
+      "description": "As a developer, I want confidence that the correlation monitoring changes don't break existing MCL/MNQ trading behavior.",
+      "acceptanceCriteria": [
+        "cd engine && .venv/Scripts/python -m pytest tests/ -v — 0 failures",
+        "cd dashboard && pnpm run build — passes",
+        "curl http://localhost:8010/health — 200 OK",
+        "curl http://localhost:8010/portfolio/risk — returns valid JSON",
+        "Commit: test: correlation monitoring full suite verification"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

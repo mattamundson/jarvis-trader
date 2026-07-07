@@ -218,9 +218,9 @@ async def receive_tradingview_webhook(payload: TradingViewPayload):
             regime=payload.regime,
         )
         return {
-            "status": result.get("status", "completed")
-            if isinstance(result, dict)
-            else "completed",
+            "status": (
+                result.get("status", "completed") if isinstance(result, dict) else "completed"
+            ),
             "symbol": symbol,
             "action": action,
             "pipeline_triggered": True,
@@ -248,4 +248,15 @@ async def get_dedup_stats():
         "active_entries": len(active),
         "window_seconds": _DEDUP_WINDOW,
         "entries": active,
+    }
+
+
+@router.get("/signals/stats")
+async def signals_stats():
+    """Return webhook signal statistics including deduplication cache size."""
+    recent = get_recent_webhooks(limit=50)
+    return {
+        "total_received": len(recent),
+        "recent_webhooks": recent[:10],
+        "dedup_cache_size": len(_dedup_cache),
     }

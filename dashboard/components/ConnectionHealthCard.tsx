@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -43,12 +43,10 @@ export function ConnectionHealthCard() {
   const [ibConnected, setIbConnected] = useState(DEFAULT_IB_CONNECTED);
   const [ibError, setIbError] = useState<string | null>(null);
 
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     const [healthResult, ibResult] = await Promise.allSettled([
-      fetchEngine(`/health`),
-      fetchEngine(`/ib/connection-test`).then(
-        (r) => r.json() as Promise<IBConnectionTestResponse>
-      ),
+      fetchEngine<HealthResponse>(`/health`),
+      fetchEngine<IBConnectionTestResponse>(`/ib/connection-test`),
     ]);
 
     // Engine health
@@ -74,13 +72,13 @@ export function ConnectionHealthCard() {
       setIbConnected(false);
       setIbError("Network error");
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchAll();
     const interval = setInterval(fetchAll, 30_000);
     return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchAll]);
 
   // ── Derived values ───────────────────────────────────────────────────────────
 
@@ -120,7 +118,7 @@ export function ConnectionHealthCard() {
           <div className="flex items-center justify-between py-1.5 border-b border-border">
             <div>
               <p className="text-sm font-medium">Trading Engine</p>
-              <p className="text-xs text-muted-foreground">FastAPI • Port 8010</p>
+              <p className="text-xs text-muted-foreground">FastAPI • via dashboard proxy</p>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant={engineBadgeVariant}>{engineLabel}</Badge>

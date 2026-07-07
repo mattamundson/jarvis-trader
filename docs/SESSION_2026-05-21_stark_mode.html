@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — Stark Mode Operational Status — 2026-05-21</title>
+<style>
+  :root {
+    --bg:#0b0d12; --bg2:#13161f; --bg3:#1a1f2c; --bg4:#252b3a;
+    --fg:#e8eaf2; --fg-dim:#9aa3b8; --fg-dim2:#6b7388;
+    --accent:#5eead4; --accent2:#22d3ee; --accent3:#a78bfa;
+    --bull:#34d399; --bear:#f87171; --warn:#fbbf24; --info:#60a5fa; --neutral:#9aa3b8;
+    --border:#2a3144; --border2:#3a4258;
+    --mono:'SF Mono','Consolas','Cascadia Code','Liberation Mono',monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  body{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+  @media(max-width:900px){body{grid-template-columns:1fr}aside{display:none}}
+
+  aside{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--bg2);border-right:1px solid var(--border);padding:20px 16px}
+  aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--fg-dim2);margin:18px 0 8px;font-weight:600}
+  aside h2:first-child{margin-top:0}
+  aside a{display:block;color:var(--fg-dim);text-decoration:none;padding:6px 10px;border-radius:6px;font-size:13px;border-left:2px solid transparent;margin-bottom:1px;transition:all .12s}
+  aside a:hover{background:var(--bg3);color:var(--fg);border-left-color:var(--accent)}
+  aside .brand{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:600;padding:4px 0 16px;border-bottom:1px solid var(--border);margin-bottom:16px}
+  aside .brand .date{display:block;color:var(--fg-dim2);font-size:11px;font-weight:400;margin-top:4px}
+
+  main{padding:36px 48px;max-width:1200px}
+  @media(max-width:900px){main{padding:24px 16px}}
+
+  h1{font-size:32px;font-weight:700;letter-spacing:-.02em;color:var(--fg);margin-bottom:8px;line-height:1.15}
+  h1 .badge{display:inline-block;font-size:11px;font-family:var(--mono);color:var(--bull);background:rgba(52,211,153,.12);padding:4px 10px;border-radius:20px;vertical-align:middle;margin-left:12px;border:1px solid rgba(52,211,153,.3);font-weight:500}
+  h2{font-size:22px;font-weight:600;color:var(--fg);margin:48px 0 16px;letter-spacing:-.01em;padding-bottom:8px;border-bottom:1px solid var(--border)}
+  h3{font-size:16px;font-weight:600;color:var(--fg);margin:28px 0 10px}
+  h4{font-size:13px;font-weight:600;color:var(--accent);margin:18px 0 6px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
+  p{color:var(--fg-dim);margin-bottom:12px;max-width:78ch}
+  p strong{color:var(--fg);font-weight:600}
+  ul,ol{color:var(--fg-dim);margin:0 0 14px 22px}
+  li{margin-bottom:4px}
+  li strong{color:var(--fg)}
+  code{font-family:var(--mono);background:var(--bg3);color:var(--accent2);padding:1px 6px;border-radius:4px;font-size:12px}
+  pre{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:12px 0;font-family:var(--mono);font-size:12px;line-height:1.55;color:var(--fg)}
+  pre .c{color:var(--fg-dim2)}
+  pre .k{color:var(--accent3)}
+  pre .s{color:var(--bull)}
+  pre .n{color:var(--accent2)}
+  hr{border:0;border-top:1px solid var(--border);margin:32px 0}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  .subtitle{color:var(--fg-dim);font-size:15px;margin-bottom:36px}
+
+  .grid{display:grid;gap:16px;margin:16px 0}
+  .grid-2{grid-template-columns:repeat(2,1fr)}
+  .grid-3{grid-template-columns:repeat(3,1fr)}
+  .grid-4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:700px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px}
+  .card h4{margin-top:0}
+  .card .big{font-size:28px;font-weight:700;color:var(--fg);font-family:var(--mono);letter-spacing:-.02em;margin:6px 0}
+  .card .sub{font-size:12px;color:var(--fg-dim2)}
+  .card.bull{border-color:rgba(52,211,153,.3)}
+  .card.bull .big{color:var(--bull)}
+  .card.bear{border-color:rgba(248,113,113,.3)}
+  .card.bear .big{color:var(--bear)}
+  .card.warn{border-color:rgba(251,191,36,.3)}
+  .card.warn .big{color:var(--warn)}
+  .card.info{border-color:rgba(96,165,250,.3)}
+  .card.info .big{color:var(--info)}
+
+  .pill{display:inline-block;font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:12px;font-weight:500;letter-spacing:.02em}
+  .pill.bull{background:rgba(52,211,153,.15);color:var(--bull);border:1px solid rgba(52,211,153,.3)}
+  .pill.bear{background:rgba(248,113,113,.15);color:var(--bear);border:1px solid rgba(248,113,113,.3)}
+  .pill.warn{background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.3)}
+  .pill.info{background:rgba(96,165,250,.15);color:var(--info);border:1px solid rgba(96,165,250,.3)}
+  .pill.neutral{background:rgba(154,163,184,.12);color:var(--fg-dim);border:1px solid var(--border2)}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+  th{text-align:left;font-weight:600;color:var(--fg);background:var(--bg2);padding:10px 12px;border-bottom:2px solid var(--border2);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--fg-dim);vertical-align:top}
+  tr:hover td{background:var(--bg2)}
+  td code{font-size:11px}
+
+  .ascii{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:var(--mono);font-size:11.5px;line-height:1.5;color:var(--accent);white-space:pre;overflow-x:auto;margin:14px 0}
+
+  .callout{border-left:3px solid var(--info);background:rgba(96,165,250,.05);padding:14px 18px;border-radius:0 8px 8px 0;margin:18px 0}
+  .callout.warn{border-left-color:var(--warn);background:rgba(251,191,36,.06)}
+  .callout.bear{border-left-color:var(--bear);background:rgba(248,113,113,.06)}
+  .callout.bull{border-left-color:var(--bull);background:rgba(52,211,153,.06)}
+  .callout h4{margin-top:0;margin-bottom:8px;color:var(--info);font-family:var(--sans);text-transform:none;letter-spacing:0;font-size:13px}
+  .callout.warn h4{color:var(--warn)}
+  .callout.bear h4{color:var(--bear)}
+  .callout.bull h4{color:var(--bull)}
+  .callout p{margin-bottom:6px}
+  .callout p:last-child{margin-bottom:0}
+
+  .flow{display:flex;flex-direction:column;gap:8px;margin:18px 0}
+  .flow-step{display:flex;align-items:flex-start;gap:14px;padding:14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;position:relative}
+  .flow-step .num{flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--bg);font-weight:700;font-family:var(--mono);display:flex;align-items:center;justify-content:center;font-size:12px}
+  .flow-step .body{flex:1}
+  .flow-step .body strong{display:block;color:var(--fg);font-size:13px;margin-bottom:3px}
+  .flow-step .body span{color:var(--fg-dim);font-size:12.5px}
+  .flow-step code{font-size:11px}
+
+  footer{margin:64px 0 0;padding:24px 0;border-top:1px solid var(--border);color:var(--fg-dim2);font-size:12px}
+  footer p{color:var(--fg-dim2);max-width:none}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="brand">JARVIS TRADER<span class="date">Stark Mode • 2026-05-21</span></div>
+  <h2>Overview</h2>
+  <a href="#status">Operational Status</a>
+  <a href="#model">Mental Model</a>
+  <a href="#loop">Autonomous Loop</a>
+  <h2>What Shipped</h2>
+  <a href="#shipped">Inventory</a>
+  <a href="#commits">Commit Log</a>
+  <a href="#routes">HTTP Routes</a>
+  <a href="#skills">Hermes Skills</a>
+  <a href="#runbooks">Runbooks</a>
+  <h2>State</h2>
+  <a href="#activation">Activation State</a>
+  <a href="#phase3">Phase 3 Readiness</a>
+  <a href="#risks">Known Risks</a>
+  <h2>Operate</h2>
+  <a href="#cheatsheet">Operator Cheatsheet</a>
+  <a href="#next">Recommended Next</a>
+</aside>
+
+<main>
+  <h1>Stark Mode is live <span class="badge">● OPERATIONAL</span></h1>
+  <p class="subtitle">Single-day transformation of JARVIS TRADER from a manual-trigger pipeline into a unified autonomous trading system across Claude Code, Hermes voice/text, and the dashboard — with broker-side risk management and Discord-reaction approval flow.</p>
+
+  <section id="status">
+    <h2>Operational status</h2>
+    <div class="grid grid-4">
+      <div class="card bull">
+        <h4>Engine</h4>
+        <div class="big">●</div>
+        <div class="sub">port 8010 · paper mode · IB paper 4002 · kill switch off</div>
+      </div>
+      <div class="card bull">
+        <h4>Autonomous loop</h4>
+        <div class="big">▶</div>
+        <div class="sub">tick=600s · threshold=0.75 · symbols=MCL,MNQ</div>
+      </div>
+      <div class="card bull">
+        <h4>Reaction watcher</h4>
+        <div class="big">◉</div>
+        <div class="sub">bot 1507172328021430403 · gateway READY · channel 1490851279180660819</div>
+      </div>
+      <div class="card bull">
+        <h4>IB scanner</h4>
+        <div class="big">⊙</div>
+        <div class="sub">/ib-scanner/top-movers live · 60s polling floor</div>
+      </div>
+      <div class="card info">
+        <h4>Bracket orders</h4>
+        <div class="big">⌬</div>
+        <div class="sub">default ON · parent + stop + target atomic submission</div>
+      </div>
+      <div class="card info">
+        <h4>Discord webhook</h4>
+        <div class="big">⤴</div>
+        <div class="sub">candidate posts → channel · approve/reject results post back</div>
+      </div>
+      <div class="card warn">
+        <h4>Phase 3</h4>
+        <div class="big">8/10</div>
+        <div class="sub">NO-GO · C2 trade volume + C5 drawdown blockers</div>
+      </div>
+      <div class="card neutral">
+        <h4>Commits today</h4>
+        <div class="big">~90</div>
+        <div class="sub">all pushed · feat/tradingview-mcp-gamma-kraken</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="model">
+    <h2>The mental model — three surfaces, one source of truth</h2>
+    <p><strong>Engine on port 8010 + SQLite + gbrain-ingested vault</strong> is canonical. Every surface above is a view on this state. No surface duplicates state.</p>
+    <div class="ascii">                              ┌─────────────────────────┐
+                              │     JARVIS TRADER       │
+                              │  (engine port 8010 +    │
+                              │   SQLite + vault)       │
+                              └────────┬────────────────┘
+                                       │
+      ┌────────────────────────────────┼─────────────────────────────┐
+      │                                │                             │
+  Claude Code                       Hermes                       Dashboard
+  (desk, deep work)            (phone, on-the-go)              (couch, ambient)
+      │                                │                             │
+mcp__discord-jarvis__*          aiohttp → /discord/...        SWR / WebSocket
+mcp__discord-personal__*        aiohttp → /reports/...        page /jarvis (Stark)
+Bash → engine routes            ~/.hermes/skills/jarvis-*     page /performance
+direct vault read/write         scheduled crons               page /parallel-paper
+                                jarvis-voice (Telegram VM)    page /</div>
+  </section>
+
+  <section id="loop">
+    <h2>The complete autonomous loop</h2>
+    <p>End-to-end, hands-off after activation. You can override any step.</p>
+    <div class="flow">
+      <div class="flow-step"><div class="num">1</div><div class="body"><strong>Autonomous tick fires every 10 minutes</strong><span>Engine background task runs against active symbols (MCL, MNQ). Skips tick if kill switch active, live trading enabled, or engine unhealthy.</span></div></div>
+      <div class="flow-step"><div class="num">2</div><div class="body"><strong>Pipeline runs the 5-stage analysis</strong><span>news_analyst → social_analyst → pattern_vision_analyst → kronos_classifier (off) → options_analyst (stage 6, off) → advisor → trader. Gate v2 thresholds + safety layer evaluated.</span></div></div>
+      <div class="flow-step"><div class="num">3</div><div class="body"><strong>Verdict gated by confidence ≥ 0.75 AND fund manager green</strong><span>Conservative bar. If skipped, tick ends silently. If green: candidate row inserted into <code>pipeline_approval_queue</code> with 30-minute TTL + idempotency key.</span></div></div>
+      <div class="flow-step"><div class="num">4</div><div class="body"><strong>Discord webhook fires fire-and-forget</strong><span>Posts rich embed to channel <code>1490851279180660819</code>: symbol, direction, entry/stop/target, confidence, expiry, Hermes skill hint. Webhook failure never blocks the queue.</span></div></div>
+      <div class="flow-step"><div class="num">5</div><div class="body"><strong>You react from anywhere</strong><span>✅ approve · ❌ reject · ⏸ extend TTL. Discord gateway delivers the event to the reaction watcher.</span></div></div>
+      <div class="flow-step"><div class="num">6</div><div class="body"><strong>Reaction watcher validates + routes</strong><span>Checks: message is bot's own + reactor user_id matches <code>DISCORD_PERSONAL_USER_ID</code>. Calls <code>POST /approvals/{id}/{approve|reject|extend}</code> with X-API-Key.</span></div></div>
+      <div class="flow-step"><div class="num">7</div><div class="body"><strong>Approval submits IB bracket order</strong><span>Parent (entry) + stop (LMT/STP child) + target (LMT child) submitted atomically. <code>ocaGroup</code> linking — one cancels the other. Broker-side risk management, not just safety-layer monitoring.</span></div></div>
+      <div class="flow-step"><div class="num">8</div><div class="body"><strong>Result posts back to Discord</strong><span>✅ Approved (order INV-12345) · ❌ Rejected: reason · ⏰ Expired (TTL). Trading journal auto-generates daily 5pm CT summary to vault.</span></div></div>
+    </div>
+  </section>
+
+  <section id="shipped">
+    <h2>What shipped today — inventory</h2>
+    <h3>Engine routes added (~19 new)</h3>
+    <p><code>/discord/bookmarks/recent</code>, <code>/discord/bookmarks/search</code>, <code>/discord/briefing</code>, <code>/reports/quantstats</code>, <code>/jarvis/ask</code>, <code>/admin/feature-flags</code>, <code>/approvals/pending</code>, <code>/approvals/{id}/{approve,reject,extend}</code>, <code>/options/{skew,analyst,chain}/{symbol}</code>, <code>/health/predictive</code>, <code>/readiness/{phase3,gate-v2-calibration}</code>, <code>/portfolio/paper/account/{A|B}/stats</code>, <code>/ws/pipeline</code>, <code>/attribution/{daily,window}</code>, <code>/safety/account/{A|B}/kill-state</code>, <code>/admin/questdb/reconcile/{last,run}</code>, <code>/ib-scanner/{top-movers,futures-movers,raw}</code></p>
+
+    <h3>New analyst stages</h3>
+    <p><strong>Kronos (stage 7)</strong> — real foundation-model predictor wired, paper schema verified, CPU inference 0.53s, default off behind <code>ENABLE_KRONOS</code>. Calibrated per-instrument thresholds (MES 48 / MNQ 63 / MCL 207 bps).</p>
+    <p><strong>Options analyst (stage 6)</strong> — put/call skew + term-structure signals via Polygon options data; default off behind <code>ENABLE_OPTIONS_ANALYST</code>.</p>
+
+    <h3>New subsystems (all default off)</h3>
+    <ul>
+      <li><strong>Autonomous pipeline scheduler</strong> — tick-based candidate generator + DB-backed approval queue · <em>now ACTIVE</em></li>
+      <li><strong>ResearchAgent</strong> — LLM-driven strategy hypothesis generator with $5/day cost gate + weekend cron</li>
+      <li><strong>Predictive maintenance monitor</strong> — 4-input degradation score (memory, IB reconnects, LLM latency, PM2 restarts) with alert-only and auto-restart modes</li>
+      <li><strong>Parallel-paper testing</strong> — Account A (prod) vs B (challenger config) dual-emit + dashboard comparison page</li>
+      <li><strong>Risk attribution engine</strong> — pro-rata P&L decomposition by analyst contribution</li>
+      <li><strong>Trading journal auto-generator</strong> — daily Markdown to vault combining trades + commentary + signals + JARVIS interactions</li>
+      <li><strong>Bayesian gate-v2 calibrator</strong> — recommends threshold updates as paper data accumulates</li>
+      <li><strong>QuestDB dual-write scaffold</strong> — time-series shadow for 290K+ row Discord tables, reconciliation cron</li>
+      <li><strong>RL strategy discovery (PPO)</strong> — gym-compatible trading env + policy-to-hypothesis converter</li>
+      <li><strong>Per-account kill switch</strong> — additive safety layer for parallel-paper isolation</li>
+    </ul>
+
+    <h3>Real-time + voice surfaces</h3>
+    <ul>
+      <li><strong>/ws/pipeline WebSocket</strong> — verdict + analyst-signal push to Stark dashboard hero strip</li>
+      <li><strong>jarvis-voice Hermes skill</strong> — Telegram voice → Whisper transcript → /jarvis/ask → optional TTS reply</li>
+      <li><strong>Discord reaction watcher</strong> — pure-aiohttp gateway WS, listens for ✅/❌/⏸ on bot-posted approval candidates</li>
+    </ul>
+
+    <h3>Dashboard pages</h3>
+    <ul>
+      <li><strong>/jarvis</strong> — Stark command center: hero strip + 3-column decision-state/market-intel/action-queue + Ask JARVIS input</li>
+      <li><strong>/performance</strong> — QuantStats portfolio tearsheet (Sortino, Calmar, max DD, monthly returns, rolling 30d Sharpe)</li>
+      <li><strong>/parallel-paper</strong> — Account A vs B comparison</li>
+      <li>Components reused across: BookmarkFeedPanel, BookmarkThemesPanel, QuantStatsPanel, RiskAttributionPanel, HeroStrip (with WebSocket subscription)</li>
+    </ul>
+
+    <h3>Vault content</h3>
+    <p><strong>4,581 files</strong> at <code>master-jarvis/second-brain/raw/_session-2026-05-20-amo/</code> — full extraction of channel <code>1490851279180660819</code> + all Discord tables (bookmarks/commentary/signals/IB-reports/alerts/sentiment/analyses), 14 author profile cards, 30 GitHub repo audit cards, thematic index, action backlog, monthly Corey digests, weekly bookmark digests, browse table. Plus today's session vault under <code>_session-2026-05-21-amo/</code> with drawdown analysis, Kronos validation, autonomous activation log.</p>
+
+    <h3>Hermes integration</h3>
+    <p><strong>12 production skills</strong> at <code>/home/mattm/.hermes/skills/</code> + <code>soul.md</code> persona + <code>_CONVENTIONS.md</code>. Skill list below.</p>
+    <p>Plus channel-prompt wiring at <code>telegram.channel_prompts["8676240038"]</code> routing JARVIS questions through <code>/jarvis/ask</code>.</p>
+
+    <h3>Docs + tests</h3>
+    <p><strong>17 runbooks</strong> + <strong>Stark Mode README</strong> at <code>docs/JARVIS_TRADER_STARK_MODE_README.md</code>. <strong>700+ new tests</strong>, all passing. Engine test coverage of <code>engine/risk/</code> raised from 45% → 95.55%.</p>
+  </section>
+
+  <section id="commits">
+    <h2>Commit log — today's major commits</h2>
+    <p>All on branch <code>feat/tradingview-mcp-gamma-kraken</code>, all pushed.</p>
+    <table>
+      <thead><tr><th>Hash</th><th>Type</th><th>Subject</th></tr></thead>
+      <tbody>
+        <tr><td><code>44f8260</code></td><td><span class="pill info">feat</span></td><td>discord: add MCP tools for bookmark channel queries</td></tr>
+        <tr><td><code>9d01b06</code></td><td><span class="pill info">feat</span></td><td>discord: add HTTP routes for bookmark feed</td></tr>
+        <tr><td><code>bbf3b4c</code></td><td><span class="pill info">feat</span></td><td>agents: add Kronos foundation-model classifier stub</td></tr>
+        <tr><td><code>b0cc58c</code></td><td><span class="pill info">feat</span></td><td>agents: add QuantAgent research-agent stub</td></tr>
+        <tr><td><code>7d3964b</code></td><td><span class="pill info">feat</span></td><td>agents: wire Kronos classifier into pipeline _run_analysts()</td></tr>
+        <tr><td><code>518eb26</code></td><td><span class="pill info">feat</span></td><td>learning: wire ResearchAgent into StrategyTuner</td></tr>
+        <tr><td><code>c80a9ca</code></td><td><span class="pill info">feat</span></td><td>reports: add /reports/quantstats endpoint</td></tr>
+        <tr><td><code>ea07d90</code> · <code>051ffe1</code></td><td><span class="pill info">feat</span></td><td>dashboard: QuantStatsPanel + api.ts helpers</td></tr>
+        <tr><td><code>693eb4f</code></td><td><span class="pill info">feat</span></td><td>admin: add /admin/feature-flags runtime toggle</td></tr>
+        <tr><td><code>b17177d</code></td><td><span class="pill info">feat</span></td><td>jarvis: POST /jarvis/ask natural-language command bridge</td></tr>
+        <tr><td><code>b667627</code> · <code>949f1b3</code></td><td><span class="pill info">feat</span></td><td>dashboard: /jarvis command-center page (Stark mode)</td></tr>
+        <tr><td><code>5cdfc57</code></td><td><span class="pill info">feat</span></td><td>scripts: JARVIS ask-log daily aggregator (self-improving loop)</td></tr>
+        <tr><td><code>22250bb</code></td><td><span class="pill info">feat</span></td><td>scripts: Kronos threshold calibration + first-pass results</td></tr>
+        <tr><td><code>6950f2b</code></td><td><span class="pill neutral">docs</span></td><td>Stark Mode README at top-level docs/</td></tr>
+        <tr><td><code>20bf7fc</code></td><td><span class="pill info">feat</span></td><td>kronos: per-instrument bull/bear thresholds from calibration</td></tr>
+        <tr><td><code>86b055b</code></td><td><span class="pill warn">fix</span></td><td>jarvis: kill-switch pre-flight to /jarvis/ask pipeline_run</td></tr>
+        <tr><td><code>3194f8c</code></td><td><span class="pill info">feat</span></td><td>strategies: PPO RL strategy discovery scaffold</td></tr>
+        <tr><td><code>7f6f48a</code></td><td><span class="pill info">feat</span></td><td>questdb: dual-write shadow scaffold for Discord tables</td></tr>
+        <tr><td><code>29edfd1</code></td><td><span class="pill info">feat</span></td><td>monitoring: predictive maintenance with degradation score</td></tr>
+        <tr><td><code>191a78b</code> · <code>4fbe408</code></td><td><span class="pill info">feat</span></td><td>parallel: multi-account paper testing + dashboard comparison</td></tr>
+        <tr><td><code>1cacfd8</code></td><td><span class="pill bear">[safety]</span></td><td>readiness: codify Phase 3 criteria as programmatic GO/WAIT/NO-GO</td></tr>
+        <tr><td><code>8282ba0</code></td><td><span class="pill bear">[safety]</span></td><td>instruments: MES + MGC as validation-only (no order submission)</td></tr>
+        <tr><td><code>a5506b5</code> · <code>34c82f5</code></td><td><span class="pill info">feat</span></td><td>ws: /ws/pipeline real-time verdict push + dashboard wire</td></tr>
+        <tr><td><code>f7c0319</code></td><td><span class="pill info">feat</span></td><td>journal: daily trading journal auto-generator</td></tr>
+        <tr><td><code>a622083</code></td><td><span class="pill info">feat</span></td><td>analytics: Bayesian gate-v2 threshold calibrator</td></tr>
+        <tr><td><code>9d1194a</code> · <code>ab6d1fc</code></td><td><span class="pill info">feat</span></td><td>analytics: risk attribution engine + dashboard panel</td></tr>
+        <tr><td><code>13f3c05</code></td><td><span class="pill bear">[safety]</span></td><td>safety: per-account kill switch for parallel-paper</td></tr>
+        <tr><td><code>eccedb0</code></td><td><span class="pill info">feat</span></td><td>questdb: reconciliation cron + vault snapshots</td></tr>
+        <tr><td><code>9e29544</code></td><td><span class="pill warn">fix</span></td><td>commentary: evict poisoned cache rows; DEGRADED WARNING log</td></tr>
+        <tr><td><code>f3cc273</code></td><td><span class="pill bear">[safety]</span></td><td>orders: idempotency key to prevent duplicate paper-trade submissions</td></tr>
+        <tr><td><code>42270f8</code></td><td><span class="pill warn">fix</span></td><td>pnl: add realized_peak_equity for Phase 3 C5</td></tr>
+        <tr><td><code>7be204d</code></td><td><span class="pill bear">[safety]</span></td><td>test: risk/ coverage 45% → 95.55%</td></tr>
+        <tr><td><code>f2509ad</code></td><td><span class="pill info">feat</span></td><td>kronos: install Kronos package + first side-by-side validation</td></tr>
+        <tr><td><code>c6baee8</code></td><td><span class="pill info">feat</span></td><td>autonomous: activation runbook + preflight verifier</td></tr>
+        <tr><td><code>24a03ce</code></td><td><span class="pill info">feat</span></td><td>approval: post candidates + approvals to Discord webhook</td></tr>
+        <tr><td><code>3324f9f</code></td><td><span class="pill bear">[safety]</span></td><td>approval: Discord reaction → approval/reject/extend</td></tr>
+        <tr><td><code>6c0824a</code></td><td><span class="pill bear">[safety]</span></td><td>brokers: IB bracket orders (parent + stop + target)</td></tr>
+        <tr><td><code>977a1b7</code></td><td><span class="pill info">feat</span></td><td>scanner: IB market scanner + jarvis-scanner Hermes skill</td></tr>
+        <tr><td><code>96cfe82</code></td><td><span class="pill bear">[safety]</span></td><td>autonomous: scheduler activated 2026-05-21</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="routes">
+    <h2>HTTP routes — quick reference</h2>
+    <table>
+      <thead><tr><th>Route</th><th>Method</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>/health</code></td><td>GET</td><td>Engine + IBKR + LLM + TV-MCP status + kill switch</td></tr>
+        <tr><td><code>/jarvis/ask</code></td><td>POST</td><td>Natural-language command bridge (10 intents + refusal list)</td></tr>
+        <tr><td><code>/admin/feature-flags</code></td><td>GET / POST</td><td>Runtime toggle for ENABLE_KRONOS, ENABLE_RESEARCH_AGENT</td></tr>
+        <tr><td><code>/approvals/pending</code></td><td>GET</td><td>List pending approval candidates</td></tr>
+        <tr><td><code>/approvals/{id}/approve</code></td><td>POST</td><td>Approve + submit bracket order to IB</td></tr>
+        <tr><td><code>/approvals/{id}/reject</code></td><td>POST</td><td>Reject with reason</td></tr>
+        <tr><td><code>/approvals/{id}/extend</code></td><td>POST</td><td>Extend TTL (5-120 min)</td></tr>
+        <tr><td><code>/discord/briefing?symbol=MCL</code></td><td>GET</td><td>Pre-session briefing (Corey bias + IB + sentiment + signal)</td></tr>
+        <tr><td><code>/discord/bookmarks/{recent,search,stats,weekly-themes}</code></td><td>GET</td><td>Bookmark feed queries</td></tr>
+        <tr><td><code>/reports/quantstats?days=N</code></td><td>GET</td><td>Portfolio tearsheet metrics blob</td></tr>
+        <tr><td><code>/options/{skew,analyst,chain}/{symbol}</code></td><td>GET</td><td>Options stage 6 surfaces</td></tr>
+        <tr><td><code>/ib-scanner/{top-movers,futures-movers,raw}</code></td><td>GET</td><td>Live IB market scanner</td></tr>
+        <tr><td><code>/attribution/{daily,window}</code></td><td>GET</td><td>P&L decomposition by analyst contribution</td></tr>
+        <tr><td><code>/readiness/phase3</code></td><td>GET</td><td>10-criterion GO/WAIT/NO-GO live trading readiness</td></tr>
+        <tr><td><code>/readiness/gate-v2-calibration?days=N</code></td><td>GET</td><td>Bayesian threshold recommendations</td></tr>
+        <tr><td><code>/safety/account/{A|B}/kill-state</code></td><td>GET / POST</td><td>Per-account kill switch state + manual clear</td></tr>
+        <tr><td><code>/health/predictive</code></td><td>GET</td><td>Degradation score + history (501 when disabled)</td></tr>
+        <tr><td><code>/portfolio/paper/account/{A|B}/stats</code></td><td>GET</td><td>Per-account paper trading stats</td></tr>
+        <tr><td><code>/ws/pipeline</code></td><td>WS</td><td>Real-time verdict + analyst-signal push</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="skills">
+    <h2>Hermes skills — 12 production</h2>
+    <p>All at <code>/home/mattm/.hermes/skills/</code> (WSL filesystem — not the Windows path). Each has <code>SKILL.md</code> + <code>README.md</code> + <code>examples.md</code> per the verified v0.10.0 schema documented in <code>_CONVENTIONS.md</code>.</p>
+    <table>
+      <thead><tr><th>Skill</th><th>Trigger phrases</th><th>Cron?</th></tr></thead>
+      <tbody>
+        <tr><td><code>jarvis-morning-brief</code></td><td>"morning brief" · "situation report"</td><td>5:30am CT weekday</td></tr>
+        <tr><td><code>jarvis-voice</code></td><td>any Telegram voice message</td><td>event-triggered</td></tr>
+        <tr><td><code>jarvis-discord-bookmarks</code></td><td>"show recent bookmarks" · "search bookmarks for X"</td><td>on-demand</td></tr>
+        <tr><td><code>jarvis-quantstats-tearsheet</code></td><td>"tearsheet" · "portfolio metrics"</td><td>4:15pm CT weekday</td></tr>
+        <tr><td><code>jarvis-self-review</code></td><td>"self review" · "jarvis daily log"</td><td>11pm CT daily</td></tr>
+        <tr><td><code>jarvis-pipeline-status</code></td><td>"pipeline status MES"</td><td>on-demand</td></tr>
+        <tr><td><code>jarvis-regime-check</code></td><td>"what regime are we in"</td><td>on-demand</td></tr>
+        <tr><td><code>jarvis-kill-switch-status</code></td><td>"kill switch status"</td><td>on-demand</td></tr>
+        <tr><td><code>jarvis-positions</code></td><td>"show positions" · "what am I in"</td><td>on-demand</td></tr>
+        <tr><td><code>jarvis-paper-roi</code></td><td>"paper roi" · "how am I doing"</td><td>on-demand</td></tr>
+        <tr><td><code>jarvis-approval-queue</code></td><td>"list pending approvals" · "approve N" · "reject N"</td><td>on-demand</td></tr>
+        <tr><td><code>jarvis-scanner</code></td><td>"what's moving" · "top movers" · "unusual volume"</td><td>on-demand</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="runbooks">
+    <h2>Runbooks at <code>docs/runbooks/</code></h2>
+    <table>
+      <thead><tr><th>Runbook</th><th>When to read</th></tr></thead>
+      <tbody>
+        <tr><td><code>STARK_MODE_OPERATING_PHILOSOPHY.md</code></td><td>First — operating principles + non-negotiables</td></tr>
+        <tr><td><code>CLAUDE_CODE_AND_HERMES_INTEGRATION_MAP.md</code></td><td>Choosing which surface for a task</td></tr>
+        <tr><td><code>AUTONOMOUS_PIPELINE_RUNBOOK.md</code></td><td>Operating the autonomous scheduler + approval queue</td></tr>
+        <tr><td><code>DISCORD_APPROVAL_INTERACTION_RUNBOOK.md</code></td><td>Reaction emoji mapping + bot setup</td></tr>
+        <tr><td><code>DISCORD_INTEL_RUNBOOK.md</code></td><td>All Discord-derived data surfaces</td></tr>
+        <tr><td><code>DISCORD_BRIEFING_RUNBOOK.md</code></td><td>Pre-session prep composed endpoint</td></tr>
+        <tr><td><code>KRONOS_AND_RESEARCH_AGENT_RUNBOOK.md</code></td><td>Stub-to-live activation + calibration</td></tr>
+        <tr><td><code>QUANTSTATS_TEARSHEET_RUNBOOK.md</code></td><td>Portfolio analytics endpoint + widget</td></tr>
+        <tr><td><code>RISK_ATTRIBUTION_RUNBOOK.md</code></td><td>P&L decomposition methodology</td></tr>
+        <tr><td><code>GATE_V2_CALIBRATOR_RUNBOOK.md</code></td><td>Bayesian threshold recommendations</td></tr>
+        <tr><td><code>TRADING_JOURNAL_RUNBOOK.md</code></td><td>Daily auto-generated journal</td></tr>
+        <tr><td><code>IB_SCANNER_RUNBOOK.md</code></td><td>Live market scanner + Hermes skill</td></tr>
+        <tr><td><code>IB_CONNECTOR_OVERVIEW.md</code></td><td>IB Gateway + bracket order details</td></tr>
+        <tr><td><code>PARALLEL_PAPER_TESTING_RUNBOOK.md</code></td><td>A/B paper testing + per-account kill switch</td></tr>
+        <tr><td><code>PREDICTIVE_MAINTENANCE_RUNBOOK.md</code></td><td>Degradation score + preemptive restart</td></tr>
+        <tr><td><code>QUESTDB_MIGRATION_RUNBOOK.md</code></td><td>Time-series DB shadow + reconciliation</td></tr>
+        <tr><td><code>RL_STRATEGY_DISCOVERY_RUNBOOK.md</code></td><td>PPO trading-policy training</td></tr>
+        <tr><td><code>SECOND_BRAIN_VAULT_OPERATIONS_RUNBOOK.md</code></td><td>Vault roots + gbrain sync + peer coordination</td></tr>
+        <tr><td><code>PHASE3_READINESS_CRITERIA.md</code></td><td>10 codified live-trading readiness criteria</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="activation">
+    <h2>Activation state — env flags</h2>
+    <p>All in <code>engine/.env</code> (gitignored). Defaults below match production state right now.</p>
+    <table>
+      <thead><tr><th>Flag</th><th>Value</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>LIVE_TRADING_ENABLED</code></td><td><span class="pill bull">False</span></td><td>Hardcoded paper-only invariant. Phase 3 work required to flip.</td></tr>
+        <tr><td><code>PAPER_TRADING</code></td><td><span class="pill bull">True</span></td><td>IB paper port 4002, account DUP662235</td></tr>
+        <tr><td><code>REQUIRE_HUMAN_APPROVAL</code></td><td><span class="pill bull">True</span></td><td>Every order requires explicit approval</td></tr>
+        <tr><td><code>ENABLE_AUTONOMOUS_PIPELINE</code></td><td><span class="pill bull">1</span></td><td><strong>Active.</strong> Tick every 600s, threshold 0.75, symbols MCL+MNQ</td></tr>
+        <tr><td><code>ENABLE_BRACKET_ORDERS</code></td><td><span class="pill bull">1</span></td><td><strong>Active.</strong> Approvals submit as parent+stop+target atomic</td></tr>
+        <tr><td><code>ENABLE_IB_SCANNER</code></td><td><span class="pill bull">1</span></td><td><strong>Active.</strong> /ib-scanner/* routes reachable</td></tr>
+        <tr><td><code>DISCORD_PERSONAL_BOT_TOKEN</code></td><td><span class="pill bull">set</span></td><td>Reaction watcher connected as bot 1507172328021430403</td></tr>
+        <tr><td><code>DISCORD_PERSONAL_USER_ID</code></td><td><span class="pill bull">set</span></td><td>Only your reactions are honored</td></tr>
+        <tr><td><code>JARVIS_DISCORD_APPROVAL_WEBHOOK</code></td><td><span class="pill bull">set</span></td><td>Candidates auto-post to channel 1490851279180660819</td></tr>
+        <tr><td><code>ENABLE_KRONOS</code></td><td><span class="pill neutral">0</span></td><td>Kronos installed + calibrated; stub returns neutral until enabled</td></tr>
+        <tr><td><code>ENABLE_RESEARCH_AGENT</code></td><td><span class="pill neutral">0</span></td><td>LLM hypothesis generator stub; $5/day cost gate when on</td></tr>
+        <tr><td><code>ENABLE_OPTIONS_ANALYST</code></td><td><span class="pill neutral">0</span></td><td>Stage 6 wired; needs skew/term fetchers (done) + activation</td></tr>
+        <tr><td><code>ENABLE_PREDICTIVE_MAINTENANCE</code></td><td><span class="pill neutral">0</span></td><td>Alert-only when 1; auto-restart needs second flag</td></tr>
+        <tr><td><code>ENABLE_PARALLEL_PAPER</code></td><td><span class="pill neutral">0</span></td><td>Account A/B dual-emit; requires challenger YAML</td></tr>
+        <tr><td><code>ENABLE_GATE_V2_CALIBRATOR</code></td><td><span class="pill neutral">0</span></td><td>Bayesian recommendations only (read-only safe)</td></tr>
+        <tr><td><code>ENABLE_QUESTDB_DUAL_WRITE</code></td><td><span class="pill neutral">0</span></td><td>SQLite primary stays canonical</td></tr>
+        <tr><td><code>ENABLE_RL_STRATEGY_DISCOVERY</code></td><td><span class="pill neutral">0</span></td><td>PPO training-time only; CPU-friendly --quick-smoke</td></tr>
+        <tr><td><code>ENABLE_RISK_ATTRIBUTION</code></td><td><span class="pill neutral">0</span></td><td>Read-only when on; vault writeback via script</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="phase3">
+    <h2>Phase 3 readiness — 8 of 10 PASS</h2>
+    <table>
+      <thead><tr><th>Criterion</th><th>Status</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td><code>paper_trading_window ≥ 60d</code></td><td><span class="pill bull">PASS</span></td><td>Oldest trade 80d ago</td></tr>
+        <tr><td><code>paper_trades_count ≥ 100</code></td><td><span class="pill bear">FAIL</span></td><td>16 closed trades — needs more autonomous volume</td></tr>
+        <tr><td><code>win_rate ≥ 55%</code></td><td><span class="pill bull">PASS</span></td><td>12/15 = 80%</td></tr>
+        <tr><td><code>profit_factor ≥ 1.5</code></td><td><span class="pill bull">PASS</span></td><td>228 (small sample inflated)</td></tr>
+        <tr><td><code>max_drawdown ≤ 8%</code></td><td><span class="pill bear">FAIL</span></td><td>40.2% — real strategy event 2026-05-09 to 05-11</td></tr>
+        <tr><td><code>sortino_ratio ≥ 1.0</code></td><td><span class="pill bull">PASS</span></td><td>1602 (small sample inflated)</td></tr>
+        <tr><td><code>consecutive_loss_streak ≤ 5</code></td><td><span class="pill bull">PASS</span></td><td>Max streak 2</td></tr>
+        <tr><td><code>kill_switch_invocations ≤ 2</code></td><td><span class="pill bull">PASS</span></td><td>1 in last 60d</td></tr>
+        <tr><td><code>engine_uptime_stability</code></td><td><span class="pill bull">PASS</span></td><td>0 restarts in 30d (pre-today)</td></tr>
+        <tr><td><code>safety_layer_test_coverage ≥ 95%</code></td><td><span class="pill bull">PASS</span></td><td>95.55% (up from 45%)</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <h4>The path to GO</h4>
+      <p>Two blockers remain — both <strong>trading-quality</strong> issues, not code issues:</p>
+      <p>• <strong>C2 trade count:</strong> autonomous scheduler running with conservative 0.75 threshold will produce these naturally as candidates emerge and you approve them.</p>
+      <p>• <strong>C5 drawdown:</strong> 40.2% real strategy event on 2026-05-09 to 2026-05-11 — vault drawdown analysis at <code>second-brain/raw/wiki/trading/drawdown-analysis-2026-05-11.md</code> identified gains evaporating through later losses. The strategy that produced the May 9 peak needs investigation. Risk attribution endpoint <code>/attribution/daily?date=2026-05-09</code> can decompose what drove the peak.</p>
+    </div>
+  </section>
+
+  <section id="risks">
+    <h2>Known risks — explicit, mitigated for paper, gating for live</h2>
+    <div class="callout warn">
+      <h4>RISK 1 — IB paper bracket race</h4>
+      <p>IB paper account sometimes fills MKT parent orders instantly; the STP child can race the fill. Existing <code>submit_entry_with_stop</code> in <code>safety_layer.py</code> has the same race. Mitigated in paper mode (worst case: orphaned child order, logged). <strong>Phase 3 prerequisite:</strong> add <code>_verify_parent_linkage()</code> post-submission check.</p>
+    </div>
+    <div class="callout warn">
+      <h4>RISK 2 — Reaction-as-auth security</h4>
+      <p>If your Discord account is compromised, an attacker with access to channel <code>1490851279180660819</code> can ✅-react to bot-posted approval messages. Mitigated today by paper-only mode (worst case: logged paper order). <strong>Phase 3 prerequisite:</strong> add signed HMAC token to bot-posted messages that the watcher verifies before approving.</p>
+    </div>
+    <div class="callout warn">
+      <h4>RISK 3 — Pro-rata risk attribution double-counts correlated signals</h4>
+      <p>When two structurally correlated analysts (e.g. <code>technical</code> + <code>regime_adjust</code> from STC) both signal bullish on the same trade, each receives half the credit for what's effectively one underlying signal. Attribution is accurate as a proportional audit trail but should not be read as a causal scorecard. Documented in <code>RISK_ATTRIBUTION_RUNBOOK.md</code>; SHAP-style attribution is the future-work path.</p>
+    </div>
+  </section>
+
+  <section id="cheatsheet">
+    <h2>Operator cheatsheet — quick reference</h2>
+
+    <h3>Status checks (PowerShell, paste-ready)</h3>
+<pre><span class="c"># pull the API key from .env one time</span>
+<span class="k">$key</span> = (<span class="n">Select-String</span> -<span class="n">Path</span> <span class="s">'engine\.env'</span> -<span class="n">Pattern</span> <span class="s">'^API_KEY='</span> | <span class="n">Select-Object</span> -<span class="n">First</span> 1).<span class="n">Line</span> -<span class="n">replace</span> <span class="s">'^API_KEY='</span>
+<span class="k">$hdr</span> = @{ <span class="s">'X-API-Key'</span> = <span class="k">$key</span> }
+
+<span class="c"># engine + autonomous + safety</span>
+<span class="n">Invoke-RestMethod</span> <span class="s">'http://127.0.0.1:8010/health'</span> -<span class="n">Headers</span> <span class="k">$hdr</span>
+<span class="n">Invoke-RestMethod</span> <span class="s">'http://127.0.0.1:8010/approvals/pending'</span> -<span class="n">Headers</span> <span class="k">$hdr</span>
+<span class="n">Invoke-RestMethod</span> <span class="s">'http://127.0.0.1:8010/admin/feature-flags'</span> -<span class="n">Headers</span> <span class="k">$hdr</span>
+<span class="n">Invoke-RestMethod</span> <span class="s">'http://127.0.0.1:8010/readiness/phase3'</span> -<span class="n">Headers</span> <span class="k">$hdr</span>
+
+<span class="c"># analytics</span>
+<span class="n">Invoke-RestMethod</span> <span class="s">'http://127.0.0.1:8010/reports/quantstats?days=90'</span> -<span class="n">Headers</span> <span class="k">$hdr</span>
+<span class="n">Invoke-RestMethod</span> <span class="s">'http://127.0.0.1:8010/attribution/window?days=30'</span> -<span class="n">Headers</span> <span class="k">$hdr</span>
+<span class="n">Invoke-RestMethod</span> <span class="s">'http://127.0.0.1:8010/discord/briefing?symbol=MCL'</span> -<span class="n">Headers</span> <span class="k">$hdr</span>
+
+<span class="c"># scanner</span>
+<span class="n">Invoke-RestMethod</span> <span class="s">'http://127.0.0.1:8010/ib-scanner/top-movers'</span> -<span class="n">Headers</span> <span class="k">$hdr</span></pre>
+
+    <h3>Hermes from Telegram</h3>
+    <p>Send to your bot — any of these route through skills automatically:</p>
+    <ul>
+      <li><code>"morning brief"</code> or <code>"situation report"</code></li>
+      <li><code>"tearsheet"</code> or <code>"portfolio metrics this year"</code></li>
+      <li><code>"what's moving"</code> or <code>"top movers"</code></li>
+      <li><code>"show pending approvals"</code> · <code>"approve 17"</code> · <code>"reject 17 because chop"</code></li>
+      <li><code>"kill switch status"</code> · <code>"show positions"</code> · <code>"paper roi"</code></li>
+      <li>Or send a voice message: <em>"jarvis, what's the MES setup for the open?"</em></li>
+    </ul>
+
+    <h3>Engine restart</h3>
+<pre>cd C:\Users\mattm\ThinkorSwim\jarvis-trader
+.\restart_engine.ps1   <span class="c"># PM2-aware; polls /health for 360s</span></pre>
+
+    <h3>Deactivate autonomous loop</h3>
+<pre><span class="c"># edit engine/.env</span>
+ENABLE_AUTONOMOUS_PIPELINE=0
+<span class="c"># then restart engine. Pending candidates auto-expire on TTL (30 min). Nothing auto-executes.</span></pre>
+
+    <h3>Loosen / tighten the autonomous bar</h3>
+<pre><span class="c"># edit engine/.env</span>
+AUTONOMOUS_CONFIDENCE_THRESHOLD=0.65   <span class="c"># lower = more candidates</span>
+AUTONOMOUS_TICK_SECONDS=300             <span class="c"># lower = more frequent</span>
+<span class="c"># restart engine</span></pre>
+
+    <h3>Vault paths</h3>
+    <ul>
+      <li><strong>Canonical vault:</strong> <code>C:\Users\mattm\master-jarvis\second-brain\raw\</code> (gbrain-ingested)</li>
+      <li><strong>Today's session:</strong> <code>_session-2026-05-21-amo/wiki/</code></li>
+      <li><strong>Yesterday's bulk extraction:</strong> <code>_session-2026-05-20-amo/</code> (4,581 files)</li>
+      <li><strong>Auto-generated:</strong> <code>_session-{journal,attribution,reconcile,research,calibration}/</code></li>
+      <li><strong>Hermes skills:</strong> <code>/home/mattm/.hermes/skills/</code> (WSL filesystem)</li>
+    </ul>
+  </section>
+
+  <section id="next">
+    <h2>Recommended next steps</h2>
+
+    <h3>Tier 1 — Observe</h3>
+    <ol>
+      <li><strong>Let the autonomous loop run for 24-48 market hours before tuning anything.</strong> The first tick showed both MCL and MNQ returning <code>priority=skip</code> from the fund manager — that's the real bottleneck. Wait to see whether candidates emerge naturally at 0.75 confidence.</li>
+      <li><strong>Watch Discord channel <code>1490851279180660819</code>.</strong> Every candidate posts there with the rich embed. If you go a full session with zero candidates, that's diagnostic.</li>
+      <li><strong>Reply with ✅ / ❌ / ⏸</strong> when candidates arrive — the loop validates end-to-end from there.</li>
+    </ol>
+
+    <h3>Tier 2 — Tune based on observation</h3>
+    <ol>
+      <li><strong>If too quiet</strong> → drop <code>AUTONOMOUS_CONFIDENCE_THRESHOLD</code> from 0.75 → 0.65. Single env line + restart.</li>
+      <li><strong>If fund manager is the bottleneck</strong> (priority=skip on every tick) → investigate <code>engine/agents/fund_manager.py</code>. The commentary parser cache fix should reduce this, but watch for recurrence.</li>
+      <li><strong>Run gate-v2 calibrator weekly</strong> — <code>/readiness/gate-v2-calibration?days=90</code> — once you have 50+ fresh verdicts, the Bayesian recommendations gain "strong" strength and become actionable.</li>
+    </ol>
+
+    <h3>Tier 3 — Address the 2 known risks for Phase 3</h3>
+    <ol>
+      <li>Write <code>_verify_parent_linkage()</code> post-submission check for IB brackets.</li>
+      <li>Add HMAC token to bot-posted approval messages for reaction-handler auth.</li>
+    </ol>
+
+    <h3>Tier 4 — Eventually</h3>
+    <ol>
+      <li>Phase 3 live trading transition after 60+ days of autonomous paper with PF ≥ 1.5 and DD ≤ 8%. C2 and C5 should resolve naturally as the autonomous loop runs.</li>
+      <li>SHAP-style risk attribution to replace pro-rata.</li>
+      <li>RL strategy discovery actual training runs (GPU recommended; CPU works for --quick-smoke validation).</li>
+      <li>QuestDB cut-over for time-series read performance after dual-write reconciliation shows clean delta for 30 days.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>Generated 2026-05-21 · jarvis-trader/feat/tradingview-mcp-gamma-kraken · <code>docs/SESSION_2026-05-21_stark_mode.html</code></p>
+    <p>← <a href="SESSIONS_INDEX.html">Sessions index</a> · <a href="JARVIS_TRADER_HERMES_COMPLETE.html">Complete system overview</a></p>
+    <p>Engine: 127.0.0.1:8010 · Dashboard: 127.0.0.1:3010 · IB Gateway paper: 127.0.0.1:4002 · Discord channel: 1490851279180660819 · Bot: 1507172328021430403</p>
+  </footer>
+</main>
+
+<script>
+  // smooth scroll for sidebar links
+  document.querySelectorAll('aside a').forEach(a=>{
+    a.addEventListener('click',e=>{
+      const id=a.getAttribute('href');
+      if(id&&id.startsWith('#')){
+        const el=document.querySelector(id);
+        if(el){e.preventDefault();el.scrollIntoView({behavior:'smooth',block:'start'})}
+      }
+    });
+  });
+  // highlight active section on scroll
+  const sections=document.querySelectorAll('section[id]');
+  const links=document.querySelectorAll('aside a[href^="#"]');
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        const id='#'+e.target.id;
+        links.forEach(l=>l.style.borderLeftColor=l.getAttribute('href')===id?'var(--accent)':'transparent');
+        links.forEach(l=>l.style.color=l.getAttribute('href')===id?'var(--fg)':'');
+      }
+    });
+  },{rootMargin:'-30% 0px -60% 0px'});
+  sections.forEach(s=>obs.observe(s));
+</script>
+
+</body>
+</html>

@@ -1,0 +1,449 @@
+"""
+HiddenPivots Pattern Scanner — API Router
+Endpoints for scanning symbols for HP patterns, analyzing individual symbols,
+and fetching the HP level ladder.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/hidden-pivots", tags=["hidden-pivots"])
+
+# Dependency injection
+_data_manager = None
+_config = None
+
+
+def inject_dependencies(data_manager, config) -> None:
+    global _data_manager, _config
+    _data_manager = data_manager
+    _config = config
+
+
+# ── Request / Response schemas ─────────────────────────────────────────────────
+
+
+class ScreenRequest(BaseModel):
+    symbols: list[str]
+    timeframe: str = "1d"
+    benchmark: str = "SPY"
+
+
+class HPSignal(BaseModel):
+    symbol: str
+    timeframe: str
+    pattern: Optional[str]
+    bias: str
+    trigger_price: Optional[float]
+    tight_stop: Optional[float]
+    riskier_stop: Optional[float]
+    targets: list[float]
+    hp_ou_level: Optional[float]
+    ema_alignment: str
+    rs_rw_score: float
+    rs_rw_label: str
+    soh: bool
+    oscillator_state: str
+    bars_since_cross: int = -1
+    last_cross_dir: str = "none"
+    confidence: float
+    notes: str
+
+
+class ScanResponse(BaseModel):
+    scan_time: str
+    symbols_scanned: int
+    signals: list[HPSignal]
+    soh_symbols: list[str]
+    watch_symbols: list[str]
+    # Full per-symbol result for every scanned name (incl. WATCH/SOH), so UIs can
+    # render the level ladder for non-armed setups. Additive; `signals` /
+    # `soh_symbols` / `watch_symbols` keep their original meaning.
+    details: list[HPSignal] = Field(default_factory=list)
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+# Fallback scan universe when settings.SCAN_SYMBOLS is unavailable (e.g. tests).
+# Kept in sync with config.Settings.SCAN_SYMBOLS. Analysis-only — the HP scanner
+# never routes orders, so this is intentionally broader than the trade watchlist.
+DEFAULT_WATCHLIST = [
+    # futures
+    "MES",
+    "MNQ",
+    "MGC",
+    "MCL",
+    # ETFs / sector
+    "SPY",
+    "QQQ",
+    "IWM",
+    "DIA",
+    "GLD",
+    "SLV",
+    "SMH",
+    "XLE",
+    # mega-cap / liquid single names
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "AMD",
+    "AVGO",
+    "NFLX",
+    # high-options-volume momentum names
+    "PLTR",
+    "COIN",
+    "MSTR",
+    "MU",
+    "CRM",
+    "UBER",
+    "JPM",
+    "BAC",
+    "XOM",
+    "LLY",
+    "COST",
+]
+
+_last_scan_cache: Optional[ScanResponse] = None
+
+
+def _get_watchlist() -> list[str]:
+    if _config is not None:
+        symbols = getattr(_config, "SCAN_SYMBOLS", None)
+        if symbols:
+            return list(symbols)
+    return DEFAULT_WATCHLIST
+
+
+async def _fetch_and_scan(
+    symbol: str,
+    timeframe: str,
+    benchmark_df=None,
+) -> Optional[HPSignal]:
+    """Fetch bars for one symbol and run the HP scan."""
+    try:
+        from analysis.hidden_pivots import full_hidden_pivots_scan
+
+        # Map timeframe strings to lookback days
+        lookback_map = {"1d": 200, "1h": 30, "5m": 5, "15m": 7, "4h": 60}
+        lookback = lookback_map.get(timeframe, 200)
+
+        df = await _data_manager.get_bars(symbol, lookback_days=lookback, timeframe=timeframe)
+        if df is None or df.empty:
+            logger.debug("No data for %s/%s", symbol, timeframe)
+            return None
+
+        result = full_hidden_pivots_scan(symbol, df, benchmark_df=benchmark_df, timeframe=timeframe)
+        return HPSignal(**result.__dict__)
+
+    except Exception as e:
+        logger.warning("HP scan failed for %s: %s", symbol, e)
+        return None
+
+
+async def _fetch_benchmark(benchmark: str, timeframe: str):
+    """Fetch benchmark bars for r/s calculation."""
+    try:
+        lookback_map = {"1d": 30, "1h": 10, "5m": 2, "15m": 3, "4h": 20}
+        lookback = lookback_map.get(timeframe, 30)
+        return await _data_manager.get_bars(benchmark, lookback_days=lookback, timeframe=timeframe)
+    except Exception as e:
+        logger.debug("Benchmark fetch failed (%s): %s", benchmark, e)
+        return None
+
+
+async def _notify_hp_signal(sig: HPSignal) -> None:
+    """Send WhatsApp alert for a high-confidence HP signal (confidence >= 0.70)."""
+    try:
+        from notifications.whatsapp import send_whatsapp_message
+
+        targets_str = "-".join(f"{t:.2f}" for t in sig.targets[:3]) if sig.targets else "N/A"
+        hp_ou_str = f"{sig.hp_ou_level:.2f}" if sig.hp_ou_level else "N/A"
+        msg = (
+            f"🎯 HP SIGNAL [{sig.timeframe.upper()}]\n"
+            f"Symbol: {sig.symbol} | {sig.bias}\n"
+            f"Pattern: {(sig.pattern or 'unknown').replace('_', ' ').title()}\n"
+            f"Trigger: {sig.trigger_price:.2f}\n"
+            f"Targets: {targets_str}\n"
+            f"Tight stop: {sig.tight_stop:.2f} | Riskier: {sig.riskier_stop:.2f}\n"
+            f"HP o/u: {hp_ou_str} | EMA: {sig.ema_alignment}\n"
+            f"Oscillator: {sig.oscillator_state} | r/s: {sig.rs_rw_label}\n"
+            f"Confidence: {sig.confidence:.0%}"
+        )
+        await send_whatsapp_message(msg, alert_type="hp_signal", symbol=sig.symbol)
+        logger.info("HP WhatsApp alert sent for %s (%s)", sig.symbol, sig.bias)
+    except Exception as e:
+        logger.warning("HP WhatsApp notification failed for %s: %s", sig.symbol, e)
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+
+@router.get("/scan", response_model=ScanResponse)
+async def scan_watchlist(
+    timeframe: str = Query("1d", description="Bar timeframe: 1d, 1h, 4h, 15m, 5m"),
+    benchmark: str = Query("SPY", description="Benchmark symbol for r/s calculation"),
+):
+    """
+    Scan all watchlist symbols for HiddenPivots patterns.
+    Returns signals, SOH symbols, and WATCH setups.
+    """
+    global _last_scan_cache
+
+    if _data_manager is None:
+        raise HTTPException(status_code=503, detail="Data manager not initialized")
+
+    symbols = _get_watchlist()
+    benchmark_df = await _fetch_benchmark(benchmark, timeframe)
+
+    # Run all scans concurrently
+    tasks = [_fetch_and_scan(sym, timeframe, benchmark_df) for sym in symbols]
+    results = await asyncio.gather(*tasks, return_exceptions=False)
+
+    signals = []
+    soh_symbols = []
+    watch_symbols = []
+
+    for sig in results:
+        if sig is None:
+            continue
+        if sig.soh or sig.bias == "SOH":
+            soh_symbols.append(sig.symbol)
+        elif sig.bias == "WATCH":
+            watch_symbols.append(sig.symbol)
+        elif sig.bias in ("LONG", "SHORT") and sig.confidence >= 0.5:
+            signals.append(sig)
+
+    # Sort signals by confidence descending
+    signals.sort(key=lambda s: s.confidence, reverse=True)
+
+    # Send WhatsApp alerts for high-confidence confirmed signals (confidence >= 0.70)
+    for sig in signals:
+        if sig.confidence >= 0.70:
+            await _notify_hp_signal(sig)
+
+    response = ScanResponse(
+        scan_time=datetime.now(timezone.utc).isoformat(),
+        symbols_scanned=len(symbols),
+        signals=signals,
+        soh_symbols=soh_symbols,
+        watch_symbols=watch_symbols,
+        details=[s for s in results if s is not None],
+    )
+    _last_scan_cache = response
+    return response
+
+
+@router.get("/analyze/{symbol}", response_model=HPSignal)
+async def analyze_symbol(
+    symbol: str,
+    timeframe: str = Query("1d", description="Bar timeframe"),
+    benchmark: str = Query("SPY", description="Benchmark for r/s"),
+):
+    """
+    Full HP analysis for a single symbol.
+    Returns complete HPScanResult including level ladder and pattern details.
+    """
+    if _data_manager is None:
+        raise HTTPException(status_code=503, detail="Data manager not initialized")
+
+    benchmark_df = await _fetch_benchmark(benchmark, timeframe)
+    result = await _fetch_and_scan(symbol.upper(), timeframe, benchmark_df)
+
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"No data available for {symbol}")
+
+    return result
+
+
+@router.get("/levels/{symbol}")
+async def get_hp_levels(
+    symbol: str,
+    timeframe: str = Query("1d", description="Bar timeframe"),
+) -> dict[str, Any]:
+    """
+    Return just the HP level ladder for a symbol (A-B-C-D structure + fibonacci levels).
+    Lightweight endpoint for dashboard overlays.
+    """
+    if _data_manager is None:
+        raise HTTPException(status_code=503, detail="Data manager not initialized")
+
+    try:
+        from analysis.hidden_pivots import compute_hp_ou_level
+
+        lookback_map = {"1d": 200, "1h": 30, "5m": 5}
+        lookback = lookback_map.get(timeframe, 200)
+        df = await _data_manager.get_bars(
+            symbol.upper(), lookback_days=lookback, timeframe=timeframe
+        )
+
+        if df is None or df.empty:
+            raise HTTPException(status_code=404, detail=f"No data for {symbol}")
+
+        hp_ou, levels, swing = compute_hp_ou_level(df)
+
+        return {
+            "symbol": symbol.upper(),
+            "timeframe": timeframe,
+            "hp_ou_level": round(hp_ou, 4) if hp_ou else None,
+            "level_ladder": [round(l, 4) for l in levels],  # noqa: E741  # OHLC convention
+            "swing_structure": (
+                {
+                    "a_price": round(swing.a_price, 4),
+                    "b_price": round(swing.b_price, 4),
+                    "c_price": round(swing.c_price, 4),
+                    "d_price": round(swing.d_price, 4),
+                }
+                if swing
+                else None
+            ),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("HP levels failed for %s: %s", symbol, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/screen", response_model=ScanResponse)
+async def screen_symbols(request: ScreenRequest):
+    """
+    Run HP scan on a specific list of symbols.
+    Useful for targeted screens (e.g., options candidates, sector scan).
+    """
+    if _data_manager is None:
+        raise HTTPException(status_code=503, detail="Data manager not initialized")
+
+    symbols = [s.upper() for s in request.symbols]
+    benchmark_df = await _fetch_benchmark(request.benchmark, request.timeframe)
+
+    tasks = [_fetch_and_scan(sym, request.timeframe, benchmark_df) for sym in symbols]
+    results = await asyncio.gather(*tasks, return_exceptions=False)
+
+    signals = []
+    soh_symbols = []
+    watch_symbols = []
+
+    for sig in results:
+        if sig is None:
+            continue
+        if sig.soh or sig.bias == "SOH":
+            soh_symbols.append(sig.symbol)
+        elif sig.bias == "WATCH":
+            watch_symbols.append(sig.symbol)
+        elif sig.bias in ("LONG", "SHORT") and sig.confidence >= 0.4:
+            signals.append(sig)
+
+    signals.sort(key=lambda s: s.confidence, reverse=True)
+
+    return ScanResponse(
+        scan_time=datetime.now(timezone.utc).isoformat(),
+        symbols_scanned=len(symbols),
+        signals=signals,
+        soh_symbols=soh_symbols,
+        watch_symbols=watch_symbols,
+        details=[s for s in results if s is not None],
+    )
+
+
+@router.get("/report", response_model=Optional[ScanResponse])
+async def get_last_report():
+    """
+    Return the most recent cached scan result without re-fetching data.
+    Use this for dashboard polling — call /scan to refresh.
+    """
+    if _last_scan_cache is None:
+        return None
+    return _last_scan_cache
+
+
+@router.get("/confluence/{symbol}")
+async def check_confluence(
+    symbol: str,
+    timeframe: str = Query("1d", description="Bar timeframe"),
+    benchmark: str = Query("SPY", description="Benchmark for r/s"),
+) -> dict:
+    """
+    Cross-check HP pattern against last 5-stage pipeline decision for dual confirmation.
+
+    HIGH_CONVICTION: HP signal + pipeline both agree direction (confidence >= 0.70)
+    WEAK: Both agree but confidence < 0.70
+    DIVERGENT: HP and pipeline disagree
+    HP_ONLY: HP signal found, no pipeline decision available
+    NO_SIGNAL: Neither system has a directional signal
+    """
+    if _data_manager is None:
+        raise HTTPException(status_code=503, detail="Data manager not initialized")
+
+    sym = symbol.upper()
+
+    # Run HP scan
+    benchmark_df = await _fetch_benchmark(benchmark, timeframe)
+    hp_result = await _fetch_and_scan(sym, timeframe, benchmark_df)
+
+    # Fetch last pipeline decision for this symbol
+    pipeline_decision = None
+    pipeline_direction = "HOLD"
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "http://localhost:8010/decisions/recent",
+                params={"limit": 5},
+            )
+            if resp.status_code == 200:
+                decisions = resp.json()
+                # Find most recent decision for this symbol
+                for d in decisions:
+                    if d.get("symbol", "").upper() == sym:
+                        pipeline_decision = d
+                        pipeline_direction = d.get("direction", "HOLD")
+                        break
+    except Exception as e:
+        logger.debug("Pipeline decision fetch failed for %s: %s", sym, e)
+
+    hp_bias = hp_result.bias if hp_result else "WATCH"
+    hp_conf = hp_result.confidence if hp_result else 0.0
+
+    # Determine alignment
+    both_long = hp_bias == "LONG" and pipeline_direction == "LONG"
+    both_short = hp_bias == "SHORT" and pipeline_direction == "SHORT"
+    aligned = both_long or both_short
+
+    if not hp_result or hp_bias in ("WATCH", "SOH"):
+        verdict = "NO_SIGNAL"
+    elif aligned and hp_conf >= 0.70:
+        verdict = "HIGH_CONVICTION"
+    elif aligned:
+        verdict = "WEAK"
+    elif pipeline_direction == "HOLD" or pipeline_decision is None:
+        verdict = "HP_ONLY"
+    else:
+        verdict = "DIVERGENT"
+
+    return {
+        "symbol": sym,
+        "timeframe": timeframe,
+        "verdict": verdict,
+        "aligned": aligned,
+        "hp_bias": hp_bias,
+        "hp_confidence": hp_conf,
+        "hp_pattern": hp_result.pattern if hp_result else None,
+        "hp_trigger": hp_result.trigger_price if hp_result else None,
+        "pipeline_direction": pipeline_direction,
+        "pipeline_conviction": pipeline_decision.get("conviction") if pipeline_decision else None,
+        "hp_signal": hp_result.__dict__ if hp_result else None,
+    }

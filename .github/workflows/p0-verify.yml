@@ -1,0 +1,36 @@
+# Optional: full P0 HTTP checks against a *running* engine (self-hosted or manual).
+# CI does not start IB or uvicorn here — use workflow_dispatch on a runner where
+# the engine is already up, with secrets JARVIS_VERIFY_BASE and JARVIS_API_KEY.
+#
+# Local default: cd engine && .venv\Scripts\python scripts\verify_p0_paper_ib.py
+name: P0 verify (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Engine base URL (no trailing slash)
+        required: true
+        default: http://127.0.0.1:8010
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install httpx
+        run: pip install -q httpx==0.28.1
+
+      - name: Run verify_p0_paper_ib.py
+        env:
+          JARVIS_VERIFY_BASE: ${{ inputs.base_url }}
+          JARVIS_API_KEY: ${{ secrets.JARVIS_API_KEY }}
+        run: |
+          cd engine
+          python scripts/verify_p0_paper_ib.py

@@ -1,0 +1,293 @@
+<div class="panel">
+  <!-- HEADER -->
+  <div class="panel-header">
+    <div class="arc-reactor">
+      <svg viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="11" cy="11" r="9" stroke="rgba(0,255,245,0.3)" stroke-width="1"/>
+        <circle cx="11" cy="11" r="6" stroke="rgba(0,212,255,0.5)" stroke-width="1" stroke-dasharray="3 3"/>
+        <circle cx="11" cy="11" r="3" stroke="var(--cyan)" stroke-width="1.5"/>
+      </svg>
+      <div class="arc-core"></div>
+    </div>
+    <span class="panel-title">J.A.R.V.I.S. BRIEF</span>
+    <div class="header-meta">
+      <span class="gen-status ready" id="genStatus">READY</span>
+      <span class="header-time" id="headerTime">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- BRIEF META -->
+  <div class="brief-meta">
+    <div class="meta-cell">
+      <div class="meta-label">GENERATED</div>
+      <div class="meta-value" id="metaTimestamp">APR 22, 2026 08:45</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-label">ENGINE</div>
+      <div class="meta-value gold" id="metaEngine">Strategy C+ v3.0</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-label">CONFIDENCE</div>
+      <div class="meta-value green" id="metaConfidence">72%</div>
+    </div>
+  </div>
+
+  <!-- CONFIDENCE -->
+  <div class="confidence-wrap">
+    <div class="conf-row">
+      <span class="conf-label">SIGNAL CONFIDENCE</span>
+      <span class="conf-pct" id="confPct">72%</span>
+    </div>
+    <div class="conf-track">
+      <div class="conf-fill" id="confFill" style="width:72%"></div>
+    </div>
+  </div>
+
+  <!-- TERMINAL -->
+  <div class="terminal-wrap">
+    <div class="term-scan-line"></div>
+    <div class="terminal-titlebar">
+      <div class="term-dot" style="background:var(--red);opacity:0.7"></div>
+      <div class="term-dot" style="background:var(--amber);opacity:0.7"></div>
+      <div class="term-dot" style="background:var(--green);opacity:0.7"></div>
+      <span class="term-title">JARVIS SYSTEM — STRATEGY C+ ENGINE v3.0</span>
+    </div>
+    <div class="terminal-body">
+      <div class="brief-text" id="briefText"></div><span class="cursor visible" id="cursor"></span>
+    </div>
+  </div>
+
+  <!-- RISK FLAGS -->
+  <div class="risk-section">
+    <div class="section-label">RISK FLAGS</div>
+    <div class="risk-flags" id="riskFlags"></div>
+  </div>
+
+  <!-- NEXT BRIEF -->
+  <div class="next-brief-row">
+    <div>
+      <div class="next-label">NEXT BRIEF SCHEDULED</div>
+      <div class="next-time">Friday 16:05 CDT</div>
+    </div>
+    <div class="next-countdown" id="nextCountdown">—</div>
+  </div>
+
+  <!-- PREVIOUS BRIEFS -->
+  <div class="prev-briefs">
+    <div class="section-label">PREVIOUS BRIEFS</div>
+    <div id="prevBriefs"></div>
+  </div>
+
+  <!-- BUTTONS -->
+  <div class="btn-row">
+    <button class="btn btn-generate" id="generateBtn" onclick="generateBrief()">⟳ GENERATE BRIEF</button>
+    <button class="btn btn-primary" onclick="copyBrief()">⎘ COPY BRIEF</button>
+    <button class="btn btn-secondary" onclick="regenerateBrief()">↺ REGENERATE</button>
+  </div>
+</div>
+
+<script>
+const API_URL = 'http://localhost:8020/api/commentary';
+
+const FALLBACK_BRIEF = {
+  timestamp: "2026-04-22T08:45:00",
+  regime: "RISK_ON",
+  vix: 18.92,
+  scale: 0.609,
+  holdings: { XLK: 0.305, QQQ: 0.305, SHY: 0.391 },
+  confidence: 0.72,
+  brief: `JARVIS MORNING BRIEF — APR 22, 2026 — 08:45 CDT
+
+Good morning. Current market conditions are favorable for risk-on positioning.
+
+The VIX sits at 18.92, down 2.97% — volatility is compressing, which historically precedes continuation moves in equity markets. The yield curve spread of +0.699% remains a macro tailwind, applying a 1.10× scale multiplier to Strategy C+.
+
+ES futures are trading at 5,432 (+0.94%) with CoT positioning neutral at -115,762 net contracts. NQ futures show slight institutional accumulation (+10,821 net long).
+
+Strategy C+ current allocation: XLK 30.5%, QQQ 30.5%, SHY 39.1% (defensive buffer). Combined scale 60.9% reflects moderate conviction — below full deployment threshold of 80%. Recommend maintaining current paper allocation through Monday MOO execution.
+
+Risk factors: SPY options expire this week — review 715C and 700P positions.
+Next signal refresh: Friday 16:05 CDT.`,
+  risk_flags: [
+    "SPY 04/23 715C expires TOMORROW — review position",
+    "VIX at 18.92 — approaching amber threshold (20)"
+  ],
+  next_signal: "Friday 16:05 CDT"
+};
+
+const PREV_BRIEFS = [
+  {
+    date: "APR 21, 2026 — 16:05",
+    regime: "RISK_ON",
+    summary: "Scale 58.2% — week opened with neutral CoT readings. Macro yield curve positive but VIX compressed. Holdings maintained XLK/QQQ tilt, reduced equity exposure slightly vs prior week. No risk flags generated."
+  },
+  {
+    date: "APR 14, 2026 — 16:05",
+    regime: "RISK_ON",
+    summary: "Scale 61.4% — regime stable RISK_ON following FOMC week. ES accumulated +12,430 net long from prior reading. Macro tailwind continued. Full equity tilt, SHY at minimum defensive allocation 35%."
+  },
+  {
+    date: "APR 07, 2026 — 16:05",
+    regime: "TRANSITIONING",
+    summary: "Scale 48.1% — VIX spiked briefly to 22.4 mid-week. Regime entered transition state, scale reduced to 48%. SHY defensive allocation elevated to 42%. System correctly anticipated reversal — no permanent regime shift detected."
+  }
+];
+
+let currentBrief = { ...FALLBACK_BRIEF };
+let typingTimer = null;
+let isTyping = false;
+
+// TYPING ANIMATION
+function typeText(text, el, cursorEl, onComplete) {
+  if (typingTimer) clearInterval(typingTimer);
+  el.textContent = '';
+  let i = 0;
+  isTyping = true;
+  cursorEl.className = 'cursor visible';
+  document.getElementById('genStatus').className = 'gen-status generating';
+  document.getElementById('genStatus').textContent = 'GENERATING…';
+  document.getElementById('generateBtn').disabled = true;
+
+  typingTimer = setInterval(() => {
+    if (i < text.length) {
+      el.textContent += text[i];
+      i++;
+      // scroll terminal to bottom
+      const tb = el.closest('.terminal-body');
+      if (tb) tb.scrollTop = tb.scrollHeight;
+    } else {
+      clearInterval(typingTimer);
+      isTyping = false;
+      document.getElementById('genStatus').className = 'gen-status ready';
+      document.getElementById('genStatus').textContent = 'READY';
+      document.getElementById('generateBtn').disabled = false;
+      if (onComplete) onComplete();
+    }
+  }, 14); // ~70 chars/sec
+}
+
+function renderBrief(data, animate) {
+  const el = document.getElementById('briefText');
+  const cur = document.getElementById('cursor');
+
+  // Meta
+  const ts = new Date(data.timestamp);
+  const dateStr = ts.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }).toUpperCase();
+  const timeStr = ts.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12:false });
+  document.getElementById('metaTimestamp').textContent = `${dateStr} ${timeStr}`;
+  document.getElementById('metaConfidence').textContent = Math.round((data.confidence||0.72)*100) + '%';
+  const confPct = Math.round((data.confidence||0.72)*100);
+  document.getElementById('confPct').textContent = confPct + '%';
+  document.getElementById('confFill').style.width = confPct + '%';
+
+  // Risk flags
+  const rf = document.getElementById('riskFlags');
+  rf.innerHTML = '';
+  (data.risk_flags || []).forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'risk-flag';
+    div.innerHTML = `<span class="risk-flag-icon">⚠</span><span>${f}</span>`;
+    rf.appendChild(div);
+  });
+
+  if (animate) {
+    typeText(data.brief, el, cur, null);
+  } else {
+    el.textContent = data.brief;
+    cur.className = 'cursor visible';
+  }
+}
+
+function renderPrevBriefs() {
+  const container = document.getElementById('prevBriefs');
+  container.innerHTML = '';
+  PREV_BRIEFS.forEach((b, i) => {
+    const item = document.createElement('div');
+    item.className = 'brief-hist-item';
+    item.innerHTML = `
+      <div class="brief-hist-header" onclick="toggleBriefHist(${i})">
+        <span class="brief-hist-date">${b.date}</span>
+        <span class="brief-hist-regime">${b.regime}</span>
+        <span class="brief-hist-toggle" id="bht-${i}">▼</span>
+      </div>
+      <div class="brief-hist-body" id="bhb-${i}">${b.summary}</div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function toggleBriefHist(i) {
+  const body = document.getElementById(`bhb-${i}`);
+  const toggle = document.getElementById(`bht-${i}`);
+  body.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
+
+// Clock
+function updateClock() {
+  document.getElementById('headerTime').textContent =
+    new Date().toLocaleTimeString('en-US', { hour12: false });
+  updateCountdown();
+}
+
+function updateCountdown() {
+  // Next brief: Friday 16:05
+  const now = new Date();
+  const friday = new Date(now);
+  const day = now.getDay();
+  const daysToFri = (5 - day + 7) % 7 || 7;
+  friday.setDate(now.getDate() + daysToFri);
+  friday.setHours(16, 5, 0, 0);
+  const diff = friday - now;
+  if (diff > 0) {
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    document.getElementById('nextCountdown').textContent = `in ${d}d ${h}h ${m}m`;
+  }
+}
+
+async function generateBrief() {
+  document.getElementById('genStatus').className = 'gen-status generating';
+  document.getElementById('genStatus').textContent = 'FETCHING…';
+  try {
+    const res = await fetch(API_URL, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    currentBrief = data;
+    document.getElementById('metaEngine').textContent = data.engine || 'Strategy C+ v3.0';
+    renderBrief(data, true);
+  } catch {
+    currentBrief = { ...FALLBACK_BRIEF };
+    renderBrief(FALLBACK_BRIEF, true);
+  }
+}
+
+function regenerateBrief() {
+  if (isTyping) {
+    if (typingTimer) clearInterval(typingTimer);
+    isTyping = false;
+  }
+  renderBrief(currentBrief, true);
+}
+
+async function copyBrief() {
+  try {
+    await navigator.clipboard.writeText(currentBrief.brief || FALLBACK_BRIEF.brief);
+    const btn = document.querySelector('.btn-primary');
+    const orig = btn.textContent;
+    btn.textContent = '✓ COPIED';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    setTimeout(() => { btn.textContent = orig; btn.style.color=''; btn.style.borderColor=''; }, 1800);
+  } catch {
+    alert('Copy failed — check clipboard permissions.');
+  }
+}
+
+// Init
+renderBrief(FALLBACK_BRIEF, true);
+renderPrevBriefs();
+updateClock();
+setInterval(updateClock, 1000);
+</script>

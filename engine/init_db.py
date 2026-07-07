@@ -42,7 +42,9 @@ def main():
     db.initialize()
 
     print(f"Database initialized at: {os.path.abspath(args.db_path)}")
-    print("Tables created: paper_trades, positions, decisions, daily_pnl, settings, schema_version")
+    print(
+        "Tables created: paper_trades, positions, decisions, daily_pnl, settings, system_state, schema_version"
+    )
 
 
 if __name__ == "__main__":

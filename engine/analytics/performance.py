@@ -150,6 +150,11 @@ class PerformanceCalculator:
             f"meets_threshold={meets}"
         )
 
+        # Sanitize non-finite floats — float('inf') and float('nan') cannot
+        # be JSON-serialised by FastAPI's default encoder.
+        if not math.isfinite(profit_factor):
+            profit_factor = 9999.0
+
         return PerformanceMetrics(
             profit_factor=round(profit_factor, 4),
             sharpe_ratio=round(sharpe, 4),
@@ -212,7 +217,12 @@ class PerformanceCalculator:
         variance = sum((x - mean) ** 2 for x in daily_pnl_list) / (n - 1)
         std = math.sqrt(variance)
 
-        if std == 0.0:
+        # A flat series can leave `std` as float dust (~1e-18) rather than exactly
+        # 0.0, from cancellation in the sum-of-squares above (e.g. [0.1, 0.1, 0.1]
+        # -> std ~3e-18). An `== 0.0` check misses that and blows Sharpe up to
+        # ~1e17 — which would falsely clear SHARPE_TARGET in the validation gate.
+        # Any sub-nanodollar std is a flat curve.
+        if std < 1e-9:
             return 0.0
 
         return math.sqrt(252) * mean / std
@@ -332,7 +342,7 @@ class PerformanceCalculator:
     def get_validation_report(self) -> Dict[str, Any]:
         """
         Run ``calculate()`` over all available history and return a structured
-        report suitable for the ``/analytics/performance`` endpoint.
+        report suitable for the ``/analytics/validation-report`` endpoint.
 
         Status values
         -------------

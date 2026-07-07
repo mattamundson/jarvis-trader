@@ -3,65 +3,31 @@ Market pricing endpoints with caching and rate limit handling.
 """
 
 import logging
-from functools import partial
+import time
 
 from fastapi import APIRouter
 
-from data.price_cache import PriceCache, retry_with_backoff
+from data.price_cache import PriceCache
+from data.provenance import DEFAULT_STALE_AFTER_S, derive_is_live
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["prices", "market"])
 
-# Global price cache (injected from main.py)
+# Global references (injected from main.py)
 _price_cache: PriceCache = PriceCache()
-
-FUTURES_MAP = {
-    "MES": "ES=F",
-    "MNQ": "NQ=F",
-    "MCL": "CL=F",
-    "MGC": "GC=F",
-    "MHG": "HG=F",
-    "MYM": "YM=F",
-    "M2K": "RTY=F",
-}
+_data_manager = None
 
 
-def inject_dependencies(cache: PriceCache):
-    """Inject price cache from main.py"""
-    global _price_cache
+def inject_dependencies(cache: PriceCache, data_manager=None):
+    """Inject price cache and data manager from main.py"""
+    global _price_cache, _data_manager
     _price_cache = cache
-
-
-async def _fetch_price_from_yfinance(yf_ticker: str, original_symbol: str) -> dict:
-    """
-    Fetch single price from yfinance.
-    Raises exception on error for retry_with_backoff to handle.
-    """
-    import yfinance as yf
-
-    tickers = yf.Tickers(yf_ticker)
-    info = tickers.tickers[yf_ticker].fast_info
-    current = float(info.last_price) if hasattr(info, "last_price") and info.last_price else None
-    prev = (
-        float(info.previous_close)
-        if hasattr(info, "previous_close") and info.previous_close
-        else None
-    )
-    chg = ((current - prev) / prev) if current and prev and prev > 0 else None
-
-    return {
-        "symbol": original_symbol,
-        "last_price": current,
-        "prev_close": prev,
-        "change_pct": chg,
-        "yf_ticker": yf_ticker,
-        "source": "yfinance",
-    }
+    _data_manager = data_manager
 
 
 @router.get("/prices/snapshot")
-async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
+async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ,MCL"):
     """
     Get current prices and daily change % for comma-separated symbols.
     Futures micro contracts (MES, MNQ, MCL etc) are mapped to continuous contracts.
@@ -73,23 +39,47 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
 
     result = {}
     for original_symbol in symbol_list:
-        yf_ticker = FUTURES_MAP.get(original_symbol, original_symbol)
-
         # Try cache first
         cached = await _price_cache.get(original_symbol)
         if cached:
             result[original_symbol] = cached
             continue
 
-        # Cache miss — fetch with retry backoff using partial to bind loop vars
+        # Cache miss — fetch via data_manager
         try:
-            fetch_fn = partial(_fetch_price_from_yfinance, yf_ticker, original_symbol)
-            data = await retry_with_backoff(
-                fetch_fn,
-                original_symbol,
-                _price_cache,
-            )
-            if data:
+            if _data_manager is not None:
+                price_data = await _data_manager.get_current_price(original_symbol)
+                source = price_data.get("source", "data_manager")
+                as_of = time.time()
+                # Provenance is DERIVED, never hardcoded: a cached/delayed tier
+                # (csv_cache, polygon REST) is never live; an IBKR value is only
+                # live when its data leg is connected. Lets the dashboard render
+                # an honest LIVE/STATIC/STALE badge instead of "fetched recently".
+                ibkr_connected = bool(
+                    getattr(_data_manager, "ibkr", None)
+                    and _data_manager.ibkr.is_connected
+                )
+                data = {
+                    "symbol": original_symbol,
+                    "last_price": price_data.get("last_price"),
+                    "prev_close": price_data.get("prev_close"),
+                    "change_pct": price_data.get("change_pct"),
+                    "source": source,
+                    "as_of": as_of,
+                    "is_live": derive_is_live(
+                        source,
+                        as_of,
+                        DEFAULT_STALE_AFTER_S,
+                        ibkr_data_connected=ibkr_connected,
+                        now=as_of,
+                    ),
+                    "stale_after_s": DEFAULT_STALE_AFTER_S,
+                }
+            else:
+                data = None
+
+            if data and data.get("last_price"):
+                await _price_cache.set(original_symbol, data)
                 result[original_symbol] = data
             else:
                 result[original_symbol] = {
@@ -97,6 +87,10 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
                     "last_price": None,
                     "prev_close": None,
                     "change_pct": None,
+                    "source": "unavailable",
+                    "as_of": None,
+                    "is_live": False,
+                    "stale_after_s": DEFAULT_STALE_AFTER_S,
                     "error": "No data available",
                 }
         except Exception as e:
@@ -106,6 +100,10 @@ async def get_price_snapshot(symbols: str = "SPY,QQQ,MES,MNQ"):
                 "last_price": None,
                 "prev_close": None,
                 "change_pct": None,
+                "source": "unavailable",
+                "as_of": None,
+                "is_live": False,
+                "stale_after_s": DEFAULT_STALE_AFTER_S,
                 "error": str(e),
             }
 

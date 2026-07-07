@@ -1,0 +1,56 @@
+{
+  "project": "Sprint 21-C: Parallel MCL+MNQ Scanner + 15m Timeframe",
+  "branchName": "feat/sprint21-parallel-scanner",
+  "description": "Fix trade frequency bottleneck. Current scheduler runs MCL then MNQ sequentially and only on 1h timeframe, generating ~1-2 signals/day total. Need 2 trades/day to hit 60-trade gate. Solution: parallel symbol scanning + 15m timeframe at half position size.",
+  "userStories": [
+    {
+      "id": "US-2120",
+      "title": "Parallelize MCL + MNQ scanner jobs (run concurrently, not sequentially)",
+      "description": "As a trader, I want MCL and MNQ scanned simultaneously so that both instruments can generate signals in the same market open window.",
+      "acceptanceCriteria": [
+        "engine/main.py market_open_scan_job uses asyncio.gather() for 1h scans",
+        "Both MCL and MNQ symbols scan in parallel (not sequential await)",
+        "Each symbol's result is logged independently with [MARKET_OPEN] prefix",
+        "If one symbol fails, the other still completes",
+        "ruff check on modified files passes",
+        "pytest tests/ -k 'not integration' passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implementation: engine/main.py lines 649-753. Uses asyncio.gather() to run _scan_1h tasks in parallel. Each scan logs independently. Non-blocking error handling ensures one failure doesn't halt others."
+    },
+    {
+      "id": "US-2121",
+      "title": "Add 15-minute timeframe scan to market_open_scan job",
+      "description": "As a trader, I want a 15m STC scan to run alongside the 1h scan so that faster timeframe signals increase trade frequency toward the 60-trade gate.",
+      "acceptanceCriteria": [
+        "engine/main.py market_open_scan_job fires 15m scans for MCL and MNQ in addition to 1h",
+        "15m signals include timeframe='15m' in signal metadata",
+        "1h signals include timeframe='1h' in signal metadata",
+        "15m and 1h scans all run concurrently via asyncio.gather() (4 tasks total)",
+        "Engine logs distinguish 15m vs 1h signals ([MARKET_OPEN] prefix)",
+        "ruff check on modified files passes",
+        "pytest tests/ -k 'not integration' passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implementation: engine/main.py _scan_15m() function using BacktestDataLoader + signal generation for speed. TechnicalReport already includes timeframe field which flows to signal metadata through pipeline. Position sizing handled at trade approval layer based on signal timeframe."
+    },
+    {
+      "id": "US-2122",
+      "title": "Add signal_timeframe to pending_trade_approvals and trade_journal tables",
+      "description": "As a trader, I want to know which timeframe generated each trade so I can compare 1h vs 15m performance over the 30-day validation window.",
+      "acceptanceCriteria": [
+        "pending_trade_approvals table has 'timeframe' TEXT column (migration_014)",
+        "trade_journal table has 'timeframe' TEXT column (migration_014)",
+        "pipeline_router extracts timeframe from technical_report and passes to insert_pending_approval()",
+        "approval_router extracts timeframe from pipeline_snapshot and passes to add_journal_entry()",
+        "Migration runs clean on engine/data/jarvis_trader.db (idempotent ALTER TABLE)",
+        "pytest tests/ -k 'not integration' passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implementation: migration_014 adds timeframe TEXT (nullable) to both tables. _mixins_pending_approvals.py updated to accept timeframe param. _mixins_journal.py updated to accept timeframe param. pipeline_router extracts from technical_report.timeframe. approval_router enriches journal with timeframe. Data flows: Pipeline → TechnicalReport.timeframe → analyst_reports → pipeline_snapshot → approval_router → journal_entry."
+    }
+  ]
+}

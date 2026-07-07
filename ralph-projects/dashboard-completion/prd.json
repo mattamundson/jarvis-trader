@@ -1,0 +1,144 @@
+{
+  "project": "JARVIS Trader Dashboard — Complete & 24/7 (Tony Stark ready)",
+  "branchName": "feat/dashboard-completion",
+  "description": "Finish the jarvis-trader dashboard so every feature, strategy, backtest, number, live chart, and data feed is complete, correct, honest, and online 24/7. The dashboard is already mature (25/35 pages LIVE/MIXED, lightweight-charts + recharts + three.js installed, ~39 live widgets). This project closes the remaining gaps: deploy the trade-review loop, add live price charts where missing, complete/verify the unexamined pages, de-static remaining hardcoded data, harden for 24/7 (pm2 boot persistence + monitoring + remote access), and a unified command pane. Each story = one focused, verifiable change. Dashboard must typecheck clean (tsc --noEmit) and not crash. Engine changes that touch safety-critical files (main.py, risk/) require Amo's [safety-review] tag on the PR.",
+  "verification": "Per story: tsc --noEmit 0 errors for dashboard changes; engine pytest green for engine changes; the named page/route renders real data or an honest empty state (no crash, no hardcoded-as-live).",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Deploy the trade-review loop live",
+      "description": "As Amo, I want PR #52 (trade-review loop) and #54 (contamination guard) merged and deployed so /strategy-ledger and /trades/[id]/review render live in the running dashboard.",
+      "acceptanceCriteria": [
+        "PR #52 CI green after the pollution+lint fix",
+        "Both PRs carry Amo's [safety-review] tag (they touch main.py / risk/) — AMO-GATED",
+        "Merged to master; running engine+dashboard checkout updated; engine restarted",
+        "GET /strategy/ledger and /trades/{id}/full-review return 200 (not 404) on live engine",
+        "/strategy-ledger and a /trades/<id>/review page render in the browser"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "AMO-GATED on the [safety-review] tag + merge + restart. Claude prepares; Amo merges."
+    },
+    {
+      "id": "US-002",
+      "title": "Live price chart with entry/exit markers on the trade review page",
+      "description": "As Amo, I want each /trades/[id]/review page to show a candlestick chart of the symbol around the trade with entry/exit/stop/target markers, so I can SEE why/when the trade fired.",
+      "acceptanceCriteria": [
+        "Reuse lightweight-charts (already installed) — ideally the existing CandlestickChart/TVChartWidget component",
+        "Chart fetches real bars for the symbol around the trade window from an engine bars endpoint",
+        "Entry and exit markers placed at the right times/prices; stop/target lines if present",
+        "Graceful empty state if bars unavailable; tsc --noEmit clean"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Done (50c2c3b). CandlestickChart extended with markers/priceLines; review page fetches age-sized bars, draws entry/exit arrows + entry/stop/target lines, honest empty state. tsc clean."
+    },
+    {
+      "id": "US-003",
+      "title": "Audit + complete the unexamined pages (no crash, live-or-honest)",
+      "description": "As Amo, I want every nav page (esp. the 9 unexamined: kairos, learning, stats, data-integrity, parallel-paper, strategy-c, strategy-c-command, crypto, polymarket, discord, config, settings) to load without crashing and show real data or an honest empty/coming-soon state.",
+      "acceptanceCriteria": [
+        "Each page classified LIVE/STATIC/STUB; STUBs get an honest placeholder, not a crash",
+        "No .toFixed/.map/.slice on undefined; null-guards added where missing",
+        "Any dead endpoint calls identified and either implemented or gracefully handled",
+        "tsc --noEmit clean"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Done (c48c06f). Audited all 12 unexamined pages via parallel agents. 3 real crash risks fixed (kairos severity_counts/top_watchers, parallel-paper EquitySparkline, strategy-c layer/holdings destructure shape-guard). Other 9 clean. tsc clean. Static-as-live items routed to US-004."
+    },
+    {
+      "id": "US-004",
+      "title": "De-static remaining hardcoded data",
+      "description": "As Amo, I want pages that still render hardcoded numbers (performance BACKTEST_DATA/WFE_DATA, scorecard baselines) to either pull live data or be clearly labelled as a dated snapshot with a link to the live source.",
+      "acceptanceCriteria": [
+        "performance + scorecard static blocks either wired to live endpoints or labelled 'snapshot as of <date>' with a live link (the /performance badge link to /strategy-ledger is already done)",
+        "No page presents stale numbers as current/live",
+        "tsc --noEmit clean"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Done (f06100f). data-integrity fake-green infra card → CONFIGURED + /health link; discord frozen 281,838 count removed. Performance already snapshot-labelled w/ live link; scorecard already fully live. tsc clean."
+    },
+    {
+      "id": "US-005",
+      "title": "Live price chart on /analysis",
+      "description": "As Amo, when I run an ad-hoc analysis I want a live candlestick chart of the analyzed symbol alongside the 5-stage pipeline output.",
+      "acceptanceCriteria": [
+        "Candlestick chart (lightweight-charts) for the analyzed symbol",
+        "Fed by a real bars endpoint; empty state if unavailable",
+        "tsc --noEmit clean"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Done (b88def1). 15m live CandlestickChart on /analysis after pipeline run, keyed on result symbol + futures flag, honest empty state. tsc clean."
+    },
+    {
+      "id": "US-006",
+      "title": "24/7 reliability — pm2 boot persistence + auto-resurrect",
+      "description": "As Amo, I want engine, dashboard, bridge, and master-api to survive reboots and crashes automatically so the system is genuinely online 24/7.",
+      "acceptanceCriteria": [
+        "pm2 save run; pm2 startup (or Windows equivalent) configured so processes resurrect on boot — AMO-GATED if it needs admin",
+        "All 4 pm2 processes online with sane restart counts",
+        "A documented one-command recovery (restart_engine.ps1) verified",
+        "Stopped 'jarvis-weekly-tearsheet' explained (cron, expected) or fixed"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Verified+documented in RELIABILITY.md. 4 services online (engine restarts=4 sane), pm2 save done (dump.pm2 exists), tearsheet stopped=expected (weekly one-shot). Gap: no logon `pm2 resurrect` task → won't survive reboot; pm2 startup unsupported on Windows. Ready Amo command provided (Jarvis-PM2-Resurrect logon task, LIMITED, battery flags). Registration AMO-GATED."
+    },
+    {
+      "id": "US-007",
+      "title": "Health + uptime monitoring verification",
+      "description": "As Amo, I want the existing watchdogs/sentinels (LLM watchdog, system-status, daily sentinel) verified to actually fire, with the dashboard /health page reflecting true subsystem state.",
+      "acceptanceCriteria": [
+        "/health page shows true status of engine, IB, LLM, TV, DB (cross-checked against /brokers/positions)",
+        "Confirm the scheduled watchdogs exist + last-run is recent",
+        "Surface any silently-failing monitor"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Verified. Watchdogs present+recent (LLMWatchdog/SystemStatus/HealthWatchdog/EngineWatchdog result=0 today). /health page renders IB honestly (Disconnected/error, not false-green; app/health/page.tsx:166-171,225). Cross-checked /brokers/positions: IB dark (known PR#34 clientId issue, Amo restart pending). Surfaced for Amo: Jarvis-DataIntegritySentinel FAILING (result=1), TV-CDP-Watchdog Disabled. See RELIABILITY.md."
+    },
+    {
+      "id": "US-008",
+      "title": "Remote access for phone (Tailscale serve)",
+      "description": "As Amo, I want to view the live dashboard from my phone on the private tailnet so liveness is truly anywhere/24-7.",
+      "acceptanceCriteria": [
+        "Document + prepare the one-command `tailscale serve --bg 3010` (prereq: tailscale up) — AMO-GATED (needs Amo to run)",
+        "Confirm dashboard binds correctly for proxying",
+        "Fallback (Cloudflare Tunnel) documented"
+      ],
+      "passes": true,
+      "priority": 8,
+      "notes": "Verified+documented in REMOTE-ACCESS.md. Tailscale UP (amoszn=100.68.247.106); dashboard binds 0.0.0.0:3010 → ALREADY reachable from phone at http://100.68.247.106:3010 (no setup). Optional HTTPS `tailscale serve --bg 3010` + Cloudflare fallback documented (AMO-run). Binding confirmed correct."
+    },
+    {
+      "id": "US-009",
+      "title": "Unified command pane polish (the one 24/7 screen)",
+      "description": "As Amo, I want one master pane (/master or /command-center) that surfaces at-a-glance: live P&L, open positions, engine+IB+LLM health, today's signals, edge scorecard, and a live chart — the Tony-Stark single-glance view.",
+      "acceptanceCriteria": [
+        "One route aggregates the key live widgets without crashing",
+        "Includes a live chart + health + P&L + positions + signals + edge status",
+        "tsc --noEmit clean; auto-refresh"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Done (989e3ca). /command-center already aggregated health/P&L/positions/signals/WFE + auto-refresh; added the missing live CandlestickChart (15m, per-instrument selector, 60s refresh). tsc clean."
+    },
+    {
+      "id": "US-010",
+      "title": "Final pass — full dashboard build + smoke + honest README of state",
+      "description": "As Amo, I want a final verification that the whole dashboard builds, every nav route renders, and a short STATUS doc enumerates what is live vs snapshot vs gated.",
+      "acceptanceCriteria": [
+        "pnpm build (Next.js) succeeds",
+        "Every nav route smoke-checked (renders, no console-fatal)",
+        "ralph-projects/dashboard-completion/STATUS.md enumerates final state per page",
+        "All non-AMO-gated stories pass"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Done. pnpm build (Next.js 15.5) Compiled successfully in 27.0s, 0 errors, BUILD_ID written. tsc --noEmit 0 errors. STATUS.md enumerates all 36 routes (LIVE/static-shell/embed) + per-story state. All non-AMO-gated stories pass; only US-001 deploy remains (Amo safety-review tag)."
+    }
+  ]
+}

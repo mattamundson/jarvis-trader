@@ -17,6 +17,8 @@ type FeedbackState = "none" | "loading" | "success" | "error";
 export function KillSwitch({ isActive, reason, onToggle }: KillSwitchProps) {
   const [loading, setLoading] = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  const [confirmActivate, setConfirmActivate] = useState(false);
+  const [typedConfirm, setTypedConfirm] = useState("");
   const [feedback, setFeedback] = useState<FeedbackState>("none");
   const [feedbackMessage, setFeedbackMessage] = useState("");
 
@@ -28,6 +30,8 @@ export function KillSwitch({ isActive, reason, onToggle }: KillSwitchProps) {
   }, [feedback]);
 
   async function handleActivate() {
+    if (typedConfirm !== "CONFIRM KILL") return;
+    
     setLoading(true);
     setFeedback("loading");
     try {
@@ -40,6 +44,8 @@ export function KillSwitch({ isActive, reason, onToggle }: KillSwitchProps) {
       onToggle();
       setFeedback("success");
       setFeedbackMessage("Kill switch activated");
+      setConfirmActivate(false);
+      setTypedConfirm("");
     } catch (e) {
       console.error("Kill switch activate failed:", e);
       setFeedback("error");
@@ -150,19 +156,55 @@ export function KillSwitch({ isActive, reason, onToggle }: KillSwitchProps) {
           <p className="text-xs text-muted-foreground">All systems operational</p>
         </div>
       </div>
-      <button
-        onClick={handleActivate}
-        disabled={loading}
-        aria-label="Activate emergency stop to halt all trading"
-        className="w-full rounded-lg border border-bear/40 bg-bear/5 py-2 text-sm font-semibold text-bear transition-all hover:bg-bear hover:text-white disabled:opacity-50 ring-offset-2 focus-visible:ring-2 focus-visible:ring-bear"
-      >
-        {loading ? "Processing…" : (
-          <span className="flex items-center justify-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
-            EMERGENCY STOP
-          </span>
-        )}
-      </button>
+
+      {confirmActivate ? (
+        <div className="space-y-2 animate-in slide-in-from-top-2">
+          <p className="text-[10px] font-bold text-bear uppercase tracking-tighter">
+            Type "CONFIRM KILL" to halt all trading
+          </p>
+          <input
+            autoFocus
+            className="w-full rounded border border-bear bg-bear/5 px-2 py-1.5 text-xs font-mono uppercase focus:outline-none focus:ring-1 focus:ring-bear"
+            value={typedConfirm}
+            onChange={(e) => setTypedConfirm(e.target.value.toUpperCase())}
+            placeholder="Type here..."
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleActivate}
+              disabled={loading || typedConfirm !== "CONFIRM KILL"}
+              className="flex-1 rounded bg-bear py-1.5 text-xs font-bold text-white hover:bg-bear/90 disabled:opacity-30 transition-all"
+            >
+              HALT SYSTEM
+            </button>
+            <button
+              onClick={() => {
+                setConfirmActivate(false);
+                setTypedConfirm("");
+              }}
+              className="px-3 rounded border border-border text-xs hover:bg-secondary transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setConfirmActivate(true)}
+          disabled={loading}
+          aria-label="Activate emergency stop to halt all trading"
+          className="w-full rounded-lg border border-bear/40 bg-bear/5 py-2 text-sm font-semibold text-bear transition-all hover:bg-bear hover:text-white disabled:opacity-50 ring-offset-2 focus-visible:ring-2 focus-visible:ring-bear"
+        >
+          {loading ? (
+            "Processing…"
+          ) : (
+            <span className="flex items-center justify-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              EMERGENCY STOP
+            </span>
+          )}
+        </button>
+      )}
     </div>
   );
 }

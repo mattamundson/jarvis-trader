@@ -1,18 +1,22 @@
 """
 JARVIS TRADER — Paper Trading Runner
 =====================================
+Consolidation note (US-1407): Unified state — SQLite only.
+This module delegates ALL state writes to PaperTradeTracker (engine/backtest/paper_tracker.py).
+No JSONL files are created or written. All state is in SQLite (paper_trades table).
+
 Standalone hourly loop for MCL and MNQ paper trading.
 
 Runs signal generation, open-position management, and trade logging
 without requiring the full FastAPI server or Anthropic API key.
 
 Flow per cycle (every hour at :05 past the bar close):
-  1. Load open positions from disk
-  2. Fetch last 150 1h bars via yfinance (CL=F for MCL, NQ=F for MNQ)
+  1. Load open positions from SQLite
+  2. Fetch last 150 1h bars via Polygon.io (MCL for MCL, MNQ for MNQ)
   3. Run generate_signals() with paper_config validated parameters
   4. Manage open positions: check stop/target hits on current bar
   5. Check for new ENTRY_NOW signal (only if no open position)
-  6. Save updated positions
+  6. Save updated positions to SQLite
   7. Log all activity + WhatsApp notification on entry/exit
 
 Kill conditions (via PaperTradeTracker):
@@ -36,11 +40,12 @@ import json
 import logging
 import logging.handlers
 import os
+import re
 import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -50,9 +55,7 @@ import pandas as pd
 _RESULTS_DIR = Path(__file__).parent / "results"
 _RESULTS_DIR.mkdir(exist_ok=True)
 
-POSITIONS_FILE = _RESULTS_DIR / "paper_positions.json"
 RUNNER_LOG_FILE = _RESULTS_DIR / "paper_runner.log"
-TRADE_LOG_FILE = _RESULTS_DIR / "paper_trades_live.json"
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 _logger_configured = False
@@ -65,7 +68,7 @@ def _setup_logging() -> None:
     handlers: list[logging.Handler] = [
         logging.StreamHandler(sys.stdout),
         logging.handlers.RotatingFileHandler(
-            str(RUNNER_LOG_FILE), maxBytes=5 * 1024 * 1024, backupCount=3
+            str(RUNNER_LOG_FILE), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
         ),
     ]
     logging.basicConfig(
@@ -81,42 +84,103 @@ def _import_signal_deps():
     from backtest.data_loader import FUTURES_MAP
     from backtest.paper_config import ACTIVE_INSTRUMENTS, PAPER_CONFIGS
     from backtest.paper_tracker import PaperTradeTracker
-    from backtest.signals import generate_signals
+    from backtest.signals import generate_instrument_signals, generate_signals
 
-    return FUTURES_MAP, ACTIVE_INSTRUMENTS, PAPER_CONFIGS, PaperTradeTracker, generate_signals
+    return (
+        FUTURES_MAP,
+        ACTIVE_INSTRUMENTS,
+        PAPER_CONFIGS,
+        PaperTradeTracker,
+        generate_signals,
+        generate_instrument_signals,
+    )
 
 
 # ── Position State I/O ────────────────────────────────────────────────────────
 
 
+def _adapt_trade_row_to_position(trade: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Translate a SQLite paper_trades row into the dict shape that
+    manage_open_position() / _print_summary() / _cmd_status() expect.
+
+    The DB schema uses column names (stop_loss, entry_time, quantity), while
+    the runner's legacy in-memory shape uses (stop, entry_date, contracts,
+    targets, contracts_remaining, t{1,2,3}_hit). Targets and per-target hit
+    flags live inside the JSON-serialised strategy_params column.
+
+    This adapter is what Stage 5 (2026-04-10) added to fix a hourly
+    KeyError: 'stop' crash in the paper runner when the DB-sourced trade
+    dict did not match the legacy key names.
+    """
+    pos: Dict[str, Any] = dict(trade)
+
+    # Field-name translation (copy, don't mutate original column values)
+    pos["stop"] = trade.get("stop_loss")
+    pos["entry_date"] = trade.get("entry_time")
+
+    quantity = int(float(trade.get("quantity") or 1))
+    pos["contracts"] = quantity
+
+    # Parse strategy_params for per-target hit state + target list + dynamic state
+    raw_params = trade.get("strategy_params") or "{}"
+    try:
+        params = json.loads(raw_params) if isinstance(raw_params, str) else (raw_params or {})
+    except (json.JSONDecodeError, TypeError):
+        params = {}
+
+    raw_targets = params.get("targets") or []
+    pos["targets"] = list(raw_targets) if isinstance(raw_targets, (list, tuple)) else []
+    pos["contracts_remaining"] = int(params.get("contracts_remaining", quantity))
+    pos["t1_hit"] = bool(params.get("t1_hit", False))
+    pos["t2_hit"] = bool(params.get("t2_hit", False))
+    pos["t3_hit"] = bool(params.get("t3_hit", False))
+    pos["risk_pct_used"] = params.get("risk_pct_used", trade.get("risk_pct_used"))
+
+    return pos
+
+
 def load_positions() -> Dict[str, Any]:
-    """Load open paper positions from JSON on disk."""
-    if POSITIONS_FILE.exists():
-        try:
-            with open(POSITIONS_FILE) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            logging.getLogger("paper_runner").warning(
-                "Corrupt positions file — starting with empty state"
-            )
-    return {}
+    """
+    Load open paper positions from SQLite via database manager.
+
+    Returns dict mapping symbol -> position record, adapted to the
+    legacy in-memory shape expected by manage_open_position().
+    """
+    try:
+        from database.manager import get_db
+
+        db = get_db()
+        open_trades = db.get_open_trades()
+        positions: Dict[str, Any] = {}
+        for trade in open_trades:
+            symbol = trade.get("symbol", "")
+            if not symbol:
+                continue
+            positions[symbol] = _adapt_trade_row_to_position(trade)
+        return positions
+    except Exception as exc:
+        logging.getLogger("paper_runner").warning(
+            "Failed to load positions from SQLite: %s — starting with empty state", exc
+        )
+        return {}
 
 
 def save_positions(positions: Dict[str, Any]) -> None:
-    """Atomically persist open positions to disk."""
-    tmp = POSITIONS_FILE.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(positions, f, indent=2, default=str)
-    tmp.replace(POSITIONS_FILE)
+    """
+    Persist open positions to SQLite (via open trade records).
+
+    This is a no-op since positions are already in SQLite
+    as open paper_trades records. Called for compatibility.
+    """
+    # All updates happen via tracker.add_trade() and manage_open_position(),
+    # which write directly to SQLite. This function is retained for API compatibility.
+    pass
 
 
-# ── Trade Journal (append-only JSON lines) ────────────────────────────────────
-
-
-def append_trade_record(record: Dict[str, Any]) -> None:
-    """Append a closed-trade record to the live trade log (JSON lines format)."""
-    with open(TRADE_LOG_FILE, "a") as f:
-        f.write(json.dumps(record, default=str) + "\n")
+# ── Trade Persistence (SQLite via PaperTradeTracker) ──────────────────────────
+# Note: All trade records are now persisted via PaperTradeTracker.add_trade(),
+# which writes to SQLite. No JSONL file is maintained.
 
 
 # ── Optional sync to engine PortfolioTracker (POST /portfolio/paper/trade) ───
@@ -135,6 +199,31 @@ def _engine_api_key() -> Optional[str]:
         or ""
     ).strip()
     return k or None
+
+
+def _engine_base_url() -> str:
+    """Engine base URL for the data feed. Defaults to the local engine so the
+    standalone Jarvis-PaperCollect task works without any env wiring."""
+    base = os.environ.get("JARVIS_ENGINE_URL", "").strip().rstrip("/")
+    return base or "http://127.0.0.1:8010"
+
+
+def _resolve_api_key() -> Optional[str]:
+    """API key for engine calls. Prefer env vars; fall back to engine/.env (the
+    canonical local secret store) so the scheduled task — which runs with a bare
+    environment — can still authenticate to the bars endpoint."""
+    k = _engine_api_key()
+    if k:
+        return k
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    try:
+        for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = re.match(r"\s*(API_KEY|JARVIS_API_KEY|X_API_KEY)\s*=\s*(.+)", line)
+            if m:
+                return m.group(2).strip().strip('"').strip("'")
+    except Exception:  # noqa: BLE001
+        return None
+    return None
 
 
 def _post_engine_json(path: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -230,126 +319,186 @@ def _notify(message: str) -> None:
 # ── Bar Fetching ──────────────────────────────────────────────────────────────
 
 
-def _fetch_bars_v8(yf_ticker: str, days: int = 60) -> Optional[pd.DataFrame]:
+def fetch_bars(
+    symbol: str,
+    futures_map: Dict[str, str],
+    bars: int = 150,
+    timeframe: str = "1h",
+) -> Optional[pd.DataFrame]:
     """
-    Direct Yahoo Finance v8 API fallback for when yfinance is rate-limited.
+    Fetch recent OHLCV bars for a futures symbol from the running engine's
+    /analyze/bars endpoint (IBKR Tier-1 / TradingView Tier-0 live feed).
 
-    Fetches the last `days` days of 1h data in one request. Uses a browser
-    User-Agent to avoid bot detection.
+    Replaces the old Polygon-only path: Polygon's free plan is futures-blocklisted
+    (returns the wrong asset, e.g. CL=Colgate-Palmolive), so the standalone runner
+    had no working data source and every cycle no-opped on `data_error`. The engine
+    already maintains the live IBKR/TV feed, so the runner asks it directly — one
+    source of truth shared with the dashboard and pipeline.
+
+    `limit` is sized to clear the slowest SMA warmup (MES SMA-200 crossover needs
+    >200 1h bars); the endpoint clamps to its own ceiling. Returns None on any
+    failure so the cycle fails-soft (degrades to `data_error`, never crashes).
     """
-    import requests
+    log = logging.getLogger(f"paper_runner.{symbol}")
 
-    end_dt = datetime.now(timezone.utc).replace(tzinfo=None)
-    start_dt = end_dt - timedelta(days=days)
-    period1 = int(start_dt.timestamp())
-    period2 = int(end_dt.timestamp())
+    # Lookback window sized to guarantee enough completed bars for SMA warmup.
+    days_map = {"5m": 7, "15m": 21, "1h": 60, "4h": 180, "1d": 500}
+    days = days_map.get(timeframe, 60)
+    # Request well above the SMA-200 floor; the endpoint clamps to its own cap.
+    limit = max(bars, 400)
 
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}"
-    params = {
-        "interval": "1h",
-        "period1": period1,
-        "period2": period2,
-        "includePrePost": "false",
-    }
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json",
-    }
-
+    base = _engine_base_url()
+    key = _resolve_api_key()
+    url = (
+        f"{base}/analyze/bars/{symbol}"
+        f"?interval={timeframe}&futures=true&days={days}&limit={limit}"
+    )
+    req = urllib.request.Request(url, headers={"X-API-Key": key or ""})
     try:
-        time.sleep(1.5)  # polite delay before direct API hit
-        resp = requests.get(url, params=params, headers=headers, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-
-        result = data.get("chart", {}).get("result")
-        if not result:
-            return None
-
-        meta = result[0]
-        timestamps = meta.get("timestamp", [])
-        quotes = meta.get("indicators", {}).get("quote", [{}])[0]
-
-        if not timestamps:
-            return None
-
-        df = pd.DataFrame(
-            {
-                "open": quotes.get("open", []),
-                "high": quotes.get("high", []),
-                "low": quotes.get("low", []),
-                "close": quotes.get("close", []),
-                "volume": quotes.get("volume", []),
-            },
-            index=pd.to_datetime(timestamps, unit="s", utc=True),
-        )
-        df.index.name = "datetime"
-        df = df.dropna(subset=["open", "high", "low", "close"])
-        return df if len(df) > 0 else None
-
-    except Exception:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            payload = json.load(resp)
+    except Exception as exc:  # noqa: BLE001
+        log.error(f"Engine bar fetch failed for {symbol} {timeframe}: {exc}")
         return None
 
+    records = payload.get("bars") or []
+    if not records:
+        log.error(f"Engine returned no {timeframe} bars for {symbol}")
+        return None
 
-def fetch_bars(symbol: str, futures_map: Dict[str, str], bars: int = 150) -> Optional[pd.DataFrame]:
-    """
-    Fetch recent 1h OHLCV bars for a futures symbol.
+    df = pd.DataFrame(records)
+    if "timestamp" not in df.columns:
+        log.error(f"{symbol}: engine bars missing 'timestamp' column")
+        return None
 
-    Primary: yfinance Ticker.history (60d, 1h).
-    Fallback: direct Yahoo v8 API (used when yfinance is rate-limited).
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    df = df.set_index("timestamp").sort_index()
+    df.columns = [c.lower() for c in df.columns]
+    cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
+    df = df[cols].dropna(subset=["open", "high", "low", "close"])
 
-    Returns None if data is unavailable or too thin for indicator warmup.
-    """
-    import yfinance as yf
-
-    log = logging.getLogger(f"paper_runner.{symbol}")
-    yf_ticker = futures_map.get(symbol, symbol)
-
-    def _normalise(df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        df = df.rename(
-            columns={
-                "Open": "open",
-                "High": "high",
-                "Low": "low",
-                "Close": "close",
-                "Volume": "volume",
-            }
+    if len(df) < 60:
+        log.warning(
+            f"Only {len(df)} {timeframe} bars for {symbol} — need >=60 for indicator warmup"
         )
-        cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
-        df = df[cols].dropna(subset=["open", "high", "low", "close"])
-        if len(df) < 60:
-            log.warning(f"Only {len(df)} bars for {symbol} — need ≥60 for indicator warmup")
-            return None
-        log.debug(f"Fetched {len(df)} 1h bars for {symbol} ({yf_ticker})")
-        return df
+        return None
 
-    # ── Primary: yfinance ────────────────────────────────────────────────────
+    log.debug(f"Fetched {len(df)} {timeframe} bars for {symbol} from engine")
+    return df
+
+
+# ── Entry-evaluation dedup state (one entry decision per closed 1h bar) ────────
+
+
+def _entry_eval_path() -> Path:
+    return _RESULTS_DIR / "last_entry_eval.json"
+
+
+def _load_entry_eval() -> Dict[str, str]:
+    """Map of symbol -> last completed 1h bar timestamp already evaluated for entry.
+
+    Persisted across the 5-minute task invocations so a crossover bar is acted on
+    exactly once — without this, a position stopped out mid-hour would re-enter the
+    same crossover bar on the next 5-minute poll.
+    """
     try:
-        ticker = yf.Ticker(yf_ticker)
-        df = ticker.history(period="60d", interval="1h", auto_adjust=True)
-        if df is not None and not df.empty:
-            result = _normalise(df)
-            if result is not None:
-                return result
-    except Exception as exc:
-        rate_limited = "rate limit" in str(exc).lower() or "too many" in str(exc).lower()
-        if not rate_limited:
-            log.error(f"Bar fetch failed for {symbol}: {exc}")
-            return None
-        log.warning(f"{symbol}: yfinance rate-limited — trying v8 API fallback")
+        return json.loads(_entry_eval_path().read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
 
-    # ── Fallback: direct Yahoo v8 ────────────────────────────────────────────
-    log.info(f"{symbol}: fetching via Yahoo v8 direct API")
-    df2 = _fetch_bars_v8(yf_ticker, days=60)
-    if df2 is not None and not df2.empty:
-        return _normalise(df2)
 
-    log.error(f"Bar fetch failed for {symbol} — both yfinance and v8 fallback failed")
-    return None
+def _atomic_write_json(path: Path, obj: Any) -> None:
+    """Write JSON atomically (temp file + os.replace) so a torn write can never
+    leave a half-written file. A corrupt state file is silently read back as {}
+    by the loaders below — for entry_eval that wipes the crossover-bar dedup and
+    re-enables a double entry. The standalone Jarvis-PaperCollect task and the
+    in-process engine can both write these files, so torn writes are reachable.
+    os.replace is atomic on the same filesystem (incl. Windows NTFS).
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(obj), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _save_entry_eval(state: Dict[str, str]) -> None:
+    try:
+        _atomic_write_json(_entry_eval_path(), state)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# ── Data-starvation guard (Initiative 1, Track A1) ─────────────────────────────
+# A paper stop can only be enforced when bars are flowing. When fetch_bars()
+# returns None the cycle silently skips management — so an open position is left
+# UNPROTECTED with no signal to the operator. That silent no-op is exactly what
+# turned trade #178's −$64 planned risk into a −$1,284 realized loss during the
+# 2026-06-01 IB-Gateway outage. We persist a per-symbol consecutive-error counter
+# and make the blindness LOUD once a starved symbol is also holding a position.
+DATA_ERROR_ALERT_THRESHOLD = 3  # ~15 min at the 5-minute poll cadence
+DATA_ERROR_REANNOUNCE_EVERY = 12  # re-alert hourly while the feed stays dark
+
+
+def _data_error_path() -> Path:
+    return _RESULTS_DIR / "data_error_state.json"
+
+
+def _load_data_error_state() -> Dict[str, int]:
+    """Map of symbol -> consecutive data_error count, persisted across cycles."""
+    try:
+        raw = json.loads(_data_error_path().read_text(encoding="utf-8"))
+        return {str(k): int(v) for k, v in raw.items()}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_data_error_state(state: Dict[str, int]) -> None:
+    try:
+        _atomic_write_json(_data_error_path(), state)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def should_alert_data_error(
+    count: int,
+    threshold: int = DATA_ERROR_ALERT_THRESHOLD,
+    reannounce_every: int = DATA_ERROR_REANNOUNCE_EVERY,
+) -> bool:
+    """Alert on the first cross of the threshold, then periodically while dark.
+
+    Fires at exactly ``count == threshold`` (first time blindness is confirmed),
+    then again every ``reannounce_every`` cycles after that — loud enough to be
+    noticed, quiet enough not to spam every poll for hours.
+    """
+    if count < threshold:
+        return False
+    if count == threshold:
+        return True
+    return reannounce_every > 0 and (count - threshold) % reannounce_every == 0
+
+
+def _latest_mgmt_bar(
+    symbol: str,
+    futures_map: Dict[str, str],
+    df_1h_signals: pd.DataFrame,
+) -> Tuple[pd.Series, str]:
+    """Return the freshest bar to manage an open position against.
+
+    Prefers the latest 5-minute bar (intrabar stop/target accuracy — the validated
+    edge entered on 1h closes, but checking exits only hourly misses intrabar fills).
+    Falls back to the latest 1h bar if the 5m feed is unavailable, so management never
+    silently stops working.
+    """
+    df_5m = fetch_bars(symbol, futures_map, timeframe="5m")
+    if df_5m is not None and not df_5m.empty:
+        return df_5m.iloc[-1], str(df_5m.index[-1])
+    if df_1h_signals is None or df_1h_signals.empty:
+        # Both feeds dry: raise a clear error instead of letting an empty-frame
+        # .iloc[-1] surface as a bare IndexError far from the cause. The caller
+        # guards the per-symbol cycle, so this skips management for this poll.
+        raise ValueError(
+            f"_latest_mgmt_bar({symbol}): no 5m feed and empty 1h frame — cannot manage position"
+        )
+    return df_1h_signals.iloc[-1], str(df_1h_signals.index[-1])
 
 
 # ── Position Management ───────────────────────────────────────────────────────
@@ -423,10 +572,10 @@ def manage_open_position(
             "exit_reason": "stop",
             "regime_type": pos.get("regime", "unknown"),
             "pnl": round(pnl, 2),
+            "risk_pct_used": pos.get("risk_pct_used"),
         }
 
         tracker.add_trade(record)
-        append_trade_record(record)
         _try_sync_engine_close(pos, record)
 
         log.info(
@@ -477,10 +626,10 @@ def manage_open_position(
                 "exit_reason": f"target_{i}",
                 "regime_type": pos.get("regime", "unknown"),
                 "pnl": round(pnl, 2),
+                "risk_pct_used": pos.get("risk_pct_used"),
             }
 
             tracker.add_trade(record)
-            append_trade_record(record)
 
             log.info(
                 f"T{i} HIT {symbol} {side.upper()} | target={target_price:.2f} "
@@ -521,28 +670,46 @@ def check_for_entry(
     cfg: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
     """
-    Look at the most recent bar for an ENTRY_NOW signal.
+    Look at the most recent N completed bars for an ENTRY_NOW signal.
+
+    N is cfg["signal_lookback_bars"] (default 1).  When a signal is found in a
+    lookback bar (not the most recent), we enter at the most-recent bar's close
+    price (not the signal bar's stale close) but retain the signal bar's stop
+    and target levels (calibrated to that bar's ATR).  This catches crossovers
+    that occurred while the runner polled between 1h bar closes.
 
     Returns a new position dict or None.
     """
     log = logging.getLogger(f"paper_runner.{symbol}")
 
-    last_bar = df_signals.iloc[-1]
-    entry_signal = str(last_bar.get("entry_signal", ""))
+    lookback = max(1, int(cfg.get("signal_lookback_bars", 1)))
+    n = len(df_signals)
 
-    if entry_signal != "ENTRY_NOW":
-        log.debug(f"{symbol}: No entry signal (got '{entry_signal}')")
+    signal_bar = None
+    for offset in range(1, lookback + 1):
+        if n < offset:
+            break
+        bar = df_signals.iloc[-offset]
+        if str(bar.get("entry_signal", "")) == "ENTRY_NOW":
+            signal_bar = bar
+            if offset > 1:
+                log.info(f"{symbol}: ENTRY_NOW found in lookback bar -{offset}")
+            break
+
+    if signal_bar is None:
+        log.debug(f"{symbol}: No entry signal in last {lookback} bars")
         return None
 
-    bias = str(last_bar.get("bias", ""))
+    last_bar = df_signals.iloc[-1]  # use current price for entry, signal-bar levels for stops
+    bias = str(signal_bar.get("bias", ""))
     side = "long" if bias in ("STRONG_BULL", "LEAN_BULL") else "short"
 
-    # Use pre-computed signal levels from the signal generator
+    # Enter at most-recent bar's close; use signal bar's levels (ATR-calibrated to crossover bar)
     entry_price = float(last_bar["close"])
-    stop_level = float(last_bar.get("stop_level", 0))
-    target_1 = float(last_bar.get("target_1", 0))
-    target_2 = float(last_bar.get("target_2", 0))
-    target_3 = float(last_bar.get("target_3", 0))
+    stop_level = float(signal_bar.get("stop_level", 0))
+    target_1 = float(signal_bar.get("target_1", 0))
+    target_2 = float(signal_bar.get("target_2", 0))
+    target_3 = float(signal_bar.get("target_3", 0))
 
     # Sanity check: stop and targets must be non-zero and directionally correct
     if side == "long":
@@ -556,7 +723,14 @@ def check_for_entry(
 
     current_time = str(df_signals.index[-1])
     regime = str(last_bar.get("regime", "unknown"))
+    structure_position = str(last_bar.get("structure_position", "NEUTRAL"))
     stc_val = float(last_bar.get("stc_val", 0))
+
+    # Compute risk-scaled position size using Layer 5 conviction logic
+    from backtest.signals import compute_position_size
+
+    base_risk_pct = float(cfg.get("risk_per_trade", 0.0025))
+    risk_pct_used = compute_position_size(bias, regime, structure_position, base_risk_pct)
 
     position = {
         "symbol": symbol,
@@ -568,8 +742,10 @@ def check_for_entry(
         "contracts": 1,
         "contracts_remaining": 1,
         "regime": regime,
+        "structure_position": structure_position,
         "stc_at_entry": round(stc_val, 2),
         "bias": bias,
+        "risk_pct_used": round(risk_pct_used, 6),
         "t1_hit": False,
         "t2_hit": False,
         "t3_hit": False,
@@ -601,12 +777,25 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
     _setup_logging()
     log = logging.getLogger("paper_runner")
 
+    # The runner is invoked standalone (the hourly Jarvis-PaperCollect task) in a
+    # separate process from the engine, so the SQLite singleton must be created
+    # HERE or load_positions + every tracker write silently degrade to empty
+    # state and no trades persist. init_db() is an idempotent locked singleton —
+    # a no-op when the engine already initialised it in-process.
+    try:
+        from database.manager import init_db
+
+        init_db()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("init_db() failed (%s) — continuing with degraded persistence", exc)
+
     (
         FUTURES_MAP,
         ACTIVE_INSTRUMENTS,
         PAPER_CONFIGS,
         PaperTradeTracker,
         generate_signals,
+        generate_instrument_signals,
     ) = _import_signal_deps()
 
     if not quiet:
@@ -615,6 +804,8 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
         log.info(f"Active instruments: {ACTIVE_INSTRUMENTS}")
 
     positions = load_positions()
+    last_entry_eval = _load_entry_eval()
+    data_err_state = _load_data_error_state()
     summary: Dict[str, Any] = {}
 
     for symbol in ACTIVE_INSTRUMENTS:
@@ -640,41 +831,122 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             summary[symbol] = {"action": "kill_switch", "reason": kill_reason}
             continue
 
-        # ── Fetch bars ────────────────────────────────────────────────────────
-        df = fetch_bars(symbol, FUTURES_MAP)
+        # ── Fetch 1h bars (validated entry timeframe) ─────────────────────────
+        df = fetch_bars(symbol, FUTURES_MAP, timeframe="1h")
         if df is None:
-            log.error(f"{symbol}: bar fetch failed — skipping cycle")
-            summary[symbol] = {"action": "data_error"}
+            has_open = symbol in positions
+            count = data_err_state.get(symbol, 0) + 1
+            data_err_state[symbol] = count
+            log.error(
+                f"{symbol}: bar fetch failed — skipping cycle "
+                f"(consecutive data_error #{count}, open_position={has_open})"
+            )
+            # New entries are already skipped for this symbol (the `continue`
+            # below). The defect this guards is the SILENT part: an open position
+            # with a dark feed is unprotected and nothing said so. Make it loud.
+            if has_open and should_alert_data_error(count):
+                pos = positions.get(symbol, {})
+                stop = pos.get("stop")
+                side = str(pos.get("side", "?")).upper()
+                log.critical(
+                    f"{symbol}: STOP UNENFORCED — bar feed dark for {count} consecutive "
+                    f"cycles (~{count * 5}m) with an OPEN {side} position "
+                    f"(entry={pos.get('entry_price', '?')}, stop={stop}). The bar-loop "
+                    f"cannot evaluate the stop until the feed recovers."
+                )
+                _notify(
+                    f"🚨 JARVIS PAPER | {symbol} STOP UNENFORCED\n"
+                    f"Bar feed dark {count} cycles (~{count * 5}m) with OPEN {side}.\n"
+                    f"Entry {pos.get('entry_price', '?')} | Stop {stop}\n"
+                    f"Bar-loop blind; in-process stop-monitor is the backstop."
+                )
+            summary[symbol] = {
+                "action": "data_error",
+                "consecutive": count,
+                "open_position": has_open,
+            }
             continue
 
-        # ── Compute signals ───────────────────────────────────────────────────
-        params = cfg["stc_params"]
+        # Feed recovered for this symbol — clear the counter and, if we had been
+        # alerting, announce the all-clear so the operator knows it's resolved.
+        if data_err_state.get(symbol):
+            prior = data_err_state.pop(symbol)
+            if prior >= DATA_ERROR_ALERT_THRESHOLD:
+                log.info(f"{symbol}: bar feed recovered after {prior} starved cycles")
+                _notify(
+                    f"✅ JARVIS PAPER | {symbol} bar feed recovered "
+                    f"after {prior} starved cycles"
+                )
+
+        # ── Compute 1h signals ────────────────────────────────────────────────
         try:
-            df_signals = generate_signals(
-                df,
-                symbol=symbol,
-                stc_oversold=params["stc_os"],
-                stc_overbought=params["stc_ob"],
-                regime_filter=cfg.get("regime_filter", True),
-                adaptive_regime=cfg.get("adaptive_regime", False),
-                volume_filter=cfg.get("volume_filter", False),
-            )
+            if cfg.get("strategy") == "sma_trend":
+                # Route SMA trend instruments (MES) through generate_instrument_signals()
+                # which dispatches to trend_signals.generate_sma_trend_signals() via
+                # the TREND_INSTRUMENTS set. This also applies DO_NOT_TRADE and gate v2
+                # enforcement layers automatically.
+                sma_params = cfg.get("sma_params", {})
+                rv_kwargs = {}
+                if "min_rv_annualized" in sma_params:
+                    rv_kwargs["min_rv_annualized"] = sma_params["min_rv_annualized"]
+                df_signals = generate_instrument_signals(
+                    df,
+                    symbol=symbol,
+                    fast=sma_params.get("fast", 50),
+                    slow=sma_params.get("slow", 200),
+                    atr_trail_mult=sma_params.get("atr_trail_mult", 2.0),
+                    **rv_kwargs,
+                )
+            else:
+                params = cfg["stc_params"]
+                df_signals = generate_signals(
+                    df,
+                    symbol=symbol,
+                    stc_oversold=params["stc_os"],
+                    stc_overbought=params["stc_ob"],
+                    regime_filter=cfg.get("regime_filter", True),
+                    adaptive_regime=cfg.get("adaptive_regime", False),
+                    volume_filter=cfg.get("volume_filter", False),
+                )
         except Exception as exc:
             log.error(f"{symbol}: signal generation failed: {exc}", exc_info=True)
             summary[symbol] = {"action": "signal_error"}
             continue
 
+        # An empty signal frame (all bars filtered, or a starved feed) would make
+        # the .iloc[-1] reads below raise IndexError and crash the whole poll
+        # cycle for every symbol. Skip this symbol's cycle instead.
+        if df_signals is None or df_signals.empty:
+            log.warning(f"{symbol}: empty signal frame — skipping management/entry this cycle")
+            summary[symbol] = {"action": "no_signal_data"}
+            continue
+
         last_bar = df_signals.iloc[-1]
         current_time = str(df_signals.index[-1])
 
-        # ── Manage open position ──────────────────────────────────────────────
         action = "no_signal"
         closed_record = None
 
         if symbol in positions:
-            updated_pos, closed_record = manage_open_position(
-                symbol, positions[symbol], last_bar, current_time, cfg, tracker
-            )
+            # ── Manage open position against the latest 5m bar ────────────────
+            # Entries stay on the validated 1h edge, but exits are checked at 5m
+            # granularity so an intrabar stop/target fill isn't missed or mispriced
+            # the way an hourly-only check would.
+            try:
+                mgmt_bar, mgmt_time = _latest_mgmt_bar(symbol, FUTURES_MAP, df_signals)
+                updated_pos, closed_record = manage_open_position(
+                    symbol, positions[symbol], mgmt_bar, mgmt_time, cfg, tracker
+                )
+            except Exception as exc:
+                # A transient 5m feed error inside _latest_mgmt_bar, or a malformed
+                # position row (e.g. a NULL stop → float(None) in manage_open_position),
+                # must NOT escape the per-symbol loop. Unguarded, it would abort every
+                # REMAINING symbol's management this cycle — leaving their open positions'
+                # stops unevaluated (money risk). Log loudly, flag, and move on; the
+                # position stays tracked and is retried next poll.
+                log.error(f"{symbol}: position management failed: {exc}", exc_info=True)
+                summary[symbol] = {"action": "mgmt_error", "position": positions.get(symbol)}
+                continue
             if updated_pos is None:
                 # Position closed
                 del positions[symbol]
@@ -687,13 +959,25 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
                 positions[symbol] = updated_pos
                 action = "holding"
 
-        # ── Check for new entry (only if no open position) ────────────────────
+        # ── Check for new entry (only if flat) ────────────────────────────────
         elif cfg.get("max_concurrent_positions", 1) > len([s for s in positions if s == symbol]):
-            new_pos = check_for_entry(symbol, df_signals, cfg)
-            if new_pos:
-                positions[symbol] = new_pos
-                _try_sync_engine_open(new_pos)
-                action = "entered"
+            # Evaluate entry only on a freshly CLOSED 1h bar: drop the in-progress
+            # last bar so the signal is read off a completed crossover (the validated
+            # behaviour), and act on each bar at most once. Dedup matters now that we
+            # poll every 5 min — without it, a position stopped out mid-hour would
+            # re-enter the same crossover bar on the next poll.
+            completed = df_signals.iloc[:-1]
+            if len(completed) >= 2:
+                completed_ts = str(completed.index[-1])
+                if completed_ts != last_entry_eval.get(symbol):
+                    last_entry_eval[symbol] = completed_ts
+                    new_pos = check_for_entry(symbol, completed, cfg)
+                    if new_pos:
+                        positions[symbol] = new_pos
+                        _try_sync_engine_open(new_pos)
+                        action = "entered"
+                else:
+                    action = "entry_evaluated"
 
         summary[symbol] = {
             "action": action,
@@ -711,6 +995,8 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
 
     # ── Persist state ─────────────────────────────────────────────────────────
     save_positions(positions)
+    _save_entry_eval(last_entry_eval)
+    _save_data_error_state(data_err_state)
 
     if not quiet:
         log.info("═" * 64)
@@ -750,11 +1036,12 @@ def _cmd_status() -> None:
     """Print current open positions and per-instrument trade metrics."""
     _setup_logging()
     (
-        _,
+        _futures_map,
         ACTIVE_INSTRUMENTS,
         PAPER_CONFIGS,
         PaperTradeTracker,
-        _,
+        _gen_signals,
+        _gen_instrument_signals,
     ) = _import_signal_deps()
 
     positions = load_positions()
@@ -787,9 +1074,144 @@ def _cmd_status() -> None:
             )
 
 
+# ── One-Time Migration (JSONL → SQLite) ───────────────────────────────────────
+
+
+def migrate_jsonl_to_sqlite(jsonl_path: str) -> int:
+    """
+    One-time migration: read existing JSONL trade log and INSERT rows into SQLite.
+
+    Idempotent — skips rows already in DB (matched by symbol + entry_time + side).
+
+    Parameters
+    ----------
+    jsonl_path : str
+        Path to the JSONL file (e.g., engine/portfolio/trades.jsonl).
+
+    Returns
+    -------
+    int
+        Count of rows inserted.
+    """
+    import json
+    from pathlib import Path
+
+    from database.manager import init_db
+
+    db = init_db()
+    jsonl_file = Path(jsonl_path)
+
+    if not jsonl_file.exists():
+        logging.getLogger("paper_runner").info(f"JSONL file not found: {jsonl_path}")
+        return 0
+
+    inserted = 0
+    try:
+        with open(jsonl_file, "r") as f:
+            for line_num, line in enumerate(f, 1):
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    logging.getLogger("paper_runner").warning(
+                        f"Skipped malformed JSONL line {line_num}: {exc}"
+                    )
+                    continue
+
+                symbol = record.get("symbol", "").upper()
+                entry_date = record.get("entry_date", "")
+                side = record.get("side", "").lower()
+                entry_price = float(record.get("entry_price", 0.0))
+
+                # Construct trade_id for idempotency
+                trade_id = f"{symbol}_{entry_date}_{side}_{entry_price}"
+
+                # Check if already exists
+                existing = db.get_trade_by_id(trade_id)
+                if existing:
+                    logging.getLogger("paper_runner").debug(
+                        f"Trade {trade_id} already in DB, skipping"
+                    )
+                    continue
+
+                # Insert as closed trade
+                try:
+                    exit_price = float(record.get("exit_price", entry_price))
+                    pnl = float(record.get("pnl", 0.0))
+                    exit_date = record.get("exit_date", entry_date)
+                    contracts = int(record.get("contracts", 1))
+
+                    strategy_params = {
+                        "exit_reason": record.get("exit_reason", "migrated"),
+                        "regime_type": record.get("regime_type", "unknown"),
+                        "contracts": contracts,
+                        "pnl_pct": record.get("pnl_pct", 0.0),
+                    }
+
+                    # Add optional fields if present
+                    for key in [
+                        "regime",
+                        "structure_position",
+                        "bias",
+                        "composite_score",
+                        "stc_contrib",
+                        "orb_contrib",
+                        "vwap_contrib",
+                        "risk_pct_used",
+                    ]:
+                        if key in record and record[key] is not None:
+                            strategy_params[key] = record[key]
+
+                    # Insert and close
+                    db.insert_trade(
+                        trade_id=trade_id,
+                        symbol=symbol,
+                        side=side,
+                        quantity=float(contracts),
+                        entry_price=entry_price,
+                        entry_time=entry_date,
+                        status="closed",
+                        strategy_params=strategy_params,
+                        notes="(migrated from JSONL)",
+                    )
+                    db.close_trade(
+                        trade_id=trade_id,
+                        exit_price=exit_price,
+                        pnl=pnl,
+                        exit_time=exit_date,
+                        notes=None,
+                    )
+                    inserted += 1
+                    logging.getLogger("paper_runner").info(
+                        f"Migrated trade: {symbol} {side} {entry_price:.2f}→{exit_price:.2f}"
+                    )
+                except Exception as exc:
+                    logging.getLogger("paper_runner").error(
+                        f"Failed to migrate line {line_num}: {exc}"
+                    )
+    except Exception as exc:
+        logging.getLogger("paper_runner").error(
+            f"Migration failed to read JSONL: {exc}", exc_info=True
+        )
+
+    logging.getLogger("paper_runner").info(f"Migration complete: {inserted} trades inserted")
+    return inserted
+
+
 # ── Entry Point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # Standalone invocation (e.g. the hourly Jarvis-PaperCollect task) may run
+    # under a cp1252 console; the box-drawing chars in status/summary output
+    # otherwise raise UnicodeEncodeError and fail the task. Force UTF-8 with a
+    # lossy fallback so output never crashes the cycle.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
+
     import argparse
 
     parser = argparse.ArgumentParser(

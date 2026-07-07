@@ -1,0 +1,6 @@
+"Strategy","Funnel verdict","Reason"
+"MES_trend_rank7","Tier A","Real backtest, native metrics"
+"MES_trend_rank11","Tier A","Same"
+"MGC_trend_rank4","Tier A (alt path)","Same"
+"Strategy C (claimed)","Tier C","Unverifiable claims, unknown N"
+"MGC_trend_rank3","Tier B (rescued)","At least has trade-level data"

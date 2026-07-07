@@ -1,0 +1,1 @@
+{"run_id": "4a9cadcc", "timestamp": "2026-04-03T06:20:56.041647+00:00", "symbol": "MCL", "category": "reward_shape", "hypothesis": "test hypothesis", "reward_config_delta": {"hold_cost": -0.008}, "metrics": {"pf": 2.1, "wfe": 0.82, "sharpe": 1.4, "n_trades": 12, "pass_rate": 0.875, "recommendation": "deploy"}, "composite_score": 0.4715, "kept": true}

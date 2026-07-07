@@ -47,20 +47,22 @@ IB Gateway is a lightweight gateway that exposes the IBKR API over TCP sockets. 
 4. Log in with your IBKR credentials
 5. Verify "Socket API" is enabled in the TWS connection settings
 
-### 1.3 TWS API Socket Configuration
+### 1.3 IB Gateway API Socket Configuration
 
 IB Gateway exposes the API on configurable TCP ports. JARVIS TRADER expects:
 
-- **Paper Trading:** Port 7497 (default)
-- **Live Trading (future):** Port 7496 (disabled for paper trading)
+- **Paper Trading:** Port 4002 (IB Gateway default for paper)
+- **Live Trading (future):** Port 4001 (PERMANENTLY BLOCKED during paper phase)
+
+**Note:** Port 7497 is the TWS (desktop client) port and is NOT used by JARVIS TRADER. IB Gateway communicates on port 4002 for paper trading only.
 
 **Verify Configuration in IB Gateway:**
 
 1. Open IB Gateway
 2. Navigate to: Edit → Configuration → API → Settings
 3. Confirm:
-   - Socket Port for Paper Trading: `7497`
-   - Socket Port for Live Trading: `7496` (disabled during paper test)
+   - Socket Port for Paper Trading: `4002` (default)
+   - Socket Port for Live Trading: `4001` (disabled during paper test)
    - Enable "Allow connections from any IP" (or restrict to localhost)
 4. **Important:** Restart IB Gateway after any configuration changes
 
@@ -69,18 +71,18 @@ IB Gateway exposes the API on configurable TCP ports. JARVIS TRADER expects:
 Before starting JARVIS TRADER, verify IB Gateway is reachable:
 
 ```bash
-# Test connectivity to IB Gateway (assuming it's running on localhost:7497)
-nc -zv 127.0.0.1 7497
-# Expected output: Connection to 127.0.0.1 port 7497 [tcp/*] succeeded!
+# Test connectivity to IB Gateway (assuming it's running on localhost:4002)
+nc -zv 127.0.0.1 4002
+# Expected output: Connection to 127.0.0.1 port 4002 [tcp/*] succeeded!
 
 # Or use Python:
 python -c "
 import socket
 try:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('127.0.0.1', 7497))
+    s.connect(('127.0.0.1', 4002))
     s.close()
-    print('✓ IB Gateway is reachable on port 7497')
+    print('✓ IB Gateway is reachable on port 4002')
 except Exception as e:
     print(f'✗ Connection failed: {e}')
 "
@@ -105,11 +107,11 @@ PAPER_TRADING_BROKER=IB_GATEWAY
 # INTERACTIVE BROKERS GATEWAY (Paper Trading)
 # ──────────────────────────────────────────────────────────────────────────
 IBKR_HOST=127.0.0.1
-IBKR_PORT=7497
+IBKR_PORT=4002
 IBKR_CLIENT_ID=1
 IBKR_PAPER_MODE=True
 IB_GATEWAY_HOST=127.0.0.1
-IB_GATEWAY_PORT=7497
+IB_GATEWAY_PORT=4002
 IB_ACCOUNT_ID=YOUR_IBKR_ACCOUNT_ID  # e.g., DU123456
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -137,7 +139,11 @@ CONSECUTIVE_LOSS_HALT_HOURS=24
 # ──────────────────────────────────────────────────────────────────────────
 # INSTRUMENTS TO TRADE
 # ──────────────────────────────────────────────────────────────────────────
-FUTURES_WATCHLIST=MES,MNQ,MCL
+# APPROVED (active paper, Tier-3 2026-05-24): MES (1h, p_edge 0.75), MGC (1h, p_edge 0.6842)
+# HALTED (DO_NOT_TRADE): MCL (WFE 0.82), MNQ (WFE 0.57) — strategy hypotheses exhausted / fail gate v2
+# REJECTED: M2K (SMA/ORB/Donchian all FAIL 2026-05-24)
+# Watchlist drives pipeline signals/dashboard visibility; only MES/MGC generate paper orders.
+FUTURES_WATCHLIST=MES,MNQ,MCL,MGC
 OPTIONS_WATCHLIST=SPY,QQQ,AAPL,TSLA
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -318,7 +324,7 @@ Open the dashboard at `http://localhost:3010` and verify:
 # 1. Check overnight errors in logs
 tail -n 100 engine/logs/jarvis.log | grep -i "error\|exception\|critical"
 
-# 2. Verify IB Gateway is still connected
+# 2. Verify IB Gateway is still connected (port 4002)
 curl http://localhost:8010/v1/broker/status
 # Look for: "connected": true, "last_heartbeat": <recent_timestamp>
 
@@ -358,8 +364,9 @@ curl http://localhost:8010/v1/trading/pnl
 # If P&L approaches limit: Review open positions and close if needed
 
 # 3. Verify Signal Generation is Happening
-curl http://localhost:8010/v1/backtest/signals?symbols=MES,MNQ&limit=5
+curl http://localhost:8010/v1/backtest/signals?symbols=MES,MGC&limit=5
 # Should see new signals every cycle (typically every 1-5 minutes)
+# Note: only MES and MGC trade (active paper since 2026-05-24); MCL/MNQ halted, M2K rejected
 
 # 4. Monitor Agent Pipeline Latency
 curl http://localhost:8010/llm/stats

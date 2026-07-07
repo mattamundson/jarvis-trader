@@ -114,13 +114,46 @@ class BacktestResult:
     # Drawdown duration
     max_drawdown_duration_bars: int = 0  # how many bars the max drawdown lasted
 
+    # Exposure time (% of bars with open position)
+    exposure_time_pct: float = 0.0
+    total_bars: int = 0
+
+    # Bid-ask spread simulation cost (entry half-spread + exit half-spread, all trades)
+    spread_cost_total: float = 0.0
+
+    # Value-at-Risk (Historical, from equity curve daily returns)
+    var_95: float = 0.0   # 95% VaR — 5th-percentile daily return (negative = loss)
+    var_99: float = 0.0   # 99% VaR — 1st-percentile daily return
+    cvar_95: float = 0.0  # Expected Shortfall beyond 95% VaR
+    cvar_99: float = 0.0  # Expected Shortfall beyond 99% VaR
+
+    # Kelly criterion (from avg_win / avg_loss)
+    kelly_fraction: float = 0.0        # full Kelly f* (theoretical optimal bet fraction)
+    half_kelly_fraction: float = 0.0   # f*/2 — practical sizing recommendation
+
     def summary(self) -> str:
-        """Human-readable one-screen summary."""
+        """Human-readable one-screen summary.
+
+        Unit notes: total_return_pct, max_drawdown_pct, win_rate, long/short_win_rate are
+        FRACTIONS (0.199 = 19.9%). Display with `{:.1%}` / `{:+.1%}`. The prior version
+        mixed `{:+.1f}%` (appends % sign without converting) with a fraction — printing
+        0.199 as '0.2%' while final_capital showed a large gain. Now all are `{:.1%}`
+        style, and Capital->Return are kept in sync via metrics.calculate_metrics.
+        """
+        # Defensive sanity check: if final_capital and total_return_pct disagree, flag it.
+        # calculate_metrics() derives return from final_capital, so this should never fire
+        # unless a caller bypasses calculate_metrics() and mutates one field only.
+        derived_final = self.initial_capital * (1.0 + self.total_return_pct)
+        capital_note = ""
+        tolerance = max(1.0, 0.01 * abs(self.initial_capital))
+        if abs(derived_final - self.final_capital) > tolerance:
+            capital_note = f"  [WARN: return-implied ${derived_final:,.0f} disagrees]"
+
         lines = [
             f"=== BACKTEST RESULTS: {self.symbol} ===",
             f"Period: {self.start_date} -> {self.end_date}",
-            f"Capital: ${self.initial_capital:,.0f} -> ${self.final_capital:,.0f}",
-            f"Return: {self.total_return_pct:+.1f}%  |  Max DD: {self.max_drawdown_pct:.1f}%",
+            f"Capital: ${self.initial_capital:,.0f} -> ${self.final_capital:,.0f}{capital_note}",
+            f"Return: {self.total_return_pct:+.1%}  |  Max DD: {self.max_drawdown_pct:.1%}",
             "",
             f"Trades: {self.total_trades} total  |  Win Rate: {self.win_rate:.1%}",
             f"Avg Win: ${self.avg_win:,.0f}  |  Avg Loss: ${self.avg_loss:,.0f}",
@@ -131,6 +164,7 @@ class BacktestResult:
             f"Calmar: {self.calmar_ratio:.2f}  |  Expectancy: ${self.expectancy:,.0f}  |  Recovery Factor: {self.recovery_factor:.2f}",
             f"Long Trades: {self.long_trades} (WR {self.long_win_rate:.0%})  |  Short Trades: {self.short_trades} (WR {self.short_win_rate:.0%})",
             f"Avg Holding: {self.avg_holding_bars:.1f} bars  |  Max DD Duration: {self.max_drawdown_duration_bars} bars",
+            f"Spread Cost Total: ${self.spread_cost_total:,.2f}",
         ]
         return "\n".join(lines)
 
@@ -179,6 +213,15 @@ class BacktestResult:
             "max_holding_bars": self.max_holding_bars,
             "trailing_stop_exits": self.trailing_stop_exits,
             "max_drawdown_duration_bars": self.max_drawdown_duration_bars,
+            "exposure_time_pct": round(self.exposure_time_pct, 2),
+            "total_bars": self.total_bars,
+            "var_95": round(self.var_95, 6),
+            "var_99": round(self.var_99, 6),
+            "cvar_95": round(self.cvar_95, 6),
+            "cvar_99": round(self.cvar_99, 6),
+            "spread_cost_total": round(self.spread_cost_total, 2),
+            "kelly_fraction": round(self.kelly_fraction, 4),
+            "half_kelly_fraction": round(self.half_kelly_fraction, 4),
             "equity_curve": [round(v, 2) for v in self.equity_curve],
             "trades": [t.to_dict() for t in self.trades],
         }

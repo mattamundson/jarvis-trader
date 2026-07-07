@@ -1,0 +1,76 @@
+name: Safety Invariant Check
+
+# Gates any PR that touches safety-critical engine configuration unless the
+# author has explicitly tagged the PR body with [safety-review]. This is a
+# tripwire, not a substitute for human review.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches: [main, master, develop]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: safety-invariant-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safety-gate:
+    name: Safety-critical config gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes to safety-critical files
+        id: detect
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          # Safety-critical surface: config.py (hard limits), kill switch,
+          # risk manager, position sizer math.
+          PATTERNS='^engine/config\.py$|^engine/risk/|^engine/notifications/openclaw_notifier\.py$|^engine/agents/trader\.py$'
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD" | (grep -E "$PATTERNS" || true))
+          if [[ -n "$CHANGED" ]]; then
+            echo "touches_safety=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "files<<EOF"
+              echo "$CHANGED"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "touches_safety=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require [safety-review] tag in PR body
+        if: steps.detect.outputs.touches_safety == 'true'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          echo "Safety-critical files changed:"
+          echo "${{ steps.detect.outputs.files }}"
+          if [[ "${PR_BODY:-}" != *"[safety-review]"* ]]; then
+            echo ""
+            echo "ERROR: This PR modifies safety-critical engine files but the PR body"
+            echo "       does not contain the '[safety-review]' tag."
+            echo ""
+            echo "       Add '[safety-review]' to the PR description to acknowledge that a"
+            echo "       human has reviewed the change against documented invariants:"
+            echo "         - Position size bounds (0.5x-1.5x, clamped to max_contracts=2)"
+            echo "         - Kill switch activation / deactivation paths"
+            echo "         - Stop-loss direction (long: stop below entry; short: stop above)"
+            echo "         - Hardcoded capital / drawdown caps in engine/config.py"
+            exit 1
+          fi
+          echo "OK: [safety-review] tag present."
+
+      - name: No safety files touched
+        if: steps.detect.outputs.touches_safety == 'false'
+        run: echo "No safety-critical files modified in this PR."

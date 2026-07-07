@@ -4,8 +4,14 @@ import { useEffect, useState } from "react";
 import { Target, ShieldAlert, Minus, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngineRaw } from "@/lib/api";
+import { RawRecordBadge } from "@/components/RawRecordBadge";
 
+// NOTE: outcome-bucketing (Target/Stopped/Partial/Scratch) requires an exit-reason
+// or target/stop field that the deduped honest record does NOT carry. This widget
+// intentionally keeps the raw /portfolio/history/trades source so it can bucket by
+// inferred outcome. Trade COUNTS here may be inflated vs. the deduped record due
+// to re-logged winners. A "Raw record · not deduped" badge makes this visible.
 
 interface TradeRecord {
   id: number;
@@ -19,11 +25,6 @@ interface TradeRecord {
   entry_time: string;
   exit_time: string | null;
   notes: string | null;
-}
-
-interface TradesResponse {
-  trades: TradeRecord[];
-  count: number;
 }
 
 interface OutcomeStats {
@@ -99,7 +100,7 @@ export function EntryQualityWidget() {
 
   async function load() {
     try {
-      const res = await fetch(
+      const res = await fetchEngineRaw(
         `/portfolio/history/trades?status=CLOSED&limit=200`,
         { cache: "no-store" }
       );
@@ -137,13 +138,17 @@ export function EntryQualityWidget() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Entry Quality</CardTitle>
-        {stats && !error && (
-          <Badge variant={qualityBadgeVariant(hitRate)}>
-            {qualityLabel(hitRate)} — {hitRate.toFixed(0)}% HIT RATE
-          </Badge>
-        )}
-        {error && <Badge variant="bear">ERROR</Badge>}
-        {loading && !stats && <Badge variant="neutral">LOADING…</Badge>}
+        <div className="flex items-center gap-2">
+          {/* Prominent raw-data disclosure badge */}
+          <RawRecordBadge className="text-[10px]" />
+          {stats && !error && (
+            <Badge variant={qualityBadgeVariant(hitRate)}>
+              {qualityLabel(hitRate)} — {hitRate.toFixed(0)}% HIT RATE
+            </Badge>
+          )}
+          {error && <Badge variant="bear">ERROR</Badge>}
+          {loading && !stats && <Badge variant="neutral">LOADING…</Badge>}
+        </div>
       </CardHeader>
 
       <CardContent>
@@ -159,7 +164,7 @@ export function EntryQualityWidget() {
           <div className="space-y-4">
             {/* Subtitle */}
             <p className="font-mono text-[10px]" style={{ color: "#555" }}>
-              Based on {total} closed trade{total !== 1 ? "s" : ""}
+              Based on {total} closed trade{total !== 1 ? "s" : ""} (raw, may include re-logged duplicates)
             </p>
 
             {/* 2x2 outcome grid */}
@@ -296,9 +301,9 @@ export function EntryQualityWidget() {
               </div>
             )}
 
-            {/* Classification note */}
+            {/* Classification + data-quality note */}
             <p className="font-mono text-[9px]" style={{ color: "#444" }}>
-              Target: &gt;$50 | Stop: &lt;-$20 | Scratch: |P&amp;L|≤$20 | Refreshes every 60s
+              Target: &gt;$50 | Stop: &lt;-$20 | Scratch: |P&amp;L|≤$20 | Outcome inferred from P&amp;L only (no exit-reason in deduped record) | Refreshes every 60s
             </p>
           </div>
         ) : null}

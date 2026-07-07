@@ -493,6 +493,141 @@ def save_results(
 
 
 # ---------------------------------------------------------------------------
+# Programmatic entry point for experiment search
+# ---------------------------------------------------------------------------
+
+
+def run_walk_forward_for_params(
+    symbol: str = "MES",
+    timeframe: str = "1h",
+    stc_os: int = 15,
+    stc_ob: int = 83,
+    stop_atr_mult: float = 0.50,
+    t1_atr_mult: float = 1.00,
+    regime_required: int = 4,
+    start: str = "2024-06-01",
+    end: str = "2026-03-27",
+    train_months: int = 6,
+    test_months: int = 3,
+    capital: float = 10_000.0,
+) -> dict:
+    """
+    Run walk-forward validation for a fixed parameter set.
+
+    Unlike the full WalkForwardValidator (which grid-searches IS to find best params),
+    this function applies the given params directly to every OOS window without IS
+    optimisation.  This is appropriate for an experiment search loop where we want
+    to evaluate a specific candidate config end-to-end.
+
+    Returns a dict with keys:
+        wfe, pf_insample, pf_walkforward, sharpe_walkforward,
+        trade_count, window_months, windows_profitable, total_windows
+    """
+    from backtest.data_loader import BacktestDataLoader
+    from backtest.optimizer import _run_with_params
+
+    # Map experiment naming convention → optimizer naming convention
+    params = {
+        "stc_oversold": stc_os,
+        "stc_overbought": stc_ob,
+        "atr_stop_mult": stop_atr_mult,
+        "atr_target_mult": t1_atr_mult,
+        "regime_filter": regime_required > 0,
+    }
+
+    # Load price data
+    loader = BacktestDataLoader()
+    df = loader.load(symbol, start, end, timeframe)
+    if df is None or df.empty:
+        return {
+            "wfe": 0.0,
+            "pf_insample": 0.0,
+            "pf_walkforward": 0.0,
+            "sharpe_walkforward": 0.0,
+            "trade_count": 0,
+            "window_months": test_months,
+            "windows_profitable": 0,
+            "total_windows": 0,
+            "error": "no_data",
+        }
+
+    multiplier = loader.get_multiplier(symbol)
+
+    # Generate windows using the validator's machinery
+    validator = WalkForwardValidator(
+        train_months=train_months,
+        test_months=test_months,
+        step_months=test_months,
+    )
+    windows_spec = validator.generate_windows(df, symbol)
+
+    if not windows_spec:
+        return {
+            "wfe": 0.0,
+            "pf_insample": 0.0,
+            "pf_walkforward": 0.0,
+            "sharpe_walkforward": 0.0,
+            "trade_count": 0,
+            "window_months": test_months,
+            "windows_profitable": 0,
+            "total_windows": 0,
+            "error": "no_windows",
+        }
+
+    results_windows: List[Dict[str, Any]] = []
+    total_oos_trades = 0
+
+    for win in windows_spec:
+        df_train = df[(df.index >= win["train_start"]) & (df.index < win["train_end"])].copy()
+        df_test = df[(df.index >= win["test_start"]) & (df.index <= win["test_end"])].copy()
+
+        is_result = _run_with_params(df_train, multiplier, capital, **params)
+        oos_result = _run_with_params(df_test, multiplier, capital, **params)
+
+        if is_result is None or oos_result is None:
+            continue
+
+        total_oos_trades += oos_result.total_trades
+        results_windows.append(
+            {
+                "window": win["window_num"],
+                "is_result": is_result,
+                "oos_result": oos_result,
+            }
+        )
+
+    if not results_windows:
+        return {
+            "wfe": 0.0,
+            "pf_insample": 0.0,
+            "pf_walkforward": 0.0,
+            "sharpe_walkforward": 0.0,
+            "trade_count": 0,
+            "window_months": test_months,
+            "windows_profitable": 0,
+            "total_windows": len(windows_spec),
+            "error": "no_valid_windows",
+        }
+
+    summary = validator._compute_summary(results_windows)
+
+    avg_is_pf = float(np.mean([min(w["is_result"].profit_factor, 999.0) for w in results_windows]))
+    avg_oos_pf = summary["avg_oos_profit_factor"]
+    avg_oos_sharpe = summary["avg_oos_sharpe"]
+
+    return {
+        "wfe": summary["wfe"],
+        "pf_insample": round(avg_is_pf, 4),
+        "pf_walkforward": round(avg_oos_pf, 4),
+        "sharpe_walkforward": round(avg_oos_sharpe, 4),
+        "trade_count": total_oos_trades,
+        "window_months": test_months,
+        "windows_profitable": summary["windows_profitable"],
+        "total_windows": summary["total_windows"],
+    }
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -575,3 +710,7 @@ def main():
         mtf_filter=args.mtf_filter,
     )
     print(f"\nResults saved to: {out_path}")
+
+
+if __name__ == "__main__":
+    main()

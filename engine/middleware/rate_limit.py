@@ -1,7 +1,7 @@
 """
 JARVIS TRADER — Rate Limiting
 ==============================
-slowapi-based rate limiting with graduated limits per endpoint.
+slowapi-based rate limiting with graduated limits per endpoint tier.
 """
 
 import logging
@@ -14,10 +14,18 @@ from slowapi.util import get_remote_address
 
 logger = logging.getLogger("jarvis_trader.rate_limit")
 
+# Rate limit tiers (per minute)
+RATE_LIMIT_TIERS = {
+    "health": None,  # Unlimited (no decorator needed, exempt in auth middleware)
+    "analytics": "120/minute",  # /analytics/* endpoints
+    "trading": "10/minute",  # Trading operations: /paper/trade, /rl/train, pipeline triggers
+    "default": "60/minute",  # All other protected endpoints
+}
+
 # Initialize limiter with get_remote_address key function
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["60/minute"],  # Default: 60 requests per minute
+    default_limits=[RATE_LIMIT_TIERS["default"]],
     storage_uri="memory://",  # limits>=5 expects URI scheme (was "memory")
 )
 

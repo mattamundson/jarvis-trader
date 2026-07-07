@@ -175,6 +175,120 @@ def keltner_channels(
     return upper, basis, lower
 
 
+def keltner_channels_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    sma_len: int = 20,
+    atr_factor: float = 3.0,
+    developing: bool = True,
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """Multi-timeframe Keltner Channel — port of jp_keltner_multi_timeframe.ts.
+
+    The ThinkScript computes a Keltner (SMA basis +/- factor*SMA(TrueRange)) on a
+    user-selected ``iAggregationPeriod`` and plots it on the base chart. This
+    reproduces that: it aggregates the base bars to ``rule`` (e.g. "4h" =
+    FOUR_HOURS) and maps the higher-timeframe Keltner back onto every base bar.
+
+    developing=True matches TOS: the current higher-TF bar is the *developing*
+    aggregate of the base bars seen so far, so the line updates each base bar.
+    developing=False uses only completed higher-TF bars (one extra bar of lag).
+    Both are point-in-time safe — a base bar at t uses only base bars <= t.
+    With ``rule`` equal to the base bar frequency this collapses exactly to
+    ``keltner_channels``.
+
+    Returns (upper, basis, lower) Series on df.index.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("keltner_channels_mtf requires a DatetimeIndex")
+    idx = df.index
+    win = idx.floor(rule)
+    grp = df.groupby(win)
+    htf_close = grp["close"].last()
+    htf_high = grp["high"].max()
+    htf_low = grp["low"].min()
+    tr_htf = pd.concat(
+        [htf_high - htf_low,
+         (htf_high - htf_close.shift(1)).abs(),
+         (htf_low - htf_close.shift(1)).abs()],
+        axis=1,
+    ).max(axis=1)
+
+    def _to_base(s: pd.Series) -> pd.Series:
+        return pd.Series(s.reindex(win).to_numpy(), index=idx)
+
+    if developing:
+        prev_close = _to_base(htf_close.shift(1))  # last completed HTF close
+        dev_high = grp["high"].cummax()
+        dev_low = grp["low"].cummin()
+        tr_dev = pd.concat(
+            [dev_high - dev_low, (dev_high - prev_close).abs(), (dev_low - prev_close).abs()],
+            axis=1,
+        ).max(axis=1)
+        comp_close = _to_base(htf_close.shift(1).rolling(sma_len - 1).sum())
+        comp_tr = _to_base(tr_htf.shift(1).rolling(sma_len - 1).sum())
+        basis = (comp_close + df["close"]) / sma_len
+        shift = atr_factor * (comp_tr + tr_dev) / sma_len
+    else:
+        basis = _to_base(htf_close.rolling(sma_len).mean().shift(1))
+        shift = _to_base(atr_factor * tr_htf.rolling(sma_len).mean().shift(1))
+    return basis + shift, basis, basis - shift
+
+
+def keltner_cloud_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    sma_len: int = 20,
+    inner_factor: float = 1.5,
+    outer_factor: float = 2.0,
+    developing: bool = True,
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
+    """Dual-band multi-timeframe Keltner — port of the OB_OMEGA / JBOYD cloud.
+
+    The OB_OMEGA study plots two Keltner bands (inner 1.5x, outer 2.0x) on a
+    higher aggregation and shades the cloud between them. Reuses
+    ``keltner_channels_mtf`` (one aggregation, scaled to both factors) so the
+    basis and TR are computed once. The cloud shading itself is cosmetic; this
+    returns the band levels that matter for signals.
+
+    Returns (upper_outer, upper_inner, basis, lower_inner, lower_outer).
+    """
+    upper_inner, basis, lower_inner = keltner_channels_mtf(
+        df, rule=rule, sma_len=sma_len, atr_factor=inner_factor, developing=developing
+    )
+    scale = outer_factor / inner_factor
+    shift_inner = upper_inner - basis
+    upper_outer = basis + scale * shift_inner
+    lower_outer = basis - scale * shift_inner
+    return upper_outer, upper_inner, basis, lower_inner, lower_outer
+
+
+def macd_primer_mtf(
+    df: pd.DataFrame,
+    rule: str = "4h",
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9,
+    developing: bool = True,
+) -> pd.Series:
+    """MACD primer (OB_OMEGA cloud color) on a higher aggregation.
+
+    Returns the MACD histogram (macd - signal) on the ``rule`` timeframe mapped
+    to base bars. Uses only completed higher-TF bars (shift(1)) so it is
+    point-in-time safe; ``developing`` is accepted for API symmetry but the
+    histogram always lags by one completed higher-TF bar.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("macd_primer_mtf requires a DatetimeIndex")
+    idx = df.index
+    win = idx.floor(rule)
+    htf_close = df.groupby(win)["close"].last()
+    ema_fast = htf_close.ewm(span=fast, adjust=False).mean()
+    ema_slow = htf_close.ewm(span=slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    hist = (macd - macd.ewm(span=signal, adjust=False).mean()).shift(1)
+    return pd.Series(hist.reindex(win).to_numpy(), index=idx)
+
+
 def ib_levels(
     high: pd.Series,
     low: pd.Series,
@@ -284,3 +398,459 @@ def ema_ribbon(close: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
     ema_21 = close.ewm(span=21, adjust=False).mean()
     ema_34 = close.ewm(span=34, adjust=False).mean()
     return ema_8, ema_21, ema_34
+
+
+# Saty's standard fib-ATR ratios (faithful to the AA Saty ATR Levels ThinkScript).
+# 0.236 is the directional trigger; 1.0 is the full-ATR target; >1.0 are extensions.
+SATY_ATR_RATIOS: Tuple[float, ...] = (0.236, 0.382, 0.618, 0.786, 1.0, 1.236, 1.618, 2.0)
+SATY_TRIGGER_RATIO = 0.236
+
+
+def saty_atr_levels(prior_close: float, atr: float) -> dict:
+    """Saty ATR Levels: fib-ATR price levels anchored to the prior session close.
+
+    Ported from the AA Saty ATR Levels ThinkScript study (master-jarvis/
+    thinkorswim-scripts). Unlike the engine's existing ATR-multiple targets
+    (which anchor to the *entry*), these anchor to the prior close, so the same
+    levels hold for every entry on the day — a cleaner, less path-dependent
+    target/SR framework.
+
+    Returns a dict with:
+        prior_close, atr
+        call_trigger / put_trigger : +/- 0.236 ATR directional pivots
+        upper / lower : {ratio: price} for every SATY_ATR_RATIOS level
+    Returns an empty-ish dict (levels present but flat at prior_close) if atr<=0.
+    """
+    pc = float(prior_close)
+    a = float(atr) if atr and atr > 0 else 0.0
+    upper = {r: pc + r * a for r in SATY_ATR_RATIOS}
+    lower = {r: pc - r * a for r in SATY_ATR_RATIOS}
+    return {
+        "prior_close": pc,
+        "atr": a,
+        "call_trigger": upper[SATY_TRIGGER_RATIO],
+        "put_trigger": lower[SATY_TRIGGER_RATIO],
+        "upper": upper,
+        "lower": lower,
+    }
+
+
+def saty_bias(price: float, levels: dict) -> str:
+    """Saty directional bias: 'long' above the call trigger, 'short' below the
+    put trigger, else 'neutral' (price inside the trigger band = no edge)."""
+    if not levels or levels.get("atr", 0) <= 0:
+        return "neutral"
+    if price > levels["call_trigger"]:
+        return "long"
+    if price < levels["put_trigger"]:
+        return "short"
+    return "neutral"
+
+
+def saty_nearest_target(price: float, side: str, levels: dict) -> Optional[float]:
+    """Nearest Saty ATR level *beyond* ``price`` in the trade direction — i.e.
+    the next overhead level for a long, next level below for a short. Returns
+    None if no level lies beyond price (price already past the +/-2 ATR band)."""
+    if not levels or levels.get("atr", 0) <= 0:
+        return None
+    if side in ("long", "buy"):
+        above = sorted(p for p in levels["upper"].values() if p > price)
+        return above[0] if above else None
+    if side in ("short", "sell"):
+        below = sorted((p for p in levels["lower"].values() if p < price), reverse=True)
+        return below[0] if below else None
+    return None
+
+
+# ─── AutoTrade-derived indicators (Phase 1) ───────────────────────────
+
+
+def donchian_channels(
+    high: pd.Series, low: pd.Series, entry_period: int = 20, exit_period: int = 6
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+    """
+    Donchian breakout + exit channels.
+    Shifted 1 bar to prevent look-ahead bias.
+    Returns (entry_high, entry_low, exit_high, exit_low).
+    """
+    entry_high = high.shift(1).rolling(entry_period).max()
+    entry_low = low.shift(1).rolling(entry_period).min()
+    exit_high = high.shift(1).rolling(exit_period).max()
+    exit_low = low.shift(1).rolling(exit_period).min()
+    return entry_high, entry_low, exit_high, exit_low
+
+
+def ema_slope(close: pd.Series, period: int = 21, lookback: int = 3) -> pd.Series:
+    """
+    Slope of EMA over lookback bars.
+    Positive = rising trend confirmation, negative = declining.
+    Filters flat crossovers where EMA is directionless.
+    """
+    ema = close.ewm(span=period, adjust=False).mean()
+    return ema - ema.shift(lookback)
+
+
+def atr_regime(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    atr_period: int = 14, sma_period: int = 20
+) -> pd.Series:
+    """
+    ATR regime filter: True when volatility is expanding (ATR > SMA of ATR).
+    Only enter trades when volatility is expanding — filters choppy markets.
+    """
+    atr = wilder_atr(high, low, close, atr_period)
+    atr_sma = atr.rolling(sma_period).mean()
+    return atr > atr_sma
+
+
+def volume_regime(volume: pd.Series, lookback: int = 20) -> pd.Series:
+    """
+    Volume regime classification: HIGH (>1.5x avg), NORMAL, LOW (<0.67x avg).
+    HIGH volume confirms institutional participation in moves.
+    """
+    avg = volume.rolling(lookback).mean()
+    ratio = volume / avg.replace(0, np.nan)
+    result = pd.Series("NORMAL", index=volume.index)
+    result[ratio > 1.5] = "HIGH"
+    result[ratio < 0.67] = "LOW"
+    return result
+
+
+def _wilders_average(series: pd.Series, period: int) -> pd.Series:
+    """Wilder's smoothing, seeded with the SMA of the first `period` values.
+
+    Matches ThinkScript's AverageType.WILDERS (the recursive
+    prev*(n-1)/n + value/n form), identical to the seeding used by
+    ``wilder_atr`` above so the two stay consistent.
+    """
+    out = pd.Series(index=series.index, dtype=float)
+    if len(series) < period:
+        return out
+    out.iloc[: period - 1] = np.nan
+    out.iloc[period - 1] = series.iloc[:period].mean()
+    for i in range(period, len(series)):
+        out.iloc[i] = (out.iloc[i - 1] * (period - 1) + series.iloc[i]) / period
+    return out
+
+
+def atr_trailing_stop(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    period: int = 5,
+    factor: float = 3.5,
+    first_trade_long: bool = True,
+    trail_type: str = "modified",
+) -> Tuple[pd.Series, pd.Series]:
+    """ATR Trailing Stop — faithful reproduction of the ThinkorSwim built-in.
+
+    This is the dotted support/resistance line on Matt's /ES chart, legend
+    ``ATRTrailingStop (modified, 5, 3.5, long, WILDERS)``. It is a Sylvain
+    Vervoort style stop-and-reverse line: it trails below price while long and
+    above price while short, flipping state on a close through the line.
+
+    Args:
+        period           : ATR length (TOS default for this study = 5).
+        factor           : ATR multiplier (TOS default = 3.5).
+        first_trade_long : seed the very first bar's state long (TOS default).
+        trail_type       : "modified" uses the HiLo/HRef/LRef true-range
+                           variant (TOS default); "unmodified" uses classic
+                           true range.
+
+    Returns:
+        (trail, state) where ``trail`` is the stop line and ``state`` is +1.0
+        when long (line is support, below price) / -1.0 when short (line is
+        resistance, above price). Point-in-time safe: ``trail.iloc[i]`` uses
+        only bars <= i.
+    """
+    orig_index = close.index
+    high = high.astype(float).reset_index(drop=True)
+    low = low.astype(float).reset_index(drop=True)
+    close = close.astype(float).reset_index(drop=True)
+    prev_close = close.shift(1)
+    prev_high = high.shift(1)
+    prev_low = low.shift(1)
+
+    if trail_type == "modified":
+        hl_avg = (high - low).rolling(period).mean()
+        hilo = pd.concat([high - low, 1.5 * hl_avg], axis=1).min(axis=1)
+        href = np.where(
+            low <= prev_high,
+            high - prev_close,
+            (high - prev_close) - 0.5 * (low - prev_high),
+        )
+        lref = np.where(
+            high >= prev_low,
+            prev_close - low,
+            (prev_close - low) - 0.5 * (prev_low - high),
+        )
+        true_range = pd.concat(
+            [hilo, pd.Series(href, index=hilo.index), pd.Series(lref, index=hilo.index)],
+            axis=1,
+        ).max(axis=1)
+    else:
+        true_range = pd.concat(
+            [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+        ).max(axis=1)
+
+    loss = factor * _wilders_average(true_range, period)
+
+    n = len(close)
+    trail = np.full(n, np.nan)
+    state = np.full(n, np.nan)
+    started = False
+    for i in range(n):
+        if pd.isna(loss.iloc[i]):
+            continue
+        c = close.iloc[i]
+        if not started:
+            state[i] = 1.0 if first_trade_long else -1.0
+            trail[i] = c - loss.iloc[i] if first_trade_long else c + loss.iloc[i]
+            started = True
+            continue
+        prev_trail = trail[i - 1]
+        prev_state = state[i - 1]
+        if prev_state == 1.0:
+            if c > prev_trail:
+                state[i] = 1.0
+                trail[i] = max(prev_trail, c - loss.iloc[i])
+            else:
+                state[i] = -1.0
+                trail[i] = c + loss.iloc[i]
+        else:
+            if c < prev_trail:
+                state[i] = -1.0
+                trail[i] = min(prev_trail, c + loss.iloc[i])
+            else:
+                state[i] = 1.0
+                trail[i] = c - loss.iloc[i]
+
+    return (
+        pd.Series(trail, index=orig_index),
+        pd.Series(state, index=orig_index),
+    )
+
+
+def compute_vwap(df: "pd.DataFrame", session_reset: bool = True) -> "pd.Series":
+    """
+    Volume-Weighted Average Price.
+
+    Resets at the start of each trading day when session_reset=True.
+    Standard formula: cumsum(typical_price * volume) / cumsum(volume)
+
+    Args:
+        df: DataFrame with columns: high, low, close, volume. Index must be datetime.
+        session_reset: Reset accumulation at each new trading day (True for intraday use).
+
+    Returns:
+        pd.Series named 'vwap', same index as df.
+    """
+    import pandas as pd
+
+    typical_price = (df['high'] + df['low'] + df['close']) / 3.0
+    dollar_volume = typical_price * df['volume']
+
+    if session_reset:
+        try:
+            if hasattr(df.index, 'date'):
+                dates = df.index.date
+            else:
+                dates = pd.to_datetime(df.index).dt.date
+
+            cumulative_dv = dollar_volume.groupby(dates).cumsum()
+            cumulative_v = df['volume'].groupby(dates).cumsum()
+        except Exception:
+            # Fall back to rolling VWAP if date grouping fails
+            cumulative_dv = dollar_volume.cumsum()
+            cumulative_v = df['volume'].cumsum()
+    else:
+        cumulative_dv = dollar_volume.cumsum()
+        cumulative_v = df['volume'].cumsum()
+
+    vwap = cumulative_dv / cumulative_v.replace(0, float('nan'))
+    return vwap.rename('vwap')
+
+
+def compute_adx(df: "pd.DataFrame", period: int = 14) -> "pd.DataFrame":
+    """
+    Average Directional Index (ADX) with +DI and -DI.
+
+    ADX measures trend strength (0-100):
+    - ADX >= 25: strong trend
+    - ADX 20-25: developing trend
+    - ADX < 20: weak/ranging market
+
+    Returns DataFrame with columns: adx, adx_norm (0-1), plus_di, minus_di
+    """
+    import numpy as np
+    import pandas as pd
+
+    high = df['high']
+    low = df['low']
+    close = df['close']
+
+    # True Range components
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs(),
+    ], axis=1).max(axis=1)
+
+    # Directional Movement
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0.0), index=df.index)
+    minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0.0), index=df.index)
+
+    # Wilder's smoothed averages (standard RMA: seed = sum of first period bars)
+    def wilder_smooth(series, period):
+        """Wilder RMA seeded with sum of first period values."""
+        result = series.copy().astype(float)
+        result.iloc[:period] = float('nan')
+        result.iloc[period - 1] = series.iloc[:period].sum()
+        for i in range(period, len(series)):
+            result.iloc[i] = result.iloc[i-1] - (result.iloc[i-1] / period) + series.iloc[i]
+        return result
+
+    tr_smooth = wilder_smooth(tr, period)
+    plus_dm_smooth = wilder_smooth(plus_dm, period)
+    minus_dm_smooth = wilder_smooth(minus_dm, period)
+
+    plus_di = 100 * plus_dm_smooth / tr_smooth.replace(0, float('nan'))
+    minus_di = 100 * minus_dm_smooth / tr_smooth.replace(0, float('nan'))
+
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, float('nan'))
+
+    # ADX: Wilder smooth of DX, seeded with mean of first `period` valid DX values.
+    # DX is NaN for first (period-1) bars, so we seed from index (2*period-2).
+    adx = pd.Series(float('nan'), index=df.index)
+    seed_end = 2 * period - 2  # inclusive index where the first valid DX batch ends
+    if len(dx) > seed_end:
+        valid_dx = dx.iloc[period - 1: seed_end + 1].dropna()
+        if len(valid_dx) > 0:
+            adx.iloc[seed_end] = valid_dx.mean()
+            for i in range(seed_end + 1, len(dx)):
+                if pd.isna(dx.iloc[i]):
+                    adx.iloc[i] = adx.iloc[i - 1]
+                else:
+                    adx.iloc[i] = (adx.iloc[i - 1] * (period - 1) + dx.iloc[i]) / period
+
+    return pd.DataFrame({
+        'adx': adx,
+        'adx_norm': adx / 100.0,
+        'plus_di': plus_di,
+        'minus_di': minus_di,
+    }, index=df.index)
+
+
+def rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Relative Strength Index (0-100).
+    Entry filter: >54 for longs, <46 for shorts.
+    Exit trigger: crosses 50 midpoint.
+    """
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+
+    # Wilder's smoothing (same as EMA with alpha=1/period)
+    avg_gain = gain.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return (100 - 100 / (1 + rs)).fillna(50.0)
+
+
+def fib_ema_stack(close: pd.Series) -> Dict[str, pd.Series]:
+    """
+    Fibonacci-period EMA stack: 8, 13, 21, 34, 55, 89, 144.
+    Extended trend analysis — all aligned = strong trend.
+    """
+    periods = [8, 13, 21, 34, 55, 89, 144]
+    return {f"ema_{p}": close.ewm(span=p, adjust=False).mean() for p in periods}
+
+
+# ─── Futures-adapted strategy indicators (Phase 2) ───────────────────────────
+
+
+def compute_roc(
+    close: pd.Series,
+    period: int = 10,
+) -> pd.Series:
+    """
+    Rate of Change (momentum oscillator).
+    RoC = (close / close[N periods ago] - 1) * 100
+
+    Positive RoC = upward momentum (price higher than N bars ago)
+    Negative RoC = downward momentum
+    Threshold: |RoC| > 0.3% = meaningful momentum signal
+
+    For MES/MCL/MNQ 1h bars, period=10 = ~10 hours of momentum lookback.
+    """
+    return ((close / close.shift(period)) - 1) * 100.0
+
+
+def compute_trin(advancing_issues: int, declining_issues: int,
+                 advancing_volume: float, declining_volume: float) -> Optional[float]:
+    """
+    Compute TRIN (Arms Index / Short-Term Trading Index).
+
+    TRIN = (Advancing Issues / Declining Issues) / (Advancing Volume / Declining Volume)
+
+    Interpretation:
+    - TRIN < 0.60: Blow-off top / extreme buying — caution for LONG entries
+    - TRIN 0.60-1.00: Bullish breadth
+    - TRIN 1.00-1.40: Bearish breadth
+    - TRIN > 2.00: Capitulation / extreme selling — potential reversal
+
+    Returns None if any input is zero (division guard).
+    """
+    if declining_issues == 0 or declining_volume == 0:
+        return None
+
+    advance_decline_ratio = advancing_issues / declining_issues
+    advance_decline_vol_ratio = advancing_volume / declining_volume
+
+    if advance_decline_vol_ratio == 0:
+        return None
+
+    return advance_decline_ratio / advance_decline_vol_ratio
+
+
+def classify_trin(trin_value: Optional[float]) -> str:
+    """Classify TRIN value into a regime signal."""
+    if trin_value is None:
+        return "UNAVAILABLE"
+    if trin_value < 0.60:
+        return "BLOWOFF_TOP"       # Extreme buying — caution for longs
+    elif trin_value < 1.00:
+        return "BULLISH"
+    elif trin_value < 1.40:
+        return "BEARISH"
+    elif trin_value < 2.00:
+        return "OVERSOLD"
+    else:
+        return "CAPITULATION"      # Extreme selling — potential reversal
+
+
+def compute_vwap_zscore(
+    close: pd.Series,
+    vwap: pd.Series,
+    atr: pd.Series,
+) -> pd.Series:
+    """
+    VWAP deviation z-score: how many ATR units is price from VWAP.
+
+    z = (close - vwap) / atr
+
+    z > +1.2 → price extended above VWAP (mean-reversion short opportunity)
+    z < -1.2 → price extended below VWAP (mean-reversion long opportunity)
+    |z| < 0.5 → price near VWAP (neutral)
+
+    Uses ATR as normalizer — scale-invariant across instruments (MES vs MCL).
+    Used as convergence/mean-reversion signal when opposite to trend bias.
+    """
+    deviation = close - vwap
+    zscore = deviation / atr.replace(0, float('nan'))
+    return zscore.rename('vwap_zscore')

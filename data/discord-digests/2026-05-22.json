@@ -1,0 +1,134 @@
+{
+  "date": "2026-05-22",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "bullish",
+    "conviction": 0.72,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 53
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 99.23,
+      "target2": 100.31,
+      "stop1": 97.43,
+      "win_rate": 82.46,
+      "rr": 0.61,
+      "timestamp": "2026-05-22T03:46:03.883-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 99.06,
+      "target2": 100.14,
+      "stop1": 97.26,
+      "win_rate": 82.4,
+      "rr": 0.61,
+      "timestamp": "2026-05-22T02:53:04.633-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 98.53,
+      "target2": 99.61,
+      "stop1": 96.73,
+      "win_rate": 82.33,
+      "rr": 0.61,
+      "timestamp": "2026-05-22T02:30:07.894-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7516.25,
+      "target2": 7543.25,
+      "stop1": 7471.25,
+      "win_rate": 82.32,
+      "rr": 0.59,
+      "timestamp": "2026-05-22T12:00:01.149-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 98.4,
+      "target2": 99.48,
+      "stop1": 96.6,
+      "win_rate": 82.26,
+      "rr": 0.61,
+      "timestamp": "2026-05-21T20:05:00.823-05:00"
+    }
+  ],
+  "corey_quote": "Strong trends don't fail at highs\u2014they fail when pullbacks aren't defended. Today: the pullback tells the story.",
+  "commentary_health": [
+    {
+      "date": "2026-05-23",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 53
+    },
+    {
+      "date": "2026-05-22",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.72,
+      "message_count": 53
+    },
+    {
+      "date": "2026-05-21",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 37
+    },
+    {
+      "date": "2026-05-20",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 25
+    },
+    {
+      "date": "2026-05-19",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 85
+    },
+    {
+      "date": "2026-05-18",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.75,
+      "message_count": 59
+    },
+    {
+      "date": "2026-05-17",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.8,
+      "message_count": 7
+    },
+    {
+      "date": "2026-05-16",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 37
+    }
+  ]
+}

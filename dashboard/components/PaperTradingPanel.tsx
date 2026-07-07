@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 import type { PaperPosition, PaperPerformance } from "@/lib/api";
-import { formatCurrency, formatPercent } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 
 const POLL_MS = 30_000;
 
@@ -15,17 +15,25 @@ function fetcher<T>(url: string): Promise<T> {
 }
 
 export function PaperTradingPanel() {
-  const { data: performance } = useSWR<PaperPerformance>(
+  const { data: perfData } = useSWR<PaperPerformance | { performance: PaperPerformance }>(
     "/portfolio/paper/performance",
     fetcher,
     { refreshInterval: POLL_MS, shouldRetryOnError: false }
   );
+  const performance: PaperPerformance | undefined = perfData
+    ? "performance" in perfData
+      ? (perfData as { performance: PaperPerformance }).performance
+      : (perfData as PaperPerformance)
+    : undefined;
 
-  const { data: positions } = useSWR<PaperPosition[]>(
+  const { data: positionsData } = useSWR<{ positions: PaperPosition[]; count: number }>(
     "/portfolio/paper/positions",
     fetcher,
     { refreshInterval: POLL_MS, shouldRetryOnError: false }
   );
+  const positions = Array.isArray(positionsData)
+    ? positionsData
+    : positionsData?.positions ?? [];
 
   const sessionNotStarted =
     !performance ||
@@ -41,6 +49,19 @@ export function PaperTradingPanel() {
           </div>
           <Badge variant="bull">ACTIVE</Badge>
         </div>
+        {/*
+          Labeling for the two-scoreboard discrepancy: this card reads the
+          engine's own /portfolio/paper/performance (its local trade_history
+          DB, raw rows -- can include re-logged winners). The "Realized
+          record (deduped)" card reads master-api's read-time-deduped ledger,
+          a different pipeline with a different trade count. Both are real;
+          they are not computing the same universe, so they will not agree.
+        */}
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Engine trade_history (raw, may include re-logged rows) — see{" "}
+          <span className="font-medium">Realized record (deduped)</span> for
+          the deduplicated scoreboard.
+        </p>
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -68,12 +89,14 @@ export function PaperTradingPanel() {
                 <PerfStat
                   label="Prof. Factor"
                   value={
-                    isFinite(performance.profit_factor)
+                    performance.profit_factor != null && isFinite(performance.profit_factor)
                       ? performance.profit_factor.toFixed(2)
-                      : "∞"
+                      : "—"
                   }
                   colorClass={
-                    performance.profit_factor >= 1.5
+                    performance.profit_factor == null
+                      ? "text-muted-foreground"
+                      : performance.profit_factor >= 1.5
                       ? "text-bull"
                       : performance.profit_factor >= 1
                       ? "text-warn"
@@ -139,7 +162,15 @@ export function PaperTradingPanel() {
                     <span className="text-muted-foreground">
                       Max DD:{" "}
                       <span className="tabular-nums text-bear">
-                        {formatPercent(performance.max_dd * 100)}
+                        {/*
+                          performance.max_dd is a raw dollar figure from the
+                          engine's /portfolio/paper/performance (equity-peak
+                          minus trough in $, e.g. -1981.70) -- not a fraction.
+                          formatPercent(x * 100) previously treated it as a
+                          0..1 ratio and rendered "-198170.35%". Render as
+                          currency instead.
+                        */}
+                        {formatCurrency(performance.max_dd)}
                       </span>
                     </span>
                   )}
@@ -177,8 +208,8 @@ function PerfStat({
 
 function PositionRow({ pos }: { pos: PaperPosition }) {
   const isLong =
-    pos.action.toLowerCase() === "buy" ||
-    pos.action.toLowerCase() === "long";
+    (pos.action ?? "").toLowerCase() === "buy" ||
+    (pos.action ?? "").toLowerCase() === "long";
 
   const entryTime = (() => {
     try {

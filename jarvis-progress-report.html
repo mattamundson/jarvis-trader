@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — Progress Report & Roadmap</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --card: #111827;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #22c55e;
+    --accent-dim: rgba(34,197,94,0.12);
+    --bull: #22c55e;
+    --bear: #ef4444;
+    --warn: #f59e0b;
+    --info: #3b82f6;
+    --purple: #a78bfa;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+  /* Hero */
+  .hero {
+    text-align: center;
+    padding: 60px 20px 40px;
+    background: linear-gradient(180deg, rgba(34,197,94,0.06) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+  }
+  .hero h1 { font-size: 2.8rem; font-weight: 800; letter-spacing: -1px; }
+  .hero h1 span { color: var(--accent); }
+  .hero .subtitle { color: var(--muted); font-size: 1.1rem; margin-top: 8px; }
+  .hero .status-pill {
+    display: inline-block; margin-top: 16px;
+    padding: 6px 18px; border-radius: 999px;
+    font-size: 0.85rem; font-weight: 600;
+    background: var(--accent-dim); color: var(--accent);
+    border: 1px solid rgba(34,197,94,0.3);
+  }
+
+  /* Nav tabs */
+  .tabs {
+    display: flex; justify-content: center; gap: 4px;
+    padding: 16px 20px; background: var(--card);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .tab {
+    padding: 8px 20px; border-radius: 8px;
+    font-size: 0.85rem; font-weight: 500;
+    cursor: pointer; transition: all 0.2s;
+    background: transparent; color: var(--muted);
+    border: 1px solid transparent;
+  }
+  .tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  .tab.active { color: var(--accent); background: var(--accent-dim); border-color: rgba(34,197,94,0.25); }
+
+  /* Sections */
+  .section { display: none; padding: 40px 20px; max-width: 1200px; margin: 0 auto; }
+  .section.active { display: block; }
+  .section h2 { font-size: 1.8rem; font-weight: 700; margin-bottom: 24px; }
+  .section h3 { font-size: 1.2rem; font-weight: 600; margin: 24px 0 12px; color: var(--accent); }
+
+  /* Stats grid */
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px; margin-bottom: 32px;
+  }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .stat-card .value { font-size: 2rem; font-weight: 800; margin-top: 4px; }
+  .stat-card .value.green { color: var(--bull); }
+  .stat-card .value.blue { color: var(--info); }
+  .stat-card .value.amber { color: var(--warn); }
+  .stat-card .value.purple { color: var(--purple); }
+
+  /* Sprint timeline */
+  .timeline { position: relative; padding-left: 32px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 11px; top: 0; bottom: 0;
+    width: 2px; background: var(--border);
+  }
+  .timeline-item { position: relative; margin-bottom: 24px; }
+  .timeline-item::before {
+    content: ''; position: absolute; left: -32px; top: 6px;
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid var(--accent); background: var(--bg);
+  }
+  .timeline-item.complete::before { background: var(--accent); }
+  .timeline-item .sprint-header {
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer; padding: 12px 16px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; transition: all 0.2s;
+  }
+  .timeline-item .sprint-header:hover { border-color: rgba(34,197,94,0.3); }
+  .sprint-tag {
+    font-size: 0.7rem; font-weight: 700; padding: 2px 8px;
+    border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .sprint-tag.done { background: var(--accent-dim); color: var(--accent); }
+  .sprint-tag.active { background: rgba(59,130,246,0.15); color: var(--info); }
+  .sprint-title { flex: 1; font-weight: 600; }
+  .sprint-stories { font-size: 0.8rem; color: var(--muted); }
+  .sprint-detail {
+    display: none; margin-top: 8px; padding: 16px;
+    background: rgba(17,24,39,0.6); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 0.9rem;
+  }
+  .sprint-detail.open { display: block; }
+  .story-list { list-style: none; }
+  .story-list li {
+    padding: 8px 0; border-bottom: 1px solid rgba(30,41,59,0.5);
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .story-list li:last-child { border-bottom: none; }
+  .story-id { font-weight: 700; font-size: 0.8rem; color: var(--info); white-space: nowrap; }
+  .check { color: var(--accent); }
+
+  /* Architecture diagram */
+  .arch-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin: 24px 0;
+  }
+  @media (max-width: 768px) { .arch-grid { grid-template-columns: 1fr; } }
+  .arch-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .arch-card h4 {
+    font-size: 0.95rem; font-weight: 700; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .arch-card ul { list-style: none; font-size: 0.85rem; }
+  .arch-card li { padding: 4px 0; color: var(--muted); }
+  .arch-card li strong { color: var(--text); }
+
+  /* System status */
+  .status-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px; margin: 24px 0;
+  }
+  .status-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .status-card .header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+  .status-card .header h4 { font-size: 0.95rem; }
+  .status-badge {
+    font-size: 0.7rem; font-weight: 700; padding: 3px 10px;
+    border-radius: 999px; text-transform: uppercase;
+  }
+  .status-badge.ok { background: var(--accent-dim); color: var(--accent); }
+  .status-badge.warn { background: rgba(245,158,11,0.15); color: var(--warn); }
+  .status-badge.off { background: rgba(239,68,68,0.15); color: var(--bear); }
+  .status-badge.pending { background: rgba(59,130,246,0.15); color: var(--info); }
+  .status-detail { font-size: 0.85rem; color: var(--muted); }
+  .status-detail .row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; border-bottom: 1px solid rgba(30,41,59,0.3);
+  }
+  .status-detail .row:last-child { border-bottom: none; }
+
+  /* Next steps */
+  .next-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px; margin: 24px 0;
+  }
+  .next-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; position: relative;
+    overflow: hidden;
+  }
+  .next-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .next-card.critical::before { background: var(--bear); }
+  .next-card.high::before { background: var(--warn); }
+  .next-card.medium::before { background: var(--info); }
+  .next-card .priority {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 8px;
+  }
+  .next-card.critical .priority { color: var(--bear); }
+  .next-card.high .priority { color: var(--warn); }
+  .next-card.medium .priority { color: var(--info); }
+  .next-card h4 { font-size: 1.05rem; margin-bottom: 8px; }
+  .next-card p { font-size: 0.85rem; color: var(--muted); }
+  .next-card .effort {
+    margin-top: 12px; font-size: 0.75rem; color: var(--muted);
+    display: flex; gap: 16px;
+  }
+
+  /* Pipeline flow */
+  .pipeline-flow {
+    display: flex; align-items: center; gap: 8px;
+    overflow-x: auto; padding: 20px 0; margin: 16px 0;
+  }
+  .pipeline-stage {
+    flex-shrink: 0; padding: 16px 20px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; text-align: center; min-width: 140px;
+  }
+  .pipeline-stage .stage-num {
+    font-size: 0.65rem; color: var(--accent); font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .pipeline-stage .stage-name { font-size: 0.9rem; font-weight: 600; margin-top: 4px; }
+  .pipeline-stage .stage-agents { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+  .pipeline-arrow { color: var(--accent); font-size: 1.2rem; flex-shrink: 0; }
+
+  /* Progress bar */
+  .progress-bar-container { margin: 16px 0; }
+  .progress-bar-label {
+    display: flex; justify-content: space-between;
+    font-size: 0.8rem; margin-bottom: 4px;
+  }
+  .progress-bar {
+    height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;
+  }
+  .progress-bar .fill {
+    height: 100%; border-radius: 4px; transition: width 0.5s ease;
+  }
+  .progress-bar .fill.green { background: var(--accent); }
+  .progress-bar .fill.blue { background: var(--info); }
+  .progress-bar .fill.amber { background: var(--warn); }
+
+  /* Validation table */
+  .val-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  .val-table th, .val-table td {
+    padding: 10px 14px; text-align: left; font-size: 0.85rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .val-table th {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); font-weight: 600;
+  }
+  .val-table tr:hover { background: rgba(255,255,255,0.02); }
+
+  /* Tooltip */
+  .info-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--border); font-size: 0.6rem; color: var(--muted);
+    cursor: help; margin-left: 4px;
+  }
+
+  /* Footer */
+  footer {
+    text-align: center; padding: 40px 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted); font-size: 0.8rem;
+  }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero">
+  <h1>JARVIS <span>TRADER</span></h1>
+  <div class="subtitle">AI-Powered Futures & Options Trading System</div>
+  <div class="status-pill">PAPER TRADING ACTIVE &mdash; Day 1 of 30</div>
+</div>
+
+<!-- Navigation -->
+<div class="tabs" id="tabs">
+  <div class="tab active" data-section="overview">Overview</div>
+  <div class="tab" data-section="sprints">Sprint History</div>
+  <div class="tab" data-section="architecture">Architecture</div>
+  <div class="tab" data-section="system">Live Status</div>
+  <div class="tab" data-section="gaps">Gap Analysis</div>
+  <div class="tab" data-section="next">Next Steps</div>
+  <div class="tab" data-section="validation">Validation Gates</div>
+</div>
+
+<!-- Overview Section -->
+<div class="section active" id="overview">
+  <h2>Project Overview</h2>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">User Stories Completed</div>
+      <div class="value green">55</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Sprints Delivered</div>
+      <div class="value blue">11</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">API Endpoints</div>
+      <div class="value purple">90+</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Trading Agents</div>
+      <div class="value amber">10</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Test Cases</div>
+      <div class="value green">100+</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Validation Day</div>
+      <div class="value blue">1/30</div>
+    </div>
+  </div>
+
+  <h3>What JARVIS TRADER Does</h3>
+  <p style="color:var(--muted); max-width:800px; margin-bottom:24px;">
+    JARVIS TRADER is a fully autonomous AI-powered trading system for micro futures (MCL, MNQ).
+    It uses a 5-stage LLM pipeline where AI agents analyze markets, debate bull vs bear cases,
+    make trading decisions, validate risk, and approve orders &mdash; all with a hardcoded safety
+    layer that humans can never override. The system is currently in a 30-day paper trading
+    validation phase that started April 2, 2026.
+  </p>
+
+  <h3>5-Stage Trading Pipeline</h3>
+  <div class="pipeline-flow">
+    <div class="pipeline-stage">
+      <div class="stage-num">Stage 1</div>
+      <div class="stage-name">Analysis</div>
+      <div class="stage-agents">Technical, News, Social, Fundamental</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-stage">
+      <div class="stage-num">Stage 2</div>
+      <div class="stage-name">Debate</div>
+      <div class="stage-agents">Bull, Bear, Orchestrator</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-stage">
+      <div class="stage-num">Stage 3</div>
+      <div class="stage-name">Decision</div>
+      <div class="stage-agents">Trader Agent</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-stage">
+      <div class="stage-num">Stage 4</div>
+      <div class="stage-name">Risk</div>
+      <div class="stage-agents">Risk Manager (VETO)</div>
+    </div>
+    <div class="pipeline-arrow">&rarr;</div>
+    <div class="pipeline-stage">
+      <div class="stage-num">Stage 5</div>
+      <div class="stage-name">Approval</div>
+      <div class="stage-agents">Fund Manager + Human</div>
+    </div>
+  </div>
+
+  <h3>Overall Progress</h3>
+  <div class="progress-bar-container">
+    <div class="progress-bar-label">
+      <span>Infrastructure & Engine</span><span style="color:var(--accent)">95%</span>
+    </div>
+    <div class="progress-bar"><div class="fill green" style="width:95%"></div></div>
+  </div>
+  <div class="progress-bar-container">
+    <div class="progress-bar-label">
+      <span>Dashboard & Monitoring</span><span style="color:var(--info)">85%</span>
+    </div>
+    <div class="progress-bar"><div class="fill blue" style="width:85%"></div></div>
+  </div>
+  <div class="progress-bar-container">
+    <div class="progress-bar-label">
+      <span>Autonomous Trading Loop</span><span style="color:var(--warn)">40%</span>
+    </div>
+    <div class="progress-bar"><div class="fill amber" style="width:40%"></div></div>
+  </div>
+  <div class="progress-bar-container">
+    <div class="progress-bar-label">
+      <span>Paper Validation (30 days)</span><span style="color:var(--info)">3%</span>
+    </div>
+    <div class="progress-bar"><div class="fill blue" style="width:3%"></div></div>
+  </div>
+</div>
+
+<!-- Sprint History Section -->
+<div class="section" id="sprints">
+  <h2>Sprint History &mdash; 55 Stories Across 11 Sprints</h2>
+
+  <div class="timeline">
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 1 &mdash; Security & Foundation</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-001</span> API Key Security Remediation &mdash; .gitignore, .env.example, pre-commit hook, credential scrub guide</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-002</span> Endpoint Wiring Verification &mdash; 6 new endpoints, 82 total documented, removed duplicates</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-003</span> Structured Logging &mdash; JSON formatter, RotatingFileHandler (10MB/5 files), LOG_LEVEL config</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-004</span> Test Suite Verification &mdash; 75/87 passing, safety layer 25/25, pipeline 27/27</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-005</span> Paper Trading Prep &mdash; 1,100+ line runbook, config validation, graduation criteria</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 2 &mdash; Risk Controls</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-201</span> Consecutive Loss Tracker &mdash; 3 losses = 0.5x, 5 = 0.25x, 7 = halt. SQLite persistence</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-202</span> PnL Monitor &mdash; Real-time daily P&L from SQLite + paper tracker, circuit breaker wiring</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-203</span> Kill Switch Hardening &mdash; Atomic activation, reason tracking, safe recovery with confirmation</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-204</span> EOD Scheduler &mdash; Morning briefing, EOD snapshot, weekly review, VIX alerts via WhatsApp</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-205</span> Feature Flags &mdash; 9 runtime flags (KAIROS, speculation, tilt detection, etc.)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 3 &mdash; Safety Layer Expansion</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-301</span> Tilt Detector &mdash; Detects revenge trading patterns, auto-cooldown, SafetyLayer integration</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-302</span> IB Gateway Connector &mdash; Paper mode with simulated fills, order logging, 0-2 tick slippage</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-303</span> Order Router &mdash; Routes to IBKR or Schwab with safety checks, paper mode enforcement</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-304</span> Paper Trade Logger &mdash; JSON logging with timestamps, P&L tracking, SQLite mirror</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-305</span> Validation Alert Manager &mdash; Daily metric checks against validation gates, WhatsApp alerts</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 4 &mdash; Multi-Market Framework</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-401</span> Market Module Interface &mdash; Abstract base class for pluggable market modules</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-402</span> Futures Module &mdash; MCL + MNQ support with contract specs and margin handling</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-403</span> MultiMarketOrchestrator &mdash; Manages modules with health checks, startup/shutdown</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-404</span> Options Framework &mdash; Options chain, Greeks, strategy builder (Phase 3 ready)</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-405</span> Crypto Module Stub &mdash; Interface defined, ready for exchange integration</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 5 &mdash; Learning System</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-501</span> Event Capture &mdash; All pipeline decisions logged with full context for learning</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-502</span> Feedback Loop &mdash; Trade outcomes fed back into agent prompt engineering</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-503</span> Pattern Recognition &mdash; Signal-to-outcome correlation analysis</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-504</span> Recommendation Engine &mdash; Parameter tuning suggestions based on trade history</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-505</span> Learning Router &mdash; API endpoints for learning system metrics and feedback</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 6-7 &mdash; Dashboard & Analytics</span>
+        <span class="sprint-stories">10 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-601</span> WebSocket Manager &mdash; Real-time event broadcasting to dashboard clients</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-602</span> Analytics Router &mdash; Trade analytics, signal quality, performance metrics</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-603</span> Profiling Router &mdash; Pipeline latency tracking per stage</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-604</span> Config Router &mdash; Runtime configuration management via API</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-605</span> Validation Router &mdash; Pre-launch validation checks via API</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-701</span> Dashboard Type Safety &mdash; 20+ TypeScript interfaces in lib/api.ts</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-702</span> Performance Rolling Metrics &mdash; 7d/14d/30d rolling windows</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-703</span> Trade Breakdown Endpoints &mdash; By day, symbol, hour analysis</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-704</span> WebSocket Events Endpoint &mdash; /ws/events with heartbeat</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-705</span> Analytics DB Injection &mdash; DatabaseManager wired to breakout analytics</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 8 &mdash; Module Integration</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-801</span> Startup Checks &mdash; 8 startup checks wired into lifespan before scheduler</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-802</span> WebSocket Mount &mdash; /ws/prices endpoint mounted in main.py</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-803</span> Router Registration &mdash; analytics_router and profiling_router registered</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-804</span> ValidationAlertManager &mdash; Wired to EODScheduler for automated alerts</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-805</span> PipelineProfiler &mdash; All 5 stages wrapped with timing instrumentation</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 9 &mdash; Dashboard API Layer</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-901</span> Performance Endpoints &mdash; /analytics/performance with rolling windows</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-902</span> Trade Breakdown API &mdash; By day, symbol, hour endpoints</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-903</span> WebSocket Events &mdash; /ws/events endpoint mounted with heartbeat</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-904</span> Analytics DB Wiring &mdash; DatabaseManager injected into analytics breakout</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-905</span> Dashboard Types &mdash; 13 new TypeScript interfaces for Sprint 8-9 endpoints</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 10 &mdash; Phase 3 Readiness</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1001</span> Rate Limiter &mdash; Per-endpoint rate limiting with sliding window</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1002</span> Error Handler &mdash; Global exception handler with structured error responses</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1003</span> Health Endpoint &mdash; /health/full with all subsystem status checks</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1004</span> TODO Cleanup &mdash; 100% TODO/FIXME removal, Phase 3 backlog documented</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1005</span> Phase 3 Readiness Doc &mdash; Formal graduation checklist in docs/runbooks/</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="timeline-item complete">
+      <div class="sprint-header" onclick="toggleSprint(this)">
+        <span class="sprint-tag done">Done</span>
+        <span class="sprint-title">Sprint 11 &mdash; Resilience & Hardening</span>
+        <span class="sprint-stories">5 stories</span>
+      </div>
+      <div class="sprint-detail">
+        <ul class="story-list">
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1101</span> IB Gateway Resilience &mdash; Auto-reconnect with exponential backoff, heartbeat, state machine</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1102</span> Database Backup &mdash; Nightly SQLite backup API, 30-day retention, crash-safe</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1103</span> OpenAPI Docs &mdash; 49 endpoints with descriptions for Swagger UI</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1104</span> Dashboard Build &mdash; Verified clean build, 1867 modules, 0 TypeScript errors</li>
+          <li><span class="check">&#10003;</span> <span class="story-id">US-1105</span> WhatsApp Integration &mdash; Notifier wired into KAIROS and EODScheduler</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Architecture Section -->
+<div class="section" id="architecture">
+  <h2>System Architecture</h2>
+
+  <div class="arch-grid">
+    <div class="arch-card">
+      <h4><span style="color:var(--accent)">&#9679;</span> Engine (FastAPI)</h4>
+      <ul>
+        <li><strong>Port 8010</strong> &mdash; Python 3.12, async</li>
+        <li><strong>90+ endpoints</strong> across 26 routers</li>
+        <li><strong>10 AI agents</strong> in 5-stage pipeline</li>
+        <li><strong>SQLite</strong> for trades, decisions, P&L</li>
+        <li><strong>APScheduler</strong> for watchlist scan, EOD, backups</li>
+        <li><strong>Polygon.io + Finnhub</strong> market data</li>
+        <li><strong>IB Gateway</strong> paper trading (port 4002)</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4><span style="color:var(--info)">&#9679;</span> Dashboard (Next.js 15)</h4>
+      <ul>
+        <li><strong>Port 3011</strong> &mdash; TypeScript, Tailwind</li>
+        <li><strong>22 pages</strong> covering all trading aspects</li>
+        <li><strong>WebSocket</strong> for real-time events</li>
+        <li><strong>SWR polling</strong> at 5-30s intervals</li>
+        <li><strong>Dark terminal</strong> aesthetic theme</li>
+        <li><strong>Kill switch</strong> toggle with confirmation</li>
+        <li><strong>Agent feed</strong> showing all 10 agent decisions</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4><span style="color:var(--warn)">&#9679;</span> Safety Layer (Hardcoded)</h4>
+      <ul>
+        <li><strong>Kill switch</strong>: -2% daily / -10% drawdown</li>
+        <li><strong>Max position</strong>: 5% of portfolio</li>
+        <li><strong>Max contracts</strong>: 2 micro per instrument</li>
+        <li><strong>Rate throttle</strong>: 10 orders/minute</li>
+        <li><strong>Human approval</strong>: ALWAYS required</li>
+        <li><strong>Port 4001 blocked</strong>: No live trading access</li>
+        <li><strong>Tilt detection</strong>: Revenge trading prevention</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4><span style="color:var(--purple)">&#9679;</span> Learning System</h4>
+      <ul>
+        <li><strong>Event capture</strong>: All decisions logged</li>
+        <li><strong>Feedback loop</strong>: Outcomes to agent prompts</li>
+        <li><strong>Pattern recognition</strong>: Signal correlation</li>
+        <li><strong>Recommendations</strong>: Parameter tuning</li>
+        <li><strong>Loss tracker</strong>: 3&rarr;0.5x, 5&rarr;0.25x, 7&rarr;halt</li>
+        <li><strong>Database backup</strong>: Nightly at 23:30 UTC</li>
+        <li><strong>30-day retention</strong>: Automatic cleanup</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Signal Strategy</h3>
+  <div class="arch-card" style="max-width:600px">
+    <h4>STC Oscillator + ATR Stops + 5-Layer Regime Filter</h4>
+    <ul>
+      <li><strong>MCL (Crude Oil)</strong>: OS=15, OB=83, ATR 0.90x stop</li>
+      <li><strong>MNQ (Nasdaq)</strong>: OS=15, OB=92, ATR 0.70x stop</li>
+      <li><strong>Regime filter</strong>: VIX tiers, trend, momentum, volume, MTF</li>
+      <li><strong>Best backtest</strong>: MES 1h &mdash; PF 5.27, Sharpe 4.16, +47.2%</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Live Status Section -->
+<div class="section" id="system">
+  <h2>Live System Status</h2>
+  <p style="color:var(--muted); margin-bottom:24px;">As of April 2, 2026 &mdash; Engine running on Matt's Windows machine</p>
+
+  <div class="status-grid">
+    <div class="status-card">
+      <div class="header">
+        <h4>Engine</h4>
+        <span class="status-badge ok">Healthy</span>
+      </div>
+      <div class="status-detail">
+        <div class="row"><span>Port</span><span class="mono">8010</span></div>
+        <div class="row"><span>Version</span><span class="mono">1.1.0</span></div>
+        <div class="row"><span>Mode</span><span style="color:var(--accent)">Paper Trading</span></div>
+        <div class="row"><span>Database</span><span style="color:var(--accent)">Connected</span></div>
+        <div class="row"><span>Schema</span><span class="mono">v9</span></div>
+        <div class="row"><span>Disk Free</span><span class="mono">397.98 GB</span></div>
+      </div>
+    </div>
+
+    <div class="status-card">
+      <div class="header">
+        <h4>Safety Layer</h4>
+        <span class="status-badge ok">All Clear</span>
+      </div>
+      <div class="status-detail">
+        <div class="row"><span>Kill Switch</span><span style="color:var(--accent)">Inactive</span></div>
+        <div class="row"><span>Daily P&L</span><span style="color:var(--accent)">+$7.00</span></div>
+        <div class="row"><span>Daily Limit</span><span class="mono">-2%</span></div>
+        <div class="row"><span>Drawdown</span><span class="mono">0%</span></div>
+        <div class="row"><span>Drawdown Limit</span><span class="mono">-10%</span></div>
+        <div class="row"><span>Open Positions</span><span class="mono">0</span></div>
+      </div>
+    </div>
+
+    <div class="status-card">
+      <div class="header">
+        <h4>Dashboard</h4>
+        <span class="status-badge ok">Running</span>
+      </div>
+      <div class="status-detail">
+        <div class="row"><span>Port</span><span class="mono">3011</span></div>
+        <div class="row"><span>Framework</span><span class="mono">Next.js 15.5.14</span></div>
+        <div class="row"><span>Modules</span><span class="mono">1,867</span></div>
+        <div class="row"><span>Routes</span><span class="mono">22 pages</span></div>
+        <div class="row"><span>API Key</span><span style="color:var(--accent)">Synced</span></div>
+        <div class="row"><span>TypeScript</span><span style="color:var(--accent)">0 errors</span></div>
+      </div>
+    </div>
+
+    <div class="status-card">
+      <div class="header">
+        <h4>IB Gateway</h4>
+        <span class="status-badge warn">Disconnected</span>
+      </div>
+      <div class="status-detail">
+        <div class="row"><span>Port</span><span class="mono">4002 (paper)</span></div>
+        <div class="row"><span>Client ID</span><span style="color:var(--bear)">Conflict (ID 10)</span></div>
+        <div class="row"><span>Fallback</span><span style="color:var(--accent)">Polygon.io</span></div>
+        <div class="row"><span>Paper Connector</span><span style="color:var(--accent)">Active</span></div>
+        <div class="row"><span>Auto-Reconnect</span><span style="color:var(--accent)">Enabled</span></div>
+        <div class="row"><span>Fix</span><span style="color:var(--muted)">Change client ID</span></div>
+      </div>
+    </div>
+
+    <div class="status-card">
+      <div class="header">
+        <h4>Market Data</h4>
+        <span class="status-badge ok">Connected</span>
+      </div>
+      <div class="status-detail">
+        <div class="row"><span>Polygon.io</span><span style="color:var(--accent)">Connected</span></div>
+        <div class="row"><span>Finnhub</span><span style="color:var(--accent)">Connected</span></div>
+        <div class="row"><span>IBKR Data</span><span style="color:var(--bear)">Offline</span></div>
+        <div class="row"><span>FRED API</span><span style="color:var(--accent)">Configured</span></div>
+      </div>
+    </div>
+
+    <div class="status-card">
+      <div class="header">
+        <h4>Scheduler</h4>
+        <span class="status-badge ok">Active</span>
+      </div>
+      <div class="status-detail">
+        <div class="row"><span>Watchlist Scan</span><span class="mono">Every 30m</span></div>
+        <div class="row"><span>MGC Daily Signal</span><span class="mono">18:00 ET</span></div>
+        <div class="row"><span>Morning Briefing</span><span class="mono">08:25 CT</span></div>
+        <div class="row"><span>EOD Snapshot</span><span class="mono">20:05 UTC</span></div>
+        <div class="row"><span>Weekly Review</span><span class="mono">Fri 20:30</span></div>
+        <div class="row"><span>DB Backup</span><span class="mono">23:30 UTC</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Gap Analysis Section -->
+<div class="section" id="gaps">
+  <h2>Gap Analysis &mdash; What's Missing</h2>
+  <p style="color:var(--muted); margin-bottom:24px;">
+    The engine is built, the dashboard is running, the safety layer is bulletproof.
+    But the system can't actually trade yet. Here's why.
+  </p>
+
+  <div class="next-grid">
+    <div class="next-card critical">
+      <div class="priority">Critical Gap</div>
+      <h4>No Trade Approval UI</h4>
+      <p>The pipeline produces signals and requires human approval (REQUIRE_HUMAN_APPROVAL=True),
+        but the dashboard has <strong>zero approve/reject buttons</strong>.
+        Pending signals appear in the queue on /paper but Matt can't act on them.
+        This is the #1 blocker for paper trading.</p>
+      <div class="effort">
+        <span>Engine: Endpoint exists</span>
+        <span>Dashboard: 0% built</span>
+      </div>
+    </div>
+
+    <div class="next-card critical">
+      <div class="priority">Critical Gap</div>
+      <h4>Scheduler Doesn't Execute Trades</h4>
+      <p>The watchlist scanner runs every 30 minutes, calls the full 5-stage pipeline,
+        and gets trade decisions &mdash; then <strong>logs them and does nothing</strong>.
+        No code path connects pipeline output to order submission.
+        This is a ~20 line fix with proper safety gates.</p>
+      <div class="effort">
+        <span>~20 lines of code</span>
+        <span>Safety gates needed</span>
+      </div>
+    </div>
+
+    <div class="next-card high">
+      <div class="priority">High Priority</div>
+      <h4>IB Gateway Client ID Conflict</h4>
+      <p>IBKR data connection fails because client ID 10 is already in use
+        (likely ThinkorSwim Desktop). The paper connector works fine independently.
+        Fix: change IBKR_CLIENT_ID in .env from 100 to a unique value,
+        or ensure no other client is connected.</p>
+      <div class="effort">
+        <span>Config change</span>
+        <span>Non-blocking (Polygon fallback)</span>
+      </div>
+    </div>
+
+    <div class="next-card high">
+      <div class="priority">High Priority</div>
+      <h4>ALLOW_PAPER_SIMULATED_ORDERS = False</h4>
+      <p>Even with all code in place, the config flag that permits paper order simulation
+        is currently set to False. Must be set to True in .env and the engine restarted
+        to enable simulated fills during paper validation.</p>
+      <div class="effort">
+        <span>Config change in .env</span>
+        <span>Engine restart required</span>
+      </div>
+    </div>
+
+    <div class="next-card medium">
+      <div class="priority">Medium Priority</div>
+      <h4>WebSocket Not Active on Dashboard</h4>
+      <p>The WebSocket infrastructure exists on both sides (engine /ws/events,
+        dashboard useWebSocket hook) but isn't actively used on the home page.
+        The dashboard falls back to SWR polling (5-30s intervals).
+        Real-time is better for live trading.</p>
+      <div class="effort">
+        <span>Hook exists</span>
+        <span>Wire into key components</span>
+      </div>
+    </div>
+
+    <div class="next-card medium">
+      <div class="priority">Medium Priority</div>
+      <h4>NODE_ENV=production System-Wide</h4>
+      <p>Windows has NODE_ENV=production set globally, causing Next.js dev server warnings
+        and potential optimization conflicts. The zombie node process on port 3010 also
+        needs clearing (access denied). A system reboot would fix both.</p>
+      <div class="effort">
+        <span>System env fix</span>
+        <span>Reboot clears zombies</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Next Steps Section -->
+<div class="section" id="next">
+  <h2>Next Steps &mdash; Sprint 12 Roadmap</h2>
+  <p style="color:var(--muted); margin-bottom:24px;">
+    The path from "engine running" to "autonomously paper trading" requires these stories,
+    in priority order. Estimated: 2-3 sessions to complete.
+  </p>
+
+  <div class="next-grid">
+    <div class="next-card critical">
+      <div class="priority">Sprint 12 &mdash; Story 1</div>
+      <h4>Trade Approval Endpoints + Dashboard UI</h4>
+      <p>Build POST /paper/approve/{signal_id} and POST /paper/reject/{signal_id} engine endpoints.
+        Add approval modal to dashboard /paper page with signal details, risk summary,
+        and approve/reject buttons. Wire WebSocket notification when new signals arrive.
+        This closes the human-in-the-loop requirement.</p>
+      <div class="effort">
+        <span>Engine: ~100 lines</span>
+        <span>Dashboard: ~200 lines</span>
+        <span>Priority: P0</span>
+      </div>
+    </div>
+
+    <div class="next-card critical">
+      <div class="priority">Sprint 12 &mdash; Story 2</div>
+      <h4>Wire Scheduler to Order Submission</h4>
+      <p>After the pipeline returns a trade decision, submit it as a pending approval signal.
+        When Matt approves, route through SafetyLayer &rarr; OrderRouter &rarr; IBGatewayConnector
+        for paper fill simulation. Log the complete lifecycle: signal &rarr; approval &rarr; fill &rarr; P&L.</p>
+      <div class="effort">
+        <span>Engine: ~50 lines</span>
+        <span>Safety checks: existing</span>
+        <span>Priority: P0</span>
+      </div>
+    </div>
+
+    <div class="next-card high">
+      <div class="priority">Sprint 12 &mdash; Story 3</div>
+      <h4>Enable Paper Simulated Orders</h4>
+      <p>Set ALLOW_PAPER_SIMULATED_ORDERS=True in .env, verify SafetyLayer permits paper fills,
+        test the complete flow: signal detection &rarr; pipeline &rarr; approval &rarr; simulated fill &rarr;
+        P&L update &rarr; dashboard display. End-to-end smoke test.</p>
+      <div class="effort">
+        <span>Config + integration test</span>
+        <span>Priority: P0</span>
+      </div>
+    </div>
+
+    <div class="next-card high">
+      <div class="priority">Sprint 12 &mdash; Story 4</div>
+      <h4>Fix IB Gateway Data Connection</h4>
+      <p>Resolve client ID conflict by using a unique ID (e.g., 101).
+        Verify IBKR market data streams for MCL and MNQ.
+        Add fallback logic: if IBKR connected, use IBKR data;
+        if not, use Polygon.io. Both paths must produce identical signal inputs.</p>
+      <div class="effort">
+        <span>Config + verification</span>
+        <span>Priority: P1</span>
+      </div>
+    </div>
+
+    <div class="next-card medium">
+      <div class="priority">Sprint 12 &mdash; Story 5</div>
+      <h4>Real-Time WebSocket Dashboard Wiring</h4>
+      <p>Connect the existing useWebSocket hook to key dashboard components:
+        AgentFeed, PaperTradingPanel, SignalHistory.
+        When a pipeline_complete or order_fill event arrives,
+        update the UI immediately instead of waiting for the next SWR poll cycle.</p>
+      <div class="effort">
+        <span>Dashboard: ~100 lines</span>
+        <span>Priority: P2</span>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:40px">The Vision: How It All Works Together</h3>
+  <div class="arch-card" style="max-width:900px; margin-top:16px;">
+    <div style="font-size:0.9rem; color:var(--muted); line-height:1.8;">
+      <strong style="color:var(--text)">Every 30 minutes during market hours:</strong><br>
+      1. Scheduler triggers watchlist scan for MCL and MNQ<br>
+      2. Pipeline Stage 1: Four AI analysts examine price action, news, sentiment, fundamentals<br>
+      3. Pipeline Stage 2: Bull and Bear researchers debate the thesis<br>
+      4. Pipeline Stage 3: Trader agent synthesizes a decision (buy/sell/hold)<br>
+      5. Pipeline Stage 4: Risk Manager validates against safety limits (can VETO)<br>
+      6. Pipeline Stage 5: Fund Manager checks portfolio fit<br>
+      7. If trade signal: pushed to pending approval queue + WhatsApp alert to Matt<br>
+      8. Matt reviews on dashboard, clicks Approve or Reject<br>
+      9. Approved trade routes through SafetyLayer &rarr; OrderRouter &rarr; Paper fill simulation<br>
+      10. P&L tracked, learning system records outcome, agents improve over time<br>
+      <br>
+      <strong style="color:var(--accent)">After 30 days:</strong> If validation gates pass (PF &ge; 2.0, Sharpe &ge; 1.5, WR &ge; 55%, DD &le; 15%),
+      the system graduates to Phase 3: live trading with real capital at reduced position sizes.
+    </div>
+  </div>
+</div>
+
+<!-- Validation Gates Section -->
+<div class="section" id="validation">
+  <h2>30-Day Validation Gates</h2>
+  <p style="color:var(--muted); margin-bottom:24px;">
+    Paper trading runs April 2 &ndash; May 2, 2026. All gates must pass for live trading graduation.
+  </p>
+
+  <table class="val-table">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Target</th>
+        <th>Current</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Profit Factor</td>
+        <td class="mono">&ge; 2.0</td>
+        <td class="mono" style="color:var(--muted)">&mdash;</td>
+        <td><span class="status-badge pending">Pending</span></td>
+      </tr>
+      <tr>
+        <td>Sharpe Ratio</td>
+        <td class="mono">&ge; 1.5</td>
+        <td class="mono" style="color:var(--muted)">&mdash;</td>
+        <td><span class="status-badge pending">Pending</span></td>
+      </tr>
+      <tr>
+        <td>Win Rate</td>
+        <td class="mono">&ge; 55%</td>
+        <td class="mono" style="color:var(--muted)">&mdash;</td>
+        <td><span class="status-badge pending">Pending</span></td>
+      </tr>
+      <tr>
+        <td>Total Trades</td>
+        <td class="mono">&ge; 60</td>
+        <td class="mono">5 paper</td>
+        <td><span class="status-badge pending">8%</span></td>
+      </tr>
+      <tr>
+        <td>Validation Days</td>
+        <td class="mono">&ge; 30</td>
+        <td class="mono">1</td>
+        <td><span class="status-badge pending">3%</span></td>
+      </tr>
+      <tr>
+        <td>Max Drawdown</td>
+        <td class="mono">&le; 15%</td>
+        <td class="mono" style="color:var(--accent)">0%</td>
+        <td><span class="status-badge ok">Pass</span></td>
+      </tr>
+      <tr>
+        <td>Pipeline Latency</td>
+        <td class="mono">&lt; 30s</td>
+        <td class="mono" style="color:var(--muted)">&mdash;</td>
+        <td><span class="status-badge pending">Pending</span></td>
+      </tr>
+      <tr>
+        <td>System Uptime</td>
+        <td class="mono">&ge; 99.5%</td>
+        <td class="mono" style="color:var(--accent)">100%</td>
+        <td><span class="status-badge ok">Pass</span></td>
+      </tr>
+      <tr>
+        <td>Zero Crashes</td>
+        <td class="mono">0</td>
+        <td class="mono" style="color:var(--accent)">0</td>
+        <td><span class="status-badge ok">Pass</span></td>
+      </tr>
+      <tr>
+        <td>Kill Switch Test</td>
+        <td class="mono">Verified</td>
+        <td class="mono" style="color:var(--accent)">Verified</td>
+        <td><span class="status-badge ok">Pass</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Validated Instruments</h3>
+  <table class="val-table">
+    <thead>
+      <tr>
+        <th>Symbol</th>
+        <th>Timeframe</th>
+        <th>Walk-Forward Eff.</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="mono">MCL</td>
+        <td class="mono">1h</td>
+        <td class="mono" style="color:var(--accent)">0.82</td>
+        <td><span class="status-badge ok">Paper Active</span></td>
+      </tr>
+      <tr>
+        <td class="mono">MNQ</td>
+        <td class="mono">1h</td>
+        <td class="mono" style="color:var(--accent)">0.57</td>
+        <td><span class="status-badge ok">Paper Active</span></td>
+      </tr>
+      <tr>
+        <td class="mono">MGC</td>
+        <td class="mono">1d</td>
+        <td class="mono" style="color:var(--bear)">0.14</td>
+        <td><span class="status-badge off">Halted</span></td>
+      </tr>
+      <tr>
+        <td class="mono">MES</td>
+        <td class="mono">1h</td>
+        <td class="mono" style="color:var(--bear)">0.09</td>
+        <td><span class="status-badge off">Do Not Trade</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Capital Allocation</h3>
+  <div class="stats" style="max-width:600px">
+    <div class="stat-card">
+      <div class="label">Total Capital</div>
+      <div class="value green">$10,000</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Max Per Trade</div>
+      <div class="value amber">$5,000</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Max Contracts</div>
+      <div class="value blue">2 micro</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  JARVIS TRADER &mdash; Generated April 2, 2026 &mdash; Paper Validation Phase<br>
+  <span style="color:var(--accent)">Safety First. Always.</span>
+</footer>
+
+<script>
+  // Tab navigation
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.section).classList.add('active');
+    });
+  });
+
+  // Sprint toggle
+  function toggleSprint(el) {
+    const detail = el.nextElementSibling;
+    detail.classList.toggle('open');
+  }
+
+  // Animate stats on view
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateY(0)';
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.stat-card, .status-card, .next-card, .arch-card').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
+    el.style.transition = 'all 0.4s ease';
+    observer.observe(el);
+  });
+
+  // Validation day counter
+  const startDate = new Date('2026-04-02');
+  const now = new Date();
+  const dayNum = Math.max(1, Math.ceil((now - startDate) / (1000 * 60 * 60 * 24)));
+  document.querySelector('.status-pill').textContent =
+    `PAPER TRADING ACTIVE — Day ${dayNum} of 30`;
+</script>
+
+</body>
+</html>

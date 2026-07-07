@@ -60,16 +60,18 @@ export function AgentFeed({ decisions }: AgentFeedProps) {
 }
 
 function AgentDecisionCard({ decision: d }: { decision: AgentDecision }) {
-  const icon = AGENT_ICONS[d.agent_name] ?? "🤖";
-  const agentLabel = d.agent_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  const variant = signalToVariant(d.signal);
-  const signalLabel = signalToLabel(d.signal);
+  const name = d.agent_name ?? d.source ?? "system";
+  const icon = AGENT_ICONS[name] ?? "🤖";
+  const agentLabel = name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const rawSignal = d.signal ?? (d.action === "buy" ? 0.5 : d.action === "sell" ? -0.5 : 0);
+  const variant = signalToVariant(rawSignal);
+  const signalLabel = signalToLabel(rawSignal);
 
   return (
     <div
       className="rounded-lg border border-border/50 bg-muted/20 p-3"
       role="article"
-      aria-label={`${agentLabel} signal: ${signalLabel} with ${formatPercent(d.confidence * 100, 0)} confidence`}
+      aria-label={`${agentLabel} signal: ${signalLabel} with ${formatPercent((d.confidence ?? 0) * 100, 0)} confidence`}
     >
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2">
@@ -79,36 +81,36 @@ function AgentDecisionCard({ decision: d }: { decision: AgentDecision }) {
             <span className="font-mono text-xs text-muted-foreground">{d.symbol}</span>
           )}
         </div>
-        <Badge variant={variant}>{signalToLabel(d.signal)}</Badge>
+        <Badge variant={variant}>{signalToLabel(rawSignal)}</Badge>
       </div>
 
       {/* Signal bar */}
       <div className="mb-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${
-            d.signal >= 0 ? "bg-bull ml-1/2" : "bg-bear"
+            rawSignal >= 0 ? "bg-bull ml-1/2" : "bg-bear"
           }`}
           style={{
-            width: `${Math.abs(d.signal) * 50}%`,
-            marginLeft: d.signal >= 0 ? "50%" : `${50 - Math.abs(d.signal) * 50}%`,
+            width: `${Math.abs(rawSignal) * 50}%`,
+            marginLeft: rawSignal >= 0 ? "50%" : `${50 - Math.abs(rawSignal) * 50}%`,
           }}
         />
       </div>
 
-      {d.reasoning && (
+      {(d.reasoning || d.summary) && (
         <p className="text-xs text-muted-foreground line-clamp-2 mb-1.5">
-          {d.reasoning}
+          {d.reasoning || d.summary}
         </p>
       )}
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
+          {formatDistanceToNow(new Date(d.created_at ?? d.timestamp ?? Date.now()), { addSuffix: true })}
         </span>
-        <span>conf: {formatPercent(d.confidence * 100, 0)}</span>
-        <span>{d.latency_ms}ms</span>
-        <span className="ml-auto text-xs opacity-60">{d.model_used}</span>
+        <span>conf: {formatPercent((d.confidence ?? 0) * 100, 0)}</span>
+        {d.latency_ms != null && <span>{d.latency_ms}ms</span>}
+        {d.model_used && <span className="ml-auto text-xs opacity-60">{d.model_used}</span>}
       </div>
     </div>
   );

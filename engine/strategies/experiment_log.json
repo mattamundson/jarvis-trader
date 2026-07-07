@@ -1,0 +1,342 @@
+[
+  {
+    "config_used": {
+      "timeframe": "1h",
+      "stc_os": 25,
+      "stc_ob": 83,
+      "stop_atr_mult": 0.4,
+      "t1_atr_mult": 1.2,
+      "regime_required": 5
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.5423,
+    "pf_walkforward": 0.4724,
+    "sharpe_walkforward": 2.5639,
+    "trade_count": 685,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:14.946233+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 20,
+      "stc_ob": 75,
+      "stop_atr_mult": 0.6,
+      "t1_atr_mult": 0.8,
+      "regime_required": 4
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:15.698899+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 10,
+      "stc_ob": 75,
+      "stop_atr_mult": 0.6,
+      "t1_atr_mult": 1.0,
+      "regime_required": 5
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:16.373011+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 20,
+      "stc_ob": 85,
+      "stop_atr_mult": 0.5,
+      "t1_atr_mult": 1.2,
+      "regime_required": 5
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:16.841428+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 15,
+      "stc_ob": 75,
+      "stop_atr_mult": 0.7,
+      "t1_atr_mult": 1.5,
+      "regime_required": 3
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:17.810764+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "4h",
+      "stc_os": 15,
+      "stc_ob": 88,
+      "stop_atr_mult": 0.6,
+      "t1_atr_mult": 2.0,
+      "regime_required": 3
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:18.856066+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "4h",
+      "stc_os": 25,
+      "stc_ob": 75,
+      "stop_atr_mult": 0.7,
+      "t1_atr_mult": 1.2,
+      "regime_required": 3
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:19.247087+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "1h",
+      "stc_os": 13,
+      "stc_ob": 83,
+      "stop_atr_mult": 0.4,
+      "t1_atr_mult": 0.8,
+      "regime_required": 5
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.6972,
+    "pf_walkforward": 0.6443,
+    "sharpe_walkforward": 2.5782,
+    "trade_count": 660,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:27.528834+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 15,
+      "stc_ob": 83,
+      "stop_atr_mult": 0.5,
+      "t1_atr_mult": 1.0,
+      "regime_required": 5
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:27.939631+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "1h",
+      "stc_os": 20,
+      "stc_ob": 80,
+      "stop_atr_mult": 0.6,
+      "t1_atr_mult": 1.0,
+      "regime_required": 3
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.4913,
+    "pf_walkforward": 0.577,
+    "sharpe_walkforward": 2.4514,
+    "trade_count": 575,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-03T20:29:35.731499+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "1h",
+      "stc_os": 10,
+      "stc_ob": 80,
+      "stop_atr_mult": 0.8,
+      "t1_atr_mult": 1.5,
+      "regime_required": 4
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.4025,
+    "pf_walkforward": 0.7496,
+    "sharpe_walkforward": 2.0728,
+    "trade_count": 404,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:09.648552+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 25,
+      "stc_ob": 80,
+      "stop_atr_mult": 0.5,
+      "t1_atr_mult": 1.2,
+      "regime_required": 5
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:10.747910+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 10,
+      "stc_ob": 75,
+      "stop_atr_mult": 0.6,
+      "t1_atr_mult": 1.0,
+      "regime_required": 5
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:12.185026+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "4h",
+      "stc_os": 23,
+      "stc_ob": 83,
+      "stop_atr_mult": 0.5,
+      "t1_atr_mult": 1.5,
+      "regime_required": 4
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:12.891633+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 25,
+      "stc_ob": 83,
+      "stop_atr_mult": 0.4,
+      "t1_atr_mult": 1.0,
+      "regime_required": 4
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:13.621385+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "4h",
+      "stc_os": 25,
+      "stc_ob": 85,
+      "stop_atr_mult": 0.4,
+      "t1_atr_mult": 1.2,
+      "regime_required": 4
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:14.281363+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 18,
+      "stc_ob": 80,
+      "stop_atr_mult": 0.4,
+      "t1_atr_mult": 0.8,
+      "regime_required": 3
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:14.938205+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "15m",
+      "stc_os": 25,
+      "stc_ob": 85,
+      "stop_atr_mult": 0.4,
+      "t1_atr_mult": 1.0,
+      "regime_required": 4
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.0,
+    "pf_walkforward": 0.0,
+    "sharpe_walkforward": 0.0,
+    "trade_count": 0,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:15.623973+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "1h",
+      "stc_os": 23,
+      "stc_ob": 80,
+      "stop_atr_mult": 0.4,
+      "t1_atr_mult": 1.0,
+      "regime_required": 4
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.6212,
+    "pf_walkforward": 0.5486,
+    "sharpe_walkforward": 2.657,
+    "trade_count": 685,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:46:39.255351+00:00"
+  },
+  {
+    "config_used": {
+      "timeframe": "1h",
+      "stc_os": 25,
+      "stc_ob": 80,
+      "stop_atr_mult": 0.4,
+      "t1_atr_mult": 1.5,
+      "regime_required": 4
+    },
+    "wfe": 0.0,
+    "pf_insample": 0.4266,
+    "pf_walkforward": 0.3729,
+    "sharpe_walkforward": 2.4134,
+    "trade_count": 682,
+    "walkforward_window_months": 3,
+    "timestamp": "2026-04-09T18:47:01.332824+00:00"
+  }
+]

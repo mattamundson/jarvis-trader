@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS TRADER — Implementation Plan</title>
+<style>
+  :root {
+    --bg: #0a0e17; --surface: #111827; --surface2: #1a2332;
+    --border: #1e3a5f; --accent: #00d4ff; --accent2: #7c3aed;
+    --gold: #f59e0b; --bull: #10b981; --bear: #ef4444;
+    --text: #e2e8f0; --muted: #64748b;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+  .hero { background:linear-gradient(135deg,#0a0e17,#111827 40%,#1a1040); border-bottom:1px solid var(--border); padding:2.5rem 2rem 1.5rem; text-align:center; }
+  .hero h1 { font-size:2rem; font-weight:800; background:linear-gradient(135deg,var(--accent),var(--accent2),var(--gold)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .hero .sub { color:var(--muted); font-size:0.85rem; letter-spacing:0.1em; text-transform:uppercase; margin-top:0.3rem; }
+  .stats-bar { display:flex; justify-content:center; gap:2rem; margin-top:1rem; flex-wrap:wrap; }
+  .stat { text-align:center; }
+  .stat .num { font-size:1.4rem; font-weight:800; font-family:'JetBrains Mono',monospace; }
+  .stat .lbl { font-size:0.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; }
+
+  .container { max-width:1100px; margin:0 auto; padding:1.5rem; }
+
+  /* Workstream */
+  .ws { margin-bottom:2rem; }
+  .ws-header {
+    display:flex; align-items:center; gap:0.75rem; padding:1rem 1.2rem;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px 10px 0 0;
+    cursor:pointer; user-select:none;
+  }
+  .ws-header:hover { background:var(--surface2); }
+  .ws-header .ws-icon { font-size:1.1rem; width:28px; text-align:center; }
+  .ws-header h2 { font-size:1rem; font-weight:700; flex:1; }
+  .ws-header .ws-meta { display:flex; gap:0.75rem; align-items:center; }
+  .ws-body {
+    background:var(--surface); border:1px solid var(--border); border-top:none;
+    border-radius:0 0 10px 10px; padding:0 1.2rem 1.2rem; overflow:hidden;
+  }
+  .ws-body.collapsed { display:none; }
+
+  .priority { display:inline-block; padding:2px 8px; border-radius:9999px; font-size:0.6rem; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; }
+  .p0 { background:rgba(239,68,68,0.15); color:var(--bear); border:1px solid rgba(239,68,68,0.3); }
+  .p1 { background:rgba(245,158,11,0.15); color:var(--gold); border:1px solid rgba(245,158,11,0.3); }
+  .p2 { background:rgba(0,212,255,0.12); color:var(--accent); border:1px solid rgba(0,212,255,0.3); }
+  .p3 { background:rgba(100,116,139,0.2); color:var(--muted); border:1px solid rgba(100,116,139,0.3); }
+
+  .est { font-size:0.7rem; color:var(--muted); font-weight:600; }
+
+  /* Tasks */
+  .task-group { margin-top:1rem; }
+  .task-group-title {
+    font-size:0.82rem; font-weight:700; color:var(--accent);
+    margin-bottom:0.5rem; padding-bottom:0.3rem;
+    border-bottom:1px solid rgba(0,212,255,0.15);
+  }
+
+  .task {
+    display:flex; align-items:flex-start; gap:0.6rem;
+    padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.03);
+    font-size:0.84rem;
+  }
+  .task:last-child { border-bottom:none; }
+  .task input[type="checkbox"] {
+    margin-top:3px; accent-color:var(--accent); width:15px; height:15px; flex-shrink:0;
+  }
+  .task-text { flex:1; }
+  .task-text .detail { display:block; font-size:0.76rem; color:var(--muted); margin-top:2px; line-height:1.4; }
+  .task-text code { font-family:'JetBrains Mono',monospace; font-size:0.75rem; background:rgba(0,212,255,0.08); padding:1px 5px; border-radius:3px; color:var(--accent); }
+
+  .subtask { margin-left:1.6rem; }
+  .subtask .task-text { font-size:0.8rem; }
+  .subtask .task-text .detail { font-size:0.72rem; }
+
+  /* Dependency callout */
+  .dep {
+    margin:0.8rem 0; padding:0.6rem 0.8rem; border-left:3px solid var(--gold);
+    background:rgba(245,158,11,0.05); border-radius:0 6px 6px 0; font-size:0.78rem;
+  }
+  .dep strong { color:var(--gold); }
+
+  /* File ref */
+  .file-ref {
+    display:inline-block; font-family:'JetBrains Mono',monospace; font-size:0.7rem;
+    color:var(--accent); background:rgba(0,212,255,0.06); padding:1px 6px;
+    border-radius:3px; margin-top:2px;
+  }
+
+  /* Progress ring */
+  .progress-ring { position:relative; width:36px; height:36px; }
+  .progress-ring svg { transform:rotate(-90deg); }
+  .progress-ring circle { fill:none; stroke-width:3; }
+  .progress-ring .bg { stroke:rgba(255,255,255,0.06); }
+  .progress-ring .fg { stroke:var(--accent); stroke-linecap:round; transition:stroke-dashoffset 0.3s; }
+  .progress-ring .pct {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    font-size:0.55rem; font-weight:800; font-family:'JetBrains Mono',monospace;
+  }
+
+  /* Legend */
+  .legend { display:flex; gap:1.5rem; flex-wrap:wrap; margin:1rem 0 1.5rem; justify-content:center; }
+  .legend-item { display:flex; align-items:center; gap:0.4rem; font-size:0.75rem; color:var(--muted); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+  /* Phase banner */
+  .phase-banner {
+    display:flex; gap:0; margin:1.5rem 0; border-radius:8px; overflow:hidden;
+    border:1px solid var(--border);
+  }
+  .phase-seg {
+    flex:1; padding:0.8rem 1rem; text-align:center;
+    font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
+  }
+  .phase-seg.active { background:rgba(0,212,255,0.1); color:var(--accent); border-bottom:2px solid var(--accent); }
+  .phase-seg.future { background:var(--surface); color:var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Implementation Plan</h1>
+  <div class="sub">JARVIS TRADER &mdash; Paper Trading Validation Sprint</div>
+  <div class="stats-bar">
+    <div class="stat"><div class="num" style="color:var(--bear);">8</div><div class="lbl">Workstreams</div></div>
+    <div class="stat"><div class="num" style="color:var(--gold);">47</div><div class="lbl">Tasks</div></div>
+    <div class="stat"><div class="num" style="color:var(--accent);">142</div><div class="lbl">Subtasks</div></div>
+    <div class="stat"><div class="num" style="color:var(--bull);">30</div><div class="lbl">Day Target</div></div>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="phase-banner">
+    <div class="phase-seg active">Phase 1: Wire It Up (Days 1-3)</div>
+    <div class="phase-seg future">Phase 2: Dry Run (Days 4-7)</div>
+    <div class="phase-seg future">Phase 3: Paper Live (Days 8-30)</div>
+    <div class="phase-seg future">Phase 4: Review &amp; Graduate</div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="priority p0">P0</span> Blocker — must ship before first trade</div>
+    <div class="legend-item"><span class="priority p1">P1</span> High — needed within first week</div>
+    <div class="legend-item"><span class="priority p2">P2</span> Medium — improves quality during validation</div>
+    <div class="legend-item"><span class="priority p3">P3</span> Low — nice-to-have, post-validation</div>
+  </div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- WS1: TRADE APPROVAL SYSTEM                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="ws">
+  <div class="ws-header" onclick="toggle(this)">
+    <div class="ws-icon">1</div>
+    <h2>Trade Approval System</h2>
+    <div class="ws-meta">
+      <span class="priority p0">P0 BLOCKER</span>
+      <span class="est">~8 hours</span>
+    </div>
+  </div>
+  <div class="ws-body">
+    <p style="font-size:0.84rem;color:var(--muted);margin-top:0.8rem;">Every trade requires Matt's approval. The Fund Manager agent flags <code>requires_human_approval=True</code> but there is no queue, no API to approve/reject, and no UI. This is the #1 blocker.</p>
+
+    <div class="task-group">
+      <div class="task-group-title">1.1 Backend: Approval Queue API</div>
+      <div class="file-ref">engine/routers/approval_router.py (NEW)</div>
+      <div class="file-ref">engine/database/migrations.py (MODIFY)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Create <code>pending_approvals</code> database table
+        <span class="detail">Columns: id (UUID), signal_id (FK to pipeline_runs), symbol, action (LONG/SHORT), entry_price, stop_level, target_1, target_2, target_3, bias, regime, conviction_score, risk_veto (bool), fund_manager_notes, created_at, status (PENDING/APPROVED/REJECTED/EXPIRED), reviewed_at, reviewed_by</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add migration to <code>_ensure_tables()</code> in database/migrations.py
+        <span class="detail">SQLite CREATE TABLE IF NOT EXISTS. Include indexes on status and created_at for fast pending-queue lookups.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add repository functions: <code>insert_pending_approval()</code>, <code>get_pending_approvals()</code>, <code>update_approval_status()</code>
+        <span class="detail">In database/repository.py. get_pending_approvals() returns WHERE status='PENDING' ORDER BY created_at DESC. update_approval_status() sets reviewed_at=now(), reviewed_by='Matt'.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Create <code>GET /approvals/pending</code> endpoint
+        <span class="detail">Returns list of pending approvals with all signal data, pipeline run metadata (analyst reports, debate summary, trader decision, risk decision, fund manager decision). Include time_pending_seconds for urgency tracking.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Join pending_approvals with pipeline_runs to include full pipeline context
+        <span class="detail">The approval UI needs to show: what the analysts said, what the bull/bear debate concluded, what the risk manager flagged. All of this is in pipeline_runs.result_json.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Create <code>POST /approvals/{approval_id}/approve</code> endpoint
+        <span class="detail">Sets status=APPROVED, reviewed_at=now(), reviewed_by='Matt'. Then calls safety_layer.submit_paper_order() to route the order to IB Gateway (paper). Returns order_id if IB is connected, or dry-run confirmation if not.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Wire approval → SafetyLayer.submit_paper_order() execution path
+        <span class="detail">Extract symbol, action, quantity, price from the pending approval record. Build OrderRequest. Run through check_order(). If approved by safety, submit via submit_paper_order(). Log result.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Record trade in PaperTradeTracker upon approval
+        <span class="detail">Call paper/validation_tracker.py add_trade() so the 30-day validation metrics reflect the trade.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Emit WebSocket event <code>approval_resolved</code> with trade outcome
+        <span class="detail">So the dashboard updates in real-time when Matt approves from another tab/device.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Create <code>POST /approvals/{approval_id}/reject</code> endpoint
+        <span class="detail">Sets status=REJECTED, reviewed_at=now(), reviewed_by='Matt', includes optional rejection_reason text field. Does NOT submit any order. Logs to audit trail.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Create <code>GET /approvals/history</code> endpoint
+        <span class="detail">Returns all approvals (not just pending) with filtering: ?status=APPROVED&symbol=MCL&limit=50. Used for the audit trail and approval rate analytics.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Auto-expire stale approvals after 60 minutes
+        <span class="detail">Add a background task (APScheduler job) that sets status=EXPIRED for any PENDING approval older than 60 minutes. Market conditions change — a signal from an hour ago is stale.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">1.2 Pipeline Integration: Write Approvals on Signal</div>
+      <div class="file-ref">engine/agents/pipeline.py (MODIFY)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Insert pending approval record when Fund Manager sets <code>requires_human_approval=True</code>
+        <span class="detail">At the end of TradingPipeline.run(), after fund_manager returns FundDecision, if requires_human_approval is True, call repository.insert_pending_approval() with all the signal data. This is the bridge between the AI pipeline and the approval queue.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Include full pipeline context in the approval record
+        <span class="detail">Store the serialized analyst reports, debate summary, trader decision, risk assessment, and fund manager notes as JSON in the approval record. The UI needs this to show Matt what the AI thinks.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Emit WebSocket event <code>approval_required</code> with approval_id and symbol
+        <span class="detail">Triggers real-time notification in dashboard + sound alert. Include: approval_id, symbol, action, conviction_score, entry_price.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Send WhatsApp alert: "JARVIS: MCL LONG signal awaiting your approval"
+        <span class="detail">Include price, stop, target, conviction. Add a deep link to the dashboard approval page if possible.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">1.3 Dashboard: Approval Queue UI</div>
+      <div class="file-ref">dashboard/components/ApprovalQueueWidget.tsx (NEW)</div>
+      <div class="file-ref">dashboard/components/ApprovalDialog.tsx (NEW)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Create <code>ApprovalQueueWidget</code> component
+        <span class="detail">Fetches GET /approvals/pending every 10 seconds (SWR). Shows a card for each pending signal: symbol, direction badge (LONG/SHORT), entry price, stop, targets, R:R ratio, time pending, conviction score.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add regime badge (TRENDING_BULL, etc.) and bias badge (STRONG_BULL, etc.)
+        <span class="detail">Color-coded: green for bullish, red for bearish, amber for range-bound.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Show AI pipeline summary: analyst consensus, debate outcome, risk assessment
+        <span class="detail">Collapsible section that expands to show what each of the 10 agents said about this signal.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add urgency indicator (time since signal generated)
+        <span class="detail">Green &lt; 5 min, amber 5-15 min, red &gt; 15 min. Signal quality degrades with time.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Create <code>ApprovalDialog</code> modal
+        <span class="detail">Opens when clicking a pending signal card. Shows full signal detail + APPROVE / REJECT buttons. Approve button has a confirmation step ("Execute LONG MCL @ 69.20, Stop 68.75, Target 69.95?"). Reject has optional reason textarea.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Wire APPROVE button to <code>POST /approvals/{id}/approve</code>
+        <span class="detail">Show loading state, then success/error feedback. On success, play orderFill() sound. Remove from queue.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Wire REJECT button to <code>POST /approvals/{id}/reject</code>
+        <span class="detail">Include rejection reason. On success, remove from queue, show confirmation toast.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Listen for WebSocket <code>approval_required</code> event to auto-refresh queue
+        <span class="detail">When a new signal arrives via WebSocket, trigger SWR revalidation immediately (don't wait for 10s poll).</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Play <code>tradeSignal()</code> sound alert when new approval arrives
+        <span class="detail">Use existing SoundAlertManager. Two ascending tones to get Matt's attention.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Add ApprovalQueueWidget to the <code>/paper</code> page and <code>/command-center</code>
+        <span class="detail">Paper trading page gets it as the primary widget. Command center gets a compact version in the Trading tab.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Add approval endpoint types to <code>lib/api.ts</code>
+        <span class="detail">Add interfaces: PendingApproval, ApprovalResponse, ApprovalHistoryEntry. Add functions: fetchPendingApprovals(), approveSignal(), rejectSignal(), fetchApprovalHistory().</span>
+      </div></div>
+    </div>
+
+    <div class="dep"><strong>Dependency:</strong> This workstream must complete before any trade can execute. It is the critical path.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- WS2: ORDER EXECUTION PIPELINE                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="ws">
+  <div class="ws-header" onclick="toggle(this)">
+    <div class="ws-icon">2</div>
+    <h2>Order Execution Pipeline</h2>
+    <div class="ws-meta">
+      <span class="priority p0">P0 BLOCKER</span>
+      <span class="est">~4 hours</span>
+    </div>
+  </div>
+  <div class="ws-body">
+    <p style="font-size:0.84rem;color:var(--muted);margin-top:0.8rem;">The pipeline generates signals and the safety layer validates orders, but the actual execution path from "approved signal" → "order submitted to IB Gateway" has gaps. The scheduler only logs — it doesn't trigger the pipeline on market data.</p>
+
+    <div class="task-group">
+      <div class="task-group-title">2.1 Enable Paper Simulated Orders</div>
+      <div class="file-ref">engine/.env (MODIFY)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Set <code>ALLOW_PAPER_SIMULATED_ORDERS=True</code> in .env
+        <span class="detail">This flag in TradingConfig controls whether check_order() allows paper-mode orders to pass the gating check. Currently False — orders are rejected with "Live trading is disabled." Setting True lets paper orders through safety checks while LIVE_TRADING_ENABLED remains False.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Verify safety layer behavior with this flag
+        <span class="detail">Run: cd engine && .venv/Scripts/python -m pytest tests/test_safety_layer.py -v. Confirm all tests pass. The safety layer test suite must remain green after this change.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Verify kill switch still activates at -2% daily / -10% drawdown
+        <span class="detail">Even with ALLOW_PAPER_SIMULATED_ORDERS=True, the kill switch checks (checks 3 & 4) must still fire. Write a quick integration test to confirm.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">2.2 Market Scan Scheduler</div>
+      <div class="file-ref">engine/schedulers/market_scanner.py (NEW)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Create <code>MarketScanScheduler</code> — runs every 30 minutes during RTH
+        <span class="detail">APScheduler cron job: Mon-Fri, 9:30 AM to 3:30 PM CT, every 30 minutes. For each symbol in FUTURES_WATCHLIST (MCL, MNQ): fetch latest 1h bars from Polygon.io, run generate_instrument_signals(), check if entry_signal == 'ENTRY_NOW'.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Fetch latest 200 bars from Polygon.io for indicator warm-up
+        <span class="detail">STC needs ~50 bars of history, EMA34 needs ~34, rolling 20-bar lookbacks need 20. 200 bars gives plenty of warm-up. Use existing Polygon client in engine/market_data/.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">If ENTRY_NOW: submit to TradingPipeline.run() for AI validation
+        <span class="detail">Don't submit the order directly — feed the signal through the full 5-stage AI pipeline. The pipeline's Fund Manager will flag requires_human_approval, which creates the pending approval record (from WS1).</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">If NO_TRADE / WAIT_FOR_PULLBACK: log and continue
+        <span class="detail">Record the scan result to a scan_log table for debugging. Include: timestamp, symbol, regime, bias, entry_signal, STC value, phase value.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Check news blackout calendar before triggering pipeline
+        <span class="detail">If current time is within 30 minutes of FOMC/CPI/NFP/GDP release, skip the scan. Log NEWS_BLACKOUT.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Register MarketScanScheduler in <code>main.py</code> lifespan startup
+        <span class="detail">Alongside the existing EODScheduler. Add configuration toggle ENABLE_MARKET_SCANNER=True in .env so it can be disabled during development.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Add <code>POST /pipeline/scheduler/manual-scan</code> override to trigger immediate scan
+        <span class="detail">This endpoint already exists but may need updating to use the new MarketScanScheduler logic instead of its current implementation. Allows Matt to force a scan outside the 30-minute window.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">2.3 End-to-End Execution Path Verification</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Test full path: signal → pipeline → fund manager → approval queue → approve → safety layer → IB Gateway
+        <span class="detail">Manually trigger a pipeline run with a known-good signal (MCL LONG with TRENDING_BULL regime). Verify it appears in approval queue. Approve it. Verify safety checks pass. Verify order reaches IB Gateway (paper port 4002) or logs correctly if IB not connected.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Test with IB Gateway connected — verify order_id returned
+        <span class="detail">Start IB Gateway (TWS paper), connect JARVIS, trigger signal, approve, verify trade appears in TWS paper account.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Test with IB Gateway disconnected — verify dry-run logging
+        <span class="detail">Without IB Gateway running, the safety layer should pass checks but return routed_to_ib=False, order_id=None. Order should still be logged to paper trade tracker.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Test kill switch scenario — verify order is blocked
+        <span class="detail">Activate kill switch via API. Trigger signal. Approve it. Verify safety layer rejects with "Kill switch active." Deactivate and retry — should pass.</span>
+      </div></div>
+    </div>
+
+    <div class="dep"><strong>Dependency:</strong> WS1 (Approval System) must be complete. The execution path goes through the approval queue.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- WS3: IB GATEWAY CONNECTION                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="ws">
+  <div class="ws-header" onclick="toggle(this)">
+    <div class="ws-icon">3</div>
+    <h2>IB Gateway Connection</h2>
+    <div class="ws-meta">
+      <span class="priority p0">P0 BLOCKER</span>
+      <span class="est">~2 hours</span>
+    </div>
+  </div>
+  <div class="ws-body">
+    <p style="font-size:0.84rem;color:var(--muted);margin-top:0.8rem;">IB Gateway is the broker connector for paper trading on port 4002. Currently experiencing client ID conflict (error 326 — client ID already in use by ThinkorSwim). Must resolve for order routing.</p>
+
+    <div class="task-group">
+      <div class="task-group-title">3.1 Fix Client ID Conflict</div>
+      <div class="file-ref">engine/.env (MODIFY)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Set <code>IBKR_CLIENT_ID=100</code> in .env (avoid collision with TWS/TOS)
+        <span class="detail">ThinkorSwim uses client IDs 0-10 by default. Set JARVIS to 100 to guarantee no collision. The .env already has IBKR_CLIENT_ID=100 but the actual connection was using 10 — verify the config is being read correctly.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Verify IBGatewayManager reads client_id from config, not hardcoded
+        <span class="detail">Read engine/execution/ib_gateway.py and confirm it uses config.IBKR_CLIENT_ID, not a literal. If hardcoded, fix it.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Verify IB Gateway paper trading port (4002) is accessible
+        <span class="detail">With TWS/TOS running in paper mode: check that port 4002 is open and accepting connections. If TWS needs to be configured: Settings → API → Socket Port = 4002, Enable ActiveX/Socket Clients = checked.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Test IB Gateway connection and reconnection
+        <span class="detail">Start engine. Check /health/full endpoint for IBKR connection status. Disconnect TWS, verify JARVIS detects disconnect and logs broker_disconnect event. Reconnect TWS, verify auto-reconnect within 30 seconds.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Verify kill switch fires on sustained broker disconnect (&gt; 60 seconds)
+        <span class="detail">Safety layer should activate kill switch with reason BROKER_DISCONNECT if IB Gateway is unreachable for 60+ seconds. All pending orders should be halted.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">3.2 Contract Resolution</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Verify MCL contract resolution (monthly futures, front month)
+        <span class="detail">MCL = Micro Crude Oil. Uses monthly expiry. Verify _nearest_front_month() correctly picks the current front-month contract. As of April 2026, should be CLK6 (May 2026) or CLM6 (June 2026) depending on rollover.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Verify MNQ contract resolution (quarterly E-mini Nasdaq micro)
+        <span class="detail">MNQ uses quarterly expiry (March, June, September, December). As of April 2026, front quarter should be MNQM6 (June 2026). Verify _nearest_quarterly_expiry() picks correctly.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Test placing a 1-contract MKT order for MCL on IB paper
+        <span class="detail">Call POST /approvals/{id}/approve with a real pending signal. Verify the order appears in TWS paper account with correct contract, quantity, and order type.</span>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- WS4: REAL-TIME DASHBOARD                                               -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="ws">
+  <div class="ws-header" onclick="toggle(this)">
+    <div class="ws-icon">4</div>
+    <h2>Real-Time Dashboard Updates</h2>
+    <div class="ws-meta">
+      <span class="priority p1">P1</span>
+      <span class="est">~5 hours</span>
+    </div>
+  </div>
+  <div class="ws-body">
+    <p style="font-size:0.84rem;color:var(--muted);margin-top:0.8rem;">WebSocket infrastructure exists on both sides (engine WebSocketManager + dashboard useWebSocket hook). But most dashboard components poll via SWR instead of consuming WS events. Wire the real-time updates.</p>
+
+    <div class="task-group">
+      <div class="task-group-title">4.1 Extend WebSocket Event Types</div>
+      <div class="file-ref">engine/websocket/events.py (MODIFY)</div>
+      <div class="file-ref">dashboard/lib/use-websocket.ts (MODIFY)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Add <code>approval_required</code> event type to engine WebSocket emitter
+        <span class="detail">emit_approval_required(approval_id, symbol, action, price, conviction). Fires when Fund Manager creates a pending approval.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Add <code>approval_resolved</code> event type
+        <span class="detail">emit_approval_resolved(approval_id, status, order_id). Fires when an approval is approved, rejected, or expired.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Add <code>position_update</code> event type
+        <span class="detail">emit_position_update(symbol, unrealized_pnl, current_price). Fires on price tick for open positions.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Update dashboard WsEvent TypeScript type union
+        <span class="detail">Add approval_required, approval_resolved, position_update to the discriminated union in use-websocket.ts. Include proper TypeScript interfaces for each payload.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">4.2 Wire Dashboard Components to WebSocket</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Wire PaperTradingPanel to consume <code>position_update</code> events
+        <span class="detail">Currently polls every 30 seconds. Add WebSocket listener that updates unrealized P&L in real-time between polls. Keep SWR as fallback for reconnection.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Calculate and display live unrealized P&L per position
+        <span class="detail">unrealized_pnl = (current_price - entry_price) * quantity * multiplier * direction. Currently shows "—".</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Wire kill switch toggle to consume <code>kill_switch</code> WebSocket event
+        <span class="detail">If kill switch activates while Matt is viewing dashboard, the UI should immediately show a red banner. Play killSwitchAlert() sound.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Add global notification toast system
+        <span class="detail">Use shadcn/ui Toast component. Create a NotificationProvider that listens to WebSocket events and shows toasts for: new approval required, kill switch activated, circuit breaker warning, order filled.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Wire sound alerts to WebSocket events
+        <span class="detail">approval_required → tradeSignal(). kill_switch → killSwitchAlert(). order_fill → orderFill(). circuit_breaker → circuitBreakerWarning().</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">4.3 Command Center Integration</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Add compact ApprovalQueueWidget to Command Center Trading tab
+        <span class="detail">Show pending approval count badge on the Trading tab. Show inline approve/reject buttons without requiring a full modal (for fast action).</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Add live regime status display to Command Center Overview
+        <span class="detail">Show current regime for MCL and MNQ: TRENDING_BULL / RANGE_BOUND / etc. Color-coded. Updates from the latest scan result.</span>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- WS5: DATA PIPELINE                                                     -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="ws">
+  <div class="ws-header" onclick="toggle(this)">
+    <div class="ws-icon">5</div>
+    <h2>Market Data Pipeline</h2>
+    <div class="ws-meta">
+      <span class="priority p1">P1</span>
+      <span class="est">~4 hours</span>
+    </div>
+  </div>
+  <div class="ws-body">
+    <p style="font-size:0.84rem;color:var(--muted);margin-top:0.8rem;">Signal generation requires clean 1-hour OHLCV bars for MCL and MNQ. Polygon.io is the primary data source. Need to verify feed quality and add indicator warm-up pre-caching.</p>
+
+    <div class="task-group">
+      <div class="task-group-title">5.1 Polygon.io Data Feed Validation</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Verify Polygon.io API key is valid and has futures data access
+        <span class="detail">Polygon futures data requires a paid plan (Starter+). Test: GET https://api.polygon.io/v2/aggs/ticker/C:MCL/range/1/hour/2026-03-31/2026-04-01?apiKey=KEY. Verify 200 response with bar data.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Test MCL 1h bars — verify OHLCV fields are complete
+        <span class="detail">Check for missing volume data (common issue with futures on Polygon). If volume is 0, volume-based indicators (Volume Stack) will produce garbage.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Test MNQ 1h bars — verify data quality
+        <span class="detail">Same checks. MNQ may use ticker prefix "O:" on Polygon for micro contracts — verify the correct ticker format.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Verify timezone handling — bars should be in Eastern Time
+        <span class="detail">Polygon returns Unix timestamps. Verify conversion to ET for IB range calculation (9:30-10:30 AM ET).</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">5.2 Indicator Warm-Up Cache</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Pre-fetch 200 bars on engine startup for each watchlist symbol
+        <span class="detail">At startup, call Polygon for the last 200 1h bars for MCL and MNQ. Run compute_all_indicators() to warm up all rolling calculations (ATR, EMAs, rolling quantiles). Cache the results in memory.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Append new bars incrementally as they arrive from the 30-min scan
+        <span class="detail">Don't re-fetch 200 bars every scan. Append only new bars since last scan. Re-compute indicators on the full warm dataframe.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">5.3 Economic Calendar Integration</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Verify news_blackout.py EconomicCalendar has current 2026 event dates
+        <span class="detail">FOMC dates, CPI release dates, NFP dates, GDP release dates for Q2 2026. If hardcoded, update them. If fetched from API (FRED), verify the feed is working.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add EIA Petroleum Status Report to blackout calendar
+        <span class="detail">Critical for MCL trading. Released Wednesdays at 10:30 AM ET. Not in the generic economic calendar but directly impacts crude oil volatility.</span>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- WS6: MONITORING & ALERTING                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="ws">
+  <div class="ws-header" onclick="toggle(this)">
+    <div class="ws-icon">6</div>
+    <h2>Monitoring &amp; Alerting</h2>
+    <div class="ws-meta">
+      <span class="priority p1">P1</span>
+      <span class="est">~3 hours</span>
+    </div>
+  </div>
+  <div class="ws-body">
+    <p style="font-size:0.84rem;color:var(--muted);margin-top:0.8rem;">WhatsApp notifications are fully coded but need Twilio credentials configured. EOD scheduler needs wiring to the new paper trade tracking system.</p>
+
+    <div class="task-group">
+      <div class="task-group-title">6.1 Configure Twilio WhatsApp</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Set up Twilio account and WhatsApp Sandbox
+        <span class="detail">Sign up at twilio.com. Enable WhatsApp Sandbox at console.twilio.com/us1/develop/sms/try-it-out/whatsapp-learn. Follow sandbox setup to register Matt's phone.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add Twilio credentials to .env
+        <span class="detail">TWILIO_ACCOUNT_SID=ACxxxxx, TWILIO_AUTH_TOKEN=xxxxx, TWILIO_WHATSAPP_FROM=whatsapp:+14155238886, WHATSAPP_TO=whatsapp:+1MATTSPHONE</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Test with <code>POST /pipeline/notifications/whatsapp/test</code>
+        <span class="detail">Verify Matt receives "JARVIS TRADER: WhatsApp integration test" on his phone.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">6.2 Wire EOD Scheduler to Validation Tracking</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Verify EODScheduler reads from paper_trades SQLite table
+        <span class="detail">The EOD snapshot should pull: today's trades, daily P&L, running win rate, current profit factor, drawdown from peak. Verify these are being computed correctly from the trade data that the approval system writes.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Verify daily WhatsApp summary includes validation gate progress
+        <span class="detail">Message should include: "Day 3/30 | PF: 1.8 (target 2.0) | WR: 58% (target 55%) | Trades: 5/60 | DD: 1.2% (max 15%)"</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Add approval-required WhatsApp alert to pipeline integration
+        <span class="detail">When a signal needs approval, send WhatsApp immediately (not just at EOD). This is the primary way Matt will know about signals during the trading day.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">6.3 System Health Monitoring</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Add engine uptime check to morning briefing
+        <span class="detail">The 8:25 AM CT morning WhatsApp should include: engine status (up/down), IB Gateway connection (connected/disconnected), last successful scan time, number of pending approvals.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Add auto-restart detection — alert if engine was restarted during trading hours
+        <span class="detail">If engine startup time is between 9:30 AM and 3:15 PM CT on a weekday, send WhatsApp alert: "JARVIS restarted during market hours at [time]." This indicates a crash or manual restart that could have caused missed signals.</span>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- WS7: TESTING & VALIDATION                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="ws">
+  <div class="ws-header" onclick="toggle(this)">
+    <div class="ws-icon">7</div>
+    <h2>Testing &amp; Validation Infrastructure</h2>
+    <div class="ws-meta">
+      <span class="priority p0">P0 BLOCKER</span>
+      <span class="est">~4 hours</span>
+    </div>
+  </div>
+  <div class="ws-body">
+    <p style="font-size:0.84rem;color:var(--muted);margin-top:0.8rem;">Before going live with paper trading, the full system must pass integration tests. Safety layer tests are sacred. New approval system needs test coverage.</p>
+
+    <div class="task-group">
+      <div class="task-group-title">7.1 Approval System Tests</div>
+      <div class="file-ref">engine/tests/test_approval_system.py (NEW)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Test: pending approval is created when pipeline sets requires_human_approval=True
+        <span class="detail">Mock the pipeline run. Verify a record appears in pending_approvals table with status=PENDING.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Test: GET /approvals/pending returns only PENDING approvals
+        <span class="detail">Insert 3 records: 1 PENDING, 1 APPROVED, 1 REJECTED. Verify endpoint returns only 1.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Test: POST /approvals/{id}/approve calls submit_paper_order()
+        <span class="detail">Mock SafetyLayer.submit_paper_order(). Approve a pending record. Verify submit_paper_order was called with correct symbol, action, quantity, price.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Test: POST /approvals/{id}/reject does NOT submit any order
+        <span class="detail">Reject a pending record. Verify submit_paper_order was NOT called. Verify status is REJECTED in database.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Test: expired approvals are auto-cleaned after 60 minutes
+        <span class="detail">Insert a PENDING approval with created_at = 90 minutes ago. Run expiry job. Verify status changed to EXPIRED.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Test: approving a non-PENDING record returns 400
+        <span class="detail">Try to approve an already-APPROVED record. Verify 400 response. Try an EXPIRED record. Same.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">7.2 Existing Test Suite Regression</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Run full engine test suite: <code>cd engine && .venv/Scripts/python -m pytest tests/ -v</code>
+        <span class="detail">All existing tests (safety layer, pipeline, signals, database, integration) must pass. 0 failures required before proceeding to paper trading.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Run dashboard build check: <code>cd dashboard && pnpm run build</code>
+        <span class="detail">Must produce 0 TypeScript errors. All routes must compile. Check for 16/16 routes passing (may be more after adding approval components).</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Run secrets check: <code>bash scripts/hooks/check-secrets.sh</code>
+        <span class="detail">No new secrets in committed files. Verify .env is in .gitignore.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">7.3 Dry Run (Signals Only, No Execution)</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Run system for 1 full trading day with logging only
+        <span class="detail">Enable the market scanner. Let it run 9:30 AM to 3:15 PM CT. Log all signals generated, all regime classifications, all bias calculations. Do NOT approve any signals. Verify: signals are being generated, approval queue works, no crashes, data feed is clean.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Review scan log: how many signals were generated?
+        <span class="detail">Expected: 1-5 signals per day across both instruments (based on backtest signal frequency). If 0: something is wrong with data feed or indicator computation. If &gt; 10: thresholds may be too loose.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Review regime classifications: do they match what TOS shows?
+        <span class="detail">Compare JARVIS regime output (TRENDING_BULL, RANGE_BOUND, etc.) with what ThinkorSwim shows on the same 1h chart. They should broadly agree.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Review entry signals: would you have taken these trades?
+        <span class="detail">Matt reviews each signal the system generated and checks: does the entry make sense? Is the stop level reasonable? Are the targets achievable? This is the human sanity check before enabling live paper orders.</span>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- WS8: TRADE LIFECYCLE & VALIDATION TRACKING                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="ws">
+  <div class="ws-header" onclick="toggle(this)">
+    <div class="ws-icon">8</div>
+    <h2>Trade Lifecycle &amp; Validation Tracking</h2>
+    <div class="ws-meta">
+      <span class="priority p2">P2</span>
+      <span class="est">~5 hours</span>
+    </div>
+  </div>
+  <div class="ws-body">
+    <p style="font-size:0.84rem;color:var(--muted);margin-top:0.8rem;">Once trades are executing, we need to track the full lifecycle: entry → stop management → target hits → exit → outcome recording → validation metric update. The learning system also needs trade outcomes to provide feedback.</p>
+
+    <div class="task-group">
+      <div class="task-group-title">8.1 Trade Exit Management</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Implement tiered exit logic: 50% at T1, 25% at T2, 25% at T3
+        <span class="detail">When a paper position hits T1, automatically close 50% of the position. Move stop to breakeven. This requires monitoring position vs live price. Can be done in the market scanner loop: for each open position, check if current price has hit T1/T2/T3 or stop.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Implement breakeven stop movement after T1 hit
+        <span class="detail">When 50% is closed at T1, update the stop_level on the remaining position to the entry price. Log the stop adjustment.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Implement trailing stop to T1 after T2 hit
+        <span class="detail">When 25% is closed at T2, trail the stop on remaining 25% up to T1 level. This locks in a minimum profit on the remaining piece.</span>
+      </div></div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Implement end-of-day forced exit
+        <span class="detail">At 3:00 PM CT, check all open positions against overnight hold criteria. Close positions that don't qualify. For those that qualify, require Matt's explicit approval for overnight hold (via approval queue).</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add overnight hold approval type to approval system
+        <span class="detail">New approval type: OVERNIGHT_HOLD. Shows: current P&L, current price vs entry, stop distance, next day's economic calendar, regime status. Matt approves or closes the position.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">8.2 Trade Outcome Recording</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Record trade outcome when position is fully closed
+        <span class="detail">Write to paper_trades table: entry_time, exit_time, entry_price, exit_price, quantity, side, realized_pnl, R_multiple (profit/initial_risk), signal_type (A/B/C/D from strategy), regime at entry, bias at entry.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Update SafetyLayer loss tracker with trade result
+        <span class="detail">Call safety_layer.record_trade_result(symbol, pnl) after each trade close. This feeds the consecutive loss tracker for tilt protection.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Update 30-day validation metrics after each trade
+        <span class="detail">Recompute: win rate, profit factor, Sharpe ratio, max drawdown, total trade count. Compare against targets. If any metric crosses a target threshold (either direction), log it.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">8.3 Learning System Feed</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Feed trade outcomes to learning/trade_classifier.py
+        <span class="detail">After each trade closes, call the trade classifier to grade it A-F. Store the grade with the trade record. This builds the dataset for pattern recognition.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Run pattern_extractor.py weekly on accumulated trades
+        <span class="detail">After 1 week of trading, run pattern extraction: time-of-day patterns, regime-based win rates, streak analysis. Store results for review. DO NOT auto-tune — this is observational only during Phase 1.</span>
+      </div></div>
+      <div class="task"><input type="checkbox"><div class="task-text">Add learning insights to weekly WhatsApp summary
+        <span class="detail">The Friday 3:30 PM weekly summary should include: trade grades distribution (how many A vs B vs C vs F), best performing regime, worst performing time window, any streak alerts.</span>
+      </div></div>
+    </div>
+
+    <div class="task-group">
+      <div class="task-group-title">8.4 Validation Dashboard</div>
+
+      <div class="task"><input type="checkbox"><div class="task-text">Wire validation progress page to live data
+        <span class="detail">The /validation page should show real-time progress against all 6 gates: PF, Sharpe, WR, trade count, days, max DD. Each gate should show current value, target value, and pass/fail status with color coding.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add daily equity curve chart
+        <span class="detail">Line chart showing daily ending equity from day 1 to current day. X-axis = trading days, Y-axis = equity ($). Show drawdown periods as shaded red regions.</span>
+      </div></div>
+      <div class="subtask task"><input type="checkbox"><div class="task-text">Add trade-by-trade scatter plot
+        <span class="detail">Each trade as a dot. X-axis = trade number, Y-axis = R-multiple. Color: green if positive, red if negative. Helps visualize streaks and outliers.</span>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- EXECUTION ORDER                                                        -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div style="margin-top:2rem;">
+  <div class="ws-header" style="border-radius:10px;cursor:default;background:linear-gradient(90deg,rgba(0,212,255,0.08),rgba(124,58,237,0.08));">
+    <div class="ws-icon" style="font-size:1.2rem;">&#9776;</div>
+    <h2>Critical Path: Execution Order</h2>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px;padding:1.2rem;">
+    <pre style="background:#0d1117;border:1px solid var(--border);border-radius:8px;padding:1rem;font-size:0.8rem;line-height:1.8;overflow-x:auto;"><code style="background:none;padding:0;">Day 1:
+  WS1.1 → Approval Queue API (backend)
+  WS3.1 → Fix IB Client ID (parallel, independent)
+  WS2.1 → Enable ALLOW_PAPER_SIMULATED_ORDERS (5 minutes)
+
+Day 2:
+  WS1.2 → Pipeline Integration (depends on WS1.1)
+  WS1.3 → Dashboard Approval UI (depends on WS1.1)
+  WS5.1 → Polygon Data Validation (parallel, independent)
+
+Day 3:
+  WS2.2 → Market Scan Scheduler (depends on WS5.1)
+  WS2.3 → End-to-End Execution Test (depends on WS1 + WS2 + WS3)
+  WS7.1 → Approval System Tests (depends on WS1)
+  WS7.2 → Full Test Suite Regression
+
+Day 4-5:
+  WS4   → Real-Time Dashboard Updates (P1)
+  WS6   → WhatsApp Configuration (P1)
+  WS7.3 → DRY RUN: 1 full trading day, signals only, no execution
+
+Day 6-7:
+  Review dry run results with Matt
+  Fix any issues discovered
+  WS8.1 → Trade Exit Management
+  Go/No-Go decision for paper live trading
+
+Day 8+:
+  PAPER TRADING LIVE — signals generating, approvals flowing, orders executing
+  WS8.2 → Trade Outcome Recording (as trades accumulate)
+  WS8.3 → Learning System Feed (weekly cadence)
+  WS8.4 → Validation Dashboard (iterative improvement)</code></pre>
+  </div>
+</div>
+
+</div><!-- .container -->
+
+<div style="text-align:center;padding:2rem;color:var(--muted);font-size:0.75rem;border-top:1px solid var(--border);">
+  JARVIS TRADER — Implementation Plan v1.0<br>
+  Generated April 2, 2026 &bull; Target: Paper Trading Go-Live by Day 8<br>
+  47 tasks &bull; 142 subtasks &bull; 8 workstreams &bull; ~35 engineering hours
+</div>
+
+<script>
+function toggle(header) {
+  const body = header.nextElementSibling;
+  body.classList.toggle('collapsed');
+}
+
+// Track progress
+document.addEventListener('change', function(e) {
+  if (e.target.type === 'checkbox') {
+    // Save state to sessionStorage (persists within session)
+    const checks = document.querySelectorAll('input[type="checkbox"]');
+    const state = Array.from(checks).map(c => c.checked);
+    sessionStorage.setItem('jarvis-plan-state', JSON.stringify(state));
+    updateStats();
+  }
+});
+
+function updateStats() {
+  const all = document.querySelectorAll('input[type="checkbox"]');
+  const checked = document.querySelectorAll('input[type="checkbox"]:checked');
+  const pct = all.length > 0 ? Math.round(checked.length / all.length * 100) : 0;
+  // Update stats bar
+  const nums = document.querySelectorAll('.stats-bar .stat .num');
+  // Could update a progress indicator here
+}
+
+// Restore state
+window.addEventListener('load', function() {
+  const saved = sessionStorage.getItem('jarvis-plan-state');
+  if (saved) {
+    const state = JSON.parse(saved);
+    const checks = document.querySelectorAll('input[type="checkbox"]');
+    state.forEach((checked, i) => { if (checks[i]) checks[i].checked = checked; });
+  }
+  updateStats();
+});
+</script>
+</body>
+</html>

@@ -503,3 +503,41 @@ These are TOS-generated nested copies. Import and use only the root-level origin
 ---
 
 *End of Integration Guide. Source of truth for parameters: `engine/backtest/signals.py`. Source of truth for indicators: `engine/backtest/indicators.py`.*
+
+---
+
+## SECTION 6: Per-Script Documentation Index
+
+Each unique script now has a full-spec `.md` in `docs/`. The `registry.yaml` at the root of this folder is the machine-readable index; both engines expose it via HTTP.
+
+### Registry Endpoints
+
+- **jarvis-trader**: `GET http://localhost:8010/thinkscript/registry` + `/thinkscript/registry/{id}`
+- **master-jarvis**: `GET http://localhost:8009/trade/thinkscript/registry` + `/trade/thinkscript/registry/{id}`
+
+### Documentation Index
+
+| ID | File | Layer | Status | Doc |
+|---|---|---|---|---|
+| saty_atr_levels | Saty_ATR_LevelsSTUDY.ts | 1 Regime | Ported | [saty_atr_levels.md](docs/saty_atr_levels.md) |
+| saty_phase_oscillator | Saty_Phase_OscillatorSTUDY.ts | 1 Regime | Ported | [saty_phase_oscillator.md](docs/saty_phase_oscillator.md) |
+| mtf_trendbar | shared_mtftrendbarSTUDY.ts | 1 Regime | Ported | [mtf_trendbar.md](docs/mtf_trendbar.md) |
+| corey_tpo_profile_v1 | AA_CoreyTPOProfilev1STUDY.ts | 2 Structure | Orphan | [corey_tpo_profile_v1.md](docs/corey_tpo_profile_v1.md) |
+| corey_tscore_v2 | AA_CoreyTscorev2STUDY.ts | 2 Structure | Orphan | [corey_tscore_v2.md](docs/corey_tscore_v2.md) |
+| corey_ib_v1 | AA_CoreyIBv1STUDY.ts | 2 Structure | Orphan | [corey_ib_v1.md](docs/corey_ib_v1.md) |
+| corey_rangefinder_v2 | AA_CoreyRFv2STUDY.ts | 2 Structure | Orphan | [corey_rangefinder_v2.md](docs/corey_rangefinder_v2.md) |
+| corey_singlefinder_v2 | AA_CoreySFv2STUDY.ts | 2 Structure | Orphan | [corey_singlefinder_v2.md](docs/corey_singlefinder_v2.md) |
+| corey_gapfinder_v1 | AA_CoreyGapfinderv1STUDY.ts | 2 Structure | Orphan | [corey_gapfinder_v1.md](docs/corey_gapfinder_v1.md) |
+| kama_next_signal_momentum | NextSignalMomentumSTUDY.ts | 3 Bias | Ported | [kama_next_signal_momentum.md](docs/kama_next_signal_momentum.md) |
+| saty_volume_stack | Saty_Volume_StackSTUDY.ts | 3 Bias | Ported | [saty_volume_stack.md](docs/saty_volume_stack.md) |
+| stc_ob_style_cycle | shared_OB_STYLE_CYCLE_TIMESHIFT_PAINT_BARSSTUDY.ts | 4 Entry | Ported | [stc_ob_style_cycle.md](docs/stc_ob_style_cycle.md) |
+| ob_omega_keltner_5m | shared_shared_OB_OMEGA_5mSTUDY.ts | 4 Entry | Ported | [ob_omega_keltner_5m.md](docs/ob_omega_keltner_5m.md) |
+| ob_omega_keltner_15m | shared_shared_OB_OMEGA_15m7STUDY.ts | 4 Entry | Ported | [ob_omega_keltner_15m.md](docs/ob_omega_keltner_15m.md) |
+| ob_omega_keltner_30m | shared_shared_OB_OMEGA_30m7STUDY.ts | 4 Entry | Ported | [ob_omega_keltner_30m.md](docs/ob_omega_keltner_30m.md) |
+| keltner_3x | shared_shared_shared_shared_kelt_3.01STUDY.ts | 4 Entry | Ported | [keltner_3x.md](docs/keltner_3x.md) |
+| cohen_mes_composite | COHEN_MES_COMPOSITE.ts | 5 Sizing | Ported | [COHEN_MES_README.md](COHEN_MES_README.md) |
+| cohen_mes_stc_sub | COHEN_MES_STC_SUB.ts | 5 Sizing | Ported | [COHEN_MES_COMPOSITE_INSTALL.md](COHEN_MES_COMPOSITE_INSTALL.md) |
+| gaps_chetan | GAPS_Chetan1STUDY.ts | 0 Supporting | Orphan | [gaps_chetan.md](docs/gaps_chetan.md) |
+| trin_chetan | TRIN_ChetanSTUDY.ts | 0 Supporting | Ported | [trin_chetan.md](docs/trin_chetan.md) |
+| corey_rangefinder_v1_mobile | AA_CoreyRFv1MobileSTUDY.ts | 2 Structure | Deprecated | [corey_rangefinder_v1_mobile.md](docs/corey_rangefinder_v1_mobile.md) |
+| legacy_utilities | ThinkScript_study_20221014/16, 20230523 | 0 Supporting | Reference-only | [thinkscript_legacy_studies.md](docs/thinkscript_legacy_studies.md) |

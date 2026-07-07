@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Per-session Claude identity injection (Phase 8 I1, 2026-04-20).
+#
+# Concurrent Claude sessions all author commits with the same generic
+# "Claude Opus 4.7 (1M context)" trailer, making multi-session forensics
+# impossible. This hook derives a stable-per-session short ID from the
+# parent shell PID + working directory and rewrites the trailer so each
+# session's commits become distinguishable in `git log`.
+#
+# Same session = same ID across all its commits. Different sessions =
+# different IDs because their shell parent processes differ.
+#
+# Opt-in only: the rewrite fires ONLY on the exact canonical trailer;
+# manual or differently-tagged trailers are untouched.
+
+set -e
+
+MSG_FILE="$1"
+[ -z "$MSG_FILE" ] && exit 0
+[ ! -f "$MSG_FILE" ] && exit 0
+
+# Stable-per-session ID: hash of (parent PID + cwd). Robust to most
+# coreutils layouts (md5sum on git-bash, shasum fallback for mac).
+if command -v md5sum >/dev/null 2>&1; then
+    HASHER="md5sum"
+elif command -v shasum >/dev/null 2>&1; then
+    HASHER="shasum -a 1"
+else
+    exit 0
+fi
+
+SESSION_ID=$(printf "%s-%s" "$PPID" "$(pwd)" | $HASHER | cut -c1-8)
+
+# Only mutate the canonical generic trailer. Leave anything else alone.
+# Use a sentinel that won't collide with trailer syntax.
+python - "$MSG_FILE" "$SESSION_ID" <<'PY' || true
+import sys, re
+path, sid = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8") as f:
+    body = f.read()
+old = "Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+new = f"Claude Opus 4.7 (session {sid}) <claude-{sid}@anthropic.com>"
+if old in body:
+    body = body.replace(old, new)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(body)
+PY

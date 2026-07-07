@@ -1,0 +1,573 @@
+"""ATR Trailing-Stop Bounce signal generator for JARVIS TRADER.
+
+Hypothesis (Matt, 2026-06-24): on /ES the dotted ATR trailing-stop line
+(``ATRTrailingStop modified, 5, 3.5, long, WILDERS`` in ThinkorSwim) acts as
+dynamic support/resistance — price tags it and bounces. This module turns that
+visual observation into a precise, point-in-time, backtestable rule so the
+edge (if any) can be measured and run through MCPT rather than eyeballed.
+
+The line itself is ``indicators.atr_trailing_stop`` (a faithful TOS reproduction).
+
+Entry (long):
+    touch    : bar low <= trail (+ tolerance) WHILE trail is in LONG state
+    reclaim  : that same bar closes back ABOVE trail
+    hold     : the trail stays in LONG state for `hold_bars` bars afterward
+               (no close-through / flip to short)
+    -> ENTRY_NOW at the close of the (touch + hold_bars) bar.
+Short is the mirror (tag from above in SHORT state, close below, stays short).
+
+Stop  : the trail line itself (this IS the thesis — the line is the stop).
+Targets: entry +/- {1.5, 2.618} x ATR(14)  (Saty ATR-Levels convention).
+
+Look-ahead discipline: the decision at bar i uses only bars <= i. The bounce is
+detected over the window [i - hold_bars, i]; entry fires at bar i. Nothing reads
+a future bar. See .claude/rules/testing.md "No look-ahead bias".
+
+LOCKED SPEC for MCPT: param grid is {factor in [3.0, 3.5, 4.0], hold_bars in
+[0, 1, 2], touch_tol_atr in [0.0, 0.10]}. Lock before running validate_strategy;
+a fail means discard, not re-tune (see ml-pitfalls-defense.md).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from backtest.indicators import atr_trailing_stop, keltner_channels_mtf, wilder_atr
+from backtest.tpo_profile import compute_tpo_profile
+
+_TARGET_ATR_PERIOD = 14
+_T1_MULT = 1.5
+_T2_MULT = 2.618
+# Flip (stop-and-reverse) target ladder, as R-multiples of the trail-stop risk.
+_FLIP_R1 = 2.0
+_FLIP_R2 = 3.0
+_FLIP_R3 = 4.0
+
+
+def generate_atr_trail_bounce_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    hold_bars: int = 1,
+    touch_tol_atr: float = 0.10,
+    first_trade_long: bool = True,
+    trail_type: str = "modified",
+) -> pd.DataFrame:
+    """Generate ATR-trail bounce signals compatible with the JARVIS Backtester.
+
+    Args:
+        atr_period    : trailing-stop ATR length (TOS study default 5).
+        factor        : trailing-stop ATR multiplier (TOS study default 3.5).
+        hold_bars     : bars price must stay on the trail's side after the tag
+                        before entry. 0 = fire on the reclaim bar (no
+                        confirmation); 1 ~= "still holding one bar later".
+        touch_tol_atr : how close to the line counts as a tag, as a fraction of
+                        the trailing-stop loss distance. 0.0 = exact wick to/through.
+        first_trade_long, trail_type : passed to ``atr_trailing_stop``.
+
+    Returns df with the standard signal columns (entry_signal, exit_signal,
+    stop_level, target_1/2/3, bias, regime, atr) plus diagnostics:
+        trail        : the ATR trailing-stop line
+        trail_state  : +1 long / -1 short
+        touched      : bool, the line was tagged this bar in the active state
+    """
+    # Preserve the caller's index (the backtester needs a DatetimeIndex). All
+    # internal logic is positional via .iloc, so the index is carried untouched.
+    df = df.copy()
+
+    trail, state = atr_trailing_stop(
+        df["high"],
+        df["low"],
+        df["close"],
+        period=atr_period,
+        factor=factor,
+        first_trade_long=first_trade_long,
+        trail_type=trail_type,
+    )
+    atr14 = wilder_atr(df["high"], df["low"], df["close"], _TARGET_ATR_PERIOD)
+
+    # Tolerance band scaled by the per-bar loss distance (|close - trail| proxy).
+    tol = (touch_tol_atr * (df["close"] - trail).abs()).fillna(0.0)
+
+    long_state = state == 1.0
+    short_state = state == -1.0
+
+    # A "tag + reclaim" bar: wick reaches the line but close stays on its side.
+    long_tag = long_state & (df["low"] <= trail + tol) & (df["close"] > trail)
+    short_tag = short_state & (df["high"] >= trail - tol) & (df["close"] < trail)
+
+    n = len(df)
+    entry_signal = np.full(n, "NO_TRADE", dtype=object)
+    exit_signal = np.full(n, "NO_EXIT", dtype=object)
+    stop_level = np.full(n, np.nan)
+    target_1 = np.full(n, np.nan)
+    target_2 = np.full(n, np.nan)
+    target_3 = np.full(n, np.nan)
+
+    for i in range(n):
+        j = i - hold_bars  # the candidate tag bar
+        if j < 0 or pd.isna(atr14.iloc[i]) or pd.isna(trail.iloc[i]):
+            continue
+        price = float(df["close"].iloc[i])
+        atr_i = float(atr14.iloc[i])
+
+        # LONG: tag+reclaim at j, then held LONG state through i (no flip).
+        if long_tag.iloc[j] and bool(long_state.iloc[j : i + 1].all()):
+            entry_signal[i] = "ENTRY_NOW"
+            stop_level[i] = float(trail.iloc[i])  # the line is the stop
+            target_1[i] = price + _T1_MULT * atr_i
+            target_2[i] = price + _T2_MULT * atr_i
+            target_3[i] = price + 2 * _T2_MULT * atr_i
+        # SHORT: mirror.
+        elif short_tag.iloc[j] and bool(short_state.iloc[j : i + 1].all()):
+            entry_signal[i] = "ENTRY_NOW"
+            stop_level[i] = float(trail.iloc[i])
+            target_1[i] = price - _T1_MULT * atr_i
+            target_2[i] = price - _T2_MULT * atr_i
+            target_3[i] = price - 2 * _T2_MULT * atr_i
+
+    # Exit when the trail flips against the position (close through the line).
+    flipped = state != state.shift(1)
+    exit_signal[(flipped & state.notna()).to_numpy()] = "EXIT_NOW"
+
+    df["entry_signal"] = entry_signal
+    df["exit_signal"] = exit_signal
+    df["stop_level"] = stop_level
+    df["target_1"] = target_1
+    df["target_2"] = target_2
+    df["target_3"] = target_3
+    df["atr"] = atr14
+    df["trail"] = trail
+    df["trail_state"] = state
+    df["touched"] = (long_tag | short_tag).to_numpy()
+
+    df["bias"] = "NEUTRAL"
+    df.loc[long_state, "bias"] = "LEAN_BULL"
+    df.loc[short_state, "bias"] = "LEAN_BEAR"
+
+    df["regime"] = "RANGE_BOUND"
+    df.loc[long_state, "regime"] = "TRENDING_BULL"
+    df.loc[short_state, "regime"] = "TRENDING_BEAR"
+
+    return df
+
+
+def generate_atr_trail_flip_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    first_trade_long: bool = True,
+    trail_type: str = "modified",
+) -> pd.DataFrame:
+    """ATR trailing-stop FLIP (stop-and-reverse) entries.
+
+    This is the rule the TOS built-in strategies ``ATRTrailingStopLE`` (long
+    entry) and ``ATRTrailingStopSE`` (short entry) actually trade: enter in the
+    new direction the bar the trailing stop flips (close crosses through the
+    line). Distinct from the bounce rule above — the bounce buys a *hold* of
+    the line; the flip buys the *break* of it.
+
+    Long entry  : trail state flips -1 -> +1 (close crosses above the line).
+    Short entry : trail state flips +1 -> -1 (close crosses below the line).
+    Stop  : the trail line (the opposite-side stop you'd reverse on).
+    Targets: entry +/- {1.5, 2.618} x ATR(14).
+
+    Point-in-time: state at bar i uses only bars <= i (the trailing stop is
+    causal); the flip compares state[i] vs state[i-1]; entry is at close[i].
+
+    Same output schema as ``generate_atr_trail_bounce_signals``.
+    """
+    df = df.copy()
+    trail, state = atr_trailing_stop(
+        df["high"],
+        df["low"],
+        df["close"],
+        period=atr_period,
+        factor=factor,
+        first_trade_long=first_trade_long,
+        trail_type=trail_type,
+    )
+    atr14 = wilder_atr(df["high"], df["low"], df["close"], _TARGET_ATR_PERIOD)
+
+    prev_state = state.shift(1)
+    flip_long = (state == 1.0) & (prev_state == -1.0)
+    flip_short = (state == -1.0) & (prev_state == 1.0)
+
+    n = len(df)
+    entry_signal = np.full(n, "NO_TRADE", dtype=object)
+    exit_signal = np.full(n, "NO_EXIT", dtype=object)
+    stop_level = np.full(n, np.nan)
+    target_1 = np.full(n, np.nan)
+    target_2 = np.full(n, np.nan)
+    target_3 = np.full(n, np.nan)
+
+    for i in range(n):
+        if pd.isna(atr14.iloc[i]) or pd.isna(trail.iloc[i]):
+            continue
+        price = float(df["close"].iloc[i])
+        # Stop is the trail line; targets are R-multiples of that stop distance
+        # (standard stop-and-reverse sizing). Tying targets to the stop keeps
+        # R:R well above the backtester's 1.2 entry gate regardless of ATR mix.
+        # The true exit is the opposite flip (EXIT_NOW) under use_targets=False;
+        # these targets are the nominal R-ladder.
+        risk = abs(price - float(trail.iloc[i]))
+        if risk <= 0:
+            continue
+        if flip_long.iloc[i]:
+            entry_signal[i] = "ENTRY_NOW"
+            stop_level[i] = float(trail.iloc[i])
+            target_1[i] = price + _FLIP_R1 * risk
+            target_2[i] = price + _FLIP_R2 * risk
+            target_3[i] = price + _FLIP_R3 * risk
+        elif flip_short.iloc[i]:
+            entry_signal[i] = "ENTRY_NOW"
+            stop_level[i] = float(trail.iloc[i])
+            target_1[i] = price - _FLIP_R1 * risk
+            target_2[i] = price - _FLIP_R2 * risk
+            target_3[i] = price - _FLIP_R3 * risk
+
+    # Exit on the next flip (the stop-and-reverse handoff).
+    flipped = state != state.shift(1)
+    exit_signal[(flipped & state.notna()).to_numpy()] = "EXIT_NOW"
+
+    df["entry_signal"] = entry_signal
+    df["exit_signal"] = exit_signal
+    df["stop_level"] = stop_level
+    df["target_1"] = target_1
+    df["target_2"] = target_2
+    df["target_3"] = target_3
+    df["atr"] = atr14
+    df["trail"] = trail
+    df["trail_state"] = state
+
+    long_state = state == 1.0
+    short_state = state == -1.0
+    df["bias"] = "NEUTRAL"
+    df.loc[long_state, "bias"] = "LEAN_BULL"
+    df.loc[short_state, "bias"] = "LEAN_BEAR"
+    df["regime"] = "RANGE_BOUND"
+    df.loc[long_state, "regime"] = "TRENDING_BULL"
+    df.loc[short_state, "regime"] = "TRENDING_BEAR"
+
+    return df
+
+
+def generate_atr_trail_fade_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    stop_atr: float = 1.0,
+    target_atr: float = 1.5,
+    first_trade_long: bool = True,
+    trail_type: str = "modified",
+) -> pd.DataFrame:
+    """FADE the ATR-trail flip — the mean-reversion inverse of the flip system.
+
+    Hypothesis (Amo, 2026-06-25): the flip / stop-and-reverse system LOSES on MES
+    1h (PF ~0.315, Sharpe < 0) precisely because MES 1h is ~88% ranging — most
+    trail flips are whipsaws that revert rather than trends that continue. This
+    variant bets on the reversion: when the trail flips LONG (a bullish break),
+    enter SHORT; when it flips SHORT, enter LONG. Same entry bars as
+    ``generate_atr_trail_flip_signals`` but the opposite side.
+
+    Unlike the trend-following flip (which rides to the opposite flip with a
+    trailing stop), a fade is a mean-reversion trade with a FIXED ATR(14) target
+    and stop, so it must be backtested with ``use_targets=True`` / no trailing:
+        entry  : at the close of the flip bar, OPPOSITE the flip direction.
+        target : entry -/+ target_atr * ATR(14)   (revert toward the mean).
+        stop   : entry +/- stop_atr  * ATR(14)    (beyond the breakout extreme).
+    ``target_atr`` must be >= 1.2 * ``stop_atr`` or the Backtester's R:R>=1.2
+    entry gate rejects every fade (it sizes the target off target_atr/stop_atr).
+
+    This is a NEW hypothesis, NOT a re-tune of the flip — lock the grid and run it
+    through MCPT/OOS fresh (see ml-pitfalls-defense.md). A negative flip PF does
+    NOT guarantee a positive fade PF: commission + slippage are paid on the fade
+    side too, so a gross-3x inverse can still be a net loser. The backtest decides.
+
+    Look-ahead discipline: the trail state is causal; the flip compares state[i]
+    vs state[i-1]; entry/target/stop are all set at close[i]. No future bar is
+    read. Same output schema as ``generate_atr_trail_bounce_signals``.
+    """
+    df = df.copy()
+    trail, state = atr_trailing_stop(
+        df["high"],
+        df["low"],
+        df["close"],
+        period=atr_period,
+        factor=factor,
+        first_trade_long=first_trade_long,
+        trail_type=trail_type,
+    )
+    atr14 = wilder_atr(df["high"], df["low"], df["close"], _TARGET_ATR_PERIOD)
+
+    prev_state = state.shift(1)
+    flip_long = (state == 1.0) & (prev_state == -1.0)  # bullish break -> FADE short
+    flip_short = (state == -1.0) & (prev_state == 1.0)  # bearish break -> FADE long
+
+    n = len(df)
+    entry_signal = np.full(n, "NO_TRADE", dtype=object)
+    exit_signal = np.full(n, "NO_EXIT", dtype=object)
+    stop_level = np.full(n, np.nan)
+    target_1 = np.full(n, np.nan)
+    target_2 = np.full(n, np.nan)
+    target_3 = np.full(n, np.nan)
+    bias = np.full(n, "NEUTRAL", dtype=object)
+
+    for i in range(n):
+        if pd.isna(atr14.iloc[i]) or pd.isna(trail.iloc[i]):
+            continue
+        atr_i = float(atr14.iloc[i])
+        if atr_i <= 0:
+            continue
+        price = float(df["close"].iloc[i])
+        if flip_long.iloc[i]:
+            # bullish break -> bet it reverts: SHORT (fade)
+            entry_signal[i] = "ENTRY_NOW"
+            bias[i] = "LEAN_BEAR"
+            stop_level[i] = price + stop_atr * atr_i
+            target_1[i] = price - target_atr * atr_i
+            target_2[i] = price - 2.0 * target_atr * atr_i
+            target_3[i] = price - 3.0 * target_atr * atr_i
+        elif flip_short.iloc[i]:
+            # bearish break -> bet it reverts: LONG (fade)
+            entry_signal[i] = "ENTRY_NOW"
+            bias[i] = "LEAN_BULL"
+            stop_level[i] = price - stop_atr * atr_i
+            target_1[i] = price + target_atr * atr_i
+            target_2[i] = price + 2.0 * target_atr * atr_i
+            target_3[i] = price + 3.0 * target_atr * atr_i
+
+    # Safety exit: the next flip in either direction closes an open fade (so a
+    # breakout that keeps trending hands off to a new opposite fade rather than
+    # bleeding). With use_targets=True the target/stop usually fires first.
+    flipped = state != state.shift(1)
+    exit_signal[(flipped & state.notna()).to_numpy()] = "EXIT_NOW"
+
+    df["entry_signal"] = entry_signal
+    df["exit_signal"] = exit_signal
+    df["stop_level"] = stop_level
+    df["target_1"] = target_1
+    df["target_2"] = target_2
+    df["target_3"] = target_3
+    df["atr"] = atr14
+    df["trail"] = trail
+    df["trail_state"] = state
+    df["bias"] = bias
+    # Regime reflects the FADE direction (opposite the trail state).
+    df["regime"] = "RANGE_BOUND"
+    df.loc[df["bias"] == "LEAN_BULL", "regime"] = "MEANREV_LONG"
+    df.loc[df["bias"] == "LEAN_BEAR", "regime"] = "MEANREV_SHORT"
+
+    return df
+
+
+def generate_atr_trail_confluence_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    base: str = "flip",
+    strict_confluence: bool = False,
+    hold_bars: int = 1,
+    touch_tol_atr: float = 0.10,
+    value_area_pct: float = 0.70,
+) -> pd.DataFrame:
+    """Confluence-gated ATR-trail entries (flip or bounce) + TPO value area.
+
+    Matt's live /ES episode (2026-06-24) showed the flip-short, the VAL break,
+    and the TPO profile target all agreeing before a clean ~50pt move. This
+    variant tests whether requiring that agreement adds edge over the bare
+    signal: it takes the base flip/bounce signals and DROPS any entry that
+    fights the prior-session value-area regime.
+
+    Implemented as a filter on top of the base generator so attribution is
+    clean — confluence trades are a strict subset of the base trades, so a
+    side-by-side backtest shows exactly what the value-area gate adds or costs.
+
+    Gate (directional agreement with prior-session value area, via
+    ``compute_tpo_profile`` which is shifted one session -> no look-ahead):
+        strict_confluence=False : long survives unless price BELOW_VAL;
+                                  short survives unless price ABOVE_VAH.
+        strict_confluence=True  : long requires ABOVE_VAH; short requires BELOW_VAL.
+
+    ``base`` selects the underlying rule ("flip" = TOS LE/SE stop-and-reverse;
+    "bounce" = tag+reclaim+hold). Requires a DatetimeIndex for session detection;
+    if TPO cannot be computed (no datetime index) the base signals pass through
+    unfiltered and a ``confluence_applied=False`` flag is set so the caller knows.
+    """
+    if base == "bounce":
+        sig = generate_atr_trail_bounce_signals(
+            df,
+            atr_period=atr_period,
+            factor=factor,
+            hold_bars=hold_bars,
+            touch_tol_atr=touch_tol_atr,
+        )
+    else:
+        sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
+
+    try:
+        tpo = compute_tpo_profile(df, value_area_pct=value_area_pct)
+        pvva = tpo["price_vs_va"]
+        applied = True
+    except Exception:
+        sig["price_vs_va"] = "IN_VA"
+        sig["confluence_applied"] = False
+        return sig
+
+    is_entry = sig["entry_signal"] == "ENTRY_NOW"
+    is_long = sig["bias"].str.contains("BULL", na=False)
+    is_short = sig["bias"].str.contains("BEAR", na=False)
+    if strict_confluence:
+        long_ok = pvva == "ABOVE_VAH"
+        short_ok = pvva == "BELOW_VAL"
+    else:
+        long_ok = pvva != "BELOW_VAL"
+        short_ok = pvva != "ABOVE_VAH"
+
+    drop = is_entry & ((is_long & ~long_ok) | (is_short & ~short_ok))
+    sig.loc[drop, "entry_signal"] = "NO_TRADE"
+    sig.loc[drop, ["stop_level", "target_1", "target_2", "target_3"]] = np.nan
+
+    sig["price_vs_va"] = pvva.values
+    sig["confluence_applied"] = applied
+    return sig
+
+
+def generate_atr_trail_kelt_confluence_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    base: str = "flip",
+    kelt_rule: str = "4h",
+    kelt_len: int = 20,
+    kelt_factor: float = 3.0,
+    strict_kelt: bool = False,
+    hold_bars: int = 1,
+    touch_tol_atr: float = 0.10,
+) -> pd.DataFrame:
+    """Confluence-gated ATR-trail entries (flip/bounce) + multi-timeframe Keltner.
+
+    The kelt_3.01 study on Matt's /ES chart is a FOUR_HOURS Keltner channel — a
+    higher-timeframe trend/volatility envelope. This variant keeps only entries
+    aligned with that envelope, dropping the rest (so it is a strict subset of
+    the base trades -> clean attribution, same pattern as the TPO variant):
+
+        strict_kelt=False : long requires close >= 4H Keltner basis (upper half);
+                            short requires close <= basis (lower half).
+        strict_kelt=True  : long requires close >= 4H upper band (breakout up);
+                            short requires close <= 4H lower band (breakout down).
+
+    Strict is a subset of loose. The 4H Keltner comes from
+    ``indicators.keltner_channels_mtf`` (developing, point-in-time safe — a base
+    bar at t uses only base bars <= t). Requires a DatetimeIndex; if the Keltner
+    cannot be computed the base signals pass through unfiltered with
+    ``kelt_confluence_applied=False``.
+    """
+    if base == "bounce":
+        sig = generate_atr_trail_bounce_signals(
+            df,
+            atr_period=atr_period,
+            factor=factor,
+            hold_bars=hold_bars,
+            touch_tol_atr=touch_tol_atr,
+        )
+    else:
+        sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
+
+    try:
+        upper, basis, lower = keltner_channels_mtf(
+            df, rule=kelt_rule, sma_len=kelt_len, atr_factor=kelt_factor
+        )
+    except Exception:
+        sig["kelt_basis"] = np.nan
+        sig["kelt_confluence_applied"] = False
+        return sig
+
+    close = df["close"]
+    is_entry = sig["entry_signal"] == "ENTRY_NOW"
+    is_long = sig["bias"].str.contains("BULL", na=False)
+    is_short = sig["bias"].str.contains("BEAR", na=False)
+    if strict_kelt:
+        long_ok = (close >= upper).fillna(False)
+        short_ok = (close <= lower).fillna(False)
+    else:
+        long_ok = (close >= basis).fillna(False)
+        short_ok = (close <= basis).fillna(False)
+
+    drop = is_entry & ((is_long & ~long_ok) | (is_short & ~short_ok))
+    sig.loc[drop, "entry_signal"] = "NO_TRADE"
+    sig.loc[drop, ["stop_level", "target_1", "target_2", "target_3"]] = np.nan
+
+    sig["kelt_upper"] = upper.values
+    sig["kelt_basis"] = basis.values
+    sig["kelt_lower"] = lower.values
+    sig["kelt_confluence_applied"] = True
+    return sig
+
+
+def generate_atr_trail_tpotarget_confluence_signals(
+    df: pd.DataFrame,
+    atr_period: int = 5,
+    factor: float = 3.5,
+    base: str = "flip",
+    require_room: bool = False,
+    hold_bars: int = 1,
+    touch_tol_atr: float = 0.10,
+) -> pd.DataFrame:
+    """ATR-trail flips gated by the TPO measured-move target direction.
+
+    Corey's TPO profile projects a 1.0x measured move from the VPOC whose
+    direction is set by the value-area imbalance (bal vs VPOC) — the
+    "This profile targets X" level on Matt's chart. This variant keeps only
+    flips that agree with that projection: shorts when the profile is
+    bear-imbalanced (target below), longs when bull-imbalanced (target above).
+    Strict subset of the base flips -> clean attribution.
+
+    require_room=True additionally demands the target is still unreached in the
+    signal's direction (price has room to run toward it). Uses
+    ``tpo_profile.compute_tpo_profile`` (prior-session, point-in-time safe).
+    """
+    if base == "bounce":
+        sig = generate_atr_trail_bounce_signals(
+            df,
+            atr_period=atr_period,
+            factor=factor,
+            hold_bars=hold_bars,
+            touch_tol_atr=touch_tol_atr,
+        )
+    else:
+        sig = generate_atr_trail_flip_signals(df, atr_period=atr_period, factor=factor)
+
+    try:
+        tpo = compute_tpo_profile(df)
+    except Exception:
+        sig["tpo_imbalance"] = "BULL_IMBAL"
+        sig["tpotgt_confluence_applied"] = False
+        return sig
+
+    imbalance = tpo["tpo_imbalance"]
+    target = tpo["tpo_target"]
+    close = df["close"]
+    bear = imbalance == "BEAR_IMBAL"
+    bull = imbalance == "BULL_IMBAL"
+
+    long_ok = bull
+    short_ok = bear
+    if require_room:
+        long_ok = long_ok & (target > close)
+        short_ok = short_ok & (target < close)
+    long_ok = long_ok.fillna(False)
+    short_ok = short_ok.fillna(False)
+
+    is_entry = sig["entry_signal"] == "ENTRY_NOW"
+    is_long = sig["bias"].str.contains("BULL", na=False)
+    is_short = sig["bias"].str.contains("BEAR", na=False)
+    drop = is_entry & ((is_long & ~long_ok) | (is_short & ~short_ok))
+    sig.loc[drop, "entry_signal"] = "NO_TRADE"
+    sig.loc[drop, ["stop_level", "target_1", "target_2", "target_3"]] = np.nan
+
+    sig["tpo_imbalance"] = imbalance.values
+    sig["tpo_target"] = target.values
+    sig["tpotgt_confluence_applied"] = True
+    return sig

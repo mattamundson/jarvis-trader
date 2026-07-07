@@ -1,6 +1,6 @@
 """VIX-based market regime overlay for JARVIS TRADER.
 
-Fetches live ^VIX from Yahoo Finance (yfinance) with a 15-minute module-level
+Fetches live ^VIX from MarketDataManager with a 15-minute module-level
 cache. Falls back to stub value (18.0 / NORMAL) if the network call fails.
 
 VIX Regime Map:
@@ -83,16 +83,13 @@ def classify_vix(vix_value: float) -> tuple:
 # Live fetch with cache
 # ---------------------------------------------------------------------------
 def fetch_vix() -> VIXState:
-    """Fetch current VIX from Yahoo Finance with 15-min module-level cache.
+    """Return cached VIX state or a stub (18.0 / NORMAL).
 
-    Flow:
-      1. Return cached VIXState if it was fetched within the last 15 minutes.
-      2. Try yfinance (lazy import) -- ^VIX, 2d period, 1d interval.
-      3. On any failure, return a stub VIXState (value=18.0, NORMAL) and log.
+    Synchronous callers use this; it only returns a live value when the async
+    fetch_vix_async() has previously populated the module-level cache.
     """
     now = time.time()
 
-    # Return cached result if still fresh
     cached: Optional[VIXState] = _vix_cache.get("data")
     if cached is not None and (now - _vix_cache.get("fetched_at", 0)) < _CACHE_TTL:
         logger.debug(
@@ -110,16 +107,66 @@ def fetch_vix() -> VIXState:
             source="cache",
         )
 
-    # Attempt live fetch
+    # No warm cache — return stub rather than blocking on a sync network call
+    logger.debug("[VIX] No cache hit — returning stub 18.0/NORMAL (call fetch_vix_async first)")
+    return VIXState(
+        vix_value=18.0,
+        regime="NORMAL",
+        classification="NORMAL",
+        position_size_pct=1.0,
+        trading_allowed=True,
+        timestamp=now,
+        source="stub",
+    )
+
+
+async def fetch_vix_async(data_manager=None) -> VIXState:
+    """Async VIX fetch via MarketDataManager with 15-min module-level cache.
+
+    Flow:
+      1. Return cached VIXState if fetched within the last 15 minutes.
+      2. Try data_manager.get_vix() if data_manager is provided.
+      3. On any failure, return a stub VIXState (value=18.0, NORMAL) and log.
+    """
+    now = time.time()
+
+    cached: Optional[VIXState] = _vix_cache.get("data")
+    if cached is not None and (now - _vix_cache.get("fetched_at", 0)) < _CACHE_TTL:
+        logger.debug(
+            "[VIX] Returning cached value %.2f (%s)",
+            cached.vix_value,
+            cached.regime,
+        )
+        return VIXState(
+            vix_value=cached.vix_value,
+            regime=cached.regime,
+            classification=cached.regime,
+            position_size_pct=cached.position_size_pct,
+            trading_allowed=cached.trading_allowed,
+            timestamp=cached.timestamp,
+            source="cache",
+        )
+
+    if data_manager is None:
+        return VIXState(
+            vix_value=18.0,
+            regime="NORMAL",
+            classification="NORMAL",
+            position_size_pct=1.0,
+            trading_allowed=True,
+            timestamp=now,
+            source="stub",
+        )
+
     try:
-        import yfinance as yf  # lazy import -- only at runtime
+        vix_result = await data_manager.get_vix()
+        vix_value = vix_result.get("value")
+        if vix_value is None:
+            raise ValueError("data_manager.get_vix() returned no value")
 
-        hist = yf.Ticker("^VIX").history(period="2d", interval="1d")
-        if hist.empty:
-            raise ValueError("Empty VIX history returned from yfinance")
-
-        vix_value = round(float(hist["Close"].iloc[-1]), 2)
+        vix_value = round(float(vix_value), 2)
         regime, position_size_pct, trading_allowed = classify_vix(vix_value)
+        source = vix_result.get("source", "data_manager")
 
         state = VIXState(
             vix_value=vix_value,
@@ -128,18 +175,18 @@ def fetch_vix() -> VIXState:
             position_size_pct=position_size_pct,
             trading_allowed=trading_allowed,
             timestamp=now,
-            source="live",
+            source=source,
         )
 
-        # Store in module-level cache
         _vix_cache["data"] = state
         _vix_cache["fetched_at"] = now
 
         logger.info(
-            "[VIX] Live fetch OK: %.2f -> %s (pos_size=%.0f%%)",
+            "[VIX] Live fetch OK: %.2f -> %s (pos_size=%.0f%%, source=%s)",
             vix_value,
             regime,
             position_size_pct * 100,
+            source,
         )
         return state
 
@@ -164,12 +211,13 @@ def fetch_vix() -> VIXState:
 class VIXOverlay:
     """VIX-based regime overlay for trade signal filtering.
 
-    Fetches live ^VIX via yfinance (15-min cached). Falls back to stub on
-    any network or data error so the rest of the system is never blocked.
+    Fetches live ^VIX via MarketDataManager (15-min cached). Falls back to
+    stub on any network or data error so the rest of the system is never blocked.
 
     Usage:
-        overlay = VIXOverlay()
-        state = overlay.get_current_state()   # preferred (main.py compatible)
+        overlay = VIXOverlay(data_manager=data_manager)
+        state = await overlay.get_current_state_async()  # preferred (async callers)
+        state = overlay.get_current_state()              # sync callers (uses cache/stub)
 
         if not state.trading_allowed:
             return "HOLD"  # VIX >= 40, EXTREME regime
@@ -178,21 +226,31 @@ class VIXOverlay:
     """
 
     def __init__(self, ib_gateway=None, data_manager=None):
-        # Legacy constructor args accepted but unused -- data comes from yfinance
         self.ib_gateway = ib_gateway
         self.data_manager = data_manager
-        logger.info("[VIXOverlay] Initialized -- live yfinance feed with 15-min cache")
+        logger.info("[VIXOverlay] Initialized -- MarketDataManager feed with 15-min cache")
 
     # ------------------------------------------------------------------
     # Primary interface
     # ------------------------------------------------------------------
     def get_current_state(self) -> VIXState:
-        """Get current VIX regime. Used by /analytics/regime in main.py."""
+        """Get current VIX regime (sync). Returns cached value or stub.
+        Call get_current_state_async() to refresh the cache from data_manager.
+        Used by /analytics/regime in main.py.
+        """
         return fetch_vix()
 
+    async def get_current_state_async(self) -> VIXState:
+        """Get current VIX regime (async). Refreshes cache via data_manager."""
+        return await fetch_vix_async(self.data_manager)
+
     def get_state(self) -> VIXState:
-        """Alias for get_current_state() -- used by newer callers."""
+        """Alias for get_current_state() -- used by sync callers."""
         return fetch_vix()
+
+    async def get_state_async(self) -> VIXState:
+        """Alias for get_current_state_async() -- used by async callers."""
+        return await fetch_vix_async(self.data_manager)
 
     # ------------------------------------------------------------------
     # Trade filtering helpers (preserve existing interface)

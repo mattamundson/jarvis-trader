@@ -74,12 +74,27 @@ def _compute_atr(df: pd.DataFrame, period: int = DEFAULT_ATR_PERIOD) -> pd.Serie
 
 
 def _get_eastern_hour(df: pd.DataFrame) -> pd.Series:
-    """Extract Eastern Time hour from DatetimeIndex."""
+    """Extract Eastern Time hour from DatetimeIndex.
+
+    MES data from Yahoo Finance via BacktestDataLoader is stored as
+    timezone-naive UTC timestamps.  We localize as UTC first, then
+    convert to America/New_York so that the RTH session boundary
+    (reset at 09:30 ET each day) is identified correctly.
+    """
+    # Sprint A / B3 fix: defensive DatetimeIndex normalization prevents crash
+    # when merging tz-aware IB bars with tz-naive backtest frames.
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+
     idx = df.index
     if hasattr(idx, "tz") and idx.tz is not None:
         eastern = idx.tz_convert("America/New_York")
     else:
-        eastern = idx
+        # Timezone-naive: treat as UTC then convert to Eastern Time
+        try:
+            eastern = idx.tz_localize("UTC").tz_convert("America/New_York")
+        except Exception:
+            eastern = idx  # fallback: use hours as-is
     return pd.Series(eastern.hour, index=df.index)
 
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MutableRefObject } from "react";
 import {
   createChart,
+  createSeriesMarkers,
   ColorType,
   CrosshairMode,
   LineStyle,
@@ -11,6 +12,8 @@ import {
   LineSeries,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
   type SeriesType,
   type Time,
 } from "lightweight-charts";
@@ -21,6 +24,10 @@ interface CandlestickChartProps {
   technical?: TechnicalAnalysisResult | null;
   height?: number;
   livePrice?: number | null;
+  /** Optional trade/signal markers overlaid on the candle series. */
+  markers?: SeriesMarker<Time>[];
+  /** Optional horizontal price lines (e.g. stop / target) drawn on the candle series. */
+  priceLines?: Array<{ price: number; color: string; title: string }>;
 }
 
 export function CandlestickChart({
@@ -28,16 +35,24 @@ export function CandlestickChart({
   technical,
   height = 420,
   livePrice,
+  markers,
+  priceLines,
 }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
-  // EMA overlay lines (stored but unused for the current implementation
-  // which uses price lines instead of full time-series)
-  const _ema8Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const _ema21Ref = useRef<ISeriesApi<"Line"> | null>(null);
-  const _ema34Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  // EMA overlay ribbon — full historical time-series
+  const ema8Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ema21Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ema34Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  // VWAP overlay and STC subpanel
+  const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const stcSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  // Trade/signal markers plugin (v5: createSeriesMarkers on the candle series)
+  const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  // Trade price lines (stop/target) overlaid on the candle series
+  const priceLineRefs = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
 
   // ── Initialize chart on mount ─────────────────────────────────────────────
   useEffect(() => {
@@ -92,35 +107,84 @@ export function CandlestickChart({
       scaleMargins: { top: 0.8, bottom: 0 },
     });
 
-    // EMA line series (used for price lines; kept for future overlay data)
+    // EMA ribbon — full historical overlay series
     const ema8Series = chart.addSeries(LineSeries, {
-      color: "#00ff88",
+      color: "rgba(0, 255, 136, 0.85)",
       lineWidth: 1,
+      title: "EMA8",
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
       crosshairMarkerVisible: false,
     });
     const ema21Series = chart.addSeries(LineSeries, {
-      color: "#ffcc00",
+      color: "rgba(255, 204, 0, 0.85)",
       lineWidth: 1,
+      title: "EMA21",
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
       crosshairMarkerVisible: false,
     });
     const ema34Series = chart.addSeries(LineSeries, {
-      color: "#ff4466",
+      color: "rgba(255, 68, 102, 0.85)",
       lineWidth: 1,
+      title: "EMA34",
       priceLineVisible: false,
-      lastValueVisible: false,
+      lastValueVisible: true,
       crosshairMarkerVisible: false,
     });
+
+    // VWAP overlay — orange dashed, daily-anchored
+    const vwapSeries = chart.addSeries(LineSeries, {
+      color: '#FF9500',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      title: 'VWAP',
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: true,
+    });
+
+    // STC histogram subpanel — occupies bottom 22% of chart
+    const stcSeries = chart.addSeries(HistogramSeries, {
+      color: 'rgba(0, 212, 255, 0.5)',
+      priceScaleId: 'stc_pane',
+      lastValueVisible: true,
+      title: 'STC',
+    });
+    chart.priceScale('stc_pane').applyOptions({
+      scaleMargins: { top: 0.78, bottom: 0.02 },
+      autoScale: true,
+    });
+
+    // OS / OB reference lines on STC pane
+    stcSeries.createPriceLine({
+      price: 15,
+      color: '#00ff88',
+      lineStyle: LineStyle.Dotted,
+      lineWidth: 1 as 1,
+      title: 'OS',
+      axisLabelVisible: true,
+    });
+    stcSeries.createPriceLine({
+      price: 83,
+      color: '#ff4444',
+      lineStyle: LineStyle.Dotted,
+      lineWidth: 1 as 1,
+      title: 'OB',
+      axisLabelVisible: true,
+    });
+
+    // Markers plugin bound to the candle series (updated in the markers effect)
+    markersPluginRef.current = createSeriesMarkers(candleSeries, []);
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
-    _ema8Ref.current = ema8Series;
-    _ema21Ref.current = ema21Series;
-    _ema34Ref.current = ema34Series;
+    ema8Ref.current = ema8Series;
+    ema21Ref.current = ema21Series;
+    ema34Ref.current = ema34Series;
+    vwapSeriesRef.current = vwapSeries;
+    stcSeriesRef.current = stcSeries;
 
     // Responsive resize observer
     const ro = new ResizeObserver((entries) => {
@@ -136,11 +200,21 @@ export function CandlestickChart({
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
-      _ema8Ref.current = null;
-      _ema21Ref.current = null;
-      _ema34Ref.current = null;
+      ema8Ref.current = null;
+      ema21Ref.current = null;
+      ema34Ref.current = null;
+      vwapSeriesRef.current = null;
+      stcSeriesRef.current = null;
+      markersPluginRef.current = null;
+      priceLineRefs.current = [];
     };
   }, [height]);
+
+  // ── Update trade/signal markers when they change ─────────────────────────
+  useEffect(() => {
+    if (!markersPluginRef.current) return;
+    markersPluginRef.current.setMarkers(markers ?? []);
+  }, [markers]);
 
   // ── Update candle + volume data when bars change ──────────────────────────
   useEffect(() => {
@@ -170,8 +244,79 @@ export function CandlestickChart({
       volumeSeriesRef.current.setData(volumeData);
     }
 
+    // EMA ribbon — full historical time-series overlays
+    const emaMap: Array<[MutableRefObject<ISeriesApi<"Line"> | null>, "ema_8" | "ema_21" | "ema_34"]> = [
+      [ema8Ref, "ema_8"],
+      [ema21Ref, "ema_21"],
+      [ema34Ref, "ema_34"],
+    ];
+    for (const [ref, field] of emaMap) {
+      if (ref.current) {
+        const emaData = bars
+          .filter((b) => b[field] != null && !isNaN(b[field] as number))
+          .map((b) => ({ time: b.time as Time, value: b[field] as number }));
+        if (emaData.length > 0) ref.current.setData(emaData);
+      }
+    }
+
+    // VWAP overlay
+    if (vwapSeriesRef.current) {
+      const vwapData = bars
+        .filter((b) => b.vwap != null && !isNaN(b.vwap as number))
+        .map((b) => ({ time: b.time as Time, value: b.vwap as number }));
+      if (vwapData.length > 0) {
+        vwapSeriesRef.current.setData(vwapData);
+      }
+    }
+
+    // STC histogram subpanel
+    if (stcSeriesRef.current) {
+      const stcData = bars
+        .filter((b) => b.stc != null && !isNaN(b.stc as number))
+        .map((b) => ({
+          time: b.time as Time,
+          value: b.stc as number,
+          color: (b.stc as number) <= 15
+            ? 'rgba(0, 255, 136, 0.8)'
+            : (b.stc as number) >= 83
+            ? 'rgba(255, 68, 68, 0.8)'
+            : 'rgba(0, 212, 255, 0.5)',
+        }));
+      if (stcData.length > 0) {
+        stcSeriesRef.current.setData(stcData);
+      }
+    }
+
     chartRef.current?.timeScale().fitContent();
   }, [bars]);
+
+  // ── Apply trade price lines (stop / target) ───────────────────────────────
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+    // clear previous lines
+    for (const pl of priceLineRefs.current) {
+      try {
+        series.removePriceLine(pl);
+      } catch {
+        /* series may already be disposed */
+      }
+    }
+    priceLineRefs.current = [];
+    for (const pl of priceLines ?? []) {
+      if (pl.price == null || !Number.isFinite(pl.price)) continue;
+      priceLineRefs.current.push(
+        series.createPriceLine({
+          price: pl.price,
+          color: pl.color,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: pl.title,
+        })
+      );
+    }
+  }, [priceLines, bars]);
 
   // ── Update indicator price lines when technical data changes ─────────────
   useEffect(() => {
@@ -202,11 +347,7 @@ export function CandlestickChart({
       });
     };
 
-    // EMA levels
-    addLine(technical.ema_8, "#00ff88", "EMA8");
-    addLine(technical.ema_21, "#ffcc00", "EMA21");
-    addLine(technical.ema_34, "#ff4466", "EMA34");
-
+    // EMA ribbon is rendered as historical time-series overlays (see bars useEffect above)
     // Keltner channels
     addLine(
       technical.kelt_inner_upper,

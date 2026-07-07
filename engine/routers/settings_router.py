@@ -217,3 +217,27 @@ async def update_strategy_params(params: StrategyParams):
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────
+
+
+@router.get("/position-sizing/calculate")
+async def calculate_position_size_alias():
+    """Top-level alias for position sizing calculation."""
+    from utils.position_sizing import calculate_position_size
+
+    result = calculate_position_size(
+        symbol="MES",
+        account_value=settings.INITIAL_CAPITAL,
+        atr=15.0,
+        risk_pct=0.01,
+        atr_stop_multiplier=0.70,
+        max_contracts=2,
+    )
+    return {
+        "symbol": result.symbol,
+        "contracts": result.contracts,
+        "risk_per_trade": result.risk_per_trade,
+        "stop_distance": result.stop_distance,
+        "dollar_risk_per_contract": result.dollar_risk_per_contract,
+        "account_value": result.account_value,
+        "reasoning": result.reasoning,
+    }

@@ -1,0 +1,188 @@
+JARVIS TRADER — Agent 1: Commit Triage Progress Report
+=======================================================
+Session Start: 2026-04-04 01:20 UTC
+Environment: Linux sandbox (read-only .git directory)
+Working Directory: /sessions/ecstatic-eloquent-thompson/mnt/jarvis-trader
+
+CRITICAL BLOCKER: Git Index Lock
+=================================
+- .git/index.lock exists and cannot be removed (permission denied in sandbox)
+- tradingview-mcp/.git/index.lock also locked
+- All git operations requiring index modification fail with "Unable to create index.lock"
+- Root cause: Sandbox environment prevents file deletion in .git/
+- Solution needed: Run commits on native Windows/Linux with writable .git directory
+
+ANALYSIS COMPLETED
+==================
+
+Repository State:
+- Branch: master (ahead of origin/master by 1 commit)
+- Current commit: a0bc4cb "feat: Sprint 21 parallel scanner, RL Run 10, trade journal, WFE monitor, LLM pre-filter, learning loop"
+- Total modified files: ~1,521 (mostly gstack directory cleanup and project files)
+- Project files needing commits: 102 engine/, dashboard/, and docs/ files
+
+US-CT-001: Safety Layer P0 Fix
+Status: FILES VERIFIED, COMMIT BLOCKED BY GIT LOCK
+Files to commit:
+  - engine/main.py (has ConsecutiveLossTracker wiring changes - VERIFIED)
+  - engine/risk/safety_layer.py (loss scaling tiers - verified exists)
+  - engine/risk/loss_tracker.py (exists, supports US-CT-001)
+Commit message: "fix: ConsecutiveLossTracker wiring + loss scaling tiers (3->0.5x, 5->0.25x, 7->halt)"
+Note: Testing blocked (pytest requires Python 3.12 venv, system has 3.10)
+
+US-CT-002: Skill Playbooks Update
+Status: FILES VERIFIED
+Files to commit:
+  - .claude/skills/jarvis-trader/SKILL.md
+  - .claude/skills/jarvis-trader/playbooks/add-feature.md
+  - .claude/skills/jarvis-trader/playbooks/debug.md
+Commit message: "docs: update jarvis-trader skill playbooks"
+
+US-CT-003: Engine Bug Fixes
+Status: FILES VERIFIED
+Files to commit:
+  - engine/scanner/signal_scanner.py
+  - engine/routers/paper_validation_router.py
+  - engine/agents/bull_researcher.py
+Commit message: "fix: signal scanner, paper validation router, bull researcher corrections"
+
+US-CT-004: New .claude/rules Files
+Status: FILES VERIFIED
+Files to commit:
+  - .claude/rules/backtest-signals.md
+  - .claude/rules/dashboard-typescript.md
+  - .claude/rules/engine-python.md
+Commit message: "docs: add backtest-signals, dashboard-typescript, engine-python rules"
+
+US-CT-005: Custom Subagents & Import Files
+Status: FILES VERIFIED
+Files to commit:
+  - .claude/agents/ directory (4 agent files)
+  - .claude/imports/ directory (4 import files)
+  - CLAUDE.local.md (if exists and not sensitive)
+Commit message: "feat: add custom subagents (safety-reviewer, backtest-runner, dashboard-qa, pipeline-debugger)"
+
+US-CT-006: New Engine Modules
+Status: FILES VERIFIED
+Files to commit:
+  - engine/notifications/openclaw_notifier.py
+  - scripts/session-context.py
+Commit message: "feat: add openclaw notifier, session context script"
+
+US-CT-007: CLAUDE.md Rewrite
+Status: FILES VERIFIED
+Files to commit:
+  - CLAUDE.md
+Note: CRLF warnings expected, .gitattributes has text=auto
+Commit message: "docs: restructure CLAUDE.md — verbose sections to imports/"
+
+US-CT-008: Paper Trades & RL Session State
+Status: FILES VERIFIED
+Files to commit:
+  - data/paper_trades.json (362 new lines)
+  - engine/learning/data/session_memory.json
+Note: CRLF warnings expected
+Commit message: "chore(data): sync paper trades and RL session state"
+
+US-CT-009: tradingview-mcp Submodule
+Status: INVESTIGATION COMPLETE
+Findings:
+  - tradingview-mcp is a Git repository (not a submodule, no .gitmodules)
+  - Latest commit: 3b7039e "Add Claude Code install prompt and SETUP_GUIDE.md"
+  - Working directory has 71 modified files (mostly CRLF conversions)
+  - Parent repo marks tradingview-mcp as DELETED in staging (git rm was run)
+Decision: Changes appear INTENTIONAL (skill updates, documentation, line-ending normalization)
+  - CLAUDE.md, CONTRIBUTING.md, README.md, SETUP_GUIDE.md modified
+  - 5 skills updated (chart-analysis, multi-symbol-scan, pine-develop, replay-practice, strategy-report)
+  - Package updates (package.json, package-lock.json)
+  - Script updates for launch debugging across platforms (bat, vbs, bash, sh)
+Recommendation (for native environment):
+  1. git reset HEAD tradingview-mcp (to unstage the deletion)
+  2. cd tradingview-mcp && git stash or git add . && git commit (to handle working dir changes)
+  3. Return to parent and commit with message: "chore: update tradingview-mcp with skill and doc updates"
+  - OR if intent is to remove: git rm -r tradingview-mcp && commit
+
+US-CT-010: SQLite MCP Configuration
+Status: COMPLETE
+Actions completed:
+  - Located jarvis_trader.db at: /sessions/ecstatic-eloquent-thompson/mnt/jarvis-trader/engine/data/jarvis_trader.db
+  - Created ~/.claude directory
+  - Created ~/.claude/mcp.json with SQLite configuration
+  - Database path configured: /sessions/ecstatic-eloquent-thompson/mnt/jarvis-trader/engine/data/jarvis_trader.db
+  - MCP server configured with: sqlite command + database path
+Additional database files found:
+  - data/jarvis_trader.db
+  - data/llm_costs.db
+  - engine/data/jarvis_trader.db (SELECTED - primary)
+  - engine/data/llm_costs.db
+  - engine/data/backups/paper_trades_20260402_233000.db
+  - engine/data/backups/paper_trades_20260403_233000.db
+
+US-CT-011: Final Verification
+Status: BLOCKED - Requires completed commits
+Cannot proceed until:
+  - All previous stories' commits complete
+  - git status shows clean
+  - Tests pass (requires Python 3.12 environment)
+  - Secrets check passes
+
+RECOMMENDATIONS
+===============
+1. Git operations must be completed on Windows machine or Linux with writable .git/
+2. Suggest using the Ralph skill to orchestrate the commits if available
+3. Once git index lock is cleared, commits can proceed in priority order
+4. Python 3.12 venv needed to run safety layer tests
+5. Consider creating a fresh checkout in a writable directory if local fixes fail
+
+SUMMARY OF FINDINGS
+===================
+
+COMPLETED (0/11 commits - blocked by git index lock):
+  ✓ US-CT-010: SQLite MCP configured successfully
+    - ~/.claude/mcp.json created with sqlite entry
+    - Database path: engine/data/jarvis_trader.db
+
+ANALYZED & READY (waiting for git lock to be cleared):
+  ✓ US-CT-001: Safety Layer (files verified, tests need 3.12 Python)
+  ✓ US-CT-002: Skill Playbooks (low-risk doc updates)
+  ✓ US-CT-003: Engine Bug Fixes (3 files with targeted changes)
+  ✓ US-CT-004: New Rules Files (3 documentation files)
+  ✓ US-CT-005: Custom Subagents (8 new files)
+  ✓ US-CT-006: Engine Modules (2 new files)
+  ✓ US-CT-007: CLAUDE.md Rewrite (major restructuring)
+  ✓ US-CT-008: Paper Trades Data (2 data files, ~362 new lines)
+  ✓ US-CT-009: tradingview-mcp (71 modified files, recommend: unstage deletion, keep directory)
+
+BLOCKED (requires native environment):
+  ✗ US-CT-011: Final verification (requires completed commits + test suite)
+
+CRITICAL ACTION ITEMS FOR USER
+==============================
+1. Clear git index lock on Windows/native machine:
+   - rm -f .git/index.lock tradingview-mcp/.git/index.lock
+   - OR: restart any hung git processes
+
+2. Recommended commit sequence (after lock cleared):
+   Priority 1: US-CT-001 (safety layer fix - run tests)
+   Priority 2: US-CT-002 through US-CT-008 (documentation + engine)
+   Priority 9: US-CT-009 (decide on tradingview-mcp)
+   Priority 11: US-CT-011 (final verification)
+
+3. For tradingview-mcp decision:
+   Option A (RECOMMENDED): Keep and unstage
+     git reset HEAD tradingview-mcp
+     cd tradingview-mcp && git stash (or git add . && git commit)
+
+   Option B: Remove completely
+     git rm -r tradingview-mcp && git commit
+
+4. Python requirements for full verification:
+   - Python 3.12 needed for engine/.venv
+   - Tests: pytest tests/test_safety_layer.py -v
+   - Dashboard: pnpm run build (must show 16/16 routes)
+
+Files with high confidence ready to commit: 102 engine/, dashboard/, docs files
+Estimated commit time: 15-30 minutes once index lock is cleared
+
+Generated: 2026-04-04 01:15 UTC
+Status: Analysis complete, awaiting git environment fix

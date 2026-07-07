@@ -1,30 +1,26 @@
-"""
-ThinkScript generation endpoints
-"""
+"""ThinkScript generation and registry endpoints."""
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-try:
-    from agents.thinkscript_generator import ThinkScriptGeneratorAgent
-except ImportError:
-    ThinkScriptGeneratorAgent = None  # type: ignore[assignment,misc]
+from schemas.thinkscript_registry import ScriptRegistry, ScriptWithDocs
+from utils.thinkscript_registry_loader import load_registry, read_doc
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["thinkscript"])
 
 # Global references (injected from main.py)
-technical_analyst = None
+_technical_analyst = None
 
 
-def inject_dependencies(ta=None):
+def inject_dependencies(technical_analyst=None):
     """Inject dependencies from main.py"""
-    global technical_analyst
-    if ta is not None:
-        technical_analyst = ta
+    global _technical_analyst
+    if technical_analyst is not None:
+        _technical_analyst = technical_analyst
 
 
 class ThinkScriptRequest(BaseModel):
@@ -36,19 +32,18 @@ class ThinkScriptRequest(BaseModel):
 @router.post("/thinkscript/generate")
 async def generate_thinkscript(req: ThinkScriptRequest):
     """Generate ThinkScript code for ThinkorSwim from JARVIS analysis"""
-    if ThinkScriptGeneratorAgent is None:
-        return {
-            "error": "ThinkScript generator unavailable — agents.thinkscript_generator could not be imported"
-        }
+    from agents.thinkscript_generator import ThinkScriptGeneratorAgent
+
     gen = ThinkScriptGeneratorAgent(
-        llm_client=technical_analyst.llm_client if technical_analyst else None
+        llm_client=_technical_analyst.llm_client if _technical_analyst else None
     )
 
-    # Get technical analysis first
     tech_report = None
-    if technical_analyst:
+    if _technical_analyst:
         try:
-            tech_report = await technical_analyst.analyze(req.symbol, req.timeframe, req.is_futures)
+            tech_report = await _technical_analyst.analyze(
+                req.symbol, req.timeframe, req.is_futures
+            )
         except Exception:
             pass
 
@@ -71,4 +66,23 @@ async def generate_thinkscript(req: ThinkScriptRequest):
     }
 
 
-# ── Macro Data (FRED) ──────────────────────────────────────────────────────
+@router.get("/thinkscript/registry", response_model=ScriptRegistry)
+async def get_thinkscript_registry():
+    """Return the full catalog of ThinkScript studies wired into JARVIS."""
+    try:
+        return load_registry()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+
+@router.get("/thinkscript/registry/{script_id}", response_model=ScriptWithDocs)
+async def get_thinkscript_registry_entry(script_id: str):
+    """Return a single registry entry plus its full markdown documentation body."""
+    try:
+        registry = load_registry()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    entry = next((s for s in registry.scripts if s.id == script_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"script_id '{script_id}' not found")
+    return ScriptWithDocs(entry=entry, doc_markdown=read_doc(entry.docs))

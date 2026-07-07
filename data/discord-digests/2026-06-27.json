@@ -1,0 +1,171 @@
+{
+  "date": "2026-06-27",
+  "session_bias": null,
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": null,
+  "commentary_health": [
+    {
+      "date": "2026-06-26",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 26
+    },
+    {
+      "date": "2026-06-25",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.65,
+      "message_count": 62
+    },
+    {
+      "date": "2026-06-24",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 95
+    },
+    {
+      "date": "2026-06-23",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.85,
+      "message_count": 95
+    },
+    {
+      "date": "2026-06-22",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-21",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-20",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 22,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "gemini",
+    "primary_provider": "anthropic",
+    "primary_healthy": false,
+    "providers_available": 3,
+    "google_fallback_count": 1,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": true
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 90,
+    "failing_enabled": 2,
+    "failing_disabled": 0,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-IBGateway-AtLogon",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x2"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 2.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 10.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 10.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 1.3,
+        "newest": "2026-06-27T06:00:05.644150+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.9,
+        "newest": "2026-06-27T15:30:45.552699+00:00",
+        "files": 28,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.9,
+        "newest": "2026-06-26T16:54:28.063047+00:00",
+        "files": 17,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 1.3,
+        "newest": "2026-06-27T06:00:07.197560+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 10.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 10.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

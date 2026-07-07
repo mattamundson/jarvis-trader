@@ -1,0 +1,4 @@
+"Endpoint","What it tells you"
+"vercel.app/api/engine/health","Dashboard proxy + engine reachability"
+"railway.app/health","Engine process alive"
+"railway.app/strategy-c/signal","Signal computation is working + extracts current scale and signal date"

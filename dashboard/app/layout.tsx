@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
+import { IBDataDegradedBanner } from "@/components/IBDataDegradedBanner";
+import { LLMProviderBadge } from "@/components/LLMProviderBadge";
+import { AnomalySentinelStrip } from "@/components/AnomalySentinelStrip";
+import { CommandPalette } from "@/components/CommandPalette";
+import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
+import { SafetyEventListener } from "@/components/SafetyEventListener";
+import { EngineWebSocketProvider } from "@/lib/engine-websocket-context";
 import { ToastProvider } from "@/lib/toast-context";
+import { Sidebar } from "@/components/Sidebar";
 import "./globals.css";
 
 const inter = Inter({
@@ -31,8 +39,21 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen bg-background font-sans antialiased">
         <ToastProvider>
-          <EngineAvailabilityHint />
-          {children}
+          <EngineWebSocketProvider>
+            <PendingApprovalToastListener />
+            <SafetyEventListener />
+            <CommandPalette />
+            <AnomalySentinelStrip />
+            <EngineAvailabilityHint />
+            <IBDataDegradedBanner />
+            <LLMProviderBadge />
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <main className="flex-1 min-w-0 overflow-x-hidden">
+                {children}
+              </main>
+            </div>
+          </EngineWebSocketProvider>
         </ToastProvider>
       </body>
     </html>

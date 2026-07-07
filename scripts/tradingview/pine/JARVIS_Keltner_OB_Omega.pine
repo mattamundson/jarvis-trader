@@ -1,0 +1,134 @@
+//@version=5
+// JARVIS Keltner OB Omega — Multi-Timeframe Keltner Channel Overlay
+// Port of TOS OB_OMEGA 5m/15m/30m studies
+// MCP readback: label.new() + line.new() on barstate.islast
+indicator("JARVIS Keltner OB Omega", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ──────────────────────────────────────────────────────────────────
+i_length    = input.int(20,  "EMA Length",      minval=1)
+i_mult      = input.float(2.0, "ATR Multiplier", minval=0.1, step=0.1)
+i_atr_len   = input.int(14,  "ATR Length",      minval=1)
+
+i_show_5m   = input.bool(true, "Show 5m KC")
+i_show_15m  = input.bool(true, "Show 15m KC")
+i_show_30m  = input.bool(true, "Show 30m KC")
+i_show_lines = input.bool(true, "Draw MCP readback lines")
+
+// ─── 5-Minute Keltner ────────────────────────────────────────────────────────
+kc_5m_mid   = request.security(syminfo.tickerid, "5",  ta.ema(close, i_length),   lookahead=barmerge.lookahead_off)
+kc_5m_atr   = request.security(syminfo.tickerid, "5",  ta.atr(i_atr_len),         lookahead=barmerge.lookahead_off)
+kc_5m_upper = kc_5m_mid + i_mult * kc_5m_atr
+kc_5m_lower = kc_5m_mid - i_mult * kc_5m_atr
+
+// ─── 15-Minute Keltner ───────────────────────────────────────────────────────
+kc_15m_mid   = request.security(syminfo.tickerid, "15", ta.ema(close, i_length),  lookahead=barmerge.lookahead_off)
+kc_15m_atr   = request.security(syminfo.tickerid, "15", ta.atr(i_atr_len),        lookahead=barmerge.lookahead_off)
+kc_15m_upper = kc_15m_mid + i_mult * kc_15m_atr
+kc_15m_lower = kc_15m_mid - i_mult * kc_15m_atr
+
+// ─── 30-Minute Keltner ───────────────────────────────────────────────────────
+kc_30m_mid   = request.security(syminfo.tickerid, "30", ta.ema(close, i_length),  lookahead=barmerge.lookahead_off)
+kc_30m_atr   = request.security(syminfo.tickerid, "30", ta.atr(i_atr_len),        lookahead=barmerge.lookahead_off)
+kc_30m_upper = kc_30m_mid + i_mult * kc_30m_atr
+kc_30m_lower = kc_30m_mid - i_mult * kc_30m_atr
+
+// ─── Plot 9 KC Lines ─────────────────────────────────────────────────────────
+// 5m: bright red upper, orange mid (dashed), bright green lower
+plot(i_show_5m ? kc_5m_upper : na, "5m Upper", color=color.new(color.red,   0),  linewidth=2)
+plot(i_show_5m ? kc_5m_mid   : na, "5m Mid",   color=color.new(color.orange,0),  linewidth=1, style=plot.style_circles)
+plot(i_show_5m ? kc_5m_lower : na, "5m Lower", color=color.new(color.green, 0),  linewidth=2)
+
+// 15m: lighter red upper, gray mid (dashed), lighter green lower
+plot(i_show_15m ? kc_15m_upper : na, "15m Upper", color=color.new(#ff6666, 0), linewidth=2)
+plot(i_show_15m ? kc_15m_mid   : na, "15m Mid",   color=color.new(color.gray,30), linewidth=1, style=plot.style_circles)
+plot(i_show_15m ? kc_15m_lower : na, "15m Lower", color=color.new(#66cc66, 0), linewidth=2)
+
+// 30m: dark red upper, dark gray mid (dashed), dark green lower
+plot(i_show_30m ? kc_30m_upper : na, "30m Upper", color=color.new(#8b0000, 0), linewidth=2)
+plot(i_show_30m ? kc_30m_mid   : na, "30m Mid",   color=color.new(#555555,30), linewidth=1, style=plot.style_circles)
+plot(i_show_30m ? kc_30m_lower : na, "30m Lower", color=color.new(#006400, 0), linewidth=2)
+
+// ─── Position Classification ─────────────────────────────────────────────────
+f_pos(c, upper, mid, lower) =>
+    if c > upper
+        "ABOVE_KC"
+    else if c < lower
+        "BELOW_KC"
+    else if c >= mid
+        "IN_BULL"
+    else
+        "IN_BEAR"
+
+pos_5m  = f_pos(close, kc_5m_upper,  kc_5m_mid,  kc_5m_lower)
+pos_15m = f_pos(close, kc_15m_upper, kc_15m_mid, kc_15m_lower)
+pos_30m = f_pos(close, kc_30m_upper, kc_30m_mid, kc_30m_lower)
+
+// BULL alignment: all 3 in upper half (ABOVE_KC or IN_BULL)
+// BEAR alignment: all 3 in lower half (BELOW_KC or IN_BEAR)
+f_is_bull(p) => p == "ABOVE_KC" or p == "IN_BULL"
+f_is_bear(p) => p == "BELOW_KC" or p == "IN_BEAR"
+
+alignment = f_is_bull(pos_5m) and f_is_bull(pos_15m) and f_is_bull(pos_30m) ? "BULL" :
+             f_is_bear(pos_5m) and f_is_bear(pos_15m) and f_is_bear(pos_30m) ? "BEAR" :
+             "MIXED"
+
+// ─── MCP Readback: Labels on barstate.islast ─────────────────────────────────
+// All labels stacked off-screen left at current bar — MCP reads text content
+var label[] _lbs = array.new_label()
+
+if barstate.islast
+    // Clear prior labels
+    for lb in _lbs
+        label.delete(lb)
+    array.clear(_lbs)
+
+    _x = bar_index
+    _y = kc_5m_upper  // anchor y (actual value irrelevant for MCP text readback)
+    _sty = label.style_label_left
+    _sz  = size.tiny
+    _tc  = color.white
+    _bg  = color.new(color.black, 80)
+
+    // 5m values
+    array.push(_lbs, label.new(_x, kc_5m_upper,  "KC5M_UPPER: "  + str.tostring(kc_5m_upper,  "#.00"), style=_sty, size=_sz, textcolor=color.red,    color=_bg))
+    array.push(_lbs, label.new(_x, kc_5m_mid,    "KC5M_MID: "    + str.tostring(kc_5m_mid,    "#.00"), style=_sty, size=_sz, textcolor=color.orange,  color=_bg))
+    array.push(_lbs, label.new(_x, kc_5m_lower,  "KC5M_LOWER: "  + str.tostring(kc_5m_lower,  "#.00"), style=_sty, size=_sz, textcolor=color.green,   color=_bg))
+
+    // 15m values
+    array.push(_lbs, label.new(_x, kc_15m_upper, "KC15M_UPPER: " + str.tostring(kc_15m_upper, "#.00"), style=_sty, size=_sz, textcolor=#ff6666,       color=_bg))
+    array.push(_lbs, label.new(_x, kc_15m_mid,   "KC15M_MID: "   + str.tostring(kc_15m_mid,   "#.00"), style=_sty, size=_sz, textcolor=color.gray,    color=_bg))
+    array.push(_lbs, label.new(_x, kc_15m_lower, "KC15M_LOWER: " + str.tostring(kc_15m_lower, "#.00"), style=_sty, size=_sz, textcolor=#66cc66,       color=_bg))
+
+    // 30m values
+    array.push(_lbs, label.new(_x, kc_30m_upper, "KC30M_UPPER: " + str.tostring(kc_30m_upper, "#.00"), style=_sty, size=_sz, textcolor=#ff3333,       color=_bg))
+    array.push(_lbs, label.new(_x, kc_30m_mid,   "KC30M_MID: "   + str.tostring(kc_30m_mid,   "#.00"), style=_sty, size=_sz, textcolor=#888888,       color=_bg))
+    array.push(_lbs, label.new(_x, kc_30m_lower, "KC30M_LOWER: " + str.tostring(kc_30m_lower, "#.00"), style=_sty, size=_sz, textcolor=#006400,       color=_bg))
+
+    // Position labels
+    array.push(_lbs, label.new(_x, kc_5m_upper  * 1.0005, "KC5M_POS: "      + pos_5m,    style=_sty, size=_sz, textcolor=_tc, color=_bg))
+    array.push(_lbs, label.new(_x, kc_15m_upper * 1.0005, "KC15M_POS: "     + pos_15m,   style=_sty, size=_sz, textcolor=_tc, color=_bg))
+    array.push(_lbs, label.new(_x, kc_30m_upper * 1.0005, "KC30M_POS: "     + pos_30m,   style=_sty, size=_sz, textcolor=_tc, color=_bg))
+    array.push(_lbs, label.new(_x, kc_30m_upper * 1.001,  "KC_ALIGNMENT: "  + alignment, style=_sty, size=_sz, textcolor=alignment == "BULL" ? color.green : alignment == "BEAR" ? color.red : color.yellow, color=_bg))
+
+// ─── MCP Readback: Horizontal Lines for 9 KC Levels ─────────────────────────
+var line[] _lines = array.new_line()
+
+if barstate.islast and i_show_lines
+    for ln in _lines
+        line.delete(ln)
+    array.clear(_lines)
+
+    _x0 = bar_index - 50
+    _x1 = bar_index
+
+    array.push(_lines, line.new(_x0, kc_5m_upper,  _x1, kc_5m_upper,  color=color.new(color.red,    20), width=1, style=line.style_solid))
+    array.push(_lines, line.new(_x0, kc_5m_mid,    _x1, kc_5m_mid,    color=color.new(color.orange, 20), width=1, style=line.style_dashed))
+    array.push(_lines, line.new(_x0, kc_5m_lower,  _x1, kc_5m_lower,  color=color.new(color.green,  20), width=1, style=line.style_solid))
+
+    array.push(_lines, line.new(_x0, kc_15m_upper, _x1, kc_15m_upper, color=color.new(#ff6666,      30), width=1, style=line.style_solid))
+    array.push(_lines, line.new(_x0, kc_15m_mid,   _x1, kc_15m_mid,   color=color.new(color.gray,   30), width=1, style=line.style_dashed))
+    array.push(_lines, line.new(_x0, kc_15m_lower, _x1, kc_15m_lower, color=color.new(#66cc66,      30), width=1, style=line.style_solid))
+
+    array.push(_lines, line.new(_x0, kc_30m_upper, _x1, kc_30m_upper, color=color.new(#8b0000,      20), width=2, style=line.style_solid))
+    array.push(_lines, line.new(_x0, kc_30m_mid,   _x1, kc_30m_mid,   color=color.new(#555555,      20), width=1, style=line.style_dashed))
+    array.push(_lines, line.new(_x0, kc_30m_lower, _x1, kc_30m_lower, color=color.new(#006400,      20), width=2, style=line.style_solid))

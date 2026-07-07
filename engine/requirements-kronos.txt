@@ -1,0 +1,37 @@
+# Kronos foundation model for financial time series
+# ============================================================
+# Install ONLY when ENABLE_KRONOS=1 is planned.  This file is intentionally
+# separate from requirements-core.txt — the engine boots without it.
+#
+# Usage:
+#   pip install -r engine/requirements-kronos.txt
+#
+# See docs/runbooks/KRONOS_AND_RESEARCH_AGENT_RUNBOOK.md §6 (pre-flight) and
+# §"Predictor wired (2026-05-20)" for the full activation checklist.
+#
+# NOTE: Kronos does NOT publish a pip package.  The canonical install is from
+# the GitHub repo (verified 2026-05-20 against github.com/shiyu-coder/Kronos):
+#
+#   git clone https://github.com/shiyu-coder/Kronos.git
+#   cd Kronos
+#   pip install -r requirements.txt
+#
+# After cloning, ensure the Kronos directory (or its site-packages install) is
+# on sys.path so that `from model import Kronos, KronosTokenizer, KronosPredictor`
+# resolves.  The engine uses module-level lazy imports — if the import fails at
+# startup, KronosClassifier falls back to neutral verdicts automatically.
+#
+# Alternatively, if a pip-installable wheel is published in future:
+#   pip install git+https://github.com/shiyu-coder/Kronos.git
+#
+# HuggingFace Hub is required for model weight downloads (set HF_API_TOKEN in
+# engine/.env for private repos; public Kronos weights are open-access):
+huggingface-hub>=0.22.0
+
+# PyTorch CPU build (sufficient for inference; GPU optional).
+# Replace with CUDA wheel if GPU becomes available:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.1.0
+
+# Transformers is used by KronosTokenizer's from_pretrained loader:
+transformers>=4.38.0

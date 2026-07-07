@@ -1,0 +1,6 @@
+"Dimension","Claude's ""deploy all agents"" approach","This funnel"
+"Total tests","~8M+","~5–15K"
+"Statistical validity","Near zero (massive multiple-testing problem)","High (deflated metrics, purged CV, PBO)"
+"Token cost","Catastrophic","~5–10% of that"
+"Actionable output","Spreadsheet of meaningless Sharpes","Ranked list with rationale + improvement ideas"
+"Reproducibility","Low","Every survivor has documented hypothesis + test protocol"

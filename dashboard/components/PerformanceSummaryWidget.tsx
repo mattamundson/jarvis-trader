@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { TrendingUp, Activity, Target, Award, DollarSign, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchRealizedPnl } from "@/lib/masterApi";
+
+// Trade-record fields (PF, win-rate, net P&L, avg win/loss, counts) read from the
+// honest deduped record (GET /master/trading/realized) rather than the
+// over-counting /analytics/performance. Sharpe / max-drawdown / duration are not
+// computed by the deduped view, so they render "—" instead of a fabricated value.
+// See lib/honestMetrics.ts.
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -148,13 +154,22 @@ export function PerformanceSummaryWidget() {
   const [error, setError] = useState(false);
 
   const load = () => {
-    fetchEngine(`/analytics/performance`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<PerformanceData>;
-      })
-      .then((d) => {
-        setData(d);
+    fetchRealizedPnl()
+      .then((p) => {
+        const es = p.engine_sim;
+        if (!es?.ok) throw new Error(es?.error || "honest trade record unavailable");
+        setData({
+          profit_factor: es.profit_factor,
+          win_rate: es.win_rate, // 0..1 — normaliseWinRate handles it
+          total_trades: es.trades,
+          winning_trades: es.wins,
+          losing_trades: es.losses,
+          total_pnl: es.net_realized,
+          avg_win: es.wins > 0 ? es.gross_win / es.wins : undefined,
+          avg_loss: es.losses > 0 ? -(es.gross_loss / es.losses) : undefined,
+          // sharpe_ratio / max_drawdown / avg_trade_duration_minutes are not
+          // computed by the deduped trade-record view -> left undefined -> "—".
+        });
         setError(false);
       })
       .catch(() => {
@@ -181,7 +196,7 @@ export function PerformanceSummaryWidget() {
           Performance Summary
         </p>
         <p className="text-sm text-muted-foreground">
-          Unable to load performance data. Ensure the engine is running on port 8010.
+          Unable to load performance data. Ensure the engine is running and reachable through the dashboard proxy.
         </p>
       </div>
     );
@@ -196,14 +211,15 @@ export function PerformanceSummaryWidget() {
   const winRatePass = winRatePct !== undefined ? winRatePct >= THRESHOLDS.win_rate : null;
   const tradesPass = data?.total_trades !== undefined ? (data.total_trades ?? 0) >= THRESHOLDS.total_trades : null;
 
-  // Overall status: all 4 primary metrics must pass
+  // Overall status from the gates the deduped record actually computes
+  // (PF / win-rate / trades). Sharpe is informational here — the honest
+  // trade-record view does not compute it — so it does not gate the verdict.
   const allPass =
     pfPass === true &&
-    sharpePass === true &&
     winRatePass === true &&
     tradesPass === true;
 
-  const anyNull = pfPass === null || sharpePass === null || winRatePass === null || tradesPass === null;
+  const anyNull = pfPass === null || winRatePass === null || tradesPass === null;
 
   const overallVariant: "bull" | "warn" | "neutral" =
     anyNull ? "neutral" : allPass ? "bull" : "warn";
@@ -315,7 +331,7 @@ export function PerformanceSummaryWidget() {
             Avg duration: <span className="text-foreground/70">{fmtDuration(data.avg_trade_duration_minutes)}</span>
           </span>
         )}
-        <span className="opacity-50">Refreshes every 2 min</span>
+        <span className="opacity-50">Honest deduped record · Sharpe/DD not computed</span>
       </div>
     </div>
   );

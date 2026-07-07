@@ -1,16 +1,9 @@
-"use client";
+import { redirect } from "next/navigation";
 
-export default function StatsPage() {
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto max-w-[1400px] flex items-center gap-3 px-6 py-3">
-          <h1 className="font-bold text-foreground tracking-tight">JARVIS TRADER — Stats</h1>
-        </div>
-      </header>
-      <main className="mx-auto max-w-[1400px] px-6 py-6">
-        <p className="text-muted-foreground">Statistics page content coming soon...</p>
-      </main>
-    </div>
-  );
+// P2.3 IA readiness consolidation: the standalone /stats analytics shell is folded
+// into /performance (all 16 of its widgets now render there — the 10 unique ones were
+// added as an "Extended Analytics" section). This former location redirects so existing
+// bookmarks/links keep working.
+export default function StatsRedirect() {
+  redirect("/performance");
 }

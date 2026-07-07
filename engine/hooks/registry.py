@@ -105,6 +105,7 @@ class HookRegistry:
                 result = handler(**payload)
                 if asyncio.iscoroutine(result):
                     logger.warning(f"Skipping async hook {handler.__name__} in sync context")
+                    result.close()
                     continue
                 results.append(result)
             except Exception as exc:

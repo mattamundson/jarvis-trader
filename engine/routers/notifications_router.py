@@ -1,8 +1,7 @@
-"""
-Notification endpoints
-"""
+"""Notification utility endpoints (WhatsApp test, VIX alert)."""
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
@@ -10,12 +9,23 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["notifications"])
 
-# Global references (injected from main.py)
 
+@router.post("/notifications/whatsapp/test")
+async def test_whatsapp():
+    """Test WhatsApp notification config."""
+    from notifications.whatsapp import get_notifier
 
-def inject_dependencies():
-    """Inject dependencies from main.py"""
-    pass
+    notifier = get_notifier()
+    ts = datetime.now(timezone.utc).isoformat()
+    if not notifier.enabled:
+        return {
+            "status": "not_configured",
+            "sent": False,
+            "timestamp": ts,
+            "message": "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, WHATSAPP_TO to .env",
+        }
+    ok = await notifier.test()
+    return {"status": "sent" if ok else "failed", "sent": bool(ok), "timestamp": ts}
 
 
 @router.post("/notifications/vix-alert-check")
@@ -69,6 +79,3 @@ async def check_vix_alert():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-# ── ThinkScript Generation ─────────────────────────────────────────────────

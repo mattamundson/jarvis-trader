@@ -16,12 +16,14 @@ router = APIRouter(prefix="", tags=["watchlist"])
 
 # Global references (injected from main.py)
 db_manager = None
+_data_manager = None
 
 
-def inject_dependencies(dbm):
+def inject_dependencies(dbm, data_manager=None):
     """Inject global dependencies from main.py"""
-    global db_manager
+    global db_manager, _data_manager
     db_manager = dbm
+    _data_manager = data_manager
 
 
 class WatchlistAddRequest(BaseModel):
@@ -33,41 +35,23 @@ class WatchlistAddRequest(BaseModel):
 @router.get("/watchlist")
 async def get_watchlist():
     """Return configured watchlists as ticker items with live prices"""
-    import yfinance as yf
-
-    futures_map = {
-        "MES": "ES=F",
-        "MNQ": "NQ=F",
-        "MCL": "CL=F",
-        "MGC": "GC=F",
-        "MHG": "HG=F",
-        "MYM": "YM=F",
-        "M2K": "RTY=F",
-    }
     all_symbols = list(settings.FUTURES_WATCHLIST) + list(settings.OPTIONS_WATCHLIST)
     prices: dict = {}
     try:
-        yf_tickers_map = {s: futures_map.get(s, s) for s in all_symbols}
-        tickers_obj = yf.Tickers(" ".join(set(yf_tickers_map.values())))
-        for sym, yf_sym in yf_tickers_map.items():
-            try:
-                info = tickers_obj.tickers[yf_sym].fast_info
-                current = (
-                    float(info.last_price)
-                    if hasattr(info, "last_price") and info.last_price
-                    else None
-                )
-                prev = (
-                    float(info.previous_close)
-                    if hasattr(info, "previous_close") and info.previous_close
-                    else None
-                )
-                chg = ((current - prev) / prev) if current and prev and prev > 0 else None
-                prices[sym] = {"last_price": current, "change_pct": chg}
-            except Exception:
+        if _data_manager is not None:
+            batch = await _data_manager.get_batch_prices(all_symbols)
+            for sym, price_data in batch.items():
+                prices[sym] = {
+                    "last_price": price_data.get("last_price"),
+                    "change_pct": price_data.get("change_pct"),
+                }
+        else:
+            for sym in all_symbols:
                 prices[sym] = {"last_price": None, "change_pct": None}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Batch price fetch failed: {e}")
+        for sym in all_symbols:
+            prices.setdefault(sym, {"last_price": None, "change_pct": None})
 
     items = []
     names = {
@@ -125,34 +109,83 @@ async def add_to_watchlist(req: WatchlistAddRequest):
 
 
 @router.get("/watchlist/scan")
-async def scan_watchlist(symbols: str = ""):
-    """Scan specified symbols for trading signals. Returns per-symbol analysis."""
-    requested = (
-        [s.strip().upper() for s in symbols.split(",") if s.strip()]
-        if symbols
-        else list(settings.FUTURES_WATCHLIST)
-    )
-    result = []
-    for sym in requested:
-        result.append(
-            {
-                "symbol": sym,
-                "signal": "neutral",
-                "regime": "unknown",
-                "scanned_at": datetime.now(timezone.utc).isoformat(),
-            }
+async def scan_watchlist(symbols: str = "MES,MNQ,MCL"):
+    """Run MTF analysis on watchlist symbols and return a consolidated signal summary."""
+    from fastapi import HTTPException as _HTTPException
+
+    try:
+        from analytics.mtf_analyzer import analyze_mtf
+
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if not symbol_list:
+            raise _HTTPException(status_code=400, detail="No symbols provided")
+
+        results = []
+        for sym in symbol_list[:5]:
+            try:
+                mtf_result = await analyze_mtf(sym, _data_manager)
+                results.append(
+                    {
+                        "symbol": sym,
+                        "recommendation": mtf_result.recommendation,
+                        "alignment": mtf_result.alignment,
+                        "timeframes": {
+                            s.timeframe: {"stc_value": s.stc_value, "stc_signal": s.stc_signal}
+                            for s in mtf_result.signals
+                        },
+                        "error": None,
+                    }
+                )
+            except Exception as sym_err:
+                results.append(
+                    {
+                        "symbol": sym,
+                        "recommendation": "WAIT",
+                        "alignment": "NEUTRAL",
+                        "timeframes": {},
+                        "error": str(sym_err),
+                    }
+                )
+
+        buy_count = sum(1 for r in results if r["recommendation"] == "BUY")
+        sell_count = sum(1 for r in results if r["recommendation"] == "SELL")
+        market_bias = (
+            "BULLISH"
+            if buy_count > sell_count
+            else "BEARISH" if sell_count > buy_count else "NEUTRAL"
         )
-    return {
-        "symbols": result,
-        "count": len(result),
-        "scanned_at": datetime.now(timezone.utc).isoformat(),
-    }
+
+        return {
+            "symbols": results,
+            "market_bias": market_bias,
+            "buy_count": buy_count,
+            "sell_count": sell_count,
+            "wait_count": len(results) - buy_count - sell_count,
+            "scanned_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except _HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[WATCHLIST-SCAN] Failed: {e}")
+        raise _HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/watchlist/{symbol}")
 async def remove_from_watchlist(symbol: str):
     """Remove a symbol from the watchlist (futures or equities)."""
+    from fastapi import HTTPException as _HTTPException
+
     symbol = symbol.strip().upper()
+    removed = False
 
     if symbol in settings.FUTURES_WATCHLIST:
-        pass
+        settings.FUTURES_WATCHLIST = [s for s in settings.FUTURES_WATCHLIST if s != symbol]
+        removed = True
+    elif symbol in settings.OPTIONS_WATCHLIST:
+        settings.OPTIONS_WATCHLIST = [s for s in settings.OPTIONS_WATCHLIST if s != symbol]
+        removed = True
+
+    if not removed:
+        raise _HTTPException(404, f"Symbol {symbol} not found in watchlist")
+
+    return {"status": "removed", "symbol": symbol}

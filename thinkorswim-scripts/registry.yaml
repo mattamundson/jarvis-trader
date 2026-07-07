@@ -1,0 +1,526 @@
+version: 1
+generated: "2026-04-20"
+source_of_truth:
+  parameters: "engine/backtest/signals.py"
+  indicators: "engine/backtest/indicators.py"
+duplicates_to_skip:
+  - shared_AA_CoreyRangefinderv1_01STUDY.ts
+  - shared_AA_CoreySinglefinderv2STUDY.ts
+  - shared_AA_CoreyTPOScorev2STUDY.ts
+  - shared_midcloudoteSTUDY.ts
+  - shared_Saty_ATR_LevelsSTUDY.ts
+  - shared_shared_midcloudoteSTUDY.ts
+  - shared_shared_OB_LBR_BARS_HH_LL17STUDY.ts
+  - shared_shared_shared_shared_shared_kmaster1STUDY.ts
+  - shared_shared_shared_shared_shared_Priceline11STUDY.ts
+  - shared_shared_shared_shared_shared_kelt_3.01STUDY.ts
+  - shared_shared_shared_shared_shared_shared_kmaster1STUDY.ts
+  - shared_shared_shared_shared_shared_shared_Priceline11STUDY.ts
+
+scripts:
+  # ── Layer 1 — Regime Map ─────────────────────────────────────────────────
+
+  - id: saty_atr_levels
+    file: Saty_ATR_LevelsSTUDY.ts
+    docs: docs/saty_atr_levels.md
+    author: "Saty Mahajan"
+    layer: 1
+    layer_name: Regime
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::wilder_atr"
+    panel: upper
+    jarvis_signals:
+      - ema_trend
+      - atr_consumed_pct
+      - ema_ribbon
+    tos_inputs:
+      atr_length: 14
+      fast_ema: 8
+      pivot_ema: 21
+      slow_ema: 34
+      trigger_percentage: 0.236
+      trading_type: Day
+      show_extensions: true
+      show_all_fibonacci_levels: true
+
+  - id: saty_phase_oscillator
+    file: Saty_Phase_OscillatorSTUDY.ts
+    docs: docs/saty_phase_oscillator.md
+    author: "Saty Mahajan"
+    layer: 1
+    layer_name: Regime
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::phase_oscillator"
+    panel: lower
+    jarvis_signals:
+      - phase_val
+      - phase_compression
+    tos_inputs:
+      ema_length: 21
+      atr_length: 14
+      bb_length: 21
+      bb_stddev: 2.0
+
+  - id: mtf_trendbar
+    file: shared_mtftrendbarSTUDY.ts
+    docs: docs/mtf_trendbar.md
+    author: "JARVIS / community"
+    layer: 1
+    layer_name: Regime
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::cci"
+    panel: upper
+    jarvis_signals:
+      - cci_trend
+    tos_inputs:
+      cci_length: 50
+      timeframe: HOUR
+
+  # ── Layer 2 — Structure Map ──────────────────────────────────────────────
+
+  - id: corey_tpo_profile_v1
+    file: AA_CoreyTPOProfilev1STUDY.ts
+    docs: docs/corey_tpo_profile_v1.md
+    author: "Corey (AA)"
+    layer: 2
+    layer_name: Structure
+    status: ported
+    python_counterpart: "engine/backtest/tpo_profile.py::compute_tpo_profile"
+    panel: upper
+    jarvis_signals:
+      - vpoc
+      - va_high
+      - va_low
+    tos_inputs:
+      timePerProfile: day
+      showPointOfControl: true
+      showValueArea: true
+      valueAreaPercent: 70
+
+  - id: corey_tscore_v2
+    file: AA_CoreyTscorev2STUDY.ts
+    docs: docs/corey_tscore_v2.md
+    author: "Corey (AA)"
+    layer: 2
+    layer_name: Structure
+    status: ported
+    python_counterpart: "engine/backtest/tpo_score.py::compute_tpo_score"
+    panel: lower
+    jarvis_signals:
+      - layer2_structure
+    tos_inputs:
+      showLabels: true
+      showLabels1: true
+      showLabels2: true
+
+  - id: corey_ib_v1
+    file: AA_CoreyIBv1STUDY.ts
+    docs: docs/corey_ib_v1.md
+    author: "Corey (AA)"
+    layer: 2
+    layer_name: Structure
+    status: ported
+    python_counterpart: "engine/backtest/ib_signals.py::compute_initial_balance"
+    panel: upper
+    jarvis_signals:
+      - ib_high
+      - ib_low
+      - above_ib_high
+    tos_inputs:
+      OpenRangeMinutes: 60
+      MarketOpenTime: "0930"
+      ShowQuads: true
+      ShowExtensions: true
+      ShowLabels: true
+
+  - id: corey_rangefinder_v2
+    file: AA_CoreyRFv2STUDY.ts
+    docs: docs/corey_rangefinder_v2.md
+    author: "Corey (AA)"
+    layer: 2
+    layer_name: Structure
+    status: ported
+    python_counterpart: "engine/backtest/rangefinder.py::compute_rangefinder"
+    panel: upper
+    jarvis_signals: []
+    tos_inputs:
+      showExtensions: true
+      showRfClouds: true
+      showControlZone: true
+      showArrows: true
+
+  - id: corey_singlefinder_v2
+    file: AA_CoreySFv2STUDY.ts
+    docs: docs/corey_singlefinder_v2.md
+    author: "Corey (AA)"
+    layer: 2
+    layer_name: Structure
+    status: ported
+    python_counterpart: "engine/backtest/singlefinder.py::compute_single_prints"
+    panel: upper
+    jarvis_signals: []
+    tos_inputs:
+      ShowExtensions: true
+      ShowArrows: true
+
+  - id: corey_gapfinder_v1
+    file: AA_CoreyGapfinderv1STUDY.ts
+    docs: docs/corey_gapfinder_v1.md
+    author: "Corey (AA)"
+    layer: 2
+    layer_name: Structure
+    status: ported
+    python_counterpart: "engine/backtest/gapfinder.py::compute_gaps"
+    panel: upper
+    jarvis_signals: []
+    tos_inputs: {}
+
+  # ── Layer 3 — Bias ───────────────────────────────────────────────────────
+
+  - id: kama_next_signal_momentum
+    file: NextSignalMomentumSTUDY.ts
+    docs: docs/kama_next_signal_momentum.md
+    author: "JARVIS / community"
+    layer: 3
+    layer_name: Bias
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::kama"
+    panel: upper
+    jarvis_signals:
+      - kama_signal
+    tos_inputs:
+      mode: KAMA
+      period: 10
+      fast_sc: 0.4
+      slow_sc: 0.2222
+
+  - id: saty_volume_stack
+    file: Saty_Volume_StackSTUDY.ts
+    docs: docs/saty_volume_stack.md
+    author: "Saty Mahajan"
+    layer: 3
+    layer_name: Bias
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::volume_stack"
+    panel: lower
+    jarvis_signals:
+      - buy_pct
+      - buyer_dominant
+      - seller_dominant
+    tos_inputs: {}
+
+  # ── Layer 4 — Entry Timing ───────────────────────────────────────────────
+
+  - id: stc_ob_style_cycle
+    file: shared_OB_STYLE_CYCLE_TIMESHIFT_PAINT_BARSSTUDY.ts
+    docs: docs/stc_ob_style_cycle.md
+    author: "JARVIS / community"
+    layer: 4
+    layer_name: Entry
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::stc"
+    panel: lower
+    jarvis_signals:
+      - stc_val
+      - stc_cross_up
+      - stc_cross_down
+      - stc_signal
+    tos_inputs:
+      fastLength: 23
+      slowLength: 50
+      KPeriod: 10
+      DPeriod: 3
+      over_sold: 15
+      over_bought: 83
+      TimeShift: "1h"
+      paintBars: true
+      StyleBuy: 15
+      StyleSell: 85
+      Midline: 50
+      BULLTRIGGER: 82
+      Beartrigger: 20
+
+  - id: ob_omega_keltner_5m
+    file: shared_shared_OB_OMEGA_5mSTUDY.ts
+    docs: docs/ob_omega_keltner_5m.md
+    author: "JARVIS / community"
+    layer: 4
+    layer_name: Entry
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::keltner_channels"
+    panel: upper
+    jarvis_signals:
+      - kelt_inner_upper
+      - kelt_outer_upper
+      - kelt_inner_lower
+      - kelt_outer_lower
+    tos_inputs:
+      factor: 1.5
+      factor2: 2.0
+      length: 20
+      period: HOUR
+      ShowCloud: true
+      ShowLabel: true
+
+  - id: ob_omega_keltner_15m
+    file: shared_shared_OB_OMEGA_15m7STUDY.ts
+    docs: docs/ob_omega_keltner_15m.md
+    author: "JARVIS / community"
+    layer: 4
+    layer_name: Entry
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::keltner_channels"
+    panel: upper
+    jarvis_signals:
+      - kelt_inner_upper
+      - kelt_outer_upper
+      - kelt_inner_lower
+      - kelt_outer_lower
+    tos_inputs:
+      factor: 1.5
+      factor2: 2.0
+      length: 20
+      period: 15MIN
+      ShowCloud: true
+      ShowLabel: true
+
+  - id: ob_omega_keltner_30m
+    file: shared_shared_OB_OMEGA_30m7STUDY.ts
+    docs: docs/ob_omega_keltner_30m.md
+    author: "JARVIS / community"
+    layer: 4
+    layer_name: Entry
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::keltner_channels"
+    panel: upper
+    jarvis_signals:
+      - kelt_inner_upper
+      - kelt_outer_upper
+      - kelt_inner_lower
+      - kelt_outer_lower
+    tos_inputs:
+      factor: 1.5
+      factor2: 2.0
+      length: 20
+      period: 30MIN
+      ShowCloud: true
+      ShowLabel: true
+
+  - id: keltner_3x
+    file: shared_shared_shared_shared_kelt_3.01STUDY.ts
+    docs: docs/keltner_3x.md
+    author: "JARVIS / community"
+    layer: 4
+    layer_name: Entry
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::keltner_channels"
+    panel: upper
+    jarvis_signals:
+      - kelt_3x_upper
+      - kelt_3x_lower
+    tos_inputs:
+      iFactor: 3.0
+      iLength: 20
+      iAggregationPeriod: HOUR
+
+  # ── Layer 5 / Supporting ─────────────────────────────────────────────────
+
+  - id: cohen_mes_composite
+    file: COHEN_MES_COMPOSITE.ts
+    docs: COHEN_MES_README.md
+    author: "COHEN / JARVIS"
+    layer: 5
+    layer_name: Sizing
+    status: ported
+    python_counterpart: "engine/backtest/composite_signals.py"
+    panel: upper
+    jarvis_signals:
+      - composite_signal
+      - regime_weight
+    tos_inputs: {}
+
+  - id: cohen_mes_stc_sub
+    file: COHEN_MES_STC_SUB.ts
+    docs: COHEN_MES_COMPOSITE_INSTALL.md
+    author: "COHEN / JARVIS"
+    layer: 5
+    layer_name: Sizing
+    status: ported
+    python_counterpart: "engine/backtest/composite_signals.py"
+    panel: lower
+    jarvis_signals:
+      - stc_val
+    tos_inputs: {}
+
+  - id: gaps_chetan
+    file: GAPS_Chetan1STUDY.ts
+    docs: docs/gaps_chetan.md
+    author: "Chetan"
+    layer: 0
+    layer_name: Supporting
+    status: ported
+    python_counterpart: "engine/backtest/gaps_chetan.py::compute_chetan_gaps"
+    panel: upper
+    jarvis_signals: []
+    tos_inputs: {}
+
+  - id: trin_chetan
+    file: TRIN_ChetanSTUDY.ts
+    docs: docs/trin_chetan.md
+    author: "Chetan"
+    layer: 0
+    layer_name: Supporting
+    status: ported
+    python_counterpart: "engine/backtest/indicators.py::classify_trin"
+    panel: lower
+    jarvis_signals:
+      - trin_value
+      - trin_signal
+    tos_inputs: {}
+
+  - id: corey_rangefinder_v1_mobile
+    file: AA_CoreyRFv1MobileSTUDY.ts
+    docs: docs/corey_rangefinder_v1_mobile.md
+    author: "Corey (AA)"
+    layer: 2
+    layer_name: Structure
+    status: deprecated
+    python_counterpart: null
+    panel: upper
+    jarvis_signals: []
+    tos_inputs: {}
+
+  # -- JARVIS Suite (jarvis-suite/) -- canonical-parameter mirrors (2026-07-06) --
+  # Self-contained studies mirroring engine params exactly. Supersedes
+  # stc_ob_style_cycle + cohen_mes_stc_sub for live-chart JARVIS use.
+
+  - id: jarvis_stc_signals
+    file: jarvis-suite/JARVIS_STC_Signals.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 4
+    layer_name: Entry
+    status: active
+    python_counterpart: "engine/backtest/indicators.py::stc + engine/backtest/signals.py"
+    panel: upper
+    jarvis_signals:
+      - stc_val
+      - stc_cross_up
+      - stc_cross_down
+      - stop_level
+      - target_1
+    tos_inputs:
+      fast_length: 23
+      slow_length: 50
+      k_period: 10
+      d_span: 3
+      stc_oversold: 15
+      stc_overbought: 83
+      atr_length: 14
+      stop_atr_mult: 0.70
+      t1_atr_mult: 1.00
+
+  - id: jarvis_regime_filter
+    file: jarvis-suite/JARVIS_RegimeFilter.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 1
+    layer_name: Regime
+    status: active
+    python_counterpart: "engine/backtest/signals.py::layer1_regime (chart-side approximation)"
+    panel: lower
+    jarvis_signals:
+      - regime
+    tos_inputs:
+      ema_fast_len: 50
+      ema_slow_len: 200
+      atr_length: 14
+      atr_avg_length: 30
+      structure_lookback: 10
+      volume_avg_length: 20
+      align_threshold: 4
+
+  - id: jarvis_vwap_bands
+    file: jarvis-suite/JARVIS_VWAP_Bands.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 4
+    layer_name: Entry
+    status: experimental  # OOS validation pending (loop vwap-sharpe)
+    python_counterpart: "engine/backtest/vwap_paper_track.py::CHAMPION + vwap_signals.py"
+    panel: upper
+    jarvis_signals:
+      - vwap
+      - vwap_upper
+      - vwap_lower
+      - vwap_signal
+    tos_inputs:
+      band_atr_mult: 2.5
+      stop_atr_mult: 0.75
+      atr_length: 14
+
+  - id: jarvis_risk_sizer
+    file: jarvis-suite/JARVIS_RiskSizer.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 5
+    layer_name: Sizing
+    status: active
+    python_counterpart: "engine/config.py::MAX_CONTRACTS_PER_INSTRUMENT + signals.py multipliers"
+    panel: upper
+    jarvis_signals: []
+    tos_inputs:
+      account_size: 25000
+      risk_percent: 1.0
+      stop_atr_mult: 0.70
+      t1_atr_mult: 1.00
+      max_contracts: 2
+
+  - id: jarvis_mission_control_lower
+    file: jarvis-suite/JARVIS_MissionControl_Lower.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 4
+    layer_name: Entry
+    status: active
+    python_counterpart: "engine/backtest/indicators.py::stc + signals.py (composite pane)"
+    panel: lower
+    jarvis_signals:
+      - stc_val
+      - stc_cross_up
+      - stc_cross_down
+      - regime
+    tos_inputs:
+      stc_oversold: 15
+      stc_overbought: 83
+      align_threshold: 4
+
+  - id: jarvis_scan_stc_regime
+    file: jarvis-suite/JARVIS_Scan_STC_Regime.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 4
+    layer_name: Entry
+    status: active
+    python_counterpart: "engine/backtest/indicators.py::stc + signals.py cross logic"
+    panel: null  # scan condition, not a chart study — no upper/lower panel placement
+    jarvis_signals:
+      - stc_cross_up
+    tos_inputs:
+      stc_oversold: 15
+      align_threshold: 4
+
+  - id: legacy_utilities
+    file:
+      - ThinkScript_study_20221014STUDY.ts
+      - ThinkScript_study_20221016STUDY.ts
+      - ThinkScript_study_20230523STUDY.ts
+    docs: docs/thinkscript_legacy_studies.md
+    author: "JARVIS / unknown"
+    layer: 0
+    layer_name: Supporting
+    status: reference_only
+    python_counterpart: null
+    panel: null
+    jarvis_signals: []
+    tos_inputs: {}

@@ -1,0 +1,236 @@
+// JARVIS Composite Score Indicator
+// Port of COHEN_MES_COMPOSITE.ts (ThinkorSwim)
+// Synthesizes STC + ORB + VWAP into a composite score (-1.0 to +1.0)
+// with regime-adaptive weighting.
+//
+// MCP readback:
+//   data_get_pine_labels(study_filter="JARVIS Composite Score")
+//   data_get_pine_lines (study_filter="JARVIS Composite Score")
+//@version=5
+indicator(title="JARVIS Composite Score", shorttitle="JARVIS_COMP", overlay=true,
+         max_labels_count=500, max_lines_count=500)
+
+// ─── Inputs ──────────────────────────────────────────────────────────────────
+stc_fast       = input.int(23,    title="STC EMA Fast")
+stc_slow       = input.int(50,    title="STC EMA Slow")
+stc_len        = input.int(10,    title="STC Length")
+stc_smooth     = input.int(3,     title="STC Smooth")
+ob_level       = input.float(83.0, title="STC Overbought")
+os_level       = input.float(15.0, title="STC Oversold")
+atr_len        = input.int(14,    title="ATR Length")
+vwap_mult      = input.float(2.5, title="VWAP Band Multiplier")
+orb_minutes    = input.int(30,    title="ORB Duration (minutes)")
+score_thresh   = input.float(0.35, title="Score Threshold for BG Color")
+ema_fast_r     = input.int(8,     title="Regime EMA Fast")
+ema_mid_r      = input.int(21,    title="Regime EMA Mid")
+ema_slow_r     = input.int(34,    title="Regime EMA Slow")
+norm_atr_vol   = input.float(2.0, title="Volatile ATR% Threshold")
+
+// ─── STC Calculation ─────────────────────────────────────────────────────────
+f_stc(length, fast, slow, smth) =>
+    ema1    = ta.ema(close, fast)
+    ema2    = ta.ema(close, slow)
+    macd    = ema1 - ema2
+    low1    = ta.lowest(macd, length)
+    high1   = ta.highest(macd, length)
+    rng1    = high1 - low1
+    k1      = rng1 != 0.0 ? (macd - low1) / rng1 * 100.0 : 50.0
+    d1      = ta.ema(k1, smth)
+    low2    = ta.lowest(d1, length)
+    high2   = ta.highest(d1, length)
+    rng2    = high2 - low2
+    k2      = rng2 != 0.0 ? (d1 - low2) / rng2 * 100.0 : 50.0
+    ta.ema(k2, smth)
+
+stc = f_stc(stc_len, stc_fast, stc_slow, stc_smooth)
+
+// STC signal state (cross-based)
+stc_long  = ta.crossover(stc, os_level)
+stc_short = ta.crossunder(stc, ob_level)
+
+// Persistent signal flags (stay active until opposite fires)
+var bool stc_long_active  = false
+var bool stc_short_active = false
+
+if stc_long
+    stc_long_active  := true
+    stc_short_active := false
+if stc_short
+    stc_short_active := true
+    stc_long_active  := false
+
+// ─── ATR ─────────────────────────────────────────────────────────────────────
+atr_val  = ta.atr(atr_len)
+norm_atr = close > 0.0 ? atr_val / close * 100.0 : 0.0
+
+// ─── Regime Detection (EMA Ribbon 8/21/34) ───────────────────────────────────
+ema8  = ta.ema(close, ema_fast_r)
+ema21 = ta.ema(close, ema_mid_r)
+ema34 = ta.ema(close, ema_slow_r)
+
+is_volatile      = norm_atr >= norm_atr_vol
+is_trending_bull = ema8 > ema21 and ema21 > ema34 and not is_volatile
+is_trending_bear = ema8 < ema21 and ema21 < ema34 and not is_volatile
+is_ranging       = not is_volatile and not is_trending_bull and not is_trending_bear
+
+regime_str = is_volatile      ? "VOLATILE"       :
+             is_trending_bull ? "TRENDING_BULL"  :
+             is_trending_bear ? "TRENDING_BEAR"  :
+             "RANGING"
+
+// ─── Regime-Adaptive Weights ─────────────────────────────────────────────────
+// Match engine/backtest/composite_signals.py weight tables
+w_stc  = is_volatile ? 0.0 : (is_trending_bull or is_trending_bear) ? 0.60 : 0.50
+w_orb  = is_volatile ? 0.0 : (is_trending_bull or is_trending_bear) ? 0.30 : 0.20
+w_vwap = is_volatile ? 0.0 : (is_trending_bull or is_trending_bear) ? 0.10 : 0.30
+
+// ─── VWAP + ATR Bands ────────────────────────────────────────────────────────
+vwap_val   = ta.vwap(close)
+vwap_upper = vwap_val + vwap_mult * atr_val
+vwap_lower = vwap_val - vwap_mult * atr_val
+
+// VWAP signal: price at/below lower band and recovering (price rising)
+vwap_long  = close <= vwap_lower and close > close[1]
+vwap_short = close >= vwap_upper and close < close[1]
+
+// ─── Opening Range Breakout (first N minutes of RTH session) ─────────────────
+// 9:30 ET = 13:30 UTC (UTC offset used; TradingView uses exchange timezone)
+// We detect the opening range by checking session time within first orb_minutes bars
+is_rth_open  = not na(time("1", "0930-1600"))
+session_bar  = ta.barssince(is_rth_open and ta.barssince(is_rth_open[1]) == 0)
+
+// Use syminfo.timezone-aware approach: track first bar of regular session
+var int   orb_start_bar = na
+var float orb_high      = na
+var float orb_low       = na
+var bool  orb_complete  = false
+
+// Detect new session (first RTH bar each day)
+is_new_session = ta.change(time("D")) != 0
+
+if is_new_session
+    orb_start_bar := bar_index
+    orb_high      := high
+    orb_low       := low
+    orb_complete  := false
+else if not na(orb_start_bar)
+    bars_in_session = bar_index - orb_start_bar
+    // On 1-minute chart: orb_minutes bars = 30 bars for 30-min ORB
+    // Indicator works across timeframes — scale by minutes
+    tf_mins = timeframe.in_seconds() / 60.0
+    orb_bars_needed = math.max(1, math.round(orb_minutes / tf_mins))
+    if not orb_complete
+        if bars_in_session < orb_bars_needed
+            orb_high := math.max(orb_high, high)
+            orb_low  := math.min(orb_low, low)
+        else
+            orb_complete := true
+
+// ORB signals: breakout above/below range
+orb_long  = orb_complete and close > orb_high and (is_trending_bull or is_ranging)
+orb_short = orb_complete and close < orb_low  and (is_trending_bear or is_ranging)
+
+// ─── Composite Score ─────────────────────────────────────────────────────────
+long_score  = w_stc  * (stc_long_active  ? 1.0 : 0.0) +
+              w_orb  * (orb_long          ? 1.0 : 0.0) +
+              w_vwap * (vwap_long         ? 1.0 : 0.0)
+
+short_score = w_stc  * (stc_short_active ? 1.0 : 0.0) +
+              w_orb  * (orb_short         ? 1.0 : 0.0) +
+              w_vwap * (vwap_short        ? 1.0 : 0.0)
+
+composite = long_score - short_score  // range: -1.0 to +1.0
+
+// Component contributions (weighted, signed)
+stc_contrib  = w_stc  * (stc_long_active  ? 1.0 : stc_short_active  ? -1.0 : 0.0)
+orb_contrib  = w_orb  * (orb_long         ? 1.0 : orb_short         ? -1.0 : 0.0)
+vwap_contrib = w_vwap * (vwap_long        ? 1.0 : vwap_short        ? -1.0 : 0.0)
+
+// ─── Background Color (score threshold) ──────────────────────────────────────
+bg_color = composite >= score_thresh  ? color.new(color.green, 88) :
+           composite <= -score_thresh ? color.new(color.red,   88) :
+           na
+bgcolor(bg_color)
+
+// ─── VWAP Plots ──────────────────────────────────────────────────────────────
+plot(vwap_val,   title="VWAP",        color=color.cyan,  linewidth=1)
+plot(vwap_upper, title="VWAP Upper",  color=color.red,   linewidth=1, style=plot.style_circles)
+plot(vwap_lower, title="VWAP Lower",  color=color.green, linewidth=1, style=plot.style_circles)
+
+// ─── ORB Lines (session-scoped, drawn at last bar of session) ─────────────────
+// Draw persistent horizontal lines at ORB levels using line.new on each bar
+var line l_orb_high = na
+var line l_orb_low  = na
+
+if barstate.islast and orb_complete
+    if not na(l_orb_high)
+        line.delete(l_orb_high)
+    if not na(l_orb_low)
+        line.delete(l_orb_low)
+    l_orb_high := line.new(orb_start_bar, orb_high, bar_index, orb_high,
+                            color=color.orange, width=2, extend=extend.right)
+    l_orb_low  := line.new(orb_start_bar, orb_low,  bar_index, orb_low,
+                            color=color.orange, width=2, extend=extend.right)
+
+// ─── MCP Readback Labels (barstate.islast only) ───────────────────────────────
+if barstate.islast
+    label.new(bar_index, high,
+              "COMPOSITE: "   + str.tostring(math.round(composite,   4)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=composite > 0 ? color.lime : composite < 0 ? color.red : color.gray,
+              size=size.small)
+
+    label.new(bar_index, high,
+              "REGIME: "      + regime_str,
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.white, size=size.small)
+
+    label.new(bar_index, high,
+              "STC_SCORE: "   + str.tostring(math.round(stc_contrib,  4)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.white, size=size.small)
+
+    label.new(bar_index, high,
+              "ORB_SCORE: "   + str.tostring(math.round(orb_contrib,  4)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.orange, size=size.small)
+
+    label.new(bar_index, high,
+              "VWAP_SCORE: "  + str.tostring(math.round(vwap_contrib, 4)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.cyan, size=size.small)
+
+    label.new(bar_index, high,
+              "ORB_HIGH: "    + str.tostring(math.round(na(orb_high) ? 0.0 : orb_high, 2)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.orange, size=size.small)
+
+    label.new(bar_index, high,
+              "ORB_LOW: "     + str.tostring(math.round(na(orb_low)  ? 0.0 : orb_low,  2)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.orange, size=size.small)
+
+    label.new(bar_index, high,
+              "VWAP: "        + str.tostring(math.round(vwap_val,   2)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.cyan, size=size.small)
+
+    label.new(bar_index, high,
+              "VWAP_UPPER: "  + str.tostring(math.round(vwap_upper, 2)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.red, size=size.small)
+
+    label.new(bar_index, high,
+              "VWAP_LOWER: "  + str.tostring(math.round(vwap_lower, 2)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.green, size=size.small)
+
+    label.new(bar_index, high,
+              "ATR: "         + str.tostring(math.round(atr_val, 4)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.gray, size=size.small)
+
+    label.new(bar_index, high,
+              "STC: "         + str.tostring(math.round(stc, 2)),
+              style=label.style_label_left, color=color.new(color.black, 80),
+              textcolor=color.yellow, size=size.small)

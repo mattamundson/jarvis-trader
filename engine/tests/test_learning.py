@@ -7,10 +7,10 @@ from datetime import datetime
 
 import pytest
 
-from learning.pattern_extractor import Pattern, PatternExtractor
-from learning.session_memory import Lesson, SessionMemory
-from learning.strategy_tuner import StrategyTuner, Suggestion
-from learning.trade_classifier import TradeClassification, TradeClassifier
+from learning._experimental.pattern_extractor import Pattern, PatternExtractor
+from learning._experimental.session_memory import Lesson, SessionMemory
+from learning._experimental.strategy_tuner import StrategyTuner, Suggestion
+from learning._experimental.trade_classifier import TradeClassification, TradeClassifier
 
 
 class TestPatternExtractor:
@@ -519,3 +519,191 @@ class TestSessionMemory:
         )
         result = memory.get_lessons("NONEXISTENT")
         assert result == []
+
+
+class TestFeedback:
+    """Tests for Feedback module (US-LEARN-002)."""
+
+    @pytest.mark.asyncio
+    async def test_process_winning_trade(self):
+        """Test feedback generation for a winning trade."""
+        from learning.feedback import process_trade_outcome
+
+        feedback = await process_trade_outcome(
+            trade_id="test_win_001",
+            symbol="MCL",
+            pnl=150.0,
+            entry_price=85.50,
+            exit_price=87.25,
+            entry_time="2026-04-01T10:00:00Z",
+            exit_time="2026-04-01T11:30:00Z",
+            action="long",
+        )
+
+        assert feedback.trade_id == "test_win_001"
+        assert feedback.symbol == "MCL"
+        assert feedback.pnl == 150.0
+        assert feedback.entry_price == 85.50
+        assert feedback.exit_price == 87.25
+        assert feedback.action == "long"
+        assert hasattr(feedback, "lesson_type")
+        assert feedback.lesson_type == "winning_trade"
+        assert "Winning trade" in feedback.lesson_text
+
+    @pytest.mark.asyncio
+    async def test_process_losing_trade(self):
+        """Test feedback generation for a losing trade."""
+        from learning.feedback import process_trade_outcome
+
+        feedback = await process_trade_outcome(
+            trade_id="test_loss_001",
+            symbol="MNQ",
+            pnl=-75.0,
+            entry_price=18500.00,
+            exit_price=18492.00,
+            entry_time="2026-04-01T14:00:00Z",
+            exit_time="2026-04-01T14:45:00Z",
+            action="short",
+        )
+
+        assert feedback.trade_id == "test_loss_001"
+        assert feedback.pnl == -75.0
+        assert feedback.lesson_type == "losing_trade"
+        assert "Losing trade" in feedback.lesson_text
+
+    @pytest.mark.asyncio
+    async def test_process_breakeven_trade(self):
+        """Test feedback generation for a breakeven trade."""
+        from learning.feedback import process_trade_outcome
+
+        feedback = await process_trade_outcome(
+            trade_id="test_be_001",
+            symbol="MES",
+            pnl=0.0,
+            entry_price=5400.00,
+            exit_price=5400.00,
+            entry_time="2026-04-01T09:00:00Z",
+            exit_time="2026-04-01T10:00:00Z",
+            action="long",
+        )
+
+        assert feedback.pnl == 0.0
+        assert feedback.lesson_type == "breakeven_trade"
+        assert "Breakeven trade" in feedback.lesson_text
+
+    @pytest.mark.asyncio
+    async def test_feedback_to_dict(self):
+        """Test that feedback can be serialized to dict."""
+        from learning.feedback import process_trade_outcome
+
+        feedback = await process_trade_outcome(
+            trade_id="test_dict_001",
+            symbol="MCL",
+            pnl=50.0,
+            entry_price=85.00,
+            exit_price=86.00,
+            entry_time="2026-04-01T10:00:00Z",
+            exit_time="2026-04-01T11:00:00Z",
+            action="long",
+        )
+
+        d = feedback.to_dict()
+        assert isinstance(d, dict)
+        assert d["trade_id"] == "test_dict_001"
+        assert d["symbol"] == "MCL"
+        assert d["pnl"] == 50.0
+        assert "generated_at" in d
+
+
+class TestPatterns:
+    """Tests for Patterns module (US-LEARN-003)."""
+
+    def test_trade_pattern_creation(self):
+        """Test that TradePattern objects are created correctly."""
+        from learning.patterns import TradePattern
+
+        pattern = TradePattern(
+            symbol="MCL",
+            pattern_type="symbol_winner",
+            conditions={"symbol": "MCL", "outcome": "win"},
+            win_count=5,
+            loss_count=2,
+        )
+
+        assert pattern.symbol == "MCL"
+        assert pattern.pattern_type == "symbol_winner"
+        assert pattern.sample_count == 7
+        assert pattern.win_rate == round(5 / 7, 3)
+
+    def test_trade_pattern_to_dict(self):
+        """Test that TradePattern can be serialized to dict."""
+        from learning.patterns import TradePattern
+
+        pattern = TradePattern(
+            symbol="MNQ",
+            pattern_type="time_window_10",
+            conditions={"symbol": "MNQ", "entry_hour": 10},
+            win_count=3,
+            loss_count=1,
+        )
+
+        d = pattern.to_dict()
+        assert isinstance(d, dict)
+        assert d["symbol"] == "MNQ"
+        assert d["pattern_type"] == "time_window_10"
+        assert d["sample_count"] == 4
+        assert d["win_rate"] == round(3 / 4, 3)
+
+    @pytest.mark.asyncio
+    async def test_update_patterns_from_feedback_winner(self):
+        """Test pattern update from winning trade feedback."""
+        from learning.patterns import update_patterns_from_feedback
+
+        feedback = {
+            "symbol": "MCL",
+            "pnl": 150.0,
+            "entry_time": "2026-04-01T10:30:00Z",
+        }
+
+        patterns = await update_patterns_from_feedback(feedback)
+        assert patterns is not None
+        assert len(patterns) >= 2  # At least symbol pattern + time pattern
+
+        # Check first pattern (symbol winner)
+        assert patterns[0].symbol == "MCL"
+        assert "winner" in patterns[0].pattern_type
+        assert patterns[0].win_count == 1
+        assert patterns[0].loss_count == 0
+
+    @pytest.mark.asyncio
+    async def test_update_patterns_from_feedback_loser(self):
+        """Test pattern update from losing trade feedback."""
+        from learning.patterns import update_patterns_from_feedback
+
+        feedback = {
+            "symbol": "MNQ",
+            "pnl": -75.0,
+            "entry_time": "2026-04-01T14:45:00Z",
+        }
+
+        patterns = await update_patterns_from_feedback(feedback)
+        assert patterns is not None
+
+        # Check first pattern (symbol loser)
+        assert patterns[0].symbol == "MNQ"
+        assert "loser" in patterns[0].pattern_type
+        assert patterns[0].win_count == 0
+        assert patterns[0].loss_count == 1
+
+    @pytest.mark.asyncio
+    async def test_update_patterns_missing_symbol(self):
+        """Test pattern update gracefully handles missing symbol."""
+        from learning.patterns import update_patterns_from_feedback
+
+        feedback = {
+            "pnl": 100.0,
+            "entry_time": "2026-04-01T10:00:00Z",
+        }
+
+        patterns = await update_patterns_from_feedback(feedback)
+        assert patterns is None  # Should return None when symbol is missing

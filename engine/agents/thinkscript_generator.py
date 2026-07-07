@@ -144,11 +144,7 @@ Always include:
     async def _generate_with_llm(
         self, symbol, timeframe, script_type, analysis_context
     ) -> ThinkScriptResult:
-        """Generate ThinkScript using Claude."""
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=self.llm_client.api_key)
-
+        """Generate ThinkScript using Claude via JarvisLLMClient (with Gemini fallback)."""
         prompt = f"""Based on this JARVIS TRADER analysis, generate a ThinkScript {script_type} for ThinkorSwim:
 
 {analysis_context}
@@ -162,14 +158,16 @@ Generate a complete, ready-to-paste ThinkScript {script_type} that:
 Return ONLY the ThinkScript code — no explanation, no markdown fences, just raw ThinkScript."""
 
         try:
-            response = client.messages.create(
-                model="claude-opus-4-6",
-                max_tokens=2000,
+            result = await self.llm_client.call(
+                model="claude-sonnet-4-6",
                 system=self._system_prompt,
                 messages=[{"role": "user", "content": prompt}],
+                max_tokens=2000,
+                agent_name="thinkscript_generator",
             )
-
-            code = response.content[0].text.strip()
+            if not result.success:
+                raise RuntimeError(f"LLM call failed: {result.error}")
+            code = result.content.strip()
             # Strip markdown fences if present
             if code.startswith("```"):
                 lines = code.split("\n")
@@ -240,9 +238,11 @@ Return ONLY the ThinkScript code — no explanation, no markdown fences, just ra
         bias_color = (
             "Color.GREEN"
             if "buy" in signal.lower() or "bull" in signal.lower()
-            else "Color.RED"
-            if "sell" in signal.lower() or "bear" in signal.lower()
-            else "Color.YELLOW"
+            else (
+                "Color.RED"
+                if "sell" in signal.lower() or "bear" in signal.lower()
+                else "Color.YELLOW"
+            )
         )
 
         code = f"""# ============================================================

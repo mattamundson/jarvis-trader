@@ -76,7 +76,7 @@ class OOSEvaluator:
         end_date   : ISO date string, e.g. "2026-04-01"
         interval   : Bar interval for data (default "1h")
         data_manager: Optional MarketDataManager for data fetching.
-                      Falls back to yfinance when None.
+                      Falls back to BacktestDataLoader when None.
 
         Returns
         -------
@@ -150,6 +150,8 @@ class OOSEvaluator:
         wr = episode_metrics.get("win_rate", 0.0)
         max_dd = episode_metrics.get("max_drawdown", 1.0)
         n_trades = episode_metrics.get("n_trades", 0)
+        avg_bars_in_trade = episode_metrics.get("avg_bars_in_trade", 0.0)
+        t1_hit_rate = episode_metrics.get("t1_hit_rate", 0.0)
 
         passes_validation = all(
             [
@@ -160,6 +162,17 @@ class OOSEvaluator:
                 hold_rate >= gates["min_hold_rate"],
                 sharpe >= gates["min_sharpe"],
             ]
+        )
+
+        # Run 10 gate checks: avg_bars_in_trade < 50, t1_hit_rate > 0.05
+        avg_bars_gate_pass = avg_bars_in_trade < 50
+        t1_hit_rate_gate_pass = t1_hit_rate > 0.05
+        gate_status = "PASS" if (avg_bars_gate_pass and t1_hit_rate_gate_pass) else "FAIL"
+        logger.info(
+            f"[OOSEvaluator] Run 10 gates: "
+            f"avg_bars_in_trade={avg_bars_in_trade:.1f} {'PASS' if avg_bars_gate_pass else 'FAIL'} | "
+            f"t1_hit_rate={t1_hit_rate:.1%} {'PASS' if t1_hit_rate_gate_pass else 'FAIL'} | "
+            f"Overall: {gate_status}"
         )
 
         elapsed = (datetime.now(timezone.utc) - start_dt).total_seconds()
@@ -179,6 +192,8 @@ class OOSEvaluator:
             "n_trades": n_trades,
             "total_pnl": episode_metrics.get("total_pnl", 0.0),
             "avg_pnl": episode_metrics.get("avg_pnl", 0.0),
+            "avg_bars_in_trade": round(avg_bars_in_trade, 1),
+            "t1_hit_rate": round(t1_hit_rate, 4),
             "action_distribution": {
                 "HOLD": round(action_counts[0] / total_actions, 4),
                 "BUY": round(action_counts[1] / total_actions, 4),
@@ -245,7 +260,7 @@ class OOSEvaluator:
         interval: str,
         data_manager=None,
     ) -> Optional[pd.DataFrame]:
-        """Fetch raw OHLCV data. Uses data_manager if provided, else yfinance."""
+        """Fetch raw OHLCV data. Uses data_manager if provided, else BacktestDataLoader."""
         if data_manager is not None:
             try:
                 import asyncio
@@ -262,54 +277,32 @@ class OOSEvaluator:
                     return self._normalize_columns(df)
             except Exception as exc:
                 logger.warning(
-                    f"[OOSEvaluator] data_manager fetch failed: {exc}, falling back to yfinance"
+                    f"[OOSEvaluator] data_manager fetch failed: {exc}, trying BacktestDataLoader"
                 )
 
-        return self._fetch_yfinance(symbol, lookback_days=730, interval=interval)
+        return self._fetch_via_loader(symbol, lookback_days=730, interval=interval)
 
-    def _fetch_yfinance(
+    def _fetch_via_loader(
         self,
         symbol: str,
         lookback_days: int,
         interval: str,
     ) -> Optional[pd.DataFrame]:
-        """Fetch via yfinance. Maps futures to equity proxies."""
+        """Fetch via BacktestDataLoader (Polygon → CSV cache)."""
         try:
-            import yfinance as yf
+            from datetime import datetime, timedelta
 
-            FUTURES_TO_YF = {
-                "MES": "ES=F",
-                "MNQ": "NQ=F",
-                "MCL": "CL=F",
-                "MGC": "GC=F",
-                "MYM": "YM=F",
-            }
-            ticker = FUTURES_TO_YF.get(symbol.upper(), symbol)
-            yf_interval = {"1h": "1h", "4h": "1h", "1d": "1d"}.get(interval, "1h")
-            period = f"{min(lookback_days, 730)}d"
+            from backtest.data_loader import BacktestDataLoader
 
-            df = yf.download(ticker, period=period, interval=yf_interval, progress=False)
-            if df.empty:
-                return None
-
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-
-            df = df.rename(
-                columns={
-                    "Open": "open",
-                    "High": "high",
-                    "Low": "low",
-                    "Close": "close",
-                    "Volume": "volume",
-                }
-            )
-            df = df[["open", "high", "low", "close", "volume"]].copy().dropna()
-            return df.reset_index(drop=True)
-
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+            loader = BacktestDataLoader()
+            df = loader.load(symbol, start, end, interval=interval)
+            if df is not None and len(df) >= 60:
+                return self._normalize_columns(df)
         except Exception as exc:
-            logger.error(f"[OOSEvaluator] yfinance fetch failed: {exc}")
-            return None
+            logger.error(f"[OOSEvaluator] BacktestDataLoader fetch failed: {exc}")
+        return None
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Ensure lowercase OHLCV column names."""

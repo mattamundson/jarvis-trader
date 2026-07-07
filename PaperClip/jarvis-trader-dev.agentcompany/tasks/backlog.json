@@ -1,0 +1,46 @@
+{
+  "schema": "agentcompanies/v1/tasks",
+  "tasks": [
+    {
+      "id": "P0-001",
+      "priority": "P0",
+      "title": "Complete paper trading validation (30 days)",
+      "description": "Run paper trading with real market data. Target: Sharpe > 1.0, max drawdown < 15%, win rate > 52%",
+      "status": "in_progress",
+      "owner": null
+    },
+    {
+      "id": "P0-002",
+      "priority": "P0",
+      "title": "Token budget enforcement per pipeline agent",
+      "description": "Add AGENT_TOKEN_BUDGETS to engine/config.py. Hard-stop at 100%, warn at 80%. Prevents Anthropic 400 errors.",
+      "status": "todo",
+      "owner": null
+    },
+    {
+      "id": "P0-003",
+      "priority": "P0",
+      "title": "Atomic task checkout for 10-agent dev sessions",
+      "description": "Create .claude/task-manifest.json pattern. Each Claude Code agent claims a task before touching files.",
+      "status": "todo",
+      "owner": null
+    },
+    {
+      "id": "P1-001",
+      "priority": "P1",
+      "title": "Paperclip adapter integration",
+      "description": "Register jarvis-trading-pipeline adapter with local Paperclip instance. Wire engine heartbeats.",
+      "status": "todo",
+      "owner": null
+    },
+    {
+      "id": "P1-002",
+      "priority": "P1",
+      "title": "Live trading enablement (post-validation)",
+      "description": "Tier 3 approval required. Enable only after 30-day paper trading validation passes all metrics.",
+      "status": "blocked",
+      "blockedBy": "P0-001",
+      "owner": null
+    }
+  ]
+}

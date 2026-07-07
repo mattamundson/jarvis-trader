@@ -9,7 +9,9 @@ and client code generation.
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+JARVIS_SUPPORTED_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "ytd", "1y", "2y", "5y", "10y", "max"}
 
 # ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +44,16 @@ class SignalEnum(str, Enum):
     neutral = "neutral"
     bullish = "bullish"
     bearish = "bearish"
+
+
+class TvMcpStatus(str, Enum):
+    """TradingView MCP connection status."""
+
+    not_running = "not_running"
+    connecting = "connecting"
+    healthy = "healthy"
+    degraded = "degraded"
+    disabled = "disabled"
 
 
 class OrderActionEnum(str, Enum):
@@ -110,15 +122,93 @@ class HealthResponse(BaseModel):
     kill_switch_active: bool = Field(False, description="Whether kill switch is active")
     paper_mode: bool = Field(True, description="Whether paper trading mode is active")
     database: str = Field("disconnected", description="Database connection status")
-    ibkr_connected: bool = Field(False, description="Whether IBKR is connected")
+    ibkr_connected: bool = Field(
+        False,
+        description="Whether IBKR is connected (OR of execution + data connectors — kept for backward compat)",
+    )
+    ibkr_execution_connected: Optional[bool] = Field(
+        None,
+        description="Whether the IBKR execution (paper/live trading) connector is connected — this is the path /brokers/positions queries. NOTE: this is the connector's CACHED belief; it can read True after the Gateway logs out. Trust execution_connected_verified for enforcement decisions.",
+    )
+    execution_connected_verified: Optional[bool] = Field(
+        None,
+        description="Reconciled execution truth = ibkr_execution_connected AND ibgateway_alive. The field stop-enforcement/dashboard should trust — cannot report execution-ready while the Gateway port is dead.",
+    )
+    ib_execution_stale: Optional[bool] = Field(
+        None,
+        description="True when the execution connector's cached belief is 'connected' but the Gateway port is dead (logged out) — the silent stop-enforcement hazard (2026-06-01 class) made observable.",
+    )
+    ibkr_data_connected: Optional[bool] = Field(
+        None,
+        description="Whether the IBKR market-data connector is connected — independent lifecycle from the execution connector",
+    )
+    ibgateway_alive: Optional[bool] = Field(
+        None,
+        description="Whether IB Gateway is accepting TCP connections on the configured IB port (process-level liveness). Distinct from ibkr_*_connected: the Gateway can be up (port open) while a connector has dropped (recoverable via POST /data/reconnect), or the Gateway itself can be down (port closed) — the failure mode that left trade #178's stop unenforced for 13h.",
+    )
+    ibgateway_port: Optional[int] = Field(
+        None, description="The IB port probed for ibgateway_alive (4002 paper / 4001 live)"
+    )
     schwab_connected: bool = Field(False, description="Whether Schwab is connected")
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
     cache: Optional[CacheStatus] = Field(None, description="Cache status")
+    llm_available: Optional[bool] = Field(
+        True, description="Whether Anthropic API key is configured"
+    )
+    llm_path_healthy: Optional[bool] = Field(
+        True,
+        description="Whether the last-observed LLM call succeeded (false = credits/auth outage)",
+    )
+    vertex_failover_count: int = Field(
+        0,
+        description="Cumulative count (process lifetime) of Anthropic credit-exhaustion failovers routed to Claude-on-Vertex.",
+    )
+    google_fallback_count: int = Field(
+        0,
+        description="Cumulative count (process lifetime) of LLM calls served by the Gemini fallback (proactive routing + credit-exhaustion fallback).",
+    )
+    llm_path_details: Optional[Dict[str, Any]] = Field(
+        None, description="Populated only when llm_path_healthy=false"
+    )
+    llm_providers: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Provider-redundancy summary: active leg, providers_available count, and single_leg_warning (true when the serving leg has no backup behind it). Added in 94e9e5b; response dict populated it but this response_model field was missing, so FastAPI stripped it from /health until 2026-06-06.",
+    )
+    pending_approvals: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Approval-queue visibility: {count, oldest_age_min}. A candidate that queues but is never approved (e.g. silently failing notifications) stalls the live-fill path; surfaced so a stuck queue is observable.",
+    )
+    futures_sentiment: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Corey #market-updates freshness + structured-bias extraction health: {quality, age_days, latest_timestamp, threshold_days, extraction_quality, extraction_lag_days, latest_bias_date}. extraction_quality='degraded' flags the LLM structured-bias path falling behind ingestion (the 2026-06-29 credit-exhaustion outage that ran two days undetected). Like llm_providers above, _health_inner populated this but the response_model field was missing, so FastAPI stripped it from /health — added 2026-06-30.",
+    )
+    tradingview_mcp_healthy: Optional[bool] = Field(
+        True,
+        description="Whether TradingView Desktop CDP port 9222 responds (false = TV MCP bar source unavailable)",
+    )
+    tradingview_mcp_details: Optional[str] = Field(
+        None, description="Short diagnostic populated only when tradingview_mcp_healthy=false"
+    )
+    tv_mcp_status: Optional[str] = Field(
+        None, description="TV MCP status: not_running | connecting | healthy | degraded | disabled"
+    )
+    brier_30d_rolling: Optional[float] = Field(
+        None,
+        description="30-day rolling mean Brier score across agents with ≥ min_trades closed signals. 0 = perfect calibration, 1 = always confidently wrong. None when no agent has enough data.",
+    )
 
 
 class SubsystemStatus(BaseModel):
-    """Individual subsystem status."""
+    """Individual subsystem status — accepts any extra fields from subsystem dicts.
+
+    `extra="allow"` is load-bearing: subsystems attach observability fields the
+    dashboard reads (ib_gateway.data_source / watchdog / per_symbol_freshness,
+    llm.provider / fallback_active). With `extra="ignore"` those were silently
+    dropped by the response model and never reached the client.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     status: str = Field(..., description="Subsystem status")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional details")
@@ -240,7 +330,10 @@ class TechnicalAnalysisResponse(BaseModel):
     symbol: str = Field(..., description="Analyzed symbol")
     timestamp: str = Field(..., description="Analysis timestamp")
     timeframe: str = Field("5m", description="Timeframe used")
-    signal: str = Field(..., description="Trading signal")
+    signal: float = Field(
+        ...,
+        description="Trading signal — numeric score from the TechnicalAnalyst (e.g. -1..1)",
+    )
     confidence: float = Field(..., description="Signal confidence (0-1)")
     trend: Optional[str] = Field(None, description="Current trend")
     regime: Optional[str] = Field(None, description="Market regime")
@@ -254,19 +347,23 @@ class TechnicalAnalysisResponse(BaseModel):
 
 
 class BarsResponse(BaseModel):
-    """Historical OHLCV data."""
+    """Historical OHLCV data with VWAP and STC per bar."""
 
     symbol: str = Field(..., description="Symbol")
     timeframe: str = Field(..., description="Timeframe")
-    bars: List[Dict[str, Any]] = Field(default_factory=list, description="OHLCV bars")
+    bars: List[Dict[str, Any]] = Field(
+        default_factory=list, description="OHLCV bars (each bar includes vwap and stc fields)"
+    )
     count: int = Field(0, description="Number of bars")
+    vwap_current: Optional[float] = Field(None, description="Current VWAP value (last bar)")
+    vwap_trend: Optional[str] = Field(None, description="'above' or 'below' — price vs VWAP")
 
 
 class RedditSentimentResponse(BaseModel):
     """Reddit trending tickers."""
 
     filter: str = Field("all-stocks", description="Filter applied")
-    tickers: List[str] = Field(default_factory=list, description="Trending tickers")
+    tickers: List[Dict[str, Any]] = Field(default_factory=list, description="Trending tickers")
 
 
 class NewsSentimentResponse(BaseModel):
@@ -274,6 +371,40 @@ class NewsSentimentResponse(BaseModel):
 
     symbol: str = Field(..., description="Symbol analyzed")
     sentiment: Dict[str, Any] = Field(default_factory=dict, description="Sentiment data")
+
+
+class JarvisQuickAnalysisRequest(BaseModel):
+    """Quick Gemini-backed Jarvis snapshot request."""
+
+    symbol: str = Field(..., min_length=1, max_length=20, description="Ticker symbol")
+    period: str = Field(default="5d", description="Historical period to analyze")
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not normalized:
+            raise ValueError("symbol cannot be empty")
+        return normalized
+
+    @field_validator("period")
+    @classmethod
+    def normalize_period(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in JARVIS_SUPPORTED_PERIODS:
+            allowed = ", ".join(sorted(JARVIS_SUPPORTED_PERIODS))
+            raise ValueError(f"period must be one of: {allowed}")
+        return normalized
+
+
+class JarvisQuickAnalysisResponse(BaseResponse):
+    """Quick Gemini-backed Jarvis snapshot response."""
+
+    symbol: str = Field(..., description="Analyzed ticker symbol")
+    period: str = Field(..., description="Historical period used")
+    analysis: str = Field(..., description="Generated Jarvis analysis text")
+    model: str = Field(..., description="LLM model used to generate the analysis")
+    generated_at: str = Field(..., description="UTC timestamp for when the analysis was generated")
 
 
 # ── Portfolio Models ─────────────────────────────────────────────────────────

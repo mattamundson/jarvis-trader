@@ -9,7 +9,7 @@ Usage (engine running on BASE, with API key in env):
 Env:
   JARVIS_VERIFY_BASE   — default http://127.0.0.1:8010
   JARVIS_API_KEY / X_API_KEY / API_KEY — must match engine API_KEY for protected routes
-  CHECK_IB_PORT        — if set to 1, try TCP connect to IBKR_HOST:IBKR_PORT (default 127.0.0.1:7497)
+  CHECK_IB_PORT        — if set to 1, try TCP connect to IBKR_HOST:IBKR_PORT (default 127.0.0.1:4002 paper Gateway)
 """
 
 from __future__ import annotations
@@ -51,26 +51,36 @@ def main() -> int:
 
     if os.environ.get("CHECK_IB_PORT", "").strip() in ("1", "true", "yes"):
         host = os.environ.get("IBKR_HOST", "127.0.0.1")
-        port = int(os.environ.get("IBKR_PORT", "7497"))
+        port = int(os.environ.get("IBKR_PORT", "4002"))
         ok, msg = _check_tcp(host, port)
         results["checks"].append({"name": "ib_tcp_port", "ok": ok, "detail": msg})
         print(msg)
 
-    # Public health (no key)
+    # Public health (no key) — paper-IB verifier cares about the execution path
+    # specifically, so prefer ibkr_execution_connected and fall back to the
+    # legacy ibkr_connected (OR of execution + data) for older engines.
     try:
         r = httpx.get(f"{base}/health", timeout=10.0)
         body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
         ok = r.status_code == 200
-        ib = body.get("ibkr_connected")
+        ib_exec = body.get("ibkr_execution_connected")
+        ib_data = body.get("ibkr_data_connected")
+        ib_legacy = body.get("ibkr_connected")
+        ib = ib_exec if ib_exec is not None else ib_legacy
         results["checks"].append(
             {
                 "name": "GET /health",
                 "ok": ok,
                 "status_code": r.status_code,
-                "ibkr_connected": ib,
+                "ibkr_execution_connected": ib_exec,
+                "ibkr_data_connected": ib_data,
+                "ibkr_connected": ib_legacy,
             }
         )
-        print(f"GET /health -> {r.status_code} ibkr_connected={ib}")
+        print(
+            f"GET /health -> {r.status_code} "
+            f"execution={ib_exec} data={ib_data} legacy={ib_legacy} (effective={ib})"
+        )
     except Exception as e:
         results["checks"].append({"name": "GET /health", "ok": False, "error": str(e)})
         print(f"GET /health FAILED: {e}")

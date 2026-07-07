@@ -4,11 +4,16 @@ Comprehensive endpoint verification test
 Validates that all 80+ API routes are correctly wired into the FastAPI application.
 This test imports the app and inspects all registered routes without starting the server.
 
-Reference: engine/main.py contains all router includes
+**P3-1 (execution spine):** ``critical_routes`` below mirrors high-traffic paths from
+``dashboard/lib/api.ts`` (``fetchEngine`` / ``postEngine``) — health, pipeline, portfolio
+paper, safety, IB probe, watchlist scan. See ``docs/strategic/07_EXECUTION_SPINE.md`` P3-1.
+
+Reference: ``engine/main.py`` contains all router includes.
 """
 
 import os
 import sys
+import types
 from collections import defaultdict
 
 import pytest
@@ -26,9 +31,34 @@ def load_env():
                     os.environ[key] = value
 
 
+def _install_google_stub():
+    """Allow the engine Jarvis router to import in test environments without google-genai."""
+    fake_genai = types.ModuleType("google.genai")
+    fake_genai.Client = object
+
+    fake_yfinance = types.ModuleType("yfinance")
+
+    class _Ticker:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def history(self, *args, **kwargs):
+            raise RuntimeError("yfinance history is not used in route wiring tests")
+
+    fake_yfinance.Ticker = _Ticker
+
+    fake_google = types.ModuleType("google")
+    fake_google.genai = fake_genai
+
+    sys.modules["google"] = fake_google
+    sys.modules["google.genai"] = fake_genai
+    sys.modules["yfinance"] = fake_yfinance
+
+
 def test_routes_wired():
     """Test that all critical routes are registered"""
     load_env()
+    _install_google_stub()
 
     # Import the app
     sys.path.insert(0, os.path.dirname(__file__).replace("tests", ""))
@@ -58,16 +88,27 @@ def test_routes_wired():
     # Define critical routes that MUST exist
     critical_routes = {
         ("GET", "/health"): "health check endpoint",
+        ("GET", "/health/full"): "deep health for dashboard SystemMetricsPanel",
         ("GET", "/api/v1/health"): "v1 health check (if using prefix)",
         ("POST", "/pipeline/run"): "run trading pipeline",
+        ("GET", "/pipeline/status"): "AgentPipelineStatusWidget",
+        ("GET", "/pipeline/pending-approvals"): "dashboard approvals queue",
         ("GET", "/portfolio/summary"): "portfolio summary",
+        ("GET", "/portfolio/paper/positions"): "OpenPositionsWidget / command center",
+        ("GET", "/portfolio/stats/trading-days"): "distinct trading days (validation UI)",
+        ("GET", "/portfolio/stats/paper-phase-summary"): "dashboard paper phase widget",
         ("GET", "/safety/status"): "safety layer status",
+        ("GET", "/safety/circuit-breakers"): "RiskStatusWidget / degraded UX",
+        ("GET", "/ib/connection-test"): "ConnectionHealthCard",
+        ("GET", "/watchlist/scan"): "useChartData watchlist scan",
     }
 
     # Define additional expected routes (best-effort)
     expected_routes = {
         # Analysis
         ("GET", "/analysis/technical"): "technical analysis",
+        ("GET", "/jarvis/analyze"): "Jarvis quick analysis snapshot",
+        ("POST", "/jarvis/analyze"): "Jarvis quick analysis snapshot",
         # Backtest
         ("GET", "/backtest/results"): "backtest results",
         # Pipeline
@@ -76,8 +117,11 @@ def test_routes_wired():
         ("GET", "/options/module/status"): "options module status or similar",
         # Portfolio
         ("GET", "/portfolio/summary"): "portfolio summary",
-        # Validation
-        ("GET", "/validation/progress"): "validation progress",
+        # Validation (legacy path redirects; canonical is /paper/validation/progress)
+        ("GET", "/validation/progress"): "validation progress (redirects)",
+        ("GET", "/paper/validation/progress"): "paper validation progress (canonical)",
+        ("GET", "/paper/validation/approved-paper-gates"): "MCL/MNQ per-symbol validation gates",
+        ("GET", "/paper/validation/trades/closed"): "closed paper trades for dashboard /trades",
         # Safety
         ("GET", "/safety/status"): "safety status",
     }
@@ -147,6 +191,7 @@ def test_routes_wired():
 def test_route_methods_valid():
     """Test that all routes use valid HTTP methods"""
     load_env()
+    _install_google_stub()
 
     sys.path.insert(0, os.path.dirname(__file__).replace("tests", ""))
     from main import app
@@ -167,6 +212,7 @@ def test_router_imports_complete():
     import os
 
     load_env()
+    _install_google_stub()
 
     sys.path.insert(0, os.path.dirname(__file__).replace("tests", ""))
     from main import app
@@ -202,6 +248,25 @@ def test_router_imports_complete():
     print(
         f"\nRouters successfully imported: {len(router_names) - len(missing_routers)}/{len(router_names)}"
     )
+
+
+def test_jarvis_analyze_route_wiring():
+    """Jarvis quick-analysis route should be present once the engine mounts it."""
+    load_env()
+    _install_google_stub()
+
+    sys.path.insert(0, os.path.dirname(__file__).replace("tests", ""))
+    from main import app
+
+    found_routes = {
+        (method, route.path)
+        for route in app.routes
+        if hasattr(route, "path") and hasattr(route, "methods")
+        for method in route.methods
+    }
+
+    assert ("GET", "/jarvis/analyze") in found_routes
+    assert ("POST", "/jarvis/analyze") in found_routes
 
 
 if __name__ == "__main__":

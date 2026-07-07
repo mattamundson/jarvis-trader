@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useIBDataHealth } from "@/hooks/useIBDataHealth";
 import type { SWRResponse } from "swr";
 import {
   TrendingUp,
@@ -27,6 +28,8 @@ interface HealthData {
   kill_switch_active: boolean;
   uptime_seconds: number;
   ibkr_connected: boolean;
+  ibkr_execution_connected?: boolean | null;
+  ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
 }
@@ -251,19 +254,37 @@ function InstrumentsCard({
   livePrices: Record<string, number>;
   wsConnected: boolean;
 }) {
+  // Honesty: a live WS socket does NOT mean the served market data is live.
+  // When the IB data leg is degraded (serving a non-IBKR fallback tier —
+  // csv_cache / polygon / sqlite_cache), reflect the actual source instead of
+  // claiming LIVE. Mirrors useIBDataHealth's own signal (same as the degraded
+  // banner); hasSignal guards engine builds that lack the PR#68 fields.
+  const { isDataDegraded, dataSource, hasSignal } = useIBDataHealth();
+  const dataDegraded = hasSignal && isDataDegraded;
+  const statusLabel = !wsConnected ? "OFFLINE" : dataDegraded ? "STALE" : "LIVE";
+  const dotClass = !wsConnected
+    ? "bg-slate-700"
+    : dataDegraded
+      ? "bg-amber-500 animate-pulse"
+      : "bg-green-500 animate-pulse";
+  const statusTitle = dataDegraded
+    ? `Serving ${(dataSource ?? "fallback").toUpperCase()} fallback — not live IBKR data`
+    : undefined;
+
   return (
     <Card className="bg-slate-900/60 border border-cyan-900/40">
       <CardHeader className="pb-1.5 pt-3 px-4">
         <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
           <Activity className="w-3 h-3" />
           ACTIVE INSTRUMENTS
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-slate-600">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                wsConnected ? "bg-green-500 animate-pulse" : "bg-slate-700"
-              }`}
-            />
-            {wsConnected ? "LIVE" : "OFFLINE"}
+          <span
+            className={`ml-auto flex items-center gap-1 text-[10px] ${
+              dataDegraded ? "text-amber-500" : "text-slate-600"
+            }`}
+            title={statusTitle}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+            {statusLabel}
           </span>
         </CardTitle>
       </CardHeader>
@@ -684,7 +705,7 @@ export default function OverviewTab({ data }: OverviewTabProps) {
 
   // ── WebSocket: live price ticks for all instruments ───────────────────────
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
-  const { connected: wsConnected } = useWebSocket((event) => {
+  const { isConnected: wsConnected } = useWebSocket(undefined, (event) => {
     if (event.type === "price_update") {
       setLivePrices((prev) => ({ ...prev, [event.symbol]: event.price }));
     }

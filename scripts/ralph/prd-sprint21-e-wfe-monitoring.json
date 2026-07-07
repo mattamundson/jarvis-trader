@@ -1,0 +1,58 @@
+{
+  "project": "Sprint 21-E: Walk-Forward Efficiency Live Monitor + LLM Pre-Filter",
+  "branchName": "feat/sprint21-wfe-monitor",
+  "description": "Track whether live paper performance is converging with WFE projections (MCL WFE=0.82, MNQ WFE=0.57). Add LLM pre-filter to skip pipeline when STC is mid-range — cuts API costs 60-70% with zero signal quality impact.",
+  "userStories": [
+    {
+      "id": "US-2140",
+      "title": "LLM pre-filter: skip pipeline when STC is mid-range + flat",
+      "description": "As a system, I want a fast technical pre-check before the 5-agent pipeline so that API costs are not wasted on bars where the STC oscillator is in neutral territory.",
+      "acceptanceCriteria": [
+        "engine/agents/pipeline.py (or scanner) has pre_filter_signal() function",
+        "pre_filter_signal() returns True (run pipeline) only when STC < OS+10 or STC > OB-10",
+        "OS=15, OB=83 from engine/config.py (not hardcoded in pre-filter)",
+        "When pre-filter returns False, pipeline is skipped and result is {'action':'HOLD','reason':'pre_filter_mid_range'}",
+        "Pre-filter decision is logged at DEBUG level",
+        "Pipeline run stats track pre_filter_skips count",
+        "ruff check engine/agents/ passes",
+        "pytest tests/ -k 'not integration' passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "STC mid-range (OS+10 to OB-10 = 25-73) means flat market. Full 5-agent pipeline ($0.15-0.40/run) on flat bars is pure waste. Pre-filter adds ~1ms latency and saves ~70% of API calls."
+    },
+    {
+      "id": "US-2141",
+      "title": "WFE live tracking: store weekly PF/Sharpe snapshots to DB",
+      "description": "As a trader, I want weekly walk-forward snapshots stored so that I can compare live paper performance against WFE projections and halt if divergence is detected.",
+      "acceptanceCriteria": [
+        "wfe_snapshots table created in migration (id, symbol, week_start, trades, win_rate, profit_factor, sharpe, max_dd, created_at)",
+        "POST /wfe/snapshot endpoint computes current period stats from paper_trades and writes to wfe_snapshots",
+        "GET /wfe/snapshots returns all snapshots with divergence flag vs WFE baseline (MCL=0.82, MNQ=0.57)",
+        "Divergence alert: if live PF < (WFE_baseline * 0.5) after >= 10 trades, flag 'DIVERGENCE_WARNING'",
+        "EOD scheduler triggers POST /wfe/snapshot on Fridays (weekly cadence)",
+        "ruff check passes",
+        "pytest tests/ -k 'not integration' passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "MCL WFE=0.82 means live paper PF should track closely. If live PF < 0.41 (50% of WFE) after week 2, that's a halt signal. Currently flying blind with no live WFE tracking."
+    },
+    {
+      "id": "US-2142",
+      "title": "Dashboard: WFE Monitor widget on validation gates page",
+      "description": "As a trader, I want a WFE convergence chart on the validation page so that I can see at a glance whether the live paper system is on track.",
+      "acceptanceCriteria": [
+        "dashboard/app/paper/validation/gates/page.tsx includes WFE monitor section",
+        "Displays table: Week, Symbol, Trades, PF, Sharpe, vs WFE Baseline, Status",
+        "Status uses Badge: 'bull' (PF >= WFE*0.8), 'warn' (PF >= WFE*0.5), 'bear' (PF < WFE*0.5)",
+        "Data fetched via fetchEngine('/wfe/snapshots')",
+        "pnpm run build passes (zero TypeScript errors)",
+        "No hardcoded localhost:8010"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Extends existing ValidationGatesWidget on /paper/validation/gates. Add WFE section below the existing gate checklist. Keep same dark terminal aesthetic."
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "project": "JARVIS TRADER — Agent 4: Three-Instrument Dashboard",
+  "branchName": "ralph/three-instrument-dashboard",
+  "description": "Extend the validation dashboard for three instruments (MCL, MNQ, MES). Add MES row with WFE-gated pending status. Add portfolio P&L chart. Add correlation exposure indicator to command center. All changes must pass pnpm build.",
+  "userStories": [
+    {
+      "id": "US-DASH-001",
+      "title": "Audit current validation page structure",
+      "description": "As a developer, I want to understand the current validation/page.tsx structure before modifying it (it's 1,603 lines).",
+      "acceptanceCriteria": [
+        "Read dashboard/app/validation/page.tsx",
+        "Identify: where instrument rows are defined, how WFE data is fetched, what API endpoints it calls",
+        "Read dashboard/lib/api.ts to find relevant fetch functions",
+        "Document in progress.txt: component structure, data flow, badge variants in use",
+        "No code changes — analysis only",
+        "Verify: badge variants used must be from strict set: 'bull' | 'bear' | 'warn' | 'info' | 'neutral'"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "DO NOT add new badge variants. Only use: bull, bear, warn, info, neutral"
+    },
+    {
+      "id": "US-DASH-002",
+      "title": "Add MES row to validation scorecard",
+      "description": "As a trader, I want to see MES in the validation scorecard with its current WFE status and a clear indicator that it is pending re-validation.",
+      "acceptanceCriteria": [
+        "MES row added to instrument scorecard table",
+        "MES status shows: WFE=0.09, Status='Revalidating', badge variant='warn'",
+        "Row includes fields: Symbol, Timeframe, WFE, PF, Sharpe, WR, Status",
+        "When MES achieves WFE≥0.40 (future), row transitions to 'APPROVED' with badge='bull'",
+        "Row fetches MES data from the same API endpoint as MCL/MNQ (or shows static data if endpoint not yet available)",
+        "cd dashboard && pnpm run build — passes",
+        "cd dashboard && ./node_modules/.bin/tsc --noEmit — 0 errors",
+        "Commit: feat: add MES row to validation scorecard with revalidating status"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Use 'use client' only if needed for interactivity. Default to Server Component."
+    },
+    {
+      "id": "US-DASH-003",
+      "title": "Add portfolio-level P&L chart",
+      "description": "As a trader, I want a combined portfolio P&L chart that shows cumulative performance across all active instruments.",
+      "acceptanceCriteria": [
+        "Add portfolio P&L chart to validation page or command-center page (whichever is more appropriate based on audit)",
+        "Chart shows cumulative P&L by instrument (MCL, MNQ) as separate lines plus combined total",
+        "Placeholder MES line shown as dashed/inactive until WFE gate passes",
+        "Chart uses recharts (already in project)",
+        "Data fetched from GET /paper/performance or existing performance endpoint",
+        "If no combined endpoint exists, fetch per-instrument and combine on client",
+        "cd dashboard && pnpm run build — passes",
+        "Commit: feat: add portfolio P&L chart with per-instrument breakdown"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Check what performance endpoints exist: grep -r 'performance' engine/routers/ --include='*.py' -l"
+    },
+    {
+      "id": "US-DASH-004",
+      "title": "Add correlation exposure indicator to command center",
+      "description": "As a trader, I want to see current portfolio correlation exposure on the command center so I know when the MNQ+MES size reduction rule is active.",
+      "acceptanceCriteria": [
+        "Read dashboard/app/command-center/page.tsx to understand current layout (it's 1,286 lines)",
+        "Add a 'Portfolio Correlation' indicator widget",
+        "Widget shows: instrument pairs, correlation values, whether reduction is active",
+        "Fetches from GET /portfolio/risk (added by Agent 3)",
+        "If Agent 3's endpoint not yet available: add UI with loading/unavailable state gracefully",
+        "Widget uses badge variant 'warn' when correlation reduction is active, 'neutral' otherwise",
+        "cd dashboard && pnpm run build — passes",
+        "Commit: feat: add portfolio correlation exposure widget to command center"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "The /portfolio/risk endpoint is being built by Agent 3 concurrently. Use SWR with a fallback state if endpoint returns 404."
+    },
+    {
+      "id": "US-DASH-005",
+      "title": "Add MES re-validation progress tracker",
+      "description": "As a trader, I want to see MES experiment progress on the dashboard — how many of 50 parameter combinations have been tested and what the best WFE so far is.",
+      "acceptanceCriteria": [
+        "Add a 'MES Re-Validation' progress section to validation page",
+        "Shows: experiments run (e.g. 25/50), best WFE found so far, gate target (WFE≥0.40)",
+        "Progress bar showing experiment completion",
+        "Data read from GET /experiments/mes/status (check if endpoint exists from RL work, else add it)",
+        "If endpoint not yet available: shows static 'Campaign in progress' state",
+        "cd dashboard && pnpm run build — passes",
+        "Commit: feat: add MES re-validation progress tracker to validation page"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Check: GET /experiments/mes/status was added in feat: US-1705. May already exist."
+    },
+    {
+      "id": "US-DASH-006",
+      "title": "Final build verification and visual QA",
+      "description": "As a developer, I want all dashboard changes to build cleanly with zero TypeScript errors and visually correct layout.",
+      "acceptanceCriteria": [
+        "cd dashboard && pnpm run build — 16/16 routes, 0 TypeScript errors",
+        "cd dashboard && ./node_modules/.bin/tsc --noEmit — 0 errors",
+        "All badge variants used are from strict set: bull | bear | warn | info | neutral",
+        "No hardcoded localhost:8010 — all API calls via fetchEngine/postEngine",
+        "No inline styles — Tailwind only",
+        "Commit: chore: dashboard final build verification"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 Multi-Timeframe STC Confirmation Analyzer
 
 Checks STC (Schaff Trend Cycle) signal alignment across 1h, 4h, and daily
-timeframes. Uses yfinance with a 30-minute per-timeframe cache.
+timeframes. Uses MarketDataManager with a 30-minute per-timeframe cache.
 
 Fallback: stub data (50 / NEUTRAL) when network unavailable.
 """
@@ -21,13 +21,8 @@ _STC_OB = 83.0
 _CACHE_TTL = {"1h": 1800, "4h": 3600, "1d": 14400}
 _cache: dict = {}
 
-_SYMBOL_MAP = {
-    "MES": "ES=F",
-    "MNQ": "NQ=F",
-    "MCL": "CL=F",
-    "SPY": "SPY",
-    "QQQ": "QQQ",
-}
+# Futures symbols recognized as is_futures=True
+_FUTURES_SYMBOLS = {"MES", "MNQ", "MCL", "MGC", "MHG", "MYM", "M2K"}
 
 
 @dataclass
@@ -90,8 +85,9 @@ def _to_signal(v: float) -> str:
     return "NEUTRAL"
 
 
-def _fetch_tf(yf_sym: str, tf: str) -> TFSignal:
-    key = f"{yf_sym}_{tf}"
+async def _fetch_tf_async(symbol: str, tf: str, data_manager=None) -> TFSignal:
+    """Fetch bars for a single timeframe via data_manager and compute STC."""
+    key = f"{symbol}_{tf}"
     now = time.time()
     ttl = _CACHE_TTL.get(tf, 1800)
 
@@ -100,14 +96,23 @@ def _fetch_tf(yf_sym: str, tf: str) -> TFSignal:
         s = hit["sig"]
         return TFSignal(s.timeframe, s.stc_value, s.stc_signal, s.price, "cache")
 
-    try:
-        import yfinance as yf
+    if data_manager is None:
+        return TFSignal(tf, 50.0, "NEUTRAL", 0.0, "stub", "data_manager not available")
 
-        period, interval = {"1h": ("60d", "1h"), "4h": ("120d", "1h"), "1d": ("365d", "1d")}[tf]
-        hist = yf.Ticker(yf_sym).history(period=period, interval=interval)
-        if hist.empty or len(hist) < 60:
-            raise ValueError(f"Only {len(hist)} bars")
-        closes = hist["Close"].tolist()
+    try:
+        # For 4h we fetch 1h bars and downsample; 1d fetches daily bars
+        fetch_tf = "1h" if tf in ("1h", "4h") else "1d"
+        lookback = {"1h": 60, "4h": 120, "1d": 365}[tf]
+        is_futures = symbol.upper() in _FUTURES_SYMBOLS
+
+        hist = await data_manager.get_bars(
+            symbol, lookback_days=lookback, timeframe=fetch_tf, is_futures=is_futures
+        )
+        if hist is None or hist.empty or len(hist) < 60:
+            raise ValueError(f"Only {len(hist) if hist is not None else 0} bars")
+
+        hist.columns = [c.lower() for c in hist.columns]
+        closes = hist["close"].tolist()
         if tf == "4h":
             closes = [closes[i] for i in range(3, len(closes), 4)]
         stc_val = _compute_stc(closes)
@@ -118,9 +123,13 @@ def _fetch_tf(yf_sym: str, tf: str) -> TFSignal:
         return TFSignal(tf, 50.0, "NEUTRAL", 0.0, "stub", str(e)[:80])
 
 
-def analyze_mtf(symbol: str) -> MTFState:
-    yf_sym = _SYMBOL_MAP.get(symbol.upper(), symbol)
-    signals = [_fetch_tf(yf_sym, tf) for tf in ("1h", "4h", "1d")]
+async def analyze_mtf(symbol: str, data_manager=None) -> MTFState:
+    """Analyze multi-timeframe STC alignment for a symbol."""
+    signals = []
+    for tf in ("1h", "4h", "1d"):
+        sig = await _fetch_tf_async(symbol, tf, data_manager)
+        signals.append(sig)
+
     live = [s for s in signals if s.source != "stub"]
     bull = sum(1 for s in live if s.stc_signal == "BULLISH")
     bear = sum(1 for s in live if s.stc_signal == "BEARISH")

@@ -1,0 +1,82 @@
+{
+  "symbol": "MCL",
+  "family": "meanrev_regime",
+  "rank": 1,
+  "params": {
+    "bb_period": 50,
+    "bb_std": 2.0,
+    "rsi_long": 30.0,
+    "rsi_short": 70.0,
+    "stop_atr_mult": 1.5,
+    "regime_filter_mode": "bbwidth",
+    "regime_filter_bbwidth_pct": 30.0,
+    "regime_filter_adx_threshold": 20.0
+  },
+  "interval": "1h",
+  "start": "2024-06-01",
+  "end": "2026-03-27",
+  "elapsed_sec": 34.7,
+  "scenarios": [
+    {
+      "scenario": "optimistic",
+      "commission_mult": 0.5,
+      "slippage_mult": 0.5,
+      "commission": 0.425,
+      "slippage_ticks": 1,
+      "pf": 1.556,
+      "wr": 44.07,
+      "total_trades": 59,
+      "net_pnl": 1133.36,
+      "ret_pct": 11.33
+    },
+    {
+      "scenario": "baseline",
+      "commission_mult": 1.0,
+      "slippage_mult": 1.0,
+      "commission": 0.85,
+      "slippage_ticks": 1,
+      "pf": 1.524,
+      "wr": 44.07,
+      "total_trades": 59,
+      "net_pnl": 1083.21,
+      "ret_pct": 10.83
+    },
+    {
+      "scenario": "realistic",
+      "commission_mult": 2.0,
+      "slippage_mult": 2.0,
+      "commission": 1.7,
+      "slippage_ticks": 2,
+      "pf": 1.395,
+      "wr": 44.07,
+      "total_trades": 59,
+      "net_pnl": 864.91,
+      "ret_pct": 8.65
+    },
+    {
+      "scenario": "stressed",
+      "commission_mult": 4.0,
+      "slippage_mult": 3.0,
+      "commission": 3.4,
+      "slippage_ticks": 3,
+      "pf": 1.231,
+      "wr": 44.07,
+      "total_trades": 59,
+      "net_pnl": 546.31,
+      "ret_pct": 5.46
+    },
+    {
+      "scenario": "catastrophic",
+      "commission_mult": 8.0,
+      "slippage_mult": 5.0,
+      "commission": 6.8,
+      "slippage_ticks": 5,
+      "pf": 0.967,
+      "wr": 44.07,
+      "total_trades": 59,
+      "net_pnl": -90.89,
+      "ret_pct": -0.91
+    }
+  ],
+  "edge_survives_through": "stressed"
+}

@@ -63,6 +63,11 @@ def _detect_rth_open_bar(df: pd.DataFrame) -> pd.Series:
     Handles both timezone-aware and timezone-naive DatetimeIndex.
     Assumes index is already in or convertible to Eastern Time.
     """
+    # Sprint A / B3 fix: defensive DatetimeIndex normalization prevents crash
+    # when merging tz-aware IB bars with tz-naive backtest frames.
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+
     idx = df.index
 
     if hasattr(idx, "tz") and idx.tz is not None:

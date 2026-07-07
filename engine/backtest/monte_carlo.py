@@ -16,6 +16,7 @@ from typing import List
 import numpy as np
 
 from backtest.backtester import BacktestResult, Trade
+from backtest.contract_specs import CONTRACT_SPECS
 
 # ---------------------------------------------------------------------------
 # Core simulation
@@ -23,22 +24,9 @@ from backtest.backtester import BacktestResult, Trade
 
 
 def _get_tick_value(symbol: str) -> float:
-    """Get tick value in dollars for a given symbol.
-
-    Args:
-        symbol: Futures symbol (MES, MNQ, SPY, etc.)
-
-    Returns:
-        Dollar value per tick
-    """
-    tick_values = {
-        "MES": 1.25,  # Micro E-mini S&P 500
-        "MNQ": 0.50,  # Micro E-mini Nasdaq-100
-        "SPY": 0.01,  # SPY per-share resolution
-        "ES": 50.0,  # E-mini S&P 500
-        "NQ": 20.0,  # E-mini Nasdaq-100
-    }
-    return tick_values.get(symbol, 0.01)
+    """Dollar value of one tick for *symbol* — delegates to CONTRACT_SPECS."""
+    spec = CONTRACT_SPECS.get(symbol.upper())
+    return spec.tick_value if spec is not None else 0.01
 
 
 def _compute_sharpe(equity: np.ndarray, ann_factor: float = 252.0) -> float:
@@ -222,6 +210,388 @@ def run_monte_carlo(
             "expected_shortfall": round(expected_shortfall, 2),
             "worst_case_max_drawdown": round(float(np.percentile(max_dds, 5)), 2),
         },
+        "verdict": verdict,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap primitives (Tier A statistical hardening)
+# ---------------------------------------------------------------------------
+#
+# `run_monte_carlo` answers "given the observed multiset of PnLs, what
+# drawdown path could we have seen under a different trade order?"
+# The bootstrap functions below answer a different question:
+#   "if the trade-generating process produced a new sample of size N, what
+#    PF / Sharpe / max-DD would we see?"
+#
+# Permutation (shuffle without replacement) preserves the exact multiset.
+# Bootstrap (resample with replacement) approximates the sampling
+# distribution of the statistic. Both belong in this module under distinct
+# names so downstream callers can pick the question that matches their need.
+#
+# Moving-block bootstrap is added for strategies where trade PnLs are
+# serially correlated (mean-reversion in particular). Default block length
+# is sqrt(N) — a standard finite-sample rule of thumb from Politis-Romano.
+
+
+def _pf_from_pnls(pnls: np.ndarray) -> float:
+    """Profit factor from a pnl array. Returns inf if no losses, 0 if no wins."""
+    wins = pnls[pnls > 0].sum()
+    losses = -pnls[pnls < 0].sum()  # absolute value
+    if losses == 0:
+        return float("inf") if wins > 0 else 0.0
+    return float(wins / losses)
+
+
+def bootstrap_pf(
+    pnls: list[float] | np.ndarray,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Bootstrap a 95% confidence interval on profit factor.
+
+    Resamples the pnl list WITH REPLACEMENT n_resamples times and recomputes
+    PF on each resample. The resulting distribution approximates the sampling
+    distribution of PF given the observed trade-generating process.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        n_resamples: bootstrap iterations
+        seed: RNG seed for reproducibility
+
+    Returns:
+        {median_pf, pf_ci_95_low, pf_ci_95_high, p_positive_edge, n_trades}
+        p_positive_edge = fraction of bootstrap resamples with PF > 1.0
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n == 0:
+        return {
+            "median_pf": 0.0,
+            "pf_ci_95_low": 0.0,
+            "pf_ci_95_high": 0.0,
+            "p_positive_edge": 0.0,
+            "n_trades": 0,
+        }
+
+    rng = np.random.default_rng(seed)
+    pfs = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        sample = pnls_arr[rng.integers(0, n, size=n)]
+        pfs[i] = _pf_from_pnls(sample)
+
+    # Replace inf (no-losses resamples) with a large finite sentinel so
+    # percentiles remain meaningful. np.percentile handles inf poorly.
+    finite = pfs[np.isfinite(pfs)]
+    if len(finite) == 0:
+        median_pf = float("inf")
+        ci_low = float("inf")
+        ci_high = float("inf")
+    else:
+        median_pf = float(np.median(finite))
+        ci_low = float(np.percentile(finite, 2.5))
+        ci_high = float(np.percentile(finite, 97.5))
+
+    p_positive_edge = float(np.mean(pfs > 1.0))
+
+    return {
+        "median_pf": round(median_pf, 4),
+        "pf_ci_95_low": round(ci_low, 4),
+        "pf_ci_95_high": round(ci_high, 4),
+        "p_positive_edge": round(p_positive_edge, 4),
+        "n_trades": n,
+    }
+
+
+def moving_block_bootstrap(
+    pnls: list[float] | np.ndarray,
+    n_resamples: int = 10_000,
+    block_size: int | None = None,
+    seed: int = 42,
+) -> dict:
+    """Moving-block bootstrap preserving short-run serial correlation.
+
+    Instead of resampling individual trades (IID assumption), sample blocks of
+    contiguous trades with replacement. This preserves serial-correlation
+    structure important for mean-reversion strategies, where sequential
+    trades are NOT independent.
+
+    Args:
+        pnls: per-trade PnL values
+        n_resamples: bootstrap iterations
+        block_size: contiguous-block length. Defaults to ceil(sqrt(N)).
+        seed: RNG seed
+
+    Returns:
+        {median_pf, pf_ci_95_low, pf_ci_95_high, p_positive_edge, block_size, n_trades}
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n == 0:
+        return {
+            "median_pf": 0.0,
+            "pf_ci_95_low": 0.0,
+            "pf_ci_95_high": 0.0,
+            "p_positive_edge": 0.0,
+            "block_size": 0,
+            "n_trades": 0,
+        }
+
+    if block_size is None:
+        block_size = max(1, int(np.ceil(np.sqrt(n))))
+    block_size = min(block_size, n)
+
+    rng = np.random.default_rng(seed)
+    n_blocks = int(np.ceil(n / block_size))
+    max_start = n - block_size + 1
+
+    pfs = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        starts = rng.integers(0, max_start, size=n_blocks)
+        sample = np.concatenate([pnls_arr[s : s + block_size] for s in starts])[:n]
+        pfs[i] = _pf_from_pnls(sample)
+
+    finite = pfs[np.isfinite(pfs)]
+    if len(finite) == 0:
+        median_pf, ci_low, ci_high = float("inf"), float("inf"), float("inf")
+    else:
+        median_pf = float(np.median(finite))
+        ci_low = float(np.percentile(finite, 2.5))
+        ci_high = float(np.percentile(finite, 97.5))
+    p_positive_edge = float(np.mean(pfs > 1.0))
+
+    return {
+        "median_pf": round(median_pf, 4),
+        "pf_ci_95_low": round(ci_low, 4),
+        "pf_ci_95_high": round(ci_high, 4),
+        "p_positive_edge": round(p_positive_edge, 4),
+        "block_size": block_size,
+        "n_trades": n,
+    }
+
+
+def bootstrap_sharpe(
+    pnls: list[float] | np.ndarray,
+    initial_capital: float = 10_000.0,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+    ann_factor: float = 252.0,
+) -> dict:
+    """Bootstrap a 95% confidence interval on Sharpe ratio.
+
+    Sharpe is computed from the equity curve that results from applying the
+    resampled PnL sequence, matching `_compute_sharpe` convention in this
+    module.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        initial_capital: starting equity for Sharpe normalization
+        n_resamples: bootstrap iterations
+        seed: RNG seed
+        ann_factor: annualization factor (252 trading days is the convention)
+
+    Returns:
+        {median_sharpe, sharpe_ci_95_low, sharpe_ci_95_high, p_positive_sharpe, n_trades}
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n < 2:
+        return {
+            "median_sharpe": 0.0,
+            "sharpe_ci_95_low": 0.0,
+            "sharpe_ci_95_high": 0.0,
+            "p_positive_sharpe": 0.0,
+            "n_trades": n,
+        }
+
+    rng = np.random.default_rng(seed)
+    sharpes = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        sample = pnls_arr[rng.integers(0, n, size=n)]
+        equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(sample)])
+        sharpes[i] = _compute_sharpe(equity, ann_factor=ann_factor)
+
+    return {
+        "median_sharpe": round(float(np.median(sharpes)), 4),
+        "sharpe_ci_95_low": round(float(np.percentile(sharpes, 2.5)), 4),
+        "sharpe_ci_95_high": round(float(np.percentile(sharpes, 97.5)), 4),
+        "p_positive_sharpe": round(float(np.mean(sharpes > 0)), 4),
+        "n_trades": n,
+    }
+
+
+def bootstrap_win_rate(
+    pnls: list[float] | np.ndarray,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Bootstrap a 95% confidence interval on win rate (fraction of trades with PnL > 0).
+
+    Complement to the Deflated Sharpe: DSR is a risk-adjusted-RETURN statistic, so
+    a strategy carried by a few large outlier wins can still pass it. The win-rate
+    CI lower bound binds exactly there — it measures how *reliably* the strategy
+    wins, independent of win size. Resamples the per-trade win/loss outcomes WITH
+    REPLACEMENT and reports the 2.5th percentile as the lower bound.
+
+    Args:
+        pnls: per-trade PnL values (USD); a "win" is pnl > 0 (breakeven is not a win)
+        n_resamples: bootstrap iterations
+        seed: RNG seed
+
+    Returns:
+        {win_rate, win_rate_ci_95_low, win_rate_ci_95_high, n_trades}
+        Fail-safe (all 0.0) when fewer than 2 trades exist.
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n < 2:
+        return {
+            "win_rate": 0.0,
+            "win_rate_ci_95_low": 0.0,
+            "win_rate_ci_95_high": 0.0,
+            "n_trades": n,
+        }
+
+    wins = (pnls_arr > 0.0).astype(float)
+    rng = np.random.default_rng(seed)
+    rates = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        rates[i] = float(np.mean(wins[rng.integers(0, n, size=n)]))
+
+    return {
+        "win_rate": round(float(np.mean(wins)), 4),
+        "win_rate_ci_95_low": round(float(np.percentile(rates, 2.5)), 4),
+        "win_rate_ci_95_high": round(float(np.percentile(rates, 97.5)), 4),
+        "n_trades": n,
+    }
+
+
+def bootstrap_max_dd(
+    pnls: list[float] | np.ndarray,
+    initial_capital: float = 10_000.0,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Permutation distribution of max drawdown.
+
+    Max drawdown is path-dependent, so the meaningful question is "under
+    alternative trade orders, what's the worst DD we could have seen?"
+    This is the same question `run_monte_carlo` answers but exposed as a
+    primitive that works on a bare pnl list — no BacktestResult needed.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        initial_capital: starting equity for DD scaling
+        n_resamples: permutation iterations
+        seed: RNG seed
+
+    Returns:
+        {observed_max_dd_pct, mc_50th, mc_95th, mc_99th, n_trades}
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n < 2:
+        return {
+            "observed_max_dd_pct": 0.0,
+            "mc_50th": 0.0,
+            "mc_95th": 0.0,
+            "mc_99th": 0.0,
+            "n_trades": n,
+        }
+
+    observed_equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(pnls_arr)])
+    observed_dd = _compute_max_dd(observed_equity)
+
+    rng = np.random.default_rng(seed)
+    dds = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        shuffled = rng.permutation(pnls_arr)
+        equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(shuffled)])
+        dds[i] = _compute_max_dd(equity)
+
+    return {
+        "observed_max_dd_pct": round(observed_dd, 4),
+        "mc_50th": round(float(np.percentile(dds, 50)), 4),
+        "mc_95th": round(float(np.percentile(dds, 95)), 4),
+        "mc_99th": round(float(np.percentile(dds, 99)), 4),
+        "n_trades": n,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Slippage stress test
+# ---------------------------------------------------------------------------
+
+
+def run_slippage_stress(
+    result: BacktestResult,
+    symbol: str = "MES",
+    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+) -> dict:
+    """Measure how PF degrades as execution slippage increases.
+
+    For each extra-ticks scenario, adds (extra_ticks × tick_value) as a
+    fixed cost to every trade and recomputes PF. Identifies the breakeven
+    slippage — the number of extra ticks that drives PF to exactly 1.0.
+
+    Args:
+        result: BacktestResult with trades
+        symbol: instrument symbol for tick value lookup
+        extra_tick_scenarios: additional ticks per trade to stress-test
+
+    Returns:
+        {scenarios, breakeven_extra_ticks, breakeven_pf_at_1_tick, verdict}
+    """
+    tick_value = _get_tick_value(symbol)
+    pnls = np.array([t.pnl for t in result.trades], dtype=np.float64)
+    n = len(pnls)
+    if n == 0:
+        return {"scenarios": [], "breakeven_extra_ticks": None, "verdict": "NO_TRADES"}
+
+    scenarios = []
+    prev_pf = None
+    breakeven_ticks = None
+
+    for extra_ticks in extra_tick_scenarios:
+        added_cost = extra_ticks * tick_value  # $/contract/trade (one round-turn leg)
+        adjusted = pnls - added_cost
+        wins = adjusted[adjusted > 0]
+        losses = adjusted[adjusted <= 0]
+        gp = float(wins.sum()) if len(wins) else 0.0
+        gl = float(abs(losses.sum())) if len(losses) else 0.0
+        pf = gp / gl if gl > 0 else float("inf")
+        profitable = pf > 1.0
+        scenarios.append(
+            {
+                "extra_ticks": extra_ticks,
+                "added_cost_per_trade": round(added_cost, 2),
+                "pf": round(pf, 3),
+                "profitable": profitable,
+            }
+        )
+        # Linear interpolation for breakeven (where PF crosses 1.0)
+        if prev_pf is not None and prev_pf > 1.0 and pf <= 1.0 and breakeven_ticks is None:
+            frac = (prev_pf - 1.0) / (prev_pf - pf)
+            prev_ticks = scenarios[-2]["extra_ticks"]
+            breakeven_ticks = prev_ticks + frac * (extra_ticks - prev_ticks)
+        prev_pf = pf
+
+    # Verdict: how many extra ticks can this strategy absorb?
+    if breakeven_ticks is None:
+        verdict = "ROBUST"  # PF > 1.0 even at max stress scenario
+    elif breakeven_ticks >= 4:
+        verdict = "ADEQUATE"  # survives realistic spread widening
+    elif breakeven_ticks >= 2:
+        verdict = "MARGINAL"  # thin edge
+    else:
+        verdict = "FRAGILE"  # even normal execution variability kills it
+
+    return {
+        "symbol": symbol,
+        "tick_value": tick_value,
+        "n_trades": n,
+        "scenarios": scenarios,
+        "breakeven_extra_ticks": round(breakeven_ticks, 2) if breakeven_ticks is not None else None,
         "verdict": verdict,
     }
 

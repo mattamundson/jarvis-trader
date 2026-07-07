@@ -5,7 +5,7 @@ Helper functions to broadcast trading events to connected clients.
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from .manager import WebSocketManager
 
@@ -97,6 +97,37 @@ async def emit_circuit_breaker(breaker_name: str, triggered: bool, value: Option
         logger.info(f"Emitted circuit_breaker event: {breaker_name} = {triggered}")
     except Exception as e:
         logger.error(f"Error emitting circuit_breaker: {e}")
+
+
+async def emit_pending_approval_created(
+    approval_id: str,
+    symbol: str,
+    final_action: str,
+    *,
+    quantity: Optional[float] = None,
+    entry_price: Optional[float] = None,
+    extra: Optional[dict[str, Any]] = None,
+):
+    """Notify dashboards that a human-gated approval row was created."""
+    manager = _get_manager()
+    if not manager:
+        return
+    try:
+        payload: dict[str, Any] = {
+            "approval_id": approval_id,
+            "symbol": symbol,
+            "final_action": final_action,
+        }
+        if quantity is not None:
+            payload["quantity"] = quantity
+        if entry_price is not None:
+            payload["entry_price"] = entry_price
+        if extra:
+            payload.update(extra)
+        await manager.broadcast("pending_approval_created", payload)
+        logger.debug("Emitted pending_approval_created: %s → %s", symbol, approval_id[:8])
+    except Exception as e:
+        logger.error("Error emitting pending_approval_created: %s", e)
 
 
 async def emit_pipeline_complete(symbol: str, decision: str, timing: dict):

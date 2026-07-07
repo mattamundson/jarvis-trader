@@ -170,7 +170,7 @@ class ValidationChecker:
             std = statistics.stdev(daily_pnl)
             if std == 0:
                 return 0.0
-            return (mean / std) * (252**0.5)
+            return float((mean / std) * (252**0.5))
         except Exception:
             return 0.0
 

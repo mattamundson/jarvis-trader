@@ -1,0 +1,61 @@
+{
+  "project": "n-autoresearch Skill Integration for JARVIS TRADER",
+  "branchName": "feat/n-autoresearch-skill",
+  "description": "Install n-autoresearch as a Claude Code skill and create concept mapping showing how the autonomous ML experiment loop wraps the JARVIS backtester for iterative strategy improvement",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Install n-autoresearch as a Claude Code skill",
+      "description": "As JARVIS TRADER, I want n-autoresearch installed as a skill so that the experiment loop framework is available for strategy optimization",
+      "acceptanceCriteria": [
+        "SKILL.md copied to ~/.claude/skills/n-autoresearch/",
+        "Supporting docs (api-reference.md, repo-map.md, OPERATE-V4.md) copied",
+        "Skill triggers on relevant keywords (autoresearch, experiment loop, optimize strategy)"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Source: C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\n-autoresearch-skill\\"
+    },
+    {
+      "id": "US-002",
+      "title": "Create n-autoresearch concept mapping for JARVIS TRADER",
+      "description": "As JARVIS TRADER, I want a concept mapping doc (like paperclip-patterns.md) showing how n-autoresearch maps to trading system improvement",
+      "acceptanceCriteria": [
+        "n-autoresearch-patterns.md created in ~/.claude/skills/jarvis-trader/",
+        "Maps every n-autoresearch concept to a JARVIS equivalent",
+        "Includes concrete implementation plan for wrapping the backtester",
+        "Documents the adapted experiment loop (11 steps → trading version)",
+        "References existing jarvis-trader components (optimizer.py, rl_config.py, signals.py, backtester)",
+        "Identifies metrics: val_bpb → PF/Sharpe/WFE",
+        "Identifies experiment categories for trading (strategy params, regime filter, stop/target, entry timing, etc.)"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Model after paperclip-patterns.md structure"
+    },
+    {
+      "id": "US-003",
+      "title": "Update JARVIS TRADER skill SKILL.md to reference n-autoresearch",
+      "description": "As JARVIS TRADER, I want the main skill to reference n-autoresearch for experiment-driven optimization so that future sessions know it's available",
+      "acceptanceCriteria": [
+        "Context Files Reference table in SKILL.md updated with n-autoresearch-patterns.md entry",
+        "Brief mention in relevant section about strategy optimization"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Update MEMORY.md with n-autoresearch integration",
+      "description": "As a user, I want memory updated so future sessions know n-autoresearch is installed and how it relates to jarvis-trader",
+      "acceptanceCriteria": [
+        "MEMORY.md updated with n-autoresearch integration note",
+        "References the patterns file location"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

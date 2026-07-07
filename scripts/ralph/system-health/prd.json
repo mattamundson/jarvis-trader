@@ -1,0 +1,246 @@
+{
+  "project": "System Health: Fix Everything Broken + Top 10 Improvements",
+  "branchName": "master",
+  "description": "Full-system audit findings (2026-06-10). Phase 1: fix all broken items (B-stories). Phase 2: implement top-10 improvements (I-stories). Amo-gated items excluded: Anthropic credit top-up, SimpleFIN re-auth, Discord user token, GCP Marketplace enable.",
+  "userStories": [
+    {
+      "id": "B1",
+      "title": "Trader decision LLM call bypasses fallback chain (CRITICAL)",
+      "description": "engine/agents/trader.py:725-745 makes a raw httpx POST to api.anthropic.com, bypassing JarvisLLMClient Vertex->Gemini->OpenAI fallback. With Anthropic credits exhausted, EVERY trade decision fails 400 -> forced HOLD.",
+      "acceptanceCriteria": [
+        "Trader routes its decision call through self._llm.call() (JarvisLLMClient) with agent_name='trader'",
+        "Failure path still returns fail-safe HOLD (existing except preserved)",
+        "Existing trader tests pass; new test proves decision succeeds when anthropic raises credit-exhaustion and fallback returns content",
+        "ruff clean",
+        "Commit tagged [safety-review]"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Fixed 2026-06-10. trader.py:725 now self._llm.call(agent_name=trader). 85/85 trader tests. Source-guard test added."
+    },
+    {
+      "id": "B2",
+      "title": "fund_manager + risk_manager direct Anthropic POSTs bypass fallback",
+      "description": "engine/agents/fund_manager.py:236 and engine/agents/risk_manager.py:422 POST api.anthropic.com directly. Pipeline stages 4-5; same failure mode as B1.",
+      "acceptanceCriteria": [
+        "Both agents route through JarvisLLMClient.call() with proper agent_name",
+        "Fail-safe behavior on total LLM failure preserved",
+        "Existing tests pass + regression test for fallback routing",
+        "ruff clean, [safety-review] tag"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Fixed 2026-06-11. Both route through self._llm.call; fail-safe semantics kept (risk: approve+0.8 score; fund: qty<=1+human). 6 new tests in test_b2_llm_transport.py."
+    },
+    {
+      "id": "B3",
+      "title": "feature_flags table missing - flags registry broken at runtime",
+      "description": "Engine logs 'no such table: feature_flags' at startup. engine/flags/registry.py reads a table nothing creates. RL gate fails safe, but runtime flag toggling is broken.",
+      "acceptanceCriteria": [
+        "Registry ensures its table exists on first access",
+        "Engine startup no longer logs the no-such-table warning",
+        "RL gate evaluates the flag cleanly (still default-off)",
+        "test_feature_flags suite passes + cold-DB test"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Fixed 2026-06-11. _ensure_table() in FeatureFlags.__init__ (defensive, non-fatal). 4 real-SQLite cold-DB tests. Live verify after restart: no warning at boot."
+    },
+    {
+      "id": "B4",
+      "title": "Audit remaining direct-Anthropic agents; route live paths through client",
+      "description": "news_analyst.py:324, social_analyst.py:610, tail_risk_researcher.py:116, commentary_processor.py:312, managed_agent_bridge.py:310, bull/bear researchers reference direct POSTs. Route live pipeline paths through JarvisLLMClient; document intentional exceptions.",
+      "acceptanceCriteria": [
+        "Each direct POST either routed through client or documented in-code why direct",
+        "Graceful-fallback semantics kept",
+        "Tests pass, ruff clean"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Done 2026-06-11. commentary_processor: optional llm_client routed when present (live path via corey_auction_analyst injection); direct POST documented for standalone CLI/MCP/briefing. news/social already conditional-route. bull/bear already fixed. tail_risk + managed_bridge DARK by default (env-gated off) - documented, deferred. 71 corey tests + 4 new transport tests."
+    },
+    {
+      "id": "B5",
+      "title": "finance-sync failures are silent in its own log",
+      "description": "~/scripts/run-finance-sync.ps1: under ErrorActionPreference=Stop, 2>&1 capture of failing python raises NativeCommandError BEFORE Write-Log - failed runs leave no log line. SimpleFIN 403 itself is Amo-gated, but failures must be loudly logged.",
+      "acceptanceCriteria": [
+        "Failing sync writes a log line with exit code + redacted error",
+        "Successful sync logging unchanged",
+        "Verified by running the script (current 403 IS the failure fixture) and seeing the failure line in finance-sync.log"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Fixed 2026-06-11. Invoke-SyncModule helper: EAP=Continue around python calls, judge by LASTEXITCODE, bounded 600-char error tail, top-level FATAL catch. Verified live: simplefin exit=1 line written (was silent). Original archived to ~/Archive/2026/finance-sync-script/. SimpleFIN re-auth itself stays Amo-gated."
+    },
+    {
+      "id": "B6",
+      "title": "Quarantine RL-contaminated MES fidelity data (6/4-6/10)",
+      "description": "The ungated RL executor ran uncoordinated MES orders 2026-06-04 -> 06-10, contaminating execution-fidelity data. Mark/exclude that window so fidelity + calibration metrics do not train on poisoned samples.",
+      "acceptanceCriteria": [
+        "Locate fidelity sample storage; add exclusion for MES samples in the window",
+        "Exclusion is data-driven, not deletion - archive never delete",
+        "Fidelity metrics reflect the exclusion",
+        "Test covers the exclusion filter"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "VERIFIED CLEAN 2026-06-11, no quarantine needed: paper_trades has ZERO rows in 6/4-6/10 window (RL executor kept in-memory position, never wrote tracker); trade_outcomes sole row is 2026-04-17 MCL (pre-window); IB DUP662235 flat (no residual RL position). Contamination did not persist into any dataset fidelity/calibration reads. Building exclusion machinery for an empty set = dead code; closed with evidence."
+    },
+    {
+      "id": "B7",
+      "title": "Verify StrategyRD task healed post-SAC",
+      "description": "Jarvis-Trader-StrategyRD failed 0x1 on the SAC pandas DLL block. SAC off; import chain clean. Trigger once, confirm 0x0.",
+      "acceptanceCriteria": [
+        "Task triggered, completes, LastTaskResult=0x0",
+        "Log shows a real run (not early import death)"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Verified 2026-06-11: LastTaskResult=0x0, rd-2026-06-11.log 15.7KB with real gate evaluations (PASS mc_95th_dd 1.78). SAC heal confirmed on heavy backtest job."
+    },
+    {
+      "id": "I1",
+      "title": "LLM single-leg alarm in Discord digest",
+      "description": "primary_healthy=false ran silent for days. Add llm provider health to the daily Discord digest: active provider, primary health, fallback counts. WARN when single-leg.",
+      "acceptanceCriteria": [
+        "Digest payload includes llm provider block",
+        "WARNING log + digest flag when primary_healthy=false",
+        "Unit test with mocked health payload"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Done 2026-06-11. _assess_llm_health (pure) + _llm_provider_health (urllib fetch, best-effort) + llm_provider_health digest field + SINGLE-LEG WARNING. 4 unit tests. LIVE verified: real digest run emitted the alert against the degraded engine."
+    },
+    {
+      "id": "I2",
+      "title": "Verify + harden dashboard WS real-time path (403 premise was stale)",
+      "description": "Original premise (WS upgrade 403s without API key -> dashboard stuck on 5s polling) was STALE: PR #24 (fix/ws-events-403) already fixed it, and APIKeyMiddleware is BaseHTTPMiddleware (http scopes only) so the upgrade is keyless by design. Revised scope: live end-to-end verification + harden the remaining latent traps (localhost IPv6 fallbacks, misleading proxy comments).",
+      "acceptanceCriteria": [
+        "Live e2e proof: real browser on :3010 -> engine /ws/status connections >= 1",
+        "No localhost:8010 fallback anywhere in the dashboard WS path (IPv6 pitfall)",
+        "Comments no longer claim next start proxies WS upgrades (it does not)",
+        "pnpm run build passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Verified 2026-06-11: headless Chrome on http://127.0.0.1:3010/ -> /ws/status connections: 1 at t+4s; ws://127.0.0.1:8010/ws/events upgrades 101 keyless with 30s pings. The 06-03 'connections: 0' observation just meant no browser tab was open. Hardening commit 3a42030 (3 files, build green). lib/use-websocket.ts + lib/websocket-example.tsx are dead code (live consumers use hooks/useWebSocket via EngineWebSocketProvider in layout.tsx) -- surfaced for human removal, not deleted."
+    },
+    {
+      "id": "I3",
+      "title": "Engine startup invariant self-check",
+      "description": "One INFO block after lifespan boot: flags table OK, RL gate state, fidelity collector active, DO_NOT_TRADE list, paper/live mode, provider health. Makes silent-degradation visible at every boot.",
+      "acceptanceCriteria": [
+        "Self-check runs at end of lifespan startup, logs structured block",
+        "Failed invariant logs WARNING with specific item",
+        "Test covers the check function"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Commit 22923ee. Extended startup_checks.py (existing CheckResult pattern) with run_post_init_selfcheck/log_post_init_selfcheck: flags table, RL gate, fidelity collector (ALLOW_PAPER_SIMULATED_ORDERS revert detection), DO_NOT_TRADE list, trading mode, LLM provider chain legs. Hooked at end of _complete_background_init in main.py (try/except non-fatal). 11 new tests + 25 pre-existing green; ruff clean. Provider check is keys/flags only by design -- live credit health is /health + I1 digest."
+    },
+    {
+      "id": "I4",
+      "title": "Scheduled-task health rollup to Discord",
+      "description": "FinanceSync failed silently for 4 days. Daily rollup listing any Jarvis-* task with nonzero LastTaskResult so failures always reach Amo.",
+      "acceptanceCriteria": [
+        "Rollup enumerates failing enabled tasks with hex codes",
+        "Delivered via existing digest/alert channel",
+        "Runs daily without elevation"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "Commit 46e5d1e. Jarvis-TaskHealth-Daily already collects (check-task-health.ps1 -> task-health-latest.txt); digest now lifts that report into digest['task_health'] with failing names + hex codes, WARNs in run log, and alerts on a stale (>26h) report. 7 tests; live smoke flagged 5 currently-failing enabled tasks: Jarvis-DailyLiveReadiness 0x2, Jarvis-DailyPostTradeReport 0x1, Jarvis-FinanceSync 0x1 (pre-B5-fix run; should clear next 07:00 run), Jarvis-PaperCollect 0x1, Jarvis-VerdictRefresh-Weekly 0x1. FOLLOW-UP: triage the other 4 at end of loop."
+    },
+    {
+      "id": "I5",
+      "title": "Python orphan process hygiene",
+      "description": "35 python processes alive; history of 70+ orphans and rogue uvicorns squatting 8010. Classify current set, extend sweep rules for engine-venv strays.",
+      "acceptanceCriteria": [
+        "Current processes classified with evidence",
+        "Sweep covers the stray classes found",
+        "Allowlist prevents touching legit processes - tested"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "Classified all 31 python procs with parent-liveness evidence: 16 = live claude-session MCP pairs (venv-launcher shim -> real interpreter child), rest = services (sentinel/uvicorn/hermes/port_guardian/ollama-router parent-child shim pairs). Zero current MCP orphans. Extended ~/scripts/sweep-orphan-claude-procs.ps1 (hourly -Apply task Jarvis-OrphanProcSweep) with an opt-in python stray rule: cmdline must match engine discord mcp_server.py/personal_mcp_server.py, never-kill guard (uvicorn/port_guardian/sentinel/hermes_cli/ollama/main.py/pipeline/backtest), TCP-LISTEN holders skipped, dead-parent/PID-recycle + age rules unchanged. Original archived to ~/Archive/2026/orphan-sweep-script/. Tested: synthetic orphan flagged, live MCP/services untouched, PS5.1 parse OK, steady-state dry-run 0 python victims. Known cascade: venv-shim child reaped one pass after the shim (acceptable)."
+    },
+    {
+      "id": "I6",
+      "title": "Verify brier_30d_rolling wiring + lock writer/reader DB-path seam",
+      "description": "Original premise (field unwired) was STALE: /health -> _compute_brier_30d_rolling -> BrierCalibrationTracker.compute_rolling_brier is fully wired (30d window, cached, None-vs-0.0 semantics) with seeded-DB tests already in test_brier_calibration.py. Revised scope: live verification + regression test for the one untested seam (writer/reader agreeing on agent_feedback.db).",
+      "acceptanceCriteria": [
+        "/health returns numeric brier_30d_rolling when scored outcomes exist",
+        "Computation windowed 30d, cheap",
+        "Unit test with seeded outcomes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "Commit ff8519c. Live /health: field present, null -- honest scarcity (0 trade_outcomes rows in 30d window, 1 total from April; min_trades=5/agent). Becomes numeric automatically as closed paper trades accrue post-B1. Added test_writer_and_reader_share_db_path (the 2026-06-03 stale-DB bug class). 18/18 brier tests green."
+    },
+    {
+      "id": "I7",
+      "title": "Decouple analytics package from eager pandas import",
+      "description": "engine/analytics/__init__.py eagerly imports gate_v2_calibrator which imports pandas at module load - the calibration alarm died on the SAC block because of this. Lazy-load so stdlib-only consumers never depend on native DLLs.",
+      "acceptanceCriteria": [
+        "import engine.analytics.outcome_hygiene works where pandas import would fail (simulated via test)",
+        "No behavior change for pandas-dependent consumers",
+        "Tests pass, ruff clean"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "Commit 20cf737. analytics/__init__.py rewritten to PEP 562 lazy exports (_LAZY_EXPORTS map + module __getattr__ with caching + _LAZY_SUBMODULES). All existing consumers import submodules directly so zero behavior change. 4 fresh-interpreter subprocess tests incl. simulated-SAC pandas meta_path block proving analytics + outcome_hygiene import clean without pandas. 217 tests green incl. sacred safety suite; ruff clean."
+    },
+    {
+      "id": "I8",
+      "title": "Architecture regression test: no direct Anthropic POSTs",
+      "description": "Prevent B1/B2/B4 recurrence: test fails if engine/agents/** contains direct api.anthropic.com POSTs outside an allowlist.",
+      "acceptanceCriteria": [
+        "Test fails when a new direct POST is added to a non-allowlisted file",
+        "Allowlist documents intentional exceptions from B4",
+        "Runs in normal pytest suite"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": "Commit fee0239. tests/test_no_direct_anthropic_posts.py: 4 invariants (unallowlisted URL literals fail; allowlist hygiene; guarded fallbacks keep hasattr(self._llm, 'call') guard; decision agents trader/risk/fund may not mention the host at all). Allowlist: news_analyst + social_analyst + commentary_processor (guarded fallbacks), tail_risk_researcher + managed_agent_bridge (B4 dark paths), pipeline.py + hermes config_patcher (doc-only mentions). Detection proven live: first run caught the 2 doc-only files before allowlisting. AUDIT FINDING: news/social analysts were already client-first guarded -- no live bypass remained."
+    },
+    {
+      "id": "I9",
+      "title": "Gate-v2 verdict freshness monitor",
+      "description": "Stale verdicts mean trading on outdated edge estimates. Verdict age in daily digest; WARN when active symbol verdict older than 7 days.",
+      "acceptanceCriteria": [
+        "Digest reports per-symbol verdict age from engine/data/gate_v2_verdicts/*.json",
+        "WARN flag when age > 7d for an active symbol",
+        "Unit test with synthetic verdict files"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": "Commit 5b8d50c. digest['gate_verdict_freshness']: per-symbol newest-verdict age from JSON created_at (NOT mtime -- files are git-tracked), archive/ excluded, WARN on active symbol >7d or missing; actives env-overridable (JARVIS_ACTIVE_PAPER_SYMBOLS, default MES,MGC). Live smoke: MES 0.0d / MGC 2.6d fresh, alert=false; MCL/MNQ/M2K informational. 9 tests green."
+    },
+    {
+      "id": "I10",
+      "title": "pm2 crashloop alarm",
+      "description": "47x crash-loop went unnoticed. Alert via existing channel when jarvis-engine restart count climbs >3 in an hour.",
+      "acceptanceCriteria": [
+        "Watcher compares restart counts across runs and alerts on threshold",
+        "Alert verified by simulated counter delta",
+        "Installed task runs without elevation, battery-safe flags"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": "Watcher already existed (~/scripts/pm2-restart-watch.ps1, 15-min task) but its alert channel was DEAD: op item 'Telegram-Hermes-Bot' does not exist -> every alert silently skipped. Fixed creds resolution (engine/.env TELEGRAM_BOT_TOKEN -> 1P Telegram-Bot-Jarvis/password -> env; numeric chat 8676240038 -- the engine .env chat_id is a username the Bot API rejects), threshold 5->3/hr, and alert path now exits 0 (the old exit-2 is what put 0x2 in task history and tripped the I4 rollup). Original archived ~/Archive/2026/pm2-restart-watch/. Verified: simulated +4 delta fired ALERT (exit 0); real labeled test DM delivered (message_id 6171); task Limited + battery-safe; state reset for clean re-baseline. Script is outside the repo -- archive is the rollback."
+    },
+    {
+      "id": "B8",
+      "title": "Safety-layer test suite env leakage (3 pre-existing failures)",
+      "description": "tests/test_safety_layer.py has 3 failures on a clean tree (TestLiveTrading::test_live_trading_disabled_blocks, TestMultipleRuleInteraction::test_first_failure_stops_subsequent_checks, TestSubmitPaperOrder::test_safety_check_rejected_propagates) - live engine/.env leaks into test config so LIVE_TRADING gating asserts flip. Known since PR #13 (~15 env-dependent fails). The SACRED suite must be green to be trustworthy.",
+      "acceptanceCriteria": [
+        "The 3 named tests pass on this machine with the live engine/.env present",
+        "Fix is test-isolation (monkeypatch/env override), NOT changes to safety_layer.py logic",
+        "Full test_safety_layer.py green locally"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Fixed 2026-06-11. Root cause: conftest mock_settings = TradingConfig() reads LIVE engine/.env -> ALLOW_PAPER_SIMULATED_ORDERS=True leaked in -> sim path short-circuits _check_gating_conditions to approved -> 3 live-gate tests flip. Pinned False in conftest (sim tests opt in explicitly). 333/333 across all affected families. safety_layer.py untouched."
+    }
+  ]
+}

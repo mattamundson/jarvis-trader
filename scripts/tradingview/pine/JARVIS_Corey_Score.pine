@@ -1,0 +1,150 @@
+//@version=5
+indicator("JARVIS Corey Score", shorttitle="JARVIS-CS", overlay=false,
+     max_labels_count=500, max_lines_count=500)
+
+// ---------------------------------------------------------------------------
+// Inputs
+// ---------------------------------------------------------------------------
+i_stc_fast  = input.int(23,    "STC Fast Period",   minval=1)
+i_stc_slow  = input.int(50,    "STC Slow Period",   minval=1)
+i_stc_len   = input.int(10,    "STC Smoothing",     minval=1)
+i_ob        = input.float(83.0, "STC OB Level",     minval=50.0, maxval=100.0)
+i_os        = input.float(15.0, "STC OS Level",     minval=0.0,  maxval=50.0)
+i_show_comp = input.bool(true,  "Show Components")
+
+// ---------------------------------------------------------------------------
+// STC (Schaff Trend Cycle) implementation
+// ---------------------------------------------------------------------------
+f_stc(fast, slow, len) =>
+    macd_line = ta.ema(close, fast) - ta.ema(close, slow)
+    macd_hi   = ta.highest(macd_line, len)
+    macd_lo   = ta.lowest(macd_line,  len)
+    k1 = (macd_hi - macd_lo) != 0.0 ?
+         (macd_line - macd_lo) / (macd_hi - macd_lo) * 100.0 : 50.0
+    d1    = ta.ema(k1, 3)
+    d1_hi = ta.highest(d1, len)
+    d1_lo = ta.lowest(d1,  len)
+    k2 = (d1_hi - d1_lo) != 0.0 ?
+         (d1 - d1_lo) / (d1_hi - d1_lo) * 100.0 : 50.0
+    ta.ema(k2, 3)
+
+stc_val  = f_stc(i_stc_fast, i_stc_slow, i_stc_len)
+vwap_val = ta.vwap(close)
+
+// Prior daily close — use lookahead_on on the daily close to get the
+// completed previous day's value rather than the partial current day.
+prev_close = request.security(syminfo.tickerid, "D", close[1],
+             lookahead=barmerge.lookahead_on)
+
+// ---------------------------------------------------------------------------
+// Component scores — each in [-1.0, +1.0]
+// ---------------------------------------------------------------------------
+
+// 1. VWAP position (40% weight)
+//    Bull: price above VWAP | Bear: price below VWAP
+vwap_score = close > vwap_val ? 1.0 :
+             close < vwap_val ? -1.0 : 0.0
+
+// 2. Prior day close momentum (20% weight)
+//    Bull: current close above prior day close
+close_score = na(prev_close) ? 0.0 :
+              close > prev_close ? 1.0 :
+              close < prev_close ? -1.0 : 0.0
+
+// 3. Intraday session trend (20% weight)
+//    Short EMA direction proxy for session momentum
+session_ema = ta.ema(close, 5)
+session_score = close > session_ema ? 1.0 : -1.0
+
+// 4. STC state (20% weight)
+//    Oversold region = bull pressure, Overbought = bear pressure
+//    Mid-range mapped linearly through zero
+stc_score = stc_val <= i_os  ?  1.0 :
+            stc_val >= i_ob  ? -1.0 :
+            (stc_val - 49.0) / 49.0  // ~0 at midpoint 49, ±1 at extremes
+
+// ---------------------------------------------------------------------------
+// Weighted composite Corey score  [-1.0, +1.0]
+// ---------------------------------------------------------------------------
+corey_raw   = vwap_score  * 0.40 +
+              close_score * 0.20 +
+              session_score * 0.20 +
+              stc_score   * 0.20
+
+corey_score = math.max(-1.0, math.min(1.0, corey_raw))
+
+// Bias string
+bias_str = corey_score > 0.05  ? "BULL" :
+           corey_score < -0.05 ? "BEAR" : "NEUTRAL"
+
+// ---------------------------------------------------------------------------
+// Plot
+// ---------------------------------------------------------------------------
+THRESHOLD = 0.3
+
+// Color: green > threshold, red < -threshold, yellow in between
+bar_color = corey_score >=  THRESHOLD ? color.new(color.green,  20) :
+            corey_score <= -THRESHOLD ? color.new(color.red,    20) :
+                                        color.new(color.yellow, 30)
+
+plot(corey_score, title="Corey Score", color=bar_color, linewidth=2, style=plot.style_line)
+
+// Reference lines
+hline(0.0,        "Zero",          color=color.gray,               linestyle=hline.style_solid)
+hline( THRESHOLD, "Bull Threshold", color=color.new(color.green, 50), linestyle=hline.style_dashed)
+hline(-THRESHOLD, "Bear Threshold", color=color.new(color.red,   50), linestyle=hline.style_dashed)
+hline( 1.0,       "Max Bull",      color=color.new(color.green, 70), linestyle=hline.style_dotted)
+hline(-1.0,       "Max Bear",      color=color.new(color.red,   70), linestyle=hline.style_dotted)
+
+// Optional component plots
+plot(i_show_comp ? vwap_score   * 0.40 : na, title="VWAP Component",    color=color.new(color.blue,   40), linewidth=1, style=plot.style_line)
+plot(i_show_comp ? close_score  * 0.20 : na, title="Close Component",   color=color.new(color.orange, 40), linewidth=1, style=plot.style_line)
+plot(i_show_comp ? session_score * 0.20: na, title="Session Component", color=color.new(color.purple, 40), linewidth=1, style=plot.style_line)
+plot(i_show_comp ? stc_score    * 0.20 : na, title="STC Component",     color=color.new(color.teal,   40), linewidth=1, style=plot.style_line)
+
+// Background shading
+bgcolor(corey_score >=  THRESHOLD ? color.new(color.green, 92) :
+        corey_score <= -THRESHOLD ? color.new(color.red,   92) : na,
+        title="Score Background")
+
+// ---------------------------------------------------------------------------
+// MCP readback labels — barstate.islast only
+// Format: "KEY: value"
+// ---------------------------------------------------------------------------
+if barstate.islast
+    label.new(bar_index, corey_score,
+         text="COREY_SCORE: " + str.tostring(math.round(corey_score, 4)),
+         style=label.style_label_left,
+         color=color.new(color.black, 80),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(bar_index, corey_score - 0.08,
+         text="COREY_VWAP: " + str.tostring(math.round(vwap_score * 0.40, 4)),
+         style=label.style_label_left,
+         color=color.new(color.blue, 80),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(bar_index, corey_score - 0.16,
+         text="COREY_CLOSE: " + str.tostring(math.round(close_score * 0.20, 4)),
+         style=label.style_label_left,
+         color=color.new(color.orange, 80),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(bar_index, corey_score - 0.24,
+         text="COREY_STC: " + str.tostring(math.round(stc_score * 0.20, 4)),
+         style=label.style_label_left,
+         color=color.new(color.teal, 80),
+         textcolor=color.white,
+         size=size.small)
+
+    label.new(bar_index, corey_score - 0.32,
+         text="COREY_BIAS: " + bias_str,
+         style=label.style_label_left,
+         color=corey_score > 0.05 ? color.new(color.green, 60) :
+               corey_score < -0.05 ? color.new(color.red, 60) :
+               color.new(color.yellow, 60),
+         textcolor=color.white,
+         size=size.small)

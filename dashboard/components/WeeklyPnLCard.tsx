@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchDailyPnLHistory } from "@/lib/api";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -52,11 +52,14 @@ export function WeeklyPnLCard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `/portfolio/history/daily-pnl?limit=14`
+      const payload = await fetchDailyPnLHistory({ days: 21 });
+      const rows = payload.daily_pnl ?? [];
+      setEntries(
+        rows.map((r) => ({
+          date: String(r.date).slice(0, 10),
+          pnl: Number(r.realized_pnl ?? 0),
+        }))
       );
-      const payload: unknown = await res.json();
-      setEntries(Array.isArray(payload) ? (payload as DailyPnLEntry[]) : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
     } finally {
