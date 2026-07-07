@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, Trophy, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,24 +8,26 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
-import type { TradeRecord } from "@/lib/api";
-import { fetchEngine } from "@/lib/api";
+import {
+  dedupCaveat,
+  durationMinutes,
+  type HonestTrade,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
+// Columns dropped vs. prior raw version:
+//   - Entry price / exit price (not in honest record)
+//   - Status filter (honest record = closed trades only)
 
-interface TradesResponse {
-  trades: TradeRecord[];
-  count: number;
-}
-
-function formatHoldTime(entryTime: string, exitTime: string): string {
-  const diffMs = new Date(exitTime).getTime() - new Date(entryTime).getTime();
-  if (isNaN(diffMs) || diffMs < 0) return "—";
-  const totalMinutes = Math.floor(diffMs / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${totalMinutes}m`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
+function formatHoldTime(t: HonestTrade): string {
+  const mins = durationMinutes(t);
+  if (mins === null) return "—";
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
 }
 
 function formatPnl(pnl: number): string {
@@ -42,9 +43,7 @@ function pnlColor(pnl: number): string {
 
 function Skeleton({ className }: { className?: string }) {
   return (
-    <div
-      className={`animate-pulse rounded bg-muted/30 ${className ?? ""}`}
-    />
+    <div className={`animate-pulse rounded bg-muted/30 ${className ?? ""}`} />
   );
 }
 
@@ -62,17 +61,16 @@ function SkeletonCard() {
 // ── Trade Detail Panel ────────────────────────────────────────────────────────
 
 interface TradeDetailPanelProps {
-  trade: TradeRecord;
+  trade: HonestTrade;
   label: "Best" | "Worst";
 }
 
 function TradeDetailPanel({ trade, label }: TradeDetailPanelProps) {
   const isBest = label === "Best";
-  const pnl = trade.realized_pnl ?? 0;
-  const holdTime =
-    trade.exit_time ? formatHoldTime(trade.entry_time, trade.exit_time) : "—";
+  const pnl = trade.pnl;
+  const holdTime = formatHoldTime(trade);
   const sideVariant: "bull" | "bear" =
-    trade.side.toUpperCase() === "BUY" ? "bull" : "bear";
+    trade.direction === "LONG" ? "bull" : "bear";
 
   return (
     <div
@@ -98,7 +96,7 @@ function TradeDetailPanel({ trade, label }: TradeDetailPanelProps) {
             {label} Trade
           </span>
         </div>
-        <Badge variant={sideVariant}>{trade.side.toUpperCase()}</Badge>
+        <Badge variant={sideVariant}>{trade.direction}</Badge>
       </div>
 
       {/* Symbol + P&L */}
@@ -111,19 +109,16 @@ function TradeDetailPanel({ trade, label }: TradeDetailPanelProps) {
         </span>
       </div>
 
-      {/* Price flow */}
+      {/* Hold time + entry date */}
       <div className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
-        <span className="text-foreground">{trade.entry_price.toFixed(2)}</span>
-        <span className="mx-1">→</span>
-        <span className="text-foreground">
-          {trade.exit_price != null ? trade.exit_price.toFixed(2) : "—"}
-        </span>
-        <span className="ml-auto">{holdTime}</span>
+        <span>Duration: {holdTime}</span>
       </div>
 
       {/* Entry time */}
       <div className="font-mono text-[10px] text-muted-foreground/70">
-        {new Date(trade.entry_time).toLocaleDateString()}
+        {trade.entry_time
+          ? new Date(trade.entry_time).toLocaleDateString()
+          : "—"}
       </div>
     </div>
   );
@@ -132,7 +127,7 @@ function TradeDetailPanel({ trade, label }: TradeDetailPanelProps) {
 // ── Compact rank list ─────────────────────────────────────────────────────────
 
 interface RankListProps {
-  trades: TradeRecord[];
+  trades: HonestTrade[];
   type: "winners" | "losers";
 }
 
@@ -159,31 +154,28 @@ function RankList({ trades, type }: RankListProps) {
       {trades.length === 0 ? (
         <p className="font-mono text-xs text-muted-foreground py-2">No data</p>
       ) : (
-        trades.map((trade, idx) => {
-          const pnl = trade.realized_pnl ?? 0;
-          return (
-            <div
-              key={trade.id}
-              className="flex items-center gap-2 rounded border border-border/50 bg-card/50 px-3 py-1.5"
+        trades.map((trade, idx) => (
+          <div
+            key={trade.id}
+            className="flex items-center gap-2 rounded border border-border/50 bg-card/50 px-3 py-1.5"
+          >
+            <span
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold ${
+                isWinners
+                  ? "bg-bull/10 text-bull"
+                  : "bg-bear/10 text-bear"
+              }`}
             >
-              <span
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold ${
-                  isWinners
-                    ? "bg-bull/10 text-bull"
-                    : "bg-bear/10 text-bear"
-                }`}
-              >
-                {idx + 1}
-              </span>
-              <span className="font-mono text-xs font-medium text-foreground flex-1">
-                {trade.symbol}
-              </span>
-              <span className={`font-mono text-xs font-bold tabular-nums ${pnlColor(pnl)}`}>
-                {formatPnl(pnl)}
-              </span>
-            </div>
-          );
-        })
+              {idx + 1}
+            </span>
+            <span className="font-mono text-xs font-medium text-foreground flex-1">
+              {trade.symbol}
+            </span>
+            <span className={`font-mono text-xs font-bold tabular-nums ${pnlColor(trade.pnl)}`}>
+              {formatPnl(trade.pnl)}
+            </span>
+          </div>
+        ))
       )}
     </div>
   );
@@ -192,48 +184,18 @@ function RankList({ trades, type }: RankListProps) {
 // ── Main Widget ───────────────────────────────────────────────────────────────
 
 export function BestWorstTradeWidget() {
-  const [trades, setTrades] = useState<TradeRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(60_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
 
-  const fetchTrades = async () => {
-    try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?status=CLOSED&limit=200`
-      );
-      const rows: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
+  // Sort by pnl descending
+  const sorted: HonestTrade[] = set
+    ? [...set.trades].sort((a, b) => b.pnl - a.pnl)
+    : [];
 
-      const closed = rows.filter(
-        (t: TradeRecord) =>
-          t.status === "CLOSED" && t.exit_time != null && t.realized_pnl != null
-      );
-
-      // Sort descending by realized_pnl for best → worst
-      closed.sort(
-        (a: TradeRecord, b: TradeRecord) =>
-          (b.realized_pnl ?? 0) - (a.realized_pnl ?? 0),
-      );
-      setTrades(closed);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch trades");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTrades();
-    const interval = setInterval(fetchTrades, 60_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const bestTrade = trades[0] ?? null;
-  const worstTrade = trades[trades.length - 1] ?? null;
-  const top3Winners = trades.slice(0, 3);
-  const top3Losers = trades.slice(-3).reverse();
+  const bestTrade = sorted[0] ?? null;
+  const worstTrade = sorted[sorted.length - 1] ?? null;
+  const top3Winners = sorted.slice(0, 3);
+  const top3Losers = sorted.slice(-3).reverse();
 
   return (
     <Card>
@@ -252,7 +214,7 @@ export function BestWorstTradeWidget() {
             <SkeletonCard />
             <SkeletonCard />
           </div>
-        ) : trades.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
             No closed trades found
           </p>
@@ -280,6 +242,13 @@ export function BestWorstTradeWidget() {
               <RankList trades={top3Winners} type="winners" />
               <RankList trades={top3Losers} type="losers" />
             </div>
+
+            {/* Dedup caveat footer */}
+            {set && (
+              <p className="text-[10px] font-mono text-muted-foreground/60 text-center">
+                {dedupCaveat(set)}
+              </p>
+            )}
           </div>
         )}
       </CardContent>

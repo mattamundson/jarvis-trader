@@ -68,6 +68,33 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt is not None else None
 
 
+def _live_gate_family(symbol: str) -> Optional[str]:
+    """Resolve the gate-verdict ``family`` for the strategy ACTUALLY routed live
+    for ``symbol`` (from paper_config), so the forward-test surfaces the verdict
+    being traded rather than the best-RANKED PASS on disk.
+
+    The attribution bug this fixes: ``find_verdict(symbol)`` with no family picked
+    the lowest-rank PASS, so MGC surfaced ``trend_rv_filter`` (rank1) while the
+    engine trades plain ``trend`` (rank4). Returns ``None`` when the live family
+    can't be determined — preserving find_verdict's best-verdict default for
+    symbols/strategies without a clean mapping. Forward-compatible: if MGC is later
+    switched to the RV-filter variant (``min_rv_annualized`` set in paper_config),
+    this resolves to ``trend_rv_filter`` automatically.
+    """
+    try:
+        from backtest.paper_config import PAPER_CONFIGS
+
+        cfg = PAPER_CONFIGS.get(symbol)
+        if not cfg:
+            return None
+        if cfg.get("strategy") == "sma_trend":
+            rv = (cfg.get("sma_params") or {}).get("min_rv_annualized") or 0.0
+            return "trend_rv_filter" if rv > 0 else "trend"
+        return None
+    except Exception:  # defensive — attribution must never 500 the endpoint
+        return None
+
+
 @router.get(
     "/status",
     response_model=ForwardTestStatus,
@@ -108,7 +135,9 @@ def get_forward_test_status(
             "last_entry": None,
         }
     try:
-        verdict = find_verdict(symbol)
+        # Surface the verdict for the strategy ACTUALLY traded live (not the
+        # best-ranked PASS on disk) — see _live_gate_family.
+        verdict = find_verdict(symbol, family=_live_gate_family(symbol))
     except Exception as exc:
         logger.warning("forward-test: verdict read failed for %s: %s", symbol, exc)
         verdict = None

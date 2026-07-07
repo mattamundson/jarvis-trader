@@ -318,3 +318,100 @@ def composite_score_from_results(backtest_results: dict) -> float:
         wfe=backtest_results.get("walk_forward_efficiency", 0.0),
         max_drawdown_pct=backtest_results.get("max_drawdown_pct", 0.0),
     )
+
+
+def composite_score_with_diagnostics(
+    profit_factor: float,
+    sharpe: float,
+    wfe: float,
+    max_drawdown_pct: float,
+    *,
+    n_trials: int,
+    n_obs: int,
+    skew: float = 0.0,
+    kurt: float = 3.0,
+) -> dict:
+    """composite_score plus a REPORT-ONLY Deflated Sharpe (DSR) diagnostic.
+
+    Closes the gap flagged in `.claude/rules/ml-pitfalls-defense.md` pitfall #3:
+    the raw ``composite_score`` blends PF/Sharpe/WFE/DD without any
+    multiple-testing correction, so a Sharpe that is really the maximum over
+    ``n_trials`` grid combinations is taken at face value. This wrapper attaches
+    the DSR (Bailey & Lopez de Prado, SSRN-2460551) as context.
+
+    IMPORTANT — report-only: the returned ``composite_score`` is byte-identical
+    to ``composite_score(...)`` and is NOT influenced by the DSR. Nothing here
+    gates a go/no-go decision. Per the rule, turning the DSR into an actual gate
+    is a separate ``[safety-review]``/Tier-3 change; this is the diagnostic that
+    precedes it. Reuses ``backtest.deflated_sharpe`` — the DSR math is not
+    reimplemented here.
+
+    Args:
+        profit_factor, sharpe, wfe, max_drawdown_pct: as in ``composite_score``.
+        n_trials: N independent trials (grid combinations explored) that the
+            ``sharpe`` is the maximum over. ``1`` = no selection bias to correct.
+        n_obs: T sample size (trades or bars) the ``sharpe`` was computed on.
+            ``sharpe`` and ``n_obs`` must be consistent (same series).
+        skew, kurt: return-series skew and RAW kurtosis (3.0 = Gaussian).
+
+    Returns:
+        {
+            "composite_score": float,          # unchanged, == composite_score(...)
+            "deflated_sharpe": dict,           # full deflated_sharpe_ratio() output
+            "dsr": float,                      # convenience: DSR p-value (0..1)
+            "dsr_passes_at_10pct": bool,       # convenience flag (report-only)
+        }
+    """
+    score = composite_score(profit_factor, sharpe, wfe, max_drawdown_pct)
+    # Lazy import: deflated_sharpe pulls numpy/scipy, not needed at module load.
+    from backtest.deflated_sharpe import deflated_sharpe_ratio
+
+    dsr = deflated_sharpe_ratio(
+        sharpe=sharpe,
+        n_trials=n_trials,
+        n_obs=n_obs,
+        skew=skew,
+        kurt=kurt,
+    )
+    return {
+        "composite_score": score,
+        "deflated_sharpe": dsr,
+        "dsr": dsr["dsr"],
+        "dsr_passes_at_10pct": dsr["passes_at_10pct"],
+    }
+
+
+def composite_score_with_diagnostics_from_results(backtest_results: dict) -> dict:
+    """Dict wrapper for ``composite_score_with_diagnostics``.
+
+    Reads the DSR inputs from the same result dict, tolerating the common key
+    aliases used across the backtest surfaces:
+      - n_trials  <- ``n_trials`` | ``grid_combos`` | ``n_combos`` (default 1)
+      - n_obs     <- ``n_obs`` | ``total_oos_trades`` | ``total_trades`` |
+                     ``n_trades`` (default 0 -> DSR reports degenerate)
+      - skew/kurt <- ``skew`` / ``kurt`` (default Gaussian)
+
+    ``n_trials`` defaulting to 1 means "no correction applied" — an honest
+    no-op, not a silent pass — when the caller does not record the trial count.
+    """
+    return composite_score_with_diagnostics(
+        profit_factor=backtest_results.get("profit_factor", 1.0),
+        sharpe=backtest_results.get("sharpe_ratio", 0.0),
+        wfe=backtest_results.get("walk_forward_efficiency", 0.0),
+        max_drawdown_pct=backtest_results.get("max_drawdown_pct", 0.0),
+        n_trials=int(
+            backtest_results.get("n_trials")
+            or backtest_results.get("grid_combos")
+            or backtest_results.get("n_combos")
+            or 1
+        ),
+        n_obs=int(
+            backtest_results.get("n_obs")
+            or backtest_results.get("total_oos_trades")
+            or backtest_results.get("total_trades")
+            or backtest_results.get("n_trades")
+            or 0
+        ),
+        skew=float(backtest_results.get("skew", 0.0)),
+        kurt=float(backtest_results.get("kurt", 3.0)),
+    )

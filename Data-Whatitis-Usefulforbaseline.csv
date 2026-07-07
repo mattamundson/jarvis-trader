@@ -1,0 +1,5 @@
+"Data","What it is","Useful for baseline?"
+"allocation_log.csv","467 weeks of backtest output (2017–2026-02-20)","No — synthetic, ends Feb 2026"
+"strategy_c_plus_live_signal.json","Single current signal (Jun 26)","No — one data point"
+"execution_log.json","Two paper dry-run entries (Apr 22)","No"
+"paper_trades.json","Paper trade logger — only logs when executor runs","No — not signal metrics"

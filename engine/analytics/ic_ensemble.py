@@ -88,6 +88,35 @@ MIN_TRADES_FOR_IC = 5
 # Rolling lookback window.
 DEFAULT_WINDOW_DAYS = 30
 
+# Sample count at/above which an IC estimate is trusted to fully drive the
+# ensemble weights. Below this the weights are shrunk toward equal-weight in
+# proportion to the available evidence (see get_ensemble_weights).
+#
+# Rationale: the standard error of a rank correlation is ~1/sqrt(n-1) -- about
+# 0.38 at n=8, 0.27 at n=15, 0.16 at n=40 -- so an IC estimated from a handful
+# of closed trades is statistically indistinguishable from noise and must not
+# be allowed to concentrate 100% of the live sizing weight on a single analyst
+# (the n=8 "100% on fundamental" failure this guard fixes). At n=40 the SE has
+# fallen far enough that the ranking is meaningfully resolved, so that is the
+# point at which the IC weights are used undiluted.
+FULL_CONFIDENCE_TRADES = 40
+
+
+def _directional_return(pnl: float, direction: Optional[str]) -> float:
+    """Signed realized return aligned to price direction, not trade-P&L sign.
+
+    An analyst signal expresses a *price-direction* view (>0 bullish, <0
+    bearish), but ``pnl_usd`` already folds in the executed LONG/SHORT side --
+    so on a SHORT trade a correct directional call inverts relative to pnl
+    (e.g. a bullish call on a SHORT that lost means price rose, which is exactly
+    what the analyst predicted). Flipping the sign for SHORT recovers the
+    realized price direction, so both the IC correlation and the Brier
+    correctness label measure the analyst against where price actually went --
+    not whether the executed trade happened to make money. LONG and
+    unknown/blank directions pass through unchanged (preserving prior behavior
+    for legacy rows that predate the ``direction`` column).
+    """
+    return -pnl if (direction or "").strip().upper() == "SHORT" else pnl
 
 
 class ICWeightedEnsemble:
@@ -105,11 +134,13 @@ class ICWeightedEnsemble:
         agents: Optional[List[str]] = None,
         window_days: int = DEFAULT_WINDOW_DAYS,
         min_trades: int = MIN_TRADES_FOR_IC,
+        full_confidence_trades: int = FULL_CONFIDENCE_TRADES,
     ):
         self.db_path = Path(db_path) if db_path else _DEFAULT_DB_PATH
         self.agents: List[str] = list(agents) if agents else list(DEFAULT_AGENTS)
         self.window_days = window_days
         self.min_trades = min_trades
+        self.full_confidence_trades = full_confidence_trades
 
     # ------------------------------------------------------------------
     # Data fetch
@@ -143,7 +174,7 @@ class ICWeightedEnsemble:
 
                 cur = conn.execute(
                     f"""
-                    SELECT {signal_col}, pnl_usd, timestamp
+                    SELECT {signal_col}, pnl_usd, direction, timestamp
                     FROM trade_outcomes
                     WHERE timestamp >= ?
                       AND {signal_col} IS NOT NULL
@@ -151,13 +182,20 @@ class ICWeightedEnsemble:
                     """,
                     (cutoff_iso,),
                 )
-                rows: List[Tuple[float, float, Optional[str]]] = []
-                for signal, pnl, ts in cur.fetchall():
+                rows: List[Tuple[float, float, Optional[str], Optional[str]]] = []
+                for signal, pnl, direction, ts in cur.fetchall():
                     try:
-                        rows.append((float(signal), float(pnl), ts))
+                        rows.append((float(signal), float(pnl), direction, ts))
                     except (TypeError, ValueError):
                         continue
-                return [(sig, pnl) for sig, pnl, _ in sanitize_outcome_rows(rows, context=f"IC/{agent_name}")]
+                # Correlate signal against the realized *price* direction, not the
+                # executed-side pnl (ts now at index 3; direction at index 2).
+                return [
+                    (sig, _directional_return(pnl, direction))
+                    for sig, pnl, direction, _ in sanitize_outcome_rows(
+                        rows, context=f"IC/{agent_name}", ts_idx=3
+                    )
+                ]
         except sqlite3.DatabaseError as e:
             logger.warning("ICWeightedEnsemble DB error for %s: %s", agent_name, e)
             return []
@@ -207,15 +245,21 @@ class ICWeightedEnsemble:
 
         return num / (denom_x * denom_y)
 
-    def compute_ic(self, agent_name: str) -> float:
+    def _ic_with_count(self, agent_name: str) -> Tuple[float, int]:
         """
-        Return the Information Coefficient for one agent over the window.
+        Return ``(IC, sample_count)`` for one agent in a single DB pass.
 
-        Returns 0.0 on insufficient data, scipy error, or NaN result.
+        ``sample_count`` is the number of (signal, realized-return) pairs that
+        survived hygiene filtering within the rolling window. When the count is
+        below ``min_trades`` the IC is returned as 0.0 (untrusted) but the count
+        is still reported, because the sample-adequacy shrinkage in
+        ``get_ensemble_weights`` needs to know how thin the evidence is even for
+        agents whose IC was floored to zero.
         """
         pairs = self._fetch_signals_and_pnl(agent_name)
-        if len(pairs) < self.min_trades:
-            return 0.0
+        n = len(pairs)
+        if n < self.min_trades:
+            return 0.0, n
 
         signals = [p[0] for p in pairs]
         pnls = [p[1] for p in pairs]
@@ -225,43 +269,96 @@ class ICWeightedEnsemble:
                 ic, _pvalue = spearmanr(signals, pnls)
                 # scipy returns nan on zero-variance inputs
                 if ic is None or ic != ic:  # NaN check
-                    return 0.0
-                return float(ic)
+                    return 0.0, n
+                return float(ic), n
             except Exception as e:
                 logger.debug("scipy spearmanr failed for %s: %s", agent_name, e)
-                return self._manual_spearman(signals, pnls)
+                return self._manual_spearman(signals, pnls), n
 
-        return self._manual_spearman(signals, pnls)
+        return self._manual_spearman(signals, pnls), n
+
+    def compute_ic(self, agent_name: str) -> float:
+        """
+        Return the Information Coefficient for one agent over the window.
+
+        Returns 0.0 on insufficient data, scipy error, or NaN result.
+        """
+        return self._ic_with_count(agent_name)[0]
 
     # ------------------------------------------------------------------
     # Ensemble weights + consensus
     # ------------------------------------------------------------------
+
+    def _weights_and_alpha(
+        self,
+        agent_list: List[str],
+    ) -> Tuple[Dict[str, float], float, float]:
+        """
+        Core weight computation. Returns ``(weights, alpha, n_eff)``.
+
+        ``weights`` are the sample-adequacy-shrunk IC weights (summing to 1.0),
+        ``alpha`` is the shrinkage blend factor in [0, 1], and ``n_eff`` is the
+        IC-weighted effective sample count behind those weights. Split out so
+        both ``get_ensemble_weights`` and ``describe`` share one computation.
+        """
+        n_agents = len(agent_list)
+        equal = 1.0 / n_agents
+
+        ic_counts = {agent: self._ic_with_count(agent) for agent in agent_list}
+        positive = {agent: max(0.0, ic) for agent, (ic, _n) in ic_counts.items()}
+        total = sum(positive.values())
+
+        if total <= 0.0:
+            # Equal-weight fallback — no agent has a trusted positive IC.
+            return dict.fromkeys(agent_list, equal), 0.0, 0.0
+
+        raw = {agent: value / total for agent, value in positive.items()}
+
+        # n_eff = how much data backs the agents actually receiving weight. A
+        # spuriously-positive IC from few trades yields a small n_eff and is
+        # therefore heavily shrunk toward equal weight; concentration is only
+        # trusted once the winning agents have accumulated real history.
+        n_eff = sum(raw[agent] * ic_counts[agent][1] for agent in agent_list)
+        span = self.full_confidence_trades - self.min_trades
+        if span <= 0:
+            alpha = 1.0
+        else:
+            alpha = max(0.0, min(1.0, (n_eff - self.min_trades) / span))
+
+        weights = {
+            agent: alpha * raw[agent] + (1.0 - alpha) * equal
+            for agent in agent_list
+        }
+        return weights, alpha, n_eff
 
     def get_ensemble_weights(
         self,
         agents: Optional[List[str]] = None,
     ) -> Dict[str, float]:
         """
-        Return normalized IC-based weights summing to 1.0.
+        Return sample-adequacy-shrunk, IC-based weights summing to 1.0.
 
-        Negative ICs are clamped to zero (muting the analyst). If the sum of
-        positive ICs is zero (no signal anywhere, or insufficient data for
-        every agent), returns equal weights as a safe fallback.
+        Raw weights are proportional to each agent's positive IC (negative ICs
+        are muted to zero). Those raw weights are then blended toward equal
+        weight by a confidence factor ``alpha`` tied to how much data backs the
+        agents actually receiving weight::
+
+            w_final = alpha * w_IC + (1 - alpha) * (1 / n)
+            alpha   = clip((n_eff - min_trades) /
+                           (full_confidence_trades - min_trades), 0, 1)
+            n_eff   = sum_i(w_IC_i * sample_count_i)
+
+        This prevents a spuriously-positive IC estimated from a handful of
+        trades (n_eff near the floor -> alpha ~ 0) from concentrating the entire
+        sizing weight on one analyst, while letting the weights converge to pure
+        IC weighting as evidence accumulates (n_eff -> full_confidence_trades ->
+        alpha -> 1). If no agent has a trusted positive IC, the equal-weight
+        fallback is returned unchanged.
         """
         agent_list = list(agents) if agents else list(self.agents)
         if not agent_list:
             return {}
-
-        ics = {agent: self.compute_ic(agent) for agent in agent_list}
-        positive = {agent: max(0.0, ic) for agent, ic in ics.items()}
-        total = sum(positive.values())
-
-        if total <= 0.0:
-            # Equal-weight fallback — every agent gets 1/n.
-            n = len(agent_list)
-            return dict.fromkeys(agent_list, 1.0 / n)
-
-        return {agent: value / total for agent, value in positive.items()}
+        return self._weights_and_alpha(agent_list)[0]
 
     def weighted_consensus(
         self,
@@ -313,17 +410,24 @@ class ICWeightedEnsemble:
         Useful for logging at pipeline start or surfacing in a dashboard.
         """
         ics = self.get_ic_summary()
-        weights = self.get_ensemble_weights()
+        weights, alpha, n_eff = self._weights_and_alpha(list(self.agents))
         muted = [a for a, ic in ics.items() if ic <= 0.0]
         return {
             "db_path": str(self.db_path),
             "db_exists": self.db_path.exists(),
             "window_days": self.window_days,
             "min_trades": self.min_trades,
+            "full_confidence_trades": self.full_confidence_trades,
             "scipy": _HAS_SCIPY,
             "ics": ics,
             "weights": weights,
             "muted_agents": muted,
+            # How much the IC weights are trusted right now (1.0 = undiluted IC,
+            # 0.0 = fully shrunk to equal weight) and the effective sample
+            # behind that confidence. Surfaces the sizing-trust state so a
+            # thin-sample concentration is visible before it drives live sizing.
+            "shrinkage_alpha": round(alpha, 4),
+            "effective_sample": round(n_eff, 2),
         }
 
 
@@ -398,7 +502,7 @@ class BrierCalibrationTracker:
 
                 cur = conn.execute(
                     f"""
-                    SELECT {signal_col}, pnl_usd, timestamp
+                    SELECT {signal_col}, pnl_usd, direction, timestamp
                     FROM trade_outcomes
                     WHERE timestamp >= ?
                       AND {signal_col} IS NOT NULL
@@ -408,13 +512,20 @@ class BrierCalibrationTracker:
                     """,
                     (cutoff_iso,),
                 )
-                rows: List[Tuple[float, float, Optional[str]]] = []
-                for signal, pnl, ts in cur.fetchall():
+                rows: List[Tuple[float, float, Optional[str], Optional[str]]] = []
+                for signal, pnl, direction, ts in cur.fetchall():
                     try:
-                        rows.append((float(signal), float(pnl), ts))
+                        rows.append((float(signal), float(pnl), direction, ts))
                     except (TypeError, ValueError):
                         continue
-                return [(sig, pnl) for sig, pnl, _ in sanitize_outcome_rows(rows, context=f"Brier/{agent_name}")]
+                # Score correctness against the realized *price* direction, not
+                # the executed-side pnl (ts now at index 3; direction at index 2).
+                return [
+                    (sig, _directional_return(pnl, direction))
+                    for sig, pnl, direction, _ in sanitize_outcome_rows(
+                        rows, context=f"Brier/{agent_name}", ts_idx=3
+                    )
+                ]
         except sqlite3.DatabaseError as e:
             logger.warning("BrierCalibrationTracker DB error for %s: %s", agent_name, e)
             return []

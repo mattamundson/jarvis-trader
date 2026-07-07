@@ -1,0 +1,6 @@
+"Measure","Value","95% CI"
+"gate_v2 rejection rate","92.6%","[81.5%, 100%]"
+"funnel_gate rejection rate","92.1%","[81.6%, 100%]"
+"Agreement rate","96.3%","[88.9%, 100%]"
+"Where gate_v2 PASSED, funnel rejected","0","—"
+"Where gate_v2 FAILED, funnel rescued","1 (the MGC rank3 case)","—"

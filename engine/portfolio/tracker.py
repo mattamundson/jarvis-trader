@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -38,6 +37,17 @@ except ImportError:
         from engine.database._helpers import compute_order_idempotency_key as _compute_idem_key
     except ImportError:
         _compute_idem_key = None  # type: ignore[assignment]
+
+try:
+    from risk.exit_price_sanity import assert_exit_price_sane
+except ImportError:
+    try:
+        from engine.risk.exit_price_sanity import assert_exit_price_sane
+    except ImportError:  # pragma: no cover - guard is additive; never hard-fail import
+
+        def assert_exit_price_sane(symbol, entry_price, exit_price):  # type: ignore[misc]
+            return None
+
 
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
@@ -227,9 +237,7 @@ class PortfolioTracker:
 
                 _sp = tag_strategy_params(_sp, candidate_id)
             except Exception as _tag_err:
-                logger.debug(
-                    "[TRACKER] candidate_id tag failed (non-fatal): %s", _tag_err
-                )
+                logger.debug("[TRACKER] candidate_id tag failed (non-fatal): %s", _tag_err)
                 _sp["candidate_id"] = candidate_id
         # Decision-identity tag (P2): stamp WHICH live decision configuration
         # produced this trade so the forward-test loop can attribute it to a
@@ -319,6 +327,11 @@ class PortfolioTracker:
         trade = self._open.get(trade_id)
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
+
+        # Phantom-price guard (2026-06-15): reject a corrupt exit BEFORE any P&L
+        # compute or DB write, so a wrong-era/non-finite price can never write a
+        # phantom realized-P&L row. Fail-closed; raises ExitPriceSanityError.
+        assert_exit_price_sane(trade.symbol, trade.entry_price, exit_price)
 
         # Compute close fields on a local copy before any writes
         exit_time = datetime.now(timezone.utc).isoformat()
@@ -511,6 +524,88 @@ class PortfolioTracker:
 
         return [t.to_dict() for t in sorted(valid, key=lambda t: t.entry_time, reverse=True)]
 
+    def get_open_positions_authoritative(self) -> Tuple[List[dict], dict]:
+        """Return open positions anchored to the DB (source of truth) + a recon report.
+
+        ``get_open_positions`` reads only the in-memory ``_open`` map, which can
+        drift from ``paper_trades`` whenever a row is written by a path that
+        bypasses the tracker (e.g. the stop-monitor's ``db_manager.close_trade``
+        fallback, or a peer process). That drift is the root of the
+        "dashboard shows no positions while one is open" trust bug.
+
+        This method makes the DB authoritative: when a db_manager is present the
+        returned list is the set of ``status='open'`` paper_trades, each rendered
+        in the position-dict shape consumers expect (``action`` aliased from the
+        DB ``side`` column). The in-memory dict is preferred when both agree so
+        the richer runtime shape is kept. Divergence is surfaced (never silent)
+        in the recon report and logged at WARNING.
+
+        Returns ``(positions, recon)`` where recon is::
+
+            {"source", "reconciled", "count", "in_memory_count", "db_count",
+             "only_in_db": [trade_id...], "only_in_memory": [trade_id...]}
+        """
+        mem = self.get_open_positions()
+        mem_by_id = {str(p.get("trade_id")): p for p in mem if p.get("trade_id")}
+
+        if self._db is None:
+            return mem, {
+                "source": "memory",
+                "reconciled": True,
+                "count": len(mem),
+                "in_memory_count": len(mem),
+                "db_count": None,
+                "only_in_db": [],
+                "only_in_memory": [],
+            }
+
+        try:
+            db_rows = self._db.get_open_trades()
+        except Exception as exc:  # DB error must never break the read
+            logger.error("[TRACKER] authoritative read: get_open_trades failed: %s", exc)
+            return mem, {
+                "source": "memory_db_error",
+                "reconciled": False,
+                "count": len(mem),
+                "in_memory_count": len(mem),
+                "db_count": None,
+                "only_in_db": [],
+                "only_in_memory": [],
+            }
+
+        db_by_id = {str(r.get("trade_id")): r for r in db_rows if r.get("trade_id")}
+
+        positions: List[dict] = []
+        for tid, row in db_by_id.items():
+            if tid in mem_by_id:
+                positions.append(mem_by_id[tid])
+            else:
+                norm = dict(row)
+                # Consumers read `action`; the DB column is `side`.
+                norm.setdefault("action", row.get("side"))
+                positions.append(norm)
+
+        only_in_db = sorted(set(db_by_id) - set(mem_by_id))
+        only_in_memory = sorted(set(mem_by_id) - set(db_by_id))
+        reconciled = not only_in_db and not only_in_memory
+        if not reconciled:
+            logger.warning(
+                "[TRACKER] open-position drift: only_in_db=%s only_in_memory=%s "
+                "(DB is authoritative; returning DB set)",
+                only_in_db,
+                only_in_memory,
+            )
+
+        return positions, {
+            "source": "db_authoritative",
+            "reconciled": reconciled,
+            "count": len(positions),
+            "in_memory_count": len(mem),
+            "db_count": len(db_by_id),
+            "only_in_db": only_in_db,
+            "only_in_memory": only_in_memory,
+        }
+
     def get_performance(self) -> dict:
         """
         Compute summary performance metrics across all closed trades.
@@ -621,20 +716,26 @@ class PortfolioTracker:
 
     def _get_starting_balance(self) -> float:
         """
-        Return yesterday's closing equity as today's starting balance.
+        Return the pnl-FREE starting base (INITIAL_CAPITAL) for the account.
 
-        Computes INITIAL_CAPITAL + sum(pnl) for ALL closed paper trades whose
-        pnl is not NULL.  This ensures the daily P&L percentage is always
-        measured against the correct prior-day equity rather than the hardcoded
-        INITIAL_CAPITAL every day (Bug B4).
+        This is a *starting* balance by contract: every consumer computes
+        current equity as ``starting_balance + total_pnl`` (see
+        ``risk/pnl_monitor._read_memory`` line ~513 and
+        ``get_performance_summary`` line ~1381).  Baking cumulative closed P&L
+        in here caused a DOUBLE-COUNT — consumers added ``total_pnl`` a second
+        time, inflating portfolio_equity to ``initial + 2*total_pnl`` (e.g.
+        $20,163.67 on 2026-07-02 when TRUE equity was $15,081.84 = $10k initial
+        + $5,081.84 net closed P&L).  So this returns INITIAL_CAPITAL only, and
+        equity is counted exactly once at the call sites.
 
-        Result is cached on first call per calendar day so repeated calls
-        within the same trading session are O(1).
+        Tradeoff (formerly "Bug B4"): the daily_pnl_pct denominator reverts to
+        the initial deposit rather than prior-day equity.  That is
+        reporting-only — the live daily-loss GATE uses portfolio_equity (now
+        correct), not this field.  If prior-day-equity daily% is wanted, derive
+        it at the daily_pnl_pct site from portfolio_equity, NOT by re-inflating
+        this base (which reintroduces the double-count).
 
-        Falls back to INITIAL_CAPITAL when:
-          - No closed trades exist yet
-          - SQLite is unavailable
-          - Any exception is raised
+        Result is cached per calendar day so repeated calls are O(1).
         """
         # --- per-day cache ---
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -642,7 +743,7 @@ class PortfolioTracker:
         if cached_date == today_str:
             return getattr(self, "_starting_balance_cache", 0.0)
 
-        # --- load INITIAL_CAPITAL from config ---
+        # --- load INITIAL_CAPITAL from config (the pnl-free base) ---
         initial: float = 10_000.0
         try:
             from config import settings  # type: ignore[import]
@@ -651,43 +752,13 @@ class PortfolioTracker:
         except Exception:
             pass
 
-        # --- sum closed P&L from db_manager (B9-safe path) or raw SQLite ---
-        total_pnl: float = 0.0
-        try:
-            if self._db is not None:
-                rows = self._db.get_closed_trades(limit=100_000)
-                total_pnl = sum(
-                    float(r.get("pnl") or 0.0) for r in rows if r.get("pnl") is not None
-                )
-            else:
-                # Fallback: query the SQLite file directly using SQLITE_DB_PATH
-                try:
-                    from config import settings as _cfg  # type: ignore[import]
-
-                    db_path = getattr(_cfg, "SQLITE_DB_PATH", None)
-                except Exception:
-                    db_path = None
-                if db_path:
-                    conn = sqlite3.connect(str(db_path), timeout=5)
-                    cursor = conn.execute(
-                        "SELECT COALESCE(SUM(pnl), 0) FROM paper_trades WHERE pnl IS NOT NULL"
-                    )
-                    total_pnl = float(cursor.fetchone()[0] or 0.0)
-                    conn.close()
-        except Exception as exc:
-            logger.warning("[TRACKER] _get_starting_balance: pnl sum failed: %s", exc)
-            total_pnl = 0.0
-
-        balance = initial + total_pnl
+        # Counted-once contract: consumers add total_pnl themselves, so this
+        # base MUST stay pnl-free (2026-07-02 double-count fix).
+        balance = initial
         # Cache for the rest of the trading day
         self._starting_balance_date: str = today_str
         self._starting_balance_cache: float = balance
-        logger.debug(
-            "[TRACKER] starting_balance computed: initial=%.2f + pnl=%.2f = %.2f",
-            initial,
-            total_pnl,
-            balance,
-        )
+        logger.debug("[TRACKER] starting_balance (pnl-free base) = %.2f", balance)
         return balance
 
     # ── Public API — extended methods (used by db_manager callers) ────────────
@@ -813,6 +884,11 @@ class PortfolioTracker:
         if trade is None:
             raise KeyError(f"No open trade with id={trade_id!r}")
 
+        # Phantom-price guard (2026-06-15): reject a corrupt exit before any
+        # write — even when an explicit pnl is supplied, the bad exit_price is
+        # still persisted and would poison reconciliation. Fail-closed.
+        assert_exit_price_sane(trade.symbol, trade.entry_price, exit_price)
+
         # Compute all close fields before any writes
         resolved_exit_time = exit_time or datetime.now(timezone.utc).isoformat()
         if pnl is not None:
@@ -853,6 +929,32 @@ class PortfolioTracker:
             trade_id[:8],
         )
 
+        # OpenClaw/Discord alert on trade close (non-blocking, best-effort).
+        # close_paper_trade is the broker-confirmed-pnl close path used by the
+        # 5-min stop monitor (main.py:_monitor_open_stops); it previously closed
+        # SILENTLY. Mirror close_trade so every close fans out an alert with P&L.
+        try:
+            import asyncio as _asyncio
+            import os as _os
+
+            from notifications.openclaw_notifier import notify_trade_closed as _oc_close
+
+            if not _os.getenv("TESTING"):
+                _loop = _asyncio.get_event_loop()
+                if _loop.is_running():
+                    _loop.create_task(
+                        _oc_close(
+                            symbol=trade.symbol,
+                            action=trade.action,
+                            entry_price=trade.entry_price,
+                            exit_price=float(exit_price),
+                            pnl=trade.pnl or 0.0,
+                            quantity=trade.quantity,
+                        )
+                    )
+        except Exception as _oc_exc:
+            logger.debug("[PAPER] OpenClaw trade-close notify skipped: %s", _oc_exc)
+
         # Record outcome for Brier/IC calibration (Novel #2, Tracks F+H).
         self._record_agent_feedback(trade_id, trade)
 
@@ -892,7 +994,10 @@ class PortfolioTracker:
                 logger.warning(
                     "[PAPER] Implausible close P&L for %s %s: pnl=%+.2f (>$%d) - "
                     "possible upstream P&L corruption",
-                    trade.symbol, trade_id[:8], _pnl_outlier, int(MAX_PLAUSIBLE_ABS_PNL_USD),
+                    trade.symbol,
+                    trade_id[:8],
+                    _pnl_outlier,
+                    int(MAX_PLAUSIBLE_ABS_PNL_USD),
                 )
                 try:
                     from events.bus import publish as _publish_outlier
@@ -1422,20 +1527,21 @@ class PortfolioTracker:
 
         return moved
 
-    # ── Persistence — JSONL (always on) ───────────────────────────────────────
+    # ── Persistence — JSONL (fallback only; retired when SQLite is active) ─────
 
     def _append_record(self, trade: PaperTrade) -> None:
-        """Append a single trade record to the JSONL store (append-only audit log).
+        """Append a single trade record to the JSONL store (fallback audit log).
 
-        TODO Sprint 17 US-1703: Remove this JSON write path after migration completes.
-        JSON write path marked for removal — SQLite will be canonical after migration.
+        US-1703: When a SQLite db_manager is active, SQLite is the sole source of
+        truth and this deprecated JSON write is skipped entirely — the DB insert
+        upstream of every caller already persisted the trade, so the jsonl append
+        only duplicated it (and, being append-only with no status field, never
+        reflected later curation, accreting an unbounded contaminated superset).
+        The jsonl path stays live ONLY in the no-DB fallback mode (e.g. tests /
+        degraded startup). The existing jsonl file is left untouched on disk.
         """
-        logger.warning(
-            "[DEPRECATED] Writing paper trade to JSON at %s — "
-            "JSON storage is deprecated; SQLite is the source of truth. "
-            "This path will be removed in a future release.",
-            self._store,
-        )
+        if self._db is not None:
+            return
         try:
             with self._store.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(trade.to_dict()) + "\n")
@@ -1444,15 +1550,23 @@ class PortfolioTracker:
 
     def _load_history(self) -> None:
         """
-        Replay trades.jsonl on startup.
+        Replay trades.jsonl on startup (no-DB fallback mode only).
 
         Strategy: for each trade_id, keep the LAST record written (which has
         the most complete data — the closed record supersedes the open record).
         After replay, separate into open vs closed buckets.
 
-        If db_manager is active this is a secondary reconciliation pass; DB
-        state loaded by _load_from_db() takes precedence for open trades.
+        US-1703: When a SQLite db_manager is active, SQLite is the authoritative
+        store — open positions are rebuilt from the DB by
+        reload_open_positions_from_db() and closed history by
+        initialize_closed_trades_from_db(), both called from the main.py
+        lifespan. Replaying the deprecated jsonl here only re-introduced its
+        uncurated superset (phantom/cancelled/bootstrap rows the DB had already
+        voided) into in-memory state, so it is skipped. The jsonl file is left
+        untouched on disk; this path runs only in the no-DB fallback.
         """
+        if self._db is not None:
+            return
         if not self._store.exists():
             return
 

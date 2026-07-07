@@ -8,7 +8,10 @@
     "build:clean": "pnpm run prebuild:clean && next build",
     "build": "next build",
     "start": "next start --port 3010",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:unit": "node --test --experimental-strip-types --import ./tests/_register-alias.mjs \"tests/**/*.node.test.ts\"",
+    "test:e2e": "playwright test",
+    "check:live": "node scripts/check-live-data.mjs"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.3",
@@ -34,6 +37,7 @@
     "three": "^0.183.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.15.3",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",

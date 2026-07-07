@@ -165,6 +165,12 @@ class OrderRequest:
     is_options: bool = False
     estimated_value: float = 0.0
     stark_signal: str | None = None
+    #: Originating strategy id, for the pre-trade promotion gate. None = untagged
+    #: (manual/dashboard) order, governed by human-approval + gate-v2 elsewhere;
+    #: automated strategy orders should populate this so the promotion gate can
+    #: enforce that only promoted strategies reach a broker. Threading it through
+    #: the executor construction sites is the Phase-2 follow-on.
+    strategy_id: str | None = None
 
 
 @dataclass
@@ -513,16 +519,38 @@ class SafetyLayer:
     # â”€â”€ Kill Switch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def activate_kill_switch(self, reason: KillSwitchReason | str, message: str = "") -> None:
-        """Halt all trading. Requires human re-authorization to resume."""
-        self._kill_switch_active = True
-        # Convert string to enum if needed (for backward compatibility with tests)
+        """Halt all trading. Requires human re-authorization to resume.
+
+        State-transition-only side effects: the breach checks (drawdown, daily
+        loss) call this on EVERY scan while a breach persists. Without a guard
+        each call re-fired the OpenClaw alert, re-logged CRITICAL, and
+        re-scheduled the bracket cancel — the ~10/min kill-switch alert spam.
+        We now run the notify/persist/cancel side effects only on a real
+        transition (inactive→active) or a change of reason; a re-activation on
+        the same reason is a no-op beyond a debug line. The latch itself still
+        requires a manual deactivate to clear (unchanged).
+        """
+        # Normalize reason first so the transition comparison is reliable.
         if isinstance(reason, str):
             try:
                 reason = KillSwitchReason[reason]
             except KeyError:
                 logger.warning(f"Unknown kill switch reason: {reason}")
                 reason = KillSwitchReason.MANUAL
+
+        already_active = self._kill_switch_active
+        same_reason = already_active and self._kill_switch_reason == reason
+        self._kill_switch_active = True
         self._kill_switch_reason = reason
+
+        if same_reason:
+            logger.debug(
+                "Kill switch re-activation suppressed (already active: %s) — "
+                "no duplicate alert/persist/cancel.",
+                reason.value,
+            )
+            return
+
         logger.critical(f"KILL SWITCH ACTIVATED: {reason.value}. {message}")
         # Persist state to SQLite (non-fatal if DB unavailable)
         self._persist_kill_switch_state(True, reason)
@@ -857,9 +885,21 @@ class SafetyLayer:
         return bool(state.get("active", False))
 
     def get_status(self) -> dict:
-        """Return safety layer status for agents."""
+        """Return safety layer status for agents.
+
+        CONTRACT — both ``is_killed`` and ``kill_switch_active`` are emitted and
+        MUST always carry the SAME value. The two names exist because callers
+        historically read one or the other; emitting only one silently bypassed
+        every gate that read the other (the 2026-06-15 inert-kill-switch defect
+        spanned 12+ in-process gates: scanner, schedulers, pipeline_router,
+        approval_queue, autonomous enqueue, agents). Do NOT "dedup" these keys —
+        the redundancy is load-bearing. ``test_kill_switch_status_contract``
+        enforces it; removing a key fails that test.
+        """
+        killed = self._kill_switch_active
         return {
-            "is_killed": self._kill_switch_active,
+            "is_killed": killed,
+            "kill_switch_active": killed,  # alias — see contract note above; keep in lock-step
             "kill_switch_reason": (
                 self._kill_switch_reason.value if self._kill_switch_reason else None
             ),
@@ -988,19 +1028,56 @@ class SafetyLayer:
                 rejection_reason="Daily loss pct limit reached - kill switch activated",
             )
 
-        # 2. Check absolute limit (e.g. -$100) against REALIZED P&L (per Battle Plan)
+        # 2. Check absolute limit (e.g. -$1,000) against REALIZED P&L (per Battle
+        #    Plan) — but only latch when >=2 realized trades closed today. A lone
+        #    breach is almost always a phantom/data error, since a real single
+        #    trade is already capped at MAX_TRADE_LOSS_USD ($50/ticket). On
+        #    2026-07-01 a single phantom -$266 latched this gate and halted
+        #    trading for the day. min-2-trades policy (Amo, 2026-07-02). The PCT
+        #    gate above (TOTAL P&L incl. open MTM) is intentionally UNCHANGED.
+        #    Fail-safe: an unknown count (no db) preserves the old always-latch.
         abs_limit = -getattr(self._config, "MAX_DAILY_LOSS_USD", 100.0)
         if realized_pnl < abs_limit:
-            self.activate_kill_switch(
-                KillSwitchReason.DAILY_LOSS_LIMIT,
-                f"Daily realized loss {realized_pnl:.2f} exceeded flat USD limit (${abs(abs_limit):.0f})",
-            )
-            return RiskCheckResult(
-                approved=False,
-                rejection_reason="Daily realized loss limit reached - kill switch activated",
-            )
+            trade_count = self._today_realized_trade_count()
+            if trade_count is not None and trade_count < 2:
+                logger.warning(
+                    "[SafetyLayer] Daily realized loss %.2f breached flat USD limit "
+                    "($%.0f) on only %d realized trade(s) today — likely a phantom; "
+                    "NOT latching (min-2-trades gate).",
+                    realized_pnl,
+                    abs(abs_limit),
+                    trade_count,
+                )
+            else:
+                count_str = "unknown" if trade_count is None else str(trade_count)
+                self.activate_kill_switch(
+                    KillSwitchReason.DAILY_LOSS_LIMIT,
+                    f"Daily realized loss {realized_pnl:.2f} exceeded flat USD limit "
+                    f"(${abs(abs_limit):.0f}) across {count_str} trades",
+                )
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason="Daily realized loss limit reached - kill switch activated",
+                )
 
         return RiskCheckResult(approved=True)
+
+    def _today_realized_trade_count(self) -> Optional[int]:
+        """Count of closed paper_trades that exited today (UTC), or None.
+
+        Feeds the flat USD daily-loss gate's min-2-trades guard. Returns None on
+        any failure or when no db_manager is wired, so the caller fails SAFE
+        (latches) rather than skipping a genuine breach.
+        """
+        db = self._db_manager
+        if db is None or not hasattr(db, "count_closed_trades_on_date"):
+            return None
+        try:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            return int(db.count_closed_trades_on_date(today))
+        except Exception as exc:
+            logger.debug("[SafetyLayer] realized trade-count lookup failed: %s", exc)
+            return None
 
     def _check_trade_loss_gate(self, order: OrderRequest) -> RiskCheckResult:
         """
@@ -1160,6 +1237,47 @@ class SafetyLayer:
                 )
         return RiskCheckResult(approved=True)
 
+    def _check_promotion_gate(self, order: OrderRequest) -> RiskCheckResult:
+        """Hard pre-trade promotion gate: a strategy-tagged order may reach a
+        broker only if its strategy is cleared for live capital.
+
+        Scope: this gate governs *automated, strategy-tagged* orders. An untagged
+        order (``strategy_id`` is None — manual/dashboard) is out of scope here;
+        those are gated by human-approval + gate-v2 at approval time, so this check
+        passes them through.
+
+        Shadow-default OFF: when ``PROMOTION_GATE_ENFORCE`` is unset/false, an
+        un-promoted strategy is *logged* (so impact is observable) but NOT blocked —
+        identical-shape to the ``GATE_V2_ENFORCE_*`` flags. Flipping the flag makes
+        the block hard (Amo Tier-3). Default-deny: a tagged strategy not in the
+        (currently empty) promoted set is treated as un-promoted.
+        """
+        from backtest.live_promotion_gate import (  # noqa: PLC0415 — lazy, cycle-free
+            is_strategy_promoted,
+            promotion_gate_enforced,
+        )
+
+        sid = getattr(order, "strategy_id", None)
+        if sid is None or is_strategy_promoted(sid):
+            return RiskCheckResult(approved=True)
+
+        # Strategy is tagged but NOT promoted.
+        if not promotion_gate_enforced():
+            logger.warning(
+                "PROMOTION_GATE shadow: strategy '%s' is not cleared for live "
+                "capital (order would be BLOCKED if PROMOTION_GATE_ENFORCE=1)",
+                sid,
+            )
+            return RiskCheckResult(approved=True)
+
+        return RiskCheckResult(
+            approved=False,
+            rejection_reason=(
+                f"PROMOTION_GATE: strategy '{sid}' is not cleared for live capital "
+                "(failed the enforced definition-of-done)"
+            ),
+        )
+
     def check_order(self, order: OrderRequest, portfolio_equity: float) -> RiskCheckResult:
         """
         Run all pre-trade safety checks.
@@ -1172,6 +1290,7 @@ class SafetyLayer:
         for check_fn in [
             lambda: self._check_kill_switch(),
             lambda: self._check_gating_conditions(),
+            lambda: self._check_promotion_gate(order),
             lambda: self._check_daily_loss_limit(portfolio_equity),
             lambda: self._check_drawdown(portfolio_equity, warnings),
             lambda: self._check_order_value_limits(order, portfolio_equity),

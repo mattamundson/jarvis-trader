@@ -151,7 +151,7 @@ def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
 
     symbol = str(approval_row["symbol"]).upper()
 
-    if safety_layer and safety_layer.get_status().get("kill_switch_active"):
+    if safety_layer and safety_layer.get_status().get("is_killed"):
         raise ApprovalFlowError(409, "Kill switch active — cannot approve")
 
     if symbol not in approved_watchlist_symbols():
@@ -331,13 +331,18 @@ async def approve_pending_trade(
         except ApprovalFlowError:
             raise
         except Exception as _sanity_exc:
-            # Log but do not block — unexpected errors in the check must not
-            # prevent human-authorized approvals from going through.
-            logger.error(
-                "[ENTRY_PRICE_SANITY] unexpected error during check for %s: %s — continuing",
+            # Fail CLOSED: an unexpected error verifying the price rejects the
+            # approval rather than booking a possibly-corrupted entry. The caller
+            # (human or automation) can re-submit once the data path recovers.
+            logger.critical(
+                "[ENTRY_PRICE_SANITY] error during check for %s: %s — rejecting (fail-closed)",
                 approval_id[:8],
                 _sanity_exc,
             )
+            raise ApprovalFlowError(
+                422,
+                f"Entry price sanity check could not be verified: {_sanity_exc}",
+            ) from _sanity_exc
 
     # HB-1 bracket params — lifted from the pipeline snapshot (Trader output).
     # When ENABLE_BROKER_BRACKETS is True and stop_price is non-None,

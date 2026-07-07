@@ -43,6 +43,10 @@ ITERATION_GATES: dict[str, tuple[str, float]] = {
     "tail_ratio": (">=", 1.0),
     "gain_to_pain": (">=", 0.5),
     "consecutive_losses": ("<=", 8),
+    # Run-12 additions: skew floor (distribution quality) + exposure floor
+    # (ensures the strategy is actually deployed, not trivially safe).
+    "skew": (">=", -1.5),
+    "exposure": (">=", 0.15),
 }
 
 # Production gates — strict go/no-go thresholds.
@@ -55,6 +59,9 @@ PRODUCTION_GATES: dict[str, tuple[str, float]] = {
     "tail_ratio": (">=", 1.0),
     "gain_to_pain": (">=", 0.7),
     "consecutive_losses": ("<=", 6),
+    # Run-12 additions (tightened for production).
+    "skew": (">=", -1.5),
+    "exposure": (">=", 0.20),
 }
 
 MIN_TRADES = 60  # engine-sourced sample floors stay unchanged

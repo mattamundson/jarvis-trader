@@ -215,6 +215,7 @@ class JarvisLLMClient:
         "claude-opus-4-6": {"input": 15.0, "output": 75.0},
         "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
         "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
+        "gemini-2.5-pro": {"input": 1.25, "output": 10.0},
         "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
         "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
         "gpt-4o": {"input": 5.0, "output": 15.0},
@@ -234,7 +235,7 @@ class JarvisLLMClient:
 
     # Phase 3 (2026-05-20): Anthropic → Gemini failover map. Used when an
     # Anthropic call hits credit-exhaustion or persistent 5xx and a Google
-    # API key is configured. All tiers map to gemini-2.5-flash.
+    # API key is configured.
     #
     # 2026-06-04: Haiku previously mapped to gemini-2.0-flash, which 404s at the
     # OpenAI-compat endpoint (resource-not-found — not a transient 5xx) while
@@ -245,10 +246,18 @@ class JarvisLLMClient:
     # known-good 2.5-flash; still ~10x cheaper than Sonnet. (Cost-table and
     # context-limit entries for 2.0-flash are retained so it can be restored via
     # config if Google re-enables it.)
+    #
+    # 2026-06-22: with Anthropic credit-exhausted for days, the decision-grade
+    # tiers (Opus/Sonnet — trader, risk_manager, fund_manager, debate, bull/bear
+    # researcher) ran on 2.5-FLASH, the cheap/fast tier. Promote those to
+    # gemini-2.5-pro: materially stronger reasoning, same key/endpoint, and the
+    # _call_google thinking-token floor + reasoning_effort=none guard already
+    # cover all gemini-2.5* models, so pro returns full content (verified 200+OK).
+    # Haiku stays on flash (enrichment/classification — not trade decisions).
     GOOGLE_FAILOVER_MAP = {
-        "claude-opus-4-7": "gemini-2.5-flash",
-        "claude-opus-4-6": "gemini-2.5-flash",
-        "claude-sonnet-4-6": "gemini-2.5-flash",
+        "claude-opus-4-7": "gemini-2.5-pro",
+        "claude-opus-4-6": "gemini-2.5-pro",
+        "claude-sonnet-4-6": "gemini-2.5-pro",
         "claude-haiku-4-5-20251001": "gemini-2.5-flash",
     }
 
@@ -258,7 +267,7 @@ class JarvisLLMClient:
     OPENAI_FAILOVER_MAP = {
         "claude-opus-4-7": "gpt-4o",
         "claude-opus-4-6": "gpt-4o",
-        "claude-sonnet-4-6": "gpt-4o-mini",
+        "claude-sonnet-4-6": "gpt-4o",
         "claude-haiku-4-5-20251001": "gpt-4o-mini",
     }
 
@@ -284,6 +293,7 @@ class JarvisLLMClient:
         "claude-opus-4-6": 200_000,
         "claude-sonnet-4-6": 200_000,
         "claude-haiku-4-5-20251001": 200_000,
+        "gemini-2.5-pro": 1_000_000,
         "gemini-2.5-flash": 1_000_000,
         "gemini-2.0-flash": 1_000_000,
         "gpt-4o": 128_000,
@@ -365,11 +375,9 @@ class JarvisLLMClient:
         # direct names -> Vertex IDs at the single wire point (_call_with_retry).
         # Unmapped names pass through unchanged. Absent flag => byte-identical to
         # the direct path.
-        self.use_vertex = (
-            self.provider != "ollama"
-            and os.getenv("JARVIS_CLAUDE_USE_VERTEX", "0").strip().lower()
-            in {"1", "true", "yes", "on"}
-        )
+        self.use_vertex = self.provider != "ollama" and os.getenv(
+            "JARVIS_CLAUDE_USE_VERTEX", "0"
+        ).strip().lower() in {"1", "true", "yes", "on"}
         self.vertex_project = os.getenv("ANTHROPIC_VERTEX_PROJECT_ID", "").strip()
         self.vertex_region = os.getenv("ANTHROPIC_VERTEX_REGION", "").strip()
         self.vertex_model_map: dict[str, str] = {}
@@ -420,9 +428,7 @@ class JarvisLLMClient:
                     f"region={self.vertex_region or 'ADC-default'})"
                 )
             except Exception as exc:  # pragma: no cover - defensive
-                logger.warning(
-                    "vertex failover disabled — could not build Vertex client: %s", exc
-                )
+                logger.warning("vertex failover disabled — could not build Vertex client: %s", exc)
                 self.vertex_failover_enabled = False
         self.cost_tracker = CostTracker(db_path=db_path)
         self.default_model = self.ollama_model if self.provider == "ollama" else "claude-sonnet-4-6"
@@ -514,9 +520,7 @@ class JarvisLLMClient:
         Defensive getattr: some tests build the client via ``__new__`` without
         running ``__init__``, so fall back to the module default ceiling.
         """
-        ceiling = getattr(
-            self, "_llm_hard_timeout_seconds", _DEFAULT_LLM_HARD_TIMEOUT_SECONDS
-        )
+        ceiling = getattr(self, "_llm_hard_timeout_seconds", _DEFAULT_LLM_HARD_TIMEOUT_SECONDS)
         try:
             return await asyncio.wait_for(coro, timeout=ceiling)
         except (asyncio.TimeoutError, TimeoutError) as exc:
@@ -857,7 +861,13 @@ class JarvisLLMClient:
             and self.google_fallback_enabled
             and agent_name in self.GEMINI_PRIMARY_AGENTS
         ):
-            google_model = self.GOOGLE_FAILOVER_MAP.get(current_model, "gemini-2.5-flash")
+            # Enrichment/classification agents (news/technical/fundamental, etc.)
+            # are pinned to the cost-efficient flash tier as their PRIMARY — they
+            # are not trade decisions, and several call with a sonnet model id, so
+            # routing them through GOOGLE_FAILOVER_MAP (which now sends sonnet->pro)
+            # would silently 4x their always-on cost. The pro upgrade is reserved
+            # for the decision-agent credit-exhaustion failover path below.
+            google_model = "gemini-2.5-flash"
             try:
                 google_result = await self._bounded(
                     self._call_google(
@@ -994,14 +1004,12 @@ class JarvisLLMClient:
                     # family (best output continuity) and GCP-billed, so it is
                     # unaffected by the Anthropic credit outage. Falls through to
                     # the Gemini fallback below if Vertex is disabled or also fails.
-                    if (
-                        self.vertex_failover_enabled
-                        and self._failover_vertex_client is not None
-                    ):
+                    if self.vertex_failover_enabled and self._failover_vertex_client is not None:
                         logger.warning(
                             f"[{current_model}] credit-exhaustion for {agent_name} -- "
                             f"attempting Claude-on-Vertex failover"
                         )
+                        start_time = time.time()
                         try:
                             vertex_result = await self._bounded(
                                 self._call_vertex_failover(
@@ -1058,6 +1066,7 @@ class JarvisLLMClient:
                             f"[{current_model}] credit-exhaustion for {agent_name} -- "
                             f"attempting Gemini fallback ({google_model})"
                         )
+                        start_time = time.time()
                         try:
                             google_result = await self._bounded(
                                 self._call_google(
@@ -1096,7 +1105,8 @@ class JarvisLLMClient:
                             )
                         except Exception as gex:
                             logger.error(
-                                f"[{google_model}] Gemini fallback also failed for {agent_name}: {gex}"
+                                f"[{google_model}] Gemini fallback also failed for "
+                                f"{agent_name}: {type(gex).__name__}: {gex}"
                             )
                             # fall through to OpenAI fallback below
 
@@ -1104,13 +1114,12 @@ class JarvisLLMClient:
                     # disabled) — last-resort OpenAI before declaring the path
                     # unhealthy. Opus/Sonnet → gpt-4o, Haiku → gpt-4o-mini.
                     if self.openai_fallback_enabled:
-                        openai_model = self.OPENAI_FAILOVER_MAP.get(
-                            current_model, "gpt-4o-mini"
-                        )
+                        openai_model = self.OPENAI_FAILOVER_MAP.get(current_model, "gpt-4o-mini")
                         logger.warning(
                             f"[{current_model}] Anthropic+Gemini both failed for {agent_name} -- "
                             f"attempting OpenAI fallback ({openai_model})"
                         )
+                        start_time = time.time()
                         try:
                             openai_result = await self._bounded(
                                 self._call_openai(
@@ -1147,7 +1156,8 @@ class JarvisLLMClient:
                             )
                         except Exception as oex:
                             logger.error(
-                                f"[{openai_model}] OpenAI fallback also failed for {agent_name}: {oex}"
+                                f"[{openai_model}] OpenAI fallback also failed for "
+                                f"{agent_name}: {type(oex).__name__}: {oex}"
                             )
                             # fall through to unhealthy-path handling below
 
@@ -1280,8 +1290,22 @@ class JarvisLLMClient:
         # OpenAI-compat reasoning_effort knob so the whole budget goes to the
         # answer. Tunable/escape-hatch via GEMINI_REASONING_EFFORT (none|low|
         # medium|high); "none" disables thinking. Non-2.5 models are unaffected.
+        #
+        # EXCEPT gemini-2.5-pro: Google rejects reasoning_effort="none" (budget 0)
+        # on pro with HTTP 400 "Budget 0 is invalid. This model only works in
+        # thinking mode." (verified live 2026-07-06 — a Google-side change since
+        # the 06-22 "pro verified 200 OK" note). pro is the decision-tier
+        # credit-exhaustion failover (GOOGLE_FAILOVER_MAP: opus/sonnet -> pro), so
+        # sending "none" would 400 every decision-tier failover. Pro keeps thinking
+        # on (knob omitted) unless GEMINI_REASONING_EFFORT is explicitly set to a
+        # non-"none" value; the token floor above lets the answer survive the spend.
         if model.startswith("gemini-2.5"):
-            effort = os.getenv("GEMINI_REASONING_EFFORT", "none").strip().lower()
+            is_pro = "pro" in model
+            default_effort = "" if is_pro else "none"
+            effort = os.getenv("GEMINI_REASONING_EFFORT", default_effort).strip().lower()
+            if is_pro and effort in ("", "none"):
+                # pro cannot disable thinking; omit the knob (thinking stays on).
+                effort = ""
             if effort:
                 payload["reasoning_effort"] = effort
         timeout = float(os.getenv("GOOGLE_TIMEOUT_SECONDS", "60"))
@@ -1364,9 +1388,7 @@ class JarvisLLMClient:
             "Content-Type": "application/json",
         }
         async with httpx.AsyncClient(timeout=timeout) as http_client:
-            response = await http_client.post(
-                self.openai_endpoint, json=payload, headers=headers
-            )
+            response = await http_client.post(self.openai_endpoint, json=payload, headers=headers)
             if response.status_code >= 400:
                 try:
                     body = response.text[:500]
@@ -1386,9 +1408,7 @@ class JarvisLLMClient:
             raise RuntimeError(f"OpenAI response missing choices: {str(data)[:300]}")
         text = (choices[0].get("message") or {}).get("content", "")
         usage = data.get("usage") or {}
-        input_tokens = int(
-            usage.get("prompt_tokens") or self._estimate_tokens(system, messages)
-        )
+        input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
         output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
         return SimpleNamespace(
             usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),

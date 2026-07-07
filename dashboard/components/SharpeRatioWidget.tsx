@@ -1,81 +1,64 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { TrendingUp, RefreshCw, Target, AlertTriangle } from "lucide-react";
+import React from "react";
+import { TrendingUp, RefreshCw, AlertTriangle, Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { perTradeSharpe } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-interface PerformanceMetrics {
-  profit_factor: number;
-  sharpe_ratio: number;
-  win_rate: number;
-  total_trades: number;
-  period_days: number;
-  max_drawdown: number;
-  total_pnl: number;
-  avg_win: number;
-  avg_loss: number;
-  meets_paper_threshold: boolean;
-}
-
-interface PerformanceThresholds {
-  min_profit_factor: number;
-  min_sharpe: number;
-  min_win_rate: number;
-  min_trades: number;
-  min_trading_days: number;
-}
-
-interface PerformanceResponse {
-  status: string;
-  metrics: PerformanceMetrics;
-  thresholds: PerformanceThresholds;
-  recommendation: string;
-}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function getSharpeInterpretation(sharpe: number): {
+/**
+ * Interpret per-trade Sharpe (mean/stdev of trade P&L).
+ * Thresholds are intentionally relaxed vs an annualized Sharpe — this is a
+ * trade-dispersion ratio, not a time-normalised risk metric.
+ */
+function getSharpeInterpretation(sharpe: number | null): {
   label: string;
   variant: "bull" | "bear" | "warn" | "info" | "neutral";
   description: string;
 } {
-  if (sharpe < 0.5) {
+  if (sharpe === null) {
+    return {
+      label: "N/A",
+      variant: "neutral",
+      description: "Insufficient trades to compute dispersion ratio (need ≥2 trades with non-zero variance).",
+    };
+  }
+  if (sharpe < 0) {
+    return {
+      label: "Negative",
+      variant: "bear",
+      description: "Average trade P&L is negative — losses outweigh wins in expectancy.",
+    };
+  }
+  if (sharpe < 0.3) {
     return {
       label: "Poor",
       variant: "bear",
-      description: "Strategy returns are not adequately compensating for risk taken.",
+      description: "Low consistency relative to trade-to-trade dispersion.",
+    };
+  }
+  if (sharpe < 0.6) {
+    return {
+      label: "Below Target",
+      variant: "warn",
+      description: "Moderate trade-level consistency. Variance is high relative to mean.",
     };
   }
   if (sharpe < 1.0) {
     return {
-      label: "Below Target",
+      label: "Acceptable",
       variant: "warn",
-      description: "Moderate risk-adjusted returns. Significant improvement needed.",
-    };
-  }
-  if (sharpe < 1.5) {
-    return {
-      label: "Getting Close",
-      variant: "warn",
-      description: "Acceptable risk-adjusted returns. Approaching the June 2026 target.",
-    };
-  }
-  if (sharpe < 2.0) {
-    return {
-      label: "Target Met \u2713",
-      variant: "bull",
-      description: "Strong risk-adjusted returns. June 2026 live trading threshold cleared.",
+      description: "Reasonable trade consistency. Mean P&L outpacing dispersion.",
     };
   }
   return {
-    label: "Excellent",
+    label: "Strong",
     variant: "bull",
-    description: "Exceptional risk-adjusted returns. Well above the live trading threshold.",
+    description: "Strong trade-level consistency — mean P&L well above standard deviation.",
   };
 }
 
@@ -90,40 +73,6 @@ function formatCurrency(value: number): string {
 
 function formatPercent(fraction: number): string {
   return `${(fraction * 100).toFixed(1)}%`;
-}
-
-// ── Gauge Tick ─────────────────────────────────────────────────────────────────
-
-function GaugeTick({
-  value,
-  label,
-  isTarget,
-  maxValue,
-}: {
-  value: number;
-  label: string;
-  isTarget: boolean;
-  maxValue: number;
-}) {
-  const pct = (value / maxValue) * 100;
-  return (
-    <div
-      className="absolute flex flex-col items-center"
-      style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
-    >
-      <div
-        className={`w-px h-2 ${isTarget ? "bg-warn" : "bg-border"}`}
-        style={{ marginTop: "-2px" }}
-      />
-      <span
-        className={`text-[9px] font-mono mt-0.5 whitespace-nowrap ${
-          isTarget ? "text-warn font-bold" : "text-muted-foreground"
-        }`}
-      >
-        {isTarget ? `${label} TARGET` : label}
-      </span>
-    </div>
-  );
 }
 
 // ── Stat Cell ─────────────────────────────────────────────────────────────────
@@ -150,47 +99,26 @@ function StatCell({
 // ── Main Widget ────────────────────────────────────────────────────────────────
 
 export function SharpeRatioWidget() {
-  const [data, setData] = useState<PerformanceResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(30_000);
+  const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+  const sharpe = set ? perTradeSharpe(set.trades) : null;
+  const lastRefresh = set ? new Date() : null;
 
-  async function fetchData() {
-    try {
-      const payload = await fetchEngine(`/analytics/performance`);
-      setData(payload);
-      setError(null);
-      setLastRefresh(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch performance data");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const GAUGE_MAX = 3.0;
-  const TARGET = 1.5;
-
-  const sharpe = data?.metrics?.sharpe_ratio ?? 0;
   const interpretation = getSharpeInterpretation(sharpe);
-  const gaugeWidth = Math.min(100, (sharpe / GAUGE_MAX) * 100);
+  const GAUGE_MAX = 1.5;
+  const gaugeWidth = sharpe !== null ? Math.min(100, Math.max(0, (sharpe / GAUGE_MAX) * 100)) : 0;
   const gaugeColor =
-    sharpe >= 1.5
-      ? "var(--bull)"
+    sharpe === null
+      ? "var(--muted)"
       : sharpe >= 1.0
+      ? "var(--bull)"
+      : sharpe >= 0.6
       ? "var(--warn)"
       : "var(--bear)";
 
-  const winRate = data?.metrics?.win_rate ?? 0;
-  const maxDrawdown = data?.metrics?.max_drawdown ?? 0;
-  const totalPnl = data?.metrics?.total_pnl ?? 0;
-  const periodDays = data?.metrics?.period_days ?? 0;
+  const tradeCount = set?.trades.length ?? 0;
+  const winRate = set?.winRate ?? 0;
+  const net = set?.net ?? 0;
 
   return (
     <Card className="border-accent/20">
@@ -202,7 +130,7 @@ export function SharpeRatioWidget() {
             </div>
             <CardTitle>Sharpe Ratio</CardTitle>
           </div>
-          {!loading && !error && data && (
+          {!loading && !error && (
             <Badge variant={interpretation.variant}>{interpretation.label}</Badge>
           )}
           {!loading && error && (
@@ -219,7 +147,7 @@ export function SharpeRatioWidget() {
         {loading && (
           <div className="flex items-center justify-center py-10 gap-3">
             <div className="h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-            <span className="text-sm text-muted-foreground">Fetching performance data...</span>
+            <span className="text-sm text-muted-foreground">Fetching deduped trade record...</span>
           </div>
         )}
 
@@ -238,85 +166,67 @@ export function SharpeRatioWidget() {
         )}
 
         {/* Data state */}
-        {!loading && !error && data && (
+        {!loading && !error && set && (
           <div className="space-y-5">
+            {/* Caveat banner */}
+            <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/20 px-3 py-2">
+              <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                <span className="font-semibold text-foreground">Per-trade Sharpe (deduped, n={tradeCount})</span>
+                {" "}— mean &divide; sample&nbsp;std of trade P&amp;L. This is a trade-level dispersion ratio,
+                not an annualized Sharpe. It is not comparable to the broker&apos;s reported Sharpe.
+              </p>
+            </div>
+
             {/* Large Sharpe number */}
             <div className="text-center py-2">
               <p
                 className="text-4xl font-bold tabular-nums font-mono"
                 style={{ color: gaugeColor }}
               >
-                {sharpe.toFixed(3)}
+                {sharpe !== null ? sharpe.toFixed(3) : "—"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 {interpretation.description}
               </p>
-              <div className="flex items-center justify-center gap-1.5 mt-2">
-                <Target className="h-3 w-3 text-warn" />
-                <span className="text-[11px] text-warn font-semibold">
-                  Target: {TARGET.toFixed(1)} (June 2026 live trading requirement)
-                </span>
-              </div>
             </div>
 
             {/* Gauge bar */}
-            <div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${gaugeWidth}%`,
-                    backgroundColor: gaugeColor,
-                  }}
-                />
-              </div>
-              {/* Tick marks */}
-              <div className="relative mt-1 h-5" style={{ marginLeft: "0", marginRight: "0" }}>
-                {[
-                  { value: 0, label: "0" },
-                  { value: 0.5, label: "0.5" },
-                  { value: 1.0, label: "1.0" },
-                  { value: 1.5, label: "1.5", isTarget: true },
-                  { value: 2.0, label: "2.0" },
-                  { value: 3.0, label: "3.0" },
-                ].map((tick) => (
-                  <GaugeTick
-                    key={tick.value}
-                    value={tick.value}
-                    label={tick.label}
-                    isTarget={tick.isTarget === true}
-                    maxValue={GAUGE_MAX}
+            {sharpe !== null && (
+              <div>
+                <div className="h-3 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${gaugeWidth}%`,
+                      backgroundColor: gaugeColor,
+                    }}
                   />
-                ))}
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px] font-mono text-muted-foreground">0</span>
+                  <span className="text-[9px] font-mono text-muted-foreground">0.5</span>
+                  <span className="text-[9px] font-mono text-muted-foreground">1.0</span>
+                  <span className="text-[9px] font-mono text-muted-foreground">{GAUGE_MAX.toFixed(1)}</span>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Supporting stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+            {/* Supporting stats from deduped record */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
               <StatCell
                 label="Win Rate"
                 value={formatPercent(winRate)}
                 colorClass={winRate >= 0.55 ? "text-bull" : winRate >= 0.45 ? "text-warn" : "text-bear"}
               />
               <StatCell
-                label="Max Drawdown"
-                value={`${(Math.abs(maxDrawdown) * 100).toFixed(2)}%`}
-                colorClass={
-                  Math.abs(maxDrawdown) < 0.05
-                    ? "text-bull"
-                    : Math.abs(maxDrawdown) < 0.10
-                    ? "text-warn"
-                    : "text-bear"
-                }
+                label="Net P&L (deduped)"
+                value={formatCurrency(net)}
+                colorClass={net >= 0 ? "text-bull" : "text-bear"}
               />
               <StatCell
-                label="Total P&L"
-                value={formatCurrency(totalPnl)}
-                colorClass={totalPnl >= 0 ? "text-bull" : "text-bear"}
-              />
-              <StatCell
-                label="Trading Days"
-                value={String(periodDays)}
+                label="Trade Count"
+                value={String(tradeCount)}
                 colorClass="text-foreground"
               />
             </div>

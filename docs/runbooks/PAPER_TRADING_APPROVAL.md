@@ -4,6 +4,15 @@
 **Version:** v2.7
 **Status:** 2 instruments APPROVED, 1 HALTED, 2 NOT CLEARED
 
+> **SUPERSEDED (2026-05-24).** This is the historical v2.7 approval record. The
+> Tier-3 instrument flip on 2026-05-24 changed the active set: **MES 1h**
+> (p_edge 0.75) and **MGC 1h** (p_edge 0.6842) are now the approved active-paper
+> symbols under gate v2 (ALT path); **MCL 1h** and **MNQ 1h** are **HALTED**
+> (`DO_NOT_TRADE`), and **M2K** was rejected. For current status see
+> `engine/CLAUDE.md` (Active Instruments) and
+> `.claude/imports/validated-instruments.md`. The sections below are retained
+> only as the dated record of the original MCL/MNQ approval rationale.
+
 ---
 
 ## Approved Instruments

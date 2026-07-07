@@ -375,9 +375,14 @@ function OptimizerPanel({ results }: { results: BacktestResult[] }) {
 
         {/* Daily Optimal (from backtest memory) */}
         <div className="rounded-lg border border-border bg-background p-4">
-          <p className="text-xs font-semibold text-yellow-400 mb-3">
+          <p className="text-xs font-semibold text-yellow-400 mb-2">
             SPY 1D — Daily Optimal (from optimizer run)
           </p>
+          <div className="mb-3 flex items-center gap-2 rounded px-2 py-1 font-mono text-[10px] uppercase tracking-wider"
+            style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}>
+            <span className="font-bold">Frozen snapshot</span>
+            <span style={{ color: "#9a8030" }}>optimizer result — not live</span>
+          </div>
           <ParamTable params={dailyOptimal as Record<string, unknown>} />
           <div className="mt-3 pt-3 border-t border-border/50 grid grid-cols-3 gap-2">
             <Metric label="PF" value="3.56" color="text-green-400" />

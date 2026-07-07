@@ -9,6 +9,7 @@ import {
   type ChartSymbol,
   type ChartTimeframe,
 } from "@/hooks/useChartData";
+import { useLiveLastPrice } from "@/hooks/useLiveLastPrice";
 import { fetchEngine, type TradeRecord } from "@/lib/api";
 
 const SYMBOLS: ChartSymbol[] = ["MES", "MGC", "MNQ", "MCL"];
@@ -88,6 +89,7 @@ export function PriceChartPanel({
   showTrades = true,
 }: PriceChartPanelProps) {
   const { bars, technical, barsError } = useChartData(symbol, timeframe);
+  const livePrice = useLiveLastPrice(symbol);
 
   const { data: trades } = useSWR<TradeRecord[]>(
     showTrades ? ["/portfolio/history/trades", "CLOSED"] : null,
@@ -148,13 +150,24 @@ export function PriceChartPanel({
         >
           Failed to load bars for {symbol}
         </div>
-      ) : (
+      ) : bars.length ? (
+        // Mount only once bars exist: CandlestickChart creates its chart in a
+        // mount effect, so mounting it with empty bars leaves a dead container
+        // that never re-inits when bars arrive (matches the command-center gate).
         <CandlestickChart
           bars={bars}
           technical={technical}
           markers={markers}
+          livePrice={livePrice}
           height={height}
         />
+      ) : (
+        <div
+          className="flex items-center justify-center text-sm text-muted-foreground font-mono"
+          style={{ height }}
+        >
+          Loading {symbol} bars…
+        </div>
       )}
 
       {showTrades && (

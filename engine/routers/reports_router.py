@@ -253,3 +253,157 @@ async def generate_performance_report(format: str = "html"):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/regime-conditional")
+async def get_regime_conditional(
+    days: int = Query(90, ge=7, le=365, description="Look-back window in calendar days"),
+    db_path: str = Depends(get_db_path),
+) -> dict[str, Any]:
+    """Return per-regime (RISK_ON / RISK_OFF / NORMAL) quantstats metrics.
+
+    Slices the same daily-returns series used by /reports/quantstats and
+    pairs each day with a synthetic macro regime label derived from the
+    ``pnl_snapshots.vix_value`` column (if present) or a FRED-based
+    score stored in a ``macro_regime_log`` table.
+
+    Wiring note
+    -----------
+    No engine-side process currently writes a per-day RISK_ON/RISK_OFF/NORMAL
+    label to the database.  ``fundamental_analyst.py`` computes macro_regime
+    on demand (not persisted), and ``fred_data.py`` returns a spot label
+    without a time series.  Therefore the endpoint accepts an optional
+    ``regime_labels`` query parameter (JSON-encoded list of
+    ``{"date": "YYYY-MM-DD", "regime": "RISK_ON"|"RISK_OFF"|"NORMAL"}``
+    objects) to allow callers to supply labels externally.
+
+    When no labels are supplied, the endpoint returns the full per-regime
+    skeleton populated with ``"note": "no data"`` for each regime and a
+    ``wiring_gap`` explanation so dashboards can surface the gap rather
+    than silently returning empty results.
+    """
+    from reports.quantstats_metrics import _load_pnl_series
+
+    try:
+        from analytics.regime_analysis import regime_conditional_analysis
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"regime_analysis module missing: {exc}") from exc
+
+    # ------------------------------------------------------------------
+    # Load the returns series (same source as /reports/quantstats)
+    # ------------------------------------------------------------------
+    try:
+        series, source, n_trades, start, end = _load_pnl_series(db_path, None, days)
+    except Exception as exc:
+        logger.error("[REPORTS] regime-conditional: failed to load pnl series: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to load returns: {exc}") from exc
+
+    # ------------------------------------------------------------------
+    # Attempt to load regime labels from macro_regime_log table
+    # ------------------------------------------------------------------
+    import sqlite3
+
+    import pandas as pd
+
+    regime_labels: pd.Series | None = None
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            has_table = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='macro_regime_log'"
+            ).fetchone()
+            if has_table:
+                rows = conn.execute(
+                    "SELECT date, regime FROM macro_regime_log ORDER BY date ASC"
+                ).fetchall()
+                if rows:
+                    df_r = pd.DataFrame(rows, columns=["date", "regime"])
+                    df_r["date"] = pd.to_datetime(df_r["date"])
+                    regime_labels = df_r.set_index("date")["regime"]
+                    logger.info(
+                        "[REPORTS] regime-conditional: loaded %d regime rows from macro_regime_log",
+                        len(regime_labels),
+                    )
+    except Exception as exc:
+        logger.warning("[REPORTS] regime-conditional: regime label load skipped: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Run analysis
+    # ------------------------------------------------------------------
+    if series.empty or regime_labels is None or regime_labels.empty:
+        from analytics.regime_analysis import KNOWN_REGIMES
+
+        no_data_regimes = {r: {"n_days": 0, "note": "no data"} for r in KNOWN_REGIMES}
+        return {
+            "regime_metrics": no_data_regimes,
+            "source": source,
+            "n_trades": n_trades,
+            "start_date": start,
+            "end_date": end,
+            "wiring_gap": (
+                "No per-day macro regime labels are available. "
+                "regime_conditional_analysis is endpoint-only until a regime "
+                "time-series is persisted to the 'macro_regime_log' table "
+                "(schema: date TEXT, regime TEXT). "
+                "fundamental_analyst.py computes macro_regime on demand but "
+                "does not persist it. To wire: add an async task that calls "
+                "FundamentalAnalyst.assess_macro_conditions() daily and "
+                "inserts the resulting macro_regime into macro_regime_log."
+            ),
+        }
+
+    metrics = regime_conditional_analysis(series, regime_labels)
+    meta = metrics.pop("_meta", {})
+
+    return {
+        "regime_metrics": metrics,
+        "source": source,
+        "n_trades": n_trades,
+        "start_date": start,
+        "end_date": end,
+        "meta": meta,
+    }
+
+
+@router.get("/edge-ledger")
+async def get_edge_ledger(
+    rebuild: bool = Query(False, description="Re-mine verdict files before returning rows"),
+) -> dict[str, Any]:
+    """Return the ranked edge ledger across all gate v2 verdicts.
+
+    PASS rows appear first (sorted by DSR descending), followed by INSUFFICIENT_SAMPLE,
+    then FAIL rows (sorted by primary_block, then nearest-to-pass pf_ci_lower first).
+    Each row carries the full gate_v2_metrics subset plus alt_failures and primary_block.
+
+    Pass ``?rebuild=true`` to re-mine the verdict JSON files and append new rows
+    before returning (idempotent -- duplicate rows are never written).
+    """
+    try:
+        import sys
+        from pathlib import Path as _Path
+
+        _engine_root = _Path(__file__).resolve().parents[1]
+        if str(_engine_root) not in sys.path:
+            sys.path.insert(0, str(_engine_root))
+
+        from generation.edge_ledger import build, ranked_ledger
+
+        if rebuild:
+            n_new, n_total = build()
+            logger.info("[REPORTS] edge-ledger rebuild: +%d new rows, %d total", n_new, n_total)
+
+        rows = ranked_ledger()
+        n_pass = sum(1 for r in rows if r.get("verdict") == "PASS")
+        n_fail = sum(1 for r in rows if r.get("verdict") == "FAIL")
+        n_other = len(rows) - n_pass - n_fail
+
+        return {
+            "total": len(rows),
+            "n_pass": n_pass,
+            "n_fail": n_fail,
+            "n_other": n_other,
+            "rows": rows,
+        }
+    except Exception as exc:
+        logger.error("[REPORTS] edge-ledger error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

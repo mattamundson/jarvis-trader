@@ -95,15 +95,17 @@ MNQ_PAPER_CONFIG = {
 
 MGC_PAPER_CONFIG = {
     #  Instrument — SMA(50,120) trend-following, 1h bars
-    #  Gate v2 verdict: PASS via ALT (dsr=1.0, wfo=STRONG, fixed_params_min_pf=1.357)
-    #  Verdict file: engine/data/gate_v2_verdicts/MGC_trend_rank4.json (created 2026-05-06)
-    #  WFO champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0) — fixed_params PF=2.987
-    #  rank4 grid fast=[40,50]×slow=[80,120]×atr=[1.5,2.0]: all 8 combos PF>1.35
-    #  ALT routing applies: mc_95th_dd=1.24% ≤ 7.0% ceiling (requires $50K+ account sizing)
+    #  DISABLED 2026-06-26: config<->verdict desync. This block was authorized off
+    #  MGC_trend_rank4 "PASS via ALT (2026-05-06)", but rank4 was re-run 2026-06-24
+    #  and is now FAIL (p_edge=0.60, fixed_params_min_pf=1.179, mc_95th_dd=4.011% >
+    #  4.0% alt ceiling). Its dsr=1.0 was also the degenerate-variance fallback
+    #  (fixed af35329). Re-enable only when a fresh rank4 verdict PASSes honestly.
+    #  Verdict file: engine/data/gate_v2_verdicts/MGC_trend_rank4.json
+    #  WFO champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0)
     "symbol": "MGC",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
-    "enabled": True,  # Gate v2 ALT PASS — authorized for paper trading 2026-05-06
+    "enabled": False,  # 2026-06-26: rank4 re-run FAILs gate v2; was enabled on a stale 2026-05-06 PASS
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
@@ -249,14 +251,14 @@ MES_TREND_PAPER_CONFIG = {
     },
     #  Kill Thresholds -- calibrated to ALT routing 7% MC DD ceiling
     "kill_threshold": {
-        "consecutive_losses": 4,       # SMA trend has lower win rate (~44%) -- allow longer runs
+        "consecutive_losses": 4,  # SMA trend has lower win rate (~44%) -- allow longer runs
         "consecutive_months_underperform": 2,
-        "monthly_loss_pct": -0.04,     # Slightly wider than STC strategies (higher R:R profile)
+        "monthly_loss_pct": -0.04,  # Slightly wider than STC strategies (higher R:R profile)
         "max_daily_loss": -0.02,
         "rolling_wfe_minimum": 0.40,
     },
     #  Contract Specifications
-    "multiplier": 5.0,       # $5/point for MES (Micro E-mini S&P 500)
+    "multiplier": 5.0,  # $5/point for MES (Micro E-mini S&P 500)
     "tick_size": 0.25,
     "commission_per_contract": 2.50,
     "slippage_ticks": 1,

@@ -24,6 +24,7 @@ Status tracking:
 
 import asyncio
 import logging
+import os
 import time as _time_module
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -64,6 +65,31 @@ def _is_futures_market_hours() -> bool:
     return not (h == 16)
 
 
+def _is_equity_market_hours() -> bool:
+    """True during US equity Regular Trading Hours (9:30 AM–4:00 PM ET, Mon–Fri).
+
+    The scan loop gates only on *futures* hours (≈23h/day), so without this an
+    equity symbol (SPY/QQQ/AAPL) can be auto-submitted long after the cash
+    market closed — the 20:24 off-hours stale-price fill class. DST-aware.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
+
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    if now_et.weekday() >= 5:  # Sat/Sun
+        return False
+    return time(9, 30) <= now_et.time() < time(16, 0)
+
+
+def _market_hours_submission_guard_enabled() -> bool:
+    """Opt-out flag for the equity market-hours submission guard. Default ON."""
+    return os.getenv("ENABLE_MARKET_HOURS_SUBMISSION_GUARD", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+
+
 class SignalScanner:
     """
     Background signal scanner for automated market surveillance.
@@ -95,6 +121,12 @@ class SignalScanner:
         self.scan_interval_minutes = scan_interval_minutes
         self.initial_delay_seconds = max(0, int(initial_delay_seconds))
         self._paper_tracker = None  # injected post-construction via set_paper_tracker()
+        self._safety_layer = None  # injected via set_safety_layer() — kill-switch gate
+        self._data_manager = None  # injected via set_data_manager() — entry-price sanity
+        # Asset-class map: which scanned symbols are futures. Defaults to ALL
+        # symbols (backward-compatible — original callers passed futures only).
+        # main.py overrides via set_futures_symbols() once equities are added.
+        self._futures_symbols = {str(sym).upper() for sym in self.symbols}
 
         self._active = False
         self._last_scan_at: Optional[datetime] = None
@@ -107,6 +139,84 @@ class SignalScanner:
     def set_paper_tracker(self, tracker) -> None:
         """Inject paper tracker for breakeven stop management."""
         self._paper_tracker = tracker
+
+    def set_safety_layer(self, safety_layer) -> None:
+        """Inject the safety layer so the live opener honors the kill switch.
+
+        Without this, the autonomous paper-mode bypass would auto-execute even
+        while the kill switch is active (the scanner loop had no kill-switch gate
+        — the APScheduler jobs did, but this background loop did not)."""
+        self._safety_layer = safety_layer
+
+    def set_data_manager(self, data_manager) -> None:
+        """Inject the market data manager so the live opener can run the
+        entry-price sanity check (phantom-price guard) before booking a trade."""
+        self._data_manager = data_manager
+
+    def set_futures_symbols(self, futures_symbols) -> None:
+        """Declare which scanned symbols are futures contracts. Symbols not in
+        this set are treated as equities (OPTIONS_WATCHLIST) and priced /
+        analyzed with is_futures=False."""
+        self._futures_symbols = {str(sym).upper() for sym in (futures_symbols or [])}
+
+    def _is_futures_symbol(self, symbol: str) -> bool:
+        return str(symbol).upper() in self._futures_symbols
+
+    def _kill_switch_active(self) -> bool:
+        """Return True if trading is halted. Fails CLOSED: if the safety layer is
+        injected but its status cannot be read, treat as halted (refuse to open)."""
+        if self._safety_layer is None:
+            return False
+        try:
+            # SafetyLayer.get_status() exposes the latched flag under "is_killed"
+            # (safety_router maps it to the public "kill_switch_active" field).
+            # Reading the wrong key here silently returned None→False, so the
+            # live opener bypassed an active kill switch (TSLA opened 2026-06-15
+            # 23:04 UTC under an active switch). Read the canonical key.
+            return bool(self._safety_layer.get_status().get("is_killed"))
+        except Exception as exc:
+            logger.error(
+                "[SAFETY] kill-switch status unavailable (%s) — fail-closed (halting)", exc
+            )
+            return True
+
+    async def _entry_price_is_sane(
+        self, symbol: str, entry_price: float, is_futures: bool = True
+    ) -> tuple[bool, str]:
+        """Phantom-price guard for the live opener. Fails CLOSED under autonomy:
+        any error verifying the price rejects the trade rather than letting a
+        possibly-corrupted entry through (the 2026-05-09 stop-into-entry incident).
+
+        Returns (True, "") when the check is disabled by feature flag, or when no
+        data_manager is injected (cannot verify — logged, allowed for test/bootstrap
+        parity). Returns (False, reason) on a failed check OR on an exception."""
+        from risk.entry_price_sanity import (
+            check_entry_price_sanity,
+            is_entry_price_sanity_enabled,
+        )
+
+        if not is_entry_price_sanity_enabled():
+            return True, ""
+        if self._data_manager is None:
+            logger.warning(
+                "[ENTRY_PRICE_SANITY] %s: no data_manager injected — cannot verify; allowing",
+                symbol,
+            )
+            return True, "no_data_manager"
+        try:
+            return await check_entry_price_sanity(
+                symbol=symbol,
+                entry_price=entry_price,
+                data_manager=self._data_manager,
+                is_futures=is_futures,
+            )
+        except Exception as exc:
+            logger.critical(
+                "[ENTRY_PRICE_SANITY] %s check raised (%s) — rejecting (fail-closed)",
+                symbol,
+                exc,
+            )
+            return False, f"sanity_check_error: {exc}"
 
     async def start(self) -> None:
         """Start the background scanner task."""
@@ -308,13 +418,15 @@ class SignalScanner:
                 )
                 return
 
-        logger.debug(f"[Scanner] Analyzing {symbol}")
+        _is_fut = self._is_futures_symbol(symbol)
+
+        logger.debug(f"[Scanner] Analyzing {symbol} (is_futures={_is_fut})")
 
         try:
             _t0 = _time_module.monotonic()
             result = await self.trading_pipeline.analyze_and_decide(
                 symbol=symbol,
-                is_futures=True,
+                is_futures=_is_fut,
                 timeframe="1h",
             )
             _duration_ms = (_time_module.monotonic() - _t0) * 1000.0
@@ -368,35 +480,62 @@ class SignalScanner:
                 logger.debug(f"[Scanner] {symbol} signal: {final_action}, no action needed")
                 return
 
-            # Signal fired! Create pending approval
+            # Signal fired.
             quantity = result.get("final_quantity", 1)
             entry_price = result.get("trade_decision", {}).get("entry_price", None)
             snapshot = result
 
-            approval_id = self.db_manager.insert_pending_approval(
-                symbol=symbol,
-                action=final_action,
-                quantity=quantity,
-                entry_price=entry_price,
-                pipeline_snapshot=snapshot,
-                timeframe=snapshot.get("timeframe", "1h"),
-            )
+            # Human-approval gate. When approval is OFF (autonomous paper mode),
+            # do NOT create a pending_trade_approvals row: nobody approves these,
+            # so they only time out and auto-reject, generating misleading
+            # "APPROVAL REQUIRED" DMs for trades that never happen. The executed
+            # paper trade below is the record of record. Use an ephemeral ref so
+            # downstream logging/correlation still works without a DB row.
+            try:
+                from config import settings as _cfg_appr
 
-            self._approval_count += 1
-            logger.info(
-                f"[Scanner] {symbol} signal: {final_action} {quantity} "
-                f"(approval_id={approval_id[:8]})"
-            )
+                _require_human = bool(_cfg_appr.REQUIRE_HUMAN_APPROVAL)
+            except Exception:
+                _require_human = True
+
+            if _require_human:
+                approval_id = self.db_manager.insert_pending_approval(
+                    symbol=symbol,
+                    action=final_action,
+                    quantity=quantity,
+                    entry_price=entry_price,
+                    pipeline_snapshot=snapshot,
+                    timeframe=snapshot.get("timeframe", "1h"),
+                )
+                self._approval_count += 1
+                logger.info(
+                    f"[Scanner] {symbol} signal: {final_action} {quantity} "
+                    f"(approval_id={approval_id[:8]})"
+                )
+            else:
+                import uuid as _uuid_auto
+
+                approval_id = f"auto-{_uuid_auto.uuid4().hex[:8]}"
+                logger.info(
+                    f"[Scanner] {symbol} signal: {final_action} {quantity} "
+                    f"(autonomous — no approval row, ref={approval_id})"
+                )
 
             # ── Paper mode bypass: auto-log paper trade without waiting for human approval ──
-            # The pending approval is still created for audit/UI purposes, but in paper mode
-            # the trade is also immediately written to the DB so validation data exists.
+            # In paper mode the trade is written to the DB immediately so validation data
+            # exists. A pending_trade_approvals row is created ONLY when human approval is
+            # required (see gate above); under autonomy the executed trade is the record.
             try:
                 from config import settings as _cfg
 
                 _is_paper_mode = not _cfg.LIVE_TRADING_ENABLED
             except Exception:
                 _is_paper_mode = True
+
+            # Distinct skip reasons so the final log is accurate (not all
+            # not-executed paths are "live mode requires human").
+            _validation_only_skip = False
+            _submission_blocked_reason: str | None = None
 
             _confidence = float(result.get("confidence", 0.0))
 
@@ -425,7 +564,25 @@ class SignalScanner:
                     approval_id[:8],
                 )
                 _is_paper_mode = False  # short-circuit the bypass block below
+                _validation_only_skip = True
 
+            # Market-hours submission guard: the scan loop only checks futures
+            # hours, so an equity signal can reach here after the cash market
+            # closed. Hard-gate the auto-submission for equities outside RTH
+            # (the 20:24 off-hours stale-fill class). Futures are already
+            # covered by the loop-level _is_futures_market_hours() gate.
+            if (
+                _is_paper_mode
+                and not _validation_only_skip
+                and _market_hours_submission_guard_enabled()
+                and not _is_fut
+                and not _is_equity_market_hours()
+            ):
+                _is_paper_mode = False
+                _submission_blocked_reason = "equity_market_closed"
+
+            _executed = False
+            _exec_details: dict | None = None
             if _is_paper_mode and self._paper_tracker is not None and entry_price is not None:
                 try:
                     trade_dec = result.get("trade_decision") or {}
@@ -464,6 +621,34 @@ class SignalScanner:
                             _confidence,
                             0.0,
                             str(_open_for_symbol[0].get("trade_id") or "")[:8],
+                            approval_id[:8],
+                        )
+                    elif self._kill_switch_active():
+                        # Autonomy hardening: the live opener now honors the kill
+                        # switch. Previously only the APScheduler jobs gated on it;
+                        # this background loop would auto-execute regardless.
+                        logger.warning(
+                            "[EXECUTION] symbol=%s action=%s executed=False "
+                            "reason=kill_switch_active approval_id=%s",
+                            symbol,
+                            final_action,
+                            approval_id[:8],
+                        )
+                    elif not (
+                        _sanity := await self._entry_price_is_sane(
+                            symbol, float(entry_price), _is_fut
+                        )
+                    )[0]:
+                        # Fail-closed phantom-price guard on the LIVE path (the
+                        # sanity check previously existed only in the enqueue and
+                        # manual-approval paths, never here). Computed once via the
+                        # walrus binding; _sanity[1] carries the rejection reason.
+                        logger.critical(
+                            "[EXECUTION] symbol=%s action=%s executed=False "
+                            "reason=entry_price_sanity detail=%s approval_id=%s",
+                            symbol,
+                            final_action,
+                            _sanity[1],
                             approval_id[:8],
                         )
                     else:
@@ -603,10 +788,39 @@ class SignalScanner:
                                 0.0,
                                 trade_id_inner[:8],
                             )
+                            _executed = True
+                            _exec_details = {
+                                "trade_id": trade_id_inner,
+                                "quantity": float(quantity) if quantity else 1.0,
+                                "entry_price": float(entry_price),
+                                "stop_price": float(stop_price),
+                                "target_price": float(target_price) if target_price else None,
+                            }
                 except Exception as _paper_exc:
                     logger.error(
                         "[Scanner] Paper trade auto-log failed for %s: %s", symbol, _paper_exc
                     )
+            elif _submission_blocked_reason is not None:
+                logger.info(
+                    "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                    "executed=False reason=%s approval_id=%s",
+                    symbol,
+                    final_action,
+                    _confidence,
+                    0.0,
+                    _submission_blocked_reason,
+                    approval_id[:8],
+                )
+            elif _validation_only_skip:
+                logger.info(
+                    "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
+                    "executed=False reason=validation_only_strategy_skipped approval_id=%s",
+                    symbol,
+                    final_action,
+                    _confidence,
+                    0.0,
+                    approval_id[:8],
+                )
             elif not _is_paper_mode:
                 logger.info(
                     "[EXECUTION] symbol=%s action=%s confidence=%.2f threshold=%.2f "
@@ -627,31 +841,72 @@ class SignalScanner:
                     0.0,
                 )
 
-            from notifications.pending_approval_notify import (
-                notify_pending_approval_queued,
-            )
+            # ── Alerting (full visibility) ─────────────────────────────────
+            # When the trade actually executed under autonomy, fire a TRUE
+            # "trade opened" confirmation (entry/stop/target) — not the legacy
+            # "APPROVAL REQUIRED / approve at localhost:3010" prompt, which is
+            # misleading when no human approval is in the loop.
+            if _executed:
+                try:
+                    from notifications.openclaw_notifier import notify_trade_opened
 
-            await notify_pending_approval_queued(
-                approval_id=approval_id,
-                symbol=symbol,
-                action=final_action,
-                quantity=float(quantity) if quantity is not None else None,
-                entry_price=float(entry_price) if entry_price is not None else None,
-            )
+                    _d = _exec_details or {}
+                    await notify_trade_opened(
+                        symbol=symbol,
+                        action=final_action,
+                        quantity=_d.get("quantity", float(quantity) if quantity else 1.0),
+                        entry_price=_d.get("entry_price", float(entry_price)),
+                        stop_price=_d.get("stop_price"),
+                        target_price=_d.get("target_price"),
+                        source="scanner",
+                    )
+                except Exception as _open_err:
+                    logger.warning("trade-opened alert failed for %s: %s", symbol, _open_err)
+            else:
+                # Not executed. Only show the human-approval prompt when approval
+                # is actually required; otherwise (blocked by a safety gate under
+                # autonomy) emit a plain signal alert for visibility without the
+                # spurious "approve" call-to-action.
+                try:
+                    from config import settings as _cfg_n
 
-            # OpenClaw WhatsApp alert for non-HOLD signals
-            try:
-                from notifications.openclaw_notifier import notify_signal as _oc_signal
+                    _require_human = bool(_cfg_n.REQUIRE_HUMAN_APPROVAL)
+                except Exception:
+                    _require_human = True
 
-                await _oc_signal(
-                    symbol=symbol,
-                    action=final_action,
-                    confidence=float(result.get("confidence", 0.0)),
-                    reason=str(result.get("reason", "")),
-                    market="futures",
-                )
-            except Exception as _oc_err:
-                logger.debug(f"OpenClaw signal notification skipped: {_oc_err}")
+                if _require_human:
+                    try:
+                        from notifications.pending_approval_notify import (
+                            notify_pending_approval_queued,
+                        )
+
+                        await notify_pending_approval_queued(
+                            approval_id=approval_id,
+                            symbol=symbol,
+                            action=final_action,
+                            quantity=float(quantity) if quantity is not None else None,
+                            entry_price=float(entry_price) if entry_price is not None else None,
+                        )
+                    except Exception as _pa_err:
+                        logger.debug("pending-approval notify skipped: %s", _pa_err)
+
+                    # Legacy "JARVIS SIGNAL ... Approve at localhost:3010" alert —
+                    # only meaningful when a human actually approves. Under autonomy
+                    # a not-executed signal is a safety-gate block or a dedup/no-stop
+                    # skip; those are logged, not DM'd, so the hourly persisting
+                    # signal no longer spams "approve a trade that never happens".
+                    try:
+                        from notifications.openclaw_notifier import notify_signal as _oc_signal
+
+                        await _oc_signal(
+                            symbol=symbol,
+                            action=final_action,
+                            confidence=float(result.get("confidence", 0.0)),
+                            reason=str(result.get("reason", "")),
+                            market="futures" if _is_fut else "equity",
+                        )
+                    except Exception as _oc_err:
+                        logger.debug(f"OpenClaw signal notification skipped: {_oc_err}")
 
         except Exception as e:
             logger.error(f"[Scanner] Pipeline error for {symbol}: {e}", exc_info=True)

@@ -1,0 +1,4 @@
+"BT","Strategy","WR","PF","Sharpe","Gates"
+"BT-3","STC standalone","48.3%","1.028","0.083","0/4"
+"BT-4","STC + Phase gate","52.3%","1.275","0.744","2/4"
+"BT-10","Cohen Composite","53.3%","0.949","'-0.381","4/10"

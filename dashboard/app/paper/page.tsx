@@ -1,11 +1,17 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { Activity, ArrowLeft, RefreshCw, Send, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { fetchEngine, postEngine, toggleKillSwitch, resetPendingSignals, fetchKillSwitchStatus } from "@/lib/api";
 import type { MGCSignalResponse, PendingSignal, MGCPerformanceResponse, PaperTradePayload, KillSwitchStatus } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  equityCurve,
+  dedupCaveat,
+  type HonestTradeSet,
+} from "@/lib/honestTrades";
 import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
 import { RiskStatusWidget } from "@/components/RiskStatusWidget";
 import { CircuitBreakerWidget } from "@/components/CircuitBreakerWidget";
@@ -624,11 +630,71 @@ function SignalQueuePanel() {
 // ── Section 3: Performance Metrics ───────────────────────────────────────────
 
 function PerformanceMetricsPanel() {
-  const { data: perf, error } = useSWR<MGCPerformanceResponse>(
+  // Kill switch + monthly breakdown still from the raw endpoint (legit data)
+  const { data: perf, error: perfError } = useSWR<MGCPerformanceResponse>(
     "/paper/mgc-performance",
     fetcher,
     { refreshInterval: 30_000, shouldRetryOnError: false }
   );
+
+  // Honest deduped trade record — source of truth for aggregate metrics
+  const [honest, setHonest] = useState<HonestTradeSet | null>(null);
+  const [honestError, setHonestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchHonestTrades()
+      .then((set) => {
+        if (!cancelled) setHonest(set);
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setHonestError(e instanceof Error ? e.message : "honest record unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Filter to MGC only — the panel is explicitly MGC-scoped
+  const mgcTrades = honest ? honest.trades.filter((t) => t.symbol === "MGC") : null;
+
+  // Derive MGC-scoped metrics from the honest subset
+  const mgcNet = mgcTrades ? mgcTrades.reduce((s, t) => s + t.pnl, 0) : null;
+  const mgcWins = mgcTrades ? mgcTrades.filter((t) => t.pnl > 0).length : null;
+  const mgcCount = mgcTrades ? mgcTrades.length : null;
+  const mgcWr = mgcCount != null && mgcCount > 0 && mgcWins != null ? mgcWins / mgcCount : null;
+  const mgcGrossWin = mgcTrades
+    ? mgcTrades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0)
+    : null;
+  const mgcGrossLoss = mgcTrades
+    ? Math.abs(mgcTrades.filter((t) => t.pnl < 0).reduce((s, t) => s + t.pnl, 0))
+    : null;
+  const mgcPf =
+    mgcGrossLoss != null && mgcGrossLoss > 0 && mgcGrossWin != null
+      ? mgcGrossWin / mgcGrossLoss
+      : null;
+
+  // Max drawdown from equity curve on the MGC subset
+  const mgcCurve = mgcTrades ? equityCurve(mgcTrades) : null;
+  const mgcMaxDd =
+    mgcCurve && mgcCurve.length > 0
+      ? Math.abs(Math.min(...mgcCurve.map((p) => p.drawdown)))
+      : null;
+
+  // Derive peak for percentage expression
+  const mgcPeak =
+    mgcCurve && mgcCurve.length > 0
+      ? Math.max(...mgcCurve.map((p) => p.equity), 0)
+      : null;
+  const mgcMaxDdPct =
+    mgcMaxDd != null && mgcPeak != null && mgcPeak > 0
+      ? mgcMaxDd / mgcPeak
+      : null;
+
+  const caveat = honest
+    ? `MGC subset · ${dedupCaveat({ ...honest, trades: mgcTrades ?? [] })}`
+    : null;
 
   const pfColor = (pf: number | null | undefined) => {
     if (pf == null) return "#555";
@@ -638,6 +704,8 @@ function PerformanceMetricsPanel() {
   };
 
   const killActive = perf?.kill_switch_active ?? false;
+
+  const anyError = honestError ?? (perfError && !perf ? "Engine offline" : null);
 
   return (
     <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4">
@@ -650,42 +718,75 @@ function PerformanceMetricsPanel() {
             style={{ borderColor: "#00d4ff33", backgroundColor: "#00d4ff10", color: "#00d4ff" }}>
             MGC 1D
           </span>
+          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
+            style={{ borderColor: "#88888833", backgroundColor: "#88888810", color: "#888" }}>
+            DEDUPED
+          </span>
         </div>
-        {/* Kill Switch Status */}
+        {/* Kill Switch Status — from raw endpoint (legit, not over-counted) */}
         <span className="font-mono text-[9px] px-2 py-0.5 rounded border font-bold"
           style={{
             borderColor: killActive ? "#ff444440" : "#00ff8840",
             backgroundColor: killActive ? "#ff444415" : "#00ff8815",
             color: killActive ? "#ff4444" : "#00ff88",
           }}>
-          KILL SWITCH: {killActive ? "TRIGGERED" : "ACTIVE"}
+          KILL SWITCH: {killActive ? "TRIGGERED" : "INACTIVE"}
         </span>
       </div>
 
-      {error && !perf && (
+      {anyError && (
         <div className="rounded-lg p-3 mb-3 font-mono text-xs" style={{ backgroundColor: "#ff444410", color: "#ff4444" }}>
-          Engine offline — performance data unavailable
+          {anyError} — performance data unavailable
         </div>
       )}
 
-      {/* Metrics Grid */}
+      {/* Metrics Grid — honest deduped values (MGC subset) */}
       <div className="grid grid-cols-5 gap-2 mb-4">
-        <MetricCard label="Total Trades" value={perf?.total_trades != null ? String(perf.total_trades) : "--"} />
-        <MetricCard label="Win Rate"
-          value={perf?.win_rate != null ? `${(perf.win_rate * 100).toFixed(1)}%` : "--"}
-          color={perf?.win_rate != null && perf.win_rate >= 0.5 ? "#00ff88" : "#ffcc00"} />
-        <MetricCard label="Profit Factor"
-          value={perf?.profit_factor != null ? perf.profit_factor.toFixed(2) : "--"}
-          color={pfColor(perf?.profit_factor)} />
-        <MetricCard label="Net P&L"
-          value={perf?.net_pnl != null ? `$${perf.net_pnl.toFixed(2)}` : "--"}
-          color={perf?.net_pnl != null ? (perf.net_pnl >= 0 ? "#00ff88" : "#ff4444") : undefined} />
-        <MetricCard label="Max Drawdown"
-          value={perf?.max_drawdown != null ? `${(perf.max_drawdown * 100).toFixed(1)}%` : "--"}
-          color={perf?.max_drawdown != null && perf.max_drawdown > 0.05 ? "#ff4444" : "#ffcc00"} />
+        <MetricCard
+          label="Total Trades"
+          value={mgcCount != null ? String(mgcCount) : "--"}
+        />
+        <MetricCard
+          label="Win Rate"
+          value={mgcWr != null ? `${(mgcWr * 100).toFixed(1)}%` : "--"}
+          color={mgcWr != null && mgcWr >= 0.5 ? "#00ff88" : "#ffcc00"}
+        />
+        <MetricCard
+          label="Profit Factor"
+          value={mgcPf != null ? mgcPf.toFixed(2) : "--"}
+          color={pfColor(mgcPf)}
+        />
+        <MetricCard
+          label="Net P&L"
+          value={mgcNet != null ? `$${mgcNet.toFixed(2)}` : "--"}
+          color={mgcNet != null ? (mgcNet >= 0 ? "#00ff88" : "#ff4444") : undefined}
+        />
+        <MetricCard
+          label="Max Drawdown"
+          value={
+            mgcMaxDdPct != null
+              ? `${(mgcMaxDdPct * 100).toFixed(1)}%`
+              : mgcMaxDd != null
+              ? `$${mgcMaxDd.toFixed(0)}`
+              : "--"
+          }
+          color={
+            mgcMaxDdPct != null && mgcMaxDdPct > 0.05
+              ? "#ff4444"
+              : "#ffcc00"
+          }
+        />
       </div>
 
-      {/* Monthly Breakdown */}
+      {/* Dedup caveat */}
+      {caveat && (
+        <p className="font-mono text-[9px] mb-3" style={{ color: "#666" }}>
+          {caveat}
+          {honest && honest.caveats.length > 0 && " · " + honest.caveats.join(" · ")}
+        </p>
+      )}
+
+      {/* Monthly Breakdown — from raw endpoint (structural, not aggregate metrics) */}
       {perf?.monthly_breakdown && perf.monthly_breakdown.length > 0 && (
         <div className="font-mono text-xs">
           <div className="mb-2">
@@ -715,7 +816,7 @@ function PerformanceMetricsPanel() {
         </div>
       )}
 
-      {!perf && !error && (
+      {!honest && !anyError && (
         <div className="rounded-lg p-6 text-center" style={{ backgroundColor: "#0d0d1a" }}>
           <span className="font-mono text-xs" style={{ color: "#555" }}>
             Loading performance metrics...

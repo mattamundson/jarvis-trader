@@ -1,9 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import {
+  equityCurve,
+  type EquityPoint,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 
 const REFRESH_INTERVAL_MS = 120_000;
@@ -11,42 +15,7 @@ const DD_LIMIT = 15; // percent — breach threshold
 const DD_WARN = 10;  // percent — warning threshold
 const DD_OK = 5;     // percent — healthy threshold
 
-interface TradeRecord {
-  id: number;
-  symbol: string;
-  side: "BUY" | "SELL";
-  realized_pnl: number | null;
-  status: "OPEN" | "CLOSED" | "CANCELLED";
-  entry_time: string;
-  exit_time: string | null;
-}
-
 type LoadState = "loading" | "ok" | "error";
-
-// ── Drawdown computation ───────────────────────────────────────────────────
-
-function computeDrawdownSeries(trades: TradeRecord[]): number[] {
-  // Sort by exit_time ascending; trades with null exit_time go last
-  const sorted = [...trades].sort((a, b) => {
-    if (!a.exit_time && !b.exit_time) return 0;
-    if (!a.exit_time) return 1;
-    if (!b.exit_time) return -1;
-    return a.exit_time.localeCompare(b.exit_time);
-  });
-
-  const series: number[] = [];
-  let cumPnl = 0;
-  let peak = 0;
-
-  for (const t of sorted) {
-    cumPnl += t.realized_pnl ?? 0;
-    if (cumPnl > peak) peak = cumPnl;
-    const dd = peak > 0 ? ((peak - cumPnl) / peak) * 100 : 0;
-    series.push(dd);
-  }
-
-  return series;
-}
 
 // ── SVG drawdown chart ─────────────────────────────────────────────────────
 
@@ -74,7 +43,7 @@ function DrawdownSVG({ series }: { series: number[] }) {
   // Build polyline points
   const points = series.map((dd, i) => `${xOf(i)},${yOf(dd)}`).join(" ");
 
-  // Build filled area path: line down from first point, across bottom, back up
+  // Build filled area path
   const firstX = xOf(0);
   const lastX = xOf(series.length - 1);
   const bottomY = PAD_TOP + chartH;
@@ -84,7 +53,6 @@ function DrawdownSVG({ series }: { series: number[] }) {
     series.map((dd, i) => `L ${xOf(i)},${yOf(dd)}`).join(" ") +
     ` L ${lastX},${bottomY} L ${firstX},${bottomY} Z`;
 
-  // Y-axis label: max drawdown
   const maxDDLabel = `${maxDD.toFixed(1)}%`;
 
   return (
@@ -186,70 +154,48 @@ function DrawdownSVG({ series }: { series: number[] }) {
   );
 }
 
+// ── Drawdown series from honest equity curve ──────────────────────────────────
+// equityCurve returns { t, equity, drawdown } where drawdown <= 0 (distance
+// below running peak). Convert to a positive percentage series for the chart.
+
+function deriveSeries(curve: EquityPoint[]): number[] {
+  return curve.map((pt) => {
+    // peak = equity - drawdown (since drawdown <= 0)
+    const peak = pt.equity - pt.drawdown;
+    if (peak <= 0) return 0;
+    return (Math.abs(pt.drawdown) / peak) * 100;
+  });
+}
+
 // ── Main widget ────────────────────────────────────────────────────────────
 
 export function DrawdownChartWidget() {
-  const [trades, setTrades] = useState<TradeRecord[]>([]);
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { honest: set, isLoading, error: loadError } = useHonestTrades(REFRESH_INTERVAL_MS);
+  const loadState: LoadState = isLoading ? "loading" : loadError ? "error" : "ok";
+  const series = set ? deriveSeries(equityCurve(set.trades)) : [];
+  const tradeCount = set ? set.trades.filter((t) => t.exit_time).length : 0;
 
-  async function fetchTrades() {
-    try {
-      const raw: unknown = await fetchEngine<unknown>(
-        `/portfolio/history/trades?status=CLOSED&limit=200`
-      );
-      // Handle both array and { trades: [...] } wrapped response
-      const list: TradeRecord[] = Array.isArray(raw)
-        ? raw
-        : ((raw as { trades?: TradeRecord[] }).trades ?? []);
-      setTrades(list);
-      setLoadState("ok");
-    } catch {
-      setLoadState("error");
-    }
-  }
-
-  useEffect(() => {
-    fetchTrades();
-    intervalRef.current = setInterval(fetchTrades, REFRESH_INTERVAL_MS);
-    return () => {
-      if (intervalRef.current !== null) clearInterval(intervalRef.current);
-    };
-  }, []);
-
-  // Filter to only closed trades with a realized P&L
-  const closedTrades = trades.filter(
-    (t) => t.status === "CLOSED" && t.realized_pnl !== null
-  );
-
-  const series = closedTrades.length > 0 ? computeDrawdownSeries(closedTrades) : [];
   const maxDrawdown = series.length > 0 ? Math.max(...series) : 0;
 
   // Badge and color logic
   type BadgeVariant = "bear" | "warn" | "bull" | "info";
   let badgeVariant: BadgeVariant;
-  let badgeLabel: string;
-  let ddColor: string;
+  let badgeText: string;
 
   if (maxDrawdown > DD_LIMIT) {
     badgeVariant = "bear";
-    badgeLabel = "BREACHED";
-    ddColor = "text-bear";
+    badgeText = "BREACHED";
   } else if (maxDrawdown > DD_WARN) {
     badgeVariant = "warn";
-    badgeLabel = "WARNING";
-    ddColor = "text-warn";
+    badgeText = "WARNING";
   } else if (maxDrawdown <= DD_OK) {
     badgeVariant = "bull";
-    badgeLabel = "HEALTHY";
-    ddColor = "text-bull";
+    badgeText = "HEALTHY";
   } else {
     badgeVariant = "info";
-    badgeLabel = "MODERATE";
-    ddColor = "text-warn";
+    badgeText = "MODERATE";
   }
 
-  // Color applied to the large drawdown text
   const ddTextColor =
     maxDrawdown > DD_WARN
       ? "text-red-500"
@@ -288,7 +234,7 @@ export function DrawdownChartWidget() {
     );
   }
 
-  if (closedTrades.length === 0) {
+  if (series.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -306,7 +252,10 @@ export function DrawdownChartWidget() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Drawdown Chart</CardTitle>
-          <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="neutral" className="text-[10px]">Deduped</Badge>
+            <Badge variant={badgeVariant}>{badgeText}</Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -316,7 +265,7 @@ export function DrawdownChartWidget() {
             {maxDrawdown.toFixed(1)}%
           </span>
           <span className="text-xs text-muted-foreground">
-            max drawdown &mdash; {closedTrades.length} closed trades
+            max drawdown &mdash; {tradeCount} closed trades (deduped)
           </span>
         </div>
 

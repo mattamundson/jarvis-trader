@@ -1774,6 +1774,46 @@ def migration_039(conn: sqlite3.Connection) -> None:
     logger.info("Migration 039 applied — bar_quality_rejections observability table.")
 
 
+def migration_040(conn: sqlite3.Connection) -> None:
+    """
+    040 — MAE/MFE excursion columns on paper_trades.
+
+    (Renumbered from 039 during the family-fdr-campaign integration: master had
+    already shipped 039 as bar_quality_rejections, so this excursion migration
+    takes the next free slot.)
+
+    Adds four nullable REAL columns for post-trade excursion analytics:
+
+        mae_pct  — Maximum Adverse Excursion as fraction of entry_price (>=0)
+                   LONG:  (entry_price - min_low) / entry_price
+                   SHORT: (max_high - entry_price) / entry_price
+
+        mfe_pct  — Maximum Favorable Excursion as fraction of entry_price (>=0)
+                   LONG:  (max_high - entry_price) / entry_price
+                   SHORT: (entry_price - min_low) / entry_price
+
+        mae_usd  — MAE in dollars (mae_pct * entry_price * multiplier * qty)
+
+        mfe_usd  — MFE in dollars (mfe_pct * entry_price * multiplier * qty)
+
+    All four are NULL for historical trades until the backfill callable
+    (analytics.excursion_backfill.run_backfill) is invoked.  New trades
+    are populated asynchronously after close by the wiring in
+    routers.analytics_router.
+
+    Idempotent: uses try/except on "duplicate column name" so the migration
+    is safe on databases that were altered manually (pattern from migration_038).
+    """
+    for col in ("mae_pct", "mfe_pct", "mae_usd", "mfe_usd"):
+        try:
+            conn.execute(f"ALTER TABLE paper_trades ADD COLUMN {col} REAL")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    conn.commit()
+    logger.info("Migration 040 applied — mae_pct, mfe_pct, mae_usd, mfe_usd columns on paper_trades.")
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1817,6 +1857,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_037,  # version 37
     migration_038,  # version 38
     migration_039,  # version 39
+    migration_040,  # version 40
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1859,6 +1900,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "IBKR fills order provenance: order_ref + parent_order_id columns on ibkr_fills for JARVIS-tagged fill reconciliation (execution-fidelity forward-test).",
     "Paper trades slippage: slippage_ticks column on paper_trades (queried by execution-fidelity validation + paper_trade_pairing but never created); populated on close from matched real IB fill.",
     "Bar quality observability: bar_quality_rejections table recording bars rejected by the write-time bar-quality gate (symbol, ts_utc, reason) for the Trust Pane observability surface.",
+    "MAE/MFE excursion: mae_pct, mfe_pct, mae_usd, mfe_usd columns on paper_trades for post-trade excursion analytics.",
 ]
 
 

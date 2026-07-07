@@ -105,10 +105,18 @@ async def get_session_bias(date: str = "") -> dict:
         ib_bias, specific_triggers, conviction, corey_quote,
         message_count, data_quality
     """
-    from discord.commentary_processor import CoreyCommentaryProcessor  # noqa: PLC0415
+    from discord.commentary_processor import (  # noqa: PLC0415
+        CoreyCommentaryProcessor,
+        build_default_llm_client,
+    )
 
     parsed = _parse_date(date)
-    processor = CoreyCommentaryProcessor()
+    # Route extraction through the engine's Vertex/Gemini/OpenAI failover client
+    # rather than the raw direct-Anthropic POST. engine/.env is already loaded at
+    # module import (see top of file), so the failover config is present.
+    # (2026-06-29: the direct-Anthropic account's credit ran dry and every MCP
+    # session-bias read silently degraded to data_quality='none'.)
+    processor = CoreyCommentaryProcessor(llm_client=build_default_llm_client())
     bias = await processor.get_session_bias(parsed)
     return bias.to_dict()
 
@@ -431,6 +439,7 @@ async def get_tweet_by_url(url: str) -> dict:
             return {"found": True, **dict(row)}
         # Fuzzy fallback: match on status ID
         import re as _re
+
         m = _re.search(r"/status/(\d+)", url)
         if m:
             status_id = m.group(1)
@@ -449,7 +458,11 @@ async def get_tweet_by_url(url: str) -> dict:
                 ).fetchone()
             if row:
                 return {"found": True, **dict(row)}
-        return {"found": False, "url": url, "message": "not in bookmarks — run nightly sync or check URL"}
+        return {
+            "found": False,
+            "url": url,
+            "message": "not in bookmarks — run nightly sync or check URL",
+        }
     except Exception as exc:
         logger.warning("[get_tweet_by_url] DB error for %r: %s", url, exc)
         return {"found": False, "url": url, "message": f"DB error: {exc}"}

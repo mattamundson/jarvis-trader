@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { Activity } from "lucide-react";
+import { Activity, AlertCircle } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 
 const REFRESH_MS = 5000;
@@ -72,8 +72,8 @@ function strategyLabel(strategy: string): string {
 
 export default function OptionsPage() {
   const { data: status } = useSWR<OptionsModuleStatus>("/options/module/status", fetcher, { refreshInterval: REFRESH_MS });
-  const { data: scan } = useSWR<OptionsScanResponse>("/options/module/scan", fetcher, { refreshInterval: 30_000 });
-  const { data: pnlData } = useSWR<OptionsPnLResponse>("/options/module/pnl", fetcher, { refreshInterval: REFRESH_MS });
+  const { data: scan, error: scanError } = useSWR<OptionsScanResponse>("/options/module/scan", fetcher, { refreshInterval: 30_000 });
+  const { data: pnlData, error: pnlError } = useSWR<OptionsPnLResponse>("/options/module/pnl", fetcher, { refreshInterval: REFRESH_MS });
 
   const pnlPositive = (pnlData?.daily_pnl ?? 0) >= 0;
 
@@ -191,30 +191,41 @@ export default function OptionsPage() {
             <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               P&L Summary
             </p>
-            <div className="space-y-2 font-mono text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Daily P&L</span>
-                <span
-                  className="tabular-nums font-bold"
-                  style={{ color: pnlPositive ? "#00ff88" : "#ff4444" }}
-                >
-                  {pnlPositive ? "+" : ""}${(pnlData?.daily_pnl ?? 0).toFixed(2)}
-                </span>
+            {pnlError && !pnlData ? (
+              <div className="flex items-start gap-2 py-1">
+                <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                <p className="font-mono text-[10px] text-muted-foreground">
+                  Data unavailable — endpoint{" "}
+                  <code className="bg-muted px-1 rounded">/options/module/pnl</code>{" "}
+                  not available on engine.
+                </p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total P&L</span>
-                <span
-                  className="tabular-nums"
-                  style={{ color: (pnlData?.total_pnl ?? 0) >= 0 ? "#00ff88" : "#ff4444" }}
-                >
-                  {(pnlData?.total_pnl ?? 0) >= 0 ? "+" : ""}${(pnlData?.total_pnl ?? 0).toFixed(2)}
-                </span>
+            ) : (
+              <div className="space-y-2 font-mono text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Daily P&L</span>
+                  <span
+                    className="tabular-nums font-bold"
+                    style={{ color: pnlPositive ? "#00ff88" : "#ff4444" }}
+                  >
+                    {pnlPositive ? "+" : ""}${(pnlData?.daily_pnl ?? 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total P&L</span>
+                  <span
+                    className="tabular-nums"
+                    style={{ color: (pnlData?.total_pnl ?? 0) >= 0 ? "#00ff88" : "#ff4444" }}
+                  >
+                    {(pnlData?.total_pnl ?? 0) >= 0 ? "+" : ""}${(pnlData?.total_pnl ?? 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Open Positions</span>
+                  <span className="tabular-nums">{pnlData?.open_positions?.length ?? 0}</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Open Positions</span>
-                <span className="tabular-nums">{pnlData?.open_positions?.length ?? 0}</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -231,7 +242,16 @@ export default function OptionsPage() {
             )}
           </div>
 
-          {!scan?.scan_results?.length ? (
+          {scanError && !scan ? (
+            <div className="flex items-start gap-2 py-4">
+              <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <p className="font-mono text-[10px] text-muted-foreground">
+                Data unavailable — endpoint{" "}
+                <code className="bg-muted px-1 rounded">/options/module/scan</code>{" "}
+                not available on engine.
+              </p>
+            </div>
+          ) : !scan?.scan_results?.length ? (
             <p className="font-mono text-[10px] text-muted-foreground/50 text-center py-6">
               No scan results — run a scan or wait for the next scheduled scan
             </p>
@@ -264,7 +284,16 @@ export default function OptionsPage() {
           <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
             Open Positions
           </p>
-          {!pnlData?.open_positions?.length ? (
+          {pnlError && !pnlData ? (
+            <div className="flex items-start gap-2 py-4">
+              <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <p className="font-mono text-[10px] text-muted-foreground">
+                Data unavailable — endpoint{" "}
+                <code className="bg-muted px-1 rounded">/options/module/pnl</code>{" "}
+                not available on engine.
+              </p>
+            </div>
+          ) : !pnlData?.open_positions?.length ? (
             <p className="font-mono text-[10px] text-muted-foreground/50 text-center py-6">
               No open positions
             </p>

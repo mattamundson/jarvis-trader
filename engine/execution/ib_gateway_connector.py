@@ -104,6 +104,7 @@ class IBGatewayConnector:
         self._connected = False
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
+        self._market_data_manager = None  # Real-price source; attach_market_data()
         self._account_summary = {
             "equity": 10000.0,
             "cash": 10000.0,
@@ -588,13 +589,55 @@ class IBGatewayConnector:
         # Generate order ID (UUID for paper trades)
         order_id = str(uuid.uuid4())
 
-        # Get market quote (mock for paper trading)
-        quote = await self.get_quote(symbol)
+        # Get market quote (mock for paper trading). A transient quote-feed
+        # failure must not abort the simulated fill — degrade to the same
+        # fallback the no-quote branch already uses (limit_price or 100.0).
+        try:
+            quote = await self.get_quote(symbol)
+        except Exception as exc:
+            logger.warning(
+                "IBGatewayConnector: get_quote raised for %s (%s) — using fallback price",
+                symbol,
+                exc,
+            )
+            quote = None
         if not quote or "error" in quote:
-            logger.warning("IBGatewayConnector: Could not get quote for %s", symbol)
-            mid_price = limit_price or 100.0
+            # No live price and no mock entry. A limit price is still a valid
+            # basis; otherwise REFUSE to book a phantom fill (the old code
+            # defaulted to 100.0, which poisoned paper_trades). 2026-06-22 fix.
+            if limit_price and limit_price > 0:
+                mid_price = limit_price
+            else:
+                logger.warning(
+                    "IBGatewayConnector: no price for %s and no limit_price — "
+                    "rejecting paper order (refusing phantom fill)",
+                    symbol,
+                )
+                return {
+                    "status": "rejected",
+                    "reason": "no_price_basis",
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "filled": False,
+                }
         else:
-            mid_price = quote.get("mid", limit_price or 100.0)
+            mid_price = quote.get("mid") or quote.get("last") or (limit_price or 0.0)
+            if not mid_price or mid_price <= 0:
+                if limit_price and limit_price > 0:
+                    mid_price = limit_price
+                else:
+                    logger.warning(
+                        "IBGatewayConnector: non-positive price for %s — "
+                        "rejecting paper order (refusing phantom fill)",
+                        symbol,
+                    )
+                    return {
+                        "status": "rejected",
+                        "reason": "no_price_basis",
+                        "order_id": order_id,
+                        "symbol": symbol,
+                        "filled": False,
+                    }
 
         # Calculate fill price with slippage (0-2 ticks)
         # For futures: tick size is 0.25 (1 point = 4 ticks)
@@ -950,7 +993,18 @@ class IBGatewayConnector:
             for symbol, quantity in self._positions.items():
                 if quantity == 0:
                     continue
-                quote = await self.get_quote(symbol)
+                # A transient quote-feed failure must not break position
+                # marking — degrade to the same fallback the no-quote branch
+                # below already uses (current_price = 100.0).
+                try:
+                    quote = await self.get_quote(symbol)
+                except Exception as exc:
+                    logger.warning(
+                        "IBGatewayConnector: get_quote raised marking %s (%s) — using fallback price",
+                        symbol,
+                        exc,
+                    )
+                    quote = None
                 if quote and "error" not in quote:
                     current_price = float(quote.get("last", 100.0))
                 else:
@@ -1044,6 +1098,38 @@ class IBGatewayConnector:
 
     # ── Market Data ───────────────────────────────────────────────────────────
 
+    def attach_market_data(self, manager) -> None:
+        """Wire a real-price source (``MarketDataManager``) for paper quotes.
+
+        Without this, paper ``get_quote`` falls back to a static mock table and
+        refuses to fabricate a price for unlisted symbols. With it, fills use the
+        real ``get_tick_price`` waterfall (IBKR snapshot -> Schwab -> CSV cache),
+        so paper P&L reflects actual market movement instead of frozen constants.
+        """
+        self._market_data_manager = manager
+
+    async def _real_last_price(self, symbol: str) -> Optional[float]:
+        """Best-effort real last price via the attached MarketDataManager.
+
+        Returns a positive float, or None when no real price is available (no
+        manager attached, feed down, or symbol unknown to every tier). Never
+        raises and never fabricates -- a None result means 'no price basis'.
+        """
+        mgr = self._market_data_manager
+        if mgr is None:
+            return None
+        try:
+            is_fut = symbol.upper() in _FUTURES_ROOTS
+            result = await mgr.get_tick_price(symbol, is_futures=is_fut)
+            price = result.get("last_price") if isinstance(result, dict) else None
+            if price is not None and float(price) > 0:
+                return float(price)
+        except Exception as exc:  # noqa: BLE001 — best-effort; degrade to None
+            logger.debug(
+                "IBGatewayConnector: real price lookup failed for %s (%s)", symbol, exc
+            )
+        return None
+
     async def get_quote(self, symbol: str) -> dict:
         """
         Get real-time quote for a symbol.
@@ -1069,8 +1155,28 @@ class IBGatewayConnector:
             return {"error": "Not connected"}
 
         if self._settings.PAPER_TRADING:
-            # Return realistic mock quotes based on symbol
-            # These are NOT real-time — just for paper trading simulation
+            # Tier 1: a REAL price from the attached MarketDataManager waterfall.
+            # This is what makes paper P&L reflect actual market movement.
+            real = await self._real_last_price(symbol)
+            if real is not None:
+                tick = 0.25 if symbol.upper() in _FUTURES_ROOTS else 0.01
+                return {
+                    "symbol": symbol,
+                    "bid": real - tick,
+                    "ask": real + tick,
+                    "last": real,
+                    "mid": real,
+                    "volume": 0,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "source": "live",
+                }
+
+            # Tier 2: static mock table — degraded fallback for KNOWN symbols only.
+            # NOTE: these are frozen constants, NOT real-time. They exist so paper
+            # trading degrades gracefully when no data manager is attached (e.g.
+            # unit tests). An unlisted symbol gets NO fabricated price — we return
+            # an error so the fill path refuses to book a phantom (100.5-sentinel)
+            # trade rather than poisoning paper_trades. (2026-06-22 integrity fix.)
             mock_quotes = {
                 "MES": {"bid": 5300.00, "ask": 5300.25, "last": 5300.10, "volume": 1000000},
                 "MNQ": {"bid": 17500.00, "ask": 17500.50, "last": 17500.25, "volume": 500000},
@@ -1081,10 +1187,12 @@ class IBGatewayConnector:
                 "TSLA": {"bid": 240.00, "ask": 240.10, "last": 240.05, "volume": 120000000},
             }
 
-            quote = mock_quotes.get(
-                symbol,
-                {"bid": 100.00, "ask": 100.10, "last": 100.05, "volume": 1000000},
-            )
+            quote = mock_quotes.get(symbol)
+            if quote is None:
+                return {
+                    "symbol": symbol,
+                    "error": "no quote available (no live price, no mock entry)",
+                }
 
             return {
                 "symbol": symbol,
@@ -1094,6 +1202,7 @@ class IBGatewayConnector:
                 "mid": (quote["bid"] + quote["ask"]) / 2,
                 "volume": quote["volume"],
                 "timestamp": datetime.utcnow().isoformat() + "Z",
+                "source": "mock",
             }
 
         raise NotImplementedError(

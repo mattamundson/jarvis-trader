@@ -72,7 +72,12 @@ def _make_approval_row(symbol: str) -> dict:
 
 def _make_mock_safety_layer(kill_switch_active: bool = False):
     safety = MagicMock()
-    safety.get_status.return_value = {"kill_switch_active": kill_switch_active}
+    # dual-key contract: ensure_approval_allowed reads is_killed (family-fdr); keep
+    # kill_switch_active too so both consumers see a consistent status.
+    safety.get_status.return_value = {
+        "is_killed": kill_switch_active,
+        "kill_switch_active": kill_switch_active,
+    }
     safety.get_lockout_status.return_value = {"locked": False}
     return safety
 

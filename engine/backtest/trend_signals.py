@@ -68,6 +68,8 @@ def generate_sma_trend_signals(
     vix_df: pd.DataFrame | None = None,
     vix_min: float = 0.0,
     vix_max: float = 999.0,
+    vix_regime_block: tuple[str, ...] | None = None,
+    vix_regime_lookback: int = 252,
 ) -> pd.DataFrame:
     """
     Generate SMA trend-following signals compatible with the JARVIS Backtester.
@@ -85,6 +87,14 @@ def generate_sma_trend_signals(
             No-op when None (default, backward-compatible).
         vix_min: Lower bound for VIX filter (inclusive). 0.0 = no lower bound.
         vix_max: Upper bound for VIX filter (inclusive). 999.0 = no upper bound.
+        vix_regime_block: Optional tuple of VIX percentile-tier names
+            ("Crisis"|"HighVol"|"MidVol"|"LowVol") in which to suppress
+            ENTRY_NOW. Adaptive alternative to the absolute vix_min/vix_max
+            range — tiers are computed from the trailing VIX percentile
+            (see backtest.vix_percentile_regime). Requires vix_df. No-op when
+            None (default, backward-compatible).
+        vix_regime_lookback: Trailing window (in daily VIX bars) for the
+            percentile rank. Default 252 (~1 year).
 
     Returns df with columns:
         entry_signal  : "ENTRY_NOW" | "NO_TRADE"
@@ -101,12 +111,28 @@ def generate_sma_trend_signals(
 
     # Precompute per-bar VIX levels (daily, forward-filled to 1h bars)
     _vix_series: pd.Series | None = None
+    _vix_tier_series: pd.Series | None = None
     if vix_df is not None and not vix_df.empty:
         vix_daily = vix_df["close"].copy()
         vix_daily.index = pd.to_datetime(vix_daily.index).normalize()
         bar_dates = df.index.normalize()
         _vix_series = vix_daily.reindex(bar_dates, method="ffill")
         _vix_series.index = df.index
+
+        # Percentile-tier gate: classify on the DAILY series (point-in-time
+        # trailing percentile) then forward-fill tiers onto the bar index.
+        if vix_regime_block:
+            from backtest.vix_percentile_regime import classify_vix_regime
+
+            # pandas >= 3.0 coerces the str-Enum tier elements to plain str inside the
+            # Series, so `t` may be 'MidVol' (str) rather than VixTier.MID_VOL. The
+            # coerced str already equals the enum's .value, so fall back to the element
+            # itself when .value is absent.
+            tiers_daily = classify_vix_regime(vix_daily, lookback=vix_regime_lookback).map(
+                lambda t: getattr(t, "value", t)
+            )
+            _vix_tier_series = tiers_daily.reindex(bar_dates, method="ffill")
+            _vix_tier_series.index = df.index
 
     sma_f = df["close"].rolling(fast).mean()
     sma_s = df["close"].rolling(slow).mean()
@@ -157,6 +183,12 @@ def generate_sma_trend_signals(
             if _vix_series is not None:
                 vix_i = _vix_series.iloc[i]
                 if pd.isna(vix_i) or not (vix_min <= float(vix_i) <= vix_max):
+                    continue  # leave entry_signal as NO_TRADE
+
+            # VIX percentile-tier gate: skip entry in a blocked volatility tier.
+            if _vix_tier_series is not None:
+                tier_i = _vix_tier_series.iloc[i]
+                if pd.isna(tier_i) or tier_i in vix_regime_block:
                     continue  # leave entry_signal as NO_TRADE
 
             entry_signal[i] = "ENTRY_NOW"

@@ -5779,13 +5779,13 @@ function showDayDetail(dayData, el) {
     content.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);padding:8px 0;">No trades recorded yet — session in progress</div>`;
   } else {
     const pnlColor = dayData.pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
-    const pnlFmt = dayData.pnl >= 0 ? `+$${dayData.pnl.toFixed(2)}` : `-$${Math.abs(dayData.pnl).toFixed(2)}`;
+    const pnlFmt = dayData.pnl >= 0 ? `+$${fmt(dayData.pnl, 2)}` : `-$${fmt(Math.abs(dayData.pnl), 2)}`;
     content.innerHTML = dayData.trades.map(t => `
       <div class="day-trade-row">
         <span class="pv-sym">${t.sym}</span>
         <span>${t.action}</span>
         <span>×${t.qty}</span>
-        <span class="${t.pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${t.pnl >= 0 ? '+$' : '-$'}${Math.abs(t.pnl).toFixed(2)}</span>
+        <span class="${t.pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${t.pnl >= 0 ? '+$' : '-$'}${fmt(Math.abs(t.pnl), 2)}</span>
       </div>
     `).join('') + `
       <div class="day-trade-row" style="margin-top:4px;padding-top:8px;border-top:1px solid rgba(0,212,255,0.15);">
@@ -6632,6 +6632,12 @@ buildCalendar();
 </div><!-- /wrapper -->
 
 <script>
+// ─── NULL-SAFE NUMBER FORMATTER ───
+function fmt(v, d) {
+  d = (d === undefined ? 2 : d);
+  return (v === null || v === undefined || isNaN(Number(v))) ? '—' : Number(v).toFixed(d);
+}
+
 // ─── ACCORDION ───
 function toggleAccordion(header) {
   var body = header.nextElementSibling;
@@ -7085,11 +7091,11 @@ searchInput.addEventListener('input', function() {
     .then(data => {
       if (!data) return;
       var chgClass = data.change_pct > 0 ? 'up' : data.change_pct < 0 ? 'down' : 'flat';
-      var chgStr = (data.change_pct > 0 ? '+' : '') + data.change_pct.toFixed(2) + '%';
+      var chgStr = (data.change_pct > 0 ? '+' : '') + fmt(data.change_pct, 2) + '%';
       const typeMap = { EQUITY:'STOCK', ETF:'ETF', FUTURE:'FUTURES', CRYPTOCURRENCY:'CRYPTO', INDEX:'INDEX' };
       const displayType = typeMap[data.type] || data.type;
       var typeColor = displayType==='FUTURES'?'badge-futures':displayType==='CRYPTO'?'badge-crypto':displayType==='ETF'?'badge-etf':'badge-stock';
-      var price = data.price > 1000 ? data.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '$' + data.price.toFixed(2);
+      var price = (data.price != null && data.price > 1000) ? Number(data.price).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '$' + fmt(data?.price, 2);
       const extra = data.market_cap ? ` · MCap: ${data.market_cap}` : data.sector ? ` · ${data.sector}` : '';
       searchResults.innerHTML = `<div class="search-result-row" onclick="showInstrument('${data.symbol}')">
         <span class="res-sym">${data.symbol}</span>
@@ -7154,7 +7160,7 @@ function fetchGainers() {
       var rankColors = ['var(--gold)', 'var(--text-secondary)', 'var(--text-dim)', 'var(--text-dim)', 'var(--text-dim)'];
       list.innerHTML = gainers.slice(0, 5).map((g, i) => {
         var barWidth = Math.round((Math.abs(g.change_pct) / maxChg) * 100);
-        var chgStr = (g.change_pct >= 0 ? '+' : '') + g.change_pct.toFixed(2) + '%';
+        var chgStr = (g.change_pct >= 0 ? '+' : '') + fmt(g.change_pct, 2) + '%';
         var name = (g.name || g.symbol).substring(0, 22);
         return `<div class="gainer-row" onclick="showInstrument('${g.symbol}')">
           <span class="g-rank" style="color:${rankColors[i]}">#${i+1} ${g.symbol}</span>
@@ -7166,7 +7172,7 @@ function fetchGainers() {
         </div>`;
       }).join('');
       if (badge) { badge.style.color = 'var(--green)'; badge.textContent = '● LIVE'; }
-      addLog('info', `[GAINERS] Top mover: ${gainers[0].symbol} ${gainers[0].change_pct >= 0 ? '+' : ''}${gainers[0].change_pct.toFixed(2)}%`);
+      addLog('info', `[GAINERS] Top mover: ${gainers[0].symbol} ${gainers[0].change_pct >= 0 ? '+' : ''}${fmt(gainers[0].change_pct, 2)}%`);
     })
     .catch(() => {
       var badge = document.getElementById('gainers-badge');
@@ -7285,13 +7291,13 @@ function updateQuoteRows(data) {
     const chgEl = rows[idx].querySelector('.q-chg');
     const rangeEl = rows[idx].querySelector('.q-range');
     if (priceEl) {
-      priceEl.textContent = '$' + q.price.toFixed(2);
+      priceEl.textContent = '$' + fmt(q.price, 2);
       priceEl.className = 'q-price ' + (q.change_pct > 0 ? 'up' : q.change_pct < 0 ? 'down' : 'flat');
       rows[idx].classList.add('flash');
       setTimeout(() => rows[idx].classList.remove('flash'), 400);
     }
     if (chgEl) {
-      chgEl.textContent = (q.change_pct > 0 ? '+' : '') + q.change_pct.toFixed(2) + '%';
+      chgEl.textContent = (q.change_pct > 0 ? '+' : '') + fmt(q.change_pct, 2) + '%';
       chgEl.className = 'q-chg ' + (q.change_pct > 0 ? 'up' : q.change_pct < 0 ? 'down' : 'flat');
     }
     if (rangeEl && q.low && q.high) {
@@ -7309,8 +7315,8 @@ function updateTickerBar(data) {
     if (!q || !items[i]) { i++; return; }
     const cls = q.change_pct > 0 ? 'up' : q.change_pct < 0 ? 'down' : 'flat';
     var sign = q.change_pct > 0 ? '+' : '';
-    var price = q.price > 1000 ? Math.round(q.price).toLocaleString() : '$'+q.price.toFixed(2);
-    items[i].innerHTML = `<span class="sym">${label}</span><span class="${cls}">${price}</span> <span class="${cls}">${sign}${q.change_pct.toFixed(2)}%</span>`;
+    var price = (q.price != null && q.price > 1000) ? Math.round(q.price).toLocaleString() : '$'+fmt(q.price, 2);
+    items[i].innerHTML = `<span class="sym">${label}</span><span class="${cls}">${price}</span> <span class="${cls}">${sign}${fmt(q.change_pct, 2)}%</span>`;
     // Also update duplicate (for seamless scroll)
     if (items[i + 12]) items[i + 12].innerHTML = items[i].innerHTML;
     i++;
@@ -7323,7 +7329,7 @@ function updateFutures(data) {
     var q = data[sym];
     var el = document.getElementById(elId);
     if (!q || !el) return;
-    el.textContent = q.price > 1000 ? q.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : q.price.toFixed(2);
+    el.textContent = (q.price != null && q.price > 1000) ? Number(q.price).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : fmt(q.price, 2);
     el.style.color = q.change_pct > 0 ? 'var(--green)' : q.change_pct < 0 ? 'var(--red)' : 'var(--text-primary)';
     setTimeout(() => { el.style.color = 'var(--text-primary)'; }, 1500);
   });
@@ -8039,6 +8045,7 @@ function flashRegimeAlert(color, msg) {
   }
 
   function ivBarHTML(iv) {
+    if (iv === null || iv === undefined || isNaN(Number(iv))) return '<div class="op-iv-bar-wrap"><span class="op-iv-val">—</span></div>';
     var pct = Math.min(100, ((iv - 0.15) / 0.25) * 100);
     return `
       <div class="op-iv-bar-wrap">
@@ -8050,9 +8057,10 @@ function flashRegimeAlert(color, msg) {
   }
 
   function fmtNum(n, dec) {
-    return n.toFixed(dec !== undefined ? dec : 2);
+    return fmt(n, dec !== undefined ? dec : 2);
   }
   function fmtOI(n) {
+    if (n === null || n === undefined || isNaN(Number(n))) return '—';
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
     return '' + n;
   }
@@ -8287,10 +8295,12 @@ function flashRegimeAlert(color, msg) {
 
   function pnlClass(val) { return val >= 0 ? 'pnl-val-pos' : 'pnl-val-neg'; }
   function fmtDollar(n) {
+    if (n === null || n === undefined || isNaN(Number(n))) return '—';
     var sign = n >= 0 ? '+' : '-';
     return sign + '$' + Math.abs(n).toFixed(2);
   }
   function fmtPct(n) {
+    if (n === null || n === undefined || isNaN(Number(n))) return '—';
     var sign = n >= 0 ? '+' : '';
     return sign + n.toFixed(1) + '%';
   }
@@ -8315,8 +8325,8 @@ function flashRegimeAlert(color, msg) {
         <td class="pnl-val-neutral">${pos.expiry_label}</td>
         <td class="${urgent ? 'pnl-dte-warn' : 'pnl-dte-ok'}">${pos.dte}d</td>
         <td class="pnl-val-neutral">${pos.qty}</td>
-        <td class="pnl-val-neutral">$${pos.cost.toFixed(2)}</td>
-        <td class="pnl-val-neutral">$${pos.value.toFixed(2)}</td>
+        <td class="pnl-val-neutral">$${fmt(pos.cost, 2)}</td>
+        <td class="pnl-val-neutral">$${fmt(pos.value, 2)}</td>
         <td class="${pnlClass(pos.pnl)}">${fmtDollar(pos.pnl)}</td>
         <td class="${pnlClass(pos.pnl_pct)}">${fmtPct(pos.pnl_pct)}</td>
       `;
@@ -8335,8 +8345,8 @@ function flashRegimeAlert(color, msg) {
       <td>TOTAL</td>
       <td></td><td></td><td></td><td></td>
       <td></td>
-      <td>$${totalCost.toFixed(2)}</td>
-      <td>$${totalValue.toFixed(2)}</td>
+      <td>$${fmt(totalCost, 2)}</td>
+      <td>$${fmt(totalValue, 2)}</td>
       <td class="${pnlClass(totalPnl)}">${fmtDollar(totalPnl)}</td>
       <td class="${pnlClass(totalPct)}">${fmtPct(totalPct)}</td>
     `;
@@ -8614,10 +8624,10 @@ function renderRegime(data) {
   }
 
   regimeText.textContent = data.regime;
-  var scale = (data.combined_scale * 100).toFixed(1);
+  var scale = fmt(data.combined_scale != null ? data.combined_scale * 100 : null, 1);
   document.getElementById('scaleValue').textContent = scale + '%';
   document.getElementById('scaleBar').style.width = scale + '%';
-  document.getElementById('scaleMultiplier').textContent = data.combined_scale.toFixed(3) + '×';
+  document.getElementById('scaleMultiplier').textContent = fmt(data.combined_scale, 3) + '×';
   document.getElementById('adjPosSize').textContent = scale + '%';
 
   document.getElementById('vixValueBig').textContent = (data.vix || 16.05).toFixed(2);
@@ -8765,8 +8775,10 @@ var data = { ...FALLBACK };
 function renderHoldings(d) {
   var container = document.getElementById('holdingsContainer');
   container.innerHTML = '';
+  if (!d || !d.target) return;
+  var current = d.current || {};
   Object.entries(d.target).forEach(([ticker, tgt]) => {
-    var cur = d.current[ticker] || 0;
+    var cur = current[ticker] || 0;
     var delta = (tgt - cur) * 100;
     const isBuy = delta > 0.01;
     const isSell = delta < -0.01;

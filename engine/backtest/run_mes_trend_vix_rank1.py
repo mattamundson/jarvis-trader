@@ -100,7 +100,10 @@ def _load_vix_data(start: str = "2022-01-01") -> pd.DataFrame:
         sys.exit(1)
 
     vix.columns = [c.lower() if isinstance(c, str) else c[0].lower() for c in vix.columns]
-    vix.index = pd.to_datetime(vix.index).normalize()
+    _vidx = pd.to_datetime(vix.index)
+    if getattr(_vidx, "tz", None) is not None:
+        _vidx = _vidx.tz_localize(None)  # some yfinance versions return tz-aware UTC
+    vix.index = _vidx.normalize()
     print(
         f"[VIX] {len(vix)} bars | {vix.index.min().date()} -> {vix.index.max().date()} "
         f"| current: {vix['close'].iloc[-1]:.2f}"
@@ -121,7 +124,13 @@ def _load_mes_data(data_dir: Path) -> pd.DataFrame:
     df = pd.read_csv(data_file)
     df.columns = [c.lower() for c in df.columns]
     ts_col = "timestamp" if "timestamp" in df.columns else "datetime"
-    df[ts_col] = pd.to_datetime(df[ts_col])
+    _ts = pd.to_datetime(df[ts_col])
+    # Some caches are written tz-aware UTC (datetime64[us, UTC]); the tz-naive VIX
+    # daily frame then fails to reindex against it inside generate_sma_trend_signals
+    # ("Cannot compare dtypes ... UTC"). Drop tz, preserving the UTC wall-clock time.
+    if getattr(_ts.dt, "tz", None) is not None:
+        _ts = _ts.dt.tz_localize(None)
+    df[ts_col] = _ts
     df = df.set_index(ts_col).sort_index()
     required = {"open", "high", "low", "close"}
     missing = required - set(df.columns)
@@ -359,23 +368,20 @@ def _compute_gate_v2(
     fixed_params_metrics: dict,
     cost_sweep_metrics: dict,
 ) -> dict:
-    from backtest.deflated_sharpe import deflated_sharpe_ratio
+    from backtest._gate_v2_trade_metrics import trade_level_dsr
 
     oos_pfs = [r.profit_factor for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW]
     oos_dds = [r.max_drawdown_pct for r in oos_results]
-    oos_sharpes = [
-        r.sharpe_ratio for r in oos_results if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW
-    ]
     all_trades = sum(r.total_trades for r in oos_results)
 
     pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
     p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
     mc_95th_dd = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
 
-    mean_sharpe = float(np.mean(oos_sharpes)) if oos_sharpes else 0.0
-    n_obs = max(all_trades, 30)
-    dsr_result = deflated_sharpe_ratio(sharpe=mean_sharpe, n_trials=n_grid_combos, n_obs=n_obs)
-    dsr = dsr_result.get("dsr", 0.0) if isinstance(dsr_result, dict) else float(dsr_result)
+    # DSR from the ACTUAL per-trade OOS return series, not the mean of per-window
+    # Sharpes (a 1-2 trade window's giant Sharpe deflated to a fake ~1.0 and
+    # auto-passed both gate floors). See _gate_v2_trade_metrics for the why.
+    dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
 
     wfo_consistency = _classify_wfo_consistency(oos_pfs)
     fixed_params_min_pf = fixed_params_metrics.get("fixed_params_min_pf", 0.0)

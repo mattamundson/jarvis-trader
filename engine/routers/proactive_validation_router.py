@@ -63,6 +63,14 @@ _WFE_BASELINES: dict[str, float] = {
 _WFE_WARN_THRESHOLD = 0.50
 _WFE_FAIL_THRESHOLD = 0.30
 
+# Honesty floors. Below these the underlying statistic is degenerate (rests on
+# too few trades, or has near-zero gross loss/win) and the check must report
+# INSUFFICIENT_DATA rather than a confident pass/fail. A WFE snapshot resting on
+# a handful of trades produces meaningless profit factors (e.g. 3173 or 0.000)
+# that previously read as "healthy" / "overfitting" — both noise, not signal.
+_WFE_MIN_TRADES = 10
+_WFE_DEGENERATE_PF = 50.0  # PF this large => gross loss ~ 0 => degenerate
+
 # MC minimum trades for a reliable bootstrap test
 _MC_MIN_TRADES = 10
 
@@ -146,15 +154,20 @@ def _load_closed_trades(symbol: str) -> list[sqlite3.Row]:
         return []
 
 
-def _load_wfe_latest(symbol: str) -> Optional[float]:
-    """Return the most recent WFE profit_factor for symbol from wfe_snapshots."""
+def _load_wfe_latest(symbol: str) -> Optional[tuple[float, Optional[int]]]:
+    """Return (profit_factor, trades) for the most recent WFE snapshot, or None.
+
+    The trade count rides along so the caller can gate degenerate profit factors
+    (e.g. a PF of 3173 produced by a 3-trade snapshot) to insufficient_data.
+    `trades` may be None for legacy rows that did not record it.
+    """
     conn = _db_conn()
     if not conn:
         return None
     try:
         cur = conn.execute(
             """
-            SELECT profit_factor FROM wfe_snapshots
+            SELECT profit_factor, trades FROM wfe_snapshots
             WHERE  symbol = ?
             ORDER  BY created_at DESC
             LIMIT  1
@@ -163,11 +176,70 @@ def _load_wfe_latest(symbol: str) -> Optional[float]:
         )
         row = cur.fetchone()
         conn.close()
-        return float(row["profit_factor"]) if row else None
+        if not row or row["profit_factor"] is None:
+            return None
+        trades = row["trades"]
+        return float(row["profit_factor"]), (int(trades) if trades is not None else None)
     except Exception as exc:
         logger.warning("proactive_validation: WFE query failed: %s", exc)
         conn.close()
         return None
+
+
+def _wfe_honesty_status(
+    pf: float, trades: Optional[int]
+) -> Optional[tuple[Literal["insufficient_data"], str]]:
+    """Gate a degenerate WFE snapshot to insufficient_data.
+
+    Returns ``(status, message)`` when the snapshot is too small or its profit
+    factor is degenerate to trust; returns ``None`` when the caller should apply
+    the normal pass/warn/fail thresholds. Pure — no I/O — so it is exhaustively
+    unit-testable without a database.
+    """
+    if trades is None or trades < _WFE_MIN_TRADES:
+        n = "unknown" if trades is None else trades
+        return (
+            "insufficient_data",
+            f"WFE rests on {n} trades (< {_WFE_MIN_TRADES}) — not yet reliable",
+        )
+    if pf >= _WFE_DEGENERATE_PF or pf <= 0.0:
+        return (
+            "insufficient_data",
+            f"WFE profit factor {pf:.3f} is degenerate "
+            "(near-zero gross loss/win) — not reliable",
+        )
+    return None
+
+
+def _mc_honesty_status(
+    p_value: float, verdict: str, prob_profitable: float
+) -> Optional[tuple[Literal["insufficient_data"], str]]:
+    """Gate a degenerate or self-contradictory MC bootstrap to insufficient_data.
+
+    Returns ``(status, message)`` when the result cannot be trusted; ``None``
+    when the caller should apply the normal pass/warn/fail logic. Pure — no I/O.
+
+    Two failure signatures, both small-sample artifacts:
+      - No dispersion: every (>=99.5%) or no (<=0.5%) bootstrap path profitable,
+        so the significance estimate is meaningless.
+      - Incoherence: the MC's own verdict and the permutation significance
+        disagree (e.g. verdict=EXCELLENT but p=1.000) — treat as no evidence.
+    """
+    if prob_profitable >= 99.5 or prob_profitable <= 0.5:
+        return (
+            "insufficient_data",
+            f"MC degenerate — {prob_profitable:.1f}% of paths profitable "
+            "(no dispersion); sample too small to test",
+        )
+    good_verdict = verdict in ("EXCELLENT", "GOOD")
+    significant = p_value <= 0.10
+    if good_verdict != significant:
+        return (
+            "insufficient_data",
+            f"MC inconclusive — verdict {verdict} but p={p_value:.3f}; "
+            "signals disagree, treat as no evidence",
+        )
+    return None
 
 
 def _load_latest_health() -> Optional[sqlite3.Row]:
@@ -330,16 +402,30 @@ def _check_time_elapsed(days_active: int) -> ValidationCheck:
 
 def _check_wfe(symbol: str) -> ValidationCheck:
     """Check 4: Latest WFE snapshot vs threshold."""
-    wfe_val = _load_wfe_latest(symbol)
+    snapshot = _load_wfe_latest(symbol)
     baseline = _WFE_BASELINES.get(symbol)
 
-    if wfe_val is None:
+    if snapshot is None:
         return ValidationCheck(
             name="WFE Status",
             status="insufficient_data",
             value="No WFE snapshots",
             threshold=f"≥{_WFE_WARN_THRESHOLD}",
             message="No WFE snapshots yet — POST /wfe/snapshot to generate",
+        )
+
+    wfe_val, wfe_trades = snapshot
+
+    honesty = _wfe_honesty_status(wfe_val, wfe_trades)
+    if honesty:
+        h_status, h_msg = honesty
+        n_str = wfe_trades if wfe_trades is not None else "?"
+        return ValidationCheck(
+            name="WFE Status",
+            status=h_status,
+            value=f"WFE: {wfe_val:.3f} (n={n_str})",
+            threshold=f"≥{_WFE_WARN_THRESHOLD}, n≥{_WFE_MIN_TRADES}",
+            message=h_msg,
         )
 
     if wfe_val >= _WFE_WARN_THRESHOLD:
@@ -383,6 +469,17 @@ def _check_mc_edge(rows: list[sqlite3.Row], symbol: str) -> ValidationCheck:
     p_value = prob_better / 100.0  # convert to 0-1 range
     verdict = mc.get("verdict", "POOR")
     prob_profitable = mc["confidence"]["prob_profitable"]
+
+    honesty = _mc_honesty_status(p_value, verdict, prob_profitable)
+    if honesty:
+        h_status, h_msg = honesty
+        return ValidationCheck(
+            name="MC Edge Significance",
+            status=h_status,
+            value=f"p={p_value:.3f} | verdict={verdict} | {prob_profitable:.1f}% paths profitable",
+            threshold="p≤0.05 for significance",
+            message=h_msg,
+        )
 
     if p_value <= 0.05 and verdict in ("EXCELLENT", "GOOD"):
         status: Literal["pass", "warn", "fail", "insufficient_data"] = "pass"

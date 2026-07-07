@@ -405,6 +405,12 @@ class TestPaperTradingIntegration(unittest.TestCase):
         assert config.MAX_POSITION_SIZE_PCT == 0.05
         assert config.MAX_CONTRACTS_PER_INSTRUMENT == 2
         assert config.LIVE_TRADING_ENABLED is False
+        # REQUIRE_HUMAN_APPROVAL ships safe-by-default (True): a bare TradingConfig()
+        # with no .env requires human approval. The 2026-06-15 owner directive enables
+        # autonomous paper mode by setting REQUIRE_HUMAN_APPROVAL=False *in engine/.env*,
+        # not by changing the code default -- so a fresh checkout always fails safe
+        # (requires approval) rather than silently trading autonomously. The deployed
+        # autonomous posture is verified separately by the startup_checks WARN gate.
         assert config.REQUIRE_HUMAN_APPROVAL is True
         assert config.PAPER_TRADING is True
 

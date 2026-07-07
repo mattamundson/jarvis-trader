@@ -86,6 +86,16 @@ MISSING_WARN_FRAC = 0.10
 # probably keyed differently (tz / format) -- that is itself a finding, not a
 # clean run, because the reconciliation could not actually verify anything.
 MIN_MATCH_FRAC = 0.20
+# A futures roll / back-adjustment shifts EVERY OHLC of a bar by ~the same
+# proportion (same sign). That is honest divergence between two stores that rolled
+# on different schedules -- NOT a corrupted bar. Distinguish it from real
+# corruption (a sentinel, a bad tick) which moves one or a few fields on their
+# own, producing a large spread across the four per-OHLC relative diffs. A
+# cache-sourced divergence that is uniform (spread tiny), same-signed, and within
+# a sane roll gap is classified as a basis divergence and does NOT raise a
+# corruption finding. (Closes the 2026-06 MES March-roll ~0.78% false alarm.)
+BASIS_SPREAD_TOL = 0.001    # max allowed spread among the 4 per-OHLC rel diffs
+BASIS_MAX_OFFSET = 0.05     # a "roll" larger than 5% is implausible -> corruption
 INTERVAL = "1h"
 _OHLC = ("open", "high", "low", "close")
 
@@ -124,6 +134,7 @@ def reconcile_symbol(symbol: str, db_path: Optional[Path] = None) -> dict:
         "sqlite_only": 0,       # in SQLite window, absent from cache
         "mismatches": 0,
         "cache_src_mismatches": 0,
+        "cache_basis_divergences": 0,  # uniform roll/back-adjustment offsets (not corruption)
         "samples": [],          # up to 5 worst mismatches (no secrets, just bars)
         "findings": [],
         "error": None,
@@ -182,20 +193,35 @@ def reconcile_symbol(symbol: str, db_path: Optional[Path] = None) -> dict:
         co, ch, cl, cc = cmap[ts]
         so, sh, sl, sc, src = smap[ts]
         tol = CACHE_TOL if src == "cache" else LIVE_TOL
-        max_rel = 0.0
+        signed = []   # (sqlite - cache) / |cache| per OHLC, sign preserved
         for cv, sv in ((co, so), (ch, sh), (cl, sl), (cc, sc)):
             try:
                 denom = abs(float(cv)) or 1e-9
-                rel = abs(float(cv) - float(sv)) / denom
+                signed.append((float(sv) - float(cv)) / denom)
             except (TypeError, ValueError):
-                rel = 1.0  # uncomparable value = treat as gross mismatch
-            if rel > max_rel:
-                max_rel = rel
-        if max_rel > tol:
-            res["mismatches"] += 1
-            if src == "cache":
-                res["cache_src_mismatches"] += 1
-            worst.append((max_rel, ts, src, (co, ch, cl, cc), (so, sh, sl, sc)))
+                signed.append(1.0)  # uncomparable value = treat as gross mismatch
+        abs_rels = [abs(s) for s in signed]
+        max_rel = max(abs_rels)
+        if max_rel <= tol:
+            continue  # the two stores agree on this bar
+
+        # Roll / back-adjustment basis: every OHLC shifted by ~the same proportion
+        # and sign, within a sane roll gap. Honest divergence, not a corrupted bar.
+        spread = max_rel - min(abs_rels)
+        same_sign = all(s > 0 for s in signed) or all(s < 0 for s in signed)
+        if (
+            src == "cache"
+            and same_sign
+            and spread <= BASIS_SPREAD_TOL
+            and max_rel <= BASIS_MAX_OFFSET
+        ):
+            res["cache_basis_divergences"] += 1
+            continue
+
+        res["mismatches"] += 1
+        if src == "cache":
+            res["cache_src_mismatches"] += 1
+        worst.append((max_rel, ts, src, (co, ch, cl, cc), (so, sh, sl, sc)))
 
     worst.sort(reverse=True)
     res["samples"] = [
@@ -285,7 +311,8 @@ def run(symbols: list[str], alert: bool, as_json: bool, db_path: Optional[Path] 
             print(
                 f"[{tag}] {r['symbol']}: cache={r['cache_rows']} sqlite={r['sqlite_rows']} "
                 f"matched={r['matched']} ({r['match_frac']}) "
-                f"mismatch={r['mismatches']} cache_only={r['cache_only']} "
+                f"mismatch={r['mismatches']} basis={r['cache_basis_divergences']} "
+                f"cache_only={r['cache_only']} "
                 f"sqlite_only={r['sqlite_only']}"
                 + (f" :: {r['error']}" if r["error"] else "")
             )

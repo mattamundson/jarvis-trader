@@ -1,19 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { ChartSymbol } from "@/hooks/useChartData";
-
-/**
- * Maps internal futures symbols to TradingView ticker symbols (front-month
- * continuous). These feed TV's free embeddable Advanced Real-Time Chart widget,
- * which renders TV-hosted data — distinct from the JARVIS chart (our own bars).
- */
-const TV_SYMBOL: Record<ChartSymbol, string> = {
-  MES: "CME_MINI:MES1!",
-  MNQ: "CME_MINI:MNQ1!",
-  MGC: "COMEX:MGC1!",
-  MCL: "NYMEX:MCL1!",
-};
 
 const TV_INTERVAL: Record<string, string> = {
   "5m": "5",
@@ -24,21 +11,32 @@ const TV_INTERVAL: Record<string, string> = {
 };
 
 interface TradingViewWidgetProps {
-  symbol: ChartSymbol;
+  /**
+   * Fully-resolved TradingView ticker (e.g. "AMEX:SPY", "CME_MINI:MES1!").
+   * Use `tvTickerFor()` from `@/lib/chart-class` to resolve an internal symbol.
+   */
+  tvSymbol: string;
   timeframe?: string;
   height?: number;
+  /** Render a small "data may be delayed" note (TV's free tier delays CME futures). */
+  showDelayedNote?: boolean;
 }
 
 /**
  * TradingView free "Advanced Real-Time Chart" embed. Injects TV's widget script
  * into a per-instance container; re-injects when symbol/timeframe change. No API
- * key, no data plumbing — TV hosts the data. Cannot overlay our own markers
- * (that's what the JARVIS chart is for).
+ * key, no data plumbing — TV hosts the data. Cannot overlay our own markers (that
+ * is what the JARVIS chart is for).
+ *
+ * IMPORTANT: never feed this a futures symbol for a "live" chart — TV delays CME
+ * futures 15–30 min on the free tier. Route via `MarketChart`, which sends futures
+ * to our own real-time bars and only equities/indices/macro/crypto here.
  */
 export function TradingViewWidget({
-  symbol,
+  tvSymbol,
   timeframe = "1h",
   height = 460,
+  showDelayedNote = false,
 }: TradingViewWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -56,7 +54,7 @@ export function TradingViewWidget({
     script.async = true;
     script.innerHTML = JSON.stringify({
       autosize: true,
-      symbol: TV_SYMBOL[symbol],
+      symbol: tvSymbol,
       interval: TV_INTERVAL[timeframe] ?? "60",
       timezone: "America/Chicago",
       theme: "dark",
@@ -74,11 +72,16 @@ export function TradingViewWidget({
     return () => {
       container.innerHTML = "";
     };
-  }, [symbol, timeframe]);
+  }, [tvSymbol, timeframe]);
 
   return (
-    <div style={{ height }} className="w-full overflow-hidden rounded-lg">
+    <div style={{ height }} className="relative w-full overflow-hidden rounded-lg">
       <div ref={containerRef} className="tradingview-widget-container h-full w-full" />
+      {showDelayedNote && (
+        <span className="pointer-events-none absolute right-1.5 top-1.5 z-10 rounded bg-background/70 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground/80">
+          TradingView · may be delayed
+        </span>
+      )}
     </div>
   );
 }

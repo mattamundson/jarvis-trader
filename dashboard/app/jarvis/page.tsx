@@ -65,9 +65,10 @@ function titleForRow(row: BookmarkRow): string {
   }
 }
 
-function biasBadgeVariant(bias: string | null | undefined): BadgeVariant {
+function biasBadgeVariant(bias: unknown): BadgeVariant {
   if (!bias) return "neutral";
-  const b = bias.toLowerCase();
+  // corey_bias can be an object (engine returns structured dict) — coerce to string
+  const b = (typeof bias === "string" ? bias : JSON.stringify(bias)).toLowerCase();
   if (b.includes("bull") || b.includes("long")) return "bull";
   if (b.includes("bear") || b.includes("short")) return "bear";
   if (b.includes("neutral")) return "neutral";
@@ -333,11 +334,17 @@ function BriefingCard({ symbol }: { symbol: string }) {
       {/* Header */}
       <div className="flex items-center gap-2">
         <span className="font-mono text-xs font-bold text-zinc-200">{symbol}</span>
-        {data?.corey_bias && (
-          <Badge variant={biasBadgeVariant(data.corey_bias)} className="text-[10px] font-mono">
-            {data.corey_bias}
-          </Badge>
-        )}
+        {data?.corey_bias && (() => {
+          // Engine returns corey_bias as either a string or a structured object
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cb = data.corey_bias as any;
+          const label: string = typeof cb === "string" ? cb : (cb?.directional_bias ?? "—");
+          return (
+            <Badge variant={biasBadgeVariant(cb)} className="text-[10px] font-mono">
+              {label}
+            </Badge>
+          );
+        })()}
       </div>
 
       {/* Headline */}

@@ -13,6 +13,42 @@ from validation.api_keys import validate_api_keys
 logger = logging.getLogger(__name__)
 
 
+# A fixed, deterministic instant: Tuesday 2026-06-16 17:00 UTC == 12:00 ET.
+# Chosen so the scanner's wall-clock gates all resolve to "scan allowed":
+#   - not in the 9:30-9:35 / 15:45-16:00 ET banned session windows,
+#   - not Wednesday (so the MCL 10:15-11:00 ET EIA blackout never triggers),
+#   - inside equity Regular Trading Hours.
+# Without this, _scan_symbol() reads datetime.now() and intermittently returns
+# early depending on the wall-clock time CI happens to run at (the flaky class).
+_FROZEN_UTC = datetime(2026, 6, 16, 17, 0, 0, tzinfo=timezone.utc)
+
+
+class _FrozenDateTime(datetime):
+    """datetime subclass whose now() is pinned to _FROZEN_UTC."""
+
+    @classmethod
+    def now(cls, tz=None):
+        if tz is not None:
+            return _FROZEN_UTC.astimezone(tz)
+        return _FROZEN_UTC.replace(tzinfo=None)
+
+
+@pytest.fixture(autouse=True)
+def _freeze_scanner_clock():
+    """Pin every wall-clock-dependent scanner gate to a deterministic instant.
+
+    Patches the module-level datetime used by _scan_symbol's session-timing /
+    EIA-blackout gates plus both market-hours helpers, so a test's outcome can
+    never depend on when CI happens to run.
+    """
+    with (
+        patch("scanner.signal_scanner.datetime", _FrozenDateTime),
+        patch("scanner.signal_scanner._is_futures_market_hours", return_value=True),
+        patch("scanner.signal_scanner._is_equity_market_hours", return_value=True),
+    ):
+        yield
+
+
 class TestFuturesMarketHours:
     """Test market hours detection."""
 

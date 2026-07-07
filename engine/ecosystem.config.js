@@ -272,6 +272,110 @@ module.exports = {
       exec_mode: "fork",
     },
 
+    // ── Vault: Daily Synthesis Brief (#1) ─────────────────────────────────────
+    // 06:00 CT — Claude reads the last 7 days of vault notes and writes a
+    // synthesis (connections / pattern / contradiction / best capture) to
+    // 00-Inbox/brief-YYYY-MM-DD.md. Inert unless ENABLE_VAULT_SYNTHESIS=1.
+    {
+      name: "jarvis-vault-synthesis",
+      script: PYTHON,
+      args: "scripts/vault_synthesis_brief.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "0 6 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-synthesis-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-synthesis-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Vault: Wikilink Lint Pass ─────────────────────────────────────────────
+    // 06:30 CT — structural integrity scan (no LLM): finds broken [[wikilinks]]
+    // and orphan notes, writes 00-Inbox/lint-YYYY-MM-DD.md. Inert unless
+    // ENABLE_VAULT_LINT=1.
+    {
+      name: "jarvis-vault-lint",
+      script: PYTHON,
+      args: "scripts/vault_lint.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "30 6 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-lint-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-lint-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Vault: Thesis Contradiction Check (#5) ────────────────────────────────
+    // 07:00 CT — Claude scans 02-Theses against the last 30 days of 01-Sources
+    // for conflict only, writes 00-Inbox/contradictions-YYYY-MM-DD.md. Inert
+    // unless ENABLE_VAULT_CONTRADICTION=1.
+    {
+      name: "jarvis-vault-contradiction",
+      script: PYTHON,
+      args: "scripts/vault_contradiction_check.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "0 7 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-contradiction-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-contradiction-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── Vault: Midnight GitHub Backup (#9) ────────────────────────────────────
+    // 00:00 CT — commits + pushes the Obsidian vault (its own git repo at the
+    // vault root, NOT this repo) to its private remote. Inert unless
+    // ENABLE_VAULT_BACKUP=1 and the vault has been `git init`'d with a remote.
+    {
+      name: "jarvis-vault-backup",
+      script: PYTHON,
+      args: "scripts/backup_vault_to_github.py",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+      cron_restart: "0 0 * * *",
+      autorestart: false,
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        TZ: "America/Chicago",
+      },
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "vault-backup-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "vault-backup-out.log"),
+      merge_logs: true,
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
     // ── API Bridge (port 8020) ────────────────────────────────────────────────
     // yFinance quotes/regime/options/pnl bridge consumed by the Strategy C+
     // Command Center (dashboard/static/strategy_c_dashboard.html). Was previously

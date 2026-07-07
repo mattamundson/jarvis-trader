@@ -78,8 +78,20 @@ export default function DataIntegrityPage() {
         </div>
       )}
 
+      {isLoading && !data && (
+        <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+          <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading data-integrity metrics…
+        </div>
+      )}
+
+      {data && (data.sources?.length ?? 0) === 0 && !error && (
+        <div className="p-6 border border-border rounded-xl text-center text-sm text-muted-foreground">
+          No data sources reported by the engine.
+        </div>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {data?.sources.map((src) => (
+        {(data?.sources ?? []).map((src) => (
           <div
             key={src.source}
             className={`p-6 border rounded-xl shadow-sm transition-all bg-card ${

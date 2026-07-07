@@ -189,26 +189,15 @@ class FundManagerAgent:
     def _requires_human_approval(self, trade: dict, risk: dict) -> bool:
         """
         Returns True if human approval is required before execution.
-        Conditions (either is sufficient):
-          - REQUIRE_HUMAN_APPROVAL config setting is True
-          - Estimated trade value exceeds $2,000
+
+        Owner directive (2026-06-15): human approval is governed SOLELY by the
+        REQUIRE_HUMAN_APPROVAL config flag. When it is False, no trade requires
+        human sign-off regardless of size — trades auto-execute (paper unless
+        LIVE_TRADING_ENABLED is also True). When True, every trade requires
+        approval. The legacy $2,000 value threshold is intentionally no longer an
+        independent gate, so that disabling approval applies to ALL trades.
         """
-        if settings.REQUIRE_HUMAN_APPROVAL:
-            return True
-
-        quantity = abs(int(trade.get("quantity", 0)))
-        limit_price = trade.get("limit_price")
-        # Use modified quantity from risk manager if available
-        risk_qty = risk.get("modified_quantity")
-        if risk_qty is not None:
-            quantity = abs(int(risk_qty))
-
-        if limit_price is not None and float(limit_price) > 0:
-            estimated_value = quantity * float(limit_price)
-            if estimated_value > HUMAN_APPROVAL_VALUE_THRESHOLD:
-                return True
-
-        return False
+        return bool(settings.REQUIRE_HUMAN_APPROVAL)
 
     # ── LLM Portfolio Review ───────────────────────────────────────────────
 

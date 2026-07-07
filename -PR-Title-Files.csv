@@ -1,0 +1,5 @@
+"#","PR","Title","Files"
+"1","#213","feat(meanrev): v2 signal generator with vol-adaptive triggers + OU integration","6 files, +1,310 lines"
+"2","#214","docs(funnel): add forensic audit reports from funnel skill","5 files, +600 lines"
+"3","#215","feat(tools): add jarvis-robust-strategy-funnel skill","13 files, +4,048 lines"
+"4","#216","ci(funnel): quality gates, PBO check, and branch hygiene automation","5 files, +710 lines"

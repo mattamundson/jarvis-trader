@@ -1,0 +1,210 @@
+{
+  "date": "2026-06-17",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "neutral",
+    "conviction": 0.0,
+    "ib_bias": "not_mentioned",
+    "data_quality": "none",
+    "message_count": 0
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [],
+  "corey_quote": "",
+  "commentary_health": [
+    {
+      "date": "2026-06-18",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-17",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-16",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-15",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-12",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-11",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-06-10",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 11,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": false,
+    "active_provider": null,
+    "primary_provider": null,
+    "primary_healthy": null,
+    "providers_available": null,
+    "google_fallback_count": null,
+    "vertex_failover_count": null,
+    "llm_path_healthy": null,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.6,
+    "scanned": 75,
+    "failing_enabled": 10,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Nightly-Sync",
+        "result": "0x40"
+      },
+      {
+        "name": "Jarvis-BrainBackup",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-MemoryWatch",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-OllamaRouter-Watchdog",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultBackup",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 18.6,
+        "newest": "2026-05-31T00:32:36.488317+00:00",
+        "files": 2,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 0.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 0.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 6.3,
+        "newest": "2026-06-12T06:48:06.245983+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.9,
+        "newest": "2026-06-17T15:32:42.163224+00:00",
+        "files": 27,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.1,
+        "newest": "2026-06-17T12:16:53.922982+00:00",
+        "files": 17,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 1.8,
+        "newest": "2026-06-16T18:13:29.718013+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 0.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 0.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

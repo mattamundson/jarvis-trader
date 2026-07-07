@@ -384,9 +384,14 @@ export default function ConfigPage() {
         {/* Category cards */}
         {data && (
           <div className="space-y-3">
-            {Object.entries(data.categories).map(([category, items]) => (
+            {Object.entries(data.categories ?? {}).map(([category, items]) => (
               <CategoryCard key={category} category={category} items={items} />
             ))}
+            {Object.keys(data.categories ?? {}).length === 0 && (
+              <div className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+                No configuration categories returned by the engine.
+              </div>
+            )}
           </div>
         )}
       </main>

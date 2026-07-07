@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { fetchEngine } from "@/lib/api";
+import { RawRecordBadge } from "@/components/RawRecordBadge";
 
 
 interface CommissionStats {
@@ -68,10 +68,12 @@ export function CommissionTrackerWidget() {
   }
 
   const totalCommissions = data.total_commissions;
-  const grossPnl = data.gross_pnl;
-  const netPnl = data.net_pnl;
   const avgPerTrade = data.avg_commission_per_trade;
-  const tradeCount = data.trade_count;
+  // data.gross_pnl / net_pnl / trade_count are the RAW un-deduped P&L figures
+  // (gross +$3,899.97 across 19 re-logged rows) — the same fabrication this
+  // migration removed elsewhere. They are NOT commission data, so they are not
+  // shown here; honest P&L lives in the Profit Factor / Performance cards.
+  const rawFills = data.trade_count;
   const bySymbol = data.by_symbol;
 
   const headerBadgeVariant: "warn" | "neutral" =
@@ -80,50 +82,44 @@ export function CommissionTrackerWidget() {
   return (
     <Card>
       <CardHeader className="pb-2 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm">Commission Tracker</CardTitle>
+        <div className="flex items-center gap-2 flex-wrap">
+          <CardTitle className="text-sm">Commission Tracker</CardTitle>
+          {/* Honest-data caveat badge */}
+          <RawRecordBadge className="text-[10px] font-normal" />
+        </div>
         <Badge variant={headerBadgeVariant}>
           ${totalCommissions.toFixed(2)} Total
         </Badge>
       </CardHeader>
       <CardContent>
-        {/* 3-column stats grid */}
-        <div className="grid grid-cols-3 gap-3 text-center">
+        {/* Caveat note */}
+        <p className="text-[11px] text-muted-foreground border border-warn/30 bg-warn/5 rounded px-2 py-1.5 mb-3 leading-snug">
+          Commission costs are from the un-deduped engine record (the deduped
+          trade record carries no commission fields), so they may be over-counted.
+          P&amp;L is intentionally omitted here — see the Profit Factor card for
+          the honest figure.
+        </p>
+
+        {/* Commission-only stats grid */}
+        <div className="grid grid-cols-2 gap-3 text-center">
           <div className="rounded bg-muted p-3">
-            <p className="text-xs text-muted-foreground">Gross P&L</p>
-            <p
-              className={cn(
-                "text-lg font-mono font-bold",
-                grossPnl >= 0 ? "text-green-500" : "text-red-500"
-              )}
-            >
-              {grossPnl >= 0 ? "+" : ""}${grossPnl.toFixed(2)}
+            <p className="text-xs text-muted-foreground">Total Commissions</p>
+            <p className="text-lg font-mono font-bold text-foreground">
+              ${totalCommissions.toFixed(2)}
             </p>
           </div>
           <div className="rounded bg-muted p-3">
-            <p className="text-xs text-muted-foreground">Net P&L</p>
-            <p
-              className={cn(
-                "text-lg font-mono font-bold",
-                netPnl >= 0 ? "text-green-500" : "text-red-500"
-              )}
-            >
-              {netPnl >= 0 ? "+" : ""}${netPnl.toFixed(2)}
+            <p className="text-xs text-muted-foreground">Avg / Fill</p>
+            <p className="text-lg font-mono font-bold text-foreground">
+              ${avgPerTrade.toFixed(2)}
             </p>
-          </div>
-          <div className="rounded bg-muted p-3">
-            <p className="text-xs text-muted-foreground">All Time</p>
-            <p className="text-lg font-mono font-bold">${totalCommissions.toFixed(2)}</p>
           </div>
         </div>
 
         {/* Secondary stats */}
         <div className="flex justify-between mt-3 text-sm">
-          <span className="text-muted-foreground">Avg per trade</span>
-          <span className="font-mono">${avgPerTrade.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Trade count</span>
-          <span className="font-mono">{tradeCount}</span>
+          <span className="text-muted-foreground">Raw fills (un-deduped)</span>
+          <span className="font-mono">{rawFills}</span>
         </div>
 
         {/* Per-symbol breakdown */}

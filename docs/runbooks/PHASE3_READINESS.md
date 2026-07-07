@@ -69,11 +69,12 @@ All validated instruments must meet minimum performance thresholds over a contin
 
 **Check**: `GET /paper/validation/status` — each instrument must show `is_validated: true`
 
-**Current Status** (as of 2026-04-02):
-- MCL: APPROVED (WFE=0.82, backtest PF=5.27)
-- MNQ: APPROVED (WFE=0.57, backtest PF=4.12)
-- MES: DO NOT TRADE (WFE=0.09, insufficient signal quality)
-- MGC: HALTED (WFE=0.14, overfit)
+**Current Status** (as of 2026-05-24 Tier-3 flip):
+- MES: APPROVED (active paper; p_edge=0.75, ALT gate v2 PASS)
+- MGC: APPROVED (active paper; p_edge=0.6842, ALT gate v2 PASS)
+- MCL: HALTED (DO_NOT_TRADE; WFE=0.82, hypotheses A-E exhausted)
+- MNQ: HALTED (DO_NOT_TRADE; WFE=0.57, fails gate v2)
+- M2K: REJECTED (SMA/ORB/Donchian all FAIL)
 
 ---
 

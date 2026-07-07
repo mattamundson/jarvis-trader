@@ -7,6 +7,7 @@ Identifies momentum entries after consolidation.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -72,7 +73,7 @@ class BreakoutAgent:
             return self._empty_report(symbol)
 
         # Calculate profile
-        profile = self._engine.calculate_profile(df)
+        profile = await asyncio.to_thread(self._engine.calculate_profile, df)
         if not profile:
             return self._empty_report(symbol)
 

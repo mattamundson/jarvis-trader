@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Activity, MessageSquare } from "lucide-react";
+import { SWRConfig } from "swr";
 import { DiscordStats } from "@/components/discord/DiscordStats";
 import { DiscordWinRateChart } from "@/components/discord/DiscordWinRateChart";
 import { DiscordSignalTable } from "@/components/discord/DiscordSignalTable";
@@ -20,10 +21,21 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "commentary", label: "Corey Commentary" },
 ];
 
+// Page-level SWR config: disable retry on error so panels settle to an honest
+// error/empty state instead of re-spinning after a failed /discord/* fetch.
+// Sub-components that already set shouldRetryOnError:false are unaffected
+// (their local config wins); this is the catch-all for components like
+// signal-feed, ib-report-card, and corey-feed that don't set it.
+const DISCORD_SWR_CONFIG = {
+  shouldRetryOnError: false,
+  errorRetryCount: 0,
+} as const;
+
 export default function DiscordPage() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   return (
+    <SWRConfig value={DISCORD_SWR_CONFIG}>
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
@@ -162,5 +174,6 @@ export default function DiscordPage() {
 
       </main>
     </div>
+    </SWRConfig>
   );
 }

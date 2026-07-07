@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -134,6 +135,24 @@ FUTURES_EXCHANGE = {
     "ES": "CME",
     "MGC": "COMEX",
     "GC": "COMEX",
+    # Copper trades on COMEX too (same default-to-CME trap as the bonds below).
+    # MHG is declared in mtf_analyzer._FUTURES_SYMBOLS, so a live pull would break.
+    "HG": "COMEX",
+    "MHG": "COMEX",
+    # CBOT (ECBOT) — Treasuries + grains + the Dow. Without these the lookup default
+    # ("CME") builds a nonexistent CME contract → IB Error 200 "no security
+    # definition" → contract=None → stale-cache fallback. (Bug 2026-06-26: froze the
+    # ZB/ZN forward-shadow.) ZB/ZN are the live bond pair; YM/MYM (E-mini Dow, also in
+    # mtf_analyzer._FUTURES_SYMBOLS) and the grains are mapped for correctness.
+    "ZB": "CBOT",
+    "ZN": "CBOT",
+    "ZF": "CBOT",
+    "ZT": "CBOT",
+    "ZC": "CBOT",
+    "ZS": "CBOT",
+    "ZW": "CBOT",
+    "YM": "CBOT",
+    "MYM": "CBOT",
 }
 
 
@@ -235,6 +254,27 @@ class IBKRDataConnector:
                     timeout=self._connect_timeout,
                 )
                 self._connected = True
+                # Delayed-data stopgap for the IB paper-account market-data
+                # subscription gap (Error 10168/354: futures data not subscribed).
+                # reqMarketDataType(3) asks IB for DELAYED data when no live
+                # subscription exists — IB still returns LIVE for any instrument
+                # that IS subscribed, so this never downgrades a good live feed.
+                # Without it the data leg errors and falls through to a months-old
+                # CSV cache (the 2026-06-29 frozen-MES-5300 auto-approve fills).
+                # 1=live 2=frozen 3=delayed 4=delayed-frozen; override via
+                # IB_MARKET_DATA_TYPE. Non-fatal: a failure here must never abort
+                # an otherwise-good connect.
+                try:
+                    _mdt = int(os.environ.get("IB_MARKET_DATA_TYPE", "3"))
+                    if _mdt in (1, 2, 3, 4):
+                        self._ib.reqMarketDataType(_mdt)
+                        logger.info(
+                            "IBKR market-data type set to %d "
+                            "(1=live 2=frozen 3=delayed 4=delayed-frozen)",
+                            _mdt,
+                        )
+                except Exception as _mdt_exc:
+                    logger.warning("reqMarketDataType failed (non-fatal): %s", _mdt_exc)
                 # Keep _connected honest on a mid-session drop so the per-call data
                 # waterfall fails over immediately and the watchdog detects the drop.
                 try:
@@ -1072,7 +1112,12 @@ class MarketDataManager:
                         age_hours = (datetime.utcnow() - last_ts).total_seconds() / 3600
                     if age_hours <= 72:
                         bars_per_day = {
-                            "1m": 390, "5m": 78, "15m": 26, "1h": 24, "4h": 6, "1d": 1
+                            "1m": 390,
+                            "5m": 78,
+                            "15m": 26,
+                            "1h": 24,
+                            "4h": 6,
+                            "1d": 1,
                         }.get(timeframe, 24)
                         n_bars = lookback_days * bars_per_day
                         cached_df = cached_df.tail(n_bars).copy()
@@ -1464,7 +1509,21 @@ class MarketDataManager:
             matches = sorted(cache_dir.glob(f"{symbol}_*_{timeframe}.csv"))
             if not matches:
                 return pd.DataFrame()
-            df = pd.read_csv(matches[-1])
+            # Pick the file with the freshest DATA (latest end-date parsed from the
+            # `{symbol}_{start}_{end}_{tf}.csv` name), not the lexicographically-last
+            # filename. sorted()[-1] orders by START date, so an older-but-longer
+            # slice could shadow a fresher one and serve wrong-era bars/prices.
+            import re as _re
+
+            def _end_date(p) -> str:
+                m = _re.search(rf"_(\d{{4}}-\d{{2}}-\d{{2}})_{_re.escape(timeframe)}\.csv$", p.name)
+                if m:
+                    return m.group(1)
+                dates = _re.findall(r"\d{4}-\d{2}-\d{2}", p.name)
+                return dates[-1] if dates else ""
+
+            chosen = max(matches, key=lambda p: (_end_date(p), p.name))
+            df = pd.read_csv(chosen)
             if "timestamp" in df.columns:
                 df["timestamp"] = pd.to_datetime(df["timestamp"])
                 df = df.sort_values("timestamp")
@@ -1473,7 +1532,7 @@ class MarketDataManager:
             )
             df = df.tail(lookback_days * bars_per_day).copy()
             if not df.empty:
-                logger.warning(f"[{symbol}] Using CSV cache: {matches[-1].name} ({len(df)} bars)")
+                logger.warning(f"[{symbol}] Using CSV cache: {chosen.name} ({len(df)} bars)")
             cols = [
                 c
                 for c in ["timestamp", "open", "high", "low", "close", "volume"]
