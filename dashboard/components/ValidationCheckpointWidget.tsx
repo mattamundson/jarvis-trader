@@ -42,7 +42,8 @@ export default function ValidationCheckpointWidget() {
     { key: "win_rate", label: "Win Rate", format: (v) => (v !== null ? `${(v * 100).toFixed(1)}%` : "N/A") },
     { key: "trades", label: "Total Trades", format: (v) => (v !== null ? Math.round(v) : "0") },
     { key: "days", label: "Days Elapsed", format: (v) => (v !== null ? Math.round(v) : "0") },
-    { key: "max_drawdown", label: "Max Drawdown", format: (v) => (v !== null ? `${(v * 100).toFixed(2)}%` : "N/A") },
+    // max_drawdown_pct from the engine is already percent-scale (e.g. 12.06 == 12.06%) — do not multiply by 100 again.
+    { key: "max_drawdown", label: "Max Drawdown", format: (v) => (v !== null ? `${v.toFixed(2)}%` : "N/A") },
   ];
 
   return (

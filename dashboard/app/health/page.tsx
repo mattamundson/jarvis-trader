@@ -24,6 +24,7 @@ import { fetchEngine } from "@/lib/api";
 import { PreFlightWidget } from "@/components/PreFlightWidget";
 import { SystemMetricsPanel } from "@/components/SystemMetricsPanel";
 import { AlertSummaryWidget } from "@/components/AlertSummaryWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { ConnectionHealthCard } from "@/components/ConnectionHealthCard";
 import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
@@ -525,7 +526,9 @@ export default function HealthPage() {
         )}
 
         {/* Pre-Flight Widget */}
-        <PreFlightWidget />
+        <WidgetErrorBoundary name="Pre-Flight">
+          <PreFlightWidget />
+        </WidgetErrorBoundary>
 
         {/* Subsystem grid */}
         {data && (
@@ -544,7 +547,9 @@ export default function HealthPage() {
         <SystemMetricsPanel />
 
         {/* Alert Summary Widget — recent alert log + stats */}
-        <AlertSummaryWidget />
+        <WidgetErrorBoundary name="Alert Summary">
+          <AlertSummaryWidget />
+        </WidgetErrorBoundary>
 
         {/* Database Statistics — record counts across trades, decisions, alerts */}
         <DatabaseStatsCard />

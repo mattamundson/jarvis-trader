@@ -128,7 +128,15 @@ class HealthResponse(BaseModel):
     )
     ibkr_execution_connected: Optional[bool] = Field(
         None,
-        description="Whether the IBKR execution (paper/live trading) connector is connected — this is the path /brokers/positions queries",
+        description="Whether the IBKR execution (paper/live trading) connector is connected — this is the path /brokers/positions queries. NOTE: this is the connector's CACHED belief; it can read True after the Gateway logs out. Trust execution_connected_verified for enforcement decisions.",
+    )
+    execution_connected_verified: Optional[bool] = Field(
+        None,
+        description="Reconciled execution truth = ibkr_execution_connected AND ibgateway_alive. The field stop-enforcement/dashboard should trust — cannot report execution-ready while the Gateway port is dead.",
+    )
+    ib_execution_stale: Optional[bool] = Field(
+        None,
+        description="True when the execution connector's cached belief is 'connected' but the Gateway port is dead (logged out) — the silent stop-enforcement hazard (2026-06-01 class) made observable.",
     )
     ibkr_data_connected: Optional[bool] = Field(
         None,

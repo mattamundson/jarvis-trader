@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { JetBrains_Mono, Orbitron } from "next/font/google";
@@ -30,12 +31,24 @@ import {
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
-import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { SessionBriefPanel } from "@/components/SessionBriefPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
+
+// Candlestick chart (lightweight-charts) — only renders once bar data resolves, so
+// load it on demand to keep lightweight-charts off the command-center landing critical path.
+const CandlestickChart = dynamic(
+  () =>
+    import("@/components/command-center/charts/CandlestickChart").then((m) => ({
+      default: m.CandlestickChart,
+    })),
+  { ssr: false, loading: () => <div className="h-[360px] animate-pulse rounded bg-slate-950/40" /> }
+);
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -567,6 +580,26 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
+          PIPELINE REASONING — why each decision was made (expandable)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Pipeline Reasoning">
+          <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          SESSION BRIEF — proactive advisor recommendations. Re-homed here from
+          the dissolved kitchen-sink overview page (#274 feature preserved on the
+          flagship HUD after the P2.1 redirect orphaned its old mount point).
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Session Brief">
+          <SessionBriefPanel />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
           ROW 1 — STATUS OVERVIEW (5 columns)
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-5 gap-3 mb-4">
@@ -645,7 +678,7 @@ export default function CommandCenterPage() {
                       : "bg-red-950 text-red-400 border border-red-800"
                   }`}
                 >
-                  {inst.status === "APPROVED" ? `WFE=${inst.wfe}` : "HALTED"}
+                  {inst.status === "APPROVED" ? `DSR=${inst.wfe}` : "HALTED"}
                 </Badge>
               </div>
             ))}
@@ -793,7 +826,9 @@ export default function CommandCenterPage() {
         </Card>
 
         {/* Portfolio Correlation */}
-        <PortfolioCorrelationWidget />
+        <WidgetErrorBoundary name="Portfolio Correlation">
+          <PortfolioCorrelationWidget />
+        </WidgetErrorBoundary>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -838,7 +873,7 @@ export default function CommandCenterPage() {
                     TRADING HALTED
                   </span>
                   <span className="font-mono text-xs text-slate-500 text-center">
-                    WFE={inst.wfe} — OVERFIT DETECTED
+                    DSR={inst.wfe} — OVERFIT DETECTED
                     <br />
                     Regime-adaptive boost insufficient
                   </span>
@@ -847,14 +882,14 @@ export default function CommandCenterPage() {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                   <div>
                     <div className="text-xs text-slate-500 mb-0.5">
-                      WFE Score
+                      Deflated Sharpe
                     </div>
                     <div className="font-mono text-lg text-cyan-400 font-bold leading-none">
                       {inst.wfe}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Regime</div>
+                    <div className="text-xs text-slate-500 mb-0.5">Regime (static)</div>
                     <div
                       className={`font-mono text-sm font-bold ${
                         inst.regime === "BULL"
@@ -1083,6 +1118,7 @@ export default function CommandCenterPage() {
                 No trade history from /portfolio/history/trades
               </div>
             ) : (
+              <>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs font-mono">
                   <thead>
@@ -1130,6 +1166,11 @@ export default function CommandCenterPage() {
                   </tbody>
                 </table>
               </div>
+              <p className="text-[10px] text-amber-500/70 font-mono mt-2">
+                Raw record (/portfolio/history/trades) — not deduped; per-trade
+                P&amp;L may include re-logged duplicates.
+              </p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -1139,7 +1180,7 @@ export default function CommandCenterPage() {
           <CardHeader className="pb-2 pt-3 px-4">
             <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
               <RefreshCw className="w-3 h-3" />
-              WALK-FORWARD EFFICIENCY MONITOR
+              GATE-V2 DEFLATED SHARPE MONITOR
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3 space-y-4">
@@ -1183,8 +1224,11 @@ export default function CommandCenterPage() {
             ))}
 
             <div className="pt-2 border-t border-slate-800/50 space-y-1.5">
+              <p className="text-[10px] text-slate-600 italic">
+                Configured schedule/method (static, not live-probed):
+              </p>
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-500">Next WFE Recalc</span>
+                <span className="text-slate-500">Next Recalc</span>
                 <span className="text-cyan-400">Sunday 06:00 CT</span>
               </div>
               <div className="flex justify-between text-xs font-mono">
@@ -1244,7 +1288,7 @@ export default function CommandCenterPage() {
             </div>
             <div className="flex justify-between items-baseline">
               <span className="text-xs text-slate-500">Open Positions</span>
-              <span className="font-mono text-xs text-slate-400">0</span>
+              <span className="font-mono text-xs text-slate-400">N/A — inactive</span>
             </div>
             <div className="mt-2 p-2 rounded bg-slate-800/50 border border-slate-700/40">
               <p className="text-xs text-slate-500 font-mono leading-relaxed">
@@ -1364,7 +1408,9 @@ export default function CommandCenterPage() {
               </Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-500">Database</span>
+              <span className="text-xs text-slate-500" title="Engine /health reachability — not a direct database probe.">
+                Engine Reachable
+              </span>
               <Badge
                 className={`text-xs font-mono py-0 border ${
                   engineOnline
@@ -1489,7 +1535,9 @@ export default function CommandCenterPage() {
           ROW 7 — SIGNAL FEED (full width)
       ═══════════════════════════════════════════════════════ */}
       <div className="mt-3">
-        <SignalFeedWidget />
+        <WidgetErrorBoundary name="Signal Feed">
+          <SignalFeedWidget />
+        </WidgetErrorBoundary>
       </div>
     </div>
   );

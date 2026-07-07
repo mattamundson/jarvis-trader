@@ -44,14 +44,13 @@ export function aggregationBannerState(
   return { degraded: false, reason: "" };
 }
 
-const BASE = process.env.NEXT_PUBLIC_MASTER_API_URL ?? "http://127.0.0.1:8030";
-const KEY = process.env.NEXT_PUBLIC_MASTER_API_KEY ?? "";
+// All master-api calls go through the server-side proxy at
+// app/api/master/[...path]/route.ts — never a direct client fetch to the
+// master-api host. Keeps MASTER_API_URL/MASTER_API_KEY server-only.
+const BASE = "/api/master";
 
 export async function fetchMasterStatus(): Promise<MasterStatus> {
-  const res = await fetch(`${BASE}/master/status`, {
-    headers: { "X-API-Key": KEY },
-    cache: "no-store",
-  });
+  const res = await fetch(`${BASE}/master/status`, { cache: "no-store" });
   if (!res.ok) throw new Error(`master-api ${res.status}`);
   return res.json();
 }
@@ -89,10 +88,7 @@ export type FinancesDetail = {
 };
 
 export async function fetchFinancesDetail(): Promise<FinancesDetail> {
-  const res = await fetch(`${BASE}/master/finances/detail`, {
-    headers: { "X-API-Key": KEY },
-    cache: "no-store",
-  });
+  const res = await fetch(`${BASE}/master/finances/detail`, { cache: "no-store" });
   if (!res.ok) throw new Error(`finances detail ${res.status}`);
   return res.json();
 }
@@ -151,13 +147,41 @@ export type RealizedPnl = {
   caveats: string[];
 };
 
+// master-api can hang instead of cleanly erroring (unlike a 401/503, which
+// the `!res.ok` check already handles). This function backs the shared
+// `useHonestTrades()` hook -- consumed by ~30 widgets across the home,
+// /performance, and /validation pages (AccountROIWidget, HonestPnlCard,
+// RecentTradesTableWidget, BacktestVsPaperWidget, and more) -- so an
+// unbounded `fetch()` here means every one of those widgets can get stuck on
+// "Loading..." indefinitely if master-api stalls. An explicit timeout
+// guarantees this always resolves or rejects within a bounded time, which
+// SWR (or a caller's own try/catch) turns into a visible error/empty state.
+const MASTER_API_TIMEOUT_MS = 15000; // 15 seconds
+
 export async function fetchRealizedPnl(): Promise<RealizedPnl> {
-  const res = await fetch(`${BASE}/master/trading/realized`, {
-    headers: { "X-API-Key": KEY },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`trading realized ${res.status}`);
-  return res.json();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(new Error(`Request timed out after ${MASTER_API_TIMEOUT_MS / 1000}s: trading realized`)),
+    MASTER_API_TIMEOUT_MS,
+  );
+  try {
+    const res = await fetch(`${BASE}/master/trading/realized`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`trading realized ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    // Fall back to a friendly message if the runtime doesn't propagate the
+    // AbortSignal reason as the rejection value (see fetchWithTimeout in
+    // lib/api.ts for the same pattern on engine calls).
+    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
+      throw new Error(`Request timed out after ${MASTER_API_TIMEOUT_MS / 1000}s: trading realized`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ---- Scheduler (master-api in-process scheduler) ----
@@ -191,10 +215,7 @@ export type SchedulerRunsResponse = {
 };
 
 export async function fetchMasterSchedulerStatus(): Promise<MasterSchedulerStatus> {
-  const res = await fetch(`${BASE}/master/scheduler/status`, {
-    headers: { "X-API-Key": KEY },
-    cache: "no-store",
-  });
+  const res = await fetch(`${BASE}/master/scheduler/status`, { cache: "no-store" });
   if (!res.ok) throw new Error(`scheduler status ${res.status}`);
   return res.json();
 }
@@ -203,7 +224,6 @@ export async function fetchMasterSchedulerRuns(
   limit = 8,
 ): Promise<SchedulerRunsResponse> {
   const res = await fetch(`${BASE}/master/scheduler/runs?limit=${limit}`, {
-    headers: { "X-API-Key": KEY },
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`scheduler runs ${res.status}`);
@@ -220,7 +240,9 @@ export function streamCommand(
   onEvent: (e: CommandEvent) => void,
   onClose: () => void,
 ): () => void {
-  const es = new EventSource(`${BASE}/master/command/stream?text=${encodeURIComponent(text)}`);
+  const es = new EventSource(
+    `${BASE}/master/command/stream?text=${encodeURIComponent(text)}`,
+  );
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data) as CommandEvent;
     onEvent(ev);

@@ -1,0 +1,199 @@
+{
+  "symbol": "MES",
+  "interval": "1h",
+  "verdict": "AUCTION_EDGE_UNCONFIRMED",
+  "rationale": "atrtrail beats trend on OOS PF but corey IC is 0.0 (not > 0) \u2014 backtest edge without live agent confirmation. Treat as fragile.",
+  "corey_ic": {
+    "available": true,
+    "source": "engine:/analytics/calibration",
+    "ic_score": 0.0,
+    "sample_count": 0,
+    "ready": false,
+    "min_trades_threshold": 5,
+    "window_days": 30
+  },
+  "baseline": "trend",
+  "baseline_oos_pf": 0.2168,
+  "best_arm": "atrtrail",
+  "ranked": [
+    {
+      "rank": 1,
+      "arm": "atrtrail",
+      "oos_pf": 0.4015,
+      "oos_sharpe": -5.4447,
+      "oos_trades": 105,
+      "wfe": 0.454
+    },
+    {
+      "rank": 2,
+      "arm": "trend",
+      "oos_pf": 0.2168,
+      "oos_sharpe": -9.9695,
+      "oos_trades": 10,
+      "wfe": 0.025
+    }
+  ],
+  "arms_raw": [
+    {
+      "arm": "trend",
+      "status": "ok",
+      "champion_params": {
+        "fast": 60,
+        "slow": 200,
+        "atr_trail": 2.5
+      },
+      "train": {
+        "pf": 8.678,
+        "sharpe": 11.6542,
+        "n_trades": 9,
+        "win_rate": 0.7778,
+        "max_dd": 0.0154,
+        "total_return_pct": 0.1662
+      },
+      "test": {
+        "pf": 0.2168,
+        "sharpe": -9.9695,
+        "n_trades": 10,
+        "win_rate": 0.3,
+        "max_dd": 0.0725,
+        "total_return_pct": -0.0725
+      },
+      "full_period": {
+        "pf": 2.3176,
+        "sharpe": 4.6299,
+        "n_trades": 18,
+        "win_rate": 0.5556,
+        "max_dd": 0.0577,
+        "total_return_pct": 0.1134
+      },
+      "wfe": 0.025,
+      "oos_pf": 0.2168,
+      "oos_sharpe": -9.9695,
+      "oos_trades": 10,
+      "rank": 2
+    },
+    {
+      "arm": "composite",
+      "status": "ok",
+      "champion_params": {
+        "atr_trail": 2.0
+      },
+      "train": {
+        "pf": 0.8179,
+        "sharpe": -1.0733,
+        "n_trades": 21,
+        "win_rate": 0.3333,
+        "max_dd": 0.0734,
+        "total_return_pct": -0.0285
+      },
+      "test": {
+        "pf": 0.0,
+        "sharpe": 0.0,
+        "n_trades": 0,
+        "win_rate": 0.0,
+        "max_dd": 0.0001,
+        "total_return_pct": -0.0001
+      },
+      "full_period": {
+        "pf": 0.8179,
+        "sharpe": -1.0733,
+        "n_trades": 21,
+        "win_rate": 0.3333,
+        "max_dd": 0.0734,
+        "total_return_pct": -0.0285
+      },
+      "wfe": 0.0,
+      "oos_pf": 0.0,
+      "oos_sharpe": 0.0,
+      "oos_trades": 0
+    },
+    {
+      "arm": "tpo",
+      "status": "no_combos"
+    },
+    {
+      "arm": "saty",
+      "status": "ok",
+      "champion_params": {
+        "target_ratio": 1.5,
+        "atr_trail": 2.0
+      },
+      "train": {
+        "pf": 9.9378,
+        "sharpe": 11.1667,
+        "n_trades": 12,
+        "win_rate": 0.5833,
+        "max_dd": 0.0191,
+        "total_return_pct": 0.4124
+      },
+      "test": {
+        "pf": Infinity,
+        "sharpe": 22.033,
+        "n_trades": 2,
+        "win_rate": 1.0,
+        "max_dd": 0.0001,
+        "total_return_pct": 0.0362
+      },
+      "full_period": {
+        "pf": 9.9378,
+        "sharpe": 11.1667,
+        "n_trades": 12,
+        "win_rate": 0.5833,
+        "max_dd": 0.0191,
+        "total_return_pct": 0.4124
+      },
+      "wfe": Infinity,
+      "oos_pf": Infinity,
+      "oos_sharpe": 22.033,
+      "oos_trades": 2
+    },
+    {
+      "arm": "atrtrail",
+      "status": "ok",
+      "champion_params": {
+        "factor": 4.0,
+        "atr_trail": 2.0
+      },
+      "train": {
+        "pf": 0.8843,
+        "sharpe": -0.6609,
+        "n_trades": 131,
+        "win_rate": 0.4275,
+        "max_dd": 0.3511,
+        "total_return_pct": -0.1805
+      },
+      "test": {
+        "pf": 0.4015,
+        "sharpe": -5.4447,
+        "n_trades": 105,
+        "win_rate": 0.3714,
+        "max_dd": 0.6773,
+        "total_return_pct": -0.6645
+      },
+      "full_period": {
+        "pf": 0.6521,
+        "sharpe": -2.3753,
+        "n_trades": 237,
+        "win_rate": 0.4008,
+        "max_dd": 0.8859,
+        "total_return_pct": -0.8578
+      },
+      "wfe": 0.454,
+      "oos_pf": 0.4015,
+      "oos_sharpe": -5.4447,
+      "oos_trades": 105,
+      "rank": 1
+    }
+  ],
+  "caveats": [
+    "DIAGNOSTIC \u2014 does not feed any paper-promotion or go/no-go gate (ml-pitfalls-defense.md).",
+    "Multiple testing: 5 arms grid-searched (~42+ combos); max PF is biased up. No Deflated Sharpe / permutation test applied \u2014 required before paper promotion.",
+    "Costs: arms use the shared Backtester cost model; confirm commission is deducted before quoting PF.",
+    "corey IC measures the auction *analyst* (commentary + bot proximity), not the raw TPO study."
+  ],
+  "window": {
+    "full_start": "2024-06-01",
+    "train_end": "2025-06-01",
+    "test_end": "2026-03-27"
+  }
+}

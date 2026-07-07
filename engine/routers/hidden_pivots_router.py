@@ -3,6 +3,7 @@ HiddenPivots Pattern Scanner — API Router
 Endpoints for scanning symbols for HP patterns, analyzing individual symbols,
 and fetching the HP level ladder.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ def inject_dependencies(data_manager, config) -> None:
 
 
 # ── Request / Response schemas ─────────────────────────────────────────────────
+
 
 class ScreenRequest(BaseModel):
     symbols: list[str]
@@ -51,6 +53,8 @@ class HPSignal(BaseModel):
     rs_rw_label: str
     soh: bool
     oscillator_state: str
+    bars_since_cross: int = -1
+    last_cross_dir: str = "none"
     confidence: float
     notes: str
 
@@ -61,14 +65,55 @@ class ScanResponse(BaseModel):
     signals: list[HPSignal]
     soh_symbols: list[str]
     watch_symbols: list[str]
+    # Full per-symbol result for every scanned name (incl. WATCH/SOH), so UIs can
+    # render the level ladder for non-armed setups. Additive; `signals` /
+    # `soh_symbols` / `watch_symbols` keep their original meaning.
+    details: list[HPSignal] = Field(default_factory=list)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+# Fallback scan universe when settings.SCAN_SYMBOLS is unavailable (e.g. tests).
+# Kept in sync with config.Settings.SCAN_SYMBOLS. Analysis-only — the HP scanner
+# never routes orders, so this is intentionally broader than the trade watchlist.
 DEFAULT_WATCHLIST = [
-    "SPY", "QQQ", "IWM", "GLD", "SLV",
-    "MCL", "MNQ", "MES", "MGC",
-    "TSLA", "AAPL", "NVDA", "MSFT",
+    # futures
+    "MES",
+    "MNQ",
+    "MGC",
+    "MCL",
+    # ETFs / sector
+    "SPY",
+    "QQQ",
+    "IWM",
+    "DIA",
+    "GLD",
+    "SLV",
+    "SMH",
+    "XLE",
+    # mega-cap / liquid single names
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "AMD",
+    "AVGO",
+    "NFLX",
+    # high-options-volume momentum names
+    "PLTR",
+    "COIN",
+    "MSTR",
+    "MU",
+    "CRM",
+    "UBER",
+    "JPM",
+    "BAC",
+    "XOM",
+    "LLY",
+    "COST",
 ]
 
 _last_scan_cache: Optional[ScanResponse] = None
@@ -145,6 +190,7 @@ async def _notify_hp_signal(sig: HPSignal) -> None:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/scan", response_model=ScanResponse)
 async def scan_watchlist(
     timeframe: str = Query("1d", description="Bar timeframe: 1d, 1h, 4h, 15m, 5m"),
@@ -194,6 +240,7 @@ async def scan_watchlist(
         signals=signals,
         soh_symbols=soh_symbols,
         watch_symbols=watch_symbols,
+        details=[s for s in results if s is not None],
     )
     _last_scan_cache = response
     return response
@@ -238,7 +285,9 @@ async def get_hp_levels(
 
         lookback_map = {"1d": 200, "1h": 30, "5m": 5}
         lookback = lookback_map.get(timeframe, 200)
-        df = await _data_manager.get_bars(symbol.upper(), lookback_days=lookback, timeframe=timeframe)
+        df = await _data_manager.get_bars(
+            symbol.upper(), lookback_days=lookback, timeframe=timeframe
+        )
 
         if df is None or df.empty:
             raise HTTPException(status_code=404, detail=f"No data for {symbol}")
@@ -250,12 +299,16 @@ async def get_hp_levels(
             "timeframe": timeframe,
             "hp_ou_level": round(hp_ou, 4) if hp_ou else None,
             "level_ladder": [round(l, 4) for l in levels],  # noqa: E741  # OHLC convention
-            "swing_structure": {
-                "a_price": round(swing.a_price, 4),
-                "b_price": round(swing.b_price, 4),
-                "c_price": round(swing.c_price, 4),
-                "d_price": round(swing.d_price, 4),
-            } if swing else None,
+            "swing_structure": (
+                {
+                    "a_price": round(swing.a_price, 4),
+                    "b_price": round(swing.b_price, 4),
+                    "c_price": round(swing.c_price, 4),
+                    "d_price": round(swing.d_price, 4),
+                }
+                if swing
+                else None
+            ),
         }
     except HTTPException:
         raise
@@ -301,6 +354,7 @@ async def screen_symbols(request: ScreenRequest):
         signals=signals,
         soh_symbols=soh_symbols,
         watch_symbols=watch_symbols,
+        details=[s for s in results if s is not None],
     )
 
 
@@ -344,6 +398,7 @@ async def check_confluence(
     pipeline_direction = "HOLD"
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(
                 "http://localhost:8010/decisions/recent",

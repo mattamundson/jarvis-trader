@@ -27,7 +27,7 @@ import { formatCurrency } from "@/lib/utils";
 import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
 import {
   fetchHonestTrades,
-  equityCurve,
+  maxDrawdownPct,
   dedupCaveat,
 } from "@/lib/honestTrades";
 import { simulateTrade } from "@/lib/settings-api";
@@ -39,6 +39,7 @@ import { ExportDataWidget } from "@/components/ExportDataWidget";
 import { WFEMonitorWidget } from "@/components/WFEMonitorWidget";
 import { TradingDaysCountdownCard } from "@/components/TradingDaysCountdownCard";
 import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
 import { InstrumentValidationScorecard } from "@/components/InstrumentValidationScorecard";
@@ -81,19 +82,6 @@ function fetcher<T>(path: string): Promise<T> {
 // (only symbol/direction/entry_time/exit_time/pnl_usd/grade are available),
 // so it is surfaced as null / "not computed" — no fabricated PASS.
 
-function computeHonestMaxDrawdownPct(trades: Parameters<typeof equityCurve>[0]): number {
-  const curve = equityCurve(trades);
-  let maxDDPct = 0;
-  for (const pt of curve) {
-    const peak = pt.equity - pt.drawdown;
-    if (peak > 0) {
-      const ddPct = Math.abs(pt.drawdown) / peak;
-      if (ddPct > maxDDPct) maxDDPct = ddPct;
-    }
-  }
-  return maxDDPct; // fraction (not percent)
-}
-
 async function honestPerformanceFetcher(): Promise<ValidationReport> {
   const set = await fetchHonestTrades();
 
@@ -102,7 +90,10 @@ async function honestPerformanceFetcher(): Promise<ValidationReport> {
   // from the deduped record (no timestamps granular enough, no risk-free rate).
   const sharpe: null = null;
   const winRate = set.winRate; // already 0..1
-  const maxDd = computeHonestMaxDrawdownPct(set.trades); // fraction
+  // Shared single-source-of-truth DD (seeds peak at 0, denominates against the
+  // real starting balance) — the former inline loop gated on peak>0, so a
+  // net-negative account whose equity never rose above 0 reported 0% drawdown.
+  const maxDd = maxDrawdownPct(set.trades); // fraction
   const trades = set.trades.length;
 
   // Avg win/loss from the deduped set
@@ -1707,7 +1698,9 @@ export default function ValidationPage() {
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         <ValidationChecklist />
         <TradingDaysCountdownCard />
-        <BacktestVsPaperWidget />
+        <WidgetErrorBoundary name="Backtest vs Paper">
+          <BacktestVsPaperWidget />
+        </WidgetErrorBoundary>
 
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1845,13 +1838,17 @@ export default function ValidationPage() {
         {/* Section H: Export Data */}
         <section>
           <SectionLabel>H — Export Data</SectionLabel>
-          <ExportDataWidget />
+          <WidgetErrorBoundary name="Export Data">
+            <ExportDataWidget />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section I: Position Reconciliation */}
         <section>
           <SectionLabel>I — Position Reconciliation</SectionLabel>
-          <ReconciliationWidget />
+          <WidgetErrorBoundary name="Reconciliation">
+            <ReconciliationWidget />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section J: Go-Live Roadmap */}
@@ -1863,7 +1860,9 @@ export default function ValidationPage() {
         {/* Section K: WFE Live Monitor */}
         <section>
           <SectionLabel>K — Walk-Forward Efficiency Monitor</SectionLabel>
-          <WFEMonitorWidget />
+          <WidgetErrorBoundary name="WFE Monitor">
+            <WFEMonitorWidget />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section L: Portfolio P&L Chart */}

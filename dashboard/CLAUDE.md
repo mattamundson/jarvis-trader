@@ -38,7 +38,7 @@ engine host or port.
 
 ## Component Conventions
 
-- Badge variants (STRICT): `"bull" | "bear" | "warn" | "info" | "neutral"` — no others
+- Badge variants (STRICT): `"bull" | "bear" | "warn" | "info" | "neutral" | "live" | "static"` — no others (`live`/`static` are Trust-Pane data-provenance badges)
 - Tailwind for all styling — no inline styles
 - shadcn/ui primitives where applicable
 - Dark mode default — dashboard theme

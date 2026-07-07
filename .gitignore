@@ -335,6 +335,10 @@ engine/strategy_c/output/equity_curve.csv
 engine/data/*_paper_track/
 engine/data/wfo_live_match/
 
+# Verbose per-run backtest reports from the X-bookmark edge runners (regenerated,
+# never source). The committed record is engine/data/research_verdicts/ + docs/research/.
+engine/data/research_reports/
+
 # Systematic-execution runtime ledgers (bridge exec ledger + shared cross-path
 # submission dedup) -- regenerated at runtime, never source. The top-level
 # engine/data/*.jsonl rule does not recurse into this subdirectory.
@@ -359,3 +363,4 @@ engine/data/discovery_*/
 
 # Generated branch-review evidence (run scripts/audit/gather_branch_evidence.sh)
 docs/audit/branch-review/
+.vercel

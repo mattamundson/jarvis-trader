@@ -5,7 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ScriptStatus = Literal["ported", "orphan", "deprecated", "reference_only"]
+# "ported"/"orphan"/"deprecated"/"reference_only" describe migration lineage
+# (ThinkScript -> Python port history). "active"/"experimental" describe the
+# reverse direction: JARVIS-authored TOS scripts mirroring already-live Python
+# engine logic (jarvis-suite/*), where python_counterpart is the canonical
+# source of truth and the .ts file is a chart-side view of it.
+ScriptStatus = Literal["ported", "orphan", "deprecated", "reference_only", "active", "experimental"]
 Panel = Literal["upper", "lower"]
 
 

@@ -1,0 +1,63 @@
+{
+  "symbol": "SPY",
+  "family": "research_equity_meanrev",
+  "rank": 1,
+  "strategy": "atr_band_breakout",
+  "strategy_class": "equity_swing",
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "UNSCORED",
+  "created_at": "2026-07-02T07:09:05.423046+00:00",
+  "gate_v2_metrics": {
+    "pf_ci_lower": 1.1324,
+    "p_edge": 0.9989,
+    "mc_95th_dd_pct": 27.4111,
+    "dsr": 0.0
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.1324 >= 1.1",
+      "p_positive_edge=0.9989 >= 0.95",
+      "FAIL mc_95th_dd_pct=27.4111 > 6.0",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
+    ]
+  },
+  "provenance": {
+    "source_bookmark_url": "https://x.com/QuantifiedStrat/status/2072047523917885657",
+    "author": "@QuantifiedStrat",
+    "scan_date": "2026-07-02"
+  },
+  "class_note": "REFUTED on SPY: breakout polarity loses; best variant (mean-rev) underperforms buy&hold and DSR collapses to 0.0 after 24-trial deflation. Documented negative result.",
+  "best_config": "meanrev_long_short",
+  "polarity_test": {
+    "breakout_long_only": {
+      "cagr": 0.0183,
+      "sharpe_ann": 0.307,
+      "max_dd": -0.2842,
+      "final_mult": 1.83
+    },
+    "breakout_long_short": {
+      "cagr": -0.0364,
+      "sharpe_ann": -0.207,
+      "max_dd": -0.779,
+      "final_mult": 0.29
+    },
+    "meanrev_long_only": {
+      "cagr": 0.0399,
+      "sharpe_ann": 0.513,
+      "max_dd": -0.2805,
+      "final_mult": 3.69
+    },
+    "meanrev_long_short": {
+      "cagr": 0.0447,
+      "sharpe_ann": 0.53,
+      "max_dd": -0.2922,
+      "final_mult": 4.3
+    }
+  }
+}
