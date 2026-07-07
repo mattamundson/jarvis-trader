@@ -72,7 +72,7 @@ next six go faster.
 |---|---|---|---|
 | F1 | **Dashboard proxy headers + env-var reconciliation** | `tsc --noEmit`, then live site after redeploy | JARVIS dashboard — **DONE, §5** |
 | F2 | **Vault path unification** — route the 3 duplicated `~/my-vault` defaults (`deep_analyzer/vault.py`, `deep_analyzer/digest.py`) + the hardcoded `C:\...` in `main.py` through the canonical `vault.paths.vault_root()` so all honour `JARVIS_VAULT_ROOT` | standalone behavioral run + `test_vault_root_unification.py` | Obsidian + X-bookmarks — **DONE, §5.2** |
-| F3 | **Hermes headless approval** — original "`--yes` bypass" idea REJECTED as unsafe; real bug is EOF→terminal-skip | (needs on-box test) | Hermes — **DEFERRED, §5.3** |
+| F3 | **Hermes headless approval** — "`--yes` bypass" REJECTED as unsafe; fixed the real bug instead (EOF→terminal-skip now defers to retryable) | standalone run + `test_hermes_headless_defer.py` | Hermes — **DONE, §5.3** |
 | F4 | **Doc/config reconciliation** — fix stale `markets/orchestrator.py` → `orchestrator/multi_market.py` in the live pointer docs | grep + `ls` | correctness/expectations — **DONE, §5.4** |
 | F5 | **Numeric-accuracy unit tests** — lock the dashboard's pure P&L/win-rate/PF/drawdown/Sharpe derivations (`lib/honestTrades.ts`, `honestMetrics.ts`) to hand-computed values | `pnpm run test:unit` | trustworthy numbers — **DONE (beachhead), §5.1** |
 
@@ -176,7 +176,7 @@ one *root*, but keep their existing *subfolders* (`Discord-Feed/`, `Daily/`,
 are co-located but not yet swept by the vault jobs. Whether to move them into a
 scanned taxonomy folder is a product choice for Matt, not a path bug.
 
-## 5.3. Hermes headless approval (F3 — DEFERRED, needs a decision)
+## 5.3. Hermes headless approval (F3 — landed)
 
 The diagnosis proposed a `--yes` flag to bypass the `input()` gate at
 `applier.py:164`. **Rejected on closer read** — it would remove a deliberate
@@ -193,16 +193,19 @@ human-approval gate:
   `pending`/`failed` retry). So a scheduled scan permanently opts-out every
   non-low-risk entry — a later interactive run never sees them again.
 
-**Why not shipped this session:** the fix is a state-machine change to a
-self-modifying agent's apply pipeline, and it cannot be properly tested from the
-cloud sandbox (the applier's `dry_run` path needs the full applier machinery).
-Shipping an unverified change there violates the verification discipline.
+**The fix shipped:** distinguish EOFError (no TTY) from an explicit user "n". On
+EOF, `apply_one` now returns a *deferred* `ApplyResult` (`deferred=True`,
+`models.py`) and `apply_many` leaves the entry in its retryable state
+(`pending`/`failed`) and does not touch the applied-log — instead of writing the
+terminal `skipped`. The human gate is untouched: non-auto-approvable entries
+still require a person; they just wait instead of being destroyed.
 
-**Proposed safe fix (for approval):** distinguish EOFError (no TTY) from an
-explicit user "n" — on EOF, return a *deferred* result that leaves the entry
-`pending` (retryable) instead of terminal `skipped`. Preserves the human gate,
-makes headless runs non-destructive. Ship as its own focused, on-box-tested change.
-Meanwhile the scheduled scan should run with `--auto-approve-low-risk`.
+**Verification:** `apply_one`/`apply_many` driven directly (applier stubbed,
+`input` raising EOFError) — deferred entry stays `pending`, no applied-log write,
+and an explicit `n` still terminally skips (regression preserved). ran-and-observed
+here; mirrored as `tests/test_hermes_headless_defer.py` for the engine suite;
+`ruff` clean. Operationally, the scheduled scan should still run with
+`--auto-approve-low-risk` so tier_1+low_risk entries auto-apply while the rest defer.
 
 ## 5.4. Doc/config reconciliation (F4 — landed)
 
