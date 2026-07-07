@@ -547,9 +547,7 @@ class TradingPipeline:
             from agents.vision_analyst import PatternVisionAnalystAgent
 
             tech = agents.get("technical")
-            self._vision_agent = PatternVisionAnalystAgent(
-                llm_client=getattr(tech, "_llm", None)
-            )
+            self._vision_agent = PatternVisionAnalystAgent(llm_client=getattr(tech, "_llm", None))
         except ImportError:
             logger.warning(
                 "[Pipeline] vision_analyst unavailable (playwright not installed) — vision stage will return CAUTION"
@@ -1232,7 +1230,9 @@ class TradingPipeline:
                 from notifications.signal_broadcast import broadcast_signal
 
                 asyncio.create_task(broadcast_signal(symbol, pipeline_result, source="pipeline"))
-                logger.info(f"[Pipeline] Signal broadcast queued for {symbol} {final_action.upper()}")
+                logger.info(
+                    f"[Pipeline] Signal broadcast queued for {symbol} {final_action.upper()}"
+                )
             except Exception as _bc_err:
                 logger.warning(f"[Pipeline] Signal broadcast failed (non-fatal): {_bc_err}")
 
@@ -1661,6 +1661,65 @@ class TradingPipeline:
                 "reason": f"Systemic risk protection: {regime_name} regime detected.",
             }
 
+        # ── X-bookmark edge overlay (Phase 3): advisory macro trend bias ──
+        # Flag-gated (ENABLE_MACRO_TREND_BIAS, default off). Folds the market-wide
+        # SPX trend regime (weekly Supertrend + monthly momentum) into the LLM's
+        # regime context as ADVISORY text — never a mechanical gate, never touches
+        # trader.py, and never overrides the CRISIS/VOLATILE hard-block above. When
+        # the flag is off (or anything raises), macro_ctx == "" so the injected
+        # context is byte-identical to baseline. Every injection is shadow-logged.
+        macro_ctx = ""
+        try:
+            from flags.registry import get_flags
+
+            if get_flags().is_enabled("ENABLE_MACRO_TREND_BIAS"):
+                from backtest.macro_regime import compute_macro_regime
+
+                _mr = compute_macro_regime()
+                if _mr.get("bias_line"):
+                    macro_ctx = f"\n{_mr['bias_line']}"
+                    logger.info(
+                        "[Pipeline] %s — macro trend bias (%s) injected: %s",
+                        symbol,
+                        _mr.get("state"),
+                        _mr["bias_line"],
+                    )
+                    # Effect telemetry: durable record of every overlay injection so the
+                    # bias can be reviewed against the resulting decision/outcome (join on
+                    # symbol + ts against the decision log / trades DB). Best-effort;
+                    # a telemetry failure must never affect the trading pipeline.
+                    try:
+                        import json as _json
+                        from datetime import datetime, timezone
+                        from pathlib import Path
+
+                        _tel = (
+                            Path(__file__).resolve().parents[1]
+                            / "data"
+                            / "macro_overlay_telemetry.jsonl"
+                        )
+                        _tel.parent.mkdir(parents=True, exist_ok=True)
+                        with _tel.open("a", encoding="utf-8") as _fh:
+                            _fh.write(
+                                _json.dumps(
+                                    {
+                                        "ts": datetime.now(timezone.utc).isoformat(),
+                                        "symbol": symbol,
+                                        "state": _mr.get("state"),
+                                        "weekly_trend": _mr.get("weekly_trend"),
+                                        "monthly_momentum": _mr.get("monthly_momentum"),
+                                        "asof": _mr.get("asof"),
+                                        "stale_days": _mr.get("stale_days"),
+                                        "bias_line": _mr.get("bias_line"),
+                                    }
+                                )
+                                + "\n"
+                            )
+                    except Exception as _tel_exc:
+                        logger.debug("[Pipeline] macro telemetry skipped: %s", _tel_exc)
+        except Exception as _macro_exc:  # fail-safe: never break the pipeline
+            logger.debug("[Pipeline] macro trend bias skipped: %s", _macro_exc)
+
         # Stage 1a: Run technical analyst first
         technical_coro = self._call_agent_analyze(
             "technical",
@@ -1668,7 +1727,7 @@ class TradingPipeline:
             is_futures=is_futures,
             timeframe=timeframe,
             historical_context=f"{historical_context}\nREGIME CONTEXT: Market is currently {regime_name}. "
-            f"Prioritize {'Trend-Following' if 'TREND' in regime_name else 'Mean-Reversion'} setups.",
+            f"Prioritize {'Trend-Following' if 'TREND' in regime_name else 'Mean-Reversion'} setups.{macro_ctx}",
         )
         technical_result = await safe_analyze("technical", technical_coro)
 

@@ -13,7 +13,17 @@ import { test, expect } from "@playwright/test";
 // badge), since it never had a WFE window to compute. This test locks in
 // that both edge states render their badge and never white-screen the page,
 // the same regression class #163/#207 guard for null prices.
-test("overview renders HALTED (critical) and never-traded (insufficient_data) instrument badges without crashing", async ({ page }) => {
+//
+// STALE AS OF P2.1 (commit d4b1ab1, discovered while working P5.2): `/` now
+// redirects to the flagship `/command-center`. `components/RollingWFEWidget.tsx`
+// has zero importers anywhere in the tree (grep-verified) -- it is not
+// reachable via `/` or any other live route, so the CRITICAL/INSUFFICIENT
+// badge assertions below no longer exercise real rendered output. Flagged as
+// an orphaned-component finding for a future cleanup item (not deleted here
+// per meta-discipline); this test is repointed at the flagship's own
+// degraded-WFE-data resilience (navigating there directly, same destination
+// `/` now redirects to) so it keeps asserting something true.
+test("flagship survives degraded WFE (HALTED/never-traded instrument) data without crashing", async ({ page }) => {
   await page.route("**/api/engine/**", (route) => {
     const u = route.request().url();
     if (u.includes("/paper/validation/wfe")) {
@@ -61,21 +71,37 @@ test("overview renders HALTED (critical) and never-traded (insufficient_data) in
         },
       });
     }
+    // See command-center-golden-path.spec.ts for the full explanation of
+    // each mocked shape (decisions/trades/scheduler.jobs are array-typed;
+    // journalStats.diagnosis is read unconditionally on a truthy response).
+    if (u.includes("/decisions/recent") || u.includes("/portfolio/history/trades")) {
+      return route.fulfill({ status: 200, json: [] });
+    }
+    if (u.includes("/scheduler/status")) {
+      return route.fulfill({ status: 200, json: { jobs: [] } });
+    }
+    if (u.includes("/journal/review/stats")) {
+      return route.fulfill({
+        status: 200,
+        json: {
+          total_trades: 0,
+          win_rate: 0,
+          avg_win_usd: 0,
+          avg_loss_usd: 0,
+          risk_reward_ratio: 0,
+          expected_value_usd: 0,
+          trades_per_week: 0,
+          diagnosis: "insufficient_data",
+        },
+      });
+    }
     return route.fulfill({ status: 200, json: {} });
   });
 
-  await page.goto("/", { waitUntil: "networkidle" });
+  await page.goto("/command-center", { waitUntil: "networkidle" });
   const body = (await page.textContent("body")) || "";
 
-  // HALTED instruments (MCL, MNQ) rendered their critical badge.
-  expect(body, "MCL critical/HALTED badge did not render").toContain("MCL");
-  expect(body, "CRITICAL badge text missing -- WFEBar status.toUpperCase() regressed").toContain("CRITICAL");
-
-  // Never-traded/rejected instrument (M2K) rendered its insufficient-data badge
-  // rather than crashing on a null current_wfe / current_pf.
-  expect(body, "M2K insufficient-data badge did not render").toContain("M2K");
-  expect(body, "INSUFFICIENT badge text missing -- null-WFE case regressed").toContain("INSUFFICIENT");
-
+  expect(body, "flagship header did not render").toContain("COMMAND CENTER");
   // Page did not collapse to the route-level error fallback (no white-screen).
   expect(body, "page white-screened to the route error fallback").not.toMatch(/something went wrong/i);
 });

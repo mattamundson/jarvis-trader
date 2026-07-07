@@ -497,3 +497,160 @@ async def options_module_status():
             "status": "error",
             "message": str(exc),
         }
+
+
+# ---------------------------------------------------------------------------
+# GET /options/module/scan  &  /options/module/pnl  (dashboard /options page)
+# ---------------------------------------------------------------------------
+
+# VIXRegime.value → the lowercase regime string the dashboard reads
+# (frontend has no "extreme" case, so EXTREME collapses to "high").
+_VIX_REGIME_DISPLAY = {"LOW": "low", "NORMAL": "normal", "HIGH": "high", "EXTREME": "high"}
+
+# Scanner's internal regime label → a frontend-recognised strategy_type
+# (strategyLabel() understands iron_condor / bull_put_spread / skip).
+_SCANNER_REGIME_STRATEGY = {
+    "low_vix": "iron_condor",
+    "normal": "bull_put_spread",
+    "high_vix": "skip",
+}
+
+# Overall display regime → the headline strategy_selected for the scan card.
+_DISPLAY_REGIME_STRATEGY = {
+    "low": "iron_condor",
+    "normal": "bull_put_spread",
+    "high": "skip",
+}
+
+
+def _estimate_scan_premium(iv_rank: float, current_price: float) -> float:
+    """Heuristic estimated credit per spread (dollars), NOT a live quote.
+
+    A short premium-selling spread at ~30 DTE collects roughly 0.4% of the
+    underlying, scaled by how rich IV is (iv_rank/50). ×100 for the option
+    contract multiplier. The dashboard column is explicitly labelled
+    "Est. Premium" — this is a transparent proxy, not fabricated live data.
+    """
+    try:
+        return round(current_price * 0.004 * (max(iv_rank, 0.0) / 50.0) * 100, 2)
+    except Exception:
+        return 0.0
+
+
+@router.get("/module/scan", tags=["options", "multi-market"])
+async def options_module_scan():
+    """Latest options-scan opportunities in the dashboard's OptionsScanResponse
+    shape. Degrades to an empty (not 404/500) payload when the scanner or its
+    data dependencies are unavailable."""
+    import asyncio
+
+    empty = {"scan_results": [], "vix_regime": "normal", "strategy_selected": "—"}
+
+    # Headline VIX regime from the live VIX (independent of scan hits).
+    vix_regime = "normal"
+    try:
+        from data.market_data import MarketDataManager
+        from options.strategy_executor import classify_vix_regime
+
+        vix_data = await MarketDataManager().get_vix()
+        vix = float(vix_data.get("value", 20.0) or 20.0)
+        vix_regime = _VIX_REGIME_DISPLAY.get(classify_vix_regime(vix).value, "normal")
+    except Exception as exc:
+        logger.debug("[options_router] module_scan vix lookup failed: %s", exc)
+
+    try:
+        from markets.options.scanner import OptionsScanner
+    except ImportError:
+        return {**empty, "vix_regime": vix_regime}
+
+    def _run_scan():
+        # The scanner calls loop.run_until_complete internally, so it can't run
+        # on the request's already-running loop. Give this worker thread its own
+        # loop and run the (blocking) scan there.
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return OptionsScanner().scan()
+        finally:
+            loop.close()
+
+    try:
+        results = await asyncio.get_running_loop().run_in_executor(None, _run_scan)
+    except Exception as exc:
+        logger.debug("[options_router] module_scan scanner failed: %s", exc)
+        return {**empty, "vix_regime": vix_regime}
+
+    scan_results = [
+        {
+            "symbol": r.symbol,
+            "strategy_type": _SCANNER_REGIME_STRATEGY.get(r.regime, "iron_condor"),
+            "iv_rank": round(r.iv_rank, 1),
+            "expiry_date": r.expiry,
+            "estimated_premium": _estimate_scan_premium(r.iv_rank, r.current_price),
+        }
+        for r in (results or [])
+    ]
+
+    return {
+        "scan_results": scan_results,
+        "vix_regime": vix_regime,
+        "strategy_selected": _DISPLAY_REGIME_STRATEGY.get(vix_regime, "—"),
+    }
+
+
+@router.get("/module/pnl", tags=["options", "multi-market"])
+async def options_module_pnl():
+    """Options P&L in the dashboard's OptionsPnLResponse shape.
+
+    Open positions come from the real OptionsPositionManager store; daily P&L
+    from the orchestrator module when registered. Degrades to zeros/empty when
+    the module is off or the store is empty — never a 404/500.
+    """
+    open_mapped: list[dict] = []
+    unrealised_total = 0.0
+    realized_total = 0.0
+
+    mgr = None
+    try:
+        from options.position_manager import OptionsPositionManager
+
+        mgr = OptionsPositionManager()
+        open_positions = mgr.get_positions(status="OPEN")
+        for p in open_positions:
+            open_mapped.append(
+                {
+                    "symbol": p.symbol,
+                    "strategy": p.strategy,
+                    "entry_price": p.entry_premium,
+                    "current_price": p.current_premium,
+                    "pnl": p.unrealised_pnl,
+                    "dte": p.dte,
+                }
+            )
+        unrealised_total = round(sum(p.unrealised_pnl for p in open_positions), 2)
+    except Exception as exc:
+        logger.debug("[options_router] module_pnl open-positions failed: %s", exc)
+
+    if mgr is not None:
+        try:
+            closed = mgr.get_positions(status="CLOSED")
+            realized_total = round(sum((p.realised_pnl or 0.0) for p in closed), 2)
+        except Exception as exc:
+            logger.debug("[options_router] module_pnl closed-positions failed: %s", exc)
+
+    daily_pnl = 0.0
+    try:
+        from orchestrator import get_orchestrator
+
+        orch = get_orchestrator()
+        module = orch.get_module("options") if orch else None
+        if module is not None:
+            daily_pnl = float(await module.get_daily_pnl() or 0.0)
+    except Exception as exc:
+        logger.debug("[options_router] module_pnl daily_pnl failed: %s", exc)
+
+    return {
+        "daily_pnl": daily_pnl,
+        "total_pnl": round(realized_total + unrealised_total, 2),
+        "open_positions": open_mapped,
+    }

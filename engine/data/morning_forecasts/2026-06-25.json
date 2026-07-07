@@ -1,0 +1,129 @@
+{
+  "date": "2026-06-25",
+  "generated_ts": "2026-06-26T01:50:55.654158+00:00",
+  "symbols": {
+    "MES": {
+      "levels": {
+        "symbol": "MES",
+        "prior_close": 7476.75,
+        "prior_high": 7496.5,
+        "prior_low": 7409.5,
+        "pivot": 7460.9167,
+        "r1": 7512.3333,
+        "s1": 7425.3333,
+        "r2": 7547.9167,
+        "s2": 7373.9167,
+        "atr": 92.6759,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          7512.1522,
+          7534.0237,
+          7569.4259
+        ],
+        "targets_down": [
+          7441.3478,
+          7419.4763,
+          7384.0741
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    },
+    "MNQ": {
+      "levels": {
+        "symbol": "MNQ",
+        "prior_close": 30120.0,
+        "prior_high": 30217.75,
+        "prior_low": 29263.0,
+        "pivot": 29866.9167,
+        "r1": 30470.8333,
+        "s1": 29516.0833,
+        "r2": 30821.6667,
+        "s2": 28912.1667,
+        "atr": 643.7327,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          30365.9059,
+          30517.8268,
+          30763.7327
+        ],
+        "targets_down": [
+          29874.0941,
+          29722.1732,
+          29476.2673
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    },
+    "MGC": {
+      "levels": {
+        "symbol": "MGC",
+        "prior_close": 3982.5,
+        "prior_high": 3984.3,
+        "prior_low": 3982.5,
+        "pivot": 3983.1,
+        "r1": 3983.7,
+        "s1": 3981.9,
+        "r2": 3984.9,
+        "s2": 3981.3,
+        "atr": 91.8486,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          4017.5862,
+          4039.2624,
+          4074.3486
+        ],
+        "targets_down": [
+          3947.4138,
+          3925.7376,
+          3890.6514
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    }
+  },
+  "read": {
+    "bias": "bearish",
+    "conviction": 0.72,
+    "key_levels_committed": [
+      7476.75,
+      7460.9167,
+      7425.3333,
+      7441.35,
+      7418.5
+    ],
+    "scenario_if_above": "MES acceptance above prior_close (7476.75) risks a run toward R1 (7512.33) and upside target 7534.02. Momentum could carry into 7569.43 if buying sustains, but SMA_slow rejection (7505.86) likely caps extension.",
+    "scenario_if_below": "Break below pivot (7460.92) and S1 (7425.33) confirms range-bound downside bias. First structural target 7441.35 is in play; sustained selling threatens S2 at 7419.48 and psychological near 7418.5 (overnight close). MGC bull strength may limit MES decay.",
+    "narrative": "MES is range-bound with STRONG_BEAR bias despite overnight close holding 7418.5. SMA_slow at 7505.86 is resistance overhead; pivot rejection is the higher-probability trade. MGC's TRENDING_BULL and close above pivot (4025.8) adds complexity\u2014equities divergence is notable. Lean short on MES into resistance with stop above R1. Conviction tempered by cross-asset friction.",
+    "data_quality": "fresh"
+  }
+}

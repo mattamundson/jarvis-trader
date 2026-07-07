@@ -18,7 +18,10 @@ Usage (replaces direct uvicorn invocation in ecosystem.config.js):
 
 Exit codes:
     0  — port was free or orphan killed cleanly; uvicorn started
-    1  — port held by something we can't identify (refuse to kill)
+    1  — port held by something we won't kill: an unidentified process (exits
+         immediately), or WSL2's wslrelay mirroring an in-WSL 0.0.0.0 bind onto the
+         Windows loopback (refuse; sleeps WSL_SQUAT_BACKOFF s first so PM2 stops
+         hammering restarts while the WSL bind persists)
     2  — kill attempted but port still bound after grace period
     3  — port held by a HEALTHY uvicorn we can't kill (likely elevated). Exits
          non-zero so PM2 marks the start as failed (correct: we did NOT start
@@ -53,14 +56,31 @@ GRACE_SECONDS = 3
 HEALTHY_ORPHAN_BACKOFF = 30  # seconds to sleep before exiting when orphan is healthy
                               # but unkillable — gives PM2's restart_delay+min_uptime
                               # space to mark the slot as unstable instead of looping
+WSL_SQUAT_BACKOFF = 30        # seconds to sleep before exiting on a wslrelay port squat
+                              # (see _is_wsl_relay) so PM2's restart_delay+min_uptime slow
+                              # the crash-loop instead of hammering ~every 2s (the
+                              # 81k-restart incident, 2026-07-04)
 PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring failure
 # Readiness gate (P0.1): the guardian launches uvicorn IN-PROCESS and blocks, so PM2
 # only ever sees the guardian PID. If uvicorn never binds / never serves /health, PM2
 # still reports "online" while nothing answers. A background watchdog polls /health up
 # to READINESS_DEADLINE (covers the ~229s steady-state startup with margin) and forces a
 # non-zero exit if the server never comes up — so PM2 actually restarts a dead engine.
-READINESS_DEADLINE = 360      # seconds to wait for /health to serve before declaring the start dead
+# Seconds to wait for /health to serve before declaring the start dead. Steady-state
+# boot is ~229s; 360s leaves margin. Under heavy machine contention boot can exceed
+# 360s (4 health-timeout restarts on 2026-07-06) — env-tunable so the ceiling can be
+# raised for contention headroom without a code change (the P0.5 health-latency fix
+# addresses the root cause; this is the operator knob).
+READINESS_DEADLINE = int(os.getenv("PORT_GUARDIAN_READINESS_DEADLINE", "360"))
 READINESS_POLL = 5            # seconds between readiness probes
+# Probe timeout for a single /health poll. /health can momentarily spike to 5-12s
+# under machine contention (blocking SQLite reads on the async loop while the box
+# is saturated by peer sessions). A too-tight 2s timeout mis-reads a transient
+# spike on a *serving* engine as "dead" and force-restarts it — which adds load
+# and can cascade (4 such restarts 2026-07-06 22:11-22:40 UTC). 8s absorbs the
+# spike envelope while still catching a genuinely hung server within a poll or two.
+# Env-tunable so it can be tightened/loosened without a code change.
+READINESS_PROBE_TIMEOUT = float(os.getenv("PORT_GUARDIAN_PROBE_TIMEOUT", "8"))
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENGINE_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = ENGINE_DIR.parent
@@ -156,6 +176,18 @@ def _looks_like_orphan_uvicorn(pid: int) -> bool:
     return name.lower() in {"python", "python3.12", "python3.11", "python3.10", "uvicorn"}
 
 
+def _is_wsl_relay(name: str | None) -> bool:
+    """True if the port holder is WSL2's localhost-forwarding relay (wslrelay.exe).
+
+    When a process INSIDE WSL binds ``0.0.0.0:PORT``, WSL2 mirrors it onto the Windows
+    loopback via ``wslrelay``. From Windows the port then looks held by ``wslrelay``,
+    which is NOT ours to kill -- killing it would tear down ALL WSL port forwarding.
+    Detecting it lets the guardian emit an actionable diagnosis instead of the generic
+    "not a python/uvicorn process" line, which flapped 81k+ times with no usable cause
+    on 2026-07-04 (a stray ``python3 -m http.server 8010`` in WSL squatted the port)."""
+    return bool(name) and name.lower() in {"wslrelay", "wslrelay.exe"}
+
+
 def _verify_free(port: int, retries: int = 5, delay: float = 0.5) -> bool:
     """Probe the port; return True if nothing answers."""
     for _ in range(retries):
@@ -210,9 +242,16 @@ def _kill_pid(pid: int) -> bool:
 
 
 def _is_healthy(port: int) -> bool:
-    """True if /health returns HTTP 200 quickly."""
+    """True if /health returns HTTP 200 within READINESS_PROBE_TIMEOUT.
+
+    The timeout is deliberately generous (8s default) so a transient latency
+    spike on a *serving* engine is not mis-read as a dead server — see
+    READINESS_PROBE_TIMEOUT rationale.
+    """
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as r:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/health", timeout=READINESS_PROBE_TIMEOUT
+        ) as r:
             return r.status == 200
     except (urllib.error.URLError, TimeoutError, ConnectionResetError):
         return False
@@ -250,9 +289,21 @@ def _start_readiness_watchdog() -> None:
         if ready:
             print("[port_guardian] readiness confirmed — /health is serving", flush=True)
             return
+        # Diagnostic: distinguish "uvicorn bound the port but /health never answered
+        # in time" (slow/hung request path — port_bound=True) from "uvicorn never
+        # started / crashed on import" (port_bound=False). Without this the restart
+        # trail can't tell a latency cascade apart from a hard startup failure.
+        holders = _port_holders(PORT)
         _record_restart_event(
             "health-timeout",
-            {"port": PORT, "deadline_s": READINESS_DEADLINE},
+            {
+                "port": PORT,
+                "deadline_s": READINESS_DEADLINE,
+                "probe_timeout_s": READINESS_PROBE_TIMEOUT,
+                "poll_interval_s": READINESS_POLL,
+                "port_bound": bool(holders),
+                "holder_pids": holders,
+            },
             RESTART_LOG,
         )
         print(
@@ -277,6 +328,26 @@ def main() -> int:
             name = _process_name(pid) or "unknown"
             print(f"[port_guardian] port {PORT} held by PID {pid} ({name})", flush=True)
             if not _looks_like_orphan_uvicorn(pid):
+                if _is_wsl_relay(name):
+                    print(
+                        f"[port_guardian] port {PORT} is held by wslrelay (PID {pid}): a "
+                        f"process INSIDE WSL is bound to 0.0.0.0:{PORT} and WSL2 "
+                        f"localhost-forwarding is mirroring it onto Windows "
+                        f"127.0.0.1:{PORT}. Killing wslrelay would break ALL WSL port "
+                        f"forwarding, so REFUSING. Fix in WSL: run "
+                        f"`wsl ss -ltnp | grep :{PORT}` then kill the offending PID inside WSL.",
+                        flush=True,
+                    )
+                    _record_restart_event(
+                        "wsl-port-squat",
+                        {"pid": pid, "name": name, "port": PORT},
+                        RESTART_LOG,
+                    )
+                    # Back off before exiting non-zero so PM2's restart_delay + min_uptime
+                    # slow the crash-loop instead of relaunching us ~every 2s while the
+                    # WSL bind persists (mirrors the exit-3 HEALTHY_ORPHAN_BACKOFF).
+                    time.sleep(WSL_SQUAT_BACKOFF)
+                    return 1
                 print(
                     f"[port_guardian] PID {pid} is not a python/uvicorn process — "
                     "REFUSING to kill. Resolve manually.",

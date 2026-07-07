@@ -93,6 +93,45 @@ ALT_EVIDENCE_GATE = {
     # cost_survives_through must rank >= "realistic" in COST_SURVIVAL_LEVELS.
 }
 
+# ── Strategy-class drawdown ceilings ────────────────────────────────────────
+# The MC-95th DD ceiling is the ONE gate criterion that is class-dependent: an
+# intraday futures book is judged against the tight 6%/7% bar (tied to the $5K/
+# instrument 60% kill-switch), but a long-biased equity-swing strategy holds
+# through equity bear markets and is correctly judged against a much wider
+# equity-class bar. All OTHER criteria (PF-CI, p_edge, DSR) are class-INDEPENDENT
+# — signal quality does not get a class discount.
+#
+# ``intraday_futures`` values are byte-identical to CORE_GATE / ALT_EVIDENCE_GATE
+# so the default path is unchanged. An UNKNOWN class falls back to the STRICTEST
+# (intraday_futures) ceiling — a class map must never accidentally LOOSEN a gate.
+#
+# SCOPE (2026-07-02): this governs only how a verdict SCORES in this validator.
+# Capital routing is gated separately by engine/backtest/_gate_v2_helpers.py
+# (GATE_MC_DD_CORE/ALT) and engine/gate_v2_policy.py — a class ceiling that ever
+# affects what can route MUST be applied there too. This PR deliberately does NOT
+# touch either; equity-class verdicts score on the wider bar for VISIBILITY only
+# and cannot authorize trading.
+STRATEGY_CLASS_DD: dict[str, dict[str, float]] = {
+    "intraday_futures": {"core": 6.0, "alt": 7.0},
+    "equity_swing": {"core": 25.0, "alt": 30.0},
+}
+DEFAULT_STRATEGY_CLASS = "intraday_futures"
+
+
+def _dd_ceiling(strategy_class: str, path: str) -> float:
+    """Return the MC-95th DD ceiling for a class/path, strict-fallback on unknown."""
+    cls = STRATEGY_CLASS_DD.get(strategy_class)
+    if cls is None:
+        cls = STRATEGY_CLASS_DD[DEFAULT_STRATEGY_CLASS]
+    return cls[path]
+
+
+def _is_nondefault_class(strategy_class: str) -> bool:
+    """True only for a KNOWN class whose ceiling differs from the default. Used to
+    annotate reason strings — default/unknown/futures spellings stay byte-identical
+    to the historical (unannotated) output."""
+    return strategy_class in STRATEGY_CLASS_DD and strategy_class != DEFAULT_STRATEGY_CLASS
+
 # Ordinal ladder from cost_sensitivity_sweep.py. Alt-path requires that edge
 # survives through at least "realistic" (2x commission, 2x slippage).
 COST_SURVIVAL_LEVELS = (
@@ -203,12 +242,19 @@ def _extract_pnls(combo: dict, window: str | None = None) -> list[float]:
     return [float(t["pnl"]) for t in trades]
 
 
-def _score_core_gate(report: dict) -> tuple[list[bool], list[str]]:
+def _score_core_gate(
+    report: dict, strategy_class: str = DEFAULT_STRATEGY_CLASS
+) -> tuple[list[bool], list[str]]:
     """Evaluate the 4 core-gate criteria. MBB (not IID) is the CI stat per
     the 2026-04-21 04:30 CT addendum — trend strategies have serial
-    correlation that IID overstates against."""
+    correlation that IID overstates against.
+
+    Only the MC-95th DD ceiling is class-dependent (``strategy_class``); all
+    other criteria are class-independent. Default class reproduces the historical
+    6.0% intraday-futures ceiling exactly."""
     passes: list[bool] = []
     reasons: list[str] = []
+    dd_max = _dd_ceiling(strategy_class, "core")
 
     block_lo = report["bootstrap_block"]["pf_ci_95_low"]
     if block_lo >= CORE_GATE["pf_ci_lower_min"]:
@@ -227,12 +273,13 @@ def _score_core_gate(report: dict) -> tuple[list[bool], list[str]]:
         reasons.append(f"FAIL p_positive_edge={p_edge} < {CORE_GATE['p_positive_edge_min']}")
 
     mc_95 = report["drawdown_mc"]["mc_95th"]
-    if mc_95 <= CORE_GATE["max_dd_95th_pct_max"]:
+    _cls_suffix = f" ({strategy_class} class)" if _is_nondefault_class(strategy_class) else ""
+    if mc_95 <= dd_max:
         passes.append(True)
-        reasons.append(f"mc_95th_dd_pct={mc_95} <= {CORE_GATE['max_dd_95th_pct_max']}")
+        reasons.append(f"mc_95th_dd_pct={mc_95} <= {dd_max}{_cls_suffix}")
     else:
         passes.append(False)
-        reasons.append(f"FAIL mc_95th_dd_pct={mc_95} > {CORE_GATE['max_dd_95th_pct_max']}")
+        reasons.append(f"FAIL mc_95th_dd_pct={mc_95} > {dd_max}{_cls_suffix}")
 
     dsr = report["deflated_sharpe"]["dsr"]
     if dsr >= CORE_GATE["dsr_min"]:
@@ -245,11 +292,15 @@ def _score_core_gate(report: dict) -> tuple[list[bool], list[str]]:
     return passes, reasons
 
 
-def _score_alt_gate(report: dict, aux: dict) -> tuple[list[bool], list[str]]:
+def _score_alt_gate(
+    report: dict, aux: dict, strategy_class: str = DEFAULT_STRATEGY_CLASS
+) -> tuple[list[bool], list[str]]:
     """Evaluate the 5 alt-evidence criteria. Assumes the aux dict has already
-    been validated for completeness."""
+    been validated for completeness. Only the MC-95th DD ceiling is
+    class-dependent; default class reproduces the historical 7.0% ceiling."""
     passes: list[bool] = []
     reasons: list[str] = []
+    dd_max = _dd_ceiling(strategy_class, "alt")
 
     # (1) DSR — tighter than core's 0.10.
     dsr = report["deflated_sharpe"]["dsr"]
@@ -296,17 +347,19 @@ def _score_alt_gate(report: dict, aux: dict) -> tuple[list[bool], list[str]]:
         passes.append(False)
         reasons.append(f"FAIL cost_survives_through={survives} < realistic")
 
-    # (5) MC 95th DD — looser than core (7% vs 6%).
+    # (5) MC 95th DD — looser than core (7% vs 6% for intraday_futures); the
+    # ceiling is class-dependent (equity_swing rides a wider bar).
     mc_95 = report["drawdown_mc"]["mc_95th"]
-    if mc_95 <= ALT_EVIDENCE_GATE["max_dd_95th_pct_max"]:
+    _cls_suffix = f", {strategy_class} class" if _is_nondefault_class(strategy_class) else ""
+    if mc_95 <= dd_max:
         passes.append(True)
         reasons.append(
-            f"mc_95th_dd_pct={mc_95} <= {ALT_EVIDENCE_GATE['max_dd_95th_pct_max']} (alt ceiling)"
+            f"mc_95th_dd_pct={mc_95} <= {dd_max} (alt ceiling{_cls_suffix})"
         )
     else:
         passes.append(False)
         reasons.append(
-            f"FAIL mc_95th_dd_pct={mc_95} > {ALT_EVIDENCE_GATE['max_dd_95th_pct_max']} (alt ceiling)"
+            f"FAIL mc_95th_dd_pct={mc_95} > {dd_max} (alt ceiling{_cls_suffix})"
         )
 
     return passes, reasons
@@ -331,6 +384,13 @@ def _evaluate_gate_v2(
     * **Beta-harvest p_edge relaxation** — when ``strategy_class == "beta_harvest"``
       and enforcement is on, a CORE failure whose SOLE failing criterion is p_edge
       is rescued iff ``p_edge >= 0.60`` and the H1/H2 split is consistent.
+
+    ``strategy_class`` ALSO selects the MC-95th DD ceiling via ``STRATEGY_CLASS_DD``:
+    ``""``/``"intraday_futures"``/``"beta_harvest"`` → 6%/7% (unchanged); ``"equity_swing"``
+    → 25%/30% (long-biased equity rides equity bear DDs). Unknown classes fall back to
+    the STRICTEST ceiling. This affects only how a verdict SCORES here — capital routing
+    is gated separately (``_gate_v2_helpers.py`` / ``gate_v2_policy.py``), untouched by
+    this class map, so an equity-class PASS scores for visibility but cannot route.
     * **H1/H2 stationarity enforcement** — when on and ``stationarity`` shows
       positive non-stationarity evidence (adequate sample, a losing half), the
       verdict is overridden to FAIL regardless of core/alt.
@@ -360,7 +420,7 @@ def _evaluate_gate_v2(
     if beta_harvest_enforce is None:
         beta_harvest_enforce = _BETA_HARVEST_ENFORCE_DEFAULT
 
-    core_passes, core_reasons = _score_core_gate(report)
+    core_passes, core_reasons = _score_core_gate(report, strategy_class=strategy_class)
     n_core_passed = sum(core_passes)
 
     # Beta-harvest p_edge relaxation: rescue a core FAIL whose ONLY failing
@@ -386,7 +446,9 @@ def _evaluate_gate_v2(
 
     aux_ready = bool(aux_evidence) and all(k in aux_evidence for k in _ALT_AUX_REQUIRED)
     if aux_ready:
-        alt_passes, alt_reasons = _score_alt_gate(report, aux_evidence)
+        alt_passes, alt_reasons = _score_alt_gate(
+            report, aux_evidence, strategy_class=strategy_class
+        )
         n_alt_passed = sum(alt_passes)
         n_alt_criteria = len(alt_passes)
         alt_verdict = "PASS" if n_alt_passed == n_alt_criteria else "FAIL"
@@ -575,8 +637,11 @@ def main():
     ap.add_argument(
         "--strategy-class",
         default="",
-        help="Strategy class tag. Pass 'beta_harvest' (with BETA_HARVEST_GATE_ENFORCE=1) "
-        "to relax the p_edge floor for low-frequency long-beta edges (TOM, pre-holiday).",
+        help="Strategy class tag. '' / 'intraday_futures' → 6%/7% MC-DD ceiling (default). "
+        "'equity_swing' → 25%/30% ceiling (long-biased equity rides equity bear DDs; "
+        "SCORING/visibility only — does NOT authorize routing). 'beta_harvest' (with "
+        "BETA_HARVEST_GATE_ENFORCE=1) relaxes the p_edge floor for low-frequency long-beta "
+        "edges (TOM, pre-holiday). All non-DD criteria stay class-independent.",
     )
     args = ap.parse_args()
 

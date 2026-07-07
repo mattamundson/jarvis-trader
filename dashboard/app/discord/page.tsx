@@ -11,6 +11,7 @@ import { IBReportCard } from "@/components/discord/ib-report-card";
 import { CoreyFeed } from "@/components/discord/corey-feed";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
 import { KnowledgeContextWidget } from "@/components/KnowledgeContextWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 type Tab = "overview" | "signals" | "ib-reports" | "commentary";
 
@@ -119,8 +120,12 @@ export default function DiscordPage() {
 
             {/* Discord signal features (left) + curated knowledge brain (right) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <DiscordIntelligenceWidget />
-              <KnowledgeContextWidget symbol="MES" />
+              <WidgetErrorBoundary name="Discord Intelligence">
+                <DiscordIntelligenceWidget />
+              </WidgetErrorBoundary>
+              <WidgetErrorBoundary name="Knowledge Context">
+                <KnowledgeContextWidget symbol="MES" />
+              </WidgetErrorBoundary>
             </div>
 
             {/* Row 2: Win rate chart (left) + commentary snippet (right) */}

@@ -198,9 +198,11 @@ class TestRuntimeOverrides:
 
 class TestListFlags:
     def test_list_flags_returns_all(self, flags):
-        """list_flags() returns exactly 9 flags (one per FLAG_DEFINITIONS entry)."""
+        """list_flags() returns exactly one entry per FLAG_DEFINITIONS entry."""
+        from flags.registry import FLAG_DEFINITIONS
+
         result = flags.list_flags()
-        assert len(result) == 9
+        assert len(result) == len(FLAG_DEFINITIONS)
 
     def test_list_flags_structure(self, flags):
         """Each flag dict contains the required keys."""

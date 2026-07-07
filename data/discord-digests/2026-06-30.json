@@ -1,0 +1,243 @@
+{
+  "date": "2026-06-30",
+  "session_bias": {
+    "session_type": "trend_day",
+    "directional_bias": "bullish",
+    "conviction": 0.75,
+    "ib_bias": "above_ib",
+    "data_quality": "fresh",
+    "message_count": 13
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7566.0,
+      "target2": 7593.0,
+      "stop1": 7521.0,
+      "win_rate": 83.53,
+      "rr": 0.61,
+      "timestamp": "2026-06-30T13:45:01.965-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7518.75,
+      "target2": 7545.75,
+      "stop1": 7473.75,
+      "win_rate": 83.48,
+      "rr": 0.61,
+      "timestamp": "2026-06-30T00:55:01.127-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7566.75,
+      "target2": 7573.5,
+      "stop1": null,
+      "win_rate": 78.87,
+      "rr": 0.53,
+      "timestamp": "2026-06-30T14:24:00.854-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7560.25,
+      "target2": 7567.0,
+      "stop1": null,
+      "win_rate": 78.86,
+      "rr": 0.53,
+      "timestamp": "2026-06-30T12:09:01.24-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7564.5,
+      "target2": 7571.25,
+      "stop1": null,
+      "win_rate": 78.84,
+      "rr": 0.53,
+      "timestamp": "2026-06-30T14:10:02.355-05:00"
+    }
+  ],
+  "corey_quote": "Month-end markets do not reveal direction through strength. They reveal direction through which side stops losing ground first.",
+  "commentary_health": [
+    {
+      "date": "2026-06-30",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.75,
+      "message_count": 13
+    },
+    {
+      "date": "2026-06-29",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.45,
+      "message_count": 45
+    },
+    {
+      "date": "2026-06-28",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 29
+    },
+    {
+      "date": "2026-06-26",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 26
+    },
+    {
+      "date": "2026-06-25",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.65,
+      "message_count": 62
+    },
+    {
+      "date": "2026-06-24",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 95
+    },
+    {
+      "date": "2026-06-23",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.85,
+      "message_count": 95
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 25,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": false,
+    "active_provider": null,
+    "primary_provider": null,
+    "primary_healthy": null,
+    "providers_available": null,
+    "google_fallback_count": null,
+    "vertex_failover_count": null,
+    "llm_path_healthy": null,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 92,
+    "failing_enabled": 3,
+    "failing_disabled": 0,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-TVCDP-Watch-30min",
+        "result": "0x800710E0"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 5.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 13.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 13.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 4.3,
+        "newest": "2026-06-27T06:00:05.644150+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.7,
+        "newest": "2026-06-30T21:19:00.772736+00:00",
+        "files": 30,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.7,
+        "newest": "2026-06-30T21:20:30.946789+00:00",
+        "files": 18,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 4.3,
+        "newest": "2026-06-27T06:00:07.197560+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 13.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 13.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

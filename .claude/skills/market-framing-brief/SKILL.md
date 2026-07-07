@@ -206,7 +206,7 @@ of that note. Deterministic geometry reproduces structure-trader levels.
 
 ## Step 3 — System overlay numbers (engine)
 
-Levels already came from the engine in Step 1a when it was reachable. Here, pull
+Levels already came from Corey's commentary (Step 0.5) or the engine (Step 1a) when either was reachable. Here, pull
 the remaining MES sizing inputs for the overlay: the **hourly ATR** (for the
 exact 2.0×ATR stop distance rather than an approximate one) and the live
 kill-switch / daily-P&L state so the sizing respects the −2% halt. If the engine
@@ -263,7 +263,7 @@ Scenario 3 — <lower prob>: triggers + what catalyst it needs
 
 > "<one-line memorable thesis>"
 
-**Caveats:** (1) artifact type = <pre-open forecast | at/post-open reaction>. (2) level source = <engine IB feed | web fallback>; if web, levels are delayed and date-conflation-prone — say so. (3) <econ release / holiday note>.
+**Caveats:** (1) artifact type = <pre-open forecast | at/post-open reaction>. (2) level source = <Corey commentary | engine IB feed | web fallback>; if web, levels are delayed and date-conflation-prone — say so; if Corey, note data_quality (fresh/stale). (3) <econ release / holiday note>.
 
 Sources: <markdown links to every source used>
 ```
@@ -296,7 +296,7 @@ These come from real misses building this skill's briefs. Each maps to a rule ab
 
 1. **Cash-anchoring (worst).** A Friday brief anchored on S&P cash (7,357) + a guessed +40 basis put ES at "~7,400" with resistance at 7,420; the real futures tape was 7,437–7,489 with the pivot at 7,489. Levels were ~40–90 pts too low and the directional frame ("at the 50-day, post-selloff") was inverted from the actual "post-rally retrace." Fix: Step 1 pulls futures directly.
 2. **Invented bridge number.** Same brief marked NQ "not retrieved" (correct) but fabricated the ES level from cash. Fix: the no-fabrication rule applies to every instrument.
-3. **Stale-week contamination.** Searches surfaced early-month −4% selloff stories and they colored a "momentum-down" frame for a week that had actually rallied. Fix: verify prior-session direction + date explicitly (Step 1.2).
+3. **Stale-week contamination.** Searches surfaced early-month −4% selloff stories and they colored a "momentum-down" frame for a week that had actually rallied. Fix: verify prior-session direction + date explicitly (Step 1b, item 2).
 4. **False comfort from rigor.** A five-source, look-ahead-disciplined, uncertainty-flagged brief was *less* accurate than a confident single-feed note, because the inputs were wrong. Fix: process hygiene ≠ accuracy; cross-check levels.
 5. **Defending instead of reconciling.** When a third-party note's levels didn't match, the first instinct was "they must be a different session" — wrong. Fix: when levels diverge, check your own against the tape first.
 6. **Web aggregators are not trustworthy for levels — demonstrated twice.** Search summaries reported the *same* close (S&P 7,357.49) for both 6/24 and 6/25, and futures history pages 403'd. A brief built on that is untradeable. Fix: engine IB feed is primary (Step 1a); when only web is available, label confidence LOW and refuse to publish precise levels you can't two-source-confirm — an honest hole beats a confident wrong number.

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { RawRecordBadge } from "@/components/RawRecordBadge";
+import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchEngine } from "@/lib/api";
 
@@ -40,31 +42,19 @@ function formatPnl(value: number): string {
   return `${sign}$${value.toFixed(2)}`;
 }
 
-function formatTimestamp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function TodaySummaryWidget() {
   const [data, setData] = useState<SessionTodayResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchData = async () => {
     try {
       const json = await fetchEngine(`/portfolio/stats/session-today`);
       setData(json);
       setError(null);
-      setLastUpdated(new Date().toLocaleTimeString());
+      setLastUpdated(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch session data");
     }
@@ -87,13 +77,16 @@ export function TodaySummaryWidget() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="text-sm font-semibold">Today&apos;s Session</CardTitle>
-        {data ? (
-          <Badge variant={sessionBadgeVariant(data.session)}>
-            {data.session}
-          </Badge>
-        ) : (
-          <Badge variant="neutral">—</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          <RawRecordBadge />
+          {data ? (
+            <Badge variant={sessionBadgeVariant(data.session)}>
+              {data.session}
+            </Badge>
+          ) : (
+            <Badge variant="neutral">—</Badge>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent>
@@ -158,9 +151,17 @@ export function TodaySummaryWidget() {
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground mt-3">
-          {lastUpdated ? `Updated ${lastUpdated} · ` : ""}Refreshes every 2 min
-        </p>
+        {data && hasTrades && (
+          <p className="text-[10px] text-muted-foreground/70 mt-2">
+            P&amp;L, trades &amp; win-rate from the raw session record — may include
+            re-logged duplicates. See the deduped stats widgets for the honest figure.
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 mt-3">
+          {lastUpdated && <StalenessIndicator lastUpdated={lastUpdated} />}
+          <p className="text-xs text-muted-foreground">Refreshes every 2 min</p>
+        </div>
       </CardContent>
     </Card>
   );

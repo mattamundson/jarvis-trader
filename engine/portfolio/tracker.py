@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
+import os
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -45,8 +45,10 @@ except ImportError:
     try:
         from engine.risk.exit_price_sanity import assert_exit_price_sane
     except ImportError:  # pragma: no cover - guard is additive; never hard-fail import
+
         def assert_exit_price_sane(symbol, entry_price, exit_price):  # type: ignore[misc]
             return None
+
 
 # Default JSONL storage path — sits next to this file at engine/portfolio/trades.jsonl
 _DEFAULT_STORE = Path(__file__).parent / "trades.jsonl"
@@ -67,6 +69,57 @@ INSTRUMENT_MULTIPLIERS: dict = {
     "GC": 100.0,
 }
 _DEFAULT_MULTIPLIER = 1.0
+
+
+class UnknownInstrumentMultiplierError(ValueError):
+    """Raised when a symbol has no configured contract multiplier.
+
+    Fail-closed by design: a futures fill priced at a silent 1x multiplier
+    mis-states P&L by 5x–1000x. Add the symbol to INSTRUMENT_MULTIPLIERS, or
+    set ALLOW_DEFAULT_MULTIPLIER=1 to force the 1x fallback with a loud log.
+    """
+
+
+def _resolve_multiplier(symbol: str) -> float:
+    """Return the contract multiplier for ``symbol``, fail-closed on unknowns.
+
+    Previously ``INSTRUMENT_MULTIPLIERS.get(symbol, 1.0)`` silently applied a
+    1x multiplier to any unlisted instrument, so an un-mapped futures symbol
+    would post a P&L off by its true multiplier. This raises instead, unless
+    ALLOW_DEFAULT_MULTIPLIER=1 is set (then it logs loudly and falls back).
+    """
+    mult = INSTRUMENT_MULTIPLIERS.get(symbol.upper())
+    if mult is not None:
+        return mult
+    if os.getenv("ALLOW_DEFAULT_MULTIPLIER", "0") == "1":
+        logger.error(
+            "[PAPER] No contract multiplier configured for %s — falling back to "
+            "%.1fx (ALLOW_DEFAULT_MULTIPLIER=1). P&L for this symbol may be wrong.",
+            symbol,
+            _DEFAULT_MULTIPLIER,
+        )
+        return _DEFAULT_MULTIPLIER
+    raise UnknownInstrumentMultiplierError(
+        f"No contract multiplier configured for {symbol!r}. Add it to "
+        f"INSTRUMENT_MULTIPLIERS (engine/portfolio/tracker.py) or set "
+        f"ALLOW_DEFAULT_MULTIPLIER=1 to force a 1x fallback."
+    )
+
+
+def _commission_per_contract() -> float:
+    """Flat per-contract round-trip commission (dollars), subtracted at close.
+
+    Configurable via COMMISSION_PER_CONTRACT (default $1.50, a realistic
+    retail micro-futures round-trip). This is a flat proxy across instruments;
+    historical rows closed before this term was introduced are pre-cost and
+    are NOT retroactively adjusted. Broker-confirmed closes (an explicit pnl
+    passed to close_paper_trade) are assumed to already include fees and are
+    left untouched.
+    """
+    try:
+        return float(os.getenv("COMMISSION_PER_CONTRACT", "1.50"))
+    except (TypeError, ValueError):
+        return 1.50
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -236,9 +289,7 @@ class PortfolioTracker:
 
                 _sp = tag_strategy_params(_sp, candidate_id)
             except Exception as _tag_err:
-                logger.debug(
-                    "[TRACKER] candidate_id tag failed (non-fatal): %s", _tag_err
-                )
+                logger.debug("[TRACKER] candidate_id tag failed (non-fatal): %s", _tag_err)
                 _sp["candidate_id"] = candidate_id
         # Decision-identity tag (P2): stamp WHICH live decision configuration
         # produced this trade so the forward-test loop can attribute it to a
@@ -246,6 +297,12 @@ class PortfolioTracker:
         if decision_identity:
             _sp["decision_identity"] = decision_identity
         if self._db is not None:
+            # INVARIANT: one open paper_trades row per (symbol, side). The engine
+            # never pyramids, so any re-log of a still-open position collapses to
+            # the existing row inside insert_paper_trade's open-state guard —
+            # regardless of price drift or how far apart the re-emissions arrive.
+            # (A future scale-in feature would need a bar/decision discriminator
+            # added to that guard so genuine adds are not swallowed.)
             row_id = self._db.insert_paper_trade(
                 trade_id,
                 symbol=trade.symbol,
@@ -338,11 +395,13 @@ class PortfolioTracker:
         exit_time = datetime.now(timezone.utc).isoformat()
         action_lower = trade.action.lower()
         is_short = "sell" in action_lower or "short" in action_lower
-        multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
+        multiplier = _resolve_multiplier(trade.symbol)
         if is_short:
             computed_pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
         else:
             computed_pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+        # Subtract a flat round-trip commission (see _commission_per_contract).
+        computed_pnl -= _commission_per_contract() * abs(trade.quantity)
 
         # SQLite-first: write to DB before mutating in-memory state.
         # If this raises, _open is unchanged — no ghost position on restart.
@@ -717,20 +776,26 @@ class PortfolioTracker:
 
     def _get_starting_balance(self) -> float:
         """
-        Return yesterday's closing equity as today's starting balance.
+        Return the pnl-FREE starting base (INITIAL_CAPITAL) for the account.
 
-        Computes INITIAL_CAPITAL + sum(pnl) for ALL closed paper trades whose
-        pnl is not NULL.  This ensures the daily P&L percentage is always
-        measured against the correct prior-day equity rather than the hardcoded
-        INITIAL_CAPITAL every day (Bug B4).
+        This is a *starting* balance by contract: every consumer computes
+        current equity as ``starting_balance + total_pnl`` (see
+        ``risk/pnl_monitor._read_memory`` line ~513 and
+        ``get_performance_summary`` line ~1381).  Baking cumulative closed P&L
+        in here caused a DOUBLE-COUNT — consumers added ``total_pnl`` a second
+        time, inflating portfolio_equity to ``initial + 2*total_pnl`` (e.g.
+        $20,163.67 on 2026-07-02 when TRUE equity was $15,081.84 = $10k initial
+        + $5,081.84 net closed P&L).  So this returns INITIAL_CAPITAL only, and
+        equity is counted exactly once at the call sites.
 
-        Result is cached on first call per calendar day so repeated calls
-        within the same trading session are O(1).
+        Tradeoff (formerly "Bug B4"): the daily_pnl_pct denominator reverts to
+        the initial deposit rather than prior-day equity.  That is
+        reporting-only — the live daily-loss GATE uses portfolio_equity (now
+        correct), not this field.  If prior-day-equity daily% is wanted, derive
+        it at the daily_pnl_pct site from portfolio_equity, NOT by re-inflating
+        this base (which reintroduces the double-count).
 
-        Falls back to INITIAL_CAPITAL when:
-          - No closed trades exist yet
-          - SQLite is unavailable
-          - Any exception is raised
+        Result is cached per calendar day so repeated calls are O(1).
         """
         # --- per-day cache ---
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -738,7 +803,7 @@ class PortfolioTracker:
         if cached_date == today_str:
             return getattr(self, "_starting_balance_cache", 0.0)
 
-        # --- load INITIAL_CAPITAL from config ---
+        # --- load INITIAL_CAPITAL from config (the pnl-free base) ---
         initial: float = 10_000.0
         try:
             from config import settings  # type: ignore[import]
@@ -747,43 +812,13 @@ class PortfolioTracker:
         except Exception:
             pass
 
-        # --- sum closed P&L from db_manager (B9-safe path) or raw SQLite ---
-        total_pnl: float = 0.0
-        try:
-            if self._db is not None:
-                rows = self._db.get_closed_trades(limit=100_000)
-                total_pnl = sum(
-                    float(r.get("pnl") or 0.0) for r in rows if r.get("pnl") is not None
-                )
-            else:
-                # Fallback: query the SQLite file directly using SQLITE_DB_PATH
-                try:
-                    from config import settings as _cfg  # type: ignore[import]
-
-                    db_path = getattr(_cfg, "SQLITE_DB_PATH", None)
-                except Exception:
-                    db_path = None
-                if db_path:
-                    conn = sqlite3.connect(str(db_path), timeout=5)
-                    cursor = conn.execute(
-                        "SELECT COALESCE(SUM(pnl), 0) FROM paper_trades WHERE pnl IS NOT NULL"
-                    )
-                    total_pnl = float(cursor.fetchone()[0] or 0.0)
-                    conn.close()
-        except Exception as exc:
-            logger.warning("[TRACKER] _get_starting_balance: pnl sum failed: %s", exc)
-            total_pnl = 0.0
-
-        balance = initial + total_pnl
+        # Counted-once contract: consumers add total_pnl themselves, so this
+        # base MUST stay pnl-free (2026-07-02 double-count fix).
+        balance = initial
         # Cache for the rest of the trading day
         self._starting_balance_date: str = today_str
         self._starting_balance_cache: float = balance
-        logger.debug(
-            "[TRACKER] starting_balance computed: initial=%.2f + pnl=%.2f = %.2f",
-            initial,
-            total_pnl,
-            balance,
-        )
+        logger.debug("[TRACKER] starting_balance (pnl-free base) = %.2f", balance)
         return balance
 
     # ── Public API — extended methods (used by db_manager callers) ────────────
@@ -917,15 +952,18 @@ class PortfolioTracker:
         # Compute all close fields before any writes
         resolved_exit_time = exit_time or datetime.now(timezone.utc).isoformat()
         if pnl is not None:
+            # Broker-confirmed figure — already net of fees; do not re-deduct.
             computed_pnl = float(pnl)
         else:
             action_lower = trade.action.lower()
             is_short = "sell" in action_lower or "short" in action_lower
-            multiplier = INSTRUMENT_MULTIPLIERS.get(trade.symbol.upper(), _DEFAULT_MULTIPLIER)
+            multiplier = _resolve_multiplier(trade.symbol)
             if is_short:
                 computed_pnl = (trade.entry_price - exit_price) * trade.quantity * multiplier
             else:
                 computed_pnl = (exit_price - trade.entry_price) * trade.quantity * multiplier
+            # Subtract a flat round-trip commission (see _commission_per_contract).
+            computed_pnl -= _commission_per_contract() * abs(trade.quantity)
 
         # SQLite-first: if this raises, _open remains unchanged (Bug B9 / US-2004).
         if self._db is not None:
@@ -1019,7 +1057,10 @@ class PortfolioTracker:
                 logger.warning(
                     "[PAPER] Implausible close P&L for %s %s: pnl=%+.2f (>$%d) - "
                     "possible upstream P&L corruption",
-                    trade.symbol, trade_id[:8], _pnl_outlier, int(MAX_PLAUSIBLE_ABS_PNL_USD),
+                    trade.symbol,
+                    trade_id[:8],
+                    _pnl_outlier,
+                    int(MAX_PLAUSIBLE_ABS_PNL_USD),
                 )
                 try:
                     from events.bus import publish as _publish_outlier
