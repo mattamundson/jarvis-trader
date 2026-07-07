@@ -108,13 +108,19 @@ def test_flatten_falls_back_to_exit_price_when_fn_returns_none(
 def test_flatten_breakeven_fallback_logs_error(
     tracker: PortfolioTracker,
     caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
     When no market_price_fn and no exit_price are passed, the fallback to
     entry_price still fires (preserves existing behavior so EOD scheduler
     does not break) — but logs ERROR so the condition is visible in prod.
     This is the 2026-04-23 Phase-3 metrics bug trigger.
+
+    Gross P&L at breakeven is $0, but the flat per-contract commission
+    (Phase 2 financial-calc fix) still applies to a real closed contract, so
+    the net P&L is -commission, not exactly $0.
     """
+    monkeypatch.setenv("COMMISSION_PER_CONTRACT", "1.50")
     tracker.open_trade(symbol="MES", action="buy", quantity=1, price=7100.0)
 
     with caplog.at_level(logging.ERROR, logger="portfolio.tracker"):
@@ -122,7 +128,7 @@ def test_flatten_breakeven_fallback_logs_error(
 
     assert len(closed) == 1
     assert closed[0]["exit_price"] == pytest.approx(7100.0)  # entry_price fallback
-    assert closed[0]["pnl"] == pytest.approx(0.0)             # breakeven → $0 P&L
+    assert closed[0]["pnl"] == pytest.approx(-1.50)  # breakeven gross, net of commission
 
     # Error log should explicitly call out the breakeven fallback path
     combined = "\n".join(rec.getMessage() for rec in caplog.records)
