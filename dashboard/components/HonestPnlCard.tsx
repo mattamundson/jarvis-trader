@@ -40,6 +40,16 @@ export function HonestPnlCard() {
           detail →
         </Link>
       </div>
+      {/*
+        Labeling for the two-scoreboard discrepancy (see PaperTradingPanel.tsx
+        for the counterpart note): master-api's read-time dedup over all
+        history/all symbols -- a different pipeline and trade universe than
+        the engine's own trade_history DB shown in "Paper Trading". Neither
+        number is wrong; they measure different things.
+      */}
+      <p className="mb-2 text-[9px] text-gray-500">
+        master-api dedup, all-time · all symbols
+      </p>
 
       {error && (
         <p className="py-2 text-xs text-gray-500">
