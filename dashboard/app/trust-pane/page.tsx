@@ -382,7 +382,7 @@ export default function TrustPanePage() {
 
             {/* 1. Liveness */}
             <Card>
-              <PanelHeader title="Liveness" provenance="live" />
+              <PanelHeader title="Liveness" provenance={health.error ? "static" : "live"} />
               <div className="grid grid-cols-3 gap-3">
                 <Stat label="Status" value={h?.status?.toUpperCase() ?? (health.error ? "DOWN" : "…")} tone={jarvisLive ? "bull" : "bear"} />
                 <Stat label="Uptime" value={fmtUptime(h?.uptime_seconds)} />
@@ -398,7 +398,7 @@ export default function TrustPanePage() {
 
             {/* 2. Today's P&L */}
             <Card>
-              <PanelHeader title={`Today's P&L${pnl.data?.date ? ` · ${pnl.data.date}` : ""}`} provenance="live" />
+              <PanelHeader title={`Today's P&L${pnl.data?.date ? ` · ${pnl.data.date}` : ""}`} provenance={pnl.error ? "static" : "live"} />
               {pnl.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /attribution/daily.</p>
               ) : (
@@ -412,7 +412,7 @@ export default function TrustPanePage() {
 
             {/* 3. Open positions */}
             <Card>
-              <PanelHeader title={`Open Positions (${openPaper.length})`} provenance="live" />
+              <PanelHeader title={`Open Positions (${openPaper.length})`} provenance={positions.error ? "static" : "live"} />
               {openPaper.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No open paper positions.</p>
               ) : (
@@ -471,7 +471,7 @@ export default function TrustPanePage() {
 
             {/* 5. Data-quality gate — proves the write-time bar gate is working */}
             <Card>
-              <PanelHeader title="Data-Quality Gate · 7d" provenance="live" />
+              <PanelHeader title="Data-Quality Gate · 7d" provenance={barQuality.error ? "static" : "live"} />
               {barQuality.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /analytics/bar-quality.</p>
               ) : bqTotal === 0 ? (
@@ -506,7 +506,7 @@ export default function TrustPanePage() {
 
             {/* 4b. Validated edge — which candidates clear gate-v2 right now */}
             <Card>
-              <PanelHeader title="Validated Edge · gate-v2" provenance="live" />
+              <PanelHeader title="Validated Edge · gate-v2" provenance={edgeLedger.error ? "static" : "live"} />
               {edgeLedger.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /reports/edge-ledger.</p>
               ) : !el ? (
@@ -557,7 +557,7 @@ export default function TrustPanePage() {
 
             {/* 4. Per-trade post-mortem */}
             <Card>
-              <PanelHeader title="Recent Trades — win/loss & why" provenance="live" />
+              <PanelHeader title="Recent Trades — win/loss & why" provenance={trades.error ? "static" : "live"} />
               {trades.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /trades/journal.</p>
               ) : (trades.data?.length ?? 0) === 0 ? (
@@ -620,7 +620,7 @@ export default function TrustPanePage() {
 
             {/* Liveness */}
             <Card>
-              <PanelHeader title="Liveness" provenance="live" />
+              <PanelHeader title="Liveness" provenance={amo.error ? "static" : "live"} />
               <div className="grid grid-cols-3 gap-3">
                 <Stat label="Status" value={a?.status?.toUpperCase() ?? (amo.error ? "DOWN" : "…")} tone={amoLive ? "bull" : "bear"} />
                 <Stat label="Scheduler" value={a?.scheduler_running ? "RUNNING" : "STOPPED"} tone={a?.scheduler_running ? "bull" : "bear"} />
@@ -633,7 +633,7 @@ export default function TrustPanePage() {
                 The honest answer to "is any of this edge real?", straight from the
                 same correction that gates Kelly sizing. */}
             <Card>
-              <PanelHeader title="Edge Verdict — BH-FDR" provenance="live" />
+              <PanelHeader title="Edge Verdict — BH-FDR" provenance={verdict.error ? "static" : "live"} />
               {verdict.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /api/edge-verdict.</p>
               ) : !v ? (
@@ -691,7 +691,7 @@ export default function TrustPanePage() {
 
             {/* Scheduled jobs */}
             <Card>
-              <PanelHeader title="Scheduled Jobs" provenance="live" />
+              <PanelHeader title="Scheduled Jobs" provenance={amo.error ? "static" : "live"} />
               {(a?.jobs?.length ?? 0) === 0 ? (
                 <p className="text-xs text-muted-foreground">No jobs reported.</p>
               ) : (

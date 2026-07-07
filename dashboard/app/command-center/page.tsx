@@ -678,7 +678,7 @@ export default function CommandCenterPage() {
                       : "bg-red-950 text-red-400 border border-red-800"
                   }`}
                 >
-                  {inst.status === "APPROVED" ? `WFE=${inst.wfe}` : "HALTED"}
+                  {inst.status === "APPROVED" ? `DSR=${inst.wfe}` : "HALTED"}
                 </Badge>
               </div>
             ))}
@@ -873,7 +873,7 @@ export default function CommandCenterPage() {
                     TRADING HALTED
                   </span>
                   <span className="font-mono text-xs text-slate-500 text-center">
-                    WFE={inst.wfe} — OVERFIT DETECTED
+                    DSR={inst.wfe} — OVERFIT DETECTED
                     <br />
                     Regime-adaptive boost insufficient
                   </span>
@@ -882,14 +882,14 @@ export default function CommandCenterPage() {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                   <div>
                     <div className="text-xs text-slate-500 mb-0.5">
-                      WFE Score
+                      Deflated Sharpe
                     </div>
                     <div className="font-mono text-lg text-cyan-400 font-bold leading-none">
                       {inst.wfe}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Regime</div>
+                    <div className="text-xs text-slate-500 mb-0.5">Regime (static)</div>
                     <div
                       className={`font-mono text-sm font-bold ${
                         inst.regime === "BULL"
@@ -1180,7 +1180,7 @@ export default function CommandCenterPage() {
           <CardHeader className="pb-2 pt-3 px-4">
             <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
               <RefreshCw className="w-3 h-3" />
-              WALK-FORWARD EFFICIENCY MONITOR
+              GATE-V2 DEFLATED SHARPE MONITOR
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3 space-y-4">
@@ -1224,8 +1224,11 @@ export default function CommandCenterPage() {
             ))}
 
             <div className="pt-2 border-t border-slate-800/50 space-y-1.5">
+              <p className="text-[10px] text-slate-600 italic">
+                Configured schedule/method (static, not live-probed):
+              </p>
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-500">Next WFE Recalc</span>
+                <span className="text-slate-500">Next Recalc</span>
                 <span className="text-cyan-400">Sunday 06:00 CT</span>
               </div>
               <div className="flex justify-between text-xs font-mono">
@@ -1285,7 +1288,7 @@ export default function CommandCenterPage() {
             </div>
             <div className="flex justify-between items-baseline">
               <span className="text-xs text-slate-500">Open Positions</span>
-              <span className="font-mono text-xs text-slate-400">0</span>
+              <span className="font-mono text-xs text-slate-400">N/A — inactive</span>
             </div>
             <div className="mt-2 p-2 rounded bg-slate-800/50 border border-slate-700/40">
               <p className="text-xs text-slate-500 font-mono leading-relaxed">
@@ -1405,7 +1408,9 @@ export default function CommandCenterPage() {
               </Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-500">Database</span>
+              <span className="text-xs text-slate-500" title="Engine /health reachability — not a direct database probe.">
+                Engine Reachable
+              </span>
               <Badge
                 className={`text-xs font-mono py-0 border ${
                   engineOnline

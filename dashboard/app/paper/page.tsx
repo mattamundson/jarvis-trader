@@ -41,6 +41,14 @@ export default function PaperTradingPage() {
     { refreshInterval: 30_000, revalidateOnFocus: true }
   );
 
+  // Same live source that gates MGC's ACTIVE/HALTED badge on /command-center —
+  // drives the suspension banner below instead of a static hardcoded WFE value.
+  const { data: paperStatus, error: paperStatusError } = useSWR<
+    Record<string, { status?: string; wfe?: number; reason?: string }>
+  >("/backtest/paper-status", fetcher, { refreshInterval: 120_000, shouldRetryOnError: false });
+  const mgcStatus = paperStatus?.["MGC_1d"];
+  const mgcHalted = (mgcStatus?.status || "").toUpperCase() !== "ACTIVE";
+
   let engineHealthLabel = "ENGINE …";
   let engineHealthStyle: React.CSSProperties = {
     borderColor: "#88888844",
@@ -86,7 +94,7 @@ export default function PaperTradingPage() {
                 JARVIS TRADER
               </h1>
               <p className="text-xs text-muted-foreground">
-                MGC Daily Paper Trading — SUSPENDED
+                MGC Daily Paper Trading{mgcHalted ? " — SUSPENDED" : ""}
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
@@ -122,19 +130,28 @@ export default function PaperTradingPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-4 space-y-4">
-        {/* WFE Halt Banner */}
-        <div className="rounded-xl p-4 font-mono"
-          style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
-          <div className="flex items-start gap-3">
-            <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
-              PAPER TRADING SUSPENDED
-            </span>
-            <span className="text-[10px]" style={{ color: "#ff8888" }}>
-              MGC 1d WFE corrected to 0.14 (was 0.27) — below 0.30 threshold. Status: OVERFIT.
-              Paper trading suspended pending MTF filter validation.
-            </span>
+        {/* Halt banner — driven by the live /backtest/paper-status MGC_1d row
+            (the same source that gates the MGC ACTIVE/HALTED badge on
+            /command-center), not a hardcoded WFE value. */}
+        {mgcHalted && (
+          <div className="rounded-xl p-4 font-mono"
+            style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
+            <div className="flex items-start gap-3">
+              <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
+                PAPER TRADING SUSPENDED
+              </span>
+              <span className="text-[10px]" style={{ color: "#ff8888" }}>
+                {paperStatusError
+                  ? "Could not reach /backtest/paper-status to confirm trading status."
+                  : mgcStatus
+                    ? `MGC 1d — ${mgcStatus.reason || `status="${mgcStatus.status}"`}${
+                        typeof mgcStatus.wfe === "number" ? ` (wfe=${mgcStatus.wfe})` : ""
+                      }.`
+                    : "MGC 1d status unavailable from the engine."}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Open Positions — safety-critical, first widget at top of page */}
         <WidgetErrorBoundary name="Open Positions">
