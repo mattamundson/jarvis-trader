@@ -503,7 +503,7 @@ scripts:
     layer_name: Entry
     status: active
     python_counterpart: "engine/backtest/indicators.py::stc + signals.py cross logic"
-    panel: scan
+    panel: null  # scan condition, not a chart study — no upper/lower panel placement
     jarvis_signals:
       - stc_cross_up
     tos_inputs:

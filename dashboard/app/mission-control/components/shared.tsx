@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, localFetch } from "@/lib/api";
 
 /**
  * Shared SWR fetcher for Mission Control engine panels — routes through the
@@ -11,16 +11,8 @@ export function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
-/**
- * Fetcher for the dashboard's OWN same-origin API routes (e.g. /api/fleet).
- * These are Next.js route handlers reading local disk state, not engine
- * endpoints, so they bypass the /api/engine proxy entirely.
- */
-export async function localFetcher<T>(path: string): Promise<T> {
-  const res = await fetch(path, { cache: "no-store" });
-  if (!res.ok) throw new Error(`${path} error ${res.status}`);
-  return res.json() as Promise<T>;
-}
+/** Fetcher for the dashboard's OWN same-origin API routes (e.g. /api/fleet). */
+export const localFetcher = localFetch;
 
 export function relativeTime(iso: string | null | undefined): string {
   if (!iso) return "—";
