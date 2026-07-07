@@ -27,7 +27,6 @@ from api import (
     DecisionHistoryResponse,
     DrawdownResponse,
     PaperTradeResponse,
-    PortfolioResponse,
     StatsSummaryResponse,
 )
 from approval.service import approved_watchlist_symbols
@@ -58,21 +57,95 @@ def inject_dependencies(pt, dbm, dm=None, safety_layer=None):
     _safety_layer = safety_layer
 
 
-@router.get("", response_model=PortfolioResponse)
+@router.get("")
 async def get_portfolio():
-    """Current portfolio state — sourced from broker API, never from agent memory"""
+    """Current portfolio state — sourced from broker API, never from agent memory.
+
+    ``positions`` is populated from the open paper positions, each enriched with
+    a live mark and unrealized P&L via ``_compute_unrealized`` (the same helper
+    ``/portfolio/summary`` and ``/paper/positions/unrealized`` use). The response
+    is a plain dict (no response_model) so the frontend-facing fields
+    (``avg_cost``/``market_value``/``is_futures``) survive serialization —
+    the shared ``Position`` model only carries ``average_price``.
+    """
     if not _safety_layer:
         raise HTTPException(503, "Safety layer not initialized")
     status = _safety_layer.get_status()
+    equity = status.get("portfolio_equity", 0.0)
+
+    positions: list[dict] = []
+    unrealized_total = 0.0
+    if paper_tracker is not None:
+        try:
+            open_positions: list[dict] = paper_tracker.get_open_positions()
+            if open_positions:
+                symbols = [str(p.get("symbol", "")) for p in open_positions]
+                if _data_manager is not None:
+                    results = await asyncio.gather(
+                        *[_data_manager.get_tick_price(sym) for sym in symbols],
+                        return_exceptions=True,
+                    )
+                    marks: list[tuple[float | None, str | None]] = [
+                        (
+                            (
+                                (r.get("last_price"), r.get("source"))
+                                if isinstance(r, dict)
+                                else (
+                                    (float(r), None)
+                                    if isinstance(r, (int, float))
+                                    else (None, None)
+                                )
+                            )
+                            if not isinstance(r, Exception) and r is not None
+                            else (None, None)
+                        )
+                        for r in results
+                    ]
+                else:
+                    marks = [(None, None)] * len(open_positions)
+
+                for pos, (current_price, mark_source) in zip(
+                    open_positions, marks, strict=True
+                ):
+                    computed = _compute_unrealized(
+                        pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                    )
+                    upnl = computed.get("unrealized_pnl")
+                    if upnl:
+                        unrealized_total += upnl
+                    sym = computed["symbol"]
+                    qty = computed["quantity"]
+                    entry = computed["entry_price"]
+                    cp = computed.get("current_price")
+                    point_value = INSTRUMENT_POINT_VALUES.get(
+                        sym, INSTRUMENT_POINT_VALUES.get("DEFAULT", 1.0)
+                    )
+                    mark_for_value = cp if cp is not None else entry
+                    positions.append(
+                        {
+                            "symbol": sym,
+                            "quantity": qty,
+                            "avg_cost": entry,
+                            "average_price": entry,  # back-compat alias
+                            "current_price": cp,
+                            "market_value": round(mark_for_value * point_value * qty, 2),
+                            "unrealized_pnl": upnl,
+                            "unrealized_pnl_pct": computed.get("unrealized_pnl_pct"),
+                            "is_futures": _is_futures_symbol(sym),
+                        }
+                    )
+        except Exception as exc:
+            logger.warning("get_portfolio: position enrichment failed: %s", exc)
+
     return {
-        "total_equity": status.get("portfolio_equity", 0.0),
-        "cash_balance": status.get("portfolio_equity", 0.0),
-        "unrealized_pnl": 0.0,
+        "total_equity": equity,
+        "cash_balance": equity,
+        "unrealized_pnl": round(unrealized_total, 4),
         "realized_pnl": 0.0,
         "daily_pnl": status.get("daily_pnl", 0.0),
         "margin_used": 0.0,
-        "margin_available": status.get("portfolio_equity", 0.0),
-        "positions": [],
+        "margin_available": equity,
+        "positions": positions,
     }
 
 
@@ -166,10 +239,6 @@ def _row_pnl(row: Any) -> float:
         return 0.0
 
 
-@router.get(
-    "",
-    description="Unified multi-market P&L summary with total daily P&L, market breakdown, and daily target progress.",
-)
 @router.get(
     "/summary",
     description="Unified multi-market P&L summary with total daily P&L, market breakdown, and daily target progress.",
@@ -306,6 +375,52 @@ async def resume():
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
     orch.resume()
     return {"status": "resumed"}
+
+
+@router.get(
+    "/capital",
+    description="Per-market capital allocation and daily targets for the multi-market book.",
+)
+async def portfolio_capital():
+    """Capital allocation per market for the dashboard's capital view.
+
+    Shape matches the frontend ``CapitalAllocation`` type:
+    ``{markets:{name:{capital, daily_target}}, total_capital, daily_target,
+    enabled_markets}``. Sourced from each module's ``capital_allocated`` /
+    ``daily_target`` and ``is_enabled()``.
+    """
+    orch = _get_orchestrator()
+    if not orch:
+        return {
+            "markets": {},
+            "total_capital": 0.0,
+            "daily_target": 0.0,
+            "enabled_markets": [],
+            "message": "Orchestrator not initialized",
+        }
+
+    markets: dict[str, dict] = {}
+    total_capital = 0.0
+    enabled_markets: list[str] = []
+    modules = getattr(orch, "_modules", {}) or {}
+    for name, module in modules.items():
+        try:
+            cap = float(getattr(module, "capital_allocated", 0.0) or 0.0)
+            tgt = float(getattr(module, "daily_target", 0.0) or 0.0)
+            markets[name] = {"capital": cap, "daily_target": tgt}
+            total_capital += cap
+            if module.is_enabled():
+                enabled_markets.append(name)
+        except Exception as exc:
+            logger.warning("portfolio_capital: module %s failed: %s", name, exc)
+            markets[name] = {"capital": 0.0, "daily_target": 0.0}
+
+    return {
+        "markets": markets,
+        "total_capital": round(total_capital, 2),
+        "daily_target": float(getattr(orch, "daily_target", 0.0) or 0.0),
+        "enabled_markets": enabled_markets,
+    }
 
 
 # GET /portfolio/stats/streaks - canonical handler is on the FastAPI app in main.py (StreakBadge).

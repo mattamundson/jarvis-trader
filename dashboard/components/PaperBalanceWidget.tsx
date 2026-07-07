@@ -93,9 +93,9 @@ export function PaperBalanceWidget() {
   const balance = data.current_balance ?? 0;
   const startingBalance = data.starting_balance > 0 ? data.starting_balance : 10000.0;
   const returnPct = data.total_return_pct ?? 0;
-  // Total P&L = broker balance delta (current − starting). The raw `total_pnl`
-  // field is re-summed from the trade record and over-counts re-logged winners
-  // (fabricated inflation); the balance is broker-computed and trustworthy, so
+  // Total P&L = paper-ledger balance delta (current − starting). The raw
+  // `total_pnl` field is re-summed from the trade record and could over-count
+  // re-logged winners; the balance is the engine's own running ledger, so
   // derive P&L from it — this also keeps it consistent with the return% badge.
   const totalPnl = balance - startingBalance;
   const tradingDays = data.trading_days ?? 0;
@@ -182,12 +182,13 @@ export function PaperBalanceWidget() {
           </p>
         </div>
 
-        {/* Balance, return% and Total P&L are all broker-derived (balance delta),
-            not a re-summed trade list, so they are dedup-safe. Only the "Trades"
-            COUNT still comes from the raw engine record and may include re-logged
-            duplicates — see the deduped stats widgets for the honest trade count. */}
+        {/* Balance, return% and Total P&L all come from the paper engine's own
+            running ledger (balance delta), not a re-summed trade list, so they
+            are dedup-safe. Only the "Trades" COUNT still comes from the raw
+            engine record and may include re-logged duplicates — see the
+            deduped stats widgets for the honest trade count. */}
         <p className="text-[10px] text-muted-foreground/60 mt-2">
-          Balance, return &amp; P&amp;L from broker account · trade count may include re-logs
+          Balance, return &amp; P&amp;L from the paper engine's ledger (not re-summed) · trade count may include re-logs
         </p>
         <p className="text-xs text-muted-foreground mt-1">Refreshes every 2m</p>
       </CardContent>
