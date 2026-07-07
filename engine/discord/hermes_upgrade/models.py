@@ -146,3 +146,7 @@ class ApplyResult(BaseModel):
     rollback_path: str  # how to undo (script path or git revert hash or rm command)
     notes: str = ""
     error: Optional[str] = None
+    # True when no interactive TTY was available to approve and the entry was not
+    # auto-approvable — a headless deferral, NOT a user skip. The orchestrator must
+    # leave such entries retryable (pending) rather than writing a terminal state.
+    deferred: bool = False
