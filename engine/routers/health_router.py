@@ -400,6 +400,16 @@ async def _health_inner() -> dict:
     # of an unexpected shape rather than 503-ing the whole endpoint.
     live_trading = bool(getattr(settings, "LIVE_TRADING_ENABLED", False))
 
+    # Data-leg freshness — surfaces the "connected but stale bars" condition the
+    # data-leg watchdog detects internally so the overseer/dashboard can see it too.
+    _data_last_ok = getattr(data_manager, "ib_data_last_ok", None) if data_manager else None
+    _data_age = int(time.time() - _data_last_ok) if _data_last_ok is not None else None
+    try:
+        _stale_limit = float(os.getenv("JARVIS_DATA_WATCHDOG_STALENESS", "").strip())
+    except (TypeError, ValueError):
+        _stale_limit = 600.0
+    _data_stale = _data_age is not None and _data_age > _stale_limit
+
     response = {
         "status": status,
         "version": "1.1.0",
@@ -415,6 +425,9 @@ async def _health_inner() -> dict:
         "ibkr_connected": ib_health.get("status") == "connected",
         "ibkr_execution_connected": ib_health.get("execution_connected", False),
         "ibkr_data_connected": ib_health.get("data_connected", False),
+        "ibkr_data_last_ok": _data_last_ok,
+        "ibkr_data_age_seconds": _data_age,
+        "ibkr_data_stale": _data_stale,
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
