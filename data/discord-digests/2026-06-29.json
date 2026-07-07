@@ -1,0 +1,249 @@
+{
+  "date": "2026-06-29",
+  "session_bias": null,
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7507.0,
+      "target2": 7534.0,
+      "stop1": 7462.0,
+      "win_rate": 83.43,
+      "rr": 0.61,
+      "timestamp": "2026-06-29T14:30:04.86-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7484.5,
+      "target2": 7511.5,
+      "stop1": 7439.5,
+      "win_rate": 83.38,
+      "rr": 0.61,
+      "timestamp": "2026-06-29T11:45:02.672-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7469.75,
+      "target2": 7496.75,
+      "stop1": 7424.75,
+      "win_rate": 83.33,
+      "rr": 0.61,
+      "timestamp": "2026-06-29T09:40:02.218-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7474.5,
+      "target2": 7501.5,
+      "stop1": 7429.5,
+      "win_rate": 83.28,
+      "rr": 0.61,
+      "timestamp": "2026-06-29T06:35:01.03-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7465.25,
+      "target2": 7492.25,
+      "stop1": 7420.25,
+      "win_rate": 83.23,
+      "rr": 0.61,
+      "timestamp": "2026-06-29T04:25:03.317-05:00"
+    }
+  ],
+  "corey_quote": null,
+  "commentary_health": [
+    {
+      "date": "2026-06-28",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 29
+    },
+    {
+      "date": "2026-06-26",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 26
+    },
+    {
+      "date": "2026-06-25",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.65,
+      "message_count": 62
+    },
+    {
+      "date": "2026-06-24",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.55,
+      "message_count": 95
+    },
+    {
+      "date": "2026-06-23",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.85,
+      "message_count": 95
+    },
+    {
+      "date": "2026-06-22",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 23,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": null,
+    "primary_provider": "anthropic",
+    "primary_healthy": false,
+    "providers_available": 3,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": false,
+    "alert": true
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 90,
+    "failing_enabled": 8,
+    "failing_disabled": 0,
+    "failing_tasks": [
+      {
+        "name": "DP600-Daily-Study",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-DataIntegritySentinel",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-DiscordGitDigest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-MasterOverseer",
+        "result": "0x41306"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x800710E0"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 4.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 12.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 12.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 3.3,
+        "newest": "2026-06-27T06:00:05.644150+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.5,
+        "newest": "2026-06-30T01:53:24.705219+00:00",
+        "files": 30,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.9,
+        "newest": "2026-06-28T15:31:11.847950+00:00",
+        "files": 18,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 3.3,
+        "newest": "2026-06-27T06:00:07.197560+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 12.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 12.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

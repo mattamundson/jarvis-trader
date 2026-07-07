@@ -1,0 +1,117 @@
+
+================================================================================
+WARNING: Some optional features will not work without these variables:
+================================================================================
+
+  SCHWAB_APP_KEY
+    \u2514\u2500 Charles Schwab OAuth (for live trading)
+
+  DASHBOARD_PUBLIC_URL
+    \u2514\u2500 Dashboard URL for approval links in outbound alerts (default localhost:3010)
+
+These features are optional. If you don't need them, you can ignore this warning.
+
+================================================================================
+
+[ATR-BOUNCE] loading MES_2024-09-22_2026-05-29_5m_cont.csv
+
+========================================================================
+MODE: BOUNCE (tag+reclaim+hold)
+========================================================================
+[ATR-BOUNCE] grid-searching 18 param sets on 119096 bars ...
+
+--- HEADLINE (full-sample, best in-sample params) ---
+  params        : {'factor': 4.0, 'hold_bars': 0, 'touch_tol_atr': 0.0}
+  trades        : 20
+  profit factor : 1.339
+  win rate      : 25.0%
+  sharpe        : 1.50
+  max drawdown  : 5.83%
+  NOTE: full-sample PF is optimistic — the MCPT verdict below is what matters.
+
+[ATR-BOUNCE] running bar-permutation MCPT (the honest test) ...
+--- MCPT VERDICT ---
+  verdict                 : REJECT (in-sample excellence)
+  is_pf                   : 0.7477
+
+========================================================================
+MODE: FLIP (stop-and-reverse / TOS LE/SE)
+========================================================================
+[ATR-FLIP] grid-searching 3 param sets on 119096 bars ...
+
+--- HEADLINE (full-sample, best in-sample params) ---
+  params        : {'factor': 3.0}
+  trades        : 799
+  profit factor : 0.809
+  win rate      : 41.2%
+  sharpe        : -1.17
+  max drawdown  : 5.06%
+  NOTE: full-sample PF is optimistic — the MCPT verdict below is what matters.
+
+[ATR-FLIP] running bar-permutation MCPT (the honest test) ...
+--- MCPT VERDICT ---
+  verdict                 : REJECT (in-sample MCPT)
+  is_pf                   : 1.0838
+  is_pval                 : 0.2139
+
+========================================================================
+MODE: CONFLUENCE (flip + prior-session value-area gate)
+========================================================================
+[ATR-CONFLUENCE] grid-searching 6 param sets on 119096 bars ...
+
+--- HEADLINE (full-sample, best in-sample params) ---
+  params        : {'factor': 3.0, 'strict_confluence': False}
+  trades        : 657
+  profit factor : 0.738
+  win rate      : 41.9%
+  sharpe        : -1.70
+  max drawdown  : 5.00%
+  NOTE: full-sample PF is optimistic — the MCPT verdict below is what matters.
+
+[ATR-CONFLUENCE] running bar-permutation MCPT (the honest test) ...
+--- MCPT VERDICT ---
+  verdict                 : REJECT (in-sample MCPT)
+  is_pf                   : 1.3748
+  is_pval                 : 0.1343
+
+========================================================================
+MODE: KELT-CONFLUENCE (flip + 4H Keltner gate)
+========================================================================
+[ATR-KELT] grid-searching 6 param sets on 119096 bars ...
+
+--- HEADLINE (full-sample, best in-sample params) ---
+  params        : {'factor': 4.0, 'strict_kelt': True}
+  trades        : 101
+  profit factor : 1.027
+  win rate      : 44.6%
+  sharpe        : 0.06
+  max drawdown  : 2.02%
+  NOTE: full-sample PF is optimistic — the MCPT verdict below is what matters.
+
+[ATR-KELT] running bar-permutation MCPT (the honest test) ...
+--- MCPT VERDICT ---
+  verdict                 : REJECT (in-sample MCPT)
+  is_pf                   : 1.2879
+  is_pval                 : 0.204
+
+========================================================================
+MODE: TPO-TARGET (flip + profile measured-move direction gate)
+========================================================================
+[ATR-TPOTGT] grid-searching 6 param sets on 119096 bars ...
+
+--- HEADLINE (full-sample, best in-sample params) ---
+  params        : {'factor': 3.0, 'require_room': False}
+  trades        : 452
+  profit factor : 0.620
+  win rate      : 40.7%
+  sharpe        : -2.71
+  max drawdown  : 5.01%
+  NOTE: full-sample PF is optimistic — the MCPT verdict below is what matters.
+
+[ATR-TPOTGT] running bar-permutation MCPT (the honest test) ...
+--- MCPT VERDICT ---
+  verdict                 : REJECT (in-sample excellence)
+  is_pf                   : 0.9317
+
+Gate: PASS only if in-sample MCPT p < 0.01 AND walk-forward MCPT p < 0.05.
+A REJECT means discard that variant. Do NOT re-tune and rerun (data-mines the p-value).
