@@ -1108,6 +1108,7 @@ export default function CommandCenterPage() {
                 No trade history from /portfolio/history/trades
               </div>
             ) : (
+              <>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs font-mono">
                   <thead>
@@ -1155,6 +1156,11 @@ export default function CommandCenterPage() {
                   </tbody>
                 </table>
               </div>
+              <p className="text-[10px] text-amber-500/70 font-mono mt-2">
+                Raw record (/portfolio/history/trades) — not deduped; per-trade
+                P&amp;L may include re-logged duplicates.
+              </p>
+              </>
             )}
           </CardContent>
         </Card>

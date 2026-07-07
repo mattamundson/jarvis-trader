@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { RawRecordBadge } from "@/components/RawRecordBadge";
 import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchEngine } from "@/lib/api";
@@ -76,13 +77,16 @@ export function TodaySummaryWidget() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <CardTitle className="text-sm font-semibold">Today&apos;s Session</CardTitle>
-        {data ? (
-          <Badge variant={sessionBadgeVariant(data.session)}>
-            {data.session}
-          </Badge>
-        ) : (
-          <Badge variant="neutral">—</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          <RawRecordBadge />
+          {data ? (
+            <Badge variant={sessionBadgeVariant(data.session)}>
+              {data.session}
+            </Badge>
+          ) : (
+            <Badge variant="neutral">—</Badge>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent>
@@ -145,6 +149,13 @@ export function TodaySummaryWidget() {
               </p>
             </div>
           </div>
+        )}
+
+        {data && hasTrades && (
+          <p className="text-[10px] text-muted-foreground/70 mt-2">
+            P&amp;L, trades &amp; win-rate from the raw session record — may include
+            re-logged duplicates. See the deduped stats widgets for the honest figure.
+          </p>
         )}
 
         <div className="flex items-center gap-2 mt-3">
