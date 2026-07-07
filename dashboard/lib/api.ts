@@ -2488,3 +2488,23 @@ export async function screenMovers(
 ): Promise<ScreenResponse> {
   return postEngine<ScreenResponse>("/ib-scanner/screen", input);
 }
+
+// ── Honest realized P&L (engine-native, always available) ─────────────────────
+// GET /pnl/truth — the fail-safe honest realized paper-P&L surface. Unlike the
+// master-api honest-metrics layer, this reads the engine's own closed-trade
+// ledger and DEGRADES (realized_pnl: null) instead of emitting a fabricated 0
+// when the ledger is missing. It has NO external-service dependency, so it stays
+// truthful even when master-api (:8030) is down. See engine/routers/pnl_truth_router.py.
+export interface PnlTruthResponse {
+  status: "TRUSTED" | "DEGRADED";
+  realized_pnl: number | null;
+  closed_trades: number;
+  excluded_trades: number;
+  reasons: string[];
+  sources_present: string[];
+  trusted: boolean;
+}
+
+export async function fetchPnlTruth(): Promise<PnlTruthResponse> {
+  return fetchEngine<PnlTruthResponse>("/pnl/truth");
+}
