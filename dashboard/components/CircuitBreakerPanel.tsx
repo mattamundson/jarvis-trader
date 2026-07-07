@@ -121,17 +121,21 @@ export function CircuitBreakerPanel() {
       ? Math.abs(data.daily_pnl) / Math.abs(data.daily_limit)
       : 0;
 
+  // Real engine field is `drawdown_limit_pct`, not `drawdown_limit` (which
+  // does not exist in the response). Both drawdown_pct and drawdown_limit_pct
+  // are negative fractions (e.g. -0.012 / -0.20), so dividing them directly
+  // yields a correct positive "how much of the limit is used" ratio.
   const drawdownPct =
-    data.drawdown_limit !== 0
-      ? data.drawdown_pct / data.drawdown_limit
+    data.drawdown_limit_pct !== 0
+      ? data.drawdown_pct / data.drawdown_limit_pct
       : 0;
 
   const dailyPnlSign = data.daily_pnl >= 0 ? "+" : "";
   const displayDailyPnl = `${dailyPnlSign}$${data.daily_pnl.toFixed(0)}`;
   const displayDailyLimit = `limit: -$${Math.abs(data.daily_limit).toFixed(0)}`;
 
-  const displayDrawdown = `-${(data.drawdown_pct * 100).toFixed(2)}%`;
-  const displayDrawdownLimit = `limit: -${(data.drawdown_limit * 100).toFixed(1)}%`;
+  const displayDrawdown = `-${(Math.abs(data.drawdown_pct) * 100).toFixed(2)}%`;
+  const displayDrawdownLimit = `limit: -${(Math.abs(data.drawdown_limit_pct) * 100).toFixed(1)}%`;
 
   // ── Status banner ──────────────────────────────────────────────────────────
   let bannerLabel: string;
@@ -193,7 +197,7 @@ export function CircuitBreakerPanel() {
         <GaugeRow
           label="Drawdown"
           current={data.drawdown_pct}
-          limit={data.drawdown_limit}
+          limit={data.drawdown_limit_pct}
           displayCurrent={displayDrawdown}
           displayLimit={displayDrawdownLimit}
           pct={drawdownPct}
