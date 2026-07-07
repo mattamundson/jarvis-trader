@@ -158,6 +158,20 @@ export async function fetchEngineRaw(path: string, options?: RequestInit): Promi
   }
 }
 
+/**
+ * Fetcher for the dashboard's OWN same-origin API routes (e.g. /api/fleet).
+ * These are Next.js route handlers reading local disk state, not engine
+ * endpoints, so they bypass the /api/engine proxy entirely. Lives here (not
+ * in app/ or hooks/) because the "no bare await fetch" CI guard only scans
+ * those two directories — this is the sanctioned escape hatch, same as
+ * fetchEngine/postEngine above.
+ */
+export async function localFetch<T>(path: string): Promise<T> {
+  const res = await fetch(path, { cache: "no-store" });
+  if (!res.ok) throw new Error(`${path} error ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 // API types (mirror engine Pydantic models)
 export interface HealthResponse {
   status: string;
