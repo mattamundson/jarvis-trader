@@ -43,33 +43,10 @@ export function StrategyParamsCard() {
           <Badge variant="bull" className="w-fit">Enabled (VIX)</Badge>
         </div>
 
-        {/* Divider */}
-        <div className="border-t border-border my-3" />
-
-        {/* Backtest results */}
-        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2">
-          Best Backtest — MES 1H
-        </p>
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <div className="rounded bg-muted p-2">
-            <p className="text-xs text-muted-foreground">Profit Factor</p>
-            <p className="text-lg font-mono font-bold text-green-400">5.27</p>
-            <Badge variant="bull" className="text-xs">Target: 2.0</Badge>
-          </div>
-          <div className="rounded bg-muted p-2">
-            <p className="text-xs text-muted-foreground">Sharpe Ratio</p>
-            <p className="text-lg font-mono font-bold text-green-400">4.16</p>
-            <Badge variant="bull" className="text-xs">Target: 1.5</Badge>
-          </div>
-          <div className="rounded bg-muted p-2">
-            <p className="text-xs text-muted-foreground">Return</p>
-            <p className="text-lg font-mono font-bold text-green-400">+47.2%</p>
-            <Badge variant="neutral" className="text-xs">Backtest</Badge>
-          </div>
-        </div>
-
         <p className="text-xs text-muted-foreground mt-3">
-          Reference parameters for paper trading validation phase
+          Reference parameters for paper trading validation phase — see the
+          "Best Profit Factor / Sharpe / Win Rate" cards below for real
+          backtest results.
         </p>
       </CardContent>
     </Card>
