@@ -390,6 +390,126 @@ scripts:
     jarvis_signals: []
     tos_inputs: {}
 
+  # -- JARVIS Suite (jarvis-suite/) -- canonical-parameter mirrors (2026-07-06) --
+  # Self-contained studies mirroring engine params exactly. Supersedes
+  # stc_ob_style_cycle + cohen_mes_stc_sub for live-chart JARVIS use.
+
+  - id: jarvis_stc_signals
+    file: jarvis-suite/JARVIS_STC_Signals.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 4
+    layer_name: Entry
+    status: active
+    python_counterpart: "engine/backtest/indicators.py::stc + engine/backtest/signals.py"
+    panel: upper
+    jarvis_signals:
+      - stc_val
+      - stc_cross_up
+      - stc_cross_down
+      - stop_level
+      - target_1
+    tos_inputs:
+      fast_length: 23
+      slow_length: 50
+      k_period: 10
+      d_span: 3
+      stc_oversold: 15
+      stc_overbought: 83
+      atr_length: 14
+      stop_atr_mult: 0.70
+      t1_atr_mult: 1.00
+
+  - id: jarvis_regime_filter
+    file: jarvis-suite/JARVIS_RegimeFilter.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 1
+    layer_name: Regime
+    status: active
+    python_counterpart: "engine/backtest/signals.py::layer1_regime (chart-side approximation)"
+    panel: lower
+    jarvis_signals:
+      - regime
+    tos_inputs:
+      ema_fast_len: 50
+      ema_slow_len: 200
+      atr_length: 14
+      atr_avg_length: 30
+      structure_lookback: 10
+      volume_avg_length: 20
+      align_threshold: 4
+
+  - id: jarvis_vwap_bands
+    file: jarvis-suite/JARVIS_VWAP_Bands.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 4
+    layer_name: Entry
+    status: experimental  # OOS validation pending (loop vwap-sharpe)
+    python_counterpart: "engine/backtest/vwap_paper_track.py::CHAMPION + vwap_signals.py"
+    panel: upper
+    jarvis_signals:
+      - vwap
+      - vwap_upper
+      - vwap_lower
+      - vwap_signal
+    tos_inputs:
+      band_atr_mult: 2.5
+      stop_atr_mult: 0.75
+      atr_length: 14
+
+  - id: jarvis_risk_sizer
+    file: jarvis-suite/JARVIS_RiskSizer.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 5
+    layer_name: Sizing
+    status: active
+    python_counterpart: "engine/config.py::MAX_CONTRACTS_PER_INSTRUMENT + signals.py multipliers"
+    panel: upper
+    jarvis_signals: []
+    tos_inputs:
+      account_size: 25000
+      risk_percent: 1.0
+      stop_atr_mult: 0.70
+      t1_atr_mult: 1.00
+      max_contracts: 2
+
+  - id: jarvis_mission_control_lower
+    file: jarvis-suite/JARVIS_MissionControl_Lower.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 4
+    layer_name: Entry
+    status: active
+    python_counterpart: "engine/backtest/indicators.py::stc + signals.py (composite pane)"
+    panel: lower
+    jarvis_signals:
+      - stc_val
+      - stc_cross_up
+      - stc_cross_down
+      - regime
+    tos_inputs:
+      stc_oversold: 15
+      stc_overbought: 83
+      align_threshold: 4
+
+  - id: jarvis_scan_stc_regime
+    file: jarvis-suite/JARVIS_Scan_STC_Regime.ts
+    docs: jarvis-suite/README.md
+    author: "JARVIS"
+    layer: 4
+    layer_name: Entry
+    status: active
+    python_counterpart: "engine/backtest/indicators.py::stc + signals.py cross logic"
+    panel: scan
+    jarvis_signals:
+      - stc_cross_up
+    tos_inputs:
+      stc_oversold: 15
+      align_threshold: 4
+
   - id: legacy_utilities
     file:
       - ThinkScript_study_20221014STUDY.ts
