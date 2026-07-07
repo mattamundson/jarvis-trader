@@ -71,7 +71,7 @@ next six go faster.
 | # | Fix | Verify | Systems unblocked |
 |---|---|---|---|
 | F1 | **Dashboard proxy headers + env-var reconciliation** | `tsc --noEmit`, then live site after redeploy | JARVIS dashboard — **DONE, §5** |
-| F2 | **Vault path unification** — one resolver used by `/vault` jobs, `deep_analyzer/vault.py`, and the bookmark renderer (`main.py:2181`) | existing `test_vault_*` | Obsidian + X-bookmarks |
+| F2 | **Vault path unification** — route the 3 duplicated `~/my-vault` defaults (`deep_analyzer/vault.py`, `deep_analyzer/digest.py`) + the hardcoded `C:\...` in `main.py` through the canonical `vault.paths.vault_root()` so all honour `JARVIS_VAULT_ROOT` | standalone behavioral run + `test_vault_root_unification.py` | Obsidian + X-bookmarks — **DONE, §5.2** |
 | F3 | **Hermes headless flag** — a `--yes`/non-interactive bypass for the `input()` gate (`applier.py:164`); dry-run stays default | unit import + dry-run | Hermes self-upgrade |
 | F4 | **Doc/config reconciliation** — kill stale `markets/orchestrator.py` ref in `engine/CLAUDE.md`; document vault + tunnel env vars | grep | correctness/expectations |
 | F5 | **Numeric-accuracy unit tests** — lock the dashboard's pure P&L/win-rate/PF/drawdown/Sharpe derivations (`lib/honestTrades.ts`, `honestMetrics.ts`) to hand-computed values | `pnpm run test:unit` | trustworthy numbers — **DONE (beachhead), §5.1** |
@@ -146,6 +146,35 @@ resolve hook so the Node runner can load aliased modules.
 pure transforms. There is still **no end-to-end numeric test** (engine → proxy →
 render) proving the deployed dashboard shows the same number the engine holds —
 that needs the live box and is the deeper work.
+
+## 5.2. Vault path unification (F2 — landed)
+
+The `~/my-vault` default was duplicated in three writers, none honouring
+`JARVIS_VAULT_ROOT`: `deep_analyzer/vault.py` (X-post/bookmark pages),
+`deep_analyzer/digest.py` (daily digest), and a hardcoded
+`C:\Users\mattm\second-brain\wiki\discord-bookmarks` in `main.py`. All three now
+fall back to the canonical `vault.paths.vault_root()`, so a single
+`JARVIS_VAULT_ROOT` moves every writer together.
+
+**Verification (per rung):**
+- `deep_analyzer/vault.py`: **ran-and-observed** — with `JARVIS_VAULT_ROOT` set, an
+  `X_POST` note lands at `<root>/Discord-Feed/<date>/…` and NOT under `~/my-vault`
+  (standalone check; mirrored as `tests/test_vault_root_unification.py`).
+- `deep_analyzer/digest.py`: import-verified + `ruff` clean + source-confirmed it
+  falls back to `_vault_root()` (identical proven pattern; `render()` not executed
+  here — needs a sqlite fixture).
+- `main.py`: `ruff` clean + inspection (uses the tested `vault_root()`); not
+  importable in this sandbox (pulls `httpx`).
+- **UNVERIFIED — needs the box:** the full engine pytest suite
+  (`test_vault_router` etc.) can't run here — `conftest.py` imports httpx-heavy
+  agents. Run `cd engine && .venv/Scripts/python -m pytest tests/test_vault_root_unification.py tests/test_vault_*.py -v` on the box to close it.
+
+**Open design decision (deliberately NOT silently made):** all writers now share
+one *root*, but keep their existing *subfolders* (`Discord-Feed/`, `Daily/`,
+`discord-bookmarks/`) — none of which are the numbered taxonomy folders
+(`00-Inbox`…`04-Engine`) that the `/vault` lint/synthesis jobs scan. So bookmarks
+are co-located but not yet swept by the vault jobs. Whether to move them into a
+scanned taxonomy folder is a product choice for Matt, not a path bug.
 
 ## 6. Next-up recommendation
 
