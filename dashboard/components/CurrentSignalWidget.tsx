@@ -216,6 +216,13 @@ export function CurrentSignalWidget({ symbol = "MES" }: { symbol?: string }) {
                 </>
               )}
             </div>
+
+            {/* Provenance (P4.2): rule-based signal, not the LLM pipeline — flag the
+                backend gap honestly rather than invent narrative reasoning. */}
+            <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+              Why: rule-based STC crossover with multi-timeframe alignment. No LLM
+              pipeline reasoning is generated for this signal type.
+            </p>
           </>
         )}
       </CardContent>

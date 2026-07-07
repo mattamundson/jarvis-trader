@@ -40,6 +40,7 @@ import { PerformanceTrendWidget } from "@/components/PerformanceTrendWidget";
 import { VIXRegimeCard } from "@/components/VIXRegimeCard";
 import { CurrentSignalWidget } from "@/components/CurrentSignalWidget";
 import { MesContractSpecCard } from "@/components/MesContractSpecCard";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 // ── Inline: WatchlistScanWidget ────────────────────────────────────────────
 // Fixed: fetchEngine already returns parsed JSON; removed double .json() call
@@ -1092,10 +1093,14 @@ export default function WatchlistPage() {
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-8 space-y-6">
 
         {/* Current STC Signal Widget */}
-        <CurrentSignalWidget symbol="MES" />
+        <WidgetErrorBoundary name="Current Signal">
+          <CurrentSignalWidget symbol="MES" />
+        </WidgetErrorBoundary>
 
         {/* Watchlist Scan Widget */}
-        <WatchlistScanWidget symbols="MES,MNQ,MCL,MGC" />
+        <WidgetErrorBoundary name="Watchlist Scan">
+          <WatchlistScanWidget symbols="MES,MNQ,MCL,MGC" />
+        </WidgetErrorBoundary>
 
         {/* Page title + controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1417,13 +1422,17 @@ export default function WatchlistPage() {
         </div>
 
         {/* Performance Trend Widget */}
-        <PerformanceTrendWidget />
+        <WidgetErrorBoundary name="Performance Trend">
+          <PerformanceTrendWidget />
+        </WidgetErrorBoundary>
 
         {/* VIX Regime Filter Card */}
         <VIXRegimeCard />
 
         {/* Symbol Performance Widget */}
-        <SymbolPerformanceWidget />
+        <WidgetErrorBoundary name="Symbol Performance">
+          <SymbolPerformanceWidget />
+        </WidgetErrorBoundary>
 
         {/* MES Contract Spec Card */}
         <MesContractSpecCard />

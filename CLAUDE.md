@@ -19,7 +19,7 @@ Instruments" is the authoritative status table. Paper mode on IB Gateway port 40
 - `pnpm` for all Node. System `npm` is broken.
 - Python: `engine/.venv/Scripts/python` only. Never system Python 3.14 or Store Python.
 - TS check: `./node_modules/.bin/tsc --noEmit` (not `npx tsc`).
-- Dashboard badge variants (strict): `"bull" | "bear" | "warn" | "info" | "neutral"`.
+- Dashboard badge variants (strict): `"bull" | "bear" | "warn" | "info" | "neutral" | "live" | "static"` (`live`/`static` are Trust-Pane data-provenance badges).
 - No bare `await fetch(...)` in `dashboard/` — use `fetchEngine` / `postEngine` from `dashboard/lib/api.ts`.
 - Engine restart: `.\restart_engine.ps1`. Never use `--reload` (causes duplicate IB connections).
 - Live IB Gateway port 4001 is permanently blocked — paper only (port 4002, account DUP662235).

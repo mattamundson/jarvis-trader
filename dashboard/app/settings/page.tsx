@@ -31,6 +31,7 @@ import {
 import { NotificationTestPanel } from "@/components/NotificationTestPanel";
 import { TradingScheduleCard } from "@/components/TradingScheduleCard";
 import { RiskSettingsWidget } from "@/components/RiskSettingsWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { WhatsAppStatusCard } from "@/components/WhatsAppStatusCard";
 
 // ── SWR fetchers ──────────────────────────────────────────────────────────
@@ -882,7 +883,9 @@ export default function SettingsPage() {
       {/* Page content */}
       <main className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] px-6 py-6 space-y-6">
         {/* Risk Settings Widget — live read-only config overview */}
-        <RiskSettingsWidget />
+        <WidgetErrorBoundary name="Risk Settings">
+          <RiskSettingsWidget />
+        </WidgetErrorBoundary>
 
         {/* Page title */}
         <div className="flex items-center gap-3">

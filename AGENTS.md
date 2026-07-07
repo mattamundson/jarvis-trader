@@ -77,10 +77,11 @@ To activate (a ready, commented block is in `engine/.env`):
 
 ### External service: master-api (:8030)
 
-The dashboard talks to a SEPARATE `master-api` service at `NEXT_PUBLIC_MASTER_API_URL`
-(default `http://127.0.0.1:8030`) via `dashboard/lib/masterApi.ts`. This service is NOT in
-this repo and is not started by the engine/dashboard. When it is absent (the default in
-this environment):
+The dashboard talks to a SEPARATE `master-api` service at server-only `MASTER_API_URL`
+(default `http://127.0.0.1:8030`), proxied through `app/api/master/[...path]/route.ts`
+and called from `dashboard/lib/masterApi.ts` (same-origin `/api/master/...`, no client-side
+URL or key). This service is NOT in this repo and is not started by the engine/dashboard.
+When it is absent (the default in this environment):
 
 - `/master`, `/master/finances`, `/master/trading` show "Master API unreachable on :8030"
   banners (expected).
