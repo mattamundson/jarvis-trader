@@ -72,8 +72,8 @@ next six go faster.
 |---|---|---|---|
 | F1 | **Dashboard proxy headers + env-var reconciliation** | `tsc --noEmit`, then live site after redeploy | JARVIS dashboard — **DONE, §5** |
 | F2 | **Vault path unification** — route the 3 duplicated `~/my-vault` defaults (`deep_analyzer/vault.py`, `deep_analyzer/digest.py`) + the hardcoded `C:\...` in `main.py` through the canonical `vault.paths.vault_root()` so all honour `JARVIS_VAULT_ROOT` | standalone behavioral run + `test_vault_root_unification.py` | Obsidian + X-bookmarks — **DONE, §5.2** |
-| F3 | **Hermes headless flag** — a `--yes`/non-interactive bypass for the `input()` gate (`applier.py:164`); dry-run stays default | unit import + dry-run | Hermes self-upgrade |
-| F4 | **Doc/config reconciliation** — kill stale `markets/orchestrator.py` ref in `engine/CLAUDE.md`; document vault + tunnel env vars | grep | correctness/expectations |
+| F3 | **Hermes headless approval** — original "`--yes` bypass" idea REJECTED as unsafe; real bug is EOF→terminal-skip | (needs on-box test) | Hermes — **DEFERRED, §5.3** |
+| F4 | **Doc/config reconciliation** — fix stale `markets/orchestrator.py` → `orchestrator/multi_market.py` in the live pointer docs | grep + `ls` | correctness/expectations — **DONE, §5.4** |
 | F5 | **Numeric-accuracy unit tests** — lock the dashboard's pure P&L/win-rate/PF/drawdown/Sharpe derivations (`lib/honestTrades.ts`, `honestMetrics.ts`) to hand-computed values | `pnpm run test:unit` | trustworthy numbers — **DONE (beachhead), §5.1** |
 
 ### 4b. On-box steps (need your Windows/WSL runtime — exact commands provided)
@@ -175,6 +175,45 @@ one *root*, but keep their existing *subfolders* (`Discord-Feed/`, `Daily/`,
 (`00-Inbox`…`04-Engine`) that the `/vault` lint/synthesis jobs scan. So bookmarks
 are co-located but not yet swept by the vault jobs. Whether to move them into a
 scanned taxonomy folder is a product choice for Matt, not a path bug.
+
+## 5.3. Hermes headless approval (F3 — DEFERRED, needs a decision)
+
+The diagnosis proposed a `--yes` flag to bypass the `input()` gate at
+`applier.py:164`. **Rejected on closer read** — it would remove a deliberate
+human-approval gate:
+
+- A scoped headless path ALREADY exists: `--auto-approve-low-risk` auto-applies
+  only `tier_1 + low_risk` entries (`applier.py:218`); everything riskier still
+  requires a human. A blanket `--yes` would auto-apply tier_2/tier_3 and
+  high-risk Hermes config/cron/soul patches unattended.
+- **The real bug** is separate and worth fixing: on a headless run (no TTY),
+  `except EOFError: ans = "n"` (`applier.py:165`) returns `notes="User skipped"`,
+  which `apply_many` writes as the **terminal** `skipped` state
+  (`applier.py:265`; terminal per `models.applicable_or_pending` = only
+  `pending`/`failed` retry). So a scheduled scan permanently opts-out every
+  non-low-risk entry — a later interactive run never sees them again.
+
+**Why not shipped this session:** the fix is a state-machine change to a
+self-modifying agent's apply pipeline, and it cannot be properly tested from the
+cloud sandbox (the applier's `dry_run` path needs the full applier machinery).
+Shipping an unverified change there violates the verification discipline.
+
+**Proposed safe fix (for approval):** distinguish EOFError (no TTY) from an
+explicit user "n" — on EOF, return a *deferred* result that leaves the entry
+`pending` (retryable) instead of terminal `skipped`. Preserves the human gate,
+makes headless runs non-destructive. Ship as its own focused, on-box-tested change.
+Meanwhile the scheduled scan should run with `--auto-approve-low-risk`.
+
+## 5.4. Doc/config reconciliation (F4 — landed)
+
+`engine/markets/orchestrator.py` does not exist (verified `ls`); the real
+multi-market orchestrator is `engine/orchestrator/multi_market.py`. Fixed the
+stale pointer in the live context docs: `engine/CLAUDE.md`,
+`docs/CURRENT_STATE.md`, `.claude/imports/key-files.md`. Left untouched: dated
+reports and session-log archives (point-in-time snapshots — correcting them
+rewrites history) and `.claude/skills/jarvis-trader/RALPH.md:73` (already hedged
+"or equivalent"; skill narrative, not a pointer). Vault + tunnel env vars were
+already documented (root `.env.example:250+`, `dashboard/.env.example`).
 
 ## 6. Next-up recommendation
 
