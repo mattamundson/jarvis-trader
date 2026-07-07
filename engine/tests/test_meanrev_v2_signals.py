@@ -23,7 +23,6 @@ from backtest.meanrev_v2_signals import (
     generate_meanrev_v2_signals,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
