@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchEngine } from "@/lib/api";
 
@@ -38,46 +39,23 @@ function formatUptime(seconds: number): string {
   return `${h}h ${m}m`;
 }
 
-function formatTimestamp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-  } catch {
-    return iso;
-  }
-}
-
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function EngineUptimeCard() {
   const [data, setData] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
   async function fetchHealth() {
     try {
       const payload = await fetchEngine<HealthResponse>(`/health`);
       setData(payload);
       setError(null);
-      setLastChecked(new Date().toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }));
+      setLastChecked(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unreachable");
       setData(null);
-      setLastChecked(new Date().toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      }));
+      setLastChecked(new Date());
     }
   }
 
@@ -198,9 +176,9 @@ export function EngineUptimeCard() {
 
         {/* Last checked */}
         {lastChecked && (
-          <p className="text-[11px] text-muted-foreground text-right">
-            Last checked {lastChecked}
-          </p>
+          <div className="flex justify-end">
+            <StalenessIndicator lastUpdated={lastChecked} />
+          </div>
         )}
       </CardContent>
     </Card>

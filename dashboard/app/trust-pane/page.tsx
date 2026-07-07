@@ -40,6 +40,7 @@ import {
   type AmoCommodity,
 } from "@/lib/amo-api";
 import { PostTradeExecutionWidget } from "@/components/PostTradeExecutionWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { BarDepthCard } from "@/components/BarDepthCard";
 import { PostTradeSnippet } from "@/components/PostTradeSnippet";
 
@@ -154,7 +155,7 @@ const TV_SYMBOL: Record<string, string> = {
   MES: "CME_MINI:MES1!", ES: "CME_MINI:ES1!",
   MNQ: "CME_MINI:MNQ1!", NQ: "CME_MINI:NQ1!",
   M2K: "CME_MINI:M2K1!",
-  MGC: "COMEX:MGC1!", GC: "COMEX:GC1!",
+  MGC: "COMEX_MINI:MGC1!", GC: "COMEX:GC1!",
   MCL: "NYMEX:MCL1!", CL: "NYMEX:CL1!",
 };
 function tvTicker(symbol: string): string | null {
@@ -592,7 +593,9 @@ export default function TrustPanePage() {
             </Card>
 
             {/* 5. Post-trade execution quality (WS4B endpoints — PR #78) */}
-            <PostTradeExecutionWidget />
+            <WidgetErrorBoundary name="Post-Trade Execution">
+              <PostTradeExecutionWidget />
+            </WidgetErrorBoundary>
 
             {/* 6. Post-trade quality — book-wide MAE/MFE + entry-timing regret (J1/J2) */}
             <PostTradeSnippet />

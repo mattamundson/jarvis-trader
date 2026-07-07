@@ -39,6 +39,7 @@ import { ExportDataWidget } from "@/components/ExportDataWidget";
 import { WFEMonitorWidget } from "@/components/WFEMonitorWidget";
 import { TradingDaysCountdownCard } from "@/components/TradingDaysCountdownCard";
 import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
 import { InstrumentValidationScorecard } from "@/components/InstrumentValidationScorecard";
@@ -1707,7 +1708,9 @@ export default function ValidationPage() {
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
         <ValidationChecklist />
         <TradingDaysCountdownCard />
-        <BacktestVsPaperWidget />
+        <WidgetErrorBoundary name="Backtest vs Paper">
+          <BacktestVsPaperWidget />
+        </WidgetErrorBoundary>
 
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1845,13 +1848,17 @@ export default function ValidationPage() {
         {/* Section H: Export Data */}
         <section>
           <SectionLabel>H — Export Data</SectionLabel>
-          <ExportDataWidget />
+          <WidgetErrorBoundary name="Export Data">
+            <ExportDataWidget />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section I: Position Reconciliation */}
         <section>
           <SectionLabel>I — Position Reconciliation</SectionLabel>
-          <ReconciliationWidget />
+          <WidgetErrorBoundary name="Reconciliation">
+            <ReconciliationWidget />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section J: Go-Live Roadmap */}
@@ -1863,7 +1870,9 @@ export default function ValidationPage() {
         {/* Section K: WFE Live Monitor */}
         <section>
           <SectionLabel>K — Walk-Forward Efficiency Monitor</SectionLabel>
-          <WFEMonitorWidget />
+          <WidgetErrorBoundary name="WFE Monitor">
+            <WFEMonitorWidget />
+          </WidgetErrorBoundary>
         </section>
 
         {/* Section L: Portfolio P&L Chart */}

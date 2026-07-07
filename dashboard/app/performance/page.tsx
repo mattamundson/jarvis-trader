@@ -17,12 +17,23 @@ import { EntryQualityWidget } from "@/components/EntryQualityWidget";
 import { RecentTradesTableWidget } from "@/components/RecentTradesTableWidget";
 import { WinRateBySymbolWidget } from "@/components/WinRateBySymbolWidget";
 import { DailyPnLCalendarWidget } from "@/components/DailyPnLCalendarWidget";
-import { PnlCalendarWidget } from "@/components/PnlCalendarWidget";
 import HoldTimeWidget from "@/components/HoldTimeWidget";
 import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
 import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
 import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
+// P2.3 IA: folded in from the retired /stats page (the 10 analytics widgets not
+// already rendered above). /stats now redirects here.
+import { PerformanceSummaryWidget } from "@/components/PerformanceSummaryWidget";
+import { ProfitFactorWidget } from "@/components/ProfitFactorWidget";
+import { SharpeRatioWidget } from "@/components/SharpeRatioWidget";
+import { TradeHourlyBreakdownWidget } from "@/components/TradeHourlyBreakdownWidget";
+import { TradePnLHistogram } from "@/components/TradePnLHistogram";
+import { BestWorstTradesWidget } from "@/components/BestWorstTradesWidget";
+import { SymbolPerformanceWidget } from "@/components/SymbolPerformanceWidget";
+import { RollingPerformanceWidget } from "@/components/RollingPerformanceWidget";
+import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
+import { PnLStreakWidget } from "@/components/PnLStreakWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
@@ -761,11 +772,6 @@ export default function PerformancePage() {
           <DailyPnLCalendarWidget />
         </WidgetErrorBoundary>
 
-        {/* P&L Calendar Heatmap -- 13-week GitHub-style grid */}
-        <WidgetErrorBoundary name="P&L Calendar Heatmap">
-          <PnlCalendarWidget />
-        </WidgetErrorBoundary>
-
         {/* Win Rate by Hour of Day */}
         <WidgetErrorBoundary name="Win Rate by Hour">
           <WinRateByHourWidget />
@@ -895,6 +901,42 @@ export default function PerformancePage() {
         <WidgetErrorBoundary name="Win Rate by Symbol">
           <WinRateBySymbolWidget />
         </WidgetErrorBoundary>
+
+        {/* Section 13: Extended Analytics (folded in from the retired /stats page, P2.3 IA) */}
+        <WidgetErrorBoundary name="Performance Summary">
+          <PerformanceSummaryWidget />
+        </WidgetErrorBoundary>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <WidgetErrorBoundary name="Profit Factor">
+            <ProfitFactorWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Sharpe Ratio">
+            <SharpeRatioWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="P&L Streak">
+            <PnLStreakWidget />
+          </WidgetErrorBoundary>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <WidgetErrorBoundary name="Trade Hourly Breakdown">
+            <TradeHourlyBreakdownWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Trade P&L Histogram">
+            <TradePnLHistogram />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Best/Worst Trades">
+            <BestWorstTradesWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Symbol Performance">
+            <SymbolPerformanceWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Rolling Performance">
+            <RollingPerformanceWidget />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Drawdown Chart">
+            <DrawdownChartWidget />
+          </WidgetErrorBoundary>
+        </div>
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>
