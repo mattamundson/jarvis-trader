@@ -198,7 +198,7 @@ class TestRuntimeOverrides:
 
 class TestListFlags:
     def test_list_flags_returns_all(self, flags):
-        """list_flags() returns one flag per FLAG_DEFINITIONS entry."""
+        """list_flags() returns exactly one entry per FLAG_DEFINITIONS entry."""
         from flags.registry import FLAG_DEFINITIONS
 
         result = flags.list_flags()
