@@ -148,6 +148,7 @@ from api.operations_dashboard import router as operations_dashboard_router
 from routers.attribution_router import router as attribution_router
 from routers.vault_router import router as vault_router
 from routers.pnl_truth_router import router as pnl_truth_router
+from routers.durability_router import router as durability_router
 from routers.ib_scanner_router import router as ib_scanner_router
 from routers.macro_router import router as macro_router, inject_dependencies as inject_macro_deps
 from routers.analysis_router import (
@@ -2176,11 +2177,15 @@ async def lifespan(app: FastAPI):
     # mode: existing files are skipped (preserves 2026-04-17 manual triage).
     try:
         from scripts.render_bookmarks_to_vault import render_vault as _render_vault
+        from vault.paths import vault_root as _vault_root
 
         _BOOKMARK_DB_PATH = os.environ.get("JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db")
+        # Default under the canonical vault root (honours JARVIS_VAULT_ROOT) instead
+        # of a hardcoded absolute path, so bookmarks land beside the other vault
+        # writers. Explicit BOOKMARK_VAULT_DIR still overrides.
         _BOOKMARK_VAULT_DIR = os.environ.get(
             "BOOKMARK_VAULT_DIR",
-            r"C:\Users\mattm\second-brain\wiki\discord-bookmarks",
+            str(_vault_root() / "discord-bookmarks"),
         )
 
         async def run_bookmark_vault_render() -> None:
@@ -2978,6 +2983,7 @@ app.include_router(analytics_router)
 app.include_router(attribution_router)
 app.include_router(vault_router)
 app.include_router(pnl_truth_router)
+app.include_router(durability_router)
 app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)

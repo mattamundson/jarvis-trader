@@ -1,0 +1,43 @@
+{
+  "strategy": "spy_overnight_hold",
+  "symbol": "SPY",
+  "rank": 1,
+  "source": "x-bookmark edge scan 2026-07-02 (@QuantifiedStrat)",
+  "period": [
+    "1993-01-29",
+    "2026-06-24"
+  ],
+  "n_nights": 8406,
+  "n_grid_trials": 3,
+  "strategy_metrics": {
+    "cagr": 0.0997,
+    "sharpe_ann": 0.95,
+    "max_dd": -0.3279,
+    "final_mult": 23.83
+  },
+  "buy_hold_c2c_metrics": {
+    "cagr": 0.1078,
+    "sharpe_ann": 0.644,
+    "max_dd": -0.5519,
+    "final_mult": 30.41
+  },
+  "intraday_only_metrics": {
+    "cagr": 0.0073,
+    "sharpe_ann": 0.124,
+    "max_dd": -0.6849,
+    "final_mult": 1.28
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.1226 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=23.2117 > 6.0",
+      "dsr=0.999104 >= 0.1 (not selection-bias)"
+    ]
+  },
+  "note": "Per-night PnL, gross of commission/slippage (a real overnight implementation pays the close/open spread + financing -- gate reasons reflect gross). Draft/research only; does NOT authorize paper routing. The overnight-vs-intraday split is the headline evidence."
+}

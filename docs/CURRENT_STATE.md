@@ -125,7 +125,7 @@ FUTURES_WATCHLIST=MCL,MNQ,MES
 | `engine/agents/pipeline.py` | 5-stage orchestrator |
 | `engine/risk/safety_layer.py` | Kill switch, hard limits, order validation |
 | `engine/backtest/signals.py` | STC signal logic (CANONICAL parameter source) |
-| `engine/markets/orchestrator.py` | Multi-market orchestrator |
+| `engine/orchestrator/multi_market.py` | Multi-market orchestrator |
 | `dashboard/lib/api.ts` | All engine API calls via fetchEngine/postEngine |
 | `docs/architecture/API_CANONICAL_ENDPOINTS.md` | Canonical routes (validation, RL, Greeks) — avoids FastAPI shadowing |
 | `docs/runbooks/PAPER_LEDGER_BOUNDARIES.md` | Paper mode A vs B writers/readers |
