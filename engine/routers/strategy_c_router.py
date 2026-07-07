@@ -151,12 +151,66 @@ async def get_status() -> SignalStatus:
 @router.get("/metrics", summary="Full backtest metrics for Strategy C+")
 async def get_metrics() -> dict[str, Any]:
     """
-    Full Strategy C+ backtest performance metrics.
+    Full Strategy C+ backtest performance metrics, mapped to the dashboard contract.
 
-    Returns Sharpe, CAGR, MDD, Sortino, IS/OOS breakdown,
-    Deflated Sharpe p-value, and optimal grid search parameters.
+    The on-disk metrics file stores percent fields already scaled ×100
+    (``cagr`` / ``ann_vol`` / ``max_dd_close_pct`` / ``win_rate_pct``) under the
+    keys ``full`` / ``is_period`` / ``oos_period``. The dashboard's ``fmtPct``
+    multiplies by 100, so this endpoint emits FRACTIONS (÷100) under the frontend
+    key names (``full_period`` / ``in_sample`` / ``out_of_sample``) with the
+    renamed sub-fields (``max_dd_close_pct``→``max_drawdown``, ``ann_vol``→
+    ``volatility``, ``win_rate_pct``→``win_rate``). Without this mapping the UI
+    both mislabels keys and double-scales percentages (e.g. CAGR 17.09 → 1709%).
+    404s cleanly (via _load_json) when no backtest has been run yet.
     """
-    return _load_json(_METRICS_FILE)
+    raw = _load_json(_METRICS_FILE)  # 404s cleanly if no backtest has run
+
+    def _pct(v: Any) -> Optional[float]:
+        """Percent (0-100 from disk) -> fraction (0-1) for the frontend's fmtPct."""
+        return round(float(v) / 100.0, 6) if isinstance(v, (int, float)) else None
+
+    def _num(v: Any) -> Optional[float]:
+        return float(v) if isinstance(v, (int, float)) else None
+
+    def _core(block: dict) -> dict:
+        block = block or {}
+        return {
+            "cagr": _pct(block.get("cagr")),
+            "sharpe": _num(block.get("sharpe")),
+            "sortino": _num(block.get("sortino")),
+            "calmar": _num(block.get("calmar")),
+            "max_drawdown": _pct(block.get("max_dd_close_pct")),
+            "volatility": _pct(block.get("ann_vol")),
+            "win_rate": _pct(block.get("win_rate_pct")),
+            "final_equity": _num(block.get("final_equity")),
+            "n_weeks": block.get("n_weeks"),
+        }
+
+    is_period = raw.get("is_period", {}) or {}
+    oos_period = raw.get("oos_period", {}) or {}
+    retention = raw.get("oos_retention", {}) or {}
+
+    return {
+        "full_period": _core(raw.get("full", {})),
+        "in_sample": {
+            "cagr": _pct(is_period.get("cagr")),
+            "sharpe": _num(is_period.get("sharpe")),
+            "max_drawdown": _pct(is_period.get("max_dd_close_pct")),
+            "start": None,
+            "end": None,
+        },
+        "out_of_sample": {
+            "cagr": _pct(oos_period.get("cagr")),
+            "sharpe": _num(oos_period.get("sharpe")),
+            "max_drawdown": _pct(oos_period.get("max_dd_close_pct")),
+            "sharpe_retention": _pct(retention.get("sharpe_retention_pct")),
+            "cagr_retention": _pct(retention.get("cagr_retention_pct")),
+            "start": None,
+            "end": None,
+        },
+        "deflated_sharpe": raw.get("deflated_sharpe"),
+        "vol_stats": raw.get("vol_stats"),
+    }
 
 
 @router.get("/allocation_history", summary="Weekly allocation history (JSON)")
