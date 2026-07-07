@@ -74,6 +74,7 @@ next six go faster.
 | F2 | **Vault path unification** — one resolver used by `/vault` jobs, `deep_analyzer/vault.py`, and the bookmark renderer (`main.py:2181`) | existing `test_vault_*` | Obsidian + X-bookmarks |
 | F3 | **Hermes headless flag** — a `--yes`/non-interactive bypass for the `input()` gate (`applier.py:164`); dry-run stays default | unit import + dry-run | Hermes self-upgrade |
 | F4 | **Doc/config reconciliation** — kill stale `markets/orchestrator.py` ref in `engine/CLAUDE.md`; document vault + tunnel env vars | grep | correctness/expectations |
+| F5 | **Numeric-accuracy unit tests** — lock the dashboard's pure P&L/win-rate/PF/drawdown/Sharpe derivations (`lib/honestTrades.ts`, `honestMetrics.ts`) to hand-computed values | `pnpm run test:unit` | trustworthy numbers — **DONE (beachhead), §5.1** |
 
 ### 4b. On-box steps (need your Windows/WSL runtime — exact commands provided)
 
@@ -125,6 +126,26 @@ engine's own `/health` and `/portfolio` values — not just "not offline". Until
 observed, F1 is **shipped but not closed**.
 
 ---
+
+## 5.1. Numeric-accuracy beachhead (F5 — landed)
+
+A trading dashboard's job is *correct numbers*; a confidently-wrong P&L is worse
+than an offline page. The honest-record derivations (`lib/honestTrades.ts`,
+`lib/honestMetrics.ts`) — which exist precisely because raw engine endpoints
+over-count re-logged winners (fabricated +$3,899 / PF 2.95 vs deduped −$8,188 /
+PF 0.66) — had **zero** test coverage.
+
+Landed `dashboard/tests/honestNumbers.node.test.ts` (12 assertions,
+`pnpm run test:unit`, green): `bySymbolStats` money math incl. the breakeven
+win/loss boundary, `equityCurve` + `maxDrawdownPct` (drawdown is kill-switch
+adjacent), `perTradeSharpe` incl. null guards, `dailyPnl` TZ-independent
+invariants, and `summarizeRealized` dedup clamp. Plus test-infra: a `@/` alias
+resolve hook so the Node runner can load aliased modules.
+
+**Still a known gap (do not overclaim):** this is unit-level verification of the
+pure transforms. There is still **no end-to-end numeric test** (engine → proxy →
+render) proving the deployed dashboard shows the same number the engine holds —
+that needs the live box and is the deeper work.
 
 ## 6. Next-up recommendation
 
