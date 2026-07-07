@@ -49,6 +49,17 @@ class TestReadinessWatchdog:
         assert ready is False
 
 
+class TestWslRelayDetection:
+    def test_detects_wslrelay_by_name(self):
+        assert port_guardian._is_wsl_relay("wslrelay") is True
+        assert port_guardian._is_wsl_relay("wslrelay.exe") is True
+        assert port_guardian._is_wsl_relay("WSLRelay") is True  # case-insensitive
+
+    def test_ignores_non_relay_holders(self):
+        for name in ("python", "python3.12", "uvicorn", "unknown", "", None):
+            assert port_guardian._is_wsl_relay(name) is False
+
+
 class TestRestartEventRecord:
     def test_appends_structured_jsonl_record(self, tmp_path):
         log = tmp_path / "restarts.jsonl"
