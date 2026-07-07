@@ -52,6 +52,16 @@ async def get_phase3_readiness(
         Optional[str],
         Query(description="Set to 'markdown' for human-readable output"),
     ] = None,
+    edge_mode: Annotated[
+        Optional[str],
+        Query(
+            description=(
+                "Override readiness edge mode for inspection only: "
+                "'paper_accrual' (default) or 'wfo_plus_fidelity'. Read-only; "
+                "never persisted. When omitted, READINESS_EDGE_MODE env is honored."
+            )
+        ),
+    ] = None,
     _api_key: str = Depends(verify_api_key),
 ):
     """
@@ -65,15 +75,25 @@ async def get_phase3_readiness(
     This endpoint is read-only and informational.  It does not modify any
     config flags, trading state, or safety layer parameters.
 
+    **Edge mode:** the response includes an `edge_mode` key. By default the
+    server honors `READINESS_EDGE_MODE` (default `paper_accrual`, the legacy
+    10-criterion set). Pass `?edge_mode=wfo_plus_fidelity` to inspect the
+    walk-forward-edge + execution-fidelity verdict without changing any env
+    or persisted state; while `ALLOW_PAPER_SIMULATED_ORDERS=False` that mode
+    is inert (yields NO-GO until real fills accrue).
+
     Add `?format=markdown` to receive a Markdown-formatted report
     (Content-Type: text/plain) suitable for copy-paste into a PR description.
     """
-    from readiness.phase3_criteria import _render_markdown, evaluate_all_criteria
+    from readiness.phase3_criteria import _render_markdown, evaluate_with_edge_mode
 
     db_path = _default_db_path()
 
     try:
-        report = evaluate_all_criteria(db_path)
+        # mode=None -> honors READINESS_EDGE_MODE env (default paper_accrual,
+        # byte-identical to the legacy evaluate_all_criteria plus an edge_mode key).
+        # An explicit ?edge_mode= overrides for read-only inspection; never persisted.
+        report = evaluate_with_edge_mode(db_path, mode=edge_mode)
     except Exception as exc:
         logger.error("Phase3 readiness evaluation failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Readiness evaluation failed: {exc}") from exc
