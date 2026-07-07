@@ -43,10 +43,11 @@ ALLOWLIST = {
     # from closed paper_trades round-trips. Not a runtime path; derives from the same
     # single source of truth, so it cannot introduce a mismatched-basis row.
     "scripts/rebuild_daily_pnl.py",
-    # Offline manual repair tool (dry-run by default; writes only behind --apply).
-    # Same category as rebuild_daily_pnl.py: DELETEs then re-derives every daily_pnl
-    # row from the closed paper_trades ledger (the single source of truth), so it
-    # cannot introduce a mismatched-basis row. Not a runtime path.
+    # Offline manual reconciliation tool (dry-run by default; --apply is DB-backup
+    # gated). Rebuilds daily_pnl from the closed paper_trades ledger using the same
+    # absolute-anchoring formula as the live EOD writer, so it derives from the single
+    # source of truth and cannot introduce a mismatched-basis row. Consumed by the
+    # daily-pnl-reconcile drift detector.
     "scripts/repair_daily_pnl.py",
 }
 

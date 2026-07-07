@@ -12,7 +12,7 @@
 | `agents/pipeline.py` | 5-stage LLM pipeline orchestrator |
 | `risk/safety_layer.py` | Kill switch + hard limits — **hardcoded, never LLM-driven** |
 | `backtest/signals.py` | STC canonical params — Tier 3 approval to change |
-| `markets/orchestrator.py` | Multi-market orchestrator (futures, options, crypto) |
+| `orchestrator/multi_market.py` | Multi-market orchestrator (futures, options, crypto) |
 | `learning/` | 4-module learning system (events, feedback, patterns, recommendations) |
 | `hooks/` | React hooks module (state management, market data) |
 | `routers/` | 24 router files organizing 80+ API endpoints |

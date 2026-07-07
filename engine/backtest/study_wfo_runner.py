@@ -49,6 +49,28 @@ from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 from backtest.cpcv import generate_cpcv_folds  # noqa: E402
 from backtest.studies import load_study  # noqa: E402
 
+# OOS access ledger (ml-pitfalls-defense pitfall #4, #234) is a diagnostic
+# contamination cap; wiring it here is best-effort and must never affect a
+# gate-v2 verdict. A missing/broken ledger, or a hit on the quarterly cap,
+# is logged but does not block the caller.
+try:
+    from analytics.oos_access_ledger import OOSBudgetExceeded, record_if_within_budget
+except Exception:  # pragma: no cover - diagnostic-only import
+    record_if_within_budget = None
+    OOSBudgetExceeded = Exception  # sentinel so the except clause below still type-checks
+
+
+def _log_oos_access(symbol: str, purpose: str) -> None:
+    """Best-effort record of an OOS-touching gate-v2 evaluation. Never raises."""
+    if record_if_within_budget is None:
+        return
+    try:
+        record_if_within_budget(f"{purpose}:{symbol}", now=datetime.now(timezone.utc))
+    except OOSBudgetExceeded as exc:
+        print(f"[OOS-LEDGER][WARN] quarterly OOS-access cap reached: {exc}")
+    except Exception:  # pragma: no cover - diagnostic-only, must not affect verdicts
+        pass
+
 # Vetted continuous 5m files per symbol (gitignored cache).
 DATA_FILES = {
     "MES": "MES_2024-09-22_2026-05-29_5m_cont.csv",
@@ -503,6 +525,7 @@ def run_one(
             cost = _cost_sweep(study, df, symbol, mode, champion, base_comm)
             gate = _compute_gate_v2(oos_results, n_combos, fixed, cost)
             gate["champion"] = champion
+            _log_oos_access(symbol, f"gate_v2_cpcv:{study_name}:{mode}")
 
         print(
             f"[{study_name.upper()}-{symbol}-{mode}] CPCV VERDICT {gate['verdict']} "
@@ -665,6 +688,7 @@ def run_one(
         cost = _cost_sweep(study, df, symbol, mode, champion, base_comm)
         gate = _compute_gate_v2(oos_results, n_combos, fixed, cost)
         gate["champion"] = champion
+        _log_oos_access(symbol, f"gate_v2:{study_name}:{mode}")
 
     # ------------------------------------------------------------------
     # POST-HOC regime-conditional breakdown (ADDITIVE, never gates verdict)

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { applyEngineAuthHeaders } from "@/lib/engineProxyHeaders";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,6 +19,13 @@ function getEngineApiKey(): string | undefined {
   return process.env.ENGINE_API_KEY;
 }
 
+// user:pass credential matching the ngrok tunnel's basic-auth (ngrok.yml). Only
+// set on deployments where the engine sits behind the tunnel; absent for local dev
+// where the proxy targets 127.0.0.1:8010 directly.
+function getTunnelBasicAuth(): string | undefined {
+  return process.env.ENGINE_TUNNEL_BASIC_AUTH;
+}
+
 async function proxy(request: NextRequest, path: string[]): Promise<NextResponse> {
   const target = new URL(`${getEngineBaseUrl()}/${path.join("/")}`);
   target.search = request.nextUrl.search;
@@ -27,10 +35,12 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   headers.delete("connection");
   headers.delete("content-length");
 
-  const engineApiKey = getEngineApiKey();
-  if (engineApiKey) {
-    headers.set("X-API-Key", engineApiKey);
-  }
+  // Inject engine + tunnel auth (X-API-Key, Authorization: Basic, ngrok-skip-
+  // browser-warning) server-side only. See lib/engineProxyHeaders.ts for why.
+  applyEngineAuthHeaders(headers, {
+    apiKey: getEngineApiKey(),
+    tunnelBasicAuth: getTunnelBasicAuth(),
+  });
 
   // When the engine is reached through an ngrok free-tier tunnel, ngrok injects
   // an HTML "browser warning" interstitial for requests with browser-like
