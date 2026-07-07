@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 import pandas as pd
 
 from data.polygon_stream import PolygonStreamer
+from data.provenance import DEFAULT_STALE_AFTER_S, build_envelope
 
 # Lazy import — bars_repository requires sqlite3 which is always available,
 # but importing at module level makes the hot path slightly heavier; use a
@@ -1211,6 +1212,30 @@ class MarketDataManager:
         except Exception:
             pass
         return result
+
+    async def get_current_price_envelope(
+        self, symbol: str, is_futures: bool = False, stale_after_s: Optional[float] = None
+    ) -> dict:
+        """Provenance-aware wrapper over ``get_current_price`` (Phase 1, additive).
+
+        Returns the canonical DataEnvelope shape
+        ``{value, source, as_of, is_live, stale_after_s}`` WITHOUT altering the
+        underlying waterfall or the plain ``get_current_price`` contract. ``is_live``
+        is derived from the serving tier + per-symbol freshness + the IBKR data-leg
+        connection — never hardcoded. Existing callers are unaffected.
+        """
+        result = await self.get_current_price(symbol, is_futures)
+        env = build_envelope(
+            value=result.get("last_price"),
+            source=result.get("source"),
+            as_of=self._symbol_last_ts.get(symbol.upper()),
+            stale_after_s=(
+                DEFAULT_STALE_AFTER_S if stale_after_s is None else float(stale_after_s)
+            ),
+            ibkr_data_connected=bool(self.ibkr and self.ibkr.is_connected),
+            now=time.time(),
+        )
+        return env.to_dict()
 
     async def _get_current_price_impl(self, symbol: str, is_futures: bool = False) -> dict:
         """

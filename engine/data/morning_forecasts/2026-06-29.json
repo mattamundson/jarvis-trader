@@ -1,0 +1,114 @@
+{
+  "date": "2026-06-29",
+  "generated_ts": "2026-06-29T14:13:27.188115+00:00",
+  "symbols": {
+    "MES": {
+      "levels": {
+        "symbol": "MES",
+        "prior_close": 7400.0,
+        "prior_high": 7449.25,
+        "prior_low": 7370.5,
+        "pivot": 7406.5833,
+        "r1": 7442.6667,
+        "s1": 7363.9167,
+        "r2": 7485.3333,
+        "s2": 7327.8333,
+        "atr": 94.2246,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          7435.9938,
+          7458.2308,
+          7494.2246
+        ],
+        "targets_down": [
+          7364.0062,
+          7341.7692,
+          7305.7754
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    },
+    "MNQ": {
+      "levels": {
+        "symbol": "MNQ",
+        "prior_close": 29292.75,
+        "prior_high": 29717.25,
+        "prior_low": 29182.0,
+        "pivot": 29397.3333,
+        "r1": 29612.6667,
+        "s1": 29077.4167,
+        "r2": 29932.5833,
+        "s2": 28862.0833,
+        "atr": 666.2797,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          29547.2688,
+          29704.5109,
+          29959.0297
+        ],
+        "targets_down": [
+          29038.2312,
+          28880.9891,
+          28626.4703
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    },
+    "MGC": {
+      "levels": {
+        "symbol": "MGC",
+        "prior_close": 4025.8,
+        "prior_high": 4025.8,
+        "prior_low": 4025.8,
+        "pivot": 4025.8,
+        "r1": 4025.8,
+        "s1": 4025.8,
+        "r2": 4025.8,
+        "s2": 4025.8,
+        "atr": 88.3808,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          4059.5615,
+          4080.4193,
+          4114.1808
+        ],
+        "targets_down": [
+          3992.0385,
+          3971.1807,
+          3937.4192
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    }
+  }
+}

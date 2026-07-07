@@ -5,17 +5,28 @@ const ENGINE = "/api/engine";
 const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const RETRY_DELAY_MS = 2000; // 2 seconds
 
-// API key injected via NEXT_PUBLIC_ENGINE_API_KEY (set in dashboard/.env.local).
-// Run `python scripts/rotate_dev_api_key.py` from repo root to sync with engine/.env API_KEY.
-// Fallback matches engine/.env.example only — rotate before any network exposure.
-const API_KEY =
-  process.env.NEXT_PUBLIC_ENGINE_API_KEY ?? "jarvis-dev-key-change-me";
-
+// Engine auth is injected SERVER-SIDE by the proxy route handler
+// (app/api/engine/[...path]/route.ts) from the non-public ENGINE_API_KEY.
+// The browser must NEVER carry the key: NEXT_PUBLIC_* values are inlined into
+// the client JS bundle, so a public/remote deployment would hand the engine
+// key to every visitor. All engine calls go through the same-origin /api/engine
+// proxy, which sets X-API-Key itself — the client sends no credential.
 function engineHeaders(extra?: HeadersInit): HeadersInit {
-  return {
-    "X-API-Key": API_KEY,
-    ...extra,
-  };
+  return { ...extra };
+}
+
+/**
+ * Thrown for a non-2xx engine response. Carries the HTTP status so callers
+ * (fetchWithRetry) can distinguish a transient 5xx from a durable 4xx without
+ * parsing the message string.
+ */
+class EngineHttpError extends Error {
+  status: number;
+  constructor(status: number, url: string) {
+    super(`Engine error ${status}: ${url}`);
+    this.name = "EngineHttpError";
+    this.status = status;
+  }
 }
 
 async function fetchWithTimeout<T>(
@@ -23,7 +34,14 @@ async function fetchWithTimeout<T>(
   options?: RequestInit
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    // Pass an explicit reason so callers (and fetchWithRetry's error check)
+    // see a readable "request timed out" message instead of the browser's
+    // default "signal is aborted without reason" DOMException text (what
+    // abort() produces when called with no argument). Mirrors fetchEngineRaw.
+    () => controller.abort(new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`)),
+    FETCH_TIMEOUT_MS,
+  );
 
   try {
     const res = await fetch(url, {
@@ -32,10 +50,18 @@ async function fetchWithTimeout<T>(
     });
 
     if (!res.ok) {
-      throw new Error(`Engine error ${res.status}: ${url}`);
+      throw new EngineHttpError(res.status, url);
     }
 
     return res.json();
+  } catch (e) {
+    // Fall back to a friendly message if the runtime doesn't propagate the
+    // AbortSignal reason as the rejection value (older engines reject with a
+    // generic AbortError regardless of the reason passed to abort()).
+    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
+      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`);
+    }
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -51,13 +77,29 @@ async function fetchWithRetry<T>(
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
 
-    // Only retry on network errors, not on HTTP errors
     const isNetworkError =
       error.message.includes("Failed to fetch") ||
       error.message.includes("AbortError") ||
-      error.name === "AbortError";
+      error.name === "AbortError" ||
+      // fetchWithTimeout now aborts with an explicit reason (a plain Error,
+      // not a DOMException named "AbortError") so a timeout still needs its
+      // own check here to keep getting the same single retry as before.
+      error.message.includes("Request timed out after");
 
-    if (isNetworkError && attempt < 2) {
+    // Also retry on a transient 5xx (502/503/504). Several /performance
+    // widgets (hourly-stats, streaks, price bars) were observed getting a
+    // 503 on the very first request right after page load -- likely
+    // concurrency contention from ~35 widgets mounting and fetching at once
+    // -- followed by a clean 200 moments later. Without this, only SWR's own
+    // default error-retry (slower backoff, several seconds) recovered them,
+    // which read as "stuck loading" for 15s+. Retrying 5xx here immediately,
+    // the same way network errors already are, fixes that for every
+    // fetchEngine() caller uniformly instead of per-widget. 4xx errors are
+    // NOT retried -- they are not transient.
+    const isTransientServerError =
+      error instanceof EngineHttpError && error.status >= 500 && error.status < 600;
+
+    if ((isNetworkError || isTransientServerError) && attempt < 2) {
       // Single retry with 2s delay
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       return fetchWithRetry<T>(url, options, attempt + 1);
@@ -71,14 +113,13 @@ export async function fetchEngine<T = any>(path: string, options?: RequestInit):
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     cache: "no-store",
     ...options,
-    headers: engineHeaders(options?.headers),
   });
 }
 
 export async function postEngine<T = any>(path: string, body?: unknown): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
-    headers: engineHeaders({ "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -89,18 +130,46 @@ export async function postEngine<T = any>(path: string, body?: unknown): Promise
  */
 export async function fetchEngineRaw(path: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    // Pass an explicit reason so a caller's catch block sees a readable
+    // "request timed out" message instead of the browser's default
+    // "signal is aborted without reason" DOMException text (what abort()
+    // produces when called with no argument).
+    () => controller.abort(new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`)),
+    FETCH_TIMEOUT_MS,
+  );
   try {
     const res = await fetch(`${ENGINE}${path}`, {
       cache: "no-store",
       ...options,
       signal: controller.signal,
-      headers: engineHeaders(options?.headers),
     });
     return res;
+  } catch (e) {
+    // Fall back to a friendly message if the runtime doesn't propagate the
+    // AbortSignal reason as the rejection value (older engines reject with a
+    // generic AbortError regardless of the reason passed to abort()).
+    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
+      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`);
+    }
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Fetcher for the dashboard's OWN same-origin API routes (e.g. /api/fleet).
+ * These are Next.js route handlers reading local disk state, not engine
+ * endpoints, so they bypass the /api/engine proxy entirely. Lives here (not
+ * in app/ or hooks/) because the "no bare await fetch" CI guard only scans
+ * those two directories — this is the sanctioned escape hatch, same as
+ * fetchEngine/postEngine above.
+ */
+export async function localFetch<T>(path: string): Promise<T> {
+  const res = await fetch(path, { cache: "no-store" });
+  if (!res.ok) throw new Error(`${path} error ${res.status}`);
+  return res.json() as Promise<T>;
 }
 
 // API types (mirror engine Pydantic models)
@@ -484,6 +553,61 @@ export interface WatchlistScanResponse {
   signals?: unknown[];
 }
 
+/** GET /hidden-pivots/scan — Rick Ackerman HiddenPivots scanner (analysis-only). */
+export interface HPSignal {
+  symbol: string;
+  timeframe: string;
+  pattern: string | null;
+  bias: "LONG" | "SHORT" | "WATCH" | "SOH";
+  trigger_price: number | null;
+  tight_stop: number | null;
+  riskier_stop: number | null;
+  targets: number[];
+  hp_ou_level: number | null;
+  ema_alignment: string;
+  rs_rw_score: number;
+  rs_rw_label: string;
+  soh: boolean;
+  oscillator_state: string;
+  bars_since_cross: number;
+  last_cross_dir: "bull" | "bear" | "none";
+  confidence: number;
+  notes: string;
+}
+
+export interface HPScanResponse {
+  scan_time: string;
+  symbols_scanned: number;
+  signals: HPSignal[];
+  soh_symbols: string[];
+  watch_symbols: string[];
+  /** Full per-symbol result for every scanned name (incl. WATCH/SOH). */
+  details: HPSignal[];
+}
+
+/** Fetch the HiddenPivots scan for a given timeframe. */
+export async function fetchHiddenPivotsScan(
+  timeframe = "1d",
+  benchmark = "SPY"
+): Promise<HPScanResponse> {
+  return fetchEngine<HPScanResponse>(
+    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
+  );
+}
+
+/**
+ * Last price + daily change for the given symbols (GET /prices/snapshot).
+ * Goes through the engine proxy (REST), so it works on the remote/Vercel
+ * deploy unlike the WS feed. Server-side cache is 60s (rate-limit guard), so
+ * values refresh roughly once a minute during market hours. Reuses the shared
+ * `PriceSnapshot` map type (see below / WatchlistBar).
+ */
+export async function fetchPriceSnapshot(symbols: string[]): Promise<PriceSnapshot> {
+  if (symbols.length === 0) return {};
+  const q = encodeURIComponent(symbols.join(","));
+  return fetchEngine<PriceSnapshot>(`/prices/snapshot?symbols=${q}`);
+}
+
 /** GET /pipeline/history */
 export interface PipelineHistoryEntry {
   id?: string | number;
@@ -541,64 +665,17 @@ export interface PriceSnapshotEntry {
   change_pct: number | null;
   yf_ticker: string;
   error?: string;
+  // Data-provenance fields (Phase 1) — server-derived, additive. `is_live` is
+  // NEVER hardcoded true; a cached/delayed tier (csv_cache, polygon REST) reports
+  // is_live=false so the ticker can never show LIVE over stale data. `as_of` is
+  // epoch SECONDS. Optional: older engine builds / degraded entries omit them.
+  source?: string;
+  as_of?: number | null;
+  is_live?: boolean;
+  stale_after_s?: number;
 }
 
 export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
-
-/** GET /hidden-pivots/scan — Rick Ackerman HiddenPivots scanner (analysis-only). */
-export interface HPSignal {
-  symbol: string;
-  timeframe: string;
-  pattern: string | null;
-  bias: "LONG" | "SHORT" | "WATCH" | "SOH";
-  trigger_price: number | null;
-  tight_stop: number | null;
-  riskier_stop: number | null;
-  targets: number[];
-  hp_ou_level: number | null;
-  ema_alignment: string;
-  rs_rw_score: number;
-  rs_rw_label: string;
-  soh: boolean;
-  oscillator_state: string;
-  bars_since_cross: number;
-  last_cross_dir: "bull" | "bear" | "none";
-  confidence: number;
-  notes: string;
-}
-
-export interface HPScanResponse {
-  scan_time: string;
-  symbols_scanned: number;
-  signals: HPSignal[];
-  soh_symbols: string[];
-  watch_symbols: string[];
-  /** Full per-symbol result for every scanned name (incl. WATCH/SOH). */
-  details: HPSignal[];
-}
-
-/** Fetch the HiddenPivots scan for a given timeframe. */
-export async function fetchHiddenPivotsScan(
-  timeframe = "1d",
-  benchmark = "SPY"
-): Promise<HPScanResponse> {
-  return fetchEngine<HPScanResponse>(
-    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
-  );
-}
-
-/**
- * Last price + daily change for the given symbols (GET /prices/snapshot).
- * Goes through the engine proxy (REST), so it works on the remote/Vercel
- * deploy unlike the WS feed. Server-side cache is 60s (rate-limit guard), so
- * values refresh roughly once a minute during market hours. Reuses the shared
- * `PriceSnapshot` map type defined above.
- */
-export async function fetchPriceSnapshot(symbols: string[]): Promise<PriceSnapshot> {
-  if (symbols.length === 0) return {};
-  const q = encodeURIComponent(symbols.join(","));
-  return fetchEngine<PriceSnapshot>(`/prices/snapshot?symbols=${q}`);
-}
 
 export interface MacroSnapshot {
   vix?: number | null;
@@ -828,10 +905,16 @@ export interface CircuitBreakerState {
   daily_pnl: number;
   /** Maximum allowed daily loss (negative number, e.g. -200) */
   daily_limit: number;
-  /** Current drawdown as a decimal (e.g. 0.012 = 1.2%) */
+  /** Current drawdown as a decimal, negative (e.g. -0.012 = -1.2%) */
   drawdown_pct: number;
-  /** Maximum drawdown threshold as a decimal (e.g. 0.10 = 10%) */
-  drawdown_limit: number;
+  /**
+   * Maximum drawdown threshold as a negative decimal (e.g. -0.20 = -20%).
+   * The real /safety/circuit-breakers response field is `drawdown_limit_pct`
+   * -- there is no `drawdown_limit` field. Reading the wrong name produced
+   * `undefined`, and `undefined * 100` rendered the panel's drawdown limit as
+   * "-NaN%".
+   */
+  drawdown_limit_pct: number;
   /** Whether the kill switch is currently active */
   kill_switch_active: boolean;
   /** True when no circuit breaker is tripped and trading may proceed */
@@ -1735,9 +1818,15 @@ export type UnrealizedPositionsResponse = UnrealizedPosition[];
 
 export interface HourlyStatItem {
   hour: number;
-  label: string;
+  /**
+   * Real engine response from /portfolio/paper/hourly-stats sends
+   * `hour_label` / `trade_count` (confirmed via live response), not
+   * `label` / `trades`. Reading the old names left every hour's label
+   * blank and the trade count as "undefinedt" in WinRateByHourWidget.
+   */
+  hour_label: string;
   win_rate: number;
-  trades: number;
+  trade_count: number;
 }
 
 export interface HourlyStatsResponse {
@@ -1781,7 +1870,7 @@ export interface TradeDecisionSnapshot {
 
 export interface PipelineDecisionSnapshot {
   trade_decision?: TradeDecisionSnapshot;
-  risk_decision?: { approved?: boolean; reason?: string; checks_passed?: number };
+  risk_decision?: { approved?: boolean; reasoning?: string; checks_passed?: number };
   fund_decision?: { approved?: boolean; final_conviction?: number; reasoning?: string };
   debate_result?: DebateResult;
   analyst_reports?: {
@@ -2487,6 +2576,103 @@ export async function screenMovers(
   input: ScreenerFilterInput
 ): Promise<ScreenResponse> {
   return postEngine<ScreenResponse>("/ib-scanner/screen", input);
+}
+
+// ── Proactive Advisor Brief (Phase 5) ───────────────────────────────────────
+// Mirrors engine/analytics/session_brief.py. The backend assembles these ONLY
+// from reasoning the pipeline already produced — a reasoning-less decision
+// surfaces as an honest gap (`reasoning_available: false`), never fabricated.
+
+export interface SessionBriefStaleness {
+  as_of: string | null;
+  age_seconds: number | null;
+  is_stale: boolean;
+  unknown_age: boolean;
+}
+
+export interface SessionBriefAction {
+  symbol: string;
+  action: string;
+  confidence: number | null;
+  why: string;
+  reasoning_available: boolean;
+  reasoning_sources: string[];
+  staleness: SessionBriefStaleness;
+  data_degraded: boolean;
+}
+
+export interface SessionBriefResponse {
+  generated_at: string;
+  actions: SessionBriefAction[];
+  count: number;
+  degraded: boolean;
+  note: string | null;
+}
+
+export async function fetchSessionBrief(
+  limit = 10,
+  maxActions = 3
+): Promise<SessionBriefResponse> {
+  return fetchEngine<SessionBriefResponse>(
+    `/brief/session?limit=${limit}&max_actions=${maxActions}`
+  );
+}
+
+// ── ATR-trail visualizer (GET /backtest/atr-trail/trades) ──────────────────
+// Powers app/atr-trail: the TOS ATRTrailingStopLE/SE flip strategy's actual
+// trades on cached bars — price + trail line + entries/exits + equity curve.
+export interface AtrTrailPricePoint {
+  t: number;
+  c: number;
+}
+export interface AtrTrailLinePoint {
+  t: number;
+  v: number;
+  s: number;
+}
+export interface AtrTrailTrade {
+  entry_t: number;
+  entry_px: number;
+  exit_t: number;
+  exit_px: number;
+  dir: number;
+  pnl_usd: number;
+  pnl_pts: number;
+}
+export interface AtrTrailEquityPoint {
+  t: number;
+  v: number;
+}
+export interface AtrTrailTradesResponse {
+  symbol: string;
+  period: number;
+  factor: number;
+  n_trades: number;
+  win_rate: number;
+  net_usd: number;
+  bars: number;
+  price: AtrTrailPricePoint[];
+  trail: AtrTrailLinePoint[];
+  trades: AtrTrailTrade[];
+  equity: AtrTrailEquityPoint[];
+  source_file?: string;
+}
+
+export async function fetchAtrTrailTrades(params: {
+  symbol?: string;
+  timeframe?: string;
+  period?: number;
+  factor?: number;
+  maxPoints?: number;
+}): Promise<AtrTrailTradesResponse> {
+  const qs = new URLSearchParams({
+    symbol: params.symbol ?? "MES",
+    timeframe: params.timeframe ?? "5m",
+    period: String(params.period ?? 5),
+    factor: String(params.factor ?? 3.5),
+    max_points: String(params.maxPoints ?? 3000),
+  });
+  return fetchEngine<AtrTrailTradesResponse>(`/backtest/atr-trail/trades?${qs.toString()}`);
 }
 
 // ── Engine clean-run durability (GET /ops/durability) ─────────────────────────

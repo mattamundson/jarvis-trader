@@ -5,6 +5,7 @@ Endpoints for monitoring system health, running preflight checks, and getting
 status information about all JARVIS TRADER subsystems.
 """
 
+import asyncio
 import logging
 import os
 import socket
@@ -61,6 +62,59 @@ _brier_cache: dict = {"checked_at": 0.0, "value": None}
 # 2026-06-01 (trade #178). Cached 30s like the TV-CDP probe so /health stays cheap.
 _IBGW_CACHE_TTL_SEC = 30.0
 _ibgw_health_cache: dict = {"checked_at": 0.0, "alive": False, "port": None}
+
+# ---------------------------------------------------------------------------
+# /health single-flight snapshot cache (resilience under load spikes).
+#
+# The sub-diagnostics above are each 30s-cached, but `_health_inner` still makes
+# several *uncached* synchronous SQLite calls (db_manager.health_check,
+# get_pending_approval_stats, futures-sentiment staleness) inside an async
+# handler. Those block the event loop. When the dashboard polls /health many
+# times per second AND the box is under contention (multiple engines/sessions
+# hammering the 325MB SQLite DB), N concurrent blocking computes pile up on the
+# single event-loop thread and latency compounds — a warm 20ms call can spike to
+# 5-12s. port_guardian probes /health with an 8s timeout; a spike past that trips
+# a force-restart, which adds load — a self-amplifying cascade (4 such restarts
+# on 2026-07-06 22:11-22:40 UTC).
+#
+# Single-flight fix: at most ONE recompute per TTL window regardless of request
+# volume. A polling storm collapses to one blocking compute/sec instead of N, so
+# the event-loop pileup cannot form. Response shape is byte-identical; the only
+# effect is `timestamp`/`uptime_seconds` may be up to TTL seconds stale, which is
+# well within a health endpoint's tolerance. TTL is env-tunable; 0 disables the
+# cache (always live) for callers that need it. The FIRST call after boot is
+# always live (cold cache), so port_guardian readiness stays truthful.
+# ---------------------------------------------------------------------------
+_HEALTH_SNAPSHOT_TTL_SEC = float(os.getenv("HEALTH_SNAPSHOT_TTL_SEC", "1.0"))
+_health_snapshot: dict = {"computed_at": 0.0, "payload": None}
+_health_refresh_lock = asyncio.Lock()
+
+
+async def _health_cached() -> dict:
+    """Single-flight wrapper around _health_inner().
+
+    Serves a cached payload if computed within _HEALTH_SNAPSHOT_TTL_SEC; otherwise
+    recomputes under a lock so concurrent callers share one compute rather than
+    each triggering their own blocking DB pass. TTL<=0 always recomputes.
+    """
+    if _HEALTH_SNAPSHOT_TTL_SEC <= 0:
+        return await _health_inner()
+
+    now = time.monotonic()
+    payload = _health_snapshot["payload"]
+    if payload is not None and (now - _health_snapshot["computed_at"]) < _HEALTH_SNAPSHOT_TTL_SEC:
+        return payload
+
+    async with _health_refresh_lock:
+        # Double-check: a peer coroutine may have refreshed while we waited.
+        now2 = time.monotonic()
+        payload = _health_snapshot["payload"]
+        if payload is not None and (now2 - _health_snapshot["computed_at"]) < _HEALTH_SNAPSHOT_TTL_SEC:
+            return payload
+        fresh = await _health_inner()
+        _health_snapshot["payload"] = fresh
+        _health_snapshot["computed_at"] = time.monotonic()
+        return fresh
 
 
 def _check_ibgateway_alive() -> tuple[bool, int]:
@@ -328,7 +382,7 @@ async def get_data_integrity():
 async def health():
     """Quick health check endpoint"""
     try:
-        return await _health_inner()
+        return await _health_cached()
     except Exception as exc:
         logger.exception("Health endpoint error: %s", exc)
         raise HTTPException(status_code=503, detail=f"Health check failed: {exc}") from exc
@@ -340,7 +394,11 @@ async def _health_inner() -> dict:
     db_ok = False
     try:
         if db_manager:
-            db_manager.health_check()
+            # Cheap liveness (SELECT 1), not the 8-COUNT(*) health_check whose counts
+            # /health discards — and run it off the event loop so even the once-per-
+            # TTL cache-miss recompute can't block the async loop under contention.
+            # DatabaseManager opens a fresh connection per call, so to_thread is safe.
+            await asyncio.to_thread(db_manager.ping)
             db_ok = True
     except Exception:
         pass
@@ -375,13 +433,28 @@ async def _health_inner() -> dict:
     tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
     ibgateway_alive, ibgateway_port = _check_ibgateway_alive()
 
+    # Execution-connector honesty. `ibkr_execution_connected` comes from the
+    # execution connector's *cached* `is_connected` boolean (execution/
+    # ib_gateway_connector.py `_connected`) which is NOT reconciled against the
+    # live port probe — in paper mode it stays True even after the Gateway logs
+    # out, so /health can report execution-ready while `ibgateway_alive=false`.
+    # That stale True is the 2026-06-01 stop-enforcement-believed-connected class.
+    # Surface a reconciled truth (AND the live port probe) plus an explicit stale
+    # flag so consumers (stop enforcement, dashboard trust-pane) key off verified
+    # state, not the cached belief. Raw field kept for back-compat. Paging on a
+    # logged-out Gateway is already handled by IBDataWatchdog's notify_ib_disconnect;
+    # this only stops /health from *lying*, it does not re-alert.
+    _exec_connected_raw = bool(ib_health.get("execution_connected", False))
+    execution_connected_verified = _exec_connected_raw and bool(ibgateway_alive)
+    ib_execution_stale = _exec_connected_raw and not bool(ibgateway_alive)
+
     # Approval-queue visibility: a candidate that queues but is never approved
     # (e.g. because outbound notifications are silently failing) stalls the whole
     # live-fill path. Surface count + oldest age so a stuck queue is observable.
     pending_approvals = {"count": 0, "oldest_age_min": None}
     try:
         if db_manager:
-            stats = db_manager.get_pending_approval_stats()
+            stats = await asyncio.to_thread(db_manager.get_pending_approval_stats)
             oldest = stats.get("oldest_created_at")
             age_min = None
             if oldest:
@@ -447,6 +520,11 @@ async def _health_inner() -> dict:
         "database": "connected" if db_ok else "error",
         "ibkr_connected": ib_health.get("status") == "connected",
         "ibkr_execution_connected": ib_health.get("execution_connected", False),
+        # Reconciled against the live port probe — the field consumers should trust.
+        "execution_connected_verified": execution_connected_verified,
+        # True when the connector believes it's connected but the Gateway port is
+        # dead (logged out) — a silent stop-enforcement hazard made observable.
+        "ib_execution_stale": ib_execution_stale,
         "ibkr_data_connected": ib_health.get("data_connected", False),
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,

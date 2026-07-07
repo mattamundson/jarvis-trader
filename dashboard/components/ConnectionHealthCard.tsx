@@ -45,10 +45,8 @@ export function ConnectionHealthCard() {
 
   const fetchAll = useCallback(async () => {
     const [healthResult, ibResult] = await Promise.allSettled([
-      fetchEngine(`/health`),
-      fetchEngine(`/ib/connection-test`).then(
-        (r) => r.json() as Promise<IBConnectionTestResponse>
-      ),
+      fetchEngine<HealthResponse>(`/health`),
+      fetchEngine<IBConnectionTestResponse>(`/ib/connection-test`),
     ]);
 
     // Engine health

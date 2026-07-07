@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "tests/Provenance.test.ts",
+    "lib/provenance.ts"
+  ]
+}

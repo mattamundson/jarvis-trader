@@ -8,13 +8,19 @@ import { fetchEngine } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Field names match SafetyLayer.check_circuit_breakers() / GET /safety/circuit-breakers
+// exactly (engine/risk/safety_layer.py:2027-2040). The previous interface read
+// daily_loss_limit/max_drawdown_pct/current_drawdown_pct/drawdown_remaining_pct/
+// daily_remaining -- none of which the API returns -- so every field silently
+// resolved to `undefined` and fell back to a hardcoded default below, making this
+// widget always display a fabricated "5% limit / 0% current / OK" regardless of
+// real risk state. daily_remaining and drawdown_remaining_pct aren't in the API
+// response at all; they're derived client-side from the real fields.
 interface CircuitBreakerData {
-  daily_loss_limit?: number;
+  daily_limit?: number; // negative $, e.g. -500
   daily_pnl?: number;
-  daily_remaining?: number;
-  max_drawdown_pct?: number;
-  current_drawdown_pct?: number;
-  drawdown_remaining_pct?: number;
+  drawdown_limit_pct?: number; // negative fraction, e.g. -0.10
+  drawdown_pct?: number; // negative fraction, current drawdown from peak
   kill_switch_active?: boolean;
   daily_limit_breached?: boolean;
   drawdown_breached?: boolean;
@@ -138,13 +144,18 @@ export function RiskStatusWidget() {
   const drawdownBreached = data.drawdown_breached ?? false;
   const anyBreached = dailyLimitBreached || drawdownBreached || killSwitchActive;
 
-  const dailyLossLimit = data.daily_loss_limit ?? 0;       // e.g. -500
-  const dailyPnl = data.daily_pnl ?? 0;                   // e.g. -123.50
-  const dailyRemaining = data.daily_remaining ?? 0;        // e.g. 376.50
+  const dailyLossLimit = data.daily_limit ?? 0;            // e.g. -500
+  const dailyPnl = data.daily_pnl ?? 0;                    // e.g. -123.50
+  // Not returned by the API -- derive from the real fields.
+  const dailyRemaining = Math.max(0, Math.abs(dailyLossLimit) - Math.max(0, -dailyPnl));
 
-  const maxDrawdownPct = data.max_drawdown_pct ?? 0.05;
-  const currentDrawdownPct = data.current_drawdown_pct ?? 0;
-  const drawdownRemainingPct = data.drawdown_remaining_pct ?? 0;
+  // Both drawdown_limit_pct and drawdown_pct are negative-signed per SafetyLayer's
+  // docstring; take the magnitude to keep the positive-fraction convention this
+  // widget's formatting/color logic already assumes.
+  const maxDrawdownPct = Math.abs(data.drawdown_limit_pct ?? -0.05);
+  const currentDrawdownPct = Math.abs(data.drawdown_pct ?? 0);
+  // Not returned by the API -- derive from the real fields.
+  const drawdownRemainingPct = Math.max(0, maxDrawdownPct - currentDrawdownPct);
 
   // Daily loss used pct: how much of the daily limit has been consumed (0–100)
   const dailyUsedPct =

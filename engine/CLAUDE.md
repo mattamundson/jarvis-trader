@@ -73,5 +73,5 @@ symbol remaining in this set with HTTP 409.
 
 Flip-to-active criteria (remove from `VALIDATION_ONLY_INSTRUMENTS` when ALL met):
 1. p_positive_edge >= 0.6 on a fresh rolling walk-forward run (ALT path)
-2. Gate v2 ALT PASS (`mc_95th_dd<=7%`, `dsr>=0.30`, `rolling_wfo=MODERATE+`, `fixed_params_min_pf>=1.2`)
+2. Gate v2 ALT PASS (`mc_95th_dd<=4%`, `dsr>=0.30`, `rolling_wfo=MODERATE+`, `fixed_params_min_pf>=1.2`)
 3. Explicit Tier 3 authorization from Amo

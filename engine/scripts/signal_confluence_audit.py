@@ -247,7 +247,12 @@ def _grid_trend(df_train):
         if fast >= slow:
             continue
         try:
-            m = _run_bt(generate_sma_trend_signals(df_train.copy(), fast=fast, slow=slow, atr_trail_mult=trail), trail)
+            m = _run_bt(
+                generate_sma_trend_signals(
+                    df_train.copy(), fast=fast, slow=slow, atr_trail_mult=trail
+                ),
+                trail,
+            )
         except Exception:  # noqa: BLE001
             continue
         if m["n_trades"] >= 5 and m["pf"] > best[0]:
@@ -258,7 +263,9 @@ def _grid_trend(df_train):
 def _apply_trend(df, params):
     from backtest.trend_signals import generate_sma_trend_signals
 
-    return generate_sma_trend_signals(df, fast=params["fast"], slow=params["slow"], atr_trail_mult=params["atr_trail"])
+    return generate_sma_trend_signals(
+        df, fast=params["fast"], slow=params["slow"], atr_trail_mult=params["atr_trail"]
+    )
 
 
 def _grid_composite(df_train):
@@ -387,7 +394,7 @@ DIAGNOSE_PARAMS = {
     "composite": {"atr_trail": 2.0},
     "tpo": {"enter": 0.33, "stop_mult": 1.5, "atr_trail": 1.5},
     "saty": {"target_ratio": 1.5, "atr_trail": 2.0},
-    "atrtrail": {"factor": 3.5},
+    "atrtrail": {"factor": 3.5, "atr_trail": 2.0},
 }
 
 
@@ -495,8 +502,7 @@ def format_diagnose(rows: list[dict]) -> str:
 def rank_arms(arms: list[dict], min_trades: int = MIN_OOS_TRADES) -> list[dict]:
     """Return ok arms with enough OOS trades, sorted by OOS PF (desc), rank added."""
     eligible = [
-        a for a in arms
-        if a.get("status") == "ok" and int(a.get("oos_trades", 0)) >= min_trades
+        a for a in arms if a.get("status") == "ok" and int(a.get("oos_trades", 0)) >= min_trades
     ]
     ranked = sorted(eligible, key=lambda a: float(a.get("oos_pf", 0.0)), reverse=True)
     for i, a in enumerate(ranked, start=1):
@@ -568,8 +574,14 @@ def build_verdict(
         "baseline_oos_pf": base_pf,
         "best_arm": best["arm"] if best else None,
         "ranked": [
-            {"rank": a["rank"], "arm": a["arm"], "oos_pf": a["oos_pf"],
-             "oos_sharpe": a.get("oos_sharpe"), "oos_trades": a["oos_trades"], "wfe": a.get("wfe")}
+            {
+                "rank": a["rank"],
+                "arm": a["arm"],
+                "oos_pf": a["oos_pf"],
+                "oos_sharpe": a.get("oos_sharpe"),
+                "oos_trades": a["oos_trades"],
+                "wfe": a.get("wfe"),
+            }
             for a in ranked
         ],
         "arms_raw": arms,
@@ -611,7 +623,9 @@ def format_report(verdict: dict) -> str:
         lines.append("")
         lines.append("Skipped arms:")
         for a in skipped:
-            lines.append(f"  {a['arm']}: {a['status']}{' — ' + a['error'] if a.get('error') else ''}")
+            lines.append(
+                f"  {a['arm']}: {a['status']}{' — ' + a['error'] if a.get('error') else ''}"
+            )
     lines.append("")
     lines.append("Caveats:")
     for c in verdict["caveats"]:
@@ -629,7 +643,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Signal Confluence Audit — JARVIS TRADER")
     parser.add_argument("--engine-url", default=DEFAULT_ENGINE_URL)
     parser.add_argument("--json", help="Write the full verdict JSON to this path")
-    parser.add_argument("--skip-backtest", action="store_true", help="corey-IC only (no data needed)")
+    parser.add_argument(
+        "--skip-backtest", action="store_true", help="corey-IC only (no data needed)"
+    )
     parser.add_argument(
         "--diagnose",
         action="store_true",

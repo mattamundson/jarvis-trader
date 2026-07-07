@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useEngineStatus } from "@/hooks/useEngineStatus";
+import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 
 const DISMISS_DURATION_MS = 60_000;
 
@@ -30,10 +31,6 @@ export function EngineOfflineBanner() {
   function handleDismiss() {
     setDismissedUntil(Date.now() + DISMISS_DURATION_MS);
   }
-
-  const checkedLabel = lastChecked
-    ? lastChecked.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    : null;
 
   return (
     <div
@@ -64,12 +61,9 @@ export function EngineOfflineBanner() {
           </span>
         </p>
 
-        {checkedLabel && (
-          <span
-            className="shrink-0 font-mono text-xs hidden sm:inline"
-            style={{ color: "#7a5c00" }}
-          >
-            Last checked: {checkedLabel}
+        {lastChecked && (
+          <span className="shrink-0 hidden sm:inline">
+            <StalenessIndicator lastUpdated={lastChecked} />
           </span>
         )}
       </div>

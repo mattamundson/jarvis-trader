@@ -19,7 +19,23 @@ const nextConfig: NextConfig = {
       "http://127.0.0.1:8010"
     ).replace(/\/$/, "");
 
+    // /ws/pipeline requires api_key auth (engine/routers/pipeline_ws_router.py).
+    // Inject the server-only ENGINE_API_KEY here so a same-origin client never
+    // has to carry it — mirrors the header injection in
+    // app/api/engine/[...path]/route.ts. Must precede the general /ws/:path*
+    // rule below (rewrites are matched in array order).
+    const engineApiKey = process.env.ENGINE_API_KEY;
+    const pipelineWsRewrite = engineApiKey
+      ? [
+          {
+            source: "/ws/pipeline",
+            destination: `${engineUrl}/ws/pipeline?api_key=${encodeURIComponent(engineApiKey)}`,
+          },
+        ]
+      : [];
+
     return [
+      ...pipelineWsRewrite,
       {
         source: "/ws/:path*",
         destination: `${engineUrl}/ws/:path*`,

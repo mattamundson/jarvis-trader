@@ -1,0 +1,54 @@
+---
+description: jarvis-trader dashboard conventions (Next.js App Router). Applies to all dashboard code.
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+
+# jarvis-trader dashboard — conventions for Cursor
+
+This is the Next.js 15 / React 19 dashboard for the JARVIS trading engine. It is a
+**display + control surface only** — it never makes trading-safety decisions. All
+safety/risk logic lives in the Python engine (`engine/risk/`), behind the API.
+
+## Dev loop (read this first)
+- **Package manager: `pnpm` only.** System `npm` is broken on this machine.
+- **Hot-reload dev server:** `pnpm dev:cursor` runs on **port 3011**. Edit a file and
+  preview at `http://127.0.0.1:3011` — instant. Do NOT use `pnpm dev` (port 3010) — that
+  collides with the pm2 production dashboard.
+- The pm2 **production** dashboard on **3010** runs `next start` (a static build). It does
+  **not** hot-reload. Changes only appear there after `pnpm build` + `pm2 restart jarvis-dashboard`.
+- **Before declaring done:** `pnpm typecheck` (runs `tsc --noEmit`) must pass. For a full
+  check, `pnpm build` must succeed (it produces ~40 routes, 0 TS errors).
+
+## Engine API access — non-negotiable
+- **All engine calls go through `fetchEngine` / `postEngine` from `@/lib/api`.**
+  Never use a bare `await fetch(...)`. Never hardcode `http://localhost:8010`,
+  `127.0.0.1:8010`, or `:3010` in a component — the proxy + API key live in `lib/api.ts`
+  and `next.config.ts` rewrites (`/api/engine` -> engine).
+- Define response interfaces in `lib/api.ts` and import them. Do not redefine types locally.
+- **No `any`.** TypeScript strict mode is on.
+
+## Data fetching
+- Use `useSWR` for polling/cached data (pass a `fetcher` that calls `fetchEngine`).
+- Use `useState` + `useEffect` only for one-off fetches.
+
+## Components & rendering
+- **App Router:** default to Server Components. Add `"use client"` only when you need
+  interactivity or browser APIs, and push the boundary as far down the tree as possible.
+- Navigation lives in `components/Sidebar.tsx` (`NAV_GROUPS`). Add new pages there.
+- New routes go under `app/<route>/page.tsx`.
+
+## Styling
+- **Tailwind only.** No inline styles, no CSS modules, no component libs beyond the
+  existing `components/ui/*` (shadcn-style) and Radix primitives already in use.
+- Use semantic tokens: `bg-background`, `bg-card`, `border-border`, `text-foreground`,
+  `text-muted-foreground`, `text-accent`, and the trading colors `text-bull` / `text-bear`
+  / `text-warn` / `text-info`.
+- **Badges: use `<Badge variant=...>` from `@/components/ui/badge` with the strict set
+  only:** `bull | bear | warn | info | neutral` (plus `live | static` for data-provenance
+  honesty). Do not invent ad-hoc badge colors.
+
+## General
+- No emojis in code or comments.
+- Conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`. One change per commit.
+- Never commit secrets. `dashboard/.env.local` holds the engine API key and is gitignored.
