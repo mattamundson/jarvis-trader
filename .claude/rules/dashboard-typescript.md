@@ -19,7 +19,7 @@ paths:
 - Use `postEngine<ResponseType>('/endpoint', body)` for POST
 
 ## Components
-- Badge variants STRICT: `"bull" | "bear" | "warn" | "info" | "neutral"` — no other values ever
+- Badge variants STRICT: `"bull" | "bear" | "warn" | "info" | "neutral" | "live" | "static"` — no other values ever (`live`/`static` are Trust-Pane data-provenance badges; see `dashboard/components/ui/badge.tsx`)
 - Tailwind for all styling — no inline styles (`style={{}}`)
 - Radix UI primitives where available
 - SWR for client-side data fetching: `useSWR<Type>('/path', fetcher, { refreshInterval })`

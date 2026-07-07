@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { fetchEngine, type FullHealthResponse, type LLMSubsystemHealth } from "@/lib/api";
-
-const POLL_INTERVAL_MS = 15_000;
+import { HEALTH_FULL_KEY, POLL_INTERVAL } from "@/lib/polling-config";
 
 export interface LLMHealth {
   /** The leg actually serving (active_provider, or primary if nothing served yet). */
@@ -30,61 +30,43 @@ const INITIAL: LLMHealth = {
 };
 
 /**
- * Polls /health/full every 15s and reads subsystems.llm (US-004) to report which
- * LLM provider is serving and whether the path is on a fallback leg. Mirrors the
- * abort/cleanup discipline of useIBDataHealth. Fully defensive: an engine without
- * the llm subsystem yields hasSignal=false (no badge), and a fetch error never
+ * SWR-backed poll of `/health/full`, reading subsystems.llm (US-004) to report
+ * which LLM provider is serving and whether the path is on a fallback leg.
+ * Shares the `HEALTH_FULL_KEY` SWR cache key with useIBDataHealth so the two
+ * hooks dedupe onto ONE polled request. Fully defensive: an engine without the
+ * llm subsystem yields hasSignal=false (no badge), and a fetch error never
  * asserts a degrade.
  */
 export function useLLMHealth(): LLMHealth {
-  const [state, setState] = useState<LLMHealth>(INITIAL);
-  const activeController = useRef<AbortController | null>(null);
-  const intervalId = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
-  async function check(): Promise<void> {
-    activeController.current?.abort();
-    const controller = new AbortController();
-    activeController.current = controller;
+  const { data } = useSWR<FullHealthResponse>(
+    HEALTH_FULL_KEY,
+    () => fetchEngine<FullHealthResponse>(HEALTH_FULL_KEY),
+    {
+      refreshInterval: POLL_INTERVAL.HEALTH,
+      shouldRetryOnError: false,
+      errorRetryCount: 0,
+      onSuccess: () => setLastChecked(new Date()),
+      onError: () => setLastChecked(new Date()),
+    },
+  );
 
-    try {
-      const full = await fetchEngine<FullHealthResponse>("/health/full");
-      if (controller.signal.aborted) return;
+  const llm: LLMSubsystemHealth | undefined = data?.subsystems?.llm;
+  const hasNewFields =
+    llm != null && (llm.provider !== undefined || llm.fallback_active !== undefined);
 
-      const llm: LLMSubsystemHealth | undefined = full?.subsystems?.llm;
-      const hasNewFields =
-        llm != null && (llm.provider !== undefined || llm.fallback_active !== undefined);
-
-      if (!hasNewFields) {
-        setState((s) => ({ ...s, lastChecked: new Date(), hasSignal: false }));
-        return;
-      }
-
-      setState({
-        provider: (llm!.provider ?? null) as string | null,
-        fallbackActive: llm!.fallback_active === true,
-        status: (llm!.status ?? null) as string | null,
-        healthy: llm!.healthy ?? null,
-        singleLegWarning: llm!.single_leg_warning === true,
-        lastChecked: new Date(),
-        hasSignal: true,
-      });
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
-      if (controller.signal.aborted) return;
-      // Engine unreachable is the offline banner's job — don't assert a degrade.
-      setState((s) => ({ ...s, lastChecked: new Date() }));
-    }
+  if (!hasNewFields) {
+    return { ...INITIAL, lastChecked };
   }
 
-  useEffect(() => {
-    check();
-    intervalId.current = setInterval(check, POLL_INTERVAL_MS);
-    return () => {
-      activeController.current?.abort();
-      if (intervalId.current !== null) clearInterval(intervalId.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return state;
+  return {
+    provider: (llm!.provider ?? null) as string | null,
+    fallbackActive: llm!.fallback_active === true,
+    status: (llm!.status ?? null) as string | null,
+    healthy: llm!.healthy ?? null,
+    singleLegWarning: llm!.single_leg_warning === true,
+    lastChecked,
+    hasSignal: true,
+  };
 }

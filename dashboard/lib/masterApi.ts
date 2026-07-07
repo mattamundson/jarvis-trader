@@ -44,14 +44,13 @@ export function aggregationBannerState(
   return { degraded: false, reason: "" };
 }
 
-const BASE = process.env.NEXT_PUBLIC_MASTER_API_URL ?? "http://127.0.0.1:8030";
-const KEY = process.env.NEXT_PUBLIC_MASTER_API_KEY ?? "";
+// All master-api calls go through the server-side proxy at
+// app/api/master/[...path]/route.ts — never a direct client fetch to the
+// master-api host. Keeps MASTER_API_URL/MASTER_API_KEY server-only.
+const BASE = "/api/master";
 
 export async function fetchMasterStatus(): Promise<MasterStatus> {
-  const res = await fetch(`${BASE}/master/status`, {
-    headers: { "X-API-Key": KEY },
-    cache: "no-store",
-  });
+  const res = await fetch(`${BASE}/master/status`, { cache: "no-store" });
   if (!res.ok) throw new Error(`master-api ${res.status}`);
   return res.json();
 }
@@ -89,10 +88,7 @@ export type FinancesDetail = {
 };
 
 export async function fetchFinancesDetail(): Promise<FinancesDetail> {
-  const res = await fetch(`${BASE}/master/finances/detail`, {
-    headers: { "X-API-Key": KEY },
-    cache: "no-store",
-  });
+  const res = await fetch(`${BASE}/master/finances/detail`, { cache: "no-store" });
   if (!res.ok) throw new Error(`finances detail ${res.status}`);
   return res.json();
 }
@@ -152,10 +148,7 @@ export type RealizedPnl = {
 };
 
 export async function fetchRealizedPnl(): Promise<RealizedPnl> {
-  const res = await fetch(`${BASE}/master/trading/realized`, {
-    headers: { "X-API-Key": KEY },
-    cache: "no-store",
-  });
+  const res = await fetch(`${BASE}/master/trading/realized`, { cache: "no-store" });
   if (!res.ok) throw new Error(`trading realized ${res.status}`);
   return res.json();
 }
@@ -191,10 +184,7 @@ export type SchedulerRunsResponse = {
 };
 
 export async function fetchMasterSchedulerStatus(): Promise<MasterSchedulerStatus> {
-  const res = await fetch(`${BASE}/master/scheduler/status`, {
-    headers: { "X-API-Key": KEY },
-    cache: "no-store",
-  });
+  const res = await fetch(`${BASE}/master/scheduler/status`, { cache: "no-store" });
   if (!res.ok) throw new Error(`scheduler status ${res.status}`);
   return res.json();
 }
@@ -203,7 +193,6 @@ export async function fetchMasterSchedulerRuns(
   limit = 8,
 ): Promise<SchedulerRunsResponse> {
   const res = await fetch(`${BASE}/master/scheduler/runs?limit=${limit}`, {
-    headers: { "X-API-Key": KEY },
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`scheduler runs ${res.status}`);
@@ -220,7 +209,9 @@ export function streamCommand(
   onEvent: (e: CommandEvent) => void,
   onClose: () => void,
 ): () => void {
-  const es = new EventSource(`${BASE}/master/command/stream?text=${encodeURIComponent(text)}`);
+  const es = new EventSource(
+    `${BASE}/master/command/stream?text=${encodeURIComponent(text)}`,
+  );
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data) as CommandEvent;
     onEvent(ev);
