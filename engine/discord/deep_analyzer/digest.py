@@ -12,9 +12,10 @@ from pathlib import Path
 
 import httpx
 
+from vault.paths import vault_root as _vault_root
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_VAULT_ROOT = Path(os.path.expanduser("~/my-vault"))
 HERMES_BASE = os.getenv("HERMES_BASE_URL", "http://127.0.0.1:8765")
 DM_USER = os.getenv("DEEP_ANALYZER_DM_USER", "amo")
 
@@ -83,7 +84,8 @@ def _render_page(rows: list[dict]) -> str:
 
 def render(*, db_path: Path | str, vault_root: Path | None = None) -> Path:
     """Generate the daily digest. Returns path to the daily page that was appended."""
-    root = Path(vault_root) if vault_root else DEFAULT_VAULT_ROOT
+    # Canonical resolver (honours JARVIS_VAULT_ROOT) — one shared vault root.
+    root = Path(vault_root) if vault_root else _vault_root()
     today = datetime.utcnow().strftime("%Y-%m-%d")
     folder = root / "Daily"
     folder.mkdir(parents=True, exist_ok=True)
