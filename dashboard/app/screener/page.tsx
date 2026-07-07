@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/table";
 
 // Scan codes the engine's /ib-scanner/screen accepts as a universe source.
+// FUT_* codes scan CME futures (GLOBEX) — the active instruments (MES, MGC) live here,
+// not in the equity codes above them.
 const SCAN_CODES = [
   "TOP_PERC_GAIN",
   "TOP_PERC_LOSE",
@@ -31,11 +33,15 @@ const SCAN_CODES = [
   "TOP_OPEN_PERC_GAIN",
   "HIGH_OPEN_GAP",
   "MOST_ACTIVE",
+  "FUT_HOT_BY_VOLUME",
+  "FUT_TOP_PERC_GAIN",
+  "FUT_TOP_PERC_LOSE",
 ] as const;
 
 // Threshold defaults mirror the GreenStar2 screener (and the engine defaults).
 type FilterForm = {
   scanCode: string;
+  symbols: string;
   maxSymbols: string;
   xFrom50Min: string;
   xFrom50Max: string;
@@ -47,6 +53,7 @@ type FilterForm = {
 
 const DEFAULT_FORM: FilterForm = {
   scanCode: "TOP_PERC_GAIN",
+  symbols: "",
   maxSymbols: "25",
   xFrom50Min: "0",
   xFrom50Max: "4",
@@ -55,6 +62,16 @@ const DEFAULT_FORM: FilterForm = {
   chgPctMin: "0",
   mmMin: "",
 };
+
+// Splits a comma/space/newline-separated symbol list into an upper-cased array,
+// or null when the field is blank (falls back to the Universe scan code).
+function parseSymbols(raw: string): string[] | null {
+  const syms = raw
+    .split(/[\s,]+/)
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  return syms.length > 0 ? syms : null;
+}
 
 function numOrNull(value: string): number | null {
   const trimmed = value.trim();
@@ -82,7 +99,7 @@ export default function ScreenerPage() {
 
   const update = useCallback(
     (key: keyof FilterForm) =>
-      (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
         setForm((f) => ({ ...f, [key]: e.target.value })),
     []
   );
@@ -90,8 +107,11 @@ export default function ScreenerPage() {
   const runScan = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const symbols = parseSymbols(form.symbols);
     const req: ScreenerFilterInput = {
-      scan_code: form.scanCode,
+      // Explicit symbols bypass the ENABLE_IB_SCANNER gate entirely (engine-side) and
+      // take precedence over the Universe scan code when both are present.
+      ...(symbols ? { symbols } : { scan_code: form.scanCode }),
       max_symbols: numOrNull(form.maxSymbols) ?? 25,
       x_from_50_min: numOrNull(form.xFrom50Min),
       x_from_50_max: numOrNull(form.xFrom50Max),
@@ -159,6 +179,15 @@ export default function ScreenerPage() {
               <NumField label="Chg% min" value={form.chgPctMin} onChange={update("chgPctMin")} />
               <NumField label="MM min (0–8)" value={form.mmMin} onChange={update("mmMin")} placeholder="off" />
             </div>
+            <Field label="Symbols (optional — overrides Universe, no IB scanner required)">
+              <textarea
+                value={form.symbols}
+                onChange={update("symbols")}
+                placeholder="e.g. MES=F, MGC=F, GC=F (yfinance format — bare IB symbols like MES won't resolve)"
+                rows={2}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm font-mono"
+              />
+            </Field>
             <button
               onClick={runScan}
               disabled={loading}
@@ -168,9 +197,12 @@ export default function ScreenerPage() {
               {loading ? "Scanning…" : "Scan"}
             </button>
             <p className="text-xs text-muted-foreground">
-              Pipes the read-only IB scanner movers through the GreenStar2-style filter chain.
-              Leave a field blank to disable that filter. Requires the engine&apos;s IB scanner
-              (ENABLE_IB_SCANNER=1) for live universes.
+              Pipes the read-only IB scanner movers (or the Symbols list above) through the
+              GreenStar2-style filter chain. Leave a threshold field blank to disable that filter.
+              Universe scan codes require the engine&apos;s IB scanner (ENABLE_IB_SCANNER=1) and a
+              connected IB Gateway; the Symbols field bypasses both and fetches bars via yfinance
+              instead — use FUT_* codes or yfinance futures tickers (MES=F, MGC=F) to screen the
+              active instruments rather than equities.
             </p>
           </CardContent>
         </Card>
@@ -263,7 +295,7 @@ function NumField({
   return (
     <Field label={label}>
       <input
-        type="number"
+        type="text"
         inputMode="decimal"
         value={value}
         onChange={onChange}

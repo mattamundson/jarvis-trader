@@ -9,6 +9,10 @@ on:
   push:
     branches: [main, master, develop]
   pull_request:
+    # ready_for_review is required: jobs below are gated to skip draft PRs (verified
+    # for free by the local pr-local-ci loop), so converting draft -> ready must
+    # re-trigger CI. Without it, a PR opened as draft would never get cloud CI.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, master]
 
 # 3. Concurrency management
@@ -20,6 +24,9 @@ concurrency:
 jobs:
   engine-lint:
     name: Engine Lint (Python)
+    # Skip draft PRs (covered for free by the local pr-local-ci loop); still runs on
+    # push to protected branches and on ready-for-review PRs.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -51,6 +58,7 @@ jobs:
 
   engine-typecheck:
     name: Engine Type Check (mypy)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -89,6 +97,7 @@ jobs:
   # Parallel slices (wall-clock): fast ~unit/router + slow integration/E2E (see pytest.mark.slow).
   engine-test-fast:
     name: Engine Tests (pytest, fast)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     # Headroom for the (rare) second attempt of the flake retry below.
     timeout-minutes: 28
@@ -153,6 +162,7 @@ jobs:
 
   engine-test-slow:
     name: Engine Tests (pytest, slow)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -194,7 +204,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [engine-test-fast, engine-test-slow]
-    if: ${{ needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -247,6 +257,7 @@ jobs:
 
   dashboard-build:
     name: Dashboard Build (Next.js)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -318,6 +329,7 @@ jobs:
 
   security-scan:
     name: Security Scan
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -356,7 +368,8 @@ jobs:
       - dashboard-build
       - security-scan
     runs-on: ubuntu-latest
-    if: always()
+    # always() so it reports even when a needed job fails -- but still skip on draft PRs.
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
     steps:
       - name: Check CI results
         run: |
