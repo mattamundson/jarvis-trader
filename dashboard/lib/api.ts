@@ -15,12 +15,33 @@ function engineHeaders(extra?: HeadersInit): HeadersInit {
   return { ...extra };
 }
 
+/**
+ * Thrown for a non-2xx engine response. Carries the HTTP status so callers
+ * (fetchWithRetry) can distinguish a transient 5xx from a durable 4xx without
+ * parsing the message string.
+ */
+class EngineHttpError extends Error {
+  status: number;
+  constructor(status: number, url: string) {
+    super(`Engine error ${status}: ${url}`);
+    this.name = "EngineHttpError";
+    this.status = status;
+  }
+}
+
 async function fetchWithTimeout<T>(
   url: string,
   options?: RequestInit
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    // Pass an explicit reason so callers (and fetchWithRetry's error check)
+    // see a readable "request timed out" message instead of the browser's
+    // default "signal is aborted without reason" DOMException text (what
+    // abort() produces when called with no argument). Mirrors fetchEngineRaw.
+    () => controller.abort(new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`)),
+    FETCH_TIMEOUT_MS,
+  );
 
   try {
     const res = await fetch(url, {
@@ -29,10 +50,18 @@ async function fetchWithTimeout<T>(
     });
 
     if (!res.ok) {
-      throw new Error(`Engine error ${res.status}: ${url}`);
+      throw new EngineHttpError(res.status, url);
     }
 
     return res.json();
+  } catch (e) {
+    // Fall back to a friendly message if the runtime doesn't propagate the
+    // AbortSignal reason as the rejection value (older engines reject with a
+    // generic AbortError regardless of the reason passed to abort()).
+    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
+      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${url}`);
+    }
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -48,13 +77,29 @@ async function fetchWithRetry<T>(
   } catch (e) {
     const error = e instanceof Error ? e : new Error(String(e));
 
-    // Only retry on network errors, not on HTTP errors
     const isNetworkError =
       error.message.includes("Failed to fetch") ||
       error.message.includes("AbortError") ||
-      error.name === "AbortError";
+      error.name === "AbortError" ||
+      // fetchWithTimeout now aborts with an explicit reason (a plain Error,
+      // not a DOMException named "AbortError") so a timeout still needs its
+      // own check here to keep getting the same single retry as before.
+      error.message.includes("Request timed out after");
 
-    if (isNetworkError && attempt < 2) {
+    // Also retry on a transient 5xx (502/503/504). Several /performance
+    // widgets (hourly-stats, streaks, price bars) were observed getting a
+    // 503 on the very first request right after page load -- likely
+    // concurrency contention from ~35 widgets mounting and fetching at once
+    // -- followed by a clean 200 moments later. Without this, only SWR's own
+    // default error-retry (slower backoff, several seconds) recovered them,
+    // which read as "stuck loading" for 15s+. Retrying 5xx here immediately,
+    // the same way network errors already are, fixes that for every
+    // fetchEngine() caller uniformly instead of per-widget. 4xx errors are
+    // NOT retried -- they are not transient.
+    const isTransientServerError =
+      error instanceof EngineHttpError && error.status >= 500 && error.status < 600;
+
+    if ((isNetworkError || isTransientServerError) && attempt < 2) {
       // Single retry with 2s delay
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       return fetchWithRetry<T>(url, options, attempt + 1);
@@ -68,14 +113,13 @@ export async function fetchEngine<T = any>(path: string, options?: RequestInit):
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     cache: "no-store",
     ...options,
-    headers: engineHeaders(options?.headers),
   });
 }
 
 export async function postEngine<T = any>(path: string, body?: unknown): Promise<T> {
   return fetchWithRetry<T>(`${ENGINE}${path}`, {
     method: "POST",
-    headers: engineHeaders({ "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -86,18 +130,46 @@ export async function postEngine<T = any>(path: string, body?: unknown): Promise
  */
 export async function fetchEngineRaw(path: string, options?: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    // Pass an explicit reason so a caller's catch block sees a readable
+    // "request timed out" message instead of the browser's default
+    // "signal is aborted without reason" DOMException text (what abort()
+    // produces when called with no argument).
+    () => controller.abort(new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`)),
+    FETCH_TIMEOUT_MS,
+  );
   try {
     const res = await fetch(`${ENGINE}${path}`, {
       cache: "no-store",
       ...options,
       signal: controller.signal,
-      headers: engineHeaders(options?.headers),
     });
     return res;
+  } catch (e) {
+    // Fall back to a friendly message if the runtime doesn't propagate the
+    // AbortSignal reason as the rejection value (older engines reject with a
+    // generic AbortError regardless of the reason passed to abort()).
+    if (e instanceof Error && /abort/i.test(e.name) && /aborted without reason/i.test(e.message)) {
+      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${path}`);
+    }
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Fetcher for the dashboard's OWN same-origin API routes (e.g. /api/fleet).
+ * These are Next.js route handlers reading local disk state, not engine
+ * endpoints, so they bypass the /api/engine proxy entirely. Lives here (not
+ * in app/ or hooks/) because the "no bare await fetch" CI guard only scans
+ * those two directories — this is the sanctioned escape hatch, same as
+ * fetchEngine/postEngine above.
+ */
+export async function localFetch<T>(path: string): Promise<T> {
+  const res = await fetch(path, { cache: "no-store" });
+  if (!res.ok) throw new Error(`${path} error ${res.status}`);
+  return res.json() as Promise<T>;
 }
 
 // API types (mirror engine Pydantic models)
@@ -593,12 +665,21 @@ export interface PriceSnapshotEntry {
   change_pct: number | null;
   yf_ticker: string;
   error?: string;
+  // Data-provenance fields (Phase 1) — server-derived, additive. `is_live` is
+  // NEVER hardcoded true; a cached/delayed tier (csv_cache, polygon REST) reports
+  // is_live=false so the ticker can never show LIVE over stale data. `as_of` is
+  // epoch SECONDS. Optional: older engine builds / degraded entries omit them.
+  source?: string;
+  as_of?: number | null;
+  is_live?: boolean;
+  stale_after_s?: number;
 }
 
 export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
 
 export interface MacroSnapshot {
   vix?: number | null;
+  vix_regime?: string | null; // LOW | NORMAL | HIGH | EXTREME (from classify_vix_regime)
   fed_funds_rate?: number | null;
   ten_year_yield?: number | null;
   unemployment?: number | null;
@@ -825,10 +906,16 @@ export interface CircuitBreakerState {
   daily_pnl: number;
   /** Maximum allowed daily loss (negative number, e.g. -200) */
   daily_limit: number;
-  /** Current drawdown as a decimal (e.g. 0.012 = 1.2%) */
+  /** Current drawdown as a decimal, negative (e.g. -0.012 = -1.2%) */
   drawdown_pct: number;
-  /** Maximum drawdown threshold as a decimal (e.g. 0.10 = 10%) */
-  drawdown_limit: number;
+  /**
+   * Maximum drawdown threshold as a negative decimal (e.g. -0.20 = -20%).
+   * The real /safety/circuit-breakers response field is `drawdown_limit_pct`
+   * -- there is no `drawdown_limit` field. Reading the wrong name produced
+   * `undefined`, and `undefined * 100` rendered the panel's drawdown limit as
+   * "-NaN%".
+   */
+  drawdown_limit_pct: number;
   /** Whether the kill switch is currently active */
   kill_switch_active: boolean;
   /** True when no circuit breaker is tripped and trading may proceed */
@@ -1732,9 +1819,15 @@ export type UnrealizedPositionsResponse = UnrealizedPosition[];
 
 export interface HourlyStatItem {
   hour: number;
-  label: string;
+  /**
+   * Real engine response from /portfolio/paper/hourly-stats sends
+   * `hour_label` / `trade_count` (confirmed via live response), not
+   * `label` / `trades`. Reading the old names left every hour's label
+   * blank and the trade count as "undefinedt" in WinRateByHourWidget.
+   */
+  hour_label: string;
   win_rate: number;
-  trades: number;
+  trade_count: number;
 }
 
 export interface HourlyStatsResponse {
@@ -1778,7 +1871,7 @@ export interface TradeDecisionSnapshot {
 
 export interface PipelineDecisionSnapshot {
   trade_decision?: TradeDecisionSnapshot;
-  risk_decision?: { approved?: boolean; reason?: string; checks_passed?: number };
+  risk_decision?: { approved?: boolean; reasoning?: string; checks_passed?: number };
   fund_decision?: { approved?: boolean; final_conviction?: number; reasoning?: string };
   debate_result?: DebateResult;
   analyst_reports?: {
@@ -2486,6 +2579,46 @@ export async function screenMovers(
   return postEngine<ScreenResponse>("/ib-scanner/screen", input);
 }
 
+// ── Proactive Advisor Brief (Phase 5) ───────────────────────────────────────
+// Mirrors engine/analytics/session_brief.py. The backend assembles these ONLY
+// from reasoning the pipeline already produced — a reasoning-less decision
+// surfaces as an honest gap (`reasoning_available: false`), never fabricated.
+
+export interface SessionBriefStaleness {
+  as_of: string | null;
+  age_seconds: number | null;
+  is_stale: boolean;
+  unknown_age: boolean;
+}
+
+export interface SessionBriefAction {
+  symbol: string;
+  action: string;
+  confidence: number | null;
+  why: string;
+  reasoning_available: boolean;
+  reasoning_sources: string[];
+  staleness: SessionBriefStaleness;
+  data_degraded: boolean;
+}
+
+export interface SessionBriefResponse {
+  generated_at: string;
+  actions: SessionBriefAction[];
+  count: number;
+  degraded: boolean;
+  note: string | null;
+}
+
+export async function fetchSessionBrief(
+  limit = 10,
+  maxActions = 3
+): Promise<SessionBriefResponse> {
+  return fetchEngine<SessionBriefResponse>(
+    `/brief/session?limit=${limit}&max_actions=${maxActions}`
+  );
+}
+
 // ── ATR-trail visualizer (GET /backtest/atr-trail/trades) ──────────────────
 // Powers app/atr-trail: the TOS ATRTrailingStopLE/SE flip strategy's actual
 // trades on cached bars — price + trail line + entries/exits + equity curve.
@@ -2541,4 +2674,52 @@ export async function fetchAtrTrailTrades(params: {
     max_points: String(params.maxPoints ?? 3000),
   });
   return fetchEngine<AtrTrailTradesResponse>(`/backtest/atr-trail/trades?${qs.toString()}`);
+}
+
+// ── Engine clean-run durability (GET /ops/durability) ─────────────────────────
+// Reads the down-alert watchdog's outage ledger server-side and reports how long
+// the engine has run clean. Honest empty-state (has_data:false) when no ledger.
+// See engine/routers/durability_router.py + scripts/ops/durability.mjs.
+export interface DurabilityOutage {
+  downSince: string;
+  recoveredAt: string;
+  durationMs: number;
+  alerted: boolean;
+}
+
+export interface DurabilityResponse {
+  monitoring_since: string | null;
+  currently_down: boolean;
+  down_since: string | null;
+  outage_count: number;
+  current_streak_days: number | null;
+  longest_streak_days: number | null;
+  total_downtime_ms: number;
+  mtbf_ms: number | null;
+  last_outage: DurabilityOutage | null;
+  has_data: boolean;
+}
+
+export async function fetchDurability(): Promise<DurabilityResponse> {
+  return fetchEngine<DurabilityResponse>("/ops/durability");
+}
+
+// ── Honest realized P&L (engine-native, always available) ─────────────────────
+// GET /pnl/truth — the fail-safe honest realized paper-P&L surface. Unlike the
+// master-api honest-metrics layer, this reads the engine's own closed-trade
+// ledger and DEGRADES (realized_pnl: null) instead of emitting a fabricated 0
+// when the ledger is missing. It has NO external-service dependency, so it stays
+// truthful even when master-api (:8030) is down. See engine/routers/pnl_truth_router.py.
+export interface PnlTruthResponse {
+  status: "TRUSTED" | "DEGRADED";
+  realized_pnl: number | null;
+  closed_trades: number;
+  excluded_trades: number;
+  reasons: string[];
+  sources_present: string[];
+  trusted: boolean;
+}
+
+export async function fetchPnlTruth(): Promise<PnlTruthResponse> {
+  return fetchEngine<PnlTruthResponse>("/pnl/truth");
 }

@@ -9,6 +9,7 @@ a structured restart-event recorder so a restart's cause is no longer invisible.
 """
 
 import json
+from contextlib import contextmanager
 
 from scripts import port_guardian
 
@@ -49,6 +50,17 @@ class TestReadinessWatchdog:
         assert ready is False
 
 
+class TestWslRelayDetection:
+    def test_detects_wslrelay_by_name(self):
+        assert port_guardian._is_wsl_relay("wslrelay") is True
+        assert port_guardian._is_wsl_relay("wslrelay.exe") is True
+        assert port_guardian._is_wsl_relay("WSLRelay") is True  # case-insensitive
+
+    def test_ignores_non_relay_holders(self):
+        for name in ("python", "python3.12", "uvicorn", "unknown", "", None):
+            assert port_guardian._is_wsl_relay(name) is False
+
+
 class TestRestartEventRecord:
     def test_appends_structured_jsonl_record(self, tmp_path):
         log = tmp_path / "restarts.jsonl"
@@ -76,3 +88,55 @@ class TestRestartEventRecord:
         assert len(lines) == 2
         assert json.loads(lines[0])["reason"] == "orphan-kill"
         assert json.loads(lines[1])["reason"] == "health-timeout"
+
+    def test_records_enriched_diagnostic_details(self, tmp_path):
+        # The watchdog now records whether the port was bound at timeout, so a
+        # latency cascade (port_bound=True) is distinguishable from a hard startup
+        # failure (port_bound=False). Prove the recorder round-trips that shape.
+        log = tmp_path / "restarts.jsonl"
+        port_guardian._record_restart_event(
+            "health-timeout",
+            {
+                "port": 8010,
+                "deadline_s": 360,
+                "probe_timeout_s": port_guardian.READINESS_PROBE_TIMEOUT,
+                "port_bound": True,
+                "holder_pids": [4242],
+            },
+            log,
+        )
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+        assert rec["details"]["port_bound"] is True
+        assert rec["details"]["holder_pids"] == [4242]
+        assert rec["details"]["probe_timeout_s"] == port_guardian.READINESS_PROBE_TIMEOUT
+
+
+class TestProbeTimeout:
+    def test_is_healthy_uses_generous_configured_timeout(self, monkeypatch):
+        # A too-tight 2s probe mis-reads a transient /health spike on a serving
+        # engine as dead and force-restarts it. _is_healthy must pass the generous
+        # READINESS_PROBE_TIMEOUT so a brief spike is absorbed, not escalated.
+        captured = {}
+
+        @contextmanager
+        def _fake_urlopen(url, timeout=None):
+            captured["url"] = url
+            captured["timeout"] = timeout
+
+            class _Resp:
+                status = 200
+
+            yield _Resp()
+
+        monkeypatch.setattr(port_guardian.urllib.request, "urlopen", _fake_urlopen)
+
+        assert port_guardian._is_healthy(8010) is True
+        assert captured["timeout"] == port_guardian.READINESS_PROBE_TIMEOUT
+        assert captured["timeout"] >= 5, "probe timeout must absorb multi-second spikes"
+
+    def test_is_healthy_false_on_probe_error(self, monkeypatch):
+        def _boom(url, timeout=None):
+            raise port_guardian.urllib.error.URLError("refused")
+
+        monkeypatch.setattr(port_guardian.urllib.request, "urlopen", _boom)
+        assert port_guardian._is_healthy(8010) is False

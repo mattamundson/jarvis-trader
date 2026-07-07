@@ -38,6 +38,7 @@ import { PnLStreakWidget } from "@/components/PnLStreakWidget";
 import { MaxDrawdownTrackerWidget } from "@/components/MaxDrawdownTrackerWidget";
 import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import {
   fetchHonestTrades,
   equityCurve,
@@ -508,13 +509,17 @@ export default function ScorecardPage() {
         )}
 
         {/* ── Paper Account Balance ───────────────────────────────────────── */}
-        <PaperBalanceWidget />
+        <WidgetErrorBoundary name="Paper Balance">
+          <PaperBalanceWidget />
+        </WidgetErrorBoundary>
 
         {/* ── Monthly P&L Target ──────────────────────────────────────────── */}
         <MonthlyTargetCard />
 
         {/* ── P&L Streak ──────────────────────────────────────────────────── */}
-        <PnLStreakWidget />
+        <WidgetErrorBoundary name="P&L Streak">
+          <PnLStreakWidget />
+        </WidgetErrorBoundary>
 
         {/* ── Validation Progress ─────────────────────────────────────────── */}
         <div
@@ -592,7 +597,9 @@ export default function ScorecardPage() {
         </div>
 
         {/* ── Live vs Backtest Comparison ─────────────────────────────────── */}
-        <BacktestCompareWidget />
+        <WidgetErrorBoundary name="Backtest Compare">
+          <BacktestCompareWidget />
+        </WidgetErrorBoundary>
 
         {/* ── Rolling Performance Windows ─────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -600,7 +607,9 @@ export default function ScorecardPage() {
         </div>
 
         {/* ── Pre-Live Readiness Check ────────────────────────────────────── */}
-        <ReadinessCheckWidget />
+        <WidgetErrorBoundary name="Readiness Check">
+          <ReadinessCheckWidget />
+        </WidgetErrorBoundary>
 
         {/* ── Key Metrics Grid ────────────────────────────────────────────── */}
         <div>
@@ -801,13 +810,19 @@ export default function ScorecardPage() {
         </div>
 
         {/* ── Equity Curve ────────────────────────────────────────────────── */}
-        <EquityCurveWidget />
+        <WidgetErrorBoundary name="Equity Curve">
+          <EquityCurveWidget />
+        </WidgetErrorBoundary>
 
         {/* ── Drawdown Chart ──────────────────────────────────────────────── */}
-        <DrawdownChartWidget />
+        <WidgetErrorBoundary name="Drawdown Chart">
+          <DrawdownChartWidget />
+        </WidgetErrorBoundary>
 
         {/* ── Daily P&L Calendar ──────────────────────────────────────────── */}
-        <DailyPnLCalendarWidget />
+        <WidgetErrorBoundary name="Daily P&L Calendar">
+          <DailyPnLCalendarWidget />
+        </WidgetErrorBoundary>
 
         {/* ── Trade Summary ───────────────────────────────────────────────── */}
         <div className="rounded-xl border border-border bg-card p-5">

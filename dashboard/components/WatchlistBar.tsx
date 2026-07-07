@@ -1,24 +1,75 @@
 "use client";
 
-import React, { useRef } from "react";
+import React from "react";
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import type { PriceSnapshot, PriceSnapshotEntry, WatchlistItem } from "@/lib/api";
+import { ProvenanceBadge } from "@/components/DataValue";
+import {
+  classifyProvenance,
+  type DataEnvelope,
+  type ProvenanceView,
+} from "@/lib/provenance";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const POLL_MS = 10_000;
-const STALE_THRESHOLD_MS = 30_000;
 const WATCHLIST_SYMBOLS = "SPY,QQQ,IWM,VIX,MES,MNQ,MCL,MGC";
+// Fallback freshness window when the engine entry omits stale_after_s.
+const DEFAULT_STALE_AFTER_S = 60;
 
 // ── Fetcher ────────────────────────────────────────────────────────────────
 function fetcher<T>(url: string): Promise<T> {
   return fetchEngine<T>(url);
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function formatPrice(price: number | null, symbol: string): string {
+// ── Provenance helpers ───────────────────────────────────────────────────────
+
+/**
+ * Ticking client clock (null on server / first render for hydration parity).
+ * Lets a value age past its window downgrade LIVE -> STALE on screen.
+ */
+function useNowMs(): number | null {
+  const [nowMs, setNowMs] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return nowMs;
+}
+
+/** Map a raw price-snapshot entry to the canonical DataEnvelope shape. */
+function toEnvelope(entry: PriceSnapshotEntry | undefined): DataEnvelope {
+  return {
+    value: entry?.last_price ?? null,
+    source: entry?.source ?? "unavailable",
+    as_of: entry?.as_of ?? null,
+    is_live: entry?.is_live ?? false,
+    stale_after_s: entry?.stale_after_s ?? DEFAULT_STALE_AFTER_S,
+  };
+}
+
+// Most-degraded-wins ranking so the bar-level badge never claims LIVE while any
+// priced symbol is served from a cached/delayed tier.
+const STATUS_RANK: Record<ProvenanceView["status"], number> = {
+  live: 3,
+  stale: 2,
+  static: 1,
+  unavailable: 0,
+};
+
+function fmtAge(seconds: number | null): string {
+  if (seconds == null) return "";
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h`;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function formatPrice(price: number | null): string {
   if (price == null) return "—";
-  // Futures have large numbers, format accordingly
   if (price >= 1000) {
     return price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
@@ -41,20 +92,36 @@ function changeColorClass(pct: number | null): string {
   return pct > 0 ? "text-bull" : "text-bear";
 }
 
+function statusDotClass(status: ProvenanceView["status"]): string {
+  if (status === "live") return "bg-bull animate-pulse";
+  if (status === "stale") return "bg-warn";
+  return "bg-muted-foreground";
+}
+
 // ── Sub-components ─────────────────────────────────────────────────────────
 
 interface PriceChipProps {
   symbol: string;
   entry: PriceSnapshotEntry | undefined;
+  view: ProvenanceView;
 }
 
-function PriceChip({ symbol, entry }: PriceChipProps) {
+function PriceChip({ symbol, entry, view }: PriceChipProps) {
   const pct = entry?.change_pct ?? null;
   const price = entry?.last_price ?? null;
   const colorClass = changeColorClass(pct);
-  const priceDisplay = price != null ? `$${formatPrice(price, symbol)}` : "—";
+  const priceDisplay = price != null ? `$${formatPrice(price)}` : "—";
   const changeDisplay = pct != null ? `${formatChangePct(pct)} ${changeArrow(pct)}` : "";
-  const ariaLabel = `${symbol}: ${priceDisplay} ${changeDisplay}`;
+  const age = view.ageSeconds != null ? fmtAge(view.ageSeconds) : "";
+  // Provenance-aware label: source tier + age, so the chip is never a bare number.
+  const provenanceLabel = [
+    `source: ${view.source}`,
+    view.status === "live" ? "LIVE" : view.status.toUpperCase(),
+    age ? `${age} ago` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const ariaLabel = `${symbol}: ${priceDisplay} ${changeDisplay} — ${provenanceLabel}`;
 
   return (
     <div
@@ -62,7 +129,16 @@ function PriceChip({ symbol, entry }: PriceChipProps) {
       role="button"
       tabIndex={0}
       aria-label={ariaLabel}
+      title={provenanceLabel}
     >
+      {/* Provenance status dot — honest per-symbol source/staleness */}
+      {price != null && (
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(view.status)}`}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Symbol */}
       <span className="font-mono text-xs font-bold text-foreground tracking-wider">
         {symbol}
@@ -70,7 +146,7 @@ function PriceChip({ symbol, entry }: PriceChipProps) {
 
       {/* Price */}
       <span className="font-mono text-xs tabular-nums text-foreground/90">
-        {price != null ? `$${formatPrice(price, symbol)}` : "—"}
+        {price != null ? `$${formatPrice(price)}` : "—"}
       </span>
 
       {/* Change */}
@@ -79,24 +155,13 @@ function PriceChip({ symbol, entry }: PriceChipProps) {
           {formatChangePct(pct)} {changeArrow(pct)}
         </span>
       )}
-    </div>
-  );
-}
 
-// ── Pulsing LIVE dot ────────────────────────────────────────────────────────
-
-function LiveDot({ isFresh }: { isFresh: boolean }) {
-  if (!isFresh) return null;
-  return (
-    <div className="flex items-center gap-1.5 shrink-0" aria-label="Live data indicator">
-      <span className="relative flex h-2 w-2">
-        <span
-          className="animate-ping absolute inline-flex h-full w-full rounded-full bg-bull opacity-75"
-          aria-hidden="true"
-        />
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-bull" aria-hidden="true" />
-      </span>
-      <span className="font-mono text-xs font-bold text-bull tracking-widest">LIVE</span>
+      {/* Age since observed (as_of) */}
+      {price != null && age && (
+        <span className="font-mono text-[9px] text-muted-foreground tabular-nums">
+          {age}
+        </span>
+      )}
     </div>
   );
 }
@@ -123,40 +188,49 @@ interface WatchlistBarProps {
 }
 
 export function WatchlistBar({ items = [] }: WatchlistBarProps) {
-  const lastSuccessfulFetch = useRef<number | null>(null);
+  const nowMs = useNowMs();
 
   const { data: snapshot, error } = useSWR<PriceSnapshot>(
     `/prices/snapshot?symbols=${WATCHLIST_SYMBOLS}`,
     fetcher,
-    {
-      refreshInterval: POLL_MS,
-      onSuccess: () => {
-        lastSuccessfulFetch.current = Date.now();
-      },
-    }
+    { refreshInterval: POLL_MS }
   );
 
-  // Determine freshness
-  const now = Date.now();
-  const msSinceFetch = lastSuccessfulFetch.current ? now - lastSuccessfulFetch.current : Infinity;
-  const isFresh = msSinceFetch < STALE_THRESHOLD_MS && !!snapshot && !error;
+  const symbols = WATCHLIST_SYMBOLS.split(",");
 
-  // Determine if market is closed: all prices null or data very stale
+  // Classify every symbol against its real source + freshness (not fetch recency).
+  const views = symbols.map((sym) =>
+    classifyProvenance(toEnvelope(snapshot?.[sym]), nowMs)
+  );
+
+  // Determine if market is closed: all priced entries are null.
   const priceEntries = snapshot ? Object.values(snapshot) : [];
-  const allPricesNull = priceEntries.length > 0 && priceEntries.every((e) => e.last_price == null);
-  const isStale = msSinceFetch > 60_000 || (!!error && !snapshot);
+  const allPricesNull =
+    priceEntries.length > 0 && priceEntries.every((e) => e.last_price == null);
   const marketClosed = allPricesNull || (!!error && !snapshot);
 
-  // Build the ordered symbol list to display
-  const symbols = WATCHLIST_SYMBOLS.split(",");
+  // Bar-level provenance: most-degraded of the priced symbols wins, so a single
+  // cached (csv_cache / polygon) symbol keeps the strip from flashing green LIVE.
+  const pricedViews = symbols
+    .map((sym, i) => ({ view: views[i], hasPrice: snapshot?.[sym]?.last_price != null }))
+    .filter((v) => v.hasPrice)
+    .map((v) => v.view);
+  const aggregateView =
+    pricedViews.length > 0
+      ? pricedViews.reduce((worst, v) =>
+          STATUS_RANK[v.status] < STATUS_RANK[worst.status] ? v : worst
+        )
+      : null;
+
+  const loading = !snapshot && !error;
 
   return (
     <div className="flex items-center gap-3 overflow-x-auto rounded-xl border border-border bg-card px-4 py-2.5 scrollbar-none">
       {/* Status indicators — leftmost */}
       <div className="flex items-center gap-2 shrink-0 mr-1">
-        <LiveDot isFresh={isFresh} />
+        {aggregateView && !marketClosed && <ProvenanceBadge view={aggregateView} />}
         {marketClosed && <MarketClosedBadge />}
-        {!isFresh && !marketClosed && !error && (
+        {loading && !marketClosed && (
           <span className="font-mono text-xs text-muted-foreground tracking-widest">
             LOADING…
           </span>
@@ -167,8 +241,8 @@ export function WatchlistBar({ items = [] }: WatchlistBarProps) {
       <div className="h-5 w-px bg-border shrink-0" />
 
       {/* Price chips */}
-      {symbols.map((sym) => (
-        <PriceChip key={sym} symbol={sym} entry={snapshot?.[sym]} />
+      {symbols.map((sym, i) => (
+        <PriceChip key={sym} symbol={sym} entry={snapshot?.[sym]} view={views[i]} />
       ))}
 
       {/* Fallback when engine is completely offline and no legacy items */}

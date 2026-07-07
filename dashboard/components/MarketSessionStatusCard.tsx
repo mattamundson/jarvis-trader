@@ -299,6 +299,13 @@ export function MarketSessionStatusCard() {
           </div>
         )}
 
+        {sessionData && !fetchError && (
+          <p className="font-mono text-[10px] text-amber-500/70 leading-relaxed">
+            Session trades &amp; P&amp;L are from the raw engine record (not deduped) —
+            may include re-logged duplicates.
+          </p>
+        )}
+
         {fetchError && (
           <p className="font-mono text-[10px] text-neutral-700">
             Engine offline — showing client-side session only

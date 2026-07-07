@@ -116,6 +116,8 @@ from routers.approval_queue_router import router as approval_queue_router
 from routers.approval_queue_router import inject_approval_queue_deps
 from routers.pipeline_router import router as pipeline_router
 from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
+from routers.session_brief_router import router as session_brief_router
+from routers.session_brief_router import inject_dependencies as inject_session_brief_deps
 from routers.pipeline_ws_router import router as pipeline_ws_router
 from routers.messaging_router import router as messaging_router
 from routers.messaging_router import inject_dependencies as inject_messaging_deps
@@ -148,6 +150,7 @@ from api.operations_dashboard import router as operations_dashboard_router
 from routers.attribution_router import router as attribution_router
 from routers.vault_router import router as vault_router
 from routers.pnl_truth_router import router as pnl_truth_router
+from routers.durability_router import router as durability_router
 from routers.ib_scanner_router import router as ib_scanner_router
 from routers.macro_router import router as macro_router, inject_dependencies as inject_macro_deps
 from routers.analysis_router import (
@@ -275,6 +278,16 @@ def setup_logging(log_level: str = "INFO") -> None:
     file_handler.setLevel(numeric_level)
     file_handler.setFormatter(json_formatter)
     root_logger.addHandler(file_handler)
+
+    # Quiet pure-infrastructure loggers that flood stderr (→ the PM2 error log,
+    # 220MB on 2026-07-06) with zero diagnostic value: apscheduler emits a
+    # start+finish INFO line per interval job (Messaging Health Monitor, Auto-expire,
+    # SafetyLayer Equity Sync, ...), and httpx/httpcore log every request (the ollama
+    # /api/tags poll, every Anthropic call). Real signals (CSV-cache fallbacks,
+    # ib_async delayed-data, our own WARN/ERROR) are deliberately left untouched.
+    # This is the source-side complement to scripts/rotate_pm2_logs.ps1.
+    for _noisy in ("apscheduler", "httpx", "httpcore"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 
 # ── Global State ─────────────────────────────────────────────────────────
@@ -1774,6 +1787,7 @@ async def lifespan(app: FastAPI):
         scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
     )
     inject_messaging_deps(db_manager, paper_tracker=paper_tracker, safety_layer=safety_layer)
+    inject_session_brief_deps(db_manager)
     # Morning brief deps
     inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
     inject_hp_deps(data_manager, settings)
@@ -2176,11 +2190,15 @@ async def lifespan(app: FastAPI):
     # mode: existing files are skipped (preserves 2026-04-17 manual triage).
     try:
         from scripts.render_bookmarks_to_vault import render_vault as _render_vault
+        from vault.paths import vault_root as _vault_root
 
         _BOOKMARK_DB_PATH = os.environ.get("JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db")
+        # Default under the canonical vault root (honours JARVIS_VAULT_ROOT) instead
+        # of a hardcoded absolute path, so bookmarks land beside the other vault
+        # writers. Explicit BOOKMARK_VAULT_DIR still overrides.
         _BOOKMARK_VAULT_DIR = os.environ.get(
             "BOOKMARK_VAULT_DIR",
-            r"C:\Users\mattm\second-brain\wiki\discord-bookmarks",
+            str(_vault_root() / "discord-bookmarks"),
         )
 
         async def run_bookmark_vault_render() -> None:
@@ -2978,6 +2996,7 @@ app.include_router(analytics_router)
 app.include_router(attribution_router)
 app.include_router(vault_router)
 app.include_router(pnl_truth_router)
+app.include_router(durability_router)
 app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)
@@ -3004,6 +3023,7 @@ app.include_router(options_router, prefix="/options", tags=["options"])
 app.include_router(approval_router)
 app.include_router(approval_queue_router)
 app.include_router(pipeline_router)
+app.include_router(session_brief_router)
 app.include_router(pipeline_ws_router)
 app.include_router(messaging_router)
 app.include_router(scanner_router)
@@ -3152,6 +3172,44 @@ app.websocket("/ws/events")(events_handler)
 _decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
 
 
+def _build_data_provenance(dm, symbol: str) -> dict | None:
+    """Snapshot *what data* a decision was based on, for honest persistence.
+
+    Answers post-hoc audits like "was this fill made on live IBKR data or a
+    stale CSV-cache fallback?" (the 2026-06-29 frozen-MES-5300 class). Sourced
+    entirely from the data manager's *existing* observability so it adds no new
+    probe and no new state:
+
+    - ``last_bar_source`` — the most-recent data tier that served bars
+      (``ibkr`` | ``sqlite_cache`` | ``polygon`` | ``csv_cache`` | ``none``).
+      This is GLOBAL on the manager, not per-symbol, so it is *approximate*
+      when several symbols are served concurrently; named honestly so a reader
+      never over-trusts it.
+    - ``serve_age_s`` — seconds since bars were last served *for this symbol*
+      (per-symbol via ``symbol_freshness()``, accurate). ``None`` if this symbol
+      has not been served yet this run.
+
+    Fully defensive: returns ``None`` when the data manager is unavailable and
+    never raises into the decision path (a provenance failure must never block
+    or corrupt a decision). Deliberately reads the manager's existing surface
+    rather than adding a public accessor, to avoid colliding with in-flight
+    market_data.py work.
+    """
+    if dm is None:
+        return None
+    prov: dict = {}
+    try:
+        prov["last_bar_source"] = getattr(dm, "_last_bar_source", None)
+    except Exception:
+        prov["last_bar_source"] = None
+    try:
+        fresh = dm.symbol_freshness()
+        prov["serve_age_s"] = fresh.get(symbol.upper()) if isinstance(fresh, dict) else None
+    except Exception:
+        prov["serve_age_s"] = None
+    return prov
+
+
 def _log_decision(
     symbol: str,
     action: str,
@@ -3164,6 +3222,13 @@ def _log_decision(
     full_pipeline_data: dict | None = None,
 ) -> None:
     """Append a decision to the in-memory ring buffer AND persist to SQLite."""
+    # Data-truth: stamp *what data* this decision was based on (tier + per-symbol
+    # serve-age) so a post-hoc audit can tell a live-IBKR decision from one made
+    # on a stale CSV-cache fallback (the 2026-06-29 frozen-MES-5300 class). The
+    # engine already has read-time freshness gates (entry_price_sanity); this
+    # records the provenance the gate saw, it does NOT change any trade decision.
+    provenance = _build_data_provenance(data_manager, symbol)
+
     entry: dict = {
         "id": len(_decision_log) + 1,
         "timestamp": datetime.now().isoformat(),
@@ -3172,20 +3237,26 @@ def _log_decision(
         "confidence": confidence,
         "source": source,
         "summary": summary,
+        "data_provenance": provenance,
     }
     _decision_log.append(entry)
     if len(_decision_log) > 100:
         _decision_log.pop(0)
 
-    # Persist to SQLite (non-blocking best-effort — never crash the caller)
+    # Persist to SQLite (non-blocking best-effort — never crash the caller).
+    # Provenance rides inside signal_data_json (no schema migration): merge into
+    # a *copy* so we never mutate the caller's dict.
     if db_manager:
         try:
+            sig = signal_data if signal_data is not None else {"source": source, "summary": summary}
+            if provenance is not None and isinstance(sig, dict):
+                sig = {**sig, "data_provenance": provenance}
             db_manager.insert_decision(
                 symbol=symbol,
                 action=action,
                 confidence=confidence,
                 regime=regime,
-                signal_data=signal_data or {"source": source, "summary": summary},
+                signal_data=sig,
                 reasoning=reasoning or summary,
                 full_pipeline_data=full_pipeline_data,
             )

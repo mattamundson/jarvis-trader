@@ -1,0 +1,130 @@
+{
+  "date": "2026-07-03",
+  "generated_ts": "2026-07-03T14:00:38.258165+00:00",
+  "symbols": {
+    "MES": {
+      "levels": {
+        "symbol": "MES",
+        "prior_close": 7551.5,
+        "prior_high": 7594.0,
+        "prior_low": 7480.0,
+        "pivot": 7541.8333,
+        "r1": 7603.6667,
+        "s1": 7489.6667,
+        "r2": 7655.8333,
+        "s2": 7427.8333,
+        "atr": 90.6795,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          7586.1396,
+          7607.54,
+          7642.1795
+        ],
+        "targets_down": [
+          7516.8604,
+          7495.46,
+          7460.8205
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    },
+    "MNQ": {
+      "levels": {
+        "symbol": "MNQ",
+        "prior_close": 29845.75,
+        "prior_high": 30319.75,
+        "prior_low": 29330.75,
+        "pivot": 29832.0833,
+        "r1": 30333.4167,
+        "s1": 29344.4167,
+        "r2": 30821.0833,
+        "s2": 28843.0833,
+        "atr": 686.4225,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          30107.9634,
+          30269.9591,
+          30532.1725
+        ],
+        "targets_down": [
+          29583.5366,
+          29421.5409,
+          29159.3275
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    },
+    "MGC": {
+      "levels": {
+        "symbol": "MGC",
+        "prior_close": 4190.3,
+        "prior_high": 4208.5,
+        "prior_low": 4069.5,
+        "pivot": 4156.1,
+        "r1": 4242.7,
+        "s1": 4103.7,
+        "r2": 4295.1,
+        "s2": 4017.1,
+        "atr": 97.8266,
+        "target_ratios": [
+          0.382,
+          0.618,
+          1.0
+        ],
+        "targets_up": [
+          4227.6698,
+          4250.7569,
+          4288.1266
+        ],
+        "targets_down": [
+          4152.9302,
+          4129.8431,
+          4092.4734
+        ],
+        "overnight_high": null,
+        "overnight_low": null,
+        "overnight_range": null,
+        "vah": null,
+        "val": null,
+        "poc": null,
+        "va_position": null
+      }
+    }
+  },
+  "read": {
+    "bias": "bullish",
+    "conviction": 0.72,
+    "key_levels_committed": [
+      7551.5,
+      7541.8333,
+      7586.14,
+      7607.54,
+      7642.18,
+      7489.6667
+    ],
+    "scenario_if_above": "MES acceptance above pivot 7541.83 targets first resistance 7603.67 with extension to 7642.18. Strong bull regime + fast SMA (7542.31) near pivot suggests institutional buyers present. Likely probe R1 before noon consolidation.",
+    "scenario_if_below": "Break below pivot risks 7489.67 support (S1), then 7460.82 downside target. However, regime remains STRONG_BULL and close (7553.5) is above both SMAs\u2014pullback more likely than reversal. Use dips as entries rather than fade signals.",
+    "narrative": "MES in clean TRENDING_BULL with price above both moving averages and close above pivot. Friday holiday effect typically supports momentum. ATR 90.68 suggests moderate volatility. Upside targets well-defined; risk/reward favors long bias into resistance clusters. Low conviction on any reversal until regime breaks. Watch 7489 as hard floor before session reset.",
+    "data_quality": "fresh"
+  }
+}
