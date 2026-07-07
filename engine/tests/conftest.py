@@ -100,6 +100,26 @@ def _isolate_bars_db(tmp_path, monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _reset_health_snapshot():
+    """Clear the /health single-flight snapshot cache before every test.
+
+    /health serves a cached payload for up to HEALTH_SNAPSHOT_TTL_SEC (1s) to
+    collapse the dashboard polling storm. In production that staleness is fine,
+    but tests mock health sub-functions and expect the very next /health call to
+    reflect them — within the 1s TTL, a prior test's payload would leak and mask
+    the mock. Resetting the snapshot per-test makes each /health call recompute.
+    """
+    try:
+        from routers import health_router
+
+        health_router._health_snapshot.update(computed_at=0.0, payload=None)
+    except Exception:
+        # Router not importable in this test's context — nothing to reset.
+        pass
+    yield
+
+
 @pytest.fixture
 def mock_settings():
     """Safe test configuration with conservative limits."""

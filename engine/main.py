@@ -278,6 +278,16 @@ def setup_logging(log_level: str = "INFO") -> None:
     file_handler.setFormatter(json_formatter)
     root_logger.addHandler(file_handler)
 
+    # Quiet pure-infrastructure loggers that flood stderr (→ the PM2 error log,
+    # 220MB on 2026-07-06) with zero diagnostic value: apscheduler emits a
+    # start+finish INFO line per interval job (Messaging Health Monitor, Auto-expire,
+    # SafetyLayer Equity Sync, ...), and httpx/httpcore log every request (the ollama
+    # /api/tags poll, every Anthropic call). Real signals (CSV-cache fallbacks,
+    # ib_async delayed-data, our own WARN/ERROR) are deliberately left untouched.
+    # This is the source-side complement to scripts/rotate_pm2_logs.ps1.
+    for _noisy in ("apscheduler", "httpx", "httpcore"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 
 # ── Global State ─────────────────────────────────────────────────────────
 data_manager: MarketDataManager | None = None
