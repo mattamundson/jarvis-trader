@@ -19,9 +19,9 @@ JARVIS TRADER is a **paper-first** AI-assisted futures and options platform: **F
 | **Phase** | Hardening / paper trading validation (pre–Phase 3 live) |
 | **`LIVE_TRADING_ENABLED`** | `False` until explicit Tier 3 approval |
 | **`REQUIRE_HUMAN_APPROVAL`** | `True` — non-negotiable |
-| **Approved paper symbols** | **MCL 1h**, **MNQ 1h** (WFE and gates per validated-instruments) |
-| **Paper-authorized / WFE-poor** | **MES 1h** — paper trading allowed per canon; **not** treated as production-grade until WFE improves (see validated-instruments) |
-| **Halted / research-only** | MGC (halted) |
+| **Approved paper symbols** | **MES 1h** (p_edge 0.75), **MGC 1h** (p_edge 0.6842) — active paper since Tier-3 flip 2026-05-24 (gates per validated-instruments) |
+| **Halted (`DO_NOT_TRADE`)** | **MCL 1h** (WFE 0.82), **MNQ 1h** (WFE 0.57) — strategy hypotheses exhausted / fail gate v2 |
+| **Rejected** | **M2K 1h** — SMA/ORB/Donchian all FAIL 2026-05-24 |
 
 ---
 

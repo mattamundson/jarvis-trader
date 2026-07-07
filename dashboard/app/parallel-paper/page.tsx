@@ -8,6 +8,11 @@ import {
   AccountStatsResponse,
   EquityCurvePoint,
 } from "@/lib/api";
+import {
+  fetchHonestTrades,
+  type HonestTradeSet,
+  dedupCaveat,
+} from "@/lib/honestTrades";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,6 +27,11 @@ function fmt(val: number | null | undefined, decimals = 2, suffix = ""): string 
 
 function fmtPct(val: number | null | undefined): string {
   if (val == null) return "—";
+  if (!isFinite(val) || isNaN(val)) return "—";
+  // A valid 0–1 fraction can't exceed ±2; values outside that range are either
+  // already in percent form (±200%) or corrupted engine data. Clamp display to ±500%.
+  if (Math.abs(val) > 500) return "—(data err)";
+  if (Math.abs(val) > 2) return `${val.toFixed(1)}%`;
   return `${(val * 100).toFixed(1)}%`;
 }
 
@@ -102,11 +112,13 @@ function AccountColumn({
   accountId,
   days,
   color,
+  honestSet,
 }: {
   label: string;
   accountId: "A" | "B";
   days: WindowDays;
   color: string;
+  honestSet: HonestTradeSet | null;
 }) {
   const { data, error, isLoading } = useSWR<AccountStatsResponse>(
     [`account-stats`, accountId, days],
@@ -164,6 +176,19 @@ function AccountColumn({
         >
           {accountId}
         </div>
+      </div>
+
+      {/* Raw-record caveat — account-level dedup is not derivable because the
+          honest record is not split by account A/B. Stats below are the raw
+          per-account figures from /portfolio/paper/account/{id}/stats. */}
+      <div className="rounded-md border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-[11px] text-yellow-200/70">
+        <span className="font-semibold text-yellow-300">Raw record · not deduped</span>
+        {" "}— per-account dedup is not derivable (honest record is combined, not split by A/B).
+        {accountId === "A" && honestSet && (
+          <span className="block mt-1 text-yellow-200/50">
+            Combined honest net: {honestSet.net >= 0 ? "+" : ""}${honestSet.net.toFixed(0)} · {dedupCaveat(honestSet)}
+          </span>
+        )}
       </div>
 
       {isEmpty ? (
@@ -282,6 +307,14 @@ export default function ParallelPaperPage() {
     { refreshInterval: 60_000 }
   );
 
+  // Honest combined set — used only to show combined net in the caveat badge.
+  // Per-account dedup is not derivable (honest record is not split by A/B).
+  const { data: honestSet } = useSWR<HonestTradeSet>(
+    "honest-trades-parallel-paper",
+    fetchHonestTrades,
+    { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
+  );
+
   const windowOptions: { label: string; value: WindowDays }[] = [
     { label: "30d", value: 30 },
     { label: "90d", value: 90 },
@@ -342,12 +375,14 @@ export default function ParallelPaperPage() {
             accountId="A"
             days={days}
             color="#22c55e"
+            honestSet={honestSet ?? null}
           />
           <AccountColumn
             label="Challenger config"
             accountId="B"
             days={days}
             color="#a78bfa"
+            honestSet={honestSet ?? null}
           />
         </div>
 

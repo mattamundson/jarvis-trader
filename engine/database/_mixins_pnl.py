@@ -40,8 +40,7 @@ class DailyPnLMixin:
         """Return a rejection reason for an implausible snapshot, or None."""
         if starting_balance <= 0 or ending_balance <= 0:
             return (
-                f"non-positive balance (starting={starting_balance}, "
-                f"ending={ending_balance})"
+                f"non-positive balance (starting={starting_balance}, " f"ending={ending_balance})"
             )
         if abs(realized_pnl) > self.MAX_DAILY_REALIZED_FRACTION * starting_balance:
             return (
@@ -49,7 +48,10 @@ class DailyPnLMixin:
                 f"{self.MAX_DAILY_REALIZED_FRACTION:.0%} of starting balance "
                 f"{starting_balance:.2f} — basis flip or contaminated mark"
             )
-        if abs((starting_balance + realized_pnl) - ending_balance) > self.BALANCE_IDENTITY_TOLERANCE:
+        if (
+            abs((starting_balance + realized_pnl) - ending_balance)
+            > self.BALANCE_IDENTITY_TOLERANCE
+        ):
             return (
                 f"balance identity violated: starting {starting_balance:.2f} "
                 f"+ realized {realized_pnl:.2f} != ending {ending_balance:.2f}"
@@ -84,8 +86,12 @@ class DailyPnLMixin:
             logger.error(
                 "[DB] upsert_daily_pnl REFUSED for %s — %s "
                 "(start=%.2f end=%.2f realized=%+.2f trades=%d)",
-                date, reason, starting_balance, ending_balance,
-                realized_pnl, total_trades,
+                date,
+                reason,
+                starting_balance,
+                ending_balance,
+                realized_pnl,
+                total_trades,
             )
             return False
 
@@ -164,6 +170,235 @@ class DailyPnLMixin:
                 return dict(row) if row else None
             finally:
                 conn.close()
+
+    def reconcile_daily_pnl(self, *, epsilon: float = 0.01) -> Dict:
+        """Recompute realized P&L from closed paper_trades and flag drift.
+
+        Detective control for the phantom-P&L class (2026-06-15). The stored
+        ``daily_pnl.realized_pnl`` is written by the EOD snapshot; this method
+        independently re-derives realized P&L per UTC date directly from the
+        source of truth — ``SUM(pnl)`` over ``status='closed'`` paper_trades —
+        and reports any date where the stored figure disagrees with the
+        recomputed figure by more than ``epsilon`` dollars.
+
+        Returns a dict::
+
+            {
+              "ok": bool,                  # True when no drift beyond epsilon
+              "epsilon": float,
+              "checked_dates": int,
+              "drift_count": int,
+              "total_recomputed_realized": float,
+              "total_stored_realized": float,
+              "drifts": [                  # only dates that disagree
+                 {"date", "stored_realized", "recomputed_realized",
+                  "delta", "stored_trades", "recomputed_trades"}
+              ],
+            }
+        """
+        recompute_sql = """
+            SELECT date(exit_time) AS d,
+                   COALESCE(SUM(pnl), 0.0) AS realized,
+                   COUNT(*) AS n
+            FROM paper_trades
+            WHERE status = 'closed' AND exit_time IS NOT NULL
+            GROUP BY date(exit_time)
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                recomputed = {
+                    r["d"]: {"realized": float(r["realized"]), "n": int(r["n"])}
+                    for r in conn.execute(recompute_sql).fetchall()
+                    if r["d"] is not None
+                }
+                stored_rows = conn.execute(
+                    "SELECT date, realized_pnl, total_trades FROM daily_pnl"
+                ).fetchall()
+            finally:
+                conn.close()
+
+        stored = {
+            r["date"]: {
+                "realized": float(r["realized_pnl"] or 0.0),
+                "n": int(r["total_trades"] or 0),
+            }
+            for r in stored_rows
+        }
+
+        drifts: List[Dict] = []
+        for date in sorted(set(stored) | set(recomputed)):
+            s = stored.get(date, {"realized": 0.0, "n": 0})
+            c = recomputed.get(date, {"realized": 0.0, "n": 0})
+            delta = s["realized"] - c["realized"]
+            if abs(delta) > epsilon:
+                drifts.append(
+                    {
+                        "date": date,
+                        "stored_realized": round(s["realized"], 2),
+                        "recomputed_realized": round(c["realized"], 2),
+                        "delta": round(delta, 2),
+                        "stored_trades": s["n"],
+                        "recomputed_trades": c["n"],
+                    }
+                )
+
+        total_recomputed = sum(v["realized"] for v in recomputed.values())
+        total_stored = sum(v["realized"] for v in stored.values())
+        return {
+            "ok": len(drifts) == 0,
+            "epsilon": epsilon,
+            "checked_dates": len(set(stored) | set(recomputed)),
+            "drift_count": len(drifts),
+            "total_recomputed_realized": round(total_recomputed, 2),
+            "total_stored_realized": round(total_stored, 2),
+            "drifts": drifts,
+        }
+
+    def repair_daily_pnl(
+        self,
+        *,
+        initial_capital: float = 10_000.0,
+        dry_run: bool = True,
+    ) -> Dict:
+        """Corrective control (2026-07-02): rebuild daily_pnl from the closed ledger.
+
+        Companion to ``reconcile_daily_pnl`` (detective). Recomputes every
+        daily_pnl row by replaying ``status='closed'`` paper_trades
+        chronologically from ``initial_capital``::
+
+            starting[d] = ending[d-1]   (initial_capital for the first date)
+            realized[d] = SUM(pnl) of trades closed that UTC date
+            ending[d]   = starting[d] + realized[d]
+
+        This is the SAME absolute-anchoring formula the live EOD writer uses
+        (``schedulers.eod_scheduler._collect_db_trade_metrics``), so a repair
+        stays consistent with future EOD snapshots and every rebuilt row
+        satisfies the ``ending == starting + realized`` identity by
+        construction. Phantom/cancelled rows (``status != 'closed'``) are
+        excluded, so once a bad trade is reclassified (manual
+        ``mark_phantom_trades.py``) this heals the historical drift the
+        detective control flagged. Idempotent — a second run is a no-op.
+
+        ``dry_run=True`` (default) computes the diff and writes NOTHING.
+        ``dry_run=False`` clears the table and reinserts the authoritative rows,
+        removing orphan dates (a stored row with no closed trades that day).
+
+        Returns a summary dict::
+
+            {"applied", "dry_run", "initial_capital", "rows_before",
+             "rows_after", "rows_changed", "orphans_removed", "orphans",
+             "total_realized", "final_ending", "changes": [ ... ]}
+        """
+        recompute_sql = """
+            SELECT date(exit_time) AS d,
+                   COALESCE(SUM(pnl), 0.0) AS realized,
+                   COUNT(*) AS n,
+                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                   SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) AS losses
+            FROM paper_trades
+            WHERE status = 'closed' AND exit_time IS NOT NULL
+            GROUP BY date(exit_time)
+            ORDER BY date(exit_time)
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                grouped = [r for r in conn.execute(recompute_sql).fetchall() if r["d"] is not None]
+                stored_rows = conn.execute(
+                    "SELECT date, starting_balance, ending_balance, "
+                    "realized_pnl, total_trades FROM daily_pnl"
+                ).fetchall()
+
+                rebuilt: List[Dict] = []
+                running = float(initial_capital)
+                for r in grouped:
+                    start = round(running, 4)
+                    realized = round(float(r["realized"]), 4)
+                    end = round(start + realized, 4)
+                    running = end
+                    rebuilt.append(
+                        {
+                            "date": r["d"],
+                            "starting_balance": start,
+                            "ending_balance": end,
+                            "realized_pnl": realized,
+                            "unrealized_pnl": 0.0,
+                            "total_trades": int(r["n"]),
+                            "winning_trades": int(r["wins"] or 0),
+                            "losing_trades": int(r["losses"] or 0),
+                            "max_drawdown": 0.0,
+                        }
+                    )
+
+                stored = {row["date"]: dict(row) for row in stored_rows}
+                rebuilt_dates = {row["date"] for row in rebuilt}
+                changes: List[Dict] = []
+                for row in rebuilt:
+                    o = stored.get(row["date"])
+                    if (
+                        o is None
+                        or abs(float(o["ending_balance"]) - row["ending_balance"]) > 0.01
+                        or abs(float(o["realized_pnl"] or 0.0) - row["realized_pnl"]) > 0.01
+                        or int(o["total_trades"] or 0) != row["total_trades"]
+                    ):
+                        changes.append(
+                            {
+                                "date": row["date"],
+                                "old_realized": round(float(o["realized_pnl"]), 2) if o else None,
+                                "new_realized": round(row["realized_pnl"], 2),
+                                "old_ending": round(float(o["ending_balance"]), 2) if o else None,
+                                "new_ending": round(row["ending_balance"], 2),
+                            }
+                        )
+                orphans = sorted(d for d in stored if d not in rebuilt_dates)
+
+                summary: Dict = {
+                    "applied": False,
+                    "dry_run": dry_run,
+                    "initial_capital": float(initial_capital),
+                    "rows_before": len(stored),
+                    "rows_after": len(rebuilt),
+                    "rows_changed": len(changes),
+                    "orphans_removed": len(orphans),
+                    "orphans": orphans,
+                    "total_realized": round(sum(row["realized_pnl"] for row in rebuilt), 4),
+                    "final_ending": (
+                        round(rebuilt[-1]["ending_balance"], 4)
+                        if rebuilt
+                        else round(float(initial_capital), 4)
+                    ),
+                    "changes": changes,
+                }
+
+                if not dry_run and (changes or orphans):
+                    # Clean rebuild: clear then reinsert so orphan dates are removed.
+                    conn.execute("DELETE FROM daily_pnl")
+                    conn.executemany(
+                        """
+                        INSERT INTO daily_pnl
+                            (date, starting_balance, ending_balance, realized_pnl,
+                             unrealized_pnl, total_trades, winning_trades,
+                             losing_trades, max_drawdown)
+                        VALUES (:date, :starting_balance, :ending_balance,
+                                :realized_pnl, :unrealized_pnl, :total_trades,
+                                :winning_trades, :losing_trades, :max_drawdown)
+                        """,
+                        rebuilt,
+                    )
+                    conn.commit()
+                    summary["applied"] = True
+                    logger.info(
+                        "[DB] repair_daily_pnl applied — rebuilt %d rows, %d changed, "
+                        "%d orphans removed, final_ending=%.2f",
+                        len(rebuilt),
+                        len(changes),
+                        len(orphans),
+                        summary["final_ending"],
+                    )
+            finally:
+                conn.close()
+        return summary
 
     # ── P&L Snapshots (safety layer persistence) ──────────────────────────────────────
 

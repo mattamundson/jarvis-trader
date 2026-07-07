@@ -60,6 +60,28 @@ def _engine_running() -> bool:
     return jarvis_engine_ready(_ENGINE_BASE)
 
 
+def _engine_testable() -> bool:
+    """True only if the engine is up AND accepts our API key (authed 200).
+
+    ``_engine_running()`` / ``jarvis_engine_ready`` treat a 401 as "routed" (the
+    JARVIS app is there), so they return True even when no valid key is in the
+    env. The live endpoint smoke tests below assert HTTP 200, which a 401 fails —
+    so when the engine is up but not authable (e.g. a dev ran the suite without
+    sourcing ``engine/.env`` so ``API_KEY`` is unset), skip rather than emit
+    misleading auth failures. CI has no engine, so this short-circuits at
+    ``_engine_running()`` and the class skips as before.
+    """
+    if not _engine_running():
+        return False
+    req = urllib.request.Request(f"{_ENGINE_BASE}/safety/status")
+    req.add_header("X-API-Key", os.environ.get("API_KEY") or "test-key")
+    try:
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return 200 <= resp.status < 300
+    except Exception:
+        return False
+
+
 def _session4_api_ready() -> bool:
     """True when Session 4 HTTP contract routes are deployed (see live_engine_probe)."""
     from live_engine_probe import session4_api_ready
@@ -583,7 +605,9 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
 
 
 @unittest.skipIf(
-    not _engine_running(), "Engine not running on localhost:8010 — skipping live endpoint tests"
+    not _engine_testable(),
+    "Engine not running or not authable on localhost:8010 (set API_KEY to run live endpoint "
+    "tests) — skipping",
 )
 class TestPortfolioEndpoints(unittest.TestCase):
     """

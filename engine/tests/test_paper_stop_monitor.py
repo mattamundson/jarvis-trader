@@ -174,12 +174,47 @@ def test_check_once_race_noop_when_already_closed():
     assert len(db.close_calls) == 1  # attempted, but idempotent UPDATE matched 0 rows
 
 
-def test_check_once_skips_trade_without_stop():
+def test_check_once_skips_trade_without_stop_when_loss_under_cap():
+    # A null-stop trade with only a SMALL unrealized loss is still left alone —
+    # there is no stop to enforce and the catastrophe cap (default $750) is not
+    # breached. price 4500 vs entry 4503.9 (MGC ×10) = -$39.
     db = _FakeDB([_trade(stop_loss=None)])
-    mon = PaperStopMonitor(db, _FakeData(1.0))
+    mon = PaperStopMonitor(db, _FakeData(4500.0))
     fired = asyncio.run(mon.check_once())
     assert fired == 0
     assert db.close_calls == []
+
+
+def test_check_once_max_loss_backstop_fires_on_null_stop():
+    # The -$5,440 MES / -$1,284 MGC class: a position with NO recorded stop whose
+    # live loss blows past the catastrophe cap must be force-closed. price 4400 vs
+    # entry 4503.9 (MGC ×10) = -$1,039, beyond the default $750 cap.
+    db = _FakeDB([_trade(stop_loss=None)])
+    mon = PaperStopMonitor(db, _FakeData(4400.0))
+    fired = asyncio.run(mon.check_once())
+    assert fired == 1
+    assert len(db.close_calls) == 1
+    assert db.close_calls[0]["pnl"] <= -750.0
+
+
+def test_check_once_max_loss_backstop_disabled_restores_skip():
+    # PAPER_MAX_LOSS_USD_PER_TRADE=0 turns the backstop off → a null-stop trade is
+    # skipped no matter how large the loss (legacy behavior).
+    import os as _os
+
+    prev = _os.environ.get("PAPER_MAX_LOSS_USD_PER_TRADE")
+    _os.environ["PAPER_MAX_LOSS_USD_PER_TRADE"] = "0"
+    try:
+        db = _FakeDB([_trade(stop_loss=None)])
+        mon = PaperStopMonitor(db, _FakeData(100.0))  # catastrophic vs 4503.9 entry
+        fired = asyncio.run(mon.check_once())
+        assert fired == 0
+        assert db.close_calls == []
+    finally:
+        if prev is None:
+            _os.environ.pop("PAPER_MAX_LOSS_USD_PER_TRADE", None)
+        else:
+            _os.environ["PAPER_MAX_LOSS_USD_PER_TRADE"] = prev
 
 
 def test_check_once_skips_when_price_unavailable():

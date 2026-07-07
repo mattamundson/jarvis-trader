@@ -58,17 +58,17 @@ export default function TradeJournalPage() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 p-6">
+    <div className="w-full min-h-screen bg-background text-foreground p-6">
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/trades/pending-approvals">
+          <Link href="/trades">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Trade Journal</h1>
-            <p className="text-sm text-slate-600">
+            <h1 className="text-3xl font-bold text-foreground">Trade Journal</h1>
+            <p className="text-sm text-muted-foreground">
               Paper trades with signal provenance and pipeline attribution
             </p>
           </div>
@@ -88,41 +88,41 @@ export default function TradeJournalPage() {
         <Card>
           <CardContent className="pt-8 pb-8">
             <div className="flex items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
-              <span className="ml-4 text-slate-600">Loading trade journal...</span>
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-foreground" />
+              <span className="ml-4 text-muted-foreground">Loading trade journal...</span>
             </div>
           </CardContent>
         </Card>
       )}
 
       {error && (
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-bear/30 bg-bear/5">
           <CardContent className="pt-6">
-            <p className="text-red-700">Error loading trade journal: {String(error)}</p>
+            <p className="text-bear">Error loading trade journal: {String(error)}</p>
           </CardContent>
         </Card>
       )}
 
       {data && data.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-100">
+            <thead className="border-b border-border bg-muted/40">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Date</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Symbol</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Side</th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-700">P&L</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Regime</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Stage</th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-700">Bull</th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-700">Bear</th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-700">Conf</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Date</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Symbol</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Side</th>
+                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">P&L</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Regime</th>
+                <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Stage</th>
+                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Bull</th>
+                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Bear</th>
+                <th className="px-4 py-3 text-right font-semibold text-muted-foreground">Conf</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
+            <tbody className="divide-y divide-border">
               {data.map((trade: TradeJournalEntry) => (
-                <tr key={trade.trade_id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-900">
+                <tr key={trade.trade_id} className="hover:bg-muted/20">
+                  <td className="px-4 py-3 text-foreground">
                     {formatDate(trade.exit_time || trade.entry_time)}
                   </td>
                   <td className="px-4 py-3 font-mono font-semibold">{trade.symbol}</td>
@@ -131,7 +131,7 @@ export default function TradeJournalPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     {trade.pnl !== null ? (
-                      <span className={trade.pnl > 0 ? "text-green-600" : "text-red-600"}>
+                      <span className={trade.pnl > 0 ? "text-bull font-semibold" : "text-bear font-semibold"}>
                         {trade.pnl > 0 && "+"}{formatNumber(trade.pnl, 2)}
                       </span>
                     ) : (
@@ -165,7 +165,7 @@ export default function TradeJournalPage() {
       {data && data.length === 0 && (
         <Card>
           <CardContent className="pt-8 pb-8">
-            <p className="text-center text-slate-600">No trades in journal yet</p>
+            <p className="text-center text-muted-foreground">No trades in journal yet</p>
           </CardContent>
         </Card>
       )}
@@ -174,32 +174,37 @@ export default function TradeJournalPage() {
         <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
           <Card>
             <CardContent className="pt-4">
-              <p className="text-sm text-slate-600">Total</p>
-              <p className="text-2xl font-bold">{data.length}</p>
+              <p className="text-sm text-muted-foreground">Total</p>
+              <p className="text-2xl font-bold text-foreground">{data.length}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-sm text-slate-600">Wins</p>
-              <p className="text-2xl font-bold text-green-600">
+              <p className="text-sm text-muted-foreground">Wins</p>
+              <p className="text-2xl font-bold text-bull">
                 {data.filter((t) => (t.pnl ?? 0) > 0).length}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-sm text-slate-600">Losses</p>
-              <p className="text-2xl font-bold text-red-600">
+              <p className="text-sm text-muted-foreground">Losses</p>
+              <p className="text-2xl font-bold text-bear">
                 {data.filter((t) => (t.pnl ?? 0) < 0).length}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <p className="text-sm text-slate-600">Total P&L</p>
-              <p className={`text-2xl font-bold ${(data.reduce((sum, t) => sum + (t.pnl ?? 0), 0)) > 0 ? "text-green-600" : "text-red-600"}`}>
-                {formatNumber(data.reduce((sum, t) => sum + (t.pnl ?? 0), 0), 2)}
-              </p>
+              <p className="text-sm text-muted-foreground">Total P&L</p>
+              {(() => {
+                const totalPnl = data.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+                return (
+                  <p className={`text-2xl font-bold ${totalPnl > 0 ? "text-bull" : totalPnl < 0 ? "text-bear" : "text-muted-foreground"}`}>
+                    {totalPnl >= 0 ? "+" : ""}{formatNumber(totalPnl, 2)}
+                  </p>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>

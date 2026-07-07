@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp } from "lucide-react";
-import { fetchEngine } from "@/lib/api";
+import {
+  exitDate,
+  dedupCaveat,
+  type HonestTrade,
+} from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface WeeklyStats {
+  /** Label shown in footer: "Last 7 days" */
   period: string;
   total_trades: number;
   wins: number;
@@ -15,12 +21,16 @@ interface WeeklyStats {
   win_rate: number;
   total_pnl: number;
   avg_pnl: number;
-  best_trade: number;
-  worst_trade: number;
+  best_trade: number | null;
+  worst_trade: number | null;
+  /** distinct close-date count */
   trading_days: number;
 }
 
-function pnlVariant(value: number): "bull" | "bear" | "neutral" {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function pnlVariant(value: number | null): "bull" | "bear" | "neutral" {
+  if (value == null) return "neutral";
   if (value > 0) return "bull";
   if (value < 0) return "bear";
   return "neutral";
@@ -32,26 +42,49 @@ function formatPnl(value: number | null | undefined): string {
   return `${sign}$${value.toFixed(2)}`;
 }
 
+/**
+ * Derive weekly stats from the honest trade list.
+ * "This week" = trades whose exit_time is within the last 7 calendar days.
+ */
+function deriveWeeklyStats(trades: HonestTrade[]): WeeklyStats | null {
+  const now = Date.now();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const cutoff = now - sevenDaysMs;
+
+  const recent = trades.filter((t) => {
+    if (!t.exit_time) return false;
+    const ms = Date.parse(t.exit_time);
+    return !Number.isNaN(ms) && ms >= cutoff;
+  });
+
+  if (recent.length === 0) return null;
+
+  const wins = recent.filter((t) => t.pnl > 0).length;
+  const losses = recent.filter((t) => t.pnl < 0).length;
+  const total_pnl = recent.reduce((s, t) => s + t.pnl, 0);
+  const pnls = recent.map((t) => t.pnl);
+  const tradingDates = new Set(recent.map((t) => exitDate(t)).filter(Boolean));
+
+  return {
+    period: "Last 7 days",
+    total_trades: recent.length,
+    wins,
+    losses,
+    win_rate: recent.length > 0 ? (wins / recent.length) * 100 : 0,
+    total_pnl,
+    avg_pnl: recent.length > 0 ? total_pnl / recent.length : 0,
+    best_trade: pnls.length > 0 ? Math.max(...pnls) : null,
+    worst_trade: pnls.length > 0 ? Math.min(...pnls) : null,
+    trading_days: tradingDates.size,
+  };
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function WeeklyStatsWidget() {
-  const [data, setData] = useState<WeeklyStats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const payload = await fetchEngine(`/portfolio/stats/weekly`);
-        setData(payload);
-      } catch {
-        setData(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-    const id = setInterval(load, 120_000); // refresh every 2 minutes
-    return () => clearInterval(id);
-  }, []);
+  const { honest: tradeSet, isLoading: loading, error: loadError } = useHonestTrades(120_000);
+  const fetchError = !!loadError;
+  const data = tradeSet ? deriveWeeklyStats(tradeSet.trades) : null;
 
   if (loading) {
     return (
@@ -72,7 +105,7 @@ export function WeeklyStatsWidget() {
     );
   }
 
-  if (!data) {
+  if (fetchError || !data) {
     return (
       <Card>
         <CardHeader className="pb-2">
@@ -82,7 +115,9 @@ export function WeeklyStatsWidget() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">Unable to load weekly stats</p>
+          <p className="text-sm text-muted-foreground">
+            {fetchError ? "Unable to load weekly stats" : "No trades in the last 7 days"}
+          </p>
         </CardContent>
       </Card>
     );
@@ -158,7 +193,10 @@ export function WeeklyStatsWidget() {
           className="pt-2 font-mono text-[10px] text-muted-foreground"
           style={{ borderTop: "1px solid hsl(var(--border))" }}
         >
-          Trading days: {data.trading_days} &bull; Period: Last 7 days
+          Trading days: {data.trading_days} &bull; Period: {data.period}
+          {tradeSet && (
+            <span className="ml-2 opacity-70">&bull; {dedupCaveat(tradeSet)}</span>
+          )}
         </div>
       </CardContent>
     </Card>

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict
 
 from database.schema import DatabaseManager
@@ -272,6 +272,36 @@ async def get_trade_analytics(request: Request) -> TradeAnalyticsResponse:
     except Exception as exc:
         logger.error(f"Trade analytics error: {exc}")
         raise HTTPException(500, str(exc)) from exc
+
+
+@router.get(
+    "/pnl-reconciliation",
+    description="Recompute realized P&L from closed paper_trades and flag any "
+    "date where the stored daily_pnl snapshot disagrees (phantom-P&L detector).",
+)
+@limiter.limit("60/minute")
+async def get_pnl_reconciliation(request: Request, epsilon: float = 0.01) -> dict:
+    """Detective control for the phantom-P&L class (2026-06-15).
+
+    Independently re-derives per-date realized P&L from the source of truth
+    (``SUM(pnl)`` over ``status='closed'`` paper_trades) and compares it to the
+    stored ``daily_pnl.realized_pnl``. ``ok=false`` with a non-empty ``drifts``
+    list means a stored figure has drifted from the trades that back it — the
+    exact signature of a phantom or mis-written P&L row.
+    """
+    db = _get_db()
+    try:
+        report = db.reconcile_daily_pnl(epsilon=float(epsilon))
+    except Exception as exc:
+        logger.error(f"P&L reconciliation error: {exc}")
+        raise HTTPException(500, str(exc)) from exc
+    if not report.get("ok"):
+        logger.warning(
+            "[pnl_reconciliation] %d date(s) drifted from paper_trades: %s",
+            report.get("drift_count"),
+            [d["date"] for d in report.get("drifts", [])],
+        )
+    return report
 
 
 @router.get(
@@ -1310,3 +1340,617 @@ async def get_regime_for_symbol(symbol: str):
         return {"symbol": sym, "regime": regime, "current_regime": regime}
     except Exception as exc:
         return {"symbol": sym, "regime": "UNKNOWN", "error": str(exc)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /analytics/excursion   —   MAE/MFE post-trade excursion analytics
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ExcursionTradeItem(BaseModel):
+    """Per-trade MAE/MFE summary."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_id: str
+    symbol: str
+    side: str
+    entry_price: float
+    exit_price: Optional[float] = None
+    pnl: Optional[float] = None
+    entry_time: str
+    exit_time: Optional[str] = None
+    mae_pct: Optional[float] = None
+    mfe_pct: Optional[float] = None
+    mae_usd: Optional[float] = None
+    mfe_usd: Optional[float] = None
+    mfe_capture_ratio: Optional[float] = None
+
+
+class ExcursionAggregates(BaseModel):
+    """Aggregate MAE/MFE statistics across the returned trade set."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_count: int
+    populated_count: int  # trades with non-NULL mae/mfe
+    avg_mae_pct: Optional[float] = None
+    avg_mfe_pct: Optional[float] = None
+    avg_mae_usd: Optional[float] = None
+    avg_mfe_usd: Optional[float] = None
+    avg_mfe_capture_ratio: Optional[float] = None  # avg over trades where mfe_pct > 0
+
+
+class ExcursionResponse(BaseModel):
+    """Full excursion analytics response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trades: list[ExcursionTradeItem]
+    aggregates: ExcursionAggregates
+    timestamp: str
+
+
+@router.get(
+    "/excursion",
+    response_model=ExcursionResponse,
+    summary="MAE/MFE post-trade excursion analytics for closed paper trades",
+)
+def get_excursion_analytics(
+    limit: int = Query(100, ge=1, le=500, description="Max trades to return"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol (case-insensitive)"),
+) -> ExcursionResponse:
+    """
+    Return per-trade MAE/MFE excursion data and aggregate stats.
+
+    Columns mae_pct / mfe_pct / mae_usd / mfe_usd are populated
+    asynchronously after close; NULL values mean the backfill has not
+    run yet for that trade.
+
+    Aggregates include:
+    - avg_mae_pct / avg_mfe_pct  (average excursion fractions)
+    - avg_mfe_capture_ratio      = avg((mfe - mae) / mfe) over trades where mfe > 0
+      (closer to 1.0 = exits near peak; closer to 0 = leaving money on the table)
+    """
+    from datetime import datetime as _dt
+
+    from analytics.excursion import mfe_capture_ratio as _mfe_capture_ratio
+
+    db = _get_db()
+
+    sql_parts = ["SELECT * FROM paper_trades WHERE status = 'closed'"]
+    params: list = []
+
+    if symbol:
+        sql_parts.append("AND symbol = ?")
+        params.append(symbol.strip().upper())
+
+    sql_parts.append("ORDER BY exit_time DESC LIMIT ?")
+    params.append(limit)
+
+    sql = " ".join(sql_parts)
+
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            rows = conn.execute(sql, params).fetchall()
+            raw_trades = [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    trade_items: list[ExcursionTradeItem] = []
+    for t in raw_trades:
+        capture = _mfe_capture_ratio(t.get("mae_pct"), t.get("mfe_pct"))
+        trade_items.append(
+            ExcursionTradeItem(
+                trade_id=str(t.get("trade_id", "")),
+                symbol=str(t.get("symbol", "")),
+                side=str(t.get("side", "")),
+                entry_price=float(t.get("entry_price") or 0),
+                exit_price=float(t["exit_price"]) if t.get("exit_price") is not None else None,
+                pnl=float(t["pnl"]) if t.get("pnl") is not None else None,
+                entry_time=str(t.get("entry_time", "")),
+                exit_time=str(t["exit_time"]) if t.get("exit_time") else None,
+                mae_pct=t.get("mae_pct"),
+                mfe_pct=t.get("mfe_pct"),
+                mae_usd=t.get("mae_usd"),
+                mfe_usd=t.get("mfe_usd"),
+                mfe_capture_ratio=capture,
+            )
+        )
+
+    # Aggregates over trades with populated excursion data
+    populated = [t for t in trade_items if t.mae_pct is not None]
+    n = len(populated)
+
+    def _avg(vals):
+        clean = [v for v in vals if v is not None]
+        return round(sum(clean) / len(clean), 6) if clean else None
+
+    capture_vals = [t.mfe_capture_ratio for t in populated if t.mfe_pct and t.mfe_pct > 0]
+
+    agg = ExcursionAggregates(
+        trade_count=len(trade_items),
+        populated_count=n,
+        avg_mae_pct=_avg([t.mae_pct for t in populated]),
+        avg_mfe_pct=_avg([t.mfe_pct for t in populated]),
+        avg_mae_usd=_avg([t.mae_usd for t in populated]),
+        avg_mfe_usd=_avg([t.mfe_usd for t in populated]),
+        avg_mfe_capture_ratio=_avg(capture_vals),
+    )
+
+    return ExcursionResponse(
+        trades=trade_items,
+        aggregates=agg,
+        timestamp=_dt.utcnow().isoformat() + "Z",
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /analytics/entry-timing   —   Entry-timing scenario analysis (US-005)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class EntryTimingScenarioRow(BaseModel):
+    """One offset scenario for a single trade."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    offset_bars: int
+    hypothetical_entry: float
+    pnl_usd: float
+    pnl_pct: float
+    delta_vs_actual_usd: float
+
+
+class EntryTimingTradeItem(BaseModel):
+    """Per-trade entry-timing scenario result."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_id: str
+    symbol: str
+    side: str
+    entry_price: float
+    exit_price: Optional[float] = None
+    pnl: Optional[float] = None
+    entry_time: str
+    exit_time: Optional[str] = None
+    scenarios: list[EntryTimingScenarioRow]
+    entry_bar_index: Optional[int] = None
+    bars_available: bool = False
+
+
+class EntryTimingAggregates(BaseModel):
+    """Aggregate entry-timing insight across the returned trade set."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_count: int
+    computed_count: int  # trades for which scenarios were produced
+    # Per-offset averages across all computed trades
+    avg_delta_by_offset: dict[str, float]  # key = str(offset_bars), val = avg delta_vs_actual_usd
+    # Directional summary: are entries systematically early or late?
+    best_avg_offset: Optional[int] = None   # offset with highest avg delta
+    worst_avg_offset: Optional[int] = None  # offset with lowest avg delta
+    systematic_bias: Optional[str] = None   # "EARLY" | "LATE" | "NEUTRAL"
+
+
+class EntryTimingResponse(BaseModel):
+    """Full entry-timing scenario response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trades: list[EntryTimingTradeItem]
+    aggregates: EntryTimingAggregates
+    offsets_evaluated: list[int]
+    timestamp: str
+
+
+@router.get(
+    "/entry-timing",
+    response_model=EntryTimingResponse,
+    summary="Entry-timing scenario analysis: what-if entered N bars earlier/later",
+)
+async def get_entry_timing(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200, description="Max trades to analyse"),
+    symbol: Optional[str] = Query(None, description="Filter by symbol (case-insensitive)"),
+    offsets: str = Query(
+        "-3,-2,-1,0,1,2,3",
+        description="Comma-separated bar offsets to evaluate (e.g. -3,-2,-1,0,1,2,3)",
+    ),
+) -> EntryTimingResponse:
+    """
+    For each closed paper trade, compute hypothetical PnL if entry had occurred
+    N bars earlier or later (holding exit price constant).
+
+    ``offset=0`` reproduces the actual trade PnL (sanity anchor).
+    Negative offsets = earlier entry; positive = later entry.
+    ``delta_vs_actual_usd > 0`` means that scenario was more profitable.
+
+    Aggregates answer: "are my entries systematically early or late?"
+    (``systematic_bias`` = EARLY when entering later is consistently better,
+    LATE when entering earlier is consistently better, NEUTRAL otherwise).
+
+    Bars are fetched via the engine MarketDataManager (TV MCP → IBKR → Polygon).
+    Trades where bars are unavailable return ``bars_available=false`` with an
+    empty scenarios list — they are excluded from aggregates.
+    """
+    from datetime import datetime as _dt
+
+    from analytics.excursion_backfill import _filter_bars_to_window, _parse_utc
+    from analytics.scenario import compute_entry_timing_scenarios
+    from analytics.scenario_backfill import _locate_entry_bar
+    from utils.position_sizing import get_contract_multiplier
+
+    # Parse offset list
+    try:
+        parsed_offsets = [int(o.strip()) for o in offsets.split(",") if o.strip()]
+    except ValueError:
+        raise HTTPException(400, "offsets must be a comma-separated list of integers") from None
+
+    if not parsed_offsets:
+        raise HTTPException(400, "offsets must not be empty")
+
+    db = _get_db()
+
+    sql_parts = ["SELECT * FROM paper_trades WHERE status = 'closed'"]
+    params: list = []
+
+    if symbol:
+        sql_parts.append("AND symbol = ?")
+        params.append(symbol.strip().upper())
+
+    sql_parts.append("ORDER BY exit_time DESC LIMIT ?")
+    params.append(limit)
+
+    sql = " ".join(sql_parts)
+
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            rows = conn.execute(sql, params).fetchall()
+            raw_trades = [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    trade_items: list[EntryTimingTradeItem] = []
+    # Accumulate delta sums per offset for aggregation
+    delta_sums: dict[int, float] = dict.fromkeys(parsed_offsets, 0.0)
+    delta_counts: dict[int, int] = dict.fromkeys(parsed_offsets, 0)
+    computed_count = 0
+
+    dm = _data_mgr
+
+    for t in raw_trades:
+        trade_id = str(t.get("trade_id", ""))
+        sym = str(t.get("symbol", ""))
+        side = str(t.get("side", "buy"))
+        entry_price = float(t.get("entry_price") or 0)
+        exit_price_val = t.get("exit_price")
+        exit_price = float(exit_price_val) if exit_price_val is not None else None
+        qty = float(t.get("quantity") or 1)
+        entry_time_raw = t.get("entry_time", "")
+        exit_time_raw = t.get("exit_time")
+
+        base_item = EntryTimingTradeItem(
+            trade_id=trade_id,
+            symbol=sym,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            pnl=float(t["pnl"]) if t.get("pnl") is not None else None,
+            entry_time=entry_time_raw,
+            exit_time=str(exit_time_raw) if exit_time_raw else None,
+            scenarios=[],
+            bars_available=False,
+        )
+
+        # Skip if bars unavailable or invalid prices
+        if dm is None or entry_price <= 0 or exit_price is None or exit_price <= 0:
+            trade_items.append(base_item)
+            continue
+
+        entry_dt = _parse_utc(entry_time_raw)
+        exit_dt = _parse_utc(exit_time_raw)
+        if not entry_dt or not exit_dt:
+            trade_items.append(base_item)
+            continue
+
+        max_pre = abs(min(parsed_offsets)) if parsed_offsets else 3
+        fetch_days = max(1, (exit_dt - entry_dt).days + 1) + max(2, (max_pre // 390) + 2)
+
+        try:
+            from datetime import timedelta as _td
+
+            bars_df = await dm.get_bars(sym, lookback_days=fetch_days, timeframe="1m", is_futures=True)
+        except Exception as exc:
+            logger.debug("[entry-timing] trade %s get_bars failed: %s", trade_id[:8], exc)
+            trade_items.append(base_item)
+            continue
+
+        if bars_df is None or (hasattr(bars_df, "empty") and bars_df.empty):
+            trade_items.append(base_item)
+            continue
+
+        from datetime import timedelta as _td
+
+        window_bars = _filter_bars_to_window(
+            bars_df,
+            entry_dt - _td(minutes=max_pre + 5),
+            exit_dt,
+        )
+
+        if len(window_bars) == 0:
+            trade_items.append(base_item)
+            continue
+
+        entry_bar_idx = _locate_entry_bar(window_bars, entry_dt)
+        if entry_bar_idx is None:
+            trade_items.append(base_item)
+            continue
+
+        multiplier = get_contract_multiplier(sym)
+        scenario_rows = compute_entry_timing_scenarios(
+            side=side,
+            actual_entry_price=entry_price,
+            exit_price=exit_price,
+            bars_df=window_bars,
+            entry_bar_index=entry_bar_idx,
+            offsets=parsed_offsets,
+            multiplier=multiplier,
+            qty=qty,
+        )
+
+        if not scenario_rows:
+            trade_items.append(base_item)
+            continue
+
+        computed_count += 1
+        scenario_models = [EntryTimingScenarioRow(**r) for r in scenario_rows]
+        base_item.scenarios = scenario_models
+        base_item.bars_available = True
+        base_item.entry_bar_index = entry_bar_idx
+
+        for row_s in scenario_rows:
+            o = row_s["offset_bars"]
+            if o in delta_sums:
+                delta_sums[o] += row_s["delta_vs_actual_usd"]
+                delta_counts[o] += 1
+
+        trade_items.append(base_item)
+
+    # Build per-offset avg delta dict
+    avg_delta: dict[str, float] = {}
+    for o in parsed_offsets:
+        cnt = delta_counts[o]
+        avg_delta[str(o)] = round(delta_sums[o] / cnt, 4) if cnt > 0 else 0.0
+
+    # Best / worst offset (exclude offset=0 from the ranking)
+    non_zero_offsets = [o for o in parsed_offsets if o != 0]
+    best_offset: Optional[int] = None
+    worst_offset: Optional[int] = None
+    systematic_bias: Optional[str] = None
+
+    if non_zero_offsets and computed_count > 0:
+        best_offset = max(non_zero_offsets, key=lambda o: avg_delta.get(str(o), 0.0))
+        worst_offset = min(non_zero_offsets, key=lambda o: avg_delta.get(str(o), 0.0))
+
+        best_val = avg_delta.get(str(best_offset), 0.0)
+        # Bias heuristic: best offset consistently positive → entering at that
+        # point was better than actual.  Negative best_offset = earlier,
+        # positive = later.
+        if best_val > 0:
+            if best_offset < 0:
+                systematic_bias = "LATE"   # entering later than optimal → entering earlier helps
+            elif best_offset > 0:
+                systematic_bias = "EARLY"  # entering later helps → actual was early
+        else:
+            systematic_bias = "NEUTRAL"
+
+    agg = EntryTimingAggregates(
+        trade_count=len(trade_items),
+        computed_count=computed_count,
+        avg_delta_by_offset=avg_delta,
+        best_avg_offset=best_offset,
+        worst_avg_offset=worst_offset,
+        systematic_bias=systematic_bias,
+    )
+
+    return EntryTimingResponse(
+        trades=trade_items,
+        aggregates=agg,
+        offsets_evaluated=parsed_offsets,
+        timestamp=_dt.utcnow().isoformat() + "Z",
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /analytics/bar-depth   —   data-coverage / health per symbol × interval
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class BarDepthPair(BaseModel):
+    """Coverage record for one (symbol, interval) in market_data_bars."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    symbol: str
+    interval: str
+    rows: int
+    first_ts: Optional[str] = None
+    last_ts: Optional[str] = None
+    span_days: float
+    gap_count: int          # consecutive bars spaced > 2× the median step
+    max_gap_hours: float
+    contaminated_pct: float  # % rejected by the live bar-quality predicate
+    enforce_safe: bool       # True when zero rows would be rejected
+
+
+class BarDepthSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pair_count: int
+    symbol_count: int
+    total_rows: int
+    total_rejects: int
+    contaminated_pct: float
+
+
+class BarDepthResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pairs: list[BarDepthPair]
+    summary: BarDepthSummary
+    timestamp: str
+
+
+@router.get(
+    "/bar-depth",
+    response_model=BarDepthResponse,
+    summary="Bar-data coverage/health per symbol × interval (rows, span, gaps, contaminated%)",
+)
+def get_bar_depth() -> BarDepthResponse:
+    """
+    Expose the data-coverage picture that was previously CLI-only
+    (``scripts/bar_quality_fp_audit.py``): per (symbol, interval), the row count,
+    calendar span, gap structure, and the fraction the write-time bar-quality gate
+    would reject (same ``screen_bars`` predicate, so the number is consistent).
+
+    Read-only and additive — no behaviour change to ingestion or the gate.
+    """
+    from analytics.bar_depth import compute_bar_depth
+
+    data = compute_bar_depth()
+    return BarDepthResponse(
+        pairs=[BarDepthPair(**p) for p in data["pairs"]],
+        summary=BarDepthSummary(**data["summary"]),
+        timestamp=data["timestamp"],
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WS4B post-trade / scenario analytics (exit-reason, slippage, losing-streak,
+# P&L waterfall, regime attribution). All read-only over existing paper_trades
+# columns; the compute lives in analytics.post_trade as pure functions so it is
+# unit-tested offline. No new migration: exit_reason is DERIVED, never stored.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _post_trade_spec_lookup(symbol: str):
+    """Adapter: backtest.contract_specs.get_spec, returning None for unknowns
+    so analytics.post_trade stays dollar-agnostic when a symbol has no spec."""
+    try:
+        from backtest.contract_specs import get_spec
+
+        return get_spec(symbol)
+    except Exception:
+        return None
+
+
+def _fetch_closed_trades(symbol: Optional[str], limit: int) -> list[dict]:
+    """Closed paper_trades as plain dicts, newest first. Mirrors /excursion."""
+    db = _get_db()
+    sql_parts = ["SELECT * FROM paper_trades WHERE status = 'closed'"]
+    params: list = []
+    if symbol:
+        sql_parts.append("AND symbol = ?")
+        params.append(symbol.strip().upper())
+    sql_parts.append("ORDER BY exit_time DESC LIMIT ?")
+    params.append(limit)
+    sql = " ".join(sql_parts)
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            rows = conn.execute(sql, params).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+
+@router.get(
+    "/exit-attribution",
+    summary="Closed-trade P&L grouped by derived exit reason (target/stop/manual)",
+)
+def get_exit_attribution(
+    limit: int = Query(500, ge=1, le=2000),
+    symbol: Optional[str] = Query(None),
+) -> dict:
+    from analytics.post_trade import exit_attribution
+
+    trades = _fetch_closed_trades(symbol, limit)
+    out = exit_attribution(trades)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@router.get(
+    "/slippage-attribution",
+    summary="Execution-quality breakdown of recorded slippage_ticks by symbol",
+)
+def get_slippage_attribution(
+    limit: int = Query(500, ge=1, le=2000),
+    symbol: Optional[str] = Query(None),
+) -> dict:
+    from analytics.post_trade import slippage_attribution
+
+    trades = _fetch_closed_trades(symbol, limit)
+    out = slippage_attribution(trades, _post_trade_spec_lookup)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@router.get(
+    "/losing-streak",
+    summary="Consecutive win/loss runs and streak-local drawdown over closed trades",
+)
+def get_losing_streak(
+    limit: int = Query(1000, ge=1, le=5000),
+    symbol: Optional[str] = Query(None),
+) -> dict:
+    from analytics.post_trade import losing_streak
+
+    trades = _fetch_closed_trades(symbol, limit)
+    out = losing_streak(trades)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@router.get(
+    "/trades/by-regime",
+    summary="Closed-trade P&L grouped by the regime each trade was entered in",
+)
+def get_trades_by_regime(
+    limit: int = Query(1000, ge=1, le=5000),
+    symbol: Optional[str] = Query(None),
+) -> dict:
+    from analytics.post_trade import regime_attribution
+
+    trades = _fetch_closed_trades(symbol, limit)
+    out = regime_attribution(trades)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
+@router.get(
+    "/trades/{trade_id}/pnl-breakdown",
+    summary="Per-trade P&L waterfall (peak MFE -> given back -> realized)",
+)
+def get_trade_pnl_breakdown(trade_id: str) -> dict:
+    from analytics.post_trade import pnl_waterfall
+
+    db = _get_db()
+    with db._lock:  # type: ignore[attr-defined]
+        conn = db._connect()  # type: ignore[attr-defined]
+        try:
+            row = conn.execute(
+                "SELECT * FROM paper_trades WHERE trade_id = ?", (trade_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No trade with id {trade_id!r}")
+    out = pnl_waterfall(dict(row), _post_trade_spec_lookup)
+    out["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return out

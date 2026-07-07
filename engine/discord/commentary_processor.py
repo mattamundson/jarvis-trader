@@ -42,6 +42,34 @@ def _default_db_path() -> str:
     return os.path.join(engine_root, "data", "jarvis_trader.db")
 
 
+def build_default_llm_client(db_path: Optional[str] = None) -> Optional[object]:
+    """Construct a JarvisLLMClient for the *standalone* Corey extraction surfaces.
+
+    The MCP server, ``discord.cli --trigger-commentary``, and corey_compare build
+    CoreyCommentaryProcessor without an engine-supplied llm_client, so they fell
+    through to a raw httpx POST against api.anthropic.com. When that account's
+    credit is exhausted, every standalone extraction silently degrades to
+    data_quality='none' (2026-06-29 incident), while the live engine — which
+    routes through JarvisLLMClient's Vertex->Gemini->OpenAI failover chain — stays
+    healthy. Passing this client gives the standalone surfaces the same failover.
+
+    The cost ledger is anchored next to the commentary DB (engine/data/
+    llm_costs.db) so it isn't scattered by the caller's cwd. Returns None — never
+    raises — if the client can't be built, so callers transparently fall back to
+    the existing direct-POST path.
+    """
+    try:
+        # Local import: avoid a heavy import at module load and any import cycle.
+        from llm.client import JarvisLLMClient  # noqa: PLC0415
+
+        anchor = db_path or _default_db_path()
+        cost_db = os.path.join(os.path.dirname(anchor), "llm_costs.db")
+        return JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""), db_path=cost_db)
+    except Exception as e:  # pragma: no cover - defensive; degrade to direct POST
+        logger.warning("[CoreyProcessor] build_default_llm_client unavailable: %s", e)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Cache table DDL
 # ---------------------------------------------------------------------------
@@ -281,6 +309,34 @@ class CoreyCommentaryProcessor:
             logger.warning("[CoreyProcessor] DB fetch failed for %s: %s", date_str, e)
             return []
 
+    def _count_commentary(self, for_date: date) -> int:
+        """Cheap COUNT of commentary rows for a date — same filter as
+        _fetch_commentary. Used by _load_from_cache to detect when a cached
+        none/msgs=0 row has been invalidated by late-arriving / backfilled
+        #market-updates ingestion. Degrades to 0 (treat as still-empty) if the
+        commentary table is absent or the query fails, so a fresh/standalone DB
+        never raises through the cache-load path.
+        """
+        date_str = for_date.isoformat()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cur = conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM discord_corey_commentary
+                    WHERE DATE(timestamp) = ?
+                      AND (
+                          channel = 'market-updates'
+                          OR (channel = 'general' AND author_id = ?)
+                      )
+                    """,
+                    (date_str, TATHEDOG_AUTHOR_ID),
+                )
+                return int(cur.fetchone()[0] or 0)
+        except Exception as e:
+            logger.warning("[CoreyProcessor] Commentary count failed for %s: %s", date_str, e)
+            return 0
+
     def _fetch_recent_commentary(self, for_date: date) -> tuple[list[dict], date]:
         """
         Look back up to 7 days to find the most recent commentary.
@@ -428,8 +484,11 @@ class CoreyCommentaryProcessor:
         Returning them would permanently suppress extraction for that date
         even after the outage is resolved (2026-05-11 regression root cause).
 
-        Genuine no-data rows (data_quality='none' AND message_count=0) are
-        returned as-is; the answer is stable — there really was no commentary.
+        Stale no-data rows (data_quality='none' AND message_count=0) are
+        rechecked against live commentary: if #market-updates has since been
+        ingested for that date (late arrival or post-ingestion-gap backfill),
+        the row is evicted and re-extracted. Only a date that is *still* empty
+        is returned as-is — that answer is stable.
         """
         date_str = for_date.isoformat()
         try:
@@ -452,6 +511,22 @@ class CoreyCommentaryProcessor:
                 )
                 self._evict_cache(for_date)
                 return None
+
+            # Evict stale no-data rows: msgs=0 was cached before #market-updates
+            # ingestion caught up for this date. Trusting it permanently pinned a
+            # neutral bias (corey_signal=0.0) even after commentary backfilled,
+            # starving the IC calibration. Recheck live commentary; re-extract
+            # when messages now exist. A genuinely-empty day still returns as-is.
+            if row["data_quality"] == "none" and int(row["message_count"]) == 0:
+                if self._count_commentary(for_date) > 0:
+                    logger.warning(
+                        "[CoreyProcessor] Evicting stale no-data cache for %s "
+                        "(cached msgs=0 but commentary has since been ingested). "
+                        "Will re-extract.",
+                        date_str,
+                    )
+                    self._evict_cache(for_date)
+                    return None
 
             return CoreySessionBias(
                 date=for_date,
@@ -515,6 +590,47 @@ class CoreyCommentaryProcessor:
             logger.info("[CoreyProcessor] Cache invalidated for %s", date_str)
         except Exception as e:
             logger.warning("[CoreyProcessor] Cache invalidation failed: %s", e)
+
+    def purge_stale_no_data_cache(self) -> list[str]:
+        """Evict every cached none/msgs=0 row whose date now has ingested
+        commentary, so the next get_session_bias re-extracts the real bias.
+        Returns the list of evicted date strings (ascending).
+
+        Complements the per-call recheck in _load_from_cache: that heals a date
+        only when it is next requested, whereas this proactively clears the
+        backlog left by an ingestion gap (or a slow first-call-of-the-day) so
+        the IC calibration isn't starved waiting for each stale date to happen
+        to be re-requested. Idempotent — a date that is still empty is left
+        untouched, and an already-re-extracted date no longer matches the filter.
+        """
+        evicted: list[str] = []
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT date FROM corey_session_bias "
+                    "WHERE data_quality = 'none' AND message_count = 0 "
+                    "ORDER BY date ASC"
+                ).fetchall()
+            for r in rows:
+                date_str = r["date"]
+                try:
+                    d = date.fromisoformat(date_str)
+                except (TypeError, ValueError):
+                    continue
+                if self._count_commentary(d) > 0:
+                    self._evict_cache(d)
+                    evicted.append(date_str)
+        except Exception as e:
+            logger.warning("[CoreyProcessor] purge_stale_no_data_cache failed: %s", e)
+        if evicted:
+            logger.info(
+                "[CoreyProcessor] Purged %d stale no-data cache row(s) "
+                "(commentary backfilled): %s",
+                len(evicted),
+                ", ".join(evicted),
+            )
+        return evicted
 
     def _evict_cache(self, for_date: date) -> None:
         """Delete a poisoned cache row so the next call triggers fresh LLM extraction."""
@@ -613,6 +729,70 @@ def get_futures_sentiment_staleness(db_path: Optional[str] = None) -> dict:
     result["latest_timestamp"] = latest
     result["age_days"] = age_days
     result["quality"] = "fresh" if age_days <= threshold else "stale"
+    return result
+
+
+def get_bias_extraction_health(db_path: Optional[str] = None) -> dict:
+    """Detect when Corey *structured-bias* LLM extraction has stalled while raw
+    commentary keeps flowing.
+
+    ``get_futures_sentiment_staleness`` covers INGESTION freshness; it cannot see
+    an LLM-extraction outage. On 2026-06-29 the direct-Anthropic account's credit
+    was exhausted: commentary ingested fine, but every structured session_bias
+    degraded to data_quality='none' for two days, undetected by /health. This
+    compares the latest market-updates commentary date against the latest date
+    with a fresh/stale cached bias; if extraction has fallen ``lag_threshold``+
+    days behind ingestion (or never produced bias for existing commentary), it is
+    'degraded'.
+
+    Cache-only — makes NO LLM call (safe for a hot health endpoint). Read-only +
+    resilient: returns quality='unknown' (never raises) if a table is absent/empty.
+    """
+    path = db_path or _default_db_path()
+    lag_threshold = 2
+    result = {
+        "extraction_quality": "unknown",
+        "latest_commentary_date": None,
+        "latest_bias_date": None,
+        "lag_days": None,
+        "lag_threshold_days": lag_threshold,
+    }
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+            crow = conn.execute(
+                "SELECT MAX(DATE(timestamp)) FROM discord_corey_commentary "
+                "WHERE channel = 'market-updates'"
+            ).fetchone()
+            brow = conn.execute(
+                "SELECT MAX(date) FROM corey_session_bias "
+                "WHERE data_quality IN ('fresh','stale')"
+            ).fetchone()
+    except Exception as exc:  # missing table / unreadable DB
+        logger.debug("get_bias_extraction_health: %s", exc)
+        return result
+
+    latest_commentary = crow[0] if crow else None
+    latest_bias = brow[0] if brow else None
+    if not latest_commentary:
+        return result  # no commentary at all -> unknown
+
+    result["latest_commentary_date"] = latest_commentary
+    result["latest_bias_date"] = latest_bias
+
+    cdate = _parse_date(latest_commentary)
+    if cdate is None:
+        return result
+    if not latest_bias:
+        # Commentary exists but no structured bias has ever been cached.
+        result["extraction_quality"] = "degraded"
+        return result
+    bdate = _parse_date(latest_bias)
+    if bdate is None:
+        return result
+
+    lag = (cdate - bdate).days
+    result["lag_days"] = lag
+    result["extraction_quality"] = "degraded" if lag >= lag_threshold else "ok"
     return result
 
 

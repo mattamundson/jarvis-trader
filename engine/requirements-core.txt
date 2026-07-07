@@ -44,7 +44,7 @@ pandas-ta==0.4.67b0       # 150+ indicators. Windows: requires alligator.py:6 pa
 xgboost==3.2.0            # Used by engine/learning/model_drawer.py — Win amd64 wheel (101.7 MB)
 
 # ── Data Processing ────────────────────────────────────────────────────────
-pandas>=2.2.3
+pandas>=3.0,<4.0          # converged to 3.x 2026-06-26 (dev/local already on 3.0.2; PR #161 str-Enum fix). <4.0 guards the Pandas4 break the deprecation warnings foreshadow.
 numpy>=2.2.6
 scipy>=1.15.2
 quantstats==0.0.81        # Portfolio analytics (Sortino/Calmar/max-DD/monthly returns). Used by engine/backtest/stark_forge.py + engine/reports/quantstats_metrics.py.
@@ -73,6 +73,7 @@ fredapi==0.5.2            # FRED — Federal Reserve data, free, no key needed
 
 # ── Scheduling ─────────────────────────────────────────────────────────────
 apscheduler==3.11.0
+tzlocal==5.3.1            # APScheduler local-timezone dep; pin explicitly (not pulled transitively in the CI core install -> ModuleNotFoundError in scheduler tests)
 
 # ── RL / session tests (full pytest on CI) ─────────────────────────────────
 gymnasium==1.0.0          # TradingEnvironment + test_rl_module

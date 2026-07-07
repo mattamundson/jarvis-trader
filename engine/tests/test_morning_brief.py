@@ -60,6 +60,57 @@ async def test_assemble_morning_brief_empty_positions():
 
 
 @pytest.mark.asyncio
+async def test_morning_brief_shows_avt_na_when_no_bars():
+    """With no bars, the report-only AVT indicator degrades to N/A (never raises)."""
+    from notifications.morning_brief import assemble_morning_brief
+
+    result = await assemble_morning_brief(
+        data_manager=FakeDataManager(),  # get_bars returns None
+        paper_tracker=FakePaperTracker(),
+        safety_layer=FakeSafetyLayer(),
+    )
+    assert "AVT: N/A" in result
+
+
+@pytest.mark.asyncio
+async def test_morning_brief_includes_avt_score_with_bars():
+    """With real bars, the brief carries an AVT indicator on the instrument lines."""
+    import numpy as np
+
+    from notifications.morning_brief import assemble_morning_brief
+
+    n = 240
+    close = pd.Series(np.linspace(100, 130, n))
+    bars = pd.DataFrame(
+        {
+            "open": close.shift(1).fillna(close.iloc[0]),
+            "high": close * 1.005,
+            "low": close * 0.995,
+            "close": close,
+            "volume": pd.Series([1000.0] * n),
+        }
+    )
+
+    class DM:
+        async def get_current_price(self, symbol):
+            return 100.0
+
+        async def get_bars(self, symbol, **kwargs):
+            return bars
+
+    result = await assemble_morning_brief(
+        data_manager=DM(),
+        paper_tracker=FakePaperTracker(),
+        safety_layer=FakeSafetyLayer(),
+    )
+    assert "AVT:" in result
+    assert "AVT: N/A" not in result  # real bars -> a real read (long/short/flat)
+    # The active instruments (MES/MGC) carry their own report-only AVT read.
+    assert "MES: AVT" in result
+    assert "MGC: AVT" in result
+
+
+@pytest.mark.asyncio
 async def test_assemble_morning_brief_contains_symbols():
     """Brief contains MCL and MNQ symbol names."""
     from notifications.morning_brief import assemble_morning_brief

@@ -1,0 +1,8 @@
+"Tool","Signal?","Verdict","Key Finding"
+"Saty ATR Levels","YES (strong)","KEEP","81.7% continuation rate after ±0.236 ATR trigger cross (N=1,807). Use for stops and targets."
+"Saty Phase Oscillator","YES (as filter)","KEEP","Compression detection on 25.6% of bars. STC+Compression+ATR_trigger combo: PF=1.632"
+"Corey Singlefinder v2","YES (63%)","KEEP","Bullish singles: 63.6% 4-bar forward hit rate (N=733). Bearish: 61.5%"
+"Corey TPO Score v2","Weak","Context only","Above VAH: 62.5% next-day hit rate — marginal"
+"Corey TPO Profile v1","N/A","UI only","Chart visualization tool only, no signal"
+"Corey Rangefinder v1","Weak (54%)","SKIP","Outside bar continuation 54.4% — no edge above random"
+"Priceline11","N/A","UI only","Current price line display, no signal"

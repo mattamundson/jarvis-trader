@@ -29,7 +29,7 @@ interface KairosStatus {
   tick_count: number;
   watcher_count: number;
   last_tick: string | null;
-  uptime_seconds: number | null;
+  uptime_seconds: number | null | undefined;
   error_count: number;
 }
 
@@ -72,7 +72,8 @@ function fetcher<T>(url: string): Promise<T> {
   return fetchEngine<T>(url);
 }
 
-function formatUptime(seconds: number): string {
+function formatUptime(seconds: number | null | undefined): string {
+  if (seconds == null || !isFinite(seconds) || isNaN(seconds)) return "—";
   if (seconds < 60) return `${Math.floor(seconds)}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`;
   const h = Math.floor(seconds / 3600);
@@ -496,14 +497,12 @@ export default function KairosPage() {
                           {status.watcher_count}
                         </span>
                       </div>
-                      {status.uptime_seconds !== null && (
-                        <div className="flex items-center justify-between py-1.5 border-b border-border/50">
-                          <span className="text-muted-foreground">Uptime</span>
-                          <span className="font-mono font-semibold text-foreground">
-                            {formatUptime(status.uptime_seconds)}
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between py-1.5 border-b border-border/50">
+                        <span className="text-muted-foreground">Uptime</span>
+                        <span className="font-mono font-semibold text-foreground">
+                          {formatUptime(status.uptime_seconds)}
+                        </span>
+                      </div>
                       <div className="flex items-center justify-between py-1.5 border-b border-border/50">
                         <span className="text-muted-foreground flex items-center gap-1">
                           <AlertTriangle className="h-3 w-3" />

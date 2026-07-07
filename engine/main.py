@@ -97,6 +97,7 @@ from routers.safety_router import router as safety_router
 from routers.schwab_router import router as schwab_router
 from routers.schwab_router import set_schwab_connector
 from routers.strategies_router import router as strategies_router
+from routers.trading_status_router import router as trading_status_router
 from routers.validation_router import router as validation_router
 from routers.validation_router import set_validation_alert_manager
 from routers.paper_validation_router import router as paper_validation_router
@@ -130,6 +131,7 @@ from routers.trades_router import router as trades_router
 from routers.trades_router import inject_dependencies as inject_trades_deps
 from routers.strategy_ledger_router import router as strategy_ledger_router
 from routers.forward_test_router import router as forward_test_router
+from routers.validation_analytics_router import router as validation_analytics_router
 from routers.wfe_router import router as wfe_router
 from routers.discovery_router import router as discovery_router
 from routers.orders_router import router as orders_router
@@ -144,11 +146,18 @@ from routers.readiness_router import router as readiness_router
 from routers.polymarket_router import router as polymarket_router
 from api.operations_dashboard import router as operations_dashboard_router
 from routers.attribution_router import router as attribution_router
+from routers.vault_router import router as vault_router
+from routers.pnl_truth_router import router as pnl_truth_router
+from routers.durability_router import router as durability_router
 from routers.ib_scanner_router import router as ib_scanner_router
 from routers.macro_router import router as macro_router, inject_dependencies as inject_macro_deps
 from routers.analysis_router import (
     router as analysis_router,
     inject_dependencies as inject_analysis_deps,
+)
+from routers.regime_router import (
+    router as regime_router,
+    inject_dependencies as inject_regime_deps,
 )
 from routers.watchlist_router import (
     router as watchlist_router,
@@ -446,7 +455,9 @@ async def lifespan(app: FastAPI):
                     order_router.attach_ibkr(ib_paper_connector)
                     logger.info("✅ IBGatewayConnector (paper) connected background")
                 else:
-                    logger.warning("⚠️ IBGatewayConnector background connect failed after 3 attempts")
+                    logger.warning(
+                        "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                    )
         except Exception as e:
             logger.error(f"❌ Background data/IBKR init failed: {e}")
 
@@ -484,7 +495,12 @@ async def lifespan(app: FastAPI):
                 pipeline_callback=lambda sym: asyncio.create_task(
                     trading_pipeline.analyze_and_decide(sym, is_futures=True)
                 ),
-                symbols=["MES", "MGC", "MNQ", "MCL", "BTCUSD"],
+                symbols=[
+                    "MES",
+                    "MNQ",
+                    "MCL",
+                    "BTCUSD",
+                ],  # MGC eliminated 2026-06-26 re-gate (all 5 variants honest FAIL)
             )
             await redis_trigger.start()
 
@@ -700,6 +716,13 @@ async def lifespan(app: FastAPI):
     # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
     set_analytics_data_manager(data_manager)
+    # Wire the real-price source into the paper connector so simulated fills use
+    # the live get_tick_price waterfall instead of static mock quotes. Without
+    # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
+    # paper_trades. (2026-06-22 paper-fill integrity fix.)
+    if ib_paper_connector is not None:
+        ib_paper_connector.attach_market_data(data_manager)
+        logger.info("✅ Paper connector: real-price source wired (get_tick_price)")
     # Re-inject with data_manager now available so /orders/status can fall back to
     # data_manager.ibkr for IBKR connected-state when safety_layer has no gateway attached.
     inject_orders_deps(order_router, safety_layer=safety_layer, data_manager=data_manager)
@@ -1114,6 +1137,7 @@ async def lifespan(app: FastAPI):
                 # and trips the watchdog again within 5-10 minutes.
                 try:
                     from zoneinfo import ZoneInfo
+
                     _ct = ZoneInfo("America/Chicago")
                     _now = datetime.now(_ct)
                     if _now.weekday() >= 5 or not (9 <= _now.hour < 16):
@@ -1244,19 +1268,29 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.error(f"[MGC-daily] Failed: {exc}", exc_info=True)
 
-    scheduler.add_job(
-        run_daily_mgc_signal,
-        CronTrigger(
-            day_of_week="mon-fri",
-            hour=23,
-            minute=0,
-            timezone="UTC",  # 23:00 UTC = 18:00 ET
-        ),
-        id="mgc_daily_signal",
-        name="MGC Daily Signal Scanner",
-        max_instances=1,
-        misfire_grace_time=600,
+    # MGC was eliminated in the 2026-06-26 honest re-gate (all 5 variants FAIL, paper
+    # disabled). This daily scanner writes pending ENTRY_NOW signals to pending_signals.json
+    # and fires WhatsApp alerts -- actionable noise/risk for an untradeable symbol. Gate it
+    # OFF by default; set MGC_DAILY_SCANNER_ENABLED=1 to restore the daily watch.
+    _mgc_daily_enabled = os.environ.get("MGC_DAILY_SCANNER_ENABLED", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
     )
+    if _mgc_daily_enabled:
+        scheduler.add_job(
+            run_daily_mgc_signal,
+            CronTrigger(
+                day_of_week="mon-fri",
+                hour=23,
+                minute=0,
+                timezone="UTC",  # 23:00 UTC = 18:00 ET
+            ),
+            id="mgc_daily_signal",
+            name="MGC Daily Signal Scanner",
+            max_instances=1,
+            misfire_grace_time=600,
+        )
     # Messaging health monitor — check Ollama every 60s
     try:
         from services.messaging_health import run_health_check
@@ -1510,7 +1544,7 @@ async def lifespan(app: FastAPI):
             from backtest.signals import compute_all_indicators, generate_signals
             from routers.scanner_router import record_signal
 
-            if safety_layer and safety_layer.get_status().get("kill_switch_active"):
+            if safety_layer and safety_layer.get_status().get("is_killed"):
                 logger.info("[INTRADAY_15M] Skipping — kill switch active")
                 return
 
@@ -1672,6 +1706,7 @@ async def lifespan(app: FastAPI):
     )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
+    inject_regime_deps(data_manager)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
     inject_sentiment_deps(data_manager)
     inject_settings_deps(settings, db_manager, safety_layer)
@@ -1748,11 +1783,15 @@ async def lifespan(app: FastAPI):
     try:
         from scanner.signal_scanner import SignalScanner
 
-        # Use FUTURES_WATCHLIST from settings so MCL, MNQ, MES are all included.
-        # Fallback to ["MCL", "MNQ"] if setting is empty.
-        _scan_symbols = (
+        # Use FUTURES_WATCHLIST from settings so MES, MGC are included, and add
+        # OPTIONS_WATCHLIST equities (QQQ, AAPL, SPY, TSLA) so equity signals
+        # become real paper trades too. The scanner prices/analyzes each symbol
+        # with the correct asset class via set_futures_symbols() below.
+        _futures_syms = (
             list(settings.FUTURES_WATCHLIST) if settings.FUTURES_WATCHLIST else ["MCL", "MNQ"]
         )
+        _equity_syms = list(getattr(settings, "OPTIONS_WATCHLIST", []) or [])
+        _scan_symbols = _futures_syms + _equity_syms
         _scanner_initial_delay = int(getattr(settings, "SCANNER_INITIAL_DELAY_SECONDS", 60))
         signal_scanner = SignalScanner(
             trading_pipeline=trading_pipeline,
@@ -1765,6 +1804,20 @@ async def lifespan(app: FastAPI):
         if paper_tracker is not None:
             signal_scanner.set_paper_tracker(paper_tracker)
             logger.info("Signal scanner: paper_tracker injected")
+        # Inject safety layer (kill-switch gate) + data manager (entry-price
+        # sanity / phantom-price guard) so the autonomous live opener enforces
+        # both before booking a paper trade. Without these the scanner loop had
+        # no kill-switch check and no price-sanity gate.
+        if safety_layer is not None:
+            signal_scanner.set_safety_layer(safety_layer)
+            logger.info("Signal scanner: safety_layer injected (kill-switch gate)")
+        if data_manager is not None:
+            signal_scanner.set_data_manager(data_manager)
+            logger.info("Signal scanner: data_manager injected (entry-price sanity)")
+        # Declare which scanned symbols are futures; the rest are priced as equities.
+        signal_scanner.set_futures_symbols(_futures_syms)
+        if _equity_syms:
+            logger.info("Signal scanner: equity execution enabled for %s", _equity_syms)
         inject_scanner_deps(signal_scanner)
         if settings.WATCHLIST_SCAN_ENABLED:
             asyncio.create_task(signal_scanner.start())
@@ -2124,11 +2177,15 @@ async def lifespan(app: FastAPI):
     # mode: existing files are skipped (preserves 2026-04-17 manual triage).
     try:
         from scripts.render_bookmarks_to_vault import render_vault as _render_vault
+        from vault.paths import vault_root as _vault_root
 
         _BOOKMARK_DB_PATH = os.environ.get("JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db")
+        # Default under the canonical vault root (honours JARVIS_VAULT_ROOT) instead
+        # of a hardcoded absolute path, so bookmarks land beside the other vault
+        # writers. Explicit BOOKMARK_VAULT_DIR still overrides.
         _BOOKMARK_VAULT_DIR = os.environ.get(
             "BOOKMARK_VAULT_DIR",
-            r"C:\Users\mattm\second-brain\wiki\discord-bookmarks",
+            str(_vault_root() / "discord-bookmarks"),
         )
 
         async def run_bookmark_vault_render() -> None:
@@ -2358,12 +2415,11 @@ async def lifespan(app: FastAPI):
                 if db_manager is not None:
                     try:
                         closed_today = [
-                            t for t in db_manager.get_closed_trades(limit=200)
+                            t
+                            for t in db_manager.get_closed_trades(limit=200)
                             if (t.get("exit_time") or "").startswith(today_str)
                         ]
-                        paper_daily_pnl = sum(
-                            float(t.get("pnl") or 0.0) for t in closed_today
-                        )
+                        paper_daily_pnl = sum(float(t.get("pnl") or 0.0) for t in closed_today)
                     except Exception as _db_exc:
                         logger.warning(
                             "[sync_safety_equity] paper_trades query failed: %s", _db_exc
@@ -2410,7 +2466,11 @@ async def lifespan(app: FastAPI):
                 open_trades = db_manager.get_open_trades()
                 if not open_trades:
                     return
-                from portfolio.tracker import INSTRUMENT_MULTIPLIERS as _MULT, _DEFAULT_MULTIPLIER as _DEF_MULT  # noqa: E501
+                from portfolio.tracker import (
+                    INSTRUMENT_MULTIPLIERS as _MULT,
+                    _DEFAULT_MULTIPLIER as _DEF_MULT,
+                )  # noqa: E501
+
                 for _trade in open_trades:
                     _stop = _trade.get("stop_loss")
                     if _stop is None:
@@ -2422,8 +2482,11 @@ async def lifespan(app: FastAPI):
                     _side = (_trade.get("side") or "buy").lower()
                     _entry = float(_trade.get("entry_price") or 0.0)
                     _tid = _trade.get("trade_id", "")
+                    _is_fut_sm = _sym in {
+                        str(x).upper() for x in (settings.FUTURES_WATCHLIST or [])
+                    }
                     try:
-                        _pd = await data_manager.get_current_price(_sym, is_futures=True)
+                        _pd = await data_manager.get_current_price(_sym, is_futures=_is_fut_sm)
                         _cur = float(
                             _pd.get("last_price")
                             or _pd.get("price")
@@ -2437,9 +2500,7 @@ async def lifespan(app: FastAPI):
                         logger.debug("[stop_monitor] price fetch %s: %s", _sym, _pe)
                         continue
                     _is_long = "buy" in _side
-                    _hit = (_is_long and _cur <= _stop_f) or (
-                        not _is_long and _cur >= _stop_f
-                    )
+                    _hit = (_is_long and _cur <= _stop_f) or (not _is_long and _cur >= _stop_f)
                     if not _hit:
                         continue
                     _mult = _MULT.get(_sym, _DEF_MULT)
@@ -2452,8 +2513,13 @@ async def lifespan(app: FastAPI):
                     logger.warning(
                         "[stop_monitor] STOP HIT %s %s id=%s entry=%.2f "
                         "stop=%.2f current=%.2f pnl=%.2f",
-                        _sym, _side, _tid[:8] if _tid else "?",
-                        _entry, _stop_f, _cur, _pnl,
+                        _sym,
+                        _side,
+                        _tid[:8] if _tid else "?",
+                        _entry,
+                        _stop_f,
+                        _cur,
+                        _pnl,
                     )
                     _closed = False
                     if paper_tracker is not None:
@@ -2892,6 +2958,13 @@ app.add_middleware(APIKeyMiddleware)
 app.state.limiter = get_limiter()
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 
+# Prometheus exposition at /metrics (auth-exempt; see monitoring.metrics +
+# middleware.auth.EXEMPT_PATHS). P1.0 of the observability roadmap — the jarvis_*
+# families were defined but never mounted/scraped before this.
+from monitoring.metrics import mount_metrics  # noqa: E402
+
+mount_metrics(app)
+
 app.include_router(health_router)
 app.include_router(phase3_readiness_router)
 app.include_router(readiness_router)
@@ -2900,12 +2973,17 @@ app.include_router(journal_review_router, prefix="/journal", tags=["journal-revi
 app.include_router(jarvis_router)
 app.include_router(trades_router)
 app.include_router(strategy_ledger_router)
+app.include_router(trading_status_router)
 app.include_router(forward_test_router)
+app.include_router(validation_analytics_router)
 app.include_router(flags_router, prefix="/flags", tags=["feature-flags"])
 app.include_router(portfolio_router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(market_router)
 app.include_router(analytics_router)
 app.include_router(attribution_router)
+app.include_router(vault_router)
+app.include_router(pnl_truth_router)
+app.include_router(durability_router)
 app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)
@@ -2953,6 +3031,7 @@ app.include_router(strategy_c_router)
 app.include_router(ib_scanner_router)
 app.include_router(macro_router)
 app.include_router(analysis_router)
+app.include_router(regime_router)
 app.include_router(watchlist_router)
 app.include_router(sentiment_router)
 app.include_router(settings_router)

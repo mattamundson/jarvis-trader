@@ -107,7 +107,7 @@ def _guard_background_paper_open(symbol: str) -> None:
     if settings.LIVE_TRADING_ENABLED:
         raise RuntimeError("Direct paper-trade open disabled in live mode")
 
-    if _safety_layer is not None and _safety_layer.get_status().get("kill_switch_active"):
+    if _safety_layer is not None and _safety_layer.get_status().get("is_killed"):
         raise RuntimeError("Kill switch active - cannot open direct paper trade")
 
     if symbol.upper() in FUTURES_SYMBOLS and symbol.upper() not in approved_watchlist_symbols():

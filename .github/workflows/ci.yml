@@ -9,6 +9,10 @@ on:
   push:
     branches: [main, master, develop]
   pull_request:
+    # ready_for_review is required: jobs below are gated to skip draft PRs (verified
+    # for free by the local pr-local-ci loop), so converting draft -> ready must
+    # re-trigger CI. Without it, a PR opened as draft would never get cloud CI.
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main, master]
 
 # 3. Concurrency management
@@ -20,6 +24,9 @@ concurrency:
 jobs:
   engine-lint:
     name: Engine Lint (Python)
+    # Skip draft PRs (covered for free by the local pr-local-ci loop); still runs on
+    # push to protected branches and on ready-for-review PRs.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -51,6 +58,7 @@ jobs:
 
   engine-typecheck:
     name: Engine Type Check (mypy)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -89,8 +97,10 @@ jobs:
   # Parallel slices (wall-clock): fast ~unit/router + slow integration/E2E (see pytest.mark.slow).
   engine-test-fast:
     name: Engine Tests (pytest, fast)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Headroom for the (rare) second attempt of the flake retry below.
+    timeout-minutes: 28
     env:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.fast
     steps:
@@ -110,10 +120,36 @@ jobs:
       - name: Strategic metrics snapshot script
         run: python scripts/strategic_snapshot.py
 
-      - name: Run pytest (-m "not slow")
+      - name: Run pytest (-m "not slow and not manual")
         run: |
-          pytest engine/tests/ -m "not slow" \
-            -v --tb=short --cov=engine --cov-report=term-missing
+          # Process-level retry for the intermittent scanner / strategy-validation
+          # pollution flake: an upstream test occasionally dirties process-global
+          # state (env / config singleton), making ~21 scanner tests' scan_symbol
+          # short-circuit and fail together. Whether it fires varies with per-process
+          # ordering / PYTHONHASHSEED, so re-running in a FRESH process clears it (a
+          # test-level --reruns in the same dirtied process would NOT). Proven flaky:
+          # a failed fast job re-ran red->green on identical code. The retry stays
+          # visible (::warning::) so a genuine regression is never silently masked.
+          # Root cause tracked in project_ci_flaky_scanner_pollution_2026_06_16.
+          #
+          # `not manual` keeps the IB-Gateway e2e tests (which hang the asyncio loop
+          # with no timeout) out of the default slice -- a CLI -m overrides pyproject's
+          # `-m "not manual"` default, so it must be restated here.
+          set +e
+          attempts=2
+          ec=0
+          for i in $(seq 1 "$attempts"); do
+            echo "::group::pytest fast (attempt $i/$attempts)"
+            pytest engine/tests/ -m "not slow and not manual" \
+              -v --tb=short --cov=engine --cov-report=term-missing
+            ec=$?
+            echo "::endgroup::"
+            [ "$ec" -eq 0 ] && break
+            if [ "$i" -lt "$attempts" ]; then
+              echo "::warning title=fast-suite retry::attempt $i failed (exit $ec); retrying once in a fresh process (intermittent scanner-pollution flake)"
+            fi
+          done
+          exit "$ec"
 
       - name: Upload coverage data
         if: success()
@@ -126,6 +162,7 @@ jobs:
 
   engine-test-slow:
     name: Engine Tests (pytest, slow)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -144,9 +181,11 @@ jobs:
         run: |
           pip install -q -r engine/requirements-core.txt
 
-      - name: Run pytest (-m slow)
+      - name: Run pytest (-m "slow and not manual")
         run: |
-          pytest engine/tests/ -m slow \
+          # `not manual` restated: a CLI -m overrides pyproject's `-m "not manual"`
+          # default, and the IB-Gateway e2e tests must never be collected in CI.
+          pytest engine/tests/ -m "slow and not manual" \
             -v --tb=short --cov=engine --cov-report=term-missing \
             || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow slice"; exit 0; fi; exit "$ec"; }
 
@@ -163,9 +202,9 @@ jobs:
   engine-coverage-merge:
     name: Engine Tests (coverage merge)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     needs: [engine-test-fast, engine-test-slow]
-    if: ${{ needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -218,10 +257,19 @@ jobs:
 
   dashboard-build:
     name: Dashboard Build (Next.js)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Check for case-only duplicate filenames (Vercel's build FS is case-sensitive)
+        run: |
+          dupes=$(git ls-files | sort -f | uniq -Di)
+          if [ -n "$dupes" ]; then
+            echo "::error::These tracked paths differ only in case - passes on macOS/Windows, fails Vercel's case-sensitive Linux build:"
+            echo "$dupes"
+            exit 1
+          fi
 
       - name: Set up Node 22
         uses: actions/setup-node@v4
@@ -242,6 +290,14 @@ jobs:
         working-directory: dashboard
         env:
           NODE_ENV: production
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+        working-directory: dashboard
+
+      - name: Golden-path e2e (overview must not white-screen on degraded data)
+        run: pnpm exec playwright test
+        working-directory: dashboard
 
       - name: No bare await fetch in dashboard app/hooks
         run: |
@@ -273,6 +329,7 @@ jobs:
 
   security-scan:
     name: Security Scan
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -311,7 +368,8 @@ jobs:
       - dashboard-build
       - security-scan
     runs-on: ubuntu-latest
-    if: always()
+    # always() so it reports even when a needed job fails -- but still skip on draft PRs.
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
     steps:
       - name: Check CI results
         run: |

@@ -198,6 +198,31 @@ def _interval_from_env(default: int = 60) -> int:
         return default
 
 
+def _max_loss_usd_from_env(default: float = 750.0) -> float:
+    """Hard per-trade catastrophe cap in USD (live unrealized loss).
+
+    The breach path above only protects trades that *recorded* a stop_loss; a
+    row with stop_loss NULL/0 is skipped entirely. That gap let two positions
+    bleed out unmanaged: MGC #178 (2026-06-01, -$1,284, null-stop skip + dark
+    feed) and the 2026-06-18 MES short (-$5,440, no stop, ran 1,088 pts to a
+    session-flatten). This cap closes it — ANY open position whose live
+    unrealized loss exceeds the cap is force-closed, stop or not. It is a
+    last-resort catastrophe brake, sized well above normal trade losses (the
+    fleet's typical loser is ~-$50), not a substitute for per-trade stops.
+
+    Read live from env each sweep (matches PAPER_STOP_MONITOR_* convention).
+    Set PAPER_MAX_LOSS_USD_PER_TRADE=0 to disable the backstop entirely.
+    """
+    raw = os.environ.get("PAPER_MAX_LOSS_USD_PER_TRADE", "").strip()
+    if not raw:
+        return default
+    try:
+        val = float(raw)
+        return val if val > 0 else 0.0
+    except (TypeError, ValueError):
+        return default
+
+
 class PaperStopMonitor:
     """Feed-independent stop-loss backstop for open paper trades."""
 
@@ -247,12 +272,17 @@ class PaperStopMonitor:
             return 0
 
         configs = _load_paper_configs()
+        max_loss = _max_loss_usd_from_env()
         fired = 0
 
         for t in open_trades:
             stop = t.get("stop_loss")
-            if stop in (None, "", 0, 0.0):
-                continue  # No stop recorded → nothing to enforce.
+            has_stop = stop not in (None, "", 0, 0.0)
+            if not has_stop and max_loss <= 0:
+                # No stop recorded and the catastrophe cap is disabled → nothing
+                # to enforce. (With the cap on, a null-stop row still falls through
+                # to the max-loss backstop below.)
+                continue
 
             symbol = t.get("symbol")
             trade_id = t.get("trade_id")
@@ -261,7 +291,17 @@ class PaperStopMonitor:
                 continue
 
             try:
-                quote = await self.data.get_current_price(symbol, is_futures=True)
+                # Per-symbol asset class: equities (OPTIONS_WATCHLIST) must be
+                # priced with is_futures=False or the quote/source is wrong.
+                try:
+                    from config import settings as _cfg_sm
+
+                    _is_fut = str(symbol).upper() in {
+                        str(x).upper() for x in (_cfg_sm.FUTURES_WATCHLIST or [])
+                    }
+                except Exception:
+                    _is_fut = True
+                quote = await self.data.get_current_price(symbol, is_futures=_is_fut)
             except Exception as exc:  # noqa: BLE001
                 logger.debug(f"[PaperStopMonitor] price fetch failed for {symbol}: {exc}")
                 continue
@@ -284,13 +324,18 @@ class PaperStopMonitor:
                 )
                 continue
 
-            if not is_stop_breached(side, stop, price):
-                continue
-
             entry_price = t.get("entry_price") or 0.0
             quantity = t.get("quantity") or 1.0
             mult = multiplier_for(symbol, configs)
             pnl = compute_stop_pnl(side, entry_price, price, quantity, mult)
+
+            stop_hit = has_stop and is_stop_breached(side, stop, price)
+            # Catastrophe backstop: force-close ANY position (stop recorded or
+            # not) once its live unrealized loss exceeds the hard cap. This is the
+            # net that the null-stop skip above used to leave open.
+            max_loss_hit = max_loss > 0 and pnl <= -max_loss
+            if not stop_hit and not max_loss_hit:
+                continue
 
             closed = await asyncio.to_thread(
                 self.db.close_paper_trade, trade_id, float(price), None, pnl
@@ -298,20 +343,21 @@ class PaperStopMonitor:
             if not closed:
                 # Lost the race to the paper_runner (or already closed) — fine.
                 logger.info(
-                    f"[PaperStopMonitor] {symbol} stop breach but trade {str(trade_id)[:8]} "
+                    f"[PaperStopMonitor] {symbol} close-signal but trade {str(trade_id)[:8]} "
                     "already closed (race with runner) — no-op"
                 )
                 continue
 
             fired += 1
             src = (quote or {}).get("source", "?")
+            reason = "STOP FIRED" if stop_hit else "MAX-LOSS BACKSTOP"
             logger.critical(
-                f"🛡️ [PaperStopMonitor] STOP FIRED {symbol} "
+                f"🛡️ [PaperStopMonitor] {reason} {symbol} "
                 f"{normalize_side(side).upper()} qty={quantity} "
                 f"entry={entry_price} stop={stop} fill={price} ({src}) pnl={pnl:+.2f}"
             )
             _notify(
-                f"🛡️ JARVIS PAPER | {symbol} STOP HIT (backstop)\n"
+                f"🛡️ JARVIS PAPER | {symbol} {reason}\n"
                 f"{normalize_side(side).upper()} {quantity} @ {entry_price}\n"
                 f"Stop {stop} | Fill {price} ({src})\n"
                 f"PnL {pnl:+.2f}"

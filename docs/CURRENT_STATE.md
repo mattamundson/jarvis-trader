@@ -1,6 +1,6 @@
 # JARVIS TRADER — Current System State
 
-**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** June 4, 2026
+**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** June 18, 2026
 
 > **Current reality (2026-06-04, verified against live `/health`):** Engine healthy on
 > 8010 — `status=ok`, `ibkr_connected/data_connected=true`, `ibgateway_alive=true` (4002),
@@ -81,7 +81,7 @@ IB_ACCOUNT_ID=YOUR_ACCOUNT_ID
 # Risk Parameters (hardcoded in engine/config.py)
 MAX_POSITION_SIZE_PCT=0.05
 MAX_DAILY_LOSS_PCT=0.02
-MAX_DRAWDOWN_PCT=0.10
+MAX_DRAWDOWN_PCT=0.10   # config.py code default; paper phase overrides higher (-20%) in engine/.env
 MAX_ORDERS_PER_MINUTE=10
 MAX_SINGLE_ORDER_VALUE=5000.0
 MAX_MARGIN_UTILIZATION=0.40
@@ -96,7 +96,9 @@ API_KEY=<from engine/.env>
 # WORKING_TODAY smoke do not require this flag.
 
 # Approved Futures
-FUTURES_WATCHLIST=MCL,MNQ
+# config.py code default. Tradeable set is gated separately: MCL + MNQ are HALTED
+# (DO_NOT_TRADE_SYMBOLS); MES + MGC are the active paper instruments (Tier-3 2026-05-24).
+FUTURES_WATCHLIST=MCL,MNQ,MES
 ```
 
 ---
@@ -106,7 +108,7 @@ FUTURES_WATCHLIST=MCL,MNQ
 **Non-Negotiable Kill Switch Rules:**
 
 - **Daily Loss Halt:** -2% of account → Auto-activates kill switch
-- **Drawdown Halt:** -10% from peak → Auto-activates kill switch
+- **Drawdown Halt:** -10% from peak (`config.py` code default) → Auto-activates kill switch. The paper phase overrides this higher (-20%) via `MAX_DRAWDOWN_PCT` in `engine/.env`, which is the source of truth for the live value.
 - **Manual Halt:** Operator can activate anytime via API or dashboard
 - **Consecutive Loss Limits:** 3→half-size, 5→quarter-size, 7→halt (24 hours)
 
@@ -123,7 +125,7 @@ FUTURES_WATCHLIST=MCL,MNQ
 | `engine/agents/pipeline.py` | 5-stage orchestrator |
 | `engine/risk/safety_layer.py` | Kill switch, hard limits, order validation |
 | `engine/backtest/signals.py` | STC signal logic (CANONICAL parameter source) |
-| `engine/markets/orchestrator.py` | Multi-market orchestrator |
+| `engine/orchestrator/multi_market.py` | Multi-market orchestrator |
 | `dashboard/lib/api.ts` | All engine API calls via fetchEngine/postEngine |
 | `docs/architecture/API_CANONICAL_ENDPOINTS.md` | Canonical routes (validation, RL, Greeks) — avoids FastAPI shadowing |
 | `docs/runbooks/PAPER_LEDGER_BOUNDARIES.md` | Paper mode A vs B writers/readers |
@@ -133,10 +135,10 @@ FUTURES_WATCHLIST=MCL,MNQ
 
 ## Paper Validation Status
 
-**Period:** April 2–May 2, 2026 (30 days)
+**Period:** MES + MGC active paper validation since 2026-05-24 (Tier-3 auth). The prior MCL/MNQ window (Apr 2–May 2, 2026) is closed — both instruments are now HALTED (`DO_NOT_TRADE`).
 **Target:** Profit Factor > 1.5, Sharpe > 1.0, Max Drawdown < 10%, Win Rate > 45%
 
-**Instruments:** MCL (1h), MNQ (1h) only
+**Instruments:** MES (1h), MGC (1h) — active paper. MCL + MNQ HALTED (`DO_NOT_TRADE`).
 **Broker:** IB Gateway (paper), port 4002
 **Mode:** All orders logged but NOT submitted (PAPER_TRADING=True)
 

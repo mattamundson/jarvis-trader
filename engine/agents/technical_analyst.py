@@ -8,6 +8,7 @@ Runs every 15 minutes during market hours.
 Model: Claude Sonnet 4.6 (fast, cost-efficient for repeated analysis)
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -177,8 +178,22 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             using_daily_fallback = True
             effective_timeframe = "1d (fallback)"
 
-        # 2. Compute all indicators (deterministic Python — no LLM)
-        indicators = self._compute_indicators(df)
+        # 2. Compute all indicators (deterministic Python — no LLM).
+        # Offloaded to a worker thread so the deterministic CPU work doesn't block
+        # the event loop. A failure here must degrade gracefully (empty/safe report),
+        # never propagate out of analyze() and crash the pipeline caller — same
+        # contract as the daily-fallback path above.
+        try:
+            indicators = await asyncio.to_thread(self._compute_indicators, df)
+        except Exception as exc:  # noqa: BLE001 — degrade-not-crash is the invariant
+            logger.error(
+                f"Indicator computation failed for {symbol} on {effective_timeframe} "
+                f"({exc!r}) — returning empty report"
+            )
+            price = await self._fetch_current_price(symbol)
+            report = self._empty_report(symbol, timeframe)
+            report.current_price = price
+            return report
 
         # 2-rv. 20-bar annualized realized volatility (1h bars only).
         # Tags each pipeline run so paper trades accumulate rv_at_entry for
@@ -235,7 +250,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             if symbol.upper() in COMPOSITE_INSTRUMENTS:
                 from backtest.composite_signals import generate_composite_signals
 
-                df_comp = generate_composite_signals(df.copy(), symbol=symbol.upper())
+                df_comp = await asyncio.to_thread(
+                    generate_composite_signals, df.copy(), symbol=symbol.upper()
+                )
                 last = df_comp.iloc[-1]
                 composite_meta = {}
                 for col in (
@@ -277,7 +294,7 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
             # Normalise column names to lowercase before passing to StarkTPO
             _df_tpo = df.copy()
             _df_tpo.columns = [c.lower() for c in _df_tpo.columns]
-            _stark_result = _stark.evaluate_structure(_df_tpo)
+            _stark_result = await asyncio.to_thread(_stark.evaluate_structure, _df_tpo)
             if _stark_result.get("ready"):
                 indicators["stark_signal"] = _stark_result.get("actionable_signal", "HOLD")
                 indicators["stark_structure"] = _stark_result.get("structure", "UNKNOWN")
@@ -780,7 +797,9 @@ Respond with valid JSON only. Do not add any explanation outside the JSON.
         try:
             from analysis.hidden_pivots import full_hidden_pivots_scan
 
-            hp_result = full_hidden_pivots_scan(symbol=symbol, df=df, timeframe=timeframe)
+            hp_result = await asyncio.to_thread(
+                full_hidden_pivots_scan, symbol=symbol, df=df, timeframe=timeframe
+            )
             hp_context_str = self._format_hp_context(hp_result)
         except Exception as hp_err:
             logger.debug("[TechnicalAnalyst] Hidden Pivots scan skipped: %s", hp_err)

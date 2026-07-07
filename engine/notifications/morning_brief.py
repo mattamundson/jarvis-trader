@@ -120,8 +120,37 @@ async def assemble_morning_brief(
                 logger.debug("[MorningBrief] STC fetch failed for %s: %s", sym, exc)
                 return "N/A", "UNKNOWN"
 
+        # Adaptive Volatility Trend — report-only. Compact per-symbol read of the
+        # AVT gated signal + 0-100 score; never drives any decision here.
+        async def _get_avt(sym: str) -> str:
+            if dm is None:
+                return "N/A"
+            try:
+                df = await dm.get_bars(sym, lookback_days=10, timeframe="1h")
+                if df is None or df.empty:
+                    return "N/A"
+                from analytics.adaptive_volatility_trend import (
+                    AVTParams,
+                    generate_avt_signals,
+                )
+
+                row = generate_avt_signals(df, AVTParams()).iloc[-1]
+                sig, score = int(row["avt_signal"]), float(row["avt_score"])
+                if sig == 1:
+                    return f"long {score:.0f}"
+                if sig == -1:
+                    return f"short {score:.0f}"
+                return "flat"
+            except Exception as exc:
+                logger.debug("[MorningBrief] AVT fetch failed for %s: %s", sym, exc)
+                return "N/A"
+
         stc_mcl, regime_mcl = await _get_stc_regime("MCL")
         stc_mnq, regime_mnq = await _get_stc_regime("MNQ")
+        avt_mcl = await _get_avt("MCL")
+        avt_mnq = await _get_avt("MNQ")
+        avt_mes = await _get_avt("MES")
+        avt_mgc = await _get_avt("MGC")
 
         # Trading plan based on STC position
         def _trading_plan(sym: str, stc_str: str, regime: str) -> str:
@@ -196,8 +225,9 @@ async def assemble_morning_brief(
             f"JARVIS Pre-Market Intelligence — {ts}",
             "",
             "INSTRUMENTS",
-            f"  MCL: {_fmt_price('MCL')} | STC: {stc_mcl} | {regime_mcl}",
-            f"  MNQ: {_fmt_price('MNQ')} | STC: {stc_mnq} | {regime_mnq}",
+            f"  MCL: {_fmt_price('MCL')} | STC: {stc_mcl} | {regime_mcl} | AVT: {avt_mcl}",
+            f"  MNQ: {_fmt_price('MNQ')} | STC: {stc_mnq} | {regime_mnq} | AVT: {avt_mnq}",
+            f"  MES: AVT {avt_mes} | MGC: AVT {avt_mgc}  (active — report-only)",
             "",
             "TRADING PLAN",
             f"  MCL: {plan_mcl}",
@@ -245,8 +275,9 @@ async def assemble_morning_brief(
                 f"JARVIS Pre-Market Intelligence — {ts}",
                 "",
                 "INSTRUMENTS",
-                f"  MCL: {_fmt_price('MCL')} | STC: {stc_mcl} | {regime_mcl}",
-                f"  MNQ: {_fmt_price('MNQ')} | STC: {stc_mnq} | {regime_mnq}",
+                f"  MCL: {_fmt_price('MCL')} | STC: {stc_mcl} | {regime_mcl} | AVT: {avt_mcl}",
+                f"  MNQ: {_fmt_price('MNQ')} | STC: {stc_mnq} | {regime_mnq} | AVT: {avt_mnq}",
+                f"  MES: AVT {avt_mes} | MGC: AVT {avt_mgc}  (active — report-only)",
                 "",
                 "TRADING PLAN",
                 f"  MCL: {plan_mcl}",

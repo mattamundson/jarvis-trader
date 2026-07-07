@@ -71,15 +71,9 @@ export function DatabaseStatsCard() {
     setLoading(true);
 
     const [tradesResult, decisionsResult, alertsResult] = await Promise.allSettled([
-      fetchEngine(`/portfolio/history/trades?limit=500&status=CLOSED`).then(
-        (r) => r.json() as Promise<TradesResponse>
-      ),
-      fetchEngine(`/portfolio/history/decisions?limit=500`).then(
-        (r) => r.json() as Promise<DecisionsResponse>
-      ),
-      fetchEngine(`/alerts/history?limit=500`).then(
-        (r) => r.json() as Promise<AlertsResponse>
-      ),
+      fetchEngine<TradesResponse>(`/portfolio/history/trades?limit=500&status=CLOSED`),
+      fetchEngine<DecisionsResponse>(`/portfolio/history/decisions?limit=500`),
+      fetchEngine<AlertsResponse>(`/alerts/history?limit=500`),
     ]);
 
     const errors: string[] = [];

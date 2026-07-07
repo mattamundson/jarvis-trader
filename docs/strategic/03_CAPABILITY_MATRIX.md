@@ -30,7 +30,7 @@
 
 | Capability | Maturity | Primary code | Notes |
 |------------|----------|--------------|--------|
-| Futures (MCL/MNQ focus) | ProdPaper | [engine/markets/futures/](../../engine/markets/futures/), orchestrator | Validated symbols only for “real” paper |
+| Futures (MES/MGC focus) | ProdPaper | [engine/markets/futures/](../../engine/markets/futures/), orchestrator | Validated symbols only for “real” paper (MES/MGC active; MCL/MNQ halted) |
 | Options | Experimental / Beta | [engine/markets/options/](../../engine/markets/options/), [engine/options/](../../engine/options/) | Infrastructure exists; activation depends on broker/data |
 | Crypto | Experimental | [engine/markets/crypto/](../../engine/markets/crypto/) | Often disabled by default |
 | Polymarket | Experimental | [engine/markets/polymarket/](../../engine/markets/polymarket/), [engine/routers/polymarket_router.py](../../engine/routers/polymarket_router.py) | Stub/adjacent |

@@ -1,0 +1,25 @@
+{
+  "_comment": "Trader 'belief' personas for the ContestTrade-style belief-diverse ensemble. Each persona is a distinct trading thesis the TraderAgent runs under; the deterministic ContestJudge (engine/strategies/belief_ensemble.py) selects the winning proposal. Pattern source: FinStep-AI/ContestTrade (arXiv:2508.00554, Apache-2.0). See docs/repo-integrations/FinStep-AI__ContestTrade.md. NOTE: belief personas shape the LLM proposal only; selection is deterministic and never LLM-driven, and the winner still passes the risk/fund-manager gates unchanged.",
+  "beliefs": [
+    {
+      "name": "aggressive_momentum",
+      "description": "Trend-follower. Leans into confirmed momentum and breakouts; tolerates lower R:R for higher conviction directional moves.",
+      "prompt_suffix": "Adopt an AGGRESSIVE MOMENTUM belief: favor confirmed trend and breakout continuation. When the debate verdict is directional and momentum aligns, lean in. Do not require an exceptional R:R to act on a strong trend, but never violate the pre-calculated stop geometry."
+    },
+    {
+      "name": "conservative_mean_reversion",
+      "description": "Fade extremes. Prefers reversal zones and high R:R; quick to HOLD when signals are mixed or stretched.",
+      "prompt_suffix": "Adopt a CONSERVATIVE MEAN-REVERSION belief: prefer trades that fade stretched moves toward fair value, demand a high reward-to-risk ratio, and HOLD readily when the setup is ambiguous or already extended."
+    },
+    {
+      "name": "event_driven",
+      "description": "News/catalyst trader. Weights the news and sentiment overlay heavily; stands aside in the absence of a catalyst.",
+      "prompt_suffix": "Adopt an EVENT-DRIVEN belief: weight the news event type, catalysts, and sentiment overlay heavily. Act decisively when a clear catalyst supports the direction; prefer HOLD when no catalyst is present even if technicals lean directional."
+    },
+    {
+      "name": "risk_parity_defensive",
+      "description": "Capital-preservation first. Smallest acceptable size, strictest confluence; biased to HOLD in elevated volatility.",
+      "prompt_suffix": "Adopt a RISK-PARITY DEFENSIVE belief: prioritize capital preservation. Require strong multi-agent confluence, prefer the smallest acceptable size, and bias toward HOLD whenever volatility is elevated or confluence is thin."
+    }
+  ]
+}

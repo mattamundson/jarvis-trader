@@ -217,10 +217,11 @@ flowchart TD
 
 ### 4.3 Validation / approval status (from root `CLAUDE.md`)
 
-- **MCL 1h WFE 0.82 — APPROVED** (paper active).  
-- **MNQ 1h WFE 0.57 — APPROVED** (paper active).  
-- **MES** — strategy doc parameters exist but **DO NOT TRADE** per project status (overfit / gate failure).  
-Align operator discipline with `CLAUDE.md` **Validated Instruments** table before enabling symbols in production configs.
+- **MES 1h p_edge 0.75 — APPROVED** (active paper since Tier-3 flip 2026-05-24; ALT gate v2 PASS).  
+- **MGC 1h p_edge 0.6842 — APPROVED** (active paper since Tier-3 flip 2026-05-24; ALT gate v2 PASS).  
+- **MCL 1h / MNQ 1h — HALTED** (`DO_NOT_TRADE`; prior WFE 0.82 / 0.57 superseded — strategy hypotheses exhausted / fail gate v2).  
+- **M2K 1h — REJECTED** (SMA/ORB/Donchian all FAIL 2026-05-24).  
+Align operator discipline with `engine/CLAUDE.md` **Active Instruments** table before enabling symbols in production configs.
 
 ### 4.4 Decision items
 

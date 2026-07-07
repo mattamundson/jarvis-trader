@@ -1,0 +1,5 @@
+"Category","Count","Examples"
+"Entry Signals (backtestable standalone)","4","STC, IB Breakout, KAMA, Cohen Composite"
+"Gates / Filters (modify other signals)","8","Phase Oscillator, ATR Levels, Volume Stack, TRIN"
+"Statistics only","3","Gapfinders, Single Print, Rangefinder"
+"Deprecated / reference","3","RF v1 Mobile, legacy 2022/2023 scripts"

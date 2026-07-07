@@ -104,3 +104,31 @@ async def test_get_options_greeks_returns_unavailable_not_attribute_error() -> N
 
     out = await conn.get_options_greeks("MES")  # must not raise AttributeError
     assert out == {"error": "Gateway unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_paper_order_survives_get_quote_raise(tmp_path) -> None:
+    """Regression: a transient ``get_quote()`` *exception* (not just an
+    error-dict) must not abort the simulated fill. The no-quote branch already
+    falls back to ``limit_price or 100.0``; an unguarded raise instead propagated
+    out of ``_submit_paper_order`` and lost the order entirely. The fill must
+    proceed at the fallback price."""
+    cfg = _offline_simulated_cfg()
+    store = tmp_path / "book.jsonl"
+    tracker = PortfolioTracker(store_path=store)
+    safety = SafetyLayer(cfg, pnl_monitor=None)
+    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    assert await conn.connect() is True
+
+    async def _boom(_symbol: str) -> dict:
+        raise RuntimeError("quote feed down")
+
+    conn.get_quote = _boom  # type: ignore[assignment]
+
+    # Without the guard this call raises RuntimeError; with it, the order fills.
+    order_id = await conn.place_paper_order("MES", "BUY", 1, "MKT", limit_price=5300.0)
+    assert order_id is not None
+    assert isinstance(order_id, str)
+
+    positions = await conn.get_positions()
+    assert any(p.get("symbol") == "MES" for p in positions)

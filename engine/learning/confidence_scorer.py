@@ -125,23 +125,34 @@ async def _fetch_symbol_trades(db_manager: object, symbol: str) -> list[dict]:
     Returns list of dicts with pnl and outcome fields. Returns empty list on error.
     """
     try:
-        # Attempt to query via db_manager's query method (sync or async)
-        # The exact method depends on DatabaseManager implementation
-        # Most common pattern: db_manager.query() for sync, or await db_manager.query_async()
+        # The live DatabaseManager (database/manager.py, re-exported via
+        # database/schema.py and used by main.py's init_db) exposes a SYNC
+        # fetch_all(sql, params) -> list[dict]. Older/production managers may
+        # instead expose query()/query_async(). Probe fetch_all first because it
+        # is the method the running engine actually has — without this branch the
+        # scorer silently degraded to a 1.0 (no-op) multiplier on every call.
+        #
+        # NOTE: the local paper_trades schema has no `outcome`/`created_at`
+        # columns — win/loss is derived from the pnl sign in
+        # _compute_trade_metrics — and it orders by exit_time. Only `status =
+        # 'closed'` rows are counted so cancelled / phantom / contaminated fills
+        # (e.g. the 2026-06-29 stale-price contamination) can't poison win-rate.
+        fetch_all_query = (
+            "SELECT pnl FROM paper_trades "
+            "WHERE symbol = ? AND status = 'closed' AND pnl IS NOT NULL "
+            "ORDER BY COALESCE(exit_time, entry_time) DESC LIMIT 100"
+        )
+        legacy_query = (
+            "SELECT pnl, outcome FROM paper_trades "
+            "WHERE symbol = ? ORDER BY created_at DESC LIMIT 100"
+        )
 
-        # Try async query first
-        if hasattr(db_manager, "query_async"):
-            query = (
-                "SELECT pnl, outcome FROM paper_trades "
-                "WHERE symbol = ? ORDER BY created_at DESC LIMIT 100"
-            )
-            trades = await db_manager.query_async(query, (symbol,))
+        if hasattr(db_manager, "fetch_all"):
+            trades = db_manager.fetch_all(fetch_all_query, (symbol,))
+        elif hasattr(db_manager, "query_async"):
+            trades = await db_manager.query_async(legacy_query, (symbol,))
         elif hasattr(db_manager, "query"):
-            query = (
-                "SELECT pnl, outcome FROM paper_trades "
-                "WHERE symbol = ? ORDER BY created_at DESC LIMIT 100"
-            )
-            trades = db_manager.query(query, (symbol,))
+            trades = db_manager.query(legacy_query, (symbol,))
         else:
             logger.warning("[Confidence] db_manager has no query method, returning []")
             return []
@@ -183,7 +194,9 @@ def _compute_trade_metrics(trades: list[dict]) -> tuple[float, float, float, flo
         # Check if winning trade
         if pnl > 0 or outcome == "winning_trade":
             wins += 1
-            winners.append(pnl if pnl > 0 else 1.0)  # Use 1.0 if pnl not positive but marked winning
+            winners.append(
+                pnl if pnl > 0 else 1.0
+            )  # Use 1.0 if pnl not positive but marked winning
         elif pnl < 0 or outcome == "losing_trade":
             losers.append(abs(pnl))
 

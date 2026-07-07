@@ -1,0 +1,6 @@
+"Commit","What"
+"0c8bc8b","chore: Jun 26 live signal + heartbeat timestamp"
+"2af8f7c","fix: VIX regime labeling, intraday guard, fear score context"
+"05ccac2","fix: full engine import chain repair"
+"116af41","fix: dashboard SWR path prefix bug"
+"b769afe","fix: executor dict→list guard"

@@ -18,7 +18,10 @@ Usage (replaces direct uvicorn invocation in ecosystem.config.js):
 
 Exit codes:
     0  — port was free or orphan killed cleanly; uvicorn started
-    1  — port held by something we can't identify (refuse to kill)
+    1  — port held by something we won't kill: an unidentified process (exits
+         immediately), or WSL2's wslrelay mirroring an in-WSL 0.0.0.0 bind onto the
+         Windows loopback (refuse; sleeps WSL_SQUAT_BACKOFF s first so PM2 stops
+         hammering restarts while the WSL bind persists)
     2  — kill attempted but port still bound after grace period
     3  — port held by a HEALTHY uvicorn we can't kill (likely elevated). Exits
          non-zero so PM2 marks the start as failed (correct: we did NOT start
@@ -26,17 +29,26 @@ Exit codes:
          min_uptime back off the restart loop instead of hammering taskkill.
          Human must kill the elevated PID via Task Manager (admin) and then
          `pm2 start jarvis-engine` to take over management.
+    4  — wrong Python (Store Python instead of the project venv); exits before
+         touching the port to avoid double-binding.
+    5  — readiness gate fired: uvicorn was launched but never served /health within
+         READINESS_DEADLINE seconds (hung/failed startup). Forced exit via the
+         watchdog thread so PM2 restarts the engine instead of leaving a dead
+         in-process server reported as "online". Reason logged to RESTART_LOG.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 PORT = 8010
@@ -44,10 +56,58 @@ GRACE_SECONDS = 3
 HEALTHY_ORPHAN_BACKOFF = 30  # seconds to sleep before exiting when orphan is healthy
                               # but unkillable — gives PM2's restart_delay+min_uptime
                               # space to mark the slot as unstable instead of looping
+WSL_SQUAT_BACKOFF = 30        # seconds to sleep before exiting on a wslrelay port squat
+                              # (see _is_wsl_relay) so PM2's restart_delay+min_uptime slow
+                              # the crash-loop instead of hammering ~every 2s (the
+                              # 81k-restart incident, 2026-07-04)
 PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring failure
+# Readiness gate (P0.1): the guardian launches uvicorn IN-PROCESS and blocks, so PM2
+# only ever sees the guardian PID. If uvicorn never binds / never serves /health, PM2
+# still reports "online" while nothing answers. A background watchdog polls /health up
+# to READINESS_DEADLINE (covers the ~229s steady-state startup with margin) and forces a
+# non-zero exit if the server never comes up — so PM2 actually restarts a dead engine.
+READINESS_DEADLINE = 360      # seconds to wait for /health to serve before declaring the start dead
+READINESS_POLL = 5            # seconds between readiness probes
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENGINE_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = ENGINE_DIR.parent
+RESTART_LOG = ENGINE_DIR / "logs" / "port_guardian_restarts.jsonl"  # structured restart-reason trail
+
+
+def _record_restart_event(reason: str, details: dict, log_path: Path) -> None:
+    """Append a structured restart-reason record (JSONL) so a restart's cause is
+    no longer invisible. Never raises — logging must not break the guardian."""
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "reason": reason,
+        "pid": os.getpid(),
+        "details": details,
+    }
+    try:
+        path = Path(log_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
+
+
+def _readiness_watchdog(
+    deadline_s: float,
+    poll_interval_s: float,
+    is_ready_fn,
+    *,
+    now_fn=time.monotonic,
+    sleep_fn=time.sleep,
+) -> bool:
+    """Poll ``is_ready_fn`` until it returns True (→ True) or ``deadline_s`` elapses
+    (→ False). Clock/sleep are injectable so the loop is deterministically testable."""
+    start = now_fn()
+    while (now_fn() - start) < deadline_s:
+        if is_ready_fn():
+            return True
+        sleep_fn(poll_interval_s)
+    return False
 
 
 def _port_holders(port: int) -> list[int]:
@@ -101,6 +161,18 @@ def _looks_like_orphan_uvicorn(pid: int) -> bool:
     if not name:
         return False
     return name.lower() in {"python", "python3.12", "python3.11", "python3.10", "uvicorn"}
+
+
+def _is_wsl_relay(name: str | None) -> bool:
+    """True if the port holder is WSL2's localhost-forwarding relay (wslrelay.exe).
+
+    When a process INSIDE WSL binds ``0.0.0.0:PORT``, WSL2 mirrors it onto the Windows
+    loopback via ``wslrelay``. From Windows the port then looks held by ``wslrelay``,
+    which is NOT ours to kill -- killing it would tear down ALL WSL port forwarding.
+    Detecting it lets the guardian emit an actionable diagnosis instead of the generic
+    "not a python/uvicorn process" line, which flapped 81k+ times with no usable cause
+    on 2026-07-04 (a stray ``python3 -m http.server 8010`` in WSL squatted the port)."""
+    return bool(name) and name.lower() in {"wslrelay", "wslrelay.exe"}
 
 
 def _verify_free(port: int, retries: int = 5, delay: float = 0.5) -> bool:
@@ -185,6 +257,33 @@ def _check_venv_python() -> None:
         sys.exit(4)
 
 
+def _start_readiness_watchdog() -> None:
+    """Spawn a daemon thread that confirms uvicorn actually serves /health within
+    READINESS_DEADLINE. If it never does, record the reason and force a non-zero exit
+    so PM2 restarts the engine instead of leaving a dead server reported as 'online'."""
+
+    def _watch() -> None:
+        ready = _readiness_watchdog(
+            READINESS_DEADLINE, READINESS_POLL, lambda: _is_healthy(PORT)
+        )
+        if ready:
+            print("[port_guardian] readiness confirmed — /health is serving", flush=True)
+            return
+        _record_restart_event(
+            "health-timeout",
+            {"port": PORT, "deadline_s": READINESS_DEADLINE},
+            RESTART_LOG,
+        )
+        print(
+            f"[port_guardian] uvicorn did not serve /health within {READINESS_DEADLINE}s "
+            "— forcing exit so PM2 restarts the engine",
+            flush=True,
+        )
+        os._exit(5)
+
+    threading.Thread(target=_watch, name="readiness-watchdog", daemon=True).start()
+
+
 def main() -> int:
     _check_venv_python()
     print(f"[port_guardian] checking port {PORT}...", flush=True)
@@ -197,6 +296,26 @@ def main() -> int:
             name = _process_name(pid) or "unknown"
             print(f"[port_guardian] port {PORT} held by PID {pid} ({name})", flush=True)
             if not _looks_like_orphan_uvicorn(pid):
+                if _is_wsl_relay(name):
+                    print(
+                        f"[port_guardian] port {PORT} is held by wslrelay (PID {pid}): a "
+                        f"process INSIDE WSL is bound to 0.0.0.0:{PORT} and WSL2 "
+                        f"localhost-forwarding is mirroring it onto Windows "
+                        f"127.0.0.1:{PORT}. Killing wslrelay would break ALL WSL port "
+                        f"forwarding, so REFUSING. Fix in WSL: run "
+                        f"`wsl ss -ltnp | grep :{PORT}` then kill the offending PID inside WSL.",
+                        flush=True,
+                    )
+                    _record_restart_event(
+                        "wsl-port-squat",
+                        {"pid": pid, "name": name, "port": PORT},
+                        RESTART_LOG,
+                    )
+                    # Back off before exiting non-zero so PM2's restart_delay + min_uptime
+                    # slow the crash-loop instead of relaunching us ~every 2s while the
+                    # WSL bind persists (mirrors the exit-3 HEALTHY_ORPHAN_BACKOFF).
+                    time.sleep(WSL_SQUAT_BACKOFF)
+                    return 1
                 print(
                     f"[port_guardian] PID {pid} is not a python/uvicorn process — "
                     "REFUSING to kill. Resolve manually.",
@@ -205,6 +324,10 @@ def main() -> int:
                 return 1
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
             killed = _kill_pid(pid)
+            if killed:
+                _record_restart_event(
+                    "orphan-kill", {"pid": pid, "name": name, "port": PORT}, RESTART_LOG
+                )
             if not killed:
                 # Both taskkill and Stop-Process failed — process is likely elevated.
                 if _is_healthy(PORT):
@@ -253,6 +376,12 @@ def main() -> int:
         if path not in sys.path:
             sys.path.insert(0, path)
     import uvicorn  # noqa: PLC0415 — deferred import so the cleanup phase above stays cheap
+
+    # Readiness gate: watch from a side thread that uvicorn actually serves /health.
+    # If startup hangs / never binds, this forces a non-zero exit so PM2 truly restarts
+    # the engine instead of reporting a dead in-process server as "online".
+    _start_readiness_watchdog()
+
     uvicorn.run(
         "main:app",
         host="0.0.0.0",

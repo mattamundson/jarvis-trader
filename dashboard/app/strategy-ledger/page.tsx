@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
+import { Activity, RefreshCw } from "lucide-react";
 import { fetchStrategyLedger, type LedgerEntry, type LedgerResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { ProdGateScorecard } from "@/components/ProdGateScorecard";
@@ -43,8 +45,7 @@ export default function StrategyLedgerPage() {
   const [asc, setAsc] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
 
-  // Distinct symbols present in the ledger, PASS-first order preserved enough
-  // for a sensible default (the first sorted row's symbol).
+  // Distinct symbols present in the ledger (for the gate-scorecard selector).
   const symbols = useMemo(() => {
     const seen = new Set<string>();
     for (const e of data?.entries ?? []) {
@@ -106,50 +107,120 @@ export default function StrategyLedgerPage() {
     </TableHead>
   );
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex-shrink-0 px-6 py-4 border-b border-border">
-        <h1 className="font-mono text-lg font-bold text-foreground">Strategy Ledger</h1>
-        <p className="text-xs text-muted-foreground mt-1">
-          Gate-v2 backtest verdicts • {data?.n_pass ?? 0} PASS / {data?.n_fail ?? 0} FAIL of{" "}
-          {data?.total ?? 0} • thresholds: PF-CI ≥ 1.10, p_edge ≥ 0.95, MC-DD ≤ 5%, DSR ≥ 0.10
-        </p>
-      </div>
+  const passCount = data?.n_pass ?? 0;
+  const failCount = data?.n_fail ?? 0;
+  const totalCount = data?.total ?? 0;
 
-      {symbols.length > 0 && (
-        <div className="flex-shrink-0 px-6 pt-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="font-mono text-xs text-muted-foreground">Gate scorecard:</span>
-            <div className="flex flex-wrap gap-1">
-              {symbols.map((sym) => {
-                const active = (selectedSymbol || symbols[0]) === sym;
-                return (
-                  <button
-                    key={sym}
-                    onClick={() => setSelectedSymbol(sym)}
-                    className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
-                      active
-                        ? "bg-primary/15 border-primary text-foreground"
-                        : "border-border text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {sym}
-                  </button>
-                );
-              })}
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Sticky header — matches site standard */}
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+              <Activity className="h-5 w-5 text-accent" />
+            </div>
+            <div>
+              <h1 className="font-bold text-foreground tracking-tight">JARVIS TRADER — Strategy Ledger</h1>
+              <p className="text-xs text-muted-foreground">Gate-v2 backtest verdicts</p>
+            </div>
+            <nav className="hidden lg:flex items-center gap-4 ml-6">
+              <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Dashboard
+              </Link>
+              <Link href="/performance" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Performance
+              </Link>
+              <Link href="/scorecard" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Scorecard
+              </Link>
+              <Link href="/strategy-ledger" className="text-xs text-accent font-semibold border-b border-accent pb-0.5">
+                Strategy Ledger
+              </Link>
+              <Link href="/validation" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Validation
+              </Link>
+              <Link href="/backtest" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Backtest
+              </Link>
+            </nav>
+          </div>
+          <div className="flex items-center gap-3">
+            {isLoading && <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin" />}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="text-bull font-mono font-bold">{passCount} PASS</span>
+              <span>/</span>
+              <span className="text-bear font-mono font-bold">{failCount} FAIL</span>
+              <span className="text-muted-foreground">of {totalCount}</span>
             </div>
           </div>
-          <ProdGateScorecard symbol={selectedSymbol || symbols[0]} />
         </div>
-      )}
+      </header>
 
-      <div className="flex-1 overflow-auto px-6 py-4">
-        {rows.length === 0 ? (
-          <div className="flex items-center justify-center h-40">
+      <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-4">
+        {/* Summary chips */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider font-mono">Thresholds</span>
+            <span className="text-xs font-mono text-foreground">PF-CI ≥ 1.10</span>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs font-mono text-foreground">p_edge ≥ 0.95</span>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs font-mono text-foreground">MC-DD ≤ 5%</span>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs font-mono text-foreground">DSR ≥ 0.10</span>
+          </div>
+          <span className="text-xs text-muted-foreground font-mono">
+            {rows.length} strategies · refreshes every 60s
+          </span>
+        </div>
+
+        {/* Per-symbol gate scorecard (US-005) */}
+        {symbols.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-mono text-xs text-muted-foreground">Gate scorecard:</span>
+              <div className="flex flex-wrap gap-1">
+                {symbols.map((sym) => {
+                  const active = (selectedSymbol || symbols[0]) === sym;
+                  return (
+                    <button
+                      key={sym}
+                      onClick={() => setSelectedSymbol(sym)}
+                      className={`font-mono text-xs px-2 py-0.5 rounded border transition-colors ${
+                        active
+                          ? "bg-primary/15 border-primary text-foreground"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {sym}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <ProdGateScorecard symbol={selectedSymbol || symbols[0]} />
+          </div>
+        )}
+
+        {/* Error state */}
+        {error && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
+            Error loading ledger: {String(error)}
+          </div>
+        )}
+
+        {/* Table */}
+        {rows.length === 0 && !isLoading ? (
+          <div className="flex items-center justify-center h-40 rounded-xl border border-border bg-card">
             <p className="text-muted-foreground">No verdicts found</p>
           </div>
+        ) : isLoading && rows.length === 0 ? (
+          <div className="flex items-center justify-center h-40 rounded-xl border border-border bg-card">
+            <p className="text-muted-foreground animate-pulse">Loading strategy verdicts…</p>
+          </div>
         ) : (
-          <div className="border border-border rounded-lg overflow-x-auto">
+          <div className="rounded-xl border border-border bg-card overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40">
@@ -179,27 +250,23 @@ export default function StrategyLedgerPage() {
                       <Badge variant={verdictVariant(r.verdict)}>{r.verdict ?? "—"}</Badge>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{r.passed_via ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-sm text-right">{fmt(r.pf_ci_lower)}</TableCell>
-                    <TableCell className="font-mono text-sm text-right">{fmt(r.p_edge)}</TableCell>
-                    <TableCell className="font-mono text-sm text-right">{fmt(r.mc_95th_dd_pct)}</TableCell>
-                    <TableCell className="font-mono text-sm text-right">{fmt(r.dsr)}</TableCell>
+                    <TableCell className="font-mono text-sm text-right tabular-nums">{fmt(r.pf_ci_lower)}</TableCell>
+                    <TableCell className="font-mono text-sm text-right tabular-nums">{fmt(r.p_edge)}</TableCell>
+                    <TableCell className="font-mono text-sm text-right tabular-nums">{fmt(r.mc_95th_dd_pct)}</TableCell>
+                    <TableCell className="font-mono text-sm text-right tabular-nums">{fmt(r.dsr)}</TableCell>
                     <TableCell>
                       <Badge variant={wfoVariant(r.wfo_consistency)}>{r.wfo_consistency ?? "—"}</Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-sm text-right">{fmt(r.fixed_params_min_pf)}</TableCell>
+                    <TableCell className="font-mono text-sm text-right tabular-nums">{fmt(r.fixed_params_min_pf)}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{r.cost_survives_through ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-sm text-right">{r.oos_trades ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-sm text-right tabular-nums">{r.oos_trades ?? "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
         )}
-      </div>
-
-      <div className="flex-shrink-0 px-6 py-3 border-t border-border text-xs text-muted-foreground">
-        {rows.length} strategies • verdicts read from engine/data/gate_v2_verdicts • refreshes every 60s
-      </div>
+      </main>
     </div>
   );
 }

@@ -31,7 +31,17 @@ import {
   type DailyAttributionResponse,
   type TradeJournalEntry,
 } from "@/lib/api";
-import { fetchAmoHealth, type AmoHealthResponse } from "@/lib/amo-api";
+import {
+  fetchAmoHealth,
+  fetchAmoEdgeVerdict,
+  fetchAmoCommodities,
+  type AmoHealthResponse,
+  type AmoEdgeVerdictResponse,
+  type AmoCommodity,
+} from "@/lib/amo-api";
+import { PostTradeExecutionWidget } from "@/components/PostTradeExecutionWidget";
+import { BarDepthCard } from "@/components/BarDepthCard";
+import { PostTradeSnippet } from "@/components/PostTradeSnippet";
 
 // ── Brokers/positions response (subset we render) ─────────────────────────────
 interface PaperOpenPosition {
@@ -60,6 +70,33 @@ interface BarQualityResponse {
   gate_active: boolean;
 }
 
+// ── jarvis gate-v2 edge ledger (/reports/edge-ledger) — the validated-edge truth ─
+interface EdgeLedgerRow {
+  source_file: string;
+  is_archived: boolean;
+  symbol: string;
+  base_family: string;
+  conditioning: string;
+  rank: number;
+  verdict: string; // PASS | FAIL | NO_TRADE | …
+  passed_via: string | null; // core | alt
+  design: { total_oos_trades: number; n_oos_windows: number };
+  metrics: {
+    pf_ci_lower: number | null;
+    p_edge: number | null;
+    mc_95th_dd_pct: number | null;
+    dsr: number | null;
+    wfo_consistency: string | null;
+  };
+}
+interface EdgeLedgerResponse {
+  total: number;
+  n_pass: number;
+  n_fail: number;
+  n_other: number;
+  rows: EdgeLedgerRow[];
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function money(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -81,6 +118,20 @@ function fmtTime(iso?: string): string {
   } catch {
     return iso;
   }
+}
+function fmtDate(iso?: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+function pct(n: number | null | undefined): string {
+  return n == null || Number.isNaN(n) ? "—" : `${Math.round(n * 100)}%`;
+}
+function num(n: number | null | undefined, digits = 2): string {
+  return n == null || Number.isNaN(n) ? "—" : n.toFixed(digits);
 }
 
 // Per-symbol lower price floors. A futures entry below its floor is almost
@@ -201,7 +252,13 @@ export default function TrustPanePage() {
   const barQuality = useSWR<BarQualityResponse>(
     "/analytics/bar-quality?hours=168", (p: string) => fetchEngine<BarQualityResponse>(p), { refreshInterval: 60_000 },
   );
+  const edgeLedger = useSWR<EdgeLedgerResponse>(
+    "/reports/edge-ledger", (p: string) => fetchEngine<EdgeLedgerResponse>(p), { refreshInterval: 120_000 },
+  );
   const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: 30_000 });
+  const verdict = useSWR<AmoEdgeVerdictResponse>("amo-edge-verdict", () => fetchAmoEdgeVerdict(), { refreshInterval: 60_000 });
+  // Commodities rarely change — refresh slowly, just enough to pick up a new listing.
+  const commodities = useSWR<AmoCommodity[]>("amo-commodities", () => fetchAmoCommodities(), { refreshInterval: 600_000 });
 
   const [secondsSince, setSecondsSince] = useState(0);
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
@@ -213,17 +270,25 @@ export default function TrustPanePage() {
   }, [lastUpdated]);
 
   const refreshAll = useCallback(() => {
-    health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate(); barQuality.mutate(); amo.mutate();
-  }, [health, positions, pnl, trades, barQuality, amo]);
+    health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate();
+    barQuality.mutate(); edgeLedger.mutate(); amo.mutate(); verdict.mutate(); commodities.mutate();
+  }, [health, positions, pnl, trades, barQuality, edgeLedger, amo, verdict, commodities]);
 
   // ── jarvis derived ──
   const h = health.data;
   const jarvisLive = !!h && h.status === "ok";
   const dataLegDown = h?.ibkr_data_connected === false;
+  const llmDegraded = !!h && h.llm_path_healthy === false;
+  const jarvisDegraded = !!health.error || (!!h && h.status !== "ok");
   const openPaper = positions.data?.paper?.positions ?? [];
   const suspectCount = openPaper.filter((p) => suspectPrice(p.symbol, p.entry_price)).length;
   const bq = barQuality.data;
   const bqTotal = bq?.total_rejections ?? 0;
+  // gate-v2 validated edge: live PASS rows, strongest pf_ci_lower first.
+  const el = edgeLedger.data;
+  const passRows = (el?.rows ?? [])
+    .filter((r) => r.verdict === "PASS" && !r.is_archived)
+    .sort((a, b) => (b.metrics.pf_ci_lower ?? 0) - (a.metrics.pf_ci_lower ?? 0));
   // Chart symbols: distinct open-position symbols that have a TV mapping; else a sane default.
   const chartSymbols = (() => {
     const fromOpen = Array.from(
@@ -236,6 +301,14 @@ export default function TrustPanePage() {
   // ── amo derived ──
   const a = amo.data;
   const amoLive = !!a && a.status === "ok";
+  const v = verdict.data;
+  const verdictOk = !!v && v.status === "ok" && v.n_total > 0;
+  const amoDegraded = !!amo.error || (!!a && a.status !== "ok");
+  const commodityById = new Map<number, AmoCommodity>((commodities.data ?? []).map((c) => [c.id, c]));
+  const commodityLabel = (id: number | null): string => {
+    if (id == null) return "—";
+    return commodityById.get(id)?.symbol ?? `#${id}`;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -265,17 +338,26 @@ export default function TrustPanePage() {
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
-        {/* Integrity banner — surfaces suspect prices + data-leg degradation loudly */}
-        {(suspectCount > 0 || dataLegDown) && (
+        {/* System-health banner — surfaces ANY degraded state loudly so neither
+            system reads "LIVE" while quietly degraded (suspect prices, data-leg
+            down, LLM on fallback, jarvis/amo not-ok). */}
+        {(suspectCount > 0 || dataLegDown || llmDegraded || jarvisDegraded || amoDegraded) && (
           <div className="rounded-xl border border-bear/30 bg-bear/5 p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-bear mt-0.5 shrink-0" />
+            <AlertTriangle className="h-5 w-5 text-bear mt-0.5 shrink-0 animate-pulse" />
             <div className="text-sm">
-              <p className="font-semibold text-bear">Data-integrity warnings</p>
+              <p className="font-semibold text-bear">System degraded — do not trust at a glance</p>
               <ul className="text-xs text-muted-foreground mt-1 list-disc pl-4 space-y-0.5">
+                {jarvisDegraded && (
+                  <li>jarvis engine is {health.error ? "unreachable" : `reporting status="${h?.status ?? "?"}"`} — not in a healthy live state.</li>
+                )}
+                {dataLegDown && <li>jarvis IB data leg is disconnected — marks are stale fallback data; unrealized P&L is suppressed, not trustworthy.</li>}
+                {llmDegraded && <li>jarvis LLM path is on fallback (primary provider degraded) — decision quality may be affected.</li>}
                 {suspectCount > 0 && (
                   <li>{suspectCount} open paper position{suspectCount > 1 ? "s have" : " has"} an implausible entry price — likely a corrupted field. Do not trust the signal until reconciled.</li>
                 )}
-                {dataLegDown && <li>jarvis IB data leg is disconnected — engine is on fallback data.</li>}
+                {amoDegraded && (
+                  <li>amo-arbitrage is {amo.error ? "unreachable" : `reporting status="${a?.status ?? "?"}"`} — the cross-system pane is partial.</li>
+                )}
               </ul>
             </div>
           </div>
@@ -421,6 +503,57 @@ export default function TrustPanePage() {
               )}
             </Card>
 
+            {/* 4b. Validated edge — which candidates clear gate-v2 right now */}
+            <Card>
+              <PanelHeader title="Validated Edge · gate-v2" provenance="live" />
+              {edgeLedger.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /reports/edge-ledger.</p>
+              ) : !el ? (
+                <p className="text-xs text-muted-foreground">Loading edge ledger…</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Stat label="PASS" value={String(el.n_pass)} tone={el.n_pass > 0 ? "bull" : "muted"} />
+                    <Stat label="FAIL" value={String(el.n_fail)} tone="muted" />
+                    <Stat label="Candidates" value={String(el.total)} tone="muted" />
+                  </div>
+                  {passRows.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground mt-3">
+                      No candidate currently clears gate-v2 (pf_ci_lower ≥ 1.10, p_edge ≥ 0.95, MC-DD ≤ 5%,
+                      DSR ≥ 0.10, ≥ 30 OOS trades). NO_TRADE is the honest verdict.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 mt-3">
+                      {passRows.slice(0, 6).map((r) => (
+                        <div
+                          key={r.source_file}
+                          className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-sm font-semibold text-foreground">{r.symbol}</span>
+                            <span className="text-[11px] uppercase text-muted-foreground truncate">
+                              {r.base_family}{r.conditioning && r.conditioning !== "none" ? ` · ${r.conditioning}` : ""}
+                            </span>
+                            <Badge variant={r.passed_via === "alt" ? "warn" : "live"}>
+                              {r.passed_via === "alt" ? "ALT" : "CORE"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 text-[11px] font-mono text-muted-foreground">
+                            <span title="profit-factor CI lower bound">PF {num(r.metrics.pf_ci_lower)}</span>
+                            <span title="deflated Sharpe">DSR {num(r.metrics.dsr)}</span>
+                            <span title="out-of-sample trades">{r.design.total_oos_trades}t</span>
+                          </div>
+                        </div>
+                      ))}
+                      {passRows.length > 6 && (
+                        <p className="text-[11px] text-muted-foreground">+{passRows.length - 6} more passing</p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </Card>
+
             {/* 4. Per-trade post-mortem */}
             <Card>
               <PanelHeader title="Recent Trades — win/loss & why" provenance="live" />
@@ -457,6 +590,15 @@ export default function TrustPanePage() {
                 </div>
               )}
             </Card>
+
+            {/* 5. Post-trade execution quality (WS4B endpoints — PR #78) */}
+            <PostTradeExecutionWidget />
+
+            {/* 6. Post-trade quality — book-wide MAE/MFE + entry-timing regret (J1/J2) */}
+            <PostTradeSnippet />
+
+            {/* 7. Data integrity — bar coverage/health (live after engine restart) */}
+            <BarDepthCard />
           </section>
 
           {/* ───────── AMO-ARBITRAGE column ───────── */}
@@ -482,6 +624,66 @@ export default function TrustPanePage() {
                 <Stat label="Jobs" value={String(a?.scheduled_jobs ?? 0)} />
               </div>
               {a?.version && <p className="text-[11px] text-muted-foreground mt-2">v{a.version}</p>}
+            </Card>
+
+            {/* Edge verdict — which backtests survive the family-wide BH-FDR gate.
+                The honest answer to "is any of this edge real?", straight from the
+                same correction that gates Kelly sizing. */}
+            <Card>
+              <PanelHeader title="Edge Verdict — BH-FDR" provenance="live" />
+              {verdict.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /api/edge-verdict.</p>
+              ) : !v ? (
+                <p className="text-xs text-muted-foreground">{verdict.isLoading ? "Loading verdict…" : "No verdict."}</p>
+              ) : !verdictOk ? (
+                <div className="flex items-start gap-2">
+                  <XCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    No verdict available yet — the backtests table is empty or unreachable.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Stat
+                      label="Validated"
+                      value={`${v.n_validated} / ${v.n_total}`}
+                      tone={v.n_validated > 0 ? "bull" : "bear"}
+                    />
+                    <Stat label="FDR q" value={num(v.fdr_q)} tone="muted" />
+                    <Stat label="As of" value={fmtDate(v.as_of)} tone="muted" />
+                  </div>
+                  {v.validated.length === 0 ? (
+                    <p className="text-xs text-muted-foreground mt-3">
+                      0 of {v.n_total} strategies survive whole-campaign correction — none are
+                      validated for sizing. That is the honest result, not a data gap.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 mt-3">
+                      {v.validated.map((s) => (
+                        <div
+                          key={String(s.backtest_id)}
+                          className="flex items-center justify-between rounded-lg border border-bull/30 bg-bull/5 px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-sm font-semibold text-foreground">
+                              {commodityLabel(s.commodity_id)}
+                            </span>
+                            <Badge variant="bull">{s.strategy}</Badge>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono shrink-0">
+                            <span>PF {num(s.profit_factor)}</span>
+                            <span>p {num(s.p_value, 3)}</span>
+                            <span>{s.total_trades ?? "—"}t</span>
+                            <span>{pct(s.win_rate)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-2">{v.methodology}</p>
+                </>
+              )}
             </Card>
 
             {/* Scheduled jobs */}

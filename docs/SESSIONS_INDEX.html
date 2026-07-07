@@ -63,6 +63,20 @@
 <div class="sessions">
 
   <div class="session">
+    <a href="session-logs/2026-06-30-vix-pctile-phase4/README.md" class="title">VIX percentile Phase 4 — AgentQuant integration + activation tooling</a>
+    <div class="meta">
+      <span>2026-06-30</span>
+      <span class="pill">4 PRs merged</span>
+      <span>claude/* → master</span>
+    </div>
+    <p>Completed the AgentQuant percentile-VIX integration and shipped the guarded activation path for the frozen MES candidate. Archived as a full verbatim conversation transcript (not the frozen-HTML format) under <code>session-logs/</code>.</p>
+    <div class="highlights">
+      <strong>Highlights:</strong> percentile VIX regime classifier + momentum overlay · SPX/XSP/VIX options + VX/VXM futures specs · VIX-regime entry gate primitive (opt-in trend wiring) · MES percentile-tier WFO runner (#120) · <code>GET /regime/vix-percentile</code> endpoint + <code>regime_snapshot()</code> · <code>VixPercentileRegimeCard</code> dashboard widget · frozen inert candidate <code>MES_sma_trend_vix_pctile_blockCrisis_v1</code> (#137) · guarded <code>activate_mes_vix_pctile_candidate.py</code> (#155) · full session transcript archived (#200). Notable: caught a case-sensitivity build break (renamed to <code>VixPercentileRegimeCard</code>) and fixed a safety-gate false-positive via rebase rather than a false <code>[safety-review]</code> tag.
+    </div>
+    <a href="session-logs/2026-06-30-vix-pctile-phase4/README.md" class="open">open →</a>
+  </div>
+
+  <div class="session">
     <a href="SESSION_2026-05-21_stark_mode.html" class="title">Stark Mode — autonomous loop activation</a>
     <div class="meta">
       <span>2026-05-21</span>

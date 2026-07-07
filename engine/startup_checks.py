@@ -133,15 +133,25 @@ def _check_live_trading_disabled(config) -> CheckResult:
 
 def _check_human_approval(config) -> CheckResult:
     """
-    FAIL if REQUIRE_HUMAN_APPROVAL is False.
+    WARN (non-blocking) if REQUIRE_HUMAN_APPROVAL is False.
+
+    Owner directive (2026-06-15): autonomous trading is enabled — trades execute
+    without human approval. This was previously a boot-blocking FAIL; it is now a
+    loud WARN so the engine boots in autonomous mode while keeping the state
+    visible in startup logs. LIVE_TRADING_ENABLED remains separately enforced
+    (see _check_live_trading_disabled), so auto-execution stays paper-only.
     """
     human_approval = getattr(config, "REQUIRE_HUMAN_APPROVAL", True)
 
     if not human_approval:
         return CheckResult(
             name="Human Approval",
-            status="fail",
-            message="REQUIRE_HUMAN_APPROVAL is False. All trades must require human approval.",
+            status="warn",
+            message=(
+                "REQUIRE_HUMAN_APPROVAL is False — AUTONOMOUS trading active, "
+                "trades execute without human approval (paper-only while "
+                "LIVE_TRADING_ENABLED is False)."
+            ),
         )
 
     return CheckResult(

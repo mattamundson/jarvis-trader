@@ -70,7 +70,8 @@ def main():
     ap = argparse.ArgumentParser(description="Cost sensitivity sweep (Tier A A5)")
     ap.add_argument("--symbol", required=True)
     ap.add_argument("--family", required=True,
-                    choices=["trend", "meanrev", "breakout", "meanrev_regime"],
+                    choices=["trend", "meanrev", "breakout", "meanrev_regime",
+                             "composite", "saty", "tpo"],
                     help="Strategy family (dispatches to the matching research _run)")
     ap.add_argument("--rank", type=int, default=1,
                     help="Which rank from the research results file to sweep")
@@ -109,6 +110,21 @@ def main():
                 short_only=params.get("short_only", True),
                 spec=spec,
             )
+    elif args.family == "composite":
+        from scripts.mes_composite_search import _run as _run_harness
+        default_rf = _ENGINE / "scripts" / f"{symbol.lower()}_composite_search_results.json"
+        def runner(df, params, spec):
+            return _run_harness(df, params["entry_threshold"], params["band_mult"], spec, symbol)
+    elif args.family == "saty":
+        from scripts.mes_saty_search import _run as _run_harness
+        default_rf = _ENGINE / "scripts" / f"{symbol.lower()}_saty_search_results.json"
+        def runner(df, params, spec):
+            return _run_harness(df, params["target_ratio"], spec, symbol)
+    elif args.family == "tpo":
+        from scripts.mes_tpo_search import _run as _run_harness
+        default_rf = _ENGINE / "scripts" / f"{symbol.lower()}_tpo_search_results.json"
+        def runner(df, params, spec):
+            return _run_harness(df, params["enter"], params["stop_mult"], spec, symbol)
     else:  # meanrev_regime — Bollinger+RSI w/ regime filter (MCL bbwidth variant)
         from scripts.mcl_meanrev_regime_search import _run as _run_regime
         default_rf = _ENGINE / "scripts" / \

@@ -26,8 +26,8 @@ pandas-ta>=0.3.14         # 150+ indicators
 ta-lib==0.4.32            # TA-Lib C library (must install binary first)
 
 # Data Processing
-pandas==2.2.3
-numpy==2.2.4
+pandas>=3.0,<4.0          # converged to 3.x 2026-06-26 (kept in sync with requirements-core.txt; PR #161 str-Enum fix)
+numpy>=2.2.6
 scipy==1.15.2
 
 # Backtesting
@@ -54,6 +54,7 @@ fredapi==0.5.2            # FRED economic data
 
 # Scheduling
 apscheduler==3.11.0
+tzlocal==5.3.1  # APScheduler local-timezone dep; pin explicitly (not pulled transitively in the CI core install)
 
 # Monitoring
 prometheus-client==0.21.1

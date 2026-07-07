@@ -111,6 +111,44 @@ def sample_adequacy_enforced() -> bool:
     }
 
 
+def per_window_adequacy_enforced() -> bool:
+    """Shadow -> enforce switch for the PER-WINDOW adequacy floor (Task 8 follow-on).
+
+    Companion to ``sample_adequacy_enforced()``. The aggregate
+    ``MIN_OOS_TRADES_TOTAL`` floor is necessary but NOT sufficient: a strategy can
+    clear 30 aggregate OOS trades while most windows are 1-4 trades with degenerate
+    PFs (e.g. ``MGC_trend_rank4``: 67 aggregate, median 4/window, 14 of 19 thin).
+    This switch makes a strategy whose MEDIAN window is below
+    ``MIN_OOS_TRADES_PER_WINDOW`` return ``INSUFFICIENT_SAMPLE``.
+
+    Default OFF (shadow): runners record the per-window inputs but the verdict is
+    unchanged, so live authorization is unaffected. Set
+    ``GATE_V2_ENFORCE_PER_WINDOW=1`` to enforce. Like the aggregate flag this is an
+    env switch (house ``GATE_V2_ENFORCE_*`` convention) evaluated at call time, so
+    the shadow->enforce flip is a one-line, fully reversible ``.env`` change.
+    """
+    return os.getenv("GATE_V2_ENFORCE_PER_WINDOW", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def per_window_sample_adequate(per_window_trades: list[int] | None) -> bool:
+    """True iff the MEDIAN per-window OOS trade count clears the per-window floor.
+
+    ``per_window_trades`` is the list of OOS trade counts, one per WFO window.
+    Empty/None -> False (fail-safe: unknown per-window distribution does not
+    certify). Uses the median (not the mean) so a few fat windows cannot mask many
+    thin ones — that masking is exactly the necessary-not-sufficient gap this guard
+    closes.
+    """
+    if not per_window_trades:
+        return False
+    return bool(float(np.median(per_window_trades)) >= MIN_OOS_TRADES_PER_WINDOW)
+
+
 # ---------------------------------------------------------------------------
 # Cost sweep tiers — canonical; do not redefine per-runner
 # ---------------------------------------------------------------------------
@@ -129,8 +167,22 @@ COST_SWEEP_TIERS: dict[str, dict[str, float]] = {
 COST_TIER_ORDER: list[str] = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 
-def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> Path:
+def _find_latest_cache(
+    data_dir: Path, prefix: str, suffix: str = "_1h.csv", *, prefer_complete: bool = True
+) -> Path:
     """Pick the cache file whose filename's second date segment is the latest.
+
+    Completeness preference (``prefer_complete``, default True): the latest END
+    date does NOT imply the file is COMPLETE — a holed late-end cache (e.g.
+    ``MES_2025-04-09_2026-06-22_5m_cont.csv`` missing Apr–Nov 2025) can out-sort a
+    clean earlier one. When more than one candidate exists and ``prefer_complete``
+    is set, this delegates to ``cache_completeness.find_trustworthy_cache`` and
+    returns the latest-end FULLY-TRUSTWORTHY cache; if none is trustworthy it falls
+    back to the latest-end file (the historical behavior) and logs a warning. The
+    completeness detector is calibrated for ~23h continuous (``_cont``) caches; for
+    RTH-only/1h caches it over-flags the legitimate ~17h nightly gap, so none score
+    fully-trustworthy and the fallback keeps the latest-end pick — i.e. 1h/RTH
+    selection is unchanged. Pass ``prefer_complete=False`` to force pure latest-end.
 
     Filename contract (LOAD-BEARING — see ``export_ibkr_history.py``
     ``CACHE_FILENAME_CONTRACT`` for the canonical regex):
@@ -201,7 +253,50 @@ def _find_latest_cache(data_dir: Path, prefix: str, suffix: str = "_1h.csv") -> 
             suffix,
         )
 
-    return max(candidates, key=_end_date)
+    latest = max(candidates, key=_end_date)
+
+    # Completeness preference: prefer the latest-end fully-trustworthy cache over a
+    # holed late-end one. Only engages with >1 candidate (single-cache dirs and the
+    # common refreshed-pull case pay zero inspection cost).
+    if prefer_complete and len(candidates) > 1:
+        try:
+            from backtest.cache_completeness import (
+                US_MARKET_HOLIDAYS,
+                find_trustworthy_cache,
+            )
+
+            pick = find_trustworthy_cache(
+                data_dir, prefix, suffix, holiday_dates=US_MARKET_HOLIDAYS
+            )
+            chosen = Path(pick["path"])
+            log = logging.getLogger(__name__)
+            if not pick["chose_latest_end"]:
+                log.warning(
+                    "Cache completeness: latest-end %s is holed; using "
+                    "completeness-preferred %s (%s)",
+                    latest.name,
+                    chosen.name,
+                    pick["reason"],
+                )
+            elif pick["fallback"]:
+                log.warning(
+                    "Cache completeness: no fully-trustworthy %s%s cache; using "
+                    "latest-end %s which has %s suspicious gap(s)",
+                    prefix,
+                    suffix,
+                    latest.name,
+                    pick["n_suspicious_gaps"],
+                )
+            return chosen
+        except Exception as exc:  # never let the completeness check break loading
+            logging.getLogger(__name__).warning(
+                "Cache completeness check failed (%s); using latest-end %s",
+                exc,
+                latest.name,
+            )
+            return latest
+
+    return latest
 
 
 def bootstrap_pf_ci_lower(oos_pfs: list[float], n: int = 5000) -> float:

@@ -1,56 +1,109 @@
-## Codebase Patterns
-- Race-safe commits when peers live: git commit -m "msg" -- <paths>; BUT pathspec commits snapshot the working tree and UNDO git rm --cached — untracking needs a plain commit of the index.
-- Runtime state (gate_v2_verdicts, strategy_c/output) is untracked as of 4963a39 — always back up to $CLAUDE_JOB_DIR/tmp before merges anyway.
-- Engine tests: engine/.venv/Scripts/python.exe -m pytest from engine/. Dashboard build: pnpm via absolute C:\Users\mattm\AppData\Roaming\npm\pnpm.cmd.
-- Engine restart + push to origin are Amo-gated. pm2 changes were authorized in the 2026-06-11 audit scope.
+## Codebase Patterns (read first)
+- Engine API :8010 needs an API key header for /api/* and /portfolio/* (401 without). Key in engine/.env — never echo/commit it.
+- Health: GET /health (no auth) — status, paper_mode, ibkr_data_connected, llm_providers.
+- A "today" view already exists: portfolio_router.py /stats/session-today; paper_validation_router.py /summary/eod + _pnl_today.
+- QuantStats ALREADY wired: engine/reports/quantstats_metrics.py (+test), engine/routers/reports_router.py, scripts/jarvis_tearsheet.py, scripts/eod_summary.py, scripts/compare_backtests.py, scripts/eval_run.py, scripts/daily_report.py. VERIFY before rebuilding.
+- gate v2 verdicts in engine/data/gate_v2_verdicts/. Cleared (paper): MES, MNQ, MCL.
+- 23 stale worktrees under .claude/worktrees/ — cruft from prior loops; archive candidates (archive-not-delete).
+- Per-file git staging only. Co-Authored-By: Claude Opus 4.8. No push/merge/restart without Amo auth.
 
-## 2026-06-11 ~23:30 CT - US-001
-- Merged origin/master (7 peer commits: CI workflow, brokers signed-qty drift, reconciler tick rounding, api/main.py) into master. Zero conflicts. master ahead 11 / behind 0.
-- Files changed: merge commit only + chore(ralph) PRD commit e758925.
-- **Learnings:**
-  - Peer commits were fully disjoint from audit commits — no hunk work needed.
-  - Running engine still on pre-merge code for reconciler/brokers; next Amo-authorized restart picks it up.
-  - 13 sessions in manifest but none in jarvis-trader cwd — pathspec commit used anyway per rule.
+## Project context
+JARVIS Edge — Live & Monitorable 24/7. Branch ralph/edge-24x7 off master (53ceb50).
+Goal memory: ~/.claude/projects/C--Users-mattm/memory/project_jarvis_edge_24x7_goal_2026_06_12.md
+Predecessor (COMPLETE): prd-audit-closeout-top10-2026-06-11-COMPLETE.json.
+
+## Live baseline (2026-06-12, probed)
+- jarvis engine: UP, paper_mode, live_trading=false, ibkr_data_connected=FALSE, LLM on gemini fallback (Anthropic credits out). Dashboard :3010 UP.
+- amo-arbitrage: UP, signal-only (no execution), 5/44 strategies validated (live), no signal-outcome tracking.
+
+## Security flags (P0, not auto-actioned)
+- Plaintext GitHub PAT file at C:\Users\mattm\ (github_pat_*.txt) — Amo must revoke on GitHub, then archive the file. Do NOT echo its value.
+
 ---
-## 2026-06-12 ~00:15 CT - US-002
-- Null-guard pass: 6 dashboard files, commit 0fa0608 (branch fix/audit-followups).
-- **Learnings:**
-  - Crashes layer: fixing the first crash in a page reveals the NEXT one (render proceeds further). Re-run Playwright after every fix round until zero.
-  - Static review (even subagent) missed the real sites; fetching the minified chunk and reading ~300 chars around the stack's char offset pinpoints the exact expression — fastest method.
-  - Crash class = components where `data` is truthy but a FIELD is missing (partial engine payloads), esp. TS non-null assertions (`paper!.x`) — grep for `!.` in components when hunting.
-  - Use io.open(...,encoding='utf-8') + ensure_ascii=False when rewriting prd.json from python on Windows (cp1252 mojibake otherwise).
+
+## 2026-06-12 - US-001 (Ground-truth verification) — PASS
+- Verified live: auth=X-API-Key/settings.API_KEY; /portfolio/stats/session-today, /paper/validation/summary/eod, /reports/quantstats?days=90, jarvis_tearsheet.py (488KB HTML) all WORK.
+- Gate v2: 4 PASS (3x MGC, 1x MES), 27 FAIL. ibkr_data_connected=false (US-002).
+- Broken: /reports/performance?format=html -> 503 DB-not-initialized. MAE/MFE only on discord_bot_signals, not paper_trades. edge_ledger.py only in an uncommitted worktree.
+- **Learnings:** Most QuantStats/tearsheet machinery already shipped — US-007 already done. Real builds are US-004 (MAE/MFE), US-005 (scenario), US-008 (regime), US-010 (edge ledger port). US-003/006/009 are partial/reconcile.
+- Files: scripts/ralph/GAP_MAP.md
 ---
-## 2026-06-12 ~00:50 CT - US-003
-- Bridge /api/signal fixed: hardcoded Linux paths -> __file__-relative. Commit 435b047.
-- **Learnings:**
-  - An HTTP 404 from FastAPI can be a HANDLER-RAISED semantic 404, not a missing route — check openapi.json /paths before repointing clients.
-  - engine/api/main.py was authored in some Linux sandbox; grep new files for /home/ paths.
-  - shared-resource-guard scans command TEXT: a claim+restart in ONE command is blocked (restart pattern seen, lock not yet held) — claim in its own command first.
-  - mypy advisory on pre-commit is non-blocking; pre-existing `info` annotation nit at main.py:183 left as-is.
+
+## 2026-06-12 - US-002 (data-feed diagnosis) — PASS
+- Port 4002 OPEN, gateway alive, execution leg connected; only the IB market-data leg is down. NOT blind — TV MCP healthy (Tier-0 bars). Operational, not a code bug; reconnect Amo-gated. LLM recovered to Anthropic primary.
+- Files: scripts/ralph/GAP_MAP.md (US-002 section)
 ---
-## 2026-06-12 ~01:50 CT - US-004
-- 8 files, commit 2c6fa0c: 4 engine route fixes/additions + 3 widget repoints + proxy timeout 5s->25s.
-- **Learnings:**
-  - Before implementing a "missing" route, curl /openapi.json — half the 404s had an existing equivalent under a different prefix (repoint beats reimplement).
-  - The 502 class was NOT the engine: dashboard proxy route.ts aborts at 5s; cold-cache TV/yfinance endpoints take >5s on first hit after restart. Time the endpoint directly before blaming it.
-  - Honest-stub pattern for /analytics/regime: RegimeDisplay supports layer status="stub" — ship UNKNOWN/stub rather than fabricate directional signals.
-  - paper_hold_time_stats reads `paper_tracker` (not db_manager) — monkeypatch the right module global or the test silently tests production state.
+
+## 2026-06-12 - US-003 (Today-at-a-glance tile) — PASS (build), browser-verify gated
+- NEW dashboard/app/today/page.tsx (route /today) + Sidebar.tsx nav link. Typecheck clean, prod build OK (35 routes incl /today). Wires /health + session-today + summary/eod + paper/positions via server-side proxy (no client key). Status banner + 4 cards + 6 health badges + 30s refresh.
+- **Learnings:** Dashboard runs as next start via a process manager; a NEW route needs build + process reload to serve. Reload is a GATED service restart (denied by auto-mode/shared-resource-guard) — surfaced to Amo, not auto-run. lib/api.ts HealthResponse lacks llm_providers (extended locally in the page).
+- Files: dashboard/app/today/page.tsx, dashboard/components/Sidebar.tsx
 ---
-## 2026-06-12 ~02:30 CT - US-005
-- /safety/status 10/min -> 120/min, commit 3869ee9. Zero 429s on double-pass sweep.
-- **Learnings:**
-  - slowapi keys on remote address: ALL dashboard widgets share one bucket via the Next.js proxy — per-widget polling multiplies against a single limit. Any read endpoint polled by >1 widget needs the read tier.
-  - Foreground `sleep N` is blocked by the harness; the restart script already self-polls /health — just wait for the background-task notification instead of sleeping.
+
+## 2026-06-12 - US-004 (MAE/MFE excursion capture) — PASS (build), engine-restart/backfill gated
+- Schema: migration_039 adds nullable mae_pct, mfe_pct, mae_usd, mfe_usd REAL columns to paper_trades via try/except idempotent ADD COLUMN pattern (same as migration_038).
+- Compute module: NEW engine/analytics/excursion.py — pure compute_excursion(side, entry_price, bars_df, multiplier, qty) + mfe_capture_ratio(). No I/O. LONG/SHORT mirror definitions per spec. Dollar amounts = pct * entry_price * multiplier * qty.
+- Backfill callable: NEW engine/analytics/excursion_backfill.py — async run_backfill(db_manager, data_manager, limit=200). Fetches 1m bars via get_bars() waterfall, filters to entry->exit window, writes 4 columns. Guard: missing bars → skip (leave NULL), never crash. Also runnable as __main__ script.
+- Endpoint: GET /analytics/excursion (added to engine/routers/analytics_router.py). Returns per-trade ExcursionTradeItem list + ExcursionAggregates (avg_mae_pct, avg_mfe_pct, avg_mfe_capture_ratio). Supports ?limit= and ?symbol= filters.
+- Tests: NEW engine/tests/test_excursion.py — 23 tests, 23 passed (1.71s). Covers LONG exact MAE/MFE/USD, SHORT exact MAE/MFE/USD, side-label aliases, empty/None/bad-cols/zero-price edge cases, mfe_capture_ratio.
+- UI: SKIPPED — trades table is Next.js server component requiring dashboard rebuild + gated restart. Endpoint is the priority (per spec).
+- Caveats: (1) migration_039 applies on next engine restart (additive, safe). (2) Backfill requires bars availability — TV MCP/IBKR may not have 1m history for older trades; those stay NULL. (3) Backfill not auto-wired on engine start — call run_backfill() explicitly or via the analytics endpoint once bars are available.
+- Files: engine/analytics/excursion.py, engine/analytics/excursion_backfill.py, engine/database/migrations.py, engine/routers/analytics_router.py, engine/tests/test_excursion.py
 ---
-## 2026-06-12 ~03:10 CT - US-006..US-010 (continuous mode per Amo)
-- US-006: real notify path fired w/ TEST payload -> Telegram 200 + Discord 204 (engine creds). No code change.
-- US-007: jarvis-weekly-tearsheet pm2 cron Sat 07:00 (8160a28), registered + pm2 save.
-- US-008: validation "not_started" was default instrument=MCL masking live MES/MGC windows; default->MES (1454fa9). No stateful window exists to restart.
-- US-009: Vertex failover already armed by peer session — verified flag set + 21 tests pass; remaining lever is Amo's GCP/credits.
-- US-010: Twilio 401 latch (804e0ad), 3 tests.
-- Branch fix/audit-followups merged to master (FF). Origin had absorbed the earlier 11 commits mid-loop -> master now ahead exactly 7 (today's stories).
-- **Learnings:**
-  - Check peer-session memory BEFORE starting a story — US-009 was already done elsewhere; verify-don't-redo.
-  - "not_started" style findings: check the endpoint's DEFAULT params before believing subsystem is dead.
-  - Inline comment inside a def param list = syntax error; ruff pre-commit catches it (put comments above the def).
+
+## 2026-06-12 - US-005 (Entry-timing scenario analysis) — PASS (build), engine-restart gated
+- Pure module: NEW engine/analytics/scenario.py — compute_entry_timing_scenarios(side, actual_entry_price, exit_price, bars_df, entry_bar_index, offsets, multiplier, qty) -> list[dict]. Each dict: {offset_bars, hypothetical_entry, pnl_usd, pnl_pct, delta_vs_actual_usd}. offset=0 uses actual_entry_price (sanity anchor). All other offsets use bar open at entry_bar_index+offset (clamped). Pure: bars_df in, no I/O.
+- Wiring helper: NEW engine/analytics/scenario_backfill.py — run_scenarios_for_trade(trade, data_manager, offsets) async. Reuses _parse_utc() + _filter_bars_to_window() from excursion_backfill (DRY). _locate_entry_bar() finds bar index from timestamps. Guard: missing bars/invalid prices → None, never crash. Also runnable as __main__.
+- Endpoint: GET /analytics/entry-timing added to engine/routers/analytics_router.py. Query params: limit, symbol, offsets (comma-separated). Returns per-trade EntryTimingTradeItem list + EntryTimingAggregates (avg_delta_by_offset, best_avg_offset, systematic_bias: EARLY|LATE|NEUTRAL). Auth via existing _get_db() pattern. Query() already imported — no duplicate.
+- Tests: NEW engine/tests/test_scenario.py — 22 tests, 22 passed (1.33s). Covers LONG exact deltas (offset -3/-2/-1/0/+1), SHORT exact deltas, side aliases, edge cases (None/empty/missing-open/zero-price/out-of-range clamping/empty-offsets).
+- Ruff: All checks passed! (6 auto-fixed: unused Optional import, duplicate timedelta imports).
+- UI: SKIPPED — gated dashboard rebuild per spec.
+- Files: engine/analytics/scenario.py, engine/analytics/scenario_backfill.py, engine/routers/analytics_router.py, engine/tests/test_scenario.py
+---
+
+## 2026-06-12 - US-005 (Entry-timing scenario analysis) — PASS
+- NEW engine/analytics/scenario.py (pure) + scenario_backfill.py (reuses excursion bar-fetch). GET /analytics/entry-timing (?offsets=, per-trade + aggregate systematic_bias EARLY/LATE/NEUTRAL). test_scenario.py 22 PASS, ruff clean. No migration.
+- **Learnings:** Reused excursion_backfill _parse_utc/_filter_bars_to_window (DRY). Query already imported from US-004. Run ruff check --fix BEFORE returning to avoid the pre-commit block.
+- Files: engine/analytics/scenario.py, engine/analytics/scenario_backfill.py, engine/routers/analytics_router.py, engine/tests/test_scenario.py
+---
+
+## 2026-06-12 - US-006 (Multi-channel alerting + liveness watchdog) — PASS
+- MODIFIED engine/risk/alert_manager.py: added Telegram + Discord fan-out to _alert_worker. Each channel independently best-effort (asyncio.gather + return_exceptions=True). enable_telegram/enable_discord constructor flags. No engine restart needed.
+- NEW engine/scripts/liveness_watchdog.py: standalone poller (no engine restart). Polls /health, fires multi-channel alert on: N consecutive misses (DOWN), status!=ok (state-change), ibkr_data_connected flip True→False, kill_switch_active True. Debounced (state-change only). --once, --self-test modes. Loads engine/.env via python-dotenv before importing notifiers.
+- NEW engine/tests/test_liveness_watchdog.py: 23 tests, 23 passed. Covers miss threshold, debounce, recovery, status change, IBKR flip, kill-switch, combined conditions.
+- **Learnings:** Notifiers call `from config import settings` at init time → requires API_KEY. Load engine/.env via dotenv in watchdog bootstrap BEFORE any notification import. discord_notifier._WEBHOOK_URL is module-level (read at import time); _send() uses it directly so config reloads correctly.
+- **Live test:** --self-test delivered to Telegram HTTP 200 + Discord HTTP 204 (both channels confirmed).
+- ruff: All checks passed!
+- Files: engine/risk/alert_manager.py, engine/scripts/liveness_watchdog.py, engine/tests/test_liveness_watchdog.py
+---
+
+## 2026-06-12 - US-007 (QuantStats Run-12 gates) — PASS
+- Verify-don-t-redo: most gates pre-existing. ADDED skew>=-1.5 (was diagnostic-only) + exposure>=0.15 to eval_run ITERATION/PRODUCTION gates. test_eval_run_gates.py 22 PASS, ruff clean. Fail-safe intact, no thresholds loosened.
+- Files: scripts/eval_run.py, engine/tests/test_eval_run_gates.py, scripts/ralph/GATE_COVERAGE.md
+---
+
+## 2026-06-12 - US-008 (Regime-conditional Sharpe slicing) — PASS (build), regime feed wiring gated
+- Pure module: NEW engine/analytics/regime_analysis.py — regime_conditional_analysis(returns, regime_labels) -> dict. Slices by RISK_ON/RISK_OFF/NORMAL; computes sharpe/sortino/max_dd/win_rate/tail_ratio/skew/calmar/n_days per regime. Regimes <5 obs return {n_days, note:"insufficient data"}. Pure: Series in, dict out. Handles empty/None/NaN/misaligned indices/lowercase labels. All qs.stats funcs confirmed present.
+- Endpoint: GET /reports/regime-conditional added to engine/routers/reports_router.py. Uses same _load_pnl_series as /reports/quantstats. Tries to load regime labels from a macro_regime_log table (date, regime); if absent, returns full per-regime skeleton with note:"no data" + wiring_gap explanation string.
+- Tests: NEW engine/tests/test_regime_analysis.py — 18 tests, 18 passed. Covers all 3 regimes, insufficient-data regime, absent regime, known sharpe sign, max_dd sign, empty/None/NaN inputs, lowercase normalisation, index misalignment.
+- Ruff: All checks passed!
+- **Wiring gap:** No engine process persists per-day RISK_ON/RISK_OFF/NORMAL labels. fundamental_analyst.py computes macro_regime on demand (not stored); fred_data.py returns a spot label without a time series. Endpoint is functional; to activate real metrics, add an async daily task that calls FundamentalAnalyst.assess_macro_conditions() and inserts (date, macro_regime) into macro_regime_log table.
+- Files: engine/analytics/regime_analysis.py, engine/tests/test_regime_analysis.py, engine/routers/reports_router.py
+---
+
+## 2026-06-12 - US-009 (Strategy C+ Command Center reconcile) — PASS
+- Verify-dont-redo: zip is SUPERSEDED (pre-IPv6-fix prototype). Live strategy-c-command-center.html (iframe in app/strategy-c-command/page.tsx) canonical; only drift = 11-line localhost->127.0.0.1 fix already applied. No code change.
+- Files: scripts/ralph/STRATEGY_C_RECONCILE.md
+---
+
+## 2026-06-12 - US-010 (Edge ledger port + ranking) — PASS
+- Ported engine/generation/edge_ledger.py (+__init__) from worktree to live tree; added ranked_ledger() + GET /reports/edge-ledger. test_edge_ledger.py 25 PASS, ruff clean.
+- Ledger: 4 CLEARED (MGC trend_rv_filter best DSR1.0/PF-CI3.18 CORE), 2 insufficient, 29 fail. No contradiction with gate_v2_verdicts.
+- Files: engine/generation/__init__.py, engine/generation/edge_ledger.py, engine/routers/reports_router.py, engine/tests/test_edge_ledger.py, scripts/ralph/EDGE_LEDGER.md
+---
+
+## 2026-06-12 - US-011 (amo-arb signal-outcome tracking) — PASS
+- Repo amo-arbitrage, branch feat/signal-outcome-tracking (7 commits, NOT pushed). phase7_signal_outcomes.sql (idempotent; Amo runs in Supabase) + signal_outcomes.py pipeline @4am CT + router GET outcomes/aggregate + UI /signal-outcomes. backend tests 23 PASS.
+- **Learnings:** Cross-repo story — work + commits live in amo-arbitrage, tracked here in prd. Amo must run the Supabase DDL + push the branch. Frontend typecheck unconfirmed; ruff absent in backend venv.
+- Files: (amo-arbitrage repo) backend/migrations/phase7_signal_outcomes.sql, backend/pipelines/signal_outcomes.py, backend/routers/signal_outcomes.py, backend/main.py, backend/tests/test_signal_outcomes.py, frontend SignalOutcomesPage.tsx + api.ts + App.tsx + AppLayout.tsx
 ---

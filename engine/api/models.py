@@ -167,6 +167,14 @@ class HealthResponse(BaseModel):
         None,
         description="Provider-redundancy summary: active leg, providers_available count, and single_leg_warning (true when the serving leg has no backup behind it). Added in 94e9e5b; response dict populated it but this response_model field was missing, so FastAPI stripped it from /health until 2026-06-06.",
     )
+    pending_approvals: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Approval-queue visibility: {count, oldest_age_min}. A candidate that queues but is never approved (e.g. silently failing notifications) stalls the live-fill path; surfaced so a stuck queue is observable.",
+    )
+    futures_sentiment: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Corey #market-updates freshness + structured-bias extraction health: {quality, age_days, latest_timestamp, threshold_days, extraction_quality, extraction_lag_days, latest_bias_date}. extraction_quality='degraded' flags the LLM structured-bias path falling behind ingestion (the 2026-06-29 credit-exhaustion outage that ran two days undetected). Like llm_providers above, _health_inner populated this but the response_model field was missing, so FastAPI stripped it from /health — added 2026-06-30.",
+    )
     tradingview_mcp_healthy: Optional[bool] = Field(
         True,
         description="Whether TradingView Desktop CDP port 9222 responds (false = TV MCP bar source unavailable)",
@@ -314,7 +322,10 @@ class TechnicalAnalysisResponse(BaseModel):
     symbol: str = Field(..., description="Analyzed symbol")
     timestamp: str = Field(..., description="Analysis timestamp")
     timeframe: str = Field("5m", description="Timeframe used")
-    signal: str = Field(..., description="Trading signal")
+    signal: float = Field(
+        ...,
+        description="Trading signal — numeric score from the TechnicalAnalyst (e.g. -1..1)",
+    )
     confidence: float = Field(..., description="Signal confidence (0-1)")
     trend: Optional[str] = Field(None, description="Current trend")
     regime: Optional[str] = Field(None, description="Market regime")

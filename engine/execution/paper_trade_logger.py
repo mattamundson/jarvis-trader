@@ -272,7 +272,16 @@ class PaperTradeLogger:
             elif prev != 0.0 and new == 0.0:
                 tid = self._open_trade_id_by_symbol.get(sym)
                 if tid:
-                    self._portfolio_tracker.close_trade(tid, filled_price)
+                    try:
+                        self._portfolio_tracker.close_trade(tid, filled_price)
+                    except ValueError as exc:
+                        # ExitPriceSanityError — a corrupt broker fill price.
+                        # Fail-closed: skip the tracker mirror (the guard already
+                        # logged CRITICAL) rather than crashing the fill loop.
+                        logger.critical(
+                            "PaperTradeLogger: exit-sanity rejected close mirror for %s @ %s: %s",
+                            sym, filled_price, exc,
+                        )
                 self._open_trade_id_by_symbol[sym] = None
             elif prev != 0.0 and new != 0.0:
                 logger.debug(

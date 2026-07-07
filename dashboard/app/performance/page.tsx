@@ -24,6 +24,8 @@ import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
 import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
+import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 
 // ── Static Data (v2.7 FINAL WFE — 2026-03-30) ──────────────────────────────
 
@@ -486,6 +488,15 @@ function ImprovementTracker() {
         title="Signal Improvement Tracker"
         subtitle="Each improvement tested via walk-forward validation before acceptance"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical snapshot</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen improvement audit as of 2026-03-30 — not live results
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
@@ -550,6 +561,15 @@ function DoNotTradeList() {
         title="Do Not Trade -- Permanently Removed"
         subtitle="Instruments that failed walk-forward validation or show structural unsuitability for STC strategy"
       />
+      <div
+        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+      >
+        <span style={{ fontWeight: 700 }}>Historical snapshot</span>
+        <span style={{ color: "#9a8030" }}>
+          frozen DNT list as of 2026-03-30 — see gate-v2 verdicts in Strategy Ledger for current status
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
@@ -599,6 +619,44 @@ function DoNotTradeList() {
           {DNT_DATA.length} instrument/timeframe combinations permanently excluded
         </span>
       </div>
+    </section>
+  );
+}
+
+// ── Live Price (per-symbol, our real-time bars) ───────────────────────────────
+
+function LivePriceSection() {
+  const [open, setOpen] = useState(true);
+  const [sym, setSym] = useState<ChartSymbol>("MES");
+  const [tf, setTf] = useState<ChartTimeframe>("1h");
+
+  return (
+    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <SectionHeader
+          title="Live Price -- Per Symbol"
+          subtitle="Real-time JARVIS bars (our data, not TradingView's delayed futures embed) with closed-trade markers"
+        />
+        {open ? (
+          <ChevronUp className="h-4 w-4" style={{ color: "#555" }} />
+        ) : (
+          <ChevronDown className="h-4 w-4" style={{ color: "#555" }} />
+        )}
+      </button>
+      {open && (
+        <div className="mt-2">
+          <PriceChartPanel
+            symbol={sym}
+            timeframe={tf}
+            onSymbolChange={setSym}
+            onTimeframeChange={setTf}
+            height={380}
+          />
+        </div>
+      )}
     </section>
   );
 }
@@ -689,25 +747,39 @@ export default function PerformancePage() {
         </WidgetErrorBoundary>
 
         {/* Account ROI */}
-        <AccountROIWidget />
+        <WidgetErrorBoundary name="Account ROI">
+          <AccountROIWidget />
+        </WidgetErrorBoundary>
 
         {/* Weekly P&L */}
-        <WeeklyPnLCard />
+        <WidgetErrorBoundary name="Weekly P&L">
+          <WeeklyPnLCard />
+        </WidgetErrorBoundary>
 
         {/* Daily P&L Calendar */}
-        <DailyPnLCalendarWidget />
+        <WidgetErrorBoundary name="Daily P&L Calendar">
+          <DailyPnLCalendarWidget />
+        </WidgetErrorBoundary>
 
         {/* P&L Calendar Heatmap -- 13-week GitHub-style grid */}
-        <PnlCalendarWidget />
+        <WidgetErrorBoundary name="P&L Calendar Heatmap">
+          <PnlCalendarWidget />
+        </WidgetErrorBoundary>
 
         {/* Win Rate by Hour of Day */}
-        <WinRateByHourWidget />
+        <WidgetErrorBoundary name="Win Rate by Hour">
+          <WinRateByHourWidget />
+        </WidgetErrorBoundary>
 
         {/* Streak Tracker */}
-        <StreakTrackerWidget />
+        <WidgetErrorBoundary name="Streak Tracker">
+          <StreakTrackerWidget />
+        </WidgetErrorBoundary>
 
         {/* Regime Attribution */}
-        <RegimeAttributionWidget />
+        <WidgetErrorBoundary name="Regime Attribution">
+          <RegimeAttributionWidget />
+        </WidgetErrorBoundary>
 
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -747,19 +819,30 @@ export default function PerformancePage() {
           <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
         </div>
 
+        {/* Live per-symbol price chart — our own real-time futures bars */}
+        <LivePriceSection />
+
         {/* Hold time analytics */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <HoldTimeWidget />
+          <WidgetErrorBoundary name="Hold Time">
+            <HoldTimeWidget />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Weekly live performance summary */}
-        <WeeklyStatsWidget />
+        <WidgetErrorBoundary name="Weekly Stats">
+          <WeeklyStatsWidget />
+        </WidgetErrorBoundary>
 
         {/* Commission cost tracker */}
-        <CommissionTrackerWidget />
+        <WidgetErrorBoundary name="Commission Tracker">
+          <CommissionTrackerWidget />
+        </WidgetErrorBoundary>
 
         {/* Trade duration analysis */}
-        <TradeDurationWidget />
+        <WidgetErrorBoundary name="Trade Duration">
+          <TradeDurationWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 1: Backtest Performance Matrix */}
         <BacktestMatrix />
@@ -774,28 +857,44 @@ export default function PerformancePage() {
         <DoNotTradeList />
 
         {/* Section 5: Monthly Breakdown */}
-        <MonthlyBreakdownWidget />
+        <WidgetErrorBoundary name="Monthly Breakdown">
+          <MonthlyBreakdownWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 6: Drawdown Chart */}
-        <DrawdownChart />
+        <WidgetErrorBoundary name="Drawdown Chart">
+          <DrawdownChart />
+        </WidgetErrorBoundary>
 
         {/* Section 7: Top Symbols by P&L */}
-        <TopSymbolsWidget />
+        <WidgetErrorBoundary name="Top Symbols">
+          <TopSymbolsWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 8: Avg Trade Hold Time */}
-        <AvgTradeTimeWidget />
+        <WidgetErrorBoundary name="Avg Trade Time">
+          <AvgTradeTimeWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 9: Equity Curve */}
-        <EquityCurveWidget />
+        <WidgetErrorBoundary name="Equity Curve">
+          <EquityCurveWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 10: Entry Quality */}
-        <EntryQualityWidget />
+        <WidgetErrorBoundary name="Entry Quality">
+          <EntryQualityWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 11: Recent Closed Trades */}
-        <RecentTradesTableWidget />
+        <WidgetErrorBoundary name="Recent Closed Trades">
+          <RecentTradesTableWidget />
+        </WidgetErrorBoundary>
 
         {/* Section 12: Win Rate by Symbol */}
-        <WinRateBySymbolWidget />
+        <WidgetErrorBoundary name="Win Rate by Symbol">
+          <WinRateBySymbolWidget />
+        </WidgetErrorBoundary>
 
         {/* Footer */}
         <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>

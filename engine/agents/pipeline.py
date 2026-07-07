@@ -1499,19 +1499,24 @@ class TradingPipeline:
             "reasoning": "Technical-only fallback — risk auto-approved at minimum size",
             "timestamp": datetime.now().isoformat(),
         }
+        # Human-approval gate honors the REQUIRE_HUMAN_APPROVAL flag even in
+        # degraded technical-only mode (owner directive 2026-06-15).
+        from config import settings as _cfg
+
+        _require_human = bool(_cfg.REQUIRE_HUMAN_APPROVAL)
         fund_decision = {
             "approved": True,
             "final_quantity": quantity,
             "priority": "immediate",
-            "portfolio_impact": "Technical-only fallback — minimum size, requires human approval",
+            "portfolio_impact": "Technical-only fallback — minimum size",
             "reasoning": f"Technical-only mode: STC={stc_val:.1f} {stc_signal} conviction={conviction}/10",
-            "requires_human_approval": True,
+            "requires_human_approval": _require_human,
             "timestamp": datetime.now().isoformat(),
         }
         return {
             "final_action": stc_action,
             "final_quantity": quantity,
-            "requires_human": True,
+            "requires_human": _require_human,
             "technical_only_mode": True,
             "technical_only_stc": round(stc_val, 2),
             "technical_only_signal": stc_signal,
@@ -1522,7 +1527,7 @@ class TradingPipeline:
             "summary": (
                 f"{symbol} | technical-only mode | STC={stc_val:.1f} {stc_signal} | "
                 f"action={stc_action.upper()} qty={quantity} | conviction={conviction}/10 "
-                f"human=True"
+                f"human={_require_human}"
             ),
         }
 
@@ -1656,6 +1661,32 @@ class TradingPipeline:
                 "reason": f"Systemic risk protection: {regime_name} regime detected.",
             }
 
+        # ── X-bookmark edge overlay (Phase 3): advisory macro trend bias ──
+        # Flag-gated (ENABLE_MACRO_TREND_BIAS, default off). Folds the market-wide
+        # SPX trend regime (weekly Supertrend + monthly momentum) into the LLM's
+        # regime context as ADVISORY text — never a mechanical gate, never touches
+        # trader.py, and never overrides the CRISIS/VOLATILE hard-block above. When
+        # the flag is off (or anything raises), macro_ctx == "" so the injected
+        # context is byte-identical to baseline. Every injection is shadow-logged.
+        macro_ctx = ""
+        try:
+            from flags.registry import get_flags
+
+            if get_flags().is_enabled("ENABLE_MACRO_TREND_BIAS"):
+                from backtest.macro_regime import compute_macro_regime
+
+                _mr = compute_macro_regime()
+                if _mr.get("bias_line"):
+                    macro_ctx = f"\n{_mr['bias_line']}"
+                    logger.info(
+                        "[Pipeline] %s — macro trend bias (%s) injected: %s",
+                        symbol,
+                        _mr.get("state"),
+                        _mr["bias_line"],
+                    )
+        except Exception as _macro_exc:  # fail-safe: never break the pipeline
+            logger.debug("[Pipeline] macro trend bias skipped: %s", _macro_exc)
+
         # Stage 1a: Run technical analyst first
         technical_coro = self._call_agent_analyze(
             "technical",
@@ -1663,7 +1694,7 @@ class TradingPipeline:
             is_futures=is_futures,
             timeframe=timeframe,
             historical_context=f"{historical_context}\nREGIME CONTEXT: Market is currently {regime_name}. "
-            f"Prioritize {'Trend-Following' if 'TREND' in regime_name else 'Mean-Reversion'} setups.",
+            f"Prioritize {'Trend-Following' if 'TREND' in regime_name else 'Mean-Reversion'} setups.{macro_ctx}",
         )
         technical_result = await safe_analyze("technical", technical_coro)
 
@@ -2018,13 +2049,15 @@ class TradingPipeline:
             if fund_manager is None:
                 logger.warning("[Pipeline] Fund Manager not configured — auto-approving")
                 qty = risk_decision.get("modified_quantity") or trade_decision.get("quantity", 0)
+                from config import settings as _cfg
+
                 return {
                     "approved": True,
                     "final_quantity": int(qty),
                     "priority": "immediate",
                     "portfolio_impact": "Fund Manager not configured — passed without portfolio review",
                     "reasoning": "Fund Manager not configured.",
-                    "requires_human_approval": True,
+                    "requires_human_approval": bool(_cfg.REQUIRE_HUMAN_APPROVAL),
                     "timestamp": datetime.now().isoformat(),
                 }
 
@@ -2038,13 +2071,15 @@ class TradingPipeline:
             logger.error(f"[Pipeline] {err}")
             errors.append(err)
             qty = risk_decision.get("modified_quantity") or trade_decision.get("quantity", 1)
+            from config import settings as _cfg
+
             return {
                 "approved": True,
                 "final_quantity": min(int(qty), 1),
                 "priority": "immediate",
                 "portfolio_impact": "Fund Manager failed — conservative fallback approval",
-                "reasoning": f"Fund Manager exception: {e}. Approved at min size with human approval required.",
-                "requires_human_approval": True,
+                "reasoning": f"Fund Manager exception: {e}. Approved at min size (approval per REQUIRE_HUMAN_APPROVAL flag).",
+                "requires_human_approval": bool(_cfg.REQUIRE_HUMAN_APPROVAL),
                 "timestamp": datetime.now().isoformat(),
             }
 

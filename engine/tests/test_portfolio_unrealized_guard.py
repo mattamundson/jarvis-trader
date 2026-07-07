@@ -24,6 +24,7 @@ from routers.portfolio_router import (  # noqa: E402
     _IB_SNAPSHOT_SENTINEL,
     INSTRUMENT_POINT_VALUES,
     _compute_unrealized,
+    _mark_is_suspect,
 )
 
 
@@ -78,3 +79,110 @@ def test_no_current_price_is_not_suspect():
     out = _compute_unrealized(pos, None, INSTRUMENT_POINT_VALUES)
     assert out["entry_suspect"] is False
     assert out["unrealized_pnl"] is None
+
+
+# ── Mark-plausibility guard (2026-06-16 live phantom) ─────────────────────────
+# The entry can be a perfectly valid fill while the *mark* is the data error.
+# A live MES short opened at 5299.875 received a mark of 7521.75 (+41.9%) — a
+# wrong-scale / stale tick, not a real intraday move. At $5/point that fabricated
+# -$11,109 unrealized and poisoned /portfolio/summary.total_daily_pnl
+# (-$11,116 vs the truthful realized -$16.13). The 5x entry-divergence guard
+# missed it (7521/5299 = 1.42x). A mark implying an implausible move from the
+# entry must be flagged and must not drive unrealized P&L.
+
+
+def test_implausible_mark_does_not_produce_phantom_pnl():
+    """The exact live bug: valid MES short fill, +41.9% bad mark -> no phantom."""
+    pos = _pos("MES", entry=5299.875, action="sell")
+    out = _compute_unrealized(pos, 7521.75, INSTRUMENT_POINT_VALUES)
+    assert out["entry_suspect"] is False  # the ENTRY is a real fill
+    assert out["mark_suspect"] is True  # the MARK is the data error
+    assert out["unrealized_pnl"] is None  # suppressed -> caller's `or 0.0` excludes it
+
+
+def test_mark_is_suspect_helper():
+    assert _mark_is_suspect(5299.875, 7521.75) is True  # +41.9% -> data error
+    assert _mark_is_suspect(4311.1, 4311.1) is False  # exact mark
+    assert _mark_is_suspect(100.0, 110.0) is False  # a real ~10% move is fine
+    assert _mark_is_suspect(5300.0, 0.0) is True  # non-positive mark
+    assert _mark_is_suspect(5300.0, -1.0) is True
+    assert _mark_is_suspect(5300.0, None) is False  # absence handled separately
+
+
+def test_real_moderate_move_keeps_pnl():
+    """Regression: a believable intraday move keeps its P&L and is not flagged.
+    MES short 5300 -> 5290 (-0.19%), $5 point value -> +$50."""
+    pos = _pos("MES", entry=5300.0, action="sell")
+    out = _compute_unrealized(pos, 5290.0, INSTRUMENT_POINT_VALUES)
+    assert out["mark_suspect"] is False
+    assert out["unrealized_pnl"] is not None
+    assert abs(out["unrealized_pnl"] - 50.0) < 0.01
+
+
+# ── Stale-mark guard (2026-06-16 phantom-aggregate bug) ──────────────────────
+# With the IBKR data leg degraded, get_tick_price fell through to the Tier-5
+# csv_cache last *daily* close: MGC was marked ~3757 against a fresh ~4311 entry,
+# fabricating ~-$11,076 unrealized that poisoned /portfolio/summary
+# (total_daily_pnl -$11,092 vs the truthful realized -$16). The entry was NOT
+# suspect (real fill, <5x divergence) — the *mark* was stale, so the fix gates on
+# the get_tick_price source tag, not on a magnitude threshold.
+
+
+def test_stale_csv_cache_mark_does_not_produce_phantom_pnl():
+    """The exact live case: MGC LONG 2 @ 4311.1 marked from a stale csv_cache
+    close (~3757) must NOT report ~-$11k unrealized."""
+    pos = _pos("MGC", entry=4311.1, action="buy", qty=2.0)
+    out = _compute_unrealized(pos, 3757.3, INSTRUMENT_POINT_VALUES, mark_source="csv_cache")
+    assert out["entry_suspect"] is False  # the entry is a real fill
+    assert out["mark_stale"] is True
+    assert out["unrealized_pnl"] is None
+    assert out["mark_source"] == "csv_cache"
+
+
+def test_expired_and_historical_marks_flagged_stale():
+    for src in ("polygon_cache_expired", "ibkr_historical", "unavailable"):
+        out = _compute_unrealized(
+            _pos("MGC", entry=4311.1, qty=2.0), 3757.3, INSTRUMENT_POINT_VALUES, mark_source=src
+        )
+        assert out["mark_stale"] is True, src
+        assert out["unrealized_pnl"] is None, src
+
+
+def test_fresh_source_computes_pnl_normally():
+    """A live IBKR mark is trusted: MGC 4311.1 -> 4320.0, $10/pt, 2 lots -> +$178."""
+    pos = _pos("MGC", entry=4311.1, action="buy", qty=2.0)
+    out = _compute_unrealized(pos, 4320.0, INSTRUMENT_POINT_VALUES, mark_source="ibkr")
+    assert out["mark_stale"] is False
+    assert out["unrealized_pnl"] is not None
+    assert abs(out["unrealized_pnl"] - 178.0) < 1.0
+
+
+def test_unknown_source_is_not_stale_backward_compat():
+    """No source (the legacy 3-arg call) must behave exactly as before."""
+    pos = _pos("MES", entry=5300.0, action="sell")
+    out = _compute_unrealized(pos, 5290.0, INSTRUMENT_POINT_VALUES)
+    assert out["mark_stale"] is False
+    assert out["unrealized_pnl"] is not None  # (5300-5290)*5 = +50
+
+
+def test_stale_mark_excluded_from_aggregate_sum():
+    """Mirror the /portfolio/summary loop: only fresh marks sum into the
+    unrealized aggregate; the stale leg's phantom never enters it."""
+    fresh = _compute_unrealized(
+        _pos("MES", entry=5300.0, action="sell"),
+        5290.0,
+        INSTRUMENT_POINT_VALUES,
+        mark_source="ibkr",
+    )
+    stale = _compute_unrealized(
+        _pos("MGC", entry=4311.1, action="buy", qty=2.0),
+        3757.3,
+        INSTRUMENT_POINT_VALUES,
+        mark_source="csv_cache",
+    )
+    # the summary loop does `upnl = computed.get("unrealized_pnl") or 0.0`
+    agg = (fresh.get("unrealized_pnl") or 0.0) + (stale.get("unrealized_pnl") or 0.0)
+    stale_count = sum(1 for c in (fresh, stale) if c.get("mark_stale"))
+    assert abs(agg - 50.0) < 1e-6  # only the fresh MES short: (5300-5290)*5
+    assert stale_count == 1
+    assert stale["unrealized_pnl"] is None  # phantom -$11k excluded

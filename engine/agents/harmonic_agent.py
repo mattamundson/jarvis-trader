@@ -7,6 +7,7 @@ Identifies high-probability reversal zones.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -65,7 +66,7 @@ class HarmonicAgent:
             return self._empty_report(symbol)
 
         # Detect patterns
-        patterns = self._engine.detect_patterns(df)
+        patterns = await asyncio.to_thread(self._engine.detect_patterns, df)
 
         if not patterns:
             return self._empty_report(symbol)

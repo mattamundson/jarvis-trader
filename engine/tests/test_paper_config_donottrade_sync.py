@@ -394,3 +394,64 @@ class TestDoNotTradeSymbolsConstant:
         assert "MGC" not in DO_NOT_TRADE_SYMBOLS, (
             "MGC is in DO_NOT_TRADE_SYMBOLS but has a gate v2 PASS verdict — remove it."
         )
+
+
+# ---------------------------------------------------------------------------
+# Test 5: CapitalAllocator shares the single DO_NOT_TRADE authority
+# ---------------------------------------------------------------------------
+
+class TestCapitalAllocatorUsesSingleAuthority:
+    """
+    CapitalAllocator.rebalance() previously hardcoded its own private
+    _DO_NOT_TRADE = {"MCL", "MNQ", "MGC"} frozenset. That disagreed with the
+    single authority backtest.signals.DO_NOT_TRADE_SYMBOLS = {"MCL","MNQ","M2K"}
+    in *both* directions — it wrongly blocked MGC (gate-v2 PASS, tradeable) and
+    wrongly allowed M2K (blocked). The rebalance() output is logged-only today
+    (eod_scheduler.py), so the divergence was inert — but it is exactly the
+    third-config split-brain that the MNQ wiring leak taught us to forbid.
+
+    These tests pin the allocator to the shared authority so the split-brain
+    can never silently return: if anyone re-introduces a divergent private list,
+    test_rebalance_zeroes_exactly_the_donottrade_authority fails.
+    """
+
+    def test_rebalance_zeroes_exactly_the_donottrade_authority(self):
+        """rebalance() must zero precisely the symbols in DO_NOT_TRADE_SYMBOLS."""
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+        from orchestrator.capital_allocator import CapitalAllocator
+
+        # Mix of every blocked symbol plus two tradeable ones, all with strong
+        # Sharpe so only the blocklist (not the perf rules) can zero them.
+        symbols = sorted(set(DO_NOT_TRADE_SYMBOLS) | {"MES", "MGC"})
+        perf = {s: {"sharpe": 2.0, "current_allocation": 0.25} for s in symbols}
+
+        allocator = CapitalAllocator(dict.fromkeys(symbols, 10_000.0))
+        new_alloc = allocator.rebalance(perf)
+
+        zeroed = {s for s, v in new_alloc.items() if v == 0.0}
+        assert zeroed == set(DO_NOT_TRADE_SYMBOLS), (
+            f"Allocator zeroed {zeroed} but the single authority "
+            f"DO_NOT_TRADE_SYMBOLS is {set(DO_NOT_TRADE_SYMBOLS)}. The allocator "
+            "must import the authority from backtest.signals, not keep a private list."
+        )
+
+    def test_rebalance_blocks_m2k_and_allows_mgc(self):
+        """Pins the two symbols the old private list got wrong: M2K and MGC."""
+        from orchestrator.capital_allocator import CapitalAllocator
+
+        perf = {
+            "M2K": {"sharpe": 2.0, "current_allocation": 0.25},  # blocked authority
+            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable (gate-v2 PASS)
+            "MES": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable
+        }
+        allocator = CapitalAllocator(
+            {"M2K": 10_000.0, "MGC": 50_000.0, "MES": 50_000.0}
+        )
+        new_alloc = allocator.rebalance(perf)
+
+        assert new_alloc.get("M2K", 1.0) == 0.0, (
+            "M2K is in DO_NOT_TRADE_SYMBOLS and must be zeroed by rebalance()."
+        )
+        assert new_alloc.get("MGC", 0.0) > 0.0, (
+            "MGC is tradeable (gate-v2 PASS) and must receive a non-zero allocation."
+        )

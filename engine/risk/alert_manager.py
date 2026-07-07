@@ -3,6 +3,16 @@ AlertManager — fires push alerts when trading thresholds are crossed.
 
 Deduplicates alerts: each threshold fires at most once per trading day.
 Provides an in-memory log of alerts sent today for the /safety/alerts/history endpoint.
+
+Multi-channel fan-out (US-006)
+-------------------------------
+In addition to the primary ``notify_fn`` (OpenClaw / WhatsApp), AlertManager
+now also dispatches to Telegram and Discord when those channels are configured.
+Each channel is independently best-effort: a failure on one never blocks the
+others.  Channels are enabled/disabled via environment variables read by the
+existing notifier classes (``TELEGRAM_BOT_TOKEN`` + ``TELEGRAM_CHAT_ID`` for
+Telegram; ``DISCORD_WEBHOOK_URL`` for Discord).  No tokens are read or echoed
+here — the notifiers own their own config.
 """
 
 from __future__ import annotations
@@ -44,11 +54,21 @@ class AlertManager:
     )
 
     await alert_manager.stop()                  # on shutdown
+
+    Multi-channel (US-006)
+    ----------------------
+    Telegram and Discord are automatically included when their respective env
+    vars are set (``TELEGRAM_BOT_TOKEN``/``TELEGRAM_CHAT_ID`` and
+    ``DISCORD_WEBHOOK_URL``).  Pass ``enable_telegram=False`` or
+    ``enable_discord=False`` to suppress a channel regardless of env.
     """
 
     def __init__(
         self,
         notify_fn: Optional[Callable[[str], Awaitable[bool]]] = None,
+        *,
+        enable_telegram: bool = True,
+        enable_discord: bool = True,
     ):
         """
         Parameters
@@ -57,8 +77,14 @@ class AlertManager:
             Async callable that accepts a plain-text message string and sends it
             to the user (e.g. ``WhatsAppNotifier.send`` or
             ``openclaw_notifier.send_raw``).
+        enable_telegram:
+            When True (default), also deliver to Telegram if configured.
+        enable_discord:
+            When True (default), also deliver to Discord if configured.
         """
         self._notify = notify_fn
+        self._enable_telegram = enable_telegram
+        self._enable_discord = enable_discord
 
         # threshold_key → date it last fired (dedup guard)
         self._fired_today: dict[str, date] = {}
@@ -245,11 +271,46 @@ class AlertManager:
 
     # ── Worker ────────────────────────────────────────────────────────────
 
+    async def _deliver_telegram(self, message: str) -> None:
+        """Best-effort Telegram delivery. Silently no-ops when not configured."""
+        if not self._enable_telegram:
+            return
+        try:
+            from notifications.telegram import get_notifier as _tg_notifier
+
+            notifier = _tg_notifier()
+            if not notifier.config_valid:
+                return
+            delivered = await notifier.send(message, parse_mode=None)
+            if delivered:
+                logger.info("[AlertManager/Telegram] Sent: %.80s", message.replace("\n", " | "))
+            else:
+                logger.warning("[AlertManager/Telegram] send returned falsy")
+        except Exception as exc:
+            logger.warning("[AlertManager/Telegram] delivery failed (non-fatal): %s", exc)
+
+    async def _deliver_discord(self, message: str) -> None:
+        """Best-effort Discord delivery. Silently no-ops when not configured."""
+        if not self._enable_discord:
+            return
+        try:
+            from notifications.discord_notifier import _send as _discord_send
+
+            delivered = await _discord_send(message)
+            if delivered:
+                logger.info("[AlertManager/Discord] Sent: %.80s", message.replace("\n", " | "))
+            else:
+                logger.debug("[AlertManager/Discord] send returned falsy (not configured or disabled)")
+        except Exception as exc:
+            logger.warning("[AlertManager/Discord] delivery failed (non-fatal): %s", exc)
+
     async def _alert_worker(self) -> None:
         """Background task: drains the alert queue and delivers notifications."""
         while True:
             try:
                 message = await self._alert_queue.get()
+
+                # Primary channel (OpenClaw / WhatsApp)
                 if self._notify:
                     try:
                         delivered = await self._notify(message)
@@ -264,9 +325,17 @@ class AlertManager:
                         logger.error("[AlertManager] notify_fn raised: %s", exc)
                 else:
                     logger.warning(
-                        "[AlertManager] No notify_fn configured — alert dropped: %.80s",
+                        "[AlertManager] No notify_fn configured — primary alert dropped: %.80s",
                         message.replace("\n", " | "),
                     )
+
+                # Fan-out: Telegram + Discord (independent best-effort)
+                await asyncio.gather(
+                    self._deliver_telegram(message),
+                    self._deliver_discord(message),
+                    return_exceptions=True,
+                )
+
                 self._alert_queue.task_done()
             except asyncio.CancelledError:
                 break

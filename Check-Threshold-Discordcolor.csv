@@ -1,0 +1,8 @@
+"Check","Threshold","Discord color"
+"Signal staleness","warn at 7d, critical at 9d","amber / red"
+"Missing fields / layers","any null","red"
+"combined_scale z-score","2σ vs baseline","amber"
+"vol_scale z-score","2σ vs baseline","amber"
+"Regime conflict (RISK_ON + VIX ELEVATED)","any","amber"
+"Regime conflict (RISK_ON + CRISIS realized vol)","any","red"
+"Week-over-week scale change",">30%","amber"

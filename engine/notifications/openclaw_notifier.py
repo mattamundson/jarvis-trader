@@ -332,6 +332,51 @@ async def notify_trade_closed(
     return sent
 
 
+async def notify_trade_opened(
+    *,
+    symbol: str,
+    action: str,
+    quantity: float = 1.0,
+    entry_price: float = 0.0,
+    stop_price: float | None = None,
+    target_price: float | None = None,
+    source: str = "autonomous",
+) -> bool:
+    """Send an alert when an autonomous paper trade is OPENED (executed).
+
+    Unlike notify_signal (which says "approve at..."), this fires only after a
+    trade has actually been booked in fully-autonomous mode, so it is a true
+    execution confirmation — closing the visibility gap on auto-trades.
+    No per-symbol cooldown: every executed open is a distinct, material event.
+    """
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw trade-open notify suppressed in TESTING mode")
+        return False
+    ts = _ct_time()
+    direction = "LONG" if action.upper() in ("BUY", "LONG") else "SHORT"
+    lines = [
+        f"JARVIS TRADE OPENED — {ts}",
+        f"{symbol.upper()} {direction} x{int(quantity) if quantity else 1}",
+        f"Entry: ${entry_price:.2f}",
+    ]
+    if stop_price is not None:
+        lines.append(f"Stop: ${float(stop_price):.2f}")
+    if target_price is not None:
+        lines.append(f"Target: ${float(target_price):.2f}")
+    lines.append(f"({source}, paper)")
+    msg = "\n".join(lines)
+    sent = await _send(msg)
+    asyncio.ensure_future(
+        _discord.discord_trade_opened(
+            symbol=symbol,
+            action=action,
+            quantity=float(quantity) if quantity else 1.0,
+            entry_price=float(entry_price),
+        )
+    )
+    return sent
+
+
 async def notify_target(
     *,
     market: str = "futures",

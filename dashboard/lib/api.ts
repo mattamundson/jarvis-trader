@@ -369,7 +369,8 @@ export async function fetchBars(
     return [];
   }
   type RawBar = {
-    time: string | number;
+    time?: string | number;
+    timestamp?: string | number;
     open: number | string;
     high: number | string;
     low: number | string;
@@ -377,6 +378,9 @@ export async function fetchBars(
     volume?: number | string | null;
     vwap?: number | string | null;
     stc?: number | string | null;
+    ema_8?: number | string | null;
+    ema_21?: number | string | null;
+    ema_34?: number | string | null;
   };
   const arr: RawBar[] = Array.isArray(raw)
     ? (raw as RawBar[])
@@ -384,16 +388,28 @@ export async function fetchBars(
       ? ((raw as { bars?: RawBar[] }).bars as RawBar[])
       : [];
   return arr
-    .map((b) => ({
-      time: typeof b.time === "string" ? Math.floor(new Date(b.time).getTime() / 1000) : b.time,
-      open: Number(b.open),
-      high: Number(b.high),
-      low: Number(b.low),
-      close: Number(b.close),
-      volume: b.volume != null ? Number(b.volume) : undefined,
-      vwap: b.vwap != null ? Number(b.vwap) : undefined,
-      stc: b.stc != null ? Number(b.stc) : undefined,
-    }))
+    .map((b) => {
+      // The engine's BarsResponse names the time field `timestamp`; bare-array
+      // fallbacks may use `time`. Accept either so the chart isn't silently
+      // emptied by a field-name mismatch (every bar would fail the finite filter).
+      const rawTime = b.time ?? b.timestamp;
+      return {
+        time:
+          typeof rawTime === "string"
+            ? Math.floor(new Date(rawTime).getTime() / 1000)
+            : (rawTime as number),
+        open: Number(b.open),
+        high: Number(b.high),
+        low: Number(b.low),
+        close: Number(b.close),
+        volume: b.volume != null ? Number(b.volume) : undefined,
+        vwap: b.vwap != null ? Number(b.vwap) : undefined,
+        stc: b.stc != null ? Number(b.stc) : undefined,
+        ema_8: b.ema_8 != null ? Number(b.ema_8) : undefined,
+        ema_21: b.ema_21 != null ? Number(b.ema_21) : undefined,
+        ema_34: b.ema_34 != null ? Number(b.ema_34) : undefined,
+      };
+    })
     .filter((b) => Number.isFinite(b.time) && Number.isFinite(b.close))
     .sort((a, b) => a.time - b.time);
 }
@@ -438,6 +454,19 @@ export interface RegimeStatusResult {
   adaptive_stc_os?: number | null;
   adaptive_stc_ob?: number | null;
   [key: string]: unknown;
+}
+
+/** GET /regime/vix-percentile — percentile VIX regime + momentum overlay */
+export interface VixPercentileRegime {
+  vix: number;
+  vix_percentile: number; // 0..100
+  tier: "Crisis" | "HighVol" | "MidVol" | "LowVol";
+  momentum: "Bull" | "Neutral" | "Bear";
+  confidence: number; // 0..1
+  lookback: number;
+  momentum_window: number;
+  price_symbol: string;
+  n_vix_bars: number;
 }
 
 /** GET /watchlist/scan */
@@ -515,6 +544,61 @@ export interface PriceSnapshotEntry {
 }
 
 export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
+
+/** GET /hidden-pivots/scan — Rick Ackerman HiddenPivots scanner (analysis-only). */
+export interface HPSignal {
+  symbol: string;
+  timeframe: string;
+  pattern: string | null;
+  bias: "LONG" | "SHORT" | "WATCH" | "SOH";
+  trigger_price: number | null;
+  tight_stop: number | null;
+  riskier_stop: number | null;
+  targets: number[];
+  hp_ou_level: number | null;
+  ema_alignment: string;
+  rs_rw_score: number;
+  rs_rw_label: string;
+  soh: boolean;
+  oscillator_state: string;
+  bars_since_cross: number;
+  last_cross_dir: "bull" | "bear" | "none";
+  confidence: number;
+  notes: string;
+}
+
+export interface HPScanResponse {
+  scan_time: string;
+  symbols_scanned: number;
+  signals: HPSignal[];
+  soh_symbols: string[];
+  watch_symbols: string[];
+  /** Full per-symbol result for every scanned name (incl. WATCH/SOH). */
+  details: HPSignal[];
+}
+
+/** Fetch the HiddenPivots scan for a given timeframe. */
+export async function fetchHiddenPivotsScan(
+  timeframe = "1d",
+  benchmark = "SPY"
+): Promise<HPScanResponse> {
+  return fetchEngine<HPScanResponse>(
+    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
+  );
+}
+
+/**
+ * Last price + daily change for the given symbols (GET /prices/snapshot).
+ * Goes through the engine proxy (REST), so it works on the remote/Vercel
+ * deploy unlike the WS feed. Server-side cache is 60s (rate-limit guard), so
+ * values refresh roughly once a minute during market hours. Reuses the shared
+ * `PriceSnapshot` map type defined above.
+ */
+export async function fetchPriceSnapshot(symbols: string[]): Promise<PriceSnapshot> {
+  if (symbols.length === 0) return {};
+  const q = encodeURIComponent(symbols.join(","));
+  return fetchEngine<PriceSnapshot>(`/prices/snapshot?symbols=${q}`);
+}
 
 export interface MacroSnapshot {
   vix?: number | null;
@@ -966,6 +1050,63 @@ export async function fetchStrategyLedger(): Promise<LedgerResponse> {
   return fetchEngine<LedgerResponse>("/strategy/ledger");
 }
 
+// ── Research candidates (GET /strategy/research-candidates) ───────────────────
+// X-bookmark edge-scan candidates + their RESEARCH gate-v2 verdicts. This is a
+// non-authorizing namespace (separate from the production ledger) — visibility only.
+export interface ResearchCandidate {
+  strategy: string | null;
+  symbol: string | null;
+  family: string | null;
+  strategy_class: string | null;
+  verdict: string | null;
+  passed_via: string | null;
+  pf_ci_lower: number | null;
+  p_edge: number | null;
+  mc_95th_dd_pct: number | null;
+  dsr: number | null;
+  source_bookmark_url: string | null;
+  author: string | null;
+  scan_date: string | null;
+  class_note: string | null;
+  created_at: string | null;
+  source_file: string | null;
+}
+
+export interface ResearchCandidatesResponse {
+  candidates: ResearchCandidate[];
+  total: number;
+  generated_at: string;
+}
+
+/** GET /strategy/research-candidates — X-bookmark edge-scan research candidates. */
+export async function fetchResearchCandidates(): Promise<ResearchCandidatesResponse> {
+  return fetchEngine<ResearchCandidatesResponse>("/strategy/research-candidates");
+}
+
+// ── Macro trend regime (GET /macro/regime) — X-bookmark trend edges on SPX ────
+// Market-wide RISK_ON/RISK_OFF/NEUTRAL/UNKNOWN from weekly Supertrend + monthly
+// momentum. ADVISORY only — folded into the futures pipeline context solely when
+// the ENABLE_MACRO_TREND_BIAS feature flag is on; never routes capital.
+export interface MacroRegime {
+  state: "RISK_ON" | "RISK_OFF" | "NEUTRAL" | "UNKNOWN";
+  weekly_trend: "UP" | "DOWN" | null;
+  monthly_momentum: "ABOVE" | "BELOW" | null;
+  asof: string | null;
+  spy_close: number | null;
+  bias_line: string;
+  stale_days?: number;
+  error?: string;
+  components: {
+    weekly_supertrend_atr10x3?: boolean;
+    monthly_sma12_momentum?: boolean;
+  };
+}
+
+/** GET /macro/regime — advisory macro trend bias state. */
+export async function fetchMacroRegime(): Promise<MacroRegime> {
+  return fetchEngine<MacroRegime>("/macro/regime");
+}
+
 // ── Production-gate scorecard (GET /strategy/gates/{symbol}, US-005) ──────────
 export interface GateResult {
   key: string;
@@ -999,8 +1140,8 @@ export async function fetchStrategyGates(symbol: string): Promise<GatesResponse>
 // ── Per-trade full review (closed loop) ──────────────────────────────────────
 
 export interface TradeFullReview {
-  trade: Record<string, any>;
-  attribution: Record<string, any>;
+  trade: Record<string, unknown>;
+  attribution: Record<string, unknown>;
   why: {
     decision_id: number | null;
     matched_by: string;
@@ -1010,7 +1151,7 @@ export interface TradeFullReview {
     confidence: number | null;
     regime: string | null;
     reasoning: string | null;
-    pipeline: Record<string, any> | null;
+    pipeline: Record<string, unknown> | null;
   } | null;
   backtest: LedgerEntry | null;
   forward: {
@@ -1025,7 +1166,7 @@ export interface TradeFullReview {
     meets_paper_threshold: boolean;
     period_days: number;
   } | null;
-  review: Record<string, any> | null;
+  review: Record<string, unknown> | null;
 }
 
 /** GET /trades/{id}/full-review — the closed-loop join for one placed trade. */
@@ -1786,6 +1927,30 @@ export async function fetchPnlSnapshot(): Promise<PnlSnapshot> {
   return fetchEngine<PnlSnapshot>("/portfolio/pnl-snapshot");
 }
 
+// ── Live open paper trades (truthful: reads paper_trades WHERE status='open') ──
+// /portfolio/paper/positions reads OMS/broker state and can be empty while the
+// paper_trades table holds open rows; /execution/fidelity-status reads the table
+// directly, so it is the canonical "what is open right now" source for the UI.
+export interface ExecutionOpenTrade {
+  symbol: string;
+  side: string;
+  quantity: number;
+  entry_price: number;
+  entry_time: string;
+  slippage_ticks?: number | null;
+}
+
+export interface ExecutionFidelityStatus {
+  generated_at: string;
+  measuring_real_fills: boolean;
+  open_trades: ExecutionOpenTrade[];
+  pending_approvals: { count: number; oldest_age_min: number | null };
+}
+
+export async function fetchExecutionOpenTrades(): Promise<ExecutionFidelityStatus> {
+  return fetchEngine<ExecutionFidelityStatus>("/execution/fidelity-status");
+}
+
 // ── Discord Bookmark Feed (recent + search) ──────────────────────────────────
 
 export interface BookmarkRow {
@@ -1910,6 +2075,142 @@ export async function fetchCalibration(): Promise<CalibrationDiagnostics> {
   return fetchEngine<CalibrationDiagnostics>("/analytics/calibration");
 }
 
+// ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
+// Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
+// mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.
+
+export interface ExcursionTrade {
+  trade_id: string;
+  symbol: string;
+  side: string;
+  entry_price: number;
+  exit_price: number | null;
+  pnl: number | null;
+  entry_time: string;
+  exit_time: string | null;
+  mae_pct: number | null;
+  mfe_pct: number | null;
+  mae_usd: number | null;
+  mfe_usd: number | null;
+  mfe_capture_ratio: number | null;
+}
+
+export interface ExcursionAggregates {
+  trade_count: number;
+  populated_count: number;
+  avg_mae_pct: number | null;
+  avg_mfe_pct: number | null;
+  avg_mae_usd: number | null;
+  avg_mfe_usd: number | null;
+  avg_mfe_capture_ratio: number | null;
+}
+
+export interface ExcursionResponse {
+  trades: ExcursionTrade[];
+  aggregates: ExcursionAggregates;
+  timestamp: string;
+}
+
+export async function fetchExcursion(
+  opts?: { symbol?: string; limit?: number }
+): Promise<ExcursionResponse> {
+  const qs = new URLSearchParams();
+  if (opts?.symbol) qs.set("symbol", opts.symbol);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return fetchEngine<ExcursionResponse>(`/analytics/excursion${suffix}`);
+}
+
+// ── Entry-timing scenarios (/analytics/entry-timing) ─────────────────────────
+// Per-closed-trade what-if: PnL if entry had occurred N bars earlier/later
+// (exit held constant). offset 0 reproduces the actual trade. Bars are fetched
+// server-side; trades with no bars return bars_available=false + empty scenarios.
+
+export interface EntryTimingScenarioRow {
+  offset_bars: number;
+  hypothetical_entry: number;
+  pnl_usd: number;
+  pnl_pct: number;
+  delta_vs_actual_usd: number;
+}
+
+export interface EntryTimingTrade {
+  trade_id: string;
+  symbol: string;
+  side: string;
+  entry_price: number;
+  exit_price: number | null;
+  pnl: number | null;
+  entry_time: string;
+  exit_time: string | null;
+  scenarios: EntryTimingScenarioRow[];
+  entry_bar_index: number | null;
+  bars_available: boolean;
+}
+
+export interface EntryTimingAggregates {
+  trade_count: number;
+  computed_count: number;
+  avg_delta_by_offset: Record<string, number>;
+  best_avg_offset: number | null;
+  worst_avg_offset: number | null;
+  systematic_bias: string | null;
+}
+
+export interface EntryTimingResponse {
+  trades: EntryTimingTrade[];
+  aggregates: EntryTimingAggregates;
+  offsets_evaluated: number[];
+  timestamp: string;
+}
+
+export async function fetchEntryTiming(
+  opts?: { symbol?: string; limit?: number; offsets?: string }
+): Promise<EntryTimingResponse> {
+  const qs = new URLSearchParams();
+  if (opts?.symbol) qs.set("symbol", opts.symbol);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  if (opts?.offsets) qs.set("offsets", opts.offsets);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return fetchEngine<EntryTimingResponse>(`/analytics/entry-timing${suffix}`);
+}
+
+// ── Bar-depth / data-coverage health (/analytics/bar-depth) ──────────────────
+// Per symbol×interval coverage: rows, calendar span, gap structure, and the
+// fraction the bar-quality gate would reject. Endpoint is additive and only
+// goes live after an engine restart, so callers must tolerate a 404.
+
+export interface BarDepthPair {
+  symbol: string;
+  interval: string;
+  rows: number;
+  first_ts: string | null;
+  last_ts: string | null;
+  span_days: number;
+  gap_count: number;
+  max_gap_hours: number;
+  contaminated_pct: number;
+  enforce_safe: boolean;
+}
+
+export interface BarDepthSummary {
+  pair_count: number;
+  symbol_count: number;
+  total_rows: number;
+  total_rejects: number;
+  contaminated_pct: number;
+}
+
+export interface BarDepthResponse {
+  pairs: BarDepthPair[];
+  summary: BarDepthSummary;
+  timestamp: string;
+}
+
+export async function fetchBarDepth(): Promise<BarDepthResponse> {
+  return fetchEngine<BarDepthResponse>("/analytics/bar-depth");
+}
+
 // ── Discord Briefing (command-center /discord/briefing) ──────────────────────
 
 export interface BriefingIBLevels {
@@ -1942,7 +2243,10 @@ export interface KnowledgeContextHit {
 export interface BriefingResponse {
   symbol: string;
   headline?: string | null;
-  corey_bias?: string | null;
+  // engine returns either a plain string or a structured object
+  // ({date, session_type, directional_bias, ...}) — accept both so consumers
+  // coerce/extract rather than crashing (e.g. .toLowerCase on an object).
+  corey_bias?: string | Record<string, unknown> | null;
   ib_levels?: BriefingIBLevels | null;
   recent_signal?: BriefingRecentSignal | null;
   /** Advisory curated-knowledge hits — present ONLY when fetched with enriched:true. */
@@ -2133,4 +2437,102 @@ export async function formalizeInsight(
 
 export async function fetchMonthlyReview(limit = 30): Promise<MonthlyReview> {
   return fetchEngine<MonthlyReview>(`/journal/review/monthly?limit=${limit}`);
+}
+
+// ── Pine Screener (GreenStar2-style) ─────────────────────────────────────────
+// Backs the /screener page: pipes the read-only IB scanner movers universe
+// through the engine's screener filter chain (POST /ib-scanner/screen).
+
+export interface ScreenerFilterInput {
+  scan_code?: string;
+  symbols?: string[] | null;
+  max_symbols?: number;
+  x_from_50_min?: number | null;
+  x_from_50_max?: number | null;
+  rvol_min?: number | null;
+  x_from_lod_max?: number | null;
+  chg_pct_min?: number | null;
+  chg_open_pct_min?: number | null;
+  atr_pct_min?: number | null;
+  atr_pct_max?: number | null;
+  mm_min?: number | null;
+}
+
+export interface ScreenedRow {
+  symbol: string | null;
+  last_price: number | null;
+  atr_pct: number | null;
+  rvol: number | null;
+  x_from_50: number | null;
+  x_from_lod_pct: number | null;
+  chg_pct: number | null;
+  chg_open_pct: number | null;
+  mm_score: number;
+  bars_used: number;
+  passed: boolean;
+  reasons: string[];
+}
+
+export interface ScreenResponse {
+  enabled: boolean;
+  universe_source: string;
+  total_candidates: number;
+  passed_count: number;
+  focus: ScreenedRow[];
+  rejected: ScreenedRow[];
+  note: string;
+}
+
+export async function screenMovers(
+  input: ScreenerFilterInput
+): Promise<ScreenResponse> {
+  return postEngine<ScreenResponse>("/ib-scanner/screen", input);
+}
+
+// ── Engine clean-run durability (GET /ops/durability) ─────────────────────────
+// Reads the down-alert watchdog's outage ledger server-side and reports how long
+// the engine has run clean. Honest empty-state (has_data:false) when no ledger.
+// See engine/routers/durability_router.py + scripts/ops/durability.mjs.
+export interface DurabilityOutage {
+  downSince: string;
+  recoveredAt: string;
+  durationMs: number;
+  alerted: boolean;
+}
+
+export interface DurabilityResponse {
+  monitoring_since: string | null;
+  currently_down: boolean;
+  down_since: string | null;
+  outage_count: number;
+  current_streak_days: number | null;
+  longest_streak_days: number | null;
+  total_downtime_ms: number;
+  mtbf_ms: number | null;
+  last_outage: DurabilityOutage | null;
+  has_data: boolean;
+}
+
+export async function fetchDurability(): Promise<DurabilityResponse> {
+  return fetchEngine<DurabilityResponse>("/ops/durability");
+}
+
+// ── Honest realized P&L (engine-native, always available) ─────────────────────
+// GET /pnl/truth — the fail-safe honest realized paper-P&L surface. Unlike the
+// master-api honest-metrics layer, this reads the engine's own closed-trade
+// ledger and DEGRADES (realized_pnl: null) instead of emitting a fabricated 0
+// when the ledger is missing. It has NO external-service dependency, so it stays
+// truthful even when master-api (:8030) is down. See engine/routers/pnl_truth_router.py.
+export interface PnlTruthResponse {
+  status: "TRUSTED" | "DEGRADED";
+  realized_pnl: number | null;
+  closed_trades: number;
+  excluded_trades: number;
+  reasons: string[];
+  sources_present: string[];
+  trusted: boolean;
+}
+
+export async function fetchPnlTruth(): Promise<PnlTruthResponse> {
+  return fetchEngine<PnlTruthResponse>("/pnl/truth");
 }

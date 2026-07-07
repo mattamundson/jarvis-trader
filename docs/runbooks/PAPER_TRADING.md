@@ -139,9 +139,11 @@ CONSECUTIVE_LOSS_HALT_HOURS=24
 # ──────────────────────────────────────────────────────────────────────────
 # INSTRUMENTS TO TRADE
 # ──────────────────────────────────────────────────────────────────────────
-# APPROVED: MCL (1h, WFE 0.82), MNQ (1h, WFE 0.57)
-# DO NOT TRADE: MES (WFE 0.09 — insufficient sample size, overfit signal)
-FUTURES_WATCHLIST=MCL,MNQ
+# APPROVED (active paper, Tier-3 2026-05-24): MES (1h, p_edge 0.75), MGC (1h, p_edge 0.6842)
+# HALTED (DO_NOT_TRADE): MCL (WFE 0.82), MNQ (WFE 0.57) — strategy hypotheses exhausted / fail gate v2
+# REJECTED: M2K (SMA/ORB/Donchian all FAIL 2026-05-24)
+# Watchlist drives pipeline signals/dashboard visibility; only MES/MGC generate paper orders.
+FUTURES_WATCHLIST=MES,MNQ,MCL,MGC
 OPTIONS_WATCHLIST=SPY,QQQ,AAPL,TSLA
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -362,9 +364,9 @@ curl http://localhost:8010/v1/trading/pnl
 # If P&L approaches limit: Review open positions and close if needed
 
 # 3. Verify Signal Generation is Happening
-curl http://localhost:8010/v1/backtest/signals?symbols=MCL,MNQ&limit=5
+curl http://localhost:8010/v1/backtest/signals?symbols=MES,MGC&limit=5
 # Should see new signals every cycle (typically every 1-5 minutes)
-# Note: MES is halted (WFE 0.09) — only trade MCL and MNQ
+# Note: only MES and MGC trade (active paper since 2026-05-24); MCL/MNQ halted, M2K rejected
 
 # 4. Monitor Agent Pipeline Latency
 curl http://localhost:8010/llm/stats

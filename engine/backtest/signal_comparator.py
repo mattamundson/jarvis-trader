@@ -181,6 +181,41 @@ def _bar_duration_minutes(timeframe: str) -> int:
     return mapping.get(timeframe.lower(), 60)
 
 
+def _file_has_trades(path: Path) -> bool:
+    """True if the JSON at ``path`` contains a non-empty trades array.
+
+    Mirrors the extraction in :func:`_load_jarvis_trades` so the selector and the
+    loader agree on what counts as a trades file.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return False
+    raw = (
+        data.get("full_metrics", {}).get("trades")
+        or data.get("trades")
+        or data.get("trades_list")
+        or []
+    )
+    return bool(raw)
+
+
+def _pick_latest_trades_file(matches: List[Path]) -> Optional[Path]:
+    """Pick the most-recently-modified file that actually holds a trades array.
+
+    The fallback glob ``{symbol}_{tf}_*.json`` is broad and also matches non-trade
+    artifacts (sensitivity / optimal_params / monte_carlo / regime_analysis); a bare
+    ``sorted(matches)[-1]`` (lexicographic) could return one of those structurally
+    wrong files, or a stale one. Selecting the freshest file that genuinely contains
+    trades is robust to both. Returns ``None`` if no match holds trades.
+    """
+    for path in sorted(matches, key=lambda p: p.stat().st_mtime, reverse=True):
+        if _file_has_trades(path):
+            return path
+    return None
+
+
 def _load_jarvis_trades(
     symbol: str,
     timeframe: str,
@@ -202,10 +237,16 @@ def _load_jarvis_trades(
     candidate = None
     for pattern in patterns:
         matches = list(results_dir.glob(pattern))
-        if matches:
-            # Prefer corrected, otherwise take most recent
-            corrected = [m for m in matches if "corrected" in m.name]
-            candidate = corrected[0] if corrected else sorted(matches)[-1]
+        if not matches:
+            continue
+        # Prefer the corrected file; otherwise pick the freshest file that actually
+        # holds trades. The fallback glob is broad and also matches non-trade
+        # artifacts (sensitivity / optimal_params / monte_carlo / regime_analysis);
+        # a bare sorted(matches)[-1] (lexicographic) could return one of those or a
+        # stale file. _pick_latest_trades_file is robust to both.
+        corrected = [m for m in matches if "corrected" in m.name]
+        candidate = corrected[0] if corrected else _pick_latest_trades_file(matches)
+        if candidate is not None:
             break
 
     if candidate is None:
@@ -520,9 +561,11 @@ def validate_stc_math(
     our_values = [
         {
             "timestamp": str(idx),
-            "stc_value": round(float(row["stc_val"]), 4)
-            if not __import__("math").isnan(row["stc_val"])
-            else None,
+            "stc_value": (
+                round(float(row["stc_val"]), 4)
+                if not __import__("math").isnan(row["stc_val"])
+                else None
+            ),
             "stc_signal": row["stc_signal"],
             "stc_cross_up": bool(row["stc_cross_up"]),
             "stc_cross_down": bool(row["stc_cross_down"]),
@@ -570,11 +613,11 @@ def validate_stc_math(
                 "assessment": (
                     "IDENTICAL"
                     if mae < 0.01
-                    else "VERY_CLOSE"
-                    if mae < 0.5
-                    else "MINOR_DIVERGENCE"
-                    if mae < 2.0
-                    else "SIGNIFICANT_DIVERGENCE"
+                    else (
+                        "VERY_CLOSE"
+                        if mae < 0.5
+                        else "MINOR_DIVERGENCE" if mae < 2.0 else "SIGNIFICANT_DIVERGENCE"
+                    )
                 ),
             }
 

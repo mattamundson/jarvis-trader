@@ -401,14 +401,27 @@ async def _health_inner() -> dict:
     # Discord token). Surface age + quality so a stale feed is observable.
     futures_sentiment = {"quality": "unknown", "age_days": None}
     try:
-        from discord.commentary_processor import get_futures_sentiment_staleness
+        from discord.commentary_processor import (
+            get_bias_extraction_health,
+            get_futures_sentiment_staleness,
+        )
 
         st = get_futures_sentiment_staleness()
+        ext = get_bias_extraction_health()
         futures_sentiment = {
             "quality": st.get("quality", "unknown"),
             "age_days": st.get("age_days"),
             "latest_timestamp": st.get("latest_timestamp"),
             "threshold_days": st.get("threshold_days"),
+            # LLM structured-bias extraction health — distinct from the ingestion
+            # freshness above. 'degraded' = extraction has fallen behind commentary
+            # (e.g. the 2026-06-29 Anthropic credit-exhaustion outage that ran two
+            # days undetected because ingestion still looked fresh). Cache-only —
+            # no LLM call. Surfaced as a field; does not flip top-level status
+            # (the live engine has its own Vertex-backed extraction path).
+            "extraction_quality": ext.get("extraction_quality", "unknown"),
+            "extraction_lag_days": ext.get("lag_days"),
+            "latest_bias_date": ext.get("latest_bias_date"),
         }
     except Exception:
         pass
@@ -1274,8 +1287,12 @@ async def ib_connection_test():
         health = await _get_ib_gateway_health()
     except Exception as exc:
         return {
-            "connected": False, "port": None, "mode": "unknown",
-            "latency_ms": None, "account_id": None, "error": str(exc),
+            "connected": False,
+            "port": None,
+            "mode": "unknown",
+            "latency_ms": None,
+            "account_id": None,
+            "error": str(exc),
         }
     latency_ms = round((_time.perf_counter() - start) * 1000.0, 1)
     connected = bool(health.get("execution_connected") or health.get("data_connected"))
@@ -1296,7 +1313,9 @@ async def ib_connection_test():
         ),
         None,
     )
-    mode = "paper" if port == 4002 else "live" if port == 4001 else str(health.get("mode", "unknown"))
+    mode = (
+        "paper" if port == 4002 else "live" if port == 4001 else str(health.get("mode", "unknown"))
+    )
     return {
         "connected": connected,
         "port": port,
