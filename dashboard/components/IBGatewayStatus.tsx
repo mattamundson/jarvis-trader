@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AlertCircle, Clock, Loader2, Wifi, WifiOff, Zap, RefreshCw } from "lucide-react";
+import { AlertCircle, Loader2, Wifi, WifiOff, Zap, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 import { fetchEngine, postEngine } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -25,20 +26,6 @@ interface IBConnectResult {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Format an ISO timestamp to local time string */
-function formatTimestamp(iso: string | null | undefined): string {
-  if (!iso) return "\u2014";
-  try {
-    return new Date(iso).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
 
 /** Format latency with color coding */
 function LatencyBadge({ ms }: { ms: number | null }) {
@@ -65,7 +52,7 @@ export function IBGatewayStatus() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [connectMessage, setConnectMessage] = useState<string | null>(null);
-  const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
   // ── Poll /ib/connection-test every 10 seconds ──────────────────────────────
 
@@ -74,7 +61,7 @@ export function IBGatewayStatus() {
       const result = await fetchEngine<IBConnectionTestResult>("/ib/connection-test");
       setData(result);
       setError(false);
-      setLastChecked(new Date().toISOString());
+      setLastChecked(new Date());
     } catch {
       setError(true);
     } finally {
@@ -183,12 +170,7 @@ export function IBGatewayStatus() {
             </span>
           )}
 
-          {lastChecked && (
-            <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-              <Clock className="h-2.5 w-2.5" />
-              <span>{formatTimestamp(lastChecked)}</span>
-            </div>
-          )}
+          {lastChecked && <StalenessIndicator lastUpdated={lastChecked} className="text-[10px] px-1.5 py-0" />}
 
           {/* Connect / status button */}
           {!connected && (

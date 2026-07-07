@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import type {
   RecentPipelineReasoningResponse,
@@ -88,7 +90,15 @@ function StageRow({ label, children, approved }: StageRowProps) {
   );
 }
 
-function AnalystRow({ name, report }: { name: string; report?: AgentAnalystReport | null }) {
+function AnalystRow({
+  name,
+  report,
+  expanded,
+}: {
+  name: string;
+  report?: AgentAnalystReport | null;
+  expanded?: boolean;
+}) {
   if (!report) {
     return (
       <StageRow label={`S1 ${name.toUpperCase()}`}>
@@ -119,11 +129,14 @@ function AnalystRow({ name, report }: { name: string; report?: AgentAnalystRepor
       {report.summary && (
         <span className="text-slate-500 truncate max-w-xs">{report.summary}</span>
       )}
+      {expanded && report.reasoning && (
+        <span className="basis-full text-slate-400 leading-snug">{report.reasoning}</span>
+      )}
     </StageRow>
   );
 }
 
-function DebateRow({ debate }: { debate?: DebateResult | null }) {
+function DebateRow({ debate, expanded }: { debate?: DebateResult | null; expanded?: boolean }) {
   if (!debate) {
     return (
       <StageRow label="S2 DEBATE">
@@ -150,6 +163,16 @@ function DebateRow({ debate }: { debate?: DebateResult | null }) {
       {debate.rounds_completed != null && (
         <span className="text-slate-600">{debate.rounds_completed} rounds</span>
       )}
+      {expanded && debate.bull_weakest_point && (
+        <span className="basis-full text-slate-400 leading-snug">
+          <span className="text-emerald-600">bull weak pt:</span> {debate.bull_weakest_point}
+        </span>
+      )}
+      {expanded && debate.bear_weakest_point && (
+        <span className="basis-full text-slate-400 leading-snug">
+          <span className="text-red-600">bear weak pt:</span> {debate.bear_weakest_point}
+        </span>
+      )}
     </StageRow>
   );
 }
@@ -159,18 +182,44 @@ interface DecisionCardProps {
 }
 
 function DecisionCard({ decision }: DecisionCardProps) {
+  const [expanded, setExpanded] = useState(false);
   const snap: PipelineDecisionSnapshot | undefined = decision.pipeline_snapshot;
   const td = snap?.trade_decision;
   const rd = snap?.risk_decision;
   const fd = snap?.fund_decision;
   const ar = snap?.analyst_reports;
   const conviction = fd?.final_conviction ?? snap?.boosted_confidence ?? snap?.confidence;
+  const hasNarrative = Boolean(
+    snap &&
+      (td?.reasoning ||
+        rd?.reasoning ||
+        snap.debate_result?.bull_weakest_point ||
+        ar?.technical?.reasoning ||
+        ar?.news?.reasoning ||
+        ar?.social?.reasoning ||
+        ar?.fundamental?.reasoning)
+  );
 
   return (
     <div className="border border-cyan-900/40 bg-slate-950 rounded-lg overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 bg-slate-900/50">
         <div className="flex items-center gap-3">
+          {hasNarrative && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              aria-label={expanded ? "Collapse reasoning" : "Expand full reasoning"}
+              className="text-slate-500 hover:text-cyan-400 transition-colors"
+            >
+              {expanded ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
           <span className="text-slate-300 font-mono font-bold text-sm tracking-wider">
             {decision.symbol}
           </span>
@@ -209,16 +258,16 @@ function DecisionCard({ decision }: DecisionCardProps) {
       {snap ? (
         <div className="px-3 py-2 space-y-0.5">
           {/* Stage 1 — Analysts */}
-          <AnalystRow name="TECH" report={ar?.technical} />
-          <AnalystRow name="NEWS" report={ar?.news} />
-          <AnalystRow name="SOCIAL" report={ar?.social} />
-          <AnalystRow name="MACRO" report={ar?.fundamental} />
+          <AnalystRow name="TECH" report={ar?.technical} expanded={expanded} />
+          <AnalystRow name="NEWS" report={ar?.news} expanded={expanded} />
+          <AnalystRow name="SOCIAL" report={ar?.social} expanded={expanded} />
+          <AnalystRow name="MACRO" report={ar?.fundamental} expanded={expanded} />
 
           {/* Divider */}
           <div className="border-t border-slate-800/60 my-1" />
 
           {/* Stage 2 — Debate */}
-          <DebateRow debate={snap.debate_result} />
+          <DebateRow debate={snap.debate_result} expanded={expanded} />
 
           {/* Stage 3 — Trade Decision */}
           <StageRow label="S3 TRADER" approved={decision.action !== "hold" ? true : null}>
@@ -235,6 +284,9 @@ function DecisionCard({ decision }: DecisionCardProps) {
                     )}
                   </span>
                 )}
+                {expanded && td.reasoning && (
+                  <span className="basis-full text-slate-400 leading-snug">{td.reasoning}</span>
+                )}
               </>
             ) : (
               <span className="text-slate-600">no trade decision data</span>
@@ -248,8 +300,12 @@ function DecisionCard({ decision }: DecisionCardProps) {
                 <span className={rd.approved ? "text-emerald-400" : "text-red-400"}>
                   {rd.approved ? "APPROVED" : "VETOED"}
                 </span>
-                {rd.reason && (
-                  <span className="text-slate-500 truncate max-w-xs">{rd.reason}</span>
+                {rd.reasoning && (
+                  <span
+                    className={`text-slate-500 ${expanded ? "basis-full leading-snug" : "truncate max-w-xs"}`}
+                  >
+                    {rd.reasoning}
+                  </span>
                 )}
               </>
             ) : (

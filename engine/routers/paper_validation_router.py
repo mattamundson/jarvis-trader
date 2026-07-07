@@ -443,21 +443,14 @@ def _compute_max_drawdown_pct(trades: list[dict]) -> float:
     if not daily_balances:
         return 0.0
 
+    # Canonical guarded drawdown: floors the peak denominator against starting
+    # capital ($10k), so a curve that dips below its start is measured honestly
+    # (the pre-#272 peak=0 seed silently missed drawdown below starting capital).
+    from analytics import metrics
+
     balances = list(daily_balances.values())
-    peak = 0.0
-    max_dd = 0.0
-
-    for balance in balances:
-        if balance > peak:
-            peak = balance
-        dd = peak - balance
-        if dd > max_dd:
-            max_dd = dd
-
-    if peak <= 0:
-        return 0.0
-
-    return round((max_dd / peak) * 100, 2)
+    dd = metrics.max_drawdown_pct(balances, starting_capital=10000)
+    return round(dd if dd is not None else 0.0, 2)
 
 
 def _compute_conviction_score(trades: list[dict], base_risk_pct: float = 0.02) -> float:
@@ -1029,7 +1022,10 @@ async def get_validation_checkpoint():
         wr_target = float(cfg["win_rate_pct"]) / 100.0
         trades_target = int(cfg["min_trades"])
         days_target = int(cfg["min_days"])
-        dd_target = float(cfg["max_drawdown_pct"]) / 100.0
+        # max_drawdown_pct is percent-scale (e.g. 12.06 == 12.06%), matching
+        # _compute_max_drawdown_pct()'s return value -- do not divide by 100 here.
+        # See _build_validation_gate_rows() above for the same (correct) convention.
+        dd_target = float(cfg["max_drawdown_pct"])
 
         gates = {}
 

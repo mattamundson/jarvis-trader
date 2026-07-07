@@ -10,6 +10,7 @@ import {
   fetchHonestTrades,
   equityCurve,
   dedupCaveat,
+  DEFAULT_STARTING_CAPITAL,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
 import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
@@ -24,6 +25,7 @@ import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
 import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
 import ValidationCheckpointWidget from "@/components/ValidationCheckpointWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
@@ -135,34 +137,54 @@ export default function PaperTradingPage() {
         </div>
 
         {/* Open Positions — safety-critical, first widget at top of page */}
-        <OpenPositionsWidget />
+        <WidgetErrorBoundary name="Open Positions">
+          <OpenPositionsWidget />
+        </WidgetErrorBoundary>
 
         {/* Risk Status — always visible at top of page */}
-        <RiskStatusWidget />
+        <WidgetErrorBoundary name="Risk Status">
+          <RiskStatusWidget />
+        </WidgetErrorBoundary>
 
         {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
-        <PaperApprovedValidationWidget />
+        <WidgetErrorBoundary name="Paper Approved Validation">
+          <PaperApprovedValidationWidget />
+        </WidgetErrorBoundary>
 
         {/* Overall validation checkpoint (30-day window progress) */}
-        <ValidationCheckpointWidget />
+        <WidgetErrorBoundary name="Validation Checkpoint">
+          <ValidationCheckpointWidget />
+        </WidgetErrorBoundary>
 
         {/* Circuit breaker / safety status */}
-        <CircuitBreakerWidget />
+        <WidgetErrorBoundary name="Circuit Breaker">
+          <CircuitBreakerWidget />
+        </WidgetErrorBoundary>
 
         {/* Today's session summary */}
-        <TodaySummaryWidget />
+        <WidgetErrorBoundary name="Today Summary">
+          <TodaySummaryWidget />
+        </WidgetErrorBoundary>
 
         {/* ATR-based position sizing */}
-        <PositionSizingWidget />
+        <WidgetErrorBoundary name="Position Sizing">
+          <PositionSizingWidget />
+        </WidgetErrorBoundary>
 
         {/* Current signal state: entry signal, direction, regime, STC, ATR levels */}
-        <SignalQueueWidget />
+        <WidgetErrorBoundary name="Signal Queue">
+          <SignalQueueWidget />
+        </WidgetErrorBoundary>
 
         {/* Recent pipeline signals */}
-        <RecentSignalsWidget />
+        <WidgetErrorBoundary name="Recent Signals">
+          <RecentSignalsWidget />
+        </WidgetErrorBoundary>
 
         {/* Market regime / MTF analysis */}
-        <MarketRegimeWidget />
+        <WidgetErrorBoundary name="Market Regime">
+          <MarketRegimeWidget />
+        </WidgetErrorBoundary>
 
         {/* Top row: Signal + Performance */}
         <div className="grid grid-cols-12 gap-4">
@@ -184,10 +206,14 @@ export default function PaperTradingPage() {
         <TradeLoggerPanel />
 
         {/* Recent AI Decisions */}
-        <RecentDecisionsWidget />
+        <WidgetErrorBoundary name="Recent Decisions">
+          <RecentDecisionsWidget />
+        </WidgetErrorBoundary>
 
         {/* Today's session summary (P&L, trades, win rate, best/worst trade) */}
-        <SessionSummaryWidget />
+        <WidgetErrorBoundary name="Session Summary">
+          <SessionSummaryWidget />
+        </WidgetErrorBoundary>
       </main>
     </div>
   );
@@ -682,10 +708,14 @@ function PerformanceMetricsPanel() {
       ? Math.abs(Math.min(...mgcCurve.map((p) => p.drawdown)))
       : null;
 
-  // Derive peak for percentage expression
+  // Derive peak for percentage expression. Floored at DEFAULT_STARTING_CAPITAL
+  // so a tiny-but-positive peak (e.g. one small early MGC win) can't divide a
+  // later large-dollar loss into an absurd percentage -- denominate against
+  // account starting capital instead, same fix as lib/honestTrades.ts's
+  // maxDrawdownPct().
   const mgcPeak =
     mgcCurve && mgcCurve.length > 0
-      ? Math.max(...mgcCurve.map((p) => p.equity), 0)
+      ? Math.max(...mgcCurve.map((p) => p.equity), 0, DEFAULT_STARTING_CAPITAL)
       : null;
   const mgcMaxDdPct =
     mgcMaxDd != null && mgcPeak != null && mgcPeak > 0
