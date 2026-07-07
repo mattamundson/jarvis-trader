@@ -128,18 +128,29 @@ class TradingConfig(BaseSettings):
     )
 
     # ── Risk Controls (Safety Layer) ─────────────────────────────────────
-    MAX_POSITION_SIZE_PCT: float = Field(0.05, description="Max 5% of portfolio per position")
-    MAX_DAILY_LOSS_PCT: float = Field(0.02, description="Halt trading at -2% daily P&L")
+    MAX_POSITION_SIZE_PCT: float = Field(
+        0.10,
+        description="Max 10% of portfolio per position (reconciled to .env live truth 2026-06-25)",
+    )
+    MAX_DAILY_LOSS_PCT: float = Field(
+        0.06, description="Halt trading at -6% daily P&L ($10K aggressive profile, 2026-06-25)"
+    )
     MAX_DAILY_LOSS_USD: float = Field(100.0, description="Halt trading at flat $100 daily P&L")
     MAX_TRADE_LOSS_USD: float = Field(50.0, description="Max loss per single trade ticket is $50")
     MAX_DRAWDOWN_PCT: float = Field(
-        0.10,
-        description="Emergency halt at the configured drawdown from equity peak. 0.10 (-10%) is the conservative code default; the paper phase overrides it higher via the MAX_DRAWDOWN_PCT env var, so engine/.env is the source of truth for the live value.",
+        0.20,
+        description="Emergency halt at drawdown from equity peak. Reconciled to .env live truth 0.20 (-20%) on 2026-06-25 ($10K aggressive profile). engine/.env remains the source of truth for the live value.",
     )
     MAX_ORDERS_PER_MINUTE: int = Field(10, description="Rate throttle")
-    MAX_CORRELATED_EXPOSURE_PCT: float = Field(0.20, description="Max 20% in correlated positions")
+    MAX_CORRELATED_EXPOSURE_PCT: float = Field(
+        0.50,
+        description="Max 50% in correlated positions (reconciled to .env live truth 2026-06-25)",
+    )
     PRICE_COLLAR_PCT: float = Field(0.05, description="Reject orders >5% from NBBO")
-    MAX_SINGLE_ORDER_VALUE: float = Field(5000.0, description="No single order > $5,000")
+    MAX_SINGLE_ORDER_VALUE: float = Field(
+        100000.0,
+        description="No single order > $100,000 notional (reconciled to .env live truth 2026-06-25; futures notional is large)",
+    )
     MAX_MARGIN_UTILIZATION: float = Field(0.40, description="Never exceed 40% of available margin")
 
     # ── Futures-Specific ─────────────────────────────────────────────────
@@ -599,8 +610,22 @@ class TradingConfig(BaseSettings):
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
         default=["SPY", "QQQ", "AAPL", "TSLA"], description="Underlying symbols for options trading"
     )
+    # HiddenPivots scan universe — futures + ETFs + liquid individual names.
+    # Display/analysis only (the HP scanner never routes orders), so the roster
+    # is intentionally broad and is NOT bound by DO_NOT_TRADE_SYMBOLS. Override
+    # via the SCAN_SYMBOLS env var (comma-separated or JSON array).
+    SCAN_SYMBOLS: Union[str, list[str]] = Field(
+        default=(
+            "MES,MNQ,MGC,MCL,"
+            "SPY,QQQ,IWM,DIA,GLD,SLV,SMH,XLE,"
+            "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA,AMD,AVGO,NFLX,"
+            "PLTR,COIN,MSTR,MU,CRM,UBER,JPM,BAC,XOM,LLY,COST"
+        ),
+        description="HiddenPivots scan universe (comma-separated or list): "
+        "futures, ETFs, and liquid single-name equities. Analysis-only.",
+    )
 
-    @field_validator("FUTURES_WATCHLIST", "OPTIONS_WATCHLIST", mode="before")
+    @field_validator("FUTURES_WATCHLIST", "OPTIONS_WATCHLIST", "SCAN_SYMBOLS", mode="before")
     @classmethod
     def parse_watchlist(cls, v):
         """

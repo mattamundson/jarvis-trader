@@ -5,9 +5,15 @@ const ENGINE = "/api/engine";
 const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const RETRY_DELAY_MS = 2000; // 2 seconds
 
-// The engine API key is injected server-side by the proxy route
-// (app/api/engine/[...path]/route.ts, via the non-public ENGINE_API_KEY env
-// var) — never here. Client code must not read or send it.
+// Engine auth is injected SERVER-SIDE by the proxy route handler
+// (app/api/engine/[...path]/route.ts) from the non-public ENGINE_API_KEY.
+// The browser must NEVER carry the key: NEXT_PUBLIC_* values are inlined into
+// the client JS bundle, so a public/remote deployment would hand the engine
+// key to every visitor. All engine calls go through the same-origin /api/engine
+// proxy, which sets X-API-Key itself — the client sends no credential.
+function engineHeaders(extra?: HeadersInit): HeadersInit {
+  return { ...extra };
+}
 
 async function fetchWithTimeout<T>(
   url: string,
@@ -473,6 +479,61 @@ export interface WatchlistScanResponse {
   signals?: unknown[];
 }
 
+/** GET /hidden-pivots/scan — Rick Ackerman HiddenPivots scanner (analysis-only). */
+export interface HPSignal {
+  symbol: string;
+  timeframe: string;
+  pattern: string | null;
+  bias: "LONG" | "SHORT" | "WATCH" | "SOH";
+  trigger_price: number | null;
+  tight_stop: number | null;
+  riskier_stop: number | null;
+  targets: number[];
+  hp_ou_level: number | null;
+  ema_alignment: string;
+  rs_rw_score: number;
+  rs_rw_label: string;
+  soh: boolean;
+  oscillator_state: string;
+  bars_since_cross: number;
+  last_cross_dir: "bull" | "bear" | "none";
+  confidence: number;
+  notes: string;
+}
+
+export interface HPScanResponse {
+  scan_time: string;
+  symbols_scanned: number;
+  signals: HPSignal[];
+  soh_symbols: string[];
+  watch_symbols: string[];
+  /** Full per-symbol result for every scanned name (incl. WATCH/SOH). */
+  details: HPSignal[];
+}
+
+/** Fetch the HiddenPivots scan for a given timeframe. */
+export async function fetchHiddenPivotsScan(
+  timeframe = "1d",
+  benchmark = "SPY"
+): Promise<HPScanResponse> {
+  return fetchEngine<HPScanResponse>(
+    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
+  );
+}
+
+/**
+ * Last price + daily change for the given symbols (GET /prices/snapshot).
+ * Goes through the engine proxy (REST), so it works on the remote/Vercel
+ * deploy unlike the WS feed. Server-side cache is 60s (rate-limit guard), so
+ * values refresh roughly once a minute during market hours. Reuses the shared
+ * `PriceSnapshot` map type (see below / WatchlistBar).
+ */
+export async function fetchPriceSnapshot(symbols: string[]): Promise<PriceSnapshot> {
+  if (symbols.length === 0) return {};
+  const q = encodeURIComponent(symbols.join(","));
+  return fetchEngine<PriceSnapshot>(`/prices/snapshot?symbols=${q}`);
+}
+
 /** GET /pipeline/history */
 export interface PipelineHistoryEntry {
   id?: string | number;
@@ -541,61 +602,6 @@ export interface PriceSnapshotEntry {
 }
 
 export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
-
-/** GET /hidden-pivots/scan — Rick Ackerman HiddenPivots scanner (analysis-only). */
-export interface HPSignal {
-  symbol: string;
-  timeframe: string;
-  pattern: string | null;
-  bias: "LONG" | "SHORT" | "WATCH" | "SOH";
-  trigger_price: number | null;
-  tight_stop: number | null;
-  riskier_stop: number | null;
-  targets: number[];
-  hp_ou_level: number | null;
-  ema_alignment: string;
-  rs_rw_score: number;
-  rs_rw_label: string;
-  soh: boolean;
-  oscillator_state: string;
-  bars_since_cross: number;
-  last_cross_dir: "bull" | "bear" | "none";
-  confidence: number;
-  notes: string;
-}
-
-export interface HPScanResponse {
-  scan_time: string;
-  symbols_scanned: number;
-  signals: HPSignal[];
-  soh_symbols: string[];
-  watch_symbols: string[];
-  /** Full per-symbol result for every scanned name (incl. WATCH/SOH). */
-  details: HPSignal[];
-}
-
-/** Fetch the HiddenPivots scan for a given timeframe. */
-export async function fetchHiddenPivotsScan(
-  timeframe = "1d",
-  benchmark = "SPY"
-): Promise<HPScanResponse> {
-  return fetchEngine<HPScanResponse>(
-    `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
-  );
-}
-
-/**
- * Last price + daily change for the given symbols (GET /prices/snapshot).
- * Goes through the engine proxy (REST), so it works on the remote/Vercel
- * deploy unlike the WS feed. Server-side cache is 60s (rate-limit guard), so
- * values refresh roughly once a minute during market hours. Reuses the shared
- * `PriceSnapshot` map type defined above.
- */
-export async function fetchPriceSnapshot(symbols: string[]): Promise<PriceSnapshot> {
-  if (symbols.length === 0) return {};
-  const q = encodeURIComponent(symbols.join(","));
-  return fetchEngine<PriceSnapshot>(`/prices/snapshot?symbols=${q}`);
-}
 
 export interface MacroSnapshot {
   vix?: number | null;
@@ -2524,4 +2530,61 @@ export async function fetchSessionBrief(
   return fetchEngine<SessionBriefResponse>(
     `/brief/session?limit=${limit}&max_actions=${maxActions}`
   );
+}
+
+// ── ATR-trail visualizer (GET /backtest/atr-trail/trades) ──────────────────
+// Powers app/atr-trail: the TOS ATRTrailingStopLE/SE flip strategy's actual
+// trades on cached bars — price + trail line + entries/exits + equity curve.
+export interface AtrTrailPricePoint {
+  t: number;
+  c: number;
+}
+export interface AtrTrailLinePoint {
+  t: number;
+  v: number;
+  s: number;
+}
+export interface AtrTrailTrade {
+  entry_t: number;
+  entry_px: number;
+  exit_t: number;
+  exit_px: number;
+  dir: number;
+  pnl_usd: number;
+  pnl_pts: number;
+}
+export interface AtrTrailEquityPoint {
+  t: number;
+  v: number;
+}
+export interface AtrTrailTradesResponse {
+  symbol: string;
+  period: number;
+  factor: number;
+  n_trades: number;
+  win_rate: number;
+  net_usd: number;
+  bars: number;
+  price: AtrTrailPricePoint[];
+  trail: AtrTrailLinePoint[];
+  trades: AtrTrailTrade[];
+  equity: AtrTrailEquityPoint[];
+  source_file?: string;
+}
+
+export async function fetchAtrTrailTrades(params: {
+  symbol?: string;
+  timeframe?: string;
+  period?: number;
+  factor?: number;
+  maxPoints?: number;
+}): Promise<AtrTrailTradesResponse> {
+  const qs = new URLSearchParams({
+    symbol: params.symbol ?? "MES",
+    timeframe: params.timeframe ?? "5m",
+    period: String(params.period ?? 5),
+    factor: String(params.factor ?? 3.5),
+    max_points: String(params.maxPoints ?? 3000),
+  });
+  return fetchEngine<AtrTrailTradesResponse>(`/backtest/atr-trail/trades?${qs.toString()}`);
 }

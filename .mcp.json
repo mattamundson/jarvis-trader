@@ -9,6 +9,11 @@
       "command": "wsl",
       "args": ["/home/mattm/.cargo/bin/kraken", "mcp", "-s", "all", "--allow-dangerous"],
       "env": {}
+    },
+    "x-twitter": {
+      "command": "node",
+      "args": ["C:/Users/mattm/Code/x-mcp/dist/index.js"],
+      "env": {}
     }
   }
 }

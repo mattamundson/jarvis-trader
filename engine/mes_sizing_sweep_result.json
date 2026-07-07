@@ -1,0 +1,72 @@
+[
+  {
+    "capital": 10000,
+    "mc_95th": 9.6066,
+    "core_pass": false,
+    "alt_pass": false,
+    "verdict": "FAIL"
+  },
+  {
+    "capital": 12000,
+    "mc_95th": 8.1445,
+    "core_pass": false,
+    "alt_pass": false,
+    "verdict": "FAIL"
+  },
+  {
+    "capital": 14000,
+    "mc_95th": 7.0901,
+    "core_pass": false,
+    "alt_pass": false,
+    "verdict": "FAIL"
+  },
+  {
+    "capital": 15000,
+    "mc_95th": 6.6412,
+    "core_pass": false,
+    "alt_pass": false,
+    "verdict": "FAIL"
+  },
+  {
+    "capital": 16000,
+    "mc_95th": 6.2599,
+    "core_pass": false,
+    "alt_pass": false,
+    "verdict": "FAIL"
+  },
+  {
+    "capital": 17000,
+    "mc_95th": 5.9138,
+    "core_pass": true,
+    "alt_pass": false,
+    "verdict": "PASS"
+  },
+  {
+    "capital": 18000,
+    "mc_95th": 5.6132,
+    "core_pass": true,
+    "alt_pass": false,
+    "verdict": "PASS"
+  },
+  {
+    "capital": 20000,
+    "mc_95th": 5.0926,
+    "core_pass": true,
+    "alt_pass": false,
+    "verdict": "PASS"
+  },
+  {
+    "capital": 25000,
+    "mc_95th": 4.1328,
+    "core_pass": true,
+    "alt_pass": false,
+    "verdict": "PASS"
+  },
+  {
+    "capital": 30000,
+    "mc_95th": 3.4864,
+    "core_pass": true,
+    "alt_pass": false,
+    "verdict": "PASS"
+  }
+]
