@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start --port 3010",
     "lint": "next lint",
+    "test:unit": "node --test --experimental-strip-types --import ./tests/_register-alias.mjs \"tests/**/*.node.test.ts\"",
     "test:e2e": "playwright test",
     "check:live": "node scripts/check-live-data.mjs"
   },

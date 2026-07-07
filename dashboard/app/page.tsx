@@ -35,15 +35,19 @@ import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
 import { BookmarkFeedPanel } from "@/components/BookmarkFeedPanel";
+import { StrategyResearchPanel } from "@/components/StrategyResearchPanel";
+import { MacroRegimeBadge } from "@/components/MacroRegimeBadge";
 import { SignalFlowWidget } from "@/components/widgets/SignalFlowWidget";
 import { SuperEngineStatusWidget } from "@/components/SuperEngineStatusWidget";
 import { EngineHealthWidget } from "@/components/EngineHealthWidget";
 import { ConfidenceGauge } from "@/components/ConfidenceGauge";
 import { HonestPnlCard } from "@/components/HonestPnlCard";
+import { EnginePnlTruthCard } from "@/components/EnginePnlTruthCard";
 import { SameDayPnLBadge } from "@/components/SameDayPnLBadge";
 import ShadowPerformanceWidget from "@/components/ShadowPerformanceWidget";
 import { InstitutionalProfileWidget } from "@/components/InstitutionalProfileWidget";
 import { Pm2StabilityWidget } from "@/components/Pm2StabilityWidget";
+import { DurabilityWidget } from "@/components/DurabilityWidget";
 import { MESSprintGate } from "@/components/MESSprintGate";
 import PendingApprovals from "@/components/PendingApprovals";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
@@ -282,9 +286,20 @@ export default function DashboardPage() {
             <HonestPnlCard />
           </WidgetErrorBoundary>
 
+          {/* Engine-native honest realized P&L (/pnl/truth) — no master-api dependency,
+              stays truthful (TRUSTED/DEGRADED, never a fake $0) when :8030 is down */}
+          <WidgetErrorBoundary name="Engine PnL Truth">
+            <EnginePnlTruthCard />
+          </WidgetErrorBoundary>
+
           {/* Same-day P&L reconciliation (C3): aggregate vs independent snapshot */}
           <WidgetErrorBoundary name="Same Day PnL">
             <SameDayPnLBadge />
+          </WidgetErrorBoundary>
+
+          {/* Clean-run durability — days-clean from the down-alert outage ledger */}
+          <WidgetErrorBoundary name="Durability">
+            <DurabilityWidget />
           </WidgetErrorBoundary>
 
           {/* PM2 Stability Monitor — OU-1 watchdog, positions + STP coverage */}
@@ -434,6 +449,16 @@ export default function DashboardPage() {
             {/* Bookmark Feed — recent and searchable Discord bookmark rows */}
             <WidgetErrorBoundary name="Bookmark Feed">
               <BookmarkFeedPanel />
+            </WidgetErrorBoundary>
+
+            {/* Strategy Research — X-bookmark edge-scan candidates + research gate-v2 verdicts */}
+            <WidgetErrorBoundary name="Strategy Research">
+              <StrategyResearchPanel />
+            </WidgetErrorBoundary>
+
+            {/* Macro Trend Regime — advisory SPX trend bias for the futures book (flag-gated) */}
+            <WidgetErrorBoundary name="Macro Trend Regime">
+              <MacroRegimeBadge />
             </WidgetErrorBoundary>
 
             {/* Strategy Parameters */}
