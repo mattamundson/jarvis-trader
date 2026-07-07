@@ -55,10 +55,36 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     # 10-year / 30-year treasuries (price points — different order).
     "ZB":  (90.0, 185.0),
     "ZN":  (90.0, 155.0),
-    # SPY is an equity ETF, not a future. Included so the audit doesn't
-    # flag it as UNKNOWN_SYMBOL. A stock ETF hitting its equity ticker
-    # correctly is the expected, non-contaminated path.
-    "SPY": (250.0, 800.0),
+    # Benchmark equity ETFs (and FX micro futures) also live in the backtest
+    # cache. For an ETF the symbol *is* the equity, so there is no futures/equity
+    # ticker collision to detect (unlike ES=ESSA Pharma or GC=small caps) -- these
+    # are generous "legit full-history range" guards, sized from each series'
+    # observed dividend/price-adjusted range in this cache with margin, so a real
+    # equity-price leak (wrong scale) still lands far outside. Ceilings look high
+    # because this cache runs to 2026 levels well above nominal (GC ~5591, ES
+    # ~7630, silver ~105), and floors look low because adjusted close reaches far
+    # back (SPY ~23.8 in 1993, XLU ~3.3 in 2002).
+    #
+    # SPY floor widened from 250 to cover full adjusted history back to 1993 --
+    # the old floor false-flagged legitimate pre-2016 SPY as CONTAMINATED.
+    "SPY": (15.0, 900.0),
+    "DIA": (25.0, 650.0),   # Dow SPDR;    observed ~41.7-520
+    "QQQ": (10.0, 950.0),   # Nasdaq-100;  observed ~16.9-745
+    "IWM": (15.0, 420.0),   # Russell 2k;  observed ~23.8-298
+    "MDY": (15.0, 950.0),   # MidCap SPDR; observed ~24.7-695
+    "EEM": (4.0, 110.0),    # EM equity;   observed ~7.2-71
+    "EFA": (8.0, 160.0),    # EAFE;        observed ~15.0-105
+    "XLU": (2.0, 90.0),     # Utilities;   observed ~3.3-47 (heavy dividend adj.)
+    "GLD": (25.0, 650.0),   # Gold ETF;    observed ~41.3-496
+    "SLV": (5.0, 160.0),    # Silver ETF;  observed ~8.9-106 (2026 silver run)
+    "TLT": (22.0, 210.0),   # 20y+ treasuries; observed ~36.0-143
+    "LQD": (22.0, 170.0),   # IG credit;   observed ~36.8-113
+    "HYG": (12.0, 130.0),   # HY credit;   observed ~21.8-80 (heavy dividend adj.)
+    # FX micro futures quote the exchange rate itself (~0.8-1.8), so any equity
+    # leak ($10-500+) lands far outside. Values match master #270, so trunk->master
+    # convergence (#279) is conflict-free for this dict.
+    "M6B": (0.90, 1.80),    # Micro GBP/USD
+    "M6E": (0.80, 1.70),    # Micro EUR/USD
 }
 
 # For MCL specifically, Colgate-Palmolive's daily close stays within ~1-2%
