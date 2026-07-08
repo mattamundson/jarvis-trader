@@ -13,9 +13,9 @@ pass with a `--force-enrich` flag will fill them in. The existing 282 pages
 already carry enrichment from the 2026-04-17 render; those are preserved.
 
 Shape references — reproduce the existing render's frontmatter keys exactly:
-    second-brain/wiki/discord-bookmarks/github/aaif-goose__goose.md
-    second-brain/wiki/discord-bookmarks/x/0xjeff-2043656911044870203.md
-    second-brain/wiki/discord-bookmarks/index.md
+    second-brain/raw/wiki/discord-bookmarks/github/aaif-goose__goose.md
+    second-brain/raw/wiki/discord-bookmarks/x/0xjeff-2043656911044870203.md
+    second-brain/raw/wiki/discord-bookmarks/index.md
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ if str(_ENGINE_ROOT) not in sys.path:
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_VAULT_DIR = r"C:\Users\mattm\master-jarvis\second-brain\wiki\discord-bookmarks"
+DEFAULT_VAULT_DIR = r"C:\Users\mattm\master-jarvis\second-brain\raw\wiki\discord-bookmarks"
 DEFAULT_DB_PATH = "engine/data/jarvis_trader.db"
 
 # Module touch-point text mirrors the 2026-04-17 index header comments.
@@ -79,7 +79,7 @@ def github_slug(url: str) -> str:
     """github.com/Owner/Repo → `owner__repo` (lowercased, for filename stability).
 
     Matches the 2026-04-17 vault render: see
-    `second-brain/wiki/discord-bookmarks/github/ai4finance-foundation__fingpt.md`.
+    `second-brain/raw/wiki/discord-bookmarks/github/ai4finance-foundation__fingpt.md`.
     """
     owner, repo = github_owner_repo(url)
     return f"{owner.lower()}__{repo.lower()}"
