@@ -1,56 +1,80 @@
 # ES EOD Brief — Wed July 8, 2026
 
-> **Data provenance / verification level: UNVERIFIED (web-sourced, ~15-min delayed).**
-> Generated from a cloud session with **no engine connectivity** (`curl localhost:8010/health`
-> → connection refused). None of these numbers were cross-checked against the IB feed,
-> `/prices/snapshot`, `/levels/{symbol}`, or a live volume profile. Confirm every level on the
-> terminal before acting. No floor pivots / TPO value area were computed — doing so from
-> guessed prior-day futures OHLC would produce confidently-wrong levels. Observed price +
-> the day's catalyst only.
+> **Data provenance / verification level: LIVE CHART (user-supplied ThinkOrSwim screenshot,
+> ~2:35 PM ET) + Corey/Saty studies.** Engine was unreachable from this cloud session
+> (`curl localhost:8010/health` → refused), so this is NOT cross-checked against the IB feed,
+> but the numbers below are read directly off the live /ES chart the user provided, which is
+> authoritative for price.
+>
+> **Correction on the record:** an earlier draft of this brief used web-sourced quotes that were
+> stale/wrong — they showed /ES ~7,591.50 "recovering" and an Iran-ceasefire narrative. The live
+> chart shows /ES at **7,526.75, down on the day, in a failed profile.** The web read was off by
+> ~65 points and is discarded. This is the numeric-accuracy discipline in action: the live source
+> of truth overrides the delayed feed.
 
-## Snapshot — ESU26 / ES=F
+## Snapshot — /ES Sep 26 (ETH), ~2:35 PM ET, 5m
 
 | Field | Value |
 |---|---|
-| Open | 7,597.00 |
-| High | 7,601.25 |
-| Low | 7,529.50 |
-| Last | ~7,591.50 (back near the high) |
-| Day range | 71.75 pts (wide — shock day) |
-| Cash S&P on day | -0.65% (~-46 pts) |
-| Catalyst | Iran ceasefire declared over; fresh strikes, "could continue tonight"; oil +5.2% to ~$74 |
+| Last | 7,526.75 (-24.50, -0.32%) |
+| Bid / Ask | 7,526.75 / 7,527.00 |
+| Session high | ~7,563 (early) |
+| Session low | ~7,509-7,511 (bounced from here) |
+| Day range | $94.5 = **93% of ATR** ($102.16) — near-exhausted |
+
+## Study readouts (on-chart)
+
+**Corey AA_CoreyTscorev2 (TPO):**
+- TPO Score is **Negative**
+- **Sellers in Control below 7,546.25**
+- **Buyers offsides below 7,530.75**
+- Price is inside Value 7,500
+- Profile targets 7,624.25 / **fail target 7,529.75** (tagged)
+- **This profile is failed**
+
+**Saty ATR Levels:**
+- **Puts < 7,527.64** (price is just below → bearish trigger active); -1 ATR 7,449.59
+- Calls > 7,575.86; +1 ATR 7,653.91
+
+## Key levels
+
+- **Resistance cluster (short zone):** 7,529.75 / 7,530.75 / 7,533.29 / 7,538.24 / 7,542.28 /
+  **7,546.25** (sellers-in-control flip) / 7,550.73 / 7,555.70 / 7,561.63 / 7,563
+- **Support:** 7,523.25 / 7,516.81 / 7,513.13 / 7,511.39 / 7,509.44 (LOD area)
 
 ## Profile / auction read
 
-**Open-near-high -> geopolitical liquidation break -> strong recovery.** Opened 7,597, flushed
-~68 pts to **7,529.50** on the Iran/oil headline, then bought straight back to 7,591.50 —
-recovering ~62 of the ~68-pt drop and finishing near the session high. The 7,529.50 low is a
-**buying tail / excess**: responsive buyers defended it hard. Cash closed red, but the futures
-tape into the afternoon is a **dip-bought recovery**, not a breakdown.
+**Bearish trend day, failed profile.** Rolled over from ~7,563 in a staircase down to ~7,509,
+now bouncing to 7,526.75. Both structural switches are bearish: price is below the 7,546.25
+sellers-in-control pivot and below the 7,530.75 buyers-offsides pivot, TPO score negative, profile
+declared failed with its downside fail target (7,529.75) already tagged. Price is currently pressed
+against the underside of the 7,527-7,533 pivot cluster after the bounce.
 
 ## Bias
 
-- **Intraday momentum: bullish** — buyers reclaimed the range, closed near highs after a shock flush.
-- **Higher timeframe: still up** — record tape earlier in the week; today reads as an absorbed dip.
-- **Overriding factor: live binary overnight risk** — active escalation with strikes possibly
-  continuing tonight and oil spiking = uncompensated gap risk, skewed to negative surprise.
+**Bearish intraday — but late and range-exhausted.** The structure and both studies point down.
+The offsetting fact is the 93%-of-ATR day range: there is little statistical room left for a fresh
+leg down *today*, and price just bounced off the LOD. So the edge is **shorting a retest into
+resistance, not chasing the hole**, with modest targets.
 
-**Net lean: intraday-bullish, overnight-flat.** The recovery earns a constructive intraday lean;
-nothing about it justifies carrying directional risk into an open geopolitical tape.
+- **Net lean:** sell rallies into 7,530.75-7,533; the failed profile favors a re-probe of the lows.
+- **Invalidation:** reclaim and hold above **7,546.25** (sellers-in-control flips off) — stand down
+  shorts there.
+- **Overnight:** flat. Range near-exhausted, and it's a failed-profile chop zone — no edge holding
+  a fresh position overnight.
 
 ## Trade plan (proposals — NOT placed)
 
-**Primary: be flat into the close.** Buying near the day's high after a 62-pt recovery is chasing,
-and holding any direction overnight into "strikes could continue tonight" is a headline coin-flip.
-Stand aside or intraday-only.
+Instrument **MES**, $5/pt, 1 contract, **intraday only**:
 
-If a defined-risk **intraday** setup is wanted (instrument **MES**, $5/pt, 1 contract):
-
-- **Long — intraday only, flatten before RTH close.** Hold above ~7,575-7,580 (recovery midpoint /
-  reclaimed support). Entry on a pullback that holds, stop **7,563**, T1 7,601, T2 7,615.
-  Risk ~12-17 pts (~$60-85/contract).
-- **Short — counter-trend, only on failed recovery.** Trigger: rejection at 7,601 *and* loss of
-  7,565. Target 7,540 -> 7,529.50. Intraday only.
+- **Short — the retest (primary, trend-aligned).** Trigger: push into **7,530.75-7,533** that
+  rejects, OR failure to reclaim 7,530.75. Stop **7,538.5** (above the 7,533/7,538 shelf).
+  T1 **7,516.81**, T2 **7,511/7,509.44**. Risk ~11-12 pts (~$55-60/contract). Take partials fast —
+  93% ATR means the -1 ATR (7,449.59) is a multi-session target, not today's.
+- **Do NOT chase** a break straight through 7,523.25/7,516.81 without a retest — that is selling
+  into range exhaustion.
+- **Long — counter-trend, low conviction.** Only on reclaim + acceptance above 7,546.25. Against
+  TPO-negative/failed-profile; not the lean.
 
 ## Execution constraints (why nothing was placed)
 
@@ -61,14 +85,9 @@ If a defined-risk **intraday** setup is wanted (instrument **MES**, $5/pt, 1 con
 
 ## To make this trade-grade
 
-Confirm live MES print + VWAP + actual volume-profile value area on the terminal, and check
-`/safety/status` + daily-P&L headroom before any entry. None of these were reachable from this session.
-
-## Sources
-
-- [Yahoo Finance — market today Jul 8 2026](https://finance.yahoo.com/markets/stocks/live/stock-market-today-wednedsay-july-8-230111117.html)
-- [TheStreet — Jul 8 2026](https://www.thestreet.com/stock-market-today/stock-market-today-dow-jones-sp-500-nasdaq-updates-july-8-2026)
-- [24/7 Wall St — Jul 8 2026](https://247wallst.com/investing/2026/07/08/stock-market-live-july-8-2026-sp-500-spy-slips-on-end-of-ceasefire/)
+Confirm the live MES print + VWAP against the engine/IB feed and check `/safety/status` +
+daily-P&L headroom before any entry. Neither was reachable from this session.
 
 ---
-*Generated 2026-07-08 by a Claude Code cloud session. Analysis only — no orders placed. UNVERIFIED against engine source-of-truth.*
+*Generated 2026-07-08 by a Claude Code cloud session from a user-supplied live chart. Analysis
+only — no orders placed. Not cross-checked against the engine (unreachable).*
