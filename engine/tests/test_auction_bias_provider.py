@@ -108,11 +108,78 @@ async def test_get_inputs_returns_well_formed_payload():
 
     assert raw is not None
     assert raw["price"] == 7526.75
-    assert raw["prior_close"] == 7551.75
+    # Derived from daily bars (_prior_close_from_daily), NOT the ticker's
+    # prev_close (7551.75) -- the daily bar series is the reliable prior-
+    # session-close source; see the Codex review finding on this PR.
+    assert raw["prior_close"] == 7574.0
     assert raw["source"] == "ibkr"
     assert raw["ibkr_connected"] is True
     assert isinstance(raw["atr"], float) and raw["atr"] > 0
     assert isinstance(raw["day_range"], float)
+
+
+@pytest.mark.asyncio
+async def test_prior_close_ignores_unreliable_ticker_prev_close():
+    """Codex review finding on this PR: get_current_price()'s prev_close can be
+    a stale/wrong artifact (IBKR snapshot fallback's previous-hour close, or
+    None on TradingView/Schwab) -- NOT the true prior daily-session close that
+    saty_atr_levels() needs. Confirms the daily-bar-derived value wins even
+    when the ticker's prev_close is wildly different or absent."""
+
+    class BadTickerPrevCloseDataManager(FakeDataManager):
+        async def get_current_price(self, symbol, is_futures=False):
+            # A plausible real-world failure: an hourly close far from the
+            # true prior daily session close, or None entirely.
+            return {"last_price": 7526.75, "prev_close": 1.0, "source": "ibkr"}
+
+    provider = LiveAuctionDataProvider(BadTickerPrevCloseDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    assert raw is not None
+    assert raw["prior_close"] == 7574.0  # from daily bars, NOT the bogus 1.0
+
+
+@pytest.mark.asyncio
+async def test_prior_close_falls_back_to_ticker_when_daily_bars_unavailable():
+    class NoDailyBarsDataManager(FakeDataManager):
+        async def get_bars(self, symbol, lookback_days=30, timeframe="5m", is_futures=False):
+            if timeframe == "1d":
+                return pd.DataFrame()  # empty -- feed unavailable
+            return _intraday_bars_two_sessions()
+
+    provider = LiveAuctionDataProvider(NoDailyBarsDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    assert raw is not None
+    assert raw["prior_close"] == 7551.75  # ticker prev_close, the documented fallback
+    assert raw["atr"] is None  # no daily bars -> no ATR either
+
+
+def test_prior_close_from_daily_excludes_todays_still_forming_bar():
+    """If the feed includes an in-progress "today" bar as the last row, the
+    prior close must come from the last COMPLETED session, not that partial bar."""
+    now = pd.Timestamp.now(tz="UTC")
+    df = pd.DataFrame(
+        [
+            {"timestamp": now - pd.Timedelta(days=2), "close": 100.0},
+            {"timestamp": now - pd.Timedelta(days=1), "close": 200.0},  # true prior close
+            {"timestamp": now, "close": 999.0},  # today's partial bar -- must be excluded
+        ]
+    )
+    assert LiveAuctionDataProvider._prior_close_from_daily(df) == 200.0
+
+
+def test_prior_close_from_daily_falls_back_to_last_bar_when_feed_excludes_today():
+    """If the feed already excludes today (all bars strictly in the past),
+    the last bar IS the prior completed session -- use it directly."""
+    now = pd.Timestamp.now(tz="UTC")
+    df = pd.DataFrame(
+        [
+            {"timestamp": now - pd.Timedelta(days=3), "close": 100.0},
+            {"timestamp": now - pd.Timedelta(days=2), "close": 200.0},
+        ]
+    )
+    assert LiveAuctionDataProvider._prior_close_from_daily(df) == 200.0
 
 
 @pytest.mark.asyncio

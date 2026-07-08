@@ -94,31 +94,67 @@ class LiveAuctionDataProvider:
         out.index = pd.to_datetime(out["timestamp"], utc=True)
         return out
 
+    @staticmethod
+    def _prior_close_from_daily(daily_df) -> Optional[float]:
+        """The last COMPLETED prior session's close from daily bars — the anchor
+        saty_atr_levels() actually needs, per the AA Saty study (prior session
+        close, not a ticker's generic "prev_close").
+
+        A ticker-level get_current_price() prev_close is NOT reliable for this:
+        IBKR's snapshot fallback can return the previous 1-hour bar's close
+        rather than the prior daily session's close, and TradingView/Schwab
+        often return None entirely. Using it as the Saty anchor would silently
+        shift call/put triggers off the chart's real levels.
+
+        Robust to whether the daily-bar feed includes today's still-forming bar
+        as the last row: filters to bars strictly before today's UTC date and
+        takes the most recent of those. Falls back to the last bar only if no
+        bar is strictly before today (feed already excludes the partial day).
+        """
+        import pandas as pd
+
+        if daily_df is None or daily_df.empty:
+            return None
+        ts = pd.to_datetime(daily_df["timestamp"], utc=True)
+        today = pd.Timestamp.now(tz="UTC").normalize()
+        prior_mask = ts.dt.normalize() < today
+        if prior_mask.any():
+            return float(daily_df.loc[prior_mask, "close"].iloc[-1])
+        return float(daily_df["close"].iloc[-1])
+
     async def get_inputs(self, symbol: str) -> Optional[dict]:
         dm = self._data_manager
 
         price_data = await dm.get_current_price(symbol, is_futures=True)
         price = price_data.get("last_price")
-        prior_close = price_data.get("prev_close")
         source = price_data.get("source")
-        if price is None or prior_close is None:
-            return None
 
         atr: Optional[float] = None
         day_range: Optional[float] = None
+        prior_close: Optional[float] = None
         try:
             daily_df = await dm.get_bars(
                 symbol, lookback_days=ATR_LOOKBACK_DAYS, timeframe="1d", is_futures=True
             )
-            if daily_df is not None and not daily_df.empty and len(daily_df) >= SATY_ATR_PERIOD:
-                atr_series = wilder_atr(
-                    daily_df["high"], daily_df["low"], daily_df["close"], period=SATY_ATR_PERIOD
-                )
-                atr = float(atr_series.iloc[-1])
-                last_bar = daily_df.iloc[-1]
-                day_range = float(last_bar["high"] - last_bar["low"])
+            if daily_df is not None and not daily_df.empty:
+                prior_close = self._prior_close_from_daily(daily_df)
+                if len(daily_df) >= SATY_ATR_PERIOD:
+                    atr_series = wilder_atr(
+                        daily_df["high"], daily_df["low"], daily_df["close"], period=SATY_ATR_PERIOD
+                    )
+                    atr = float(atr_series.iloc[-1])
+                    last_bar = daily_df.iloc[-1]
+                    day_range = float(last_bar["high"] - last_bar["low"])
         except Exception as exc:
-            logger.warning("auction bias: ATR fetch failed for %s: %s", symbol, exc)
+            logger.warning("auction bias: daily bars fetch failed for %s: %s", symbol, exc)
+
+        # Ticker prev_close is a fallback ONLY — daily bars are the reliable
+        # prior-session-close source (see _prior_close_from_daily docstring).
+        if prior_close is None:
+            prior_close = price_data.get("prev_close")
+
+        if price is None or prior_close is None:
+            return None
 
         tpo: Optional[dict] = None
         try:
