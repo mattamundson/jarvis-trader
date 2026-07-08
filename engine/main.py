@@ -177,6 +177,10 @@ from routers.prices_router import (
     router as prices_router,
     inject_dependencies as inject_prices_deps,
 )
+from routers.auction_bias_router import (
+    router as auction_bias_router,
+    inject_dependencies as inject_auction_bias_deps,
+)
 from routers.websocket_router import (
     router as websocket_router,
     inject_dependencies as inject_websocket_deps,
@@ -196,6 +200,7 @@ from routers.crypto_router import router as crypto_router
 from routers.openclaw_router import router as openclaw_router
 from routers.openclaw_router import inject_dependencies as inject_openclaw_deps
 from data.price_cache import PriceCache
+from data.auction_bias_provider import LiveAuctionDataProvider
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -1723,6 +1728,7 @@ async def lifespan(app: FastAPI):
     inject_sentiment_deps(data_manager)
     inject_settings_deps(settings, db_manager, safety_layer)
     inject_prices_deps(PriceCache(), data_manager=data_manager)
+    inject_auction_bias_deps(LiveAuctionDataProvider(data_manager))
     inject_websocket_deps(ws_manager)
     inject_thinkscript_deps(technical_analyst)
     inject_alerts_deps(db_manager=db_manager)
@@ -3050,6 +3056,7 @@ app.include_router(watchlist_router)
 app.include_router(sentiment_router)
 app.include_router(settings_router)
 app.include_router(prices_router)
+app.include_router(auction_bias_router)
 app.include_router(websocket_router)
 app.include_router(thinkscript_router)
 app.include_router(alerts_router)
