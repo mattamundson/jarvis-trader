@@ -20,18 +20,18 @@ from scripts.morning_framing_brief import chunk_for_discord
 
 
 def _bias(data_quality: str, message_count: int = 5, **overrides) -> CoreySessionBias:
-    defaults = dict(
-        date=date(2026, 7, 8),
-        session_type="trend_day",
-        directional_bias="bearish",
-        key_levels=[7525.0, 29227.0],
-        ib_bias="below_ib",
-        specific_triggers=["ES fails 7525", "NQ fails 29227"],
-        conviction=0.7,
-        corey_quote="Confirmed downside expansion phase led by NQ.",
-        message_count=message_count,
-        data_quality=data_quality,
-    )
+    defaults = {
+        "date": date(2026, 7, 8),
+        "session_type": "trend_day",
+        "directional_bias": "bearish",
+        "key_levels": [7525.0, 29227.0],
+        "ib_bias": "below_ib",
+        "specific_triggers": ["ES fails 7525", "NQ fails 29227"],
+        "conviction": 0.7,
+        "corey_quote": "Confirmed downside expansion phase led by NQ.",
+        "message_count": message_count,
+        "data_quality": data_quality,
+    }
     defaults.update(overrides)
     return CoreySessionBias(**defaults)
 
