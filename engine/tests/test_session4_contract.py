@@ -554,7 +554,7 @@ class TestSession4ContinuationEndpoints:
     # ── GET /validation/readiness-check ───────────────────────────────────
 
     def test_validation_readiness_check(self) -> None:
-        """GET /validation/readiness-check — returns criteria list."""
+        """GET /validation/readiness-check — returns checks list (PR #302 contract)."""
         r = client.get("/validation/readiness-check", headers=_AUTH)
         assert r.status_code in (
             200,
@@ -562,7 +562,7 @@ class TestSession4ContinuationEndpoints:
         ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
-            assert "criteria" in body, f"Response missing 'criteria'. Body: {body}"
+            assert "checks" in body, f"Response missing 'checks'. Body: {body}"
             assert isinstance(
-                body["criteria"], list
-            ), f"Expected 'criteria' to be a list. Body: {body}"
+                body["checks"], list
+            ), f"Expected 'checks' to be a list. Body: {body}"
