@@ -2723,3 +2723,64 @@ export interface PnlTruthResponse {
 export async function fetchPnlTruth(): Promise<PnlTruthResponse> {
   return fetchEngine<PnlTruthResponse>("/pnl/truth");
 }
+
+// ── Auction / overnight-bias (advisory) ───────────────────────────────────────
+// GET /auction/bias/{symbol} — engine-derived Saty + TPO + Corey synthesis into a
+// line-in-the-sand overnight read. Advisory only; NOT a mirror of the TOS chart.
+// Numbers are gated by engine/tests/test_auction_bias_parity.py. See
+// engine/routers/auction_bias_router.py and docs/design/es-auction-overnight-bias-card.md.
+export interface AuctionBiasProvenance {
+  is_live: boolean;
+  source: string;
+  as_of: number | null;
+  stale_after_s: number;
+}
+
+export interface AuctionBiasSaty {
+  atr: number;
+  call_trigger: number;
+  put_trigger: number;
+  plus_1_atr: number;
+  minus_1_atr: number;
+  bias: "long" | "short" | "neutral";
+  day_range_pct_of_atr: number | null;
+}
+
+export interface AuctionBiasSynthesis {
+  line_in_sand: number;
+  line_source: string;
+  long_above: number;
+  short_below: number;
+  confirm_long_above: number;
+  confirm_short_below: number | null;
+  lean: string;
+  overnight_recommendation: string;
+}
+
+// Unavailable shape: the endpoint returns available:false (still HTTP 200) when
+// the provider has no usable market data — the card renders STATIC, not an error.
+export interface AuctionBiasResponse {
+  symbol: string;
+  available: boolean;
+  error?: string;
+  // Present only when available === true:
+  price?: number;
+  prior_close?: number;
+  saty?: AuctionBiasSaty;
+  tpo?: Record<string, unknown> | null;
+  corey?: Record<string, unknown> | null;
+  synthesis?: AuctionBiasSynthesis;
+  engine_derived?: boolean;
+  chart_parity?: boolean;
+  caveats?: string[];
+  provenance?: AuctionBiasProvenance;
+  // Present only when available === false:
+  is_live?: boolean;
+  source?: string;
+  as_of?: number | null;
+  stale_after_s?: number;
+}
+
+export async function fetchAuctionBias(symbol: string): Promise<AuctionBiasResponse> {
+  return fetchEngine<AuctionBiasResponse>(`/auction/bias/${symbol}`);
+}
