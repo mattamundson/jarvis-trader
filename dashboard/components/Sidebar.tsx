@@ -127,6 +127,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Learning", href: "/learning", icon: <Rss className="h-3.5 w-3.5" /> },
       { label: "Research Log", href: "/research-log", icon: <FileText className="h-3.5 w-3.5" /> },
       { label: "Discord", href: "/discord", icon: <MessageSquare className="h-3.5 w-3.5" /> },
+      { label: "Framing Brief", href: "/framing-brief", icon: <SunMedium className="h-3.5 w-3.5" /> },
     ],
   },
   {
