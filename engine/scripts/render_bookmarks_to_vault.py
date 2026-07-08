@@ -39,7 +39,7 @@ if str(_ENGINE_ROOT) not in sys.path:
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_VAULT_DIR = r"C:\Users\mattm\second-brain\wiki\discord-bookmarks"
+DEFAULT_VAULT_DIR = r"C:\Users\mattm\master-jarvis\second-brain\wiki\discord-bookmarks"
 DEFAULT_DB_PATH = "engine/data/jarvis_trader.db"
 
 # Module touch-point text mirrors the 2026-04-17 index header comments.
