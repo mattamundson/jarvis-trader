@@ -1530,18 +1530,6 @@ export interface ValidationAlertsResponse {
   error?: string;
 }
 
-export interface ValidationReadinessCriterion {
-  name: string;
-  target: string;
-  description: string;
-}
-
-export interface ValidationReadinessResponse {
-  criteria: ValidationReadinessCriterion[];
-  description: string;
-  phase: string;
-}
-
 // ── System Endpoints ────────────────────────────────────────────────────────
 
 export interface BackupFile {
