@@ -118,10 +118,65 @@ CLAUDE.md flags that there is **no end-to-end numeric-accuracy test** (engine �
 
 ## Phased plan
 
-1. **v1**: `/auction/bias/{symbol}` synthesis endpoint + parity test (engine only).
-2. **v2**: `AuctionBiasCard.tsx` wired via `fetchEngine`, provenance badges.
-3. **v3 (later)**: streaming level-cross alerting; optional TOS bridge ingest if a
-   study export path ever exists.
+1. **v1** (SHIPPED, unit-tested): `analysis/auction_bias.py` synthesis +
+   `routers/auction_bias_router.py` endpoint over an `AuctionDataProvider` protocol +
+   `tests/test_auction_bias_parity.py` (Saty pinned to screenshot ±1 tick) +
+   `tests/test_auction_bias_router.py`.
+2. **v2** (SHIPPED, type-checks only): `dashboard/components/AuctionBiasCard.tsx` +
+   `AuctionBias*` types in `lib/api.ts`. Not yet mounted (endpoint provider not live).
+3. **v3 — live provider + mount (HOST-ONLY, see guide below).**
+4. **v4 (later)**: streaming level-cross alerting; optional TOS bridge ingest.
+
+## Host implementation guide — the live `AuctionDataProvider` (v3)
+
+Not written in the cloud session: it stitches four async subsystems whose output
+mappings are parity-sensitive and cannot be verified without the running engine,
+IB feed, and live intraday bars. Build + smoke-test this ON THE HOST.
+
+**Async note.** The router's `AuctionDataProvider.get_inputs()` is declared sync.
+The engine data calls are async, so either (a) make the concrete provider do its
+async fetch and cache the result, exposing a sync `get_inputs` that returns the last
+cache, or (b) widen the protocol to `async def get_inputs`. Prefer (a) with a short
+TTL cache so the endpoint stays snappy.
+
+**Inputs to assemble** (`data_manager` = the injected market data manager):
+
+- `price`, `prior_close`: `await data_manager.get_current_price(sym_mapped, is_futures=True)`
+  -> `last_price`, `prev_close` (see routers/prices_router.py for the exact dict shape
+  and the `ibkr.is_connected` provenance flag). Map MES->ES etc. via
+  `agents.corey_auction_analyst.SYMBOL_MAP`.
+- `atr`: **parity-critical.** Compute from daily bars
+  (`await data_manager.get_historical_bars(...)`) with the SAME period/session the AA
+  Saty study uses. Do not guess — transcribe the study's ATR length and confirm the
+  computed value reproduces the on-chart ATR (102.16 in the 2026-07-08 fixture) before
+  trusting it. Extend `test_auction_bias_parity.py` with this ATR check.
+- `day_range`: session high-low from the same intraday bars.
+- `tpo`: `backtest.tpo_profile.compute_tpo_profile(intraday_df)` yields `va_high/va_low/
+  vpoc/profile_high/profile_low/buyer_control_signal/seller_control_signal`. The
+  "profile targets X / fail targets Y" mapping lives near tpo_profile.py:190 — map to
+  `{value_area, profile_target, fail_target, failed}`. **Verify the mapping reproduces
+  the chart's fail_target (7529.75) on the fixture.**
+- `corey`: `await CoreyAuctionAnalystAgent(...).analyze(...)` -> `CoreyAuctionReport`.
+  Map `directional_bias` -> `corey.bias`, and derive `sellers_in_control_below` /
+  `buyers_offside_below` from `key_levels` + the control signals. `data_quality` /
+  `sentiment_stale` -> `corey.data_quality`. **This mapping is unverified — confirm the
+  shelves match the chart (7546.25 / 7530.75) before shipping.**
+
+**Provenance:** pass `source` and `ibkr_connected` (from `data_manager.ibkr.is_connected`)
+and `as_of` through so the existing `derive_is_live` renders an honest badge.
+
+**Mount (main.py, ~3 lines) — smoke-test after adding:**
+```python
+from routers.auction_bias_router import router as auction_bias_router
+from routers.auction_bias_router import inject_dependencies as inject_auction_bias_deps
+# ... after data_manager is constructed:
+inject_auction_bias_deps(LiveAuctionDataProvider(data_manager))
+app.include_router(auction_bias_router)
+```
+Smoke test: `curl -s localhost:8010/auction/bias/MES | jq` with IB Gateway up, then
+cross-check `line_in_sand`, `saty.put_trigger`, and `provenance.is_live` against the
+live chart. Only then mount `AuctionBiasCard` on `/market-analysis` and confirm render.
 
 ---
-*Scoping doc only. No engine, risk, config, or execution code changed. No orders.*
+*Design doc. v1/v2 code is unit-tested / type-checked respectively; v3 live provider is
+host-only and unverified until smoke-tested. No config/risk/execution touched, no orders.*
