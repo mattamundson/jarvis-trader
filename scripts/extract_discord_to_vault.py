@@ -49,7 +49,7 @@ if hasattr(sys.stderr, "reconfigure"):
 # ── Configuration ────────────────────────────────────────────────────────────
 
 DB_PATH = Path(r"C:\Users\mattm\ThinkorSwim\jarvis-trader\engine\data\jarvis_trader.db")
-DEFAULT_VAULT_RAW = Path(r"C:\Users\mattm\second-brain\raw")
+DEFAULT_VAULT_RAW = Path(r"C:\Users\mattm\master-jarvis\second-brain\raw")
 CAPTURED_AT = "2026-05-20"
 ATTACHMENT_TIMEOUT = 300  # 5 minutes
 ATTACHMENT_UA = "jarvis-trader-vault/1.0"
@@ -997,8 +997,8 @@ def main():
         help=(
             "Absolute path to the output root directory. "
             "Must exist, be a directory, and be writable. "
-            "Default: C:\\Users\\mattm\\second-brain\\raw "
-            "(preserves prior run behavior). "
+            "Default: C:\\Users\\mattm\\master-jarvis\\second-brain\\raw "
+            "(canonical gbrain-ingested vault root). "
             "Example: --output-path "
             "C:\\Users\\mattm\\master-jarvis\\second-brain\\raw\\_session-2026-05-20-amo"
         ),
