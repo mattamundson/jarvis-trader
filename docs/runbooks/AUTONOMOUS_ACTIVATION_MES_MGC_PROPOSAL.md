@@ -80,12 +80,13 @@ documented halt (0 wins in 55 trades, all strategy families exhausted 2026-05-07
 run + Tier-3 approval), not a line item here, and is **not** proposed or executed
 by this document.
 
-**Pending Amo's choice:**
-- **(a)** Ship with `AUTONOMOUS_ACTIVE_SYMBOLS=MES,MGC` only (MNQ omitted — no
-  behavior difference from including it today, minus the wasted LLM calls).
-- **(b)** Include MNQ in the list anyway, explicitly understanding it is inert
-  until the halt is separately lifted (documentation/intent only).
-- **(c)** Open the separate MNQ re-validation workstream first, decide after.
+**Decided 2026-07-08 — (c): open the MNQ re-validation workstream separately.**
+This proposal ships `AUTONOMOUS_ACTIVE_SYMBOLS=MES,MGC` (§5) — unblocked, not
+waiting on MNQ. MNQ re-validation is scoped in
+`docs/runbooks/MNQ_REVALIDATION_SCOPE.md` and is **not executable from a cloud
+session** — it requires the engine venv + live/historical market data connections
+that exist only on the trading box. See that doc for what "new evidence" would
+actually mean vs. re-litigating the same failed result.
 
 ### 3b. `AUTONOMOUS_AUTO_APPROVE_PAPER` — set to `1`, Amo's explicit informed choice
 
@@ -123,13 +124,13 @@ auto-approval attempt.
 
 ## 5. Proposed change (for the box, on approval — NOT executed here)
 
-In `engine/.env` (gitignored, never committed). `AUTONOMOUS_ACTIVE_SYMBOLS` shown as
-`MES,MGC` pending Amo's §3a choice — append `,MNQ` only if choosing (b), with the
-understanding it will not enqueue anything until the halt is separately lifted:
+In `engine/.env` (gitignored, never committed). Decision (c) means MNQ is not in
+this env block — it's scoped separately in `MNQ_REVALIDATION_SCOPE.md` and will
+only be added here if that workstream produces a Tier-3 approval to lift the halt:
 
 ```
 ENABLE_AUTONOMOUS_PIPELINE=1
-AUTONOMOUS_ACTIVE_SYMBOLS=MES,MGC        # was MCL,MNQ (dead / DO_NOT_TRADE); +MNQ = no-op, see §3a
+AUTONOMOUS_ACTIVE_SYMBOLS=MES,MGC        # was MCL,MNQ (dead / DO_NOT_TRADE); MNQ deferred, see §3a
 AUTONOMOUS_CONFIDENCE_THRESHOLD=0.75     # conservative, matches 2026-05-21
 AUTONOMOUS_AUTO_APPROVE_PAPER=1          # Amo's explicit choice — hands-off from tick one, see §3b
 ```
@@ -181,8 +182,8 @@ is approved (so the executed change and the runbook agree):
 
 - [x] Amo (Tier-3): `AUTONOMOUS_AUTO_APPROVE_PAPER=1` — confirmed 2026-07-08, explicit
       and informed (no observation window; see §3b)
-- [ ] Amo (Tier-3): MNQ inclusion — pick (a) omit / (b) include as documented no-op /
-      (c) open separate re-validation workstream first (see §3a)
+- [x] Amo (Tier-3): MNQ — decision (c), 2026-07-08: deferred to
+      `MNQ_REVALIDATION_SCOPE.md`; this proposal ships MES,MGC only (see §3a, §5)
 - [ ] Preconditions §4 verified on the box
 - [ ] Runbook follow-ups §7 scheduled, including the auto-approve-live monitoring
       note in §5 if not already covered
