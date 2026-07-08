@@ -1,4 +1,4 @@
-# PROPOSAL — Activate the autonomous pipeline on MES + MGC
+# PROPOSAL — Activate the autonomous pipeline on MES + MGC (+ MNQ, pending)
 
 > **Status: DRAFT PROPOSAL — requires Tier-3 sign-off from Amo. Nothing here is
 > executed.** This document proposes a config change; it changes no running
@@ -8,6 +8,10 @@
 > Companion to (does not replace) `docs/runbooks/AUTONOMOUS_PIPELINE_RUNBOOK.md`,
 > which documents the mechanics, safety gates, and approve/reject flow. Read that
 > first. This memo only covers the *decision* to point the loop at tradeable symbols.
+>
+> **2026-07-08 update:** Amo requested MES,MGC,MNQ + `AUTONOMOUS_AUTO_APPROVE_PAPER=1`.
+> MNQ is a documented no-op pending §3a below — flagged, not silently added. The
+> auto-approve decision is recorded in §3b as an explicit, informed Tier-3 choice.
 
 ---
 
@@ -47,32 +51,58 @@ This proposal does not touch any of that. It only changes which symbols are scan
 
 ---
 
-## 3. The decision that actually needs Tier-3 judgment
+## 3. The decisions that need Tier-3 judgment
 
-There are **two** env knobs, and the second is the real one:
+### 3a. Symbols — MES, MGC confirmed; MNQ is a documented no-op pending a separate decision
 
-| Knob | Proposed | Effect |
-|---|---|---|
-| `AUTONOMOUS_ACTIVE_SYMBOLS` | `MES,MGC` | Scan the two approved paper instruments instead of the dead MCL,MNQ |
-| `AUTONOMOUS_AUTO_APPROVE_PAPER` | **`0` (recommended)** | See below — this is the human-in-loop switch |
+Amo requested `MES,MGC,MNQ`. MES and MGC are approved paper instruments — no issue.
+**MNQ is different in kind, not just status:** it isn't merely defaulted-off, it is
+force-blocked in code:
 
-### `AUTONOMOUS_AUTO_APPROVE_PAPER` — undocumented in the runbook, must be decided
+```python
+# engine/backtest/signals.py:113
+DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
+```
 
-This flag exists in code (`pipeline_autonomous.py:263-298`) but is **not** in
-`AUTONOMOUS_PIPELINE_RUNBOOK.md`. When `1`, a freshly-enqueued candidate is
-**auto-approved in paper** by programmatically pressing the same approve button a
-human would (`approve_candidate` → `safety_layer.submit_paper_order`, after re-checking
-kill-switch, live-guard, validation-only block, entry-price sanity). It refuses when
-`LIVE_TRADING_ENABLED` — the "never auto-submit live" guarantee holds.
+This forces `NO_TRADE` at signal generation, unconditionally, **regardless of
+`AUTONOMOUS_ACTIVE_SYMBOLS`**. So adding MNQ to the scan list today would:
+- Burn an LLM call on MNQ every tick, and
+- **Never produce a candidate** — it always resolves to `NO_TRADE`.
 
-- **`0` (recommended):** human-in-the-loop. Candidates wait in the queue for an
-  explicit approve. This is the honest first step — you watch what the loop *would*
-  do before letting it act.
-- **`1`:** fully autonomous paper trading (no human between signal and paper order).
-  Only consider after a sustained observation window at `0` shows the queue is sane.
+That's the same "configured but structurally inert" pattern the 2026-07-06 diagnosis
+(`docs/strategic/09_SCOPE_COLLAPSE_FIX_STRATEGY.md`) found across this whole codebase.
+This proposal will not reproduce it by listing MNQ as if it does something it can't.
 
-**Recommendation: ship at `0`.** Prove the candidate stream is trustworthy before
-removing the human.
+To make MNQ actually tradeable requires removing it from `DO_NOT_TRADE_SYMBOLS` in
+`signals.py` — a file `CLAUDE.md` marks Tier-3-gated — which means reversing a
+documented halt (0 wins in 55 trades, all strategy families exhausted 2026-05-07)
+**without new validation evidence**. That is its own workstream (fresh WFE/gate-v2
+run + Tier-3 approval), not a line item here, and is **not** proposed or executed
+by this document.
+
+**Pending Amo's choice:**
+- **(a)** Ship with `AUTONOMOUS_ACTIVE_SYMBOLS=MES,MGC` only (MNQ omitted — no
+  behavior difference from including it today, minus the wasted LLM calls).
+- **(b)** Include MNQ in the list anyway, explicitly understanding it is inert
+  until the halt is separately lifted (documentation/intent only).
+- **(c)** Open the separate MNQ re-validation workstream first, decide after.
+
+### 3b. `AUTONOMOUS_AUTO_APPROVE_PAPER` — set to `1`, Amo's explicit informed choice
+
+This flag exists in code (`pipeline_autonomous.py:263-298`) but was **not** in
+`AUTONOMOUS_PIPELINE_RUNBOOK.md` before this proposal. When `1`, a freshly-enqueued
+candidate is **auto-approved in paper** by programmatically pressing the same approve
+button a human would (`approve_candidate` → `safety_layer.submit_paper_order`, after
+re-checking kill-switch, live-guard, validation-only block, entry-price sanity). It
+refuses when `LIVE_TRADING_ENABLED` — the "never auto-submit live" guarantee holds.
+
+The original recommendation here was `0` (human-in-the-loop first, prove the
+candidate stream is sane before removing the human). **Amo was shown that tradeoff
+directly — first auto-submitted paper order gets zero human review, no observation
+window — and confirmed `1` anyway.** Recorded as an explicit Tier-3 decision, not a
+default: full hands-off paper trading from tick one. The rest of the safety envelope
+(§2) is unaffected — kill-switch, live-guard, and entry-price sanity still gate every
+auto-approval attempt.
 
 ---
 
@@ -93,29 +123,45 @@ removing the human.
 
 ## 5. Proposed change (for the box, on approval — NOT executed here)
 
-In `engine/.env` (gitignored, never committed):
+In `engine/.env` (gitignored, never committed). `AUTONOMOUS_ACTIVE_SYMBOLS` shown as
+`MES,MGC` pending Amo's §3a choice — append `,MNQ` only if choosing (b), with the
+understanding it will not enqueue anything until the halt is separately lifted:
 
 ```
 ENABLE_AUTONOMOUS_PIPELINE=1
-AUTONOMOUS_ACTIVE_SYMBOLS=MES,MGC        # was MCL,MNQ (dead / DO_NOT_TRADE)
+AUTONOMOUS_ACTIVE_SYMBOLS=MES,MGC        # was MCL,MNQ (dead / DO_NOT_TRADE); +MNQ = no-op, see §3a
 AUTONOMOUS_CONFIDENCE_THRESHOLD=0.75     # conservative, matches 2026-05-21
-AUTONOMOUS_AUTO_APPROVE_PAPER=0          # human-in-the-loop first (recommended)
+AUTONOMOUS_AUTO_APPROVE_PAPER=1          # Amo's explicit choice — hands-off from tick one, see §3b
 ```
 
 Then `.\restart_engine.ps1` and verify per the runbook's "How to Enable" §
 (loop-started log line + `GET /approvals/pending` returns `{"count":0,...}`).
 
+**Because auto-approve is `1` from the start, the first watch is not "review before
+approving" — it's "watch the audit trail immediately after."** Within the first tick
+cycle after restart:
+- Tail `engine/data/approval_audit.jsonl` for the first auto-approved entries.
+- Confirm symbol/direction/entry price/confidence look sane against the live engine
+  (per the numeric-accuracy discipline in `CLAUDE.md` — cross-check against source
+  of truth, don't eyeball).
+- `GET /approvals/history?days=1` to see submitted paper orders.
+- The kill switch and `ENABLE_AUTONOMOUS_PIPELINE=0` remain the immediate stop —
+  use either the moment anything looks wrong.
+
 ---
 
-## 6. Staged rollout
+## 6. Rollout (no observation window — see §3b)
 
-1. **Observe (days 1-N):** `AUTO_APPROVE_PAPER=0`. Let candidates accrue; review the
-   queue via Discord/Hermes/dashboard. Confirm symbols, directions, confidences, and
-   entry prices look right against the engine. Reject/approve by hand.
-2. **Decide:** only if the candidate stream is consistently sane, consider
-   `AUTO_APPROVE_PAPER=1` for hands-off paper — as its own Tier-3 decision.
-3. **Rollback anytime:** `ENABLE_AUTONOMOUS_PIPELINE=0` + restart, or trip the kill
-   switch (no restart). Pending candidates expire on TTL.
+1. **Flip and watch immediately** (not "observe then decide" — auto-approve is live
+   from the first tick): confirm the loop-started log line, then monitor the audit
+   log / Discord webhook / `/approvals/history` in real time for the first candidates.
+2. **Rollback anytime:** `ENABLE_AUTONOMOUS_PIPELINE=0` + restart, or trip the kill
+   switch (no restart). Already-submitted paper orders are not reversed by this —
+   only the queue/enqueue path stops.
+3. If the candidate stream looks wrong (bad prices, wrong direction, too-frequent
+   enqueues), the fastest safe stop is `ENABLE_AUTONOMOUS_PIPELINE=0`; consider
+   reverting to `AUTONOMOUS_AUTO_APPROVE_PAPER=0` rather than fully disabling if the
+   symbols/signals are fine and only the auto-submit behavior is in question.
 
 ---
 
@@ -133,9 +179,12 @@ is approved (so the executed change and the runbook agree):
 
 ## 8. Sign-off
 
-- [ ] Amo (Tier-3): symbols → MES,MGC — approved
-- [ ] Amo (Tier-3): `AUTONOMOUS_AUTO_APPROVE_PAPER` value — decided (`0` recommended)
+- [x] Amo (Tier-3): `AUTONOMOUS_AUTO_APPROVE_PAPER=1` — confirmed 2026-07-08, explicit
+      and informed (no observation window; see §3b)
+- [ ] Amo (Tier-3): MNQ inclusion — pick (a) omit / (b) include as documented no-op /
+      (c) open separate re-validation workstream first (see §3a)
 - [ ] Preconditions §4 verified on the box
-- [ ] Runbook follow-ups §7 scheduled
+- [ ] Runbook follow-ups §7 scheduled, including the auto-approve-live monitoring
+      note in §5 if not already covered
 
 _Proposal only. No code or config changed by this document._
