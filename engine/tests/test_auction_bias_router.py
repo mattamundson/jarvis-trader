@@ -38,7 +38,7 @@ class FakeProvider:
         self._ibkr = ibkr_connected
         self._as_of = as_of
 
-    def get_inputs(self, symbol):
+    async def get_inputs(self, symbol):
         if self._inputs is None:
             return None
         return {

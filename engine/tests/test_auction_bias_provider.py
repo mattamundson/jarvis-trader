@@ -1,0 +1,182 @@
+"""Integration-glue test for LiveAuctionDataProvider using synthetic bars.
+
+This does NOT verify real-world numeric accuracy (needs live IB Gateway + real
+market data — that is the host smoke test documented in
+data/auction_bias_provider.py and the design doc). It DOES execute the actual
+control flow against synthetic data + the real backtest.tpo_profile /
+wilder_atr functions and the real CoreyAuctionReport dataclass, catching
+integration bugs (wrong column names, bad NaN handling, wrong await usage,
+misspelled dataclass attributes) that a pure read-through cannot.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import pandas as pd
+import pytest
+
+from agents.corey_auction_analyst import CoreyAuctionReport
+from analysis.auction_bias import synthesize_auction_bias
+from data.auction_bias_provider import LiveAuctionDataProvider
+
+
+def _daily_bars(n=25, start=7500.0):
+    rows = []
+    price = start
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    for i in range(n):
+        high = price + 15
+        low = price - 10
+        rows.append(
+            {
+                "timestamp": base + timedelta(days=i),
+                "open": price,
+                "high": high,
+                "low": low,
+                "close": price + 2,
+                "volume": 1000,
+            }
+        )
+        price += 3
+    return pd.DataFrame(rows)
+
+
+def _intraday_bars_two_sessions():
+    """Two distinct calendar-day sessions of 5-min bars, so compute_tpo_profile's
+    shift(1) has a defined prior-session row for the second day."""
+    rows = []
+    day1 = datetime(2026, 7, 7, 14, 30, tzinfo=timezone.utc)  # 9:30 CT
+    prices_day1 = [7500, 7505, 7510, 7515, 7520, 7515, 7510, 7505, 7500, 7495]
+    for i, p in enumerate(prices_day1):
+        ts = day1 + timedelta(minutes=5 * i)
+        rows.append({"timestamp": ts, "open": p, "high": p + 1, "low": p - 1, "close": p, "volume": 500})
+
+    day2 = datetime(2026, 7, 8, 14, 30, tzinfo=timezone.utc)
+    prices_day2 = [7520, 7515, 7510, 7505, 7500, 7495, 7490, 7485, 7480, 7526.75]
+    for i, p in enumerate(prices_day2):
+        ts = day2 + timedelta(minutes=5 * i)
+        rows.append({"timestamp": ts, "open": p, "high": p + 1, "low": p - 1, "close": p, "volume": 500})
+
+    return pd.DataFrame(rows)
+
+
+class FakeIBKR:
+    is_connected = True
+
+
+class FakeDataManager:
+    def __init__(self):
+        self.ibkr = FakeIBKR()
+
+    async def get_current_price(self, symbol, is_futures=False):
+        return {"last_price": 7526.75, "prev_close": 7551.75, "source": "ibkr"}
+
+    async def get_bars(self, symbol, lookback_days=30, timeframe="5m", is_futures=False):
+        if timeframe == "1d":
+            return _daily_bars()
+        return _intraday_bars_two_sessions()
+
+
+class FakeCoreyAgent:
+    async def analyze(self, symbol, current_price=0.0, atr=0.0, hp_context=None, **kwargs):
+        return CoreyAuctionReport(
+            symbol=symbol,
+            timestamp=datetime.now(timezone.utc),
+            signal=-0.5,
+            confidence=0.6,
+            session_type="RTH",
+            directional_bias="bearish",
+            key_levels=[7546.25, 7530.75],
+            active_bot_signal={},
+            bot_win_rate=0.55,
+            alignment_score=-0.3,
+            ib_bias="below_ib",
+            corey_quote="sellers in control",
+            summary="bearish auction",
+            reasoning="test fixture",
+            data_quality="full",
+            sentiment_stale=False,
+            sentiment_age_days=1,
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_inputs_returns_well_formed_payload():
+    provider = LiveAuctionDataProvider(FakeDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    assert raw is not None
+    assert raw["price"] == 7526.75
+    assert raw["prior_close"] == 7551.75
+    assert raw["source"] == "ibkr"
+    assert raw["ibkr_connected"] is True
+    assert isinstance(raw["atr"], float) and raw["atr"] > 0
+    assert isinstance(raw["day_range"], float)
+
+
+@pytest.mark.asyncio
+async def test_corey_shelves_are_deliberately_unset():
+    # key_levels is populated on the fixture report, but the provider must NOT
+    # guess a sellers_in_control_below / buyers_offside_below mapping from it.
+    provider = LiveAuctionDataProvider(FakeDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    assert raw["corey"]["bias"] == "bearish"
+    assert raw["corey"]["sellers_in_control_below"] is None
+    assert raw["corey"]["buyers_offside_below"] is None
+
+
+@pytest.mark.asyncio
+async def test_tpo_dict_is_none_or_well_formed():
+    provider = LiveAuctionDataProvider(FakeDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    # With only 2 synthetic sessions, compute_tpo_profile's prior-session shift
+    # is defined for day 2 -> tpo should be populated (not silently dropped).
+    assert raw["tpo"] is not None
+    assert set(raw["tpo"].keys()) == {"value_area", "profile_target", "fail_target", "failed"}
+    assert isinstance(raw["tpo"]["failed"], bool)
+
+
+@pytest.mark.asyncio
+async def test_payload_flows_cleanly_into_synthesize_auction_bias():
+    """The real end-to-end glue: provider output -> synthesis, no exceptions,
+    no NaN/None leaking into the numeric fields synthesize_auction_bias expects."""
+    provider = LiveAuctionDataProvider(FakeDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    payload = synthesize_auction_bias(
+        symbol="MES",
+        price=raw["price"],
+        prior_close=raw["prior_close"],
+        atr=raw["atr"],
+        day_range=raw["day_range"],
+        tpo=raw["tpo"],
+        corey=raw["corey"],
+    )
+    assert payload["saty"]["bias"] in ("long", "short", "neutral")
+    assert payload["synthesis"]["line_in_sand"] is not None
+    assert payload["engine_derived"] is True
+
+
+@pytest.mark.asyncio
+async def test_missing_price_returns_none():
+    class NoPriceDataManager(FakeDataManager):
+        async def get_current_price(self, symbol, is_futures=False):
+            return {"last_price": None, "prev_close": None, "source": "unavailable"}
+
+    provider = LiveAuctionDataProvider(NoPriceDataManager(), FakeCoreyAgent())
+    assert await provider.get_inputs("MES") is None
+
+
+@pytest.mark.asyncio
+async def test_corey_failure_degrades_gracefully():
+    class BrokenCoreyAgent(FakeCoreyAgent):
+        async def analyze(self, *args, **kwargs):
+            raise RuntimeError("db locked")
+
+    provider = LiveAuctionDataProvider(FakeDataManager(), BrokenCoreyAgent())
+    raw = await provider.get_inputs("MES")
+    assert raw is not None  # price/ATR/TPO still usable even if Corey errors
+    assert raw["corey"] is None

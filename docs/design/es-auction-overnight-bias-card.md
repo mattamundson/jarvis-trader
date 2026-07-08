@@ -124,58 +124,72 @@ CLAUDE.md flags that there is **no end-to-end numeric-accuracy test** (engine �
    `tests/test_auction_bias_router.py`.
 2. **v2** (SHIPPED, type-checks only): `dashboard/components/AuctionBiasCard.tsx` +
    `AuctionBias*` types in `lib/api.ts`. Not yet mounted (endpoint provider not live).
-3. **v3 — live provider + mount (HOST-ONLY, see guide below).**
+3. **v3** (SHIPPED, integration-tested with synthetic data; NOT host-verified):
+   `data/auction_bias_provider.py` (`LiveAuctionDataProvider`) +
+   `analysis/tpo_bias_mapping.py` (the TPO `failed`-flag derivation, unit-tested against
+   the chart's own algebra) + `tests/test_auction_bias_provider.py` (6 tests, real
+   `compute_tpo_profile`/`wilder_atr`/`CoreyAuctionReport` exercised against synthetic
+   bars — confirms the wiring, not real-world numeric accuracy). `main.py` mount +
+   host smoke test are the one remaining step — see below.
 4. **v4 (later)**: streaming level-cross alerting; optional TOS bridge ingest.
 
-## Host implementation guide — the live `AuctionDataProvider` (v3)
+## What v3 does and does not reproduce
 
-Not written in the cloud session: it stitches four async subsystems whose output
-mappings are parity-sensitive and cannot be verified without the running engine,
-IB feed, and live intraday bars. Build + smoke-test this ON THE HOST.
+`LiveAuctionDataProvider` (`engine/data/auction_bias_provider.py`) wires:
 
-**Async note.** The router's `AuctionDataProvider.get_inputs()` is declared sync.
-The engine data calls are async, so either (a) make the concrete provider do its
-async fetch and cache the result, exposing a sync `get_inputs` that returns the last
-cache, or (b) widen the protocol to `async def get_inputs`. Prefer (a) with a short
-TTL cache so the endpoint stays snappy.
+- **price/prior_close**: `data_manager.get_current_price(symbol, is_futures=True)`.
+- **ATR**: `backtest.indicators.wilder_atr` (period 14 — its own docstring says
+  "used by Saty ATR Levels script") on 30 daily bars from
+  `data_manager.get_bars(symbol, lookback_days=30, timeframe="1d", is_futures=True)`.
+  This is the parity-critical piece the Saty triggers depend on — confirm it reproduces
+  the chart's ATR (102.16 in the 2026-07-08 fixture) in the host smoke test below.
+- **TPO**: `backtest.tpo_profile.compute_tpo_profile` on 5 days of 5-min bars. The
+  `failed` flag is derived by `analysis.tpo_bias_mapping.derive_tpo_failed`, grounded in
+  that module's own target/fail_target algebra (verified algebraically + unit-tested
+  against the 2026-07-08 fixture: bull-imbalance, target=7624.25, fail_target=7529.75,
+  failed=True at 7526.75 — see `tests/test_tpo_bias_mapping.py`).
+- **Corey**: `CoreyAuctionAnalystAgent.analyze()` — only `directional_bias` and
+  `data_quality`/`sentiment_stale` are used. **`sellers_in_control_below` and
+  `buyers_offside_below` are deliberately left `None`** — that agent's `key_levels`
+  field (Discord-commentary-derived) has no confirmed mapping to those two specific
+  chart shelves, which are Corey's proprietary `AA_CoreyTscorev2` ThinkScript study
+  output with no API. Guessing that mapping would be exactly the
+  confidently-wrong-number failure mode CLAUDE.md warns against. With them unset, the
+  line-in-the-sand priority in `analysis/auction_bias.py` falls through to the TPO
+  `fail_target`, then the Saty `put_trigger` — both real, engine-native numbers.
 
-**Inputs to assemble** (`data_manager` = the injected market data manager):
+**Net honesty statement:** this card will never show Corey's exact on-chart shelf
+values. It shows two independent real signals (Saty ATR triggers, engine TPO measured-move)
+plus Corey's directional lean — each labeled, none faked.
 
-- `price`, `prior_close`: `await data_manager.get_current_price(sym_mapped, is_futures=True)`
-  -> `last_price`, `prev_close` (see routers/prices_router.py for the exact dict shape
-  and the `ibkr.is_connected` provenance flag). Map MES->ES etc. via
-  `agents.corey_auction_analyst.SYMBOL_MAP`.
-- `atr`: **parity-critical.** Compute from daily bars
-  (`await data_manager.get_historical_bars(...)`) with the SAME period/session the AA
-  Saty study uses. Do not guess — transcribe the study's ATR length and confirm the
-  computed value reproduces the on-chart ATR (102.16 in the 2026-07-08 fixture) before
-  trusting it. Extend `test_auction_bias_parity.py` with this ATR check.
-- `day_range`: session high-low from the same intraday bars.
-- `tpo`: `backtest.tpo_profile.compute_tpo_profile(intraday_df)` yields `va_high/va_low/
-  vpoc/profile_high/profile_low/buyer_control_signal/seller_control_signal`. The
-  "profile targets X / fail targets Y" mapping lives near tpo_profile.py:190 — map to
-  `{value_area, profile_target, fail_target, failed}`. **Verify the mapping reproduces
-  the chart's fail_target (7529.75) on the fixture.**
-- `corey`: `await CoreyAuctionAnalystAgent(...).analyze(...)` -> `CoreyAuctionReport`.
-  Map `directional_bias` -> `corey.bias`, and derive `sellers_in_control_below` /
-  `buyers_offside_below` from `key_levels` + the control signals. `data_quality` /
-  `sentiment_stale` -> `corey.data_quality`. **This mapping is unverified — confirm the
-  shelves match the chart (7546.25 / 7530.75) before shipping.**
+## Remaining step: mount + host smoke test
 
-**Provenance:** pass `source` and `ibkr_connected` (from `data_manager.ibkr.is_connected`)
-and `as_of` through so the existing `derive_is_live` renders an honest badge.
-
-**Mount (main.py, ~3 lines) — smoke-test after adding:**
+**Mount (main.py, ~4 lines):**
 ```python
+from data.auction_bias_provider import LiveAuctionDataProvider
 from routers.auction_bias_router import router as auction_bias_router
 from routers.auction_bias_router import inject_dependencies as inject_auction_bias_deps
 # ... after data_manager is constructed:
 inject_auction_bias_deps(LiveAuctionDataProvider(data_manager))
 app.include_router(auction_bias_router)
 ```
-Smoke test: `curl -s localhost:8010/auction/bias/MES | jq` with IB Gateway up, then
-cross-check `line_in_sand`, `saty.put_trigger`, and `provenance.is_live` against the
-live chart. Only then mount `AuctionBiasCard` on `/market-analysis` and confirm render.
+
+**Smoke test**, with IB Gateway up and the live chart open side-by-side:
+```bash
+curl -s localhost:8010/auction/bias/MES | jq
+```
+Confirm, in order:
+1. `saty.atr` matches the chart's ATR (was 102.16 on 2026-07-08). This is the one
+   truly parity-critical check — if it's off, `saty.*` triggers will be off too.
+2. `saty.call_trigger` / `put_trigger` / `plus_1_atr` / `minus_1_atr` match the chart's
+   Calls/Puts/+1 ATR/-1 ATR lines (already covered by `test_auction_bias_parity.py`
+   once #1 confirms the ATR feed is correct).
+3. `tpo.fail_target` is in the right ballpark — exact match to Corey's chart numbers is
+   **not** expected (see above); this is the engine's own measured-move, a different
+   real signal, not a chart mirror.
+
+Only after 1-2 pass: mount `AuctionBiasCard` on `/market-analysis` and confirm it
+renders (not just type-checks).
 
 ---
 *Design doc. v1/v2 code is unit-tested / type-checked respectively; v3 live provider is
