@@ -24,7 +24,7 @@ Three vault roots co-exist on this machine. Only one is ingested.
 | Root | Status | Purpose |
 |------|--------|---------|
 | `C:\Users\mattm\master-jarvis\second-brain\` | **Canonical — ingested** | All new writes go here; `Jarvis-VaultGbrainSync` watches this path |
-| `C:\Users\mattm\second-brain\` | Legacy — NOT ingested | Pre-existing inbox/archive content; treat as read-only historical store |
+| `C:\Users\mattm\second-brain\` | **Archived 2026-07-07 — GONE** | Empty 25-file remnant moved to `~/Archive/2026/second-brain-vault-a/` after the 2026-05-29 merge into the canonical root. Any code still pointing here now hits an absent path (see Known Issues). |
 | `C:\Users\mattm\my-vault\` | Separate Obsidian vault — NOT ingested | Distinct purpose; not part of the trading brain pipeline |
 
 **Rule:** all new vault writes from any session must target `master-jarvis/second-brain/raw/`. A naive `Glob ~/second-brain/` hits the legacy root and finds nothing recent — always qualify the full path.
@@ -219,7 +219,8 @@ partial-success fix ensures exported content before the crash is still merged.
 
 | Issue | Impact | Resolution |
 |-------|--------|------------|
-| `extract_discord_to_vault.py` writes to `~/second-brain/raw/` by default | Output lands in legacy root, not ingested automatically | Add `--output-path` config flag pointing to `master-jarvis/second-brain/raw/_session-<DATE>-amo/`; until then, post-run robocopy is required |
+| ~~`extract_discord_to_vault.py` writes to `~/second-brain/raw/` by default~~ | FIXED 2026-07-07 | `DEFAULT_VAULT_RAW` now targets `master-jarvis/second-brain/raw/` (the canonical ingested root). The `--output-path` flag still overrides for session-dated subdirs (`_session-<DATE>-amo/`). |
+| Repo code still hardcodes the archived legacy root `C:\Users\mattm\second-brain\` | These reads/writes now hit an absent path (Vault A archived 2026-07-07) | Repoint pending confirmation of where `discord-bookmarks` now live in the canonical vault: `engine/main.py:2183` (read `wiki\discord-bookmarks`), `engine/scripts/render_bookmarks_to_vault.py:42` (write default), `scripts/enrich_discord_bookmarks.py:27` (read `raw\discord-bookmarks`). PowerShell scan/cleanup scripts (`archive-rotate.ps1`, `scan-uncommitted.ps1`, `repo-remote-check.ps1`) list the archived root as a scan target and can drop it. |
 | `Jarvis-VaultGbrainSync` watches only `master-jarvis/second-brain/` | Content in `~/second-brain/raw/inbox/` is never auto-ingested | Consider extending the task if that dir becomes a working ingest area |
 | Enrichment marker is location-bound | Moving files post-enrichment leaves cross-links in the old location | Re-enrich at the destination if files are relocated after enrichment |
 | OneNote `New Section 29` files with plaintext OpenAI admin key | 2 files excluded from git, not in gbrain | Rotate key at platform.openai.com, then redact and commit (see OneNote section above) |
