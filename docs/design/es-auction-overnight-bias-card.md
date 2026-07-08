@@ -162,17 +162,20 @@ CLAUDE.md flags that there is **no end-to-end numeric-accuracy test** (engine �
 values. It shows two independent real signals (Saty ATR triggers, engine TPO measured-move)
 plus Corey's directional lean — each labeled, none faked.
 
-## Remaining step: mount + host smoke test
+## Remaining step: host smoke test (mount is DONE)
 
-**Mount (main.py, ~4 lines):**
-```python
-from data.auction_bias_provider import LiveAuctionDataProvider
-from routers.auction_bias_router import router as auction_bias_router
-from routers.auction_bias_router import inject_dependencies as inject_auction_bias_deps
-# ... after data_manager is constructed:
-inject_auction_bias_deps(LiveAuctionDataProvider(data_manager))
-app.include_router(auction_bias_router)
-```
+**Mount is shipped** in `main.py` (4 lines: import, `inject_auction_bias_deps
+(LiveAuctionDataProvider(data_manager))` alongside the other data_manager-dependent
+injections, `app.include_router`). Verified in-session without a live IB Gateway by:
+`py_compile` + `ruff check` on the full file (clean); direct isolated exercise of the
+4 added lines against a stubbed data manager; and a real HTTP GET through the actual
+mounted router -> `LiveAuctionDataProvider` -> `CoreyAuctionAnalystAgent` ->
+`synthesize_auction_bias` via FastAPI `TestClient`, which returned 200 with a
+well-formed payload (Corey's analyst hit missing Discord tables in the sandbox and
+degraded gracefully to `data_quality="none"` rather than crashing — confirms the
+required fallback behavior). NOT verified: real IB Gateway connectivity or that the
+numbers match the live chart — no IB Gateway process or real bars exist in that
+session. That's the one remaining step:
 
 **Smoke test**, with IB Gateway up and the live chart open side-by-side:
 ```bash
@@ -188,9 +191,15 @@ Confirm, in order:
    **not** expected (see above); this is the engine's own measured-move, a different
    real signal, not a chart mirror.
 
-Only after 1-2 pass: mount `AuctionBiasCard` on `/market-analysis` and confirm it
-renders (not just type-checks).
+Only after 1-2 pass: mount `AuctionBiasCard` on a real page and confirm it renders
+(not just type-checks). Page placement is deliberately left open — this codebase's
+closest sibling widget, `InstitutionalProfileWidget`, is also built but not wired
+into any page yet, so guessing a home for this one would be a UX call, not a
+mechanical one. The dashboard's actual routes live under `dashboard/app/` (e.g.
+`app/analysis/`) — confirm the current route name before picking one; the "14
+pages" list in `dashboard/CLAUDE.md` has drifted from the live route set.
 
 ---
-*Design doc. v1/v2 code is unit-tested / type-checked respectively; v3 live provider is
-host-only and unverified until smoke-tested. No config/risk/execution touched, no orders.*
+*Design doc. v1/v2/v3 code is unit-, integration-, and mount-tested respectively (no
+live IB Gateway in any session so far — see verification notes above and in the v3
+PR). No config/risk/execution touched, no orders.*
