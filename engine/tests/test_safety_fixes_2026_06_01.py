@@ -140,6 +140,69 @@ class TestEquitySyncSource:
 
 
 # ---------------------------------------------------------------------------
+# T0-02 — Frozen Equity Regression (2026-07-08 dashboard-integrity audit)
+# ---------------------------------------------------------------------------
+#
+# The Bug-1 fix above (static INITIAL_CAPITAL reference passed to
+# sync_from_broker) stopped the false kill-switch fires, but never added
+# cumulative realized P&L back into the "equity" argument. Because equity
+# never varied call-to-call, SafetyLayer._current_equity / _equity_peak —
+# and therefore pnl_snapshots.portfolio_equity and every
+# Sharpe/Sortino/Calmar/max-DD figure derived from it in
+# reports/quantstats_metrics.py — were frozen at exactly $10,000.00 from
+# 2026-06-02 onward (verified live against engine/data/jarvis_trader.db),
+# even while daily_pnl swung normally with real trading. Fix (main.py
+# _sync_safety_equity): current_equity = INITIAL_CAPITAL + total realized
+# P&L across ALL closed trades (db_manager.get_stats_summary()["total_pnl"]),
+# not just today's trades.
+
+
+class TestEquitySyncIncludesRealizedPnL:
+    """Pins the T0-02 fix: equity must move with cumulative realized P&L."""
+
+    def test_frozen_equity_bug_reproduced_with_static_reference(self):
+        """OLD (buggy) call: equity=INITIAL_CAPITAL only, ignoring realized
+        P&L. This is the exact frozen-equity bug — equity never advances no
+        matter how large the day's real P&L swing is."""
+        safety = _make_safety()
+        safety.sync_from_broker(10_000.0, -1_542.70)  # a real losing day
+        assert safety._current_equity == 10_000.0  # frozen -- this was the bug
+        safety.sync_from_broker(10_000.0, 3_018.18)  # a real winning day
+        assert safety._current_equity == 10_000.0  # still frozen
+
+    def test_current_equity_computation_matches_fixed_sync_logic(self):
+        """Mirrors the exact algorithm added to _sync_safety_equity() in
+        main.py: current_equity = config_equity + total_realized_pnl, where
+        total_realized_pnl comes from db_manager.get_stats_summary()["total_pnl"]
+        (SUM(pnl) over ALL status='closed' paper_trades, not just today's)."""
+        mock_db = MagicMock()
+        mock_db.get_stats_summary.return_value = {"total_pnl": 4_010.9795}
+        config_equity = 10_000.0
+        total_realized_pnl = float(mock_db.get_stats_summary()["total_pnl"])
+        current_equity = config_equity + total_realized_pnl
+        assert current_equity == pytest.approx(14_010.98, abs=0.01)
+
+    def test_fixed_equity_sync_reflects_cumulative_realized_pnl(self):
+        """FIXED call: equity = initial_capital + cumulative realized P&L.
+        _current_equity and _equity_peak now advance with real account
+        growth across syncs, instead of staying pinned to the constant."""
+        safety = _make_safety()
+        initial_capital = 10_000.0
+
+        # Sync 1: cumulative realized P&L so far = +3,018.18 (matches the
+        # real 2026-06-11 close in jarvis_trader.db).
+        safety.sync_from_broker(initial_capital + 3_018.18, 3_018.18)
+        assert safety._current_equity == pytest.approx(13_018.18)
+        assert safety._equity_peak == pytest.approx(13_018.18)
+
+        # Sync 2: cumulative realized P&L grows further (matches the real
+        # 2026-07-07 close: initial 10,000 + total_realized 4,010.98).
+        safety.sync_from_broker(initial_capital + 4_010.98, -1_542.70)
+        assert safety._current_equity == pytest.approx(14_010.98)
+        assert safety._equity_peak == pytest.approx(14_010.98)  # peak advances -- no longer frozen
+
+
+# ---------------------------------------------------------------------------
 # Bug 2 — Stop Monitor Logic
 # ---------------------------------------------------------------------------
 
