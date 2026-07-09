@@ -124,14 +124,23 @@ def _readiness_watchdog(
 
 
 def _port_holders(port: int) -> list[int]:
-    """Return PIDs that are LISTENING on the given port (TCP)."""
+    """Return PIDs that are LISTENING on the given port (TCP).
+
+    Timeout guards against a stalled netstat.exe under heavy machine
+    contention (e.g. many concurrent Claude Code sessions): without it, this
+    call can block main() forever, before _start_readiness_watchdog() is ever
+    reached -- a silent zombie the watchdog can't rescue because it never
+    starts. Live-diagnosed 2026-07-09 (T2-16): a stuck engine process showed
+    1 thread, ~0s CPU, static memory -- consistent with hanging right here.
+    """
     try:
         out = subprocess.check_output(
             ["netstat", "-ano", "-p", "TCP"],
             text=True,
             stderr=subprocess.DEVNULL,
+            timeout=15,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return []
 
     pids: set[int] = set()
