@@ -2250,6 +2250,29 @@ export async function fetchPostMortems(opts?: {
   return fetchEngine<PostMortemsResponse>(`/analytics/post-mortems${suffix}`);
 }
 
+// ── Live pipeline regime classification (/analytics/regime-v2/{symbol}) ──────
+// This is backtest.regime_classifier.RegimeClassifierV2 -- the classifier
+// engine/agents/pipeline.py actually uses live for regime-based strategy
+// routing. Deterministic rule-based thresholds only: validated is always
+// false (no ground-truth accuracy score exists yet) and probability_vector
+// is always null (the classifier doesn't produce one).
+
+export interface RegimeV2Response {
+  symbol: string;
+  regime: string;
+  description: string | null;
+  atr_norm: number | null;
+  ema_alignment: Record<string, number> | null;
+  validated: boolean;
+  probability_vector: Record<string, number> | null;
+  note: string | null;
+  timestamp: string;
+}
+
+export async function fetchRegimeV2(symbol: string): Promise<RegimeV2Response> {
+  return fetchEngine<RegimeV2Response>(`/analytics/regime-v2/${encodeURIComponent(symbol)}`);
+}
+
 // ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
 // Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
 // mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.
