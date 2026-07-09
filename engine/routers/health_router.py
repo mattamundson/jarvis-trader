@@ -96,15 +96,18 @@ _ibgw_health_cache: dict = {"checked_at": 0.0, "alive": False, "port": None}
 # /health single-flight snapshot cache (resilience under load spikes).
 #
 # The sub-diagnostics above are each 30s-cached, but `_health_inner` still makes
-# several *uncached* synchronous SQLite calls (db_manager.health_check,
-# get_pending_approval_stats, futures-sentiment staleness) inside an async
-# handler. Those block the event loop. When the dashboard polls /health many
+# several *uncached* synchronous SQLite calls (db_manager.ping, get_pending_
+# approval_stats, futures-sentiment staleness) inside an async handler. Left
+# un-offloaded, those block the event loop. When the dashboard polls /health many
 # times per second AND the box is under contention (multiple engines/sessions
 # hammering the 325MB SQLite DB), N concurrent blocking computes pile up on the
 # single event-loop thread and latency compounds — a warm 20ms call can spike to
 # 5-12s. port_guardian probes /health with an 8s timeout; a spike past that trips
 # a force-restart, which adds load — a self-amplifying cascade (4 such restarts
-# on 2026-07-06 22:11-22:40 UTC).
+# on 2026-07-06 22:11-22:40 UTC). SOTA plan P0.5: each of those three call sites
+# now runs via asyncio.to_thread so even a cache-miss recompute can't block the
+# loop — the single-flight cache below caps *how often* the blocking work runs;
+# to_thread caps *whether it blocks* when it does run.
 #
 # Single-flight fix: at most ONE recompute per TTL window regardless of request
 # volume. A polling storm collapses to one blocking compute/sec instead of N, so
@@ -556,30 +559,39 @@ async def _health_inner() -> dict:
     # Futures-sentiment freshness: Corey #market-updates is the SOLE sanctioned
     # futures-sentiment source; its feed has silently frozen before (revoked
     # Discord token). Surface age + quality so a stale feed is observable.
+    #
+    # Both underlying reads (get_futures_sentiment_staleness, get_bias_extraction_
+    # health) open a synchronous sqlite3 connection and run a query — offload via
+    # asyncio.to_thread like the db_manager calls above so a cache-miss health
+    # check can't block the event loop on SQLite I/O (SOTA plan P0.5).
     futures_sentiment = {"quality": "unknown", "age_days": None}
     try:
-        from discord.commentary_processor import (
-            get_bias_extraction_health,
-            get_futures_sentiment_staleness,
-        )
 
-        st = get_futures_sentiment_staleness()
-        ext = get_bias_extraction_health()
-        futures_sentiment = {
-            "quality": st.get("quality", "unknown"),
-            "age_days": st.get("age_days"),
-            "latest_timestamp": st.get("latest_timestamp"),
-            "threshold_days": st.get("threshold_days"),
-            # LLM structured-bias extraction health — distinct from the ingestion
-            # freshness above. 'degraded' = extraction has fallen behind commentary
-            # (e.g. the 2026-06-29 Anthropic credit-exhaustion outage that ran two
-            # days undetected because ingestion still looked fresh). Cache-only —
-            # no LLM call. Surfaced as a field; does not flip top-level status
-            # (the live engine has its own Vertex-backed extraction path).
-            "extraction_quality": ext.get("extraction_quality", "unknown"),
-            "extraction_lag_days": ext.get("lag_days"),
-            "latest_bias_date": ext.get("latest_bias_date"),
-        }
+        def _fetch_futures_sentiment_sync() -> dict:
+            from discord.commentary_processor import (
+                get_bias_extraction_health,
+                get_futures_sentiment_staleness,
+            )
+
+            st = get_futures_sentiment_staleness()
+            ext = get_bias_extraction_health()
+            return {
+                "quality": st.get("quality", "unknown"),
+                "age_days": st.get("age_days"),
+                "latest_timestamp": st.get("latest_timestamp"),
+                "threshold_days": st.get("threshold_days"),
+                # LLM structured-bias extraction health — distinct from the ingestion
+                # freshness above. 'degraded' = extraction has fallen behind commentary
+                # (e.g. the 2026-06-29 Anthropic credit-exhaustion outage that ran two
+                # days undetected because ingestion still looked fresh). Cache-only —
+                # no LLM call. Surfaced as a field; does not flip top-level status
+                # (the live engine has its own Vertex-backed extraction path).
+                "extraction_quality": ext.get("extraction_quality", "unknown"),
+                "extraction_lag_days": ext.get("lag_days"),
+                "latest_bias_date": ext.get("latest_bias_date"),
+            }
+
+        futures_sentiment = await asyncio.to_thread(_fetch_futures_sentiment_sync)
     except Exception:
         pass
 
