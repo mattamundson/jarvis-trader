@@ -57,7 +57,7 @@ def _compute() -> dict:
 
         last_bar = pd.Timestamp(daily.index[-1])
         stale_days = (datetime.now(timezone.utc).replace(tzinfo=None) - last_bar.to_pydatetime()).days
-        if stale_days > 10:
+        if stale_days > 5:
             state = "UNKNOWN"
         elif wk_up and mo_up:
             state = "RISK_ON"
