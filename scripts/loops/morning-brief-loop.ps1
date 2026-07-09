@@ -23,11 +23,15 @@
   Requires the engine venv at engine/.venv/Scripts/python and the engine running
   on port 8010. Set DISCORD_WEBHOOK_URL for the brief, JARVIS_LOOP_WEBHOOK for
   failure alerts. Companion: docs/loop-engineering-quickstart.md.
+
+  Every ERROR exit also appends "<UTC timestamp>`t<reason>" to
+  docs/loop-reports/morning-brief.log so the failure reason survives after the
+  Task Scheduler run ends (the .heartbeat file alone only records ERROR, not why).
 #>
 
 [CmdletBinding()]
 param(
-    [string] $RepoRoot  = (Resolve-Path "$PSScriptRoot\..\..").Path,
+    [string] $RepoRoot = (Resolve-Path "$PSScriptRoot\..\..").Path,
     [string] $HealthUrl = "http://127.0.0.1:8010/health"
 )
 
@@ -36,13 +40,23 @@ $ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot\loop-lib.ps1"
 Initialize-LoopPaths -RepoRoot $RepoRoot | Out-Null
-$loopName  = "morning-brief"
-$stamp     = Get-Date -Format "yyyy-MM-dd_HHmm"
+$loopName = "morning-brief"
+$stamp = Get-Date -Format "yyyy-MM-dd_HHmm"
 $venvPython = Join-Path $RepoRoot "engine\.venv\Scripts\python.exe"
 
 function Stop-WithError {
     param([string] $Reason)
     Write-LoopHeartbeat -LoopName $loopName -Status "ERROR"
+    if ($script:LoopReportDir) {
+        try {
+            $failLog = Join-Path $script:LoopReportDir "morning-brief.log"
+            $stampUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            Add-Content -Path $failLog -Value "$stampUtc`t$Reason" -Encoding UTF8
+        }
+        catch {
+            Write-Warning "failure log write failed (non-fatal): $($_.Exception.Message)"
+        }
+    }
     Send-LoopNotification -Message "[!!] jarvis morning-brief FAILED - $Reason ($stamp)" | Out-Null
     Write-Warning "[morning-brief-loop] ERROR - $Reason"
     exit 3
@@ -52,7 +66,8 @@ function Stop-WithError {
 try {
     $resp = Invoke-WebRequest -Uri $HealthUrl -TimeoutSec 5 -UseBasicParsing
     if ($resp.StatusCode -ne 200) { Stop-WithError -Reason "health HTTP $($resp.StatusCode)" }
-} catch {
+}
+catch {
     Stop-WithError -Reason "engine unreachable at $HealthUrl"
 }
 
