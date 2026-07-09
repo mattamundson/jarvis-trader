@@ -21,8 +21,8 @@ Entries already promoted to a full analysis doc are marked **[analyzed]**.
 | 2 | 12 | 4 | 3 | engine | [mnemox-ai/tradememory-protocol](https://github.com/mnemox-ai/tradememory-protocol) | `learning/pattern_db.py`, `consolidator.py` | MIT | **[analyzed]** → `mnemox-ai__tradememory-protocol.md` (partial: audit-chain) |
 | 3 | 12 | 4 | 3 | engine/rules | [HKUSTDial/DeepFund](https://github.com/HKUSTDial/DeepFund) | `backtest/evaluation_harness.py`, `paper_tracker.py` | MIT | **[analyzed]** → `HKUSTDial__DeepFund.md` (dedup: rule shipped) |
 | 4 | 9 | 3 | 3 | engine | [ulab-uiuc/live-trade-bench](https://github.com/ulab-uiuc/live-trade-bench) | `backtest/evaluation_harness.py`, `forward_test.py` | PolyForm NC | **[analyzed]** → `ulab-uiuc__live-trade-bench.md` (defer: noncommercial) |
-| 5 | 9 | 3 | 3 | skills | [marketcalls/vectorbt-backtesting-skills](https://github.com/marketcalls/vectorbt-backtesting-skills) | `.claude/skills/backtest-report`, vectorbt dep | check | pending |
-| 6 | 8 | 4 | 2 | ops/data | [6551Team/opennews-mcp](https://github.com/6551Team/opennews-mcp) | `agents/news_analyst.py`, `engine/data/` | check | pending |
+| 5 | 9 | 3 | 3 | skills | [marketcalls/vectorbt-backtesting-skills](https://github.com/marketcalls/vectorbt-backtesting-skills) | `.claude/skills/backtest-report`, vectorbt dep | MIT | **[analyzed]** → `marketcalls__vectorbt-backtesting-skills.md` (partial: skills only; vectorbt dep is dead) |
+| 6 | 8 | 4 | 2 | ops/data | [6551Team/opennews-mcp](https://github.com/6551Team/opennews-mcp) | `agents/news_analyst.py`, `engine/data/` | MIT (shim) | **[analyzed]** → `6551Team__opennews-mcp.md` (defer: proprietary gated backend, crypto) |
 
 ## Notes per item
 
