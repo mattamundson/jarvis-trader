@@ -177,7 +177,7 @@ function RiskSettingsPanel() {
   const fields: { key: keyof RiskConfig; label: string; step: string; min: string; max: string }[] = [
     { key: "daily_loss_limit", label: "Daily Loss Limit ($)", step: "10", min: "1", max: "100000" },
     { key: "max_drawdown_pct", label: "Max Drawdown (0–1)", step: "0.01", min: "0.01", max: "1.0" },
-    { key: "max_contracts", label: "Max Contracts (1–10)", step: "1", min: "1", max: "10" },
+    { key: "max_contracts", label: "Max Contracts (1–2)", step: "1", min: "1", max: "2" },
     { key: "risk_per_trade_pct", label: "Risk Per Trade (0–0.05)", step: "0.001", min: "0.001", max: "0.05" },
     { key: "atr_stop_multiplier", label: "ATR Stop Multiplier (0.1–3.0)", step: "0.05", min: "0.1", max: "3.0" },
     { key: "atr_target_multiplier", label: "ATR Target Multiplier (0.1–5.0)", step: "0.05", min: "0.1", max: "5.0" },

@@ -138,6 +138,26 @@ def get_llm_provider_summary() -> dict:
 # ceiling regardless of how the transport stalls. Override via env.
 _DEFAULT_LLM_HARD_TIMEOUT_SECONDS = 120.0
 
+# Cap on simultaneous outbound LLM calls (see JarvisLLMClient.__init__). A scan
+# fans out 4 analysts + debate bull/bear/tail across multiple symbols, so without
+# a bound the pipeline can put dozens of calls in flight at once, saturating the
+# single event loop (starving /health + the scheduler under a network flap) and
+# opening a burst of un-pooled connections. Tunable via LLM_MAX_CONCURRENCY.
+_DEFAULT_LLM_MAX_CONCURRENCY = 6
+
+
+def _granular_httpx_timeout(read_seconds: float) -> httpx.Timeout:
+    """Per-phase httpx timeout instead of one float for every phase.
+
+    ``httpx.AsyncClient(timeout=60)`` sets connect/read/write/pool all to 60s, so a
+    network flap during the TLS/connect phase blocks for the full read budget
+    (60-180s) before failing over. Bounding connect/write/pool tightly makes a
+    flap-during-connect fail in ~10s while preserving the caller's longer read
+    budget for the actual generation.
+    """
+    connect = min(10.0, read_seconds)
+    return httpx.Timeout(connect=connect, read=read_seconds, write=10.0, pool=10.0)
+
 
 class LLMHardTimeoutError(Exception):
     """Raised when one provider call exceeds the hard wall-clock ceiling.
@@ -327,6 +347,20 @@ class JarvisLLMClient:
             self._llm_hard_timeout_seconds = _DEFAULT_LLM_HARD_TIMEOUT_SECONDS
         if self._llm_hard_timeout_seconds <= 0:
             self._llm_hard_timeout_seconds = _DEFAULT_LLM_HARD_TIMEOUT_SECONDS
+        # Bound simultaneous in-flight LLM calls so a scan's concurrent fan-out
+        # (asyncio.gather of analysts + debate researchers across symbols) cannot
+        # saturate the event loop and starve /health + the scheduler under a
+        # network flap. Tunable via LLM_MAX_CONCURRENCY.
+        try:
+            _max_concurrency = int(
+                os.getenv("LLM_MAX_CONCURRENCY", str(_DEFAULT_LLM_MAX_CONCURRENCY))
+            )
+        except (TypeError, ValueError):
+            _max_concurrency = _DEFAULT_LLM_MAX_CONCURRENCY
+        if _max_concurrency <= 0:
+            _max_concurrency = _DEFAULT_LLM_MAX_CONCURRENCY
+        self._llm_max_concurrency = _max_concurrency
+        self._llm_call_semaphore = asyncio.Semaphore(_max_concurrency)
         self.ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
         self.ollama_model = os.getenv("OLLAMA_MODEL", "hermes3:latest")
         self.ollama_num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
@@ -521,8 +555,17 @@ class JarvisLLMClient:
         running ``__init__``, so fall back to the module default ceiling.
         """
         ceiling = getattr(self, "_llm_hard_timeout_seconds", _DEFAULT_LLM_HARD_TIMEOUT_SECONDS)
+        # Gate on the concurrency semaphore so at most _llm_max_concurrency provider
+        # calls run at once (defensive getattr: some tests build via __new__ without
+        # __init__). The coroutine is not awaited until a slot is free, and the hard
+        # ceiling clock starts only once the call begins -- queue wait does not count
+        # against it.
+        semaphore = getattr(self, "_llm_call_semaphore", None)
         try:
-            return await asyncio.wait_for(coro, timeout=ceiling)
+            if semaphore is None:
+                return await asyncio.wait_for(coro, timeout=ceiling)
+            async with semaphore:
+                return await asyncio.wait_for(coro, timeout=ceiling)
         except (asyncio.TimeoutError, TimeoutError) as exc:
             logger.error(
                 "[%s] %s for %s exceeded hard ceiling %.0fs -- cancelled to protect "
@@ -1215,7 +1258,7 @@ class JarvisLLMClient:
             },
         }
         timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180"))
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=_granular_httpx_timeout(timeout)) as client:
             response = await client.post(f"{self.ollama_host}/api/generate", json=payload)
             response.raise_for_status()
             data = response.json()
@@ -1313,7 +1356,7 @@ class JarvisLLMClient:
             "Authorization": f"Bearer {self.google_api_key}",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=_granular_httpx_timeout(timeout)) as client:
             response = await client.post(self.google_endpoint, json=payload, headers=headers)
             if response.status_code >= 400:
                 # The HTTPStatusError string form omits the response body, so the
@@ -1387,7 +1430,7 @@ class JarvisLLMClient:
             "Authorization": f"Bearer {self.openai_api_key}",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=timeout) as http_client:
+        async with httpx.AsyncClient(timeout=_granular_httpx_timeout(timeout)) as http_client:
             response = await http_client.post(self.openai_endpoint, json=payload, headers=headers)
             if response.status_code >= 400:
                 try:
@@ -1456,7 +1499,7 @@ class JarvisLLMClient:
         }
 
         timeout = float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "180"))
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=_granular_httpx_timeout(timeout)) as client:
             response = await client.post(self.deepseek_endpoint, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()

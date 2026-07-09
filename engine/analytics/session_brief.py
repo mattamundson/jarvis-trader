@@ -184,51 +184,80 @@ def build_session_brief(
     max_actions: int = DEFAULT_MAX_ACTIONS,
     stale_after_s: float = DEFAULT_STALE_AFTER_S,
     dedupe_by_symbol: bool = True,
+    cross_signals: Optional[dict] = None,
 ) -> dict:
     """Assemble a session brief from newest-first pipeline snapshots.
 
-    Returns ``{generated_at, actions, count, degraded, note}``. When there are no
-    usable snapshots, ``actions`` is empty and ``note`` explains the gap — the
-    brief is honest about having nothing to say rather than inventing content.
+    Returns ``{generated_at, actions, count, degraded, note}``, plus an
+    additive ``cross_signal_advisories`` key when ``cross_signals`` is
+    provided. When there are no usable snapshots, ``actions`` is empty and
+    ``note`` explains the gap — the brief is honest about having nothing to
+    say rather than inventing content. Same philosophy applies to
+    ``cross_signal_advisories``: an unavailable feed says so, never silently
+    fabricated.
     """
     now = now or datetime.now(timezone.utc)
     generated_at = now.isoformat()
     max_actions = max(1, int(max_actions))
 
     if not isinstance(snapshots, (list, tuple)) or not snapshots:
-        return {
+        brief = {
             "generated_at": generated_at,
             "actions": [],
             "count": 0,
             "degraded": True,
             "note": "No recent pipeline snapshots available to build a brief.",
         }
-
-    actions: list[dict] = []
-    seen_symbols: set[str] = set()
-    for snap in snapshots:
-        built = build_action(snap, now=now, stale_after_s=stale_after_s)
-        if built is None:
-            continue
-        if dedupe_by_symbol:
-            sym = built["symbol"]
-            if sym in seen_symbols:
+    else:
+        actions: list[dict] = []
+        seen_symbols: set[str] = set()
+        for snap in snapshots:
+            built = build_action(snap, now=now, stale_after_s=stale_after_s)
+            if built is None:
                 continue
-            seen_symbols.add(sym)
-        actions.append(built)
+            if dedupe_by_symbol:
+                sym = built["symbol"]
+                if sym in seen_symbols:
+                    continue
+                seen_symbols.add(sym)
+            actions.append(built)
 
-    actions.sort(key=_action_sort_key)
-    actions = actions[:max_actions]
+        actions.sort(key=_action_sort_key)
+        actions = actions[:max_actions]
 
-    degraded = (not actions) or any(a["data_degraded"] for a in actions)
-    note = None
-    if not actions:
-        note = "No pipeline snapshots yielded a usable recommended action."
+        degraded = (not actions) or any(a["data_degraded"] for a in actions)
+        note = None
+        if not actions:
+            note = "No pipeline snapshots yielded a usable recommended action."
 
+        brief = {
+            "generated_at": generated_at,
+            "actions": actions,
+            "count": len(actions),
+            "degraded": degraded,
+            "note": note,
+        }
+
+    if cross_signals is not None:
+        brief["cross_signal_advisories"] = _build_cross_signal_advisories(cross_signals)
+
+    return brief
+
+
+def _build_cross_signal_advisories(cross_signals: dict) -> dict:
+    """Render a pre-fetched amo-arbitrage signal result. Pure — takes the
+    dict integrations.amoarb_signals.fetch_amoarb_signals() already produced,
+    does no I/O itself. Never fabricates: an unavailable feed says so."""
+    available = bool(cross_signals.get("available"))
+    if not available:
+        return {
+            "source": "amo-arbitrage",
+            "available": False,
+            "note": "amo-arbitrage signal feed unreachable -- not fabricating signal data.",
+        }
     return {
-        "generated_at": generated_at,
-        "actions": actions,
-        "count": len(actions),
-        "degraded": degraded,
-        "note": note,
+        "source": "amo-arbitrage",
+        "available": True,
+        "signals": cross_signals.get("signals", []),
+        "note": None,
     }
