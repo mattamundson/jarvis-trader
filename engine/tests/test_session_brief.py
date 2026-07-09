@@ -137,3 +137,41 @@ def test_empty_brief_is_honest():
 def test_brief_generated_at_is_deterministic_with_now():
     brief = build_session_brief([_full_snapshot()], now=NOW)
     assert brief["generated_at"] == NOW.isoformat()
+
+
+def test_cross_signals_absent_is_unchanged():
+    """Default (no cross_signals arg) must not add the new key -- backward compat."""
+    brief = build_session_brief([_full_snapshot()], now=NOW)
+    assert "cross_signal_advisories" not in brief
+
+
+def test_cross_signals_available():
+    cross_signals = {
+        "available": True,
+        "signals": [{"symbol": "ZC", "signal": "buy", "prob_up": 0.61}],
+        "error": None,
+        "fetched_at": "2026-07-09T12:00:00+00:00",
+    }
+    brief = build_session_brief([_full_snapshot()], now=NOW, cross_signals=cross_signals)
+
+    advisories = brief["cross_signal_advisories"]
+    assert advisories["source"] == "amo-arbitrage"
+    assert advisories["available"] is True
+    assert advisories["signals"] == cross_signals["signals"]
+    assert advisories["note"] is None
+
+
+def test_cross_signals_unavailable_is_honest_not_fabricated():
+    cross_signals = {
+        "available": False,
+        "signals": [],
+        "error": "connection refused",
+        "fetched_at": "2026-07-09T12:00:00+00:00",
+    }
+    brief = build_session_brief([_full_snapshot()], now=NOW, cross_signals=cross_signals)
+
+    advisories = brief["cross_signal_advisories"]
+    assert advisories["available"] is False
+    assert "signals" not in advisories
+    assert advisories["note"] is not None
+    assert "not fabricating" in advisories["note"].lower()
