@@ -281,12 +281,25 @@ def synthesize_fallback_stop(
 class PaperStopMonitor:
     """Feed-independent stop-loss backstop for open paper trades."""
 
-    def __init__(self, db_manager, data_manager, interval_s: Optional[int] = None):
+    def __init__(
+        self,
+        db_manager,
+        data_manager,
+        interval_s: Optional[int] = None,
+        oms_manager_getter: Optional[Any] = None,
+    ):
         self.db = db_manager
         self.data = data_manager
         self.interval_s = interval_s if interval_s is not None else _interval_from_env()
         self._running = False
         self._task: Optional[asyncio.Task] = None
+        # Lazy getter (not a direct reference) because main.py constructs this
+        # monitor from a background-init task that races the OMS v2 manager's
+        # own construction -- see resolve_stop_for_symbol() below for why this
+        # fallback exists at all. A plain `oms_manager=` kwarg could capture
+        # None permanently if the race lands the wrong way; a zero-arg getter
+        # re-reads the module global fresh on every sweep instead.
+        self._oms_manager_getter = oms_manager_getter
 
     async def start(self) -> None:
         if not _is_enabled():
@@ -319,6 +332,28 @@ class PaperStopMonitor:
                 logger.error(f"[PaperStopMonitor] loop error: {exc}", exc_info=True)
             await asyncio.sleep(self.interval_s)
 
+    def _resolve_oms_fallback_stop(self, symbol: Any) -> Optional[float]:
+        """Best-effort OMS v2 stop lookup; None on any failure or absence.
+
+        See ``OMSManager.resolve_stop_for_symbol`` for why this fallback
+        exists: OMS-bracket-opened paper_trades rows can have ``stop_loss``
+        NULL in the DB even though the OMS itself holds the real stop in
+        memory. Must never raise -- a monitor sweep cannot fail because this
+        best-effort extra lookup misbehaved.
+        """
+        if self._oms_manager_getter is None:
+            return None
+        try:
+            oms = self._oms_manager_getter()
+        except Exception:  # noqa: BLE001
+            return None
+        if oms is None or not hasattr(oms, "resolve_stop_for_symbol"):
+            return None
+        try:
+            return oms.resolve_stop_for_symbol(symbol)
+        except Exception:  # noqa: BLE001
+            return None
+
     async def check_once(self) -> int:
         """One sweep over open paper trades. Returns the count of stops fired."""
         # DB calls are blocking SQLite — keep them off the event loop.
@@ -332,14 +367,26 @@ class PaperStopMonitor:
 
         for t in open_trades:
             stop = t.get("stop_loss")
+            symbol = t.get("symbol")
             has_stop = stop not in (None, "", 0, 0.0)
+            if not has_stop:
+                # OMS v2 bracket-executed trades never persist stop_loss onto
+                # the paper_trades row (PortfolioTracker.open_trade() has no
+                # stop_loss parameter -- a separate, documented data-hygiene
+                # gap, out of scope here). Fall back to the OMS's own
+                # in-memory bracket record, which DOES hold the real
+                # stop_loss_price from execute_bracket() time, before
+                # deferring to the max-loss-only path below.
+                _oms_stop = self._resolve_oms_fallback_stop(symbol)
+                if _oms_stop is not None:
+                    stop = _oms_stop
+                    has_stop = True
             if not has_stop and max_loss <= 0:
-                # No stop recorded and the catastrophe cap is disabled → nothing
-                # to enforce. (With the cap on, a null-stop row still falls through
-                # to the max-loss backstop below.)
+                # No stop recorded (DB or OMS) and the catastrophe cap is
+                # disabled → nothing to enforce. (With the cap on, a null-stop
+                # row still falls through to the max-loss backstop below.)
                 continue
 
-            symbol = t.get("symbol")
             trade_id = t.get("trade_id")
             side = t.get("side")
             if not symbol or not trade_id:

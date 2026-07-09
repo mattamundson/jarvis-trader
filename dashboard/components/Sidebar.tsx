@@ -91,7 +91,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Hidden Pivots", href: "/hidden-pivots", icon: <Target className="h-3.5 w-3.5" /> },
       { label: "Backtest", href: "/backtest", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "ATR-Trail Viz", href: "/atr-trail", icon: <LineChart className="h-3.5 w-3.5" /> },
-      { label: "Hidden Pivots", href: "/hidden-pivots", icon: <Crosshair className="h-3.5 w-3.5" /> },
       { label: "Options Chain", href: "/options", icon: <Hash className="h-3.5 w-3.5" /> },
       { label: "Crypto", href: "/crypto", icon: <Waves className="h-3.5 w-3.5" /> },
       { label: "Polymarket", href: "/polymarket", icon: <Globe className="h-3.5 w-3.5" /> },
@@ -127,6 +126,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Learning", href: "/learning", icon: <Rss className="h-3.5 w-3.5" /> },
       { label: "Research Log", href: "/research-log", icon: <FileText className="h-3.5 w-3.5" /> },
       { label: "Discord", href: "/discord", icon: <MessageSquare className="h-3.5 w-3.5" /> },
+      { label: "Framing Brief", href: "/framing-brief", icon: <SunMedium className="h-3.5 w-3.5" /> },
     ],
   },
   {

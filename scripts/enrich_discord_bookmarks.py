@@ -24,7 +24,7 @@ from pathlib import Path
 # Config
 # ---------------------------------------------------------------------------
 
-BOOKMARKS_DIR = Path(r"C:\Users\mattm\second-brain\raw\discord-bookmarks")
+BOOKMARKS_DIR = Path(r"C:\Users\mattm\master-jarvis\second-brain\raw\discord-bookmarks")
 SKIP_FILES = {"_INDEX.md", "_LAST_EXTRACT.json"}
 ENRICHED_MARKER = "<!-- ENRICHED:CROSS-LINKS -->"
 TIME_LIMIT_SECONDS = 300  # 5 minutes
