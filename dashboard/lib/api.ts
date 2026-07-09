@@ -679,6 +679,7 @@ export type PriceSnapshot = Record<string, PriceSnapshotEntry>;
 
 export interface MacroSnapshot {
   vix?: number | null;
+  vix_regime?: string | null; // LOW | NORMAL | HIGH | EXTREME (from classify_vix_regime)
   fed_funds_rate?: number | null;
   ten_year_yield?: number | null;
   unemployment?: number | null;

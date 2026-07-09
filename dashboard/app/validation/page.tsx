@@ -27,7 +27,7 @@ import { formatCurrency } from "@/lib/utils";
 import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
 import {
   fetchHonestTrades,
-  equityCurve,
+  maxDrawdownPct,
   dedupCaveat,
 } from "@/lib/honestTrades";
 import { simulateTrade } from "@/lib/settings-api";
@@ -82,19 +82,6 @@ function fetcher<T>(path: string): Promise<T> {
 // (only symbol/direction/entry_time/exit_time/pnl_usd/grade are available),
 // so it is surfaced as null / "not computed" — no fabricated PASS.
 
-function computeHonestMaxDrawdownPct(trades: Parameters<typeof equityCurve>[0]): number {
-  const curve = equityCurve(trades);
-  let maxDDPct = 0;
-  for (const pt of curve) {
-    const peak = pt.equity - pt.drawdown;
-    if (peak > 0) {
-      const ddPct = Math.abs(pt.drawdown) / peak;
-      if (ddPct > maxDDPct) maxDDPct = ddPct;
-    }
-  }
-  return maxDDPct; // fraction (not percent)
-}
-
 async function honestPerformanceFetcher(): Promise<ValidationReport> {
   const set = await fetchHonestTrades();
 
@@ -103,7 +90,10 @@ async function honestPerformanceFetcher(): Promise<ValidationReport> {
   // from the deduped record (no timestamps granular enough, no risk-free rate).
   const sharpe: null = null;
   const winRate = set.winRate; // already 0..1
-  const maxDd = computeHonestMaxDrawdownPct(set.trades); // fraction
+  // Shared single-source-of-truth DD (seeds peak at 0, denominates against the
+  // real starting balance) — the former inline loop gated on peak>0, so a
+  // net-negative account whose equity never rose above 0 reported 0% drawdown.
+  const maxDd = maxDrawdownPct(set.trades); // fraction
   const trades = set.trades.length;
 
   // Avg win/loss from the deduped set

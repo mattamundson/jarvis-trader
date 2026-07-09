@@ -48,7 +48,7 @@ def main():
 
     print()
     print(hr("="))
-    print(f"  JARVIS TRADER — Paper Trading Report")
+    print("  JARVIS TRADER — Paper Trading Report")
     print(f"  Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print(hr("="))
 
