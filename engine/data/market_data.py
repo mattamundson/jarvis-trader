@@ -461,11 +461,18 @@ class IBKRDataConnector:
                 prev = t.close if t.close and t.close > 0 else None
                 change_pct = ((last - prev) / prev * 100) if last and prev and prev > 0 else None
                 if last:
+                    # marketDataType 3/4 = Delayed/Delayed-frozen (IB serves this
+                    # when the account lacks a live subscription). A 15-20min-old
+                    # futures quote is stale in the same way a frozen CSV cache is
+                    # (see entry_price_sanity.py's offline-fallback anchor) but
+                    # carries no timestamp signal distinguishing it from a live
+                    # tick, so it must be tagged at the source instead.
+                    is_delayed = getattr(t, "marketDataType", 1) in (3, 4)
                     return {
                         "last_price": last,
                         "prev_close": prev,
                         "change_pct": change_pct,
-                        "source": "ibkr",
+                        "source": "ibkr_delayed" if is_delayed else "ibkr",
                     }
         except Exception as e:
             logger.debug(

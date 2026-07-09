@@ -142,3 +142,71 @@ def test_make_contract_exchange_for_copper_and_dow_micros():
     assert conn._make_contract("YM", True).exchange == "CBOT"  # full Dow
     # regression: Russell 2000 micro is correctly CME-by-default
     assert conn._make_contract("M2K", True).exchange == "CME"
+
+
+# ---------------------------------------------------------------------------
+# Delayed-tick tagging (2026-07-09) — a marketDataType 3/4 snapshot is a
+# 15-20min-old quote, not a live one; entry_price_sanity's offline-fallback
+# anchor and PaperStopMonitor's live-source allowlist both key off `source`
+# to catch this, so get_snapshot_price must tag it distinctly.
+# ---------------------------------------------------------------------------
+
+
+def _fake_ticker(last: float, close: float, market_data_type: int) -> MagicMock:
+    t = MagicMock()
+    t.last = last
+    t.close = close
+    t.marketDataType = market_data_type
+    return t
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_price_tags_live_marketdatatype_as_ibkr():
+    conn = IBKRDataConnector()
+    mock_ib = MagicMock()
+    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 1)])
+    conn._ib = mock_ib
+    conn._connected = True
+
+    out = await conn.get_snapshot_price("AAPL", is_futures=False)
+    assert out["source"] == "ibkr"
+    assert out["last_price"] == 228.5
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_price_tags_delayed_marketdatatype_as_ibkr_delayed():
+    conn = IBKRDataConnector()
+    mock_ib = MagicMock()
+    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 3)])
+    conn._ib = mock_ib
+    conn._connected = True
+
+    out = await conn.get_snapshot_price("AAPL", is_futures=False)
+    assert out["source"] == "ibkr_delayed"
+    assert out["last_price"] == 228.5
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_price_tags_delayed_frozen_marketdatatype_as_ibkr_delayed():
+    conn = IBKRDataConnector()
+    mock_ib = MagicMock()
+    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 4)])
+    conn._ib = mock_ib
+    conn._connected = True
+
+    out = await conn.get_snapshot_price("AAPL", is_futures=False)
+    assert out["source"] == "ibkr_delayed"
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_price_tags_frozen_marketdatatype_as_ibkr_not_delayed():
+    """marketDataType 2 (Frozen, non-delayed) is out of scope for this tag —
+    only 3/4 (Delayed/Delayed-frozen) mean the price value itself is stale."""
+    conn = IBKRDataConnector()
+    mock_ib = MagicMock()
+    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 2)])
+    conn._ib = mock_ib
+    conn._connected = True
+
+    out = await conn.get_snapshot_price("AAPL", is_futures=False)
+    assert out["source"] == "ibkr"
