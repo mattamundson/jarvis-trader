@@ -112,6 +112,14 @@ TREND_INSTRUMENTS = {"MES", "MGC"}
 #   M2K — SMA Trend ranks 1-2 + ORB rank 1 all FAIL
 DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
 
+# Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
+# Canonical active paper-trading pair per the 2026-05-24 instrument switch —
+# see jarvis-trader/CLAUDE.md "Active Instruments". A single shared source so
+# default-symbol call sites (e.g. discord_router.py's /intelligence
+# aggregation) can't independently drift the way they did when MCL/MNQ were
+# halted and three separate hardcodes were left pointing at them.
+DEFAULT_BRIEFING_SYMBOLS = ("MES", "MGC")
+
 # Env-var feature flag for Phase 3 FULL (gate v2 routing enforcement).
 # Default OFF — ships dormant, user activates after verifying verdict
 # files exist and the policy module reads them correctly.

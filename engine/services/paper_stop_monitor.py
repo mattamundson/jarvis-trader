@@ -29,9 +29,15 @@ This monitor closes that gap by decoupling stop enforcement from the
     closing the same position is harmless: whoever wins, the loser's UPDATE
     matches zero rows and no-ops.
 
-It is a *backstop*, not the primary path. It does not model slippage/commission
-the way the runner does (it records the observed breach price); the goal is to
-never again leave an open position unprotected, not to be the canonical fill.
+It is a *backstop*, not the primary path. It does not model slippage the way
+the runner does (it records the observed breach price rather than simulating
+a fill). It DOES deduct the same flat per-contract round-trip commission that
+``PortfolioTracker`` applies on its primary close path (see
+``_commission_per_contract`` below, which mirrors
+``portfolio.tracker._commission_per_contract``) — fixed 2026-07 (T0-06) after
+an audit found 0 of 27 real closed futures trades reflected any commission,
+because stop-driven exits are how nearly all real closes happen and this
+backstop's un-costed PnL was what actually got written to the ledger.
 
 Paper-only. Gated behind ``PAPER_STOP_MONITOR_ENABLED`` (default on).
 """
@@ -115,6 +121,27 @@ def is_stop_breached(side: Any, stop: Optional[float], price: Optional[float]) -
     return False
 
 
+def _commission_per_contract() -> float:
+    """Flat per-contract round-trip commission, mirroring PortfolioTracker.
+
+    Reuses ``portfolio.tracker._commission_per_contract()`` (Phase 2 / #304)
+    so this backstop's PnL matches the primary close path exactly instead of
+    reinventing a parallel commission model. Falls back to reading the same
+    ``COMMISSION_PER_CONTRACT`` env var directly (identical default, $1.50) if
+    the import fails — this module must never let an optional import take
+    down the backstop (same defensive posture as ``_load_paper_configs``).
+    """
+    try:
+        from portfolio.tracker import _commission_per_contract as _tracker_commission
+
+        return _tracker_commission()
+    except Exception:  # noqa: BLE001
+        try:
+            return float(os.environ.get("COMMISSION_PER_CONTRACT", "1.50"))
+        except (TypeError, ValueError):
+            return 1.50
+
+
 def compute_stop_pnl(
     side: Any,
     entry_price: float,
@@ -122,13 +149,21 @@ def compute_stop_pnl(
     quantity: float,
     multiplier: float,
 ) -> float:
-    """Realized PnL of closing at ``exit_price`` (no slippage/commission — backstop)."""
+    """Realized PnL of closing at ``exit_price``.
+
+    No slippage modeling (backstop records the observed breach price, not a
+    simulated fill) — but DOES deduct the same flat per-contract round-trip
+    commission PortfolioTracker applies on its primary close path (T0-06 fix;
+    see ``_commission_per_contract`` above).
+    """
     norm = normalize_side(side)
     qty = abs(float(quantity or 0.0))
     delta = float(exit_price) - float(entry_price)
     if norm == "short":
         delta = -delta
-    return round(delta * qty * float(multiplier), 2)
+    gross_pnl = delta * qty * float(multiplier)
+    commission = _commission_per_contract() * qty
+    return round(gross_pnl - commission, 2)
 
 
 def multiplier_for(symbol: str, configs: Optional[Dict[str, Any]] = None) -> float:

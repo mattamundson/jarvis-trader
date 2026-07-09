@@ -178,6 +178,18 @@ const NEXT_EXPERIMENTS: Experiment[] = [
 
 // ── Helper components ────────────────────────────────────────────────────────
 
+function StaticSnapshotBanner({ note }: { note: string }) {
+  return (
+    <div
+      className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
+      style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
+    >
+      <span style={{ fontWeight: 700 }}>Static log</span>
+      <span style={{ color: "#9a8030" }}>{note}</span>
+    </div>
+  );
+}
+
 function CategoryBadge({ category }: { category: Category }) {
   return (
     <span
@@ -350,15 +362,7 @@ export default function ResearchLogPage() {
           icon={<BookOpen className="h-4 w-4 text-cyan-400" />}
           accentColor="#00d4ff"
         >
-          <div
-            className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
-            style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
-          >
-            <span style={{ fontWeight: 700 }}>Static log</span>
-            <span style={{ color: "#9a8030" }}>
-              frozen snapshot, last updated 2026-03-29 — &ldquo;active&rdquo; reflects status as of then, not today
-            </span>
-          </div>
+          <StaticSnapshotBanner note='frozen snapshot, last updated 2026-03-29 — "active" reflects status as of then, not today' />
           <div className="overflow-x-auto">
             {/* Table header */}
             <div
@@ -415,6 +419,7 @@ export default function ResearchLogPage() {
           icon={<FlaskConical className="h-4 w-4 text-yellow-400" />}
           accentColor="#ffcc00"
         >
+          <StaticSnapshotBanner note="frozen snapshot, last updated 2026-03-29 — tested/result reflects status as of then, not today" />
           <div className="overflow-x-auto">
             {/* Table header */}
             <div
@@ -473,6 +478,7 @@ export default function ResearchLogPage() {
           icon={<ListChecks className="h-4 w-4 text-emerald-400" />}
           accentColor="#00ff88"
         >
+          <StaticSnapshotBanner note="frozen snapshot, last updated 2026-03-29 — items may already be tested, superseded, or abandoned since then" />
           <div className="space-y-3">
             {NEXT_EXPERIMENTS.map((exp) => (
               <div

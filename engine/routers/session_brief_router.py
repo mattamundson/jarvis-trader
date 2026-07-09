@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from analytics.session_brief import DEFAULT_MAX_ACTIONS, build_session_brief
+from integrations.amoarb_signals import fetch_amoarb_signals
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,8 @@ def _collect_snapshots(limit: int) -> list[dict]:
 
 @router.get("/session")
 async def get_session_brief(limit: int = 10, max_actions: int = DEFAULT_MAX_ACTIONS):
-    """Return a proactive advisor brief built from existing pipeline reasoning.
+    """Return a proactive advisor brief built from existing pipeline reasoning,
+    plus an advisory (non-authoritative) amo-arbitrage signal section.
 
     Query params:
         limit       : how many recent decisions to scan (1-50).
@@ -69,7 +71,8 @@ async def get_session_brief(limit: int = 10, max_actions: int = DEFAULT_MAX_ACTI
         limit = min(max(1, int(limit)), 50)
         max_actions = min(max(1, int(max_actions)), 5)
         snapshots = _collect_snapshots(limit)
-        return build_session_brief(snapshots, max_actions=max_actions)
+        cross_signals = await fetch_amoarb_signals()
+        return build_session_brief(snapshots, max_actions=max_actions, cross_signals=cross_signals)
     except Exception as exc:  # fail honest, never 500 on brief assembly
         logger.exception("[brief] session brief assembly failed")
         raise HTTPException(status_code=500, detail=f"brief assembly failed: {exc}") from exc
