@@ -231,6 +231,113 @@ def test_check_once_empty_book():
     assert asyncio.run(mon.check_once()) == 0
 
 
+# ── OMS v2 fallback — trade #287 Bug 2 regression ───────────────────────────
+#
+# OMS v2 bracket-executed paper trades never persist stop_loss onto the
+# paper_trades row (PortfolioTracker.open_trade() has no stop_loss parameter --
+# a separate, documented data-hygiene gap, not fixed here). That left this
+# monitor blind to every OMS-opened position: has_stop was always False, and
+# with the default $750 catastrophe cap the position could still ride well
+# past a tight stop before the backstop fired. resolve_stop_for_symbol() lets
+# the monitor recover the real stop from the OMS's in-memory bracket record.
+
+
+class _FakeOMS:
+    def __init__(self, stops: dict):
+        self._stops = stops  # symbol (upper) -> stop price
+        self.calls: list = []
+
+    def resolve_stop_for_symbol(self, symbol):
+        self.calls.append(symbol)
+        return self._stops.get(str(symbol).upper())
+
+
+class _BoomOMS:
+    """Simulates a misbehaving OMS lookup -- must never break the sweep."""
+
+    def resolve_stop_for_symbol(self, symbol):
+        raise RuntimeError("oms exploded")
+
+
+def test_check_once_oms_fallback_fires_on_breach_when_db_stop_is_null():
+    # Trade #287 shape: MGC entry 4153.85, real stop 4134.6666, but the
+    # paper_trades row (opened via the OMS v2 bracket path) has stop_loss=NULL.
+    db = _FakeDB([_trade(symbol="MGC", entry_price=4153.85, stop_loss=None)])
+    oms = _FakeOMS({"MGC": 4134.6666})
+    mon = PaperStopMonitor(db, _FakeData(4130.0), oms_manager_getter=lambda: oms)
+
+    fired = asyncio.run(mon.check_once())
+
+    assert fired == 1
+    assert oms.calls == ["MGC"]
+    assert len(db.close_calls) == 1
+    assert db.close_calls[0]["trade_id"] == "t-178"
+    assert db.close_calls[0]["exit_price"] == 4130.0
+
+
+def test_check_once_oms_fallback_no_breach_stays_open():
+    db = _FakeDB([_trade(symbol="MGC", entry_price=4153.85, stop_loss=None)])
+    oms = _FakeOMS({"MGC": 4134.6666})
+    mon = PaperStopMonitor(db, _FakeData(4140.0), oms_manager_getter=lambda: oms)  # above stop
+
+    fired = asyncio.run(mon.check_once())
+
+    assert fired == 0
+    assert db.close_calls == []
+
+
+def test_check_once_oms_fallback_not_consulted_when_db_stop_present():
+    # DB already has a real stop — the OMS lookup must not even be called.
+    db = _FakeDB([_trade()])  # stop_loss=4497.51 from the default fixture
+    oms = _FakeOMS({"MGC": 1.0})
+    mon = PaperStopMonitor(db, _FakeData(4490.0), oms_manager_getter=lambda: oms)
+
+    fired = asyncio.run(mon.check_once())
+
+    assert fired == 1
+    assert oms.calls == []  # never consulted -- DB stop already satisfied has_stop
+
+
+def test_check_once_oms_fallback_absent_getter_behaves_as_before():
+    # No oms_manager_getter wired (e.g. constructed pre-fix, or OMS truly
+    # unavailable) -- falls straight through to the pre-existing skip/max-loss
+    # behavior, unchanged.
+    db = _FakeDB([_trade(symbol="MGC", entry_price=4153.85, stop_loss=None)])
+    mon = PaperStopMonitor(db, _FakeData(4130.0))  # no oms_manager_getter
+    fired = asyncio.run(mon.check_once())
+    assert fired == 0
+    assert db.close_calls == []
+
+
+def test_check_once_oms_fallback_getter_returns_none_falls_back_to_skip():
+    db = _FakeDB([_trade(symbol="MGC", entry_price=4153.85, stop_loss=None)])
+    mon = PaperStopMonitor(db, _FakeData(4130.0), oms_manager_getter=lambda: None)
+    fired = asyncio.run(mon.check_once())
+    assert fired == 0
+    assert db.close_calls == []
+
+
+def test_check_once_oms_fallback_exception_is_swallowed():
+    db = _FakeDB([_trade(symbol="MGC", entry_price=4153.85, stop_loss=None)])
+    mon = PaperStopMonitor(db, _FakeData(4130.0), oms_manager_getter=lambda: _BoomOMS())
+    # Must not raise -- a misbehaving OMS lookup degrades to the pre-existing
+    # skip/max-loss path, not a crashed sweep.
+    fired = asyncio.run(mon.check_once())
+    assert fired == 0
+    assert db.close_calls == []
+
+
+def test_check_once_oms_fallback_getter_itself_raises():
+    def _boom_getter():
+        raise RuntimeError("main.py global not ready yet")
+
+    db = _FakeDB([_trade(symbol="MGC", entry_price=4153.85, stop_loss=None)])
+    mon = PaperStopMonitor(db, _FakeData(4130.0), oms_manager_getter=_boom_getter)
+    fired = asyncio.run(mon.check_once())
+    assert fired == 0
+    assert db.close_calls == []
+
+
 # ── Stale-data guard: a feed-independent backstop must not act on a frozen price ──
 
 def test_check_once_skips_stale_csv_cache_source_even_when_breached():
