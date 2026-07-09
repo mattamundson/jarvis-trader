@@ -199,6 +199,85 @@ def resolve_data_client_id(config) -> int:
     return explicit if explicit > 0 else int(config.IBKR_CLIENT_ID) + 1
 
 
+# --- Connect-failure log throttle (SOTA plan P0.6) --------------------------
+# An extended IB Gateway outage used to log a fresh WARNING on every single
+# connect() attempt for as long as the outage lasted — unbounded
+# ConnectionRefused spam that kept the engine log regrowing at the source.
+# Every ``IBDataWatchdog`` poll tick (and ``MarketDataManager.reconnect_ibkr``)
+# rebuilds a brand-new ``IBKRDataConnector`` instance, so per-instance state
+# alone can't throttle across ticks — this lives at module scope, keyed by
+# (host, port), so it survives instance rebuilds. The first failure for a
+# target always logs immediately (operators need to see the initial drop);
+# subsequent failures are suppressed until an exponentially growing backoff
+# elapses since the last real log line, at which point a single
+# "still down, N suppressed" summary replaces the raw per-attempt detail.
+_CONNECT_FAIL_LOG_BACKOFF_BASE_S = 5.0
+_CONNECT_FAIL_LOG_BACKOFF_MAX_S = 300.0
+_connect_fail_state: dict[tuple[str, int], dict] = {}
+
+
+def _reset_connect_fail_throttle(host: str | None = None, port: int | None = None) -> None:
+    """Test/ops hook: clear throttle state for one target (or every target)."""
+    if host is None and port is None:
+        _connect_fail_state.clear()
+    else:
+        _connect_fail_state.pop((host, port), None)
+
+
+def _log_connect_failure(host: str, port: int, client_id: int, detail: str) -> None:
+    """Throttled WARNING for a failed IBKR connect() attempt.
+
+    See the module-level note above for the rationale. Call once per failed
+    connect() attempt (both the internal per-attempt retries and the final
+    give-up); a caller in a tight failure loop collapses to one real log line
+    plus periodic "still down, N suppressed" summaries instead of raw spam.
+    """
+    key = (host, port)
+    state = _connect_fail_state.setdefault(key, {"streak": 0, "last_log": 0.0, "suppressed": 0})
+    now = time.monotonic()
+    state["streak"] += 1
+    if state["streak"] == 1:
+        logger.warning(detail)
+        state["last_log"] = now
+        state["suppressed"] = 0
+        return
+
+    backoff = min(
+        _CONNECT_FAIL_LOG_BACKOFF_MAX_S,
+        _CONNECT_FAIL_LOG_BACKOFF_BASE_S * (2 ** (state["streak"] - 2)),
+    )
+    if now - state["last_log"] < backoff:
+        state["suppressed"] += 1
+        return
+
+    logger.warning(
+        "IBKR still down (%s:%s, clientId=%s) — %d attempt(s) suppressed since "
+        "last log, %d consecutive failure(s), next check backoff %.0fs",
+        host,
+        port,
+        client_id,
+        state["suppressed"],
+        state["streak"],
+        backoff,
+    )
+    state["last_log"] = now
+    state["suppressed"] = 0
+
+
+def _log_connect_recovery(host: str, port: int) -> None:
+    """Clear throttle state on a successful connect(); note it if we'd been
+    suppressing failures, so operators see the outage actually ended."""
+    state = _connect_fail_state.pop((host, port), None)
+    if state and state["streak"]:
+        logger.info(
+            "IBKR connect recovered (%s:%s) after %d failed attempt(s) (%d suppressed)",
+            host,
+            port,
+            state["streak"],
+            state["suppressed"],
+        )
+
+
 class IBKRDataConnector:
     """
     Connects to IB Gateway via ib_async.
@@ -286,13 +365,17 @@ class IBKRDataConnector:
                     f"IBKR connected {self._host}:{self._port} "
                     f"(clientId={self._client_id}, paper={self._port == 4002})"
                 )
+                _log_connect_recovery(self._host, self._port)
                 return True
             except asyncio.TimeoutError:
                 # Gateway not listening — fail fast, retrying would only stall startup.
-                logger.warning(
+                _log_connect_failure(
+                    self._host,
+                    self._port,
+                    self._client_id,
                     f"IBKR connection timed out after {self._connect_timeout}s "
                     f"({self._host}:{self._port}, clientId={self._client_id}) — start IB "
-                    f"Gateway or bump IBKR_CONNECT_TIMEOUT_SECONDS."
+                    f"Gateway or bump IBKR_CONNECT_TIMEOUT_SECONDS.",
                 )
                 self._connected = False
                 return False
@@ -303,17 +386,23 @@ class IBKRDataConnector:
                 except Exception:
                     pass
                 if attempt < attempts:
-                    logger.warning(
+                    _log_connect_failure(
+                        self._host,
+                        self._port,
+                        self._client_id,
                         f"IBKR connect attempt {attempt}/{attempts} failed "
                         f"({self._host}:{self._port}, clientId={self._client_id}): {e} "
-                        f"— retrying in {retry_backoff:.0f}s"
+                        f"— retrying in {retry_backoff:.0f}s",
                     )
                     await asyncio.sleep(retry_backoff)
                 else:
-                    logger.warning(
+                    _log_connect_failure(
+                        self._host,
+                        self._port,
+                        self._client_id,
                         f"IBKR connection failed after {attempts} attempt(s) "
                         f"({self._host}:{self._port}, clientId={self._client_id}): {e} "
-                        f"— start IB Gateway on port {self._port}."
+                        f"— start IB Gateway on port {self._port}.",
                     )
         self._connected = False
         return False
