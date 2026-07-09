@@ -7,10 +7,20 @@ import { fetchHealthBackupStatus } from "@/lib/api";
 
 const REFRESH_MS = 5 * 60_000; // backups run nightly -- no need to poll fast
 
+// engine/backup/db_backup.py stamps last_backup via datetime.utcnow().isoformat(),
+// which is naive (no trailing Z/offset). new Date() on a no-offset ISO string
+// parses as the BROWSER's local timezone, not UTC -- for US users that silently
+// undercounts elapsed hours (a stale backup can misreport as fresh). Force UTC
+// interpretation by appending Z when no offset is already present.
+function parseUtc(ts: string): Date {
+  const hasOffset = /Z$|[+-]\d{2}:\d{2}$/.test(ts);
+  return new Date(hasOffset ? ts : `${ts}Z`);
+}
+
 function fmtDate(ts: string | null): string {
   if (!ts) return "never";
   try {
-    return new Date(ts).toLocaleString("en-US", {
+    return parseUtc(ts).toLocaleString("en-US", {
       month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
   } catch {
@@ -20,7 +30,7 @@ function fmtDate(ts: string | null): string {
 
 function hoursSince(ts: string | null): number | null {
   if (!ts) return null;
-  const parsed = new Date(ts).getTime();
+  const parsed = parseUtc(ts).getTime();
   if (Number.isNaN(parsed)) return null;
   return (Date.now() - parsed) / (1000 * 60 * 60);
 }
