@@ -641,11 +641,17 @@ class TestSTCPreFilter:
     """Unit tests for the STC mid-range pre-filter in analyze_and_decide()."""
 
     def _make_ohlcv_df(self, rows: int = 30, stc_val: float = 50.0):
-        """Return a minimal DataFrame that generate_instrument_signals can consume."""
+        """Return a minimal DataFrame that generate_instrument_signals can consume.
+
+        Index is anchored to "now" (not a fixed past date) so these fixtures stay
+        within the read-time bar-freshness gate's window regardless of when the
+        suite runs — see test_pipeline_freshness_prefilter.py for the same pattern.
+        """
         import numpy as np
         import pandas as pd
 
-        idx = pd.date_range("2026-01-01", periods=rows, freq="1h")
+        now = pd.Timestamp.now(tz="UTC")
+        idx = pd.date_range(end=now - pd.Timedelta(minutes=5), periods=rows, freq="1h")
         df = pd.DataFrame(
             {
                 "open": np.full(rows, 5800.0),
