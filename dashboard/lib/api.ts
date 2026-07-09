@@ -2222,6 +2222,34 @@ export async function fetchLlmDailyStats(daysBack: number = 0): Promise<LlmDaily
   return fetchEngine<LlmDailyStats>(`/llm/stats?days_back=${daysBack}`);
 }
 
+// ── Trade post-mortems (/analytics/post-mortems) ──────────────────────────────
+
+export interface PostMortemEntry {
+  trade_id: string;
+  symbol: string | null;
+  pnl: number | null;
+  analysis: string | null;
+  lesson: string | null;
+  created_at: string | null;
+}
+
+export interface PostMortemsResponse {
+  entries: PostMortemEntry[];
+  total: number;
+  timestamp: string;
+}
+
+export async function fetchPostMortems(opts?: {
+  limit?: number;
+  symbol?: string;
+}): Promise<PostMortemsResponse> {
+  const q = new URLSearchParams();
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.symbol) q.set("symbol", opts.symbol);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return fetchEngine<PostMortemsResponse>(`/analytics/post-mortems${suffix}`);
+}
+
 // ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
 // Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
 // mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.
