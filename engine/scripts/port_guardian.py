@@ -35,12 +35,28 @@ Exit codes:
          READINESS_DEADLINE seconds (hung/failed startup). Forced exit via the
          watchdog thread so PM2 restarts the engine instead of leaving a dead
          in-process server reported as "online". Reason logged to RESTART_LOG.
+
+Observability (T2-16, 2026-07-09): every exit path above now writes a structured
+record to RESTART_LOG (engine/logs/port_guardian_restarts.jsonl), including the
+previously-silent branches (wrong-python, unidentified-port-holder, unkillable
+orphans, port-still-bound, uvicorn-crashed, normal-shutdown). In addition, a
+post-readiness liveness monitor keeps polling /health for the life of the
+process and logs "liveness-hang-detected" the moment the server stops
+answering -- closing the gap where uvicorn accepted TCP but never served a
+response for an extended window and was later killed by something external
+with no trace of why. A best-effort SIGTERM/SIGINT handler logs
+"signal-terminated" for softer external kills; a hard TerminateProcess/SIGKILL
+still cannot be intercepted by any process-internal code, which is why the
+liveness monitor logs during the hang rather than relying only on exit hooks.
+None of this changes when or how the guardian restarts anything -- it is
+observability-only.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -81,6 +97,21 @@ READINESS_POLL = 5            # seconds between readiness probes
 # spike envelope while still catching a genuinely hung server within a poll or two.
 # Env-tunable so it can be tightened/loosened without a code change.
 READINESS_PROBE_TIMEOUT = float(os.getenv("PORT_GUARDIAN_PROBE_TIMEOUT", "8"))
+# Post-startup liveness monitoring (T2-16 observability fix, 2026-07-09): the
+# readiness watchdog above only proves the server came up ONCE at startup, then
+# its thread returns and nothing watches again. A server that passes readiness
+# and later hangs (accepts TCP, never answers HTTP -- the confirmed 28-minute
+# incident that prompted this) is invisible: when something external (PM2,
+# Windows, a human) eventually kills the guardian, port_guardian_restarts.jsonl
+# has no entry explaining why. LIVENESS_POLL/LIVENESS_HANG_FAILURES drive a
+# continuous post-readiness monitor (see _liveness_monitor) that logs the
+# moment a hang is DETECTED -- while the process is still alive -- instead of
+# only at exit (which a hard TerminateProcess/SIGKILL would never reach anyway).
+# Purely additive observability: never forces an exit, never changes restart
+# timing/behavior. Env-tunable so the sensitivity can be adjusted without a
+# code change, matching the other readiness knobs above.
+LIVENESS_POLL = float(os.getenv("PORT_GUARDIAN_LIVENESS_POLL", "15"))
+LIVENESS_HANG_FAILURES = int(os.getenv("PORT_GUARDIAN_LIVENESS_HANG_FAILURES", "3"))
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENGINE_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = ENGINE_DIR.parent
@@ -121,6 +152,110 @@ def _readiness_watchdog(
             return True
         sleep_fn(poll_interval_s)
     return False
+
+
+def _liveness_monitor(
+    poll_interval_s: float,
+    hang_failures: int,
+    is_healthy_fn,
+    record_fn,
+    *,
+    sleep_fn=time.sleep,
+    now_fn=time.monotonic,
+    max_iterations: int | None = None,
+) -> None:
+    """Continuously poll ``is_healthy_fn`` for the life of the process (after
+    startup readiness already passed) and call ``record_fn(reason, details)``
+    the moment a hang is DETECTED, not just at process exit.
+
+    This closes the observability gap behind the confirmed incident: uvicorn
+    accepted TCP connections for ~28 minutes without answering a single /health
+    (or any) probe, then the process was terminated by something external with
+    zero log entry explaining why. The startup readiness watchdog only checks
+    once; nothing else was watching afterward. A hard kill (TerminateProcess /
+    SIGKILL) can't be intercepted by any code running in the dying process --
+    so logging must happen DURING the hang, while the process is still alive
+    and able to write, not only in an exit/signal handler.
+
+    Never forces an exit and never changes restart timing/behavior -- purely
+    additive observability. Requires ``hang_failures`` consecutive failed
+    probes (not one) before logging, so a single transient blip doesn't create
+    log noise; logs exactly once per hang episode, plus one "liveness-recovered"
+    entry if/when it comes back, so the JSONL trail shows the full episode
+    (start + duration) rather than spamming every poll.
+
+    Clock/sleep/iteration-count are injectable so the loop is deterministically
+    testable (``max_iterations=None`` runs forever in production, a daemon
+    thread that dies with the process; tests pass a small bound).
+    """
+    consecutive_failures = 0
+    hang_logged = False
+    hang_started: float | None = None
+    iterations = 0
+
+    while max_iterations is None or iterations < max_iterations:
+        iterations += 1
+        if is_healthy_fn():
+            if hang_logged:
+                record_fn(
+                    "liveness-recovered",
+                    {
+                        "hang_duration_s": (
+                            round(now_fn() - hang_started, 1)
+                            if hang_started is not None
+                            else None
+                        ),
+                        "consecutive_failures_observed": consecutive_failures,
+                    },
+                )
+            consecutive_failures = 0
+            hang_logged = False
+            hang_started = None
+        else:
+            consecutive_failures += 1
+            if hang_started is None:
+                hang_started = now_fn()
+            if consecutive_failures >= hang_failures and not hang_logged:
+                record_fn(
+                    "liveness-hang-detected",
+                    {
+                        "consecutive_failures": consecutive_failures,
+                        "poll_interval_s": poll_interval_s,
+                        "hang_duration_s": round(now_fn() - hang_started, 1),
+                    },
+                )
+                hang_logged = True
+        sleep_fn(poll_interval_s)
+
+
+def _install_termination_logger() -> None:
+    """Best-effort: log a structured event if the guardian receives SIGTERM or
+    SIGINT (e.g. PM2 stop, ``taskkill /PID`` without ``/F``, Ctrl+C).
+
+    Cannot intercept a hard kill (``taskkill /F`` / TerminateProcess / SIGKILL)
+    -- nothing runs in a process that's forcibly terminated, which is exactly
+    why ``_liveness_monitor`` above logs a hang the moment it's DETECTED, while
+    the process is still alive, rather than relying solely on an exit hook.
+    This handler is defense-in-depth for the softer kill paths that DO give the
+    process a chance to run code first. Must never raise, and must preserve the
+    existing exit semantics (this only adds a log line before exiting).
+    """
+
+    def _handler(signum, _frame) -> None:
+        _record_restart_event(
+            "signal-terminated",
+            {"signal": signum, "signal_name": signal.Signals(signum).name, "port": PORT},
+            RESTART_LOG,
+        )
+        sys.exit(128 + signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _handler)
+        except (ValueError, AttributeError, OSError):
+            # signal.signal must run on the main thread; some platforms lack
+            # a given signal. Never let observability wiring break the guardian.
+            pass
 
 
 def _port_holders(port: int) -> list[int]:
@@ -274,6 +409,9 @@ def _check_venv_python() -> None:
             "Exiting to prevent double-binding port 8010.",
             flush=True,
         )
+        _record_restart_event(
+            "wrong-python", {"executable": sys.executable, "port": PORT}, RESTART_LOG
+        )
         sys.exit(4)
 
 
@@ -288,6 +426,17 @@ def _start_readiness_watchdog() -> None:
         )
         if ready:
             print("[port_guardian] readiness confirmed — /health is serving", flush=True)
+            # Startup readiness is a one-shot check. Keep watching for the life
+            # of the process so a later hang (server was healthy, then stopped
+            # answering) is logged the moment it's detected instead of being
+            # invisible when something external eventually kills the process.
+            # Never forces an exit; never changes restart timing (T2-16).
+            _liveness_monitor(
+                LIVENESS_POLL,
+                LIVENESS_HANG_FAILURES,
+                lambda: _is_healthy(PORT),
+                lambda reason, details: _record_restart_event(reason, details, RESTART_LOG),
+            )
             return
         # Diagnostic: distinguish "uvicorn bound the port but /health never answered
         # in time" (slow/hung request path — port_bound=True) from "uvicorn never
@@ -318,6 +467,7 @@ def _start_readiness_watchdog() -> None:
 
 def main() -> int:
     _check_venv_python()
+    _install_termination_logger()
     print(f"[port_guardian] checking port {PORT}...", flush=True)
     holders = _port_holders(PORT)
 
@@ -353,6 +503,11 @@ def main() -> int:
                     "REFUSING to kill. Resolve manually.",
                     flush=True,
                 )
+                _record_restart_event(
+                    "unidentified-port-holder",
+                    {"pid": pid, "name": name, "port": PORT},
+                    RESTART_LOG,
+                )
                 return 1
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
             killed = _kill_pid(pid)
@@ -371,12 +526,22 @@ def main() -> int:
                         f"then `pm2 start jarvis-engine`.",
                         flush=True,
                     )
+                    _record_restart_event(
+                        "unkillable-healthy-orphan",
+                        {"pid": pid, "name": name, "port": PORT, "backoff_s": HEALTHY_ORPHAN_BACKOFF},
+                        RESTART_LOG,
+                    )
                     time.sleep(HEALTHY_ORPHAN_BACKOFF)
                     return 3
                 print(
                     f"[port_guardian] CANNOT kill PID {pid} (both taskkill and "
                     "Stop-Process failed, not elevated-healthy). Aborting.",
                     flush=True,
+                )
+                _record_restart_event(
+                    "unkillable-unhealthy-orphan",
+                    {"pid": pid, "name": name, "port": PORT},
+                    RESTART_LOG,
                 )
                 return 2
 
@@ -386,6 +551,11 @@ def main() -> int:
                 f"[port_guardian] port {PORT} still bound {PORT_FREE_WAIT}s after kill — "
                 "aborting",
                 flush=True,
+            )
+            _record_restart_event(
+                "port-still-bound-after-kill",
+                {"port": PORT, "wait_s": PORT_FREE_WAIT},
+                RESTART_LOG,
             )
             return 2
         print(f"[port_guardian] port {PORT} released", flush=True)
@@ -414,13 +584,26 @@ def main() -> int:
     # the engine instead of reporting a dead in-process server as "online".
     _start_readiness_watchdog()
 
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=PORT,
-        log_level="info",
-    )
+    try:
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=PORT,
+            log_level="info",
+        )
+    except Exception as exc:
+        # uvicorn.run() blocking call raised (e.g. import error inside main:app,
+        # an unhandled server-loop exception). Previously this propagated with
+        # no structured log entry -- log it, then re-raise unchanged so the exit
+        # code / traceback behavior is identical to before this fix.
+        _record_restart_event(
+            "uvicorn-crashed",
+            {"port": PORT, "error_type": type(exc).__name__, "error": str(exc)[:500]},
+            RESTART_LOG,
+        )
+        raise
     # uvicorn.run blocks until the server is shut down; 0 is the normal exit.
+    _record_restart_event("normal-shutdown", {"port": PORT}, RESTART_LOG)
     return 0
 
 
