@@ -325,6 +325,59 @@ class EODScheduler:
 
         return by_symbol
 
+    def _reconcile_and_heal_daily_pnl(self, *, context: str = "") -> Optional[Dict[str, Any]]:
+        """
+        Detective + corrective ``daily_pnl`` control (2026-07-02, extended 2026-07-09).
+
+        Runs ``reconcile_daily_pnl`` (read-only) and, on drift, applies
+        ``repair_daily_pnl`` (dry_run=False) to rebuild the table from the
+        closed ``paper_trades`` ledger using the same absolute-anchoring
+        formula ``run_eod_snapshot`` uses. DB-only, reversible, idempotent,
+        and never raises — a heal failure is logged, not propagated, so it
+        never blocks the caller's job.
+
+        Root-cause fix (2026-07-09): this control used to run ONLY inside
+        ``run_eod_snapshot`` at 20:05 UTC. ``run_session_flatten`` closes any
+        still-open positions 40 minutes later at 20:45 UTC, so any trade
+        flattened in that window was counted by neither snapshot — the daily
+        drift the reconcile-loop caught "the next morning" every time a
+        position survived to end of session, which is most trading days.
+        Calling this again at the end of ``run_session_flatten`` closes the
+        gap same-day instead of leaving it for tomorrow's EOD run.
+
+        NOTE: a heal zeroes the reporting-only max_drawdown/unrealized
+        columns on rebuilt rows (per-day intraday DD isn't reconstructable
+        from EOD closed rows); nothing load-bearing reads them (the
+        kill-switch uses portfolio_equity, not daily_pnl.max_drawdown).
+
+        Returns the repair summary dict when a repair was applied, or None
+        when the DB is unavailable, already clean, or the heal itself failed.
+        """
+        if self._db is None or not hasattr(self._db, "reconcile_daily_pnl"):
+            return None
+        tag = f" [{context}]" if context else ""
+        try:
+            recon = self._db.reconcile_daily_pnl()
+            if recon.get("ok", True):
+                return None
+            repair = self._db.repair_daily_pnl(
+                initial_capital=_DEFAULT_STARTING_BALANCE, dry_run=False
+            )
+            logger.warning(
+                "[EOD]%s daily_pnl drift on %d date(s) — self-heal %s "
+                "(%d rows changed, %d orphans removed, final_ending=%.2f)",
+                tag,
+                recon.get("drift_count", 0),
+                "APPLIED" if repair.get("applied") else "no-op",
+                repair.get("rows_changed", 0),
+                repair.get("orphans_removed", 0),
+                repair.get("final_ending", 0.0),
+            )
+            return repair
+        except Exception as exc:
+            logger.error("[EOD]%s daily_pnl self-heal failed: %s", tag, exc)
+            return None
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     async def run_eod_snapshot(self) -> Dict[str, Any]:
@@ -457,25 +510,14 @@ class EODScheduler:
         # rebuilt rows (per-day intraday DD isn't reconstructable from EOD closed
         # rows); nothing load-bearing reads them (the kill-switch uses
         # portfolio_equity, not daily_pnl.max_drawdown).
-        if self._db is not None and hasattr(self._db, "reconcile_daily_pnl"):
-            try:
-                recon = self._db.reconcile_daily_pnl()
-                if not recon.get("ok", True):
-                    repair = self._db.repair_daily_pnl(
-                        initial_capital=_DEFAULT_STARTING_BALANCE, dry_run=False
-                    )
-                    logger.warning(
-                        "[EOD] daily_pnl drift on %d date(s) — self-heal %s "
-                        "(%d rows changed, %d orphans removed, final_ending=%.2f)",
-                        recon.get("drift_count", 0),
-                        "APPLIED" if repair.get("applied") else "no-op",
-                        repair.get("rows_changed", 0),
-                        repair.get("orphans_removed", 0),
-                        repair.get("final_ending", 0.0),
-                    )
-                    snapshot["self_heal"] = repair
-            except Exception as exc:
-                logger.error("[EOD] daily_pnl self-heal failed: %s", exc)
+        #
+        # This call alone still misses trades closed by run_session_flatten
+        # (20:45 UTC), which fires 40 minutes AFTER this snapshot (20:05 UTC) —
+        # see _reconcile_and_heal_daily_pnl's docstring and the matching call
+        # at the end of run_session_flatten for the fix (2026-07-09).
+        repair = self._reconcile_and_heal_daily_pnl(context="eod_snapshot")
+        if repair is not None:
+            snapshot["self_heal"] = repair
 
         # Send WhatsApp EOD summary
         if self._notifier is not None:
@@ -888,6 +930,16 @@ class EODScheduler:
                 count,
                 net_pnl,
             )
+
+            # Re-run the daily_pnl self-heal AFTER flatten (2026-07-09 fix).
+            # run_eod_snapshot's self-heal fires at 20:05 UTC; session_flatten
+            # fires 40 minutes later at 20:45 UTC and can close positions that
+            # snapshot never saw, permanently missing them from today's
+            # daily_pnl row until tomorrow's EOD self-heal happens to rebuild
+            # this date too. Calling it again here — cheap, idempotent,
+            # read-mostly — closes that gap the same day instead of leaving a
+            # guaranteed one-day-stale drift for the reconcile loop to flag.
+            self._reconcile_and_heal_daily_pnl(context="session_flatten")
         except Exception as exc:
             logger.exception("[EODScheduler] session_flatten failed: %s", exc)
 
