@@ -78,6 +78,27 @@ class FakeDataManager:
         return _intraday_bars_two_sessions()
 
 
+class CachedDailyBarsDataManager(FakeDataManager):
+    """Price leg reports live "ibkr", but the daily bars fell back to the
+    SQLite cache tier -- the scenario Codex flagged (PR #315)."""
+
+    async def get_bars(self, symbol, lookback_days=30, timeframe="5m", is_futures=False):
+        if timeframe == "1d":
+            df = _daily_bars()
+            df.attrs["source"] = "sqlite_cache"
+            return df
+        return _intraday_bars_two_sessions()
+
+
+class CachedIntradayBarsDataManager(FakeDataManager):
+    async def get_bars(self, symbol, lookback_days=30, timeframe="5m", is_futures=False):
+        if timeframe == "1d":
+            return _daily_bars()
+        df = _intraday_bars_two_sessions()
+        df.attrs["source"] = "csv_cache"
+        return df
+
+
 class FakeCoreyAgent:
     async def analyze(self, symbol, current_price=0.0, atr=0.0, hp_context=None, **kwargs):
         return CoreyAuctionReport(
@@ -153,6 +174,72 @@ async def test_prior_close_falls_back_to_ticker_when_daily_bars_unavailable():
     assert raw is not None
     assert raw["prior_close"] == 7551.75  # ticker prev_close, the documented fallback
     assert raw["atr"] is None  # no daily bars -> no ATR either
+
+
+@pytest.mark.asyncio
+async def test_provenance_downgraded_when_daily_bars_are_cached():
+    """Codex review finding (PR #315): a live price snapshot must not badge the
+    whole payload LIVE when the Saty/TPO numbers actually came from cached
+    daily bars."""
+    provider = LiveAuctionDataProvider(CachedDailyBarsDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    assert raw is not None
+    assert raw["source"] == "sqlite_cache"  # NOT "ibkr", despite the live price tick
+
+
+@pytest.mark.asyncio
+async def test_provenance_downgraded_when_intraday_bars_are_cached():
+    provider = LiveAuctionDataProvider(CachedIntradayBarsDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    assert raw is not None
+    assert raw["source"] == "csv_cache"
+
+
+@pytest.mark.asyncio
+async def test_provenance_stays_live_when_both_bar_legs_are_fresh():
+    provider = LiveAuctionDataProvider(FakeDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    assert raw is not None
+    assert raw["source"] == "ibkr"  # unchanged: neither bar leg is a cache tier
+
+
+@pytest.mark.asyncio
+async def test_tpo_failed_survives_intraday_bounce_back_across_fail_target():
+    """Codex review finding (PR #315): passing only the last price into
+    derive_tpo_failed means a session that breached fail_target and then
+    pulled back reports failed=False, losing the breach. This fixture is a
+    genuine regression check -- the exact prices below were verified (see PR
+    history) to produce imbalance=BEAR_IMBAL, fail_target=7504.0, where the
+    session HIGH (7513, bar 5) breaches fail_target but the LAST bar's close
+    (7485) does not: a last-price-only check would wrongly report
+    failed=False, while the session-extreme check correctly reports True."""
+
+    class BreachedThenPulledBackDataManager(FakeDataManager):
+        async def get_bars(self, symbol, lookback_days=30, timeframe="5m", is_futures=False):
+            if timeframe == "1d":
+                return _daily_bars()
+            rows = []
+            day2 = datetime(2026, 7, 8, 14, 30, tzinfo=timezone.utc)
+            prices = [7490, 7495, 7500, 7510, 7512, 7505, 7498, 7492, 7488, 7485]
+            for i, p in enumerate(prices):
+                ts = day2 + timedelta(minutes=5 * i)
+                rows.append(
+                    {"timestamp": ts, "open": p, "high": p + 1, "low": p - 1, "close": p, "volume": 500}
+                )
+            base = _intraday_bars_two_sessions()
+            day1 = base[base["timestamp"] < day2]
+            return pd.concat([day1, pd.DataFrame(rows)], ignore_index=True)
+
+    provider = LiveAuctionDataProvider(BreachedThenPulledBackDataManager(), FakeCoreyAgent())
+    raw = await provider.get_inputs("MES")
+
+    assert raw is not None
+    assert raw["tpo"] is not None
+    assert raw["tpo"]["fail_target"] == 7504.0
+    assert raw["tpo"]["failed"] is True  # the breach at bar 5 (high=7513) must not be forgotten
 
 
 def test_prior_close_from_daily_excludes_todays_still_forming_bar():

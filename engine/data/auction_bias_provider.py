@@ -30,7 +30,7 @@ import logging
 import time
 from typing import Optional
 
-from analysis.tpo_bias_mapping import row_to_tpo_dict
+from analysis.tpo_bias_mapping import row_to_tpo_dict, session_extreme_since_open
 from backtest.indicators import wilder_atr
 from backtest.tpo_profile import compute_tpo_profile
 
@@ -44,6 +44,15 @@ SATY_ATR_PERIOD = 14
 ATR_LOOKBACK_DAYS = 30  # enough daily bars for Wilder smoothing to converge
 TPO_LOOKBACK_DAYS = 5   # enough intraday sessions for compute_tpo_profile's
                         # prior-session shift to have a defined current row
+
+# MarketDataManager.get_bars() tags df.attrs["source"] with the tier that
+# actually served the bars (see data/market_data.py:_get_bars_impl). These are
+# its cache/degraded tiers -- if EITHER the daily or intraday bars come from
+# one of these, the Saty/TPO numbers computed from them are stale, even when
+# the price snapshot itself is live. Codex review finding (PR #315): the
+# overall provenance must reflect the worst tier actually used, not just the
+# price leg's source.
+BAR_CACHE_TIER_SOURCES = frozenset({"sqlite_cache", "csv_cache", "none"})
 
 
 class LiveAuctionDataProvider:
@@ -132,11 +141,13 @@ class LiveAuctionDataProvider:
         atr: Optional[float] = None
         day_range: Optional[float] = None
         prior_close: Optional[float] = None
+        daily_source: Optional[str] = None
         try:
             daily_df = await dm.get_bars(
                 symbol, lookback_days=ATR_LOOKBACK_DAYS, timeframe="1d", is_futures=True
             )
             if daily_df is not None and not daily_df.empty:
+                daily_source = daily_df.attrs.get("source")
                 prior_close = self._prior_close_from_daily(daily_df)
                 if len(daily_df) >= SATY_ATR_PERIOD:
                     atr_series = wilder_atr(
@@ -157,15 +168,24 @@ class LiveAuctionDataProvider:
             return None
 
         tpo: Optional[dict] = None
+        intraday_source: Optional[str] = None
         try:
             intraday_df = await dm.get_bars(
                 symbol, lookback_days=TPO_LOOKBACK_DAYS, timeframe="5m", is_futures=True
             )
             if intraday_df is not None and not intraday_df.empty:
+                intraday_source = intraday_df.attrs.get("source")
                 profile_df = compute_tpo_profile(self._indexed(intraday_df))
                 row = profile_df.iloc[-1]
+                imbalance = row.get("tpo_imbalance")
+                # Session extreme, NOT the raw last price: a bull-imbalanced
+                # profile that traded below fail_target and bounced back above
+                # it before this request must still report failed=True. See
+                # session_extreme_since_open's docstring (Codex review finding,
+                # PR #315).
+                extreme = session_extreme_since_open(profile_df, imbalance)
                 tpo = row_to_tpo_dict(
-                    close=float(price),
+                    close=(extreme if extreme is not None else float(price)),
                     va_high=(None if row.get("va_high") != row.get("va_high") else float(row["va_high"])),
                     va_low=(None if row.get("va_low") != row.get("va_low") else float(row["va_low"])),
                     profile_target=(
@@ -176,7 +196,7 @@ class LiveAuctionDataProvider:
                         if row.get("tpo_fail_target") != row.get("tpo_fail_target")
                         else float(row["tpo_fail_target"])
                     ),
-                    imbalance=row.get("tpo_imbalance"),
+                    imbalance=imbalance,
                 )
         except Exception as exc:
             logger.warning("auction bias: TPO fetch failed for %s: %s", symbol, exc)
@@ -195,6 +215,14 @@ class LiveAuctionDataProvider:
             }
         except Exception as exc:
             logger.warning("auction bias: Corey analyst failed for %s: %s", symbol, exc)
+
+        # Downgrade provenance if either bar leg came from a cache/degraded
+        # tier, even when the price snapshot itself is live -- the Saty/TPO
+        # numbers are computed from the bars, not the price tick.
+        for bar_source in (daily_source, intraday_source):
+            if bar_source in BAR_CACHE_TIER_SOURCES:
+                source = bar_source
+                break
 
         return {
             "price": float(price),

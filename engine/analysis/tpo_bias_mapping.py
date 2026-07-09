@@ -25,7 +25,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-__all__ = ["derive_tpo_failed", "row_to_tpo_dict"]
+import pandas as pd
+
+__all__ = ["derive_tpo_failed", "row_to_tpo_dict", "session_extreme_since_open"]
 
 
 def derive_tpo_failed(imbalance: str, close: float, fail_target: float) -> bool:
@@ -33,7 +35,11 @@ def derive_tpo_failed(imbalance: str, close: float, fail_target: float) -> bool:
 
     Args:
         imbalance: "BULL_IMBAL" or "BEAR_IMBAL" (tpo_profile.py's tpo_imbalance).
-        close: last traded price (or session extreme, for an intraday check).
+        close: the price to test against fail_target. Pass the session extreme
+            (see session_extreme_since_open) for a since-open breach check that
+            survives a bounce back across the level before the request; pass
+            the raw last price only for a snapshot ("is it beyond it right
+            now") check.
         fail_target: tpo_profile.py's tpo_fail_target for the current session.
     """
     if imbalance == "BULL_IMBAL":
@@ -41,6 +47,47 @@ def derive_tpo_failed(imbalance: str, close: float, fail_target: float) -> bool:
     if imbalance == "BEAR_IMBAL":
         return close >= fail_target
     return False
+
+
+def session_extreme_since_open(profile_df: pd.DataFrame, imbalance: Optional[str]) -> Optional[float]:
+    """The session low (BULL_IMBAL) or high (BEAR_IMBAL) since the current
+    session's profile was established, so a fail_target breach is not silently
+    forgotten if price bounces back across it before the request.
+
+    Codex review finding (PR #315): checking only the current last price against
+    fail_target means a bull-imbalanced profile that traded below fail_target and
+    then recovered above it reports failed=False, even though the breach
+    happened. This instead scans back across the trailing block of profile_df
+    rows that share the current session's fail_target (compute_tpo_profile
+    forward-fills that value for the whole session, so a run of equal values
+    marks "this session"), and takes the extreme of the ORIGINAL high/low
+    columns compute_tpo_profile preserves from its input df.
+
+    Returns None if the profile is undefined (mirrors row_to_tpo_dict) or the
+    required columns are absent.
+    """
+    if profile_df is None or profile_df.empty or imbalance not in ("BULL_IMBAL", "BEAR_IMBAL"):
+        return None
+    if "tpo_fail_target" not in profile_df.columns:
+        return None
+
+    last_fail = profile_df["tpo_fail_target"].iloc[-1]
+    if pd.isna(last_fail):
+        return None
+
+    same_session = profile_df["tpo_fail_target"] == last_fail
+    mismatches = same_session.index[~same_session]
+    if len(mismatches) > 0:
+        start_pos = profile_df.index.get_loc(mismatches[-1]) + 1
+    else:
+        start_pos = 0
+    block = profile_df.iloc[start_pos:]
+
+    if imbalance == "BULL_IMBAL" and "low" in block.columns:
+        return float(block["low"].min())
+    if imbalance == "BEAR_IMBAL" and "high" in block.columns:
+        return float(block["high"].max())
+    return None
 
 
 def row_to_tpo_dict(
@@ -52,6 +99,10 @@ def row_to_tpo_dict(
     imbalance: Optional[str],
 ) -> Optional[dict]:
     """Build the analysis.auction_bias "tpo" input from one compute_tpo_profile row.
+
+    ``close`` is passed straight through to derive_tpo_failed — callers doing a
+    since-open breach check should pass session_extreme_since_open's result
+    here, not the raw last price (see derive_tpo_failed's docstring).
 
     Returns None when the profile is undefined for this session (NaN target/
     fail_target — compute_tpo_profile leaves these null until a prior session
