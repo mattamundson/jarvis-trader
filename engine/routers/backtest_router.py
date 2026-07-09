@@ -164,6 +164,7 @@ async def get_atr_trail_trades(
         import pandas as pd
 
         from backtest.atr_trail_viz import compute_atr_trail_viz
+        from backtest.run_atr_trail_bounce import _pick_cache_file
 
         cache = Path(__file__).resolve().parent.parent / "backtest" / "cache"
         # Broad glob so it also matches the IBKR continuous file (..._5m_cont.csv).
@@ -172,7 +173,10 @@ async def get_atr_trail_trades(
             raise HTTPException(
                 404, f"No cached {symbol} {timeframe} bars in {cache}. Run the IBKR fetch first."
             )
-        path = max(matches, key=lambda p: p.stat().st_mtime)  # freshest pull
+        # Pick by parsed date range (latest end, longest span), NOT mtime -- a
+        # freshly-touched short recent-tail file would otherwise silently win
+        # over a longer, older-mtime full-history file. See _pick_cache_file.
+        path = _pick_cache_file(matches)
 
         df = pd.read_csv(path)
         df.columns = [c.lower() for c in df.columns]

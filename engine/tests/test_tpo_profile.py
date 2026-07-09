@@ -134,6 +134,22 @@ def test_insufficient_data_returns_nan_levels():
     assert (result["price_vs_va"] == "IN_VA").all()
 
 
+def test_undefined_profile_is_not_mislabeled_bull_imbalance():
+    """A first session (no prior profile) must NOT be labeled BULL_IMBAL.
+
+    tpo_imbalance previously used a two-way np.where(bear, BEAR, BULL), so any
+    row where the profile is undefined (poc/bal NaN) fell through to BULL_IMBAL
+    by default -- generate_atr_trail_tpotarget_confluence_signals() then treated
+    that as a real bullish projection and let long entries through even though
+    tpo_target is NaN. NaN is the only correct label here.
+    """
+    df = _rth_bars("2024-01-02", [100.0])
+    result = compute_tpo_profile(df, tick_size=0.25)
+    assert result["tpo_imbalance"].isna().all()
+    assert result["tpo_target"].isna().all()
+    assert result["tpo_fail_target"].isna().all()
+
+
 # ── Test 6: price_vs_va classification ───────────────────────────────────────
 
 def test_price_vs_va_classification():
