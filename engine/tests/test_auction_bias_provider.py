@@ -259,11 +259,24 @@ async def test_tpo_failed_survives_intraday_bounce_back_across_fail_target():
     assert raw["tpo"]["failed"] is True  # the breach at bar 5 (high=7513) must not be forgotten
 
 
-def test_prior_close_from_daily_excludes_todays_still_forming_bar_when_market_open(monkeypatch):
-    """If the feed includes an in-progress "today" bar as the last row AND the
-    futures market is currently open, the prior close must come from the last
-    COMPLETED session, not that partial bar."""
-    monkeypatch.setattr("scanner.signal_scanner._is_futures_market_hours", lambda: True)
+def test_session_closed_for_today_ct_true_after_4pm_including_post_reopen_window(monkeypatch):
+    """Codex review finding (PR #319), third pass: the original fix gated on
+    "is a session open right now", which flips back to True at the 5pm CT
+    reopen -- reintroducing the exact gap it was meant to close for the rest
+    of the evening (e.g. 6pm CT, well after the 5pm reopen). The correct
+    signal (has today's own 4pm CT close passed) must stay True continuously
+    from 4pm CT onward, regardless of a new session having since started."""
+    for hour, expected in [(10, False), (15, False), (16, True), (18, True), (23, True)]:
+        fake_now = pd.Timestamp(f"2026-07-08 {hour:02d}:00", tz="America/Chicago")
+        monkeypatch.setattr(pd.Timestamp, "now", staticmethod(lambda tz=None, _v=fake_now: _v))
+        assert LiveAuctionDataProvider._session_closed_for_today_ct() is expected, hour
+
+
+def test_prior_close_from_daily_excludes_todays_still_forming_bar_when_session_open(monkeypatch):
+    """If the feed includes an in-progress "today" bar as the last row AND
+    today's session hasn't closed yet (before 4pm CT), the prior close must
+    come from the last COMPLETED session, not that partial bar."""
+    monkeypatch.setattr(LiveAuctionDataProvider, "_session_closed_for_today_ct", lambda: False)
     now = pd.Timestamp.now(tz="UTC")
     df = pd.DataFrame(
         [
@@ -275,17 +288,17 @@ def test_prior_close_from_daily_excludes_todays_still_forming_bar_when_market_op
     assert LiveAuctionDataProvider._prior_close_from_daily(df) == 200.0
 
 
-def test_prior_close_from_daily_includes_todays_bar_when_market_closed(monkeypatch):
-    """Codex review finding (PR #315), second pass: in the after-close window
-    (CME Globex session already settled but still "today" in UTC), a bar dated
-    today IS the true prior close, not the day before it."""
-    monkeypatch.setattr("scanner.signal_scanner._is_futures_market_hours", lambda: False)
+def test_prior_close_from_daily_includes_todays_bar_once_session_closed(monkeypatch):
+    """Codex review finding (PR #315), second pass: after today's session has
+    closed (4pm CT onward, still "today" in UTC), a bar dated today IS the
+    true prior close, not the day before it."""
+    monkeypatch.setattr(LiveAuctionDataProvider, "_session_closed_for_today_ct", lambda: True)
     now = pd.Timestamp.now(tz="UTC")
     df = pd.DataFrame(
         [
             {"timestamp": now - pd.Timedelta(days=2), "close": 100.0},
             {"timestamp": now - pd.Timedelta(days=1), "close": 200.0},
-            {"timestamp": now, "close": 300.0},  # settled today's session -- market is closed
+            {"timestamp": now, "close": 300.0},  # settled today's session
         ]
     )
     assert LiveAuctionDataProvider._prior_close_from_daily(df) == 300.0
@@ -294,8 +307,8 @@ def test_prior_close_from_daily_includes_todays_bar_when_market_closed(monkeypat
 def test_prior_close_from_daily_falls_back_to_last_bar_when_feed_excludes_today(monkeypatch):
     """If the feed already excludes today (all bars strictly in the past),
     the last bar IS the prior completed session -- use it directly,
-    regardless of market-hours state."""
-    monkeypatch.setattr("scanner.signal_scanner._is_futures_market_hours", lambda: True)
+    regardless of session-closed state."""
+    monkeypatch.setattr(LiveAuctionDataProvider, "_session_closed_for_today_ct", lambda: False)
     now = pd.Timestamp.now(tz="UTC")
     df = pd.DataFrame(
         [

@@ -55,34 +55,66 @@ def derive_tpo_failed(imbalance: str, close: float, fail_target: float) -> bool:
     return False
 
 
-def current_session_block(profile_df: pd.DataFrame) -> pd.DataFrame:
-    """The trailing block of profile_df rows belonging to the current session.
+def _bar_session_dates(
+    profile_df: pd.DataFrame,
+    session_start_hour: int = 9,
+    session_start_minute: int = 30,
+    tz: str = "America/Chicago",
+) -> pd.Series:
+    """Per-bar trading-session date, using the IDENTICAL bucketing rule as
+    backtest.tpo_profile.compute_tpo_profile's internal _session_tpo grouping
+    (bars before the session open belong to the previous calendar date's
+    session). Duplicated verbatim here rather than exporting a new public
+    helper from tpo_profile.py, which is a shared, heavily-used module with
+    many other callers -- MUST be kept in sync with that function's
+    session_start_hour/session_start_minute/tz defaults if either changes.
 
-    compute_tpo_profile forward-fills each session's stats (vpoc, va_high/low,
-    tpo_target, tpo_fail_target) across all of that session's bars, so a run of
-    equal tpo_fail_target values marks "this session" -- this returns exactly
-    that trailing run, ending at the last row. Used as the single shared
-    session-boundary definition for both session_extreme_since_open (breach
-    check) and session_range (day_range) so the two never disagree about what
-    "today's session" means.
+    Requires profile_df to have a tz-aware (or naive-as-UTC) DatetimeIndex,
+    which compute_tpo_profile's output always does (it operates on and
+    preserves its input's index).
+    """
+    idx = profile_df.index
+    if idx.tz is None:
+        idx = idx.tz_localize("UTC")
+    idx_local = idx.tz_convert(tz)
+    session_open = idx_local.hour * 60 + idx_local.minute
+    open_cutoff = session_start_hour * 60 + session_start_minute
+    session_date = idx_local.normalize()
+    pre_open_mask = session_open < open_cutoff
+    return pd.Series(
+        session_date - pd.to_timedelta(pre_open_mask.astype(int), unit="D"), index=profile_df.index
+    )
+
+
+def current_session_block(profile_df: pd.DataFrame) -> pd.DataFrame:
+    """The trailing block of profile_df rows belonging to the current session,
+    identified by REAL session-date bucketing (see _bar_session_dates), not by
+    value-equality on tpo_fail_target.
+
+    Codex review finding (PR #319, second pass): the original implementation
+    treated a run of equal tpo_fail_target values as "one session" -- but two
+    genuinely DIFFERENT adjacent sessions can coincidentally compute the exact
+    same fail_target (it's a function of that session's own poc/profile
+    bounds), which would wrongly merge a prior session's high/low into
+    session_range()'s "today's range" and could falsely trip range_exhausted.
+    Bucketing by actual session date (matching compute_tpo_profile's own rule)
+    has no such collision risk.
+
+    Used as the single shared session-boundary definition for both
+    session_extreme_since_open (breach check) and session_range (day_range)
+    so the two never disagree about what "today's session" means.
 
     Returns an empty DataFrame if the profile is undefined or the required
     column is absent.
     """
     if profile_df is None or profile_df.empty or "tpo_fail_target" not in profile_df.columns:
         return pd.DataFrame()
-
-    last_fail = profile_df["tpo_fail_target"].iloc[-1]
-    if pd.isna(last_fail):
+    if pd.isna(profile_df["tpo_fail_target"].iloc[-1]):
         return pd.DataFrame()
 
-    same_session = profile_df["tpo_fail_target"] == last_fail
-    mismatches = same_session.index[~same_session]
-    if len(mismatches) > 0:
-        start_pos = profile_df.index.get_loc(mismatches[-1]) + 1
-    else:
-        start_pos = 0
-    return profile_df.iloc[start_pos:]
+    session_dates = _bar_session_dates(profile_df)
+    last_session_date = session_dates.iloc[-1]
+    return profile_df[(session_dates == last_session_date).to_numpy()]
 
 
 def session_extreme_since_open(profile_df: pd.DataFrame, imbalance: Optional[str]) -> Optional[float]:

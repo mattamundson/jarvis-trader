@@ -104,6 +104,23 @@ class LiveAuctionDataProvider:
         return out
 
     @staticmethod
+    def _session_closed_for_today_ct() -> bool:
+        """True once today's CME Globex daily settle (4pm CT, every weekday)
+        has passed, in CT wall-clock terms -- holds continuously from 4pm CT
+        onward regardless of whether the market has since reopened (5pm CT).
+        Extracted as its own method so tests can control it deterministically
+        rather than depending on real wall-clock time."""
+        import pandas as pd
+
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
+
+        now_ct = pd.Timestamp.now(tz=ZoneInfo("America/Chicago"))
+        return bool(now_ct.hour >= 16)
+
+    @staticmethod
     def _prior_close_from_daily(daily_df) -> Optional[float]:
         """The last COMPLETED prior session's close from daily bars — the anchor
         saty_atr_levels() actually needs, per the AA Saty study (prior session
@@ -125,28 +142,34 @@ class LiveAuctionDataProvider:
         card is FOR. CME Globex ES/MES sessions run ~5pm CT to ~4pm CT the next
         day, spanning a UTC calendar-date rollover only partway through the
         session -- so a daily bar dated "today" in UTC can already be a fully
-        CLOSED, settled session in the after-close/pre-UTC-midnight window
-        (roughly 4-7pm CT), and the strict date filter would wrongly exclude
-        it, anchoring Saty levels one full session stale. When the futures
-        market is currently CLOSED (see scanner.signal_scanner's
-        _is_futures_market_hours, the engine's own CME Globex schedule check —
-        reused here rather than re-deriving exchange hours), a bar dated today
-        is included as a valid "prior" candidate too, since the market being
-        closed is strong evidence that bar already settled. When the market is
-        OPEN, behavior is unchanged: today's bar is still excluded as
-        actively-forming.
+        CLOSED, settled session well before UTC midnight, and the strict date
+        filter would wrongly exclude it, anchoring Saty levels one full
+        session stale.
+
+        Codex review finding (PR #319), third pass: gating this on
+        scanner.signal_scanner._is_futures_market_hours() ("is a session open
+        RIGHT NOW") was the wrong signal -- the market reopens at 5pm CT
+        (the very next session), so from 5pm CT onward that check says
+        "open" again even though TODAY's own session (which closed at 4pm CT,
+        every CME Globex weekday) is long settled. That reopened the exact
+        gap in the 5-7pm CT window. The correct signal is simpler and doesn't
+        depend on whether a NEW session has since started: has today's own
+        4pm CT close already happened, in CT wall-clock terms. That holds
+        continuously from 4pm CT onward (through the maintenance break AND
+        after the reopen), so a bar dated today is included as a valid
+        "prior" candidate for the rest of the day once the close has passed.
+        Before 4pm CT, today's bar (if present) is still actively forming and
+        stays excluded, unchanged from the original behavior.
         """
         import pandas as pd
 
         if daily_df is None or daily_df.empty:
             return None
 
-        from scanner.signal_scanner import _is_futures_market_hours
-
         ts = pd.to_datetime(daily_df["timestamp"], utc=True)
         today = pd.Timestamp.now(tz="UTC").normalize()
         prior_mask = ts.dt.normalize() < today
-        if not _is_futures_market_hours():
+        if LiveAuctionDataProvider._session_closed_for_today_ct():
             prior_mask = prior_mask | (ts.dt.normalize() == today)
         if prior_mask.any():
             return float(daily_df.loc[prior_mask, "close"].iloc[-1])
