@@ -224,6 +224,27 @@ class IBOrderManager:
         # Build set of symbols already tracked in open trades
         tracker_open_symbols = {t.symbol for t in self._tracker._open.values()}
 
+        # Best-effort symbol -> resting stop price map, so newly-synced
+        # positions don't persist stop_loss=NULL when IB is already
+        # holding a live STP/STP LMT order for them (naked-row class of
+        # bug — see docs/incident-notes/2026-04-09-mcl-inverted-stop.md
+        # and PR #331). A lookup failure must never block the sync.
+        stop_by_symbol: dict[str, float] = {}
+        try:
+            open_orders = await self._gateway.get_open_orders()
+        except Exception as exc:
+            logger.debug("sync_positions_from_ib: get_open_orders() failed: %s", exc)
+            open_orders = []
+
+        for order in open_orders:
+            order_type = str(order.get("order_type", "")).upper()
+            if order_type not in ("STP", "STP LMT", "STP_LMT", "STPLMT"):
+                continue
+            aux_price = order.get("aux_price")
+            order_sym = order.get("symbol")
+            if order_sym and aux_price:
+                stop_by_symbol[order_sym] = float(aux_price)
+
         for pos in ib_positions:
             sym = pos.get("symbol", "")
             qty = pos.get("position", 0)
@@ -253,6 +274,19 @@ class IBOrderManager:
                     avg_cost,
                     trade_id,
                 )
+
+                resolved_stop = stop_by_symbol.get(sym)
+                if resolved_stop is not None and trade_id and self._tracker._db is not None:
+                    try:
+                        self._tracker._db.update_paper_trade_stop_loss(trade_id, resolved_stop)
+                    except Exception as bf_exc:
+                        logger.debug(
+                            "sync_positions_from_ib: stop_loss backfill failed for "
+                            "symbol=%s trade_id=%s: %s",
+                            sym,
+                            trade_id,
+                            bf_exc,
+                        )
             else:
                 logger.debug(
                     "sync_positions_from_ib: symbol=%s already in tracker — skipping",
