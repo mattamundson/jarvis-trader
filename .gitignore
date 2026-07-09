@@ -247,6 +247,7 @@ engine/.venv.failed-*/
 
 # Runtime morning brief outputs (generated daily by EODScheduler / brief jobs)
 engine/data/morning_briefs/
+engine/data/framing_briefs/
 
 # Root-level generated/export files (not source)
 /*.html
