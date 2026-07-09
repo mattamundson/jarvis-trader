@@ -62,6 +62,27 @@ def test_phantom_rows_excluded_and_counted() -> None:
     assert truth.excluded_trades == 2
 
 
+def test_contamination_statuses_all_excluded_not_just_bare_cancelled() -> None:
+    # T1-13: the live paper_trades table tags contamination with compound status
+    # strings (cancelled_duplicate, cancelled_contaminated), not bare "cancelled".
+    # Every real producer value must land in excluded_trades, and realized_pnl
+    # must still only ever sum status=="closed" rows.
+    truth = compute_pnl_truth(
+        [
+            _closed(20.0),
+            _closed(-5.0),
+            _closed(4982.50, status="phantom"),
+            _closed(-1.0, status="cancelled"),
+            _closed(-2.0, status="cancelled_duplicate"),
+            _closed(-3.0, status="cancelled_contaminated"),
+        ]
+    )
+    assert truth.trusted
+    assert truth.closed_trades == 2  # only the two status=="closed" rows
+    assert truth.excluded_trades == 4  # phantom + cancelled + cancelled_duplicate + cancelled_contaminated
+    assert truth.realized_pnl == 20.0 - 5.0  # excluded rows never enter the sum
+
+
 def test_cross_source_divergence_degrades() -> None:
     truth = compute_pnl_truth([_closed(15.0)], cross_source_pnl=999.0)
     assert not truth.trusted
