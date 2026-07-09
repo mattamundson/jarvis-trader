@@ -18,6 +18,7 @@ import {
   Layers,
 } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -606,31 +607,46 @@ export default function StrategyCPage() {
               {[
                 {
                   label: "CAGR",
+                  live: metrics.full_period?.cagr != null,
                   value: metrics.full_period?.cagr != null ? fmtPct(metrics.full_period.cagr) : "17.09%",
                   target: "17.4%",
                   good: true,
                 },
                 {
                   label: "Sharpe",
+                  live: metrics.full_period?.sharpe != null,
                   value: metrics.full_period?.sharpe != null ? fmtNum(metrics.full_period.sharpe) : "2.12",
                   target: "2.13",
                   good: true,
                 },
                 {
                   label: "Max DD",
+                  live: metrics.full_period?.max_drawdown != null,
                   value: metrics.full_period?.max_drawdown != null ? fmtPct(metrics.full_period.max_drawdown) : "-8.16%",
                   target: "-7.7%",
                   good: false,
                 },
                 {
                   label: "Volatility",
+                  live: metrics.full_period?.volatility != null,
                   value: metrics.full_period?.volatility != null ? fmtPct(metrics.full_period.volatility) : "7.57%",
                   target: "7.7%",
                   good: true,
                 },
               ].map((m) => (
                 <div key={m.label} className="bg-slate-800/50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">{m.label}</p>
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <p className="text-xs text-slate-500">{m.label}</p>
+                    {!m.live && (
+                      <Badge
+                        variant="static"
+                        className="text-[10px] px-1.5 py-0 leading-4 shrink-0"
+                        title="Engine metrics endpoint did not return this field — showing a placeholder value, not live backtest output."
+                      >
+                        Static
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-2xl font-bold text-white">{m.value}</p>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Target: {m.target}
@@ -668,13 +684,40 @@ export default function StrategyCPage() {
             {/* Additional metrics row */}
             <div className="grid grid-cols-4 gap-3 mt-3">
               {[
-                { label: "Sortino", value: metrics.full_period?.sortino != null ? fmtNum(metrics.full_period.sortino) : "3.75" },
-                { label: "Calmar", value: metrics.full_period?.calmar != null ? fmtNum(metrics.full_period.calmar) : "2.09" },
-                { label: "Win Rate", value: metrics.full_period?.win_rate != null ? fmtPct(metrics.full_period.win_rate) : "57.6%" },
-                { label: "Final Equity", value: metrics.full_period?.final_equity != null ? `${fmtNum(metrics.full_period.final_equity)}×` : "4.12×" },
+                {
+                  label: "Sortino",
+                  live: metrics.full_period?.sortino != null,
+                  value: metrics.full_period?.sortino != null ? fmtNum(metrics.full_period.sortino) : "3.75",
+                },
+                {
+                  label: "Calmar",
+                  live: metrics.full_period?.calmar != null,
+                  value: metrics.full_period?.calmar != null ? fmtNum(metrics.full_period.calmar) : "2.09",
+                },
+                {
+                  label: "Win Rate",
+                  live: metrics.full_period?.win_rate != null,
+                  value: metrics.full_period?.win_rate != null ? fmtPct(metrics.full_period.win_rate) : "57.6%",
+                },
+                {
+                  label: "Final Equity",
+                  live: metrics.full_period?.final_equity != null,
+                  value: metrics.full_period?.final_equity != null ? `${fmtNum(metrics.full_period.final_equity)}×` : "4.12×",
+                },
               ].map((m) => (
                 <div key={m.label} className="bg-slate-800/30 rounded-lg p-2.5 text-center">
-                  <p className="text-xs text-slate-500 mb-1">{m.label}</p>
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <p className="text-xs text-slate-500">{m.label}</p>
+                    {!m.live && (
+                      <Badge
+                        variant="static"
+                        className="text-[10px] px-1.5 py-0 leading-4 shrink-0"
+                        title="Engine metrics endpoint did not return this field — showing a placeholder value, not live backtest output."
+                      >
+                        Static
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-lg font-bold text-white">{m.value}</p>
                 </div>
               ))}

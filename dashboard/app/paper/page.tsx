@@ -14,7 +14,6 @@ import {
   type HonestTradeSet,
 } from "@/lib/honestTrades";
 import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
-import { RiskStatusWidget } from "@/components/RiskStatusWidget";
 import { CircuitBreakerWidget } from "@/components/CircuitBreakerWidget";
 import { RecentSignalsWidget } from "@/components/RecentSignalsWidget";
 import { MarketRegimeWidget } from "@/components/MarketRegimeWidget";
@@ -158,11 +157,6 @@ export default function PaperTradingPage() {
           <OpenPositionsWidget />
         </WidgetErrorBoundary>
 
-        {/* Risk Status — always visible at top of page */}
-        <WidgetErrorBoundary name="Risk Status">
-          <RiskStatusWidget />
-        </WidgetErrorBoundary>
-
         {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
         <WidgetErrorBoundary name="Paper Approved Validation">
           <PaperApprovedValidationWidget />
@@ -173,7 +167,9 @@ export default function PaperTradingPage() {
           <ValidationCheckpointWidget />
         </WidgetErrorBoundary>
 
-        {/* Circuit breaker / safety status */}
+        {/* Risk status / circuit breaker — sole panel for /safety/circuit-breakers
+            (was previously duplicated with RiskStatusWidget, which read the same
+            endpoint; RiskStatusWidget mount removed as redundant, T3-22). */}
         <WidgetErrorBoundary name="Circuit Breaker">
           <CircuitBreakerWidget />
         </WidgetErrorBoundary>

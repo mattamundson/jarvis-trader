@@ -86,7 +86,11 @@ async def update_risk_settings(payload: dict):
     VALIDATORS = {
         "daily_loss_limit": lambda v: float(v) > 0,
         "max_drawdown_pct": lambda v: 0 < float(v) <= 1.0,
-        "max_contracts": lambda v: 1 <= int(v) <= 10,
+        # Ceiling matches the documented safety invariant in
+        # .claude/rules/safety.md ("Max contracts per instrument: 2 micro
+        # contracts"). This DB-backed override must never permit a value the
+        # hardcoded invariant forbids (T0-07, 2026-07-09).
+        "max_contracts": lambda v: 1 <= int(v) <= 2,
         "risk_per_trade_pct": lambda v: 0 < float(v) <= 0.05,
         "atr_stop_multiplier": lambda v: 0.1 <= float(v) <= 3.0,
         "atr_target_multiplier": lambda v: 0.1 <= float(v) <= 5.0,

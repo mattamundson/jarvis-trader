@@ -32,7 +32,15 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Statuses whose rows are real but must NOT count toward realized P&L.
-EXCLUDED_STATUSES = frozenset({"phantom", "cancelled", "void"})
+# NOTE: the live paper_trades table tags contamination with compound status
+# strings ("cancelled_duplicate", "cancelled_contaminated"), not the bare
+# "cancelled" -- membership below is exact-string, so each real producer value
+# must be listed explicitly. Do not remove "cancelled"/"void": they're kept for
+# compatibility with other status producers, existing tests, and callers even
+# though no current live row uses them verbatim.
+EXCLUDED_STATUSES = frozenset(
+    {"phantom", "cancelled", "cancelled_duplicate", "cancelled_contaminated", "void"}
+)
 
 # Default tolerance (account currency) for agreement between two P&L sources.
 DEFAULT_TOLERANCE = 0.01

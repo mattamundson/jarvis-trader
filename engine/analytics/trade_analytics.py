@@ -124,9 +124,34 @@ def calculate_profit_factor(trades: list[dict]) -> float:
     return abs(gross_profit / gross_loss)
 
 
+# Fallback starting-capital floor for the max-drawdown denominator. Mirrors
+# engine/config.py's INITIAL_CAPITAL (10_000.0 paper-account default) and
+# dashboard/lib/honestTrades.ts's DEFAULT_STARTING_CAPITAL. Kept as a local
+# constant rather than importing engine.config: this module is intentionally
+# dependency-free (stdlib-only), and calculate_analytics()'s equity curve
+# (see _build_equity_curve) always starts at cumulative P&L of 0.0, never a
+# real account balance, so the denominator needs a sane floor independent of
+# settings plumbing.
+DEFAULT_STARTING_CAPITAL = 10_000.0
+
+
 def calculate_max_drawdown(equity_curve: list[float]) -> float:
     """
-    Max drawdown as percentage from peak.
+    Max drawdown as percentage from peak, floored at DEFAULT_STARTING_CAPITAL.
+
+    T0-03 root cause: equity_curve[0] is frequently a trivial value near zero
+    (calculate_analytics feeds this a cumulative-P&L curve starting at 0.0,
+    not an actual account balance -- see _build_equity_curve). Using that raw
+    value as the *denominator* let a small early win (e.g. +$50) understate
+    the true capital base, so a later large-dollar loss divided into it
+    produced mathematically-valid-but-economically-meaningless percentages
+    >1000% (observed 1276%-1982% on live data). The running peak tracker
+    itself is untouched (it must reflect the curve's real high-water mark,
+    not the floor); only the percentage *denominator* is floored at
+    max(peak, DEFAULT_STARTING_CAPITAL), matching the already-reviewed
+    dashboard fix in honestTrades.ts. The final percentage is additionally
+    clamped to [0, 100] as a hard invariant -- a drawdown can never exceed
+    100% of peak equity in a well-formed result.
     Returns 0.0 if no data or monotonic up.
     """
     if not equity_curve or len(equity_curve) < 2:
@@ -138,10 +163,11 @@ def calculate_max_drawdown(equity_curve: list[float]) -> float:
     for equity in equity_curve[1:]:
         if equity > peak:
             peak = equity
-        drawdown = (peak - equity) / peak if peak != 0 else 0.0
+        denom = max(peak, DEFAULT_STARTING_CAPITAL)
+        drawdown = (peak - equity) / denom if denom > 0 else 0.0
         max_dd = max(max_dd, drawdown)
 
-    return max_dd * 100
+    return min(max_dd * 100, 100.0)
 
 
 def calculate_win_rate(trades: list[dict]) -> float:

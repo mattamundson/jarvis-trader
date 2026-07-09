@@ -99,12 +99,22 @@ export default function TradesPage() {
 
       {/* Open Positions (live, 15s refresh) */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-border">
-        <h2 className="font-mono text-sm font-bold text-foreground mb-2">
-          Open Positions{" "}
-          <span className="text-xs font-normal text-muted-foreground">
-            ({openTrades.length} live • refreshes 15s)
-          </span>
-        </h2>
+        <div className="flex items-center gap-2 mb-2">
+          <h2 className="font-mono text-sm font-bold text-foreground">
+            Open Positions{" "}
+            <span className="text-xs font-normal text-muted-foreground">
+              ({openTrades.length} live • refreshes 15s)
+            </span>
+          </h2>
+          {openData && (
+            <Badge variant={openData.measuring_real_fills ? "live" : "static"}>
+              {openData.measuring_real_fills ? "LIVE FILLS" : "SIMULATED"}
+            </Badge>
+          )}
+        </div>
+        {openData?.note && (
+          <p className="text-[11px] text-muted-foreground mb-2">{openData.note}</p>
+        )}
         {openTrades.length === 0 ? (
           <p className="text-xs text-muted-foreground">No open positions</p>
         ) : (
