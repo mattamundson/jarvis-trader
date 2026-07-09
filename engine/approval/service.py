@@ -388,6 +388,26 @@ async def approve_pending_trade(
         logger.exception("approve_pending_trade open_trade failed for %s", approval_id[:8])
         raise ApprovalFlowError(500, str(exc)) from exc
 
+    # Naked-row backfill: PortfolioTracker.open_trade() has no stop_loss
+    # parameter, so the row above just persisted stop_loss=NULL even though
+    # stop_price was already resolved from the pipeline snapshot for the
+    # broker bracket above. Same class of gap as PR #331 (OMS-bracket and
+    # IB-sync paths); this is the third call site. Best-effort — a failure
+    # here (e.g. an inverted-stop rejection surfacing an upstream pipeline
+    # bug) must never fail the approval itself, since the trade is already
+    # live at the broker by this point.
+    if stop_price is not None:
+        try:
+            db_manager.update_paper_trade_stop_loss(trade_id, float(stop_price))
+        except Exception as exc:
+            logger.warning(
+                "approve_pending_trade: stop_loss backfill failed for %s "
+                "(stop_price=%s): %s",
+                trade_id[:8],
+                stop_price,
+                exc,
+            )
+
     # Persist bracket order IDs so the position survives restarts with its STP intact.
     # Only populated when ENABLE_BROKER_BRACKETS is True and STP placement succeeded.
     broker_meta: dict[str, Any] = {}

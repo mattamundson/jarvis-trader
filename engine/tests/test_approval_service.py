@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -56,6 +56,86 @@ async def test_approve_pending_trade_requires_safety_layer(tmp_path):
     assert exc_info.value.status_code == 503
     assert db.get_pending_approval(approval_id)["status"] == "pending"
     assert tracker.get_open_positions() == []
+
+
+# ── stop_loss naked-row backfill (US-010 completeness sweep) ──────────────────
+#
+# approve_pending_trade() is the third open_trade() call site found to persist
+# stop_loss=NULL despite the real stop being known in-scope -- here it's
+# resolved from the pipeline snapshot (stop_price) for the broker bracket
+# call, but was never threaded through to the paper_trades row itself.
+# Same class of gap as PR #331 (OMS-bracket path, IB-sync path).
+
+
+@pytest.mark.asyncio
+async def test_approve_pending_trade_backfills_stop_loss_from_snapshot(mock_watchlist, tmp_path):
+    from database.manager import DatabaseManager
+    from portfolio.tracker import PortfolioTracker
+
+    db = DatabaseManager(str(tmp_path / "approval_stop.db"))
+    db.initialize()
+    tracker = PortfolioTracker(store_path=tmp_path / "trades.jsonl", db_manager=db)
+
+    approval_id = db.insert_pending_approval(
+        symbol="MCL",
+        action="buy",
+        quantity=1.0,
+        entry_price=72.50,
+        pipeline_snapshot={"stop_price": 70.00, "summary": "stop backfill regression"},
+        timeframe="1h",
+    )
+
+    with patch(
+        "approval.service.execute_approved_trade",
+        AsyncMock(return_value={"approved": True, "routed_to_ib": False}),
+    ):
+        result = await approve_pending_trade(
+            approval_id=approval_id,
+            db_manager=db,
+            paper_tracker=tracker,
+            safety_layer=_make_mock_safety(),
+            resolved_by="test",
+        )
+
+    row = db.get_open_trades()[0]
+    assert row["trade_id"] == result["paper_trade_id"]
+    assert row["stop_loss"] == 70.00
+
+
+@pytest.mark.asyncio
+async def test_approve_pending_trade_no_stop_in_snapshot_leaves_stop_null(
+    mock_watchlist, tmp_path
+):
+    from database.manager import DatabaseManager
+    from portfolio.tracker import PortfolioTracker
+
+    db = DatabaseManager(str(tmp_path / "approval_no_stop.db"))
+    db.initialize()
+    tracker = PortfolioTracker(store_path=tmp_path / "trades.jsonl", db_manager=db)
+
+    approval_id = db.insert_pending_approval(
+        symbol="MCL",
+        action="buy",
+        quantity=1.0,
+        entry_price=72.50,
+        pipeline_snapshot={"summary": "no stop in snapshot"},
+        timeframe="1h",
+    )
+
+    with patch(
+        "approval.service.execute_approved_trade",
+        AsyncMock(return_value={"approved": True, "routed_to_ib": False}),
+    ):
+        await approve_pending_trade(
+            approval_id=approval_id,
+            db_manager=db,
+            paper_tracker=tracker,
+            safety_layer=_make_mock_safety(),
+            resolved_by="test",
+        )
+
+    row = db.get_open_trades()[0]
+    assert row["stop_loss"] is None
 
 
 # ── VALIDATION_ONLY_STRATEGIES gate in ensure_approval_allowed ────────────────
