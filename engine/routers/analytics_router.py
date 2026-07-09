@@ -1237,7 +1237,9 @@ class AgentWeightEntry(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    weight: float  # Debate weight multiplier, clamped to [min_weight, max_weight]
+    live_weight: float  # What debate.py actually applies right now (see weights_source)
+    recomputed_weight: float  # Fresh all-regime AgentFeedbackTracker.get_agent_weights() —
+    # a diagnostic view, NOT necessarily what's applied live (see weights_source)
     accuracy_30d: float  # Directional accuracy over trailing 30 days
     accuracy_90d: float  # Directional accuracy over trailing 90 days
     sample_count_30d: int  # Signal-emitting trade_outcomes rows in the 30d window
@@ -1248,8 +1250,16 @@ class AgentWeightsResponse(BaseModel):
     """Full per-agent debate-weight snapshot.
 
     Distinct from /analytics/calibration, which tracks Brier/IC scores for a
-    separate calibration blend — this is the AgentFeedbackTracker weight that
-    actually scales each Stage-1 analyst's signal in debate.py.
+    separate calibration blend.
+
+    debate.py's run_debate() (engine/agents/debate.py:485-491) picks the
+    weight source based on whether a regime is known: get_weights_by_regime
+    (regime) when it is, load_weights() (reads agent_weights.json) when it
+    isn't. It never calls get_agent_weights() directly for the live
+    multiplier. live_weight mirrors whichever of those two functions
+    debate.py would actually use for the given `regime` query param, so the
+    dashboard shows the real applied number instead of a plausible-looking
+    but different one.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -1260,6 +1270,11 @@ class AgentWeightsResponse(BaseModel):
     min_trades_threshold: int
     agents: list[str]
     per_agent: dict[str, AgentWeightEntry]
+    regime: Optional[str]  # regime this response reflects, if one was passed
+    weights_source: str  # which AgentFeedbackTracker function produced live_weight
+    weights_file_exists: bool  # agent_weights.json — if False, load_weights() (the
+    # no-regime live path) always returns DEFAULT_WEIGHT for every agent, because
+    # nothing in the codebase currently calls AgentFeedbackTracker.save_weights()
     saved_weights_updated_at: Optional[str]
     timestamp: str
 
@@ -1269,10 +1284,23 @@ class AgentWeightsResponse(BaseModel):
     response_model=AgentWeightsResponse,
     description=(
         "Expose per-agent P&L-correlation debate weights from AgentFeedbackTracker "
-        "(0.70-1.30 multiplier applied to Stage-1 analyst signals in debate.py)."
+        "(0.70-1.30 multiplier applied to Stage-1 analyst signals in debate.py). "
+        "live_weight matches whichever function debate.py actually calls for the "
+        "given regime (or no regime); recomputed_weight is a separate, freshly "
+        "computed all-regime diagnostic that may differ from what's live."
     ),
 )
-async def get_agent_weights_diagnostics() -> AgentWeightsResponse:
+async def get_agent_weights_diagnostics(
+    regime: Optional[str] = Query(
+        None,
+        description=(
+            "If provided, live_weight uses get_weights_by_regime(regime) — matches "
+            "debate.py's regime-conditional path. Omit to use load_weights() — "
+            "matches debate.py's no-regime path (reads agent_weights.json, which "
+            "is always DEFAULT_WEIGHT if nothing has called save_weights())."
+        ),
+    ),
+) -> AgentWeightsResponse:
     """Return current AgentFeedbackTracker debate weights + supporting accuracy stats.
 
     Degrades gracefully when trade_outcomes is missing/empty — never 500s on cold start.
@@ -1300,10 +1328,22 @@ async def get_agent_weights_diagnostics() -> AgentWeightsResponse:
     tracker = AgentFeedbackTracker()
 
     try:
-        weights = tracker.get_agent_weights()
+        if regime:
+            live_weights = tracker.get_weights_by_regime(regime)
+            weights_source = f"get_weights_by_regime({regime!r}) — debate.py's live regime path"
+        else:
+            live_weights = tracker.load_weights()
+            weights_source = "load_weights() — debate.py's live no-regime path (reads agent_weights.json)"
     except Exception as exc:
-        logger.warning("[AgentWeights] weight compute failed: %s", exc)
-        weights = dict.fromkeys(AGENT_NAMES, DEFAULT_WEIGHT)
+        logger.warning("[AgentWeights] live weight compute failed: %s", exc)
+        live_weights = dict.fromkeys(AGENT_NAMES, DEFAULT_WEIGHT)
+        weights_source = f"fallback defaults after error: {exc}"
+
+    try:
+        recomputed_weights = tracker.get_agent_weights()
+    except Exception as exc:
+        logger.warning("[AgentWeights] recomputed-weight compute failed: %s", exc)
+        recomputed_weights = dict.fromkeys(AGENT_NAMES, DEFAULT_WEIGHT)
 
     accuracy_30d: dict[str, float] = {}
     accuracy_90d: dict[str, float] = {}
@@ -1342,16 +1382,18 @@ async def get_agent_weights_diagnostics() -> AgentWeightsResponse:
     per_agent: dict[str, AgentWeightEntry] = {}
     for a in AGENT_NAMES:
         per_agent[a] = AgentWeightEntry(
-            weight=weights.get(a, DEFAULT_WEIGHT),
+            live_weight=live_weights.get(a, DEFAULT_WEIGHT),
+            recomputed_weight=recomputed_weights.get(a, DEFAULT_WEIGHT),
             accuracy_30d=round(float(accuracy_30d[a]), 4),
             accuracy_90d=round(float(accuracy_90d[a]), 4),
             sample_count_30d=sample_counts_30d[a],
             ready=sample_counts_30d[a] >= min_trades,
         )
 
+    weights_file_exists = WEIGHTS_FILE.exists()
     saved_updated_at: Optional[str] = None
     try:
-        if WEIGHTS_FILE.exists():
+        if weights_file_exists:
             with open(WEIGHTS_FILE) as f:
                 saved_updated_at = _json.load(f).get("updated_at")
     except Exception as exc:
@@ -1364,6 +1406,9 @@ async def get_agent_weights_diagnostics() -> AgentWeightsResponse:
         min_trades_threshold=min_trades,
         agents=list(AGENT_NAMES),
         per_agent=per_agent,
+        regime=regime,
+        weights_source=weights_source,
+        weights_file_exists=weights_file_exists,
         saved_weights_updated_at=saved_updated_at,
         timestamp=datetime.now(timezone.utc).isoformat(),
     )

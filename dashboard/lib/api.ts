@@ -2179,7 +2179,14 @@ export async function fetchCalibration(): Promise<CalibrationDiagnostics> {
 // analyst's signal in debate.py, not the Brier/IC calibration blend.
 
 export interface AgentWeightEntry {
-  weight: number;
+  // What debate.py actually applies right now (see weights_source on the
+  // parent response) -- get_weights_by_regime(regime) when a regime is known,
+  // load_weights() otherwise. This is the number that matches live behavior.
+  live_weight: number;
+  // Freshly recomputed all-regime AgentFeedbackTracker.get_agent_weights() --
+  // a diagnostic view that can legitimately differ from live_weight. Never
+  // present this as "the" weight without the live_weight alongside it.
+  recomputed_weight: number;
   accuracy_30d: number;
   accuracy_90d: number;
   sample_count_30d: number;
@@ -2193,12 +2200,16 @@ export interface AgentWeightsResponse {
   min_trades_threshold: number;
   agents: string[];
   per_agent: Record<string, AgentWeightEntry>;
+  regime: string | null;
+  weights_source: string;
+  weights_file_exists: boolean;
   saved_weights_updated_at: string | null;
   timestamp: string;
 }
 
-export async function fetchAgentWeights(): Promise<AgentWeightsResponse> {
-  return fetchEngine<AgentWeightsResponse>("/analytics/agent-weights");
+export async function fetchAgentWeights(regime?: string): Promise<AgentWeightsResponse> {
+  const suffix = regime ? `?regime=${encodeURIComponent(regime)}` : "";
+  return fetchEngine<AgentWeightsResponse>(`/analytics/agent-weights${suffix}`);
 }
 
 // ── LLM daily cost stats (/llm/stats) ─────────────────────────────────────────

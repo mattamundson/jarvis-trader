@@ -252,6 +252,45 @@ class TestAnalyticsRouter:
             assert resp.status_code == 200
 
 
+class TestAgentWeightsEndpoint:
+    """GET /analytics/agent-weights -- live_weight must mirror what debate.py
+    actually applies (get_weights_by_regime when a regime is known, load_weights()
+    otherwise), not a freshly-recomputed all-regime value that can silently
+    diverge from the live path (Codex review finding, PR #357)."""
+
+    def test_no_regime_uses_load_weights(self, client):
+        """Without a regime, live_weight must come from load_weights() -- the
+        exact function debate.py calls in its no-regime branch."""
+        resp = client.get("/analytics/agent-weights")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["regime"] is None
+        assert "load_weights" in body["weights_source"]
+        # agent_weights.json is never written by anything in this codebase
+        # (grep confirms save_weights() has no callers), so on a fresh
+        # environment this must be false, not silently absent from the response.
+        assert "weights_file_exists" in body
+
+    def test_with_regime_uses_get_weights_by_regime(self, client):
+        """With a regime, live_weight must come from get_weights_by_regime(regime)
+        -- the exact function debate.py calls in its regime-conditional branch."""
+        resp = client.get("/analytics/agent-weights?regime=TRENDING_BULL")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["regime"] == "TRENDING_BULL"
+        assert "get_weights_by_regime" in body["weights_source"]
+
+    def test_live_and_recomputed_weight_are_both_present_and_distinct_fields(self, client):
+        """Regression: the response must never conflate the live-applied weight
+        with the freshly-recomputed diagnostic one under a single ambiguous field."""
+        resp = client.get("/analytics/agent-weights")
+        assert resp.status_code == 200
+        body = resp.json()
+        for _agent, entry in body["per_agent"].items():
+            assert "live_weight" in entry
+            assert "recomputed_weight" in entry
+
+
 class TestPostMortemsEndpoint:
     """GET /analytics/post-mortems — real DatabaseManager round trip via HTTP."""
 
@@ -274,9 +313,9 @@ class TestPostMortemsEndpoint:
     def test_populated_table_returns_rows(self, mock_get_db, client, tmp_path):
         """A real PostTradeAnalyzer-written row is returned, most-recent-first."""
         import asyncio
+        import json as _json
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
-        import json as _json
 
         from agents.post_mortem import PostTradeAnalyzer
         from database.manager import DatabaseManager
@@ -306,9 +345,9 @@ class TestPostMortemsEndpoint:
     def test_symbol_filter(self, mock_get_db, client, tmp_path):
         """?symbol= filters to only that symbol's rows."""
         import asyncio
+        import json as _json
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
-        import json as _json
 
         from agents.post_mortem import PostTradeAnalyzer
         from database.manager import DatabaseManager
