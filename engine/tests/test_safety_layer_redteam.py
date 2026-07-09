@@ -497,6 +497,11 @@ class TestConsecutiveLossLadderRedTeam:
         settings = _armed_settings(mock_settings)
         settings.MAX_CONTRACTS_PER_INSTRUMENT = 20
         settings.MAX_FUTURES_MARGIN_PCT = 0.90
+        # Time-of-day independence: the ladder's own size-reduction is what
+        # this test targets, not the separate after-15:00-CT overnight cap
+        # (default 1 contract) — without this override the assertion is
+        # masked by OVERNIGHT_LIMIT whenever CI happens to run after 3pm CT.
+        settings.MAX_OVERNIGHT_CONTRACTS = 20
         tracker = self._tracker(tmp_path)
         for _ in range(3):
             tracker.record_trade("MES", -100.0)
@@ -518,6 +523,7 @@ class TestConsecutiveLossLadderRedTeam:
         settings = _armed_settings(mock_settings)
         settings.MAX_CONTRACTS_PER_INSTRUMENT = 20
         settings.MAX_FUTURES_MARGIN_PCT = 0.90
+        settings.MAX_OVERNIGHT_CONTRACTS = 20  # see time-of-day note above
         tracker = self._tracker(tmp_path)
         for _ in range(5):
             tracker.record_trade("MES", -100.0)
@@ -544,6 +550,7 @@ class TestConsecutiveLossLadderRedTeam:
         settings = _armed_settings(mock_settings)
         settings.MAX_CONTRACTS_PER_INSTRUMENT = 20
         settings.MAX_FUTURES_MARGIN_PCT = 0.90
+        settings.MAX_OVERNIGHT_CONTRACTS = 20  # see time-of-day note above
         tracker = self._tracker(tmp_path)
         for _ in range(7):
             tracker.record_trade("MES", -100.0)
