@@ -2295,6 +2295,31 @@ export async function fetchCorrelationPreview(
   );
 }
 
+// ── Backup/DR health (/health/backup-status) ──────────────────────────────────
+// Note: an older, unused BackupStatusResponse/BackupFile type pair already
+// exists above (for the differently-shaped /system/backup-status endpoint,
+// with a stale `created_at` field) -- left untouched since nothing consumes
+// it. This is a fresh type matching the actual /health/backup-status shape.
+
+export interface BackupFileEntry {
+  filename: string;
+  size_bytes: number;
+  created_utc: string;
+}
+
+export interface HealthBackupStatus {
+  backup_count: number;
+  last_backup: string | null;
+  last_backup_path: string | null;
+  retention_days: number;
+  backup_dir: string | null;
+  available_backups: BackupFileEntry[];
+}
+
+export async function fetchHealthBackupStatus(): Promise<HealthBackupStatus> {
+  return fetchEngine<HealthBackupStatus>("/health/backup-status");
+}
+
 // ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
 // Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
 // mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.

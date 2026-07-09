@@ -35,6 +35,7 @@ import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { WhatsAppStatusCard } from "@/components/WhatsAppStatusCard";
 import { LlmCostWidget } from "@/components/LlmCostWidget";
 import { CorrelationPreviewWidget } from "@/components/CorrelationPreviewWidget";
+import { BackupHealthWidget } from "@/components/BackupHealthWidget";
 
 // ── SWR fetchers ──────────────────────────────────────────────────────────
 
@@ -952,6 +953,11 @@ export default function SettingsPage() {
         {/* Portfolio correlation preview -- not wired into live sizing */}
         <WidgetErrorBoundary name="Correlation Preview">
           <CorrelationPreviewWidget />
+        </WidgetErrorBoundary>
+
+        {/* Backup/DR health */}
+        <WidgetErrorBoundary name="Backup Health">
+          <BackupHealthWidget />
         </WidgetErrorBoundary>
 
         {/* WhatsApp alert status */}
