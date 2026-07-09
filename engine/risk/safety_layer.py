@@ -1618,6 +1618,13 @@ class SafetyLayer:
             quantity=signed_qty,
             order_type=order_type.lower(),
             limit_price=limit_price,
+            # stop_price MUST be wired through: _check_trade_loss_gate() short-
+            # circuits to approved=True whenever order.stop_price is None, so
+            # omitting it here made the $50/ticket MAX_TRADE_LOSS_USD gate a
+            # no-op for every bracket order regardless of entry/stop distance
+            # (part of the trade #287 root cause, alongside the caller-side
+            # entry_price mis-wiring fixed in main.py's watchlist scan loop).
+            stop_price=stop_loss,
             is_futures=is_futures,
             estimated_value=estimated_value,
         )

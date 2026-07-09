@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-04-02T11:37:51.247689",
+  "lessons": [
+    {
+      "date": "2026-04-01",
+      "condition": "TRENDING",
+      "lesson_text": "Test",
+      "trades_affected": [
+        "t1",
+        "t2",
+        "t3"
+      ],
+      "outcome": "positive"
+    }
+  ]
+}
