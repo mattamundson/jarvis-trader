@@ -2193,6 +2193,35 @@ export async function fetchAgentWeights(): Promise<AgentWeightsResponse> {
   return fetchEngine<AgentWeightsResponse>("/analytics/agent-weights");
 }
 
+// ── LLM daily cost stats (/llm/stats) ─────────────────────────────────────────
+
+export interface LlmModelStats {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface LlmAgentStats {
+  calls: number;
+  cost_usd: number;
+}
+
+export interface LlmDailyStats {
+  date: string;
+  total_calls: number;
+  total_cost_usd: number;
+  success_rate: number;
+  avg_latency_ms: number;
+  per_model: Record<string, LlmModelStats>;
+  per_agent: Record<string, LlmAgentStats>;
+  per_provider: Record<string, LlmModelStats>;
+}
+
+export async function fetchLlmDailyStats(daysBack: number = 0): Promise<LlmDailyStats> {
+  return fetchEngine<LlmDailyStats>(`/llm/stats?days_back=${daysBack}`);
+}
+
 // ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
 // Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
 // mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.
