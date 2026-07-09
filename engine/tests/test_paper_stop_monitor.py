@@ -67,14 +67,56 @@ def test_is_stop_breached_missing_inputs():
 
 
 def test_compute_stop_pnl():
-    # Long, adverse move down 10 pts, 1 contract, $10/pt → −$100.
-    assert compute_stop_pnl("long", 100.0, 90.0, 1, 10.0) == -100.0
-    # Short, favorable move down 10 pts → +$100.
-    assert compute_stop_pnl("short", 100.0, 90.0, 1, 10.0) == 100.0
-    # qty scales linearly; 'buy' normalizes to long.
-    assert compute_stop_pnl("buy", 100.0, 95.0, 2, 5.0) == -50.0
-    # MGC trade #178 shape: entry 4503.9 → exit 4497.51, $10/pt → ≈ −$63.90.
-    assert compute_stop_pnl("buy", 4503.9, 4497.51, 1, 10.0) == -63.9
+    # T0-06: compute_stop_pnl now deducts the same flat per-contract commission
+    # PortfolioTracker applies on its primary close path (default $1.50/contract,
+    # COMMISSION_PER_CONTRACT). Pin the env var so this test is deterministic
+    # regardless of ambient state (mirrors test_tracker_commission_and_multiplier.py).
+    import os as _os
+
+    prev = _os.environ.get("COMMISSION_PER_CONTRACT")
+    _os.environ["COMMISSION_PER_CONTRACT"] = "1.50"
+    try:
+        # Long, adverse move down 10 pts, 1 contract, $10/pt → −$100 gross,
+        # minus $1.50 commission → −$101.50.
+        assert compute_stop_pnl("long", 100.0, 90.0, 1, 10.0) == -101.5
+        # Short, favorable move down 10 pts → +$100 gross, minus $1.50 → +$98.50.
+        assert compute_stop_pnl("short", 100.0, 90.0, 1, 10.0) == 98.5
+        # qty scales linearly; 'buy' normalizes to long. Gross −$50, minus
+        # 2 * $1.50 = $3.00 commission → −$53.00.
+        assert compute_stop_pnl("buy", 100.0, 95.0, 2, 5.0) == -53.0
+        # MGC trade #178 shape: entry 4503.9 → exit 4497.51, $10/pt → gross
+        # ≈ −$63.90, minus $1.50 commission → ≈ −$65.40.
+        assert compute_stop_pnl("buy", 4503.9, 4497.51, 1, 10.0) == -65.4
+    finally:
+        if prev is None:
+            _os.environ.pop("COMMISSION_PER_CONTRACT", None)
+        else:
+            _os.environ["COMMISSION_PER_CONTRACT"] = prev
+
+
+def test_compute_stop_pnl_commission_matches_tracker():
+    # T0-06 regression pin: the backstop's per-contract commission deduction
+    # must equal portfolio.tracker._commission_per_contract() exactly — this
+    # is a reuse, not a reimplementation. If PortfolioTracker's default or env
+    # override ever changes, this test forces the backstop to move with it.
+    import os as _os
+
+    from portfolio.tracker import _commission_per_contract as _tracker_commission
+
+    prev = _os.environ.get("COMMISSION_PER_CONTRACT")
+    _os.environ["COMMISSION_PER_CONTRACT"] = "2.25"
+    try:
+        expected_commission = _tracker_commission()  # == 2.25
+        qty = 3
+        gross = (95.0 - 100.0) * qty * 10.0  # -150.0
+        expected = round(gross - expected_commission * qty, 2)
+        assert compute_stop_pnl("long", 100.0, 95.0, qty, 10.0) == expected
+        assert expected == -156.75
+    finally:
+        if prev is None:
+            _os.environ.pop("COMMISSION_PER_CONTRACT", None)
+        else:
+            _os.environ["COMMISSION_PER_CONTRACT"] = prev
 
 
 def test_multiplier_for():
@@ -145,16 +187,28 @@ def _trade(**kw):
 
 
 def test_check_once_fires_on_breach():
-    db = _FakeDB([_trade()])
-    mon = PaperStopMonitor(db, _FakeData(4490.0))
-    fired = asyncio.run(mon.check_once())
-    assert fired == 1
-    assert len(db.close_calls) == 1
-    call = db.close_calls[0]
-    assert call["trade_id"] == "t-178"
-    assert call["exit_price"] == 4490.0
-    # Long, 4503.9 → 4490.0 = −13.9 pts * 1 * $10 = −$139.0
-    assert call["pnl"] == -139.0
+    import os as _os
+
+    prev = _os.environ.get("COMMISSION_PER_CONTRACT")
+    _os.environ["COMMISSION_PER_CONTRACT"] = "1.50"
+    try:
+        db = _FakeDB([_trade()])
+        mon = PaperStopMonitor(db, _FakeData(4490.0))
+        fired = asyncio.run(mon.check_once())
+        assert fired == 1
+        assert len(db.close_calls) == 1
+        call = db.close_calls[0]
+        assert call["trade_id"] == "t-178"
+        assert call["exit_price"] == 4490.0
+        # Long, 4503.9 → 4490.0 = −13.9 pts * 1 * $10 = −$139.0 gross, minus
+        # $1.50 commission (T0-06) → −$140.50. This is the pnl actually
+        # written to the paper_trades ledger for the stop-close path.
+        assert call["pnl"] == -140.5
+    finally:
+        if prev is None:
+            _os.environ.pop("COMMISSION_PER_CONTRACT", None)
+        else:
+            _os.environ["COMMISSION_PER_CONTRACT"] = prev
 
 
 def test_check_once_no_breach_when_price_above_stop():
