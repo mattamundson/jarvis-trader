@@ -376,6 +376,11 @@ async def approve_pending_trade(
         pass
 
     try:
+        # #287 fix: stop_price (above) was already computed for the broker
+        # bracket order but dropped here -- open_trade() had no stop_loss
+        # param, so even human-approved trades persisted stop_loss=NULL and
+        # PaperStopMonitor had nothing to enforce. Thread the real,
+        # decision-derived stop through instead of leaving the row naked.
         trade_id = paper_tracker.open_trade(
             symbol=symbol,
             action=action,
@@ -383,6 +388,7 @@ async def approve_pending_trade(
             price=entry_price,
             notes=notes,
             rv_at_entry=_rv_at_entry,
+            stop_loss=stop_price,
         )
     except Exception as exc:
         logger.exception("approve_pending_trade open_trade failed for %s", approval_id[:8])

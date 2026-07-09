@@ -259,6 +259,25 @@ class PaperTradeLogger:
                         sym,
                         _did_err,
                     )
+                # #287 fix: this mirror path only ever sees the raw fill (symbol,
+                # qty, price, order_id) -- no pipeline stop is in scope here, so
+                # one is never invented from decision context. Instead synthesize
+                # a defensive stop from the SAME dollar-risk budget that already
+                # governs PaperStopMonitor's catastrophe cap, so the row is never
+                # naked (stop_loss=NULL) between open and the monitor's next sweep.
+                synthetic_stop = None
+                try:
+                    from services.paper_stop_monitor import synthesize_fallback_stop
+
+                    synthetic_stop = synthesize_fallback_stop(
+                        sym, action, filled_price, abs(signed_qty)
+                    )
+                except Exception as _stop_err:  # pragma: no cover - defensive
+                    logger.debug(
+                        "PaperTradeLogger: stop synthesis failed for %s (non-fatal): %s",
+                        sym,
+                        _stop_err,
+                    )
                 tid = self._portfolio_tracker.open_trade(
                     sym,
                     action,
@@ -267,6 +286,7 @@ class PaperTradeLogger:
                     notes=notes,
                     candidate_id=candidate_id,
                     decision_identity=decision_identity,
+                    stop_loss=synthetic_stop,
                 )
                 self._open_trade_id_by_symbol[sym] = tid
             elif prev != 0.0 and new == 0.0:

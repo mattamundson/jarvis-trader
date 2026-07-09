@@ -25,6 +25,7 @@ from services.paper_stop_monitor import (  # noqa: E402
     is_stop_breached,
     multiplier_for,
     normalize_side,
+    synthesize_fallback_stop,
 )
 
 # ── Pure helpers ───────────────────────────────────────────────────────────────
@@ -85,6 +86,94 @@ def test_multiplier_for():
     assert multiplier_for("ZZZZ") == 1.0  # unknown → neutral
     # paper_config override wins over the fallback map.
     assert multiplier_for("MGC", {"MGC": {"multiplier": 11.0}}) == 11.0
+
+
+def _set_max_loss_env(value):
+    import os as _os
+
+    prev = _os.environ.get("PAPER_MAX_LOSS_USD_PER_TRADE")
+    if value is None:
+        _os.environ.pop("PAPER_MAX_LOSS_USD_PER_TRADE", None)
+    else:
+        _os.environ["PAPER_MAX_LOSS_USD_PER_TRADE"] = str(value)
+    return prev
+
+
+def _restore_max_loss_env(prev):
+    import os as _os
+
+    if prev is None:
+        _os.environ.pop("PAPER_MAX_LOSS_USD_PER_TRADE", None)
+    else:
+        _os.environ["PAPER_MAX_LOSS_USD_PER_TRADE"] = prev
+
+
+# #287 fix: the naked-fill mirror and IB-reconcile paths have no decision-time
+# stop in scope. synthesize_fallback_stop materializes the SAME dollar-risk
+# budget as the catastrophe cap (max_loss_usd_from_env) into an actual price
+# level instead of leaving stop_loss NULL until the periodic sweep catches it.
+
+def test_synthesize_fallback_stop_long():
+    prev = _set_max_loss_env(300)
+    try:
+        # MGC (mult=10), entry 4503.9, qty 1 -> distance = 300/(10*1) = 30.0
+        stop = synthesize_fallback_stop("MGC", "buy", 4503.9, 1)
+        assert stop == round(4503.9 - 30.0, 4)
+    finally:
+        _restore_max_loss_env(prev)
+
+
+def test_synthesize_fallback_stop_short():
+    prev = _set_max_loss_env(300)
+    try:
+        # MES (mult=5), entry 5000.0, qty 2 -> distance = 300/(5*2) = 30.0
+        stop = synthesize_fallback_stop("MES", "sell", 5000.0, 2)
+        assert stop == round(5000.0 + 30.0, 4)
+    finally:
+        _restore_max_loss_env(prev)
+
+
+def test_synthesize_fallback_stop_disabled_returns_none():
+    prev = _set_max_loss_env(0)
+    try:
+        assert synthesize_fallback_stop("MGC", "buy", 4503.9, 1) is None
+    finally:
+        _restore_max_loss_env(prev)
+
+
+def test_synthesize_fallback_stop_unknown_side_never_guesses():
+    prev = _set_max_loss_env(300)
+    try:
+        # Side that isn't a recognized long/short encoding -> None. A stop
+        # direction (which side is "adverse") must never be guessed.
+        assert synthesize_fallback_stop("MGC", "flat", 4503.9, 1) is None
+        assert synthesize_fallback_stop("MGC", None, 4503.9, 1) is None
+    finally:
+        _restore_max_loss_env(prev)
+
+
+def test_synthesize_fallback_stop_invalid_inputs_return_none():
+    prev = _set_max_loss_env(300)
+    try:
+        assert synthesize_fallback_stop("MGC", "buy", 4503.9, 0) is None  # zero qty
+        assert synthesize_fallback_stop("MGC", "buy", 0, 1) is None  # zero entry
+        assert synthesize_fallback_stop("MGC", "buy", None, 1) is None  # bad entry
+    finally:
+        _restore_max_loss_env(prev)
+
+
+def test_synthesize_fallback_stop_honors_configs_override():
+    prev = _set_max_loss_env(300)
+    try:
+        # paper_config override wins over the fallback multiplier map (mirrors
+        # multiplier_for's own override precedence).
+        stop = synthesize_fallback_stop(
+            "MGC", "buy", 4503.9, 1, configs={"MGC": {"multiplier": 30.0}}
+        )
+        # distance = 300/(30*1) = 10.0
+        assert stop == round(4503.9 - 10.0, 4)
+    finally:
+        _restore_max_loss_env(prev)
 
 
 def test_should_alert_data_error():

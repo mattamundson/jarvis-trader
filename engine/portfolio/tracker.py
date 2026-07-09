@@ -220,6 +220,7 @@ class PortfolioTracker:
         analyst_signals: Optional[Dict[str, float]] = None,
         candidate_id: Optional[str] = None,
         decision_identity: Optional[Dict[str, Any]] = None,
+        stop_loss: Optional[float] = None,
     ) -> str:
         """
         Log a new simulated entry.
@@ -232,6 +233,13 @@ class PortfolioTracker:
         atr_value : float, optional
             ATR at entry time.  Stored on the trade for later use by
             check_and_move_breakeven().
+        stop_loss : float, optional
+            Recorded stop price for PaperStopMonitor to enforce. Omitting this
+            leaves the row naked (#287: MGC -$1,236, stop_loss persisted NULL
+            because this parameter didn't exist) — callers that have a real
+            decision-time stop or a synthesized fallback
+            (``services.paper_stop_monitor.synthesize_fallback_stop``) should
+            always pass it.
         candidate_id : str, optional
             Forward-test registry candidate that fired this entry. When supplied,
             the candidate id is stamped into ``strategy_params`` so the
@@ -267,6 +275,7 @@ class PortfolioTracker:
             notes=notes,
             is_open=True,
             atr_value=atr_value,
+            stop_loss=stop_loss,
         )
 
         # SQLite-first: write to DB before touching in-memory state.
@@ -310,7 +319,7 @@ class PortfolioTracker:
                 quantity=trade.quantity,
                 entry_price=trade.entry_price,
                 entry_time=trade.entry_time,
-                stop_loss=None,
+                stop_loss=stop_loss,
                 take_profit=None,
                 strategy_params=_sp,
                 idempotency_key=idem_key,

@@ -234,6 +234,23 @@ class IBOrderManager:
 
             if sym not in tracker_open_symbols:
                 action = "buy" if qty > 0 else "sell"
+                # #287 fix: a reconcile backfill has no pipeline stop in scope
+                # (IB's raw position list carries no stop info) -- synthesize a
+                # defensive stop from the same dollar-risk budget as
+                # PaperStopMonitor's catastrophe cap rather than leave the
+                # backfilled row naked. See services.paper_stop_monitor for the
+                # single source of truth this reuses.
+                synthetic_stop = None
+                try:
+                    from services.paper_stop_monitor import synthesize_fallback_stop
+
+                    synthetic_stop = synthesize_fallback_stop(sym, action, avg_cost, abs(qty))
+                except Exception as _stop_err:  # pragma: no cover - defensive
+                    logger.debug(
+                        "sync_positions_from_ib: stop synthesis failed for %s (non-fatal): %s",
+                        sym,
+                        _stop_err,
+                    )
                 trade_id = self._tracker.open_trade(
                     symbol=sym,
                     action=action,
@@ -244,6 +261,7 @@ class IBOrderManager:
                         f"sec_type={pos.get('sec_type')} "
                         f"exchange={pos.get('exchange')}"
                     ),
+                    stop_loss=synthetic_stop,
                 )
                 logger.info(
                     "sync_positions_from_ib: opened tracker entry for IB position "
