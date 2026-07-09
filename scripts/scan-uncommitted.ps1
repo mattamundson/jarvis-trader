@@ -19,7 +19,7 @@ param(
         "C:\Users\mattm\Projects",
         "C:\Users\mattm\github-portfolio",
         "C:\Users\mattm\career-ops",
-        "C:\Users\mattm\second-brain",
+        "C:\Users\mattm\master-jarvis\second-brain",
         "C:\Users\mattm\.claude\skills"
     ),
     [string]$OutFile = "",
