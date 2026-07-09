@@ -1283,6 +1283,10 @@ export interface PendingApproval {
   orb_contrib?: boolean | null;
   vwap_contrib?: boolean | null;
   risk_pct_used?: number | null;
+  // Tamper-evident audit chain (approval/audit_chain.py, migration 041).
+  // Undefined/null on rows created before this field existed.
+  prev_hash?: string | null;
+  audit_hash?: string | null;
 }
 
 export interface PendingApprovalRow {
@@ -1294,6 +1298,10 @@ export interface PendingApprovalRow {
   created_at: string;
   pipeline_snapshot: Record<string, unknown> | null;
   status: "pending" | "approved" | "rejected" | "error";
+  // Tamper-evident audit chain (approval/audit_chain.py, migration 041).
+  // Null on rows created before this field existed.
+  prev_hash?: string | null;
+  audit_hash?: string | null;
 }
 
 export interface PendingApprovalsResponse {

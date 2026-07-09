@@ -720,3 +720,114 @@ class TestEdgeCases:
         # limit=0 should be clamped to 1
         rows = db.list_pending_approvals(limit=0)
         assert len(rows) == 1
+
+
+class TestAuditChainWiring:
+    """insert_pending_approval links every row into the tamper-evident audit
+    chain (approval/audit_chain.py). Regression coverage for the migration_041
+    + insert_pending_approval wiring -- passive metadata only, never gates
+    an approval."""
+
+    def test_first_row_links_to_genesis(self, tmp_path: Path) -> None:
+        from approval.audit_chain import GENESIS_HASH, compute_record_hash
+
+        db = DatabaseManager(str(tmp_path / "test.db"))
+        db.initialize()
+
+        snap = {"summary": "first trade", "confidence": 0.8}
+        approval_id = db.insert_pending_approval(
+            symbol="MES", action="buy", quantity=1.0, entry_price=5800.0,
+            pipeline_snapshot=snap,
+        )
+
+        row = db.get_pending_approval(approval_id)
+        assert row["prev_hash"] == GENESIS_HASH
+        assert row["audit_hash"] == compute_record_hash(snap, GENESIS_HASH)
+
+    def test_second_row_links_to_first(self, tmp_path: Path) -> None:
+        db = DatabaseManager(str(tmp_path / "test.db"))
+        db.initialize()
+
+        id1 = db.insert_pending_approval(
+            symbol="MES", action="buy", quantity=1.0, entry_price=5800.0,
+            pipeline_snapshot={"summary": "first"},
+        )
+        id2 = db.insert_pending_approval(
+            symbol="MGC", action="sell", quantity=1.0, entry_price=2400.0,
+            pipeline_snapshot={"summary": "second"},
+        )
+
+        row1 = db.get_pending_approval(id1)
+        row2 = db.get_pending_approval(id2)
+        assert row2["prev_hash"] == row1["audit_hash"]
+        assert row1["audit_hash"] != row2["audit_hash"]
+
+    def test_full_chain_verifies_and_detects_tampering(self, tmp_path: Path) -> None:
+        from approval.audit_chain import verify_chain
+
+        db = DatabaseManager(str(tmp_path / "test.db"))
+        db.initialize()
+
+        for i in range(3):
+            db.insert_pending_approval(
+                symbol="MES", action="buy", quantity=1.0, entry_price=5800.0 + i,
+                pipeline_snapshot={"summary": f"trade {i}"},
+            )
+
+        rows = db.get_recent_approvals_all_statuses(limit=10)
+        chain_order = list(reversed(rows))  # oldest first
+        records = [
+            {"snapshot": r["pipeline_snapshot"], "prev_hash": r["prev_hash"], "audit_hash": r["audit_hash"]}
+            for r in chain_order
+        ]
+
+        verification = verify_chain(records)
+        assert verification.ok is True
+        assert verification.n_records == 3
+
+        tampered = [dict(r) for r in records]
+        tampered[1] = {**tampered[1], "snapshot": {"summary": "TAMPERED"}}
+        tampered_verification = verify_chain(tampered)
+        assert tampered_verification.ok is False
+        assert tampered_verification.broken_index == 1
+
+    def test_hashing_failure_does_not_block_insert(self, tmp_path: Path, monkeypatch) -> None:
+        """Passive-metadata design constraint: a hashing error must never
+        block the approval from being inserted -- it degrades to NULL hashes."""
+        import approval.audit_chain as audit_chain_module
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("simulated hashing failure")
+
+        monkeypatch.setattr(audit_chain_module, "append_record", _boom)
+
+        db = DatabaseManager(str(tmp_path / "test.db"))
+        db.initialize()
+
+        approval_id = db.insert_pending_approval(
+            symbol="MES", action="buy", quantity=1.0, entry_price=5800.0,
+            pipeline_snapshot={"summary": "should still insert"},
+        )
+
+        row = db.get_pending_approval(approval_id)
+        assert row is not None
+        assert row["prev_hash"] is None
+        assert row["audit_hash"] is None
+
+    def test_list_and_recent_endpoints_include_hash_fields(self, tmp_path: Path) -> None:
+        """list_pending_approvals and get_recent_approvals_all_statuses must
+        surface prev_hash/audit_hash (dashboard reads these from here)."""
+        db = DatabaseManager(str(tmp_path / "test.db"))
+        db.initialize()
+
+        db.insert_pending_approval(
+            symbol="MES", action="buy", quantity=1.0, entry_price=5800.0,
+            pipeline_snapshot={"summary": "test"},
+        )
+
+        pending_rows = db.list_pending_approvals()
+        recent_rows = db.get_recent_approvals_all_statuses()
+        assert "audit_hash" in pending_rows[0]
+        assert "prev_hash" in pending_rows[0]
+        assert "audit_hash" in recent_rows[0]
+        assert "prev_hash" in recent_rows[0]

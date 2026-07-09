@@ -1814,6 +1814,36 @@ def migration_040(conn: sqlite3.Connection) -> None:
     logger.info("Migration 040 applied — mae_pct, mfe_pct, mae_usd, mfe_usd columns on paper_trades.")
 
 
+def migration_041(conn: sqlite3.Connection) -> None:
+    """
+    041 — Audit chain columns on pending_trade_approvals.
+
+    Adds prev_hash and audit_hash TEXT columns, wired in
+    database/_mixins_pending_approvals.py:insert_pending_approval per the
+    documented follow-up in approval/audit_chain.py's module docstring.
+
+    Passive metadata only — per audit_chain.py's design constraint, hashing
+    observes the snapshot and never gates or alters an approval, risk, or
+    trade decision. Both columns are nullable so historical rows (created
+    before this migration) remain valid with NULL hashes.
+
+    Idempotent: uses try/except on "duplicate column name" (pattern from
+    migration_038/040) so this is safe to run against a DB some caller
+    already altered manually.
+    """
+    for col in ("prev_hash", "audit_hash"):
+        try:
+            conn.execute(f"ALTER TABLE pending_trade_approvals ADD COLUMN {col} TEXT")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    conn.commit()
+    logger.info(
+        "Migration 041 applied — prev_hash, audit_hash columns on pending_trade_approvals "
+        "for the tamper-evident audit chain (approval/audit_chain.py)."
+    )
+
+
 # ── Migration registry ─────────────────────────────────────────────────────────
 # Add new migrations here in order.  The list index + 1 = migration version.
 
@@ -1858,6 +1888,7 @@ MIGRATIONS: List[Callable[[sqlite3.Connection], None]] = [
     migration_038,  # version 38
     migration_039,  # version 39
     migration_040,  # version 40
+    migration_041,  # version 41
 ]
 
 MIGRATION_DESCRIPTIONS: List[str] = [
@@ -1901,6 +1932,7 @@ MIGRATION_DESCRIPTIONS: List[str] = [
     "Paper trades slippage: slippage_ticks column on paper_trades (queried by execution-fidelity validation + paper_trade_pairing but never created); populated on close from matched real IB fill.",
     "Bar quality observability: bar_quality_rejections table recording bars rejected by the write-time bar-quality gate (symbol, ts_utc, reason) for the Trust Pane observability surface.",
     "MAE/MFE excursion: mae_pct, mfe_pct, mae_usd, mfe_usd columns on paper_trades for post-trade excursion analytics.",
+    "Audit chain: prev_hash, audit_hash columns on pending_trade_approvals for the tamper-evident SHA-256 decision-log chain (approval/audit_chain.py).",
 ]
 
 

@@ -26,35 +26,66 @@ class PendingApprovalsMixin:
         pipeline_snapshot: dict,
         timeframe: Optional[str] = None,
     ) -> str:
-        """Insert a pending row; returns ``approval_id`` (UUID string)."""
+        """Insert a pending row; returns ``approval_id`` (UUID string).
+
+        Also links the row into the tamper-evident audit chain
+        (approval/audit_chain.py): fetches the previous row's audit_hash
+        (or GENESIS_HASH for the first row ever), computes this snapshot's
+        hash linked to it, and persists both. Passive metadata only -- per
+        audit_chain.py's design constraint, this never gates or alters the
+        approval itself; a hashing failure falls back to NULL hashes rather
+        than blocking the insert.
+        """
         approval_id = str(uuid.uuid4())
         created_at = _utcnow()
         payload = json.dumps(pipeline_snapshot, default=str)
         sql = """
             INSERT INTO pending_trade_approvals
                 (approval_id, symbol, action, quantity, entry_price, status,
-                 pipeline_snapshot_json, created_at, timeframe)
-            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                 pipeline_snapshot_json, created_at, timeframe, prev_hash, audit_hash)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
         """
-        params = (
-            approval_id,
-            symbol.upper(),
-            action.lower(),
-            float(quantity),
-            float(entry_price) if entry_price is not None else None,
-            payload,
-            created_at,
-            timeframe,
-        )
         with self._lock:
             conn = self._connect()
             try:
+                prev_hash: Optional[str] = None
+                audit_hash: Optional[str] = None
+                try:
+                    from approval.audit_chain import GENESIS_HASH, append_record
+
+                    row = conn.execute(
+                        "SELECT audit_hash FROM pending_trade_approvals ORDER BY id DESC LIMIT 1"
+                    ).fetchone()
+                    chain_prev = (row["audit_hash"] if row else None) or GENESIS_HASH
+                    record = append_record(pipeline_snapshot, chain_prev)
+                    prev_hash, audit_hash = record.prev_hash, record.audit_hash
+                except Exception as exc:
+                    logger.warning(
+                        "[DB] audit-chain hashing failed for approval_id=%s -- "
+                        "inserting with NULL hashes rather than blocking: %s",
+                        approval_id[:8],
+                        exc,
+                    )
+
+                params = (
+                    approval_id,
+                    symbol.upper(),
+                    action.lower(),
+                    float(quantity),
+                    float(entry_price) if entry_price is not None else None,
+                    payload,
+                    created_at,
+                    timeframe,
+                    prev_hash,
+                    audit_hash,
+                )
                 conn.execute(sql, params)
                 conn.commit()
                 logger.debug(
-                    "[DB] insert_pending_approval approval_id=%s symbol=%s",
+                    "[DB] insert_pending_approval approval_id=%s symbol=%s audit_hash=%s",
                     approval_id[:8],
                     symbol,
+                    (audit_hash or "")[:12],
                 )
             finally:
                 conn.close()
@@ -66,7 +97,8 @@ class PendingApprovalsMixin:
         sql = """
             SELECT id, approval_id, symbol, action, quantity, entry_price, status,
                    pipeline_snapshot_json, created_at, resolved_at, resolved_by,
-                   rejection_reason, paper_trade_id, ib_order_id, timeframe
+                   rejection_reason, paper_trade_id, ib_order_id, timeframe,
+                   prev_hash, audit_hash
             FROM pending_trade_approvals
             WHERE status = 'pending'
             ORDER BY created_at DESC, id DESC
@@ -106,7 +138,8 @@ class PendingApprovalsMixin:
         sql = """
             SELECT id, approval_id, symbol, action, quantity, entry_price, status,
                    pipeline_snapshot_json, created_at, resolved_at, resolved_by,
-                   rejection_reason, paper_trade_id, ib_order_id, timeframe
+                   rejection_reason, paper_trade_id, ib_order_id, timeframe,
+                   prev_hash, audit_hash
             FROM pending_trade_approvals
             ORDER BY created_at DESC, id DESC
             LIMIT ?
@@ -124,7 +157,8 @@ class PendingApprovalsMixin:
         sql = """
             SELECT id, approval_id, symbol, action, quantity, entry_price, status,
                    pipeline_snapshot_json, created_at, resolved_at, resolved_by,
-                   rejection_reason, paper_trade_id, ib_order_id, timeframe
+                   rejection_reason, paper_trade_id, ib_order_id, timeframe,
+                   prev_hash, audit_hash
             FROM pending_trade_approvals
             WHERE approval_id = ?
         """
