@@ -6,16 +6,18 @@ import { PatternCard } from "@/components/learning/PatternCard";
 import { TradeGradeTable } from "@/components/learning/TradeGradeTable";
 import { SuggestionPanel } from "@/components/learning/SuggestionPanel";
 import { MemoryPanel } from "@/components/learning/MemoryPanel";
+import { AgentWeightsPanel } from "@/components/learning/AgentWeightsPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tab = "patterns" | "grades" | "suggestions" | "memory";
+type Tab = "patterns" | "grades" | "suggestions" | "memory" | "weights";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "patterns",    label: "Patterns" },
   { id: "grades",      label: "Trade Grades" },
   { id: "suggestions", label: "Suggestions" },
   { id: "memory",      label: "Memory" },
+  { id: "weights",     label: "Agent Weights" },
 ];
 
 const SYMBOLS = ["MES", "MNQ", "MGC", "MCL"] as const;
@@ -138,6 +140,7 @@ export default function LearningPage() {
         {activeTab === "grades"   && <TradeGradeTable />}
         {activeTab === "suggestions" && <SuggestionPanel symbol={symbol} />}
         {activeTab === "memory"   && <MemoryPanel />}
+        {activeTab === "weights"  && <AgentWeightsPanel />}
 
       </main>
     </div>

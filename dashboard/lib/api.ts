@@ -2165,6 +2165,34 @@ export async function fetchCalibration(): Promise<CalibrationDiagnostics> {
   return fetchEngine<CalibrationDiagnostics>("/analytics/calibration");
 }
 
+// ── Agent debate weights (/analytics/agent-weights) ───────────────────────────
+// Distinct from calibration above: this is the P&L-correlation weight
+// (AgentFeedbackTracker, 0.70-1.30) that actually scales each Stage-1
+// analyst's signal in debate.py, not the Brier/IC calibration blend.
+
+export interface AgentWeightEntry {
+  weight: number;
+  accuracy_30d: number;
+  accuracy_90d: number;
+  sample_count_30d: number;
+  ready: boolean;
+}
+
+export interface AgentWeightsResponse {
+  min_weight: number;
+  max_weight: number;
+  default_weight: number;
+  min_trades_threshold: number;
+  agents: string[];
+  per_agent: Record<string, AgentWeightEntry>;
+  saved_weights_updated_at: string | null;
+  timestamp: string;
+}
+
+export async function fetchAgentWeights(): Promise<AgentWeightsResponse> {
+  return fetchEngine<AgentWeightsResponse>("/analytics/agent-weights");
+}
+
 // ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
 // Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
 // mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.

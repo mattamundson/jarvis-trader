@@ -1229,6 +1229,146 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
     )
 
 
+# ─── Per-agent debate weights (AgentFeedbackTracker, distinct from Brier/IC) ──
+
+
+class AgentWeightEntry(BaseModel):
+    """Per-agent P&L-correlation debate weight."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    weight: float  # Debate weight multiplier, clamped to [min_weight, max_weight]
+    accuracy_30d: float  # Directional accuracy over trailing 30 days
+    accuracy_90d: float  # Directional accuracy over trailing 90 days
+    sample_count_30d: int  # Signal-emitting trade_outcomes rows in the 30d window
+    ready: bool  # True once sample_count_30d >= min_trades_threshold
+
+
+class AgentWeightsResponse(BaseModel):
+    """Full per-agent debate-weight snapshot.
+
+    Distinct from /analytics/calibration, which tracks Brier/IC scores for a
+    separate calibration blend — this is the AgentFeedbackTracker weight that
+    actually scales each Stage-1 analyst's signal in debate.py.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    min_weight: float
+    max_weight: float
+    default_weight: float
+    min_trades_threshold: int
+    agents: list[str]
+    per_agent: dict[str, AgentWeightEntry]
+    saved_weights_updated_at: Optional[str]
+    timestamp: str
+
+
+@router.get(
+    "/agent-weights",
+    response_model=AgentWeightsResponse,
+    description=(
+        "Expose per-agent P&L-correlation debate weights from AgentFeedbackTracker "
+        "(0.70-1.30 multiplier applied to Stage-1 analyst signals in debate.py)."
+    ),
+)
+async def get_agent_weights_diagnostics() -> AgentWeightsResponse:
+    """Return current AgentFeedbackTracker debate weights + supporting accuracy stats.
+
+    Degrades gracefully when trade_outcomes is missing/empty — never 500s on cold start.
+    """
+    import json as _json
+    import sqlite3 as _sqlite3
+
+    try:
+        from analytics.agent_feedback import (
+            AGENT_NAMES,
+            DEFAULT_WEIGHT,
+            MAX_WEIGHT,
+            MIN_WEIGHT,
+            WEIGHTS_FILE,
+            AgentFeedbackTracker,
+        )
+        from analytics.agent_feedback import (
+            DB_PATH as FB_DB_PATH,
+        )
+    except Exception as exc:
+        logger.error("[AgentWeights] import failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"agent-weights deps unavailable: {exc}") from exc
+
+    min_trades = 5  # matches AgentFeedbackTracker._compute_accuracy_internal floor
+    tracker = AgentFeedbackTracker()
+
+    try:
+        weights = tracker.get_agent_weights()
+    except Exception as exc:
+        logger.warning("[AgentWeights] weight compute failed: %s", exc)
+        weights = dict.fromkeys(AGENT_NAMES, DEFAULT_WEIGHT)
+
+    accuracy_30d: dict[str, float] = {}
+    accuracy_90d: dict[str, float] = {}
+    sample_counts_30d: dict[str, int] = dict.fromkeys(AGENT_NAMES, 0)
+
+    for a in AGENT_NAMES:
+        try:
+            accuracy_30d[a] = tracker.compute_accuracy(a, 30)
+            accuracy_90d[a] = tracker.compute_accuracy(a, 90)
+        except Exception as exc:
+            logger.warning("[AgentWeights] accuracy compute failed for %s: %s", a, exc)
+            accuracy_30d[a] = 0.5
+            accuracy_90d[a] = 0.5
+
+    try:
+        if FB_DB_PATH.exists():
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            with _sqlite3.connect(str(FB_DB_PATH)) as conn:
+                for a in AGENT_NAMES:
+                    sig_col = f"{a}_signal"
+                    try:
+                        n = (
+                            conn.execute(
+                                f"SELECT COUNT(*) FROM trade_outcomes "
+                                f"WHERE timestamp > ? AND {sig_col} != 0",
+                                (cutoff,),
+                            ).fetchone()[0]
+                            or 0
+                        )
+                        sample_counts_30d[a] = int(n)
+                    except _sqlite3.DatabaseError:
+                        pass
+    except Exception as exc:
+        logger.warning("[AgentWeights] sample-count query failed: %s", exc)
+
+    per_agent: dict[str, AgentWeightEntry] = {}
+    for a in AGENT_NAMES:
+        per_agent[a] = AgentWeightEntry(
+            weight=weights.get(a, DEFAULT_WEIGHT),
+            accuracy_30d=round(float(accuracy_30d[a]), 4),
+            accuracy_90d=round(float(accuracy_90d[a]), 4),
+            sample_count_30d=sample_counts_30d[a],
+            ready=sample_counts_30d[a] >= min_trades,
+        )
+
+    saved_updated_at: Optional[str] = None
+    try:
+        if WEIGHTS_FILE.exists():
+            with open(WEIGHTS_FILE) as f:
+                saved_updated_at = _json.load(f).get("updated_at")
+    except Exception as exc:
+        logger.debug("[AgentWeights] saved-weights read skipped: %s", exc)
+
+    return AgentWeightsResponse(
+        min_weight=float(MIN_WEIGHT),
+        max_weight=float(MAX_WEIGHT),
+        default_weight=float(DEFAULT_WEIGHT),
+        min_trades_threshold=min_trades,
+        agents=list(AGENT_NAMES),
+        per_agent=per_agent,
+        saved_weights_updated_at=saved_updated_at,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
 @router.get("/mtf")
 async def get_mtf_analysis(symbol: str = "MES"):
     """Multi-timeframe STC analysis for a single symbol.
