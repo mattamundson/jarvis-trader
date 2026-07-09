@@ -111,6 +111,28 @@ class TestRestartEventRecord:
         assert rec["details"]["probe_timeout_s"] == port_guardian.READINESS_PROBE_TIMEOUT
 
 
+class TestPortHoldersTimeout:
+    def test_netstat_call_has_a_timeout(self, monkeypatch):
+        # A stalled netstat.exe under heavy machine contention must not hang
+        # main() forever before the readiness watchdog thread ever starts.
+        captured = {}
+
+        def _fake_check_output(cmd, **kwargs):
+            captured.update(kwargs)
+            return ""
+
+        monkeypatch.setattr(port_guardian.subprocess, "check_output", _fake_check_output)
+        port_guardian._port_holders(8010)
+        assert captured.get("timeout"), "netstat subprocess call must set a timeout"
+
+    def test_returns_empty_list_on_timeout_instead_of_hanging(self, monkeypatch):
+        def _boom(cmd, **kwargs):
+            raise port_guardian.subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout"))
+
+        monkeypatch.setattr(port_guardian.subprocess, "check_output", _boom)
+        assert port_guardian._port_holders(8010) == []
+
+
 class TestProbeTimeout:
     def test_is_healthy_uses_generous_configured_timeout(self, monkeypatch):
         # A too-tight 2s probe mis-reads a transient /health spike on a serving
