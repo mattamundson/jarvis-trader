@@ -13,6 +13,7 @@ from analysis.tpo_bias_mapping import (
     derive_tpo_failed,
     row_to_tpo_dict,
     session_extreme_since_open,
+    session_range,
 )
 
 TARGET = 7624.25
@@ -119,3 +120,21 @@ def test_session_extreme_none_when_profile_undefined():
 def test_session_extreme_none_for_unknown_imbalance():
     df = _profile_df([(7530.0, 7500, 7510)])
     assert session_extreme_since_open(df, "flat") is None
+
+
+def test_session_range_uses_current_session_block_only():
+    # Codex review finding (PR #315): day_range must reflect TODAY's session,
+    # not a prior one -- the prior session's much wider range must not leak in.
+    df = _profile_df(
+        [
+            (7500.0, 7000, 7900),  # prior session -- wide range, must be excluded
+            (7530.0, 7532, 7538),  # current session
+            (7530.0, 7525, 7536),
+        ]
+    )
+    assert session_range(df) == 7538 - 7525
+
+
+def test_session_range_none_when_profile_undefined():
+    df = _profile_df([(float("nan"), 7500, 7510)])
+    assert session_range(df) is None

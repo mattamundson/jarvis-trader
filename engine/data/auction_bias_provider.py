@@ -30,7 +30,7 @@ import logging
 import time
 from typing import Optional
 
-from analysis.tpo_bias_mapping import row_to_tpo_dict, session_extreme_since_open
+from analysis.tpo_bias_mapping import row_to_tpo_dict, session_extreme_since_open, session_range
 from backtest.indicators import wilder_atr
 from backtest.tpo_profile import compute_tpo_profile
 
@@ -119,14 +119,35 @@ class LiveAuctionDataProvider:
         as the last row: filters to bars strictly before today's UTC date and
         takes the most recent of those. Falls back to the last bar only if no
         bar is strictly before today (feed already excludes the partial day).
+
+        Codex review finding (PR #315), second pass: a pure "< today UTC"
+        filter mis-anchors the overnight card specifically in the window this
+        card is FOR. CME Globex ES/MES sessions run ~5pm CT to ~4pm CT the next
+        day, spanning a UTC calendar-date rollover only partway through the
+        session -- so a daily bar dated "today" in UTC can already be a fully
+        CLOSED, settled session in the after-close/pre-UTC-midnight window
+        (roughly 4-7pm CT), and the strict date filter would wrongly exclude
+        it, anchoring Saty levels one full session stale. When the futures
+        market is currently CLOSED (see scanner.signal_scanner's
+        _is_futures_market_hours, the engine's own CME Globex schedule check —
+        reused here rather than re-deriving exchange hours), a bar dated today
+        is included as a valid "prior" candidate too, since the market being
+        closed is strong evidence that bar already settled. When the market is
+        OPEN, behavior is unchanged: today's bar is still excluded as
+        actively-forming.
         """
         import pandas as pd
 
         if daily_df is None or daily_df.empty:
             return None
+
+        from scanner.signal_scanner import _is_futures_market_hours
+
         ts = pd.to_datetime(daily_df["timestamp"], utc=True)
         today = pd.Timestamp.now(tz="UTC").normalize()
         prior_mask = ts.dt.normalize() < today
+        if not _is_futures_market_hours():
+            prior_mask = prior_mask | (ts.dt.normalize() == today)
         if prior_mask.any():
             return float(daily_df.loc[prior_mask, "close"].iloc[-1])
         return float(daily_df["close"].iloc[-1])
@@ -178,6 +199,18 @@ class LiveAuctionDataProvider:
                 profile_df = compute_tpo_profile(self._indexed(intraday_df))
                 row = profile_df.iloc[-1]
                 imbalance = row.get("tpo_imbalance")
+
+                # Prefer today's actual session range from the fresh intraday
+                # bars over the daily bar's high-low: when the 1d feed returns
+                # only completed sessions (a case _prior_close_from_daily
+                # explicitly supports), that daily bar's range is YESTERDAY's,
+                # not today's actively-forming range -- Codex review finding
+                # (PR #315), second pass. Falls back to the daily-bar-derived
+                # value (set above) when the profile is undefined this session.
+                intraday_range = session_range(profile_df)
+                if intraday_range is not None:
+                    day_range = intraday_range
+
                 # Session extreme, NOT the raw last price: a bull-imbalanced
                 # profile that traded below fail_target and bounced back above
                 # it before this request must still report failed=True. See
