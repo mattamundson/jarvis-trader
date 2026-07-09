@@ -1646,6 +1646,92 @@ async def get_regime_v2_for_symbol(symbol: str) -> RegimeV2Response:
         )
 
 
+# ─── Portfolio correlation preview (risk/portfolio_sizer.py, NOT live-wired) ─
+
+
+class CorrelationPreviewResponse(BaseModel):
+    """Live pairwise return-correlation estimate across the watched instruments.
+
+    risk/portfolio_sizer.py + risk/correlation_estimator.py are validated, pure
+    functions that compute what a correlation-aware sizing trim WOULD be -- but
+    per portfolio_sizer.py's own module docstring, they are "intentionally kept
+    separate (and Amo-gated) so this module stays inert until a backtest
+    validates the behaviour change." No live order has ever been trimmed for
+    correlation. wired_into_live_sizing is hardcoded false so the dashboard can
+    never accidentally imply otherwise.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    symbols: list[str]
+    pairs: dict[str, float]
+    omitted_pairs: list[str]
+    wired_into_live_sizing: bool
+    note: str
+    timestamp: str
+
+
+@router.get(
+    "/correlation-preview",
+    response_model=CorrelationPreviewResponse,
+    description=(
+        "Live pairwise correlation estimate (risk/correlation_estimator.py) across "
+        "the watched futures instruments, for display only. The correlation-aware "
+        "sizing trim this would feed (risk/portfolio_sizer.py) is NOT wired into "
+        "the live order path -- wired_into_live_sizing is always false."
+    ),
+)
+async def get_correlation_preview(
+    symbols: str = Query("MES,MGC,MCL,MNQ", description="Comma-separated symbols"),
+    lookback_days: int = Query(30, ge=5, le=180),
+) -> CorrelationPreviewResponse:
+    """Compute a live correlation matrix preview; never touches order sizing."""
+    from risk.correlation_estimator import bars_to_returns, estimate_correlations
+
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    returns_by_symbol: dict[str, list] = {}
+    for sym in sym_list:
+        try:
+            if _data_mgr is None:
+                continue
+            bars = await _data_mgr.get_bars(sym, lookback_days=lookback_days, timeframe="1h")
+            if bars is None or len(bars) < 21:
+                continue
+            closes = list(bars["close"])
+            returns_by_symbol[sym] = bars_to_returns(closes)
+        except Exception as exc:
+            logger.warning("[CorrelationPreview] bars fetch failed for %s: %s", sym, exc)
+
+    pairs = estimate_correlations(returns_by_symbol) if returns_by_symbol else {}
+
+    # estimate_correlations() sorts symbols alphabetically before pairing them
+    # (see risk/correlation_estimator.py), so the "expected pairs" set must use
+    # the same sorted ordering -- otherwise every computed pair falsely shows
+    # up as omitted under its differently-ordered key.
+    sorted_syms = sorted(sym_list)
+    all_expected_pairs = {
+        f"{a}/{b}"
+        for i, a in enumerate(sorted_syms)
+        for b in sorted_syms[i + 1 :]
+    }
+    computed_pairs = {f"{a}/{b}" for (a, b) in pairs}
+    omitted = sorted(all_expected_pairs - computed_pairs)
+
+    return CorrelationPreviewResponse(
+        symbols=sym_list,
+        pairs={f"{a}/{b}": round(rho, 4) for (a, b), rho in pairs.items()},
+        omitted_pairs=omitted,
+        wired_into_live_sizing=False,
+        note=(
+            "Preview only. risk/portfolio_sizer.py's correlation-aware sizing "
+            "trim is validated but not yet wired into the live order path."
+        ),
+        timestamp=timestamp,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /analytics/excursion   —   MAE/MFE post-trade excursion analytics
 # ─────────────────────────────────────────────────────────────────────────────

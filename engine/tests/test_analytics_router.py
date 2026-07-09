@@ -390,3 +390,62 @@ class TestRegimeV2Endpoint:
         body = resp.json()
         assert body["regime"] == "UNKNOWN"
         assert "insufficient" in body["note"]
+
+
+class TestCorrelationPreviewEndpoint:
+    """GET /analytics/correlation-preview -- preview only, never wired to sizing."""
+
+    def test_computes_real_correlation_and_never_double_lists_a_pair(self, client):
+        import numpy as np
+        import pandas as pd
+
+        import routers.analytics_router as analytics_router_module
+
+        rng = np.random.default_rng(3)
+        n = 60
+        mes_close = 100 + np.cumsum(rng.normal(0, 0.5, n))
+        mgc_close = mes_close * (1 + rng.normal(0, 0.001, n))  # near-identical -> high corr
+        mcl_close = 50 + np.cumsum(np.random.default_rng(99).normal(0, 0.5, n))
+
+        bars = {
+            "MES": pd.DataFrame({"close": mes_close}),
+            "MGC": pd.DataFrame({"close": mgc_close}),
+            "MCL": pd.DataFrame({"close": mcl_close}),
+        }
+
+        class FakeDataMgr:
+            async def get_bars(self, symbol, lookback_days=30, timeframe="1h"):
+                return bars.get(symbol)
+
+        analytics_router_module._data_mgr = FakeDataMgr()
+
+        resp = client.get("/analytics/correlation-preview?symbols=MES,MGC,MCL,MNQ")
+        assert resp.status_code == 200
+        body = resp.json()
+
+        # Never claim this feeds live order sizing -- it doesn't.
+        assert body["wired_into_live_sizing"] is False
+
+        assert body["pairs"]["MES/MGC"] > 0.9
+
+        # Regression: a pair that WAS computed must never also appear omitted
+        # (caught during manual verification -- alphabetical vs input-order key mismatch).
+        computed = set(body["pairs"].keys())
+        omitted = set(body["omitted_pairs"])
+        assert not (computed & omitted)
+
+        # MNQ has no bar data in this fixture -> every MNQ pair should be omitted.
+        assert "MCL/MNQ" in omitted
+        assert "MES/MNQ" in omitted
+        assert "MGC/MNQ" in omitted
+
+    def test_no_data_manager_returns_empty_not_error(self, client):
+        import routers.analytics_router as analytics_router_module
+
+        analytics_router_module._data_mgr = None
+
+        resp = client.get("/analytics/correlation-preview?symbols=MES,MGC")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pairs"] == {}
+        assert body["wired_into_live_sizing"] is False
