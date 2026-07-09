@@ -119,23 +119,20 @@ def _load(symbol: str, timeframe: str, data_file: str | None) -> pd.DataFrame:
     if missing:
         raise SystemExit(f"Missing columns in {path.name}: {missing}")
     # The backtester, TPO confluence, and MTF Keltner all need a DatetimeIndex.
-    # The Backtester groups bars by .date() for the daily-loss limit, so it needs
-    # one too. Without it, every backtest raises "'int' object has no attribute
-    # 'date'" — which the runner's broad `except Exception: continue` silently
-    # swallows, making every param set look like it produced 0 trades ("too rare
-    # on this data").
-    ts_col = None
+    # Without one, the Backtester raises "'int' object has no attribute 'date'"
+    # (it groups bars by .date() for the daily-loss limit) — which the runner's
+    # broad `except Exception: continue` silently swallows, making every param
+    # set look like it produced 0 trades ("too rare on this data").
     for tcol in ("timestamp", "datetime", "date", "time"):
         if tcol in df.columns:
-            ts_col = tcol
+            df[tcol] = pd.to_datetime(df[tcol], utc=True)
+            df = df.set_index(tcol).sort_index()
             break
-    if ts_col is None:
+    else:
         raise SystemExit(
             f"No timestamp/datetime column in {path.name}; the Backtester needs a "
             f"DatetimeIndex. Columns: {list(df.columns)}"
         )
-    df[ts_col] = pd.to_datetime(df[ts_col], utc=True)
-    df = df.set_index(ts_col).sort_index()
     return df
 
 

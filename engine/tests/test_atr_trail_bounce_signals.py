@@ -301,7 +301,9 @@ def test_tpo_target_columns_present_and_pointintime():
     out = compute_tpo_profile(df)
     for col in ["tpo_bal", "tpo_imbalance", "tpo_target", "tpo_fail_target"]:
         assert col in out.columns
-    assert set(out["tpo_imbalance"].unique()).issubset({"BEAR_IMBAL", "BULL_IMBAL"})
+    # NaN is a legitimate third state (undefined profile / bal==poc, no real
+    # imbalance) -- must never silently collapse into BULL_IMBAL.
+    assert set(out["tpo_imbalance"].dropna().unique()).issubset({"BEAR_IMBAL", "BULL_IMBAL"})
     # truncation invariance: target at bar i unchanged when future bars dropped
     cutoff = 400
     trunc = compute_tpo_profile(df.iloc[: cutoff + 1].copy())

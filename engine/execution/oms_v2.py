@@ -301,6 +301,39 @@ class OMSManager:
     def get_active_trades(self) -> List[Dict[str, Any]]:
         return [t.to_dict() for t in self.active_trades.values() if t.status == TradeState.ACTIVE]
 
+    def resolve_stop_for_symbol(self, symbol: str) -> Optional[float]:
+        """
+        Return the resting stop_loss_price for the most recent ACTIVE bracket
+        on ``symbol``, or None if none is tracked.
+
+        Backstop for stop-monitor callers whose own stop-loss record is
+        missing/NULL -- e.g. paper_trades rows opened via this OMS's bracket
+        path, where the entry fill is ultimately logged through
+        ``PortfolioTracker.open_trade()`` (no ``stop_loss`` parameter -- a
+        separate, documented data-hygiene gap, not fixed here). This OMS
+        already holds the real ``stop_loss_price`` in-memory on the
+        ``BracketOrder`` from ``execute_bracket()`` time, independent of that
+        gap, so callers (the 5-minute "Open Position Stop Monitor" job and
+        ``PaperStopMonitor``) can fall back to it before giving up on
+        enforcing a per-trade stop entirely.
+
+        Matches by symbol only -- ``BracketOrder`` does not record side/action.
+        Safe under this account's one-position-per-symbol trading pattern
+        (MES/MGC, 1-2 micro contracts, never simultaneous long+short on the
+        same root).
+        """
+        sym_upper = str(symbol or "").upper()
+        if not sym_upper:
+            return None
+        for trade in self.active_trades.values():
+            if trade.status != TradeState.ACTIVE:
+                continue
+            if trade.symbol.upper() != sym_upper:
+                continue
+            if trade.stop_loss_price is not None:
+                return trade.stop_loss_price
+        return None
+
     async def adopt_existing_trade(self, symbol: str, quantity: int, entry_price: float,
                                  stop_loss_id: Optional[str] = None,
                                  take_profit_id: Optional[str] = None) -> str:

@@ -42,7 +42,7 @@ def test_strategy_c_metrics_maps_keys_and_rescales_units(tmp_path, monkeypatch):
     out = asyncio.run(sc.get_metrics())
 
     # keys renamed to the frontend contract
-    assert set(["full_period", "in_sample", "out_of_sample"]).issubset(out)
+    assert {"full_period", "in_sample", "out_of_sample"}.issubset(out)
     fp = out["full_period"]
     # percent fields divided by 100 so the frontend's fmtPct (×100) is correct
     assert fp["cagr"] == 0.1709
@@ -75,8 +75,8 @@ def test_strategy_c_metrics_handles_missing_subfields(tmp_path, monkeypatch):
 # ── validation /readiness-check: maps compute() -> ReadinessReport ─────────────
 
 def test_readiness_check_emits_frontend_contract(monkeypatch):
-    import routers.validation_router as vr
     import analytics.validation_metrics as vm
+    import routers.validation_router as vr
 
     canned = {
         "all_targets_met": False,
@@ -110,8 +110,8 @@ def test_readiness_check_emits_frontend_contract(monkeypatch):
 
 
 def test_readiness_check_fail_soft_on_compute_error(monkeypatch):
-    import routers.validation_router as vr
     import analytics.validation_metrics as vm
+    import routers.validation_router as vr
 
     def _boom(self):
         raise RuntimeError("db locked")

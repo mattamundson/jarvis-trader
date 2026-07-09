@@ -118,6 +118,7 @@ from routers.pipeline_router import router as pipeline_router
 from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
 from routers.session_brief_router import router as session_brief_router
 from routers.session_brief_router import inject_dependencies as inject_session_brief_deps
+from routers.framing_brief_router import router as framing_brief_router
 from routers.pipeline_ws_router import router as pipeline_ws_router
 from routers.messaging_router import router as messaging_router
 from routers.messaging_router import inject_dependencies as inject_messaging_deps
@@ -177,6 +178,10 @@ from routers.prices_router import (
     router as prices_router,
     inject_dependencies as inject_prices_deps,
 )
+from routers.auction_bias_router import (
+    router as auction_bias_router,
+    inject_dependencies as inject_auction_bias_deps,
+)
 from routers.websocket_router import (
     router as websocket_router,
     inject_dependencies as inject_websocket_deps,
@@ -196,6 +201,7 @@ from routers.crypto_router import router as crypto_router
 from routers.openclaw_router import router as openclaw_router
 from routers.openclaw_router import inject_dependencies as inject_openclaw_deps
 from data.price_cache import PriceCache
+from data.auction_bias_provider import LiveAuctionDataProvider
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -550,7 +556,15 @@ async def lifespan(app: FastAPI):
         try:
             from services.paper_stop_monitor import PaperStopMonitor
 
-            paper_stop_monitor = PaperStopMonitor(db_manager, data_manager)
+            # oms_manager_getter is a lazy zero-arg lookup, not a direct
+            # reference: this background-init task races the outer lifespan()
+            # flow that constructs OMSManager (line ~751), so capturing
+            # `oms_manager` by value here could freeze in a stale None if this
+            # branch runs first. The getter re-reads the module global fresh
+            # on every sweep instead.
+            paper_stop_monitor = PaperStopMonitor(
+                db_manager, data_manager, oms_manager_getter=lambda: oms_manager
+            )
             await paper_stop_monitor.start()
             logger.info("🛡️ Paper stop-loss monitor activated (feed-independent backstop)")
         except Exception as e:
@@ -1044,7 +1058,21 @@ async def lifespan(app: FastAPI):
                 trade_dec = result.get("trade_decision") or {}
                 confidence = fund_dec.get("final_conviction", trade_dec.get("confidence", 0.0))
                 qty = result.get("final_quantity", 0)
-                price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
+                # Real/intended fill price for the OMS bracket call below. MUST
+                # NOT fall back to stop_price: stop_price is not a price proxy,
+                # and using it here silently defeats SafetyLayer's per-trade
+                # dollar-risk gate (points_at_risk = |entry - stop| collapses to
+                # ~0 when entry == stop). trade_dec["entry_price"] is the
+                # Trader agent's actual intended entry (see TradeDecision.
+                # entry_price docstring in agents/trader.py); limit_price wins
+                # only when this is a genuine LMT order, since that IS the
+                # price that will be submitted.
+                # Root-cause of trade #287 (MGC, 2026-07-xx): this used to be
+                # `trade_dec.get("limit_price") or trade_dec.get("stop_price")`,
+                # so a MKT order (no limit_price) always priced its bracket
+                # entry at the stop, approving trades already ~$191.83 over the
+                # $50/ticket MAX_TRADE_LOSS_USD cap before any market movement.
+                price_info = trade_dec.get("limit_price") or trade_dec.get("entry_price")
                 reasoning = trade_dec.get("reasoning", "")
 
                 # Always log to decision feed (in-memory + SQLite)
@@ -1723,6 +1751,7 @@ async def lifespan(app: FastAPI):
     inject_sentiment_deps(data_manager)
     inject_settings_deps(settings, db_manager, safety_layer)
     inject_prices_deps(PriceCache(), data_manager=data_manager)
+    inject_auction_bias_deps(LiveAuctionDataProvider(data_manager))
     inject_websocket_deps(ws_manager)
     inject_thinkscript_deps(technical_analyst)
     inject_alerts_deps(db_manager=db_manager)
@@ -2486,10 +2515,27 @@ async def lifespan(app: FastAPI):
 
                 for _trade in open_trades:
                     _stop = _trade.get("stop_loss")
-                    if _stop is None:
-                        continue
-                    _stop_f = float(_stop)
                     _sym = (_trade.get("symbol") or "").upper()
+                    if _stop is None:
+                        # OMS v2 bracket-executed trades never persist
+                        # stop_loss onto the paper_trades row
+                        # (PortfolioTracker.open_trade() has no stop_loss
+                        # parameter -- a separate, documented data-hygiene
+                        # gap, out of scope here). Fall back to the OMS's own
+                        # in-memory bracket record, which DOES hold the real
+                        # stop_loss_price from execute_bracket() time.
+                        if oms_manager is not None and _sym:
+                            try:
+                                _stop = oms_manager.resolve_stop_for_symbol(_sym)
+                            except Exception as _oms_fb_exc:
+                                logger.debug(
+                                    "[stop_monitor] OMS stop fallback failed for %s: %s",
+                                    _sym,
+                                    _oms_fb_exc,
+                                )
+                        if _stop is None:
+                            continue
+                    _stop_f = float(_stop)
                     if not _sym:
                         continue
                     _side = (_trade.get("side") or "buy").lower()
@@ -3024,6 +3070,7 @@ app.include_router(approval_router)
 app.include_router(approval_queue_router)
 app.include_router(pipeline_router)
 app.include_router(session_brief_router)
+app.include_router(framing_brief_router)
 app.include_router(pipeline_ws_router)
 app.include_router(messaging_router)
 app.include_router(scanner_router)
@@ -3050,6 +3097,7 @@ app.include_router(watchlist_router)
 app.include_router(sentiment_router)
 app.include_router(settings_router)
 app.include_router(prices_router)
+app.include_router(auction_bias_router)
 app.include_router(websocket_router)
 app.include_router(thinkscript_router)
 app.include_router(alerts_router)

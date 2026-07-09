@@ -196,13 +196,22 @@ def compute_tpo_profile(
     up_move = (poc - out["profile_low"]) + poc       # 1.0x projection upward
     down_move = poc - (out["profile_high"] - poc)    # 1.0x projection downward
     bear = bal > poc
+    bull = bal < poc
     out["tpo_bal"] = bal
-    out["tpo_imbalance"] = np.where(bear, "BEAR_IMBAL", "BULL_IMBAL")
-    # Primary target: bear imbalance -> down, bull -> up. Fail target: opposite.
-    out["tpo_target"] = np.where(bear, down_move, up_move)
-    out["tpo_fail_target"] = np.where(bear, up_move, down_move)
-    # Null targets where the profile is undefined.
+    # bal == poc (genuinely balanced) or either NaN -> no imbalance either way;
+    # left as NaN (object Series), unlike a two-way np.where(bear, ..., ...)
+    # which silently mislabeled that case BULL_IMBAL. Built via boolean masking
+    # rather than np.select/np.where -- numpy can't unify a str choicelist with
+    # a float default/fill in one call without forcing an explicit object dtype.
+    imbalance = pd.Series(np.nan, index=out.index, dtype=object)
+    imbalance[bear] = "BEAR_IMBAL"
+    imbalance[bull] = "BULL_IMBAL"
+    out["tpo_imbalance"] = imbalance
+    # Primary target: bear imbalance -> down, bull -> up, no imbalance -> NaN.
+    out["tpo_target"] = np.where(bear, down_move, np.where(bull, up_move, np.nan))
+    out["tpo_fail_target"] = np.where(bear, up_move, np.where(bull, down_move, np.nan))
+    # Null targets where the profile is undefined (e.g. first session, no prior).
     undefined = poc.isna() | out["profile_high"].isna() | out["profile_low"].isna()
-    out.loc[undefined, ["tpo_bal", "tpo_target", "tpo_fail_target"]] = np.nan
+    out.loc[undefined, ["tpo_bal", "tpo_imbalance", "tpo_target", "tpo_fail_target"]] = np.nan
 
     return out
