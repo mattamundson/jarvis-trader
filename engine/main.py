@@ -2536,6 +2536,7 @@ async def lifespan(app: FastAPI):
                 from portfolio.tracker import (
                     INSTRUMENT_MULTIPLIERS as _MULT,
                     _DEFAULT_MULTIPLIER as _DEF_MULT,
+                    _commission_per_contract as _commission_per_contract_fn,
                 )  # noqa: E501
 
                 for _trade in open_trades:
@@ -2589,14 +2590,21 @@ async def lifespan(app: FastAPI):
                         continue
                     _mult = _MULT.get(_sym, _DEF_MULT)
                     _qty = float(_trade.get("quantity") or 1.0)
-                    _pnl = (
+                    _gross_pnl = (
                         (_stop_f - _entry) * _qty * _mult
                         if _is_long
                         else (_entry - _stop_f) * _qty * _mult
                     )
+                    # T0-06: reuse PortfolioTracker's exact commission constant/logic
+                    # (portfolio.tracker._commission_per_contract) instead of passing a
+                    # zero-commission pnl straight through — close_paper_trade() treats
+                    # an explicit `pnl` as broker-confirmed (already net of fees) and
+                    # will NOT re-deduct it, so an un-costed figure here previously
+                    # closed every stop-driven trade commission-free.
+                    _pnl = _gross_pnl - (_commission_per_contract_fn() * abs(_qty))
                     logger.warning(
                         "[stop_monitor] STOP HIT %s %s id=%s entry=%.2f "
-                        "stop=%.2f current=%.2f pnl=%.2f",
+                        "stop=%.2f current=%.2f pnl=%.2f (net of commission)",
                         _sym,
                         _side,
                         _tid[:8] if _tid else "?",
