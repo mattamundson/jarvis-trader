@@ -1369,6 +1369,95 @@ async def get_agent_weights_diagnostics() -> AgentWeightsResponse:
     )
 
 
+# ─── Trade post-mortems (agents/post_mortem.py) ──────────────────────────────
+
+
+class PostMortemEntry(BaseModel):
+    """A single stored post-trade LLM analysis."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_id: str
+    symbol: Optional[str]
+    pnl: Optional[float]
+    analysis: Optional[str]
+    lesson: Optional[str]
+    created_at: Optional[str]
+
+
+class PostMortemsResponse(BaseModel):
+    """Recent trade post-mortems, most recent first."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    entries: list[PostMortemEntry]
+    total: int
+    timestamp: str
+
+
+@router.get(
+    "/post-mortems",
+    response_model=PostMortemsResponse,
+    description=(
+        "Recent trade_post_mortem rows written by agents/post_mortem.py's "
+        "PostTradeAnalyzer. Returns an empty list (not an error) if the table "
+        "doesn't exist yet — no post-mortem has ever been generated."
+    ),
+)
+async def get_post_mortems(
+    limit: int = Query(20, ge=1, le=200),
+    symbol: Optional[str] = None,
+) -> PostMortemsResponse:
+    """Return recent post-mortems, gracefully handling a not-yet-created table."""
+    import sqlite3 as _sqlite3
+
+    db = _get_db()
+    where_clause = " WHERE symbol = ?" if symbol else ""
+    filter_params: list = [symbol] if symbol else []
+
+    query = (
+        "SELECT trade_id, symbol, pnl, analysis, lesson, created_at FROM trade_post_mortem"
+        + where_clause
+        + " ORDER BY created_at DESC LIMIT ?"
+    )
+    params = [*filter_params, limit]
+
+    try:
+        conn = db._connect()
+        try:
+            rows = conn.execute(query, tuple(params)).fetchall()
+            total = conn.execute(
+                "SELECT COUNT(*) FROM trade_post_mortem" + where_clause,
+                tuple(filter_params),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+    except _sqlite3.OperationalError as exc:
+        logger.info("[PostMortems] table not yet created (%s) — returning empty", exc)
+        return PostMortemsResponse(entries=[], total=0, timestamp=datetime.now(timezone.utc).isoformat())
+    except Exception as exc:
+        logger.error("[PostMortems] query failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"post-mortem query failed: {exc}") from exc
+
+    entries = [
+        PostMortemEntry(
+            trade_id=row["trade_id"],
+            symbol=row["symbol"],
+            pnl=row["pnl"],
+            analysis=row["analysis"],
+            lesson=row["lesson"],
+            created_at=row["created_at"],
+        )
+        for row in rows
+    ]
+
+    return PostMortemsResponse(
+        entries=entries,
+        total=int(total or 0),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
 @router.get("/mtf")
 async def get_mtf_analysis(symbol: str = "MES"):
     """Multi-timeframe STC analysis for a single symbol.

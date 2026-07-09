@@ -7,17 +7,19 @@ import { TradeGradeTable } from "@/components/learning/TradeGradeTable";
 import { SuggestionPanel } from "@/components/learning/SuggestionPanel";
 import { MemoryPanel } from "@/components/learning/MemoryPanel";
 import { AgentWeightsPanel } from "@/components/learning/AgentWeightsPanel";
+import { PostMortemPanel } from "@/components/learning/PostMortemPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tab = "patterns" | "grades" | "suggestions" | "memory" | "weights";
+type Tab = "patterns" | "grades" | "suggestions" | "memory" | "weights" | "postmortems";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "patterns",    label: "Patterns" },
-  { id: "grades",      label: "Trade Grades" },
-  { id: "suggestions", label: "Suggestions" },
-  { id: "memory",      label: "Memory" },
-  { id: "weights",     label: "Agent Weights" },
+  { id: "patterns",     label: "Patterns" },
+  { id: "grades",       label: "Trade Grades" },
+  { id: "suggestions",  label: "Suggestions" },
+  { id: "memory",       label: "Memory" },
+  { id: "weights",      label: "Agent Weights" },
+  { id: "postmortems",  label: "Post-Mortems" },
 ];
 
 const SYMBOLS = ["MES", "MNQ", "MGC", "MCL"] as const;
@@ -141,6 +143,7 @@ export default function LearningPage() {
         {activeTab === "suggestions" && <SuggestionPanel symbol={symbol} />}
         {activeTab === "memory"   && <MemoryPanel />}
         {activeTab === "weights"  && <AgentWeightsPanel />}
+        {activeTab === "postmortems" && <PostMortemPanel />}
 
       </main>
     </div>

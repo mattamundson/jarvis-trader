@@ -250,3 +250,84 @@ class TestAnalyticsRouter:
         ]:
             resp = client.get(endpoint)
             assert resp.status_code == 200
+
+
+class TestPostMortemsEndpoint:
+    """GET /analytics/post-mortems — real DatabaseManager round trip via HTTP."""
+
+    @patch("routers.analytics_router._get_db")
+    def test_empty_table_returns_200_not_500(self, mock_get_db, client, tmp_path):
+        """Table doesn't exist yet (no post-mortem ever written) -> empty list, not an error."""
+        from database.manager import DatabaseManager
+
+        db = DatabaseManager(str(tmp_path / "post_mortem_empty.db"))
+        db.initialize()
+        mock_get_db.return_value = db
+
+        resp = client.get("/analytics/post-mortems")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["entries"] == []
+        assert body["total"] == 0
+
+    @patch("routers.analytics_router._get_db")
+    def test_populated_table_returns_rows(self, mock_get_db, client, tmp_path):
+        """A real PostTradeAnalyzer-written row is returned, most-recent-first."""
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        import json as _json
+
+        from agents.post_mortem import PostTradeAnalyzer
+        from database.manager import DatabaseManager
+
+        db = DatabaseManager(str(tmp_path / "post_mortem_populated.db"))
+        db.initialize()
+        mock_get_db.return_value = db
+
+        msg = SimpleNamespace(
+            content=[SimpleNamespace(text=_json.dumps({"analysis": "test analysis", "lesson": "test lesson"}))]
+        )
+        llm = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=msg))))
+        analyzer = PostTradeAnalyzer(db_manager=db, llm_client=llm)
+        asyncio.get_event_loop().run_until_complete(
+            analyzer.analyze_trade("T-42", {"symbol": "MGC", "pnl": 88.5}, {})
+        )
+
+        resp = client.get("/analytics/post-mortems")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 1
+        assert body["entries"][0]["trade_id"] == "T-42"
+        assert body["entries"][0]["symbol"] == "MGC"
+        assert body["entries"][0]["lesson"] == "test lesson"
+
+    @patch("routers.analytics_router._get_db")
+    def test_symbol_filter(self, mock_get_db, client, tmp_path):
+        """?symbol= filters to only that symbol's rows."""
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        import json as _json
+
+        from agents.post_mortem import PostTradeAnalyzer
+        from database.manager import DatabaseManager
+
+        db = DatabaseManager(str(tmp_path / "post_mortem_filter.db"))
+        db.initialize()
+        mock_get_db.return_value = db
+
+        msg = SimpleNamespace(
+            content=[SimpleNamespace(text=_json.dumps({"analysis": "a", "lesson": "l"}))]
+        )
+        llm = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=msg))))
+        analyzer = PostTradeAnalyzer(db_manager=db, llm_client=llm)
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(analyzer.analyze_trade("T-A", {"symbol": "MGC", "pnl": 1.0}, {}))
+        loop.run_until_complete(analyzer.analyze_trade("T-B", {"symbol": "MES", "pnl": 2.0}, {}))
+
+        resp = client.get("/analytics/post-mortems?symbol=MES")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 1
+        assert body["entries"][0]["trade_id"] == "T-B"
