@@ -1900,6 +1900,7 @@ async def lifespan(app: FastAPI):
             safety_layer=safety_layer,
             trading_pipeline=trading_pipeline,
             symbols=["MCL", "MNQ", "MES"],
+            data_manager=data_manager,
         )
         _orchestrator.register(_futures_module)
         set_orchestrator(_orchestrator)
