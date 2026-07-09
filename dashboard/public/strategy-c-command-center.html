@@ -3569,7 +3569,7 @@
       <div class="search-label">▸ SCAN INSTRUMENTS</div>
       <div class="search-input-wrap">
         <input type="text" class="search-input" id="search-input"
-          placeholder="Search stocks, futures (ES, NQ, MCL, MNQ), options, crypto..."
+          placeholder="Search stocks, futures (ES, NQ, MES, MGC), options, crypto..."
           autocomplete="off" spellcheck="false">
         <span class="search-icon">⌕</span>
         <div id="search-results"></div>
@@ -6884,7 +6884,7 @@ searchInput.addEventListener('input', () => {
   ).slice(0, 8);
 
   if (matched.length === 0) {
-    searchResults.innerHTML = '<div style="padding:12px 16px;font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-dim);">No instruments found. Try: ES, NQ, MCL, AAPL, SPY...</div>';
+    searchResults.innerHTML = '<div style="padding:12px 16px;font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-dim);">No instruments found. Try: ES, NQ, MES, AAPL, SPY...</div>';
   } else {
     searchResults.innerHTML = matched.map(i => {
       var typeColor = i.type==='FUTURES'?'badge-futures':i.type==='OPTIONS'?'badge-options':i.type==='CRYPTO'?'badge-crypto':i.type==='ETF'?'badge-etf':'badge-stock';
