@@ -309,6 +309,60 @@ export default function PendingApprovalsPage() {
                   </div>
                 </div>
 
+                {/* Confluence breakdown — 6-dimension score from debate.py's
+                    _score_confluence(), persisted in pipeline_snapshot_json.
+                    Absent on older approvals or when scoring failed. */}
+                {(() => {
+                  const debateResult = snap.debate_result as Record<string, unknown> | undefined;
+                  const confluenceScores = debateResult?.confluence_scores as
+                    | Record<string, number>
+                    | undefined;
+                  if (!confluenceScores || Object.keys(confluenceScores).length === 0) return null;
+
+                  // Matches the strong_agreements >= 0.6 gate in agents/debate.py
+                  const STRONG_THRESHOLD = 0.6;
+                  const dimensions = [
+                    "trend", "mean_rev", "breakout", "volatility", "macro", "sentiment",
+                  ];
+                  const strongCount = dimensions.filter(
+                    (d) => (confluenceScores[d] ?? 0) >= STRONG_THRESHOLD
+                  ).length;
+
+                  return (
+                    <div className="bg-muted/30 rounded-md p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-muted-foreground">Confluence</p>
+                        <Badge variant={strongCount >= 4 ? "bull" : "warn"}>
+                          {strongCount}/6 dimensions &ge; {STRONG_THRESHOLD}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {dimensions.map((dim) => {
+                          const score = confluenceScores[dim] ?? 0;
+                          return (
+                            <div key={dim} className="space-y-1">
+                              <div className="flex items-center justify-between text-[10px]">
+                                <span className="text-muted-foreground capitalize">
+                                  {dim.replace("_", " ")}
+                                </span>
+                                <span className="font-mono">{score.toFixed(2)}</span>
+                              </div>
+                              <div className="h-1 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    score >= STRONG_THRESHOLD ? "bg-bull" : "bg-muted-foreground/30"
+                                  }`}
+                                  style={{ width: `${Math.min(100, Math.max(0, score * 100))}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Approval ID and override inputs */}
                 <div className="pt-2 space-y-3">
                   {needsPrice && (
