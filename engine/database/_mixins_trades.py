@@ -585,6 +585,69 @@ class TradesMixin:
             finally:
                 conn.close()
 
+    def update_paper_trade_stop_loss(self, trade_id: str, stop_loss: float) -> bool:
+        """
+        Write a resolved stop_loss price onto an existing paper_trades row.
+
+        Backfill for the "naked row" gap: OMS v2 bracket-executed trades are
+        opened via PortfolioTracker.open_trade() (no stop_loss parameter), so
+        their paper_trades row persists stop_loss=NULL even though the OMS
+        holds the real stop_loss_price in-memory. main._monitor_open_stops()
+        resolves that in-memory value via oms_manager.resolve_stop_for_symbol()
+        as a read-time fallback; this method lets it also persist the resolved
+        value once, so subsequent reads (dashboard, other monitors) see the
+        real number instead of NULL.
+
+        Same inverted-stop guard as insert_paper_trade: this is a second write
+        path onto the same safety-critical column, so it must not become a
+        backdoor for persisting a backwards stop (see
+        docs/incident-notes/2026-04-09-mcl-inverted-stop.md).
+
+        Returns True when exactly one row was updated.  No-ops gracefully
+        (returns False) when the trade_id is not found.
+
+        Raises:
+            ValueError: If ``stop_loss`` is on the wrong side of the row's
+                        existing ``entry_price`` for its ``side`` (inverted-stop
+                        guard).
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    "SELECT side, entry_price FROM paper_trades WHERE trade_id = ?",
+                    (trade_id,),
+                ).fetchone()
+                if row is None:
+                    logger.warning(
+                        "[DB] update_paper_trade_stop_loss: trade_id=%s not found",
+                        trade_id[:8] if trade_id else "?",
+                    )
+                    return False
+                side, entry_price = row[0], row[1]
+
+                if is_inverted_stop(side, entry_price, stop_loss):
+                    raise ValueError(
+                        f"Refusing to update inverted stop: trade_id={trade_id[:8]} "
+                        f"side={side} entry_price={entry_price} stop_loss={stop_loss}. "
+                        "See docs/incident-notes/2026-04-09-mcl-inverted-stop.md"
+                    )
+
+                cur = conn.execute(
+                    "UPDATE paper_trades SET stop_loss = ? WHERE trade_id = ?",
+                    (stop_loss, trade_id),
+                )
+                conn.commit()
+                found = cur.rowcount == 1
+                logger.debug(
+                    "[DB] update_paper_trade_stop_loss: trade_id=%s stop_loss=%s",
+                    trade_id[:8],
+                    stop_loss,
+                )
+                return found
+            finally:
+                conn.close()
+
     def get_paper_trades(
         self,
         limit: int = 50,
