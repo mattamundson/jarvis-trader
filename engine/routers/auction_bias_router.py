@@ -33,13 +33,15 @@ ALLOWED_SYMBOLS = {"MES"}
 class AuctionDataProvider(Protocol):
     """Supplies the raw synthesis inputs for a symbol.
 
-    Implementations return a dict with at least ``price``, ``prior_close`` and
-    ``atr``; optionally ``day_range``, ``tpo``, ``corey``, plus provenance hints
-    ``source`` (str), ``as_of`` (epoch s) and ``ibkr_connected`` (bool). Returns
-    None when no usable data is available.
+    Async, per-request fetch — matching the existing prices_router.py convention
+    (no background polling loop; the data_manager calls are awaited directly on
+    each request). Implementations return a dict with at least ``price``,
+    ``prior_close`` and ``atr``; optionally ``day_range``, ``tpo``, ``corey``, plus
+    provenance hints ``source`` (str), ``as_of`` (epoch s) and ``ibkr_connected``
+    (bool). Returns None when no usable data is available.
     """
 
-    def get_inputs(self, symbol: str) -> Optional[dict]: ...
+    async def get_inputs(self, symbol: str) -> Optional[dict]: ...
 
 
 _provider: Optional[AuctionDataProvider] = None
@@ -76,7 +78,7 @@ async def get_auction_bias(symbol: str) -> dict:
         raise HTTPException(status_code=503, detail="auction data provider not wired")
 
     try:
-        raw = _provider.get_inputs(sym)
+        raw = await _provider.get_inputs(sym)
     except Exception as exc:  # provider failure must not 500 the card
         logger.error("auction bias provider failed for %s: %s", sym, exc)
         return _unavailable(sym, f"provider error: {exc}")
