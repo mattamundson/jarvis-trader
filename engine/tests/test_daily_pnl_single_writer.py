@@ -51,7 +51,7 @@ ALLOWLIST = {
     "scripts/repair_daily_pnl.py",
 }
 
-EXCLUDE_DIRS = ("tests",)
+EXCLUDE_DIRS = ("tests", ".venv", "node_modules", ".git")
 
 
 def _engine_py_files():
