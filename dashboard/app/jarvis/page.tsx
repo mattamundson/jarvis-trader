@@ -25,6 +25,7 @@ import {
   type PipelineWsEvent,
   type VerdictEvent,
 } from "@/lib/pipeline_ws";
+import { DEFAULT_BRIEFING_SYMBOLS } from "@/lib/approvedSymbols";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -281,7 +282,7 @@ function RegimeRow({
 
 // ── DiscordBriefingPanel ───────────────────────────────────────────────────────
 
-const BRIEFING_SYMBOLS = ["MCL", "MNQ"] as const;
+const BRIEFING_SYMBOLS = DEFAULT_BRIEFING_SYMBOLS;
 
 function DiscordBriefingPanel() {
   return (
