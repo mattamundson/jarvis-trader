@@ -24,6 +24,30 @@
 
 See [HEALTH_API_CONTRACT.md](HEALTH_API_CONTRACT.md) for JSON fields the dashboard and scripts should rely on.
 
+## Data-freshness watchdog (`per_symbol_freshness`) — expected post-restart behavior
+
+Distinct from the connector-level reconnect above: [engine/services/ib_data_watchdog.py](../../engine/services/ib_data_watchdog.py)
+watches the **data leg** (not the socket) — it polls every `IBKR_DATA_WATCHDOG_INTERVAL`
+seconds (default **30s**) and forces a reconnect if IBKR-sourced data has gone stale beyond
+`IBKR_DATA_STALE_SECONDS` (default **180s**) during market hours.
+
+`GET /health/full`'s `per_symbol_freshness` map (`{symbol: seconds_since_last_served}`) is
+sourced from `DataManager._symbol_last_ts` — a **plain in-memory dict**, so it is always empty
+immediately after a process restart and only gains an entry for a symbol once that symbol is
+first served post-restart (`_mark_symbol_fresh()`, called on every non-empty `get_bars()`
+result).
+
+**Expected, not a symptom of an incident:** for the first few minutes after a restart it is
+normal to see some symbols report elevated freshness (several hundred seconds) — that number
+is counting from whenever the process booted (or from a value the watchdog is still catching
+up to), not from a fresh serve, simply because the pipeline's per-symbol serve cadence hasn't
+reached every watched symbol yet. This self-clears within roughly one watchdog poll cycle
+(~30s) once serving resumes for that symbol — it is unrelated to the delayed-data /
+live-market-data-subscription research from 2026-07-08 (that's about historical-bar *data type*
+quality, not this serve-freshness bookkeeping). Only treat elevated `per_symbol_freshness` as a
+real incident if it does **not** clear within roughly one watchdog interval, or if
+`GET /health/full`'s `watchdog` sub-object shows the reconnect loop itself erroring.
+
 ## §4 — Operator verification drill (RISK-004)
 
 Use a **paper** session only (Gateway **4002**). Goal: confirm engine observes disconnect and either reconnects within backoff or surfaces a failed health state deterministically.
