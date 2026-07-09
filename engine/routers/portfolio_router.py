@@ -1149,71 +1149,6 @@ async def get_portfolio_risk():
         raise HTTPException(status_code=500, detail=f"Risk calculation failed: {exc}") from exc
 
 
-@router.get(
-    "/paper/streaks",
-    description="Current win/loss streak and historical max win/loss streaks from closed trades.",
-)
-async def get_streaks():
-    """Win/loss streak analysis for closed trades sorted chronologically."""
-    empty = {
-        "current_streak": {"type": "NONE", "count": 0},
-        "max_win_streak": 0,
-        "max_loss_streak": 0,
-        "total_trades": 0,
-    }
-    if not paper_tracker:
-        return empty
-
-    try:
-        rows = paper_tracker.get_trade_history(limit=5000)
-    except Exception as exc:
-        logger.warning("get_streaks: get_trade_history failed: %s", exc)
-        return empty
-
-    closed = [r for r in rows if _row_is_closed(r)]
-    if not closed:
-        return empty
-
-    def _sort_key(r: Any) -> str:
-        if isinstance(r, dict):
-            ts = r.get("exit_time") or r.get("entry_time") or ""
-        else:
-            ts = getattr(r, "exit_time", None) or getattr(r, "entry_time", None) or ""
-        return str(ts)
-
-    closed_sorted = sorted(closed, key=_sort_key)
-
-    outcomes: list[bool] = [_row_pnl(r) > 0 for r in closed_sorted]
-
-    max_win = 0
-    max_loss = 0
-    cur_win = 0
-    cur_loss = 0
-    for win in outcomes:
-        if win:
-            cur_win += 1
-            cur_loss = 0
-        else:
-            cur_loss += 1
-            cur_win = 0
-        max_win = max(max_win, cur_win)
-        max_loss = max(max_loss, cur_loss)
-
-    if cur_win > 0:
-        current = {"type": "WIN", "count": cur_win}
-    elif cur_loss > 0:
-        current = {"type": "LOSS", "count": cur_loss}
-    else:
-        current = {"type": "NONE", "count": 0}
-
-    return {
-        "current_streak": current,
-        "max_win_streak": max_win,
-        "max_loss_streak": max_loss,
-        "total_trades": len(outcomes),
-    }
-
-
 @router.get("/history/trades")
 async def portfolio_history_trades(limit: int = 50):
     """Recent closed paper trades for dashboards, including review grade."""
@@ -1382,6 +1317,13 @@ async def paper_streaks():
 
     Trades are ordered by exit_time ascending.  The current streak is the
     streak containing the most recent closed trade.
+
+    Sample-size guard: fewer than 2 closed trades cannot establish a
+    meaningful streak (a single win/loss is not a "trend"), so the streak
+    fields are reported neutral (NONE/0) while ``total_trades`` still
+    reports the honest closed-trade count. Mirrors the ``trades >= 2``
+    eligibility gate already used for best/worst hour in
+    ``paper_hourly_stats`` above.
     """
     if not paper_tracker:
         return {
@@ -1411,13 +1353,13 @@ async def paper_streaks():
         exit_date = exit_ts[:10] if len(exit_ts) >= 10 else ""
         closed.append((outcome, exit_date))
 
-    if not closed:
+    if len(closed) < 2:
         return {
             "current_streak": {"type": "NONE", "count": 0},
             "max_win_streak": 0,
             "max_loss_streak": 0,
             "streak_history": [],
-            "total_trades": 0,
+            "total_trades": len(closed),
         }
 
     streak_history: list[dict] = []
