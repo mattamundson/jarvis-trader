@@ -292,12 +292,16 @@ export default function PendingApprovalsPage() {
                       </p>
                     </div>
                     <div>
-                      <p
-                        className="text-muted-foreground"
-                        title="Flat 5% of notional — a rough futures-margin approximation, not a real per-instrument margin lookup (no margin-spec source is wired yet)."
-                      >
-                        Est. Margin Impact
-                      </p>
+                      <div className="flex items-center gap-1">
+                        <p className="text-muted-foreground">Est. Margin Impact</p>
+                        <Badge
+                          variant="static"
+                          className="text-[10px] px-1.5 py-0 leading-4 shrink-0"
+                          title="Flat 5% of notional — a rough futures-margin approximation, not a real per-instrument margin lookup (no margin-spec source is wired yet)."
+                        >
+                          Static
+                        </Badge>
+                      </div>
                       <p
                         className={`font-mono font-semibold ${
                           risk.marginImpactPercent > 40 ? "text-bear" : ""
