@@ -2273,6 +2273,28 @@ export async function fetchRegimeV2(symbol: string): Promise<RegimeV2Response> {
   return fetchEngine<RegimeV2Response>(`/analytics/regime-v2/${encodeURIComponent(symbol)}`);
 }
 
+// ── Portfolio correlation preview (/analytics/correlation-preview) ───────────
+// risk/portfolio_sizer.py's correlation-aware sizing trim is validated but NOT
+// wired into the live order path (see the module's own docstring) -- this
+// endpoint always returns wired_into_live_sizing: false. Preview/display only.
+
+export interface CorrelationPreviewResponse {
+  symbols: string[];
+  pairs: Record<string, number>;
+  omitted_pairs: string[];
+  wired_into_live_sizing: boolean;
+  note: string;
+  timestamp: string;
+}
+
+export async function fetchCorrelationPreview(
+  symbols: string[] = ["MES", "MGC", "MCL", "MNQ"]
+): Promise<CorrelationPreviewResponse> {
+  return fetchEngine<CorrelationPreviewResponse>(
+    `/analytics/correlation-preview?symbols=${encodeURIComponent(symbols.join(","))}`
+  );
+}
+
 // ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────
 // Per-closed-trade Maximum Adverse / Favorable Excursion + capture ratio.
 // mae_pct/mfe_pct are NULL until the async excursion backfill runs for a trade.

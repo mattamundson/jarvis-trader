@@ -34,6 +34,7 @@ import { RiskSettingsWidget } from "@/components/RiskSettingsWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { WhatsAppStatusCard } from "@/components/WhatsAppStatusCard";
 import { LlmCostWidget } from "@/components/LlmCostWidget";
+import { CorrelationPreviewWidget } from "@/components/CorrelationPreviewWidget";
 
 // ── SWR fetchers ──────────────────────────────────────────────────────────
 
@@ -946,6 +947,11 @@ export default function SettingsPage() {
         {/* LLM daily cost */}
         <WidgetErrorBoundary name="LLM Cost">
           <LlmCostWidget />
+        </WidgetErrorBoundary>
+
+        {/* Portfolio correlation preview -- not wired into live sizing */}
+        <WidgetErrorBoundary name="Correlation Preview">
+          <CorrelationPreviewWidget />
         </WidgetErrorBoundary>
 
         {/* WhatsApp alert status */}
