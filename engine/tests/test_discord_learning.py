@@ -1247,6 +1247,7 @@ class TestLearningRouter:
         Also redirect SessionMemory's file storage to a temp location.
         """
         db_path = str(_make_temp_db(tmp_path))
+        self.db_path = db_path
 
         monkeypatch.setenv("DB_PATH", db_path)
 
@@ -1388,6 +1389,111 @@ class TestLearningRouter:
         """GET /learning/classify?trade_id=NONEXISTENT returns 404."""
         response = client.get("/learning/classify?trade_id=NONEXISTENT-TRADE-ID-XYZ")
         assert response.status_code == 404
+
+    def test_classify_trade_id_recent_literal_still_404s(self, client):
+        """
+        Pins the ROOT CAUSE of the T2-15 dashboard finding: "recent" is not a
+        real trade_id — GET /learning/classify does an exact-match lookup
+        (_get_trade_by_id), so the dashboard's old
+        `/learning/classify?trade_id=recent` call could never have worked.
+        This is why /learning/classify/recent (a real batch endpoint) exists.
+        """
+        response = client.get("/learning/classify?trade_id=recent")
+        assert response.status_code == 404
+
+    def _insert_closed_trade(
+        self,
+        trade_id: str,
+        symbol: str = "MES",
+        entry_price: float = 5000.0,
+        exit_price: float = 5025.0,
+        pnl: float = 250.0,
+        entry_time: str = "2026-07-01 09:30:00",
+        exit_time: str = "2026-07-01 11:00:00",
+    ) -> None:
+        """Insert a single closed paper_trades row for classify/recent tests."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute(
+                """INSERT INTO paper_trades
+                   (trade_id, symbol, side, quantity, entry_price, exit_price,
+                    entry_time, exit_time, pnl, status)
+                   VALUES (?, ?, 'BUY', 1, ?, ?, ?, ?, ?, 'closed')""",
+                (trade_id, symbol, entry_price, exit_price, entry_time, exit_time, pnl),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_classify_recent_returns_200(self, client):
+        """GET /learning/classify/recent returns 200 with no trades in the DB."""
+        response = client.get("/learning/classify/recent")
+        assert response.status_code == 200
+
+    def test_classify_recent_response_shape(self, client):
+        """
+        GET /learning/classify/recent returns {status: 'ok', data: {symbol,
+        count, grades}}, and each grade entry carries the fields
+        TradeGradeTable.tsx renders — grade/setup_quality/execution_quality/
+        factors/explanation, not the old score/criteria shape.
+        """
+        self._insert_closed_trade("trade-recent-1", symbol="MES", pnl=250.0)
+        self._insert_closed_trade("trade-recent-2", symbol="MES", pnl=-80.0)
+
+        response = client.get("/learning/classify/recent?symbol=MES")
+        assert response.status_code == 200
+        body = response.json()
+        assert body.get("status") == "ok"
+        assert "data" in body
+        d = body["data"]
+        assert d["symbol"] == "MES"
+        assert d["count"] == 2
+        assert isinstance(d["grades"], list)
+        assert len(d["grades"]) == 2
+
+        grade = d["grades"][0]
+        for key in (
+            "trade_id", "symbol", "grade", "setup_quality",
+            "execution_quality", "factors", "explanation",
+            "entry_time", "exit_time", "pnl",
+        ):
+            assert key in grade
+        assert grade["grade"] in {"A", "B", "C", "D", "F"}
+        assert isinstance(grade["factors"], list)
+
+    def test_classify_recent_respects_limit(self, client):
+        """The `limit` query param caps how many recent trades are graded."""
+        for i in range(5):
+            self._insert_closed_trade(f"trade-limit-{i}", symbol="MGC")
+
+        response = client.get("/learning/classify/recent?symbol=MGC&limit=2")
+        assert response.status_code == 200
+        d = response.json()["data"]
+        assert d["count"] == 2
+        assert len(d["grades"]) == 2
+
+    def test_classify_recent_symbol_filter_excludes_other_symbols(self, client):
+        """`symbol` query param filters out grades for other instruments."""
+        self._insert_closed_trade("trade-mes-1", symbol="MES")
+        self._insert_closed_trade("trade-mgc-1", symbol="MGC")
+
+        response = client.get("/learning/classify/recent?symbol=MGC")
+        assert response.status_code == 200
+        d = response.json()["data"]
+        assert all(g["symbol"] == "MGC" for g in d["grades"])
+
+    def test_post_memory_old_frontend_body_shape_422s(self, client):
+        """
+        Documents the second half of the T2-15 root cause: the dashboard's
+        Save Lesson form used to POST {type, content, symbol}, which does not
+        match LessonRequest ({lesson, category}) and 422s every time. The
+        fixed MemoryPanel.tsx now sends {lesson, category} instead (see
+        test_post_memory_response_shape above, which already covers the
+        corrected shape returning 200).
+        """
+        old_shape_payload = {"type": "lesson", "content": "Old body shape.", "symbol": "MES"}
+        response = client.post("/learning/memory", json=old_shape_payload)
+        assert response.status_code == 422
 
 
 # ===========================================================================

@@ -299,6 +299,56 @@ async def classify_trade(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.get("/classify/recent")
+async def classify_recent_trades(
+    symbol: Optional[str] = Query(None, description="Filter trades by symbol (e.g. MES)"),
+    limit: int = Query(20, ge=1, le=50, description="Number of most recent closed trades to grade"),
+):
+    """
+    Classify the N most recently closed trades by outcome quality.
+
+    GET /learning/classify requires an exact trade_id and has no "give me the
+    latest trades" mode, but the dashboard's Trade Grades tab needs a batch of
+    recent grades to render a table + distribution chart. Before this endpoint
+    existed, the dashboard called GET /learning/classify?trade_id=recent —
+    "recent" is not a real trade_id, so _get_trade_by_id() never matched a row
+    and the call 404'd on every load.
+    """
+    try:
+        trades = _fetch_closed_trades(symbol=symbol, limit=limit)
+        classifier = TradeClassifier()
+
+        grades = []
+        for trade in trades:
+            result = classifier.classify(trade)
+            grades.append(
+                {
+                    "trade_id": result.trade_id,
+                    "symbol": trade.get("symbol", ""),
+                    "grade": result.grade,
+                    "setup_quality": round(result.setup_quality, 4),
+                    "execution_quality": round(result.execution_quality, 4),
+                    "factors": result.factors,
+                    "explanation": _grade_explanation(result.grade),
+                    "entry_time": trade.get("entry_time"),
+                    "exit_time": trade.get("exit_time"),
+                    "pnl": trade.get("pnl"),
+                }
+            )
+
+        return {
+            "status": "ok",
+            "data": {
+                "symbol": symbol,
+                "count": len(grades),
+                "grades": grades,
+            },
+        }
+    except Exception as exc:
+        logger.exception(f"Error in GET /learning/classify/recent: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/suggestions")
 async def get_suggestions(
     symbol: Optional[str] = Query(None, description="Symbol to analyze (e.g. MES)"),
