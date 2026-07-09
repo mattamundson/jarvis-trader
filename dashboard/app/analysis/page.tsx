@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
+import { AuctionBiasCard } from "@/components/AuctionBiasCard";
 import { SymbolTimeframeSelector } from "@/components/command-center/charts/SymbolTimeframeSelector";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 
@@ -189,6 +190,10 @@ export default function AnalysisPage() {
         {/* TradingView "where it makes sense": macro/market context (equities,
             indices, macro, crypto) where TV's hosted data is real-time enough. */}
         <MarketContextStrip />
+
+        {/* Advisory ES/MES overnight-bias read (Saty + TPO + Corey synthesis).
+            Fixed to MES — the only symbol GET /auction/bias/{symbol} serves in v1. */}
+        <AuctionBiasCard symbol="MES" />
 
         <div className="rounded-xl border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
