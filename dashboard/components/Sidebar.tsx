@@ -91,7 +91,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Hidden Pivots", href: "/hidden-pivots", icon: <Target className="h-3.5 w-3.5" /> },
       { label: "Backtest", href: "/backtest", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "ATR-Trail Viz", href: "/atr-trail", icon: <LineChart className="h-3.5 w-3.5" /> },
-      { label: "Hidden Pivots", href: "/hidden-pivots", icon: <Crosshair className="h-3.5 w-3.5" /> },
       { label: "Options Chain", href: "/options", icon: <Hash className="h-3.5 w-3.5" /> },
       { label: "Crypto", href: "/crypto", icon: <Waves className="h-3.5 w-3.5" /> },
       { label: "Polymarket", href: "/polymarket", icon: <Globe className="h-3.5 w-3.5" /> },
