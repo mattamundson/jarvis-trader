@@ -66,7 +66,7 @@ export default function IntradayRegimePage() {
   // Live engine data; fall back to the deterministic sample when the engine is
   // unavailable so the page always renders (and is honest about provenance).
   const sample = useMemo(() => buildSampleRegime(symbol), [symbol]);
-  const { data: live, isLoading } = useSWR<IntradayRegime>(
+  const { data: live, isLoading, mutate: refetchRegime } = useSWR<IntradayRegime>(
     ["regime", symbol],
     () => fetchIntradayRegime(symbol),
     { refreshInterval: REFRESH_MS, shouldRetryOnError: false }
@@ -103,8 +103,12 @@ export default function IntradayRegimePage() {
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             </div>
-            <button className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
-              Analyze
+            <button
+              onClick={() => refetchRegime()}
+              disabled={isLoading}
+              className="rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {isLoading ? "Analyzing…" : "Analyze"}
             </button>
           </div>
         </div>
