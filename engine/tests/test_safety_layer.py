@@ -2351,6 +2351,114 @@ class TestTradeLossGateEdgeCases:
 
 
 # ---------------------------------------------------------------------------
+# §C11 — trade #287 regression: entry_price/stop_price wiring bug (Bug 1)
+# ---------------------------------------------------------------------------
+#
+# Root cause (confirmed against trade #287 in paper_trades + pm2 engine logs):
+#   1a. main.py's watchlist-scan loop computed the OMS bracket call's
+#       entry_price as `trade_dec.get("limit_price") or trade_dec.get(
+#       "stop_price")` -- so any MKT order (no limit_price) priced its entry
+#       at the STOP price, not the Trader agent's actual intended entry
+#       (`trade_dec["entry_price"]`).
+#   1b. SafetyLayer.submit_paper_bracket_order() built its OrderRequest
+#       without `stop_price=stop_loss` at all, so _check_trade_loss_gate()
+#       short-circuited approved=True (order.stop_price is None) regardless
+#       of (1a) -- the gate never even ran for a bracket order.
+#
+# Combined, MGC trade #287 (buy 1, intended entry 4153.85, stop 4134.6666)
+# was approved with the gate computing ~$0 points-at-risk, when the real
+# dollar risk was already ~$191.83 -- 3.8x over the $50/ticket cap -- before
+# any market movement. Both wiring bugs are fixed above; these tests prove
+# the gate now computes the TRUE risk and rejects it.
+
+
+class TestTrade287RegressionRiskGate:
+    """Reproduces trade #287's exact MGC numbers at both call layers."""
+
+    MGC_ENTRY = 4153.85
+    MGC_STOP = 4134.6666
+    # |4153.85 - 4134.6666| * 10 ($/pt for MGC) * 1 contract
+    EXPECTED_DOLLAR_RISK = round(abs(4153.85 - 4134.6666) * 10.0, 2)
+
+    def test_expected_dollar_risk_matches_incident_report(self):
+        """Sanity-check the fixture math against the confirmed incident number."""
+        assert self.EXPECTED_DOLLAR_RISK == pytest.approx(191.83, abs=0.01)
+
+    def test_gate_level_rejects_trade_287_scenario_when_wired_correctly(self, mock_settings):
+        """_check_trade_loss_gate(), given the CORRECT entry/stop, rejects.
+
+        This is what the gate computes once both wiring bugs are fixed: a
+        real OrderRequest carrying the Trader agent's intended entry_price
+        (not the stop) as the pricing basis, and stop_price wired through
+        from submit_paper_bracket_order's `stop_loss` argument.
+        """
+        mock_settings.MAX_TRADE_LOSS_USD = 50.0
+        safety = SafetyLayer(mock_settings)
+        order = OrderRequest(
+            symbol="MGC",
+            quantity=1,
+            order_type="market",
+            is_futures=True,
+            stop_price=self.MGC_STOP,
+            estimated_value=self.MGC_ENTRY,  # abs_qty(1) * entry_price
+        )
+        result = safety._check_trade_loss_gate(order)
+        assert result.approved is False
+        assert "TRADE_LOSS_LIMIT" in result.rejection_reason
+        assert f"${self.EXPECTED_DOLLAR_RISK:.2f}" in result.rejection_reason
+
+    def test_gate_level_pre_fix_shape_was_defeated(self, mock_settings):
+        """Documents the PRE-fix failure mode: bug 1a alone (entry == stop)
+        collapses points_at_risk to ~0, so even a correctly-stop_price-wired
+        gate would have nodded the trade through -- entry_price must be
+        fixed, not just the stop_price plumbing.
+        """
+        mock_settings.MAX_TRADE_LOSS_USD = 50.0
+        safety = SafetyLayer(mock_settings)
+        buggy_order = OrderRequest(
+            symbol="MGC",
+            quantity=1,
+            order_type="market",
+            is_futures=True,
+            stop_price=self.MGC_STOP,
+            # Bug 1a: price_info = limit_price or stop_price -> entry ends up
+            # equal to the stop for a MKT order.
+            estimated_value=self.MGC_STOP,
+        )
+        result = safety._check_trade_loss_gate(buggy_order)
+        assert result.approved is True  # gate is defeated: ~$0 points-at-risk
+
+    @pytest.mark.asyncio
+    async def test_submit_paper_bracket_order_rejects_trade_287_scenario(self, mock_settings):
+        """End-to-end through submit_paper_bracket_order(): with the correct
+        entry price argument and stop_loss now wired into the OrderRequest,
+        the oversized-risk bracket is rejected before it ever reaches the
+        (mock) broker -- routed_to_ib must stay False.
+        """
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_DAILY_LOSS_PCT = 0.10
+        mock_settings.MAX_DRAWDOWN_PCT = 0.20
+        mock_settings.MAX_SINGLE_ORDER_VALUE = 500_000.0
+        mock_settings.MAX_FUTURES_MARGIN_PCT = 0.40
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
+        mock_settings.MAX_TRADE_LOSS_USD = 50.0
+        safety = SafetyLayer(mock_settings)
+        gw = AsyncMock()
+        gw.is_connected = Mock(return_value=True)
+        safety._ib_gateway = gw
+
+        result = await safety.submit_paper_bracket_order(
+            "MGC", "BUY", 1, self.MGC_ENTRY, stop_loss=self.MGC_STOP, take_profit=None
+        )
+
+        assert result["approved"] is False
+        assert "TRADE_LOSS_LIMIT" in result["reason"]
+        assert result["routed_to_ib"] is False
+        gw.place_bracket_order.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # §C10 — tilt detector paths in check_order (lines 1082–1095)
 # ---------------------------------------------------------------------------
 
