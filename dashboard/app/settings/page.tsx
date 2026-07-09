@@ -33,6 +33,7 @@ import { TradingScheduleCard } from "@/components/TradingScheduleCard";
 import { RiskSettingsWidget } from "@/components/RiskSettingsWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { WhatsAppStatusCard } from "@/components/WhatsAppStatusCard";
+import { LlmCostWidget } from "@/components/LlmCostWidget";
 
 // ── SWR fetchers ──────────────────────────────────────────────────────────
 
@@ -941,6 +942,11 @@ export default function SettingsPage() {
 
         {/* Risk Limits — full width, collapsible */}
         <RiskSettingsPanel />
+
+        {/* LLM daily cost */}
+        <WidgetErrorBoundary name="LLM Cost">
+          <LlmCostWidget />
+        </WidgetErrorBoundary>
 
         {/* WhatsApp alert status */}
         <WhatsAppStatusCard />
