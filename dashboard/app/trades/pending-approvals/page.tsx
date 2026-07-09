@@ -399,6 +399,14 @@ export default function PendingApprovalsPage() {
                   </label>
 
                   <p className="text-xs text-muted-foreground font-mono pt-1">ID: {row.approval_id}</p>
+                  {row.audit_hash && (
+                    <p
+                      className="text-[10px] text-muted-foreground/50 font-mono truncate"
+                      title="SHA-256 audit-chain hash (approval/audit_chain.py) -- links this decision to the previous one so any later edit to the record is detectable. Passive metadata; does not gate the approval."
+                    >
+                      audit {row.audit_hash.slice(0, 16)}…
+                    </p>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
