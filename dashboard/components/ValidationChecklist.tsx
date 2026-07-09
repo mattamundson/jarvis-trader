@@ -24,6 +24,19 @@ interface TradingDaysData {
   [key: string]: unknown;
 }
 
+// Canonical gate targets, sourced from engine/analytics/validation_metrics.py's
+// TARGETS (served verbatim by GET /validation/targets). min_trades is read from
+// here rather than hardcoded so this checklist can never drift from the
+// engine's real go/no-go bar again (T0-05: was hardcoded to a stale 30 while
+// the engine gate requires 60).
+interface ValidationTargetsResponse {
+  targets?: {
+    min_trades?: number;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 type CriterionStatus = "PASS" | "FAIL" | "PENDING";
 
 interface Criterion {
@@ -75,9 +88,10 @@ export function ValidationChecklist() {
   const fetchData = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: prev.criteria.length === 0, error: null }));
 
-    const [honestResult, daysResult] = await Promise.allSettled([
+    const [honestResult, daysResult, targetsResult] = await Promise.allSettled([
       fetchHonestTrades(),
       fetchEngine<TradingDaysData>("/portfolio/stats/trading-days"),
+      fetchEngine<ValidationTargetsResponse>("/validation/targets"),
     ]);
 
     // ── Extract honest deduped metrics ───────────────────────────────────────
@@ -96,6 +110,13 @@ export function ValidationChecklist() {
       maxDrawdown = computeMaxDrawdownFromHonest(set);
       caveat = dedupCaveat(set);
       honestOk = true;
+    }
+
+    // ── Extract canonical min-trades target (engine TARGETS, never hardcoded) ─
+    let minTradesTarget: number | null = null;
+    if (targetsResult.status === "fulfilled") {
+      const t = targetsResult.value?.targets?.min_trades;
+      if (typeof t === "number") minTradesTarget = t;
     }
 
     // ── Extract trading days (still from engine — not in honest record) ──────
@@ -145,12 +166,21 @@ export function ValidationChecklist() {
       },
       {
         name: "Total Trades",
-        target: "≥ 30",
+        target: minTradesTarget !== null ? `≥ ${minTradesTarget}` : "≥ —",
         current:
           !honestOk ? "No data" :
-          totalTrades !== null ? `${totalTrades} vs ≥30` : "No data",
-        status: totalTrades === null ? "PENDING" : totalTrades >= 30 ? "PASS" : "FAIL",
-        pass: totalTrades === null ? null : totalTrades >= 30,
+          totalTrades === null ? "No data" :
+          minTradesTarget !== null ? `${totalTrades} vs ≥${minTradesTarget}` : `${totalTrades}`,
+        status:
+          totalTrades === null || minTradesTarget === null
+            ? "PENDING"
+            : totalTrades >= minTradesTarget
+            ? "PASS"
+            : "FAIL",
+        pass:
+          totalTrades === null || minTradesTarget === null
+            ? null
+            : totalTrades >= minTradesTarget,
       },
       {
         name: "Max Drawdown",
