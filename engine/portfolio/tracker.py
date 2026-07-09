@@ -739,8 +739,14 @@ class PortfolioTracker:
             and str(t.exit_time)[:10] == _today
         )
 
+        # pnl == 0 is a true breakeven -- neither a win nor a loss. This matches
+        # the project-wide convention (engine/paper/validation_tracker.py's
+        # _build_instrument_metrics, engine/analytics/post_trade.py, and
+        # scripts/repair_daily_pnl.py's build_rows()); folding a $0.00 trade
+        # into `losses` here previously made this stat disagree with
+        # repair_daily_pnl.py's classification of the same ledger row (T1-14).
         wins = [p for p in pnls if p > 0]
-        losses = [p for p in pnls if p <= 0]
+        losses = [p for p in pnls if p < 0]
 
         gross_profit = sum(wins) if wins else 0.0
         gross_loss = abs(sum(losses)) if losses else 0.0

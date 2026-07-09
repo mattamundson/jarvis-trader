@@ -140,15 +140,90 @@ class TestEquitySyncSource:
 
 
 # ---------------------------------------------------------------------------
+# T0-02 — Frozen Equity Regression (2026-07-08 dashboard-integrity audit)
+# ---------------------------------------------------------------------------
+#
+# The Bug-1 fix above (static INITIAL_CAPITAL reference passed to
+# sync_from_broker) stopped the false kill-switch fires, but never added
+# cumulative realized P&L back into the "equity" argument. Because equity
+# never varied call-to-call, SafetyLayer._current_equity / _equity_peak —
+# and therefore pnl_snapshots.portfolio_equity and every
+# Sharpe/Sortino/Calmar/max-DD figure derived from it in
+# reports/quantstats_metrics.py — were frozen at exactly $10,000.00 from
+# 2026-06-02 onward (verified live against engine/data/jarvis_trader.db),
+# even while daily_pnl swung normally with real trading. Fix (main.py
+# _sync_safety_equity): current_equity = INITIAL_CAPITAL + total realized
+# P&L across ALL closed trades (db_manager.get_stats_summary()["total_pnl"]),
+# not just today's trades.
+
+
+class TestEquitySyncIncludesRealizedPnL:
+    """Pins the T0-02 fix: equity must move with cumulative realized P&L."""
+
+    def test_frozen_equity_bug_reproduced_with_static_reference(self):
+        """OLD (buggy) call: equity=INITIAL_CAPITAL only, ignoring realized
+        P&L. This is the exact frozen-equity bug — equity never advances no
+        matter how large the day's real P&L swing is."""
+        safety = _make_safety()
+        safety.sync_from_broker(10_000.0, -1_542.70)  # a real losing day
+        assert safety._current_equity == 10_000.0  # frozen -- this was the bug
+        safety.sync_from_broker(10_000.0, 3_018.18)  # a real winning day
+        assert safety._current_equity == 10_000.0  # still frozen
+
+    def test_current_equity_computation_matches_fixed_sync_logic(self):
+        """Mirrors the exact algorithm added to _sync_safety_equity() in
+        main.py: current_equity = config_equity + total_realized_pnl, where
+        total_realized_pnl comes from db_manager.get_stats_summary()["total_pnl"]
+        (SUM(pnl) over ALL status='closed' paper_trades, not just today's)."""
+        mock_db = MagicMock()
+        mock_db.get_stats_summary.return_value = {"total_pnl": 4_010.9795}
+        config_equity = 10_000.0
+        total_realized_pnl = float(mock_db.get_stats_summary()["total_pnl"])
+        current_equity = config_equity + total_realized_pnl
+        assert current_equity == pytest.approx(14_010.98, abs=0.01)
+
+    def test_fixed_equity_sync_reflects_cumulative_realized_pnl(self):
+        """FIXED call: equity = initial_capital + cumulative realized P&L.
+        _current_equity and _equity_peak now advance with real account
+        growth across syncs, instead of staying pinned to the constant."""
+        safety = _make_safety()
+        initial_capital = 10_000.0
+
+        # Sync 1: cumulative realized P&L so far = +3,018.18 (matches the
+        # real 2026-06-11 close in jarvis_trader.db).
+        safety.sync_from_broker(initial_capital + 3_018.18, 3_018.18)
+        assert safety._current_equity == pytest.approx(13_018.18)
+        assert safety._equity_peak == pytest.approx(13_018.18)
+
+        # Sync 2: cumulative realized P&L grows further (matches the real
+        # 2026-07-07 close: initial 10,000 + total_realized 4,010.98).
+        safety.sync_from_broker(initial_capital + 4_010.98, -1_542.70)
+        assert safety._current_equity == pytest.approx(14_010.98)
+        assert safety._equity_peak == pytest.approx(14_010.98)  # peak advances -- no longer frozen
+
+
+# ---------------------------------------------------------------------------
 # Bug 2 — Stop Monitor Logic
 # ---------------------------------------------------------------------------
 
 
 class TestStopMonitorLogic:
-    """Stop-hit detection and PnL calculation used by _monitor_open_stops()."""
+    """Stop-hit detection and PnL calculation used by _monitor_open_stops().
+
+    T0-06 (2026-07): _monitor_open_stops() previously computed a zero-commission
+    pnl and passed it straight through to close_paper_trade(pnl=...), which
+    treats an explicit pnl as broker-confirmed (already net of fees) and does
+    NOT re-deduct commission — so 0 of 27 real closed futures trades reflected
+    any fee. The fix subtracts the same flat per-contract commission
+    PortfolioTracker's primary close path applies
+    (portfolio.tracker._commission_per_contract). This replica mirrors that
+    fix so the numbers here match engine/main.py's real behavior instead of
+    silently documenting the pre-fix bug as current.
+    """
 
     _MULT = {"MCL": 100.0, "MNQ": 2.0, "MES": 5.0, "MGC": 10.0}
     _DEF = 1.0
+    _COMMISSION_PER_CONTRACT = 1.50  # matches portfolio.tracker's default
 
     def _hit(self, side, current, stop):
         is_long = "buy" in side.lower()
@@ -157,7 +232,8 @@ class TestStopMonitorLogic:
     def _pnl(self, side, entry, stop, qty, sym):
         m = self._MULT.get(sym, self._DEF)
         is_long = "buy" in side.lower()
-        return (stop - entry) * qty * m if is_long else (entry - stop) * qty * m
+        gross = (stop - entry) * qty * m if is_long else (entry - stop) * qty * m
+        return gross - (self._COMMISSION_PER_CONTRACT * abs(qty))
 
     # MGC trade #178 (the actual incident)
 
@@ -167,11 +243,14 @@ class TestStopMonitorLogic:
 
     def test_mgc_stop_pnl_vs_full_loss(self):
         """
-        At stop: -$63.90.  Without stop: -$1,284.  Stop saves $1,220.10.
+        At stop: gross -$63.90, minus $1.50 commission (T0-06) = -$65.40.
+        Without stop: -$1,284 (the actual historical incident figure, booked
+        before the commission fix existed — pre-cost rows are not
+        retroactively adjusted). Stop still saves ~$1,218.60.
         """
         pnl_at_stop = self._pnl("buy", 4503.9, 4497.51, 1, "MGC")
         pnl_full_ride = (4375.5 - 4503.9) * 1 * 10.0
-        assert pnl_at_stop == pytest.approx(-63.90, rel=1e-4)
+        assert pnl_at_stop == pytest.approx(-65.40, rel=1e-4)
         assert pnl_full_ride == pytest.approx(-1284.0)
         assert pnl_at_stop > pnl_full_ride  # stop saves money
 
@@ -187,8 +266,8 @@ class TestStopMonitorLogic:
         assert self._hit("buy", current=4990.0, stop=5000.0) is True
 
     def test_mes_long_pnl_at_stop(self):
-        """MES long: entry 5300, stop 5285, mult $5/pt → -$75."""
-        assert self._pnl("buy", 5300.0, 5285.0, 1, "MES") == pytest.approx(-75.0)
+        """MES long: entry 5300, stop 5285, mult $5/pt → -$75 gross, -$76.50 net."""
+        assert self._pnl("buy", 5300.0, 5285.0, 1, "MES") == pytest.approx(-76.5)
 
     # Short position edge cases
 
@@ -202,8 +281,8 @@ class TestStopMonitorLogic:
         assert self._hit("sell", current=5010.0, stop=5000.0) is True
 
     def test_mnq_short_pnl_at_stop(self):
-        """MNQ short: entry 18500, stop 18520, mult $2/pt → -$40."""
-        assert self._pnl("sell", 18500.0, 18520.0, 1, "MNQ") == pytest.approx(-40.0)
+        """MNQ short: entry 18500, stop 18520, mult $2/pt → -$40 gross, -$41.50 net."""
+        assert self._pnl("sell", 18500.0, 18520.0, 1, "MNQ") == pytest.approx(-41.5)
 
     # Scaling
 
@@ -213,16 +292,26 @@ class TestStopMonitorLogic:
         assert pnl2 == pytest.approx(pnl1 * 2)
 
     def test_unknown_symbol_default_multiplier(self):
-        """Unknown symbol uses multiplier=1.0."""
-        assert self._pnl("buy", 100.0, 95.0, 1, "UNKNOWN") == pytest.approx(-5.0)
+        """Unknown symbol uses multiplier=1.0 → -$5 gross, -$6.50 net of commission."""
+        assert self._pnl("buy", 100.0, 95.0, 1, "UNKNOWN") == pytest.approx(-6.5)
 
     # Async monitor simulation
 
     @pytest.mark.asyncio
-    async def test_monitor_closes_breached_long_position(self):
-        """Monitor logic closes MGC long when price falls below stop."""
+    async def test_monitor_closes_breached_long_position(self, monkeypatch):
+        """Monitor logic closes MGC long when price falls below stop.
+
+        T0-06: mirrors engine/main.py's _monitor_open_stops(), which now
+        subtracts portfolio.tracker._commission_per_contract() * qty from the
+        gross pnl before calling close_paper_trade(pnl=...) — that call passes
+        an explicit pnl, which close_paper_trade treats as broker-confirmed
+        (already net of fees) and does NOT re-deduct.
+        """
+        monkeypatch.setenv("COMMISSION_PER_CONTRACT", "1.50")
+
         from portfolio.tracker import _DEFAULT_MULTIPLIER as DEF
         from portfolio.tracker import INSTRUMENT_MULTIPLIERS as MULT
+        from portfolio.tracker import _commission_per_contract as commission_per_contract
 
         trade = {
             "trade_id": "mgc-178",
@@ -250,13 +339,15 @@ class TestStopMonitorLogic:
             if (is_long and cur <= stop_f) or (not is_long and cur >= stop_f):
                 m = MULT.get(sym, DEF)
                 qty = float(t["quantity"])
-                pnl = (stop_f - entry) * qty * m
+                gross_pnl = (stop_f - entry) * qty * m
+                pnl = gross_pnl - (commission_per_contract() * abs(qty))
                 mock_tracker.close_paper_trade(trade_id=tid, exit_price=stop_f, pnl=pnl)
 
         mock_tracker.close_paper_trade.assert_called_once()
         kw = mock_tracker.close_paper_trade.call_args.kwargs
         assert kw["exit_price"] == pytest.approx(4497.51)
-        assert kw["pnl"] == pytest.approx(-63.90, rel=1e-4)
+        # Gross -$63.90, minus the default $1.50/contract commission → -$65.40.
+        assert kw["pnl"] == pytest.approx(-65.40, rel=1e-4)
 
     @pytest.mark.asyncio
     async def test_monitor_skips_trade_without_stop(self):

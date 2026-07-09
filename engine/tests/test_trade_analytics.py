@@ -4,10 +4,12 @@ Tests all functions with normal data and edge cases.
 """
 
 import math
+import random
 
 import pytest
 
 from analytics.trade_analytics import (
+    DEFAULT_STARTING_CAPITAL,
     TradeAnalytics,
     calculate_analytics,
     calculate_expectancy,
@@ -87,6 +89,76 @@ class TestCalculateMaxDrawdown:
 
     def test_dd_single(self):
         assert calculate_max_drawdown([10000]) == 0.0
+
+    def test_dd_t0_03_repro_trivial_early_peak(self):
+        """
+        T0-03 regression: calculate_analytics() feeds a cumulative-P&L curve
+        that starts at 0.0 (see _build_equity_curve), so a tiny early win
+        must not become the percentage denominator for a much larger later
+        loss. Before the fix this exact fixture reported 1900.0% (equity_curve
+        [0.0, 50.0, -900.0] used the trivial $50 peak as the denominator:
+        (50 - -900) / 50 * 100 = 1900%). Post-fix the denominator floors at
+        DEFAULT_STARTING_CAPITAL, giving the correct $950 loss / $10,000 = 9.5%.
+        """
+        equity_curve = [0.0, 50.0, -900.0]
+        dd = calculate_max_drawdown(equity_curve)
+        assert dd == pytest.approx(9.5, rel=0.001)
+
+    def test_dd_t0_03_repro_via_calculate_analytics(self):
+        """Same regression exercised through the real call path (calculate_analytics)."""
+        trades = [{"pnl": 50}, {"pnl": -950}]
+        a = calculate_analytics(trades)
+        assert a.max_drawdown_pct == pytest.approx(9.5, rel=0.001)
+
+    def test_dd_invariant_bounded_0_to_100(self):
+        """
+        MANDATORY invariant (T0-03 closure): max drawdown must always be in
+        [0, 100] for ANY equity curve -- guards the class of bug (unbounded
+        percentage from an unfloored/mis-scaled peak), not just one fixture.
+        Property-style: generate many equity curves across several realistic
+        and adversarial regimes (absolute-balance style, cumulative-P&L-from
+        -zero style like the real caller, deeply negative runs, and
+        catastrophic single-step losses shaped exactly like the T0-03 defect)
+        and assert the bound holds for every one. Seeded for determinism.
+        """
+        rng = random.Random(20260709)
+
+        def assert_bounded(curve):
+            dd = calculate_max_drawdown(curve)
+            assert 0.0 <= dd <= 100.0, f"drawdown {dd} out of [0,100] for curve {curve}"
+
+        # Regime 1: classic absolute-balance curves starting near $10k.
+        for _ in range(50):
+            length = rng.randint(2, 30)
+            curve = [10_000.0]
+            for _ in range(length - 1):
+                curve.append(curve[-1] + rng.uniform(-3000, 3000))
+            assert_bounded(curve)
+
+        # Regime 2: cumulative-P&L-from-zero curves (the real calculate_analytics
+        # path) with random trade sizes, including runs that go deeply negative.
+        for _ in range(50):
+            length = rng.randint(2, 30)
+            curve = [0.0]
+            for _ in range(length - 1):
+                curve.append(curve[-1] + rng.uniform(-2000, 500))
+            assert_bounded(curve)
+
+        # Regime 3: adversarial -- catastrophic single-step loss far exceeding
+        # DEFAULT_STARTING_CAPITAL right after a trivial early peak (the exact
+        # shape of the T0-03 defect, pushed further to confirm the [0,100]
+        # clamp holds even when the dollar loss dwarfs the floored denominator).
+        for _ in range(20):
+            early_peak = rng.uniform(1, 500)
+            catastrophic_loss = rng.uniform(-500_000, -1000)
+            curve = [0.0, early_peak, early_peak + catastrophic_loss]
+            assert_bounded(curve)
+
+        # Regime 4: monotonic, all-negative, and exact-floor edge cases.
+        assert_bounded([1.0, 2.0, 3.0, 4.0])
+        assert_bounded([-100.0, -50.0, -10.0])
+        assert_bounded([5_000_000.0, 0.0])
+        assert_bounded([DEFAULT_STARTING_CAPITAL, -DEFAULT_STARTING_CAPITAL])
 
 
 class TestCalculateWinRate:

@@ -131,6 +131,15 @@ function OverallStatusBadge({ overall }: { overall: string }) {
     );
   }
 
+  if (normalized === "down") {
+    return (
+      <div className="flex items-center gap-2 rounded-full bg-bear/15 border border-bear/25 px-4 py-2">
+        <WifiOff className="h-5 w-5 text-bear" />
+        <span className="text-sm font-bold text-bear tracking-wide">SYSTEM DOWN</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 rounded-full bg-muted border border-border px-4 py-2">
       <XCircle className="h-5 w-5 text-muted-foreground" />
