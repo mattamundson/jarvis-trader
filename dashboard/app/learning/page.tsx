@@ -8,10 +8,11 @@ import { SuggestionPanel } from "@/components/learning/SuggestionPanel";
 import { MemoryPanel } from "@/components/learning/MemoryPanel";
 import { AgentWeightsPanel } from "@/components/learning/AgentWeightsPanel";
 import { PostMortemPanel } from "@/components/learning/PostMortemPanel";
+import { RegimeV2Panel } from "@/components/learning/RegimeV2Panel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Tab = "patterns" | "grades" | "suggestions" | "memory" | "weights" | "postmortems";
+type Tab = "patterns" | "grades" | "suggestions" | "memory" | "weights" | "postmortems" | "regime";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "patterns",     label: "Patterns" },
@@ -20,6 +21,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "memory",       label: "Memory" },
   { id: "weights",      label: "Agent Weights" },
   { id: "postmortems",  label: "Post-Mortems" },
+  { id: "regime",       label: "Regime" },
 ];
 
 const SYMBOLS = ["MES", "MNQ", "MGC", "MCL"] as const;
@@ -144,6 +146,7 @@ export default function LearningPage() {
         {activeTab === "memory"   && <MemoryPanel />}
         {activeTab === "weights"  && <AgentWeightsPanel />}
         {activeTab === "postmortems" && <PostMortemPanel />}
+        {activeTab === "regime"     && <RegimeV2Panel />}
 
       </main>
     </div>

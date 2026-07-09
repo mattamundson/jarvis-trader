@@ -1552,6 +1552,12 @@ async def get_regime_overview():
 async def get_regime_for_symbol(symbol: str):
     """Per-symbol regime classification (TRENDING / RANGING / VOLATILE).
 
+    NOTE: despite the docstring below, this is backtest.regime.RegimeClassifier
+    (3-state), NOT the classifier engine/agents/pipeline.py actually uses live
+    for regime-based strategy routing (that's RegimeClassifierV2, 5-state --
+    see GET /analytics/regime-v2/{symbol} below). Left as-is to avoid changing
+    behavior for any existing caller of this route.
+
     Same classifier the backtester uses; UNKNOWN when bar data is missing
     rather than a fabricated default.
     """
@@ -1569,6 +1575,75 @@ async def get_regime_for_symbol(symbol: str):
         return {"symbol": sym, "regime": regime, "current_regime": regime}
     except Exception as exc:
         return {"symbol": sym, "regime": "UNKNOWN", "error": str(exc)}
+
+
+class RegimeV2Response(BaseModel):
+    """Live regime classification from the same classifier the pipeline uses to route strategies."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    symbol: str
+    regime: str
+    description: Optional[str] = None
+    atr_norm: Optional[float] = None
+    ema_alignment: Optional[dict] = None
+    validated: bool
+    probability_vector: Optional[dict] = None
+    note: Optional[str] = None
+    timestamp: str
+
+
+@router.get(
+    "/regime-v2/{symbol}",
+    response_model=RegimeV2Response,
+    description=(
+        "Regime classification from backtest.regime_classifier.RegimeClassifierV2 -- "
+        "the classifier engine/agents/pipeline.py actually uses live for regime-based "
+        "strategy routing (5-state: TREND/MEANREV/RANGE/VOLATILE/CRISIS). Distinct from "
+        "the legacy /analytics/regime/{symbol} above, which is not in the live routing path. "
+        "Deterministic rule-based thresholds only -- probability_vector is always null "
+        "(the classifier doesn't produce one) and validated is always false (no "
+        "ground-truth accuracy score exists for this classifier yet)."
+    ),
+)
+async def get_regime_v2_for_symbol(symbol: str) -> RegimeV2Response:
+    """Return the live pipeline's regime classification for a symbol, on demand."""
+    sym = symbol.strip().upper()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    try:
+        from backtest.regime_classifier import RegimeClassifierV2
+
+        bars = None
+        if _data_mgr is not None:
+            bars = await _data_mgr.get_bars(sym, lookback_days=30, timeframe="1h")
+        if bars is None or len(bars) < 50:
+            return RegimeV2Response(
+                symbol=sym,
+                regime="UNKNOWN",
+                validated=False,
+                note="insufficient bar data (need >= 50 bars)",
+                timestamp=timestamp,
+            )
+        report = RegimeClassifierV2().classify_latest(bars)
+        return RegimeV2Response(
+            symbol=sym,
+            regime=str(report.get("regime", "UNKNOWN")),
+            description=report.get("description"),
+            atr_norm=report.get("atr_norm"),
+            ema_alignment=report.get("ema_alignment"),
+            validated=False,
+            probability_vector=None,
+            timestamp=timestamp,
+        )
+    except Exception as exc:
+        logger.error("[RegimeV2] classification failed for %s: %s", sym, exc)
+        return RegimeV2Response(
+            symbol=sym,
+            regime="UNKNOWN",
+            validated=False,
+            note=f"classification failed: {exc}",
+            timestamp=timestamp,
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -331,3 +331,62 @@ class TestPostMortemsEndpoint:
         body = resp.json()
         assert body["total"] == 1
         assert body["entries"][0]["trade_id"] == "T-B"
+
+
+class TestRegimeV2Endpoint:
+    """GET /analytics/regime-v2/{symbol} -- the classifier pipeline.py actually routes on."""
+
+    @staticmethod
+    def _synthetic_bars(n: int = 80):
+        import numpy as np
+        import pandas as pd
+
+        rng = np.random.default_rng(7)
+        close = 100 + np.cumsum(rng.normal(0, 0.5, n))
+        return pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 0.3,
+                "low": close - 0.3,
+                "close": close,
+                "volume": rng.integers(100, 1000, n),
+            }
+        )
+
+    def test_returns_real_regime_label(self, client):
+        import routers.analytics_router as analytics_router_module
+
+        bars = self._synthetic_bars(80)
+
+        class FakeDataMgr:
+            async def get_bars(self, symbol, lookback_days=30, timeframe="1h"):
+                return bars
+
+        analytics_router_module._data_mgr = FakeDataMgr()
+
+        resp = client.get("/analytics/regime-v2/mes")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["symbol"] == "MES"
+        assert body["regime"] in ("TREND", "MEANREV", "RANGE", "VOLATILE", "CRISIS")
+        # Deterministic rule-based classifier -- must never fabricate a
+        # probability vector or claim ground-truth validation that doesn't exist.
+        assert body["validated"] is False
+        assert body["probability_vector"] is None
+
+    def test_insufficient_bars_returns_unknown(self, client):
+        import routers.analytics_router as analytics_router_module
+
+        bars = self._synthetic_bars(5)
+
+        class EmptyDataMgr:
+            async def get_bars(self, symbol, lookback_days=30, timeframe="1h"):
+                return bars
+
+        analytics_router_module._data_mgr = EmptyDataMgr()
+
+        resp = client.get("/analytics/regime-v2/mnq")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["regime"] == "UNKNOWN"
+        assert "insufficient" in body["note"]
