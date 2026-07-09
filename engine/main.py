@@ -2448,12 +2448,25 @@ async def lifespan(app: FastAPI):
             the daily_pnl SQLite table and causes false kill-switch fires.
             2026-06-01 incident: -$678k IBKR demo delta fired kill switch on a
             real -$1,284 scanner paper trade.
+
+            T0-02 fix (2026-07-09 dashboard-integrity audit): the 2026-06-01
+            patch above passed sync_from_broker() a static
+            ``INITIAL_CAPITAL`` as "equity" every 60s, with no cumulative P&L
+            added back in.  Since equity never varied call-to-call,
+            ``_current_equity``/``_equity_peak`` — and every
+            Sharpe/Sortino/Calmar/max-DD figure derived from them via
+            pnl_snapshots.portfolio_equity — were frozen at exactly $10,000.00
+            from 2026-06-02 onward, even though daily_pnl (and real trading)
+            moved normally.  Equity must be initial capital PLUS all-time
+            realized P&L, mirroring the same cash-basis (realized-only)
+            accounting ``daily_pnl.ending_balance`` already uses.
             """
             try:
                 if safety_layer is None:
                     return
                 today_str = date.today().isoformat()
                 paper_daily_pnl = 0.0
+                total_realized_pnl = 0.0
                 if db_manager is not None:
                     try:
                         closed_today = [
@@ -2466,12 +2479,24 @@ async def lifespan(app: FastAPI):
                         logger.warning(
                             "[sync_safety_equity] paper_trades query failed: %s", _db_exc
                         )
+                    try:
+                        stats = db_manager.get_stats_summary()
+                        total_realized_pnl = float(stats.get("total_pnl") or 0.0)
+                    except Exception as _stats_exc:
+                        logger.warning(
+                            "[sync_safety_equity] get_stats_summary failed (equity will "
+                            "fall back to initial capital only): %s",
+                            _stats_exc,
+                        )
                 config_equity = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0))
-                safety_layer.sync_from_broker(config_equity, paper_daily_pnl)
+                current_equity = config_equity + total_realized_pnl
+                safety_layer.sync_from_broker(current_equity, paper_daily_pnl)
                 logger.debug(
-                    "[sync_safety_equity] equity=%.2f daily_pnl=%.2f "
-                    "source=paper_trades today=%s",
+                    "[sync_safety_equity] equity=%.2f (initial=%.2f + "
+                    "realized=%.2f) daily_pnl=%.2f source=paper_trades today=%s",
+                    current_equity,
                     config_equity,
+                    total_realized_pnl,
                     paper_daily_pnl,
                     today_str,
                 )
