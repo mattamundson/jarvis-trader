@@ -287,6 +287,7 @@ class PaperTradeLogger:
                     candidate_id=candidate_id,
                     decision_identity=decision_identity,
                     stop_loss=synthetic_stop,
+                    stop_source="synthesized_fallback" if synthetic_stop is not None else None,
                 )
                 self._open_trade_id_by_symbol[sym] = tid
             elif prev != 0.0 and new == 0.0:

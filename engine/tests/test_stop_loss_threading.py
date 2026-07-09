@@ -93,6 +93,50 @@ def test_open_trade_default_stop_loss_is_none(tmp_path: Path) -> None:
     assert positions[0]["stop_loss"] is None
 
 
+def test_open_trade_stamps_stop_source_into_strategy_params(tmp_path: Path) -> None:
+    """stop_source is an audit-clarity marker distinguishing a synthesized
+    backstop stop from a real decision-derived one (#US-007)."""
+    from portfolio.tracker import PortfolioTracker
+
+    captured: dict = {}
+
+    class _FakeDB:
+        def insert_paper_trade(self, trade_id, **kwargs):
+            captured.update(kwargs)
+            return 1
+
+        def get_trade_by_id(self, *a, **k):
+            return {"trade_id": "x"}
+
+    tracker = PortfolioTracker(store_path=tmp_path / "audit.jsonl", db_manager=_FakeDB())
+    tracker.open_trade(
+        "MGC", "buy", 1, 4503.9, stop_loss=4473.9, stop_source="synthesized_fallback"
+    )
+
+    assert captured["strategy_params"]["stop_source"] == "synthesized_fallback"
+
+
+def test_open_trade_omitting_stop_source_leaves_it_untagged(tmp_path: Path) -> None:
+    """A real decision-time stop (no stop_source passed) is NOT tagged --
+    absence of the marker means decision-derived, by design."""
+    from portfolio.tracker import PortfolioTracker
+
+    captured: dict = {}
+
+    class _FakeDB:
+        def insert_paper_trade(self, trade_id, **kwargs):
+            captured.update(kwargs)
+            return 1
+
+        def get_trade_by_id(self, *a, **k):
+            return {"trade_id": "x"}
+
+    tracker = PortfolioTracker(store_path=tmp_path / "audit.jsonl", db_manager=_FakeDB())
+    tracker.open_trade("MGC", "buy", 1, 4503.9, stop_loss=4473.9)
+
+    assert "stop_source" not in captured["strategy_params"]
+
+
 # ── paper_trade_logger naked-fill mirror path (the actual #287 culprit) ──────
 
 
@@ -176,6 +220,27 @@ async def test_mirror_synthesizes_stop_short_side(spy_logger) -> None:
 
 
 @pytest.mark.asyncio
+async def test_mirror_tags_stop_source_as_synthesized_fallback(spy_logger) -> None:
+    prev = _set_max_loss_env(300)
+    try:
+        log, tracker = spy_logger
+        await log.log_trade(
+            {
+                "order_id": "44444444-4444-4444-4444-444444444444",
+                "symbol": "MGC",
+                "quantity": 1,
+                "order_type": "market",
+                "filled_price": 4503.9,
+                "fill_time": "2026-07-09T15:00:00Z",
+                "is_futures": True,
+            }
+        )
+        assert tracker.open_calls[0]["stop_source"] == "synthesized_fallback"
+    finally:
+        _restore_max_loss_env(prev)
+
+
+@pytest.mark.asyncio
 async def test_mirror_stop_synthesis_disabled_stays_none(spy_logger) -> None:
     """PAPER_MAX_LOSS_USD_PER_TRADE=0 must leave stop_loss None, not fabricate one."""
     prev = _set_max_loss_env(0)
@@ -193,6 +258,7 @@ async def test_mirror_stop_synthesis_disabled_stays_none(spy_logger) -> None:
             }
         )
         assert tracker.open_calls[0]["stop_loss"] is None
+        assert tracker.open_calls[0]["stop_source"] is None
     finally:
         _restore_max_loss_env(prev)
 
@@ -231,6 +297,7 @@ async def test_sync_positions_from_ib_synthesizes_stop() -> None:
         assert tracker.open_calls, "reconcile did not open a trade"
         stop = tracker.open_calls[0]["stop_loss"]
         assert stop == round(4503.9 - 30.0, 4)
+        assert tracker.open_calls[0]["stop_source"] == "synthesized_fallback"
     finally:
         _restore_max_loss_env(prev)
 

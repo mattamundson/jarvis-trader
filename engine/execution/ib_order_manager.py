@@ -262,6 +262,7 @@ class IBOrderManager:
                         f"exchange={pos.get('exchange')}"
                     ),
                     stop_loss=synthetic_stop,
+                    stop_source="synthesized_fallback" if synthetic_stop is not None else None,
                 )
                 logger.info(
                     "sync_positions_from_ib: opened tracker entry for IB position "

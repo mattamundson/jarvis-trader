@@ -221,6 +221,7 @@ class PortfolioTracker:
         candidate_id: Optional[str] = None,
         decision_identity: Optional[Dict[str, Any]] = None,
         stop_loss: Optional[float] = None,
+        stop_source: Optional[str] = None,
     ) -> str:
         """
         Log a new simulated entry.
@@ -240,6 +241,11 @@ class PortfolioTracker:
             decision-time stop or a synthesized fallback
             (``services.paper_stop_monitor.synthesize_fallback_stop``) should
             always pass it.
+        stop_source : str, optional
+            Provenance marker for ``stop_loss`` (e.g. ``"synthesized_fallback"``).
+            Callers passing a synthesized stop (no real decision-time stop was
+            in scope) should set this so an audit can distinguish a backstop
+            stop from a strategy-derived one; omit for a real decision-time stop.
         candidate_id : str, optional
             Forward-test registry candidate that fired this entry. When supplied,
             the candidate id is stamped into ``strategy_params`` so the
@@ -305,6 +311,8 @@ class PortfolioTracker:
         # decision lineage. Additive and fail-open.
         if decision_identity:
             _sp["decision_identity"] = decision_identity
+        if stop_source:
+            _sp["stop_source"] = stop_source
         if self._db is not None:
             # INVARIANT: one open paper_trades row per (symbol, side). The engine
             # never pyramids, so any re-log of a still-open position collapses to
