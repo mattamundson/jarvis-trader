@@ -1,16 +1,24 @@
 # JARVIS TRADER — Current System State
 
-**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** June 18, 2026
+**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** July 9, 2026
 
-> **Current reality (2026-06-04, verified against live `/health`):** Engine healthy on
-> 8010 — `status=ok`, `ibkr_connected/data_connected=true`, `ibgateway_alive=true` (4002),
-> `llm_path_healthy=true`, `tv_mcp=healthy`. Dashboard on 3010. `brier_30d_rolling` is still
-> null (calibration populates as paper trades accrue). Approved paper instruments changed since
-> the April snapshot below — **MES + MGC are active (Tier-3 2026-05-24); MCL + MNQ are HALTED
-> (`DO_NOT_TRADE`)**. A dashboard honesty/safety + Stark-enhancement branch
-> (`worktree-dashboard-honesty-safety`) is staged but not yet pushed/merged; its `[safety-review]`
-> equity-peak clamp activates on the next `restart_engine.ps1`. For live instrument status always
-> prefer the `/validation` scorecard over the static table below.
+> **Current reality (2026-07-09):** Engine health was **not re-verified live** as part of this
+> update — `/health` returned connection-refused from this worktree at edit time, most likely
+> a peer session mid-restart rather than a genuine outage; re-check `/health` before relying on
+> this doc for live status. Approved paper instruments unchanged from the prior snapshot — **MES
+> + MGC are active (Tier-3 2026-05-24); MCL + MNQ are HALTED (`DO_NOT_TRADE`)**.
+>
+> **Trade #287 stop-enforcement chain (2026-07-07/09), all merged to master:** PR #324 fixed
+> two wiring bugs that let a trade $191.83 over the $50/ticket risk cap through with zero risk
+> computed; PR #325 fixed an LLM-call concurrency/timeout issue in the same window; PR #331
+> fixed the resulting "naked row" gap (`paper_trades.stop_loss` persisting `NULL` despite a real
+> stop existing) across three separate call sites: OMS-bracket trades, IB-synced positions, and
+> the human-approval flow — plus a related `resolve_stop_for_symbol()` correctness fix (was
+> returning the oldest, not most-recent, active bracket's stop). Full writeup:
+> [`docs/incident-notes/2026-07-07-trade-287-stop-enforcement-chain.md`](incident-notes/2026-07-07-trade-287-stop-enforcement-chain.md).
+> Also merged this session: #323 (dashboard nav dedupe), #319 (auction overnight prior_close
+> boundary fix). For live instrument status always prefer the `/validation` scorecard over the
+> static table below.
 
 **See also:** [Strategic command center (index)](strategic/README.md) — executive brief, system map, risk register, execution spine, and analysis passes.
 
