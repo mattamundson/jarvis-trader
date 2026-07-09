@@ -24,8 +24,10 @@ import pytest
 from llm import JarvisLLMClient
 from llm.client import (
     _DEFAULT_LLM_HARD_TIMEOUT_SECONDS,
+    _DEFAULT_LLM_MAX_CONCURRENCY,
     LLMHardTimeoutError,
     SimpleNamespace,
+    _granular_httpx_timeout,
 )
 
 
@@ -176,3 +178,89 @@ class TestCallDoesNotHang:
         assert result.content == "anthropic-result"
         # The whole call must complete near the 0.2s ceiling, not the 30s hang.
         assert elapsed < 5.0
+
+
+# ── Concurrency semaphore ────────────────────────────────────────────────────
+#
+# A scan gathers 4 analysts + debate bull/bear/tail across multiple symbols, so
+# without a bound the pipeline can put dozens of provider calls in flight at once
+# and saturate the single event loop (starving /health and the scheduler under a
+# network flap). _bounded() gates every call on a semaphore so no more than
+# LLM_MAX_CONCURRENCY run simultaneously.
+
+
+class TestConcurrencyConfig:
+    def test_default_concurrency(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("LLM_MAX_CONCURRENCY", raising=False)
+        client = _make_client(tmp_path, monkeypatch)
+        assert client._llm_max_concurrency == _DEFAULT_LLM_MAX_CONCURRENCY
+
+    def test_env_override(self, tmp_path, monkeypatch):
+        client = _make_client(tmp_path, monkeypatch, LLM_MAX_CONCURRENCY="3")
+        assert client._llm_max_concurrency == 3
+
+    def test_invalid_falls_back_to_default(self, tmp_path, monkeypatch):
+        client = _make_client(tmp_path, monkeypatch, LLM_MAX_CONCURRENCY="nope")
+        assert client._llm_max_concurrency == _DEFAULT_LLM_MAX_CONCURRENCY
+
+    def test_zero_falls_back_to_default(self, tmp_path, monkeypatch):
+        client = _make_client(tmp_path, monkeypatch, LLM_MAX_CONCURRENCY="0")
+        assert client._llm_max_concurrency == _DEFAULT_LLM_MAX_CONCURRENCY
+
+
+class TestSemaphoreConcurrencyCap:
+    @pytest.mark.asyncio
+    async def test_bounded_caps_in_flight_calls(self, tmp_path, monkeypatch):
+        client = _make_client(tmp_path, monkeypatch, LLM_MAX_CONCURRENCY="2")
+        client._llm_hard_timeout_seconds = 5.0
+        assert client._llm_max_concurrency == 2
+
+        state = {"active": 0, "peak": 0}
+
+        async def work():
+            state["active"] += 1
+            state["peak"] = max(state["peak"], state["active"])
+            try:
+                await asyncio.sleep(0.05)
+                return "ok"
+            finally:
+                state["active"] -= 1
+
+        results = await asyncio.gather(
+            *(
+                client._bounded(work(), what="unit", model="m", agent_name="a")
+                for _ in range(6)
+            )
+        )
+        assert results == ["ok"] * 6
+        # Six calls fired at once, but never more than the cap ran concurrently.
+        assert state["peak"] <= 2
+
+    @pytest.mark.asyncio
+    async def test_missing_semaphore_still_runs(self):
+        """Clients built via __new__ (no __init__) have no semaphore — still run."""
+        client = JarvisLLMClient.__new__(JarvisLLMClient)
+        assert not hasattr(client, "_llm_call_semaphore")
+
+        async def quick():
+            return "ok"
+
+        result = await client._bounded(quick(), what="unit", model="m", agent_name="a")
+        assert result == "ok"
+
+
+# ── Granular per-phase httpx timeout ─────────────────────────────────────────
+
+
+class TestGranularTimeout:
+    def test_bounds_connect_write_pool_but_keeps_read(self):
+        t = _granular_httpx_timeout(60.0)
+        assert t.read == 60.0
+        assert t.connect == 10.0
+        assert t.write == 10.0
+        assert t.pool == 10.0
+
+    def test_connect_never_exceeds_read_budget(self):
+        t = _granular_httpx_timeout(5.0)
+        assert t.read == 5.0
+        assert t.connect == 5.0
