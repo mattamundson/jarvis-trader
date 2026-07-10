@@ -1062,6 +1062,9 @@ async def run_pipeline_sync(req: PipelineRunRequest):
             final_qty = result.get("final_quantity", 1) or 1
 
             if entry_price:
+                # #287 fix: mirrors the add_paper_trade block above -- the
+                # decision's stop_price was already parsed into trade_dec but
+                # was not being passed to open_trade(), leaving the row naked.
                 trade_id = _paper_tracker.open_trade(
                     symbol=req.symbol,
                     action=final_action,
@@ -1070,6 +1073,9 @@ async def run_pipeline_sync(req: PipelineRunRequest):
                     notes=result.get("summary", ""),
                     analyst_signals=build_analyst_signals_map(
                         result.get("analyst_reports")
+                    ),
+                    stop_loss=(
+                        float(trade_dec.get("stop_price")) if trade_dec.get("stop_price") else None
                     ),
                 )
                 result["paper_trade_id"] = trade_id
