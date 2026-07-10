@@ -160,10 +160,20 @@ def deflated_sharpe_from_returns(
     Args:
         returns: periodic return series (per-bar or per-trade returns, not PnLs)
         n_trials: N independent grid-search trials
-        ann_factor: annualization factor for Sharpe (default 252 trading days)
+        ann_factor: annualization factor, used ONLY to populate the
+            informational `ann_sharpe` field below -- it is NOT fed into the
+            DSR calculation. `_sharpe_standard_error`'s (T-1) scaling and
+            `_expected_max_sharpe`'s null both assume the observed Sharpe is
+            computed over the same T=n_obs observations at their native
+            frequency; annualizing it first breaks that correspondence and
+            can flip a fail into a false pass. (Incident 2026-07-10: MES's
+            and MGC's live paper authorizations both recorded DSR=1.0 under
+            the old annualized-input bug; the corrected raw-Sharpe DSR is
+            0.11 and 0.00 respectively -- both below their required floor.)
 
     Returns:
-        deflated_sharpe_ratio() output plus raw sample stats.
+        deflated_sharpe_ratio() output plus raw sample stats and an
+        `ann_sharpe` field (reporting-only, not used for gating).
     """
     r = np.asarray(returns, dtype=float)
     T = len(r)
@@ -179,6 +189,7 @@ def deflated_sharpe_from_returns(
             "n_obs": int(T),
             "skew": 0.0,
             "kurt": 3.0,
+            "ann_sharpe": 0.0,
         }
 
     mean = float(r.mean())
@@ -195,16 +206,18 @@ def deflated_sharpe_from_returns(
             "n_obs": int(T),
             "skew": 0.0,
             "kurt": 3.0,
+            "ann_sharpe": 0.0,
         }
 
-    ann_sharpe = mean / std * np.sqrt(ann_factor)
+    raw_sharpe = mean / std
+    ann_sharpe = raw_sharpe * np.sqrt(ann_factor)
     skew_val = float(stats.skew(r, bias=False))
     # scipy returns excess kurtosis by default; convert to raw kurtosis.
     kurt_excess = float(stats.kurtosis(r, bias=False))
     kurt_raw = kurt_excess + 3.0
 
     out = deflated_sharpe_ratio(
-        sharpe=ann_sharpe,
+        sharpe=raw_sharpe,
         n_trials=n_trials,
         n_obs=T,
         skew=skew_val,
@@ -212,4 +225,5 @@ def deflated_sharpe_from_returns(
     )
     out["skew"] = round(skew_val, 6)
     out["kurt"] = round(kurt_raw, 6)
+    out["ann_sharpe"] = round(ann_sharpe, 6)
     return out
