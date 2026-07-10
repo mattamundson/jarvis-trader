@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
 
 // Surfaces the WS4B post-trade execution-quality endpoints (jarvis PR #78) that
 // nothing else in the dashboard shows: exit-reason attribution, slippage cost,
@@ -194,11 +195,27 @@ function Streak() {
 }
 
 export function PostTradeExecutionWidget() {
+  // Same SWR keys as ExitReasons/Slippage/Streak below — SWR dedupes requests
+  // by key, so this shares their cache instead of issuing extra fetches. Used
+  // only to derive a single card-level live/static provenance badge.
+  const exitQ = useSWR<ExitAttribution>("/analytics/exit-attribution", fetcher, { refreshInterval: REFRESH_MS });
+  const slipQ = useSWR<SlippageAttribution>("/analytics/slippage-attribution", fetcher, { refreshInterval: REFRESH_MS });
+  const streakQ = useSWR<LosingStreak>("/analytics/losing-streak", fetcher, { refreshInterval: REFRESH_MS });
+  const allFailed = !!exitQ.error && !!slipQ.error && !!streakQ.error;
+
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Post-Trade Execution Quality
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Post-Trade Execution Quality
+        </p>
+        <Badge variant={allFailed ? "static" : "live"}>
+          <span className="flex items-center gap-1">
+            <span className={`h-1.5 w-1.5 rounded-full ${allFailed ? "bg-muted-foreground" : "bg-bull animate-pulse"}`} />
+            {allFailed ? "STATIC" : "LIVE"}
+          </span>
+        </Badge>
+      </div>
       <div className="space-y-1.5">
         <SectionHead>Exit reasons (target / stop / manual)</SectionHead>
         <ExitReasons />
