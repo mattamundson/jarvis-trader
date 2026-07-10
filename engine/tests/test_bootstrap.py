@@ -10,10 +10,10 @@ import numpy as np
 import pytest
 
 from backtest.monte_carlo import (
-    bootstrap_max_dd,
     bootstrap_pf,
     bootstrap_sharpe,
     moving_block_bootstrap,
+    permute_max_dd,
 )
 
 
@@ -122,11 +122,11 @@ class TestBootstrapSharpe:
         assert r["n_trades"] == 0
 
 
-class TestBootstrapMaxDD:
+class TestPermuteMaxDD:
     def test_observed_dd_on_trending_pnls(self):
         """Trending up + one big loser: max DD is driven by the single loser."""
         pnls = [1.0] * 50 + [-30.0] + [1.0] * 50
-        r = bootstrap_max_dd(pnls, initial_capital=10_000.0, n_resamples=500, seed=42)
+        r = permute_max_dd(pnls, initial_capital=10_000.0, n_resamples=500, seed=42)
         assert r["observed_max_dd_pct"] > 0
         assert r["mc_95th"] >= r["mc_50th"]
         assert r["mc_99th"] >= r["mc_95th"]
@@ -134,10 +134,10 @@ class TestBootstrapMaxDD:
     def test_mc_percentiles_monotonic(self):
         rng = np.random.default_rng(0)
         pnls = list(rng.normal(loc=1.0, scale=5.0, size=100))
-        r = bootstrap_max_dd(pnls, n_resamples=500, seed=42)
+        r = permute_max_dd(pnls, n_resamples=500, seed=42)
         assert r["mc_50th"] <= r["mc_95th"] <= r["mc_99th"]
 
     def test_short_pnls_returns_zeros(self):
-        r = bootstrap_max_dd([1.0], n_resamples=100, seed=42)
+        r = permute_max_dd([1.0], n_resamples=100, seed=42)
         assert r["n_trades"] == 1
         assert r["observed_max_dd_pct"] == 0.0
