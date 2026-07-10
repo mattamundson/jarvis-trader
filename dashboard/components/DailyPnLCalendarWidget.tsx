@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { dailyPnl } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
@@ -87,8 +87,18 @@ function cellClasses(pnl: number | undefined, isToday: boolean): string {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function DailyPnLCalendarWidget() {
-  const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(120_000);
+  const { honest: set, isLoading: dataLoading, error: loadError } = useHonestTrades(120_000);
   const error = !!loadError;
+
+  // Calendar days/labels derive from the wall clock (new Date()). Computing them
+  // during the shared server/client render pass bakes in the server's "now" (the
+  // build-time date for a statically prerendered page), which differs from the
+  // client's actual "now" at hydration time and trips React hydration mismatch
+  // (#418). Gate on mount so server + first client render both emit the same
+  // deterministic loading skeleton; the real calendar renders client-side only.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const loading = dataLoading || !mounted;
 
   // dailyPnl() returns {date, pnl, count}[] grouped by close date
   const dailyPnlMap: DailyPnLMap | null = set
