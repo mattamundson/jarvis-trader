@@ -66,7 +66,16 @@ module.exports = {
       watch: false,
       max_restarts: 50,
       min_uptime: "10s",
-      restart_delay: 5000,     // Wait 5s between restarts
+      // 2026-07-10: raised 5s -> 15s. port_guardian_restarts.jsonl showed a
+      // continuous orphan-kill loop (03:52-04:55 UTC, ~20 cycles) under heavy
+      // host contention (900-1100+ processes, <1.3GB free RAM): every restart
+      // found a still-live python process holding port 8010 and had to force-kill
+      // it, meaning the prior attempt's shutdown hadn't finished releasing the
+      // port within the old 5s window. 15s gives teardown more room under
+      // contention; env-tunable knobs already exist for the separate slow-boot
+      // path (PORT_GUARDIAN_READINESS_DEADLINE / _PROBE_TIMEOUT in
+      // port_guardian.py) but not for this restart-cadence path until now.
+      restart_delay: 15000,
 
       // Logging
       log_date_format: "YYYY-MM-DD HH:mm:ss",
