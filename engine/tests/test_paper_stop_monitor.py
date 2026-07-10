@@ -230,7 +230,7 @@ def test_check_once_race_noop_when_already_closed():
 
 def test_check_once_skips_trade_without_stop_when_loss_under_cap():
     # A null-stop trade with only a SMALL unrealized loss is still left alone —
-    # there is no stop to enforce and the catastrophe cap (default $750) is not
+    # there is no stop to enforce and the catastrophe cap (default $300) is not
     # breached. price 4500 vs entry 4503.9 (MGC ×10) = -$39.
     db = _FakeDB([_trade(stop_loss=None)])
     mon = PaperStopMonitor(db, _FakeData(4500.0))
@@ -242,13 +242,28 @@ def test_check_once_skips_trade_without_stop_when_loss_under_cap():
 def test_check_once_max_loss_backstop_fires_on_null_stop():
     # The -$5,440 MES / -$1,284 MGC class: a position with NO recorded stop whose
     # live loss blows past the catastrophe cap must be force-closed. price 4400 vs
-    # entry 4503.9 (MGC ×10) = -$1,039, beyond the default $750 cap.
+    # entry 4503.9 (MGC ×10) = -$1,039, well beyond the default $300 cap.
     db = _FakeDB([_trade(stop_loss=None)])
     mon = PaperStopMonitor(db, _FakeData(4400.0))
     fired = asyncio.run(mon.check_once())
     assert fired == 1
     assert len(db.close_calls) == 1
-    assert db.close_calls[0]["pnl"] <= -750.0
+    assert db.close_calls[0]["pnl"] <= -300.0
+
+
+def test_check_once_backstop_fires_at_tightened_default():
+    # Discriminating test for the 750 -> 300 default (2026-07-08). A null-stop
+    # position at -$400 unrealized MUST force-close under the new $300 cap; under
+    # the OLD $750 default this exact loss rode on unmanaged -- the #287 gap
+    # (naked row + delayed feed) that let a would-be ~$200 loss reach -$1,236.
+    # price 4463.9 vs entry 4503.9 (MGC ×10) = -$400.
+    db = _FakeDB([_trade(stop_loss=None)])
+    mon = PaperStopMonitor(db, _FakeData(4463.9))
+    fired = asyncio.run(mon.check_once())
+    assert fired == 1
+    assert len(db.close_calls) == 1
+    # ~-$400: force-closed under the $300 default, would NOT fire under old $750.
+    assert -450.0 <= db.close_calls[0]["pnl"] <= -350.0
 
 
 def test_check_once_max_loss_backstop_disabled_restores_skip():
