@@ -11,6 +11,9 @@ import {
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, RefreshCw, WifiOff } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { ProvenanceBadge } from "@/components/DataValue";
+import { type DataEnvelope } from "@/lib/provenance";
+import { useProvenance } from "@/lib/useProvenance";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -29,9 +32,30 @@ interface OpenPosition {
   // Extended fields (present when added via add_paper_trade with DB)
   stop_loss?: number | null;
   take_profit?: number | null;
-  // Live price fields (if engine enriches the response)
+  // Live price fields — engine enriches /portfolio/paper/positions via the
+  // same _compute_unrealized helper /portfolio and /portfolio/summary use.
   current_price?: number | null;
   unrealized_pnl?: number | null;
+  // Data-provenance envelope (Phase 1) for current_price — see
+  // engine/data/provenance.py / dashboard/lib/provenance.ts.
+  is_live?: boolean;
+  source?: string | null;
+  as_of?: number | null;
+  stale_after_s?: number;
+}
+
+// Fallback freshness window when a position predates the provenance envelope.
+const DEFAULT_STALE_AFTER_S = 60;
+
+/** Map an OpenPosition's mark fields to the canonical DataEnvelope shape. */
+function toEnvelope(pos: OpenPosition): DataEnvelope {
+  return {
+    value: pos.current_price ?? null,
+    source: pos.source ?? "unavailable",
+    as_of: pos.as_of ?? null,
+    is_live: pos.is_live ?? false,
+    stale_after_s: pos.stale_after_s ?? DEFAULT_STALE_AFTER_S,
+  };
 }
 
 interface PaperPositionsResponse {
@@ -68,6 +92,86 @@ function formatTimeInTrade(entryTime: string): string {
 function fmtPnl(val: number): string {
   const sign = val >= 0 ? "+" : "";
   return `${sign}$${Math.abs(val).toFixed(2)}`;
+}
+
+// ── Position row (own component so useProvenance can be called per-row) ────────
+
+function PositionTableRow({ pos }: { pos: OpenPosition }) {
+  const direction = getDirection(pos.action);
+  const isLong = direction === "LONG";
+  const pnl = pos.unrealized_pnl ?? null;
+  // Mark provenance — the same envelope UnrealizedPnLWidget/WatchlistBar use,
+  // so a stale/cached mark never shows a P&L number without a visible caveat.
+  const markView = useProvenance(toEnvelope(pos));
+
+  return (
+    <tr className="border-t border-border">
+      {/* Symbol */}
+      <td className="py-2.5 pr-3">
+        <span className="font-mono font-semibold text-foreground">
+          {pos.symbol}
+        </span>
+      </td>
+
+      {/* Direction */}
+      <td className="py-2.5 pr-3">
+        <Badge variant={isLong ? "bull" : "bear"}>
+          {isLong ? (
+            <TrendingUp className="inline h-3 w-3 mr-1" />
+          ) : (
+            <TrendingDown className="inline h-3 w-3 mr-1" />
+          )}
+          {direction}
+        </Badge>
+      </td>
+
+      {/* Quantity / Contracts */}
+      <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+        {pos.quantity}
+      </td>
+
+      {/* Entry Price */}
+      <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
+        ${pos.entry_price.toFixed(2)}
+      </td>
+
+      {/* Stop */}
+      <td className="py-2.5 text-right font-mono tabular-nums text-destructive/80">
+        {pos.stop_loss != null ? `$${pos.stop_loss.toFixed(2)}` : "—"}
+      </td>
+
+      {/* Target */}
+      <td className="py-2.5 text-right font-mono tabular-nums text-bull/80">
+        {pos.take_profit != null ? `$${pos.take_profit.toFixed(2)}` : "—"}
+      </td>
+
+      {/* Mark provenance — honest live/stale/static badge for current_price */}
+      <td className="py-2.5 text-right">
+        <ProvenanceBadge view={markView} />
+      </td>
+
+      {/* Unrealized P&L */}
+      <td
+        className={cn(
+          "py-2.5 text-right font-mono tabular-nums font-semibold",
+          pnl === null
+            ? "text-muted-foreground"
+            : pnl > 0
+            ? "text-green-400"
+            : pnl < 0
+            ? "text-red-400"
+            : "text-muted-foreground"
+        )}
+      >
+        {pnl !== null ? fmtPnl(pnl) : "—"}
+      </td>
+
+      {/* Time in trade */}
+      <td className="py-2.5 text-right font-mono tabular-nums text-muted-foreground text-xs">
+        {pos.entry_time ? formatTimeInTrade(pos.entry_time) : "—"}
+      </td>
+    </tr>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -191,83 +295,18 @@ export function OpenPositionsWidget() {
                   <th className="text-right pb-2 font-medium">Entry</th>
                   <th className="text-right pb-2 font-medium">Stop</th>
                   <th className="text-right pb-2 font-medium">Target</th>
+                  <th className="text-right pb-2 font-medium">Mark</th>
                   <th className="text-right pb-2 font-medium">Unreal. P&amp;L</th>
                   <th className="text-right pb-2 font-medium">Time In</th>
                 </tr>
               </thead>
               <tbody>
-                {positions.map((pos) => {
-                  const direction = getDirection(pos.action);
-                  const isLong = direction === "LONG";
-                  const pnl = pos.unrealized_pnl ?? null;
-
-                  return (
-                    <tr
-                      key={pos.trade_id ?? `${pos.symbol}-${pos.entry_time}`}
-                      className="border-t border-border"
-                    >
-                      {/* Symbol */}
-                      <td className="py-2.5 pr-3">
-                        <span className="font-mono font-semibold text-foreground">
-                          {pos.symbol}
-                        </span>
-                      </td>
-
-                      {/* Direction */}
-                      <td className="py-2.5 pr-3">
-                        <Badge variant={isLong ? "bull" : "bear"}>
-                          {isLong ? (
-                            <TrendingUp className="inline h-3 w-3 mr-1" />
-                          ) : (
-                            <TrendingDown className="inline h-3 w-3 mr-1" />
-                          )}
-                          {direction}
-                        </Badge>
-                      </td>
-
-                      {/* Quantity / Contracts */}
-                      <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                        {pos.quantity}
-                      </td>
-
-                      {/* Entry Price */}
-                      <td className="py-2.5 text-right font-mono tabular-nums text-foreground">
-                        ${pos.entry_price.toFixed(2)}
-                      </td>
-
-                      {/* Stop */}
-                      <td className="py-2.5 text-right font-mono tabular-nums text-destructive/80">
-                        {pos.stop_loss != null ? `$${pos.stop_loss.toFixed(2)}` : "—"}
-                      </td>
-
-                      {/* Target */}
-                      <td className="py-2.5 text-right font-mono tabular-nums text-bull/80">
-                        {pos.take_profit != null ? `$${pos.take_profit.toFixed(2)}` : "—"}
-                      </td>
-
-                      {/* Unrealized P&L */}
-                      <td
-                        className={cn(
-                          "py-2.5 text-right font-mono tabular-nums font-semibold",
-                          pnl === null
-                            ? "text-muted-foreground"
-                            : pnl > 0
-                            ? "text-green-400"
-                            : pnl < 0
-                            ? "text-red-400"
-                            : "text-muted-foreground"
-                        )}
-                      >
-                        {pnl !== null ? fmtPnl(pnl) : "—"}
-                      </td>
-
-                      {/* Time in trade */}
-                      <td className="py-2.5 text-right font-mono tabular-nums text-muted-foreground text-xs">
-                        {pos.entry_time ? formatTimeInTrade(pos.entry_time) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {positions.map((pos) => (
+                  <PositionTableRow
+                    key={pos.trade_id ?? `${pos.symbol}-${pos.entry_time}`}
+                    pos={pos}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
