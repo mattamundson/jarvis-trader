@@ -34,7 +34,6 @@ import {
   Shield,
   Sliders,
   Star,
-  SunMedium,
   Target,
   TrendingUp,
   Trophy,
@@ -69,13 +68,14 @@ interface NavGroup {
 //   /parallel-paper  — ENABLE_PARALLEL_PAPER-gated A/B compare; folds into /paper as
 //                      a tab (Phase 2 disposition). Off by default, so not in nav.
 //   /trades/[id]/review — dynamic per-trade detail, reached from Trade History/Journal.
-//   /trades/journal → /journal, /stats → /performance — intentional redirect stubs.
+//   /trades/journal → /journal, /stats → /performance, /today → /command-center
+//                      (/today's KPI strip + system-health checklist folded into the
+//                      flagship in P2.1) — intentional redirect stubs.
 const NAV_GROUPS: NavGroup[] = [
   {
     title: "Trading",
     items: [
       { label: "Dashboard", href: "/", icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
-      { label: "Today at a Glance", href: "/today", icon: <SunMedium className="h-3.5 w-3.5" /> },
       { label: "Pending Approvals", href: "/trades/pending-approvals", icon: <Zap className="h-3.5 w-3.5" /> },
       { label: "Trade History", href: "/trades", icon: <History className="h-3.5 w-3.5" /> },
       { label: "Paper Trading", href: "/paper", icon: <Layers className="h-3.5 w-3.5" /> },

@@ -13,6 +13,8 @@ import {
   XCircle,
   RefreshCw,
   TrendingUp,
+  TrendingDown,
+  Minus,
   Database,
   Wifi,
   WifiOff,
@@ -52,6 +54,11 @@ const fontMono = JetBrains_Mono({
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+interface LLMProviders {
+  active_provider: string;
+  providers_configured: string[];
+}
+
 interface HealthData {
   status: string;
   kill_switch_active: boolean;
@@ -61,6 +68,37 @@ interface HealthData {
   ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
+  // Extended subsystem health (folded from /today system-health checklist, P2.1)
+  tradingview_mcp_healthy?: boolean | null;
+  tradingview_mcp_details?: string | null;
+  llm_path_healthy?: boolean | null;
+  llm_providers?: LLMProviders | null;
+}
+
+// KPI-strip sources (folded from /today, P2.1)
+interface SessionTodayResponse {
+  session: string;
+  closed_trades: number;
+  open_trades: number;
+  gross_pnl: number;
+}
+
+interface EODSummaryResponse {
+  pnl_today_usd: number;
+  wins_today: number;
+  losses_today: number;
+  cumulative_pnl_usd: number;
+  validation_gates: {
+    pf: number | null;
+    sharpe: number | null;
+    trades_count: number;
+  };
+  status: "on_track" | "at_risk" | "insufficient_data";
+}
+
+interface OpenPositionsResponse {
+  positions: Array<{ symbol: string; action: string; quantity: number }>;
+  count: number;
 }
 
 interface SafetyData {
@@ -273,6 +311,68 @@ function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
+// KPI card + health line — folded from /today (P2.1), restyled onto the flagship's
+// Tailwind color-class idiom (no inline hex) to match surrounding command-center code.
+function KpiCard({
+  icon,
+  label,
+  value,
+  sub,
+  valueClass,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+  valueClass?: string;
+}) {
+  return (
+    <Card className="bg-slate-900/60 border border-cyan-900/50">
+      <CardContent className="px-4 py-3 space-y-1.5">
+        <div className="flex items-center gap-1.5 text-cyan-400/70">
+          {icon}
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            {label}
+          </span>
+        </div>
+        <p
+          className={`font-mono text-2xl font-bold tabular-nums leading-none ${
+            valueClass ?? "text-white"
+          }`}
+        >
+          {value}
+        </p>
+        {sub && (
+          <p className="font-mono text-[10px] text-slate-500 truncate">{sub}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function HealthLine({
+  ok,
+  label,
+}: {
+  ok: boolean | null | undefined;
+  label: string;
+}) {
+  const icon =
+    ok === true ? (
+      <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+    ) : ok === false ? (
+      <XCircle className="w-3.5 h-3.5 text-red-400" />
+    ) : (
+      <Minus className="w-3.5 h-3.5 text-slate-500" />
+    );
+  return (
+    <div className="flex items-center gap-1.5">
+      {icon}
+      <span className="font-mono text-[11px] text-slate-400">{label}</span>
+    </div>
+  );
+}
+
 // ── Page Component ────────────────────────────────────────────────────────
 
 // Stable placeholder session used on the server and the first client paint so
@@ -374,6 +474,23 @@ export default function CommandCenterPage() {
     { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
   );
 
+  // KPI-strip + system-health sources folded from /today (P2.1).
+  const { data: sessionToday } = useSWR<SessionTodayResponse>(
+    "/portfolio/stats/session-today",
+    fetcher,
+    { refreshInterval, shouldRetryOnError: false }
+  );
+  const { data: eod } = useSWR<EODSummaryResponse>(
+    "/paper/validation/summary/eod",
+    fetcher,
+    { refreshInterval, shouldRetryOnError: false }
+  );
+  const { data: openPos } = useSWR<OpenPositionsResponse>(
+    "/portfolio/paper/positions",
+    fetcher,
+    { refreshInterval, shouldRetryOnError: false }
+  );
+
   const engineOnline = !healthErr && !!health;
   const killSwitchActive = health?.kill_switch_active ?? false;
 
@@ -424,6 +541,21 @@ export default function CommandCenterPage() {
   const consecutiveLossProgress = Math.min((consecutiveLosses / 7) * 100, 100);
   const ordersPerMin = safety?.orders_last_minute ?? 0;
   const ordersProgress = Math.min((ordersPerMin / 40) * 100, 100);
+
+  // KPI-strip derived values (folded from /today, P2.1).
+  const tradesToday = sessionToday
+    ? sessionToday.closed_trades + sessionToday.open_trades
+    : null;
+  const pnlToday = eod?.pnl_today_usd ?? sessionToday?.gross_pnl ?? 0;
+  const openPosCount = openPos?.count ?? portfolio?.positions?.length ?? null;
+
+  // System-health checklist derived values (folded from /today, P2.1).
+  const execLegOk =
+    health?.ibkr_execution_connected ?? health?.ibkr_connected ?? null;
+  const dataLegOk = health?.ibkr_data_connected ?? null;
+  const tvHealthy = health?.tradingview_mcp_healthy ?? null;
+  const llmHealthy = health?.llm_path_healthy ?? null;
+  const llmProvider = health?.llm_providers?.active_provider ?? null;
 
   const handleKillSwitch = useCallback(async () => {
     const activating = !killSwitchActive;
@@ -549,6 +681,78 @@ export default function CommandCenterPage() {
             {killSwitchActive ? "⚠ KILL SWITCH ACTIVE" : "KILL SWITCH"}
           </Button>
         </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          KPI STRIP — folded from /today (P2.1). Surfaces Trades Today
+          + Val Status (nowhere else on the flagship) and the honest
+          eod-sourced Today P&L above the fold.
+      ═══════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <KpiCard
+          icon={<Activity className="w-3.5 h-3.5" />}
+          label="Trades Today"
+          value={tradesToday ?? "—"}
+          sub={
+            sessionToday
+              ? `${sessionToday.closed_trades} closed · ${sessionToday.open_trades} open · ${sessionToday.session}`
+              : undefined
+          }
+          valueClass="text-cyan-300"
+        />
+        <KpiCard
+          icon={
+            pnlToday >= 0 ? (
+              <TrendingUp className="w-3.5 h-3.5" />
+            ) : (
+              <TrendingDown className="w-3.5 h-3.5" />
+            )
+          }
+          label="Today P&L"
+          value={`${pnlToday >= 0 ? "+" : "-"}$${Math.abs(pnlToday).toFixed(2)}`}
+          sub={
+            eod
+              ? `${eod.wins_today}W / ${eod.losses_today}L · cum ${fmtUSD(
+                  eod.cumulative_pnl_usd
+                )}`
+              : undefined
+          }
+          valueClass={pnlColor(pnlToday)}
+        />
+        <KpiCard
+          icon={<Activity className="w-3.5 h-3.5" />}
+          label="Open Positions"
+          value={openPosCount ?? "—"}
+          sub={
+            openPos && openPos.count > 0
+              ? openPos.positions
+                  .map((p) => `${p.symbol} ${p.action.toUpperCase()} x${p.quantity}`)
+                  .join(" · ")
+              : "No open positions"
+          }
+          valueClass={
+            openPosCount && openPosCount > 0 ? "text-yellow-400" : "text-slate-500"
+          }
+        />
+        <KpiCard
+          icon={<AlertTriangle className="w-3.5 h-3.5" />}
+          label="Val Status"
+          value={eod?.status ? eod.status.replace("_", " ").toUpperCase() : "—"}
+          sub={
+            eod
+              ? `PF ${eod.validation_gates.pf?.toFixed(2) ?? "?"} · Sharpe ${
+                  eod.validation_gates.sharpe?.toFixed(2) ?? "?"
+                } · ${eod.validation_gates.trades_count} trades`
+              : undefined
+          }
+          valueClass={
+            eod?.status === "on_track"
+              ? "text-green-400"
+              : eod?.status === "at_risk"
+              ? "text-yellow-400"
+              : "text-slate-500"
+          }
+        />
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -1402,6 +1606,94 @@ export default function CommandCenterPage() {
             >
               Refresh
             </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          SYSTEM HEALTH CHECKLIST — folded from /today (P2.1). Fuller
+          subsystem view than the Engine Health card: data-leg vs exec-leg
+          split, TradingView MCP, LLM path + provider chain, kill switch.
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mt-3">
+        <Card className="bg-slate-900/60 border border-cyan-900/50">
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+              <Activity className="w-3 h-3" />
+              SYSTEM HEALTH
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-3 space-y-3">
+            {!health ? (
+              healthErr ? (
+                <div className="flex items-center gap-2 text-red-400">
+                  <XCircle className="w-4 h-4" />
+                  <span className="font-mono text-xs">
+                    Engine unreachable — check :8010
+                  </span>
+                </div>
+              ) : (
+                <span className="font-mono text-xs text-slate-500">Loading…</span>
+              )
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                  <HealthLine
+                    ok={health.status === "ok"}
+                    label={`Engine — ${health.status ?? "unknown"}`}
+                  />
+                  <HealthLine
+                    ok={execLegOk}
+                    label={`IBKR execution — ${
+                      execLegOk ? "connected" : "disconnected"
+                    }`}
+                  />
+                  <HealthLine
+                    ok={dataLegOk}
+                    label={`IBKR data feed — ${
+                      dataLegOk ? "connected" : "down (TV covers bars)"
+                    }`}
+                  />
+                  <HealthLine
+                    ok={tvHealthy}
+                    label={`TradingView MCP — ${
+                      tvHealthy
+                        ? "healthy"
+                        : health.tradingview_mcp_details ?? "unavailable"
+                    }`}
+                  />
+                  <HealthLine
+                    ok={llmHealthy}
+                    label={`LLM (${llmProvider ?? "?"}) — ${
+                      llmHealthy ? "healthy" : "degraded"
+                    }`}
+                  />
+                  <HealthLine
+                    ok={!health.kill_switch_active}
+                    label={`Kill switch — ${
+                      health.kill_switch_active ? "ACTIVE" : "inactive"
+                    }`}
+                  />
+                </div>
+                {health.llm_providers && (
+                  <div className="pt-2 border-t border-slate-800/50 flex flex-wrap gap-2">
+                    {health.llm_providers.providers_configured?.map((p) => (
+                      <span
+                        key={p}
+                        className={`font-mono text-[9px] px-2 py-0.5 rounded-full border ${
+                          p === health.llm_providers!.active_provider
+                            ? "border-green-700 text-green-400"
+                            : "border-slate-700 text-slate-500"
+                        }`}
+                      >
+                        {p === health.llm_providers!.active_provider ? "▶ " : ""}
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
