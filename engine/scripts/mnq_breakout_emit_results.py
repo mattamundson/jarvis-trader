@@ -3,7 +3,7 @@
 
 Per-trade PnL is converted to DOLLARS using the MNQ contract multiplier
 ($2 per point, $0.50 per 0.25-tick) so the Monte-Carlo drawdown stats in
-`bootstrap_max_dd` compare against a realistic equity base.
+`permute_max_dd` compare against a realistic equity base.
 
 Output: `engine/scripts/mnq_breakout_search_results.json`
 
