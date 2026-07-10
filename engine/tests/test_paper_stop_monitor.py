@@ -306,7 +306,7 @@ def test_check_once_empty_book():
 # paper_trades row (PortfolioTracker.open_trade() has no stop_loss parameter --
 # a separate, documented data-hygiene gap, not fixed here). That left this
 # monitor blind to every OMS-opened position: has_stop was always False, and
-# with the default $750 catastrophe cap the position could still ride well
+# with the default $300 catastrophe cap the position could still ride well
 # past a tight stop before the backstop fired. resolve_stop_for_symbol() lets
 # the monitor recover the real stop from the OMS's in-memory bracket record.
 

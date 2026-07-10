@@ -29,15 +29,9 @@ This monitor closes that gap by decoupling stop enforcement from the
     closing the same position is harmless: whoever wins, the loser's UPDATE
     matches zero rows and no-ops.
 
-It is a *backstop*, not the primary path. It does not model slippage the way
-the runner does (it records the observed breach price rather than simulating
-a fill). It DOES deduct the same flat per-contract round-trip commission that
-``PortfolioTracker`` applies on its primary close path (see
-``_commission_per_contract`` below, which mirrors
-``portfolio.tracker._commission_per_contract``) — fixed 2026-07 (T0-06) after
-an audit found 0 of 27 real closed futures trades reflected any commission,
-because stop-driven exits are how nearly all real closes happen and this
-backstop's un-costed PnL was what actually got written to the ledger.
+It is a *backstop*, not the primary path. It does not model slippage/commission
+the way the runner does (it records the observed breach price); the goal is to
+never again leave an open position unprotected, not to be the canonical fill.
 
 Paper-only. Gated behind ``PAPER_STOP_MONITOR_ENABLED`` (default on).
 """
@@ -121,27 +115,6 @@ def is_stop_breached(side: Any, stop: Optional[float], price: Optional[float]) -
     return False
 
 
-def _commission_per_contract() -> float:
-    """Flat per-contract round-trip commission, mirroring PortfolioTracker.
-
-    Reuses ``portfolio.tracker._commission_per_contract()`` (Phase 2 / #304)
-    so this backstop's PnL matches the primary close path exactly instead of
-    reinventing a parallel commission model. Falls back to reading the same
-    ``COMMISSION_PER_CONTRACT`` env var directly (identical default, $1.50) if
-    the import fails — this module must never let an optional import take
-    down the backstop (same defensive posture as ``_load_paper_configs``).
-    """
-    try:
-        from portfolio.tracker import _commission_per_contract as _tracker_commission
-
-        return _tracker_commission()
-    except Exception:  # noqa: BLE001
-        try:
-            return float(os.environ.get("COMMISSION_PER_CONTRACT", "1.50"))
-        except (TypeError, ValueError):
-            return 1.50
-
-
 def compute_stop_pnl(
     side: Any,
     entry_price: float,
@@ -149,21 +122,13 @@ def compute_stop_pnl(
     quantity: float,
     multiplier: float,
 ) -> float:
-    """Realized PnL of closing at ``exit_price``.
-
-    No slippage modeling (backstop records the observed breach price, not a
-    simulated fill) — but DOES deduct the same flat per-contract round-trip
-    commission PortfolioTracker applies on its primary close path (T0-06 fix;
-    see ``_commission_per_contract`` above).
-    """
+    """Realized PnL of closing at ``exit_price`` (no slippage/commission — backstop)."""
     norm = normalize_side(side)
     qty = abs(float(quantity or 0.0))
     delta = float(exit_price) - float(entry_price)
     if norm == "short":
         delta = -delta
-    gross_pnl = delta * qty * float(multiplier)
-    commission = _commission_per_contract() * qty
-    return round(gross_pnl - commission, 2)
+    return round(delta * qty * float(multiplier), 2)
 
 
 def multiplier_for(symbol: str, configs: Optional[Dict[str, Any]] = None) -> float:
@@ -233,7 +198,7 @@ def _interval_from_env(default: int = 60) -> int:
         return default
 
 
-def _max_loss_usd_from_env(default: float = 300.0) -> float:
+def max_loss_usd_from_env(default: float = 300.0) -> float:
     """Hard per-trade catastrophe cap in USD (live unrealized loss).
 
     The breach path above only protects trades that *recorded* a stop_loss; a
@@ -255,6 +220,10 @@ def _max_loss_usd_from_env(default: float = 300.0) -> float:
 
     Read live from env each sweep (matches PAPER_STOP_MONITOR_* convention).
     Set PAPER_MAX_LOSS_USD_PER_TRADE=0 to disable the backstop entirely.
+
+    Public (no leading underscore): also the single source of truth for
+    ``synthesize_fallback_stop`` below, so a write-time synthesized stop and
+    this sweep's force-close threshold can never disagree.
     """
     raw = os.environ.get("PAPER_MAX_LOSS_USD_PER_TRADE", "").strip()
     if not raw:
@@ -264,6 +233,57 @@ def _max_loss_usd_from_env(default: float = 300.0) -> float:
         return val if val > 0 else 0.0
     except (TypeError, ValueError):
         return default
+
+
+def synthesize_fallback_stop(
+    symbol: str,
+    side: Any,
+    entry_price: float,
+    quantity: float,
+    configs: Optional[Dict[str, Any]] = None,
+) -> Optional[float]:
+    """Defensive stop price for a position opened with no decision-time stop.
+
+    Some paper-open call sites have no strategy stop in scope at write time —
+    the IB-fill mirror (``paper_trade_logger._maybe_mirror_to_tracker``) only
+    ever sees ``(symbol, signed_qty, filled_price, order_id)``, and the IB
+    position-reconcile backfill (``ib_order_manager.sync_positions_from_ib``)
+    only sees IB's raw position list — neither carries the pipeline's computed
+    stop. That gap is #287 (MGC, -$1,236, naked row: stop_loss persisted NULL,
+    PaperStopMonitor had nothing to enforce until the loss blew past the flat
+    catastrophe cap).
+
+    Rather than leave stop_loss NULL until the periodic cap sweep happens to
+    catch it, materialize that SAME dollar-risk budget (``max_loss_usd_from_env``)
+    as an actual price level at open time, so the row is never naked and every
+    reader (dashboard, the sentinel loop's NAKED check, this monitor's own
+    breach check) sees a real stop immediately instead of only a periodic
+    force-close threshold.
+
+    Returns None — never a guessed price — when the cap is disabled
+    (PAPER_MAX_LOSS_USD_PER_TRADE=0), inputs are unusable, or ``side`` is not
+    a recognized long/short encoding. A stop direction is never assumed.
+    """
+    risk_usd = max_loss_usd_from_env()
+    if risk_usd <= 0:
+        return None
+    try:
+        entry = float(entry_price)
+        qty = abs(float(quantity or 0.0))
+    except (TypeError, ValueError):
+        return None
+    if qty <= 0 or entry <= 0:
+        return None
+    mult = multiplier_for(symbol, configs)
+    if mult <= 0:
+        return None
+    distance = risk_usd / (mult * qty)
+    norm = normalize_side(side)
+    if norm == "long":
+        return round(entry - distance, 4)
+    if norm == "short":
+        return round(entry + distance, 4)
+    return None
 
 
 class PaperStopMonitor:
@@ -350,7 +370,7 @@ class PaperStopMonitor:
             return 0
 
         configs = _load_paper_configs()
-        max_loss = _max_loss_usd_from_env()
+        max_loss = max_loss_usd_from_env()
         fired = 0
 
         for t in open_trades:
