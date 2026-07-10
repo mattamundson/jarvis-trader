@@ -65,8 +65,12 @@ except ImportError:
     except ImportError:
         ConsecutiveLossTracker = None  # type: ignore[assignment,misc]
 
-logger = logging.getLogger(__name__)
+try:
+    from backtest.signals import DO_NOT_TRADE_SYMBOLS
+except ImportError:
+    from engine.backtest.signals import DO_NOT_TRADE_SYMBOLS
 
+logger = logging.getLogger(__name__)
 
 def _schedule_background_coro(factory: Callable[[], Coroutine[Any, Any, Any]]) -> None:
     """
@@ -981,6 +985,15 @@ class SafetyLayer:
             return adjusted_order, warnings
         return order, warnings
 
+    def _check_do_not_trade_symbols(self, order: OrderRequest) -> RiskCheckResult:
+        """Hard block: never route an order for a halted symbol, regardless of caller."""
+        if order.symbol.upper() in DO_NOT_TRADE_SYMBOLS:
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=f"DO_NOT_TRADE_SYMBOLS: {order.symbol} is halted, no orders permitted",
+            )
+        return RiskCheckResult(approved=True)
+
     def _check_kill_switch(self) -> RiskCheckResult:
         """Check kill switch status."""
         if self._kill_switch_active:
@@ -1288,6 +1301,7 @@ class SafetyLayer:
 
         # Run sequential checks, return early on failure
         for check_fn in [
+            lambda: self._check_do_not_trade_symbols(order),
             lambda: self._check_kill_switch(),
             lambda: self._check_gating_conditions(),
             lambda: self._check_promotion_gate(order),

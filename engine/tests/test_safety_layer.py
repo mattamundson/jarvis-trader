@@ -70,6 +70,50 @@ class TestKillSwitch:
             assert result.approved is False
 
 
+class TestDoNotTradeSymbols:
+    """Halted-symbol hard block — DO_NOT_TRADE_SYMBOLS (T0-01)."""
+
+    def test_halted_symbols_blocked(self, mock_safety_layer):
+        """Every halted symbol (MCL, MNQ) is rejected before any other check runs."""
+        # Arrange
+        safety = mock_safety_layer
+
+        # Act & Assert
+        for symbol in ("MCL", "MNQ"):
+            order = OrderRequest(
+                symbol=symbol,
+                quantity=1,
+                order_type="market",
+                estimated_value=1000.0,
+            )
+            result = safety.check_order(order, 100_000.0)
+            assert result.approved is False
+            assert (
+                result.rejection_reason
+                == f"DO_NOT_TRADE_SYMBOLS: {symbol} is halted, no orders permitted"
+            )
+
+    def test_active_symbol_not_blocked_by_halt_gate(self, mock_safety_layer, mock_settings):
+        """An active symbol (MES) is unaffected by the halted-symbol gate."""
+        # Arrange
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        safety = SafetyLayer(mock_settings)
+
+        order = OrderRequest(
+            symbol="MES",
+            quantity=1,
+            order_type="market",
+            estimated_value=1000.0,
+        )
+
+        # Act
+        result = safety.check_order(order, 100_000.0)
+
+        # Assert
+        assert result.approved is True
+
+
 class TestLiveTrading:
     """Live trading gate."""
 
@@ -820,7 +864,12 @@ class TestOvernightContractLimit:
         assert result.approved is True
 
     def test_non_overnight_symbol_not_affected(self, mock_safety_layer, mock_settings):
-        """MCL is not in OVERNIGHT_SYMBOLS — no overnight check applied."""
+        """MGC is not in OVERNIGHT_SYMBOLS — no overnight check applied.
+
+        Was MCL until T0-01 (DO_NOT_TRADE_SYMBOLS wired into check_order) started
+        correctly rejecting it earlier in the check chain — MGC is the active,
+        non-halted, non-MES symbol this test actually needs.
+        """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
         mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
@@ -828,7 +877,7 @@ class TestOvernightContractLimit:
         safety = SafetyLayer(mock_settings)
 
         order = OrderRequest(
-            symbol="MCL",
+            symbol="MGC",
             quantity=2,
             order_type="market",
             is_futures=True,
@@ -982,15 +1031,13 @@ class TestFuturesMarginGate:
     @pytest.mark.parametrize(
         "symbol,quantity,equity,expected_approved,reason_substr",
         [
-            # Active watchlist roots — boundary cases at $10K equity, 30% cap.
-            # MCL margin $1100 → 11% on $10K → ALLOW
-            ("MCL", 1, 10_000.0, True, None),
-            # MCL × 3 = $3300 → 33% on $10K → REJECT
-            ("MCL", 3, 10_000.0, False, "Futures margin"),
-            # MNQ margin $1780 → 17.8% on $10K → ALLOW
-            ("MNQ", 1, 10_000.0, True, None),
-            # MNQ × 2 = $3560 → 35.6% on $10K → REJECT
-            ("MNQ", 2, 10_000.0, False, "Futures margin"),
+            # Active, non-halted watchlist roots only — boundary cases at $10K
+            # equity, 30% cap. MCL/MNQ margin-boundary cases were removed here
+            # after T0-01 (DO_NOT_TRADE_SYMBOLS wired into check_order): both
+            # are permanently halted, so they now correctly get rejected by the
+            # halt gate before ever reaching this margin check — that rejection
+            # is covered by TestDoNotTradeSymbols::test_halted_symbols_blocked,
+            # not by margin math that's no longer reachable for either symbol.
             # MGC margin $1400 → 14% on $10K → ALLOW
             ("MGC", 1, 10_000.0, True, None),
             # MGC × 3 = $4200 → 42% on $10K → REJECT
@@ -1000,7 +1047,7 @@ class TestFuturesMarginGate:
     def test_active_watchlist_margin_boundaries(
         self, mock_settings, symbol, quantity, equity, expected_approved, reason_substr
     ):
-        """Boundary coverage for the four active futures roots (MES tested above)."""
+        """Boundary coverage for the currently-active futures roots (MES tested above)."""
         # Bypass MAX_CONTRACTS_PER_INSTRUMENT to isolate the margin gate
         mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
         safety = self._live_safety(mock_settings)
