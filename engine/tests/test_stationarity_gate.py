@@ -8,15 +8,29 @@ only worked in the second half of the sample. The fix is a mandatory
 first-half/second-half check: BOTH halves must be profitable (and each must hold
 enough trades to mean anything).
 
-Run:  cd engine && .venv/Scripts/python backtest/test_stationarity_gate.py
+Run:  cd engine && .venv/Scripts/python -m pytest tests/test_stationarity_gate.py -v
+
+Moved from `backtest/test_stationarity_gate.py` (found 2026-07-10): `pyproject.toml`'s
+`testpaths = ["tests"]` meant pytest never collected this file at its old location --
+a regression here would have gone silent. The manual `main()` runner below still works
+standalone via `python tests/test_stationarity_gate.py` for a quick smoke check.
 """
 
 from __future__ import annotations
 
 import math
 import sys
+from pathlib import Path
 
-sys.path.insert(0, ".")
+# Standalone-run support (found 2026-07-10: the git mv from backtest/ dropped
+# this without replacement, breaking "python tests/test_stationarity_gate.py"
+# with ModuleNotFoundError -- pytest-collected runs were unaffected since
+# conftest.py/rootdir already make `backtest` importable that way). Anchored
+# to this file's own path rather than cwd, unlike the old `sys.path.insert(0,
+# ".")`, so it works regardless of the caller's working directory.
+_engine_root = Path(__file__).resolve().parent.parent
+if str(_engine_root) not in sys.path:
+    sys.path.insert(0, str(_engine_root))
 
 from backtest.stationarity_gate import h1_h2_split
 
