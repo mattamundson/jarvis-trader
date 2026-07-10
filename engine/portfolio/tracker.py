@@ -242,10 +242,12 @@ class PortfolioTracker:
             (``services.paper_stop_monitor.synthesize_fallback_stop``) should
             always pass it.
         stop_source : str, optional
-            Provenance marker for ``stop_loss`` (e.g. ``"synthesized_fallback"``).
-            Callers passing a synthesized stop (no real decision-time stop was
-            in scope) should set this so an audit can distinguish a backstop
-            stop from a strategy-derived one; omit for a real decision-time stop.
+            Provenance marker for ``stop_loss`` (e.g. ``"synthesized_fallback"``,
+            ``"ib_resting_order"``). Callers passing a stop that did not come
+            from the pipeline's own decision (a synthesized backstop, or one
+            discovered on broker-position reconcile) should set this so an
+            audit can distinguish it from a strategy-derived stop; omit for a
+            real decision-time stop.
         candidate_id : str, optional
             Forward-test registry candidate that fired this entry. When supplied,
             the candidate id is stamped into ``strategy_params`` so the

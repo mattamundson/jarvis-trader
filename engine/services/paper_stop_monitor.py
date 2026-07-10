@@ -198,17 +198,25 @@ def _interval_from_env(default: int = 60) -> int:
         return default
 
 
-def max_loss_usd_from_env(default: float = 750.0) -> float:
+def max_loss_usd_from_env(default: float = 300.0) -> float:
     """Hard per-trade catastrophe cap in USD (live unrealized loss).
 
     The breach path above only protects trades that *recorded* a stop_loss; a
-    row with stop_loss NULL/0 is skipped entirely. That gap let two positions
+    row with stop_loss NULL/0 is skipped entirely. That gap let three positions
     bleed out unmanaged: MGC #178 (2026-06-01, -$1,284, null-stop skip + dark
-    feed) and the 2026-06-18 MES short (-$5,440, no stop, ran 1,088 pts to a
-    session-flatten). This cap closes it — ANY open position whose live
-    unrealized loss exceeds the cap is force-closed, stop or not. It is a
-    last-resort catastrophe brake, sized well above normal trade losses (the
-    fleet's typical loser is ~-$50), not a substitute for per-trade stops.
+    feed), the 2026-06-18 MES short (-$5,440, no stop, ran 1,088 pts to a
+    session-flatten), and MGC #287 (2026-07-07, -$1,236, naked row + delayed
+    feed). This cap closes it — ANY open position whose live unrealized loss
+    exceeds the cap is force-closed, stop or not. It is a last-resort
+    catastrophe brake, not a substitute for per-trade stops.
+
+    Default lowered 750 -> 300 (2026-07-08): on a $10K paper account the old
+    $750 (7.5% on one trade) let #287 ride to -$1,236 before it would even
+    engage. $300 sits comfortably above the worst *legitimate* stop loss
+    observed (~-$133; position sizing bounds per-trade risk to ~$100-200), so
+    it never preempts a valid stop, while capping a single-trade disaster
+    ~2.5x tighter. Still a backstop, not the primary path. Tunable via
+    PAPER_MAX_LOSS_USD_PER_TRADE.
 
     Read live from env each sweep (matches PAPER_STOP_MONITOR_* convention).
     Set PAPER_MAX_LOSS_USD_PER_TRADE=0 to disable the backstop entirely.
