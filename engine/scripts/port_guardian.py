@@ -64,14 +64,25 @@ PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring fa
 # Readiness gate (P0.1): the guardian launches uvicorn IN-PROCESS and blocks, so PM2
 # only ever sees the guardian PID. If uvicorn never binds / never serves /health, PM2
 # still reports "online" while nothing answers. A background watchdog polls /health up
-# to READINESS_DEADLINE (covers the ~229s steady-state startup with margin) and forces a
-# non-zero exit if the server never comes up — so PM2 actually restarts a dead engine.
-# Seconds to wait for /health to serve before declaring the start dead. Steady-state
-# boot is ~229s; 360s leaves margin. Under heavy machine contention boot can exceed
-# 360s (4 health-timeout restarts on 2026-07-06) — env-tunable so the ceiling can be
-# raised for contention headroom without a code change (the P0.5 health-latency fix
-# addresses the root cause; this is the operator knob).
-READINESS_DEADLINE = int(os.getenv("PORT_GUARDIAN_READINESS_DEADLINE", "360"))
+# to READINESS_DEADLINE and forces a non-zero exit if the server never comes up — so
+# PM2 actually restarts a dead engine.
+#
+# Adaptive deadline (P0.7, 2026-07-09): a fixed deadline is either too tight (kills a
+# slow-but-healthy boot under contention, e.g. 4 health-timeout restarts on 2026-07-06)
+# or too loose (leaves a genuinely dead server "starting" for minutes on a fast box).
+# Every confirmed-healthy boot appends its elapsed time to BOOT_TIME_LOG; once at least
+# READINESS_DEADLINE_MIN_SAMPLES real boots are on record, the deadline is computed as
+# p95(recorded boot times) * READINESS_DEADLINE_MULTIPLIER (floored at
+# READINESS_DEADLINE_FLOOR so one lucky-fast boot can't produce a too-tight deadline).
+# Until enough history accumulates — or if the history file is missing/corrupt — falls
+# back to READINESS_DEADLINE_DEFAULT (the prior fixed value, steady-state boot is
+# ~229s; 360s leaves margin). PORT_GUARDIAN_READINESS_DEADLINE remains an explicit
+# operator override that always wins over the computed value, for manual control
+# without a code change.
+READINESS_DEADLINE_DEFAULT = 360.0
+READINESS_DEADLINE_FLOOR = 120.0
+READINESS_DEADLINE_MIN_SAMPLES = 5
+READINESS_DEADLINE_MULTIPLIER = 1.5
 READINESS_POLL = 5            # seconds between readiness probes
 # Probe timeout for a single /health poll. /health can momentarily spike to 5-12s
 # under machine contention (blocking SQLite reads on the async loop while the box
@@ -85,6 +96,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ENGINE_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = ENGINE_DIR.parent
 RESTART_LOG = ENGINE_DIR / "logs" / "port_guardian_restarts.jsonl"  # structured restart-reason trail
+BOOT_TIME_LOG = ENGINE_DIR / "logs" / "port_guardian_boot_times.jsonl"  # observed boot-time history (P0.7)
 
 
 def _record_restart_event(reason: str, details: dict, log_path: Path) -> None:
@@ -105,6 +117,99 @@ def _record_restart_event(reason: str, details: dict, log_path: Path) -> None:
         pass
 
 
+def _record_boot_duration(duration_s: float, log_path: Path = BOOT_TIME_LOG) -> None:
+    """Append one observed boot duration (watchdog start -> /health confirmed) so a
+    future start can size READINESS_DEADLINE off real behavior instead of a fixed
+    guess (P0.7). Never raises — logging must not break the guardian."""
+    record = {"ts": datetime.now(timezone.utc).isoformat(), "duration_s": round(duration_s, 1)}
+    try:
+        path = Path(log_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
+
+
+def _load_boot_durations(log_path: Path = BOOT_TIME_LOG, max_records: int = 200) -> list[float]:
+    """Read the most recent ``max_records`` recorded boot durations. A missing file
+    returns []; corrupt/malformed lines are skipped rather than raising, so a bad
+    entry can never break the guardian's startup."""
+    try:
+        path = Path(log_path)
+        if not path.exists():
+            return []
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    durations: list[float] = []
+    for line in lines[-max_records:]:
+        try:
+            rec = json.loads(line)
+            durations.append(float(rec["duration_s"]))
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            continue
+    return durations
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    """Nearest-rank-interpolated percentile, ``pct`` in [0, 100]. No numpy dependency
+    (this module has none). Raises ValueError on an empty list — callers must gate on
+    sample count first (see READINESS_DEADLINE_MIN_SAMPLES)."""
+    if not values:
+        raise ValueError("_percentile requires at least one value")
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (pct / 100.0) * (len(ordered) - 1)
+    lo = int(rank)
+    hi = min(lo + 1, len(ordered) - 1)
+    frac = rank - lo
+    return ordered[lo] + (ordered[hi] - ordered[lo]) * frac
+
+
+def _compute_adaptive_deadline(
+    durations: list[float],
+    *,
+    min_samples: int = READINESS_DEADLINE_MIN_SAMPLES,
+    multiplier: float = READINESS_DEADLINE_MULTIPLIER,
+    floor_s: float = READINESS_DEADLINE_FLOOR,
+    fallback_s: float = READINESS_DEADLINE_DEFAULT,
+) -> float:
+    """p95(``durations``) * ``multiplier``, floored at ``floor_s`` -- but only once at
+    least ``min_samples`` real boots are on record. Below that, returns ``fallback_s``
+    (the historical fixed deadline) so a fresh/near-empty history file can never
+    produce a wild, single-sample-derived deadline."""
+    if len(durations) < min_samples:
+        return fallback_s
+    p95 = _percentile(durations, 95)
+    return max(p95 * multiplier, floor_s)
+
+
+def _resolve_readiness_deadline(
+    env_override: str | None,
+    boot_log_path: Path = BOOT_TIME_LOG,
+) -> float:
+    """Resolve the effective READINESS_DEADLINE: an explicit
+    ``PORT_GUARDIAN_READINESS_DEADLINE`` env value always wins (operator escape valve,
+    matches the other env-tunable knobs in this file). Otherwise adapt off recorded
+    boot-time history via ``_compute_adaptive_deadline``, which itself falls back to
+    the fixed default until enough history exists."""
+    if env_override is not None:
+        try:
+            return float(env_override)
+        except ValueError:
+            pass
+    durations = _load_boot_durations(boot_log_path)
+    return _compute_adaptive_deadline(durations)
+
+
+# Resolved once at import time (mirrors the other env-tunable knobs above). See the
+# "Adaptive deadline (P0.7...)" comment near READINESS_DEADLINE_DEFAULT for the
+# override-vs-adaptive precedence.
+READINESS_DEADLINE = _resolve_readiness_deadline(os.getenv("PORT_GUARDIAN_READINESS_DEADLINE"))
+
+
 def _readiness_watchdog(
     deadline_s: float,
     poll_interval_s: float,
@@ -121,6 +226,31 @@ def _readiness_watchdog(
             return True
         sleep_fn(poll_interval_s)
     return False
+
+
+def _confirm_readiness_and_record_boot(
+    deadline_s: float,
+    poll_interval_s: float,
+    is_ready_fn,
+    *,
+    now_fn=time.monotonic,
+    sleep_fn=time.sleep,
+    record_fn=_record_boot_duration,
+) -> tuple[bool, float]:
+    """Wrap ``_readiness_watchdog`` with elapsed-time tracking: on a successful
+    readiness confirmation, hand the elapsed seconds to ``record_fn`` so this boot
+    feeds the adaptive-deadline history for future starts (P0.7). A failed/timed-out
+    boot is NOT recorded — it says nothing about how long a healthy boot takes, and
+    folding it in would drag the adaptive deadline toward the very ceiling that just
+    failed. Returns ``(ready, elapsed_s)``."""
+    start = now_fn()
+    ready = _readiness_watchdog(
+        deadline_s, poll_interval_s, is_ready_fn, now_fn=now_fn, sleep_fn=sleep_fn
+    )
+    elapsed = now_fn() - start
+    if ready:
+        record_fn(elapsed)
+    return ready, elapsed
 
 
 def _port_holders(port: int) -> list[int]:
@@ -283,11 +413,14 @@ def _start_readiness_watchdog() -> None:
     so PM2 restarts the engine instead of leaving a dead server reported as 'online'."""
 
     def _watch() -> None:
-        ready = _readiness_watchdog(
+        ready, elapsed = _confirm_readiness_and_record_boot(
             READINESS_DEADLINE, READINESS_POLL, lambda: _is_healthy(PORT)
         )
         if ready:
-            print("[port_guardian] readiness confirmed — /health is serving", flush=True)
+            print(
+                f"[port_guardian] readiness confirmed — /health is serving ({elapsed:.1f}s)",
+                flush=True,
+            )
             return
         # Diagnostic: distinguish "uvicorn bound the port but /health never answered
         # in time" (slow/hung request path — port_bound=True) from "uvicorn never
