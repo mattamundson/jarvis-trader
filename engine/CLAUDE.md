@@ -21,7 +21,7 @@
 
 - `LIVE_TRADING_ENABLED = False` — paper mode only until Phase 3
 - `REQUIRE_HUMAN_APPROVAL = True` — all order confirmations
-- Kill switch: -2% daily loss, -20% drawdown (runtime via `engine/.env`; `config.py` code default is -10%) — do not modify without Tier 3 approval
+- Kill switch: -8% daily loss, -20% drawdown (runtime via `engine/.env`; `config.py` code default is -10%) — do not modify without Tier 3 approval
 - Safety layer is **pure Python logic** — never route safety decisions through LLM
 
 ## Python Conventions
