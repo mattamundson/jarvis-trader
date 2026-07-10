@@ -335,6 +335,8 @@ async def pre_filter_signal(
     try:
         from backtest.signals import INSTRUMENT_PARAMS, generate_instrument_signals
         from config import settings as _cfg
+        from data.bar_quality_gate import check_freshness, freshness_gate_enabled
+        from risk.entry_price_sanity import latest_bar_age_seconds
         from routers.pipeline_router import record_signal_debug
 
         _tech_agent = agents.get("technical")
@@ -347,6 +349,36 @@ async def pre_filter_signal(
         )
         if _df is None or _df.empty or len(_df) < 20:
             return None
+
+        # ── Check 0: Bar freshness (interval-scaled, read-time kill-gate) ──
+        # Extends the write-time engine/data/bar_quality_gate.py screen (which
+        # keeps malformed rows out of storage) to a READ-time check here at
+        # decision time: a feed that has gone quietly stale still returns
+        # well-formed historical rows, so the write-time screen never fires.
+        # Fail-safe: only ever forces HOLD, never permits a trade it wouldn't
+        # otherwise reach.
+        if freshness_gate_enabled():
+            _bar_age = latest_bar_age_seconds(_df)
+            _freshness = check_freshness(_bar_age, timeframe)
+            if _freshness.is_stale:
+                logger.warning(
+                    "[pre_filter_signal] %s SKIP — %s", symbol, _freshness.reason
+                )
+                record_signal_debug(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "symbol": symbol,
+                        "stage_blocked": "pre_filter",
+                        "reason": f"stale data: {_freshness.reason}",
+                    }
+                )
+                return _make_hold_result(
+                    symbol,
+                    is_futures,
+                    f"stale data: {_freshness.reason}",
+                    bar_age_seconds=_freshness.age_seconds,
+                    bar_freshness_threshold_seconds=_freshness.threshold_seconds,
+                )
 
         _sig_df = generate_instrument_signals(_df.copy(), symbol)
         if "stc_val" not in _sig_df.columns:
