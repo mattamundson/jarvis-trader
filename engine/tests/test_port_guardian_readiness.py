@@ -1,12 +1,16 @@
 """
-Tests for the port_guardian readiness gate (P0.1) and exit-path observability
-(T2-16, 2026-07-09).
+Tests for the port_guardian readiness gate (P0.1), exit-path observability
+(T2-16, 2026-07-09), and adaptive readiness deadline (P0.7, 2026-07-09).
 
 The guardian launches uvicorn in-process and blocks, so pm2 only ever sees the
 guardian PID alive — if uvicorn hangs in startup or never binds 8010, pm2 still
-reports the app "online" while nothing serves. These cover the two new units that
-close that gap: a readiness watchdog that detects a server that never comes up, and
-a structured restart-event recorder so a restart's cause is no longer invisible.
+reports the app "online" while nothing serves. These cover the units that close
+that gap: a readiness watchdog that detects a server that never comes up, a
+structured restart-event recorder so a restart's cause is no longer invisible,
+and (P0.7) an adaptive READINESS_DEADLINE that sizes itself off p95 of recorded
+boot durations instead of a fixed 360s, so a genuinely slow-but-healthy box
+under contention isn't killed by too tight a fixed ceiling, and a fast box
+isn't left "starting" for minutes longer than it needs.
 
 T2-16 audit finding: the guardian had a confirmed 28-minute episode where uvicorn
 accepted TCP connections but never answered a single HTTP request, then exited with
@@ -123,6 +127,167 @@ class TestRestartEventRecord:
         assert rec["details"]["port_bound"] is True
         assert rec["details"]["holder_pids"] == [4242]
         assert rec["details"]["probe_timeout_s"] == port_guardian.READINESS_PROBE_TIMEOUT
+
+
+class TestBootDurationRecording:
+    def test_record_and_load_round_trip(self, tmp_path):
+        log = tmp_path / "boot_times.jsonl"
+        port_guardian._record_boot_duration(42.3, log)
+        port_guardian._record_boot_duration(58.9, log)
+
+        durations = port_guardian._load_boot_durations(log)
+
+        assert durations == [42.3, 58.9]
+
+    def test_load_missing_file_returns_empty(self, tmp_path):
+        assert port_guardian._load_boot_durations(tmp_path / "nope.jsonl") == []
+
+    def test_load_skips_malformed_lines_without_raising(self, tmp_path):
+        log = tmp_path / "boot_times.jsonl"
+        log.write_text(
+            '{"ts": "x", "duration_s": 12.0}\n'
+            "not json at all\n"
+            '{"ts": "x"}\n'  # missing duration_s
+            '{"ts": "x", "duration_s": 30.5}\n',
+            encoding="utf-8",
+        )
+
+        assert port_guardian._load_boot_durations(log) == [12.0, 30.5]
+
+    def test_load_respects_max_records_keeping_most_recent(self, tmp_path):
+        log = tmp_path / "boot_times.jsonl"
+        for i in range(10):
+            port_guardian._record_boot_duration(float(i), log)
+
+        durations = port_guardian._load_boot_durations(log, max_records=3)
+
+        assert durations == [7.0, 8.0, 9.0]
+
+
+class TestPercentile:
+    def test_p95_of_evenly_spaced_values(self):
+        values = [float(i) for i in range(1, 101)]  # 1..100
+        assert port_guardian._percentile(values, 95) == pytest.approx(95.05, abs=0.5)
+
+    def test_single_value_returns_itself(self):
+        assert port_guardian._percentile([42.0], 95) == 42.0
+
+    def test_empty_raises(self):
+        with pytest.raises(ValueError):
+            port_guardian._percentile([], 95)
+
+
+class TestComputeAdaptiveDeadline:
+    def test_returns_fallback_when_insufficient_samples(self):
+        durations = [100.0, 110.0]  # below default min_samples=5
+        deadline = port_guardian._compute_adaptive_deadline(durations)
+        assert deadline == port_guardian.READINESS_DEADLINE_DEFAULT
+
+    def test_computes_p95_times_multiplier_once_enough_samples(self):
+        # 10 identical 100s boots -> p95 == 100 -> deadline == 100 * 1.5 == 150
+        durations = [100.0] * 10
+        deadline = port_guardian._compute_adaptive_deadline(durations)
+        assert deadline == pytest.approx(150.0)
+
+    def test_floors_a_pathologically_low_computed_deadline(self):
+        # Very fast boots (5s each) would compute 5 * 1.5 == 7.5s, which is far
+        # below any sane readiness window -- the floor must win.
+        durations = [5.0] * 10
+        deadline = port_guardian._compute_adaptive_deadline(durations)
+        assert deadline == port_guardian.READINESS_DEADLINE_FLOOR
+
+    def test_slow_boot_history_raises_deadline_above_fixed_default(self):
+        # Sustained 300s boots under contention -> p95*1.5 == 450s, above the old
+        # fixed 360s default -- this is the exact regression the story targets:
+        # a fixed 360s deadline would keep killing a healthy-but-slow boot.
+        durations = [300.0] * 20
+        deadline = port_guardian._compute_adaptive_deadline(durations)
+        assert deadline == pytest.approx(450.0)
+        assert deadline > port_guardian.READINESS_DEADLINE_DEFAULT
+
+    def test_custom_min_samples_and_multiplier_are_honored(self):
+        durations = [200.0, 200.0]
+        deadline = port_guardian._compute_adaptive_deadline(
+            durations, min_samples=2, multiplier=2.0, floor_s=0.0, fallback_s=999.0
+        )
+        assert deadline == pytest.approx(400.0)
+
+
+class TestResolveReadinessDeadline:
+    def test_env_override_always_wins_over_history(self, tmp_path):
+        log = tmp_path / "boot_times.jsonl"
+        for _ in range(10):
+            port_guardian._record_boot_duration(300.0, log)  # would compute 450 adaptively
+
+        deadline = port_guardian._resolve_readiness_deadline("42", boot_log_path=log)
+
+        assert deadline == 42.0
+
+    def test_invalid_env_override_falls_through_to_adaptive(self, tmp_path):
+        log = tmp_path / "boot_times.jsonl"
+        for _ in range(10):
+            port_guardian._record_boot_duration(300.0, log)
+
+        deadline = port_guardian._resolve_readiness_deadline("not-a-number", boot_log_path=log)
+
+        assert deadline == pytest.approx(450.0)
+
+    def test_no_override_and_no_history_returns_fixed_default(self, tmp_path):
+        log = tmp_path / "nope.jsonl"
+
+        deadline = port_guardian._resolve_readiness_deadline(None, boot_log_path=log)
+
+        assert deadline == port_guardian.READINESS_DEADLINE_DEFAULT
+
+    def test_no_override_with_history_adapts(self, tmp_path):
+        log = tmp_path / "boot_times.jsonl"
+        for _ in range(10):
+            port_guardian._record_boot_duration(120.0, log)
+
+        deadline = port_guardian._resolve_readiness_deadline(None, boot_log_path=log)
+
+        assert deadline == pytest.approx(180.0)
+
+
+class TestConfirmReadinessAndRecordBoot:
+    def test_records_boot_duration_on_success(self):
+        calls = {"n": 0}
+
+        def is_ready():
+            calls["n"] += 1
+            return calls["n"] >= 3
+
+        clock = {"t": 0.0}
+        recorded = []
+
+        ready, elapsed = port_guardian._confirm_readiness_and_record_boot(
+            deadline_s=600,
+            poll_interval_s=5,
+            is_ready_fn=is_ready,
+            now_fn=lambda: clock["t"],
+            sleep_fn=lambda s: clock.__setitem__("t", clock["t"] + s),
+            record_fn=lambda duration: recorded.append(duration),
+        )
+
+        assert ready is True
+        assert elapsed == pytest.approx(10.0)  # 2 sleeps of 5s before the 3rd (ready) probe
+        assert recorded == [pytest.approx(10.0)]
+
+    def test_does_not_record_on_timeout(self):
+        clock = {"t": 0.0}
+        recorded = []
+
+        ready, elapsed = port_guardian._confirm_readiness_and_record_boot(
+            deadline_s=20,
+            poll_interval_s=5,
+            is_ready_fn=lambda: False,
+            now_fn=lambda: clock["t"],
+            sleep_fn=lambda s: clock.__setitem__("t", clock["t"] + s),
+            record_fn=lambda duration: recorded.append(duration),
+        )
+
+        assert ready is False
+        assert recorded == []
 
 
 class TestPortHoldersTimeout:
