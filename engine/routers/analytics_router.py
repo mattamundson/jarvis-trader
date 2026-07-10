@@ -1229,6 +1229,280 @@ async def get_calibration_diagnostics() -> CalibrationDiagnosticsResponse:
     )
 
 
+# ─── Per-agent debate weights (AgentFeedbackTracker, distinct from Brier/IC) ──
+
+
+class AgentWeightEntry(BaseModel):
+    """Per-agent P&L-correlation debate weight."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    live_weight: float  # What debate.py actually applies right now (see weights_source)
+    recomputed_weight: float  # Fresh all-regime AgentFeedbackTracker.get_agent_weights() —
+    # a diagnostic view, NOT necessarily what's applied live (see weights_source)
+    accuracy_30d: float  # Directional accuracy over trailing 30 days
+    accuracy_90d: float  # Directional accuracy over trailing 90 days
+    sample_count_30d: int  # Signal-emitting trade_outcomes rows in the 30d window
+    ready: bool  # True once sample_count_30d >= min_trades_threshold
+
+
+class AgentWeightsResponse(BaseModel):
+    """Full per-agent debate-weight snapshot.
+
+    Distinct from /analytics/calibration, which tracks Brier/IC scores for a
+    separate calibration blend.
+
+    debate.py's run_debate() (engine/agents/debate.py:485-491) picks the
+    weight source based on whether a regime is known: get_weights_by_regime
+    (regime) when it is, load_weights() (reads agent_weights.json) when it
+    isn't. It never calls get_agent_weights() directly for the live
+    multiplier. live_weight mirrors whichever of those two functions
+    debate.py would actually use for the given `regime` query param, so the
+    dashboard shows the real applied number instead of a plausible-looking
+    but different one.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    min_weight: float
+    max_weight: float
+    default_weight: float
+    min_trades_threshold: int
+    agents: list[str]
+    per_agent: dict[str, AgentWeightEntry]
+    regime: Optional[str]  # regime this response reflects, if one was passed
+    weights_source: str  # which AgentFeedbackTracker function produced live_weight
+    weights_file_exists: bool  # agent_weights.json — if False, load_weights() (the
+    # no-regime live path) always returns DEFAULT_WEIGHT for every agent, because
+    # nothing in the codebase currently calls AgentFeedbackTracker.save_weights()
+    saved_weights_updated_at: Optional[str]
+    timestamp: str
+
+
+@router.get(
+    "/agent-weights",
+    response_model=AgentWeightsResponse,
+    description=(
+        "Expose per-agent P&L-correlation debate weights from AgentFeedbackTracker "
+        "(0.70-1.30 multiplier applied to Stage-1 analyst signals in debate.py). "
+        "live_weight matches whichever function debate.py actually calls for the "
+        "given regime (or no regime); recomputed_weight is a separate, freshly "
+        "computed all-regime diagnostic that may differ from what's live."
+    ),
+)
+async def get_agent_weights_diagnostics(
+    regime: Optional[str] = Query(
+        None,
+        description=(
+            "If provided, live_weight uses get_weights_by_regime(regime) — matches "
+            "debate.py's regime-conditional path. Omit to use load_weights() — "
+            "matches debate.py's no-regime path (reads agent_weights.json, which "
+            "is always DEFAULT_WEIGHT if nothing has called save_weights())."
+        ),
+    ),
+) -> AgentWeightsResponse:
+    """Return current AgentFeedbackTracker debate weights + supporting accuracy stats.
+
+    Degrades gracefully when trade_outcomes is missing/empty — never 500s on cold start.
+    """
+    import json as _json
+    import sqlite3 as _sqlite3
+
+    try:
+        from analytics.agent_feedback import (
+            AGENT_NAMES,
+            DEFAULT_WEIGHT,
+            MAX_WEIGHT,
+            MIN_WEIGHT,
+            WEIGHTS_FILE,
+            AgentFeedbackTracker,
+        )
+        from analytics.agent_feedback import (
+            DB_PATH as FB_DB_PATH,
+        )
+    except Exception as exc:
+        logger.error("[AgentWeights] import failed: %s", exc)
+        raise HTTPException(status_code=503, detail=f"agent-weights deps unavailable: {exc}") from exc
+
+    min_trades = 5  # matches AgentFeedbackTracker._compute_accuracy_internal floor
+    tracker = AgentFeedbackTracker()
+
+    try:
+        if regime:
+            live_weights = tracker.get_weights_by_regime(regime)
+            weights_source = f"get_weights_by_regime({regime!r}) — debate.py's live regime path"
+        else:
+            live_weights = tracker.load_weights()
+            weights_source = "load_weights() — debate.py's live no-regime path (reads agent_weights.json)"
+    except Exception as exc:
+        logger.warning("[AgentWeights] live weight compute failed: %s", exc)
+        live_weights = dict.fromkeys(AGENT_NAMES, DEFAULT_WEIGHT)
+        weights_source = f"fallback defaults after error: {exc}"
+
+    try:
+        recomputed_weights = tracker.get_agent_weights()
+    except Exception as exc:
+        logger.warning("[AgentWeights] recomputed-weight compute failed: %s", exc)
+        recomputed_weights = dict.fromkeys(AGENT_NAMES, DEFAULT_WEIGHT)
+
+    accuracy_30d: dict[str, float] = {}
+    accuracy_90d: dict[str, float] = {}
+    sample_counts_30d: dict[str, int] = dict.fromkeys(AGENT_NAMES, 0)
+
+    for a in AGENT_NAMES:
+        try:
+            accuracy_30d[a] = tracker.compute_accuracy(a, 30)
+            accuracy_90d[a] = tracker.compute_accuracy(a, 90)
+        except Exception as exc:
+            logger.warning("[AgentWeights] accuracy compute failed for %s: %s", a, exc)
+            accuracy_30d[a] = 0.5
+            accuracy_90d[a] = 0.5
+
+    try:
+        if FB_DB_PATH.exists():
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            with _sqlite3.connect(str(FB_DB_PATH)) as conn:
+                for a in AGENT_NAMES:
+                    sig_col = f"{a}_signal"
+                    try:
+                        n = (
+                            conn.execute(
+                                f"SELECT COUNT(*) FROM trade_outcomes "
+                                f"WHERE timestamp > ? AND {sig_col} != 0",
+                                (cutoff,),
+                            ).fetchone()[0]
+                            or 0
+                        )
+                        sample_counts_30d[a] = int(n)
+                    except _sqlite3.DatabaseError:
+                        pass
+    except Exception as exc:
+        logger.warning("[AgentWeights] sample-count query failed: %s", exc)
+
+    per_agent: dict[str, AgentWeightEntry] = {}
+    for a in AGENT_NAMES:
+        per_agent[a] = AgentWeightEntry(
+            live_weight=live_weights.get(a, DEFAULT_WEIGHT),
+            recomputed_weight=recomputed_weights.get(a, DEFAULT_WEIGHT),
+            accuracy_30d=round(float(accuracy_30d[a]), 4),
+            accuracy_90d=round(float(accuracy_90d[a]), 4),
+            sample_count_30d=sample_counts_30d[a],
+            ready=sample_counts_30d[a] >= min_trades,
+        )
+
+    weights_file_exists = WEIGHTS_FILE.exists()
+    saved_updated_at: Optional[str] = None
+    try:
+        if weights_file_exists:
+            with open(WEIGHTS_FILE) as f:
+                saved_updated_at = _json.load(f).get("updated_at")
+    except Exception as exc:
+        logger.debug("[AgentWeights] saved-weights read skipped: %s", exc)
+
+    return AgentWeightsResponse(
+        min_weight=float(MIN_WEIGHT),
+        max_weight=float(MAX_WEIGHT),
+        default_weight=float(DEFAULT_WEIGHT),
+        min_trades_threshold=min_trades,
+        agents=list(AGENT_NAMES),
+        per_agent=per_agent,
+        regime=regime,
+        weights_source=weights_source,
+        weights_file_exists=weights_file_exists,
+        saved_weights_updated_at=saved_updated_at,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+# ─── Trade post-mortems (agents/post_mortem.py) ──────────────────────────────
+
+
+class PostMortemEntry(BaseModel):
+    """A single stored post-trade LLM analysis."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    trade_id: str
+    symbol: Optional[str]
+    pnl: Optional[float]
+    analysis: Optional[str]
+    lesson: Optional[str]
+    created_at: Optional[str]
+
+
+class PostMortemsResponse(BaseModel):
+    """Recent trade post-mortems, most recent first."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    entries: list[PostMortemEntry]
+    total: int
+    timestamp: str
+
+
+@router.get(
+    "/post-mortems",
+    response_model=PostMortemsResponse,
+    description=(
+        "Recent trade_post_mortem rows written by agents/post_mortem.py's "
+        "PostTradeAnalyzer. Returns an empty list (not an error) if the table "
+        "doesn't exist yet — no post-mortem has ever been generated."
+    ),
+)
+async def get_post_mortems(
+    limit: int = Query(20, ge=1, le=200),
+    symbol: Optional[str] = None,
+) -> PostMortemsResponse:
+    """Return recent post-mortems, gracefully handling a not-yet-created table."""
+    import sqlite3 as _sqlite3
+
+    db = _get_db()
+    where_clause = " WHERE symbol = ?" if symbol else ""
+    filter_params: list = [symbol] if symbol else []
+
+    query = (
+        "SELECT trade_id, symbol, pnl, analysis, lesson, created_at FROM trade_post_mortem"
+        + where_clause
+        + " ORDER BY created_at DESC LIMIT ?"
+    )
+    params = [*filter_params, limit]
+
+    try:
+        conn = db._connect()
+        try:
+            rows = conn.execute(query, tuple(params)).fetchall()
+            total = conn.execute(
+                "SELECT COUNT(*) FROM trade_post_mortem" + where_clause,
+                tuple(filter_params),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+    except _sqlite3.OperationalError as exc:
+        logger.info("[PostMortems] table not yet created (%s) — returning empty", exc)
+        return PostMortemsResponse(entries=[], total=0, timestamp=datetime.now(timezone.utc).isoformat())
+    except Exception as exc:
+        logger.error("[PostMortems] query failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"post-mortem query failed: {exc}") from exc
+
+    entries = [
+        PostMortemEntry(
+            trade_id=row["trade_id"],
+            symbol=row["symbol"],
+            pnl=row["pnl"],
+            analysis=row["analysis"],
+            lesson=row["lesson"],
+            created_at=row["created_at"],
+        )
+        for row in rows
+    ]
+
+    return PostMortemsResponse(
+        entries=entries,
+        total=int(total or 0),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
 @router.get("/mtf")
 async def get_mtf_analysis(symbol: str = "MES"):
     """Multi-timeframe STC analysis for a single symbol.
@@ -1323,6 +1597,12 @@ async def get_regime_overview():
 async def get_regime_for_symbol(symbol: str):
     """Per-symbol regime classification (TRENDING / RANGING / VOLATILE).
 
+    NOTE: despite the docstring below, this is backtest.regime.RegimeClassifier
+    (3-state), NOT the classifier engine/agents/pipeline.py actually uses live
+    for regime-based strategy routing (that's RegimeClassifierV2, 5-state --
+    see GET /analytics/regime-v2/{symbol} below). Left as-is to avoid changing
+    behavior for any existing caller of this route.
+
     Same classifier the backtester uses; UNKNOWN when bar data is missing
     rather than a fabricated default.
     """
@@ -1340,6 +1620,161 @@ async def get_regime_for_symbol(symbol: str):
         return {"symbol": sym, "regime": regime, "current_regime": regime}
     except Exception as exc:
         return {"symbol": sym, "regime": "UNKNOWN", "error": str(exc)}
+
+
+class RegimeV2Response(BaseModel):
+    """Live regime classification from the same classifier the pipeline uses to route strategies."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    symbol: str
+    regime: str
+    description: Optional[str] = None
+    atr_norm: Optional[float] = None
+    ema_alignment: Optional[dict] = None
+    validated: bool
+    probability_vector: Optional[dict] = None
+    note: Optional[str] = None
+    timestamp: str
+
+
+@router.get(
+    "/regime-v2/{symbol}",
+    response_model=RegimeV2Response,
+    description=(
+        "Regime classification from backtest.regime_classifier.RegimeClassifierV2 -- "
+        "the classifier engine/agents/pipeline.py actually uses live for regime-based "
+        "strategy routing (5-state: TREND/MEANREV/RANGE/VOLATILE/CRISIS). Distinct from "
+        "the legacy /analytics/regime/{symbol} above, which is not in the live routing path. "
+        "Deterministic rule-based thresholds only -- probability_vector is always null "
+        "(the classifier doesn't produce one) and validated is always false (no "
+        "ground-truth accuracy score exists for this classifier yet)."
+    ),
+)
+async def get_regime_v2_for_symbol(symbol: str) -> RegimeV2Response:
+    """Return the live pipeline's regime classification for a symbol, on demand."""
+    sym = symbol.strip().upper()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    try:
+        from backtest.regime_classifier import RegimeClassifierV2
+
+        bars = None
+        if _data_mgr is not None:
+            bars = await _data_mgr.get_bars(sym, lookback_days=30, timeframe="1h")
+        if bars is None or len(bars) < 50:
+            return RegimeV2Response(
+                symbol=sym,
+                regime="UNKNOWN",
+                validated=False,
+                note="insufficient bar data (need >= 50 bars)",
+                timestamp=timestamp,
+            )
+        report = RegimeClassifierV2().classify_latest(bars)
+        return RegimeV2Response(
+            symbol=sym,
+            regime=str(report.get("regime", "UNKNOWN")),
+            description=report.get("description"),
+            atr_norm=report.get("atr_norm"),
+            ema_alignment=report.get("ema_alignment"),
+            validated=False,
+            probability_vector=None,
+            timestamp=timestamp,
+        )
+    except Exception as exc:
+        logger.error("[RegimeV2] classification failed for %s: %s", sym, exc)
+        return RegimeV2Response(
+            symbol=sym,
+            regime="UNKNOWN",
+            validated=False,
+            note=f"classification failed: {exc}",
+            timestamp=timestamp,
+        )
+
+
+# ─── Portfolio correlation preview (risk/portfolio_sizer.py, NOT live-wired) ─
+
+
+class CorrelationPreviewResponse(BaseModel):
+    """Live pairwise return-correlation estimate across the watched instruments.
+
+    risk/portfolio_sizer.py + risk/correlation_estimator.py are validated, pure
+    functions that compute what a correlation-aware sizing trim WOULD be -- but
+    per portfolio_sizer.py's own module docstring, they are "intentionally kept
+    separate (and Amo-gated) so this module stays inert until a backtest
+    validates the behaviour change." No live order has ever been trimmed for
+    correlation. wired_into_live_sizing is hardcoded false so the dashboard can
+    never accidentally imply otherwise.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    symbols: list[str]
+    pairs: dict[str, float]
+    omitted_pairs: list[str]
+    wired_into_live_sizing: bool
+    note: str
+    timestamp: str
+
+
+@router.get(
+    "/correlation-preview",
+    response_model=CorrelationPreviewResponse,
+    description=(
+        "Live pairwise correlation estimate (risk/correlation_estimator.py) across "
+        "the watched futures instruments, for display only. The correlation-aware "
+        "sizing trim this would feed (risk/portfolio_sizer.py) is NOT wired into "
+        "the live order path -- wired_into_live_sizing is always false."
+    ),
+)
+async def get_correlation_preview(
+    symbols: str = Query("MES,MGC,MCL,MNQ", description="Comma-separated symbols"),
+    lookback_days: int = Query(30, ge=5, le=180),
+) -> CorrelationPreviewResponse:
+    """Compute a live correlation matrix preview; never touches order sizing."""
+    from risk.correlation_estimator import bars_to_returns, estimate_correlations
+
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    returns_by_symbol: dict[str, list] = {}
+    for sym in sym_list:
+        try:
+            if _data_mgr is None:
+                continue
+            bars = await _data_mgr.get_bars(sym, lookback_days=lookback_days, timeframe="1h")
+            if bars is None or len(bars) < 21:
+                continue
+            closes = list(bars["close"])
+            returns_by_symbol[sym] = bars_to_returns(closes)
+        except Exception as exc:
+            logger.warning("[CorrelationPreview] bars fetch failed for %s: %s", sym, exc)
+
+    pairs = estimate_correlations(returns_by_symbol) if returns_by_symbol else {}
+
+    # estimate_correlations() sorts symbols alphabetically before pairing them
+    # (see risk/correlation_estimator.py), so the "expected pairs" set must use
+    # the same sorted ordering -- otherwise every computed pair falsely shows
+    # up as omitted under its differently-ordered key.
+    sorted_syms = sorted(sym_list)
+    all_expected_pairs = {
+        f"{a}/{b}"
+        for i, a in enumerate(sorted_syms)
+        for b in sorted_syms[i + 1 :]
+    }
+    computed_pairs = {f"{a}/{b}" for (a, b) in pairs}
+    omitted = sorted(all_expected_pairs - computed_pairs)
+
+    return CorrelationPreviewResponse(
+        symbols=sym_list,
+        pairs={f"{a}/{b}": round(rho, 4) for (a, b), rho in pairs.items()},
+        omitted_pairs=omitted,
+        wired_into_live_sizing=False,
+        note=(
+            "Preview only. risk/portfolio_sizer.py's correlation-aware sizing "
+            "trim is validated but not yet wired into the live order path."
+        ),
+        timestamp=timestamp,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
