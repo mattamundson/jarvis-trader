@@ -250,3 +250,241 @@ class TestAnalyticsRouter:
         ]:
             resp = client.get(endpoint)
             assert resp.status_code == 200
+
+
+class TestAgentWeightsEndpoint:
+    """GET /analytics/agent-weights -- live_weight must mirror what debate.py
+    actually applies (get_weights_by_regime when a regime is known, load_weights()
+    otherwise), not a freshly-recomputed all-regime value that can silently
+    diverge from the live path (Codex review finding, PR #357)."""
+
+    def test_no_regime_uses_load_weights(self, client):
+        """Without a regime, live_weight must come from load_weights() -- the
+        exact function debate.py calls in its no-regime branch."""
+        resp = client.get("/analytics/agent-weights")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["regime"] is None
+        assert "load_weights" in body["weights_source"]
+        # agent_weights.json is never written by anything in this codebase
+        # (grep confirms save_weights() has no callers), so on a fresh
+        # environment this must be false, not silently absent from the response.
+        assert "weights_file_exists" in body
+
+    def test_with_regime_uses_get_weights_by_regime(self, client):
+        """With a regime, live_weight must come from get_weights_by_regime(regime)
+        -- the exact function debate.py calls in its regime-conditional branch."""
+        resp = client.get("/analytics/agent-weights?regime=TRENDING_BULL")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["regime"] == "TRENDING_BULL"
+        assert "get_weights_by_regime" in body["weights_source"]
+
+    def test_live_and_recomputed_weight_are_both_present_and_distinct_fields(self, client):
+        """Regression: the response must never conflate the live-applied weight
+        with the freshly-recomputed diagnostic one under a single ambiguous field."""
+        resp = client.get("/analytics/agent-weights")
+        assert resp.status_code == 200
+        body = resp.json()
+        for _agent, entry in body["per_agent"].items():
+            assert "live_weight" in entry
+            assert "recomputed_weight" in entry
+
+
+class TestPostMortemsEndpoint:
+    """GET /analytics/post-mortems — real DatabaseManager round trip via HTTP."""
+
+    @patch("routers.analytics_router._get_db")
+    def test_empty_table_returns_200_not_500(self, mock_get_db, client, tmp_path):
+        """Table doesn't exist yet (no post-mortem ever written) -> empty list, not an error."""
+        from database.manager import DatabaseManager
+
+        db = DatabaseManager(str(tmp_path / "post_mortem_empty.db"))
+        db.initialize()
+        mock_get_db.return_value = db
+
+        resp = client.get("/analytics/post-mortems")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["entries"] == []
+        assert body["total"] == 0
+
+    @patch("routers.analytics_router._get_db")
+    def test_populated_table_returns_rows(self, mock_get_db, client, tmp_path):
+        """A real PostTradeAnalyzer-written row is returned, most-recent-first."""
+        import asyncio
+        import json as _json
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from agents.post_mortem import PostTradeAnalyzer
+        from database.manager import DatabaseManager
+
+        db = DatabaseManager(str(tmp_path / "post_mortem_populated.db"))
+        db.initialize()
+        mock_get_db.return_value = db
+
+        msg = SimpleNamespace(
+            content=[SimpleNamespace(text=_json.dumps({"analysis": "test analysis", "lesson": "test lesson"}))]
+        )
+        llm = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=msg))))
+        analyzer = PostTradeAnalyzer(db_manager=db, llm_client=llm)
+        asyncio.get_event_loop().run_until_complete(
+            analyzer.analyze_trade("T-42", {"symbol": "MGC", "pnl": 88.5}, {})
+        )
+
+        resp = client.get("/analytics/post-mortems")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 1
+        assert body["entries"][0]["trade_id"] == "T-42"
+        assert body["entries"][0]["symbol"] == "MGC"
+        assert body["entries"][0]["lesson"] == "test lesson"
+
+    @patch("routers.analytics_router._get_db")
+    def test_symbol_filter(self, mock_get_db, client, tmp_path):
+        """?symbol= filters to only that symbol's rows."""
+        import asyncio
+        import json as _json
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from agents.post_mortem import PostTradeAnalyzer
+        from database.manager import DatabaseManager
+
+        db = DatabaseManager(str(tmp_path / "post_mortem_filter.db"))
+        db.initialize()
+        mock_get_db.return_value = db
+
+        msg = SimpleNamespace(
+            content=[SimpleNamespace(text=_json.dumps({"analysis": "a", "lesson": "l"}))]
+        )
+        llm = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=msg))))
+        analyzer = PostTradeAnalyzer(db_manager=db, llm_client=llm)
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(analyzer.analyze_trade("T-A", {"symbol": "MGC", "pnl": 1.0}, {}))
+        loop.run_until_complete(analyzer.analyze_trade("T-B", {"symbol": "MES", "pnl": 2.0}, {}))
+
+        resp = client.get("/analytics/post-mortems?symbol=MES")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 1
+        assert body["entries"][0]["trade_id"] == "T-B"
+
+
+class TestRegimeV2Endpoint:
+    """GET /analytics/regime-v2/{symbol} -- the classifier pipeline.py actually routes on."""
+
+    @staticmethod
+    def _synthetic_bars(n: int = 80):
+        import numpy as np
+        import pandas as pd
+
+        rng = np.random.default_rng(7)
+        close = 100 + np.cumsum(rng.normal(0, 0.5, n))
+        return pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 0.3,
+                "low": close - 0.3,
+                "close": close,
+                "volume": rng.integers(100, 1000, n),
+            }
+        )
+
+    def test_returns_real_regime_label(self, client):
+        import routers.analytics_router as analytics_router_module
+
+        bars = self._synthetic_bars(80)
+
+        class FakeDataMgr:
+            async def get_bars(self, symbol, lookback_days=30, timeframe="1h"):
+                return bars
+
+        analytics_router_module._data_mgr = FakeDataMgr()
+
+        resp = client.get("/analytics/regime-v2/mes")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["symbol"] == "MES"
+        assert body["regime"] in ("TREND", "MEANREV", "RANGE", "VOLATILE", "CRISIS")
+        # Deterministic rule-based classifier -- must never fabricate a
+        # probability vector or claim ground-truth validation that doesn't exist.
+        assert body["validated"] is False
+        assert body["probability_vector"] is None
+
+    def test_insufficient_bars_returns_unknown(self, client):
+        import routers.analytics_router as analytics_router_module
+
+        bars = self._synthetic_bars(5)
+
+        class EmptyDataMgr:
+            async def get_bars(self, symbol, lookback_days=30, timeframe="1h"):
+                return bars
+
+        analytics_router_module._data_mgr = EmptyDataMgr()
+
+        resp = client.get("/analytics/regime-v2/mnq")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["regime"] == "UNKNOWN"
+        assert "insufficient" in body["note"]
+
+
+class TestCorrelationPreviewEndpoint:
+    """GET /analytics/correlation-preview -- preview only, never wired to sizing."""
+
+    def test_computes_real_correlation_and_never_double_lists_a_pair(self, client):
+        import numpy as np
+        import pandas as pd
+
+        import routers.analytics_router as analytics_router_module
+
+        rng = np.random.default_rng(3)
+        n = 60
+        mes_close = 100 + np.cumsum(rng.normal(0, 0.5, n))
+        mgc_close = mes_close * (1 + rng.normal(0, 0.001, n))  # near-identical -> high corr
+        mcl_close = 50 + np.cumsum(np.random.default_rng(99).normal(0, 0.5, n))
+
+        bars = {
+            "MES": pd.DataFrame({"close": mes_close}),
+            "MGC": pd.DataFrame({"close": mgc_close}),
+            "MCL": pd.DataFrame({"close": mcl_close}),
+        }
+
+        class FakeDataMgr:
+            async def get_bars(self, symbol, lookback_days=30, timeframe="1h"):
+                return bars.get(symbol)
+
+        analytics_router_module._data_mgr = FakeDataMgr()
+
+        resp = client.get("/analytics/correlation-preview?symbols=MES,MGC,MCL,MNQ")
+        assert resp.status_code == 200
+        body = resp.json()
+
+        # Never claim this feeds live order sizing -- it doesn't.
+        assert body["wired_into_live_sizing"] is False
+
+        assert body["pairs"]["MES/MGC"] > 0.9
+
+        # Regression: a pair that WAS computed must never also appear omitted
+        # (caught during manual verification -- alphabetical vs input-order key mismatch).
+        computed = set(body["pairs"].keys())
+        omitted = set(body["omitted_pairs"])
+        assert not (computed & omitted)
+
+        # MNQ has no bar data in this fixture -> every MNQ pair should be omitted.
+        assert "MCL/MNQ" in omitted
+        assert "MES/MNQ" in omitted
+        assert "MGC/MNQ" in omitted
+
+    def test_no_data_manager_returns_empty_not_error(self, client):
+        import routers.analytics_router as analytics_router_module
+
+        analytics_router_module._data_mgr = None
+
+        resp = client.get("/analytics/correlation-preview?symbols=MES,MGC")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pairs"] == {}
+        assert body["wired_into_live_sizing"] is False
