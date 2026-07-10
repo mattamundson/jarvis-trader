@@ -110,3 +110,50 @@ async def test_broadcast_suppressed_when_no_channel(monkeypatch: pytest.MonkeyPa
     with patch.object(sb, "_any_channel_enabled", return_value=False):
         summary = await sb.broadcast_signal("MES", _signal_result("buy"), source="pipeline")
     assert summary["suppressed"] == "no_channel"
+
+
+# --- DO_NOT_TRADE_SYMBOLS gate (halted instruments never notify) -------------
+
+
+@pytest.mark.asyncio
+async def test_broadcast_suppressed_for_do_not_trade_symbols(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MCL/MNQ can still get a BUY/SELL final_action from the live agent
+    pipeline (order execution is blocked separately in SafetyLayer), but a
+    real notification implying an actionable signal must never go out."""
+    reset_pipeline_alert_cooldown_for_tests()
+
+    with patch.object(sb, "_any_channel_enabled", return_value=True), \
+        patch.object(sb, "_send_telegram", new=AsyncMock(return_value=True)) as tg, \
+        patch.object(sb, "_send_discord", new=AsyncMock(return_value=True)) as dc, \
+        patch.object(sb, "_send_whatsapp", new=AsyncMock(return_value=True)) as wa, \
+        patch.object(sb, "_send_windows_toast", new=AsyncMock(return_value=True)) as wt:
+
+        mcl_summary = await sb.broadcast_signal("MCL", _signal_result("buy"), source="scheduler")
+        mnq_summary = await sb.broadcast_signal("mnq", _signal_result("sell"), source="pipeline")
+
+    assert mcl_summary["suppressed"] == "do_not_trade_symbol"
+    assert mcl_summary["sent"] == []
+    assert mnq_summary["suppressed"] == "do_not_trade_symbol"
+    assert mnq_summary["sent"] == []
+    # No channel sender was ever invoked for either halted symbol.
+    tg.assert_not_awaited()
+    dc.assert_not_awaited()
+    wa.assert_not_awaited()
+    wt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_still_sends_for_active_symbol(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The DO_NOT_TRADE_SYMBOLS gate must not suppress ACTIVE symbols (MES/MGC)."""
+    reset_pipeline_alert_cooldown_for_tests()
+
+    with patch.object(sb, "_any_channel_enabled", return_value=True), \
+        patch.object(sb, "_send_telegram", new=AsyncMock(return_value=True)), \
+        patch.object(sb, "_send_discord", new=AsyncMock(return_value=True)), \
+        patch.object(sb, "_send_whatsapp", new=AsyncMock(return_value=None)), \
+        patch.object(sb, "_send_windows_toast", new=AsyncMock(return_value=None)):
+
+        summary = await sb.broadcast_signal("MGC", _signal_result("buy"), source="scheduler")
+
+    assert summary["suppressed"] is None
+    assert set(summary["sent"]) == {"telegram", "discord"}
