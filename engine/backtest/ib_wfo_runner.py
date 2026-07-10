@@ -16,7 +16,8 @@ and engine/data/gate_v2_verdicts/MES_gap_go_rank1.json):
     identical metric code to every production runner.
 
 Realistic execution costs (MES/MGC micro futures, gap-family tier values):
-    commission 0.62/contract, slippage 1 tick (realistic tier).
+    per-symbol commission (MES 0.62, MGC 0.85 -- see contract_specs.py),
+    slippage 1 tick (realistic tier).
 
 Usage (from engine/):
     .venv/Scripts/python backtest/ib_wfo_runner.py            # both symbols, both modes
@@ -52,6 +53,7 @@ from backtest._gate_v2_helpers import (  # noqa: E402
     bootstrap_pf_ci_lower,
     classify_wfo_consistency,
 )
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 
 # --- Symbol specs ---------------------------------------------------------
 SPECS = {
@@ -70,7 +72,11 @@ SPECS = {
 }
 
 CAPITAL = 50_000.0
-COMMISSION = 0.62
+COMMISSION = 0.62  # documented default only (MES realistic-tier commission).
+                   # Every symbol-aware call site resolves commission via
+                   # _commission_for(symbol) instead — MGC's canonical
+                   # commission (0.85) differs from MES's (0.62); see
+                   # backtest/contract_specs.py::CONTRACT_SPECS.
 SLIPPAGE_TICKS = 1.0  # realistic tier
 
 TRAIN_MONTHS = 6
@@ -83,14 +89,27 @@ TARGET_MULT_VALUES = [1.5, 2.0]
 OPEN_MINUTES_VALUES = [30, 60]
 MIN_IB_RANGE_PCT = 0.0  # no extra DOF — keep grid small
 
+# Ratios applied to the swept symbol's canonical commission (_commission_for),
+# not absolute dollar values — MES (0.62) and MGC (0.85) have different
+# canonical commissions, so a flat absolute tier would misprice one of them.
+# Ratios derived from the original MES-only tiers: 0.31/0.62/1.24/2.48 == 0.5x/1x/2x/4x of 0.62.
 COST_SWEEP_TIERS = {
-    "optimistic": {"commission": 0.31, "slippage_ticks": 0.5},
-    "realistic": {"commission": 0.62, "slippage_ticks": 1.0},
-    "pessimistic": {"commission": 1.24, "slippage_ticks": 2.0},
-    "catastrophic": {"commission": 2.48, "slippage_ticks": 3.0},
+    "optimistic": {"commission_ratio": 0.5, "slippage_ticks": 0.5},
+    "realistic": {"commission_ratio": 1.0, "slippage_ticks": 1.0},
+    "pessimistic": {"commission_ratio": 2.0, "slippage_ticks": 2.0},
+    "catastrophic": {"commission_ratio": 4.0, "slippage_ticks": 3.0},
 }
 
 MIN_OOS_TRADES_PER_WINDOW = 1
+
+
+def _commission_for(symbol: str) -> float:
+    """Per-symbol commission (IB tier-1 baseline, from contract_specs.CONTRACT_SPECS).
+
+    MES and MGC have different CME/COMEX fee schedules (0.62 vs 0.85 per
+    contract); previously a flat COMMISSION constant was applied to both.
+    """
+    return CONTRACT_SPECS[symbol].commission
 
 
 def _load_data(data_file: Path) -> pd.DataFrame:
@@ -112,11 +131,14 @@ def _run_signals_and_backtest(
     mode: str,
     target_mult: float,
     open_minutes: int,
-    commission: float = COMMISSION,
+    commission: float | None = None,
     slippage_ticks: float = SLIPPAGE_TICKS,
 ) -> object:
     from backtest.backtester import Backtester
     from backtest.ib_breakout_signals import generate_ib_breakout_signals
+
+    if commission is None:
+        commission = _commission_for(symbol)
 
     sig = generate_ib_breakout_signals(
         df,
@@ -205,12 +227,14 @@ def _run_fixed_params_sweep(df, symbol, mode, grid):
 
 def _run_cost_sweep(df, symbol, mode, champion):
     results, last = {}, None
+    base_commission = _commission_for(symbol)
     for tier in COST_TIER_ORDER:
         c = COST_SWEEP_TIERS[tier]
         try:
             r = _run_signals_and_backtest(df, symbol, mode, champion["target_mult"],
                                           champion["open_minutes"],
-                                          commission=c["commission"], slippage_ticks=c["slippage_ticks"])
+                                          commission=base_commission * c["commission_ratio"],
+                                          slippage_ticks=c["slippage_ticks"])
             passes = r.profit_factor > 1.0 and r.total_trades >= MIN_OOS_TRADES_PER_WINDOW
             results[tier] = {"pf": round(r.profit_factor, 4), "trades": r.total_trades, "passes": passes}
             if passes:
