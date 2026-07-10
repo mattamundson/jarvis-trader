@@ -2,7 +2,15 @@
 
 **Opened:** 2026-06-01
 **Severity:** High (risk-management defect; paper-only today, but the same logic gates live)
-**Status:** OPEN — root cause confirmed, no fix applied
+**Status:** MITIGATED (stale reference swept 2026-07-09) — recommendation #2 (independent
+in-process stop-monitor) is implemented and live: `engine/services/paper_stop_monitor.py`
+(`PaperStopMonitor`, `PAPER_STOP_MONITOR_ENABLED`, default on). It decouples stop enforcement
+from both the `paper_runner` cron and the historical-bar waterfall by pricing open positions
+via `data_manager.get_current_price()` (the independent TICK path) every `interval_s` seconds.
+Recommendations #1/#3/#4/#5 (data-starvation alerting, stale-bar fallback, tick-check on
+`data_error`, real simulated broker-side stop) remain unimplemented — #2 alone already closes
+the reported gap (silent, unprotected position during a bar-feed outage), so this is not a P0
+regression risk, but the other four are still open hardening work if revisited.
 **Trigger:** Trade #178 (MGC) lost **−$1,284 / −12.8% of the $10K paper account** because its stop never fired. Combined with #179 (−$70) it produced a **−16.1% day** that tripped the DAILY LOSS LIMIT kill-switch alert.
 
 ---

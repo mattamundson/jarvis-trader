@@ -224,6 +224,27 @@ class IBOrderManager:
         # Build set of symbols already tracked in open trades
         tracker_open_symbols = {t.symbol for t in self._tracker._open.values()}
 
+        # Best-effort symbol -> resting stop price map, so a newly-synced
+        # position prefers IB's own real resting STP/STP LMT order (if one
+        # exists) over a synthesized fallback -- see docs/incident-notes/
+        # 2026-04-09-mcl-inverted-stop.md and PR #331. A lookup failure must
+        # never block the sync.
+        stop_by_symbol: dict[str, float] = {}
+        try:
+            open_orders = await self._gateway.get_open_orders()
+        except Exception as exc:
+            logger.debug("sync_positions_from_ib: get_open_orders() failed: %s", exc)
+            open_orders = []
+
+        for order in open_orders:
+            order_type = str(order.get("order_type", "")).upper()
+            if order_type not in ("STP", "STP LMT", "STP_LMT", "STPLMT"):
+                continue
+            aux_price = order.get("aux_price")
+            order_sym = order.get("symbol")
+            if order_sym and aux_price:
+                stop_by_symbol[order_sym] = float(aux_price)
+
         for pos in ib_positions:
             sym = pos.get("symbol", "")
             qty = pos.get("position", 0)
@@ -234,6 +255,30 @@ class IBOrderManager:
 
             if sym not in tracker_open_symbols:
                 action = "buy" if qty > 0 else "sell"
+                # #287 fix: a reconcile backfill has no pipeline stop in scope
+                # (IB's raw position list carries no stop info). Prefer IB's own
+                # real resting stop order (found above) when one exists -- it's
+                # the actual broker-side stop, more accurate than a guess. Only
+                # fall back to synthesizing a defensive stop from the same
+                # dollar-risk budget as PaperStopMonitor's catastrophe cap when
+                # IB holds no resting stop for this position. See
+                # services.paper_stop_monitor for the single source of truth
+                # the fallback reuses.
+                resolved_stop = stop_by_symbol.get(sym)
+                stop_source = "ib_resting_order" if resolved_stop is not None else None
+                if resolved_stop is None:
+                    try:
+                        from services.paper_stop_monitor import synthesize_fallback_stop
+
+                        resolved_stop = synthesize_fallback_stop(sym, action, avg_cost, abs(qty))
+                        if resolved_stop is not None:
+                            stop_source = "synthesized_fallback"
+                    except Exception as _stop_err:  # pragma: no cover - defensive
+                        logger.debug(
+                            "sync_positions_from_ib: stop synthesis failed for %s (non-fatal): %s",
+                            sym,
+                            _stop_err,
+                        )
                 trade_id = self._tracker.open_trade(
                     symbol=sym,
                     action=action,
@@ -244,6 +289,8 @@ class IBOrderManager:
                         f"sec_type={pos.get('sec_type')} "
                         f"exchange={pos.get('exchange')}"
                     ),
+                    stop_loss=resolved_stop,
+                    stop_source=stop_source,
                 )
                 logger.info(
                     "sync_positions_from_ib: opened tracker entry for IB position "

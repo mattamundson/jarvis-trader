@@ -2562,6 +2562,20 @@ async def lifespan(app: FastAPI):
                                 )
                         if _stop is None:
                             continue
+                        # Backfill the naked row so subsequent reads (dashboard,
+                        # other monitors) see the real stop instead of NULL.
+                        # Best-effort: a persistence failure must never block
+                        # the stop-breach check this cycle is here to do.
+                        _tid_bf = _trade.get("trade_id")
+                        if _tid_bf:
+                            try:
+                                db_manager.update_paper_trade_stop_loss(_tid_bf, float(_stop))
+                            except Exception as _bf_exc:
+                                logger.debug(
+                                    "[stop_monitor] stop_loss backfill failed for %s: %s",
+                                    _sym,
+                                    _bf_exc,
+                                )
                     _stop_f = float(_stop)
                     if not _sym:
                         continue
