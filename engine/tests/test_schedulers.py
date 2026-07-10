@@ -1,7 +1,7 @@
 """JARVIS TRADER — Scheduler Tests"""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -232,6 +232,34 @@ class TestVIXAlertCheck:
         from schedulers.eod_scheduler import EODScheduler
 
         await EODScheduler().run_vix_alert_check()
+
+    @pytest.mark.asyncio
+    async def test_run_vix_alert_check_cooldown_suppresses_repeat(self, monkeypatch):
+        """The hourly cron must not resend an identical alert on back-to-back
+        runs while VIX stays elevated at the same severity level."""
+        import analytics.vix_overlay as vix_overlay_mod
+        from notifications.vix_alert_cooldown import reset_vix_alert_cooldown_for_tests
+        from schedulers.eod_scheduler import EODScheduler
+
+        reset_vix_alert_cooldown_for_tests()
+
+        class _FakeState:
+            vix_value = 42.0
+
+        monkeypatch.setattr(vix_overlay_mod, "VIXOverlay", lambda: type(
+            "F", (), {"get_state": lambda self: _FakeState()}
+        )())
+
+        notifier = MagicMock()
+        notifier.enabled = True
+        notifier.send = AsyncMock(return_value=True)
+        scheduler = EODScheduler(whatsapp_notifier=notifier)
+
+        await scheduler.run_vix_alert_check()
+        await scheduler.run_vix_alert_check()
+
+        assert notifier.send.await_count == 1
+        reset_vix_alert_cooldown_for_tests()
 
 
 class TestSchedulerLifecycle:

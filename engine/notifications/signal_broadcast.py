@@ -330,6 +330,23 @@ async def broadcast_signal(symbol: str, result: dict, *, source: str = "pipeline
             summary["suppressed"] = "non_signal_action"
             return summary
 
+        # Halted instruments (DO_NOT_TRADE_SYMBOLS — currently MCL/MNQ/M2K, see
+        # engine/CLAUDE.md "Active Instruments") can still produce a BUY/SELL
+        # final_action from the live agent pipeline even though order execution
+        # is separately hard-blocked in SafetyLayer.check_order (T0-01). A real
+        # WhatsApp/Telegram/Discord/toast alert implying an actionable signal
+        # must never go out for a symbol that can never route an order.
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+        if symbol.upper() in DO_NOT_TRADE_SYMBOLS:
+            logger.info(
+                "Signal broadcast for %s suppressed — DO_NOT_TRADE_SYMBOLS (halted instrument, source=%s)",
+                symbol,
+                source,
+            )
+            summary["suppressed"] = "do_not_trade_symbol"
+            return summary
+
         now = datetime.now()
         decision = pipeline_alert_decision(
             last_sent=get_last_pipeline_alert_sent(symbol),
