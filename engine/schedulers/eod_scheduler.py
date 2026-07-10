@@ -788,9 +788,22 @@ class EODScheduler:
             return {"sent": False, "status": "error", "error": str(exc)}
 
     async def run_vix_alert_check(self) -> None:
-        """Check VIX and send WhatsApp alert if above key thresholds."""
+        """Check VIX and send WhatsApp alert if above key thresholds.
+
+        Cooldown-gated per severity level (shared with the ``/notifications/
+        vix-alert-check`` router endpoint via ``notifications.vix_alert_cooldown``)
+        — this job runs hourly Mon-Fri 8AM-5PM CT, and without a cooldown a
+        sustained elevated-VIX session re-sent the identical WhatsApp alert
+        every run. An escalation to a more severe level always bypasses the
+        cooldown.
+        """
         try:
             from analytics.vix_overlay import VIXOverlay
+            from notifications.vix_alert_cooldown import (
+                get_last_vix_alert_sent,
+                mark_vix_alert_sent,
+                vix_alert_decision,
+            )
 
             state = VIXOverlay().get_state()
 
@@ -804,8 +817,26 @@ class EODScheduler:
             ]
             for level, label, advice in thresholds:
                 if state.vix_value >= level:
+                    # Cooldown is keyed by the numeric threshold (40/30/20), not
+                    # the label text, so it stays shared with the
+                    # /notifications/vix-alert-check router endpoint even though
+                    # the two call sites use slightly different label strings
+                    # ("EXTREME" here vs. "EXTREME VIX" there).
+                    cooldown_key = str(level)
+                    now = datetime.now(timezone.utc)
+                    decision = vix_alert_decision(
+                        level=cooldown_key,
+                        last_sent=get_last_vix_alert_sent(cooldown_key),
+                        now=now,
+                    )
+                    if decision == "suppressed_cooldown":
+                        logging.getLogger(__name__).info(
+                            f"VIX alert ({label}) suppressed — cooldown active"
+                        )
+                        break
                     msg = f"VIX Alert: {state.vix_value:.1f} ({label})\n{advice}\nJARVIS TRADER"
                     await self._notifier.send(msg)
+                    mark_vix_alert_sent(cooldown_key, now)
                     break
         except Exception as e:
             logging.getLogger(__name__).error(f"VIX alert check failed: {e}")
