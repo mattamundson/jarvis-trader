@@ -28,11 +28,22 @@ def test_hard_cap_clamps_env_override_above_20(monkeypatch: pytest.MonkeyPatch) 
 
     import config
 
-    # Suppress load_dotenv so it doesn't override the monkeypatched env var.
-    with patch("dotenv.load_dotenv"):
-        importlib.reload(config)
-        tc = config.TradingConfig()
-    assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 20
+    # importlib.reload(config) rebinds config.settings to a brand-new
+    # TradingConfig() at module scope -- that mutation isn't tracked by
+    # monkeypatch and outlives this test, so any later test in the same
+    # process whose code re-imports `from config import settings` at call
+    # time (e.g. scheduler_router.trigger_scan_now) silently gets this
+    # fresh, un-monkeypatched object instead of the one it patched. Restore
+    # the original singleton so the reload's effect stays scoped to this test.
+    original_settings = config.settings
+    try:
+        # Suppress load_dotenv so it doesn't override the monkeypatched env var.
+        with patch("dotenv.load_dotenv"):
+            importlib.reload(config)
+            tc = config.TradingConfig()
+        assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 20
+    finally:
+        config.settings = original_settings
 
 
 def test_hard_cap_clamps_extreme_env_value(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -44,10 +55,15 @@ def test_hard_cap_clamps_extreme_env_value(monkeypatch: pytest.MonkeyPatch) -> N
 
     import config
 
-    with patch("dotenv.load_dotenv"):
-        importlib.reload(config)
-        tc = config.TradingConfig()
-    assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 20
+    # See test_hard_cap_clamps_env_override_above_20 for why this restore matters.
+    original_settings = config.settings
+    try:
+        with patch("dotenv.load_dotenv"):
+            importlib.reload(config)
+            tc = config.TradingConfig()
+        assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 20
+    finally:
+        config.settings = original_settings
 
 
 def test_hard_cap_passes_through_valid_value(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -59,10 +75,15 @@ def test_hard_cap_passes_through_valid_value(monkeypatch: pytest.MonkeyPatch) ->
 
     import config
 
-    with patch("dotenv.load_dotenv"):
-        importlib.reload(config)
-        tc = config.TradingConfig()
-    assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 5
+    # See test_hard_cap_clamps_env_override_above_20 for why this restore matters.
+    original_settings = config.settings
+    try:
+        with patch("dotenv.load_dotenv"):
+            importlib.reload(config)
+            tc = config.TradingConfig()
+        assert tc.MAX_CONTRACTS_PER_INSTRUMENT == 5
+    finally:
+        config.settings = original_settings
 
 
 def test_hard_cap_validator_allows_below_default() -> None:
