@@ -54,7 +54,11 @@ _DEFAULT_MAX_ATR_DELTA = 1.0
 # (e.g. an IBKR snapshot that doesn't tag itself) is treated as live and left to
 # the relative checks — so this anchor never blocks a genuine live fill, it only
 # trips on the data manager's own "I had to use the offline cache" admission.
-_OFFLINE_FALLBACK_SOURCES = frozenset({"csv_cache", "unavailable", "error"})
+# ibkr_delayed (2026-07-09): IB's marketDataType 3/4 (Delayed/Delayed-frozen,
+# served when the account lacks a live subscription) is the same "I had to use
+# a non-live tier" admission as csv_cache — a 15-20min-old futures quote is the
+# same wrong-era risk this anchor exists to catch, just from a different feed.
+_OFFLINE_FALLBACK_SOURCES = frozenset({"csv_cache", "unavailable", "error", "ibkr_delayed"})
 _DEFAULT_MIN_ATR_FLOOR = 0.0  # 0 = no floor (backward compatible default)
 # Era-aware reference deviation: a candidate (or the spot quote itself) more
 # than this fraction away from the robust median of recent bar closes is treated
@@ -170,8 +174,9 @@ def is_offline_fallback_source(source: Optional[str]) -> bool:
 
     Pure predicate over the ``source`` string returned by
     MarketDataManager.get_current_price/get_tick_price. Only ``csv_cache``,
-    ``unavailable`` and ``error`` count — an unknown/missing source returns False
-    (treated as live) so the anchor never blocks a genuine live fill.
+    ``unavailable``, ``error`` and ``ibkr_delayed`` count — an unknown/missing
+    source returns False (treated as live) so the anchor never blocks a genuine
+    live fill.
     """
     return (source or "").strip().lower() in _OFFLINE_FALLBACK_SOURCES
 

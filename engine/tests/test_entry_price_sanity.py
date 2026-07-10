@@ -674,6 +674,13 @@ class TestOfflineFallbackProvenance:
         assert is_offline_fallback_source("error") is True
         assert is_offline_fallback_source("CSV_CACHE") is True  # case-insensitive
 
+    def test_predicate_flags_ibkr_delayed(self):
+        """2026-07-09: IB marketDataType 3/4 (Delayed/Delayed-frozen) is a
+        15-20min-old quote -- the same wrong-era risk as csv_cache, just from
+        a different feed tier. See data/market_data.py get_snapshot_price."""
+        assert is_offline_fallback_source("ibkr_delayed") is True
+        assert is_offline_fallback_source("IBKR_DELAYED") is True
+
     def test_predicate_passes_live_and_unknown_sources(self):
         # live feeds — never blocked
         for src in ("ibkr", "schwab", "tradingview", "polygon_stream", "redis_fabric"):
