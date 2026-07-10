@@ -284,6 +284,7 @@ export default function ScorecardPage() {
   const {
     data: supplemental,
     isLoading: loadingSupplemental,
+    error: supplementalError,
     mutate: mutateSupplemental,
   } = useSWR<PortfolioStatsSummarySupplemental>(
     "scorecard/supplemental",
@@ -296,12 +297,17 @@ export default function ScorecardPage() {
   const {
     data: drawdown,
     isLoading: loadingDrawdown,
+    error: drawdownError,
     mutate: mutateDrawdown,
   } = useSWR<DrawdownStats>("scorecard/drawdown", fetchDrawdown, {
     refreshInterval: REFRESH_MS,
   });
 
-  const { data: backtestRows, mutate: mutateBacktest } = useSWR<BacktestBaselineRow[]>(
+  const {
+    data: backtestRows,
+    error: backtestError,
+    mutate: mutateBacktest,
+  } = useSWR<BacktestBaselineRow[]>(
     "scorecard/backtest-results",
     fetchBacktestResults,
     { refreshInterval: REFRESH_MS }
@@ -504,6 +510,24 @@ export default function ScorecardPage() {
             <p className="text-xs text-bear font-medium">
               Honest trade record unavailable — performance metrics cannot be displayed.{" "}
               <span className="font-normal text-muted-foreground">{String(honestError)}</span>
+            </p>
+          </div>
+        )}
+        {(supplementalError || drawdownError || backtestError) && (
+          <div className="rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5 flex items-start gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-warn mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-warn font-medium">
+              Some supplemental data failed to load — affected fields fall back to 0/—
+              instead of their real value.{" "}
+              <span className="font-normal text-muted-foreground">
+                {[
+                  supplementalError && "days-active/best-day/worst-day",
+                  drawdownError && "live drawdown/peak-balance",
+                  backtestError && "backtest baseline",
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              </span>
             </p>
           </div>
         )}
