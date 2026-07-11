@@ -31,7 +31,6 @@ import {
   Package,
   Rss,
   Settings,
-  Shield,
   Sliders,
   Star,
   Target,
@@ -135,7 +134,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Data Integrity", href: "/data-integrity", icon: <Database className="h-3.5 w-3.5" /> },
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },
       { label: "Settings", href: "/settings", icon: <Settings className="h-3.5 w-3.5" /> },
-      { label: "Validation", href: "/validation", icon: <Shield className="h-3.5 w-3.5" /> },
     ],
   },
 ];

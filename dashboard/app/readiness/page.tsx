@@ -12,6 +12,7 @@ import {
   Clock,
   FileDown,
   RefreshCw,
+  ShieldCheck,
   Target,
   TrendingDown,
   TrendingUp,
@@ -39,6 +40,7 @@ import { MaxDrawdownTrackerWidget } from "@/components/MaxDrawdownTrackerWidget"
 import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { ValidationView } from "@/components/validation/ValidationView";
 import {
   fetchHonestTrades,
   equityCurve,
@@ -410,12 +412,6 @@ export default function ReadinessPage() {
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Performance
-              </Link>
-              <Link
-                href="/validation"
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Validation
               </Link>
               <Link
                 href="/readiness"
@@ -936,6 +932,25 @@ export default function ReadinessPage() {
         {/* ── P&L Calendar ────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <CalendarHeatmap />
+        </div>
+
+        {/* ── Strategy Validation & Go-Live Gate (folded from /validation, P2.3) ── */}
+        <div className="border-t border-border pt-6">
+          <div className="flex items-center gap-3 mb-4">
+            <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <h2 className="text-lg font-bold text-foreground">
+                Strategy Validation & Go-Live Gate
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Gate-v2 analytics (significance / Monte Carlo / sensitivity), phase
+                roadmap, and simulate-trade — folded from the former /validation page.
+              </p>
+            </div>
+          </div>
+          <WidgetErrorBoundary name="Strategy Validation">
+            <ValidationView />
+          </WidgetErrorBoundary>
         </div>
 
         {/* Footer note */}
