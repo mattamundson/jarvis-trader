@@ -81,13 +81,19 @@ export function DiscordWinRateChart() {
 
   const rawSymbols = data?.signals_by_symbol ?? [];
 
+  // Backend avg_win_rate is expected as a 0-1 fraction, but has been observed
+  // returning out-of-range values (e.g. yielding >8000% after *100) for some
+  // symbols. Clamp defensively so a bad upstream value can never blow out the
+  // chart's 0-100 axis regardless of root cause on the backend.
+  const toPct = (rate: number | null | undefined): number =>
+    Math.max(0, Math.min(100, rate != null ? rate * 100 : 0));
+
   // Filter to focus symbols + convert win_rate to percent
   const chartData = FOCUS_SYMBOLS.map((sym) => {
     const found = rawSymbols.find((s) => s.symbol === sym);
     return {
       symbol: sym,
-      win_rate_pct:
-        found?.avg_win_rate != null ? found.avg_win_rate * 100 : 0,
+      win_rate_pct: toPct(found?.avg_win_rate),
       cnt: found?.cnt ?? 0,
     };
   }).filter((d) => d.cnt > 0);
@@ -98,7 +104,7 @@ export function DiscordWinRateChart() {
       ? chartData
       : rawSymbols.slice(0, 8).map((s) => ({
           symbol: s.symbol,
-          win_rate_pct: s.avg_win_rate != null ? s.avg_win_rate * 100 : 0,
+          win_rate_pct: toPct(s.avg_win_rate),
           cnt: s.cnt,
         }));
 

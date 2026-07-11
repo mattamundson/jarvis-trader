@@ -38,7 +38,7 @@ function formatMonthLabel(key: string): string {
 }
 
 function formatPnl(value: number): string {
-  const sign = value >= 0 ? "+" : "";
+  const sign = value >= 0 ? "+" : "-";
   return `${sign}$${Math.abs(value).toFixed(2)}`;
 }
 
