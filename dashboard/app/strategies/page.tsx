@@ -1041,10 +1041,22 @@ const ACTION_COLORS: Record<string, string> = {
   CLOSE: "#00d4ff",
 };
 
-function positionLabel(p: number): { label: string; color: string } {
-  if (p === 1)  return { label: "LONG",  color: "#00ff88" };
-  if (p === -1) return { label: "SHORT", color: "#ff4444" };
-  return          { label: "FLAT",  color: "#888" };
+// Class-returning companion of ACTION_COLORS (same JIT-visibility reason as metricColorClass).
+const ACTION_COLOR_CLASSES: Record<string, string> = {
+  HOLD:  "text-[#888]",
+  BUY:   "text-[#00ff88]",
+  SELL:  "text-[#ff4444]",
+  CLOSE: "text-[#00d4ff]",
+};
+
+function actionColorClass(action: string | null | undefined): string {
+  return action ? (ACTION_COLOR_CLASSES[action] ?? "text-[#888]") : "text-[#555]";
+}
+
+function positionLabel(p: number): { label: string; colorClass: string } {
+  if (p === 1)  return { label: "LONG",  colorClass: "text-[#00ff88]" };
+  if (p === -1) return { label: "SHORT", colorClass: "text-[#ff4444]" };
+  return          { label: "FLAT",  colorClass: "text-[#888]" };
 }
 
 function basename(path: string): string {
@@ -1069,8 +1081,7 @@ function ExecutorStatusPanel({
 
   const entries = Object.values(executors);
 
-  const selectCls = "font-mono text-xs rounded-lg px-3 py-2 outline-none cursor-pointer";
-  const selectStyle: React.CSSProperties = { backgroundColor: "#111", border: "1px solid #1a1a2e", color: "#e0e0e0" };
+  const selectCls = "font-mono text-xs rounded-lg px-3 py-2 outline-none cursor-pointer bg-[#111] border border-panel-border text-[#e0e0e0]";
 
   async function handleDeploy(e: React.FormEvent) {
     e.preventDefault();
@@ -1085,25 +1096,19 @@ function ExecutorStatusPanel({
   }
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex items-center justify-between mb-4">
         <SectionHeader
           title="Executor Status"
           subtitle="Deployed RL models running in paper-trading mode. Polls every 5s when active."
         />
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs" style={{ color: "#555" }}>
+          <span className="font-mono text-xs text-[#555]">
             {entries.filter((e) => e.is_running).length} running
           </span>
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-1.5 font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-            style={{
-              backgroundColor: "#00ff8818",
-              border: "1px solid #00ff8840",
-              color: "#00ff88",
-              cursor: "pointer",
-            }}
+            className="flex items-center gap-1.5 font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer bg-[#00ff8818] border border-[#00ff8840] text-[#00ff88]"
           >
             <Cpu className="h-3.5 w-3.5" />
             Deploy Model
@@ -1115,14 +1120,12 @@ function ExecutorStatusPanel({
       {showForm && (
         <form
           onSubmit={handleDeploy}
-          className="mb-5 rounded-lg p-4 flex flex-wrap items-end gap-4"
-          style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}
+          className="mb-5 rounded-lg p-4 flex flex-wrap items-end gap-4 bg-[#111] border border-panel-border"
         >
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Symbol</label>
+            <label className="font-mono text-[10px] uppercase tracking-wider text-[#555]">Symbol</label>
             <select
               className={selectCls}
-              style={selectStyle}
               value={deploySymbol}
               onChange={(e) => setDeploySymbol(e.target.value)}
             >
@@ -1131,13 +1134,12 @@ function ExecutorStatusPanel({
           </div>
 
           <div className="flex flex-col gap-1.5 flex-1 min-w-[220px]">
-            <label className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>
+            <label className="font-mono text-[10px] uppercase tracking-wider text-[#555]">
               Model Path
             </label>
             {models.length > 0 ? (
               <select
-                className={selectCls}
-                style={{ ...selectStyle, minWidth: "220px" }}
+                className={`${selectCls} min-w-[220px]`}
                 value={deployModel}
                 onChange={(e) => setDeployModel(e.target.value)}
               >
@@ -1151,7 +1153,6 @@ function ExecutorStatusPanel({
             ) : (
               <input
                 className={selectCls}
-                style={selectStyle}
                 type="text"
                 placeholder="data/rl_models/MES_ppo.zip"
                 value={deployModel}
@@ -1164,13 +1165,11 @@ function ExecutorStatusPanel({
             <button
               type="submit"
               disabled={deployLoading || !deployModel}
-              className="flex items-center gap-1.5 font-mono text-xs font-bold px-4 py-2 rounded-lg transition-all"
-              style={{
-                backgroundColor: deployLoading || !deployModel ? "#1a1a2e" : "#00ff8820",
-                border: `1px solid ${deployLoading || !deployModel ? "#333" : "#00ff8860"}`,
-                color: deployLoading || !deployModel ? "#555" : "#00ff88",
-                cursor: deployLoading || !deployModel ? "not-allowed" : "pointer",
-              }}
+              className={`flex items-center gap-1.5 font-mono text-xs font-bold px-4 py-2 rounded-lg transition-all ${
+                deployLoading || !deployModel
+                  ? "bg-panel-border border border-[#333] text-[#555] cursor-not-allowed"
+                  : "bg-[#00ff8820] border border-[#00ff8860] text-[#00ff88] cursor-pointer"
+              }`}
             >
               {deployLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
               Deploy
@@ -1178,8 +1177,7 @@ function ExecutorStatusPanel({
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="font-mono text-xs px-3 py-2 rounded-lg"
-              style={{ backgroundColor: "#1a1a2e", border: "1px solid #333", color: "#888", cursor: "pointer" }}
+              className="font-mono text-xs px-3 py-2 rounded-lg cursor-pointer bg-panel-border border border-[#333] text-[#888]"
             >
               Cancel
             </button>
@@ -1189,27 +1187,22 @@ function ExecutorStatusPanel({
 
       {/* Executor cards */}
       {entries.length === 0 ? (
-        <div
-          className="rounded-lg p-5 text-center font-mono text-xs"
-          style={{ backgroundColor: "#111", border: "1px solid #1a1a2e", color: "#444" }}
-        >
-          <Activity className="h-5 w-5 mx-auto mb-2" style={{ color: "#333" }} />
+        <div className="rounded-lg p-5 text-center font-mono text-xs bg-[#111] border border-panel-border text-[#444]">
+          <Activity className="h-5 w-5 mx-auto mb-2 text-[#333]" />
           No models deployed. Click &quot;Deploy Model&quot; to start an executor.
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {entries.map((exec) => {
             const pos = positionLabel(exec.paper_position);
-            const actionColor = exec.last_action ? (ACTION_COLORS[exec.last_action] ?? "#888") : "#555";
+            const actionClass = actionColorClass(exec.last_action);
 
             return (
               <div
                 key={exec.symbol}
-                className="rounded-lg p-4 flex flex-col gap-3"
-                style={{
-                  backgroundColor: "#111",
-                  border: `1px solid ${exec.is_running ? "#1a1a3e" : "#1a1a2e"}`,
-                }}
+                className={`rounded-lg p-4 flex flex-col gap-3 bg-[#111] border ${
+                  exec.is_running ? "border-[#1a1a3e]" : "border-panel-border"
+                }`}
               >
                 {/* Header row */}
                 <div className="flex items-center justify-between">
@@ -1229,59 +1222,59 @@ function ExecutorStatusPanel({
                 </div>
 
                 {/* Model filename */}
-                <div className="font-mono text-[10px] truncate" style={{ color: "#444" }} title={exec.model_path}>
+                <div className="font-mono text-[10px] truncate text-[#444]" title={exec.model_path}>
                   {basename(exec.model_path)}
                 </div>
 
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#444" }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5 text-[#444]">
                       Last Action
                     </div>
-                    <div className="font-mono text-sm font-bold" style={{ color: actionColor }}>
+                    <div className={`font-mono text-sm font-bold ${actionClass}`}>
                       {exec.last_action ?? "—"}
                     </div>
                   </div>
                   <div>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#444" }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5 text-[#444]">
                       Position
                     </div>
-                    <div className="font-mono text-sm font-bold" style={{ color: pos.color }}>
+                    <div className={`font-mono text-sm font-bold ${pos.colorClass}`}>
                       {pos.label}
                     </div>
                   </div>
                   <div>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#444" }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5 text-[#444]">
                       Bars Exec.
                     </div>
-                    <div className="font-mono text-sm tabular-nums" style={{ color: "#888" }}>
+                    <div className="font-mono text-sm tabular-nums text-[#888]">
                       {exec.bars_executed.toLocaleString()}
                     </div>
                   </div>
                   <div>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#444" }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5 text-[#444]">
                       Last Pred.
                     </div>
-                    <div className="font-mono text-[10px] tabular-nums" style={{ color: "#555" }}>
+                    <div className="font-mono text-[10px] tabular-nums text-[#555]">
                       {exec.last_prediction_time
                         ? new Date(exec.last_prediction_time).toLocaleTimeString()
                         : "—"}
                     </div>
                   </div>
                   <div>
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#444" }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5 text-[#444]">
                       Scheduler
                     </div>
-                    <div className="font-mono text-[10px] tabular-nums" style={{ color: exec.scheduler_running ? "#00d4ff" : "#555" }}>
+                    <div className={`font-mono text-[10px] tabular-nums ${exec.scheduler_running ? "text-[#00d4ff]" : "text-[#555]"}`}>
                       {exec.scheduler_running ? "Active" : "Inactive"}
                     </div>
                   </div>
                   <div className="col-span-2">
-                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5" style={{ color: "#444" }}>
+                    <div className="font-mono text-[9px] uppercase tracking-wider mb-0.5 text-[#444]">
                       Next Scheduled Run
                     </div>
-                    <div className="font-mono text-[10px]" style={{ color: exec.scheduler_running ? "#888" : "#444" }}>
+                    <div className={`font-mono text-[10px] ${exec.scheduler_running ? "text-[#888]" : "text-[#444]"}`}>
                       {exec.scheduler_running
                         ? "Mon–Fri :59 (7:00–15:00 CT)"
                         : "—"}
@@ -1291,10 +1284,7 @@ function ExecutorStatusPanel({
 
                 {/* Error */}
                 {exec.last_error && (
-                  <div
-                    className="rounded p-2 font-mono text-[10px]"
-                    style={{ backgroundColor: "#ff444410", border: "1px solid #ff444330", color: "#ff9999" }}
-                  >
+                  <div className="rounded p-2 font-mono text-[10px] bg-[#ff444410] border border-[#ff444330] text-[#ff9999]">
                     {exec.last_error}
                   </div>
                 )}
@@ -1302,13 +1292,7 @@ function ExecutorStatusPanel({
                 {/* Undeploy button */}
                 <button
                   onClick={() => onUndeploy(exec.symbol)}
-                  className="flex items-center justify-center gap-1.5 font-mono text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all mt-auto"
-                  style={{
-                    backgroundColor: "#ff444410",
-                    border: "1px solid #ff444430",
-                    color: "#ff6666",
-                    cursor: "pointer",
-                  }}
+                  className="flex items-center justify-center gap-1.5 font-mono text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all mt-auto cursor-pointer bg-[#ff444410] border border-[#ff444430] text-[#ff6666]"
                 >
                   <StopCircle className="h-3 w-3" />
                   Undeploy
