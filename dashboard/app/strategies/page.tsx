@@ -865,26 +865,25 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
 
 function ModelsListPanel({ models }: { models: SavedModel[] }) {
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex items-center justify-between mb-4">
         <SectionHeader title="Saved Models" subtitle="PPO checkpoints at data/rl_models/" />
-        <span className="font-mono text-xs" style={{ color: "#555" }}>{models.length} model{models.length !== 1 ? "s" : ""}</span>
+        <span className="font-mono text-xs text-[#555]">{models.length} model{models.length !== 1 ? "s" : ""}</span>
       </div>
 
       {models.length === 0 ? (
-        <p className="font-mono text-xs" style={{ color: "#333" }}>
+        <p className="font-mono text-xs text-[#333]">
           No saved models yet. Train a symbol to generate the first checkpoint.
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full font-mono text-xs">
             <thead>
-              <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+              <tr className="border-b border-panel-border">
                 {["Symbol", "Size", "PF", "Sharpe", "WR", "Validation", "Path"].map((h) => (
                   <th
                     key={h}
-                    className={`pb-2 px-2 font-semibold uppercase tracking-wider ${h === "Path" ? "text-left" : "text-center"}`}
-                    style={{ color: "#555", fontSize: "10px" }}
+                    className={`pb-2 px-2 font-semibold uppercase tracking-wider text-[10px] text-[#555] ${h === "Path" ? "text-left" : "text-center"}`}
                   >
                     {h}
                   </th>
@@ -899,29 +898,28 @@ function ModelsListPanel({ models }: { models: SavedModel[] }) {
                 return (
                   <tr
                     key={i}
-                    className="hover:bg-white/[0.02] transition-colors"
-                    style={{ borderBottom: "1px solid #111" }}
+                    className="hover:bg-white/[0.02] transition-colors border-b border-[#111]"
                   >
-                    <td className="py-2 px-2 text-center font-bold" style={{ color: "#e0e0e0" }}>{m.symbol}</td>
-                    <td className="py-2 px-2 text-center tabular-nums" style={{ color: "#888" }}>{m.size_kb}kb</td>
-                    <td className="py-2 px-2 text-center tabular-nums" style={{ color: mets.profit_factor ? metricColor(mets.profit_factor, GATES.min_profit_factor) : "#555" }}>
+                    <td className="py-2 px-2 text-center font-bold text-[#e0e0e0]">{m.symbol}</td>
+                    <td className="py-2 px-2 text-center tabular-nums text-[#888]">{m.size_kb}kb</td>
+                    <td className={`py-2 px-2 text-center tabular-nums ${mets.profit_factor ? metricColorClass(mets.profit_factor, GATES.min_profit_factor) : "text-[#555]"}`}>
                       {mets.profit_factor?.toFixed(2) ?? "—"}
                     </td>
-                    <td className="py-2 px-2 text-center tabular-nums" style={{ color: mets.sharpe_ratio ? metricColor(mets.sharpe_ratio, GATES.min_sharpe) : "#555" }}>
+                    <td className={`py-2 px-2 text-center tabular-nums ${mets.sharpe_ratio ? metricColorClass(mets.sharpe_ratio, GATES.min_sharpe) : "text-[#555]"}`}>
                       {mets.sharpe_ratio?.toFixed(2) ?? "—"}
                     </td>
-                    <td className="py-2 px-2 text-center tabular-nums" style={{ color: mets.win_rate ? metricColor(mets.win_rate, GATES.min_win_rate) : "#555" }}>
+                    <td className={`py-2 px-2 text-center tabular-nums ${mets.win_rate ? metricColorClass(mets.win_rate, GATES.min_win_rate) : "text-[#555]"}`}>
                       {mets.win_rate ? pct(mets.win_rate) : "—"}
                     </td>
                     <td className="py-2 px-2 text-center">
                       {passes === undefined
-                        ? <span style={{ color: "#333" }}>—</span>
+                        ? <span className="text-[#333]">—</span>
                         : passes
                           ? <Badge label="PASS" color="#00ff88" />
                           : <Badge label="FAIL" color="#ff4444" />
                       }
                     </td>
-                    <td className="py-2 px-2 text-left max-w-xs truncate" style={{ color: "#444", fontSize: "10px" }}>
+                    <td className="py-2 px-2 text-left max-w-xs truncate text-[10px] text-[#444]">
                       {m.path}
                     </td>
                   </tr>
@@ -947,12 +945,12 @@ const RUN_STATUS_COLORS: Record<string, string> = {
 function TrainingHistoryPanel({ runs }: { runs: RecentRun[] }) {
   if (runs.length === 0) {
     return (
-      <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+      <section className="rounded-xl p-5 bg-panel border border-panel-border">
         <SectionHeader
           title="Training History"
           subtitle="Recent training runs this session. Clears on engine restart."
         />
-        <p className="font-mono text-xs" style={{ color: "#333" }}>
+        <p className="font-mono text-xs text-[#333]">
           No runs recorded yet. Start training to see history here.
         </p>
       </section>
@@ -960,25 +958,24 @@ function TrainingHistoryPanel({ runs }: { runs: RecentRun[] }) {
   }
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex items-center justify-between mb-4">
         <SectionHeader
           title="Training History"
           subtitle="Recent training runs this session (up to 5). Clears on engine restart."
         />
-        <span className="font-mono text-xs" style={{ color: "#555" }}>
+        <span className="font-mono text-xs text-[#555]">
           {runs.length} run{runs.length !== 1 ? "s" : ""}
         </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
-            <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+            <tr className="border-b border-panel-border">
               {["Run ID", "Symbol", "Status", "Trades", "Profit Factor", "Started", "Completed"].map((h) => (
                 <th
                   key={h}
-                  className={`pb-2 px-3 font-semibold uppercase tracking-wider ${h === "Run ID" ? "text-left" : "text-center"}`}
-                  style={{ color: "#555", fontSize: "10px" }}
+                  className={`pb-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-[#555] ${h === "Run ID" ? "text-left" : "text-center"}`}
                 >
                   {h}
                 </th>
@@ -988,44 +985,42 @@ function TrainingHistoryPanel({ runs }: { runs: RecentRun[] }) {
           <tbody>
             {runs.map((run) => {
               const statusColor = RUN_STATUS_COLORS[run.status] ?? "#888";
-              const pfColor = run.profit_factor !== undefined
-                ? metricColor(run.profit_factor, GATES.min_profit_factor)
-                : "#555";
-              const tradesColor = run.n_trades !== undefined
-                ? metricColor(run.n_trades, GATES.min_trades)
-                : "#555";
+              const pfColorClass = run.profit_factor !== undefined
+                ? metricColorClass(run.profit_factor, GATES.min_profit_factor)
+                : "text-[#555]";
+              const tradesColorClass = run.n_trades !== undefined
+                ? metricColorClass(run.n_trades, GATES.min_trades)
+                : "text-[#555]";
               return (
                 <tr
                   key={run.run_id}
-                  className="hover:bg-white/[0.02] transition-colors"
-                  style={{ borderBottom: "1px solid #111" }}
+                  className="hover:bg-white/[0.02] transition-colors border-b border-[#111]"
                 >
                   <td className="py-2.5 px-3 text-left">
                     <span
-                      className="font-mono tabular-nums"
-                      style={{ color: "#444", fontSize: "9px" }}
+                      className="font-mono tabular-nums text-[9px] text-[#444]"
                       title={run.run_id}
                     >
                       {run.run_id.slice(0, 8)}…
                     </span>
                   </td>
-                  <td className="py-2.5 px-3 text-center font-bold" style={{ color: "#e0e0e0" }}>
+                  <td className="py-2.5 px-3 text-center font-bold text-[#e0e0e0]">
                     {run.symbol}
                   </td>
                   <td className="py-2.5 px-3 text-center">
                     <Badge label={run.status.toUpperCase()} color={statusColor} />
                   </td>
-                  <td className="py-2.5 px-3 text-center tabular-nums font-bold" style={{ color: tradesColor }}>
+                  <td className={`py-2.5 px-3 text-center tabular-nums font-bold ${tradesColorClass}`}>
                     {run.n_trades !== undefined ? run.n_trades : "—"}
                   </td>
-                  <td className="py-2.5 px-3 text-center tabular-nums font-bold" style={{ color: pfColor }}>
+                  <td className={`py-2.5 px-3 text-center tabular-nums font-bold ${pfColorClass}`}>
                     {run.profit_factor !== undefined ? run.profit_factor.toFixed(2) : "—"}
                   </td>
-                  <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: "#555" }}>
+                  <td className="py-2.5 px-3 text-center tabular-nums text-[#555]">
                     {run.started_at ? new Date(run.started_at).toLocaleTimeString() : "—"}
                   </td>
-                  <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: "#555" }}>
-                    {run.completed_at ? new Date(run.completed_at).toLocaleTimeString() : run.status === "running" ? <span style={{ color: "#00d4ff" }}>in progress…</span> : "—"}
+                  <td className="py-2.5 px-3 text-center tabular-nums text-[#555]">
+                    {run.completed_at ? new Date(run.completed_at).toLocaleTimeString() : run.status === "running" ? <span className="text-[#00d4ff]">in progress…</span> : "—"}
                   </td>
                 </tr>
               );
