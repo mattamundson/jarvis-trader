@@ -9,6 +9,7 @@ Features:
 
 import asyncio
 import logging
+import time
 from typing import Any, Optional
 
 try:
@@ -23,8 +24,35 @@ logger = logging.getLogger(__name__)
 
 # Global Redis client and fallback cache
 _redis_client: Optional[redis.Redis] = None
-_fallback_cache: dict[str, Any] = {}  # in-memory cache if Redis unavailable
+# In-memory cache if Redis unavailable: key -> (value, expire_at_monotonic | None).
+# expire_at is None only for entries explicitly cached with no TTL; every real
+# caller in this codebase always passes a ttl_seconds, so in practice every
+# fallback entry expires on its own schedule instead of living forever.
+_fallback_cache: dict[str, tuple[Any, Optional[float]]] = {}
 _redis_enabled = True  # Track whether Redis is actually working
+
+
+def _fallback_get(key: str) -> Any | None:
+    """Read from the in-memory fallback cache, honoring per-entry TTL."""
+    entry = _fallback_cache.get(key)
+    if entry is None:
+        return None
+    value, expire_at = entry
+    if expire_at is not None and time.monotonic() >= expire_at:
+        del _fallback_cache[key]
+        return None
+    return value
+
+
+def _fallback_set(key: str, value: Any, ttl_seconds: Optional[int]) -> None:
+    """Write to the in-memory fallback cache with the same TTL Redis would enforce."""
+    expire_at = time.monotonic() + ttl_seconds if ttl_seconds is not None else None
+    _fallback_cache[key] = (value, expire_at)
+
+
+def _fallback_exists(key: str) -> bool:
+    return _fallback_get(key) is not None
+
 
 # Cache statistics
 _cache_hits = 0
@@ -111,9 +139,9 @@ async def get(key: str) -> Any | None:
             return value
         except Exception as e:
             logger.debug(f"Redis GET failed for {key}: {e} — trying fallback")
-            return _fallback_cache.get(key)
+            return _fallback_get(key)
     else:
-        return _fallback_cache.get(key)
+        return _fallback_get(key)
 
 
 async def set(key: str, value: str, ttl_seconds: Optional[int] = None) -> bool:
@@ -137,10 +165,10 @@ async def set(key: str, value: str, ttl_seconds: Optional[int] = None) -> bool:
             return True
         except Exception as e:
             logger.debug(f"Redis SET failed for {key}: {e} — using fallback")
-            _fallback_cache[key] = value
+            _fallback_set(key, value, ttl_seconds)
             return True
     else:
-        _fallback_cache[key] = value
+        _fallback_set(key, value, ttl_seconds)
         return True
 
 
@@ -187,9 +215,9 @@ async def exists(key: str) -> bool:
             return result > 0
         except Exception as e:
             logger.debug(f"Redis EXISTS failed for {key}: {e} — trying fallback")
-            return key in _fallback_cache
+            return _fallback_exists(key)
     else:
-        return key in _fallback_cache
+        return _fallback_exists(key)
 
 
 async def flushdb() -> bool:
