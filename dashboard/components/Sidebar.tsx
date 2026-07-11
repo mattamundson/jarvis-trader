@@ -60,10 +60,10 @@ interface NavGroup {
 // justified link-only here. Routes deliberately NOT surfaced in nav:
 //   /jarvis          — pending P2.1 fold into flagship + redirect; not surfaced so
 //                      nav doesn't advertise a page about to be dissolved.
-//   /journal-review  — link-only by design: reached from /journal ("Review"),
-//                      /command-center, and /research-log. Folds into /performance +
-//                      /journal Review tab in P2.3; kept out of nav to avoid a 4th
-//                      journal-namespace link.
+//   /journal-review  — folded + redirected (P2.3): honest metric grid now on
+//                      /performance (JournalMetricsView), behavioral LLM tools now on
+//                      /journal's "Review" section (JournalBehaviorView). Now a
+//                      redirect stub → /journal; cross-page links resolve via it.
 //   /parallel-paper  — ENABLE_PARALLEL_PAPER-gated A/B compare; folds into /paper as
 //                      a tab (Phase 2 disposition). Off by default, so not in nav.
 //   /trades/[id]/review — dynamic per-trade detail, reached from Trade History/Journal.

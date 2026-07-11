@@ -34,6 +34,9 @@ import { SymbolPerformanceWidget } from "@/components/SymbolPerformanceWidget";
 import { RollingPerformanceWidget } from "@/components/RollingPerformanceWidget";
 import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { PnLStreakWidget } from "@/components/PnLStreakWidget";
+// P2.3 IA: honest deduped metric grid folded in from the retired /journal-review page
+// (its behavioral LLM tools moved to /journal → Review). /journal-review redirects here.
+import { JournalMetricsView } from "@/components/journal-review/JournalMetricsView";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
@@ -900,6 +903,12 @@ export default function PerformancePage() {
         {/* Section 12: Win Rate by Symbol */}
         <WidgetErrorBoundary name="Win Rate by Symbol">
           <WinRateBySymbolWidget />
+        </WidgetErrorBoundary>
+
+        {/* Section 12b: Journal Review honest metric grid (folded in from the retired
+            /journal-review page, P2.3 IA — behavioral tools live on /journal → Review) */}
+        <WidgetErrorBoundary name="Journal Review Metrics">
+          <JournalMetricsView />
         </WidgetErrorBoundary>
 
         {/* Section 13: Extended Analytics (folded in from the retired /stats page, P2.3 IA) */}

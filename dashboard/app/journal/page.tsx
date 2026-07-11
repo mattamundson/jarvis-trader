@@ -8,6 +8,9 @@ import { fetchTradeJournal, type TradeJournalEntry } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+// P2.3 IA: behavioral LLM tools folded in from the retired /journal-review page.
+import { JournalBehaviorView } from "@/components/journal-review/JournalBehaviorView";
 
 const REFRESH_MS = 30_000;
 
@@ -74,11 +77,11 @@ export default function JournalPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/journal-review">
+          <a href="#review">
             <Button variant="ghost" size="sm">
               Review
             </Button>
-          </Link>
+          </a>
           <Button
             variant="outline"
             size="sm"
@@ -216,6 +219,13 @@ export default function JournalPage() {
           </Card>
         </div>
       )}
+
+      {/* Review — behavioral LLM tools folded in from the retired /journal-review (P2.3 IA) */}
+      <div id="review" className="mt-8 border-t border-border pt-6 scroll-mt-6">
+        <WidgetErrorBoundary name="Journal Review">
+          <JournalBehaviorView />
+        </WidgetErrorBoundary>
+      </div>
     </div>
   );
 }
