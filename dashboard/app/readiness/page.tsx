@@ -41,6 +41,7 @@ import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { ValidationView } from "@/components/validation/ValidationView";
+import { StrategyLedgerView } from "@/components/strategy-ledger/StrategyLedgerView";
 import {
   fetchHonestTrades,
   equityCurve,
@@ -950,6 +951,25 @@ export default function ReadinessPage() {
           </div>
           <WidgetErrorBoundary name="Strategy Validation">
             <ValidationView />
+          </WidgetErrorBoundary>
+        </div>
+
+        {/* ── Strategy Gate Ledger (folded from /strategy-ledger, P2.3) ── */}
+        <div className="border-t border-border pt-6">
+          <div className="flex items-center gap-3 mb-4">
+            <BarChart3 className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <h2 className="text-lg font-bold text-foreground">
+                Which Candidates Clear the Gate Now
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Per-strategy gate-v2 verdicts (PF-CI / p_edge / MC-DD / DSR) — folded
+                from the former /strategy-ledger page.
+              </p>
+            </div>
+          </div>
+          <WidgetErrorBoundary name="Strategy Gate Ledger">
+            <StrategyLedgerView />
           </WidgetErrorBoundary>
         </div>
 

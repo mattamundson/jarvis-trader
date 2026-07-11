@@ -106,14 +106,14 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     // Four "Strategy*" routes do four unrelated things; grouped + relabeled so
-    // each purpose reads at a glance (Phase 2 IA §4). Ledger stays here until
-    // P2.3 folds it into /readiness.
+    // each purpose reads at a glance (Phase 2 IA §4). The per-strategy gate-v2
+    // verdict ledger was folded into /readiness (P2.3) — its former /strategy-ledger
+    // route now redirects there, so it's no longer a standalone nav item.
     title: "Strategies",
     items: [
       { label: "Strategy C+ (Live)", href: "/strategy-c", icon: <Activity className="h-3.5 w-3.5" /> },
       { label: "Strategy C+ Console", href: "/strategy-c-command", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { label: "RL Lab", href: "/strategies", icon: <LineChart className="h-3.5 w-3.5" /> },
-      { label: "Strategy Ledger", href: "/strategy-ledger", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "Edge Research", href: "/strategy-research", icon: <Lightbulb className="h-3.5 w-3.5" /> },
     ],
   },
