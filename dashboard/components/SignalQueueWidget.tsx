@@ -63,12 +63,38 @@ function biasBadgeVariant(bias: string): "bull" | "bear" | "warn" | "neutral" {
   return "neutral";
 }
 
-function stcColor(val: number): string {
-  if (val >= 80) return "#ff4444";
-  if (val >= 60) return "#ffcc00";
-  if (val <= 20) return "#00ff88";
-  if (val <= 40) return "#00d4ff";
-  return "#e0e0e0";
+function stcTextClass(val: number): string {
+  if (val >= 80) return "text-[#ff4444]";
+  if (val >= 60) return "text-[#ffcc00]";
+  if (val <= 20) return "text-[#00ff88]";
+  if (val <= 40) return "text-[#00d4ff]";
+  return "text-[#e0e0e0]";
+}
+
+function stcBgClass(val: number): string {
+  if (val >= 80) return "bg-[#ff4444]";
+  if (val >= 60) return "bg-[#ffcc00]";
+  if (val <= 20) return "bg-[#00ff88]";
+  if (val <= 40) return "bg-[#00d4ff]";
+  return "bg-[#e0e0e0]";
+}
+
+function heroBgClass(variant: "bull" | "bear" | "warn" | "neutral"): string {
+  if (variant === "bull") return "bg-[#00ff8808]";
+  if (variant === "bear") return "bg-[#ff444408]";
+  return "bg-[#ffcc0008]";
+}
+
+function heroBorderClass(variant: "bull" | "bear" | "warn" | "neutral"): string {
+  if (variant === "bull") return "border-[#00ff8825]";
+  if (variant === "bear") return "border-[#ff444425]";
+  return "border-[#ffcc0025]";
+}
+
+function heroTextClass(variant: "bull" | "bear" | "warn" | "neutral"): string {
+  if (variant === "bull") return "text-[#00ff88]";
+  if (variant === "bear") return "text-[#ff4444]";
+  return "text-[#ffcc00]";
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -77,36 +103,26 @@ function StatRow({
   label,
   value,
   sub,
-  valueColor,
+  valueClassName,
 }: {
   label: string;
   value: string;
   sub?: string;
-  valueColor?: string;
+  valueClassName?: string;
 }) {
   return (
-    <div
-      className="flex items-center justify-between py-1.5"
-      style={{ borderBottom: "1px solid #111" }}
-    >
-      <span
-        className="font-mono text-[10px] uppercase tracking-wider"
-        style={{ color: "#555" }}
-      >
+    <div className="flex items-center justify-between py-1.5 border-b border-[#111]">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-[#555]">
         {label}
       </span>
       <div className="text-right">
         <span
-          className="font-mono text-sm font-bold tabular-nums"
-          style={{ color: valueColor ?? "#e0e0e0" }}
+          className={`font-mono text-sm font-bold tabular-nums ${valueClassName ?? "text-[#e0e0e0]"}`}
         >
           {value}
         </span>
         {sub && (
-          <span
-            className="font-mono text-[10px] ml-2 tabular-nums"
-            style={{ color: "#444" }}
-          >
+          <span className="font-mono text-[10px] ml-2 tabular-nums text-[#444]">
             {sub}
           </span>
         )}
@@ -170,20 +186,13 @@ export function SignalQueueWidget() {
             <CardTitle className="text-sm font-mono font-bold tracking-[0.15em] uppercase">
               Current Signal State
             </CardTitle>
-            <p className="font-mono text-[10px] mt-0.5" style={{ color: "#555" }}>
+            <p className="font-mono text-[10px] mt-0.5 text-[#555]">
               MGC / GC=F · Daily Regime + Entry Pipeline
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={signalVariant}>{signalText}</Badge>
-            <span
-              className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
-              style={{
-                borderColor: "#00d4ff33",
-                backgroundColor: "#00d4ff10",
-                color: "#00d4ff",
-              }}
-            >
+            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border border-[#00d4ff33] bg-[#00d4ff10] text-[#00d4ff]">
               30s auto-refresh
             </span>
           </div>
@@ -193,25 +202,15 @@ export function SignalQueueWidget() {
       <CardContent>
         {/* Error state */}
         {error && (
-          <div
-            className="rounded-lg p-3 mb-3 font-mono text-xs"
-            style={{
-              backgroundColor: "#ff444410",
-              border: "1px solid #ff444430",
-              color: "#ff4444",
-            }}
-          >
+          <div className="rounded-lg p-3 mb-3 font-mono text-xs bg-[#ff444410] border border-[#ff444430] text-[#ff4444]">
             {error}
           </div>
         )}
 
         {/* Loading state */}
         {!data && !error && (
-          <div
-            className="rounded-lg p-6 text-center"
-            style={{ backgroundColor: "#0d0d1a" }}
-          >
-            <span className="font-mono text-xs" style={{ color: "#555" }}>
+          <div className="rounded-lg p-6 text-center bg-panel-alt">
+            <span className="font-mono text-xs text-[#555]">
               Loading signal…
             </span>
           </div>
@@ -222,41 +221,19 @@ export function SignalQueueWidget() {
           <>
             {/* Primary signal hero */}
             <div
-              className="rounded-lg p-3 mb-4 flex items-center justify-between"
-              style={{
-                backgroundColor:
-                  signalVariant === "bull"
-                    ? "#00ff8808"
-                    : signalVariant === "bear"
-                    ? "#ff444408"
-                    : "#ffcc0008",
-                border: `1px solid ${
-                  signalVariant === "bull"
-                    ? "#00ff8825"
-                    : signalVariant === "bear"
-                    ? "#ff444425"
-                    : "#ffcc0025"
-                }`,
-              }}
+              className={`rounded-lg p-3 mb-4 flex items-center justify-between border ${heroBgClass(
+                signalVariant
+              )} ${heroBorderClass(signalVariant)}`}
             >
               <div>
-                <div
-                  className="font-mono text-[9px] uppercase tracking-wider mb-1"
-                  style={{ color: "#555" }}
-                >
+                <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">
                   Signal / Bias
                 </div>
                 <div className="flex items-center gap-2">
                   <span
-                    className="font-mono text-xl font-bold tracking-wider"
-                    style={{
-                      color:
-                        signalVariant === "bull"
-                          ? "#00ff88"
-                          : signalVariant === "bear"
-                          ? "#ff4444"
-                          : "#ffcc00",
-                    }}
+                    className={`font-mono text-xl font-bold tracking-wider ${heroTextClass(
+                      signalVariant
+                    )}`}
                   >
                     {signalText}
                   </span>
@@ -266,16 +243,13 @@ export function SignalQueueWidget() {
                 </div>
               </div>
               <div className="text-right">
-                <div
-                  className="font-mono text-[9px] uppercase tracking-wider mb-1"
-                  style={{ color: "#555" }}
-                >
+                <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">
                   Signal Date
                 </div>
-                <div className="font-mono text-sm font-bold tabular-nums" style={{ color: "#888" }}>
+                <div className="font-mono text-sm font-bold tabular-nums text-[#888]">
                   {data.date}
                 </div>
-                <div className="font-mono text-[9px] mt-0.5" style={{ color: "#333" }}>
+                <div className="font-mono text-[9px] mt-0.5 text-[#333]">
                   {data.symbol}
                 </div>
               </div>
@@ -286,25 +260,25 @@ export function SignalQueueWidget() {
               <StatRow
                 label="Entry Price (last close)"
                 value={entry > 0 ? `$${entry.toFixed(2)}` : "--"}
-                valueColor="#e0e0e0"
+                valueClassName="text-[#e0e0e0]"
               />
               <StatRow
                 label={`Stop Level  (ATR × 0.70 = ${(atr * 0.7).toFixed(1)})`}
                 value={computedStop > 0 ? `$${computedStop.toFixed(2)}` : "--"}
                 sub={data.stop_level > 0 ? "engine" : "computed"}
-                valueColor="#ff4444"
+                valueClassName="text-[#ff4444]"
               />
               <StatRow
                 label={`Target 1  (ATR × 1.50 = ${(atr * 1.5).toFixed(1)})`}
                 value={computedTarget1 > 0 ? `$${computedTarget1.toFixed(2)}` : "--"}
                 sub={data.target_1 > 0 ? "engine" : "computed"}
-                valueColor="#00ff88"
+                valueClassName="text-[#00ff88]"
               />
               {data.target_2 > 0 && (
                 <StatRow
                   label="Target 2"
                   value={`$${data.target_2.toFixed(2)}`}
-                  valueColor="#00d4ff"
+                  valueClassName="text-[#00d4ff]"
                 />
               )}
             </div>
@@ -312,99 +286,56 @@ export function SignalQueueWidget() {
             {/* Indicator grid */}
             <div className="grid grid-cols-2 gap-2 mb-3">
               {/* ATR */}
-              <div
-                className="rounded-lg p-2.5"
-                style={{ backgroundColor: "#0d0d1a", border: "1px solid #1a1a2e" }}
-              >
-                <div
-                  className="font-mono text-[9px] uppercase tracking-wider mb-1"
-                  style={{ color: "#555" }}
-                >
+              <div className="rounded-lg p-2.5 bg-panel-alt border border-panel-border">
+                <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">
                   ATR
                 </div>
-                <div
-                  className="font-mono text-sm font-bold tabular-nums"
-                  style={{ color: "#00d4ff" }}
-                >
+                <div className="font-mono text-sm font-bold tabular-nums text-[#00d4ff]">
                   {atr.toFixed(2)} pts
                 </div>
               </div>
 
               {/* Regime */}
-              <div
-                className="rounded-lg p-2.5"
-                style={{ backgroundColor: "#0d0d1a", border: "1px solid #1a1a2e" }}
-              >
-                <div
-                  className="font-mono text-[9px] uppercase tracking-wider mb-1"
-                  style={{ color: "#555" }}
-                >
+              <div className="rounded-lg p-2.5 bg-panel-alt border border-panel-border">
+                <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">
                   Regime
                 </div>
-                <div
-                  className="font-mono text-sm font-bold"
-                  style={{ color: "#00d4ff" }}
-                >
+                <div className="font-mono text-sm font-bold text-[#00d4ff]">
                   {data.regime.replace(/_/g, " ")}
                 </div>
               </div>
 
               {/* STC Value */}
-              <div
-                className="rounded-lg p-2.5"
-                style={{ backgroundColor: "#0d0d1a", border: "1px solid #1a1a2e" }}
-              >
-                <div
-                  className="font-mono text-[9px] uppercase tracking-wider mb-1"
-                  style={{ color: "#555" }}
-                >
+              <div className="rounded-lg p-2.5 bg-panel-alt border border-panel-border">
+                <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">
                   STC Value
                 </div>
                 <div
-                  className="font-mono text-sm font-bold tabular-nums"
-                  style={{ color: stcColor(data.stc_val) }}
+                  className={`font-mono text-sm font-bold tabular-nums ${stcTextClass(data.stc_val)}`}
                 >
                   {data.stc_val.toFixed(1)}
-                  <span className="text-[9px] ml-1" style={{ color: "#555" }}>/ 100</span>
+                  <span className="text-[9px] ml-1 text-[#555]">/ 100</span>
                 </div>
                 {/* STC bar */}
-                <div
-                  className="mt-1 h-1 rounded-full overflow-hidden"
-                  style={{ backgroundColor: "#1a1a2e" }}
-                >
+                <div className="mt-1 h-1 rounded-full overflow-hidden bg-panel-border">
                   <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(data.stc_val, 100)}%`,
-                      backgroundColor: stcColor(data.stc_val),
-                    }}
+                    className={`h-full rounded-full transition-all ${stcBgClass(data.stc_val)}`}
+                    style={{ width: `${Math.min(data.stc_val, 100)}%` }}
                   />
                 </div>
               </div>
 
               {/* STC Signal + EMA Trend */}
-              <div
-                className="rounded-lg p-2.5"
-                style={{ backgroundColor: "#0d0d1a", border: "1px solid #1a1a2e" }}
-              >
-                <div
-                  className="font-mono text-[9px] uppercase tracking-wider mb-1"
-                  style={{ color: "#555" }}
-                >
+              <div className="rounded-lg p-2.5 bg-panel-alt border border-panel-border">
+                <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">
                   STC Signal / EMA
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span
-                    className="font-mono text-xs font-bold capitalize"
-                    style={{ color: "#e0e0e0" }}
-                  >
+                  <span className="font-mono text-xs font-bold capitalize text-[#e0e0e0]">
                     {data.stc_signal}
                   </span>
-                  <span style={{ color: "#333" }}>/</span>
-                  <span
-                    className="font-mono text-xs font-bold capitalize"
-                    style={{ color: "#888" }}
-                  >
+                  <span className="text-[#333]">/</span>
+                  <span className="font-mono text-xs font-bold capitalize text-[#888]">
                     {data.ema_trend.replace(/_/g, " ")}
                   </span>
                 </div>
@@ -412,32 +343,25 @@ export function SignalQueueWidget() {
             </div>
 
             {/* Adaptive STC thresholds */}
-            <div
-              className="rounded-lg p-3 mb-3 font-mono text-[10px] leading-relaxed"
-              style={{
-                backgroundColor: "#0d0d1a",
-                border: "1px solid #1a1a2e",
-                color: "#666",
-              }}
-            >
-              <div className="mb-1" style={{ color: "#444" }}>
+            <div className="rounded-lg p-3 mb-3 font-mono text-[10px] leading-relaxed bg-panel-alt border border-panel-border text-[#666]">
+              <div className="mb-1 text-[#444]">
                 ADAPTIVE STC THRESHOLDS
               </div>
-              <div className="flex gap-4" style={{ color: "#888" }}>
+              <div className="flex gap-4 text-[#888]">
                 <span>
                   Oversold:{" "}
-                  <span className="font-bold" style={{ color: "#00ff88" }}>
+                  <span className="font-bold text-[#00ff88]">
                     {data.adaptive_stc_os}
                   </span>
                 </span>
                 <span>
                   Overbought:{" "}
-                  <span className="font-bold" style={{ color: "#ff4444" }}>
+                  <span className="font-bold text-[#ff4444]">
                     {data.adaptive_stc_ob}
                   </span>
                 </span>
               </div>
-              <div className="mt-1" style={{ color: "#555" }}>
+              <div className="mt-1 text-[#555]">
                 {data.config}
               </div>
             </div>
@@ -445,10 +369,7 @@ export function SignalQueueWidget() {
             {/* Footer timestamp */}
             {lastFetch && (
               <div className="text-right">
-                <span
-                  className="font-mono text-[9px]"
-                  style={{ color: "#333" }}
-                >
+                <span className="font-mono text-[9px] text-[#333]">
                   Last fetched: {lastFetch}
                 </span>
               </div>
