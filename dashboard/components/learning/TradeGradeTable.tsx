@@ -182,7 +182,10 @@ function GradeDistribution({ grades }: { grades: TradeGrade[] }) {
               <div
                 className="w-full rounded-t transition-all"
                 style={{
-                  height: `${Math.max(2, pct * 0.32)}rem`,
+                  // Bounded to [0.125rem, 1.5rem] so a single-grade-dominant
+                  // distribution (pct up to 100) can never exceed the h-10
+                  // row's available space and bleed into the header above.
+                  height: `${Math.max(0.125, (pct / 100) * 1.5)}rem`,
                   backgroundColor: gradeColor(g),
                   opacity: 0.8,
                 }}
