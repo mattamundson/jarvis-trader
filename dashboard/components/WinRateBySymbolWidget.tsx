@@ -37,16 +37,22 @@ function fmt$(value: number): string {
   })}`;
 }
 
-function pnlColor(value: number): string {
-  if (value > 0) return "#00ff88";
-  if (value < 0) return "#ff4444";
-  return "#888888";
+function pnlTextClass(value: number): string {
+  if (value > 0) return "text-[#00ff88]";
+  if (value < 0) return "text-[#ff4444]";
+  return "text-[#888888]";
 }
 
-function barColor(winRate: number): string {
-  if (winRate >= 55) return "#00ff88";
-  if (winRate >= 40) return "#ffcc00";
-  return "#ff4444";
+function barBgClass(winRate: number): string {
+  if (winRate >= 55) return "bg-[#00ff88]";
+  if (winRate >= 40) return "bg-[#ffcc00]";
+  return "bg-[#ff4444]";
+}
+
+function barTextClass(winRate: number): string {
+  if (winRate >= 55) return "text-[#00ff88]";
+  if (winRate >= 40) return "text-[#ffcc00]";
+  return "text-[#ff4444]";
 }
 
 function winRateBadgeVariant(winRate: number): "bull" | "warn" | "bear" {
@@ -72,15 +78,12 @@ function toDisplay(s: SymbolStat): SymbolStatsDisplay {
 
 function SkeletonRow() {
   return (
-    <div
-      className="grid grid-cols-12 gap-3 items-center py-3 animate-pulse"
-      style={{ borderBottom: "1px solid #111" }}
-    >
-      <div className="col-span-2 h-3 rounded" style={{ backgroundColor: "#1a1a2e" }} />
-      <div className="col-span-4 h-2 rounded-full" style={{ backgroundColor: "#1a1a2e" }} />
-      <div className="col-span-2 h-3 rounded" style={{ backgroundColor: "#1a1a2e" }} />
-      <div className="col-span-2 h-3 rounded" style={{ backgroundColor: "#1a1a2e" }} />
-      <div className="col-span-2 h-5 rounded-full" style={{ backgroundColor: "#1a1a2e" }} />
+    <div className="grid grid-cols-12 gap-3 items-center py-3 animate-pulse border-b border-[#111]">
+      <div className="col-span-2 h-3 rounded bg-panel-border" />
+      <div className="col-span-4 h-2 rounded-full bg-panel-border" />
+      <div className="col-span-2 h-3 rounded bg-panel-border" />
+      <div className="col-span-2 h-3 rounded bg-panel-border" />
+      <div className="col-span-2 h-5 rounded-full bg-panel-border" />
     </div>
   );
 }
@@ -88,15 +91,11 @@ function SkeletonRow() {
 // ── Symbol row ────────────────────────────────────────────────────────────────
 
 function SymbolRow({ row }: { row: SymbolStatsDisplay }) {
-  const color = barColor(row.win_rate);
   return (
-    <div
-      className="grid grid-cols-12 gap-3 items-center py-3 hover:bg-white/[0.02] transition-colors"
-      style={{ borderBottom: "1px solid #111" }}
-    >
+    <div className="grid grid-cols-12 gap-3 items-center py-3 hover:bg-white/[0.02] transition-colors border-b border-[#111]">
       {/* Symbol name */}
       <div className="col-span-2">
-        <span className="font-mono text-xs font-bold" style={{ color: "#e0e0e0" }}>
+        <span className="font-mono text-xs font-bold text-[#e0e0e0]">
           {row.symbol}
         </span>
       </div>
@@ -105,16 +104,12 @@ function SymbolRow({ row }: { row: SymbolStatsDisplay }) {
       <div className="col-span-4 flex items-center gap-2">
         <div className="h-2 bg-muted rounded-full flex-1 min-w-0">
           <div
-            className="h-2 rounded-full transition-all duration-500"
-            style={{
-              width: `${Math.min(row.win_rate, 100)}%`,
-              backgroundColor: color,
-            }}
+            className={`h-2 rounded-full transition-all duration-500 ${barBgClass(row.win_rate)}`}
+            style={{ width: `${Math.min(row.win_rate, 100)}%` }}
           />
         </div>
         <span
-          className="font-mono text-[11px] tabular-nums whitespace-nowrap"
-          style={{ color, minWidth: "38px", textAlign: "right" }}
+          className={`font-mono text-[11px] tabular-nums whitespace-nowrap min-w-[38px] text-right ${barTextClass(row.win_rate)}`}
         >
           {row.win_rate.toFixed(1)}%
         </span>
@@ -122,20 +117,17 @@ function SymbolRow({ row }: { row: SymbolStatsDisplay }) {
 
       {/* W/L count */}
       <div className="col-span-2">
-        <span className="font-mono text-[11px] tabular-nums" style={{ color: "#888" }}>
+        <span className="font-mono text-[11px] tabular-nums text-[#888]">
           W/L:{" "}
-          <span style={{ color: "#00ff88" }}>{row.wins}</span>
-          <span style={{ color: "#555" }}>/</span>
-          <span style={{ color: "#ff4444" }}>{row.losses}</span>
+          <span className="text-[#00ff88]">{row.wins}</span>
+          <span className="text-[#555]">/</span>
+          <span className="text-[#ff4444]">{row.losses}</span>
         </span>
       </div>
 
       {/* Total P&L */}
       <div className="col-span-2 text-right">
-        <span
-          className="font-mono text-[11px] tabular-nums font-bold"
-          style={{ color: pnlColor(row.total_pnl) }}
-        >
+        <span className={`font-mono text-[11px] tabular-nums font-bold ${pnlTextClass(row.total_pnl)}`}>
           {fmt$(row.total_pnl)}
         </span>
       </div>
@@ -171,14 +163,14 @@ export function WinRateBySymbolWidget() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4" style={{ color: "#00ff88" }} />
+          <TrendingUp className="h-4 w-4 text-[#00ff88]" />
           <CardTitle className="text-sm font-mono tracking-wider uppercase">
             Win Rate by Symbol
           </CardTitle>
         </div>
         <div className="flex items-center gap-3">
           {lastUpdated && !loading && (
-            <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+            <span className="font-mono text-[10px] text-[#555]">
               {lastUpdated.toLocaleTimeString()}
             </span>
           )}
@@ -188,12 +180,7 @@ export function WinRateBySymbolWidget() {
               setLastUpdated(new Date());
             }}
             disabled={loading}
-            className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-mono transition-colors disabled:opacity-40"
-            style={{
-              backgroundColor: "#00ff8812",
-              border: "1px solid #00ff8830",
-              color: "#00ff88",
-            }}
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-mono transition-colors disabled:opacity-40 bg-[#00ff8812] border border-[#00ff8830] text-[#00ff88]"
           >
             <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -205,34 +192,19 @@ export function WinRateBySymbolWidget() {
         {/* Column headers — only shown when data is present */}
         {!loading && !error && stats.length > 0 && (
           <div className="grid grid-cols-12 gap-3 mb-1">
-            <div
-              className="col-span-2 font-mono text-[10px] uppercase tracking-wider"
-              style={{ color: "#555" }}
-            >
+            <div className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-[#555]">
               Symbol
             </div>
-            <div
-              className="col-span-4 font-mono text-[10px] uppercase tracking-wider"
-              style={{ color: "#555" }}
-            >
+            <div className="col-span-4 font-mono text-[10px] uppercase tracking-wider text-[#555]">
               Win Rate
             </div>
-            <div
-              className="col-span-2 font-mono text-[10px] uppercase tracking-wider"
-              style={{ color: "#555" }}
-            >
+            <div className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-[#555]">
               W / L
             </div>
-            <div
-              className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-right"
-              style={{ color: "#555" }}
-            >
+            <div className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-right text-[#555]">
               Total P&amp;L
             </div>
-            <div
-              className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-right"
-              style={{ color: "#555" }}
-            >
+            <div className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-right text-[#555]">
               Signal
             </div>
           </div>
@@ -249,14 +221,7 @@ export function WinRateBySymbolWidget() {
 
         {/* Error state */}
         {!loading && error && (
-          <div
-            className="rounded-lg p-4 font-mono text-sm"
-            style={{
-              backgroundColor: "#ff444412",
-              border: "1px solid #ff444430",
-              color: "#ff4444",
-            }}
-          >
+          <div className="rounded-lg p-4 font-mono text-sm bg-[#ff444412] border border-[#ff444430] text-[#ff4444]">
             Symbol data unavailable
           </div>
         )}
@@ -264,7 +229,7 @@ export function WinRateBySymbolWidget() {
         {/* Empty state */}
         {!loading && !error && stats.length === 0 && (
           <div className="py-10 text-center">
-            <p className="font-mono text-sm" style={{ color: "#555" }}>
+            <p className="font-mono text-sm text-[#555]">
               No closed trades yet
             </p>
           </div>
@@ -278,15 +243,9 @@ export function WinRateBySymbolWidget() {
             ))}
 
             {/* Overall summary row — separator + bold combined stats */}
-            <div
-              className="grid grid-cols-12 gap-3 items-center py-3 mt-1"
-              style={{ borderTop: "2px solid #1a1a2e" }}
-            >
+            <div className="grid grid-cols-12 gap-3 items-center py-3 mt-1 border-t-2 border-panel-border">
               <div className="col-span-2">
-                <span
-                  className="font-mono text-xs font-bold uppercase tracking-wider"
-                  style={{ color: "#e0e0e0" }}
-                >
+                <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#e0e0e0]">
                   TOTAL
                 </span>
               </div>
@@ -295,20 +254,12 @@ export function WinRateBySymbolWidget() {
               <div className="col-span-4 flex items-center gap-2">
                 <div className="h-2 bg-muted rounded-full flex-1 min-w-0">
                   <div
-                    className="h-2 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${Math.min(overallWinRate, 100)}%`,
-                      backgroundColor: barColor(overallWinRate),
-                    }}
+                    className={`h-2 rounded-full transition-all duration-500 ${barBgClass(overallWinRate)}`}
+                    style={{ width: `${Math.min(overallWinRate, 100)}%` }}
                   />
                 </div>
                 <span
-                  className="font-mono text-[11px] tabular-nums font-bold whitespace-nowrap"
-                  style={{
-                    color: barColor(overallWinRate),
-                    minWidth: "38px",
-                    textAlign: "right",
-                  }}
+                  className={`font-mono text-[11px] tabular-nums font-bold whitespace-nowrap min-w-[38px] text-right ${barTextClass(overallWinRate)}`}
                 >
                   {overallWinRate.toFixed(1)}%
                 </span>
@@ -316,23 +267,17 @@ export function WinRateBySymbolWidget() {
 
               {/* Overall W/L */}
               <div className="col-span-2">
-                <span
-                  className="font-mono text-[11px] tabular-nums font-bold"
-                  style={{ color: "#888" }}
-                >
+                <span className="font-mono text-[11px] tabular-nums font-bold text-[#888]">
                   W/L:{" "}
-                  <span style={{ color: "#00ff88" }}>{overallWins}</span>
-                  <span style={{ color: "#555" }}>/</span>
-                  <span style={{ color: "#ff4444" }}>{overallLosses}</span>
+                  <span className="text-[#00ff88]">{overallWins}</span>
+                  <span className="text-[#555]">/</span>
+                  <span className="text-[#ff4444]">{overallLosses}</span>
                 </span>
               </div>
 
               {/* Overall total P&L */}
               <div className="col-span-2 text-right">
-                <span
-                  className="font-mono text-[11px] tabular-nums font-bold"
-                  style={{ color: pnlColor(overallPnl) }}
-                >
+                <span className={`font-mono text-[11px] tabular-nums font-bold ${pnlTextClass(overallPnl)}`}>
                   {fmt$(overallPnl)}
                 </span>
               </div>
@@ -346,19 +291,14 @@ export function WinRateBySymbolWidget() {
             </div>
 
             {/* Footer */}
-            <div
-              className="pt-2 pb-1 flex items-center justify-between"
-              style={{ borderTop: "1px solid #1a1a2e" }}
-            >
-              <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+            <div className="pt-2 pb-1 flex items-center justify-between border-t border-panel-border">
+              <span className="font-mono text-[10px] text-[#555]">
                 {stats.length} symbol{stats.length !== 1 ? "s" : ""} &bull;{" "}
                 {tradeSet ? dedupCaveat(tradeSet) : `${overallTrades} trades`} &bull; refreshes every 2 min
               </span>
-              <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+              <span className="font-mono text-[10px] text-[#555]">
                 avg/trade:{" "}
-                <span
-                  style={{ color: pnlColor(overallAvgPnl), fontWeight: 700 }}
-                >
+                <span className={`font-bold ${pnlTextClass(overallAvgPnl)}`}>
                   {fmt$(overallAvgPnl)}
                 </span>
               </span>
