@@ -168,19 +168,38 @@ function metricColor(value: number, min: number, inverse = false): string {
   return close ? "#ffcc00" : "#ff4444";
 }
 
+// Tailwind's JIT scanner only picks up literal class strings, so a companion of
+// metricColor() that returns the equivalent text-color class (not a runtime hex
+// piped through inline style) is needed anywhere the value drives a className.
+function metricColorClass(value: number, min: number, inverse = false): string {
+  const pass = inverse ? value <= min : value >= min;
+  if (pass) return "text-[#00ff88]";
+  const close = inverse ? value <= min * 1.5 : value >= min * 0.75;
+  return close ? "text-[#ffcc00]" : "text-[#ff4444]";
+}
+
 function pct(v: number) {
   return `${(v * 100).toFixed(1)}%`;
 }
 
+// Closed palette of colors ever passed to Badge in this file — mapped to literal
+// Tailwind arbitrary-value classes so the JIT scanner can see them (a dynamic
+// `text-[${color}]` template string is invisible to the static extractor).
+const BADGE_COLOR_CLASSES: Record<string, string> = {
+  "#00ff88": "text-[#00ff88] bg-[#00ff8818] border-[#00ff8840]",
+  "#ff4444": "text-[#ff4444] bg-[#ff444418] border-[#ff444440]",
+  "#ffcc00": "text-[#ffcc00] bg-[#ffcc0018] border-[#ffcc0040]",
+  "#00d4ff": "text-[#00d4ff] bg-[#00d4ff18] border-[#00d4ff40]",
+  "#555": "text-[#555] bg-[#55518] border-[#55540]",
+  "#888": "text-[#888] bg-[#88818] border-[#88840]",
+};
+
 function Badge({ label, color }: { label: string; color: string }) {
   return (
     <span
-      className="font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
-      style={{
-        color,
-        backgroundColor: `${color}18`,
-        border: `1px solid ${color}40`,
-      }}
+      className={`font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border ${
+        BADGE_COLOR_CLASSES[color] ?? "text-[#888] bg-[#88818] border-[#88840]"
+      }`}
     >
       {label}
     </span>
@@ -192,9 +211,9 @@ function Badge({ label, color }: { label: string; color: string }) {
 function HealthPanel({ health }: { health: HealthStatus | null }) {
   if (!health) {
     return (
-      <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+      <section className="rounded-xl p-5 bg-panel border border-panel-border">
         <SectionHeader title="RL Module Health" />
-        <p className="font-mono text-xs" style={{ color: "#555" }}>Engine offline or not reachable.</p>
+        <p className="font-mono text-xs text-[#555]">Engine offline or not reachable.</p>
       </section>
     );
   }
@@ -206,7 +225,7 @@ function HealthPanel({ health }: { health: HealthStatus | null }) {
   ];
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex items-center justify-between mb-4">
         <SectionHeader title="RL Module Health" subtitle="Dependencies and runtime availability" />
         <Badge label={health.ready ? "READY" : "NOT READY"} color={health.ready ? "#00ff88" : "#ff4444"} />
@@ -215,19 +234,16 @@ function HealthPanel({ health }: { health: HealthStatus | null }) {
         {items.map(({ label, ok }) => (
           <div key={label} className="flex items-center gap-2">
             {ok
-              ? <CheckCircle className="h-4 w-4" style={{ color: "#00ff88" }} />
-              : <XCircle className="h-4 w-4" style={{ color: "#ff4444" }} />
+              ? <CheckCircle className="h-4 w-4 text-[#00ff88]" />
+              : <XCircle className="h-4 w-4 text-[#ff4444]" />
             }
-            <span className="font-mono text-xs" style={{ color: ok ? "#e0e0e0" : "#ff4444" }}>{label}</span>
+            <span className={`font-mono text-xs ${ok ? "text-[#e0e0e0]" : "text-[#ff4444]"}`}>{label}</span>
           </div>
         ))}
       </div>
       {!health.ready && (
-        <div
-          className="mt-4 rounded-lg p-3 font-mono text-xs"
-          style={{ backgroundColor: "#ff444410", border: "1px solid #ff444430", color: "#ff9999" }}
-        >
-          Install missing deps: <span style={{ color: "#ffcc00" }}>pip install stable-baselines3 gymnasium</span>
+        <div className="mt-4 rounded-lg p-3 font-mono text-xs bg-[#ff444410] border border-[#ff444430] text-[#ff9999]">
+          Install missing deps: <span className="text-[#ffcc00]">pip install stable-baselines3 gymnasium</span>
         </div>
       )}
     </section>
@@ -248,8 +264,7 @@ function StartTrainingPanel({
   const [timesteps, setTimesteps] = useState(100_000);
   const [loading, setLoading] = useState(false);
 
-  const selectCls = "font-mono text-xs rounded-lg px-3 py-2 outline-none cursor-pointer";
-  const selectStyle = { backgroundColor: "#111", border: "1px solid #1a1a2e", color: "#e0e0e0" };
+  const selectCls = "font-mono text-xs rounded-lg px-3 py-2 outline-none cursor-pointer bg-[#111] border border-panel-border text-[#e0e0e0]";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -270,31 +285,30 @@ function StartTrainingPanel({
   ];
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <SectionHeader
         title="Start RL Training"
         subtitle="Trains PPO agent on historical OHLCV data. Runs in background — poll status below."
       />
       <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-4">
         <div className="flex flex-col gap-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Symbol</label>
-          <select className={selectCls} style={selectStyle} value={symbol} onChange={(e) => setSymbol(e.target.value)}>
+          <label className="font-mono text-[10px] uppercase tracking-wider text-[#555]">Symbol</label>
+          <select className={selectCls} value={symbol} onChange={(e) => setSymbol(e.target.value)}>
             {["MES", "MNQ", "MCL", "MGC"].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Interval</label>
-          <select className={selectCls} style={selectStyle} value={barInterval} onChange={(e) => setBarInterval(e.target.value)}>
+          <label className="font-mono text-[10px] uppercase tracking-wider text-[#555]">Interval</label>
+          <select className={selectCls} value={barInterval} onChange={(e) => setBarInterval(e.target.value)}>
             {["1h", "4h", "1d"].map((i) => <option key={i} value={i}>{i}</option>)}
           </select>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Timesteps</label>
+          <label className="font-mono text-[10px] uppercase tracking-wider text-[#555]">Timesteps</label>
           <select
-            className={selectCls}
-            style={{ ...selectStyle, minWidth: "200px" }}
+            className={`${selectCls} min-w-[200px]`}
             value={timesteps}
             onChange={(e) => setTimesteps(Number(e.target.value))}
           >
@@ -305,13 +319,11 @@ function StartTrainingPanel({
         <button
           type="submit"
           disabled={isRunning || loading}
-          className="flex items-center gap-2 font-mono text-xs font-bold px-4 py-2 rounded-lg transition-all"
-          style={{
-            backgroundColor: isRunning ? "#1a1a2e" : "#00ff8820",
-            border: `1px solid ${isRunning ? "#333" : "#00ff8860"}`,
-            color: isRunning ? "#555" : "#00ff88",
-            cursor: isRunning ? "not-allowed" : "pointer",
-          }}
+          className={`flex items-center gap-2 font-mono text-xs font-bold px-4 py-2 rounded-lg transition-all border ${
+            isRunning
+              ? "bg-panel-border border-[#333] text-[#555] cursor-not-allowed"
+              : "bg-[#00ff8820] border-[#00ff8860] text-[#00ff88] cursor-pointer"
+          }`}
         >
           {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           {isRunning ? "Training in progress..." : "Start Training"}
@@ -331,7 +343,7 @@ function TrainingStatusPanel({ status }: { status: TrainingStatus | null }) {
   const result = status.last_result;
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex items-center justify-between mb-4">
         <SectionHeader title="Training Status" subtitle={isRunning ? `Training ${status.symbol ?? "..."} — polling every 3s` : "Last completed run"} />
         <Badge
@@ -344,23 +356,20 @@ function TrainingStatusPanel({ status }: { status: TrainingStatus | null }) {
       {(isRunning || result) && (
         <div className="mb-5">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+            <span className="font-mono text-[10px] text-[#555]">
               {isRunning ? `${status.symbol} — ${progressPct}%` : `${result?.symbol} ${result?.interval} — completed`}
             </span>
             {isRunning && status.started_at && (
-              <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+              <span className="font-mono text-[10px] text-[#555]">
                 <Clock className="inline h-3 w-3 mr-1" />
                 {new Date(status.started_at).toLocaleTimeString()}
               </span>
             )}
           </div>
-          <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "#111" }}>
+          <div className="h-2 rounded-full overflow-hidden bg-[#111]">
             <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${isRunning ? progressPct : 100}%`,
-                backgroundColor: isRunning ? "#00d4ff" : "#00ff88",
-              }}
+              className={`h-full rounded-full transition-all duration-500 ${isRunning ? "bg-[#00d4ff]" : "bg-[#00ff88]"}`}
+              style={{ width: `${isRunning ? progressPct : 100}%` }}
             />
           </div>
         </div>
@@ -368,10 +377,7 @@ function TrainingStatusPanel({ status }: { status: TrainingStatus | null }) {
 
       {/* Error */}
       {status.error && (
-        <div
-          className="rounded-lg p-3 font-mono text-xs mb-4"
-          style={{ backgroundColor: "#ff444410", border: "1px solid #ff444430", color: "#ff9999" }}
-        >
+        <div className="rounded-lg p-3 font-mono text-xs mb-4 bg-[#ff444410] border border-[#ff444430] text-[#ff9999]">
           {status.error}
         </div>
       )}
@@ -390,17 +396,16 @@ function TrainingStatusPanel({ status }: { status: TrainingStatus | null }) {
             { label: "Train Bars", value: String(result.train_bars ?? 0), gate: 0, inv: false },
             { label: "Test Bars", value: String(result.test_bars ?? 0), gate: 0, inv: false },
           ].map(({ label, value, gate, inv, raw }) => {
-            const color = gate > 0
-              ? metricColor(raw ?? parseFloat(value), gate, inv)
-              : "#888";
+            const colorClass = gate > 0
+              ? metricColorClass(raw ?? parseFloat(value), gate, inv)
+              : "text-[#888]";
             return (
               <div
                 key={label}
-                className="rounded-lg p-3"
-                style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}
+                className="rounded-lg p-3 bg-[#111] border border-panel-border"
               >
-                <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>{label}</div>
-                <div className="font-mono text-lg font-bold tabular-nums" style={{ color }}>{value}</div>
+                <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">{label}</div>
+                <div className={`font-mono text-lg font-bold tabular-nums ${colorClass}`}>{value}</div>
               </div>
             );
           })}
@@ -409,14 +414,14 @@ function TrainingStatusPanel({ status }: { status: TrainingStatus | null }) {
 
       {/* Validation verdict */}
       {result?.metrics && (
-        <div className="mt-4 pt-3 flex items-center gap-3" style={{ borderTop: "1px solid #1a1a2e" }}>
-          <span className="font-mono text-[10px]" style={{ color: "#555" }}>VALIDATION:</span>
+        <div className="mt-4 pt-3 flex items-center gap-3 border-t border-panel-border">
+          <span className="font-mono text-[10px] text-[#555]">VALIDATION:</span>
           <Badge
             label={result.metrics.passes_validation ? "PASS ✓" : "FAIL ✗"}
             color={result.metrics.passes_validation ? "#00ff88" : "#ff4444"}
           />
           {result.completed_at && (
-            <span className="font-mono text-[10px] ml-auto" style={{ color: "#333" }}>
+            <span className="font-mono text-[10px] ml-auto text-[#333]">
               completed {new Date(result.completed_at).toLocaleString()}
             </span>
           )}
@@ -434,42 +439,43 @@ function ActionDistributionPanel({ metrics }: { metrics: Metrics | null }) {
   const dist = metrics.action_distribution;
   const total = Object.values(dist).reduce((a, b) => a + b, 0) || 1;
 
-  const actions: { key: string; label: string; color: string }[] = [
-    { key: "HOLD", label: "HOLD", color: "#888" },
-    { key: "BUY",  label: "BUY",  color: "#00ff88" },
-    { key: "SELL", label: "SELL", color: "#ff4444" },
-    { key: "CLOSE",label: "CLOSE",color: "#00d4ff" },
+  const actions: { key: string; label: string; textClass: string; bgClass: string }[] = [
+    { key: "HOLD", label: "HOLD", textClass: "text-[#888]", bgClass: "bg-[#888]" },
+    { key: "BUY",  label: "BUY",  textClass: "text-[#00ff88]", bgClass: "bg-[#00ff88]" },
+    { key: "SELL", label: "SELL", textClass: "text-[#ff4444]", bgClass: "bg-[#ff4444]" },
+    { key: "CLOSE",label: "CLOSE",textClass: "text-[#00d4ff]", bgClass: "bg-[#00d4ff]" },
   ];
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <SectionHeader
         title="Action Distribution"
         subtitle="RL agent action breakdown on OOS test set. HOLD ≥ 50% = quality signal."
       />
       <div className="space-y-3">
-        {actions.map(({ key, label, color }) => {
+        {actions.map(({ key, label, textClass, bgClass }) => {
           const count = dist[key] ?? 0;
           const fraction = count / total;
           const isHold = key === "HOLD";
           const holdOk = isHold && fraction >= GATES.min_hold_rate;
-          const barColor = isHold ? (holdOk ? "#00ff88" : "#ff4444") : color;
+          const barTextClass = isHold ? (holdOk ? "text-[#00ff88]" : "text-[#ff4444]") : textClass;
+          const barBgClass = isHold ? (holdOk ? "bg-[#00ff88]" : "bg-[#ff4444]") : bgClass;
 
           return (
             <div key={key} className="flex items-center gap-3">
-              <div className="w-12 font-mono text-[11px] font-bold text-right" style={{ color }}>
+              <div className={`w-12 font-mono text-[11px] font-bold text-right ${textClass}`}>
                 {label}
               </div>
-              <div className="flex-1 h-5 rounded" style={{ backgroundColor: "#111" }}>
+              <div className="flex-1 h-5 rounded bg-[#111]">
                 <div
-                  className="h-full rounded transition-all duration-700"
-                  style={{ width: `${fraction * 100}%`, backgroundColor: barColor, opacity: 0.75 }}
+                  className={`h-full rounded transition-all duration-700 opacity-75 ${barBgClass}`}
+                  style={{ width: `${fraction * 100}%` }}
                 />
               </div>
-              <div className="w-20 font-mono text-xs tabular-nums text-right" style={{ color: barColor }}>
+              <div className={`w-20 font-mono text-xs tabular-nums text-right ${barTextClass}`}>
                 {pct(fraction)}
               </div>
-              <div className="w-14 font-mono text-[10px] tabular-nums text-right" style={{ color: "#555" }}>
+              <div className="w-14 font-mono text-[10px] tabular-nums text-right text-[#555]">
                 ({count.toLocaleString()})
               </div>
             </div>
@@ -478,8 +484,8 @@ function ActionDistributionPanel({ metrics }: { metrics: Metrics | null }) {
       </div>
 
       {/* Hold rate quality check */}
-      <div className="mt-4 pt-3 flex items-center gap-2" style={{ borderTop: "1px solid #1a1a2e" }}>
-        <span className="font-mono text-[10px]" style={{ color: "#555" }}>HOLD RATE GATE (≥50%):</span>
+      <div className="mt-4 pt-3 flex items-center gap-2 border-t border-panel-border">
+        <span className="font-mono text-[10px] text-[#555]">HOLD RATE GATE (≥50%):</span>
         {(() => {
           const holdPct = (dist["HOLD"] ?? 0) / total;
           return <Badge label={holdPct >= 0.5 ? `${pct(holdPct)} ✓` : `${pct(holdPct)} ✗`} color={holdPct >= 0.5 ? "#00ff88" : "#ff4444"} />;
@@ -503,7 +509,7 @@ function ValidationGatesPanel({ metrics }: { metrics: Metrics | null }) {
   ];
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <SectionHeader
         title="Validation Gates"
         subtitle="All gates must pass before RL agent can paper trade. Same targets as existing STC pipeline."
@@ -511,12 +517,11 @@ function ValidationGatesPanel({ metrics }: { metrics: Metrics | null }) {
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
-            <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+            <tr className="border-b border-panel-border">
               {["Metric", "Target", "Actual", "Status"].map((h) => (
                 <th
                   key={h}
-                  className={`pb-2 px-3 font-semibold uppercase tracking-wider ${h === "Metric" ? "text-left" : "text-center"}`}
-                  style={{ color: "#555", fontSize: "10px" }}
+                  className={`pb-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-[#555] ${h === "Metric" ? "text-left" : "text-center"}`}
                 >
                   {h}
                 </th>
@@ -527,22 +532,21 @@ function ValidationGatesPanel({ metrics }: { metrics: Metrics | null }) {
             {gates.map(({ label, target, actual, raw, min, inv }) => {
               const hasData = raw !== undefined && raw !== null;
               const passes = hasData ? (inv ? raw <= min : raw >= min) : null;
-              const color = !hasData ? "#555" : passes ? "#00ff88" : "#ff4444";
+              const colorClass = !hasData ? "text-[#555]" : passes ? "text-[#00ff88]" : "text-[#ff4444]";
               return (
                 <tr
                   key={label}
-                  className="hover:bg-white/[0.02] transition-colors"
-                  style={{ borderBottom: "1px solid #111" }}
+                  className="hover:bg-white/[0.02] transition-colors border-b border-[#111]"
                 >
-                  <td className="py-2.5 px-3 font-semibold" style={{ color: "#e0e0e0" }}>{label}</td>
-                  <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: "#888" }}>{target}</td>
-                  <td className="py-2.5 px-3 text-center tabular-nums font-bold" style={{ color }}>{actual}</td>
+                  <td className="py-2.5 px-3 font-semibold text-[#e0e0e0]">{label}</td>
+                  <td className="py-2.5 px-3 text-center tabular-nums text-[#888]">{target}</td>
+                  <td className={`py-2.5 px-3 text-center tabular-nums font-bold ${colorClass}`}>{actual}</td>
                   <td className="py-2.5 px-3 text-center">
                     {passes === null
-                      ? <span style={{ color: "#333" }}>—</span>
+                      ? <span className="text-[#333]">—</span>
                       : passes
-                        ? <CheckCircle className="inline h-4 w-4" style={{ color: "#00ff88" }} />
-                        : <XCircle className="inline h-4 w-4" style={{ color: "#ff4444" }} />
+                        ? <CheckCircle className="inline h-4 w-4 text-[#00ff88]" />
+                        : <XCircle className="inline h-4 w-4 text-[#ff4444]" />
                     }
                   </td>
                 </tr>
@@ -554,8 +558,8 @@ function ValidationGatesPanel({ metrics }: { metrics: Metrics | null }) {
 
       {/* Overall verdict */}
       {metrics && (
-        <div className="mt-4 pt-3 flex items-center gap-3" style={{ borderTop: "1px solid #1a1a2e" }}>
-          <span className="font-mono text-[10px]" style={{ color: "#555" }}>OVERALL VERDICT:</span>
+        <div className="mt-4 pt-3 flex items-center gap-3 border-t border-panel-border">
+          <span className="font-mono text-[10px] text-[#555]">OVERALL VERDICT:</span>
           <Badge
             label={metrics.passes_validation ? "APPROVED FOR PAPER TRADING" : "NOT YET APPROVED"}
             color={metrics.passes_validation ? "#00ff88" : "#ff4444"}
@@ -563,8 +567,8 @@ function ValidationGatesPanel({ metrics }: { metrics: Metrics | null }) {
         </div>
       )}
       {!metrics && (
-        <div className="mt-4 pt-3" style={{ borderTop: "1px solid #1a1a2e" }}>
-          <p className="font-mono text-[10px]" style={{ color: "#333" }}>
+        <div className="mt-4 pt-3 border-t border-panel-border">
+          <p className="font-mono text-[10px] text-[#333]">
             No model evaluated yet. Run training to populate metrics.
           </p>
         </div>
