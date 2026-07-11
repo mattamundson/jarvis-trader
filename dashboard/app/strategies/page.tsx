@@ -1034,14 +1034,8 @@ function TrainingHistoryPanel({ runs }: { runs: RecentRun[] }) {
 
 // ── Executor Status Panel ─────────────────────────────────────────────────────
 
-const ACTION_COLORS: Record<string, string> = {
-  HOLD:  "#888",
-  BUY:   "#00ff88",
-  SELL:  "#ff4444",
-  CLOSE: "#00d4ff",
-};
-
-// Class-returning companion of ACTION_COLORS (same JIT-visibility reason as metricColorClass).
+// Closed palette of RL executor actions mapped to literal Tailwind arbitrary-value
+// classes so the JIT scanner can see them (same reason as metricColorClass).
 const ACTION_COLOR_CLASSES: Record<string, string> = {
   HOLD:  "text-[#888]",
   BUY:   "text-[#00ff88]",
@@ -1459,8 +1453,7 @@ function RLExecutorStatusCard({
   const [deployModel, setDeployModel] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  const selectCls = "font-mono text-xs rounded-lg px-3 py-2 outline-none cursor-pointer";
-  const selectStyle: React.CSSProperties = { backgroundColor: "#111", border: "1px solid #1a1a2e", color: "#e0e0e0" };
+  const selectCls = "font-mono text-xs rounded-lg px-3 py-2 outline-none cursor-pointer bg-[#111] border border-panel-border text-[#e0e0e0]";
 
   async function handleDeploy(e: React.FormEvent) {
     e.preventDefault();
@@ -1486,10 +1479,10 @@ function RLExecutorStatusCard({
 
   const deployed = execStatus?.deployed ?? false;
   const predAction = execStatus?.last_prediction ?? null;
-  const predActionColor = predAction ? (ACTION_COLORS[predAction] ?? "#888") : "#555";
+  const predActionClass = actionColorClass(predAction);
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex items-center justify-between mb-5">
         <SectionHeader
           title="RL Executor"
@@ -1504,13 +1497,9 @@ function RLExecutorStatusCard({
             <button
               onClick={handleUndeploy}
               disabled={actionLoading}
-              className="flex items-center gap-1.5 font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-              style={{
-                backgroundColor: "#ff444410",
-                border: "1px solid #ff444430",
-                color: actionLoading ? "#555" : "#ff6666",
-                cursor: actionLoading ? "not-allowed" : "pointer",
-              }}
+              className={`flex items-center gap-1.5 font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition-all bg-[#ff444410] border border-[#ff444430] ${
+                actionLoading ? "text-[#555] cursor-not-allowed" : "text-[#ff6666] cursor-pointer"
+              }`}
             >
               {actionLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <StopCircle className="h-3.5 w-3.5" />}
               Undeploy
@@ -1518,13 +1507,7 @@ function RLExecutorStatusCard({
           ) : (
             <button
               onClick={() => setShowDeployForm((v) => !v)}
-              className="flex items-center gap-1.5 font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-              style={{
-                backgroundColor: "#00ff8818",
-                border: "1px solid #00ff8840",
-                color: "#00ff88",
-                cursor: "pointer",
-              }}
+              className="flex items-center gap-1.5 font-mono text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer bg-[#00ff8818] border border-[#00ff8840] text-[#00ff88]"
             >
               <Cpu className="h-3.5 w-3.5" />
               Deploy
@@ -1537,14 +1520,12 @@ function RLExecutorStatusCard({
       {showDeployForm && !deployed && (
         <form
           onSubmit={handleDeploy}
-          className="mb-5 rounded-lg p-4 flex flex-wrap items-end gap-4"
-          style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}
+          className="mb-5 rounded-lg p-4 flex flex-wrap items-end gap-4 bg-[#111] border border-panel-border"
         >
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Symbol</label>
+            <label className="font-mono text-[10px] uppercase tracking-wider text-[#555]">Symbol</label>
             <select
               className={selectCls}
-              style={selectStyle}
               value={deploySymbol}
               onChange={(e) => setDeploySymbol(e.target.value)}
             >
@@ -1553,11 +1534,10 @@ function RLExecutorStatusCard({
           </div>
 
           <div className="flex flex-col gap-1.5 flex-1 min-w-[220px]">
-            <label className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Model Path</label>
+            <label className="font-mono text-[10px] uppercase tracking-wider text-[#555]">Model Path</label>
             {models.length > 0 ? (
               <select
-                className={selectCls}
-                style={{ ...selectStyle, minWidth: "220px" }}
+                className={`${selectCls} min-w-[220px]`}
                 value={deployModel}
                 onChange={(e) => setDeployModel(e.target.value)}
               >
@@ -1571,7 +1551,6 @@ function RLExecutorStatusCard({
             ) : (
               <input
                 className={selectCls}
-                style={selectStyle}
                 type="text"
                 placeholder="data/rl_models/MES_ppo.zip"
                 value={deployModel}
@@ -1584,13 +1563,11 @@ function RLExecutorStatusCard({
             <button
               type="submit"
               disabled={actionLoading || !deployModel}
-              className="flex items-center gap-1.5 font-mono text-xs font-bold px-4 py-2 rounded-lg transition-all"
-              style={{
-                backgroundColor: actionLoading || !deployModel ? "#1a1a2e" : "#00ff8820",
-                border: `1px solid ${actionLoading || !deployModel ? "#333" : "#00ff8860"}`,
-                color: actionLoading || !deployModel ? "#555" : "#00ff88",
-                cursor: actionLoading || !deployModel ? "not-allowed" : "pointer",
-              }}
+              className={`flex items-center gap-1.5 font-mono text-xs font-bold px-4 py-2 rounded-lg transition-all ${
+                actionLoading || !deployModel
+                  ? "bg-panel-border border border-[#333] text-[#555] cursor-not-allowed"
+                  : "bg-[#00ff8820] border border-[#00ff8860] text-[#00ff88] cursor-pointer"
+              }`}
             >
               {actionLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
               Deploy
@@ -1598,8 +1575,7 @@ function RLExecutorStatusCard({
             <button
               type="button"
               onClick={() => setShowDeployForm(false)}
-              className="font-mono text-xs px-3 py-2 rounded-lg"
-              style={{ backgroundColor: "#1a1a2e", border: "1px solid #333", color: "#888", cursor: "pointer" }}
+              className="font-mono text-xs px-3 py-2 rounded-lg cursor-pointer bg-panel-border border border-[#333] text-[#888]"
             >
               Cancel
             </button>
@@ -1610,32 +1586,32 @@ function RLExecutorStatusCard({
       {/* Status grid */}
       {execStatus ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-lg p-3" style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}>
-            <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>Symbol</div>
-            <div className="font-mono text-sm font-bold" style={{ color: deployed ? "#00d4ff" : "#555" }}>
+          <div className="rounded-lg p-3 bg-[#111] border border-panel-border">
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">Symbol</div>
+            <div className={`font-mono text-sm font-bold ${deployed ? "text-[#00d4ff]" : "text-[#555]"}`}>
               {execStatus.symbol ?? "—"}
             </div>
           </div>
 
-          <div className="rounded-lg p-3" style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}>
-            <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>Last Prediction</div>
-            <div className="font-mono text-sm font-bold" style={{ color: predActionColor }}>
+          <div className="rounded-lg p-3 bg-[#111] border border-panel-border">
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">Last Prediction</div>
+            <div className={`font-mono text-sm font-bold ${predActionClass}`}>
               {predAction ?? "—"}
             </div>
           </div>
 
-          <div className="rounded-lg p-3" style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}>
-            <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>Prediction Time</div>
-            <div className="font-mono text-xs tabular-nums" style={{ color: "#888" }}>
+          <div className="rounded-lg p-3 bg-[#111] border border-panel-border">
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">Prediction Time</div>
+            <div className="font-mono text-xs tabular-nums text-[#888]">
               {execStatus.last_prediction_time
                 ? new Date(execStatus.last_prediction_time).toLocaleTimeString()
                 : "—"}
             </div>
           </div>
 
-          <div className="rounded-lg p-3" style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}>
-            <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>Next Scheduled Run</div>
-            <div className="font-mono text-xs tabular-nums" style={{ color: deployed ? "#ffcc00" : "#555" }}>
+          <div className="rounded-lg p-3 bg-[#111] border border-panel-border">
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">Next Scheduled Run</div>
+            <div className={`font-mono text-xs tabular-nums ${deployed ? "text-[#ffcc00]" : "text-[#555]"}`}>
               {execStatus.next_fire_time
                 ? new Date(execStatus.next_fire_time).toLocaleTimeString()
                 : deployed ? "Waiting for scheduler…" : "—"}
@@ -1643,11 +1619,8 @@ function RLExecutorStatusCard({
           </div>
         </div>
       ) : (
-        <div
-          className="rounded-lg p-4 text-center font-mono text-xs"
-          style={{ backgroundColor: "#111", border: "1px solid #1a1a2e", color: "#444" }}
-        >
-          <Activity className="h-5 w-5 mx-auto mb-2" style={{ color: "#333" }} />
+        <div className="rounded-lg p-4 text-center font-mono text-xs bg-[#111] border border-panel-border text-[#444]">
+          <Activity className="h-5 w-5 mx-auto mb-2 text-[#333]" />
           Executor status unavailable — engine may be offline.
         </div>
       )}
