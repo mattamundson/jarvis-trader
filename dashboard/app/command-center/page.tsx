@@ -26,7 +26,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { fetchEngine, fetchJournalStats, fetchBars, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
+import { fetchEngine, fetchJournalStats, fetchBars, fetchJarvisAsk, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
+import { AskJarvis, type AskJarvisSend } from "@/components/AskJarvis";
 import {
   fetchHonestTrades,
   type HonestTradeSet,
@@ -370,6 +371,34 @@ function HealthLine({
       {icon}
       <span className="font-mono text-[11px] text-slate-400">{label}</span>
     </div>
+  );
+}
+
+// ── Ask JARVIS hero utility ───────────────────────────────────────────────
+// Folded from the dissolved /jarvis page (P2.1). Thin trading-engine wiring over
+// the shared, canonical <AskJarvis> console. Transport is POST /jarvis/ask
+// (verified live: engine/routers/jarvis_router.py); graceful 404 already handled
+// inside <AskJarvis>.
+function AskJarvisHero() {
+  const send = useCallback<AskJarvisSend>(async (q, { onText, onMeta }) => {
+    const res = await fetchJarvisAsk(q);
+    onText(res.answer);
+    onMeta?.({
+      sources: res.sources,
+      actions: res.actions_taken,
+      intent: res.intent,
+      elapsedMs: res.elapsed_ms,
+    });
+  }, []);
+
+  return (
+    <AskJarvis
+      send={send}
+      title="Ask JARVIS"
+      subtitle="Natural-language query to the engine's reasoning pipeline."
+      placeholder="What is MES doing right now?"
+      emptyHint="Ask JARVIS anything about the market, positions, or pipeline."
+    />
   );
 }
 
@@ -778,6 +807,15 @@ export default function CommandCenterPage() {
       <div className="mb-4">
         <WidgetErrorBoundary name="Pipeline Reasoning">
           <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          ASK JARVIS — natural-language hero utility (folded from /jarvis, P2.1)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Ask JARVIS">
+          <AskJarvisHero />
         </WidgetErrorBoundary>
       </div>
 

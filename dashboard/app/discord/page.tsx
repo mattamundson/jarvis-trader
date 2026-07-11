@@ -12,14 +12,19 @@ import { CoreyFeed } from "@/components/discord/corey-feed";
 import { DiscordIntelligenceWidget } from "@/components/DiscordIntelligenceWidget";
 import { KnowledgeContextWidget } from "@/components/KnowledgeContextWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { JarvisIntel } from "@/components/jarvis-intel/JarvisIntel";
 
-type Tab = "overview" | "signals" | "ib-reports" | "commentary";
+type Tab = "overview" | "signals" | "ib-reports" | "commentary" | "jarvis-intel";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "signals", label: "Signal Feed" },
   { id: "ib-reports", label: "IB Reports" },
   { id: "commentary", label: "Corey Commentary" },
+  // JARVIS Intel — Regime Pulse / bookmark themes+feed / QuantStats tearsheet /
+  // Risk Attribution / Discord Briefing / Action Queue, folded from the dissolved
+  // /jarvis page (P2.1). Ask JARVIS moved to the flagship command center instead.
+  { id: "jarvis-intel", label: "JARVIS Intel" },
 ];
 
 // Page-level SWR config: disable retry on error so panels settle to an honest
@@ -176,6 +181,7 @@ export default function DiscordPage() {
         {activeTab === "signals" && <SignalFeed />}
         {activeTab === "ib-reports" && <IBReportCard />}
         {activeTab === "commentary" && <CoreyFeed />}
+        {activeTab === "jarvis-intel" && <JarvisIntel />}
 
       </main>
     </div>
