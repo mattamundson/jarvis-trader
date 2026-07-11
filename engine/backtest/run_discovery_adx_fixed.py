@@ -82,7 +82,11 @@ CONTRACT_SPECS = {
     "MGC": {
         "multiplier": 10.0,
         "tick_size": 0.10,
-        "commission": 0.62,
+        # Was 0.62 (MES's rate) -- MGC's correct commission is 0.85 per
+        # backtest/contract_specs.py's CONTRACT_SPECS["MGC"].commission
+        # (found 2026-07-10; this file's own comment above claimed it
+        # "matches canonical runners" but MGC had drifted).
+        "commission": 0.85,
         "slippage_ticks": 2.0,
         "capital": 50_000.0,
     },
@@ -102,13 +106,19 @@ CONTRACT_SPECS = {
     },
 }
 
-# Cost-sweep tiers (trend family — higher slippage, matches rank4)
-COST_SWEEP_TIERS = {
-    "optimistic": {"commission": 0.31, "slippage_ticks": 1.0},
-    "realistic": {"commission": 0.62, "slippage_ticks": 2.0},
-    "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
-    "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
-}
+# Cost-sweep tiers (trend family — higher slippage, matches rank4).
+# Per-symbol: ratios (0.5x/1.0x/2.0x/4.0x) scale off THIS symbol's own base
+# commission in CONTRACT_SPECS above, not a flat MES-based literal (found
+# 2026-07-10 -- run_cost_sweep()'s symbol param was accepted but unused for
+# tier selection, so MGC cost-sweeps ran at MES's 0.62 base regardless).
+def get_cost_sweep_tiers(symbol: str) -> dict:
+    base_commission = CONTRACT_SPECS[symbol]["commission"]
+    return {
+        "optimistic": {"commission": round(base_commission * 0.5, 4), "slippage_ticks": 1.0},
+        "realistic": {"commission": round(base_commission * 1.0, 4), "slippage_ticks": 2.0},
+        "pessimistic": {"commission": round(base_commission * 2.0, 4), "slippage_ticks": 3.0},
+        "catastrophic": {"commission": round(base_commission * 4.0, 4), "slippage_ticks": 4.0},
+    }
 
 # ---------------------------------------------------------------------------
 # Bar loading — identical to run_mgc_trend_rank4._load_data
@@ -636,8 +646,9 @@ def run_cost_sweep(
     results = {}
     cost_survives_through = "none"
     survival_intact = True
+    cost_tiers = get_cost_sweep_tiers(symbol)
     for tier in COST_TIER_ORDER:
-        costs = COST_SWEEP_TIERS[tier]
+        costs = cost_tiers[tier]
         try:
             df_sig = signal_fn(df, **champion_params)
             result = run_backtest(

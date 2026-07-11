@@ -55,12 +55,18 @@ if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
 from backtest import meanrev_v2_signals  # noqa: E402
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 
 SYMBOL = "MGC"
 MULTIPLIER = 10.0
 CAPITAL = 50_000.0
 TICK_SIZE = 0.10
-COMMISSION = 0.62
+# Imported from contract_specs.py (single source of truth) rather than a
+# local literal -- this file previously hardcoded 0.62, MES's rate, instead
+# of MGC's documented 0.85 (found 2026-07-10). contract_specs.py's own
+# docstring exists precisely because this class of drift ("MCL commission
+# was 0.62 in one script and 0.85 in another") has happened before.
+COMMISSION = CONTRACT_SPECS["MGC"].commission
 SLIPPAGE_TICKS = 2.0
 
 TRAIN_MONTHS = 6
@@ -74,10 +80,10 @@ OU_MIN_HALF_LIFE_VALUES = [4, 8]
 DISLOCATION_PCT_MIN_VALUES = [90.0, 95.0]
 
 COST_SWEEP_TIERS = {
-    "optimistic": {"commission": 0.31, "slippage_ticks": 1.0},
-    "realistic": {"commission": 0.62, "slippage_ticks": 2.0},
-    "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
-    "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
+    "optimistic": {"commission": round(COMMISSION * 0.5, 4), "slippage_ticks": 1.0},
+    "realistic": {"commission": round(COMMISSION * 1.0, 4), "slippage_ticks": 2.0},
+    "pessimistic": {"commission": round(COMMISSION * 2.0, 4), "slippage_ticks": 3.0},
+    "catastrophic": {"commission": round(COMMISSION * 4.0, 4), "slippage_ticks": 4.0},
 }
 
 VERDICT_FILE = (

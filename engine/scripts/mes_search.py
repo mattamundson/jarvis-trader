@@ -35,6 +35,7 @@ if str(_ENGINE) not in sys.path:
 
 from backtest.backtester import Backtester  # noqa: E402
 from backtest.composite_signals import generate_composite_signals  # noqa: E402
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 from backtest.data_loader import BacktestDataLoader  # noqa: E402
 
 SYMBOL = "MES"
@@ -43,6 +44,9 @@ START = "2024-06-01"
 END = "2026-03-27"
 CAPITAL = 10_000.0
 RISK = 0.01
+# Canonical rate from contract_specs.py (single source of truth) -- was
+# hardcoded to 2.50, which is not any registered MES/MGC/MCL commission.
+COMMISSION_PER_CONTRACT = CONTRACT_SPECS["MES"].commission
 
 # Search space — updated 2026-04-20 after fix(composite) 3d5996b wired
 # stop_atr_mult / t1_atr_mult through to the previously-hardcoded constants.
@@ -91,7 +95,7 @@ def _run_one(df_base, multiplier, params):
             risk_per_trade=RISK,
             max_daily_loss=0.02,
             max_drawdown=0.05,
-            commission_per_contract=2.50,
+            commission_per_contract=COMMISSION_PER_CONTRACT,
             slippage_ticks=1,
         )
         result = bt.run(df_sig, SYMBOL, multiplier)

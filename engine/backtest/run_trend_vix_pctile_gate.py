@@ -82,6 +82,7 @@ from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,
 )
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Per-symbol config — champion params reused from the last real attempt
@@ -92,7 +93,7 @@ SYMBOL_CONFIGS = {
     "MCL": {
         "fast": 10, "slow": 40, "atr_trail_mult": 1.5,
         "multiplier": 100.0, "tick_size": 0.01,
-        "commission": 2.50, "slippage_ticks": 1.0,
+        "commission": CONTRACT_SPECS["MCL"].commission, "slippage_ticks": 1.0,
         "capital": 10_000.0,
         "cache_suffix": "_15m.csv",  # no native 1h cache -> resample
         "baseline_note": "MCL_trend_hyp_e FAIL vs fixed VIX (WFO=STRONG, mc_dd=0.23%, near-miss on p_edge)",
@@ -100,7 +101,7 @@ SYMBOL_CONFIGS = {
     "MNQ": {
         "fast": 25, "slow": 80, "atr_trail_mult": 1.5,
         "multiplier": 2.0, "tick_size": 0.25,
-        "commission": 2.50, "slippage_ticks": 1.0,
+        "commission": CONTRACT_SPECS["MNQ"].commission, "slippage_ticks": 1.0,
         "capital": 10_000.0,
         "cache_suffix": "_15m.csv",  # no native 1h cache -> resample
         "baseline_note": "MNQ_trend_rank2 FAIL vs fixed VIX (dsr=0.159, mc_dd=13.46% > 6% core ceiling)",
@@ -120,12 +121,36 @@ TIER_BLOCK_GRID: list[tuple[str, ...]] = [
     ("HighVol",),
 ]
 
-COST_SWEEP_TIERS = {
-    "optimistic": {"commission": 0.31, "slippage_ticks": 1.0},
-    "realistic": {"commission": 0.62, "slippage_ticks": 2.0},
-    "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
-    "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
+# Cost-sweep tiers scale as a ratio of the SYMBOL's own commission (0.5x
+# optimistic / 1.0x realistic / 2.0x pessimistic / 4.0x catastrophic --
+# established convention elsewhere in this codebase, e.g. MES's 0.31/0.62/
+# 1.24/2.48 = 0.5x/1x/2x/4x of MES's 0.62 commission). This script serves
+# two symbols (MCL commission=0.85, MNQ commission=0.62) from one cfg dict,
+# so the tiers are computed per-symbol from cfg["commission"] rather than
+# hardcoded, to avoid silently reusing one symbol's absolute rate for both.
+COST_SWEEP_TIER_MULTIPLIERS = {
+    "optimistic": 0.5,
+    "realistic": 1.0,
+    "pessimistic": 2.0,
+    "catastrophic": 4.0,
 }
+COST_SWEEP_SLIPPAGE_TICKS = {
+    "optimistic": 1.0,
+    "realistic": 2.0,
+    "pessimistic": 3.0,
+    "catastrophic": 4.0,
+}
+
+
+def _cost_sweep_tiers(base_commission: float) -> dict[str, dict[str, float]]:
+    """Build the cost-sweep tier dict for the symbol's own commission rate."""
+    return {
+        tier: {
+            "commission": round(base_commission * mult, 4),
+            "slippage_ticks": COST_SWEEP_SLIPPAGE_TICKS[tier],
+        }
+        for tier, mult in COST_SWEEP_TIER_MULTIPLIERS.items()
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -322,8 +347,9 @@ def _run_fixed_params_sweep(df: pd.DataFrame, vix_df: pd.DataFrame, grid: list[t
 def _run_cost_sweep(df: pd.DataFrame, vix_df: pd.DataFrame, champion_block: tuple[str, ...], cfg: dict) -> dict:
     results = {}
     last_surviving = None
+    cost_sweep_tiers = _cost_sweep_tiers(cfg["commission"])
     for tier in COST_TIER_ORDER:
-        costs = COST_SWEEP_TIERS[tier]
+        costs = cost_sweep_tiers[tier]
         try:
             result = _run_signals_and_backtest(
                 df, vix_df, champion_block, cfg,
