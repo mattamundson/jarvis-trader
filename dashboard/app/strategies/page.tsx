@@ -1335,14 +1335,14 @@ function WalkForwardWindowsPanel({
   const overallLabel = allPass ? "ALL PASS" : !complete ? "IN PROGRESS" : "FAILED";
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex items-center justify-between mb-5">
         <SectionHeader
           title="Walk-Forward Validation"
           subtitle={`${total}-window out-of-sample validation. All windows must pass all gates.`}
         />
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs" style={{ color: "#555" }}>
+          <span className="font-mono text-xs text-[#555]">
             {passCount}/{total} windows pass
           </span>
           <Badge label={overallLabel} color={overallColor} />
@@ -1352,33 +1352,32 @@ function WalkForwardWindowsPanel({
       {/* Window grid — 4 per row on desktop */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {windows.map((win) => {
-          const borderColor = win.passes_validation ? "#00ff8840" : "#ff444440";
-          const headerColor = win.passes_validation ? "#00ff88" : "#ff4444";
+          const borderColorClass = win.passes_validation ? "border-[#00ff8840]" : "border-[#ff444440]";
+          const headerColorClass = win.passes_validation ? "text-[#00ff88]" : "text-[#ff4444]";
 
           return (
             <div
               key={win.window_idx}
-              className="rounded-lg p-4"
-              style={{ backgroundColor: "#111", border: `1px solid ${borderColor}` }}
+              className={`rounded-lg p-4 bg-[#111] border ${borderColorClass}`}
             >
               {/* Window header */}
               <div className="flex items-center justify-between mb-3">
-                <span className="font-mono text-xs font-bold" style={{ color: "#e0e0e0" }}>
+                <span className="font-mono text-xs font-bold text-[#e0e0e0]">
                   Window {win.window_idx + 1}
                 </span>
                 {win.passes_validation
-                  ? <CheckCircle className="h-4 w-4" style={{ color: "#00ff88" }} />
-                  : <XCircle className="h-4 w-4" style={{ color: "#ff4444" }} />
+                  ? <CheckCircle className="h-4 w-4 text-[#00ff88]" />
+                  : <XCircle className="h-4 w-4 text-[#ff4444]" />
                 }
               </div>
 
               {/* Bar info */}
               <div className="flex gap-3 mb-3">
-                <span className="font-mono text-[9px] uppercase tracking-wider" style={{ color: "#444" }}>
-                  Train: <span style={{ color: "#666" }}>{win.train_bars}</span>
+                <span className="font-mono text-[9px] uppercase tracking-wider text-[#444]">
+                  Train: <span className="text-[#666]">{win.train_bars}</span>
                 </span>
-                <span className="font-mono text-[9px] uppercase tracking-wider" style={{ color: "#444" }}>
-                  Test: <span style={{ color: "#666" }}>{win.test_bars}</span>
+                <span className="font-mono text-[9px] uppercase tracking-wider text-[#444]">
+                  Test: <span className="text-[#666]">{win.test_bars}</span>
                 </span>
               </div>
 
@@ -1387,7 +1386,7 @@ function WalkForwardWindowsPanel({
                 {WF_GATE_DEFS.map((gate) => {
                   const raw = win.metrics[gate.key as keyof WalkForwardWindowMetrics];
                   const passed = raw !== undefined ? gate.passes(raw) : null;
-                  const valueColor = passed === null ? "#555" : passed ? "#00ff88" : "#ff4444";
+                  const valueColorClass = passed === null ? "text-[#555]" : passed ? "text-[#00ff88]" : "text-[#ff4444]";
                   const gatePassed = win.gates_passed?.[gate.key];
 
                   return (
@@ -1395,21 +1394,21 @@ function WalkForwardWindowsPanel({
                       key={gate.key}
                       className="flex items-center justify-between"
                     >
-                      <span className="font-mono text-[9px]" style={{ color: "#555" }}>{gate.label}</span>
+                      <span className="font-mono text-[9px] text-[#555]">{gate.label}</span>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[9px]" style={{ color: "#444" }}>{gate.threshold}</span>
-                        <span className="font-mono text-[10px] font-bold tabular-nums" style={{ color: valueColor }}>
+                        <span className="font-mono text-[9px] text-[#444]">{gate.threshold}</span>
+                        <span className={`font-mono text-[10px] font-bold tabular-nums ${valueColorClass}`}>
                           {raw !== undefined ? gate.format(raw) : "—"}
                         </span>
                         {gatePassed !== undefined
                           ? gatePassed
-                            ? <CheckCircle className="h-3 w-3 flex-shrink-0" style={{ color: "#00ff88" }} />
-                            : <XCircle    className="h-3 w-3 flex-shrink-0" style={{ color: "#ff4444" }} />
+                            ? <CheckCircle className="h-3 w-3 flex-shrink-0 text-[#00ff88]" />
+                            : <XCircle    className="h-3 w-3 flex-shrink-0 text-[#ff4444]" />
                           : passed !== null
                             ? passed
-                              ? <CheckCircle className="h-3 w-3 flex-shrink-0" style={{ color: "#00ff88" }} />
-                              : <XCircle    className="h-3 w-3 flex-shrink-0" style={{ color: "#ff4444" }} />
-                            : <span style={{ color: "#333" }}>—</span>
+                              ? <CheckCircle className="h-3 w-3 flex-shrink-0 text-[#00ff88]" />
+                              : <XCircle    className="h-3 w-3 flex-shrink-0 text-[#ff4444]" />
+                            : <span className="text-[#333]">—</span>
                         }
                       </div>
                     </div>
@@ -1419,11 +1418,7 @@ function WalkForwardWindowsPanel({
 
               {/* Window verdict bar */}
               <div
-                className="mt-3 pt-2 font-mono text-[9px] font-bold text-center uppercase tracking-wider rounded"
-                style={{
-                  borderTop: "1px solid #1a1a2e",
-                  color: headerColor,
-                }}
+                className={`mt-3 pt-2 font-mono text-[9px] font-bold text-center uppercase tracking-wider rounded border-t border-panel-border ${headerColorClass}`}
               >
                 {win.passes_validation ? "PASS" : "FAIL"}
               </div>
@@ -1433,11 +1428,8 @@ function WalkForwardWindowsPanel({
       </div>
 
       {/* Summary footer */}
-      <div
-        className="mt-5 pt-3 flex items-center justify-between"
-        style={{ borderTop: "1px solid #1a1a2e" }}
-      >
-        <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+      <div className="mt-5 pt-3 flex items-center justify-between border-t border-panel-border">
+        <span className="font-mono text-[10px] text-[#555]">
           SUMMARY: {passCount} of {total} windows pass all validation gates
         </span>
         <Badge
