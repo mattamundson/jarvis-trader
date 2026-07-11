@@ -18,7 +18,7 @@ Both are mis-specified for sparse strategies:
   is invisible — each window contributes only its own (small) max DD, and empty
   windows contribute 0.0, dragging the percentile down. For MES (16 OOS trades /
   19 windows, ~7 empty) this badly understates tail risk. The codebase already has
-  a correct trade-level permutation MC (`monte_carlo.bootstrap_max_dd`) — it just
+  a correct trade-level permutation MC (`monte_carlo.permute_max_dd`) — it just
   was never wired into the gate runners. (`scripts/validate_strategy.py` uses it.)
 
 * **DSR from mean-of-window-Sharpes** feeds the Bailey/Lopez de Prado deflation a
@@ -28,13 +28,25 @@ Both are mis-specified for sparse strategies:
   correct path computes the Deflated Sharpe from the actual per-trade return series
   with real skew/kurt (`deflated_sharpe.deflated_sharpe_from_returns`).
 
+* **pf_ci_lower / p_edge from a per-window PF list** (found 2026-07-10): the live
+  MES/MGC runners bootstrap the MEAN of `[r.profit_factor for r in oos_results]`
+  instead of bootstrapping the trade list directly. Since these runners also lower
+  `MIN_OOS_TRADES_PER_WINDOW` to 1 (trend strategies generate 1-3 trades per OOS
+  window), a "window PF" is frequently a single trade's win/loss — 0.0 or an
+  inf-capped 5.0 — so `pf_ci_lower`/`p_edge` end up bootstrapping a near-binary
+  list, not a real profit-factor distribution. `scripts/validate_strategy.py`
+  already does this correctly: `moving_block_bootstrap` on the pooled trade list
+  for `pf_ci_lower` (block, not IID, because trend strategies have serial
+  correlation between trades that IID resampling understates) and `bootstrap_pf`
+  (IID) for `p_edge`.
+
 This module centralises the CORRECT trade-level computation so every runner shares
 one tested implementation, matching `scripts/validate_strategy.py`.
 
 UNITS (critical — a 100x error here mis-certifies live strategies)
 ------------------------------------------------------------------
 * `Trade.pnl` is in USD (dollars).
-* `monte_carlo.bootstrap_max_dd(...)["mc_95th"]` returns drawdown on a **0-100
+* `monte_carlo.permute_max_dd(...)["mc_95th"]` returns drawdown on a **0-100
   scale** (`_compute_max_dd` does `abs(dd.min()) * 100`).
 * The gate compares `mc_95th_dd` (a **fraction**, e.g. GATE_MC_DD_ALT == 0.04) so
   this module divides the 0-100 MC result by 100 to return a fraction.
@@ -47,7 +59,12 @@ from typing import Sequence
 import numpy as np
 
 from backtest.deflated_sharpe import deflated_sharpe_from_returns
-from backtest.monte_carlo import bootstrap_max_dd, bootstrap_win_rate
+from backtest.monte_carlo import (
+    bootstrap_pf,
+    bootstrap_win_rate,
+    moving_block_bootstrap,
+    permute_max_dd,
+)
 from backtest.stationarity_gate import h1_h2_split
 
 #: Drawdown returned when there are too few real trades to simulate a path.
@@ -84,8 +101,8 @@ def trade_level_mc_95th_dd(
     pnls = concat_oos_trade_pnls(oos_results)
     if len(pnls) < 2:
         return _DEGENERATE_DD_FRACTION
-    mc = bootstrap_max_dd(pnls, initial_capital=initial_capital, n_resamples=n_resamples, seed=seed)
-    # bootstrap_max_dd reports on a 0-100 scale; the gate wants a fraction.
+    mc = permute_max_dd(pnls, initial_capital=initial_capital, n_resamples=n_resamples, seed=seed)
+    # permute_max_dd reports on a 0-100 scale; the gate wants a fraction.
     return float(mc["mc_95th"]) / 100.0
 
 
@@ -106,6 +123,53 @@ def trade_level_dsr(
         returns=returns, n_trials=max(int(n_grid_combos), 1), ann_factor=252.0
     )
     return float(result.get("dsr", 0.0))
+
+
+def trade_level_pf_ci_lower(
+    oos_results: Sequence,
+    n_resamples: int = _MC_N_RESAMPLES,
+    seed: int = _MC_SEED,
+) -> float:
+    """Moving-block-bootstrap 5th-percentile PF lower bound from the actual OOS
+    trade list (not a bootstrap of per-window PF values).
+
+    Uses the moving-block (not IID) bootstrap because trend strategies exhibit
+    serial correlation between trades that IID resampling would understate,
+    overstating the CI's tightness — matching `scripts/validate_strategy.py`'s
+    reference design. Fail-safe (0.0) when fewer than 2 trades.
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    if len(pnls) < 2:
+        # Found 2026-07-10: without this guard, a single winning trade makes
+        # moving_block_bootstrap's underlying PF computation return +inf (zero
+        # losses), so every resample beats any real ceiling -- a confidently
+        # "perfect" pf_ci_95_low on a sample with no statistical power, not the
+        # 0.0 this docstring always claimed.
+        return 0.0
+    result = moving_block_bootstrap(pnls, n_resamples=n_resamples, seed=seed)
+    return float(result.get("pf_ci_95_low", 0.0))
+
+
+def trade_level_p_edge(
+    oos_results: Sequence,
+    n_resamples: int = _MC_N_RESAMPLES,
+    seed: int = _MC_SEED,
+) -> float:
+    """Fraction of IID bootstrap PF resamples above 1.0, from the actual OOS
+    trade list (not a per-window win-rate proxy).
+
+    Matches `scripts/validate_strategy.py`'s reference design (IID bootstrap
+    for `p_positive_edge`). Fail-safe (0.0) when fewer than 2 trades.
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    if len(pnls) < 2:
+        # Found 2026-07-10: without this guard, a single winning trade makes
+        # every resample "positive edge" (p_edge=1.0) -- a confidently
+        # "perfect" score on a sample with no statistical power, not the 0.0
+        # this docstring always claimed.
+        return 0.0
+    result = bootstrap_pf(pnls, n_resamples=n_resamples, seed=seed)
+    return float(result.get("p_positive_edge", 0.0))
 
 
 def trade_level_stationarity(

@@ -33,12 +33,18 @@ import pandas as pd
 
 try:  # canonical honesty helpers (reused, not reimplemented)
     from backtest._gate_v2_helpers import bootstrap_pf_ci_lower, classify_wfo_consistency
+    from backtest.contract_specs import CONTRACT_SPECS
 except ImportError:  # pragma: no cover - allow running as a loose script
     from _gate_v2_helpers import bootstrap_pf_ci_lower, classify_wfo_consistency
+    from contract_specs import CONTRACT_SPECS
 
 # ── MES contract + cost constants ────────────────────────────────────────────
 MES_POINT_VALUE = 5.0  # $ per index point per contract
-MES_COMMISSION_RT = 1.70  # $ round-trip (~$0.85/side)
+# Imported from contract_specs.py rather than a local literal (found
+# 2026-07-10): this was hardcoded to 1.70 ("~$0.85/side"), which is actually
+# MGC's per-side rate, not MES's (0.62/side, 1.24 round-trip) -- a ~37%
+# overstatement of MES's true cost feeding this module's own honesty gate.
+MES_COMMISSION_RT = CONTRACT_SPECS["MES"].round_trip_commission
 MES_SLIPPAGE_PTS_RT = 1.0  # ~0.5 pt each side, conservative for a liquid micro
 
 # RTH session in US/Eastern (handles DST via tz conversion).

@@ -35,6 +35,8 @@ except ImportError as e:
     print(f"ERROR: Could not import StarkTPOStrategy. Ensure execution from workspace root. ({e})")
     sys.exit(1)
 
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -85,7 +87,9 @@ def simulate_forge(df: pd.DataFrame) -> pd.Series:
     # Transaction Cost Model (TCM)
     tick_size = 0.25
     slippage_ticks = 1.0
-    commission = 0.85 # $0.85 per contract per side for MES
+    # Canonical rate from contract_specs.py (single source of truth) -- was
+    # hardcoded to 0.85, which is MGC/MCL's rate, not MES's (0.62).
+    commission = CONTRACT_SPECS["MES"].commission  # per contract per side for MES
     multiplier = 5.0  # MES is $5 per point
     capital = 10000.0 # Starting capital
 

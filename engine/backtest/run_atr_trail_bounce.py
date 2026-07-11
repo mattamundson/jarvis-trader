@@ -51,6 +51,7 @@ from backtest.atr_trail_bounce_signals import (  # noqa: E402
     generate_atr_trail_tpotarget_confluence_signals,
 )
 from backtest.backtester import Backtester  # noqa: E402
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
 
 _CACHE_RANGE_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})_")
 
@@ -91,9 +92,17 @@ PARAM_GRID = list(product(FACTOR_GRID, HOLD_BARS_GRID, TOUCH_TOL_GRID))
 # ── Instrument economics (mirror run_mes_trend_rank8.py) ─────────────────────
 MULTIPLIERS = {"MES": 5.0, "ES": 50.0, "MNQ": 2.0, "MCL": 100.0, "MGC": 10.0}
 CAPITAL = 50_000.0
-COMMISSION = 0.62  # $/contract round-trip, IB micro futures
+# Was a flat COMMISSION=0.62 applied to every --symbol (found 2026-07-10):
+# correct for MES/ES/MNQ, but wrong for MCL/MGC (0.85 per contract_specs.py).
+# Kept as a fallback default for any symbol missing from CONTRACT_SPECS.
+_DEFAULT_COMMISSION = 0.62
 SLIPPAGE_TICKS = 1.0
 MIN_TRADES = 20  # below this a PF is not trustworthy
+
+
+def _commission_for(symbol: str) -> float:
+    spec = CONTRACT_SPECS.get(symbol)
+    return spec.commission if spec is not None else _DEFAULT_COMMISSION
 
 
 def _load(symbol: str, timeframe: str, data_file: str | None) -> pd.DataFrame:
@@ -207,7 +216,7 @@ def _backtest(df: pd.DataFrame, symbol: str, mode: str, params: dict):
         "risk_per_trade": 0.01,
         "max_daily_loss": 0.02,
         "max_drawdown": 0.05,
-        "commission_per_contract": COMMISSION,
+        "commission_per_contract": _commission_for(symbol),
         "slippage_ticks": SLIPPAGE_TICKS,
     }
     if mode in ("flip", "confluence", "kelt", "tpotgt"):
