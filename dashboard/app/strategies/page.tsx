@@ -635,7 +635,7 @@ function WalkForwardResultsPanel({ models, latestResult }: { models: SavedModel[
   ];
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <SectionHeader
           title="Walk-Forward Results"
@@ -644,27 +644,26 @@ function WalkForwardResultsPanel({ models, latestResult }: { models: SavedModel[
         {/* Legend */}
         <div className="flex flex-wrap gap-3">
           {legend.map(({ label, target }) => (
-            <span key={label} className="font-mono text-[10px]" style={{ color: "#555" }}>
-              <span style={{ color: "#888" }}>{label}</span> {target}
+            <span key={label} className="font-mono text-[10px] text-[#555]">
+              <span className="text-[#888]">{label}</span> {target}
             </span>
           ))}
         </div>
       </div>
 
       {rows.length === 0 ? (
-        <p className="font-mono text-xs" style={{ color: "#333" }}>
+        <p className="font-mono text-xs text-[#333]">
           No walk-forward results yet. Train a symbol to populate this table.
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full font-mono text-xs">
             <thead>
-              <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+              <tr className="border-b border-panel-border">
                 {["Symbol", "Window", "Sharpe", "Profit Factor", "Win Rate", "HOLD Rate", "Status"].map((h) => (
                   <th
                     key={h}
-                    className={`pb-2 px-3 font-semibold uppercase tracking-wider ${h === "Symbol" ? "text-left" : "text-center"}`}
-                    style={{ color: "#555", fontSize: "10px" }}
+                    className={`pb-2 px-3 font-semibold uppercase tracking-wider text-[#555] text-[10px] ${h === "Symbol" ? "text-left" : "text-center"}`}
                   >
                     {h}
                   </th>
@@ -689,21 +688,20 @@ function WalkForwardResultsPanel({ models, latestResult }: { models: SavedModel[
                 return (
                   <tr
                     key={i}
-                    className="hover:bg-white/[0.02] transition-colors"
-                    style={{ borderBottom: "1px solid #111" }}
+                    className="hover:bg-white/[0.02] transition-colors border-b border-[#111]"
                   >
-                    <td className="py-2.5 px-3 font-bold" style={{ color: "#e0e0e0" }}>{row.symbol}</td>
-                    <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: "#666" }}>{row.window}</td>
-                    <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: row.sharpe !== null ? metricColor(row.sharpe, GATES.min_sharpe) : "#555" }}>
+                    <td className="py-2.5 px-3 font-bold text-[#e0e0e0]">{row.symbol}</td>
+                    <td className="py-2.5 px-3 text-center tabular-nums text-[#666]">{row.window}</td>
+                    <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${row.sharpe !== null ? metricColorClass(row.sharpe, GATES.min_sharpe) : "text-[#555]"}`}>
                       {row.sharpe?.toFixed(2) ?? "—"}
                     </td>
-                    <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: row.profit_factor !== null ? metricColor(row.profit_factor, GATES.min_profit_factor) : "#555" }}>
+                    <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${row.profit_factor !== null ? metricColorClass(row.profit_factor, GATES.min_profit_factor) : "text-[#555]"}`}>
                       {row.profit_factor?.toFixed(2) ?? "—"}
                     </td>
-                    <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: row.win_rate !== null ? metricColor(row.win_rate, GATES.min_win_rate) : "#555" }}>
+                    <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${row.win_rate !== null ? metricColorClass(row.win_rate, GATES.min_win_rate) : "text-[#555]"}`}>
                       {row.win_rate !== null ? pct(row.win_rate) : "—"}
                     </td>
-                    <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: row.hold_rate !== null ? metricColor(row.hold_rate, GATES.min_hold_rate) : "#555" }}>
+                    <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${row.hold_rate !== null ? metricColorClass(row.hold_rate, GATES.min_hold_rate) : "text-[#555]"}`}>
                       {row.hold_rate !== null ? pct(row.hold_rate) : "—"}
                     </td>
                     <td className="py-2.5 px-3 text-center">
@@ -735,12 +733,12 @@ const STC_BENCHMARKS: Record<string, { pf: number; sharpe: number; wr: number; s
 function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
   if (!latestResult?.metrics) {
     return (
-      <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+      <section className="rounded-xl p-5 bg-panel border border-panel-border">
         <SectionHeader
           title="RL vs STC Comparison"
           subtitle="Side-by-side: RL agent OOS metrics vs existing STC pipeline backtest benchmarks."
         />
-        <p className="font-mono text-xs" style={{ color: "#333" }}>
+        <p className="font-mono text-xs text-[#333]">
           Train a symbol to see RL vs STC comparison. STC benchmarks are static constants from a prior validated walk-forward (not recomputed live).
         </p>
       </section>
@@ -766,44 +764,44 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
       metric: "Profit Factor",
       rl: rl.profit_factor?.toFixed(2) ?? "—",
       stc: stc ? stc.pf.toFixed(2) : "N/A",
-      rlColor: rl.profit_factor ? metricColor(rl.profit_factor, GATES.min_profit_factor) : "#555",
-      stcColor: stc ? metricColor(stc.pf, GATES.min_profit_factor) : "#555",
+      rlColor: rl.profit_factor ? metricColorClass(rl.profit_factor, GATES.min_profit_factor) : "text-[#555]",
+      stcColor: stc ? metricColorClass(stc.pf, GATES.min_profit_factor) : "text-[#555]",
       delta: stc && rl.profit_factor ? (rl.profit_factor - stc.pf >= 0 ? "+" : "") + (rl.profit_factor - stc.pf).toFixed(2) : "—",
-      deltaColor: stc && rl.profit_factor ? (rl.profit_factor >= stc.pf ? "#00ff88" : "#ff4444") : "#555",
+      deltaColor: stc && rl.profit_factor ? (rl.profit_factor >= stc.pf ? "text-[#00ff88]" : "text-[#ff4444]") : "text-[#555]",
     },
     {
       metric: "Sharpe Ratio",
       rl: rl.sharpe_ratio?.toFixed(2) ?? "—",
       stc: stc ? stc.sharpe.toFixed(2) : "N/A",
-      rlColor: rl.sharpe_ratio ? metricColor(rl.sharpe_ratio, GATES.min_sharpe) : "#555",
-      stcColor: stc ? metricColor(stc.sharpe, GATES.min_sharpe) : "#555",
+      rlColor: rl.sharpe_ratio ? metricColorClass(rl.sharpe_ratio, GATES.min_sharpe) : "text-[#555]",
+      stcColor: stc ? metricColorClass(stc.sharpe, GATES.min_sharpe) : "text-[#555]",
       delta: stc && rl.sharpe_ratio ? (rl.sharpe_ratio - stc.sharpe >= 0 ? "+" : "") + (rl.sharpe_ratio - stc.sharpe).toFixed(2) : "—",
-      deltaColor: stc && rl.sharpe_ratio ? (rl.sharpe_ratio >= stc.sharpe ? "#00ff88" : "#ff4444") : "#555",
+      deltaColor: stc && rl.sharpe_ratio ? (rl.sharpe_ratio >= stc.sharpe ? "text-[#00ff88]" : "text-[#ff4444]") : "text-[#555]",
     },
     {
       metric: "Win Rate",
       rl: pct(rl.win_rate ?? 0),
       stc: stc ? `${stc.wr.toFixed(1)}%` : "N/A",
-      rlColor: rl.win_rate ? metricColor(rl.win_rate, GATES.min_win_rate) : "#555",
-      stcColor: stc ? metricColor(stc.wr / 100, GATES.min_win_rate) : "#555",
+      rlColor: rl.win_rate ? metricColorClass(rl.win_rate, GATES.min_win_rate) : "text-[#555]",
+      stcColor: stc ? metricColorClass(stc.wr / 100, GATES.min_win_rate) : "text-[#555]",
       delta: stc && rl.win_rate ? (((rl.win_rate * 100) - stc.wr) >= 0 ? "+" : "") + ((rl.win_rate * 100) - stc.wr).toFixed(1) + "pp" : "—",
-      deltaColor: stc && rl.win_rate ? (rl.win_rate * 100 >= stc.wr ? "#00ff88" : "#ff4444") : "#555",
+      deltaColor: stc && rl.win_rate ? (rl.win_rate * 100 >= stc.wr ? "text-[#00ff88]" : "text-[#ff4444]") : "text-[#555]",
     },
     {
       metric: "Max Drawdown",
       rl: pct(rl.max_drawdown ?? 0),
       stc: "N/A",
-      rlColor: rl.max_drawdown !== undefined ? metricColor(rl.max_drawdown, GATES.max_drawdown, true) : "#555",
-      stcColor: "#555",
+      rlColor: rl.max_drawdown !== undefined ? metricColorClass(rl.max_drawdown, GATES.max_drawdown, true) : "text-[#555]",
+      stcColor: "text-[#555]",
       delta: "—",
-      deltaColor: "#555",
+      deltaColor: "text-[#555]",
     },
   ];
 
   const rlWins = rows.filter((r) => r.delta !== "—" && r.delta !== "N/A" && !r.delta.startsWith("-")).length;
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <SectionHeader
           title="RL vs STC Comparison"
@@ -811,8 +809,7 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
         />
         {stc && (
           <span
-            className="font-mono text-[10px] font-bold px-2 py-1 rounded"
-            style={{ backgroundColor: "#00d4ff10", border: "1px solid #00d4ff30", color: "#00d4ff" }}
+            className="font-mono text-[10px] font-bold px-2 py-1 rounded bg-[#00d4ff10] border border-[#00d4ff30] text-[#00d4ff]"
           >
             RL beats STC on {rlWins}/{rows.filter((r) => r.delta !== "—").length} metrics
           </span>
@@ -822,12 +819,11 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
-            <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+            <tr className="border-b border-panel-border">
               {["Metric", "RL Agent (OOS)", "STC Pipeline (static BT)", "Delta"].map((h) => (
                 <th
                   key={h}
-                  className={`pb-2 px-3 font-semibold uppercase tracking-wider ${h === "Metric" ? "text-left" : "text-center"}`}
-                  style={{ color: "#555", fontSize: "10px" }}
+                  className={`pb-2 px-3 font-semibold uppercase tracking-wider text-[#555] text-[10px] ${h === "Metric" ? "text-left" : "text-center"}`}
                 >
                   {h}
                 </th>
@@ -838,13 +834,12 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
             {rows.map(({ metric, rl: rlVal, stc: stcVal, rlColor, stcColor, delta, deltaColor }) => (
               <tr
                 key={metric}
-                className="hover:bg-white/[0.02] transition-colors"
-                style={{ borderBottom: "1px solid #111" }}
+                className="hover:bg-white/[0.02] transition-colors border-b border-[#111]"
               >
-                <td className="py-2.5 px-3 font-semibold" style={{ color: "#e0e0e0" }}>{metric}</td>
-                <td className="py-2.5 px-3 text-center tabular-nums font-bold" style={{ color: rlColor }}>{rlVal}</td>
-                <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: stcColor }}>{stcVal}</td>
-                <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: deltaColor }}>{delta}</td>
+                <td className="py-2.5 px-3 font-semibold text-[#e0e0e0]">{metric}</td>
+                <td className={`py-2.5 px-3 text-center tabular-nums font-bold ${rlColor}`}>{rlVal}</td>
+                <td className={`py-2.5 px-3 text-center tabular-nums ${stcColor}`}>{stcVal}</td>
+                <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${deltaColor}`}>{delta}</td>
               </tr>
             ))}
           </tbody>
@@ -853,14 +848,13 @@ function RLvsSTC({ latestResult }: { latestResult: TrainingResult | null }) {
 
       {!stc && (
         <div
-          className="mt-3 rounded p-2 font-mono text-[10px]"
-          style={{ backgroundColor: "#ffcc0010", border: "1px solid #ffcc0030", color: "#ffcc0099" }}
+          className="mt-3 rounded p-2 font-mono text-[10px] bg-[#ffcc0010] border border-[#ffcc0030] text-[#ffcc0099]"
         >
           No STC benchmark data for {sym}. Add it to STC_BENCHMARKS once a backtest is run.
         </div>
       )}
 
-      <div className="mt-4 pt-3 font-mono text-[10px]" style={{ borderTop: "1px solid #1a1a2e", color: "#333" }}>
+      <div className="mt-4 pt-3 font-mono text-[10px] border-t border-panel-border text-[#333]">
         STC benchmark = historical backtest metrics. RL = OOS test set (held-out 6-month window). Direct comparison is approximate.
       </div>
     </section>
