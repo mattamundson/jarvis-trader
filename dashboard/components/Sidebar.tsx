@@ -130,7 +130,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "System",
     items: [
-      { label: "Trust Pane", href: "/trust-pane", icon: <Gauge className="h-3.5 w-3.5" /> },
+      { label: "Trust & Reconcile", href: "/trust", icon: <Gauge className="h-3.5 w-3.5" /> },
       { label: "Health", href: "/health", icon: <HeartPulse className="h-3.5 w-3.5" /> },
       { label: "Data Integrity", href: "/data-integrity", icon: <Database className="h-3.5 w-3.5" /> },
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },

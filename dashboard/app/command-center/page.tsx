@@ -312,6 +312,18 @@ function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
+// Suspect-price honesty (folded from /trust, P2.1). A futures entry below
+// its per-symbol floor is almost certainly a corrupted field (the 2026-06-12
+// MES@100.5 STC-leak class), not a real price. Conservative — only flags the
+// obviously-impossible, never a real price.
+const PRICE_FLOORS: Record<string, number> = {
+  MES: 1000, ES: 1000, MNQ: 1000, NQ: 1000, MGC: 500, GC: 500, MCL: 5, CL: 5,
+};
+function suspectPrice(symbol: string, price: number): boolean {
+  const floor = PRICE_FLOORS[(symbol || "").toUpperCase()];
+  return floor != null && price > 0 && price < floor;
+}
+
 // KPI card + health line — folded from /today (P2.1), restyled onto the flagship's
 // Tailwind color-class idiom (no inline hex) to match surrounding command-center code.
 function KpiCard({
@@ -578,6 +590,13 @@ export default function CommandCenterPage() {
   const pnlToday = eod?.pnl_today_usd ?? sessionToday?.gross_pnl ?? 0;
   const openPosCount = openPos?.count ?? portfolio?.positions?.length ?? null;
 
+  // Open positions carrying an implausible entry price (folded from /trust,
+  // P2.1) — surfaced in the honesty banner so the flagship never reads healthy
+  // over a corrupted mark.
+  const suspectPositions = (portfolio?.positions ?? []).filter((p) =>
+    suspectPrice(p.symbol, p.avg_cost)
+  );
+
   // System-health checklist derived values (folded from /today, P2.1).
   const execLegOk =
     health?.ibkr_execution_connected ?? health?.ibkr_connected ?? null;
@@ -711,6 +730,56 @@ export default function CommandCenterPage() {
           </Button>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          HONESTY BANNER — folded from /trust (P2.1). The flagship
+          must never read healthy while quietly degraded: surface a loud
+          "do not trust at a glance" strip whenever the engine is
+          unreachable, the IB data leg is on stale fallback, the LLM path
+          is degraded, or an open position carries an implausible
+          (corrupted-field) entry price.
+      ═══════════════════════════════════════════════════════ */}
+      {(!engineOnline ||
+        dataLegOk === false ||
+        llmHealthy === false ||
+        suspectPositions.length > 0) && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-red-800 bg-red-950/40 p-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 animate-pulse text-red-400" />
+          <div className="text-xs">
+            <p className="font-mono font-semibold tracking-wide text-red-300">
+              SYSTEM DEGRADED — DO NOT TRUST AT A GLANCE
+            </p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-slate-400">
+              {!engineOnline && (
+                <li>
+                  Engine is unreachable — panels below are last-known or empty, not live.
+                </li>
+              )}
+              {dataLegOk === false && (
+                <li>
+                  IB data leg is disconnected — marks are stale fallback data;
+                  unrealized P&amp;L is not trustworthy.
+                </li>
+              )}
+              {llmHealthy === false && (
+                <li>
+                  LLM path is on fallback (primary provider degraded) — decision
+                  quality may be affected
+                  {llmProvider ? ` (serving ${llmProvider})` : ""}.
+                </li>
+              )}
+              {suspectPositions.length > 0 && (
+                <li>
+                  {suspectPositions.length} open position
+                  {suspectPositions.length > 1 ? "s have" : " has"} an implausible
+                  entry price — likely a corrupted field. Do not trust the signal
+                  until reconciled.
+                </li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════
           KPI STRIP — folded from /today (P2.1). Surfaces Trades Today

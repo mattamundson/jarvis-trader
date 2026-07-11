@@ -321,7 +321,7 @@ export default function TrustPanePage() {
               <Gauge className="h-5 w-5 text-accent" />
             </div>
             <div>
-              <h1 className="font-bold text-foreground tracking-tight">Trust Pane</h1>
+              <h1 className="font-bold text-foreground tracking-tight">Trust &amp; Reconcile</h1>
               <p className="text-xs text-muted-foreground">Both systems · one glance · live data</p>
             </div>
           </div>

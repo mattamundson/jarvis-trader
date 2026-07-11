@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 // operational HUD at /command-center (the only one of the former five "now" pages
 // built as a real safety-first HUD). Its widgets already live on their real homes
 // (performance, discord, safety, etc.), so nothing is orphaned by this redirect.
-// Remaining fold work (KPI strip from /today, Ask JARVIS from /jarvis, honesty
-// badges from /trust-pane) is tracked as P2.1 sub-work for the Phase-2 draft-PR review.
+// The /today KPI strip, /jarvis Ask-JARVIS box, and /trust honesty banner are all
+// folded into the flagship (P2.1); the cross-engine audit itself survives at /trust.
 export default function Home() {
   redirect("/command-center");
 }
