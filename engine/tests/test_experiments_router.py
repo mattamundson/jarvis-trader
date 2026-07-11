@@ -59,24 +59,24 @@ def _create_table(db_path: str) -> None:
 
 
 def _insert_row(db_path: str, **over) -> None:
-    base = dict(
-        date="2026-07-01",
-        symbol="MES",
-        recorded_at="2026-07-01T09:30:00",
-        corey_bias="bullish",
-        corey_conviction="high",
-        corey_session_type="trend",
-        corey_ib_bias="bullish",
-        corey_data_quality="fresh",
-        entry_hypothesis_side="long",
-        entry_hypothesis_reason="IB breakout",
-        open_price=5000.0,
-        high_price=5020.0,
-        low_price=4995.0,
-        close_price=5015.0,
-        outcome_delta=15.0,
-        outcome_recorded_at="2026-07-01T16:00:00",
-    )
+    base = {
+        "date": "2026-07-01",
+        "symbol": "MES",
+        "recorded_at": "2026-07-01T09:30:00",
+        "corey_bias": "bullish",
+        "corey_conviction": "high",
+        "corey_session_type": "trend",
+        "corey_ib_bias": "bullish",
+        "corey_data_quality": "fresh",
+        "entry_hypothesis_side": "long",
+        "entry_hypothesis_reason": "IB breakout",
+        "open_price": 5000.0,
+        "high_price": 5020.0,
+        "low_price": 4995.0,
+        "close_price": 5015.0,
+        "outcome_delta": 15.0,
+        "outcome_recorded_at": "2026-07-01T16:00:00",
+    }
     base.update(over)
     conn = sqlite3.connect(db_path)
     cols = ", ".join(base.keys())
