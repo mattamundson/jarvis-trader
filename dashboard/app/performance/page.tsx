@@ -95,8 +95,8 @@ interface ImprovementRow {
 }
 
 const IMPROVEMENT_DATA: ImprovementRow[] = [
-  { improvement: "Regime-Adaptive STC", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.24 \u2192 0.48", mgcImpact: "WFE 0.14 \u2192 0.88 (adaptive)", keep: "YES", keepColor: "#00ff88" },
-  { improvement: "Volume Filter", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.34 \u2192 -0.23 (SKIP)", mgcImpact: "WFE 0.88 \u2192 0.20 (SKIP)", keep: "NO for futures", keepColor: "#ff4444" },
+  { improvement: "Regime-Adaptive STC", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.24 → 0.48", mgcImpact: "WFE 0.14 → 0.88 (adaptive)", keep: "YES", keepColor: "#00ff88" },
+  { improvement: "Volume Filter", status: "Implemented", statusColor: "#00ff88", mnqImpact: "WFE 0.34 → -0.23 (SKIP)", mgcImpact: "WFE 0.88 → 0.20 (SKIP)", keep: "NO for futures", keepColor: "#ff4444" },
   { improvement: "MTF Alignment", status: "Implemented", statusColor: "#00ff88", mnqImpact: "Testing...", mgcImpact: "N/A (daily)", keep: "TBD", keepColor: "#ffcc00" },
   { improvement: "News Blackout", status: "Implemented", statusColor: "#00ff88", mnqImpact: "1% blocked", mgcImpact: "N/A", keep: "Live only", keepColor: "#888888" },
   { improvement: "Trailing Stop", status: "Investigated", statusColor: "#ffcc00", mnqImpact: "No improvement", mgcImpact: "Hurts returns", keep: "NO", keepColor: "#ff4444" },
@@ -123,24 +123,40 @@ const DNT_DATA: DNTRow[] = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function wfeColor(wfe: number): string {
-  if (wfe >= 0.70) return "#00ff88";
-  if (wfe >= 0.30) return "#ffcc00";
-  return "#ff4444";
+// Tailwind's JIT scanner only picks up literal class strings, so color helpers
+// return complete class strings (not runtime hex piped through inline style).
+const TEXT_COLOR_CLASSES: Record<string, string> = {
+  "#00ff88": "text-[#00ff88]",
+  "#ff4444": "text-[#ff4444]",
+  "#ffcc00": "text-[#ffcc00]",
+  "#00d4ff": "text-[#00d4ff]",
+  "#555": "text-[#555]",
+  "#888": "text-[#888]",
+  "#888888": "text-[#888888]",
+};
+
+const PILL_COLOR_CLASSES: Record<string, string> = {
+  "#00ff88": "text-[#00ff88] bg-[#00ff8818] border-[#00ff8840]",
+  "#ff4444": "text-[#ff4444] bg-[#ff444418] border-[#ff444440]",
+  "#ffcc00": "text-[#ffcc00] bg-[#ffcc0018] border-[#ffcc0040]",
+  "#00d4ff": "text-[#00d4ff] bg-[#00d4ff10] border-[#00d4ff33]",
+  "#888888": "text-[#888888] bg-[#88888818] border-[#88888840]",
+};
+
+function wfeColorClass(wfe: number): string {
+  if (wfe >= 0.70) return TEXT_COLOR_CLASSES["#00ff88"];
+  if (wfe >= 0.30) return TEXT_COLOR_CLASSES["#ffcc00"];
+  return TEXT_COLOR_CLASSES["#ff4444"];
 }
 
 function statusBadge(status: "ACTIVE" | "RESEARCH" | "DO NOT TRADE") {
-  const map = {
-    ACTIVE: { bg: "#00ff8818", border: "#00ff8840", color: "#00ff88" },
-    RESEARCH: { bg: "#ffcc0018", border: "#ffcc0040", color: "#ffcc00" },
-    "DO NOT TRADE": { bg: "#ff444418", border: "#ff444440", color: "#ff4444" },
+  const map: Record<typeof status, string> = {
+    ACTIVE: PILL_COLOR_CLASSES["#00ff88"],
+    RESEARCH: PILL_COLOR_CLASSES["#ffcc00"],
+    "DO NOT TRADE": PILL_COLOR_CLASSES["#ff4444"],
   };
-  const s = map[status];
   return (
-    <span
-      className="font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
-      style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, color: s.color }}
-    >
+    <span className={`font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border ${map[status]}`}>
       {status}
     </span>
   );
@@ -152,36 +168,23 @@ function WFEBar({ value, maxWidth }: { value: number; maxWidth?: number }) {
   // Normalize: 0 is center, positive goes right, negative goes left
   // For simplicity: bar from 0 to value, scaled to percentage of max
   const absPct = Math.min(Math.abs(value) / max * 100, 100);
-  const color = value >= 0.70 ? "#00ff88" : value >= 0.30 ? "#ffcc00" : value >= 0 ? "#ffcc00" : "#ff4444";
+  const barBgClass = value >= 0.70 ? "bg-[#00ff88]" : value >= 0 ? "bg-[#ffcc00]" : "bg-[#ff4444]";
 
   return (
-    <div className="relative h-4 w-full rounded" style={{ backgroundColor: "#111" }}>
+    <div className="relative h-4 w-full rounded bg-[#111]">
       {value >= 0 ? (
         <div
-          className="absolute top-0 left-0 h-full rounded-r"
-          style={{
-            width: `${absPct}%`,
-            backgroundColor: color,
-            opacity: 0.7,
-            transition: "width 0.5s ease",
-          }}
+          className={`absolute top-0 left-0 h-full rounded-r opacity-70 transition-[width] duration-500 ease-linear ${barBgClass}`}
+          style={{ width: `${absPct}%` }}
         />
       ) : (
         <div
-          className="absolute top-0 right-0 h-full rounded-l"
-          style={{
-            width: `${absPct}%`,
-            backgroundColor: color,
-            opacity: 0.7,
-            transition: "width 0.5s ease",
-          }}
+          className={`absolute top-0 right-0 h-full rounded-l opacity-70 transition-[width] duration-500 ease-linear ${barBgClass}`}
+          style={{ width: `${absPct}%` }}
         />
       )}
       {/* Value label */}
-      <span
-        className="absolute inset-0 flex items-center justify-center font-mono text-[10px] font-bold"
-        style={{ color: "#fff", textShadow: "0 0 4px rgba(0,0,0,0.8)" }}
-      >
+      <span className="absolute inset-0 flex items-center justify-center font-mono text-[10px] font-bold text-white [text-shadow:0_0_4px_rgba(0,0,0,0.8)]">
         {value.toFixed(2)}
       </span>
     </div>
@@ -201,25 +204,17 @@ function SummaryCard({
   sub?: string;
   color?: string;
 }) {
+  const valueClass = (color && TEXT_COLOR_CLASSES[color]) || "text-[#e0e0e0]";
   return (
-    <div
-      className="rounded-xl p-4 flex flex-col gap-1"
-      style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}
-    >
-      <span
-        className="font-mono text-[10px] uppercase tracking-wider"
-        style={{ color: "#555" }}
-      >
+    <div className="rounded-xl p-4 flex flex-col gap-1 bg-panel border border-panel-border">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-[#555]">
         {label}
       </span>
-      <span
-        className="font-mono text-2xl font-bold tabular-nums"
-        style={{ color: color ?? "#e0e0e0" }}
-      >
+      <span className={`font-mono text-2xl font-bold tabular-nums ${valueClass}`}>
         {value}
       </span>
       {sub && (
-        <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+        <span className="font-mono text-[10px] text-[#555]">
           {sub}
         </span>
       )}
@@ -232,14 +227,11 @@ function SummaryCard({
 function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-4">
-      <h3
-        className="font-mono text-sm font-bold tracking-[0.15em] uppercase"
-        style={{ color: "#00ff88" }}
-      >
+      <h3 className="font-mono text-sm font-bold tracking-[0.15em] uppercase text-[#00ff88]">
         {title}
       </h3>
       {subtitle && (
-        <p className="font-mono text-[10px] mt-1" style={{ color: "#555" }}>
+        <p className="font-mono text-[10px] mt-1 text-[#555]">
           {subtitle}
         </p>
       )}
@@ -284,38 +276,31 @@ function BacktestMatrix() {
   ];
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <SectionHeader
         title="Corrected Performance -- In Sample (Jun 2024 - Mar 2026)"
         subtitle="STC + ATR Stops/Targets | All returns gross of commissions ($2.50/contract + 1 tick slippage)"
       />
-      <div
-        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
-        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
-      >
-        <span style={{ fontWeight: 700 }}>Historical backtest</span>
-        <span style={{ color: "#9a8030" }}>
+      <div className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider bg-[#2a1f0a] border border-[#6b5414] text-[#e0b94a]">
+        <span className="font-bold">Historical backtest</span>
+        <span className="text-[#9a8030]">
           frozen in-sample research benchmark as of 2026-03-30 — not live trading results
         </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
-            <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+            <tr className="border-b border-panel-border">
               {cols.map((c) => (
                 <th
                   key={c.key}
-                  className={`pb-2 px-2 font-semibold uppercase tracking-wider cursor-pointer select-none ${c.align}`}
-                  style={{ color: "#555", fontSize: "10px" }}
+                  className={`pb-2 px-2 text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none text-[#555] ${c.align}`}
                   onClick={() => toggleSort(c.key)}
                 >
                   {c.label}<SortIcon col={c.key} />
                 </th>
               ))}
-              <th
-                className="pb-2 px-2 text-center font-semibold uppercase tracking-wider"
-                style={{ color: "#555", fontSize: "10px" }}
-              >
+              <th className="pb-2 px-2 text-[10px] text-center font-semibold uppercase tracking-wider text-[#555]">
                 Status
               </th>
             </tr>
@@ -324,29 +309,28 @@ function BacktestMatrix() {
             {sorted.map((row) => (
               <tr
                 key={`${row.symbol}-${row.tf}`}
-                className="hover:bg-white/[0.02] transition-colors"
-                style={{ borderBottom: "1px solid #111" }}
+                className="hover:bg-white/[0.02] transition-colors border-b border-[#111]"
               >
-                <td className="py-2 px-2 text-center" style={{ color: "#555" }}>{row.rank}</td>
-                <td className="py-2 px-2 font-bold" style={{ color: "#e0e0e0" }}>{row.symbol}</td>
-                <td className="py-2 px-2 text-center" style={{ color: "#888" }}>{row.tf}</td>
-                <td className="py-2 px-2 text-right tabular-nums" style={{ color: "#e0e0e0" }}>{row.trades}</td>
-                <td className="py-2 px-2 text-right tabular-nums" style={{ color: row.wr >= 50 ? "#00ff88" : "#ffcc00" }}>
+                <td className="py-2 px-2 text-center text-[#555]">{row.rank}</td>
+                <td className="py-2 px-2 font-bold text-[#e0e0e0]">{row.symbol}</td>
+                <td className="py-2 px-2 text-center text-[#888]">{row.tf}</td>
+                <td className="py-2 px-2 text-right tabular-nums text-[#e0e0e0]">{row.trades}</td>
+                <td className={`py-2 px-2 text-right tabular-nums ${row.wr >= 50 ? "text-[#00ff88]" : "text-[#ffcc00]"}`}>
                   {row.wr.toFixed(1)}
                 </td>
-                <td className="py-2 px-2 text-right tabular-nums" style={{ color: row.pf >= 2.0 ? "#00ff88" : row.pf >= 1.0 ? "#ffcc00" : "#ff4444" }}>
+                <td className={`py-2 px-2 text-right tabular-nums ${row.pf >= 2.0 ? "text-[#00ff88]" : row.pf >= 1.0 ? "text-[#ffcc00]" : "text-[#ff4444]"}`}>
                   {row.pf.toFixed(2)}
                 </td>
-                <td className="py-2 px-2 text-right tabular-nums" style={{ color: row.sharpe >= 1.0 ? "#00ff88" : row.sharpe >= 0 ? "#ffcc00" : "#ff4444" }}>
+                <td className={`py-2 px-2 text-right tabular-nums ${row.sharpe >= 1.0 ? "text-[#00ff88]" : row.sharpe >= 0 ? "text-[#ffcc00]" : "text-[#ff4444]"}`}>
                   {row.sharpe.toFixed(2)}
                 </td>
-                <td className="py-2 px-2 text-right tabular-nums" style={{ color: row.returnPct >= 0 ? "#00ff88" : "#ff4444" }}>
+                <td className={`py-2 px-2 text-right tabular-nums ${row.returnPct >= 0 ? "text-[#00ff88]" : "text-[#ff4444]"}`}>
                   {row.returnPct >= 0 ? "+" : ""}{row.returnPct.toFixed(1)}%
                 </td>
-                <td className="py-2 px-2 text-right tabular-nums" style={{ color: "#888" }}>
-                  {row.maxDD != null ? `${row.maxDD.toFixed(1)}%` : "\u2014"}
+                <td className="py-2 px-2 text-right tabular-nums text-[#888]">
+                  {row.maxDD != null ? `${row.maxDD.toFixed(1)}%` : "—"}
                 </td>
-                <td className="py-2 px-2 text-right tabular-nums font-bold" style={{ color: wfeColor(row.wfe) }}>
+                <td className={`py-2 px-2 text-right tabular-nums font-bold ${wfeColorClass(row.wfe)}`}>
                   {row.wfe.toFixed(2)}
                 </td>
                 <td className="py-2 px-2 text-center">{statusBadge(row.status)}</td>
@@ -357,11 +341,11 @@ function BacktestMatrix() {
       </div>
 
       {/* WFE legend */}
-      <div className="flex items-center gap-4 mt-4 pt-3" style={{ borderTop: "1px solid #1a1a2e" }}>
-        <span className="font-mono text-[9px] tracking-wider" style={{ color: "#555" }}>WFE THRESHOLDS:</span>
-        <span className="font-mono text-[9px]" style={{ color: "#00ff88" }}>{"\u2265"}0.70 EXCELLENT</span>
-        <span className="font-mono text-[9px]" style={{ color: "#ffcc00" }}>0.30-0.70 ACCEPTABLE</span>
-        <span className="font-mono text-[9px]" style={{ color: "#ff4444" }}>&lt;0.30 OVERFIT</span>
+      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-panel-border">
+        <span className="font-mono text-[9px] tracking-wider text-[#555]">WFE THRESHOLDS:</span>
+        <span className="font-mono text-[9px] text-[#00ff88]">{"≥"}0.70 EXCELLENT</span>
+        <span className="font-mono text-[9px] text-[#ffcc00]">0.30-0.70 ACCEPTABLE</span>
+        <span className="font-mono text-[9px] text-[#ff4444]">&lt;0.30 OVERFIT</span>
       </div>
     </section>
   );
@@ -369,17 +353,14 @@ function BacktestMatrix() {
 
 function WalkForwardChart() {
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <SectionHeader
         title="Walk-Forward Efficiency -- Static vs Adaptive"
         subtitle="Regime-adaptive mode: RegimeClassifier switches STC params per market regime | Bars scale to WFE 1.0 = 100%"
       />
-      <div
-        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
-        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
-      >
-        <span style={{ fontWeight: 700 }}>Historical backtest</span>
-        <span style={{ color: "#9a8030" }}>
+      <div className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider bg-[#2a1f0a] border border-[#6b5414] text-[#e0b94a]">
+        <span className="font-bold">Historical backtest</span>
+        <span className="text-[#9a8030]">
           frozen WFE study as of 2026-03-30 — not live trading results
         </span>
       </div>
@@ -387,43 +368,42 @@ function WalkForwardChart() {
       {/* Threshold reference lines */}
       <div className="relative mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <span className="font-mono text-[9px]" style={{ color: "#555" }}>THRESHOLD GUIDE:</span>
+          <span className="font-mono text-[9px] text-[#555]">THRESHOLD GUIDE:</span>
           <div className="flex items-center gap-1">
-            <div className="h-px w-4" style={{ backgroundColor: "#ff4444" }} />
-            <span className="font-mono text-[9px]" style={{ color: "#ff4444" }}>0.30 ACCEPTABLE</span>
+            <div className="h-px w-4 bg-[#ff4444]" />
+            <span className="font-mono text-[9px] text-[#ff4444]">0.30 ACCEPTABLE</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="h-px w-4" style={{ backgroundColor: "#ffcc00" }} />
-            <span className="font-mono text-[9px]" style={{ color: "#ffcc00" }}>0.50 GOOD</span>
+            <div className="h-px w-4 bg-[#ffcc00]" />
+            <span className="font-mono text-[9px] text-[#ffcc00]">0.50 GOOD</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="h-px w-4" style={{ backgroundColor: "#00ff88" }} />
-            <span className="font-mono text-[9px]" style={{ color: "#00ff88" }}>0.70 EXCELLENT</span>
+            <div className="h-px w-4 bg-[#00ff88]" />
+            <span className="font-mono text-[9px] text-[#00ff88]">0.70 EXCELLENT</span>
           </div>
         </div>
       </div>
 
       {/* Table header */}
       <div className="grid grid-cols-12 gap-3 mb-2 px-1">
-        <div className="col-span-1 font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Symbol</div>
-        <div className="col-span-4 font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Static WFE</div>
-        <div className="col-span-4 font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>Adaptive WFE</div>
-        <div className="col-span-1 font-mono text-[10px] uppercase tracking-wider text-center" style={{ color: "#555" }}>Change</div>
-        <div className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-center" style={{ color: "#555" }}>Verdict</div>
+        <div className="col-span-1 font-mono text-[10px] uppercase tracking-wider text-[#555]">Symbol</div>
+        <div className="col-span-4 font-mono text-[10px] uppercase tracking-wider text-[#555]">Static WFE</div>
+        <div className="col-span-4 font-mono text-[10px] uppercase tracking-wider text-[#555]">Adaptive WFE</div>
+        <div className="col-span-1 font-mono text-[10px] uppercase tracking-wider text-center text-[#555]">Change</div>
+        <div className="col-span-2 font-mono text-[10px] uppercase tracking-wider text-center text-[#555]">Verdict</div>
       </div>
 
       {/* Data rows */}
       {WFE_DATA.map((row) => (
         <div
           key={`${row.symbol}-${row.tf}`}
-          className="grid grid-cols-12 gap-3 items-center py-2 px-1"
-          style={{ borderBottom: "1px solid #111" }}
+          className="grid grid-cols-12 gap-3 items-center py-2 px-1 border-b border-[#111]"
         >
           <div className="col-span-1">
-            <span className="font-mono text-xs font-bold" style={{ color: "#e0e0e0" }}>
+            <span className="font-mono text-xs font-bold text-[#e0e0e0]">
               {row.symbol}
             </span>
-            <span className="font-mono text-[10px] ml-1" style={{ color: "#555" }}>{row.tf}</span>
+            <span className="font-mono text-[10px] ml-1 text-[#555]">{row.tf}</span>
           </div>
           <div className="col-span-4">
             <WFEBar value={row.staticWFE} />
@@ -432,22 +412,12 @@ function WalkForwardChart() {
             <WFEBar value={row.adaptiveWFE} />
           </div>
           <div className="col-span-1 text-center">
-            <span
-              className="font-mono text-[10px] font-bold"
-              style={{ color: row.change.startsWith("+") ? "#00ff88" : "#ff4444" }}
-            >
+            <span className={`font-mono text-[10px] font-bold ${row.change.startsWith("+") ? "text-[#00ff88]" : "text-[#ff4444]"}`}>
               {row.change}
             </span>
           </div>
           <div className="col-span-2 text-center">
-            <span
-              className="font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
-              style={{
-                color: row.verdictColor,
-                backgroundColor: `${row.verdictColor}18`,
-                border: `1px solid ${row.verdictColor}40`,
-              }}
-            >
+            <span className={`font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border ${PILL_COLOR_CLASSES[row.verdictColor]}`}>
               {row.verdict}
             </span>
           </div>
@@ -455,35 +425,28 @@ function WalkForwardChart() {
       ))}
 
       {/* OOS detail sub-table */}
-      <div className="mt-4 pt-3" style={{ borderTop: "1px solid #1a1a2e" }}>
-        <span className="font-mono text-[9px] tracking-wider mb-2 block" style={{ color: "#555" }}>
+      <div className="mt-4 pt-3 border-t border-panel-border">
+        <span className="font-mono text-[9px] tracking-wider mb-2 block text-[#555]">
           OUT-OF-SAMPLE METRICS (ADAPTIVE MODE)
         </span>
         <div className="grid grid-cols-4 gap-2">
           {WFE_DATA.map((row) => (
             <div
               key={`${row.symbol}-oos`}
-              className="rounded-lg p-3"
-              style={{ backgroundColor: "#111", border: "1px solid #1a1a2e" }}
+              className="rounded-lg p-3 bg-[#111] border border-panel-border"
             >
-              <span className="font-mono text-[10px] font-bold block mb-2" style={{ color: "#e0e0e0" }}>
+              <span className="font-mono text-[10px] font-bold block mb-2 text-[#e0e0e0]">
                 {row.symbol} {row.tf}
               </span>
               <div className="flex justify-between">
-                <span className="font-mono text-[9px]" style={{ color: "#555" }}>OOS Sharpe</span>
-                <span
-                  className="font-mono text-[10px] font-bold tabular-nums"
-                  style={{ color: row.oosSharpe >= 0 ? "#00ff88" : "#ff4444" }}
-                >
+                <span className="font-mono text-[9px] text-[#555]">OOS Sharpe</span>
+                <span className={`font-mono text-[10px] font-bold tabular-nums ${row.oosSharpe >= 0 ? "text-[#00ff88]" : "text-[#ff4444]"}`}>
                   {row.oosSharpe.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between mt-1">
-                <span className="font-mono text-[9px]" style={{ color: "#555" }}>OOS PF</span>
-                <span
-                  className="font-mono text-[10px] font-bold tabular-nums"
-                  style={{ color: row.oosPF >= 1.5 ? "#00ff88" : row.oosPF >= 1.0 ? "#ffcc00" : "#ff4444" }}
-                >
+                <span className="font-mono text-[9px] text-[#555]">OOS PF</span>
+                <span className={`font-mono text-[10px] font-bold tabular-nums ${row.oosPF >= 1.5 ? "text-[#00ff88]" : row.oosPF >= 1.0 ? "text-[#ffcc00]" : "text-[#ff4444]"}`}>
                   {row.oosPF.toFixed(2)}
                 </span>
               </div>
@@ -497,29 +460,25 @@ function WalkForwardChart() {
 
 function ImprovementTracker() {
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <SectionHeader
         title="Signal Improvement Tracker"
         subtitle="Each improvement tested via walk-forward validation before acceptance"
       />
-      <div
-        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
-        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
-      >
-        <span style={{ fontWeight: 700 }}>Historical snapshot</span>
-        <span style={{ color: "#9a8030" }}>
+      <div className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider bg-[#2a1f0a] border border-[#6b5414] text-[#e0b94a]">
+        <span className="font-bold">Historical snapshot</span>
+        <span className="text-[#9a8030]">
           frozen improvement audit as of 2026-03-30 — not live results
         </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
-            <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+            <tr className="border-b border-panel-border">
               {["Improvement", "Status", "MNQ Impact", "MGC Impact", "Keep?"].map((h) => (
                 <th
                   key={h}
-                  className="pb-2 px-2 text-left font-semibold uppercase tracking-wider"
-                  style={{ color: "#555", fontSize: "10px" }}
+                  className="pb-2 px-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[#555]"
                 >
                   {h}
                 </th>
@@ -530,32 +489,24 @@ function ImprovementTracker() {
             {IMPROVEMENT_DATA.map((row) => (
               <tr
                 key={row.improvement}
-                className="hover:bg-white/[0.02] transition-colors"
-                style={{ borderBottom: "1px solid #111" }}
+                className="hover:bg-white/[0.02] transition-colors border-b border-[#111]"
               >
-                <td className="py-2.5 px-2 font-semibold" style={{ color: "#e0e0e0" }}>
+                <td className="py-2.5 px-2 font-semibold text-[#e0e0e0]">
                   {row.improvement}
                 </td>
                 <td className="py-2.5 px-2">
-                  <span
-                    className="font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
-                    style={{
-                      color: row.statusColor,
-                      backgroundColor: `${row.statusColor}18`,
-                      border: `1px solid ${row.statusColor}40`,
-                    }}
-                  >
+                  <span className={`font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border ${PILL_COLOR_CLASSES[row.statusColor]}`}>
                     {row.status}
                   </span>
                 </td>
-                <td className="py-2.5 px-2 tabular-nums" style={{ color: "#ccc" }}>
+                <td className="py-2.5 px-2 tabular-nums text-[#ccc]">
                   {row.mnqImpact}
                 </td>
-                <td className="py-2.5 px-2 tabular-nums" style={{ color: "#ccc" }}>
+                <td className="py-2.5 px-2 tabular-nums text-[#ccc]">
                   {row.mgcImpact}
                 </td>
                 <td className="py-2.5 px-2">
-                  <span className="font-bold" style={{ color: row.keepColor }}>
+                  <span className={`font-bold ${TEXT_COLOR_CLASSES[row.keepColor]}`}>
                     {row.keep}
                   </span>
                 </td>
@@ -570,29 +521,25 @@ function ImprovementTracker() {
 
 function DoNotTradeList() {
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <SectionHeader
         title="Do Not Trade -- Permanently Removed"
         subtitle="Instruments that failed walk-forward validation or show structural unsuitability for STC strategy"
       />
-      <div
-        className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
-        style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
-      >
-        <span style={{ fontWeight: 700 }}>Historical snapshot</span>
-        <span style={{ color: "#9a8030" }}>
+      <div className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider bg-[#2a1f0a] border border-[#6b5414] text-[#e0b94a]">
+        <span className="font-bold">Historical snapshot</span>
+        <span className="text-[#9a8030]">
           frozen DNT list as of 2026-03-30 — see gate-v2 verdicts in Strategy Ledger for current status
         </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-xs">
           <thead>
-            <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+            <tr className="border-b border-panel-border">
               {["Symbol", "TF", "PF", "WFE", "Reason"].map((h) => (
                 <th
                   key={h}
-                  className={`pb-2 px-2 font-semibold uppercase tracking-wider ${h === "Reason" ? "text-left" : "text-center"}`}
-                  style={{ color: "#555", fontSize: "10px" }}
+                  className={`pb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-[#555] ${h === "Reason" ? "text-left" : "text-center"}`}
                 >
                   {h}
                 </th>
@@ -603,22 +550,21 @@ function DoNotTradeList() {
             {DNT_DATA.map((row, i) => (
               <tr
                 key={`${row.symbol}-${row.tf}-${i}`}
-                className="hover:bg-white/[0.02] transition-colors"
-                style={{ borderBottom: "1px solid #111" }}
+                className="hover:bg-white/[0.02] transition-colors border-b border-[#111]"
               >
-                <td className="py-2 px-2 text-center font-bold" style={{ color: "#ff4444" }}>
+                <td className="py-2 px-2 text-center font-bold text-[#ff4444]">
                   {row.symbol}
                 </td>
-                <td className="py-2 px-2 text-center" style={{ color: "#888" }}>
+                <td className="py-2 px-2 text-center text-[#888]">
                   {row.tf}
                 </td>
-                <td className="py-2 px-2 text-center tabular-nums" style={{ color: row.pf >= 1.0 ? "#ffcc00" : "#ff4444" }}>
+                <td className={`py-2 px-2 text-center tabular-nums ${row.pf >= 1.0 ? "text-[#ffcc00]" : "text-[#ff4444]"}`}>
                   {row.pf.toFixed(2)}
                 </td>
-                <td className="py-2 px-2 text-center tabular-nums" style={{ color: "#ff4444" }}>
+                <td className="py-2 px-2 text-center tabular-nums text-[#ff4444]">
                   {row.wfe}
                 </td>
-                <td className="py-2 px-2 text-left" style={{ color: "#888" }}>
+                <td className="py-2 px-2 text-left text-[#888]">
                   {row.reason}
                 </td>
               </tr>
@@ -628,8 +574,8 @@ function DoNotTradeList() {
       </div>
 
       {/* Count */}
-      <div className="mt-3 pt-2" style={{ borderTop: "1px solid #1a1a2e" }}>
-        <span className="font-mono text-[9px]" style={{ color: "#555" }}>
+      <div className="mt-3 pt-2 border-t border-panel-border">
+        <span className="font-mono text-[9px] text-[#555]">
           {DNT_DATA.length} instrument/timeframe combinations permanently excluded
         </span>
       </div>
@@ -645,7 +591,7 @@ function LivePriceSection() {
   const [tf, setTf] = useState<ChartTimeframe>("1h");
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between text-left"
@@ -655,9 +601,9 @@ function LivePriceSection() {
           subtitle="Real-time JARVIS bars (our data, not TradingView's delayed futures embed) with closed-trade markers"
         />
         {open ? (
-          <ChevronUp className="h-4 w-4" style={{ color: "#555" }} />
+          <ChevronUp className="h-4 w-4 text-[#555]" />
         ) : (
-          <ChevronDown className="h-4 w-4" style={{ color: "#555" }} />
+          <ChevronDown className="h-4 w-4 text-[#555]" />
         )}
       </button>
       {open && (
@@ -679,64 +625,57 @@ function LivePriceSection() {
 
 export default function PerformancePage() {
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#050505" }}>
+    <div className="min-h-screen bg-[#050505]">
       {/* Header */}
-      <header
-        className="sticky top-0 z-50 backdrop-blur"
-        style={{ backgroundColor: "rgba(5,5,5,0.95)", borderBottom: "1px solid #1a1a2e" }}
-      >
+      <header className="sticky top-0 z-50 backdrop-blur bg-[rgba(5,5,5,0.95)] border-b border-panel-border">
         <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-lg"
-              style={{ backgroundColor: "#00ff8815" }}
-            >
-              <Activity className="h-5 w-5" style={{ color: "#00ff88" }} />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#00ff8815]">
+              <Activity className="h-5 w-5 text-[#00ff88]" />
             </div>
             <div>
-              <h1 className="font-bold tracking-tight" style={{ color: "#e0e0e0" }}>
+              <h1 className="font-bold tracking-tight text-[#e0e0e0]">
                 JARVIS TRADER
               </h1>
-              <p className="text-xs" style={{ color: "#555" }}>
+              <p className="text-xs text-[#555]">
                 IBKR Futures + Schwab Options
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
-              <Link href="/" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/" className="text-xs transition-colors text-[#888]">
                 Dashboard
               </Link>
-              <Link href="/analysis" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/analysis" className="text-xs transition-colors text-[#888]">
                 Analysis
               </Link>
-              <Link href="/backtest" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/backtest" className="text-xs transition-colors text-[#888]">
                 Backtest
               </Link>
               <Link
                 href="/performance"
-                className="text-xs font-semibold pb-0.5"
-                style={{ color: "#e0e0e0", borderBottom: "1px solid #00ff88" }}
+                className="text-xs font-semibold pb-0.5 text-[#e0e0e0] border-b border-[#00ff88]"
               >
                 Performance
               </Link>
-              <Link href="/validation" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/validation" className="text-xs transition-colors text-[#888]">
                 Validation
               </Link>
-              <Link href="/journal" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/journal" className="text-xs transition-colors text-[#888]">
                 Journal
               </Link>
-              <Link href="/paper" className="text-xs font-semibold transition-colors" style={{ color: "#00ff88" }}>
+              <Link href="/paper" className="text-xs font-semibold transition-colors text-[#00ff88]">
                 Paper Trading
               </Link>
-              <Link href="/watchlist" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/watchlist" className="text-xs transition-colors text-[#888]">
                 Watchlist
               </Link>
-              <Link href="/scorecard" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/scorecard" className="text-xs transition-colors text-[#888]">
                 Scorecard
               </Link>
-              <Link href="/settings" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/settings" className="text-xs transition-colors text-[#888]">
                 Settings
               </Link>
-              <Link href="/health" className="text-xs transition-colors" style={{ color: "#888" }}>
+              <Link href="/health" className="text-xs transition-colors text-[#888]">
                 Health
               </Link>
             </nav>
@@ -744,8 +683,7 @@ export default function PerformancePage() {
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="flex items-center gap-1.5 text-xs transition-colors"
-              style={{ color: "#888" }}
+              className="flex items-center gap-1.5 text-xs transition-colors text-[#888]"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to Dashboard
@@ -793,28 +731,21 @@ export default function PerformancePage() {
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h2
-              className="text-2xl font-bold tracking-tight font-mono"
-              style={{ color: "#e0e0e0" }}
-            >
+            <h2 className="text-2xl font-bold tracking-tight font-mono text-[#e0e0e0]">
               Backtest Performance Analytics
             </h2>
-            <p className="text-sm mt-1 font-mono" style={{ color: "#555" }}>
+            <p className="text-sm mt-1 font-mono text-[#555]">
               JARVIS TRADER v2.7 | STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter
             </p>
           </div>
           <div className="flex items-center gap-3">
             <Link
               href="/strategy-ledger"
-              className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded hover:opacity-80 transition-opacity"
-              style={{ backgroundColor: "#ffcc0018", border: "1px solid #ffcc0040", color: "#ffcc00" }}
+              className={`font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded border hover:opacity-80 transition-opacity ${PILL_COLOR_CLASSES["#ffcc00"]}`}
             >
               2026-03-30 SNAPSHOT (historical) — see live gate-v2 verdicts in Strategy Ledger →
             </Link>
-            <span
-              className="font-mono text-[10px] tracking-wider px-2 py-1 rounded"
-              style={{ backgroundColor: "#00d4ff10", border: "1px solid #00d4ff33", color: "#00d4ff" }}
-            >
+            <span className="font-mono text-[10px] tracking-wider px-2 py-1 rounded bg-[#00d4ff10] border border-[#00d4ff33] text-[#00d4ff]">
               Updated 2026-03-30
             </span>
           </div>
@@ -948,8 +879,8 @@ export default function PerformancePage() {
         </div>
 
         {/* Footer */}
-        <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>
-          <p className="font-mono text-[10px]" style={{ color: "#333" }}>
+        <div className="pt-4 pb-8 border-t border-panel-border">
+          <p className="font-mono text-[10px] text-[#333]">
             Source: 55+ result files in engine/backtest/results/ | Includes optimizer JSONs, corrected backtests,
             sensitivity analysis (3 instruments), Monte Carlo (4 instruments, 10k sims each), and walk-forward
             validation (5 instruments, 6-7 windows each).
