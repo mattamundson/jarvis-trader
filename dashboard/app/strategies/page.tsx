@@ -161,16 +161,8 @@ const GATES = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function metricColor(value: number, min: number, inverse = false): string {
-  const pass = inverse ? value <= min : value >= min;
-  if (pass) return "#00ff88";
-  const close = inverse ? value <= min * 1.5 : value >= min * 0.75;
-  return close ? "#ffcc00" : "#ff4444";
-}
-
-// Tailwind's JIT scanner only picks up literal class strings, so a companion of
-// metricColor() that returns the equivalent text-color class (not a runtime hex
-// piped through inline style) is needed anywhere the value drives a className.
+// Tailwind's JIT scanner only picks up literal class strings, so this returns
+// the text-color class directly (not a runtime hex piped through inline style).
 function metricColorClass(value: number, min: number, inverse = false): string {
   const pass = inverse ? value <= min : value >= min;
   if (pass) return "text-[#00ff88]";
@@ -1650,8 +1642,7 @@ function WalkForwardGridPanel({
   const [symbol, setSymbol] = useState("MES");
   const [loading, setLoading] = useState(false);
 
-  const selectCls = "font-mono text-xs rounded-lg px-3 py-2 outline-none cursor-pointer";
-  const selectStyle: React.CSSProperties = { backgroundColor: "#111", border: "1px solid #1a1a2e", color: "#e0e0e0" };
+  const selectCls = "font-mono text-xs rounded-lg px-3 py-2 outline-none cursor-pointer bg-[#111] border border-panel-border text-[#e0e0e0]";
 
   const passCount = windows.filter((w) => w.passed).length;
   const totalWindows = windows.length;
@@ -1668,9 +1659,14 @@ function WalkForwardGridPanel({
   }
 
   const isRunning = loading || wfRunning;
+  const runButtonClass = isRunning
+    ? "bg-panel-border border border-[#333] text-[#555] cursor-not-allowed"
+    : "bg-[#00ff8820] border border-[#00ff8860] text-[#00ff88] cursor-pointer";
+  const summaryColorClass =
+    passCount === totalWindows ? "text-[#00ff88]" : passCount >= totalWindows / 2 ? "text-[#ffcc00]" : "text-[#ff4444]";
 
   return (
-    <section className="rounded-xl p-5" style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}>
+    <section className="rounded-xl p-5 bg-panel border border-panel-border">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <SectionHeader
           title="Walk-Forward Results Grid"
@@ -1679,7 +1675,6 @@ function WalkForwardGridPanel({
         <form onSubmit={handleRun} className="flex items-center gap-3">
           <select
             className={selectCls}
-            style={selectStyle}
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
             disabled={isRunning}
@@ -1689,14 +1684,7 @@ function WalkForwardGridPanel({
           <button
             type="submit"
             disabled={isRunning}
-            className="flex items-center gap-1.5 font-mono text-xs font-bold px-4 py-2 rounded-lg transition-all"
-            style={{
-              backgroundColor: isRunning ? "#1a1a2e" : "#00ff8820",
-              border: `1px solid ${isRunning ? "#333" : "#00ff8860"}`,
-              color: isRunning ? "#555" : "#00ff88",
-              cursor: isRunning ? "not-allowed" : "pointer",
-              minWidth: "180px",
-            }}
+            className={`flex items-center gap-1.5 font-mono text-xs font-bold px-4 py-2 rounded-lg transition-all min-w-[180px] ${runButtonClass}`}
           >
             {isRunning ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
             {isRunning ? "Walk-Forward Running…" : "Run Walk-Forward"}
@@ -1706,10 +1694,7 @@ function WalkForwardGridPanel({
 
       {/* Loading banner */}
       {isRunning && (
-        <div
-          className="mb-5 rounded-lg p-3 font-mono text-xs flex items-center gap-3"
-          style={{ backgroundColor: "#ffcc0010", border: "1px solid #ffcc0030", color: "#ffcc00" }}
-        >
+        <div className="mb-5 rounded-lg p-3 font-mono text-xs flex items-center gap-3 bg-[#ffcc0010] border border-[#ffcc0030] text-[#ffcc00]">
           <RefreshCw className="h-4 w-4 animate-spin flex-shrink-0" />
           Walk-forward training in progress — 8 windows × 100k timesteps. This may take 20–40 minutes.
           Status auto-refreshes every 3s.
@@ -1717,10 +1702,7 @@ function WalkForwardGridPanel({
       )}
 
       {windows.length === 0 ? (
-        <div
-          className="rounded-lg p-6 text-center font-mono text-xs"
-          style={{ backgroundColor: "#111", border: "1px solid #1a1a2e", color: "#444" }}
-        >
+        <div className="rounded-lg p-6 text-center font-mono text-xs bg-[#111] border border-panel-border text-[#444]">
           No walk-forward results yet. Click &quot;Run Walk-Forward&quot; to start 8-window validation.
         </div>
       ) : (
@@ -1728,12 +1710,11 @@ function WalkForwardGridPanel({
           <div className="overflow-x-auto">
             <table className="w-full font-mono text-xs">
               <thead>
-                <tr style={{ borderBottom: "1px solid #1a1a2e" }}>
+                <tr className="border-b border-panel-border">
                   {["Window", "Train Period", "Test Period", "Trades", "PF", "Win Rate", "Hold Rate", "Sharpe", "Max DD", "Result"].map((h) => (
                     <th
                       key={h}
-                      className={`pb-2 px-3 font-semibold uppercase tracking-wider ${h === "Window" ? "text-left" : "text-center"}`}
-                      style={{ color: "#555", fontSize: "10px" }}
+                      className={`pb-2 px-3 font-semibold uppercase tracking-wider text-[10px] text-[#555] ${h === "Window" ? "text-left" : "text-center"}`}
                     >
                       {h}
                     </th>
@@ -1742,44 +1723,41 @@ function WalkForwardGridPanel({
               </thead>
               <tbody>
                 {windows.map((win) => {
-                  const rowBg = win.passed ? "#00ff8808" : "#ff444408";
-                  const rowBorder = win.passed ? "#00ff8818" : "#ff444420";
-                  const pfColor = metricColor(win.metrics.profit_factor, GATES.min_profit_factor);
-                  const wrColor = metricColor(win.metrics.win_rate, GATES.min_win_rate);
-                  const hrColor = metricColor(win.metrics.hold_rate, GATES.min_hold_rate);
-                  const sharpeColor = metricColor(win.metrics.sharpe, GATES.min_sharpe);
-                  const ddColor = metricColor(win.metrics.max_drawdown, GATES.max_drawdown, true);
-                  const tradesColor = metricColor(win.metrics.n_trades, GATES.min_trades);
+                  const rowClass = win.passed
+                    ? "bg-[#00ff8808] border-b border-[#00ff8818]"
+                    : "bg-[#ff444408] border-b border-[#ff444420]";
+                  const pfColorClass = metricColorClass(win.metrics.profit_factor, GATES.min_profit_factor);
+                  const wrColorClass = metricColorClass(win.metrics.win_rate, GATES.min_win_rate);
+                  const hrColorClass = metricColorClass(win.metrics.hold_rate, GATES.min_hold_rate);
+                  const sharpeColorClass = metricColorClass(win.metrics.sharpe, GATES.min_sharpe);
+                  const ddColorClass = metricColorClass(win.metrics.max_drawdown, GATES.max_drawdown, true);
+                  const tradesColorClass = metricColorClass(win.metrics.n_trades, GATES.min_trades);
 
                   return (
-                    <tr
-                      key={win.window}
-                      className="transition-colors"
-                      style={{ backgroundColor: rowBg, borderBottom: `1px solid ${rowBorder}` }}
-                    >
-                      <td className="py-2.5 px-3 font-bold" style={{ color: "#e0e0e0" }}>#{win.window}</td>
-                      <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: "#666", fontSize: "10px" }}>
+                    <tr key={win.window} className={`transition-colors ${rowClass}`}>
+                      <td className="py-2.5 px-3 font-bold text-[#e0e0e0]">#{win.window}</td>
+                      <td className="py-2.5 px-3 text-center tabular-nums text-[10px] text-[#666]">
                         {win.train_start} → {win.train_end}
                       </td>
-                      <td className="py-2.5 px-3 text-center tabular-nums" style={{ color: "#888", fontSize: "10px" }}>
+                      <td className="py-2.5 px-3 text-center tabular-nums text-[10px] text-[#888]">
                         {win.test_start} → {win.test_end}
                       </td>
-                      <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: tradesColor }}>
+                      <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${tradesColorClass}`}>
                         {win.metrics.n_trades}
                       </td>
-                      <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: pfColor }}>
+                      <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${pfColorClass}`}>
                         {win.metrics.profit_factor.toFixed(2)}
                       </td>
-                      <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: wrColor }}>
+                      <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${wrColorClass}`}>
                         {pct(win.metrics.win_rate)}
                       </td>
-                      <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: hrColor }}>
+                      <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${hrColorClass}`}>
                         {win.metrics.hold_rate !== undefined ? pct(win.metrics.hold_rate) : "—"}
                       </td>
-                      <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: sharpeColor }}>
+                      <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${sharpeColorClass}`}>
                         {win.metrics.sharpe.toFixed(2)}
                       </td>
-                      <td className="py-2.5 px-3 text-center tabular-nums font-semibold" style={{ color: ddColor }}>
+                      <td className={`py-2.5 px-3 text-center tabular-nums font-semibold ${ddColorClass}`}>
                         {pct(win.metrics.max_drawdown)}
                       </td>
                       <td className="py-2.5 px-3 text-center">
@@ -1796,25 +1774,19 @@ function WalkForwardGridPanel({
           </div>
 
           {/* Summary row */}
-          <div
-            className="mt-4 pt-3 flex items-center justify-between"
-            style={{ borderTop: "1px solid #1a1a2e" }}
-          >
+          <div className="mt-4 pt-3 flex items-center justify-between border-t border-panel-border">
             <div className="flex items-center gap-3">
-              <span className="font-mono text-[10px]" style={{ color: "#555" }}>
+              <span className="font-mono text-[10px] text-[#555]">
                 SUMMARY:
               </span>
-              <span
-                className="font-mono text-sm font-bold tabular-nums"
-                style={{ color: passCount === totalWindows ? "#00ff88" : passCount >= totalWindows / 2 ? "#ffcc00" : "#ff4444" }}
-              >
+              <span className={`font-mono text-sm font-bold tabular-nums ${summaryColorClass}`}>
                 {passCount}/{totalWindows} windows passed
               </span>
             </div>
             <div className="flex items-center gap-2">
               {WF_GRID_GATE_DEFS.map(({ label, threshold }) => (
-                <span key={label} className="font-mono text-[9px]" style={{ color: "#444" }}>
-                  <span style={{ color: "#666" }}>{label}</span> {threshold}
+                <span key={label} className="font-mono text-[9px] text-[#444]">
+                  <span className="text-[#666]">{label}</span> {threshold}
                 </span>
               ))}
             </div>
