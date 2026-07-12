@@ -22,21 +22,17 @@ interface CircuitBreakerData {
 
 // ── Inline Progress Bar ───────────────────────────────────────────────────────
 
+function progressBarColorClass(pct: number) {
+  return pct > 80 ? "bg-bear" : pct > 50 ? "bg-yellow-500" : "bg-bull";
+}
+
 function RiskProgressBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
   return (
     <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
       <div
-        className="h-full rounded-full transition-all duration-500"
-        style={{
-          width: `${clamped}%`,
-          backgroundColor:
-            clamped > 80
-              ? "rgb(239 68 68)"
-              : clamped > 50
-              ? "rgb(234 179 8)"
-              : "rgb(34 197 94)",
-        }}
+        className={`h-full rounded-full transition-all duration-500 ${progressBarColorClass(clamped)}`}
+        style={{ width: `${clamped}%` }}
       />
     </div>
   );
@@ -49,24 +45,21 @@ function MetricRow({
   pct,
   leftValue,
   rightValue,
-  rightColor,
+  rightColorClass,
 }: {
   label: string;
   pct: number;
   leftValue: string;
   rightValue: string;
-  rightColor?: string;
+  rightColorClass?: string;
 }) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs font-mono">
-        <span style={{ color: "#888" }}>{label}</span>
+        <span className="text-[#888]">{label}</span>
         <div className="flex items-center gap-3">
-          <span style={{ color: "#555" }}>{leftValue}</span>
-          <span
-            className="font-bold tabular-nums"
-            style={{ color: rightColor ?? "#e0e0e0" }}
-          >
+          <span className="text-[#555]">{leftValue}</span>
+          <span className={`font-bold tabular-nums ${rightColorClass ?? "text-[#e0e0e0]"}`}>
             {rightValue}
           </span>
         </div>
@@ -108,7 +101,7 @@ export function RiskStatusWidget() {
   // ── Loading skeleton ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4 space-y-3 animate-pulse">
+      <div className="rounded-xl border border-panel-border bg-panel p-4 space-y-3 animate-pulse">
         <div className="h-4 w-28 rounded bg-[#1a1a2e]" />
         <div className="h-8 w-full rounded-lg bg-[#1a1a2e]" />
         <div className="space-y-2">
@@ -122,8 +115,8 @@ export function RiskStatusWidget() {
   // ── Error state ─────────────────────────────────────────────────────────────
   if (error || !data) {
     return (
-      <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4">
-        <div className="flex items-center gap-2 font-mono text-xs" style={{ color: "#ff4444" }}>
+      <div className="rounded-xl border border-panel-border bg-panel p-4">
+        <div className="flex items-center gap-2 font-mono text-xs text-[#ff4444]">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>Risk data unavailable — engine offline or endpoint missing</span>
           {error && <span className="ml-1 text-[10px]">({error})</span>}
@@ -158,44 +151,33 @@ export function RiskStatusWidget() {
       ? (currentDrawdownPct / maxDrawdownPct) * 100
       : 0;
 
-  const pnlColor =
-    dailyPnl >= 0 ? "rgb(34 197 94)" : dailyUsedPct > 80 ? "rgb(239 68 68)" : "rgb(234 179 8)";
+  const pnlColorClass =
+    dailyPnl >= 0 ? "text-bull" : dailyUsedPct > 80 ? "text-bear" : "text-yellow-500";
 
-  const drawdownColor =
+  const drawdownColorClass =
     drawdownUsedPct > 80
-      ? "rgb(239 68 68)"
+      ? "text-bear"
       : drawdownUsedPct > 50
-      ? "rgb(234 179 8)"
-      : "rgb(34 197 94)";
+      ? "text-yellow-500"
+      : "text-bull";
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div
-      className="rounded-xl border bg-[#0a0a0a] p-4 space-y-3"
-      style={{ borderColor: anyBreached ? "#ff444440" : "#1a1a2e" }}
+      className={`rounded-xl border bg-panel p-4 space-y-3 ${anyBreached ? "border-[#ff444440]" : "border-panel-border"}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {killSwitchActive ? (
-            <ShieldOff className="h-4 w-4" style={{ color: "#ff4444" }} />
+            <ShieldOff className="h-4 w-4 text-[#ff4444]" />
           ) : (
-            <ShieldCheck className="h-4 w-4" style={{ color: "#00ff88" }} />
+            <ShieldCheck className="h-4 w-4 text-[#00ff88]" />
           )}
-          <span
-            className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase"
-            style={{ color: "#00ff88" }}
-          >
+          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase text-[#00ff88]">
             RISK STATUS
           </span>
-          <span
-            className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
-            style={{
-              borderColor: "#00d4ff33",
-              backgroundColor: "#00d4ff10",
-              color: "#00d4ff",
-            }}
-          >
+          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border border-[#00d4ff33] bg-[#00d4ff10] text-[#00d4ff]">
             AUTO-REFRESH 30s
           </span>
         </div>
@@ -213,14 +195,7 @@ export function RiskStatusWidget() {
 
       {/* Kill switch alert banner */}
       {killSwitchActive && (
-        <div
-          className="rounded-lg px-3 py-2 font-mono text-xs flex items-center gap-2"
-          style={{
-            backgroundColor: "#ff444410",
-            border: "1px solid #ff444430",
-            color: "#ff8888",
-          }}
-        >
+        <div className="rounded-lg px-3 py-2 font-mono text-xs flex items-center gap-2 bg-[#ff444410] border border-[#ff444430] text-[#ff8888]">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           Kill switch is <strong>ACTIVE</strong> — all trading halted
         </div>
@@ -236,16 +211,13 @@ export function RiskStatusWidget() {
             ? `+$${dailyPnl.toFixed(2)}`
             : `-$${Math.abs(dailyPnl).toFixed(2)}`
         }
-        rightColor={pnlColor}
+        rightColorClass={pnlColorClass}
       />
 
       {/* Remaining daily budget */}
       <div className="flex items-center justify-between font-mono text-[10px]">
-        <span style={{ color: "#555" }}>Remaining today</span>
-        <span
-          className="font-bold tabular-nums"
-          style={{ color: dailyRemaining > 0 ? "rgb(34 197 94)" : "rgb(239 68 68)" }}
-        >
+        <span className="text-[#555]">Remaining today</span>
+        <span className={`font-bold tabular-nums ${dailyRemaining > 0 ? "text-bull" : "text-bear"}`}>
           ${dailyRemaining.toFixed(2)}
         </span>
       </div>
@@ -256,21 +228,13 @@ export function RiskStatusWidget() {
         pct={drawdownUsedPct}
         leftValue={`limit: ${(maxDrawdownPct * 100).toFixed(1)}%`}
         rightValue={`${(currentDrawdownPct * 100).toFixed(2)}%`}
-        rightColor={drawdownColor}
+        rightColorClass={drawdownColorClass}
       />
 
       {/* Drawdown buffer remaining */}
       <div className="flex items-center justify-between font-mono text-[10px]">
-        <span style={{ color: "#555" }}>Drawdown buffer</span>
-        <span
-          className="font-bold tabular-nums"
-          style={{
-            color:
-              drawdownRemainingPct > 0.02
-                ? "rgb(34 197 94)"
-                : "rgb(239 68 68)",
-          }}
-        >
+        <span className="text-[#555]">Drawdown buffer</span>
+        <span className={`font-bold tabular-nums ${drawdownRemainingPct > 0.02 ? "text-bull" : "text-bear"}`}>
           {(drawdownRemainingPct * 100).toFixed(2)}% remaining
         </span>
       </div>
@@ -278,7 +242,7 @@ export function RiskStatusWidget() {
       {/* Last updated */}
       {lastUpdated && (
         <div className="text-right">
-          <span className="font-mono text-[9px]" style={{ color: "#333" }}>
+          <span className="font-mono text-[9px] text-[#333]">
             Updated: {lastUpdated}
           </span>
         </div>
