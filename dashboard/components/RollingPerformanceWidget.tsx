@@ -9,11 +9,9 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import {
-  dailyPnl,
-  type HonestTradeSet,
-} from "@/lib/honestTrades";
+import { type HonestTradeSet } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
+import { deriveRollingWindowMetrics } from "@/lib/rolling-performance";
 
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -82,45 +80,26 @@ function fmtPnl(val: number): string {
 }
 
 // ── Derivation from honest trades ──────────────────────────────────────────────
-// Build rolling windows from deduped dailyPnl data. Trades are keyed by their
-// exit date; "days" is a trailing-calendar-day window. We compute P&L and
-// trade counts from the daily series, and win/loss from individual trade pnl.
+// Delegates to the shared lib/rolling-performance.ts module (also used by
+// RollingPerformanceCard on /readiness) so both surfaces agree on window
+// filtering instead of computing gross_pnl and trade_count from two
+// different filters. Sharpe is available from the shared derivation but
+// intentionally not surfaced by this table (see the Sharpe-widget pointer
+// in the footnote below); RollingPerformanceCard renders it.
 
 function buildWindows(set: HonestTradeSet): RollingWindow[] {
   const dayParams = [7, 14, 30];
-  const daily = dailyPnl(set.trades);
-  const now = Date.now();
 
   return dayParams.map((d) => {
-    const cutoffMs = now - d * 24 * 60 * 60 * 1000;
-    // Trades whose exit_time falls within the window
-    const windowTrades = set.trades.filter((t) => {
-      if (!t.exit_time) return false;
-      return Date.parse(t.exit_time) >= cutoffMs;
-    });
-
-    // P&L from daily series that falls within the window
-    const windowDaily = daily.filter((dp) => {
-      return Date.parse(dp.date) >= cutoffMs;
-    });
-
-    const gross_pnl = windowDaily.reduce((s, dp) => s + dp.pnl, 0);
-    const trade_count = windowTrades.length;
-    const wins = windowTrades.filter((t) => t.pnl > 0).length;
-    const losses = windowTrades.filter((t) => t.pnl < 0).length;
-    const grossWin = windowTrades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
-    const grossLoss = Math.abs(windowTrades.filter((t) => t.pnl < 0).reduce((s, t) => s + t.pnl, 0));
-    const profit_factor = grossLoss > 0 ? grossWin / grossLoss : null;
-    const win_rate = trade_count > 0 ? wins / trade_count : null;
-
+    const m = deriveRollingWindowMetrics(set.trades, d);
     return {
-      window: `${d}d`,
-      days: d,
-      trade_count,
-      profit_factor,
+      window: m.window,
+      days: m.days,
+      trade_count: m.tradeCount,
+      profit_factor: m.profitFactor,
       sharpe_ratio: null,
-      win_rate,
-      gross_pnl,
+      win_rate: m.winRate,
+      gross_pnl: m.grossPnl,
     } satisfies RollingWindow;
   });
 }

@@ -4,13 +4,9 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BarChart2 } from "lucide-react";
-import {
-  type HonestTrade,
-  dailyPnl,
-  perTradeSharpe,
-  dedupCaveat,
-} from "@/lib/honestTrades";
+import { dedupCaveat } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
+import { deriveRollingWindowMetrics } from "@/lib/rolling-performance";
 
 const WINDOWS = [7, 14, 30] as const;
 
@@ -28,57 +24,13 @@ function fmtUsd(v: number): string {
   return v >= 0 ? `+$${v.toFixed(2)}` : `-$${Math.abs(v).toFixed(2)}`;
 }
 
-/** Trades that closed within the last `days` days (UTC). */
-function filterByWindow(trades: HonestTrade[], days: number): HonestTrade[] {
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return trades.filter((t) => {
-    if (!t.exit_time) return false;
-    return Date.parse(t.exit_time) >= cutoff;
-  });
-}
-
-interface DerivedRollingMetrics {
-  tradeCount: number;
-  grossPnl: number;
-  winRate: number | null;
-  avgPnlPerTrade: number | null;
-  profitFactor: number | null;
-  /** Per-trade Sharpe (mean/stdev of trade P&L). NOT annualized. */
-  perTradeSharpeVal: number | null;
-  windowStart: string;
-  windowEnd: string;
-}
-
-function deriveRolling(trades: HonestTrade[], days: number): DerivedRollingMetrics {
-  const windowed = filterByWindow(trades, days);
-  const n = windowed.length;
-
-  const grossPnl = windowed.reduce((s, t) => s + t.pnl, 0);
-  const wins = windowed.filter((t) => t.pnl > 0);
-  const losses = windowed.filter((t) => t.pnl < 0);
-  const grossWin = wins.reduce((s, t) => s + t.pnl, 0);
-  const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
-
-  const winRate = n > 0 ? wins.length / n : null;
-  const avgPnlPerTrade = n > 0 ? grossPnl / n : null;
-  const profitFactor = grossLoss > 0 ? grossWin / grossLoss : null;
-  const perTradeSharpeVal = perTradeSharpe(windowed);
-
-  // Window date range from dailyPnl helper
-  const dp = dailyPnl(windowed);
-  const windowStart = dp.length > 0 ? dp[0].date : "";
-  const windowEnd = dp.length > 0 ? dp[dp.length - 1].date : "";
-
-  return { tradeCount: n, grossPnl, winRate, avgPnlPerTrade, profitFactor, perTradeSharpeVal, windowStart, windowEnd };
-}
-
 export function RollingPerformanceCard() {
   const [rollingWindow, setRollingWindow] = useState<7 | 14 | 30>(30);
   const { honest: honestSet, isLoading: loading, error: fetchErrorObj } = useHonestTrades(300_000);
   const fetchError = !!fetchErrorObj;
 
   const metrics = honestSet
-    ? deriveRolling(honestSet.trades, rollingWindow)
+    ? deriveRollingWindowMetrics(honestSet.trades, rollingWindow)
     : null;
 
   const pfPass = metrics?.profitFactor !== null && (metrics?.profitFactor ?? 0) >= 2.0;
