@@ -104,32 +104,22 @@ export function RecentSignalsWidget() {
   const total = data?.total;
 
   return (
-    <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a] p-4 space-y-3">
+    <div className="rounded-xl border border-panel-border bg-panel p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Radio className="h-4 w-4" style={{ color: "#00ff88" }} />
-          <span
-            className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase"
-            style={{ color: "#00ff88" }}
-          >
+          <Radio className="h-4 w-4 text-[#00ff88]" />
+          <span className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase text-[#00ff88]">
             {total != null
               ? `Recent Signals (${total} total)`
               : "Recent Signals"}
           </span>
-          <span
-            className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
-            style={{
-              borderColor: "#00d4ff33",
-              backgroundColor: "#00d4ff10",
-              color: "#00d4ff",
-            }}
-          >
+          <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border border-[#00d4ff33] bg-[#00d4ff10] text-[#00d4ff]">
             AUTO-REFRESH 30s
           </span>
         </div>
         {lastUpdated && (
-          <span className="font-mono text-[9px]" style={{ color: "#333" }}>
+          <span className="font-mono text-[9px] text-[#333]">
             Updated: {lastUpdated}
           </span>
         )}
@@ -137,14 +127,7 @@ export function RecentSignalsWidget() {
 
       {/* Error banner */}
       {error && (
-        <div
-          className="rounded-lg px-3 py-2 font-mono text-xs flex items-center gap-2"
-          style={{
-            backgroundColor: "#ff444410",
-            border: "1px solid #ff444430",
-            color: "#ff8888",
-          }}
-        >
+        <div className="rounded-lg px-3 py-2 font-mono text-xs flex items-center gap-2 bg-[#ff444410] border border-[#ff444430] text-[#ff8888]">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           Signals unavailable — {error}
         </div>
@@ -155,11 +138,8 @@ export function RecentSignalsWidget() {
 
       {/* Empty state */}
       {!loading && !error && signals.length === 0 && (
-        <div
-          className="rounded-lg p-6 text-center"
-          style={{ backgroundColor: "#0d0d1a" }}
-        >
-          <span className="font-mono text-xs" style={{ color: "#555" }}>
+        <div className="rounded-lg p-6 text-center bg-panel-alt">
+          <span className="font-mono text-xs text-[#555]">
             No signals yet
           </span>
         </div>
@@ -169,38 +149,20 @@ export function RecentSignalsWidget() {
       {!loading && signals.length > 0 && (
         <div className="font-mono text-xs">
           {/* Table header */}
-          <div
-            className="grid grid-cols-5 gap-2 pb-2 mb-1"
-            style={{ borderBottom: "1px solid #1a1a2e" }}
-          >
-            <span
-              className="text-[10px] uppercase tracking-wider"
-              style={{ color: "#555" }}
-            >
+          <div className="grid grid-cols-5 gap-2 pb-2 mb-1 border-b border-panel-border">
+            <span className="text-[10px] uppercase tracking-wider text-[#555]">
               Symbol
             </span>
-            <span
-              className="text-[10px] uppercase tracking-wider"
-              style={{ color: "#555" }}
-            >
+            <span className="text-[10px] uppercase tracking-wider text-[#555]">
               Action
             </span>
-            <span
-              className="text-[10px] uppercase tracking-wider text-right"
-              style={{ color: "#555" }}
-            >
+            <span className="text-[10px] uppercase tracking-wider text-right text-[#555]">
               Price
             </span>
-            <span
-              className="text-[10px] uppercase tracking-wider text-right"
-              style={{ color: "#555" }}
-            >
+            <span className="text-[10px] uppercase tracking-wider text-right text-[#555]">
               Time
             </span>
-            <span
-              className="text-[10px] uppercase tracking-wider text-right"
-              style={{ color: "#555" }}
-            >
+            <span className="text-[10px] uppercase tracking-wider text-right text-[#555]">
               Status
             </span>
           </div>
@@ -209,11 +171,10 @@ export function RecentSignalsWidget() {
           {signals.map((sig, idx) => (
             <div
               key={sig.id ?? idx}
-              className="grid grid-cols-5 gap-2 py-1.5 items-center"
-              style={{ borderBottom: "1px solid #111" }}
+              className="grid grid-cols-5 gap-2 py-1.5 items-center border-b border-[#111]"
             >
               {/* Symbol */}
-              <span className="font-semibold" style={{ color: "#e0e0e0" }}>
+              <span className="font-semibold text-[#e0e0e0]">
                 {sig.symbol ?? "--"}
               </span>
 
@@ -225,18 +186,12 @@ export function RecentSignalsWidget() {
               </span>
 
               {/* Price */}
-              <span
-                className="text-right tabular-nums"
-                style={{ color: "#e0e0e0" }}
-              >
+              <span className="text-right tabular-nums text-[#e0e0e0]">
                 {sig.price != null ? sig.price.toFixed(2) : "--"}
               </span>
 
               {/* Time */}
-              <span
-                className="text-right tabular-nums"
-                style={{ color: "#888" }}
-              >
+              <span className="text-right tabular-nums text-[#888]">
                 {sig.timestamp ? timeAgo(sig.timestamp) : "--"}
               </span>
 
