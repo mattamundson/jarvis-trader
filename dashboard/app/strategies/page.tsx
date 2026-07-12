@@ -2000,25 +2000,19 @@ export default function StrategiesPage() {
   const lastMetrics = status?.last_result?.metrics ?? null;
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#050505" }}>
+    <div className="min-h-screen bg-[#050505]">
       {/* Header */}
-      <header
-        className="sticky top-0 z-50 backdrop-blur"
-        style={{ backgroundColor: "rgba(5,5,5,0.95)", borderBottom: "1px solid #1a1a2e" }}
-      >
+      <header className="sticky top-0 z-50 backdrop-blur bg-[rgba(5,5,5,0.95)] border-b border-panel-border">
         <div className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-3">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-lg"
-              style={{ backgroundColor: "#00d4ff15" }}
-            >
-              <Brain className="h-5 w-5" style={{ color: "#00d4ff" }} />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#00d4ff15]">
+              <Brain className="h-5 w-5 text-[#00d4ff]" />
             </div>
             <div>
-              <h1 className="font-bold tracking-tight" style={{ color: "#e0e0e0" }}>
+              <h1 className="font-bold tracking-tight text-[#e0e0e0]">
                 JARVIS TRADER
               </h1>
-              <p className="text-xs" style={{ color: "#555" }}>
+              <p className="text-xs text-[#555]">
                 IBKR Futures + Schwab Options
               </p>
             </div>
@@ -2027,13 +2021,12 @@ export default function StrategiesPage() {
                 <a
                   key={href}
                   href={href}
-                  className="text-xs transition-colors"
-                  style={
+                  className={
                     href === "/strategies"
-                      ? { color: "#e0e0e0", borderBottom: "1px solid #00d4ff", paddingBottom: "2px", fontWeight: 600 }
+                      ? "text-xs transition-colors text-[#e0e0e0] border-b border-[#00d4ff] pb-[2px] font-semibold"
                       : href === "/paper"
-                        ? { color: "#00ff88", fontWeight: 600 }
-                        : { color: "#888" }
+                        ? "text-xs transition-colors text-[#00ff88] font-semibold"
+                        : "text-xs transition-colors text-[#888]"
                   }
                 >
                   {label}
@@ -2044,13 +2037,12 @@ export default function StrategiesPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={fetchAll}
-              className="flex items-center gap-1.5 font-mono text-xs transition-colors"
-              style={{ color: "#555" }}
+              className="flex items-center gap-1.5 font-mono text-xs transition-colors text-[#555]"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
             </button>
-            <Link href="/" className="flex items-center gap-1.5 text-xs transition-colors" style={{ color: "#888" }}>
+            <Link href="/" className="flex items-center gap-1.5 text-xs transition-colors text-[#888]">
               <ArrowLeft className="h-3.5 w-3.5" />
               Back
             </Link>
@@ -2063,18 +2055,15 @@ export default function StrategiesPage() {
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight font-mono" style={{ color: "#e0e0e0" }}>
+            <h2 className="text-2xl font-bold tracking-tight font-mono text-[#e0e0e0]">
               RL Strategy Discovery
             </h2>
-            <p className="text-sm mt-1 font-mono" style={{ color: "#555" }}>
+            <p className="text-sm mt-1 font-mono text-[#555]">
               PPO agent — discovers higher-conviction trading patterns from raw OHLCV data
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span
-              className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded flex items-center gap-1.5"
-              style={{ backgroundColor: "#00d4ff10", border: "1px solid #00d4ff33", color: "#00d4ff" }}
-            >
+            <span className="font-mono text-[10px] font-bold tracking-wider px-3 py-1.5 rounded flex items-center gap-1.5 bg-[#00d4ff10] border border-[#00d4ff33] text-[#00d4ff]">
               <Zap className="h-3 w-3" />
               MES · MNQ · MCL · MGC
             </span>
@@ -2083,10 +2072,7 @@ export default function StrategiesPage() {
 
         {/* Engine offline banner */}
         {error && (
-          <div
-            className="rounded-xl p-4 font-mono text-xs"
-            style={{ backgroundColor: "#ff444410", border: "1px solid #ff444430", color: "#ff9999" }}
-          >
+          <div className="rounded-xl p-4 font-mono text-xs bg-[#ff444410] border border-[#ff444430] text-[#ff9999]">
             {error}
           </div>
         )}
@@ -2158,8 +2144,8 @@ export default function StrategiesPage() {
         <StrategyDiscoveryBrowser />
 
         {/* Footer */}
-        <div className="pt-4 pb-8" style={{ borderTop: "1px solid #1a1a2e" }}>
-          <p className="font-mono text-[10px]" style={{ color: "#333" }}>
+        <div className="pt-4 pb-8 border-t border-panel-border">
+          <p className="font-mono text-[10px] text-[#333]">
             RL agent runs in parallel with existing STC pipeline — does NOT interfere with live paper trading.
             Models saved to data/rl_models/. Kill switch active = RL returns HOLD (safety enforced).
           </p>
