@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start --port 3010",
     "lint": "next lint",
-    "test:unit": "node --test tests/position-sizing.test.ts tests/command-center-helpers.test.ts tests/ask-jarvis-adapters.test.ts",
+    "test:unit": "node --test tests/position-sizing.test.ts tests/command-center-helpers.test.ts tests/ask-jarvis-adapters.test.ts tests/api-proxy.test.ts",
     "test:e2e": "playwright test",
     "check:live": "node scripts/check-live-data.mjs"
   },

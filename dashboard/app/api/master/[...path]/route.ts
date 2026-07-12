@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { runProxy, type ProxyConfig } from "@/lib/api-proxy";
 
 // Read-only server-side proxy to the master-api service (separate service,
 // not in this repo — see AGENTS.md "External service: master-api"). Mirrors
@@ -23,50 +24,27 @@ function getMasterApiKey(): string | undefined {
   return process.env.MASTER_API_KEY;
 }
 
-async function proxyGet(request: NextRequest, path: string[]): Promise<NextResponse> {
-  const target = new URL(`${getMasterBaseUrl()}/${path.join("/")}`);
-  target.search = request.nextUrl.search;
+async function proxyGet(request: NextRequest, path: string[]): Promise<Response> {
+  const config: ProxyConfig = {
+    baseUrl: getMasterBaseUrl(),
+    apiKey: getMasterApiKey(),
+    timeoutMs: 55_000,
+    // GET-only proxy — the client's own headers are never forwarded upstream,
+    // so nothing the browser sends (including any header named X-API-Key)
+    // can reach master-api.
+    forwardClientHeaders: false,
+    errorTag: "master_proxy_failed",
+  };
 
-  const headers: HeadersInit = {};
-  const masterApiKey = getMasterApiKey();
-  if (masterApiKey) {
-    headers["X-API-Key"] = masterApiKey;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 55_000);
-
-  let upstream: Response;
-  try {
-    upstream = await fetch(target, {
+  return runProxy(
+    config,
+    {
       method: "GET",
-      headers,
-      cache: "no-store",
-      signal: controller.signal,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error: "master_proxy_failed",
-        target: target.toString(),
-        message: error instanceof Error ? error.message : "Unknown proxy error",
-      },
-      { status: 502 },
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  const responseHeaders = new Headers(upstream.headers);
-  responseHeaders.delete("content-encoding");
-  responseHeaders.delete("content-length");
-  responseHeaders.delete("transfer-encoding");
-
-  return new NextResponse(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders,
-  });
+      headers: request.headers,
+      search: request.nextUrl.search,
+    },
+    path,
+  );
 }
 
 type RouteContext = {

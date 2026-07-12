@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { runProxy, type ProxyConfig } from "@/lib/api-proxy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,66 +19,29 @@ function getEngineApiKey(): string | undefined {
   return process.env.ENGINE_API_KEY;
 }
 
-async function proxy(request: NextRequest, path: string[]): Promise<NextResponse> {
-  const target = new URL(`${getEngineBaseUrl()}/${path.join("/")}`);
-  target.search = request.nextUrl.search;
-
-  const headers = new Headers(request.headers);
-  headers.delete("host");
-  headers.delete("connection");
-  headers.delete("content-length");
-
-  const engineApiKey = getEngineApiKey();
-  if (engineApiKey) {
-    headers.set("X-API-Key", engineApiKey);
-  }
-
-  const init: RequestInit = {
-    method: request.method,
-    headers,
+async function proxy(request: NextRequest, path: string[]): Promise<Response> {
+  const config: ProxyConfig = {
+    baseUrl: getEngineBaseUrl(),
+    apiKey: getEngineApiKey(),
+    // 25s: cold-cache engine endpoints (TV/yfinance-backed prices, mtf,
+    // discord intelligence) exceed 5s on first hit and were 502ing every page
+    // load right after an engine restart.
+    timeoutMs: 25_000,
+    forwardClientHeaders: true,
     redirect: "manual",
+    errorTag: "engine_proxy_failed",
   };
 
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = await request.arrayBuffer();
-  }
-
-  const controller = new AbortController();
-  // 25s: cold-cache engine endpoints (TV/yfinance-backed prices, mtf,
-  // discord intelligence) exceed 5s on first hit and were 502ing every page
-  // load right after an engine restart.
-  const timeout = setTimeout(() => controller.abort(), 25_000);
-
-  let upstream: Response;
-  try {
-    upstream = await fetch(target, {
-      ...init,
-      cache: "no-store",
-      signal: controller.signal,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error: "engine_proxy_failed",
-        target: target.toString(),
-        message: error instanceof Error ? error.message : "Unknown proxy error",
-      },
-      { status: 502 },
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  const responseHeaders = new Headers(upstream.headers);
-  responseHeaders.delete("content-encoding");
-  responseHeaders.delete("content-length");
-  responseHeaders.delete("transfer-encoding");
-
-  return new NextResponse(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders,
-  });
+  return runProxy(
+    config,
+    {
+      method: request.method,
+      headers: request.headers,
+      search: request.nextUrl.search,
+      body: () => request.arrayBuffer(),
+    },
+    path,
+  );
 }
 
 type RouteContext = {
