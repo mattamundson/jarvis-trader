@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { fetchEngine, fetchJournalStats, fetchBars, fetchJarvisAsk, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
 import { AskJarvis, type AskJarvisSend } from "@/components/AskJarvis";
+import { createTradingAskSend } from "@/lib/ask-jarvis-adapters";
 import {
   fetchHonestTrades,
   type HonestTradeSet,
@@ -338,18 +339,10 @@ function HealthLine({
 // Folded from the dissolved /jarvis page (P2.1). Thin trading-engine wiring over
 // the shared, canonical <AskJarvis> console. Transport is POST /jarvis/ask
 // (verified live: engine/routers/jarvis_router.py); graceful 404 already handled
-// inside <AskJarvis>.
+// inside <AskJarvis>. Adapter factory lives in lib/ask-jarvis-adapters.ts (P5.1)
+// so its response-mapping contract can be unit-tested outside this JSX file.
 function AskJarvisHero() {
-  const send = useCallback<AskJarvisSend>(async (q, { onText, onMeta }) => {
-    const res = await fetchJarvisAsk(q);
-    onText(res.answer);
-    onMeta?.({
-      sources: res.sources,
-      actions: res.actions_taken,
-      intent: res.intent,
-      elapsedMs: res.elapsed_ms,
-    });
-  }, []);
+  const send = useMemo<AskJarvisSend>(() => createTradingAskSend(fetchJarvisAsk), []);
 
   return (
     <AskJarvis
