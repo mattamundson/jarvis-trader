@@ -40,11 +40,11 @@ import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import {
-  fetchHonestTrades,
   equityCurve,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -270,14 +270,14 @@ function SkeletonCard() {
 
 export default function ScorecardPage() {
   // ── Honest deduped trade record (primary performance source) ───────────────
+  // Shared subscription — every widget on this page reads the same cached
+  // record via this hook so the app issues ONE request per refresh cycle.
   const {
-    data: honestSet,
+    honest: honestSet,
     isLoading: loadingHonest,
     error: honestError,
     mutate: mutateHonest,
-  } = useSWR<HonestTradeSet>("scorecard/honest-trades", fetchHonestTrades, {
-    refreshInterval: REFRESH_MS,
-  });
+  } = useHonestTrades(REFRESH_MS);
 
   // ── Supplemental data (NOT used for trade counts or P&L) ──────────────────
   // /portfolio/stats/summary is used ONLY for best_day, worst_day, days_active
