@@ -1868,12 +1868,23 @@ async def get_paper_account_stats(
     # Sharpe (std dev of all returns) — canonical module (near-zero std-dev guard -> None)
     sharpe: float | None = metrics.sharpe(pnls)
 
-    # Calmar (annualised return / abs max drawdown). abs(max_dd) is floored at
-    # CALMAR_MIN_DD_FLOOR (0.5%) before dividing -- an account that's mostly
-    # winning with only a razor-thin dip (e.g. max_dd = -0.0001) combined with
-    # a healthy annualized return otherwise explodes into millions (e.g.
-    # 2,014,774.72). Below the floor, Calmar is undefined -- report None
-    # (dashboard renders "--") rather than a fabricated ratio.
+    # Calmar (annualised return / abs max drawdown) -- both operands must
+    # share units for the ratio to be meaningful (metrics.calmar()'s own
+    # docstring says so explicitly). This block used to divide a
+    # DOLLAR-denominated annualised return (mean_pnl * 252) by a
+    # FRACTION-denominated max_dd, which fabricates the ratio regardless of
+    # drawdown size -- e.g. a $12,600 annualised return / a healthy 6.84%
+    # max_dd produced 184,195, not caught by the near-zero floor below since
+    # 6.84% is well above it. Normalizing the annualised return to a
+    # fraction of INITIAL_CAPITAL (the same $10k paper-account convention
+    # used elsewhere, e.g. portfolio/tracker.py's PnL-free starting base)
+    # fixes the actual unit mismatch.
+    #
+    # abs(max_dd) is still floored at CALMAR_MIN_DD_FLOOR (0.5%) before
+    # dividing -- an account that's mostly winning with only a razor-thin dip
+    # combined with a healthy return would still blow up even in correct
+    # units. Below the floor, Calmar is undefined -- report None (dashboard
+    # renders "--") rather than a fabricated ratio.
     # NOTE (#272<>#274 merge): keep PR #272's explicit block. The canonical
     # metrics.calmar() floor was aligned 1e-6 -> 0.005 to match, so the two now
     # agree; this inline additionally enforces the max_dd < 0 guard (count real
@@ -1881,8 +1892,8 @@ async def get_paper_account_stats(
     CALMAR_MIN_DD_FLOOR = 0.005
     calmar: float | None = None
     if max_dd is not None and max_dd < 0 and abs(max_dd) >= CALMAR_MIN_DD_FLOOR:
-        ann_return = mean_pnl * 252
-        calmar = ann_return / abs(max_dd)
+        ann_return_pct = (mean_pnl * 252) / settings.INITIAL_CAPITAL
+        calmar = ann_return_pct / abs(max_dd)
 
     return AccountStatsResponse(
         account_id=account_id,
