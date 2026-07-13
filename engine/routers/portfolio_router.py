@@ -153,7 +153,7 @@ def _is_futures_symbol(symbol: str) -> bool:
     return symbol.upper() in FUTURES_SYMBOLS
 
 
-def _guard_direct_paper_open(symbol: str) -> None:
+def _guard_direct_paper_open(symbol: str, quantity: int = 0) -> None:
     """
     Constrain direct paper-sync opens so they cannot bypass the core safety posture.
 
@@ -173,6 +173,26 @@ def _guard_direct_paper_open(symbol: str) -> None:
             status_code=400,
             detail=f"Symbol {symbol.upper()} not on approved futures watchlist",
         )
+
+    # Aggregated real-underlying-instrument contract-limit check. This sync
+    # path previously never checked MAX_CONTRACTS_PER_INSTRUMENT at all --
+    # check_contract_limits() below sums existing open positions sharing the
+    # same real underlying instrument (see resolve_underlying() in
+    # backtest.paper_config), not just the incoming order's own quantity.
+    # `quantity` defaults to 0 (skips the check) for close-path callers,
+    # which never pass a quantity.
+    if _safety_layer is not None and quantity:
+        from risk.safety_layer import OrderRequest
+
+        order = OrderRequest(
+            symbol=symbol,
+            quantity=int(quantity),
+            order_type="market",
+            is_futures=_is_futures_symbol(symbol),
+        )
+        result = _safety_layer.check_contract_limits(order)
+        if not result.approved:
+            raise HTTPException(status_code=409, detail=result.rejection_reason)
 
 
 def _get_orchestrator():
@@ -777,7 +797,7 @@ async def paper_trade(req: PaperTradeSyncRequest):
         side = (req.side or "long").lower()
         if side not in ("long", "short"):
             raise HTTPException(status_code=422, detail="side must be long or short")
-        _guard_direct_paper_open(sym)
+        _guard_direct_paper_open(sym, req.quantity)
         action = "buy" if side == "long" else "sell"
         tid = paper_tracker.open_trade(
             sym,
