@@ -153,122 +153,82 @@ export function EntryQualityWidget() {
 
       <CardContent>
         {error ? (
-          <p className="font-mono text-xs" style={{ color: "#ff4444" }}>
-            {error}
-          </p>
+          <p className="font-mono text-xs text-[#ff4444]">{error}</p>
         ) : loading && !stats ? (
-          <p className="font-mono text-xs" style={{ color: "#555" }}>
-            Loading trade history…
-          </p>
+          <p className="font-mono text-xs text-[#555]">Loading trade history…</p>
         ) : stats ? (
           <div className="space-y-4">
             {/* Subtitle */}
-            <p className="font-mono text-[10px]" style={{ color: "#555" }}>
+            <p className="font-mono text-[10px] text-[#555]">
               Based on {total} closed trade{total !== 1 ? "s" : ""} (raw, may include re-logged duplicates)
             </p>
 
             {/* 2x2 outcome grid */}
             <div className="grid grid-cols-2 gap-3">
               {/* Target Hit */}
-              <div
-                className="rounded-lg p-3"
-                style={{ backgroundColor: "#001a0d", border: "1px solid #00ff8830" }}
-              >
+              <div className="rounded-lg p-3 bg-[#001a0d] border border-[#00ff8830]">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <Target className="h-3.5 w-3.5" style={{ color: "#00ff88" }} />
-                  <span
-                    className="font-mono text-[10px] uppercase tracking-wider font-semibold"
-                    style={{ color: "#00ff88" }}
-                  >
+                  <Target className="h-3.5 w-3.5 text-[#00ff88]" />
+                  <span className="font-mono text-[10px] uppercase tracking-wider font-semibold text-[#00ff88]">
                     Target Hit
                   </span>
                 </div>
-                <p
-                  className="font-mono text-2xl font-bold tabular-nums"
-                  style={{ color: "#00ff88" }}
-                >
+                <p className="font-mono text-2xl font-bold tabular-nums text-[#00ff88]">
                   {stats.target}
                 </p>
                 {stats.target > 0 && (
-                  <p className="font-mono text-[10px] tabular-nums mt-0.5" style={{ color: "#00cc66" }}>
+                  <p className="font-mono text-[10px] tabular-nums mt-0.5 text-[#00cc66]">
                     avg {fmt(stats.avgTargetPnl)}
                   </p>
                 )}
               </div>
 
               {/* Stopped */}
-              <div
-                className="rounded-lg p-3"
-                style={{ backgroundColor: "#1a0000", border: "1px solid #ff444430" }}
-              >
+              <div className="rounded-lg p-3 bg-[#1a0000] border border-[#ff444430]">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <ShieldAlert className="h-3.5 w-3.5" style={{ color: "#ff4444" }} />
-                  <span
-                    className="font-mono text-[10px] uppercase tracking-wider font-semibold"
-                    style={{ color: "#ff4444" }}
-                  >
+                  <ShieldAlert className="h-3.5 w-3.5 text-[#ff4444]" />
+                  <span className="font-mono text-[10px] uppercase tracking-wider font-semibold text-[#ff4444]">
                     Stopped
                   </span>
                 </div>
-                <p
-                  className="font-mono text-2xl font-bold tabular-nums"
-                  style={{ color: "#ff4444" }}
-                >
+                <p className="font-mono text-2xl font-bold tabular-nums text-[#ff4444]">
                   {stats.stopped}
                 </p>
                 {stats.stopped > 0 && (
-                  <p className="font-mono text-[10px] tabular-nums mt-0.5" style={{ color: "#cc2222" }}>
+                  <p className="font-mono text-[10px] tabular-nums mt-0.5 text-[#cc2222]">
                     avg {fmt(stats.avgStopPnl)}
                   </p>
                 )}
               </div>
 
               {/* Partial Win */}
-              <div
-                className="rounded-lg p-3"
-                style={{ backgroundColor: "#1a1400", border: "1px solid #ffcc0030" }}
-              >
+              <div className="rounded-lg p-3 bg-[#1a1400] border border-[#ffcc0030]">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <TrendingUp className="h-3.5 w-3.5" style={{ color: "#ffcc00" }} />
-                  <span
-                    className="font-mono text-[10px] uppercase tracking-wider font-semibold"
-                    style={{ color: "#ffcc00" }}
-                  >
+                  <TrendingUp className="h-3.5 w-3.5 text-[#ffcc00]" />
+                  <span className="font-mono text-[10px] uppercase tracking-wider font-semibold text-[#ffcc00]">
                     Partial Win
                   </span>
                 </div>
-                <p
-                  className="font-mono text-2xl font-bold tabular-nums"
-                  style={{ color: "#ffcc00" }}
-                >
+                <p className="font-mono text-2xl font-bold tabular-nums text-[#ffcc00]">
                   {stats.partial}
                 </p>
-                <p className="font-mono text-[10px] mt-0.5" style={{ color: "#aa8800" }}>
+                <p className="font-mono text-[10px] mt-0.5 text-[#aa8800]">
                   $20 &lt; P&amp;L ≤ $50
                 </p>
               </div>
 
               {/* Scratch */}
-              <div
-                className="rounded-lg p-3"
-                style={{ backgroundColor: "#111", border: "1px solid #33333380" }}
-              >
+              <div className="rounded-lg p-3 bg-[#111] border border-[#33333380]">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <Minus className="h-3.5 w-3.5" style={{ color: "#888" }} />
-                  <span
-                    className="font-mono text-[10px] uppercase tracking-wider font-semibold"
-                    style={{ color: "#888" }}
-                  >
+                  <Minus className="h-3.5 w-3.5 text-[#888]" />
+                  <span className="font-mono text-[10px] uppercase tracking-wider font-semibold text-[#888]">
                     Scratch
                   </span>
                 </div>
-                <p
-                  className="font-mono text-2xl font-bold tabular-nums"
-                  style={{ color: "#888" }}
-                >
+                <p className="font-mono text-2xl font-bold tabular-nums text-[#888]">
                   {stats.scratch}
                 </p>
-                <p className="font-mono text-[10px] mt-0.5" style={{ color: "#555" }}>
+                <p className="font-mono text-[10px] mt-0.5 text-[#555]">
                   |P&amp;L| ≤ $20
                 </p>
               </div>
@@ -278,31 +238,24 @@ export function EntryQualityWidget() {
             {(stats.target > 0 || stats.stopped > 0) && (
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <span className="font-mono text-[10px]" style={{ color: "#00ff88" }}>
+                  <span className="font-mono text-[10px] text-[#00ff88]">
                     Hit {hitRate.toFixed(0)}%
                   </span>
-                  <span className="font-mono text-[10px]" style={{ color: "#ff4444" }}>
+                  <span className="font-mono text-[10px] text-[#ff4444]">
                     Stop {stopRate.toFixed(0)}%
                   </span>
                 </div>
-                <div
-                  className="relative h-4 w-full overflow-hidden rounded"
-                  style={{ backgroundColor: "#1a0000" }}
-                >
+                <div className="relative h-4 w-full overflow-hidden rounded bg-[#1a0000]">
                   <div
-                    className="absolute top-0 left-0 h-full rounded-l transition-all duration-500"
-                    style={{
-                      width: `${hitRate}%`,
-                      backgroundColor: "#00ff88",
-                      opacity: 0.75,
-                    }}
+                    className="absolute top-0 left-0 h-full rounded-l transition-all duration-500 bg-[#00ff88] opacity-75"
+                    style={{ width: `${hitRate}%` }}
                   />
                 </div>
               </div>
             )}
 
             {/* Classification + data-quality note */}
-            <p className="font-mono text-[9px]" style={{ color: "#444" }}>
+            <p className="font-mono text-[9px] text-[#444]">
               Target: &gt;$50 | Stop: &lt;-$20 | Scratch: |P&amp;L|≤$20 | Outcome inferred from P&amp;L only (no exit-reason in deduped record) | Refreshes every 60s
             </p>
           </div>
