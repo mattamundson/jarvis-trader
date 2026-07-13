@@ -433,9 +433,11 @@ def test_calmar_uses_pct_of_capital_not_raw_dollars():
     184,195.25. The CALMAR_MIN_DD_FLOOR guard alone does NOT catch this --
     it only fires below 0.5% drawdown -- so this needs its own case.
 
-    Pins the corrected formula exactly: annualised return as a FRACTION of
-    settings.INITIAL_CAPITAL, divided by abs(max_dd) as a fraction -- both
-    operands in the same units, per metrics.calmar()'s documented contract.
+    Pins the corrected formula exactly: CAGR (compounded off the realized
+    return over the `days` window, as a fraction of settings.INITIAL_CAPITAL)
+    divided by abs(max_dd) as a fraction -- both operands in the same units,
+    per metrics.calmar()'s documented contract, and no longer a per-trade
+    mean_pnl * 252 extrapolation.
     """
     from datetime import date, timedelta
 
@@ -462,9 +464,12 @@ def test_calmar_uses_pct_of_capital_not_raw_dollars():
     assert result.max_dd == pytest.approx(-0.07, rel=1e-6)
     assert result.calmar is not None
 
+    cumulative_pnl = result.equity_curve[-1]["equity"]
+    total_return = cumulative_pnl / settings.INITIAL_CAPITAL
+    expected_ann_return_pct = (1.0 + total_return) ** (365.0 / 30) - 1.0
+    expected_calmar = expected_ann_return_pct / abs(result.max_dd)
+
     mean_pnl = (1000.0 - 70.0 + 1000.0) / 3
-    ann_return_pct = (mean_pnl * 252) / settings.INITIAL_CAPITAL
-    expected_calmar = ann_return_pct / abs(result.max_dd)
     buggy_calmar = (mean_pnl * 252) / abs(result.max_dd)  # pre-fix formula
 
     assert result.calmar == pytest.approx(expected_calmar, rel=1e-6)
