@@ -3,7 +3,11 @@ import { applyEngineAuthHeaders } from "@/lib/engineProxyHeaders";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 30; // platform-enforced ceiling: if the in-app 25s AbortController ever fails to fire (e.g. engine fully unreachable), fail here instead of hanging to Vercel's default 60s
+// Vercel-only ceiling (no effect under local pm2/`next start`, which is how
+// this app actually runs today) -- kept aligned with the in-app timeout below
+// so that if this is ever deployed to Vercel, the platform doesn't kill the
+// function before our own AbortController would.
+export const maxDuration = 60;
 
 function getEngineBaseUrl(): string {
   return (
@@ -71,7 +75,23 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   // discord intelligence) exceed 5s on first hit and were 502ing every page
   // load right after an engine restart. The Hidden Pivots full scan fetches
   // bars for ~33 symbols and can run past 25s cold, so the ceiling is 60s.
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  // Matches lib/api.ts's FETCH_TIMEOUT_MS -- previously the client (30s) gave
+  // up and retried well before this timeout (60s) fired, so the retry's
+  // outbound fetch stacked on top of the still-running original instead of
+  // replacing it.
+  const timeout = setTimeout(() => controller.abort(new Error("proxy timeout after 60s")), 60_000);
+
+  // Propagate the CLIENT's abort/disconnect into the outbound fetch so a
+  // cancelled or superseded request doesn't leave an orphaned fetch running
+  // against the engine for up to 60s more. Previously this controller was
+  // only ever aborted by the timeout above, never by the incoming request
+  // actually going away.
+  const onClientAbort = () => controller.abort(request.signal.reason);
+  if (request.signal.aborted) {
+    onClientAbort();
+  } else {
+    request.signal.addEventListener("abort", onClientAbort);
+  }
 
   let upstream: Response;
   try {
@@ -91,6 +111,7 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
     );
   } finally {
     clearTimeout(timeout);
+    request.signal.removeEventListener("abort", onClientAbort);
   }
 
   const responseHeaders = new Headers(upstream.headers);
