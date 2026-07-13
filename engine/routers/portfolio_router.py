@@ -1870,21 +1870,23 @@ async def get_paper_account_stats(
 
     # Calmar (annualised return / abs max drawdown) -- both operands must
     # share units for the ratio to be meaningful (metrics.calmar()'s own
-    # docstring says so explicitly). This block used to divide a
-    # DOLLAR-denominated annualised return (mean_pnl * 252) by a
-    # FRACTION-denominated max_dd, which fabricates the ratio regardless of
-    # drawdown size -- e.g. a $12,600 annualised return / a healthy 6.84%
-    # max_dd produced 184,195, not caught by the near-zero floor below since
-    # 6.84% is well above it. Normalizing the annualised return to a
-    # fraction of INITIAL_CAPITAL (the same $10k paper-account convention
-    # used elsewhere, e.g. portfolio/tracker.py's PnL-free starting base)
-    # fixes the actual unit mismatch.
+    # docstring says so explicitly).
+    #
+    # Annualised return here is CAGR, derived from the actual realized
+    # return over the requested `days` window and compounded to a full year
+    # -- NOT mean_pnl * 252 (a per-trade-frequency extrapolation that
+    # assumes ~1 trade per trading day forever; with only a handful of real
+    # trades over the window that wildly overstates what a full year would
+    # look like, independent of the dollar/fraction unit mismatch this block
+    # also fixes -- see git history for the pre-fix formula and the exact
+    # 184,195 blowup it produced). Sharpe/Sortino above still use * 252 --
+    # that convention is correct for per-period-return measures; Calmar's
+    # numerator is conventionally CAGR/MaxDD, not extrapolated-return/MaxDD.
     #
     # abs(max_dd) is still floored at CALMAR_MIN_DD_FLOOR (0.5%) before
-    # dividing -- an account that's mostly winning with only a razor-thin dip
-    # combined with a healthy return would still blow up even in correct
-    # units. Below the floor, Calmar is undefined -- report None (dashboard
-    # renders "--") rather than a fabricated ratio.
+    # dividing -- a razor-thin dip combined with a healthy return would still
+    # blow up even with correct units. Below the floor, Calmar is undefined
+    # -- report None (dashboard renders "--") rather than a fabricated ratio.
     # NOTE (#272<>#274 merge): keep PR #272's explicit block. The canonical
     # metrics.calmar() floor was aligned 1e-6 -> 0.005 to match, so the two now
     # agree; this inline additionally enforces the max_dd < 0 guard (count real
@@ -1892,8 +1894,11 @@ async def get_paper_account_stats(
     CALMAR_MIN_DD_FLOOR = 0.005
     calmar: float | None = None
     if max_dd is not None and max_dd < 0 and abs(max_dd) >= CALMAR_MIN_DD_FLOOR:
-        ann_return_pct = (mean_pnl * 252) / settings.INITIAL_CAPITAL
-        calmar = ann_return_pct / abs(max_dd)
+        cumulative_pnl = equity_curve[-1]["equity"]
+        total_return = cumulative_pnl / settings.INITIAL_CAPITAL
+        if total_return > -1.0:  # (1 + total_return) ** x undefined at/below a total wipeout
+            ann_return_pct = (1.0 + total_return) ** (365.0 / days) - 1.0
+            calmar = ann_return_pct / abs(max_dd)
 
     return AccountStatsResponse(
         account_id=account_id,
