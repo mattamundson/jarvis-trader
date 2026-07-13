@@ -54,30 +54,46 @@ interface CapitalAllocation {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const MARKET_COLORS: Record<string, string> = {
-  futures: "#00ff88",
-  options: "#00d4ff",
-  crypto: "#ff9500",
-  polymarket: "#ff6bff",
+const MARKET_TEXT_CLASSES: Record<string, string> = {
+  futures: "text-[#00ff88]",
+  options: "text-[#00d4ff]",
+  crypto: "text-[#ff9500]",
+  polymarket: "text-[#ff6bff]",
+};
+const MARKET_BG_CLASSES: Record<string, string> = {
+  futures: "bg-[#00ff88]",
+  options: "bg-[#00d4ff]",
+  crypto: "bg-[#ff9500]",
+  polymarket: "bg-[#ff6bff]",
 };
 const MARKET_ORDER = ["futures", "options", "crypto", "polymarket"];
 
+function marketTextClass(market: string) {
+  return MARKET_TEXT_CLASSES[market] ?? "text-[#888]";
+}
+function marketBgClass(market: string) {
+  return MARKET_BG_CLASSES[market] ?? "bg-[#888]";
+}
+
+function statusDotBgClass(status: string) {
+  return status === "operational" ? "bg-[#00ff88]"
+    : status === "degraded" ? "bg-[#ffcc00]"
+    : ["halted", "offline", "error"].includes(status) ? "bg-[#ff4444]"
+    : "bg-[#555]";
+}
+
 function statusDot(status: string) {
-  const color =
-    status === "operational" ? "#00ff88"
-    : status === "degraded" ? "#ffcc00"
-    : ["halted", "offline", "error"].includes(status) ? "#ff4444"
-    : "#555";
+  const bgClass = statusDotBgClass(status);
 
   if (status === "operational") {
     return (
       <span className="relative flex h-2 w-2">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: color }} />
-        <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: color }} />
+        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${bgClass}`} />
+        <span className={`relative inline-flex rounded-full h-2 w-2 ${bgClass}`} />
       </span>
     );
   }
-  return <span className="inline-flex rounded-full h-2 w-2" style={{ backgroundColor: color }} />;
+  return <span className={`inline-flex rounded-full h-2 w-2 ${bgClass}`} />;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -85,7 +101,8 @@ function statusDot(status: string) {
 function DailyTargetProgress({ total, target }: { total: number; target: number }) {
   const pct = Math.min(100, Math.max(0, target > 0 ? (total / target) * 100 : 0));
   const isPositive = total >= 0;
-  const barColor = pct >= 100 ? "#00ff88" : pct >= 50 ? "#ffcc00" : isPositive ? "#00d4ff" : "#ff4444";
+  const barTextClass = pct >= 100 ? "text-[#00ff88]" : pct >= 50 ? "text-[#ffcc00]" : isPositive ? "text-[#00d4ff]" : "text-[#ff4444]";
+  const barBgClass = pct >= 100 ? "bg-[#00ff88]" : pct >= 50 ? "bg-[#ffcc00]" : isPositive ? "bg-[#00d4ff]" : "bg-[#ff4444]";
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -99,24 +116,18 @@ function DailyTargetProgress({ total, target }: { total: number; target: number 
       </div>
 
       <div className="flex items-end gap-3">
-        <span
-          className="font-mono text-3xl font-bold tabular-nums leading-none"
-          style={{ color: barColor }}
-        >
+        <span className={`font-mono text-3xl font-bold tabular-nums leading-none ${barTextClass}`}>
           {isPositive ? "+" : ""}${total.toFixed(2)}
         </span>
-        <span
-          className="font-mono text-lg font-semibold tabular-nums mb-0.5"
-          style={{ color: barColor }}
-        >
+        <span className={`font-mono text-lg font-semibold tabular-nums mb-0.5 ${barTextClass}`}>
           {pct.toFixed(1)}%
         </span>
       </div>
 
       <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, backgroundColor: barColor }}
+          className={`h-full rounded-full transition-all duration-500 ${barBgClass}`}
+          style={{ width: `${pct}%` }}
         />
       </div>
 
@@ -138,14 +149,15 @@ function MarketHealthCard({ market, mod, capital }: {
   mod?: ModuleHealth;
   capital?: MarketCapital;
 }) {
-  const color = MARKET_COLORS[market] ?? "#888";
+  const textClass = marketTextClass(market);
+  const bgClass = marketBgClass(market);
   const href = market === "futures" ? "/" : `/${market}`;
 
   if (!mod) {
     return (
       <div className="rounded-xl border border-border bg-card/50 p-4 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wider" style={{ color }}>
+          <span className={`font-mono text-[10px] font-bold uppercase tracking-wider ${textClass}`}>
             {market}
           </span>
           <span className="inline-flex rounded-full h-2 w-2 bg-muted-foreground/20" />
@@ -160,17 +172,14 @@ function MarketHealthCard({ market, mod, capital }: {
   return (
     <a href={href} className="block rounded-xl border border-border bg-card p-4 space-y-3 hover:border-accent/50 transition-colors">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-wider" style={{ color }}>
+        <span className={`font-mono text-[10px] font-bold uppercase tracking-wider ${textClass}`}>
           {market}
         </span>
         {statusDot(mod.status)}
       </div>
 
       <div>
-        <span
-          className="font-mono text-xl font-bold tabular-nums"
-          style={{ color: pnlPositive ? "#00ff88" : "#ff4444" }}
-        >
+        <span className={`font-mono text-xl font-bold tabular-nums ${pnlPositive ? "text-[#00ff88]" : "text-[#ff4444]"}`}>
           {pnlPositive ? "+" : ""}${mod.daily_pnl.toFixed(2)}
         </span>
         <span className="font-mono text-[10px] text-muted-foreground ml-1">today</span>
@@ -181,7 +190,7 @@ function MarketHealthCard({ market, mod, capital }: {
         {capital && <span>${capital.capital.toLocaleString()} capital</span>}
       </div>
 
-      <p className="font-mono text-[10px] truncate" style={{ color: mod.status === "operational" ? "#00ff88" : "#ffcc00" }}>
+      <p className={`font-mono text-[10px] truncate ${mod.status === "operational" ? "text-[#00ff88]" : "text-[#ffcc00]"}`}>
         {mod.message}
       </p>
 
@@ -193,10 +202,9 @@ function MarketHealthCard({ market, mod, capital }: {
           </div>
           <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full rounded-full"
+              className={`h-full rounded-full ${bgClass}`}
               style={{
                 width: `${Math.min(100, capital.daily_target > 0 ? (mod.daily_pnl / capital.daily_target) * 100 : 0)}%`,
-                backgroundColor: color,
               }}
             />
           </div>
@@ -293,11 +301,11 @@ export default function PortfolioPage() {
             {MARKET_ORDER.map((market) => {
               const mod = moduleMap[market];
               const cap = capital?.markets?.[market];
-              const color = MARKET_COLORS[market] ?? "#888";
+              const textClass = marketTextClass(market);
               if (!mod) {
                 return (
                   <div key={market} className="grid grid-cols-5 gap-2 py-2 border-b border-border/50 text-muted-foreground/40">
-                    <span style={{ color }} className="uppercase">{market}</span>
+                    <span className={`uppercase ${textClass}`}>{market}</span>
                     <span className="text-center">—</span>
                     <span className="text-right">—</span>
                     <span className="text-right">{cap ? `$${cap.capital.toLocaleString()}` : "—"}</span>
@@ -307,14 +315,11 @@ export default function PortfolioPage() {
               }
               return (
                 <div key={market} className="grid grid-cols-5 gap-2 py-2 border-b border-border/50">
-                  <span className="font-semibold uppercase" style={{ color }}>{market}</span>
-                  <span className="text-center" style={{ color: mod.status === "operational" ? "#00ff88" : "#ffcc00" }}>
+                  <span className={`font-semibold uppercase ${textClass}`}>{market}</span>
+                  <span className={`text-center ${mod.status === "operational" ? "text-[#00ff88]" : "text-[#ffcc00]"}`}>
                     {mod.status}
                   </span>
-                  <span
-                    className="text-right tabular-nums font-semibold"
-                    style={{ color: mod.daily_pnl >= 0 ? "#00ff88" : "#ff4444" }}
-                  >
+                  <span className={`text-right tabular-nums font-semibold ${mod.daily_pnl >= 0 ? "text-[#00ff88]" : "text-[#ff4444]"}`}>
                     {mod.daily_pnl >= 0 ? "+" : ""}${mod.daily_pnl.toFixed(2)}
                   </span>
                   <span className="text-right tabular-nums text-foreground/70">
@@ -329,10 +334,7 @@ export default function PortfolioPage() {
             <div className="grid grid-cols-5 gap-2 py-2 pt-3 text-[11px] font-bold">
               <span className="text-muted-foreground uppercase tracking-wider">Total</span>
               <span />
-              <span
-                className="text-right tabular-nums"
-                style={{ color: total >= 0 ? "#00ff88" : "#ff4444" }}
-              >
+              <span className={`text-right tabular-nums ${total >= 0 ? "text-[#00ff88]" : "text-[#ff4444]"}`}>
                 {total >= 0 ? "+" : ""}${total.toFixed(2)}
               </span>
               <span className="text-right tabular-nums text-foreground/70">
@@ -365,13 +367,14 @@ export default function PortfolioPage() {
               {MARKET_ORDER.map((market) => {
                 const cap = capital.markets[market];
                 if (!cap) return null;
-                const color = MARKET_COLORS[market] ?? "#888";
+                const textClass = marketTextClass(market);
+                const bgClass = marketBgClass(market);
                 const sharePct = capital.total_capital > 0 ? (cap.capital / capital.total_capital) * 100 : 0;
                 const enabled = capital.enabled_markets.includes(market);
                 return (
                   <div key={market} className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-[10px] uppercase tracking-wider" style={{ color }}>
+                      <span className={`font-mono text-[10px] uppercase tracking-wider ${textClass}`}>
                         {market}
                       </span>
                       {!enabled && (
@@ -380,13 +383,13 @@ export default function PortfolioPage() {
                         </span>
                       )}
                     </div>
-                    <p className="font-mono text-sm font-bold tabular-nums" style={{ color }}>
+                    <p className={`font-mono text-sm font-bold tabular-nums ${textClass}`}>
                       ${cap.capital.toLocaleString()}
                     </p>
                     <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                       <div
-                        className="h-full rounded-full"
-                        style={{ width: `${sharePct}%`, backgroundColor: color, opacity: enabled ? 1 : 0.3 }}
+                        className={`h-full rounded-full ${bgClass} ${enabled ? "opacity-100" : "opacity-30"}`}
+                        style={{ width: `${sharePct}%` }}
                       />
                     </div>
                     <p className="font-mono text-[10px] text-muted-foreground">
