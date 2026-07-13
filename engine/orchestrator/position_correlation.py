@@ -51,6 +51,27 @@ class PositionCorrelationMonitor:
         """Return set of symbols with open positions."""
         return set(self._open_positions.keys())
 
+    def _underlying_exposure(self) -> dict[str, int]:
+        """Aggregate _open_positions by real underlying instrument.
+
+        Multiple pseudo-symbols sharing one real instrument (e.g. a trend
+        strategy registered as "MES" and a value-area re-entry strategy
+        registered as "MES_VA30", both actually trading MES futures) sum
+        into one combined bucket keyed by the real underlying, via
+        resolve_underlying() (backtest.paper_config) -- so correlation-pair
+        and "is this instrument open" checks below see TRUE combined
+        exposure instead of treating each strategy's position independently.
+        Read-only derived view; does not change how update_position() stores
+        data, so existing single-strategy-per-symbol behavior is unchanged.
+        """
+        from backtest.paper_config import resolve_underlying
+
+        agg: dict[str, int] = {}
+        for sym, qty in self._open_positions.items():
+            underlying = resolve_underlying(sym)
+            agg[underlying] = agg.get(underlying, 0) + qty
+        return agg
+
     def get_max_contracts(self, symbol: str) -> int:
         """
         Get the max contracts allowed for *symbol* given current open positions.
@@ -59,8 +80,10 @@ class PositionCorrelationMonitor:
         have open positions, returns correlated_max_contracts (usually 1).
         Otherwise returns default_max_contracts (usually 2).
         """
-        open_symbols_upper = {s.upper() for s in self._open_positions}
-        symbol_upper = symbol.upper()
+        from backtest.paper_config import resolve_underlying
+
+        open_symbols_upper = set(self._underlying_exposure().keys())
+        symbol_upper = resolve_underlying(symbol)
 
         # Check all correlation pairs
         for pair_str, corr_value in self.correlation_pairs.items():
@@ -89,7 +112,11 @@ class PositionCorrelationMonitor:
 
     def get_correlation_exposure(self) -> dict:
         """Return current correlation exposure status."""
-        open_symbols_upper = {s.upper() for s in self._open_positions}
+        # Aggregated by real underlying instrument (see _underlying_exposure())
+        # -- correlation pairs are defined in terms of real instruments, so a
+        # pseudo-symbol strategy sharing an underlying with another open
+        # position must count as that underlying being open.
+        open_symbols_upper = set(self._underlying_exposure().keys())
         reduction_active = False
 
         # Check if any high-correlation pair is open
