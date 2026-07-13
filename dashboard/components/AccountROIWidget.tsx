@@ -51,24 +51,25 @@ function badgeVariant(roi: number): "bull" | "info" | "bear" {
   return "bear";
 }
 
+function pnlTextClass(value: number): string {
+  return value >= 0 ? "text-[#00ff88]" : "text-[#ff4444]";
+}
+
 function StatCell({
   label,
   value,
-  valueColor,
+  valueClassName,
 }: {
   label: string;
   value: string;
-  valueColor: string;
+  valueClassName: string;
 }) {
   return (
-    <div
-      className="rounded-lg p-3"
-      style={{ backgroundColor: "#0a0a0a", border: "1px solid #1a1a2e" }}
-    >
-      <p className="font-mono text-[10px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>
+    <div className="rounded-lg p-3 bg-panel border border-panel-border">
+      <p className="font-mono text-[10px] uppercase tracking-wider mb-1 text-[#555]">
         {label}
       </p>
-      <p className="font-mono text-sm font-bold tabular-nums" style={{ color: valueColor }}>
+      <p className={`font-mono text-sm font-bold tabular-nums ${valueClassName}`}>
         {value}
       </p>
     </div>
@@ -128,8 +129,7 @@ export function AccountROIWidget() {
               {/* Big ROI metric */}
               <div className="flex items-baseline gap-3 mb-4">
                 <span
-                  className="font-mono text-4xl font-bold tabular-nums"
-                  style={{ color: data.roi >= 0 ? "#00ff88" : "#ff4444" }}
+                  className={`font-mono text-4xl font-bold tabular-nums ${pnlTextClass(data.roi)}`}
                 >
                   {data.roi >= 0 ? "+" : ""}{data.roi.toFixed(2)}%
                 </span>
@@ -143,17 +143,17 @@ export function AccountROIWidget() {
                 <StatCell
                   label="Starting Balance"
                   value={`$${data.startingBalance.toLocaleString()}`}
-                  valueColor="#888"
+                  valueClassName="text-[#888]"
                 />
                 <StatCell
                   label="Current P&L"
                   value={fmt$(data.totalPnl)}
-                  valueColor={data.totalPnl >= 0 ? "#00ff88" : "#ff4444"}
+                  valueClassName={pnlTextClass(data.totalPnl)}
                 />
                 <StatCell
                   label="Daily Avg"
                   value={`${fmt$(data.dailyAvgPnl)}/day`}
-                  valueColor={data.dailyAvgPnl >= 0 ? "#00ff88" : "#ff4444"}
+                  valueClassName={pnlTextClass(data.dailyAvgPnl)}
                 />
                 <StatCell
                   label="Annualized"
@@ -162,18 +162,16 @@ export function AccountROIWidget() {
                       ? `${fmtPct(data.annualizedROI, 1)}/yr`
                       : "Calculating..."
                   }
-                  valueColor={
+                  valueClassName={
                     data.tradingDays < 5
-                      ? "#555"
-                      : data.annualizedROI >= 0
-                      ? "#00ff88"
-                      : "#ff4444"
+                      ? "text-[#555]"
+                      : pnlTextClass(data.annualizedROI)
                   }
                 />
               </div>
 
               {/* Note */}
-              <p className="font-mono text-[10px]" style={{ color: "#444" }}>
+              <p className="font-mono text-[10px] text-[#444]">
                 Paper account · ${data.startingBalance.toLocaleString()} starting capital
                 {data.tradingDays < 5 && " · Annualized projection available after 5 trading days"}
                 {honestSet && (
