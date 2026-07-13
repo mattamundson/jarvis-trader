@@ -306,12 +306,63 @@ MES_15M_CONFIG = {
     "max_concurrent_positions": 1,
 }
 
+MES_VA30_CONFIG = {
+    #  Pseudo-symbol -- Value-Area re-entry (candidate sd-116), 30-minute bars.
+    #  Actually trades the real MES instrument (see UNDERLYING_INSTRUMENT
+    #  below); registered under this synthetic key so it can run alongside
+    #  MES_TREND_PAPER_CONFIG without the two strategies colliding in
+    #  PAPER_CONFIGS (currently one entry per real symbol).
+    #  Gate v2 verdict: PASS (2026-07, ALT) -- 49 OOS trades/4mo, pf_ci_lower=1.19,
+    #  dsr=1.0, survives the catastrophic cost-sweep tier (PF=1.5054).
+    #  Verdict file is under the REAL symbol "MES" (sd-116's own verdict JSON has
+    #  "symbol": "MES") -- verdict_symbol below overrides the gate v2 lookup so
+    #  is_ungate_eligible()/is_strategy_authorized() find it under the pseudo-symbol.
+    #  Source: engine/backtest/research_candidates/run_value_area_reentry_sd116.py
+    "symbol": "MES_VA30",
+    "interval": "30m",
+    "strategy": "va_reentry",  # Routes to generate_instrument_signals() -> signals_va_reentry path
+    "verdict_symbol": "MES",  # gate v2 verdict lookup override -- see gate_v2_policy.py
+    "enabled": True,
+    #  Capital & Sizing
+    "initial_capital": 50_000.0,  # ALT routing, matches sd-116's own backtest capital convention
+    "risk_per_trade": 0.0025,  # 0.25% risk per trade
+    #  Strategy Mode -- VA re-entry uses its own param block, not STC/SMA params
+    "regime_filter": False,
+    "adaptive_regime": False,
+    "composite": False,
+    "volume_filter": False,
+    "mtf_filter": False,
+    #  VA re-entry parameters (IS-selected champion from the research script's grid)
+    "va_reentry_params": {
+        "stop_atr_mult": 1.0,
+    },
+    #  Kill Thresholds -- calibrated to ALT routing DD ceiling
+    "kill_threshold": {
+        "consecutive_losses": 4,
+        "consecutive_months_underperform": 2,
+        "monthly_loss_pct": -0.04,
+        "max_daily_loss": -0.02,
+        "rolling_wfe_minimum": 0.40,
+    },
+    #  Contract Specifications -- same real instrument as MES_TREND_PAPER_CONFIG
+    "multiplier": 5.0,  # $5/point for MES (Micro E-mini S&P 500)
+    "tick_size": 0.25,
+    "commission_per_contract": 0.62,
+    "slippage_ticks": 1,
+    "max_concurrent_positions": 1,
+    # sd-116 fires exactly on the event bar (2nd consecutive above/below-VA
+    # close) -- unlike a slow-moving SMA crossover, a stale signal a few bars
+    # late is a different (untested) entry, so lookback is kept minimal.
+    "signal_lookback_bars": 1,
+}
+
 #  Active paper trading instruments
 PAPER_CONFIGS = {
     "MCL": MCL_PAPER_CONFIG,
     "MNQ": MNQ_PAPER_CONFIG,
     "MGC": MGC_PAPER_CONFIG,
     "MES": MES_TREND_PAPER_CONFIG,
+    "MES_VA30": MES_VA30_CONFIG,
 }
 
 #  Pseudo-symbol -> real underlying instrument, for risk-aggregation purposes
@@ -321,10 +372,9 @@ PAPER_CONFIGS = {
 #  the real "MES" trend strategy, both actually trading MES futures), that
 #  registration MUST be added here too so combined real-instrument exposure
 #  is correctly aggregated rather than tracked/capped independently per key.
-#  Empty today -- every existing PAPER_CONFIGS key already equals its own
-#  real underlying, so resolve_underlying() is a no-op identity function for
-#  all current symbols.
-UNDERLYING_INSTRUMENT: dict[str, str] = {}
+UNDERLYING_INSTRUMENT: dict[str, str] = {
+    "MES_VA30": "MES",
+}
 
 
 def resolve_underlying(symbol: str) -> str:
