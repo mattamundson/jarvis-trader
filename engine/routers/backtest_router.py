@@ -670,11 +670,19 @@ async def get_mgc_signal():
             else:
                 signal = "NO_ENTRY"
 
-            signal_date = (
-                str(df_signals.index[-1].date())
-                if hasattr(df_signals.index[-1], "date")
-                else str(df_signals.index[-1])[:10]
-            )
+            last_index_val = df_signals.index[-1]
+            if hasattr(last_index_val, "date"):
+                signal_date = str(last_index_val.date())
+            elif "timestamp" in df_signals.columns:
+                # Index isn't a DatetimeIndex (e.g. the TradingView feed path,
+                # which carries the bar timestamp in a "timestamp" column
+                # instead of the index) -- derive the date from that column
+                # rather than stringifying the raw positional index.
+                import pandas as pd
+
+                signal_date = str(pd.to_datetime(last.get("timestamp")).date())
+            else:
+                signal_date = str(last_index_val)[:10]
 
             return {
                 "date": signal_date,
