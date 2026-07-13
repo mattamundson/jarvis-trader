@@ -97,24 +97,24 @@ function StatRow({
   label,
   value,
   sub,
-  valueColor,
+  valueClassName,
 }: {
   label: string;
   value: string;
   sub?: string;
-  valueColor?: string;
+  valueClassName?: string;
 }) {
   return (
-    <div className="flex items-center justify-between py-1.5" style={{ borderBottom: "1px solid #111" }}>
-      <span className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "#555" }}>
+    <div className="flex items-center justify-between py-1.5 border-b border-[#111]">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-[#555]">
         {label}
       </span>
       <div className="text-right">
-        <span className="font-mono text-sm font-bold tabular-nums" style={{ color: valueColor ?? "#e0e0e0" }}>
+        <span className={`font-mono text-sm font-bold tabular-nums ${valueClassName ?? "text-[#e0e0e0]"}`}>
           {value}
         </span>
         {sub && (
-          <span className="font-mono text-[10px] ml-2 tabular-nums" style={{ color: "#444" }}>
+          <span className="font-mono text-[10px] ml-2 tabular-nums text-[#444]">
             {sub}
           </span>
         )}
@@ -186,7 +186,7 @@ export function PositionSizingWidget() {
             <CardTitle className="text-sm font-mono font-bold tracking-[0.15em] uppercase">
               Position Sizing
             </CardTitle>
-            <p className="font-mono text-[10px] mt-0.5" style={{ color: "#555" }}>
+            <p className="font-mono text-[10px] mt-0.5 text-[#555]">
               ATR-Based Risk Model
             </p>
           </div>
@@ -195,7 +195,7 @@ export function PositionSizingWidget() {
               {contractBadgeLabel(effectiveContracts)}
             </Badge>
             {lastFetch && (
-              <span className="font-mono text-[9px]" style={{ color: "#333" }}>
+              <span className="font-mono text-[9px] text-[#333]">
                 {lastFetch}
               </span>
             )}
@@ -206,10 +206,7 @@ export function PositionSizingWidget() {
       <CardContent>
         {/* Error state */}
         {error && (
-          <div
-            className="rounded-lg p-3 mb-3 font-mono text-xs"
-            style={{ backgroundColor: "#ff444410", border: "1px solid #ff444430", color: "#ff4444" }}
-          >
+          <div className="rounded-lg p-3 mb-3 font-mono text-xs bg-[#ff444410] border border-[#ff444430] text-[#ff4444]">
             {error} — showing formula-only view
           </div>
         )}
@@ -220,73 +217,67 @@ export function PositionSizingWidget() {
             <StatRow
               label="Current ATR"
               value={`${data.atr.toFixed(1)} pts`}
-              valueColor="#00d4ff"
+              valueClassName="text-[#00d4ff]"
             />
             <StatRow
               label="ATR in Ticks"
               value={`${metrics.atrTicks.toFixed(1)} ticks`}
               sub="(1 pt = 4 ticks)"
-              valueColor="#00d4ff"
+              valueClassName="text-[#00d4ff]"
             />
             <StatRow
               label={`Stop Distance  (ATR × ${stopMult})`}
               value={`${metrics.stopTicks.toFixed(1)} ticks`}
               sub={`$${metrics.stopDollar.toFixed(2)}`}
-              valueColor="#ff4444"
+              valueClassName="text-[#ff4444]"
             />
             <StatRow
               label={`Target Distance  (ATR × ${targetMult})`}
               value={`${metrics.targetTicks.toFixed(1)} ticks`}
               sub={`$${metrics.targetDollar.toFixed(2)}`}
-              valueColor="#00ff88"
+              valueClassName="text-[#00ff88]"
             />
             <StatRow
               label="Risk / Contract"
               value={`$${metrics.riskPerContract.toFixed(2)}`}
               sub="(stop ticks × $1.25)"
-              valueColor="#ffcc00"
+              valueClassName="text-[#ffcc00]"
             />
           </div>
         )}
 
         {/* Formula section — always visible */}
-        <div
-          className="rounded-lg p-3 mb-3 font-mono text-[10px] leading-relaxed"
-          style={{ backgroundColor: "#0d0d1a", border: "1px solid #1a1a2e", color: "#666" }}
-        >
-          <div className="mb-1" style={{ color: "#444" }}>
+        <div className="rounded-lg p-3 mb-3 font-mono text-[10px] leading-relaxed bg-panel-alt border border-panel-border text-[#666]">
+          <div className="mb-1 text-[#444]">
             MAX CONTRACTS FORMULA
           </div>
-          <div style={{ color: "#888" }}>
+          <div className="text-[#888]">
             floor(risk_per_trade / (ATR × {stopMult} × $1.25))
           </div>
-          <div className="mt-1" style={{ color: "#666" }}>
+          <div className="mt-1 text-[#666]">
             risk_per_trade = account × {riskPct}% = ${(accountValue * (parseFloat(riskPct) / 100)).toFixed(0)}
             {" "}(on ${accountValue.toLocaleString()})
           </div>
         </div>
 
         {/* Max Contracts result */}
-        <div
-          className="rounded-lg p-3 flex items-center justify-between"
-          style={{ backgroundColor: "#0d0d1a", border: "1px solid #1a1a2e" }}
-        >
+        <div className="rounded-lg p-3 flex items-center justify-between bg-panel-alt border border-panel-border">
           <div>
-            <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">
               Max Contracts
             </div>
-            <div className="font-mono text-2xl font-bold tabular-nums" style={{ color: "#e0e0e0" }}>
+            <div className="font-mono text-2xl font-bold tabular-nums text-[#e0e0e0]">
               {effectiveContracts}
             </div>
           </div>
           <div className="text-right">
-            <div className="font-mono text-[9px] uppercase tracking-wider mb-1" style={{ color: "#555" }}>
+            <div className="font-mono text-[9px] uppercase tracking-wider mb-1 text-[#555]">
               Config Cap
             </div>
-            <div className="font-mono text-xs" style={{ color: "#444" }}>
+            <div className="font-mono text-xs text-[#444]">
               max_contracts: {maxContractsCap}
             </div>
-            <div className="font-mono text-[9px] mt-0.5" style={{ color: "#333" }}>
+            <div className="font-mono text-[9px] mt-0.5 text-[#333]">
               via /settings/risk
             </div>
           </div>
