@@ -65,7 +65,17 @@ export function EngineUptimeCard() {
     return () => clearInterval(id);
   }, []);
 
-  const isUp = data !== null && !error;
+  // Reachable: the fetch succeeded, so `data` fields (version, mode, kill
+  // switch, database) are safe to render. Healthy: reachable AND the engine
+  // itself reports status "ok" -- distinct from reachable because a
+  // "degraded" response is still reachable but should not show as "Live" at
+  // the top while the Status row below correctly shows "degraded". Both used
+  // to be driven by the same `isUp = data !== null && !error`, so a degraded
+  // engine showed a green pulsing "Live" badge here while its own Status row
+  // a few lines down showed the real "degraded" state -- an internal
+  // contradiction within this one card.
+  const reachable = data !== null && !error;
+  const isUp = reachable && data!.status === "ok";
   const mode = data ? (data.paper_mode ? "Paper" : "Live") : null;
 
   return (
