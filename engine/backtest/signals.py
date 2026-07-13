@@ -98,6 +98,11 @@ COMPOSITE_INSTRUMENTS: set[str] = set()  # no active composite instruments
 # MES pivot (2026-04-20): WFO winner SMA(50,200)+2.0×ATR, train PF 2.06 / test PF 1.69.
 TREND_INSTRUMENTS = {"MES", "MGC"}
 
+# Pseudo-symbols that use Value-Area re-entry signal generation (candidate
+# sd-116, gate v2 PASS 2026-07). MES_VA30 actually trades the real MES
+# instrument -- see backtest.paper_config.resolve_underlying().
+VA_REENTRY_INSTRUMENTS = {"MES_VA30"}
+
 # Instruments with no validated edge on cached OHLC 2024-06→2026-03. The pipeline
 # emits forced NO_TRADE signals for these symbols until a per-symbol edge is
 # re-derived. Rationale: multi_symbol_trend_wfo.py (2026-04-20) showed 0 WFO
@@ -155,7 +160,14 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
     DO_NOT_TRADE takes precedence — MCL/MNQ stay blocked even if a
     gate_v2 PASS verdict exists. Gate v2 enforcement fails open: a missing
     or stale verdict forces NO_TRADE, never an implicit allow.
+
+    kwargs["verdict_symbol"], if passed, overrides which symbol's gate v2
+    verdict file is consulted (pseudo-symbols whose verdict was filed under
+    their real underlying instrument — e.g. MES_VA30's verdict is under
+    "MES" — need this; see backtest.paper_config's MES_VA30_CONFIG).
     """
+    verdict_symbol = kwargs.get("verdict_symbol", symbol)
+
     if symbol in TREND_INSTRUMENTS:
         from backtest.trend_signals import generate_sma_trend_signals, get_sma_trend_params
 
@@ -183,6 +195,11 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
             result = generate_sma_trend_signals(df, **merged)
         else:
             result = generate_signals(df, symbol=symbol, **kwargs)
+    elif symbol in VA_REENTRY_INSTRUMENTS:
+        from backtest.signals_va_reentry import generate_va_reentry_signals
+
+        va_kwargs = {k: v for k, v in kwargs.items() if k in ("stop_atr_mult",)}
+        result = generate_va_reentry_signals(df, **va_kwargs)
     elif symbol in COMPOSITE_INSTRUMENTS:
         from backtest.composite_signals import generate_composite_signals
 
@@ -200,7 +217,7 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
         # for callers that never enable enforcement.
         from backtest.gate_v2_policy import is_ungate_eligible
 
-        if not is_ungate_eligible(symbol):
+        if not is_ungate_eligible(verdict_symbol):
             return _force_no_trade(result)
 
     return result
