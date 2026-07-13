@@ -1152,7 +1152,15 @@ class MarketDataManager:
             }
             timespan, multiplier = tf_map.get(timeframe, ("minute", 5))
             polygon_symbol = POLYGON_FUTURES_MAP.get(symbol.upper(), symbol)
-            df = self.polygon.get_historical_bars(
+            # get_historical_bars() is a synchronous, blocking call (the
+            # Polygon SDK's list_aggs() iterator does blocking network I/O)
+            # inside this async function. Run it on a worker thread so it
+            # doesn't block FastAPI's single event loop -- without this, a
+            # cold-cache multi-symbol scan (e.g. hidden-pivots' ~33-symbol
+            # asyncio.gather) got NO real concurrency: each symbol's Polygon
+            # call serialized on the event loop despite being "gathered."
+            df = await asyncio.to_thread(
+                self.polygon.get_historical_bars,
                 polygon_symbol, from_date, to_date, timespan, multiplier
             )
             if not df.empty:
