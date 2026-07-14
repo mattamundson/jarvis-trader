@@ -50,6 +50,7 @@ from execution.schwab_connector import SchwabConnector
 from llm.client import JarvisLLMClient
 from llm.cost_tracker import CostTracker
 from utils.inference_router import get_inference_router
+from middleware.proxy_middleware import ProxyMiddleware
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.exception_handler import GlobalExceptionHandler
 from middleware.rate_limit import get_limiter, rate_limit_exception_handler
@@ -63,6 +64,7 @@ from validation.shadow_mode import ShadowModeTracker
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.analytics_router import set_data_manager as set_analytics_data_manager
+from routers.llm_router import router as llm_router
 from routers.backtest_router import router as backtest_router
 from routers.backtest_router import inject_dependencies as inject_backtest_deps
 from routers.options_backtest_router import router as options_backtest_router
@@ -3061,6 +3063,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(
+    ProxyMiddleware,
+    ops_url="http://localhost:3030",
+    research_url="http://localhost:3020",
+)
 app.add_middleware(APIKeyMiddleware)
 app.state.limiter = get_limiter()
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
@@ -3156,6 +3163,7 @@ app.include_router(pipeline_board_router)
 app.include_router(config_router)
 app.include_router(crypto_router)
 app.include_router(openclaw_router)
+app.include_router(llm_router, prefix="/llm")
 
 # ── WebSocket Price Feed ────────────────────────────────────────────────────────
 from websocket.price_feed import price_feed_endpoint

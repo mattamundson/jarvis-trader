@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 6%;       /* near-black with blue tint */
+    --foreground: 213 31% 91%;      /* light grey text */
+    --card: 222 47% 9%;             /* slightly lighter than background */
+    --card-foreground: 213 31% 91%;
+    --border: 222 47% 14%;
+    --muted: 222 47% 12%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 142 71% 45%;          /* green accent */
+    --accent-foreground: 0 0% 100%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    /* Fluid font scaling: 14px on 1080p → 16px on 1440p → 18px on 4K */
+    font-size: clamp(13px, 0.85vw, 18px);
+  }
+
+  /* Monospace for numbers/prices */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-family: "JetBrains Mono", monospace;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border bg-card text-card-foreground;
+  }
+
+  .badge-bull {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-bull/15 text-bull;
+  }
+
+  .badge-bear {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-bear/15 text-bear;
+  }
+
+  .badge-warn {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-warn/15 text-warn;
+  }
+
+  .badge-info {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-info/15 text-info;
+  }
+
+  .price-up {
+    @apply text-bull tabular-nums;
+  }
+
+  .price-down {
+    @apply text-bear tabular-nums;
+  }
+
+  .price-neutral {
+    @apply text-muted-foreground tabular-nums;
+  }
+}
