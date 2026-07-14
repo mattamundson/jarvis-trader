@@ -48,15 +48,37 @@ interface ClassifyResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function gradeColor(grade: Grade): string {
+function gradeColorClass(grade: Grade): string {
   switch (grade) {
-    case "A": return "#00ff88";
-    case "B": return "#00d4ff";
-    case "C": return "#ffcc00";
-    case "D": return "#ff9500";
-    case "F": return "#ff4444";
-    default:  return "#888";
+    case "A": return "text-[#00ff88]";
+    case "B": return "text-[#00d4ff]";
+    case "C": return "text-[#ffcc00]";
+    case "D": return "text-[#ff9500]";
+    case "F": return "text-[#ff4444]";
+    default:  return "text-[#888]";
   }
+}
+
+function gradeBgClass(grade: Grade): string {
+  switch (grade) {
+    case "A": return "bg-[#00ff88]";
+    case "B": return "bg-[#00d4ff]";
+    case "C": return "bg-[#ffcc00]";
+    case "D": return "bg-[#ff9500]";
+    case "F": return "bg-[#ff4444]";
+    default:  return "bg-[#888]";
+  }
+}
+
+function scoreColorClass(score: number): string {
+  if (score >= 70) return "text-[#00ff88]";
+  if (score >= 50) return "text-[#ffcc00]";
+  return "text-[#ff4444]";
+}
+
+function pnlColorClass(pnl: number | null | undefined): string {
+  if (pnl == null) return "text-[#888]";
+  return pnl >= 0 ? "text-[#00ff88]" : "text-[#ff4444]";
 }
 
 function gradeBadgeVariant(grade: Grade): "bull" | "info" | "warn" | "bear" | "neutral" {
@@ -114,16 +136,12 @@ function GradeDistribution({ grades }: { grades: TradeGrade[] }) {
           const pct = (counts[g] / total) * 100;
           return (
             <div key={g} className="flex-1 flex flex-col items-center gap-1">
-              <span className="font-mono text-[9px] tabular-nums" style={{ color: gradeColor(g) }}>
+              <span className={`font-mono text-[9px] tabular-nums ${gradeColorClass(g)}`}>
                 {counts[g]}
               </span>
               <div
-                className="w-full rounded-t transition-all"
-                style={{
-                  height: `${Math.max(2, pct * 0.32)}rem`,
-                  backgroundColor: gradeColor(g),
-                  opacity: 0.8,
-                }}
+                className={`w-full rounded-t transition-all opacity-80 ${gradeBgClass(g)}`}
+                style={{ height: `${Math.max(2, pct * 0.32)}rem` }}
               />
             </div>
           );
@@ -133,8 +151,7 @@ function GradeDistribution({ grades }: { grades: TradeGrade[] }) {
         {(["A", "B", "C", "D", "F"] as Grade[]).map((g) => (
           <div key={g} className="flex-1 text-center">
             <span
-              className="font-mono text-[10px] font-bold"
-              style={{ color: gradeColor(g) }}
+              className={`font-mono text-[10px] font-bold ${gradeColorClass(g)}`}
             >
               {g}
             </span>
@@ -160,7 +177,7 @@ function CriteriaList({ criteria }: { criteria: GradeCriteria[] }) {
     <div className="space-y-1">
       {criteria.map((c, i) => (
         <div key={i} className="flex items-center gap-2 font-mono text-[11px]">
-          <span style={{ color: c.met ? "#00ff88" : "#ff4444" }}>
+          <span className={c.met ? "text-[#00ff88]" : "text-[#ff4444]"}>
             {c.met ? "✓" : "✗"}
           </span>
           <span className={c.met ? "text-foreground/80" : "text-muted-foreground/60"}>
@@ -236,7 +253,7 @@ export function TradeGradeTable() {
           </p>
           {(["A", "B", "C", "D", "F"] as Grade[]).map((g) => (
             <div key={g} className="flex items-center gap-2 font-mono text-[11px]">
-              <span className="font-bold" style={{ color: gradeColor(g) }}>{g}</span>
+              <span className={`font-bold ${gradeColorClass(g)}`}>{g}</span>
               <span className="text-muted-foreground/60">{gradeDescription(g)}</span>
             </div>
           ))}
@@ -295,7 +312,7 @@ export function TradeGradeTable() {
                     <td className="px-4 py-3 text-muted-foreground text-[10px]">
                       #{String(row.trade_id).slice(-6)}
                     </td>
-                    <td className="px-4 py-3" style={{ color: "#00d4ff" }}>
+                    <td className="px-4 py-3 text-[#00d4ff]">
                       {row.symbol ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-[10px] text-muted-foreground whitespace-nowrap">
@@ -304,8 +321,7 @@ export function TradeGradeTable() {
                     <td className="px-4 py-3 text-center">
                       <div className="flex flex-col items-center gap-1">
                         <span
-                          className="font-mono text-lg font-bold"
-                          style={{ color: gradeColor(row.grade) }}
+                          className={`font-mono text-lg font-bold ${gradeColorClass(row.grade)}`}
                         >
                           {row.grade}
                         </span>
@@ -315,14 +331,13 @@ export function TradeGradeTable() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">
-                      <span style={{ color: row.score >= 70 ? "#00ff88" : row.score >= 50 ? "#ffcc00" : "#ff4444" }}>
+                      <span className={scoreColorClass(row.score)}>
                         {row.score.toFixed(0)}
                       </span>
                       <span className="text-muted-foreground/40">/100</span>
                     </td>
                     <td
-                      className="px-4 py-3 text-right tabular-nums font-semibold"
-                      style={{ color: row.pnl == null ? "#888" : row.pnl >= 0 ? "#00ff88" : "#ff4444" }}
+                      className={`px-4 py-3 text-right tabular-nums font-semibold ${pnlColorClass(row.pnl)}`}
                     >
                       {row.pnl != null
                         ? `${row.pnl >= 0 ? "+" : ""}$${row.pnl.toFixed(2)}`
