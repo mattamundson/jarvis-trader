@@ -53,6 +53,12 @@ function stcSignalVariant(signal: string | undefined | null): BadgeVariant {
   return "neutral";
 }
 
+function confidenceBarClass(pct: number): string {
+  if (pct >= 70) return "bg-[#00ff88]";
+  if (pct >= 40) return "bg-[#ffcc00]";
+  return "bg-[#ff4444]";
+}
+
 // ── Timeframe row ─────────────────────────────────────────────────────────────
 
 function TimeframeRow({
@@ -69,20 +75,16 @@ function TimeframeRow({
   return (
     <div
       className={cn(
-        "flex items-center justify-between py-1.5 px-0 font-mono text-xs",
+        "flex items-center justify-between py-1.5 px-0 font-mono text-xs border-b border-[#111]",
       )}
-      style={{ borderBottom: "1px solid #111" }}
     >
-      <span
-        className="uppercase tracking-wider text-[10px] font-bold w-8"
-        style={{ color: "#555" }}
-      >
+      <span className="uppercase tracking-wider text-[10px] font-bold w-8 text-[#555]">
         {tf}
       </span>
-      <span className="tabular-nums" style={{ color: "#888" }}>
+      <span className="tabular-nums text-[#888]">
         {price != null ? `$${price.toFixed(2)}` : "--"}
       </span>
-      <span className="tabular-nums" style={{ color: "#888" }}>
+      <span className="tabular-nums text-[#888]">
         STC: {stc != null ? stc.toFixed(1) : "--"}
       </span>
       <Badge variant={stcSignalVariant(signal)}>
@@ -149,12 +151,7 @@ export function MarketRegimeWidget() {
         </CardHeader>
         <CardContent>
           <div
-            className="rounded-lg px-3 py-3 font-mono text-xs flex items-center gap-2"
-            style={{
-              backgroundColor: "#ff444410",
-              border: "1px solid #ff444430",
-              color: "#ff8888",
-            }}
+            className="rounded-lg px-3 py-3 font-mono text-xs flex items-center gap-2 bg-[#ff444410] border border-[#ff444430] text-[#ff8888]"
           >
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
             Market analysis unavailable
@@ -190,12 +187,7 @@ export function MarketRegimeWidget() {
           <TrendingUp className="h-4 w-4 text-muted-foreground" />
           <CardTitle>Market Regime</CardTitle>
           <span
-            className="font-mono text-[9px] px-1.5 py-0.5 rounded border"
-            style={{
-              borderColor: "#00d4ff33",
-              backgroundColor: "#00d4ff10",
-              color: "#00d4ff",
-            }}
+            className="font-mono text-[9px] px-1.5 py-0.5 rounded border border-[#00d4ff33] bg-[#00d4ff10] text-[#00d4ff]"
           >
             {symbol}
           </span>
@@ -207,10 +199,7 @@ export function MarketRegimeWidget() {
 
       <CardContent className="space-y-0">
         {/* Recommendation row */}
-        <div
-          className="flex items-center justify-between py-2"
-          style={{ borderBottom: "1px solid var(--border)" }}
-        >
+        <div className="flex items-center justify-between py-2 border-b border-border">
           <span className="text-xs text-muted-foreground">Recommendation</span>
           <Badge variant={recommendationVariant(recommendation)}>
             {recommendation}
@@ -218,27 +207,16 @@ export function MarketRegimeWidget() {
         </div>
 
         {/* Confidence row */}
-        <div
-          className="flex items-center justify-between py-2"
-          style={{ borderBottom: "1px solid var(--border)" }}
-        >
+        <div className="flex items-center justify-between py-2 border-b border-border">
           <span className="text-xs text-muted-foreground">Confidence</span>
           <div className="flex items-center gap-2">
-            <div
-              className="h-1.5 w-20 rounded-full overflow-hidden"
-              style={{ backgroundColor: "#1a1a2e" }}
-            >
+            <div className="h-1.5 w-20 rounded-full overflow-hidden bg-panel-border">
               <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${confidencePct}%`,
-                  backgroundColor:
-                    confidencePct >= 70
-                      ? "#00ff88"
-                      : confidencePct >= 40
-                      ? "#ffcc00"
-                      : "#ff4444",
-                }}
+                className={cn(
+                  "h-full rounded-full transition-all duration-500",
+                  confidenceBarClass(confidencePct),
+                )}
+                style={{ width: `${confidencePct}%` }}
               />
             </div>
             <span className="font-mono text-sm tabular-nums">
@@ -248,10 +226,7 @@ export function MarketRegimeWidget() {
         </div>
 
         {/* Alignment count row */}
-        <div
-          className="flex items-center justify-between py-2"
-          style={{ borderBottom: "1px solid var(--border)" }}
-        >
+        <div className="flex items-center justify-between py-2 border-b border-border">
           <span className="text-xs text-muted-foreground">
             Aligned timeframes
           </span>
@@ -263,10 +238,7 @@ export function MarketRegimeWidget() {
         {/* Per-timeframe breakdown */}
         {tfKeys.length > 0 && (
           <div className="pt-2">
-            <p
-              className="font-mono text-[10px] uppercase tracking-wider mb-1"
-              style={{ color: "#555" }}
-            >
+            <p className="font-mono text-[10px] uppercase tracking-wider mb-1 text-[#555]">
               Timeframes
             </p>
             {tfKeys.map((tf) => (
