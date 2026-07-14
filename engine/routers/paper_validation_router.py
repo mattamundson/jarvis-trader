@@ -527,7 +527,7 @@ async def get_validation_gates():
 @router.get("/approved-paper-gates", response_model=ApprovedPaperGatesAPIResponse)
 async def get_approved_paper_gates():
     """
-    Validation gates for **MCL** and **MNQ** only (approved paper futures).
+    Validation gates for the currently-approved paper futures (`APPROVED_PAPER_SYMBOLS`).
 
     Metrics are computed from **SQLite** ``paper_trades`` closed rows per symbol.
     ``days_with_trades`` = distinct ``exit_time`` calendar dates (not ``daily_pnl`` rows).
@@ -560,9 +560,9 @@ async def get_approved_paper_gates():
             thresholds=dict(PAPER_VALIDATION_GATES),
             instruments=instruments,
             note=(
-                "Per-symbol gates use closed paper_trades (SQLite) for MCL/MNQ only; "
-                "days_active gate uses distinct exit dates. Global /gates uses all symbols "
-                "and daily_pnl row count for the days gate."
+                "Per-symbol gates use closed paper_trades (SQLite) for APPROVED_PAPER_SYMBOLS "
+                "only; days_active gate uses distinct exit dates. Global /gates uses all "
+                "symbols and daily_pnl row count for the days gate."
             ),
         )
     except Exception as exc:
