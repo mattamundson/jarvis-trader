@@ -53,11 +53,21 @@ interface OptionsPnLResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function vixRegimeColor(regime: string): string {
-  if (regime === "low") return "#00ff88";
-  if (regime === "normal") return "#00d4ff";
-  if (regime === "high") return "#ff4444";
-  return "#888";
+function vixRegimeColorClass(regime: string): string {
+  if (regime === "low") return "text-[#00ff88]";
+  if (regime === "normal") return "text-[#00d4ff]";
+  if (regime === "high") return "text-[#ff4444]";
+  return "text-[#888]";
+}
+
+function pnlColorClass(positive: boolean): string {
+  return positive ? "text-[#00ff88]" : "text-[#ff4444]";
+}
+
+function dteColorClass(dte: number): string {
+  if (dte <= 5) return "text-[#ff4444]";
+  if (dte <= 21) return "text-[#ffcc00]";
+  return "text-[#00ff88]";
 }
 
 function strategyLabel(strategy: string): string {
@@ -105,17 +115,14 @@ export default function OptionsPage() {
             {status && (
               <>
                 <span
-                  className="font-mono text-xs font-bold tabular-nums"
-                  style={{ color: pnlPositive ? "#00ff88" : "#ff4444" }}
+                  className={`font-mono text-xs font-bold tabular-nums ${pnlColorClass(pnlPositive)}`}
                 >
                   {pnlPositive ? "+" : ""}${(pnlData?.daily_pnl ?? 0).toFixed(2)} today
                 </span>
                 <span
-                  className="font-mono text-[10px] px-2 py-0.5 rounded border"
-                  style={{
-                    borderColor: status.enabled ? "#00ff8844" : "#55555544",
-                    color: status.enabled ? "#00ff88" : "#555",
-                  }}
+                  className={`font-mono text-[10px] px-2 py-0.5 rounded border ${
+                    status.enabled ? "border-[#00ff8844] text-[#00ff88]" : "border-[#55555544] text-[#555]"
+                  }`}
                 >
                   {status.enabled ? "ENABLED" : "DISABLED"}
                 </span>
@@ -139,7 +146,7 @@ export default function OptionsPage() {
               <div className="space-y-2 font-mono text-xs">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Connection</span>
-                  <span style={{ color: status.connected ? "#00ff88" : "#ff4444" }}>
+                  <span className={pnlColorClass(status.connected)}>
                     {status.connected ? "Connected" : "Disconnected"}
                   </span>
                 </div>
@@ -149,7 +156,7 @@ export default function OptionsPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Current Strategy</span>
-                  <span style={{ color: "#00d4ff" }}>{strategyLabel(status.current_strategy ?? "—")}</span>
+                  <span className="text-[#00d4ff]">{strategyLabel(status.current_strategy ?? "—")}</span>
                 </div>
                 {status.last_scan_time && (
                   <div className="flex justify-between">
@@ -172,8 +179,7 @@ export default function OptionsPage() {
             </p>
             <div className="flex flex-col items-center justify-center h-16">
               <span
-                className="font-mono text-2xl font-bold uppercase tracking-widest"
-                style={{ color: vixRegimeColor(status?.vix_regime ?? scan?.vix_regime ?? "") }}
+                className={`font-mono text-2xl font-bold uppercase tracking-widest ${vixRegimeColorClass(status?.vix_regime ?? scan?.vix_regime ?? "")}`}
               >
                 {status?.vix_regime?.toUpperCase() ?? scan?.vix_regime?.toUpperCase() ?? "—"}
               </span>
@@ -205,8 +211,7 @@ export default function OptionsPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Daily P&L</span>
                   <span
-                    className="tabular-nums font-bold"
-                    style={{ color: pnlPositive ? "#00ff88" : "#ff4444" }}
+                    className={`tabular-nums font-bold ${pnlColorClass(pnlPositive)}`}
                   >
                     {pnlPositive ? "+" : ""}${(pnlData?.daily_pnl ?? 0).toFixed(2)}
                   </span>
@@ -214,8 +219,7 @@ export default function OptionsPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Total P&L</span>
                   <span
-                    className="tabular-nums"
-                    style={{ color: (pnlData?.total_pnl ?? 0) >= 0 ? "#00ff88" : "#ff4444" }}
+                    className={`tabular-nums ${pnlColorClass((pnlData?.total_pnl ?? 0) >= 0)}`}
                   >
                     {(pnlData?.total_pnl ?? 0) >= 0 ? "+" : ""}${(pnlData?.total_pnl ?? 0).toFixed(2)}
                   </span>
@@ -236,7 +240,7 @@ export default function OptionsPage() {
               Latest Scan Results
             </p>
             {scan?.strategy_selected && (
-              <span className="font-mono text-[10px] px-2 py-0.5 rounded" style={{ backgroundColor: "#00d4ff15", color: "#00d4ff" }}>
+              <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#00d4ff15] text-[#00d4ff]">
                 {strategyLabel(scan.strategy_selected)}
               </span>
             )}
@@ -267,8 +271,8 @@ export default function OptionsPage() {
               {scan.scan_results.map((r, i) => (
                 <div key={i} className="grid grid-cols-5 gap-2 py-2 border-b border-border/40">
                   <span className="font-semibold text-foreground">{r.symbol}</span>
-                  <span style={{ color: "#00d4ff" }}>{strategyLabel(r.strategy_type)}</span>
-                  <span className="text-right tabular-nums" style={{ color: r.iv_rank > 50 ? "#00ff88" : "#ffcc00" }}>
+                  <span className="text-[#00d4ff]">{strategyLabel(r.strategy_type)}</span>
+                  <span className={`text-right tabular-nums ${r.iv_rank > 50 ? "text-[#00ff88]" : "text-[#ffcc00]"}`}>
                     {r.iv_rank.toFixed(0)}%
                   </span>
                   <span className="text-right text-foreground/70">{r.expiry_date}</span>
@@ -309,17 +313,16 @@ export default function OptionsPage() {
               </div>
               {pnlData.open_positions.map((pos, i) => {
                 const pnlPos = pos.pnl >= 0;
-                const dteColor = pos.dte <= 5 ? "#ff4444" : pos.dte <= 21 ? "#ffcc00" : "#00ff88";
                 return (
                   <div key={i} className="grid grid-cols-6 gap-2 py-2 border-b border-border/40">
                     <span className="font-semibold">{pos.symbol}</span>
-                    <span style={{ color: "#00d4ff" }}>{strategyLabel(pos.strategy)}</span>
+                    <span className="text-[#00d4ff]">{strategyLabel(pos.strategy)}</span>
                     <span className="text-right tabular-nums text-foreground/70">${pos.entry_price.toFixed(2)}</span>
                     <span className="text-right tabular-nums">${pos.current_price.toFixed(2)}</span>
-                    <span className="text-right tabular-nums font-semibold" style={{ color: pnlPos ? "#00ff88" : "#ff4444" }}>
+                    <span className={`text-right tabular-nums font-semibold ${pnlColorClass(pnlPos)}`}>
                       {pnlPos ? "+" : ""}${pos.pnl.toFixed(2)}
                     </span>
-                    <span className="text-right tabular-nums font-semibold" style={{ color: dteColor }}>
+                    <span className={`text-right tabular-nums font-semibold ${dteColorClass(pos.dte)}`}>
                       {pos.dte}d
                     </span>
                   </div>
