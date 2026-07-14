@@ -3,6 +3,18 @@ $repoRoot = "C:\Users\mattm\ThinkorSwim\jarvis-trader"
 $pythonExe = Join-Path $repoRoot "engine\.venv\Scripts\python.exe"
 $envFile = Join-Path $repoRoot "engine\.env"
 
+# ── Foreign-Python env strip (added 2026-07-10) ──────────────────────────────
+# The engine venv resolves its home via pyvenv.cfg and needs neither PYTHONHOME
+# nor a foreign PYTHONPATH. If this shell inherited them (e.g. from a Hermes /
+# uv-activated session), the PM2 fast path's `pm2 restart --update-env` below
+# would CAPTURE them into jarvis-engine's process env, forcing the 3.12
+# interpreter to load a 3.11 stdlib -> `AssertionError: SRE module mismatch`
+# crash loop (2026-07-10 incident, ~130 restarts). Strip them here so neither
+# the --update-env path nor the Start-Process fallback can propagate the poison.
+# ecosystem.config.js sets the correct PYTHONPATH for the PM2 path.
+Remove-Item Env:\PYTHONHOME -ErrorAction SilentlyContinue
+Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+
 # ── PM2 fast path ────────────────────────────────────────────────────────────
 # If jarvis-engine is registered with PM2, delegate the restart to PM2 instead
 # of racing our port-kill against PM2's auto-restart. History: when the two
