@@ -448,5 +448,67 @@ module.exports = {
       merge_logs: true,
       exec_mode: "fork",
     },
+
+    // ── Research Lab (new multi-app split) ────────────────────────────────────
+    // Serves the research-lab Next.js app at http://localhost:3020. Added
+    // 2026-07-14: this app existed only as an ad-hoc dev server all session;
+    // this makes it real pm2-managed infrastructure. Run `pnpm build` in
+    // dashboard/apps/research-lab first -- verified clean production build.
+    {
+      name: "jarvis-research-lab",
+      script: "cmd",
+      args: "/c pnpm run start",
+      cwd: path.join(ENGINE_DIR, "..", "dashboard", "apps", "research-lab"),
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      min_uptime: "10s",
+      restart_delay: 3000,
+
+      env: {
+        NODE_ENV: "production",
+        PORT: "3020",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "research-lab-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "research-lab-out.log"),
+      merge_logs: true,
+      exec_mode: "fork",
+    },
+
+    // ── Ops Console (new multi-app split) ─────────────────────────────────────
+    // Serves the ops-console Next.js app at http://localhost:3030. Same
+    // provenance as jarvis-research-lab above. NOTE: as of 2026-07-14 this
+    // app's build still contains one duplicate /master/master route pending
+    // cleanup (file-locked by a dev server at commit time) -- harmless
+    // (dead route, not linked from nav) but worth clearing before this
+    // entry's first real deploy.
+    {
+      name: "jarvis-ops-console",
+      script: "cmd",
+      args: "/c pnpm run start",
+      cwd: path.join(ENGINE_DIR, "..", "dashboard", "apps", "ops-console"),
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      min_uptime: "10s",
+      restart_delay: 3000,
+
+      env: {
+        NODE_ENV: "production",
+        PORT: "3030",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "ops-console-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "ops-console-out.log"),
+      merge_logs: true,
+      exec_mode: "fork",
+    },
   ],
 };
