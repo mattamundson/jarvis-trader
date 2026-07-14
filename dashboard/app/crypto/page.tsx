@@ -11,6 +11,10 @@ function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
 }
 
+function pnlColorClass(positive: boolean): string {
+  return positive ? "text-[#00ff88]" : "text-[#ff4444]";
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface CryptoStatus {
@@ -101,11 +105,9 @@ export default function CryptoPage() {
           </div>
           <div className="flex items-center gap-3">
             <span
-              className="font-mono text-[10px] px-2 py-0.5 rounded border"
-              style={{
-                borderColor: isRunning ? "#00ff8844" : "#55555544",
-                color: isRunning ? "#00ff88" : "#555",
-              }}
+              className={`font-mono text-[10px] px-2 py-0.5 rounded border ${
+                isRunning ? "border-[#00ff8844] text-[#00ff88]" : "border-[#55555544] text-[#555]"
+              }`}
             >
               {isRunning ? "RUNNING" : "STOPPED"}
             </span>
@@ -132,7 +134,7 @@ export default function CryptoPage() {
               <div className="space-y-2 font-mono text-xs">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">State</span>
-                  <span style={{ color: ftStatus.state === "running" ? "#00ff88" : "#ffcc00" }}>
+                  <span className={ftStatus.state === "running" ? "text-[#00ff88]" : "text-[#ffcc00]"}>
                     {ftStatus.state?.toUpperCase() ?? "—"}
                   </span>
                 </div>
@@ -151,8 +153,7 @@ export default function CryptoPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Today's Profit</span>
                   <span
-                    className="tabular-nums font-bold"
-                    style={{ color: (ftStatus.profit_today_abs ?? 0) >= 0 ? "#00ff88" : "#ff4444" }}
+                    className={`tabular-nums font-bold ${pnlColorClass((ftStatus.profit_today_abs ?? 0) >= 0)}`}
                   >
                     {(ftStatus.profit_today_abs ?? 0) >= 0 ? "+" : ""}
                     ${(ftStatus.profit_today_abs ?? 0).toFixed(2)}
@@ -170,16 +171,14 @@ export default function CryptoPage() {
               <button
                 onClick={() => controlFreqtrade("start")}
                 disabled={isRunning || actionLoading !== null}
-                className="flex-1 rounded-lg py-1.5 text-xs font-semibold font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ backgroundColor: "#00ff8820", color: "#00ff88" }}
+                className="flex-1 rounded-lg py-1.5 text-xs font-semibold font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-[#00ff8820] text-[#00ff88]"
               >
                 {actionLoading === "start" ? "Starting…" : "Start"}
               </button>
               <button
                 onClick={() => controlFreqtrade("stop")}
                 disabled={!isRunning || actionLoading !== null}
-                className="flex-1 rounded-lg py-1.5 text-xs font-semibold font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ backgroundColor: "#ff444420", color: "#ff4444" }}
+                className="flex-1 rounded-lg py-1.5 text-xs font-semibold font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-[#ff444420] text-[#ff4444]"
               >
                 {actionLoading === "stop" ? "Stopping…" : "Stop"}
               </button>
@@ -193,8 +192,7 @@ export default function CryptoPage() {
             </p>
             <div>
               <span
-                className="font-mono text-2xl font-bold tabular-nums"
-                style={{ color: pnlPositive ? "#00ff88" : "#ff4444" }}
+                className={`font-mono text-2xl font-bold tabular-nums ${pnlColorClass(pnlPositive)}`}
               >
                 {pnlPositive ? "+" : ""}${(pnl?.daily_pnl ?? 0).toFixed(2)}
               </span>
@@ -204,8 +202,7 @@ export default function CryptoPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total P&L</span>
                 <span
-                  className="tabular-nums"
-                  style={{ color: (pnl?.total_pnl ?? 0) >= 0 ? "#00ff88" : "#ff4444" }}
+                  className={`tabular-nums ${pnlColorClass((pnl?.total_pnl ?? 0) >= 0)}`}
                 >
                   {(pnl?.total_pnl ?? 0) >= 0 ? "+" : ""}${(pnl?.total_pnl ?? 0).toFixed(2)}
                 </span>
@@ -226,19 +223,19 @@ export default function CryptoPage() {
               <div className="space-y-2 font-mono text-xs">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Enabled</span>
-                  <span style={{ color: status.enabled ? "#00ff88" : "#555" }}>
+                  <span className={status.enabled ? "text-[#00ff88]" : "text-[#555]"}>
                     {status.enabled ? "Yes" : "No"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Bridge Connected</span>
-                  <span style={{ color: status.connected ? "#00ff88" : "#ff4444" }}>
+                  <span className={pnlColorClass(status.connected)}>
                     {status.connected ? "Yes" : "No"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Freqtrade Running</span>
-                  <span style={{ color: status.freqtrade_running ? "#00ff88" : "#ff4444" }}>
+                  <span className={pnlColorClass(status.freqtrade_running)}>
                     {status.freqtrade_running ? "Yes" : "No"}
                   </span>
                 </div>
@@ -280,7 +277,7 @@ export default function CryptoPage() {
                 const profitPos = pos.profit_pct >= 0;
                 return (
                   <div key={i} className="grid grid-cols-6 gap-3 py-2 border-b border-border/40 min-w-[600px]">
-                    <span className="font-semibold" style={{ color: "#ff9500" }}>{pos.pair}</span>
+                    <span className="font-semibold text-[#ff9500]">{pos.pair}</span>
                     <span className="text-foreground/60 text-[10px]">
                       {new Date(pos.open_date).toLocaleDateString()}
                     </span>
@@ -289,14 +286,12 @@ export default function CryptoPage() {
                     </span>
                     <span className="text-right tabular-nums">${pos.current_rate.toFixed(4)}</span>
                     <span
-                      className="text-right tabular-nums font-semibold"
-                      style={{ color: profitPos ? "#00ff88" : "#ff4444" }}
+                      className={`text-right tabular-nums font-semibold ${pnlColorClass(profitPos)}`}
                     >
                       {profitPos ? "+" : ""}{pos.profit_pct.toFixed(2)}%
                     </span>
                     <span
-                      className="text-right tabular-nums font-semibold"
-                      style={{ color: profitPos ? "#00ff88" : "#ff4444" }}
+                      className={`text-right tabular-nums font-semibold ${pnlColorClass(profitPos)}`}
                     >
                       {profitPos ? "+" : ""}${pos.profit_abs.toFixed(2)}
                     </span>
