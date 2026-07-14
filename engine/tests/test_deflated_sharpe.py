@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from scipy import stats
 
 from backtest.deflated_sharpe import (
     _expected_max_sharpe,
@@ -147,3 +148,56 @@ class TestDeflatedSharpeFromReturns:
         # Gaussian sample: skew ≈ 0, kurt ≈ 3
         assert abs(r["skew"]) < 0.3
         assert 2.5 < r["kurt"] < 3.5
+
+
+class TestFromReturnsUsesRawNotAnnualizedSharpe:
+    """Regression guard for the 2026-07-10 incident: deflated_sharpe_from_returns
+    fed an ANNUALIZED Sharpe into deflated_sharpe_ratio, which is derived for the
+    RAW per-observation Sharpe over T=n_obs observations -- annualizing first
+    inflated DSR from a true ~0.11 to a false 1.0 on MES's live paper
+    authorization (n_trials=3, n_obs=16), and ~0.00 to a false 1.0 on MGC's
+    (n_trials=8, n_obs=67).
+    """
+
+    def test_wrapper_matches_direct_call_with_raw_sharpe(self):
+        rng = np.random.default_rng(7)
+        returns = rng.normal(loc=0.002, scale=0.01, size=50)
+
+        wrapped = deflated_sharpe_from_returns(returns, n_trials=5, ann_factor=252.0)
+
+        raw_sharpe = float(returns.mean() / returns.std(ddof=1))
+        skew_val = float(stats.skew(returns, bias=False))
+        kurt_raw = float(stats.kurtosis(returns, bias=False)) + 3.0
+        direct = deflated_sharpe_ratio(
+            sharpe=raw_sharpe, n_trials=5, n_obs=len(returns),
+            skew=skew_val, kurt=kurt_raw,
+        )
+
+        assert wrapped["dsr"] == direct["dsr"]
+        assert wrapped["raw_sharpe"] == direct["raw_sharpe"]
+
+    def test_ann_sharpe_reported_but_not_used_for_dsr(self):
+        rng = np.random.default_rng(7)
+        returns = rng.normal(loc=0.002, scale=0.01, size=50)
+        r = deflated_sharpe_from_returns(returns, n_trials=5, ann_factor=252.0)
+        assert abs(r["ann_sharpe"] - r["raw_sharpe"] * np.sqrt(252.0)) < 1e-6
+        assert r["ann_sharpe"] != r["raw_sharpe"]
+
+    def test_mes_incident_shape_dsr_is_low_not_one(self):
+        """2026-05-24 MES live paper authorization: n_trials=3, n_obs=16,
+        skew=-0.2531, kurt=3.2072, raw_sharpe=0.4988. Recorded (buggy) DSR was
+        1.0; corrected DSR must sit far below the 0.30 ALT floor."""
+        r = deflated_sharpe_ratio(
+            sharpe=0.4988, n_trials=3, n_obs=16, skew=-0.2531, kurt=3.2072,
+        )
+        assert r["dsr"] < 0.30
+        assert 0.05 < r["dsr"] < 0.20  # pins near the observed ~0.111
+
+    def test_mgc_incident_shape_dsr_is_near_zero_not_one(self):
+        """2026-05-24 MGC live paper authorization: n_trials=8, n_obs=67,
+        skew=0.7193, kurt=3.3233, raw_sharpe=0.4123. Recorded (buggy) DSR was
+        1.0; corrected DSR must fail even the 0.10 CORE floor."""
+        r = deflated_sharpe_ratio(
+            sharpe=0.4123, n_trials=8, n_obs=67, skew=0.7193, kurt=3.3233,
+        )
+        assert r["dsr"] < 0.10
