@@ -23,24 +23,14 @@ interface CircuitBreakerData {
 }
 
 function StatusDot({ active, danger }: { active: boolean; danger?: boolean }) {
-  const color = active
-    ? danger !== false
-      ? "#ff4444"
-      : "#00ff88"
-    : "#00ff88";
-  const inactiveColor = "#00ff88";
-  const dotColor = active ? (danger !== false ? "#ff4444" : inactiveColor) : inactiveColor;
+  const dotColorClass = active ? (danger !== false ? "bg-[#ff4444]" : "bg-[#00ff88]") : "bg-[#00ff88]";
 
   return (
     <span className="relative flex h-2.5 w-2.5 shrink-0">
       <span
-        className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
-        style={{ backgroundColor: dotColor }}
+        className={`absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping ${dotColorClass}`}
       />
-      <span
-        className="relative inline-flex h-2.5 w-2.5 rounded-full"
-        style={{ backgroundColor: dotColor }}
-      />
+      <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${dotColorClass}`} />
     </span>
   );
 }
@@ -48,8 +38,7 @@ function StatusDot({ active, danger }: { active: boolean; danger?: boolean }) {
 function BreachedDot({ breached }: { breached: boolean }) {
   return (
     <span
-      className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
-      style={{ backgroundColor: breached ? "#ff4444" : "#00ff88" }}
+      className={`inline-block h-2.5 w-2.5 rounded-full shrink-0 ${breached ? "bg-[#ff4444]" : "bg-[#00ff88]"}`}
     />
   );
 }
@@ -75,12 +64,26 @@ export function CircuitBreakerWidget() {
         const displayDrawdown = `${(data.drawdown_pct * 100).toFixed(2)}%`;
         const displayDrawdownLimit = `${(Math.abs(data.drawdown_limit_pct) * 100).toFixed(1)}% limit`;
 
-        const progressBarColor =
+        const progressBarColorClass =
           dailyLossProgress >= 1
-            ? "#ff4444"
+            ? "bg-[#ff4444]"
             : dailyLossProgress > 0.5
-            ? "#ffcc00"
-            : "#00ff88";
+            ? "bg-[#ffcc00]"
+            : "bg-[#00ff88]";
+
+        const dailyPnlColorClass = data.daily_limit_breached
+          ? "text-[#ff4444]"
+          : data.daily_pnl < 0
+          ? "text-[#ffcc00]"
+          : "text-[#00ff88]";
+
+        const drawdownColorClass = data.drawdown_breached
+          ? "text-[#ff4444]"
+          : data.drawdown_pct > Math.abs(data.drawdown_limit_pct) * 0.5
+          ? "text-[#ffcc00]"
+          : "text-[#00ff88]";
+
+        const killSwitchColorClass = data.kill_switch_active ? "text-[#ff4444]" : "text-[#00ff88]";
 
         return (
           <Card>
@@ -105,14 +108,7 @@ export function CircuitBreakerWidget() {
                       Daily Loss Limit
                     </span>
                     <span
-                      className="font-mono text-xs font-bold tabular-nums"
-                      style={{
-                        color: data.daily_limit_breached
-                          ? "#ff4444"
-                          : data.daily_pnl < 0
-                          ? "#ffcc00"
-                          : "#00ff88",
-                      }}
+                      className={`font-mono text-xs font-bold tabular-nums ${dailyPnlColorClass}`}
                     >
                       {displayDailyPnl}{" "}
                       <span className="text-muted-foreground/60 font-normal">
@@ -121,16 +117,10 @@ export function CircuitBreakerWidget() {
                     </span>
                   </div>
                   {/* Progress bar */}
-                  <div
-                    className="h-1.5 w-full rounded-full overflow-hidden"
-                    style={{ backgroundColor: "#1a1a2e" }}
-                  >
+                  <div className="h-1.5 w-full rounded-full overflow-hidden bg-panel-border">
                     <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${dailyLossProgress * 100}%`,
-                        backgroundColor: progressBarColor,
-                      }}
+                      className={`h-full rounded-full transition-all duration-500 ${progressBarColorClass}`}
+                      style={{ width: `${dailyLossProgress * 100}%` }}
                     />
                   </div>
                 </div>
@@ -148,14 +138,7 @@ export function CircuitBreakerWidget() {
                       Max Drawdown
                     </span>
                     <span
-                      className="font-mono text-xs font-bold tabular-nums"
-                      style={{
-                        color: data.drawdown_breached
-                          ? "#ff4444"
-                          : data.drawdown_pct > Math.abs(data.drawdown_limit_pct) * 0.5
-                          ? "#ffcc00"
-                          : "#00ff88",
-                      }}
+                      className={`font-mono text-xs font-bold tabular-nums ${drawdownColorClass}`}
                     >
                       {displayDrawdown}{" "}
                       <span className="text-muted-foreground/60 font-normal">
@@ -178,10 +161,7 @@ export function CircuitBreakerWidget() {
                       Kill Switch
                     </span>
                     <span
-                      className="font-mono text-xs font-bold uppercase tracking-wider"
-                      style={{
-                        color: data.kill_switch_active ? "#ff4444" : "#00ff88",
-                      }}
+                      className={`font-mono text-xs font-bold uppercase tracking-wider ${killSwitchColorClass}`}
                     >
                       {data.kill_switch_active ? "ACTIVE" : "INACTIVE"}
                       {data.kill_switch_active && data.kill_switch_reason && (
@@ -202,12 +182,7 @@ export function CircuitBreakerWidget() {
               {/* TRADING HALTED warning section */}
               {anyTripped && (
                 <div
-                  className="rounded-lg p-3 font-mono text-sm font-bold text-center"
-                  style={{
-                    backgroundColor: "#ff444415",
-                    border: "2px solid #ff444440",
-                    color: "#ff4444",
-                  }}
+                  className="rounded-lg p-3 font-mono text-sm font-bold text-center bg-[#ff444415] border-2 border-[#ff444440] text-[#ff4444]"
                   role="alert"
                   aria-live="assertive"
                 >
