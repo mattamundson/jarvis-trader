@@ -224,37 +224,44 @@ function ResultBadge({ result }: { result: HypothesisResult }) {
 
 // ── Section wrapper ──────────────────────────────────────────────────────────
 
+type Accent = "cyan" | "yellow" | "emerald";
+
+const ACCENT_CLASSES: Record<Accent, { icon: string; text: string }> = {
+  cyan: { icon: "bg-[#00d4ff26]", text: "text-[#00d4ff]" },
+  yellow: { icon: "bg-[#ffcc0026]", text: "text-[#ffcc00]" },
+  emerald: { icon: "bg-[#00ff8826]", text: "text-[#00ff88]" },
+};
+
 function Section({
   title,
   icon,
-  accentColor,
+  accent,
   children,
   defaultOpen = true,
 }: {
   title: string;
   icon: React.ReactNode;
-  accentColor: string;
+  accent: Accent;
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const accentClasses = ACCENT_CLASSES[accent];
 
   return (
-    <div className="rounded-xl border border-[#1a1a2e] bg-[#0a0a0a]">
+    <div className="rounded-xl border border-panel-border bg-panel">
       <button
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between px-5 py-4 text-left"
       >
         <div className="flex items-center gap-3">
           <div
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ backgroundColor: `${accentColor}15` }}
+            className={`flex h-7 w-7 items-center justify-center rounded-lg ${accentClasses.icon}`}
           >
             {icon}
           </div>
           <span
-            className="font-mono text-xs font-bold tracking-[0.15em] uppercase"
-            style={{ color: accentColor }}
+            className={`font-mono text-xs font-bold tracking-[0.15em] uppercase ${accentClasses.text}`}
           >
             {title}
           </span>
@@ -266,7 +273,7 @@ function Section({
         )}
       </button>
       {open && (
-        <div className="border-t border-[#1a1a2e] px-5 pb-5 pt-4">
+        <div className="border-t border-panel-border px-5 pb-5 pt-4">
           {children}
         </div>
       )}
@@ -348,27 +355,17 @@ export default function ResearchLogPage() {
         <Section
           title="Research Log"
           icon={<BookOpen className="h-4 w-4 text-cyan-400" />}
-          accentColor="#00d4ff"
+          accent="cyan"
         >
-          <div
-            className="mb-4 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[11px] uppercase tracking-wider"
-            style={{ backgroundColor: "#2a1f0a", border: "1px solid #6b5414", color: "#e0b94a" }}
-          >
-            <span style={{ fontWeight: 700 }}>Static log</span>
-            <span style={{ color: "#9a8030" }}>
+          <div className="mb-4 flex items-center gap-2 rounded-md border border-[#6b5414] bg-[#2a1f0a] px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-[#e0b94a]">
+            <span className="font-bold">Static log</span>
+            <span className="text-[#9a8030]">
               frozen snapshot, last updated 2026-03-29 — &ldquo;active&rdquo; reflects status as of then, not today
             </span>
           </div>
           <div className="overflow-x-auto">
             {/* Table header */}
-            <div
-              className="grid gap-3 pb-3 mb-1 font-mono text-[10px] uppercase tracking-wider"
-              style={{
-                gridTemplateColumns: "90px 1fr 120px 90px",
-                color: "#555",
-                borderBottom: "1px solid #1a1a2e",
-              }}
-            >
+            <div className="grid grid-cols-[90px_1fr_120px_90px] gap-3 pb-3 mb-1 border-b border-panel-border font-mono text-[10px] uppercase tracking-wider text-[#555]">
               <span>Date</span>
               <span>Entry</span>
               <span className="text-center">Category</span>
@@ -379,11 +376,7 @@ export default function ResearchLogPage() {
             {RESEARCH_LOG.map((row, i) => (
               <div
                 key={i}
-                className="grid gap-3 py-3 items-center font-mono text-xs"
-                style={{
-                  gridTemplateColumns: "90px 1fr 120px 90px",
-                  borderBottom: "1px solid #111",
-                }}
+                className="grid grid-cols-[90px_1fr_120px_90px] gap-3 py-3 items-center border-b border-[#111] font-mono text-xs"
               >
                 <span className="tabular-nums text-neutral-500">{row.date}</span>
                 <span className="text-neutral-200 leading-relaxed">{row.entry}</span>
@@ -413,18 +406,11 @@ export default function ResearchLogPage() {
         <Section
           title="Hypothesis Tracker"
           icon={<FlaskConical className="h-4 w-4 text-yellow-400" />}
-          accentColor="#ffcc00"
+          accent="yellow"
         >
           <div className="overflow-x-auto">
             {/* Table header */}
-            <div
-              className="grid gap-3 pb-3 mb-1 font-mono text-[10px] uppercase tracking-wider"
-              style={{
-                gridTemplateColumns: "1fr 140px 80px 160px",
-                color: "#555",
-                borderBottom: "1px solid #1a1a2e",
-              }}
-            >
+            <div className="grid grid-cols-[1fr_140px_80px_160px] gap-3 pb-3 mb-1 border-b border-panel-border font-mono text-[10px] uppercase tracking-wider text-[#555]">
               <span>Hypothesis</span>
               <span className="text-center">Prediction</span>
               <span className="text-center">Tested</span>
@@ -435,11 +421,7 @@ export default function ResearchLogPage() {
             {HYPOTHESES.map((h, i) => (
               <div
                 key={i}
-                className="grid gap-3 py-3 items-center font-mono text-xs"
-                style={{
-                  gridTemplateColumns: "1fr 140px 80px 160px",
-                  borderBottom: "1px solid #111",
-                }}
+                className="grid grid-cols-[1fr_140px_80px_160px] gap-3 py-3 items-center border-b border-[#111] font-mono text-xs"
               >
                 <span className="text-neutral-200 leading-relaxed">{h.hypothesis}</span>
                 <span className="text-center text-neutral-400 tabular-nums">{h.prediction}</span>
@@ -471,22 +453,15 @@ export default function ResearchLogPage() {
         <Section
           title="Next Experiments"
           icon={<ListChecks className="h-4 w-4 text-emerald-400" />}
-          accentColor="#00ff88"
+          accent="emerald"
         >
           <div className="space-y-3">
             {NEXT_EXPERIMENTS.map((exp) => (
               <div
                 key={exp.id}
-                className="flex items-start gap-4 rounded-lg border border-[#1a1a2e] bg-[#0d0d0d] px-4 py-3"
+                className="flex items-start gap-4 rounded-lg border border-panel-border bg-[#0d0d0d] px-4 py-3"
               >
-                <span
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-bold tabular-nums"
-                  style={{
-                    backgroundColor: "#00ff8815",
-                    color: "#00ff88",
-                    border: "1px solid #00ff8830",
-                  }}
-                >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[#00ff8830] bg-[#00ff8815] font-mono text-[11px] font-bold tabular-nums text-[#00ff88]">
                   {exp.id}
                 </span>
                 <div>
