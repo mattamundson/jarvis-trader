@@ -1,0 +1,302 @@
+{
+  "date": "2026-07-10",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "neutral",
+    "conviction": 0.5,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 9
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7609.75,
+      "target2": 7636.75,
+      "stop1": 7564.75,
+      "win_rate": 84.06,
+      "rr": 0.63,
+      "timestamp": "2026-07-10T10:55:01.52-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7605.0,
+      "target2": 7632.0,
+      "stop1": 7560.0,
+      "win_rate": 84.01,
+      "rr": 0.63,
+      "timestamp": "2026-07-10T09:50:01.207-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7585.75,
+      "target2": 7592.5,
+      "stop1": null,
+      "win_rate": 79.62,
+      "rr": 0.56,
+      "timestamp": "2026-07-09T23:13:07.298-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7625.75,
+      "target2": 7632.5,
+      "stop1": null,
+      "win_rate": 79.6,
+      "rr": 0.55,
+      "timestamp": "2026-07-10T15:28:00.925-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7593.5,
+      "target2": 7600.25,
+      "stop1": null,
+      "win_rate": 79.59,
+      "rr": 0.55,
+      "timestamp": "2026-07-10T06:24:02.036-05:00"
+    }
+  ],
+  "corey_quote": "When targets are completed, markets stop trending and start balancing. Direction only resumes when balance breaks.",
+  "commentary_health": [
+    {
+      "date": "2026-07-10",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 9
+    },
+    {
+      "date": "2026-07-09",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 9
+    },
+    {
+      "date": "2026-07-08",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.9,
+      "message_count": 12
+    },
+    {
+      "date": "2026-07-07",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.4,
+      "message_count": 37
+    },
+    {
+      "date": "2026-07-06",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 8
+    },
+    {
+      "date": "2026-07-05",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    },
+    {
+      "date": "2026-07-04",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    },
+    {
+      "date": "2026-07-03",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 6
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 32,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": false,
+    "active_provider": null,
+    "primary_provider": null,
+    "primary_healthy": null,
+    "providers_available": null,
+    "google_fallback_count": null,
+    "vertex_failover_count": null,
+    "llm_path_healthy": null,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 97,
+    "failing_enabled": 16,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-DailyMorningBriefing",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiscordGitDigest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiscordObsidianSync",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-EngineWatchdog",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-HermesUpgradeScan",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-IngestStaleAlert",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-LLMWatchdog",
+        "result": "0x41306"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-ScanUncommitted",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-Sentinel-Dashboard",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-SystemStatus",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-XBookmarks",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 15.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 23.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 23.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 0.3,
+        "newest": "2026-07-11T06:00:04.986505+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.3,
+        "newest": "2026-07-11T06:00:02.362592+00:00",
+        "files": 31,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.9,
+        "newest": "2026-07-10T15:36:13.183327+00:00",
+        "files": 18,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 0.3,
+        "newest": "2026-07-11T06:00:07.453201+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 23.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 23.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
