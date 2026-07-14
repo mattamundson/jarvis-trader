@@ -16,7 +16,6 @@ import {
   Flame,
   FlaskConical,
   Gauge,
-  Globe,
   Hash,
   HeartPulse,
   History,
@@ -39,7 +38,6 @@ import {
   TrendingUp,
   Trophy,
   Wallet,
-  Waves,
   X,
   Zap,
 } from "lucide-react";
@@ -70,6 +68,8 @@ interface NavGroup {
 //                      a tab (Phase 2 disposition). Off by default, so not in nav.
 //   /trades/[id]/review — dynamic per-trade detail, reached from Trade History/Journal.
 //   /trades/journal → /journal, /stats → /performance — intentional redirect stubs.
+//   /crypto, /polymarket — modules disabled, deprioritized per Amo request; pages
+//                      still reachable by URL, just not surfaced in nav.
 const NAV_GROUPS: NavGroup[] = [
   {
     title: "Trading",
@@ -92,8 +92,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Backtest", href: "/backtest", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "ATR-Trail Viz", href: "/atr-trail", icon: <LineChart className="h-3.5 w-3.5" /> },
       { label: "Options Chain", href: "/options", icon: <Hash className="h-3.5 w-3.5" /> },
-      { label: "Crypto", href: "/crypto", icon: <Waves className="h-3.5 w-3.5" /> },
-      { label: "Polymarket", href: "/polymarket", icon: <Globe className="h-3.5 w-3.5" /> },
       { label: "Kairos", href: "/kairos", icon: <Moon className="h-3.5 w-3.5" /> },
     ],
   },
