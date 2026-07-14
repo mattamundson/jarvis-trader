@@ -59,6 +59,13 @@ module.exports = {
         PYTHONPATH: ENGINE_DIR,
         PYTHONDONTWRITEBYTECODE: "1",
         PYTHONUNBUFFERED: "1",
+        // Neutralize any foreign PYTHONHOME the PM2 daemon/shell may carry (e.g.
+        // Hermes' uv CPython 3.11). Empty == unset for the interpreter, so the
+        // venv resolves its own 3.12 stdlib. Without this, an inherited
+        // PYTHONHOME crashes every import with "SRE module mismatch" (2026-07-10
+        // incident). Prevention companion to restart_engine.ps1's env strip and
+        // the fail-fast guard at the top of scripts/port_guardian.py.
+        PYTHONHOME: "",
       },
 
       // Restart policy — no --reload so PM2 is the sole restart mechanism

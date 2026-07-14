@@ -54,6 +54,38 @@ observability-only.
 
 from __future__ import annotations
 
+# ── Foreign-Python environment guard (added 2026-07-10) ──────────────────────
+# This process is always launched by engine/.venv/Scripts/python.exe, which
+# resolves its home via pyvenv.cfg and never needs PYTHONHOME. If PYTHONHOME is
+# set it is foreign pollution: the 2026-07-10 incident captured Hermes' uv
+# CPython 3.11 home into PM2 via `pm2 restart --update-env` run from a Hermes
+# shell, forcing this 3.12 interpreter to load 3.11 stdlib and crashing EVERY
+# import with `AssertionError: SRE module mismatch` — a 130-restart loop with a
+# cryptic traceback. PYTHONHOME is consumed at interpreter init and cannot be
+# repaired in-process; re-exec is unsafe under PM2 on Windows (os.execv detaches
+# the child, orphaning it from PM2). So fail fast with an unmistakable message
+# BEFORE the first stdlib import triggers the cryptic crash. Prevention lives in
+# restart_engine.ps1, which strips these vars before touching pm2.
+import os as _os
+import sys as _sys
+
+_foreign_home = _os.environ.get("PYTHONHOME")
+if _foreign_home:
+    _sys.stderr.write(
+        "\n" + "=" * 78 + "\n"
+        "[port_guardian] FATAL: foreign PYTHONHOME detected -- refusing to start.\n"
+        f"  PYTHONHOME  = {_foreign_home}\n"
+        f"  interpreter = {_sys.executable} (Python {_sys.version.split()[0]})\n"
+        "  This forces a mismatched stdlib -> 'SRE module mismatch' crash loop.\n"
+        "  Cause: pm2 captured a non-venv PYTHONHOME (e.g. Hermes / uv).\n"
+        "  Fix: from a shell with PYTHONHOME and PYTHONPATH unset, run:\n"
+        "    pm2 delete jarvis-engine\n"
+        "    pm2 start ecosystem.config.js --only jarvis-engine\n"
+        + "=" * 78 + "\n"
+    )
+    _sys.stderr.flush()
+    raise SystemExit(4)
+
 import json
 import os
 import signal
