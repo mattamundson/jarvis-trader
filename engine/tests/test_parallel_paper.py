@@ -414,3 +414,66 @@ def test_calmar_computed_above_min_dd():
     assert result.n_trades == 3
     assert result.max_dd is not None and abs(result.max_dd) >= 0.005
     assert result.calmar is not None
+    # This magnitude bound is the actual regression guard: the pre-fix
+    # formula divided a DOLLAR annualized return by a FRACTION max_dd, which
+    # this exact case (10% dd, well above CALMAR_MIN_DD_FLOOR) would have
+    # fabricated into the hundreds of thousands -- "is not None" alone never
+    # caught it. 1000 mirrors the frontend's own fmtCalmar() clamp ceiling.
+    assert abs(result.calmar) < 1000, (
+        f"Calmar={result.calmar} looks like the dollar/fraction unit-mismatch "
+        f"bug (fabricated blowup), not a real ratio"
+    )
+
+
+def test_calmar_uses_pct_of_capital_not_raw_dollars():
+    """
+    Reproduces the dashboard-audit bug pattern directly (Bug D, 2026-07-11):
+    a healthy annualized return combined with a real (well-above-floor) 7%
+    drawdown must not fabricate a six-figure Calmar like the observed
+    184,195.25. The CALMAR_MIN_DD_FLOOR guard alone does NOT catch this --
+    it only fires below 0.5% drawdown -- so this needs its own case.
+
+    Pins the corrected formula exactly: CAGR (compounded off the realized
+    return over the `days` window, as a fraction of settings.INITIAL_CAPITAL)
+    divided by abs(max_dd) as a fraction -- both operands in the same units,
+    per metrics.calmar()'s documented contract, and no longer a per-trade
+    mean_pnl * 252 extrapolation.
+    """
+    from datetime import date, timedelta
+
+    from config import settings
+
+    d0 = date.today() - timedelta(days=10)
+    rows = [
+        ("t1", 1000.0, d0.isoformat()),
+        ("t2", -70.0, (d0 + timedelta(days=1)).isoformat()),  # dd = -0.07 (7%)
+        ("t3", 1000.0, (d0 + timedelta(days=2)).isoformat()),
+    ]
+    mock_db = _seed_account_stats_db(rows)
+
+    import asyncio
+    import importlib
+
+    import routers.portfolio_router as pr
+
+    importlib.reload(pr)
+    pr.db_manager = mock_db
+
+    result = asyncio.run(pr.get_paper_account_stats(account_id="A", days=30))
+
+    assert result.max_dd == pytest.approx(-0.07, rel=1e-6)
+    assert result.calmar is not None
+
+    cumulative_pnl = result.equity_curve[-1]["equity"]
+    total_return = cumulative_pnl / settings.INITIAL_CAPITAL
+    expected_ann_return_pct = (1.0 + total_return) ** (365.0 / 30) - 1.0
+    expected_calmar = expected_ann_return_pct / abs(result.max_dd)
+
+    mean_pnl = (1000.0 - 70.0 + 1000.0) / 3
+    buggy_calmar = (mean_pnl * 252) / abs(result.max_dd)  # pre-fix formula
+
+    assert result.calmar == pytest.approx(expected_calmar, rel=1e-6)
+    assert abs(result.calmar - buggy_calmar) > 1000, (
+        "corrected and buggy formulas should differ by orders of magnitude "
+        "for this case -- if they don't, the fix isn't wired in"
+    )
