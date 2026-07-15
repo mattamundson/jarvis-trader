@@ -23,6 +23,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import agents.debate as debate_module  # noqa: E402
 from agents.debate import DebateOrchestrator  # noqa: E402
 
 _DIMENSIONS = ("trend", "mean_rev", "breakout", "volatility", "macro", "sentiment")
@@ -57,7 +58,12 @@ class TestScoreConfluenceRouting:
             calls.append((agent, prompt))
             return '{"direction": "BULL", "scores": {"trend": 0.8}}'
 
-        monkeypatch.setattr("agents.debate._call_agent_llm", fake_call_agent_llm)
+        # Monkeypatch the module object directly (not pytest's dotted-string
+        # resolver): under the full suite, some other test's import-cache
+        # manipulation left `agents.debate` unreachable via getattr(agents, "debate")
+        # even though `agents.debate` imports fine directly, which made pytest's
+        # string-path walker raise AttributeError on collection order alone.
+        monkeypatch.setattr(debate_module, "_call_agent_llm", fake_call_agent_llm)
 
         sentinel_agent = object()
         direction, scores = await orch._score_confluence(
