@@ -329,7 +329,12 @@ export default function ScorecardPage() {
   const pfPass = pf >= TARGETS.profitFactor;
   // srPass is intentionally excluded — Sharpe not computable, must never PASS
   const daysPass = days >= TARGETS.daysActive;
-  const allPass = pfPass && daysPass;
+  const wrPass = wr >= TARGETS.winRate;
+  const ddPass = maxDD < TARGETS.maxDrawdown;
+  // READY FOR LIVE requires every displayed gate to pass, not just PF + days —
+  // a catastrophic win rate or a blown-through drawdown limit must never be
+  // masked by a healthy profit factor.
+  const allPass = pfPass && daysPass && wrPass && ddPass;
   const anyPass = pfPass || daysPass;
 
   type Verdict = "NOT READY" | "APPROACHING" | "READY FOR LIVE";
@@ -339,9 +344,6 @@ export default function ScorecardPage() {
   } else if (anyPass || pfLvl === "yellow") {
     verdict = "APPROACHING";
   }
-
-  const wrPass = wr >= TARGETS.winRate;
-  const ddPass = maxDD < TARGETS.maxDrawdown;
 
   const caveatText = honestSet ? dedupCaveat(honestSet) : null;
 
