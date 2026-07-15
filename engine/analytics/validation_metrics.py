@@ -18,6 +18,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from backtest._gate_v2_helpers import GATE_DSR, MIN_OOS_TRADES_PER_WINDOW
+
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "data" / "jarvis_trader.db"
@@ -30,6 +32,8 @@ TARGETS = {
     "min_win_rate_pct": 55.0,   # percent (55.0 = 55%)
     "min_profit_factor": 2.0,
     "min_trades": 60,
+    "min_dsr": GATE_DSR,               # Deflated Sharpe floor (0.10, gate-v2 CORE)
+    "min_dsr_n_obs": MIN_OOS_TRADES_PER_WINDOW,  # min daily-P&L buckets DSR needs to be trustworthy
 }
 
 
@@ -143,6 +147,23 @@ class ValidationMetrics:
         # ── Sharpe ratio (annualized, daily P&L grouping) ────────────────
         sharpe = self._compute_sharpe(trades) if total_trades >= 2 else None
 
+        # ── Deflated Sharpe Ratio (multiple-testing / sample-size penalty) ─
+        # [safety-review] PR-10: raw Sharpe above has no floor on how few
+        # daily buckets it was computed from -- a 2-3 day lucky streak can
+        # clear min_sharpe outright after annualization (observed 3.436 on
+        # a handful of days). n_trials=1 because live paper trading here is
+        # one strategy under observation, not a grid search -- but at
+        # n_trials=1, DSR's own max-bias term (expected_max_sharpe) is 0, so
+        # DSR alone floors near 0.5 for any near-zero-or-positive raw Sharpe
+        # and will NOT reject a short lucky streak by itself (verified: a
+        # 2-observation sample with ann_sharpe~18.7 still scores dsr~0.88).
+        # The n_obs floor below is what actually blocks it -- both checks
+        # are required, matching the "wire a minimum-trading-days gate AND
+        # the DSR check" fix description.
+        dsr_result = self._compute_dsr(trades) if total_trades >= 2 else None
+        dsr = dsr_result["dsr"] if dsr_result else 0.0
+        dsr_n_obs = dsr_result["n_obs"] if dsr_result else 0
+
         # ── Max drawdown ─────────────────────────────────────────────────
         max_drawdown_pct = self._compute_max_drawdown_pct(pnls)
 
@@ -157,6 +178,7 @@ class ValidationMetrics:
             "win_rate_55pct":     win_rate_pct >= TARGETS["min_win_rate_pct"],
             "profit_factor_2_0":  profit_factor >= TARGETS["min_profit_factor"],
             "min_trades_60":      total_trades >= TARGETS["min_trades"],
+            "dsr_0_10":           dsr >= TARGETS["min_dsr"] and dsr_n_obs >= TARGETS["min_dsr_n_obs"],
         }
         all_targets_met = all(targets_met.values())
         targets_met_count = sum(targets_met.values())
@@ -176,6 +198,8 @@ class ValidationMetrics:
                 "win_rate_pct":      f"{win_rate_pct:.1f}%",
                 "profit_factor":     round(profit_factor, 3),
                 "sharpe_ratio":      round(sharpe, 3) if sharpe is not None else None,
+                "dsr":               round(dsr, 4),
+                "dsr_n_obs":         dsr_n_obs,
                 "max_drawdown_pct":  round(max_drawdown_pct, 2),
                 "total_pnl":         round(total_pnl, 2),
                 "gross_profit":      round(gross_profit, 2),
@@ -187,12 +211,13 @@ class ValidationMetrics:
             "trade_table": trade_table,
         }
 
-    def _compute_sharpe(
-        self,
-        trades: list[dict],
-        risk_free_rate: float = 0.04,
-    ) -> Optional[float]:
-        """Annualized Sharpe ratio from daily P&L buckets."""
+    def _daily_returns(self, trades: list[dict]) -> list[float]:
+        """Bucket closed trades' realized P&L into one value per calendar day.
+
+        Shared by ``_compute_sharpe`` and ``_compute_dsr`` so both compute the
+        Sharpe ratio over the identical sample -- DSR's math assumes its
+        ``sharpe``/``n_obs`` inputs came from the same observation series.
+        """
         daily: defaultdict[date, float] = defaultdict(float)
 
         pnl_field: Optional[str] = next(
@@ -220,7 +245,15 @@ class ValidationMetrics:
                 if ep is not None and xp is not None:
                     daily[day] += (float(xp) - float(ep)) * float(qty)
 
-        returns = list(daily.values())
+        return list(daily.values())
+
+    def _compute_sharpe(
+        self,
+        trades: list[dict],
+        risk_free_rate: float = 0.04,
+    ) -> Optional[float]:
+        """Annualized Sharpe ratio from daily P&L buckets."""
+        returns = self._daily_returns(trades)
         if len(returns) < 2:
             return None
 
@@ -236,6 +269,20 @@ class ValidationMetrics:
         annual_std = std * math.sqrt(252)
         sharpe = (annual_return - risk_free_rate) / annual_std
         return max(0.0, sharpe)
+
+    def _compute_dsr(self, trades: list[dict], n_trials: int = 1) -> dict:
+        """Deflated Sharpe Ratio over the same daily P&L buckets as ``_compute_sharpe``.
+
+        ``n_trials=1`` -- live paper trading here is one strategy under
+        observation, not a grid search over N combinations, so DSR applies
+        only its sample-size/non-normality penalty, not a multiple-testing
+        correction. See ``backtest.deflated_sharpe``'s own "n_trials=1 = no
+        correction, an honest no-op" convention.
+        """
+        from backtest.deflated_sharpe import deflated_sharpe_from_returns
+
+        returns = self._daily_returns(trades)
+        return deflated_sharpe_from_returns(returns, n_trials=n_trials)
 
     def _compute_max_drawdown_pct(self, pnls: list[float]) -> float:
         """Max peak-to-trough drawdown as a positive percentage of starting capital."""
