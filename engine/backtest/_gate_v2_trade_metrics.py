@@ -47,7 +47,8 @@ from typing import Sequence
 import numpy as np
 
 from backtest.deflated_sharpe import deflated_sharpe_from_returns
-from backtest.monte_carlo import bootstrap_max_dd, bootstrap_win_rate
+from backtest.monte_carlo import bootstrap_max_dd, bootstrap_win_rate, compute_cvar, compute_var
+from backtest.monte_carlo import probability_of_ruin as _mc_probability_of_ruin
 from backtest.stationarity_gate import h1_h2_split
 
 #: Drawdown returned when there are too few real trades to simulate a path.
@@ -139,3 +140,79 @@ def trade_level_win_rate_ci_lower(oos_results: Sequence) -> float:
     if len(pnls) < 2:
         return 0.0
     return float(bootstrap_win_rate(pnls)["win_rate_ci_95_low"])
+
+
+# ---------------------------------------------------------------------------
+# Report-only bootstrap risk metrics (VaR / CVaR / probability of ruin)
+# ---------------------------------------------------------------------------
+#
+# These three wrappers are REPORT-ONLY diagnostics, not gate-v2 pass/fail
+# thresholds (per ml-pitfalls-defense.md policy: new statistical metrics land
+# as informational fields first). Do NOT wire these into verdict pass/fail
+# logic alongside pf_ci_lower/p_edge/mc_95th_dd/dsr -- they are surfaced
+# alongside the verdict for human review only.
+
+
+def trade_level_var(
+    oos_results: Sequence,
+    initial_capital: float,
+    confidence: float = 0.95,
+    n_resamples: int = _MC_N_RESAMPLES,
+    seed: int = _MC_SEED,
+) -> float:
+    """Bootstrap-resampled VaR (USD, negative-for-loss) from the concatenated
+    OOS trade list. Report-only -- not a gate threshold. `initial_capital` is
+    accepted for signature parity with the sibling trade_level_* wrappers, even
+    though `compute_var` itself only needs the raw PnL series. Fail-safe (0.0)
+    when fewer than 2 real trades exist.
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    if len(pnls) < 2:
+        return 0.0
+    result = compute_var(pnls, confidence=confidence, n_resamples=n_resamples, seed=seed)
+    return float(result["var_pct"])
+
+
+def trade_level_cvar(
+    oos_results: Sequence,
+    initial_capital: float,
+    confidence: float = 0.95,
+    n_resamples: int = _MC_N_RESAMPLES,
+    seed: int = _MC_SEED,
+) -> float:
+    """Bootstrap-resampled CVaR (USD, negative-for-loss) from the concatenated
+    OOS trade list. Report-only -- not a gate threshold. `initial_capital` is
+    accepted for signature parity with the sibling trade_level_* wrappers, even
+    though `compute_cvar` itself only needs the raw PnL series. Fail-safe (0.0)
+    when fewer than 2 real trades exist.
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    if len(pnls) < 2:
+        return 0.0
+    result = compute_cvar(pnls, confidence=confidence, n_resamples=n_resamples, seed=seed)
+    return float(result["cvar"])
+
+
+def trade_level_probability_of_ruin(
+    oos_results: Sequence,
+    initial_capital: float,
+    ruin_threshold_pct: float = 0.5,
+    n_resamples: int = _MC_N_RESAMPLES,
+    seed: int = _MC_SEED,
+) -> float:
+    """Bootstrap-resampled probability of ruin from the concatenated OOS trade
+    list. Report-only -- not a gate threshold. Fail-safe (0.0) when fewer than
+    2 real trades exist (too little data to simulate a path -- must not
+    silently over-flag as risky).
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    if len(pnls) < 2:
+        return 0.0
+    result = _mc_probability_of_ruin(
+        pnls,
+        initial_capital=initial_capital,
+        ruin_threshold_pct=ruin_threshold_pct,
+        n_resamples=n_resamples,
+        seed=seed,
+    )
+    return float(result["probability_of_ruin"])

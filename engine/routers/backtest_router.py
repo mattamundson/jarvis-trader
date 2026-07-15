@@ -850,6 +850,22 @@ async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
             seed=42,
         )
 
+        # Bootstrap-resampled VaR / CVaR / probability-of-ruin -- additive,
+        # report-only fields alongside the permutation-based fields above.
+        # These answer a different question than run_monte_carlo()'s
+        # prob_any_loss_permuted: the sampling-distribution risk of a
+        # plausible NEW trade sequence (IID bootstrap), not a reordering of
+        # the exact same observed trades.
+        from backtest.monte_carlo import compute_cvar, compute_var
+        from backtest.monte_carlo import probability_of_ruin as _bootstrap_probability_of_ruin
+
+        pnls = [t.pnl for t in bt_result.trades]
+        mc_results["bootstrap_var"] = compute_var(pnls, seed=42)
+        mc_results["bootstrap_cvar"] = compute_cvar(pnls, seed=42)
+        mc_results["bootstrap_probability_of_ruin"] = _bootstrap_probability_of_ruin(
+            pnls, initial_capital=req.initial_capital, seed=42
+        )
+
         return mc_results
 
     except FileNotFoundError as e:
