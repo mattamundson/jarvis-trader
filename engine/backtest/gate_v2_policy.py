@@ -241,11 +241,17 @@ def is_strategy_authorized(
             "(gate v2 FAIL or not yet validated — see paper_config.py)",
         )
 
-    # 3. Non-stale gate v2 PASS verdict must exist on disk
-    if not is_ungate_eligible(sym_upper, verdicts_dir):
+    # 3. Non-stale gate v2 PASS verdict must exist on disk. Pseudo-symbols
+    # whose verdict was filed under their real underlying instrument (e.g.
+    # MES_VA30's verdict is under "MES" -- see MES_VA30_CONFIG's own
+    # verdict_symbol field) override which symbol's verdict is consulted,
+    # while messages still reference the actually-requested symbol.
+    verdict_symbol = (cfg.get("verdict_symbol") or sym_upper).upper()
+    if not is_ungate_eligible(verdict_symbol, verdicts_dir):
+        lookup_note = f" (verdict lookup: {verdict_symbol})" if verdict_symbol != sym_upper else ""
         return (
             False,
-            f"{sym_upper} has no valid non-stale gate v2 PASS verdict "
+            f"{sym_upper}{lookup_note} has no valid non-stale gate v2 PASS verdict "
             f"(verdicts expire after {MAX_VERDICT_AGE_DAYS} days — re-run gate_v2_orchestrator)",
         )
 
