@@ -43,18 +43,24 @@ function impactBadgeVariant(impact: string): "bull" | "warn" | "info" | "neutral
   }
 }
 
+function confidenceBarClasses(pct: number): { bar: string; text: string } {
+  if (pct >= 70) return { bar: "bg-[#00ff88]", text: "text-[#00ff88]" };
+  if (pct >= 40) return { bar: "bg-[#ffcc00]", text: "text-[#ffcc00]" };
+  return { bar: "bg-[#888]", text: "text-[#888]" };
+}
+
 function confidenceBar(confidence: number) {
   const pct = Math.min(100, Math.max(0, confidence * 100));
-  const color = pct >= 70 ? "#00ff88" : pct >= 40 ? "#ffcc00" : "#888";
+  const { bar, text } = confidenceBarClasses(pct);
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
         <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: color }}
+          className={`h-full rounded-full transition-all ${bar}`}
+          style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="font-mono text-[10px] tabular-nums" style={{ color }}>
+      <span className={`font-mono text-[10px] tabular-nums ${text}`}>
         {pct.toFixed(0)}%
       </span>
     </div>
@@ -70,11 +76,19 @@ function directionArrow(direction: string | null | undefined): string {
   }
 }
 
-function directionColor(direction: string | null | undefined): string {
+function directionColorClass(direction: string | null | undefined): string {
   switch (direction) {
-    case "increase": return "#00ff88";
-    case "decrease": return "#ff4444";
-    default:         return "#ffcc00";
+    case "increase": return "text-[#00ff88]";
+    case "decrease": return "text-[#ff4444]";
+    default:         return "text-[#ffcc00]";
+  }
+}
+
+function directionBoxClasses(direction: string | null | undefined): string {
+  switch (direction) {
+    case "increase": return "bg-[#00ff8808] border-[#00ff8830]";
+    case "decrease": return "bg-[#ff444408] border-[#ff444430]";
+    default:         return "bg-[#ffcc0008] border-[#ffcc0030]";
   }
 }
 
@@ -195,8 +209,7 @@ export function SuggestionPanel({ symbol }: SuggestionPanelProps) {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span
-                    className="font-mono text-sm font-bold"
-                    style={{ color: directionColor(s.direction) }}
+                    className={`font-mono text-sm font-bold ${directionColorClass(s.direction)}`}
                   >
                     {directionArrow(s.direction)}
                   </span>
@@ -225,18 +238,13 @@ export function SuggestionPanel({ symbol }: SuggestionPanelProps) {
                 </div>
 
                 <div
-                  className="flex-1 rounded-lg border p-2.5 text-center"
-                  style={{
-                    backgroundColor: `${directionColor(s.direction)}08`,
-                    borderColor: `${directionColor(s.direction)}30`,
-                  }}
+                  className={`flex-1 rounded-lg border p-2.5 text-center ${directionBoxClasses(s.direction)}`}
                 >
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">
                     Suggested
                   </p>
                   <p
-                    className="text-base font-bold tabular-nums"
-                    style={{ color: directionColor(s.direction) }}
+                    className={`text-base font-bold tabular-nums ${directionColorClass(s.direction)}`}
                   >
                     {s.suggested_value != null ? String(s.suggested_value) : "—"}
                   </p>
