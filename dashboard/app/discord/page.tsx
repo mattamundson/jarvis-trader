@@ -88,7 +88,7 @@ export default function DiscordPage() {
         {/* Page title */}
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#5865F2]/10">
-            <MessageSquare className="h-5 w-5" style={{ color: "#5865F2" }} />
+            <MessageSquare className="h-5 w-5 text-[#5865F2]" />
           </div>
           <div>
             <h2 className="font-mono text-lg font-bold text-foreground tracking-tight">
@@ -144,23 +144,23 @@ export default function DiscordPage() {
                 </p>
                 <div className="space-y-3 font-mono text-xs text-foreground/80 leading-relaxed">
                   <p>
-                    <span style={{ color: "#00ff88" }} className="font-semibold">Bot Signals</span>{" "}
+                    <span className="text-[#00ff88] font-semibold">Bot Signals</span>{" "}
                     — Parsed from the Corey Auction Tools Discord bot. Each signal
                     includes symbol, direction (LONG/SHORT), entry, targets, stops,
                     and historical win-rate statistics.
                   </p>
                   <p>
-                    <span style={{ color: "#00d4ff" }} className="font-semibold">IB Reports</span>{" "}
+                    <span className="text-[#00d4ff] font-semibold">IB Reports</span>{" "}
                     — Initial Balance reports posted each morning with IB High, IB
                     Low, and 50%/100% extension levels for each futures instrument.
                   </p>
                   <p>
-                    <span style={{ color: "#ff9500" }} className="font-semibold">Commentary</span>{" "}
+                    <span className="text-[#ff9500] font-semibold">Commentary</span>{" "}
                     — Corey&apos;s market analysis posts from the general and
                     market-updates channels, covering context and daily trading plans.
                   </p>
                   <p>
-                    <span style={{ color: "#ffcc00" }} className="font-semibold">Corey Alerts</span>{" "}
+                    <span className="text-[#ffcc00] font-semibold">Corey Alerts</span>{" "}
                     — Real-time trade alerts and level breaks called out during live
                     market sessions.
                   </p>
