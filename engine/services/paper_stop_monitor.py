@@ -378,13 +378,16 @@ class PaperStopMonitor:
             symbol = t.get("symbol")
             has_stop = stop not in (None, "", 0, 0.0)
             if not has_stop:
-                # OMS v2 bracket-executed trades never persist stop_loss onto
-                # the paper_trades row (PortfolioTracker.open_trade() has no
-                # stop_loss parameter -- a separate, documented data-hygiene
-                # gap, out of scope here). Fall back to the OMS's own
-                # in-memory bracket record, which DOES hold the real
-                # stop_loss_price from execute_bracket() time, before
-                # deferring to the max-loss-only path below.
+                # A DB row can still show a null stop_loss for trades opened
+                # before the #287 open_trade() threading fix landed, or via
+                # a code path that legitimately has no stop in scope. All 6
+                # production open_trade() call sites now thread a real or
+                # synthesized stop (see docs/incident-notes/2026-07-07-trade-287
+                # -stop-enforcement-chain.md), so this branch should only fire
+                # for pre-fix rows. Fall back to the OMS's own in-memory
+                # bracket record, which DOES hold the real stop_loss_price
+                # from execute_bracket() time, before deferring to the
+                # max-loss-only path below.
                 _oms_stop = self._resolve_oms_fallback_stop(symbol)
                 if _oms_stop is not None:
                     stop = _oms_stop
