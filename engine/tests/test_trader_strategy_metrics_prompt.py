@@ -30,6 +30,14 @@ class TestStrategyMetricsSection:
             == ""
         )
 
+    def test_all_three_sub_dicts_none_yields_empty_string(self):
+        assert (
+            TraderAgent._strategy_metrics_section(
+                {"recent": None, "validated": None, "iv_rank": None}
+            )
+            == ""
+        )
+
     def test_non_dict_yields_empty_string(self):
         assert TraderAgent._strategy_metrics_section("not a dict") == ""
         assert TraderAgent._strategy_metrics_section(42) == ""
@@ -131,6 +139,92 @@ class TestStrategyMetricsSection:
         assert "MC-95th-DD=N/A" in block
         assert "DSR=N/A" in block
 
+    def test_iv_rank_only_renders_iv_rank_line(self):
+        block = TraderAgent._strategy_metrics_section(
+            {
+                "recent": None,
+                "validated": None,
+                "iv_rank": {
+                    "symbol": "MES",
+                    "iv_rank": 72.0,
+                    "interpretation": "elevated -- consider premium-selling bias",
+                },
+            }
+        )
+        assert "STRATEGY VALIDATION METRICS" in block
+        assert "IV Rank: 72" in block
+        assert "elevated" in block.lower()
+        assert "premium-selling" in block.lower()
+        # The other two sub-sections still fall back to their absent-data text.
+        assert "not enough closed trades" in block.lower()
+        assert "no fresh verdict on file" in block.lower()
+
+    def test_iv_rank_low_renders_premium_buying_bias(self):
+        block = TraderAgent._strategy_metrics_section(
+            {
+                "recent": None,
+                "validated": None,
+                "iv_rank": {
+                    "symbol": "MGC",
+                    "iv_rank": 18.0,
+                    "interpretation": "low -- consider premium-buying bias",
+                },
+            }
+        )
+        assert "IV Rank: 18" in block
+        assert "premium-buying" in block.lower()
+
+    def test_iv_rank_absent_omits_iv_rank_line(self):
+        block = TraderAgent._strategy_metrics_section(
+            {
+                "recent": {
+                    "n_trades": 15,
+                    "sharpe_ratio": 1.23,
+                    "sortino_ratio": 1.55,
+                    "calmar_ratio": 0.87,
+                    "max_drawdown_pct": 0.042,
+                    "win_rate": 0.6,
+                    "profit_factor": 1.8,
+                },
+                "validated": None,
+                "iv_rank": None,
+            }
+        )
+        assert "IV Rank:" not in block
+
+    def test_all_three_present_renders_all_blocks(self):
+        block = TraderAgent._strategy_metrics_section(
+            {
+                "recent": {
+                    "n_trades": 12,
+                    "sharpe_ratio": -0.5,
+                    "sortino_ratio": -0.6,
+                    "calmar_ratio": -0.1,
+                    "max_drawdown_pct": 0.15,
+                    "win_rate": 0.3,
+                    "profit_factor": 0.7,
+                },
+                "validated": {
+                    "symbol": "MGC",
+                    "verdict": "FAIL",
+                    "passed_via": None,
+                    "mc_95th_dd_pct": 0.09,
+                    "dsr": 0.02,
+                    "pf_ci_lower": 0.8,
+                    "wfo_consistency": "WEAK",
+                    "age_days": 1.0,
+                },
+                "iv_rank": {
+                    "symbol": "MGC",
+                    "iv_rank": 45.0,
+                    "interpretation": "neutral -- no strong premium-selling/buying skew",
+                },
+            }
+        )
+        assert "Sharpe=-0.50" in block
+        assert "verdict=FAIL" in block
+        assert "IV Rank: 45" in block
+
 
 class TestBuildPromptIncludesStrategyMetricsSection:
     """End-to-end: _build_prompt actually emits the section when data is present."""
@@ -199,11 +293,17 @@ class TestBuildPromptIncludesStrategyMetricsSection:
                     "wfo_consistency": "MODERATE",
                     "age_days": 2.0,
                 },
+                "iv_rank": {
+                    "symbol": "MES",
+                    "iv_rank": 72.0,
+                    "interpretation": "elevated -- consider premium-selling bias",
+                },
             },
         )
         assert "STRATEGY VALIDATION METRICS" in prompt
         assert "Sharpe=0.95" in prompt
         assert "verdict=PASS" in prompt
+        assert "IV Rank: 72" in prompt
 
     def test_prompt_omits_section_when_strategy_metrics_absent(self):
         agent = self._make_agent()
@@ -227,3 +327,36 @@ class TestBuildPromptIncludesStrategyMetricsSection:
             strategy_metrics={"recent": None, "validated": None},
         )
         assert "STRATEGY VALIDATION METRICS" not in prompt
+
+    def test_prompt_omits_section_when_all_three_sub_dicts_none(self):
+        agent = self._make_agent()
+        prompt = agent._build_prompt(
+            "SPY",
+            self._minimal_debate(),
+            self._minimal_analyst_reports(),
+            self._minimal_safety(),
+            self._make_position_size(),
+            strategy_metrics={"recent": None, "validated": None, "iv_rank": None},
+        )
+        assert "STRATEGY VALIDATION METRICS" not in prompt
+
+    def test_prompt_includes_section_when_only_iv_rank_present(self):
+        agent = self._make_agent()
+        prompt = agent._build_prompt(
+            "MGC",
+            self._minimal_debate(),
+            self._minimal_analyst_reports(),
+            self._minimal_safety(),
+            self._make_position_size(),
+            strategy_metrics={
+                "recent": None,
+                "validated": None,
+                "iv_rank": {
+                    "symbol": "MGC",
+                    "iv_rank": 18.0,
+                    "interpretation": "low -- consider premium-buying bias",
+                },
+            },
+        )
+        assert "STRATEGY VALIDATION METRICS" in prompt
+        assert "IV Rank: 18" in prompt
