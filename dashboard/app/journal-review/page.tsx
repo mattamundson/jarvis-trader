@@ -243,9 +243,12 @@ export default function JournalReviewPage() {
     honestSet && honestSet.losses > 0
       ? honestSet.grossLoss / honestSet.losses
       : undefined;
+  // honestAvgLoss is a negative number (average of losing trades' P&L), so
+  // the guard must check non-zero magnitude, not `> 0` — the old condition
+  // was never true whenever real losses existed, permanently rendering "—".
   const honestRR: number | undefined =
-    honestAvgWin !== undefined && honestAvgLoss !== undefined && honestAvgLoss > 0
-      ? honestAvgWin / honestAvgLoss
+    honestAvgWin !== undefined && honestAvgLoss !== undefined && honestAvgLoss !== 0
+      ? honestAvgWin / Math.abs(honestAvgLoss)
       : undefined;
 
   async function runAnalysis() {
