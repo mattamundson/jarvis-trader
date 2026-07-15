@@ -3,6 +3,24 @@
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import type { UnrealizedPosition, UnrealizedPositionsResponse } from "@/lib/api";
+import { ProvenanceBadge } from "@/components/DataValue";
+import { type DataEnvelope } from "@/lib/provenance";
+import { useProvenance } from "@/lib/useProvenance";
+
+// Fallback freshness window when a position predates the provenance envelope
+// (engine restart mid-poll) and omits stale_after_s.
+const DEFAULT_STALE_AFTER_S = 60;
+
+/** Map an UnrealizedPosition's mark fields to the canonical DataEnvelope shape. */
+function toEnvelope(pos: UnrealizedPosition): DataEnvelope {
+  return {
+    value: pos.current_price,
+    source: pos.source ?? "unavailable",
+    as_of: pos.as_of ?? null,
+    is_live: pos.is_live ?? false,
+    stale_after_s: pos.stale_after_s ?? DEFAULT_STALE_AFTER_S,
+  };
+}
 
 function formatPrice(symbol: string, price: number | null): string {
   if (price === null || price === undefined) return "N/A";
@@ -41,6 +59,11 @@ function PositionRow({ pos }: { pos: UnrealizedPosition }) {
       : pos.unrealized_pnl >= 0
       ? "text-emerald-400"
       : "text-red-400";
+  // Unrealized P&L is only as trustworthy as the mark that drives it — the
+  // engine already refuses to compute unrealized_pnl from a stale/unavailable
+  // mark (mark_stale gate in portfolio_router._compute_unrealized), but the
+  // badge makes that honest even when a mark IS live-tier-but-aged.
+  const markView = useProvenance(toEnvelope(pos));
 
   return (
     <div className="flex items-start justify-between py-2 border-b border-zinc-800 last:border-0 gap-2">
@@ -51,6 +74,7 @@ function PositionRow({ pos }: { pos: UnrealizedPosition }) {
           </span>
           <DirectionBadge direction={pos.direction} />
           <span className="text-xs text-zinc-500">×{pos.quantity}</span>
+          <ProvenanceBadge view={markView} />
         </div>
         <div className="text-xs text-zinc-400 font-mono">
           Entry: ${pos.entry_price.toFixed(2)} →{" "}

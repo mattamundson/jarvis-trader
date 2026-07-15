@@ -1819,6 +1819,13 @@ export interface UnrealizedPosition {
   take_profit: number | null;
   stop_distance: number | null;
   target_distance: number | null;
+  // Data-provenance envelope (Phase 1) — see engine/data/provenance.py /
+  // dashboard/lib/provenance.ts. Describes the CURRENT_PRICE mark, not the
+  // static entry/stop/target fields above.
+  is_live?: boolean;
+  source?: string | null;
+  as_of?: number | null;
+  stale_after_s?: number;
 }
 
 export type UnrealizedPositionsResponse = UnrealizedPosition[];
