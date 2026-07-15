@@ -58,6 +58,16 @@ interface PolymarketPnLResponse {
   status: string;
 }
 
+// ── Style helpers ─────────────────────────────────────────────────────────────
+
+function positiveColorClass(positive: boolean): string {
+  return positive ? "text-[#00ff88]" : "text-[#ff4444]";
+}
+
+function confidenceColorClass(confidence: number | undefined): string {
+  return (confidence ?? 0) > 0.7 ? "text-[#00ff88]" : "text-[#ffcc00]";
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PolymarketPage() {
@@ -119,17 +129,16 @@ export default function PolymarketPage() {
             {status && (
               <>
                 <span
-                  className="font-mono text-xs font-bold tabular-nums"
-                  style={{ color: pnlPositive ? "#00ff88" : "#ff4444" }}
+                  className={`font-mono text-xs font-bold tabular-nums ${positiveColorClass(pnlPositive)}`}
                 >
                   {pnlPositive ? "+" : ""}${(pnl?.daily_pnl ?? 0).toFixed(2)} today
                 </span>
                 <span
-                  className="font-mono text-[10px] px-2 py-0.5 rounded border"
-                  style={{
-                    borderColor: isEnabled ? "#00ff8844" : "#55555544",
-                    color: isEnabled ? "#00ff88" : "#555",
-                  }}
+                  className={`font-mono text-[10px] px-2 py-0.5 rounded border ${
+                    isEnabled
+                      ? "border-[#00ff8844] text-[#00ff88]"
+                      : "border-[#55555544] text-[#555]"
+                  }`}
                 >
                   {isEnabled ? "ENABLED" : "DISABLED"}
                 </span>
@@ -163,7 +172,7 @@ export default function PolymarketPage() {
               <div className="space-y-2 font-mono text-xs">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Status</span>
-                  <span style={{ color: isEnabled ? "#00ff88" : "#ff4444" }}>
+                  <span className={positiveColorClass(isEnabled)}>
                     {isEnabled ? "Connected" : "Disabled"}
                   </span>
                 </div>
@@ -173,11 +182,7 @@ export default function PolymarketPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Daily P&L</span>
-                  <span
-                    style={{
-                      color: (status.daily_pnl ?? 0) >= 0 ? "#00ff88" : "#ff4444",
-                    }}
-                  >
+                  <span className={positiveColorClass((status.daily_pnl ?? 0) >= 0)}>
                     {(status.daily_pnl ?? 0) >= 0 ? "+" : ""}${(status.daily_pnl ?? 0).toFixed(2)}
                   </span>
                 </div>
@@ -196,8 +201,7 @@ export default function PolymarketPage() {
               <div className="space-y-3">
                 <div className="flex items-baseline gap-2">
                   <span
-                    className="font-mono text-2xl font-bold tabular-nums"
-                    style={{ color: pnlPositive ? "#00ff88" : "#ff4444" }}
+                    className={`font-mono text-2xl font-bold tabular-nums ${positiveColorClass(pnlPositive)}`}
                   >
                     {pnlPositive ? "+" : ""}${(pnl.daily_pnl ?? 0).toFixed(2)}
                   </span>
@@ -230,7 +234,7 @@ export default function PolymarketPage() {
             <div className="space-y-2 font-mono text-[10px] text-muted-foreground leading-relaxed">
               <p>Polymarket: Peer-to-peer prediction market platform.</p>
               <p>
-                Currently in <span style={{ color: "#ffcc00" }}>paper mode</span> only.
+                Currently in <span className="text-[#ffcc00]">paper mode</span> only.
               </p>
               <p>Set POLYMARKET_ENABLED=true in .env to activate trading.</p>
             </div>
@@ -285,8 +289,7 @@ export default function PolymarketPage() {
                       {opp.volume_24h ? `$${(opp.volume_24h / 1000).toFixed(0)}k` : "—"}
                     </span>
                     <span
-                      className="text-right tabular-nums font-semibold"
-                      style={{ color: (opp.confidence ?? 0) > 0.7 ? "#00ff88" : "#ffcc00" }}
+                      className={`text-right tabular-nums font-semibold ${confidenceColorClass(opp.confidence)}`}
                     >
                       {opp.confidence ? `${(opp.confidence * 100).toFixed(0)}%` : "—"}
                     </span>
