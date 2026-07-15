@@ -319,7 +319,8 @@ export default function ScorecardPage() {
   }
 
   // ── Derived values from honest deduped record ─────────────────────────────
-  // All gate-relevant metrics come exclusively from fetchHonestTrades().
+  // All gate-relevant metrics come exclusively from the shared useHonestTrades()
+  // hook's honestSet (no standalone fetch — see the subscription above).
 
   const pf = honestSet?.profitFactor ?? 0;
   // Sharpe is NOT available from the deduped record — it must NOT gate readiness.
