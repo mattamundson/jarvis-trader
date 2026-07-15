@@ -57,11 +57,19 @@ export function BarDepthCard() {
           <Database className="h-4 w-4 text-muted-foreground" />
           Data Integrity — bar coverage
         </h3>
-        {summary && (
-          <Badge variant={dirtyOverall ? "bear" : "bull"}>
-            {summary.total_rows.toLocaleString()} bars · {summary.contaminated_pct.toFixed(2)}% bad
+        <div className="flex items-center gap-2">
+          {summary && (
+            <Badge variant={dirtyOverall ? "bear" : "bull"}>
+              {summary.total_rows.toLocaleString()} bars · {summary.contaminated_pct.toFixed(2)}% bad
+            </Badge>
+          )}
+          <Badge variant={error ? "static" : "live"}>
+            <span className="flex items-center gap-1">
+              <span className={`h-1.5 w-1.5 rounded-full ${error ? "bg-muted-foreground" : "bg-bull animate-pulse"}`} />
+              {error ? "STATIC" : "LIVE"}
+            </span>
           </Badge>
-        )}
+        </div>
       </div>
 
       {isLoading ? (
