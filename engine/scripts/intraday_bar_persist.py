@@ -6,18 +6,23 @@ MarketDataManager waterfall (TV → IBKR → CSV cache) and persists them into
 market_data_bars through the existing save_bars hook.
 
 Run once per cycle from a scheduled task — cron handles recurrence.
-The script itself enforces a trading-hours gate so cron can be a simple
-"every 60 min on weekdays" rule without day-of-week complexity in Task Scheduler.
+The script itself enforces a CME Globex futures-session gate (nearly 24/5,
+closed only for the weekend and the daily 17:00-18:00 ET maintenance halt).
+
+NOTE: if the underlying Task Scheduler trigger is "weekdays only," it will
+still miss the Sunday 18:00 ET Globex reopen — the code gate is now correct,
+but the *cron trigger itself* may need a matching update to actually fire
+during that window. Not fixed here; flagging as a follow-up.
 
 Usage
 -----
-    # Normal mode: runs only during trading hours (Mon-Fri 09:25-16:05 ET)
+    # Normal mode: runs only while the Globex futures session is open
     python -m engine.scripts.intraday_bar_persist
 
     # Override symbols
     python -m engine.scripts.intraday_bar_persist --symbols MES MGC MNQ
 
-    # Bypass trading-hours gate (for manual runs or smoke tests)
+    # Bypass the session gate (for manual runs or smoke tests)
     python -m engine.scripts.intraday_bar_persist --force
 
     # Dry-run: report what would be fetched without writing
@@ -74,23 +79,25 @@ BAR_LIMIT = 300          # 300 bars × 1h = ~12.5 trading days; covers SMA-200 +
 INTERVAL = "1h"
 LOOKBACK_DAYS = 14       # 14 calendar days → enough 1h bars for SMA-200 on signal path
 
-# Trading hours gate (Eastern Time): Mon-Fri, 09:25 → 16:05
-# 09:25 gives cron triggered at 09:30 a ~5-min grace window on early bars.
-# 16:05 captures the 16:00 bar before it's rolled off the exchange feed.
+# Futures session gate (Eastern Time): CME Globex trades MES/MGC nearly 24/5.
+# Closed only for the weekend (Fri 17:00 -> Sun 18:00 ET) and the daily
+# maintenance halt (17:00-18:00 ET, Sun evening through Thu evening).
+#
+# This replaces an equities-RTH-shaped gate (Mon-Fri 09:25-16:05 ET) that was
+# wrongly applied to futures here -- it silently skipped every fetch outside
+# that window, up to ~17h/day of missed bars for a near-24h instrument.
 _ET = ZoneInfo("America/New_York")
-_GATE_OPEN_H = 9
-_GATE_OPEN_M = 25
-_GATE_CLOSE_H = 16
-_GATE_CLOSE_M = 5
+_MAINT_START_H = 17
+_MAINT_END_H = 18
 
 
 # ---------------------------------------------------------------------------
-# Trading hours check
+# Futures session check
 # ---------------------------------------------------------------------------
 
 
-def is_trading_hours(now: datetime | None = None) -> bool:
-    """Return True when now falls inside Mon-Fri 09:25-16:05 Eastern.
+def is_futures_session_open(now: datetime | None = None) -> bool:
+    """Return True when now falls inside the CME Globex MES/MGC session.
 
     Parameters
     ----------
@@ -106,15 +113,20 @@ def is_trading_hours(now: datetime | None = None) -> bool:
         now = now.replace(tzinfo=timezone.utc)
     now_et = now.astimezone(_ET)
 
-    # Weekday gate: 0=Mon … 4=Fri
-    if now_et.weekday() > 4:
+    weekday = now_et.weekday()  # 0=Mon ... 5=Sat, 6=Sun
+    minutes = now_et.hour * 60 + now_et.minute
+    maint_start = _MAINT_START_H * 60
+    maint_end = _MAINT_END_H * 60
+
+    if weekday == 5:  # Saturday: fully closed
         return False
-
-    open_minutes = _GATE_OPEN_H * 60 + _GATE_OPEN_M
-    close_minutes = _GATE_CLOSE_H * 60 + _GATE_CLOSE_M
-    current_minutes = now_et.hour * 60 + now_et.minute
-
-    return open_minutes <= current_minutes <= close_minutes
+    if weekday == 6 and minutes < maint_end:  # Sunday before 18:00 ET: still closed
+        return False
+    if weekday == 4 and minutes >= maint_start:  # Friday 17:00 ET: closed for the week
+        return False
+    if maint_start <= minutes < maint_end:  # daily maintenance halt
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -220,10 +232,10 @@ async def _run(symbols: list[str], force: bool, no_fetch: bool) -> int:
     """Async entrypoint — returns 0 on success, 1 on unexpected error."""
     now_utc = datetime.now(timezone.utc)
 
-    if not force and not is_trading_hours(now_utc):
+    if not force and not is_futures_session_open(now_utc):
         now_et = now_utc.astimezone(_ET)
         logger.info(
-            "Outside trading hours (%s ET weekday=%d) — skipping. Use --force to override.",
+            "Outside futures session (%s ET weekday=%d) — skipping. Use --force to override.",
             now_et.strftime("%H:%M"),
             now_et.weekday(),
         )
