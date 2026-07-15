@@ -24,9 +24,13 @@ If your strategy is truly robust, the original equity curve should sit in the up
   - MCL (Oil): custom per instrument
 - **Comprehensive metrics**:
   - Percentile statistics: 5th, 25th, 50th (median), 75th, 95th
-  - Confidence metrics: probability of profit, probability of ruin, 2x return target
+  - Confidence metrics: probability of profit, probability of any loss under permutation
+    (`prob_any_loss_permuted`), 2x return target
   - Risk metrics: Value-at-Risk (5%), Conditional Value-at-Risk, worst-case max drawdown
   - Verdict classification: EXCELLENT / GOOD / MARGINAL / POOR
+  - Bootstrap-resampled VaR/CVaR/probability-of-ruin (`compute_var`, `compute_cvar`,
+    `probability_of_ruin` — distinct from the permutation-based `prob_any_loss_permuted`
+    above; see docstrings in `monte_carlo.py`)
 
 ### CLI Runner (`run_monte_carlo.py`)
 
@@ -107,13 +111,36 @@ Run Monte Carlo simulation on backtest results.
   },
   "confidence": {
     "prob_profitable": 45.2,
-    "probability_of_ruin": 54.8,
+    "prob_any_loss_permuted": 54.8,
     "prob_achieving_2x_return": 0.0,
     "value_at_risk_5pct": 95000,
     "expected_shortfall": 94500,
     "worst_case_max_drawdown": 7.5
   },
-  "verdict": "MARGINAL"
+  "verdict": "MARGINAL",
+  "bootstrap_var": {
+    "var_pct": -0.021,
+    "median_var": -0.020,
+    "var_ci_95_low": -0.028,
+    "var_ci_95_high": -0.013,
+    "confidence": 0.95,
+    "n_trades": 42
+  },
+  "bootstrap_cvar": {
+    "cvar": -0.031,
+    "median_cvar": -0.030,
+    "cvar_ci_95_low": -0.040,
+    "cvar_ci_95_high": -0.021,
+    "confidence": 0.95,
+    "n_trades": 42
+  },
+  "bootstrap_probability_of_ruin": {
+    "probability_of_ruin": 0.02,
+    "ruin_threshold_pct": 0.5,
+    "ruin_equity_level": 50000.0,
+    "n_resamples": 10000,
+    "n_trades": 42
+  }
 }
 ```
 

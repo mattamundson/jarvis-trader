@@ -14,11 +14,15 @@ import numpy as np
 
 from backtest._gate_v2_trade_metrics import (
     concat_oos_trade_pnls,
+    trade_level_cvar,
     trade_level_dsr,
     trade_level_mc_95th_dd,
+    trade_level_probability_of_ruin,
+    trade_level_var,
 )
 from backtest.deflated_sharpe import deflated_sharpe_from_returns
-from backtest.monte_carlo import bootstrap_max_dd
+from backtest.monte_carlo import bootstrap_max_dd, compute_cvar, compute_var
+from backtest.monte_carlo import probability_of_ruin as mc_probability_of_ruin
 
 CAP = 50_000.0
 
@@ -101,3 +105,46 @@ class TestTradeLevelDsr:
         windows = [_window(pnls)]
         dsr = trade_level_dsr(windows, n_grid_combos=8, initial_capital=CAP)
         assert 0.0 <= dsr <= 1.0
+
+
+class TestTradeLevelVar:
+    def test_matches_canonical_primitive(self):
+        """Report-only diagnostic -- must equal compute_var on the concatenated
+        OOS trade list (same delegate pattern as trade_level_mc_95th_dd)."""
+        pnls = [200.0, -150.0, -120.0, 90.0, -200.0, 60.0, -80.0, 140.0]
+        windows = [_window(pnls[:3]), _window(pnls[3:6]), _window(pnls[6:])]
+        expected = compute_var(pnls, confidence=0.95, n_resamples=10_000, seed=42)["var_pct"]
+        assert trade_level_var(windows, initial_capital=CAP) == expected
+
+    def test_failsafe_when_too_few_trades(self):
+        assert trade_level_var([_window([42.0])], initial_capital=CAP) == 0.0
+        assert trade_level_var([_window([])], initial_capital=CAP) == 0.0
+
+
+class TestTradeLevelCvar:
+    def test_matches_canonical_primitive(self):
+        pnls = [200.0, -150.0, -120.0, 90.0, -200.0, 60.0, -80.0, 140.0]
+        windows = [_window(pnls[:3]), _window(pnls[3:6]), _window(pnls[6:])]
+        expected = compute_cvar(pnls, confidence=0.95, n_resamples=10_000, seed=42)["cvar"]
+        assert trade_level_cvar(windows, initial_capital=CAP) == expected
+
+    def test_failsafe_when_too_few_trades(self):
+        assert trade_level_cvar([_window([42.0])], initial_capital=CAP) == 0.0
+        assert trade_level_cvar([_window([])], initial_capital=CAP) == 0.0
+
+
+class TestTradeLevelProbabilityOfRuin:
+    def test_matches_canonical_primitive(self):
+        pnls = [500.0, 500.0, -8000.0, 500.0]
+        windows = [_window(pnls[:2]), _window(pnls[2:])]
+        expected = mc_probability_of_ruin(
+            pnls, initial_capital=CAP, ruin_threshold_pct=0.5, n_resamples=10_000, seed=42
+        )["probability_of_ruin"]
+        assert (
+            trade_level_probability_of_ruin(windows, initial_capital=CAP, ruin_threshold_pct=0.5)
+            == expected
+        )
+
+    def test_failsafe_when_too_few_trades_returns_zero_not_one(self):
+        assert trade_level_probability_of_ruin([_window([42.0])], initial_capital=CAP) == 0.0
+        assert trade_level_probability_of_ruin([_window([])], initial_capital=CAP) == 0.0
