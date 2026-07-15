@@ -2547,13 +2547,14 @@ async def lifespan(app: FastAPI):
                     _stop = _trade.get("stop_loss")
                     _sym = (_trade.get("symbol") or "").upper()
                     if _stop is None:
-                        # OMS v2 bracket-executed trades never persist
-                        # stop_loss onto the paper_trades row
-                        # (PortfolioTracker.open_trade() has no stop_loss
-                        # parameter -- a separate, documented data-hygiene
-                        # gap, out of scope here). Fall back to the OMS's own
-                        # in-memory bracket record, which DOES hold the real
-                        # stop_loss_price from execute_bracket() time.
+                        # A null stop here means either a pre-#287-fix row or a
+                        # path with no stop in scope -- all 6 production
+                        # open_trade() call sites now thread a real or
+                        # synthesized stop (see docs/incident-notes/2026-07-07
+                        # -trade-287-stop-enforcement-chain.md). Fall back to
+                        # the OMS's own in-memory bracket record, which DOES
+                        # hold the real stop_loss_price from execute_bracket()
+                        # time.
                         if oms_manager is not None and _sym:
                             try:
                                 _stop = oms_manager.resolve_stop_for_symbol(_sym)
