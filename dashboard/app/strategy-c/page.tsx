@@ -89,6 +89,7 @@ interface Metrics {
     win_rate: number;
     calmar: number;
     final_equity: number;
+    final_multiple_x: number;
     n_weeks: number;
   };
   in_sample?: {
@@ -701,8 +702,8 @@ export default function StrategyCPage() {
                 },
                 {
                   label: "Final Equity",
-                  live: metrics.full_period?.final_equity != null,
-                  value: metrics.full_period?.final_equity != null ? `${fmtNum(metrics.full_period.final_equity)}×` : "4.12×",
+                  live: metrics.full_period?.final_multiple_x != null,
+                  value: metrics.full_period?.final_multiple_x != null ? `${fmtNum(metrics.full_period.final_multiple_x)}×` : "4.12×",
                 },
               ].map((m) => (
                 <div key={m.label} className="bg-slate-800/30 rounded-lg p-2.5 text-center">
