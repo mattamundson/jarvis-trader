@@ -172,6 +172,10 @@ class TradeLogger:
 
             # Persist to trade_journal table (return id intentionally
             # discarded — provenance is also persisted via _store_signal_provenance).
+            # bull_score/bear_score/debate_confidence are passed here because
+            # trade_journal (not paper_trades) is the table those columns
+            # actually live on (migration_012) — see _store_signal_provenance
+            # below for the paper_trades-side fields.
             self._db.add_journal_entry(
                 trade_id=trade_id,
                 note=f"AUTO-ENTRY: {entry.side.upper()} {entry.quantity} {symbol} @ {entry.entry_price}",
@@ -179,6 +183,9 @@ class TradeLogger:
                 mood=None,  # auto-logged, no mood
                 lesson=None,
                 timestamp=entry.entry_time,
+                bull_score=entry.bull_score,
+                bear_score=entry.bear_score,
+                debate_confidence=entry.debate_confidence,
             )
 
             # Also update paper_trades to include signal provenance (if supported)
@@ -276,15 +283,16 @@ class TradeLogger:
         """
         Store signal provenance in paper_trades table.
 
-        This persists all signal context directly into the paper_trades record
+        This persists signal context directly into the paper_trades record
         so that the trade journal has full attribution without needing
         to correlate back to decisions table.
 
-        Note: This requires schema updates to paper_trades table to add:
-          - regime, structure_position, bias
-          - composite_score, stc_contrib, orb_contrib, vwap_contrib
-          - bull_score, bear_score, debate_confidence
-          - deciding_stage, regime_tier
+        Note: paper_trades (migration_010) only has regime, structure_position,
+        bias, composite_score, stc_contrib, orb_contrib, vwap_contrib.
+        bull_score/bear_score/debate_confidence/deciding_stage/regime_tier
+        live on trade_journal instead (migration_012) and are persisted via
+        add_journal_entry() above — do not attempt to UPDATE them here, the
+        columns don't exist on this table.
 
         This is a non-blocking operation — failures are logged but don't
         prevent the trade from being logged.
@@ -309,10 +317,7 @@ class TradeLogger:
                             composite_score = ?,
                             stc_contrib = ?,
                             orb_contrib = ?,
-                            vwap_contrib = ?,
-                            bull_score = ?,
-                            bear_score = ?,
-                            debate_confidence = ?
+                            vwap_contrib = ?
                         WHERE trade_id = ?
                     """
                     params = (
@@ -322,9 +327,6 @@ class TradeLogger:
                         entry.stc_contrib,
                         entry.orb_contrib,
                         entry.vwap_contrib,
-                        entry.bull_score,
-                        entry.bear_score,
-                        entry.debate_confidence,
                         trade_id,
                     )
                     conn.execute(sql, params)
@@ -336,8 +338,16 @@ class TradeLogger:
             finally:
                 conn.close()
         except Exception as err:
-            logger.debug(
-                "[TradeLogger] Could not store provenance (non-critical): %s", err
+            # Surfaced at error level (was silently swallowed at debug) —
+            # this masked a real bug for an unknown period: the UPDATE used
+            # to reference bull_score/bear_score/debate_confidence, columns
+            # that don't exist on paper_trades, so every call threw and no
+            # provenance field was ever persisted, with no visible signal.
+            logger.error(
+                "[TradeLogger] Failed to store signal provenance for trade_id=%s: %s",
+                trade_id[:8],
+                err,
+                exc_info=True,
             )
 
     async def correlate_entry_to_decision(

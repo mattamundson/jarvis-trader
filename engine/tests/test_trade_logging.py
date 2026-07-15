@@ -74,8 +74,14 @@ class MockDatabaseManager:
         mood: Optional[str] = None,
         lesson: Optional[str] = None,
         timestamp: Optional[str] = None,
+        regime_tier: Optional[int] = None,
+        deciding_stage: Optional[str] = None,
+        bull_score: Optional[float] = None,
+        bear_score: Optional[float] = None,
+        debate_confidence: Optional[float] = None,
+        timeframe: Optional[str] = None,
     ) -> int:
-        """Mock add_journal_entry."""
+        """Mock add_journal_entry — signature mirrors JournalMixin.add_journal_entry."""
         entry_id = self.journal_id_counter
         self.journal_id_counter += 1
         self.journal_entries[entry_id] = {
@@ -86,6 +92,12 @@ class MockDatabaseManager:
             "tags": tags,
             "mood": mood,
             "lesson": lesson,
+            "regime_tier": regime_tier,
+            "deciding_stage": deciding_stage,
+            "bull_score": bull_score,
+            "bear_score": bear_score,
+            "debate_confidence": debate_confidence,
+            "timeframe": timeframe,
         }
         return entry_id
 

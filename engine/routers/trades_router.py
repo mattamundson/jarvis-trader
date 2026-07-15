@@ -138,17 +138,39 @@ def get_trades_journal(
         # (engine/database/_mixins_trades.py) and GENUINE_OPEN_STATUS /
         # GENUINE_CLOSED_STATUS (engine/backtest/live_readiness.py) — instead
         # of inventing a new dedup mechanism.
-        query = "SELECT * FROM paper_trades WHERE status IN ('open', 'closed')"
+        # regime_tier/deciding_stage/bull_score/bear_score/debate_confidence/
+        # timeframe are NOT paper_trades columns -- they live on trade_journal
+        # (migration_012), populated by TradeLogger.log_entry()'s auto-logged
+        # add_journal_entry() call. LEFT JOIN the auto-logged row per trade
+        # (tags LIKE '%auto_logged%', latest by id if more than one) so this
+        # endpoint can actually return them instead of always defaulting to
+        # None via the Pydantic model.
+        query = """
+            SELECT pt.*, tj.regime_tier, tj.deciding_stage, tj.bull_score,
+                   tj.bear_score, tj.debate_confidence, tj.timeframe
+            FROM paper_trades pt
+            LEFT JOIN (
+                SELECT trade_id, regime_tier, deciding_stage, bull_score,
+                       bear_score, debate_confidence, timeframe
+                FROM trade_journal
+                WHERE id IN (
+                    SELECT MAX(id) FROM trade_journal
+                    WHERE tags LIKE '%auto_logged%'
+                    GROUP BY trade_id
+                )
+            ) tj ON tj.trade_id = pt.trade_id
+            WHERE pt.status IN ('open', 'closed')
+        """
         params: List[Any] = []
 
         if symbol:
-            query += " AND symbol = ?"
+            query += " AND pt.symbol = ?"
             params.append(symbol)
         if regime:
-            query += " AND regime = ?"
+            query += " AND pt.regime = ?"
             params.append(regime)
 
-        query += " ORDER BY entry_time DESC LIMIT ?"
+        query += " ORDER BY pt.entry_time DESC LIMIT ?"
         params.append(limit)
 
         cursor = conn.execute(query, params)
