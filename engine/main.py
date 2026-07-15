@@ -2537,9 +2537,10 @@ async def lifespan(app: FastAPI):
                 if not open_trades:
                     return
                 from portfolio.tracker import (
-                    INSTRUMENT_MULTIPLIERS as _MULT,
+                    UnknownInstrumentMultiplierError as _UnknownMultErr,
                     _DEFAULT_MULTIPLIER as _DEF_MULT,
                     _commission_per_contract as _commission_per_contract_fn,
+                    _resolve_multiplier as _resolve_mult_fn,
                 )  # noqa: E501
 
                 for _trade in open_trades:
@@ -2605,7 +2606,27 @@ async def lifespan(app: FastAPI):
                     _hit = (_is_long and _cur <= _stop_f) or (not _is_long and _cur >= _stop_f)
                     if not _hit:
                         continue
-                    _mult = _MULT.get(_sym, _DEF_MULT)
+                    try:
+                        _mult = _resolve_mult_fn(_sym)
+                    except _UnknownMultErr:
+                        # Fail LOUD, not silent -- but still close the trade.
+                        # D1-01: this loop enforces a breached stop_loss (the
+                        # 2026-06-01 MGC #178 incident this monitor exists to
+                        # prevent), so silently skipping the close on an
+                        # unmapped symbol would recreate that exact failure
+                        # mode. A visibly-wrong P&L on an ERROR log is safer
+                        # than a naked position rode past its stop.
+                        logger.error(
+                            "[stop_monitor] No contract multiplier configured "
+                            "for %s -- closing at stop with a %.1fx fallback "
+                            "so the breach is still enforced, but this "
+                            "trade's P&L may be wrong. Add %s to "
+                            "INSTRUMENT_MULTIPLIERS.",
+                            _sym,
+                            _DEF_MULT,
+                            _sym,
+                        )
+                        _mult = _DEF_MULT
                     _qty = float(_trade.get("quantity") or 1.0)
                     _gross_pnl = (
                         (_stop_f - _entry) * _qty * _mult
