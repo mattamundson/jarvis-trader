@@ -62,7 +62,7 @@ class PostTradeAnalyzer:
             return
         try:
             with self.db._lock:
-                conn = self.db._get_connection()
+                conn = self.db._connect()
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS trade_post_mortem (
@@ -124,7 +124,7 @@ class PostTradeAnalyzer:
                 # Persist
                 if self.db:
                     with self.db._lock:
-                        conn = self.db._get_connection()
+                        conn = self.db._connect()
                         conn.execute(
                             "INSERT OR REPLACE INTO trade_post_mortem (trade_id, symbol, pnl, analysis, lesson, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                             (
