@@ -191,11 +191,18 @@ function RiskSettingsPanel() {
           <span className="text-sm font-semibold text-foreground">Risk Limits</span>
         </div>
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Edit circuit breaker thresholds
+          Not enforced — see note
         </span>
       </summary>
 
       <div className="px-5 pb-5 pt-1 space-y-4 border-t border-border/50">
+        <p className="text-xs rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-warn">
+          These values are recorded in the database but are NOT read by SafetyLayer at
+          order-check time — the engine sources every one of these limits from
+          engine/config.py / engine/.env at process start. Saving a change here updates
+          what this panel displays; it does not change what the safety layer enforces
+          until that gap is closed (JARVIS TRADER ROI backlog item 5).
+        </p>
         {loading && (
           <div className="space-y-2 animate-pulse">
             {Array.from({ length: 6 }).map((_, i) => (

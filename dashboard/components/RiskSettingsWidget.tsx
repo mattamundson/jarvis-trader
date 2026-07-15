@@ -125,7 +125,7 @@ export function RiskSettingsWidget() {
             <CardTitle className="text-base font-semibold">
               Risk Configuration
             </CardTitle>
-            <Badge variant="info">Live Config</Badge>
+            <Badge variant="warn">Not Enforced</Badge>
           </div>
           <button
             onClick={fetchData}
@@ -138,6 +138,10 @@ export function RiskSettingsWidget() {
       </CardHeader>
 
       <CardContent className="space-y-1">
+        <p className="text-[11px] rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-warn">
+          Recorded in the database, not read by SafetyLayer — the engine enforces
+          risk limits from engine/config.py / engine/.env at process start.
+        </p>
         {/* Loading skeleton */}
         {loading && !cfg && (
           <div className="space-y-2 animate-pulse">
