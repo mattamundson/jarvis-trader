@@ -83,10 +83,12 @@ def test_readiness_check_emits_frontend_contract(monkeypatch):
         "targets_met": {
             "days_30": True, "min_trades_60": False, "win_rate_55pct": False,
             "profit_factor_2_0": True, "sharpe_1_5": False, "drawdown_15pct": True,
+            "dsr_0_10": True,
         },
         "metrics": {
             "days_elapsed": 31, "total_trades": 39, "win_rate_pct": "38.5%",
             "profit_factor": 3.26, "sharpe_ratio": 0.9, "max_drawdown_pct": 4.2,
+            "dsr": 0.15, "dsr_n_obs": 10,
         },
     }
     monkeypatch.setattr(vm.ValidationMetrics, "compute", lambda self: canned)
@@ -96,8 +98,8 @@ def test_readiness_check_emits_frontend_contract(monkeypatch):
     # top-level ReadinessReport contract
     for key in ("ready_for_live", "all_checks_pass", "checks", "passed", "total", "summary"):
         assert key in out
-    assert out["total"] == 6
-    assert out["passed"] == 3            # days_30 + profit_factor + drawdown
+    assert out["total"] == 7             # PR-10 added the Deflated Sharpe Ratio check
+    assert out["passed"] == 4            # days_30 + profit_factor + drawdown + dsr
     assert out["ready_for_live"] is False
     assert out["summary"] == "NOT READY"
     # each check has the exact ReadinessCheck shape
@@ -107,6 +109,7 @@ def test_readiness_check_emits_frontend_contract(monkeypatch):
     assert by_name["Profit Factor"]["passed"] is True
     assert by_name["Win Rate"]["passed"] is False
     assert by_name["Trade Count"]["value"] == "39"
+    assert by_name["Deflated Sharpe Ratio"]["passed"] is True
 
 
 def test_readiness_check_fail_soft_on_compute_error(monkeypatch):
