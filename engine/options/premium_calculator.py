@@ -1,6 +1,11 @@
 """
 JARVIS Trader Options Engine — Premium Calculator
-Black-Scholes pricing, probability of profit, expected value, spread metrics.
+Black-76 pricing (options on futures), probability of profit, expected value,
+spread metrics.
+
+Black-76 (not spot Black-Scholes) is the correct model here: every symbol this
+engine trades (MES/MNQ/MCL/MGC) is a future, and a futures price is already a
+martingale under the T-forward measure — no risk-free drift term belongs in d1.
 """
 
 import logging
@@ -25,37 +30,40 @@ def _norm_pdf(x: float) -> float:
     return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
 
 
-def _d1_d2(S: float, K: float, T: float, r: float, sigma: float) -> tuple[float, float]:
+def _d1_d2(F: float, K: float, T: float, sigma: float) -> tuple[float, float]:
+    """Compute d1 and d2 for Black-76 (no risk-free drift term — F is already
+    a martingale under the T-forward measure)."""
     if T <= 0:
         raise ValueError("T must be > 0")
     if sigma <= 0:
         raise ValueError("sigma must be > 0")
-    log_sk = math.log(S / K)
-    d1 = (log_sk + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
+    log_fk = math.log(F / K)
+    d1 = (log_fk + 0.5 * sigma**2 * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
     return d1, d2
 
 
 # ---------------------------------------------------------------------------
-# Black-Scholes price
+# Black-76 price
 # ---------------------------------------------------------------------------
 
 
-def black_scholes_price(
-    S: float,
+def black76_price(
+    F: float,
     K: float,
     T: float,
     r: float,
     sigma: float,
     option_type: Literal["call", "put"],
 ) -> float:
-    """Calculate the Black-Scholes theoretical option price.
+    """Calculate the Black-76 theoretical option-on-futures price.
 
     Args:
-        S:           Current underlying price.
+        F:           Futures price (underlying).
         K:           Strike price.
         T:           Time to expiry in years.
-        r:           Annualised risk-free rate (decimal).
+        r:           Annualised risk-free rate (decimal) — used only to discount
+                     the expected payoff back to present value.
         sigma:       Annualised implied volatility (decimal).
         option_type: ``"call"`` or ``"put"``.
 
@@ -66,16 +74,16 @@ def black_scholes_price(
 
     # Handle expiry edge case
     if T <= 0:
-        intrinsic = max(S - K, 0.0) if otype == "call" else max(K - S, 0.0)
+        intrinsic = max(F - K, 0.0) if otype == "call" else max(K - F, 0.0)
         return round(intrinsic, 4)
 
-    d1, d2 = _d1_d2(S, K, T, r, sigma)
+    d1, d2 = _d1_d2(F, K, T, sigma)
     disc = math.exp(-r * T)
 
     if otype == "call":
-        price = S * _norm_cdf(d1) - K * disc * _norm_cdf(d2)
+        price = disc * (F * _norm_cdf(d1) - K * _norm_cdf(d2))
     elif otype == "put":
-        price = K * disc * _norm_cdf(-d2) - S * _norm_cdf(-d1)
+        price = disc * (K * _norm_cdf(-d2) - F * _norm_cdf(-d1))
     else:
         raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
 
@@ -88,26 +96,26 @@ def black_scholes_price(
 
 
 def probability_of_profit(
-    S: float,
+    F: float,
     K: float,
     T: float,
-    r: float,
     sigma: float,
     option_type: Literal["call", "put"],
     target_pct: float = 0.5,
 ) -> float:
     """Estimate the probability that an option expires in profit for the buyer.
 
-    Uses the risk-neutral probability that the option expires in-the-money,
-    adjusted by the target_pct fraction of premium retained.
+    Uses the risk-neutral probability that the option expires in-the-money.
+    Under Black-76 the drift term drops out of d1/d2 entirely (F is already a
+    martingale under the T-forward measure), so this probability has no
+    dependence on the risk-free rate — ``r`` is intentionally not a parameter.
 
     For *short* options strategies (credit), the seller's PoP = 1 - buyer's PoP.
 
     Args:
-        S:          Underlying price.
+        F:          Futures price (underlying).
         K:          Strike price.
         T:          Time to expiry in years.
-        r:          Annualised risk-free rate (decimal).
         sigma:      Annualised implied volatility (decimal).
         option_type: ``"call"`` or ``"put"``.
         target_pct: Fraction of premium to treat as the profit target for
@@ -120,10 +128,10 @@ def probability_of_profit(
     """
     if T <= 0:
         if option_type.lower() == "call":
-            return 1.0 if S > K else 0.0
-        return 1.0 if S < K else 0.0
+            return 1.0 if F > K else 0.0
+        return 1.0 if F < K else 0.0
 
-    _, d2 = _d1_d2(S, K, T, r, sigma)
+    _, d2 = _d1_d2(F, K, T, sigma)
 
     if option_type.lower() == "call":
         prob_itm = _norm_cdf(d2)
