@@ -294,7 +294,7 @@ def _build_contract(
     if iv > 0 and underlying_price > 0 and T > 0:
         try:
             greeks = calculate_greeks(
-                S=underlying_price,
+                F=underlying_price,
                 K=strike,
                 T=T,
                 r=risk_free_rate,
