@@ -7,6 +7,12 @@ Covers:
   - test_force_bypasses_trading_hours_check: weekend + --force → fetch attempted
   - test_handles_unreachable_data_source_gracefully: get_bars raises → exit 0, no crash
 
+is_futures_session_open (formerly is_trading_hours) models the actual CME
+Globex MES/MGC session -- nearly 24/5, closed only for the weekend and the
+daily 17:00-18:00 ET maintenance halt -- not equities RTH. See
+feedback/incident: the old equities-shaped 09:25-16:05 ET gate silently
+skipped every futures fetch outside that window.
+
 All tests mock MarketDataManager to keep these fully offline.
 """
 
@@ -29,7 +35,7 @@ from scripts.intraday_bar_persist import (
     INTERVAL,
     _run,
     fetch_symbol,
-    is_trading_hours,
+    is_futures_session_open,
 )
 
 _ET = ZoneInfo("America/New_York")
@@ -66,38 +72,51 @@ def _make_bars(n: int = 5, symbol: str = "MES") -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# is_trading_hours unit tests
+# is_futures_session_open unit tests
 # ---------------------------------------------------------------------------
 
 
-class TestIsTradingHours:
-    def test_weekday_inside_window(self):
-        # Tuesday 11:00 ET → inside
-        assert is_trading_hours(_et(1, 11, 0)) is True
+class TestIsFuturesSessionOpen:
+    def test_weekday_mid_session(self):
+        # Tuesday 11:00 ET → open (regular weekday session)
+        assert is_futures_session_open(_et(1, 11, 0)) is True
 
-    def test_weekday_at_open_boundary(self):
-        # Monday 09:25 ET → open boundary
-        assert is_trading_hours(_et(0, 9, 25)) is True
+    def test_weekday_early_morning(self):
+        # Wednesday 03:00 ET → open (this was the exact gap the old equities
+        # gate missed -- Globex trades overnight, equities RTH does not)
+        assert is_futures_session_open(_et(2, 3, 0)) is True
 
-    def test_weekday_at_close_boundary(self):
-        # Friday 16:05 ET → close boundary
-        assert is_trading_hours(_et(4, 16, 5)) is True
+    def test_daily_maintenance_halt(self):
+        # Monday 17:30 ET → closed (daily maintenance halt)
+        assert is_futures_session_open(_et(0, 17, 30)) is False
 
-    def test_weekday_before_open(self):
-        # Wednesday 08:00 ET → before gate open
-        assert is_trading_hours(_et(2, 8, 0)) is False
+    def test_just_before_maintenance_halt(self):
+        # Tuesday 16:59 ET → still open
+        assert is_futures_session_open(_et(1, 16, 59)) is True
 
-    def test_weekday_after_close(self):
-        # Thursday 16:30 ET → after gate close
-        assert is_trading_hours(_et(3, 16, 30)) is False
+    def test_just_after_maintenance_halt(self):
+        # Tuesday 18:00 ET → reopened
+        assert is_futures_session_open(_et(1, 18, 0)) is True
 
     def test_saturday_mid_day(self):
-        # Saturday 12:00 ET → weekend
-        assert is_trading_hours(_et(5, 12, 0)) is False
+        # Saturday 12:00 ET → fully closed
+        assert is_futures_session_open(_et(5, 12, 0)) is False
 
-    def test_sunday_mid_day(self):
-        # Sunday 12:00 ET → weekend
-        assert is_trading_hours(_et(6, 12, 0)) is False
+    def test_sunday_before_reopen(self):
+        # Sunday 12:00 ET → still closed (reopens 18:00 ET)
+        assert is_futures_session_open(_et(6, 12, 0)) is False
+
+    def test_sunday_after_reopen(self):
+        # Sunday 18:00 ET → open (weekly reopen)
+        assert is_futures_session_open(_et(6, 18, 0)) is True
+
+    def test_friday_before_close(self):
+        # Friday 16:00 ET → still open
+        assert is_futures_session_open(_et(4, 16, 0)) is True
+
+    def test_friday_after_close(self):
+        # Friday 17:00 ET → closed for the week
+        assert is_futures_session_open(_et(4, 17, 0)) is False
 
 
 # ---------------------------------------------------------------------------
@@ -109,14 +128,14 @@ class TestIsTradingHours:
 async def test_skips_outside_trading_hours():
     """Outside trading hours, _run exits 0 without calling get_bars.
 
-    is_trading_hours is patched False so the test is deterministic regardless of
+    is_futures_session_open is patched False so the test is deterministic regardless of
     the wall-clock — mirroring the sibling tests below. (Previously this test
     built a Saturday datetime but never injected it, so _run read the real clock
     and the test failed in CI whenever it happened to run during live trading
     hours: "Expected 'MarketDataManager' to not have been called. Called 1 times.")
     """
     with (
-        patch("scripts.intraday_bar_persist.is_trading_hours", return_value=False),
+        patch("scripts.intraday_bar_persist.is_futures_session_open", return_value=False),
         patch("scripts.intraday_bar_persist.MarketDataManager") as mock_cls,
     ):
         mock_mgr = MagicMock()
@@ -144,9 +163,9 @@ async def test_skips_outside_trading_hours():
 @pytest.mark.asyncio
 async def test_fetches_during_trading_hours():
     """During trading hours, _run calls get_bars for each symbol and exits 0."""
-    # Patch is_trading_hours directly to return True so test doesn't depend on clock
+    # Patch is_futures_session_open directly to return True so test doesn't depend on clock
     with (
-        patch("scripts.intraday_bar_persist.is_trading_hours", return_value=True),
+        patch("scripts.intraday_bar_persist.is_futures_session_open", return_value=True),
         patch("scripts.intraday_bar_persist.MarketDataManager") as mock_cls,
     ):
         mock_mgr = MagicMock()
@@ -178,9 +197,9 @@ async def test_fetches_during_trading_hours():
 
 @pytest.mark.asyncio
 async def test_force_bypasses_trading_hours_check():
-    """--force causes _run to proceed even when is_trading_hours would return False."""
+    """--force causes _run to proceed even when is_futures_session_open would return False."""
     with (
-        patch("scripts.intraday_bar_persist.is_trading_hours", return_value=False),
+        patch("scripts.intraday_bar_persist.is_futures_session_open", return_value=False),
         patch("scripts.intraday_bar_persist.MarketDataManager") as mock_cls,
     ):
         mock_mgr = MagicMock()
@@ -197,7 +216,7 @@ async def test_force_bypasses_trading_hours_check():
         )
 
     assert exit_code == 0
-    # get_bars must have been called despite is_trading_hours=False
+    # get_bars must have been called despite is_futures_session_open=False
     mock_mgr.get_bars.assert_awaited_once()
 
 
@@ -210,7 +229,7 @@ async def test_force_bypasses_trading_hours_check():
 async def test_handles_unreachable_data_source_gracefully():
     """When get_bars raises, _run logs and exits 1 — never propagates the exception."""
     with (
-        patch("scripts.intraday_bar_persist.is_trading_hours", return_value=True),
+        patch("scripts.intraday_bar_persist.is_futures_session_open", return_value=True),
         patch("scripts.intraday_bar_persist.MarketDataManager") as mock_cls,
     ):
         mock_mgr = MagicMock()
@@ -242,7 +261,7 @@ async def test_handles_unreachable_data_source_gracefully():
 async def test_no_fetch_dry_run():
     """--no-fetch skips the actual get_bars call entirely."""
     with (
-        patch("scripts.intraday_bar_persist.is_trading_hours", return_value=True),
+        patch("scripts.intraday_bar_persist.is_futures_session_open", return_value=True),
         patch("scripts.intraday_bar_persist.MarketDataManager") as mock_cls,
     ):
         mock_mgr = MagicMock()
