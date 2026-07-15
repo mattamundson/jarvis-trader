@@ -46,6 +46,14 @@ import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 // Fixed: fetchEngine already returns parsed JSON; removed double .json() call
 // that caused TypeError → data stayed null → permanent skeleton.
 
+// Halted instruments — mirrors engine/backtest/signals.py::DO_NOT_TRADE_SYMBOLS.
+// MCL and MNQ have 0 validated WFO winners (hypotheses exhausted / gate v2 FAIL
+// across every strategy family tried); see engine/CLAUDE.md "Active Instruments".
+// The engine is the source of truth (SafetyLayer.check_order hard-blocks any
+// order for these regardless of what this list says) — kept here purely to
+// avoid rendering a plain BUY/SELL badge that implies the signal is actionable.
+const DO_NOT_TRADE_SYMBOLS = new Set(["MCL", "MNQ", "M2K"]);
+
 type TFResult = { alignment: string; stc_value: number; signal: string };
 type SymbolResult = {
   symbol: string;
@@ -143,21 +151,36 @@ function WatchlistScanWidget({ symbols = "MES,MNQ,MCL,MGC" }: { symbols?: string
         ) : (
           <>
             <div className="divide-y divide-border">
-              {scanData.symbols.map((s) => (
-                <div key={s.symbol} className="px-4 py-2.5 flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-mono font-semibold">{s.symbol}</span>
-                    {s.error ? (
-                      <p className="text-xs text-muted-foreground">{s.error}</p>
+              {scanData.symbols.map((s) => {
+                const isHalted = DO_NOT_TRADE_SYMBOLS.has(s.symbol.toUpperCase());
+                return (
+                  <div key={s.symbol} className="px-4 py-2.5 flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-mono font-semibold">{s.symbol}</span>
+                      {s.error ? (
+                        <p className="text-xs text-muted-foreground">{s.error}</p>
+                      ) : isHalted ? (
+                        <p className="text-xs text-muted-foreground">Halted — non-actionable</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">{s.alignment}</p>
+                      )}
+                    </div>
+                    {isHalted ? (
+                      <span
+                        title={`${s.symbol} is a halted instrument — no orders route regardless of the model's recommendation`}
+                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[10px] font-bold bg-bear/10 text-bear border border-bear/30 tracking-wider"
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        HALTED
+                      </span>
                     ) : (
-                      <p className="text-xs text-muted-foreground">{s.alignment}</p>
+                      <Badge variant={REC_VARIANT_SCAN[s.recommendation] ?? "neutral"}>
+                        {s.recommendation}
+                      </Badge>
                     )}
                   </div>
-                  <Badge variant={REC_VARIANT_SCAN[s.recommendation] ?? "neutral"}>
-                    {s.recommendation}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="px-4 py-2 border-t border-border bg-muted/30 flex gap-3 text-xs text-muted-foreground">
               <span className="text-bull">{scanData.buy_count} BUY</span>
@@ -371,7 +394,10 @@ const INSTRUMENT_SPECS: InstrumentSpec[] = [
     exchange: "CME Globex",
     multiplier: 2,
     tick: 0.25,
-    status: "RESEARCH",
+    // HALTED (2026-07-09 gate v2 audit) — all strategy families fail gate v2.
+    // Was previously (incorrectly) shown as RESEARCH; DO_NOT_TRADE_SYMBOLS in
+    // engine/backtest/signals.py includes MNQ alongside MCL/M2K.
+    status: "DO NOT TRADE",
   },
   {
     symbol: "MES",
@@ -470,7 +496,28 @@ function changeColorClass(pct: number | null): string {
 
 // ── Signal badge ───────────────────────────────────────────────────────────
 
-function SignalBadge({ signal }: { signal: string | undefined }) {
+function SignalBadge({
+  signal,
+  halted = false,
+}: {
+  signal: string | undefined;
+  halted?: boolean;
+}) {
+  // Halted instruments (DO_NOT_TRADE_SYMBOLS) never render a plain BUY/SELL/
+  // HOLD badge, even if the pipeline emitted one \u2014 no order can ever route
+  // for these, so a directional badge would misrepresent it as actionable.
+  if (halted) {
+    return (
+      <span
+        title="Halted instrument \u2014 signal is non-actionable, no orders route"
+        className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-xs font-bold bg-bear/10 text-bear border border-bear/30"
+      >
+        <AlertCircle className="h-3 w-3" />
+        HALTED
+      </span>
+    );
+  }
+
   if (!signal) return <span className="text-muted-foreground font-mono text-xs">\u2014</span>;
 
   const upper = signal.toUpperCase();
@@ -1353,7 +1400,10 @@ export default function WatchlistPage() {
                           </td>
 
                           <td className="px-4 py-3 text-center">
-                            <SignalBadge signal={row.lastSignal} />
+                            <SignalBadge
+                              signal={row.lastSignal}
+                              halted={DO_NOT_TRADE_SYMBOLS.has(row.symbol.toUpperCase())}
+                            />
                           </td>
 
                           <td className="px-4 py-3 text-center">
