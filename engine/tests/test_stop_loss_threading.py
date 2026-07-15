@@ -320,3 +320,176 @@ async def test_sync_positions_from_ib_skips_already_tracked_symbol() -> None:
     await mgr.sync_positions_from_ib()
 
     assert tracker.open_calls == []
+
+
+# ── portfolio_router direct-open endpoints (the last 2 naked call sites) ──────
+
+
+@pytest.fixture()
+def portfolio_router_client(tmp_path: Path):
+    """Wires the real portfolio_router with an in-memory PortfolioTracker --
+    same pattern as test_portfolio_paper_trade_post.py's paper_trade_client,
+    replicated locally so this file doesn't depend on another test module."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from slowapi.errors import RateLimitExceeded
+
+    from middleware.rate_limit import limiter, rate_limit_exception_handler
+    from portfolio.tracker import PortfolioTracker
+    from routers import portfolio_router as pr_mod
+
+    old_pt, old_db, old_safety = pr_mod.paper_tracker, pr_mod.db_manager, pr_mod._safety_layer
+
+    app = FastAPI()
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
+
+    tracker = PortfolioTracker(store_path=tmp_path / "router_stop_loss_audit.jsonl")
+    safety = MagicMock()
+    safety.get_status.return_value = {"is_killed": False, "kill_switch_active": False}
+    pr_mod.inject_dependencies(tracker, None, None, safety)
+
+    app.include_router(pr_mod.router, prefix="/portfolio")
+    client = TestClient(app)
+    yield client, tracker
+
+    pr_mod.inject_dependencies(old_pt, old_db, None, old_safety)
+
+
+def test_paper_trade_sync_open_persists_client_stop(portfolio_router_client) -> None:
+    client, tracker = portfolio_router_client
+    r = client.post(
+        "/portfolio/paper/trade",
+        json={
+            "action": "open",
+            "symbol": "MES",
+            "side": "long",
+            "quantity": 1,
+            "entry_price": 5823.50,
+            "stop_loss": 5800.00,
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["stop_loss"] == 5800.00
+    positions = tracker.get_open_positions()
+    assert positions[0]["stop_loss"] == 5800.00
+    assert "stop_source" not in (positions[0].get("strategy_params") or {})
+
+
+def test_paper_trade_sync_open_synthesizes_stop_when_omitted(portfolio_router_client) -> None:
+    prev = _set_max_loss_env(300)
+    try:
+        client, tracker = portfolio_router_client
+        r = client.post(
+            "/portfolio/paper/trade",
+            json={
+                "action": "open",
+                "symbol": "MGC",
+                "side": "long",
+                "quantity": 1,
+                "entry_price": 4503.9,
+            },
+        )
+        assert r.status_code == 200, r.text
+        # MGC mult=10, qty=1 -> distance = 300/10 = 30.0; long -> entry - distance
+        assert r.json()["stop_loss"] == round(4503.9 - 30.0, 4)
+        positions = tracker.get_open_positions()
+        assert positions[0]["stop_loss"] == round(4503.9 - 30.0, 4)
+    finally:
+        _restore_max_loss_env(prev)
+
+
+def test_paper_trade_sync_open_rejects_inverted_stop(portfolio_router_client) -> None:
+    client, _tracker = portfolio_router_client
+    r = client.post(
+        "/portfolio/paper/trade",
+        json={
+            "action": "open",
+            "symbol": "MES",
+            "side": "long",
+            "quantity": 1,
+            "entry_price": 5823.50,
+            "stop_loss": 5850.00,  # above entry on a long -- inverted
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_paper_trade_manual_open_persists_client_stop(portfolio_router_client) -> None:
+    client, tracker = portfolio_router_client
+    r = client.post(
+        "/portfolio/paper/trade/manual",
+        json={
+            "symbol": "MES",
+            "action": "buy",
+            "quantity": 1,
+            "price": 5823.50,
+            "stop_loss": 5800.00,
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["stop_loss"] == 5800.00
+    positions = tracker.get_open_positions()
+    assert positions[0]["stop_loss"] == 5800.00
+
+
+def test_paper_trade_manual_open_synthesizes_stop_when_omitted(portfolio_router_client) -> None:
+    prev = _set_max_loss_env(300)
+    try:
+        client, tracker = portfolio_router_client
+        r = client.post(
+            "/portfolio/paper/trade/manual",
+            json={
+                "symbol": "MGC",
+                "action": "buy",
+                "quantity": 1,
+                "price": 4503.9,
+            },
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["stop_loss"] == round(4503.9 - 30.0, 4)
+        positions = tracker.get_open_positions()
+        assert positions[0]["stop_loss"] == round(4503.9 - 30.0, 4)
+    finally:
+        _restore_max_loss_env(prev)
+
+
+def test_paper_trade_manual_open_synthesizes_stop_for_sell_short(portfolio_router_client) -> None:
+    """Regression guard for the sell_short/buy_to_cover side-normalization gap:
+    synthesize_fallback_stop only recognizes long/short, not this endpoint's
+    wider buy/sell/sell_short/buy_to_cover vocabulary -- passing action through
+    raw would silently return None and leave the row naked again."""
+    prev = _set_max_loss_env(300)
+    try:
+        client, tracker = portfolio_router_client
+        r = client.post(
+            "/portfolio/paper/trade/manual",
+            json={
+                "symbol": "MES",
+                "action": "sell_short",
+                "quantity": 2,
+                "price": 5000.0,
+            },
+        )
+        assert r.status_code == 200, r.text
+        # MES mult=5, qty=2 -> distance = 300/10 = 30.0; short -> entry + distance
+        assert r.json()["stop_loss"] == round(5000.0 + 30.0, 4)
+        positions = tracker.get_open_positions()
+        assert positions[0]["stop_loss"] == round(5000.0 + 30.0, 4)
+    finally:
+        _restore_max_loss_env(prev)
+
+
+def test_paper_trade_manual_open_rejects_inverted_stop(portfolio_router_client) -> None:
+    client, _tracker = portfolio_router_client
+    r = client.post(
+        "/portfolio/paper/trade/manual",
+        json={
+            "symbol": "MES",
+            "action": "buy",
+            "quantity": 1,
+            "price": 5823.50,
+            "stop_loss": 5850.00,  # above entry on a long -- inverted
+        },
+    )
+    assert r.status_code == 422, r.text

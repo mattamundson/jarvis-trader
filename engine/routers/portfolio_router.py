@@ -573,6 +573,9 @@ class PaperTradeSyncRequest(BaseModel):
     pnl: float | None = None
     trade_id: str | None = Field(None, description="PortfolioTracker id - required for close")
     notes: str = ""
+    stop_loss: float | None = Field(
+        None, description="Real decision-time stop; synthesized fallback used if omitted"
+    )
 
 
 @router.get("/paper/positions")
@@ -799,12 +802,43 @@ async def paper_trade(req: PaperTradeSyncRequest):
             raise HTTPException(status_code=422, detail="side must be long or short")
         _guard_direct_paper_open(sym, req.quantity)
         action = "buy" if side == "long" else "sell"
+
+        if req.stop_loss is not None and is_inverted_stop(
+            action, float(req.entry_price), req.stop_loss
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Inverted stop_loss rejected: side={action} "
+                    f"entry_price={req.entry_price} stop_loss={req.stop_loss}"
+                ),
+            )
+        resolved_stop = req.stop_loss
+        stop_source = None
+        if resolved_stop is None:
+            try:
+                from services.paper_stop_monitor import synthesize_fallback_stop
+
+                resolved_stop = synthesize_fallback_stop(
+                    sym, action, float(req.entry_price), req.quantity
+                )
+                if resolved_stop is not None:
+                    stop_source = "synthesized_fallback"
+            except Exception as _stop_err:
+                logger.debug(
+                    "paper_trade sync open: stop synthesis failed for %s (non-fatal): %s",
+                    sym,
+                    _stop_err,
+                )
+
         tid = paper_tracker.open_trade(
             sym,
             action,
             req.quantity,
             float(req.entry_price),
             notes=req.notes or "paper_runner_sync",
+            stop_loss=resolved_stop,
+            stop_source=stop_source,
         )
         return {
             "status": "open",
@@ -813,6 +847,7 @@ async def paper_trade(req: PaperTradeSyncRequest):
             "action": action,
             "quantity": req.quantity,
             "entry_price": req.entry_price,
+            "stop_loss": resolved_stop,
         }
 
     if act == "close":
@@ -1943,6 +1978,7 @@ class PaperTradeRequest(BaseModel):
     price: float
     notes: str = ""
     close_trade_id: str | None = None
+    stop_loss: float | None = None
 
 
 @router.post("/paper/trade/manual", response_model=PaperTradeResponse)
@@ -2006,12 +2042,51 @@ async def submit_paper_trade(req: PaperTradeRequest):
                 400,
                 f"Symbol {req.symbol.upper()} not on approved futures watchlist",
             )
+        _side_map = {
+            "buy": "long",
+            "buy_to_open": "long",
+            "long": "long",
+            "sell": "short",
+            "sell_to_open": "short",
+            "short": "short",
+            "sell_short": "short",
+        }
+        # None for buy_to_cover — a closing action, not a new open; intentionally inert here.
+        _norm_side = _side_map.get(req.action.lower())
+        if req.stop_loss is not None and _norm_side and is_inverted_stop(
+            _norm_side, req.price, req.stop_loss
+        ):
+            raise HTTPException(
+                422,
+                f"Inverted stop_loss rejected: side={_norm_side} "
+                f"entry_price={req.price} stop_loss={req.stop_loss}",
+            )
+        resolved_stop = req.stop_loss
+        stop_source = None
+        if resolved_stop is None and _norm_side:
+            try:
+                from services.paper_stop_monitor import synthesize_fallback_stop
+
+                resolved_stop = synthesize_fallback_stop(
+                    req.symbol, _norm_side, req.price, req.quantity
+                )
+                if resolved_stop is not None:
+                    stop_source = "synthesized_fallback"
+            except Exception as _stop_err:
+                logger.debug(
+                    "submit_paper_trade: stop synthesis failed for %s (non-fatal): %s",
+                    req.symbol,
+                    _stop_err,
+                )
+
         trade_id = paper_tracker.open_trade(
             symbol=req.symbol,
             action=req.action,
             quantity=req.quantity,
             price=req.price,
             notes=req.notes,
+            stop_loss=resolved_stop,
+            stop_source=stop_source,
         )
         return {
             "status": "opened",
@@ -2020,6 +2095,7 @@ async def submit_paper_trade(req: PaperTradeRequest):
             "action": req.action,
             "quantity": req.quantity,
             "entry_price": req.price,
+            "stop_loss": resolved_stop,
         }
 
 
