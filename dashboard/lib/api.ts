@@ -2,7 +2,15 @@
 // These functions proxy through Next.js rewrites to the engine backend.
 // NEVER hardcode an absolute engine URL or make fetch calls directly.
 const ENGINE = "/api/engine";
-const FETCH_TIMEOUT_MS = 30000; // 30 seconds
+// 65s: must be strictly GREATER than the proxy's own internal timeout
+// (app/api/engine/[...path]/route.ts, 60s) so the proxy's clean 60s abort
+// fires first and this client sees a normal 502 response, not its own
+// AbortError. Previously this was 30s -- shorter than the proxy's 60s -- so
+// on any cold-cache scan (watchlist/regime/hidden-pivots) the client gave up
+// and retried while the proxy's outbound fetch to the engine was still
+// legitimately running, stacking a second concurrent scan on top of the
+// first instead of replacing it.
+const FETCH_TIMEOUT_MS = 65000;
 const RETRY_DELAY_MS = 2000; // 2 seconds
 
 // Engine auth is injected SERVER-SIDE by the proxy route handler

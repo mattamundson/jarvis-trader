@@ -66,7 +66,7 @@ export default function IntradayRegimePage() {
   // Live engine data; fall back to the deterministic sample when the engine is
   // unavailable so the page always renders (and is honest about provenance).
   const sample = useMemo(() => buildSampleRegime(symbol), [symbol]);
-  const { data: live, isLoading, mutate: refetchRegime } = useSWR<IntradayRegime>(
+  const { data: live, error: regimeError, isLoading, mutate: refetchRegime } = useSWR<IntradayRegime>(
     ["regime", symbol],
     () => fetchIntradayRegime(symbol),
     { refreshInterval: REFRESH_MS, shouldRetryOnError: false }
@@ -78,7 +78,7 @@ export default function IntradayRegimePage() {
       <RegimeBanner />
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-5 lg:px-6">
-        <TabsRow source={data.source} isLoading={isLoading && !live} />
+        <TabsRow source={data.source} isLoading={isLoading && !live} fetchFailed={!!regimeError && !live} />
 
         {/* Symbol + price + analyze */}
         <div className="flex flex-wrap items-center gap-3">
@@ -160,9 +160,14 @@ function RegimeBanner() {
 function TabsRow({
   source,
   isLoading,
+  fetchFailed,
 }: {
   source: IntradayRegime["source"];
   isLoading: boolean;
+  /** True when the live fetch actually errored (as opposed to simply having
+   * no live source configured) -- surfaced separately so a scan failure
+   * doesn't silently masquerade as ordinary sample data. */
+  fetchFailed: boolean;
 }) {
   const live = source === "live";
   return (
@@ -173,7 +178,13 @@ function TabsRow({
       <button className="rounded-lg bg-violet-500/20 px-4 py-2 text-xs font-semibold text-violet-300">
         Ticker Intraday Market Regime
       </button>
-      <span className="ml-auto">
+      <span className="ml-auto flex items-center gap-2">
+        {fetchFailed && (
+          <Badge variant="bear" className="gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-bear" />
+            Fetch failed — retrying
+          </Badge>
+        )}
         <Badge variant={live ? "bull" : "static"} className="gap-1.5">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
