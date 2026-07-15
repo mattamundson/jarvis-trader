@@ -521,6 +521,23 @@ def _compute_pnl(
     return raw - (commission * contracts * 2)  # entry + exit legs
 
 
+_RTH_CLOSE_HOUR_ET = 16  # 16:00 America/New_York, matches run_value_area_reentry_sd116.py
+
+
+def _is_at_or_after_rth_close(current_time: str) -> bool:
+    """True once the bar timestamp reaches 16:00 America/New_York (RTH close).
+
+    Used only by configs that opt into ``session_close`` (sd-116/MES_VA30) --
+    strategies validated to hold overnight are unaffected since they never
+    set that flag.
+    """
+    ts = pd.Timestamp(current_time)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    ts_et = ts.tz_convert("America/New_York")
+    return ts_et.hour >= _RTH_CLOSE_HOUR_ET
+
+
 def manage_open_position(
     symbol: str,
     pos: Dict[str, Any],
@@ -657,6 +674,43 @@ def manage_open_position(
                 return None, record
 
             return pos, record
+
+    # ── Session close (only for configs that opt in, e.g. sd-116/MES_VA30) ───
+    if cfg.get("session_close") and _is_at_or_after_rth_close(current_time):
+        bar_close = float(last_bar["close"])
+        slip = slippage_ticks * tick_size
+        exit_price = bar_close - slip if side == "long" else bar_close + slip
+        pnl = _compute_pnl(
+            entry_price, exit_price, side, contracts_remaining, multiplier, commission
+        )
+
+        record = {
+            "symbol": symbol,
+            "entry_date": pos["entry_date"],
+            "exit_date": current_time,
+            "entry_price": entry_price,
+            "exit_price": round(exit_price, 4),
+            "side": side,
+            "contracts": contracts_remaining,
+            "exit_reason": "session_close",
+            "regime_type": pos.get("regime", "unknown"),
+            "pnl": round(pnl, 2),
+            "risk_pct_used": pos.get("risk_pct_used"),
+        }
+
+        tracker.add_trade(record)
+        _try_sync_engine_close(pos, record)
+
+        log.info(
+            f"SESSION CLOSE {symbol} {side.upper()} | entry={entry_price:.2f} "
+            f"exit={exit_price:.2f} PnL=${pnl:+.2f}"
+        )
+        _notify(
+            f"🕓 JARVIS PAPER | {symbol} SESSION CLOSE\n"
+            f"{side.upper()} {entry_price:.2f} → {exit_price:.2f}\n"
+            f"PnL: ${pnl:+.2f}"
+        )
+        return None, record
 
     # No hit — position still active
     return pos, None
