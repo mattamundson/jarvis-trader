@@ -38,6 +38,12 @@ function barColor(rate: number): string {
   return "#ff4444";
 }
 
+function barColorClass(rate: number): string {
+  if (rate >= 60) return "text-[#00ff88]";
+  if (rate >= 40) return "text-[#ffcc00]";
+  return "text-[#ff4444]";
+}
+
 interface TooltipPayload {
   value: number;
   payload: { symbol: string; cnt: number };
@@ -56,12 +62,10 @@ function CustomTooltip({
   const item = payload[0];
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs shadow-lg">
-      <p className="font-bold" style={{ color: "#00d4ff" }}>
-        {label}
-      </p>
+      <p className="font-bold text-[#00d4ff]">{label}</p>
       <p className="text-foreground">
         Win Rate:{" "}
-        <span style={{ color: barColor(item.value) }}>
+        <span className={barColorClass(item.value)}>
           {item.value.toFixed(1)}%
         </span>
       </p>
@@ -170,15 +174,15 @@ export function DiscordWinRateChart() {
       {/* Legend */}
       <div className="flex items-center gap-4 font-mono text-[10px] text-muted-foreground">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: "#00ff88" }} />
+          <span className="inline-block w-2 h-2 rounded-sm bg-[#00ff88]" />
           ≥60% strong
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: "#ffcc00" }} />
+          <span className="inline-block w-2 h-2 rounded-sm bg-[#ffcc00]" />
           40–60% neutral
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: "#ff4444" }} />
+          <span className="inline-block w-2 h-2 rounded-sm bg-[#ff4444]" />
           &lt;40% weak
         </span>
       </div>

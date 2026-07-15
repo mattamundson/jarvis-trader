@@ -41,13 +41,18 @@ function fmt(ts: string): string {
   }
 }
 
-function winRateColor(rate: number | null): string {
-  if (rate == null) return "#888";
+function winRateColorClass(rate: number | null): string {
+  if (rate == null) return "text-[#888]";
   const pct = rate * 100;
-  if (pct >= 60) return "#00ff88";
-  if (pct >= 40) return "#ffcc00";
-  return "#ff4444";
+  if (pct >= 60) return "text-[#00ff88]";
+  if (pct >= 40) return "text-[#ffcc00]";
+  return "text-[#ff4444]";
 }
+
+const DIRECTION_CLASSES: Record<"LONG" | "SHORT", string> = {
+  LONG: "text-[#00ff88] border-[#00ff8844] bg-[#00ff8810]",
+  SHORT: "text-[#ff4444] border-[#ff444444] bg-[#ff444410]",
+};
 
 export function DiscordSignalTable() {
   const { data, isLoading, error } = useSWR<SignalsResponse>(
@@ -111,8 +116,10 @@ export function DiscordSignalTable() {
             ) : (
               rows.map((row, i) => {
                 const isLong = row.direction === "LONG";
-                const dirColor = isLong ? "#00ff88" : "#ff4444";
-                const wrColor = winRateColor(row.win_rate);
+                const dirClass = isLong
+                  ? DIRECTION_CLASSES.LONG
+                  : DIRECTION_CLASSES.SHORT;
+                const wrClass = winRateColorClass(row.win_rate);
 
                 return (
                   <tr
@@ -122,20 +129,12 @@ export function DiscordSignalTable() {
                     <td className="px-4 py-2 text-[10px] text-muted-foreground whitespace-nowrap">
                       {fmt(row.timestamp)}
                     </td>
-                    <td
-                      className="px-4 py-2 font-semibold"
-                      style={{ color: "#00d4ff" }}
-                    >
+                    <td className="px-4 py-2 font-semibold text-[#00d4ff]">
                       {row.symbol}
                     </td>
                     <td className="px-4 py-2">
                       <span
-                        className="px-2 py-0.5 rounded text-[10px] font-bold border"
-                        style={{
-                          color: dirColor,
-                          borderColor: `${dirColor}44`,
-                          backgroundColor: `${dirColor}10`,
-                        }}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${dirClass}`}
                       >
                         {row.direction}
                       </span>
@@ -145,21 +144,14 @@ export function DiscordSignalTable() {
                         ? row.entry_price.toFixed(2)
                         : "—"}
                     </td>
-                    <td
-                      className="px-4 py-2 text-right tabular-nums"
-                      style={{ color: "#00ff88" }}
-                    >
+                    <td className="px-4 py-2 text-right tabular-nums text-[#00ff88]">
                       {row.target1 != null ? row.target1.toFixed(2) : "—"}
                     </td>
-                    <td
-                      className="px-4 py-2 text-right tabular-nums"
-                      style={{ color: "#ff4444" }}
-                    >
+                    <td className="px-4 py-2 text-right tabular-nums text-[#ff4444]">
                       {row.stop1 != null ? row.stop1.toFixed(2) : "—"}
                     </td>
                     <td
-                      className="px-4 py-2 text-right tabular-nums font-semibold"
-                      style={{ color: wrColor }}
+                      className={`px-4 py-2 text-right tabular-nums font-semibold ${wrClass}`}
                     >
                       {row.win_rate != null
                         ? `${(row.win_rate * 100).toFixed(1)}%`
