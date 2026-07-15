@@ -98,6 +98,22 @@ def get_contract_multiplier(symbol: str) -> float:
     if multiplier is not None:
         return multiplier
 
+    # Pseudo-symbols (e.g. "MES_VA30", a second strategy sharing the real MES
+    # instrument) resolve to their real underlying instrument's multiplier --
+    # see backtest.paper_config.resolve_underlying(). Without this, an
+    # unlisted pseudo-symbol would silently fall through to the generic
+    # default below and misreport real-dollar market_value/unrealized_pnl.
+    try:
+        from backtest.paper_config import resolve_underlying
+
+        underlying = resolve_underlying(symbol)
+    except ImportError:
+        underlying = symbol.upper()
+    if underlying != symbol.upper():
+        multiplier = INSTRUMENT_MULTIPLIERS.get(underlying)
+        if multiplier is not None:
+            return multiplier
+
     logger.warning(
         f"[PositionSizing] Unknown symbol '{symbol}' — defaulting multiplier to "
         f"${_DEFAULT_MULTIPLIER}/pt. Add it to INSTRUMENT_MULTIPLIERS if needed."

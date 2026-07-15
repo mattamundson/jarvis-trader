@@ -64,6 +64,7 @@ def _wire(monkeypatch, *, manage_side_effect):
             _FakeTracker,
             lambda df, **k: _signal_df(),  # generate_signals
             lambda df, **k: _signal_df(),  # generate_instrument_signals
+            lambda symbol: symbol,  # resolve_underlying (identity for these test symbols)
         )
 
     monkeypatch.setattr(paper_runner, "_import_signal_deps", fake_import_signal_deps)
