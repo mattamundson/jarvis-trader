@@ -18,6 +18,7 @@ _check_wfe / _check_mc_edge delegate to them.
 from routers.proactive_validation_router import (
     _MC_MIN_TRADES,
     _WFE_MIN_TRADES,
+    _check_validation_gates,
     _mc_honesty_status,
     _wfe_honesty_status,
 )
@@ -95,3 +96,62 @@ def test_min_trade_floors_exist():
     # The count floors the guards lean on must be defined and sane.
     assert _WFE_MIN_TRADES >= 10
     assert _MC_MIN_TRADES >= 10
+
+
+# --------------------------------------------------------------------------- #
+# Validation Gates truthy-dict regression (live-confirmed 2026-07-10: MES
+# reported "6/6 passing" with an actual 23.0% max drawdown against a 15.0%
+# ceiling, because `if v` on a non-empty {"value":..,"passes":False} dict is
+# always truthy). pf.values() must be checked via the nested "passes" flag.
+# --------------------------------------------------------------------------- #
+def _pf_entry(value, threshold, passes):
+    return {"value": value, "threshold": threshold, "passes": passes}
+
+
+def test_validation_gates_hard_metric_fail_is_reported_as_fail():
+    # Mirrors the live MES anomaly: every gate passes except max_drawdown_pct
+    # (23.0% actual vs 15.0% ceiling). Must surface as a real FAIL, not "6/6
+    # passing", and the failed-gates list must be non-empty.
+    pf = {
+        "profit_factor": _pf_entry(2.4, 2.0, True),
+        "sharpe_ratio": _pf_entry(1.8, 1.5, True),
+        "win_rate_pct": _pf_entry(58.0, 55.0, True),
+        "total_trades": _pf_entry(65, 60, True),
+        "days_active": _pf_entry(35, 30, True),
+        "max_drawdown_pct": _pf_entry(23.0, 15.0, False),
+    }
+    progress = {
+        "status": "in_progress",
+        "pass_fail": pf,
+        "profit_factor": 2.4,
+        "sharpe_ratio": 1.8,
+        "win_rate_pct": 58.0,
+        "max_drawdown_pct": 23.0,
+    }
+    check = _check_validation_gates(progress)
+    assert check.status == "fail"
+    assert "5/6" in check.value
+
+
+def test_validation_gates_count_and_days_shortfall_only_is_warn_not_fail():
+    # Trade-count / days-elapsed shortfalls get their own dedicated checks
+    # (Trade Count, Time Elapsed) — the rollup Validation Gates check should
+    # warn, not hard-fail, when those are the only gates still short.
+    pf = {
+        "profit_factor": _pf_entry(2.4, 2.0, True),
+        "sharpe_ratio": _pf_entry(1.8, 1.5, True),
+        "win_rate_pct": _pf_entry(58.0, 55.0, True),
+        "total_trades": _pf_entry(40, 60, False),
+        "days_active": _pf_entry(20, 30, False),
+        "max_drawdown_pct": _pf_entry(8.0, 15.0, True),
+    }
+    progress = {
+        "status": "in_progress",
+        "pass_fail": pf,
+        "profit_factor": 2.4,
+        "sharpe_ratio": 1.8,
+        "win_rate_pct": 58.0,
+        "max_drawdown_pct": 8.0,
+    }
+    check = _check_validation_gates(progress)
+    assert check.status == "warn"
