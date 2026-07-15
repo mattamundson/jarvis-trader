@@ -2043,6 +2043,9 @@ export interface ExecutionFidelityStatus {
   measuring_real_fills: boolean;
   open_trades: ExecutionOpenTrade[];
   pending_approvals: { count: number; oldest_age_min: number | null };
+  // Honesty caveat from the engine — states whether fills are real IBKR paper
+  // fills or self-referential simulated fills (ALLOW_PAPER_SIMULATED_ORDERS).
+  note: string;
 }
 
 export async function fetchExecutionOpenTrades(): Promise<ExecutionFidelityStatus> {
