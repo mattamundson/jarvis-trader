@@ -26,7 +26,7 @@ from typing import Optional
 
 import httpx
 
-from agents.strategy_metrics import get_gate_v2_metrics
+from agents.strategy_metrics import get_gate_v2_metrics, get_iv_rank
 from config import settings
 from utils.llm_json import parse_llm_json
 
@@ -519,6 +519,25 @@ class RiskManagerAgent:
                 "No fresh gate-v2 verdict on file for this symbol.\n"
             )
 
+        # IV Rank (informational only — additional risk-framing context, not a
+        # new hard veto). Reuses the SAME IV Rank calculation that already
+        # powers the dashboard's options scan table; elevated IV rank argues
+        # for smaller directional size / a more premium-selling-oriented risk
+        # posture, but this is context for the LLM's judgment, not a rule.
+        iv_rank_section = ""
+        iv_rank_data = get_iv_rank(trade.get("symbol", ""))
+        if isinstance(iv_rank_data, dict):
+            ivr_val = iv_rank_data.get("iv_rank")
+            ivr_str = f"{ivr_val:.0f}" if isinstance(ivr_val, (int, float)) else "N/A"
+            iv_rank_section = (
+                "\n=== IV RANK (informational) ===\n"
+                f"IV Rank: {ivr_str} ({iv_rank_data.get('interpretation', 'N/A')})\n"
+                "Elevated IV rank may argue for smaller directional size / a more "
+                "premium-selling-oriented risk framing; low IV rank may argue for a more "
+                "premium-buying-oriented framing. This is informational only — it does not "
+                "add a new veto, use your judgment alongside the other risk dimensions.\n"
+            )
+
         trading_mode = "PAPER TRADING (signal validation)" if self.is_paper_mode else "LIVE TRADING"
         paper_guidance = (
             "\nPAPER MODE GUIDANCE: Approve trades with R:R > 1.5:1 and confidence >= 0.35. "
@@ -554,6 +573,7 @@ Open positions:
 {positions_text}
 {correlation_warning}
 {gate_v2_section}
+{iv_rank_section}
 === SAFETY STATUS ===
 Daily P&L: ${safety.get("daily_pnl", 0):,.2f}
 Current drawdown: {safety.get("drawdown_pct", 0):.1%}
@@ -566,6 +586,9 @@ Evaluate these risk dimensions:
 4. Statistical validation risk — does this symbol's own gate-v2 verdict (MC-95th-DD, DSR,
    WFO-consistency, above) suggest the underlying edge is fragile? Informational only —
    use your judgment on whether to reduce modified_quantity.
+5. Volatility-regime risk — does this symbol's IV rank (above) suggest the current
+   volatility regime favors a smaller directional size or a more premium-selling-oriented
+   posture? Informational only — no new hard veto, use your judgment.
 
 Respond with JSON in exactly this format:
 {{
@@ -574,7 +597,7 @@ Respond with JSON in exactly this format:
   "modified_quantity": <int or null if no change>,
   "modified_limit_price": <float or null if no change>,
   "risk_score": <float 0.0 to 1.0>,
-  "reasoning": "<2-4 sentence risk assessment covering all four dimensions>"
+  "reasoning": "<2-4 sentence risk assessment covering all five dimensions>"
 }}"""
 
     def _parse_risk_decision(self, result: dict) -> RiskDecision:

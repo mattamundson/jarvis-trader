@@ -16,9 +16,12 @@ from pathlib import Path
 import pytest
 
 from agents.strategy_metrics import (
+    IV_RANK_HIGH_THRESHOLD,
+    IV_RANK_LOW_THRESHOLD,
     MIN_TRADES_FOR_RISK_METRICS,
     compute_recent_risk_metrics,
     get_gate_v2_metrics,
+    get_iv_rank,
 )
 from backtest.metrics import calculate_metrics
 from backtest.trade_manager import BacktestResult, Trade
@@ -241,3 +244,97 @@ class TestGetGateV2Metrics:
             policy, "_default_verdicts_dir", lambda: tmp_path / "does_not_exist"
         )
         assert get_gate_v2_metrics("MES") is None
+
+
+# --------------------------------------------------------------------------- #
+# get_iv_rank                                                                  #
+# --------------------------------------------------------------------------- #
+
+
+class TestGetIvRank:
+    """`get_iv_rank` is a thin wrapper over `options.chain_fetcher.get_iv_rank` —
+    these tests mock that underlying call rather than re-deriving the IVR math,
+    matching the "reuse, don't reimplement" contract in the docstring.
+    """
+
+    def _patch_underlying(self, monkeypatch, return_value=None, side_effect=None):
+        import options.chain_fetcher as chain_fetcher
+
+        def _fake(symbol, data_manager=None, **kwargs):
+            if side_effect is not None:
+                raise side_effect
+            return return_value
+
+        monkeypatch.setattr(chain_fetcher, "get_iv_rank", _fake)
+
+    def test_blank_symbol_returns_none(self):
+        assert get_iv_rank("") is None
+        assert get_iv_rank(None) is None
+        assert get_iv_rank("   ") is None
+
+    def test_high_iv_rank_yields_elevated_interpretation(self, monkeypatch):
+        self._patch_underlying(monkeypatch, return_value=85.0)
+        result = get_iv_rank("MES")
+        assert result is not None
+        assert result["symbol"] == "MES"
+        assert result["iv_rank"] == 85.0
+        assert "elevated" in result["interpretation"].lower()
+        assert "premium-selling" in result["interpretation"].lower()
+
+    def test_low_iv_rank_yields_low_interpretation(self, monkeypatch):
+        self._patch_underlying(monkeypatch, return_value=12.0)
+        result = get_iv_rank("MGC")
+        assert result is not None
+        assert result["iv_rank"] == 12.0
+        assert "low" in result["interpretation"].lower()
+        assert "premium-buying" in result["interpretation"].lower()
+
+    def test_mid_range_iv_rank_yields_neutral_interpretation(self, monkeypatch):
+        self._patch_underlying(monkeypatch, return_value=50.0)
+        result = get_iv_rank("MES")
+        assert result is not None
+        assert "neutral" in result["interpretation"].lower()
+
+    def test_high_threshold_boundary_is_inclusive(self, monkeypatch):
+        self._patch_underlying(monkeypatch, return_value=IV_RANK_HIGH_THRESHOLD)
+        result = get_iv_rank("MES")
+        assert result is not None
+        assert "elevated" in result["interpretation"].lower()
+
+    def test_low_threshold_boundary_is_inclusive(self, monkeypatch):
+        self._patch_underlying(monkeypatch, return_value=IV_RANK_LOW_THRESHOLD)
+        result = get_iv_rank("MES")
+        assert result is not None
+        assert "low" in result["interpretation"].lower()
+
+    def test_underlying_raises_returns_none(self, monkeypatch):
+        self._patch_underlying(monkeypatch, side_effect=RuntimeError("no chain data"))
+        assert get_iv_rank("MES") is None
+
+    def test_underlying_returns_none_propagates_none(self, monkeypatch):
+        self._patch_underlying(monkeypatch, return_value=None)
+        assert get_iv_rank("MES") is None
+
+    def test_symbol_is_uppercased_and_stripped(self, monkeypatch):
+        self._patch_underlying(monkeypatch, return_value=85.0)
+        result = get_iv_rank("  mes  ")
+        assert result is not None
+        assert result["symbol"] == "MES"
+
+    def test_import_error_never_raises(self, monkeypatch):
+        # Simulate the options module being unavailable entirely — must
+        # degrade to None, not raise, per the "never blocks a decision"
+        # contract shared with get_gate_v2_metrics/compute_recent_risk_metrics.
+        import agents.strategy_metrics as strategy_metrics
+
+        import builtins
+
+        real_import = builtins.__import__
+
+        def _blocked_import(name, *args, **kwargs):
+            if name == "options.chain_fetcher":
+                raise ImportError("simulated missing module")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", _blocked_import)
+        assert strategy_metrics.get_iv_rank("MES") is None

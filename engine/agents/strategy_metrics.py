@@ -25,12 +25,23 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["get_gate_v2_metrics", "compute_recent_risk_metrics"]
+__all__ = ["get_gate_v2_metrics", "compute_recent_risk_metrics", "get_iv_rank"]
 
 # Mirrors the minimum-sample-size convention already used by the Half-Kelly
 # sizing gate in utils/position_sizing.py::compute_rolling_edge — fewer than
 # this many closed trades and edge stats are considered too noisy to trust.
 MIN_TRADES_FOR_RISK_METRICS = 10
+
+# IV Rank interpretation thresholds — NOT invented here. Mirrors two existing,
+# already-shipped conventions in this repo rather than picking a fresh 80/20
+# split:
+#   - HIGH: `agents/social_analyst.py`'s options-flow gate already treats
+#     `iv_rank > 70` as "elevated premium risk" (rejects chasing rich premium).
+#   - LOW: `markets/options/scanner.py::MIN_IV_RANK = 30.0` is the existing
+#     "worth selling premium" floor for the premium-selling scanner — below
+#     it, IV is considered too cheap to bother selling, i.e. the "low" side.
+IV_RANK_HIGH_THRESHOLD = 70.0
+IV_RANK_LOW_THRESHOLD = 30.0
 
 
 def get_gate_v2_metrics(symbol: str) -> Optional[dict]:
@@ -149,4 +160,68 @@ def compute_recent_risk_metrics(closed_trades: list, initial_capital: float) -> 
         }
     except Exception as exc:  # pragma: no cover — defensive, never block a decision
         logger.debug("[strategy_metrics] compute_recent_risk_metrics failed: %s", exc)
+        return None
+
+
+def get_iv_rank(symbol: str) -> Optional[dict]:
+    """Thin, read-only wrapper over `options.chain_fetcher.get_iv_rank`.
+
+    Reuses the SAME historical-realized-volatility-proxy IV Rank calculation
+    that already powers the dashboard's options scan table (the
+    `/options/module/scan` endpoint, via `markets/options/scanner.py`) and the
+    standalone `/options/iv-rank/{symbol}` endpoint — does not reimplement the
+    percentile-rank math (that lives in `options/greeks_monitor.py::iv_rank`).
+
+    `chain_fetcher.get_iv_rank` is itself a plain synchronous function that
+    never raises (it returns a 50.0 "neutral" float on any internal data
+    failure), so this wrapper is called with `data_manager=None` — that skips
+    its internal `asyncio.get_event_loop().run_until_complete(...)` branch
+    entirely and goes straight to the synchronous `BacktestDataLoader`
+    fallback path. This avoids ever driving a nested event loop from inside
+    `TraderAgent.decide()` / `RiskManagerAgent._build_prompt()`, which already
+    call `get_gate_v2_metrics`/`compute_recent_risk_metrics` as plain
+    synchronous calls (no `await`) — this function matches that exact
+    calling convention so it can be dropped into the same best-effort blocks
+    with no async/sync mismatch.
+
+    Computation is generic over `symbol` (driven purely by available
+    historical daily-bar history, not a live options-chain fetch), so it
+    is not limited to the scanner's default SPY/QQQ/IWM universe — it works
+    the same way for MES/MGC, the only two actively-traded symbols, as long
+    as historical daily bars exist for them (they do; both are actively
+    backtested).
+
+    Returns `None` on a blank/missing symbol or any internal error — this
+    must never be able to block a trade decision.
+    """
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return None
+
+    try:
+        from options.chain_fetcher import get_iv_rank as _get_iv_rank  # noqa: PLC0415
+
+        ivr = _get_iv_rank(symbol, data_manager=None)
+        if ivr is None:
+            return None
+        ivr = round(float(ivr), 1)
+
+        if ivr >= IV_RANK_HIGH_THRESHOLD:
+            interpretation = (
+                f"elevated (>= {IV_RANK_HIGH_THRESHOLD:.0f}) -- consider premium-selling bias"
+            )
+        elif ivr <= IV_RANK_LOW_THRESHOLD:
+            interpretation = (
+                f"low (<= {IV_RANK_LOW_THRESHOLD:.0f}) -- consider premium-buying bias"
+            )
+        else:
+            interpretation = "neutral -- no strong premium-selling/buying skew"
+
+        return {
+            "symbol": symbol,
+            "iv_rank": ivr,
+            "interpretation": interpretation,
+        }
+    except Exception as exc:  # pragma: no cover — defensive, never block a decision
+        logger.debug("[strategy_metrics] get_iv_rank(%s) failed: %s", symbol, exc)
         return None

@@ -15,7 +15,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from agents.strategy_metrics import compute_recent_risk_metrics, get_gate_v2_metrics
+from agents.strategy_metrics import (
+    compute_recent_risk_metrics,
+    get_gate_v2_metrics,
+    get_iv_rank,
+)
 from utils.llm_json import parse_llm_json
 from utils.position_sizing import (
     INSTRUMENT_MULTIPLIERS,
@@ -528,11 +532,12 @@ class TraderAgent:
         # informs the LLM about already exists and is untouched here. Best-effort:
         # any failure degrades to {"recent": None, "validated": None} and never
         # blocks the decision.
-        strategy_metrics: dict = {"recent": None, "validated": None}
+        strategy_metrics: dict = {"recent": None, "validated": None, "iv_rank": None}
         try:
             strategy_metrics = {
                 "recent": compute_recent_risk_metrics(recent_trades_raw, account_value),
                 "validated": get_gate_v2_metrics(symbol),
+                "iv_rank": get_iv_rank(symbol),
             }
         except Exception as _sm_err:
             logger.debug(
@@ -540,7 +545,7 @@ class TraderAgent:
                 symbol,
                 _sm_err,
             )
-            strategy_metrics = {"recent": None, "validated": None}
+            strategy_metrics = {"recent": None, "validated": None, "iv_rank": None}
 
         # ── A2: VIX regime position-size multiplier ───────────────────────
         # Extract VIX from fundamental report and apply regime-based scaling.
@@ -1474,12 +1479,13 @@ Respond with JSON in exactly this format:
     def _strategy_metrics_section(strategy_metrics: Optional[dict]) -> str:
         """Render the informational strategy-validation block, if any data exists.
 
-        `strategy_metrics` is `{"recent": dict|None, "validated": dict|None}`
-        as produced in `decide()`. Returns "" (including no header) when both
-        sub-dicts are absent, matching the omit-when-absent convention used by
-        `_forward_recorder_section` above — a non-MES symbol or a symbol with
-        no closed-trade history / no gate-v2 verdict yet gets the legacy
-        prompt shape unchanged.
+        `strategy_metrics` is `{"recent": dict|None, "validated": dict|None,
+        "iv_rank": dict|None}` as produced in `decide()`. Returns "" (including
+        no header) when all three sub-dicts are absent, matching the
+        omit-when-absent convention used by `_forward_recorder_section` above —
+        a non-MES/MGC symbol or a symbol with no closed-trade history / no
+        gate-v2 verdict / no IV Rank data yet gets the legacy prompt shape
+        unchanged.
 
         This block is purely informational — it does NOT instruct the LLM to
         veto or block anything. The hard gate-v2 authorization check already
@@ -1493,7 +1499,12 @@ Respond with JSON in exactly this format:
 
         recent = strategy_metrics.get("recent")
         validated = strategy_metrics.get("validated")
-        if not isinstance(recent, dict) and not isinstance(validated, dict):
+        iv_rank = strategy_metrics.get("iv_rank")
+        if (
+            not isinstance(recent, dict)
+            and not isinstance(validated, dict)
+            and not isinstance(iv_rank, dict)
+        ):
             return ""
 
         lines = ["\n=== STRATEGY VALIDATION METRICS (informational) ==="]
@@ -1539,6 +1550,13 @@ Respond with JSON in exactly this format:
         else:
             lines.append(
                 "Gate-v2 validation verdict: no fresh verdict on file for this symbol."
+            )
+
+        if isinstance(iv_rank, dict):
+            ivr_val = iv_rank.get("iv_rank")
+            ivr_str = f"{ivr_val:.0f}" if isinstance(ivr_val, (int, float)) else "N/A"
+            lines.append(
+                f"IV Rank: {ivr_str} ({iv_rank.get('interpretation', 'N/A')})"
             )
 
         lines.append("")
