@@ -192,6 +192,85 @@ class TestComputeSnapshotStats:
         # profit_factor = (500 + 300) / abs(-200) = 800 / 200 = 4.0
         assert stats["profit_factor"] == 4.0
 
+    def test_sharpe_matches_canonical_metrics_formula(self, db_connection):
+        """
+        sharpe returned by the snapshot must equal backtest/metrics.py's canonical
+        Sharpe (per-trade RETURNS as a fraction of initial_capital, annualized by
+        sqrt(252)) -- not a raw-dollar, non-annualized mean/std. Regression test for
+        the two-endpoints-disagree bug: the OLD implementation here computed
+        statistics.mean(pnls) / statistics.stdev(pnls) with no capital-normalization
+        and no annualization, which numerically differs from this by orders of
+        magnitude.
+        """
+        from datetime import datetime as dt
+
+        from backtest.metrics import compute_sharpe_sortino
+        from backtest.trade_manager import BacktestResult, Trade
+
+        week_start = "2026-04-06"
+        pnls = [500.0, -200.0, 300.0, -150.0, 700.0]
+
+        for i, pnl in enumerate(pnls):
+            exit_time = f"2026-04-{6 + i:02d}T10:00:00"
+            db_connection.execute(
+                """
+                INSERT INTO paper_trades
+                (trade_id, symbol, side, quantity, entry_price, exit_price, entry_time, exit_time, pnl, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"trade{i}",
+                    "MCL",
+                    "buy",
+                    1.0,
+                    100.0,
+                    105.0,
+                    exit_time,
+                    exit_time,
+                    pnl,
+                    "closed",
+                ),
+            )
+        db_connection.commit()
+
+        stats = _compute_snapshot_stats("MCL", week_start, db_connection)
+
+        # Independently compute the expected value via the SAME canonical function
+        # the router is supposed to call, from the same raw pnl list.
+        expected_trades = [
+            Trade(
+                entry_date=dt.utcnow(),
+                symbol="MCL",
+                direction="long" if p >= 0 else "short",
+                entry_price=0.0,
+                stop_price=0.0,
+                target_1=0.0,
+                target_2=0.0,
+                contracts=1,
+                multiplier=1.0,
+                pnl=p,
+            )
+            for p in pnls
+        ]
+        expected_result = BacktestResult(
+            symbol="MCL",
+            start_date=week_start,
+            end_date="irrelevant",
+            initial_capital=settings.INITIAL_CAPITAL,
+            final_capital=settings.INITIAL_CAPITAL + sum(pnls),
+            trades=expected_trades,
+        )
+        compute_sharpe_sortino(expected_result)
+
+        assert stats["sharpe"] == pytest.approx(round(expected_result.sharpe_ratio, 4), rel=1e-6)
+
+        # Sanity check this isn't accidentally still the OLD raw-dollar formula:
+        # old_sharpe = mean(pnls)/stdev(pnls) with NO annualization, NO capital scaling.
+        import statistics as _statistics
+
+        old_sharpe = _statistics.mean(pnls) / _statistics.stdev(pnls)
+        assert stats["sharpe"] != pytest.approx(old_sharpe, rel=1e-6)
+
 
 class TestWFERouter:
     """Test WFE router endpoints."""
