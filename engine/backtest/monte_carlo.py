@@ -715,30 +715,21 @@ def probability_of_ruin(
 # ---------------------------------------------------------------------------
 
 
-def run_slippage_stress(
-    result: BacktestResult,
-    symbol: str = "MES",
-    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+def _slippage_stress_core(
+    pnls: np.ndarray,
+    tick_value: float,
+    extra_tick_scenarios: tuple[int, ...],
 ) -> dict:
-    """Measure how PF degrades as execution slippage increases.
+    """Shared computation behind `run_slippage_stress` / `slippage_stress_from_pnls`.
 
-    For each extra-ticks scenario, adds (extra_ticks × tick_value) as a
-    fixed cost to every trade and recomputes PF. Identifies the breakeven
-    slippage — the number of extra ticks that drives PF to exactly 1.0.
-
-    Args:
-        result: BacktestResult with trades
-        symbol: instrument symbol for tick value lookup
-        extra_tick_scenarios: additional ticks per trade to stress-test
-
-    Returns:
-        {scenarios, breakeven_extra_ticks, breakeven_pf_at_1_tick, verdict}
+    Takes a flat per-trade USD PnL array — no `BacktestResult` dependency —
+    so both the `BacktestResult`-based and the flat-list-based entry points
+    (the latter used by gate-v2 runners operating on concatenated OOS trade
+    PnLs) share one tested implementation.
     """
-    tick_value = _get_tick_value(symbol)
-    pnls = np.array([t.pnl for t in result.trades], dtype=np.float64)
     n = len(pnls)
     if n == 0:
-        return {"scenarios": [], "breakeven_extra_ticks": None, "verdict": "NO_TRADES"}
+        return {"tick_value": tick_value, "n_trades": 0, "scenarios": [], "breakeven_extra_ticks": None, "verdict": "NO_TRADES"}
 
     scenarios = []
     prev_pf = None
@@ -779,13 +770,66 @@ def run_slippage_stress(
         verdict = "FRAGILE"  # even normal execution variability kills it
 
     return {
-        "symbol": symbol,
         "tick_value": tick_value,
         "n_trades": n,
         "scenarios": scenarios,
         "breakeven_extra_ticks": round(breakeven_ticks, 2) if breakeven_ticks is not None else None,
         "verdict": verdict,
     }
+
+
+def run_slippage_stress(
+    result: BacktestResult,
+    symbol: str = "MES",
+    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+) -> dict:
+    """Measure how PF degrades as execution slippage increases.
+
+    For each extra-ticks scenario, adds (extra_ticks × tick_value) as a
+    fixed cost to every trade and recomputes PF. Identifies the breakeven
+    slippage — the number of extra ticks that drives PF to exactly 1.0.
+
+    Args:
+        result: BacktestResult with trades
+        symbol: instrument symbol for tick value lookup
+        extra_tick_scenarios: additional ticks per trade to stress-test
+
+    Returns:
+        {scenarios, breakeven_extra_ticks, breakeven_pf_at_1_tick, verdict}
+    """
+    tick_value = _get_tick_value(symbol)
+    pnls = np.array([t.pnl for t in result.trades], dtype=np.float64)
+    core = _slippage_stress_core(pnls, tick_value, extra_tick_scenarios)
+    return {"symbol": symbol, **core}
+
+
+def slippage_stress_from_pnls(
+    pnls: list[float] | np.ndarray,
+    symbol: str = "MES",
+    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+) -> dict:
+    """Same breakeven-slippage stress test as `run_slippage_stress`, but takes
+    a flat per-trade USD PnL list directly instead of a `BacktestResult`.
+
+    Lets callers that already work from a concatenated PnL series (e.g. gate-v2
+    runners operating on OOS trade lists, matching `bootstrap_pf` / `bootstrap_max_dd`
+    conventions elsewhere in this module) reuse the exact same computation
+    `run_slippage_stress` uses, without constructing a `BacktestResult`/`Trade`
+    wrapper first.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        symbol: instrument symbol for tick value lookup
+        extra_tick_scenarios: additional ticks per trade to stress-test
+
+    Returns:
+        Same shape as `run_slippage_stress`: {symbol, tick_value, n_trades,
+        scenarios, breakeven_extra_ticks, verdict}.
+    """
+    tick_value = _get_tick_value(symbol)
+    pnls_arr = np.asarray(pnls, dtype=np.float64)
+    core = _slippage_stress_core(pnls_arr, tick_value, extra_tick_scenarios)
+    return {"symbol": symbol, **core}
 
 
 # ---------------------------------------------------------------------------

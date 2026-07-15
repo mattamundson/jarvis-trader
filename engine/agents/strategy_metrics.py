@@ -75,6 +75,8 @@ def get_gate_v2_metrics(symbol: str) -> Optional[dict]:
             "dsr": metrics.get("dsr"),
             "wfo_consistency": metrics.get("wfo_consistency"),
             "fixed_params_min_pf": metrics.get("fixed_params_min_pf"),
+            "breakeven_extra_ticks": metrics.get("breakeven_extra_ticks"),
+            "slippage_stress_verdict": metrics.get("slippage_stress_verdict"),
             "created_at": snapshot.created_at,
             "age_days": round(snapshot.age_days(), 1),
         }

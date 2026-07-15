@@ -49,6 +49,7 @@ import numpy as np
 from backtest.deflated_sharpe import deflated_sharpe_from_returns
 from backtest.monte_carlo import bootstrap_max_dd, bootstrap_win_rate, compute_cvar, compute_var
 from backtest.monte_carlo import probability_of_ruin as _mc_probability_of_ruin
+from backtest.monte_carlo import slippage_stress_from_pnls as _mc_slippage_stress_from_pnls
 from backtest.stationarity_gate import h1_h2_split
 
 #: Drawdown returned when there are too few real trades to simulate a path.
@@ -216,3 +217,37 @@ def trade_level_probability_of_ruin(
         seed=seed,
     )
     return float(result["probability_of_ruin"])
+
+
+def trade_level_slippage_stress(
+    oos_results: Sequence,
+    symbol: str,
+    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+) -> dict:
+    """Breakeven-slippage stress test on the concatenated OOS trade list.
+
+    Report-only -- not a gate threshold (see the report-only section above).
+    Answers "how many extra ticks of execution slippage can this strategy
+    absorb before its edge breaks even (PF crosses 1.0)?" by adding
+    (extra_ticks x tick_value) as a fixed per-trade cost and recomputing PF
+    at each scenario -- see `monte_carlo.run_slippage_stress` for the full
+    mechanics. Wraps `monte_carlo.slippage_stress_from_pnls` on the SAME
+    concatenated OOS PnL series already used by the DD/DSR/VaR/CVaR metrics
+    above -- no new data path.
+
+    Returns the full result dict (`scenarios`, `breakeven_extra_ticks`,
+    `verdict`, ...). Fail-safe: fewer than 2 trades returns a `NO_TRADES`
+    verdict with `breakeven_extra_ticks=None` rather than raising.
+    """
+    pnls = concat_oos_trade_pnls(oos_results)
+    if len(pnls) < 2:
+        return {
+            "symbol": symbol,
+            "n_trades": len(pnls),
+            "scenarios": [],
+            "breakeven_extra_ticks": None,
+            "verdict": "NO_TRADES",
+        }
+    return _mc_slippage_stress_from_pnls(
+        pnls, symbol=symbol, extra_tick_scenarios=extra_tick_scenarios
+    )
