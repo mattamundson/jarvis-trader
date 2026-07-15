@@ -679,17 +679,43 @@ async def executor_status() -> dict:
     """
     Return status snapshot for all currently running RL executors.
 
-    Each entry contains: symbol, model_path, is_running, model_loaded,
-    last_action, last_prediction_time, bars_executed, paper_position,
-    entry_price, bars_in_trade, last_error.
+    Each entry in ``executors`` contains: symbol, model_path, is_running,
+    model_loaded, last_action, last_prediction_time, bars_executed,
+    paper_position, entry_price, bars_in_trade, last_error, next_fire_time.
+
+    Also includes a flattened top-level view consumed by the dashboard's
+    simplified RLExecutorStatusCard (dashboard/app/strategies/page.tsx):
+    ``deployed``, ``symbol``, ``model_path``, ``last_prediction``,
+    ``last_prediction_time``, ``next_fire_time``. These mirror one real
+    executor's fields (last_action -> last_prediction) rather than
+    fabricated values. When zero executors are deployed, deployed=False
+    and the rest are None. When more than one executor is deployed (the
+    engine trades multiple symbols, e.g. MES + MGC), the executor with the
+    most recent last_prediction_time is surfaced here as "primary"; ties
+    or an all-unpredicted set fall back to registry insertion order. The
+    full per-symbol detail is always available in ``executors`` regardless
+    of how many are deployed.
     """
     from strategies.rl_executor import get_executor_status
 
     try:
         statuses = get_executor_status()
+
+        primary: Optional[dict] = None
+        if statuses:
+            entries = list(statuses.values())
+            predicted = [e for e in entries if e.get("last_prediction_time")]
+            primary = max(predicted, key=lambda e: e["last_prediction_time"]) if predicted else entries[0]
+
         return {
             "executor_count": len(statuses),
             "executors": statuses,
+            "deployed": primary is not None,
+            "symbol": primary.get("symbol") if primary else None,
+            "model_path": primary.get("model_path") if primary else None,
+            "last_prediction": primary.get("last_action") if primary else None,
+            "last_prediction_time": primary.get("last_prediction_time") if primary else None,
+            "next_fire_time": primary.get("next_fire_time") if primary else None,
         }
     except Exception as exc:
         logger.error(f"[StrategiesRouter] executor_status failed: {exc}", exc_info=True)
