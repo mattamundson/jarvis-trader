@@ -11,12 +11,45 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated
 
+import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["backtest"])
+
+
+def _derive_signal_date(df_signals: pd.DataFrame) -> str:
+    """Derive the calendar date of the most recent signal row.
+
+    Prefers a real ``DatetimeIndex``. Bar data sources in this codebase
+    (see ``data/market_data.py``) return OHLCV frames with a plain
+    positional ``RangeIndex`` and a ``timestamp`` (or ``date``) column
+    rather than a ``DatetimeIndex`` — that is the common case, not an
+    edge case. When the index isn't date-like, fall back to the real
+    timestamp/date column instead of stringifying the raw positional
+    integer (which previously produced values like "SIGNAL DATE: 250").
+    """
+    last_index = df_signals.index[-1]
+
+    if isinstance(df_signals.index, pd.DatetimeIndex) or hasattr(last_index, "date"):
+        return str(last_index.date())
+
+    for col in ("timestamp", "date"):
+        if col in df_signals.columns:
+            ts = pd.to_datetime(df_signals[col].iloc[-1])
+            return str(ts.date())
+
+    # Last-resort fallback — should not be reachable given the data pipeline
+    # always attaches a timestamp column, but never crash signal generation
+    # over a display-only date string.
+    logger.warning(
+        "[PAPER-MGC] Could not derive signal date from index or timestamp/date "
+        "column; falling back to current UTC date."
+    )
+    return str(pd.Timestamp.now("UTC").date())
+
 
 # Global references (injected from main.py)
 # These will be set by inject_dependencies()
@@ -670,11 +703,7 @@ async def get_mgc_signal():
             else:
                 signal = "NO_ENTRY"
 
-            signal_date = (
-                str(df_signals.index[-1].date())
-                if hasattr(df_signals.index[-1], "date")
-                else str(df_signals.index[-1])[:10]
-            )
+            signal_date = _derive_signal_date(df_signals)
 
             return {
                 "date": signal_date,
