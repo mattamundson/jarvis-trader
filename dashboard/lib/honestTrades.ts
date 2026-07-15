@@ -253,6 +253,11 @@ export function maxDrawdownPct(
     const dd = peak - pt.equity;
     if (dd > maxDdDollars) maxDdDollars = dd;
   }
+  // Peak never rose above the zero baseline (e.g. an all-losing sequence) --
+  // there is no established high to have drawn down from, so the fraction is
+  // undefined and defined as 0 rather than reporting a drop below a peak that
+  // was never actually reached.
+  if (peak <= 0) return 0;
   const denom = Math.max(peak, startingEquity);
   return denom > 0 ? maxDdDollars / denom : 0;
 }
