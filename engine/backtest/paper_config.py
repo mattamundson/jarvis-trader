@@ -323,6 +323,12 @@ MES_VA30_CONFIG = {
     "strategy": "va_reentry",  # Routes to generate_instrument_signals() -> signals_va_reentry path
     "verdict_symbol": "MES",  # gate v2 verdict lookup override -- see gate_v2_policy.py
     "enabled": True,
+    #  sd-116's backtest force-closes every trade at RTH session end (16:00
+    #  America/New_York) -- it never tested carrying a position overnight.
+    #  paper_runner.manage_open_position() enforces this only when set; the
+    #  MES/MGC trend configs omit it and are unaffected (they're validated
+    #  to hold multi-day).
+    "session_close": True,
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing, matches sd-116's own backtest capital convention
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
