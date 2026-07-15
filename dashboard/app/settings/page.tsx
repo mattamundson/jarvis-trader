@@ -568,7 +568,6 @@ function IBGatewayPanel({
         <ConfigRow label="Port" value={config?.ibkr_port ?? "—"} mono />
         <ConfigRow label="Client ID" value={config?.ibkr_client_id ?? "—"} mono />
         <ConfigRow label="Mode" value={paperMode ? "Paper trading only" : "Live trading"} />
-        <ConfigRow label="Live trading locked" value={!(config?.live_trading_enabled ?? false)} />
       </div>
 
       {data?.account_id && (
