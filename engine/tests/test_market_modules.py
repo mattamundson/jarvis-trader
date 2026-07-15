@@ -38,7 +38,7 @@ class TestFuturesMarketModuleInterface:
     def mock_portfolio_tracker(self):
         """Override conftest mock_paper_tracker with richer position data."""
         mock = MagicMock()
-        mock.get_open_positions.return_value = [
+        open_positions = [
             {
                 "symbol": "MES",
                 "quantity": 1,
@@ -47,6 +47,22 @@ class TestFuturesMarketModuleInterface:
                 "unrealized_pnl": 50.0,
             }
         ]
+        mock.get_open_positions.return_value = open_positions
+        # get_positions()/health_check() now read the DB-reconciled source
+        # (PortfolioTracker.get_open_positions_authoritative) rather than the
+        # raw in-memory get_open_positions(), so the mock must implement both.
+        mock.get_open_positions_authoritative.return_value = (
+            open_positions,
+            {
+                "source": "db_authoritative",
+                "reconciled": True,
+                "count": len(open_positions),
+                "in_memory_count": len(open_positions),
+                "db_count": len(open_positions),
+                "only_in_db": [],
+                "only_in_memory": [],
+            },
+        )
         mock.get_performance.return_value = {
             "today_pnl": 150.0,
             "total_pnl": 500.0,
