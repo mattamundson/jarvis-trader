@@ -161,6 +161,9 @@ async def get_metrics() -> dict[str, Any]:
     renamed sub-fields (``max_dd_close_pct``→``max_drawdown``, ``ann_vol``→
     ``volatility``, ``win_rate_pct``→``win_rate``). Without this mapping the UI
     both mislabels keys and double-scales percentages (e.g. CAGR 17.09 → 1709%).
+    ``final_multiple_x`` (equity growth multiple, e.g. 4.12x) is forwarded
+    as-is alongside the raw dollar ``final_equity`` — the dashboard displays
+    the multiple, not the dollar figure, to avoid a nonsensical "$412306.24x".
     404s cleanly (via _load_json) when no backtest has been run yet.
     """
     raw = _load_json(_METRICS_FILE)  # 404s cleanly if no backtest has run
@@ -183,6 +186,7 @@ async def get_metrics() -> dict[str, Any]:
             "volatility": _pct(block.get("ann_vol")),
             "win_rate": _pct(block.get("win_rate_pct")),
             "final_equity": _num(block.get("final_equity")),
+            "final_multiple_x": _num(block.get("final_multiple_x")),
             "n_weeks": block.get("n_weeks"),
         }
 

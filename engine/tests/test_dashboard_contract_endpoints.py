@@ -26,7 +26,7 @@ def test_strategy_c_metrics_maps_keys_and_rescales_units(tmp_path, monkeypatch):
                 "full": {
                     "cagr": 17.09, "sharpe": 1.42, "sortino": 2.1, "calmar": 0.9,
                     "max_dd_close_pct": 12.5, "ann_vol": 18.0, "win_rate_pct": 56.0,
-                    "final_equity": 24700.0, "n_weeks": 260,
+                    "final_equity": 24700.0, "final_multiple_x": 2.47, "n_weeks": 260,
                 },
                 "is_period": {"cagr": 20.0, "sharpe": 1.6, "max_dd_close_pct": 10.0},
                 "oos_period": {"cagr": 15.0, "sharpe": 1.3, "max_dd_close_pct": 14.0},
@@ -52,11 +52,45 @@ def test_strategy_c_metrics_maps_keys_and_rescales_units(tmp_path, monkeypatch):
     # non-percent passthrough
     assert fp["sharpe"] == 1.42
     assert fp["final_equity"] == 24700.0
+    assert fp["final_multiple_x"] == 2.47
     # retention mapped + rescaled
     oos = out["out_of_sample"]
     assert oos["sharpe_retention"] == 0.81
     assert oos["cagr_retention"] == 0.75
     assert out["in_sample"]["cagr"] == 0.20
+
+
+def test_strategy_c_metrics_forwards_final_multiple_x(tmp_path, monkeypatch):
+    """Bug E (T2-16, 2026-07-11 dashboard audit): the router's ``_core()`` never
+    forwarded ``final_multiple_x`` into the HTTP response, so the dashboard fell
+    back to slapping an "x" suffix on the raw dollar ``final_equity`` figure
+    (e.g. "412306.24x" — nonsensical). This pins the fix: the value forwarded
+    by the router must match what engine.py's own metrics computation produces
+    for a real equity curve, not a hand-typed mock number.
+    """
+    import pandas as pd
+
+    import routers.strategy_c_router as sc
+    from strategy_c.engine import StrategyCEngine
+
+    # Real equity curve -> real engine metrics (final_multiple_x computed by
+    # engine.py, not fabricated). _compute_metrics doesn't touch `self`, so an
+    # unbound call with a dummy instance-less self is safe and avoids pulling
+    # in the engine's full data/config dependencies.
+    equity = pd.Series([100_000.0 * (1.01 ** i) for i in range(30)])
+    real_metrics = StrategyCEngine._compute_metrics(None, equity, label="full")
+    assert real_metrics["final_multiple_x"] > 0  # sanity: engine actually computed it
+
+    metrics_file = tmp_path / "metrics_multiple.json"
+    metrics_file.write_text(json.dumps({"full": real_metrics}), encoding="utf-8")
+    monkeypatch.setattr(sc, "_METRICS_FILE", metrics_file)
+
+    out = asyncio.run(sc.get_metrics())
+
+    assert out["full_period"]["final_multiple_x"] == real_metrics["final_multiple_x"]
+    # cross-check against the raw equity curve directly (belt-and-suspenders)
+    expected = round(float(equity.iloc[-1]) / float(equity.iloc[0]), 3)
+    assert out["full_period"]["final_multiple_x"] == expected
 
 
 def test_strategy_c_metrics_handles_missing_subfields(tmp_path, monkeypatch):
