@@ -36,27 +36,21 @@ export function EngineOfflineBanner() {
     <div
       role="alert"
       aria-live="assertive"
-      className="fixed bottom-0 left-0 right-0 z-[9999] flex items-center justify-between gap-4 px-4 py-3"
-      style={{
-        backgroundColor: "#ffcc00",
-        borderTop: "2px solid #e6b800",
-      }}
+      className="fixed bottom-0 left-0 right-0 z-[9999] flex items-center justify-between gap-4 px-4 py-3 bg-[#ffcc00] border-t-2 border-t-[#e6b800]"
     >
       {/* Left: icon + message */}
       <div className="flex items-center gap-3 min-w-0">
         {/* Pulsing dot */}
         <span
-          className="shrink-0 inline-block w-2.5 h-2.5 rounded-full animate-pulse"
-          style={{ backgroundColor: "#7a5c00" }}
+          className="shrink-0 inline-block w-2.5 h-2.5 rounded-full animate-pulse bg-[#7a5c00]"
         />
 
         <p
-          className="font-mono text-xs font-semibold leading-snug truncate"
-          style={{ color: "#1a1000" }}
+          className="font-mono text-xs font-semibold leading-snug truncate text-[#1a1000]"
         >
           ENGINE OFFLINE{" "}
           <span className="font-normal opacity-70">—</span>{" "}
-          <span className="font-normal" style={{ color: "#3d2800" }}>
+          <span className="font-normal text-[#3d2800]">
             Engine API not responding (dashboard uses the /api/engine proxy). Start the FastAPI engine and see docs/troubleshooting.md.
           </span>
         </p>
@@ -72,8 +66,7 @@ export function EngineOfflineBanner() {
       <button
         onClick={handleDismiss}
         aria-label="Dismiss engine offline banner for 60 seconds"
-        className="shrink-0 flex items-center justify-center w-6 h-6 rounded transition-opacity hover:opacity-70"
-        style={{ color: "#1a1000" }}
+        className="shrink-0 flex items-center justify-center w-6 h-6 rounded transition-opacity hover:opacity-70 text-[#1a1000]"
       >
         {/* Simple X — no external icon dependency */}
         <svg

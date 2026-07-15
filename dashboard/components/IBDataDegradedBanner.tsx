@@ -49,24 +49,18 @@ export function IBDataDegradedBanner() {
     <div
       role="alert"
       aria-live="assertive"
-      className="fixed top-0 left-0 right-0 z-[9998] flex items-center justify-between gap-4 px-4 py-2"
-      style={{
-        backgroundColor: "#f59e0b",
-        borderBottom: "2px solid #d97706",
-      }}
+      className="fixed top-0 left-0 right-0 z-[9998] flex items-center justify-between gap-4 px-4 py-2 bg-amber-500 border-b-2 border-b-amber-600"
     >
       <div className="flex items-center gap-3 min-w-0">
         <span
-          className="shrink-0 inline-block w-2.5 h-2.5 rounded-full animate-pulse"
-          style={{ backgroundColor: "#7a3d00" }}
+          className="shrink-0 inline-block w-2.5 h-2.5 rounded-full animate-pulse bg-[#7a3d00]"
         />
         <p
-          className="font-mono text-xs font-semibold leading-snug truncate"
-          style={{ color: "#1a1000" }}
+          className="font-mono text-xs font-semibold leading-snug truncate text-[#1a1000]"
         >
           IB MARKET DATA DEGRADED{" "}
           <span className="font-normal opacity-70">—</span>{" "}
-          <span className="font-normal" style={{ color: "#3d2800" }}>
+          <span className="font-normal text-[#3d2800]">
             serving {sourceLabel} fallback; {failuresLabel}.
           </span>
         </p>
@@ -80,8 +74,7 @@ export function IBDataDegradedBanner() {
       <button
         onClick={handleDismiss}
         aria-label="Dismiss data degraded banner for 60 seconds"
-        className="shrink-0 flex items-center justify-center w-6 h-6 rounded transition-opacity hover:opacity-70"
-        style={{ color: "#1a1000" }}
+        className="shrink-0 flex items-center justify-center w-6 h-6 rounded transition-opacity hover:opacity-70 text-[#1a1000]"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
