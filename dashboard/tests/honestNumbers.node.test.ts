@@ -118,18 +118,49 @@ test("equityCurve: cumulative equity + drawdown vs running peak", () => {
 });
 
 // ── maxDrawdownPct ───────────────────────────────────────────────────────────
-test("maxDrawdownPct: worst fractional drop below peak (drawdown is safety-adjacent)", () => {
-  // peak 100 at T1; trough 30 at T3 => (100-30)/100 = 0.70
-  approx(maxDrawdownPct(TRADES), 0.7, 1e-12);
+test("maxDrawdownPct: worst fractional drop below peak, denominated vs starting capital", () => {
+  // peak 100 at T1; trough 30 at T3 => dd$ = 70. Denominator is floored at
+  // Math.max(peak, startingEquity) — commit 40113b9 — so with the default
+  // 10,000 starting capital this is 70/10000, NOT the unfloored 70/100.
+  // (These two assertions were stale from before that commit and were
+  // failing on trunk; corrected here while touching this file for the
+  // Bug H / T0-07 regression test below.)
+  approx(maxDrawdownPct(TRADES), 70 / 10_000, 1e-12);
 });
 
-test("maxDrawdownPct: 0 when equity never rises above zero base", () => {
+test("maxDrawdownPct: floored-denominator drawdown when peak never rises above zero base", () => {
   const losers = [
     trade("MES", -10, "2026-06-01T12:00:00Z"),
     trade("MES", -5, "2026-06-01T13:00:00Z"),
   ];
-  // peak never > 0, so a % drawdown is undefined -> defined as 0, never NaN/Infinity
-  assert.equal(maxDrawdownPct(losers), 0);
+  // peak stays 0 (equity never exceeds it), so dd$ = 0 - (-15) = 15 at the
+  // trough. Denominator floors to startingEquity (10,000) since peak (0) is
+  // smaller -> 15/10000, a small but real (never 0, never NaN/Infinity) drawdown.
+  approx(maxDrawdownPct(losers), 15 / 10_000, 1e-12);
+});
+
+test("maxDrawdownPct: denominator floor prevents runaway % when peak is tiny (Bug H / T0-07 regression)", () => {
+  // A tiny early win establishes a near-zero running peak; a later large-dollar
+  // loss previously divided into that tiny peak ALONE in scorecard/page.tsx's
+  // now-deleted local computeMaxDDPct(), which had no denominator floor and
+  // produced nonsensical values like -1981.7% on live data. maxDrawdownPct()
+  // floors the denominator at Math.max(peak, startingEquity) so the result
+  // always stays a bounded, sane fraction.
+  const tradesTinyPeak: HonestTrade[] = [
+    trade("MES", 2, "2026-06-01T12:00:00Z"), // peak = 2
+    trade("MES", -2000, "2026-06-01T13:00:00Z"), // equity = -1998, dd$ = 2000
+  ];
+
+  // Sanity check: the unfloored (buggy) math this regression test guards
+  // against would divide 2000 / 2 = 1000 -> 100000% garbage.
+  assert.ok(2000 / 2 > 100, "sanity: unfloored math would be garbage");
+
+  // Floored math: denom = max(peak, DEFAULT_STARTING_CAPITAL) = max(2, 10000).
+  approx(maxDrawdownPct(tradesTinyPeak), 2000 / 10_000, 1e-12);
+  assert.ok(
+    maxDrawdownPct(tradesTinyPeak) < 1,
+    "floored drawdown must stay a sane 0..1 fraction, never explode",
+  );
 });
 
 // ── perTradeSharpe ───────────────────────────────────────────────────────────
