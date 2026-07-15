@@ -47,6 +47,7 @@ xgboost==3.2.0            # Used by engine/learning/model_drawer.py — Win amd6
 pandas>=3.0,<4.0          # converged to 3.x 2026-06-26 (dev/local already on 3.0.2; PR #161 str-Enum fix). <4.0 guards the Pandas4 break the deprecation warnings foreshadow.
 numpy>=2.2.6
 scipy>=1.15.2
+statsmodels>=0.14.0        # Ljung-Box + ADF tests. Used by engine/backtest/rigor_gates.py.
 quantstats==0.0.81        # Portfolio analytics (Sortino/Calmar/max-DD/monthly returns). Used by engine/backtest/stark_forge.py + engine/reports/quantstats_metrics.py.
 
 # ── Databases ──────────────────────────────────────────────────────────────
