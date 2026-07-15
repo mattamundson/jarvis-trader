@@ -361,6 +361,7 @@ def _compute_gate_v2(
     from backtest._gate_v2_trade_metrics import (
         trade_level_dsr,
         trade_level_mc_95th_dd,
+        trade_level_slippage_stress,
         trade_level_win_rate_ci_lower,
     )
 
@@ -378,6 +379,8 @@ def _compute_gate_v2(
     dsr = trade_level_dsr(oos_results, n_grid_combos=n_grid_combos, initial_capital=CAPITAL)
     win_rate_ci_lower = trade_level_win_rate_ci_lower(oos_results)  # Init 2C (shadow; not gated)
     mc_95th_dd_window_legacy = float(np.percentile(oos_dds, 95.0)) if oos_dds else 1.0
+    # Report-only: breakeven-slippage stress (does NOT affect core_pass/alt_pass).
+    slippage_stress = trade_level_slippage_stress(oos_results, symbol=SYMBOL)
 
     wfo_consistency = _classify_wfo_consistency(oos_pfs)
     fixed_params_min_pf = fixed_params_metrics.get("fixed_params_min_pf", 0.0)
@@ -472,6 +475,8 @@ def _compute_gate_v2(
         "min_oos_trades_total": MIN_OOS_TRADES_TOTAL,
         "sample_adequate": sample_adequate,
         "win_rate_ci_lower": round(win_rate_ci_lower, 4),
+        "breakeven_extra_ticks": slippage_stress.get("breakeven_extra_ticks"),
+        "slippage_stress_verdict": slippage_stress.get("verdict"),
         "core_reasons": core_reasons,
         "alt_reasons": alt_reasons,
         "reasons": core_reasons + alt_reasons,
@@ -705,6 +710,8 @@ def run_wfo() -> dict:
             "min_oos_trades_total": gate["min_oos_trades_total"],
             "sample_adequate": gate["sample_adequate"],
             "win_rate_ci_lower": gate["win_rate_ci_lower"],
+            "breakeven_extra_ticks": gate["breakeven_extra_ticks"],
+            "slippage_stress_verdict": gate["slippage_stress_verdict"],
         },
         "thresholds": {
             "pf_ci_lower": GATE_PF_CI_LOWER,

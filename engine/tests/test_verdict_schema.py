@@ -82,6 +82,34 @@ def test_verdict_schema_gate_v2_metrics_parsed() -> None:
     assert schema.gate_v2_metrics.wfo_consistency == "MODERATE"
 
 
+def test_verdict_schema_slippage_stress_fields_parsed() -> None:
+    """New optional fields (report-only, additive) parse when present."""
+    data = _with_metrics(
+        _minimal(),
+        breakeven_extra_ticks=3.25,
+        slippage_stress_verdict="MARGINAL",
+    )
+    schema = VerdictSchema.model_validate(data)
+    assert schema.gate_v2_metrics is not None
+    assert schema.gate_v2_metrics.breakeven_extra_ticks == pytest.approx(3.25)
+    assert schema.gate_v2_metrics.slippage_stress_verdict == "MARGINAL"
+
+
+def test_verdict_schema_slippage_stress_fields_default_none_when_absent() -> None:
+    """Backward compatibility: a verdict file written before these fields
+    existed (no `breakeven_extra_ticks` / `slippage_stress_verdict` keys in
+    its `gate_v2_metrics` block) must still validate, with both fields
+    defaulting to None rather than raising."""
+    data = _with_metrics(_minimal(), pf_ci_lower=1.2, p_edge=0.9, dsr=0.5)
+    assert "breakeven_extra_ticks" not in data["gate_v2_metrics"]
+    schema = VerdictSchema.model_validate(data)
+    assert schema.gate_v2_metrics is not None
+    assert schema.gate_v2_metrics.breakeven_extra_ticks is None
+    assert schema.gate_v2_metrics.slippage_stress_verdict is None
+    # Pre-existing fields are unaffected by the schema addition.
+    assert schema.gate_v2_metrics.pf_ci_lower == pytest.approx(1.2)
+
+
 def test_verdict_schema_champion_params_preserved() -> None:
     data = _minimal()
     data["champion_params"] = {"fast": 20, "slow": 50, "atr_trail_mult": 2.0}
