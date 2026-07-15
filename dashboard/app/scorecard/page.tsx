@@ -41,7 +41,7 @@ import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import {
   fetchHonestTrades,
-  equityCurve,
+  maxDrawdownPct,
   dedupCaveat,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
@@ -124,26 +124,6 @@ function barColor(level: ColorLevel): string {
   if (level === "green") return "bg-bull";
   if (level === "yellow") return "bg-warn";
   return "bg-bear";
-}
-
-/**
- * Compute max drawdown percentage from honest equity curve.
- * Returns 0 when there are no curve points or peak is non-positive.
- * Result is a positive percentage (e.g. 12.5 means 12.5% drawdown).
- */
-function computeMaxDDPct(set: HonestTradeSet): number {
-  const curve = equityCurve(set.trades);
-  if (curve.length === 0) return 0;
-  let maxAbsDD = 0;
-  let runningPeak = 0;
-  for (const pt of curve) {
-    if (pt.equity > runningPeak) runningPeak = pt.equity;
-    if (runningPeak > 0) {
-      const dd = (runningPeak - pt.equity) / runningPeak;
-      if (dd > maxAbsDD) maxAbsDD = dd;
-    }
-  }
-  return maxAbsDD * 100;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -334,8 +314,11 @@ export default function ScorecardPage() {
   const avgWin = wins > 0 ? (honestSet?.grossWin ?? 0) / wins : 0;
   const avgLoss = losses > 0 ? (honestSet?.grossLoss ?? 0) / losses : 0;
 
-  // Max drawdown: computed from equityCurve(honest trades), NOT from the engine endpoint
-  const maxDD = honestSet ? computeMaxDDPct(honestSet) : 0;
+  // Max drawdown: computed from the canonical maxDrawdownPct() (denominator
+  // floored against starting equity — see lib/honestTrades.ts), NOT from the
+  // engine endpoint and NOT re-derived inline (that produced -1981.7% when a
+  // tiny early peak divided into a later large-dollar loss; Bug H / T0-07).
+  const maxDD = honestSet ? maxDrawdownPct(honestSet.trades) * 100 : 0;
 
   // ── Supplemental (non-gate) values ────────────────────────────────────────
   const days = supplemental?.days_active ?? 0;
