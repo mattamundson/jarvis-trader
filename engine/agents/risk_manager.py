@@ -26,6 +26,7 @@ from typing import Optional
 
 import httpx
 
+from agents.strategy_metrics import get_gate_v2_metrics
 from config import settings
 from utils.llm_json import parse_llm_json
 
@@ -489,6 +490,35 @@ class RiskManagerAgent:
             if risk_pts > 0:
                 rr_text = f"Risk: {risk_pts:.2f} pts from entry to stop"
 
+        # Gate-v2 statistical validation verdict (informational only — the
+        # hard authorization gate this reflects already lives in
+        # backtest.gate_v2_policy.is_strategy_authorized() / approval/service.py
+        # and is untouched here; this just gives the LLM the same signal a
+        # human reviewing the symbol's own backtest history would have).
+        gate_v2_section = ""
+        gate_v2 = get_gate_v2_metrics(trade.get("symbol", ""))
+        if isinstance(gate_v2, dict):
+            dd_val = gate_v2.get("mc_95th_dd_pct")
+            dd_str = f"{dd_val:.1%}" if isinstance(dd_val, (int, float)) else "N/A"
+            dsr_val = gate_v2.get("dsr")
+            dsr_str = f"{dsr_val:.2f}" if isinstance(dsr_val, (int, float)) else "N/A"
+            gate_v2_section = (
+                "\n=== STRATEGY VALIDATION VERDICT (informational, gate-v2) ===\n"
+                f"Verdict: {gate_v2.get('verdict')} (passed_via={gate_v2.get('passed_via')}, "
+                f"{gate_v2.get('age_days', '?')}d old) | MC-95th-DD={dd_str} | DSR={dsr_str} | "
+                f"WFO-consistency={gate_v2.get('wfo_consistency', 'N/A')}\n"
+                "This verdict already hard-gates paper order submission upstream — a "
+                "FAIL/INSUFFICIENT_SAMPLE verdict means this symbol's own statistical validation "
+                "looks weak. You MAY (not required to) reduce modified_quantity if this, combined "
+                "with the other risk dimensions, looks poor — this is informational context, not "
+                "a hardcoded veto.\n"
+            )
+        else:
+            gate_v2_section = (
+                "\n=== STRATEGY VALIDATION VERDICT (informational, gate-v2) ===\n"
+                "No fresh gate-v2 verdict on file for this symbol.\n"
+            )
+
         trading_mode = "PAPER TRADING (signal validation)" if self.is_paper_mode else "LIVE TRADING"
         paper_guidance = (
             "\nPAPER MODE GUIDANCE: Approve trades with R:R > 1.5:1 and confidence >= 0.35. "
@@ -523,7 +553,7 @@ Margin used: {margin_used_pct:.1%}
 Open positions:
 {positions_text}
 {correlation_warning}
-
+{gate_v2_section}
 === SAFETY STATUS ===
 Daily P&L: ${safety.get("daily_pnl", 0):,.2f}
 Current drawdown: {safety.get("drawdown_pct", 0):.1%}
@@ -533,6 +563,9 @@ Evaluate these risk dimensions:
 1. Correlation risk — are we already heavily exposed to this sector/instrument?
 2. Timing risk — does this trade look like it is chasing a recent move?
 3. Size risk — is the quantity appropriate given volatility and portfolio size?
+4. Statistical validation risk — does this symbol's own gate-v2 verdict (MC-95th-DD, DSR,
+   WFO-consistency, above) suggest the underlying edge is fragile? Informational only —
+   use your judgment on whether to reduce modified_quantity.
 
 Respond with JSON in exactly this format:
 {{
@@ -541,7 +574,7 @@ Respond with JSON in exactly this format:
   "modified_quantity": <int or null if no change>,
   "modified_limit_price": <float or null if no change>,
   "risk_score": <float 0.0 to 1.0>,
-  "reasoning": "<2-4 sentence risk assessment covering all three dimensions>"
+  "reasoning": "<2-4 sentence risk assessment covering all four dimensions>"
 }}"""
 
     def _parse_risk_decision(self, result: dict) -> RiskDecision:
