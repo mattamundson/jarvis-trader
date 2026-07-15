@@ -25,7 +25,7 @@ import math
 import pytest
 from scipy.stats import norm
 
-from options.premium_calculator import _d1_d2, black76_price, probability_of_profit
+from options.premium_calculator import _d1_d2, black76_price, expected_move, probability_of_profit
 
 TOL = 1e-4
 
@@ -160,3 +160,79 @@ def test_black76_price_raises_on_nonpositive_sigma():
     is not — it propagates from _d1_d2."""
     with pytest.raises(ValueError):
         black76_price(6000.0, 6000.0, 30 / 365, 0.05, 0.0, "call")
+
+
+# ---------------------------------------------------------------------------
+# expected_move — ATM straddle Expected Move
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("params", [MES_LIKE, MGC_LIKE], ids=["MES-like", "MGC-like"])
+def test_expected_move_straddle_matches_independent_reference(params):
+    """expected_move()'s straddle_price must equal an independently-computed
+    (scipy-backed, not production-code) Black-76 call + put at the ATM strike
+    — the SAME reference method used to verify black76_price itself."""
+    F, K, T, r, sigma = params["F"], params["K"], params["T"], params["r"], params["sigma"]
+
+    ref_call = _reference_black76(F, K, T, r, sigma, "call")
+    ref_put = _reference_black76(F, K, T, r, sigma, "put")
+    ref_straddle = ref_call + ref_put
+
+    result = expected_move(F=F, T=T, sigma=sigma, r=r, K=K)
+
+    assert result["straddle_price"] == pytest.approx(ref_straddle, abs=TOL)
+    assert result["expected_move_dollars"] == pytest.approx(ref_straddle, abs=TOL)
+    assert result["expected_move_pct"] == pytest.approx(ref_straddle / F, abs=1e-6)
+    assert result["call_price"] == pytest.approx(ref_call, abs=TOL)
+    assert result["put_price"] == pytest.approx(ref_put, abs=TOL)
+    # Inputs echoed back unchanged, for API serialization / auditing.
+    assert result["F"] == F
+    assert result["K"] == K
+    assert result["T"] == T
+    assert result["r"] == r
+    assert result["sigma"] == sigma
+
+
+def test_expected_move_defaults_K_to_atm_strike():
+    """K defaults to F (the ATM strike) when not supplied."""
+    F, T, r, sigma = 6000.0, 30 / 365, 0.05, 0.14
+    result = expected_move(F=F, T=T, sigma=sigma, r=r)
+    assert result["K"] == F
+
+
+@pytest.mark.parametrize(
+    "params",
+    [MES_LIKE, MGC_LIKE],
+    ids=["MES-like", "MGC-like"],
+)
+def test_expected_move_approx_within_tolerance_of_exact(params):
+    """The textbook 0.8*F*sigma*sqrt(T) approximation must be a reasonable
+    sanity cross-check against the exact straddle price for a realistic
+    near-ATM short-dated case (30-45 DTE, ~14-18% IV — typical for
+    MES/MGC-like futures options)."""
+    F, K, T, r, sigma = params["F"], params["K"], params["T"], params["r"], params["sigma"]
+    result = expected_move(F=F, T=T, sigma=sigma, r=r, K=K)
+
+    exact = result["expected_move_dollars"]
+    approx = result["approx_expected_move_dollars"]
+
+    rel_diff = abs(approx - exact) / exact
+    # The 0.7979 (sqrt(2/pi)) vs 0.8 rounding plus the small-d1 Taylor
+    # truncation together account for well under 1% error at these
+    # short-dated near-ATM parameters — 10% is a generous sanity bound,
+    # not a strict pin (see docstring in premium_calculator.expected_move
+    # for the derivation and its breakdown conditions).
+    assert rel_diff < 0.10, (
+        f"0.8-approx ({approx}) diverges from exact straddle ({exact}) by "
+        f"{rel_diff:.1%} — investigate before loosening this tolerance."
+    )
+
+
+def test_expected_move_pct_scales_with_dollars():
+    F, T, r, sigma = 6000.0, 30 / 365, 0.05, 0.14
+    result = expected_move(F=F, T=T, sigma=sigma, r=r)
+    # expected_move_pct is rounded to 6dp inside expected_move(); tolerance
+    # must accommodate that rounding, not just floating-point noise.
+    assert result["expected_move_pct"] == pytest.approx(
+        result["expected_move_dollars"] / F, abs=1e-6
+    )

@@ -174,6 +174,97 @@ def get_term_structure(symbol: str) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Public API — get_expected_move
+# ---------------------------------------------------------------------------
+
+
+def get_expected_move(
+    symbol: str,
+    expiry: Optional[str] = None,
+    r: float = 0.05,
+) -> Optional[dict]:
+    """Compute the ATM-straddle-derived Expected Move for ``symbol`` via Polygon.
+
+    When ``expiry`` is None, picks the nearest available expiry in the
+    2-45 DTE window (front-week through front-month) using the same
+    Polygon reference-contracts lookup as ``get_pc_skew``/``get_term_structure``.
+
+    Wires real market data into ``premium_calculator.expected_move``:
+      - F     = live underlying spot (``spot_price_from_polygon``)
+      - K     = ATM strike (defaults to F inside ``expected_move``)
+      - sigma = ATM implied volatility, averaged across the ATM call + put
+                at the strike nearest spot (``atm_iv``)
+      - T     = actual DTE / 365 for the chosen expiry
+      - r     = annualised risk-free rate (default 5%)
+
+    Args:
+        symbol: Underlying ticker (e.g. "SPY", "MES").
+        expiry: Optional "YYYY-MM-DD" expiry. None -> auto-select nearest.
+        r:      Annualised risk-free rate (decimal), default 0.05.
+
+    Returns:
+        The dict returned by ``premium_calculator.expected_move`` plus
+        ``symbol``, ``expiry``, and ``dte_days``, or None on missing data.
+    """
+    try:
+        from ._polygon_skew import (
+            atm_iv,
+            fetch_chain_snapshot,
+            nearest_expiry,
+            spot_price_from_polygon,
+        )
+        from .premium_calculator import expected_move as _expected_move
+
+        chosen_expiry = expiry or nearest_expiry(symbol, min_days=2, max_days=45)
+        if not chosen_expiry:
+            logger.debug("[chain_fetcher] get_expected_move: no expiry for %s", symbol)
+            return None
+
+        spot = spot_price_from_polygon(symbol)
+        if spot is None or spot <= 0:
+            logger.debug("[chain_fetcher] get_expected_move: no spot for %s", symbol)
+            return None
+
+        contracts = fetch_chain_snapshot(symbol, chosen_expiry)
+        if not contracts:
+            logger.debug(
+                "[chain_fetcher] get_expected_move: empty chain %s %s", symbol, chosen_expiry
+            )
+            return None
+
+        sigma = atm_iv(contracts, spot)
+        if sigma is None or sigma <= 0:
+            logger.debug("[chain_fetcher] get_expected_move: no ATM IV for %s", symbol)
+            return None
+
+        expiry_date = date.fromisoformat(chosen_expiry)
+        today = datetime.utcnow().date()
+        dte_days = max((expiry_date - today).days, 1)
+        T = dte_days / 365.0
+
+        result = _expected_move(F=spot, T=T, sigma=sigma, r=r)
+        result["symbol"] = symbol
+        result["expiry"] = chosen_expiry
+        result["dte_days"] = dte_days
+
+        logger.info(
+            "[chain_fetcher] get_expected_move %s expiry=%s F=%.2f sigma=%.4f "
+            "straddle=$%.2f EM=%.2f%%",
+            symbol,
+            chosen_expiry,
+            spot,
+            sigma,
+            result["expected_move_dollars"],
+            result["expected_move_pct"] * 100,
+        )
+        return result
+
+    except Exception as exc:
+        logger.warning("[chain_fetcher] get_expected_move(%s) error: %s", symbol, exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
 
