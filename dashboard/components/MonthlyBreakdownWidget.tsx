@@ -48,6 +48,12 @@ function pnlVariant(value: number): "bull" | "bear" | "neutral" {
   return "neutral";
 }
 
+function winDaysColorClass(winDays: number, lossDays: number): string {
+  if (winDays > lossDays) return "text-bull";
+  if (lossDays > winDays) return "text-bear";
+  return "text-muted-foreground";
+}
+
 /**
  * Group honest trades by YYYY-MM of their exit date.
  * "win_days"/"loss_days" are counted at the day level (by close date),
@@ -167,9 +173,7 @@ export function MonthlyBreakdownWidget() {
           <div className="overflow-x-auto">
             <table className="w-full font-mono text-xs">
               <thead>
-                <tr
-                  style={{ borderBottom: "1px solid hsl(var(--border))" }}
-                >
+                <tr className="border-b border-border">
                   {[
                     { label: "Month", align: "text-left" },
                     { label: "Trading Days", align: "text-right" },
@@ -180,11 +184,7 @@ export function MonthlyBreakdownWidget() {
                   ].map(({ label, align }) => (
                     <th
                       key={label}
-                      className={`pb-2 px-2 font-semibold uppercase tracking-wider ${align}`}
-                      style={{
-                        color: "hsl(var(--muted-foreground))",
-                        fontSize: "10px",
-                      }}
+                      className={`pb-2 px-2 font-semibold uppercase tracking-wider text-muted-foreground text-[10px] ${align}`}
                     >
                       {label}
                     </th>
@@ -195,10 +195,7 @@ export function MonthlyBreakdownWidget() {
                 {months.map((m) => (
                   <tr
                     key={m.key}
-                    className="hover:bg-muted/20 transition-colors"
-                    style={{
-                      borderBottom: "1px solid hsl(var(--border) / 0.5)",
-                    }}
+                    className="hover:bg-muted/20 transition-colors border-b border-border/50"
                   >
                     {/* Month */}
                     <td className="py-2 px-2 font-semibold tabular-nums">
@@ -233,21 +230,9 @@ export function MonthlyBreakdownWidget() {
 
                     {/* Win Days */}
                     <td className="py-2 px-2 text-right tabular-nums">
-                      <span
-                        style={{
-                          color:
-                            m.win_days > m.loss_days
-                              ? "hsl(var(--bull))"
-                              : m.loss_days > m.win_days
-                              ? "hsl(var(--bear))"
-                              : "hsl(var(--muted-foreground))",
-                        }}
-                      >
+                      <span className={winDaysColorClass(m.win_days, m.loss_days)}>
                         {m.win_days}
-                        <span
-                          className="text-muted-foreground"
-                          style={{ fontSize: "9px" }}
-                        >
+                        <span className="text-muted-foreground text-[9px]">
                           /{m.trading_days}
                         </span>
                       </span>
