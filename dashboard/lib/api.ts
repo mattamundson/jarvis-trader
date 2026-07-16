@@ -372,6 +372,10 @@ export interface ActionableItem {
   atr: number | null;
   latest_price: number | null;
   price_as_of: number | null;
+  // Price provenance: is_live from the snapshot tier; stale = too old to
+  // derive a status from (the engine already degraded status to "unknown").
+  price_is_live?: boolean | null;
+  price_stale?: boolean;
   distance_abs: number | null;
   distance_pct: number | null;
   distance_atr: number | null;
@@ -1597,6 +1601,9 @@ export interface SignalOutcomesResponse {
   available: boolean;
   generated_at?: string;
   note?: string | null;
+  // Which decision store the outcomes were drawn from (approval queue only
+  // for now — scheduler-only runs are a tracked expansion).
+  universe?: string;
   model?: string;
 }
 

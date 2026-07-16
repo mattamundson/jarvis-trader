@@ -70,6 +70,13 @@ function ItemCard({ it }: { it: ActionableItem }) {
         </span>
         <span>
           last <span className="text-foreground">{fmtNum(it.latest_price)}</span>
+          {it.price_stale ? (
+            <span className="text-warn" title="Snapshot price is too old to derive a status from — the engine withheld the status chip rather than trust it.">
+              {" "}(stale — status withheld)
+            </span>
+          ) : it.price_is_live === false ? (
+            <span title="Fresh but from a delayed/cached tier, not a live IBKR tick."> (delayed)</span>
+          ) : null}
         </span>
       </div>
 

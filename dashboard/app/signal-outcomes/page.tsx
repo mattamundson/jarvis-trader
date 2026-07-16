@@ -196,6 +196,7 @@ export default function SignalOutcomesPage() {
           <p className="text-xs text-muted-foreground">
             Did past predictions pay off? Recent directional decisions scored against
             subsequent daily bars — executed or not.
+            {data?.universe && <> Universe: {data.universe}.</>}
           </p>
         </div>
       </div>

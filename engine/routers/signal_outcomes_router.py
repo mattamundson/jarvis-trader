@@ -101,6 +101,12 @@ async def get_signal_outcomes(limit: int = Query(50, ge=1, le=200)) -> dict[str,
         "available": True,
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         "note": note,
+        # Explicit contract: the universe is the human-approval queue only.
+        # Scheduler-only pipeline runs that never queued an approval row
+        # (persisted via insert_pipeline_run / the decisions feed) are NOT
+        # scored yet — expanding the universe to those sources without
+        # double-counting the same run is a tracked follow-up.
+        "universe": "pending_trade_approvals (human-approval queue) only",
         "model": (
             "Hypothetical fill at decision entry on decision date; exit T1 on target "
             "hit (conservative 1R), stop on stop hit, else mark-to-last-close; "

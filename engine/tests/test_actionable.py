@@ -205,9 +205,14 @@ def test_item_missing_price_is_unknown_not_fabricated():
 # ── derive_actionable_board ──────────────────────────────────────────────────
 
 
+# Fixed clock for board tests: prices stamped 60s before "now" are fresh.
+NOW_TS = 1_752_600_060.0
+PRICE_AS_OF = 1_752_600_000.0
+
+
 def _prices(**by_symbol: float) -> dict:
     return {
-        sym: {"last_price": px, "as_of": 1_752_600_000.0}
+        sym: {"last_price": px, "as_of": PRICE_AS_OF, "is_live": True}
         for sym, px in by_symbol.items()
     }
 
@@ -218,7 +223,7 @@ def test_board_filters_holds_and_rejected():
         {**_row(symbol="MGC"), "action": "hold"},
         _row(symbol="MNQ", status="rejected"),
     ]
-    board = derive_actionable_board(rows, _prices(MES=4990.0), now=NOW)
+    board = derive_actionable_board(rows, _prices(MES=4990.0), now=NOW, now_ts=NOW_TS)
     assert board["available"] is True
     assert [it["symbol"] for it in board["items"]] == ["MES"]
 
@@ -227,7 +232,7 @@ def test_board_dedupes_to_newest_per_symbol_side():
     # Rows arrive newest-first; the second MES buy must be dropped.
     newer = _row(created_at="2026-07-16T10:00:00+00:00", entry=5002.0)
     older = _row(created_at="2026-07-15T10:00:00+00:00", entry=4900.0)
-    board = derive_actionable_board([newer, older], _prices(MES=5000.0), now=NOW)
+    board = derive_actionable_board([newer, older], _prices(MES=5000.0), now=NOW, now_ts=NOW_TS)
     assert board["count"] == 1
     assert board["items"][0]["entry_price"] == 5002.0
 
@@ -236,12 +241,46 @@ def test_board_sorts_actionable_first():
     triggerable = _row(symbol="MES", entry=5000.0)     # price at entry band
     awaiting = _row(symbol="MGC", entry=3000.0, stop=2990.0, target=3010.0, atr=5.0)
     board = derive_actionable_board(
-        [awaiting, triggerable], _prices(MES=5000.0, MGC=2996.0), now=NOW
+        [awaiting, triggerable], _prices(MES=5000.0, MGC=2996.0), now=NOW, now_ts=NOW_TS
     )
     assert [it["status"] for it in board["items"]] == ["triggerable", "awaiting_entry"]
 
 
 def test_board_no_price_snapshot_degrades_honestly():
-    board = derive_actionable_board([_row()], {}, now=NOW)
+    board = derive_actionable_board([_row()], {}, now=NOW, now_ts=NOW_TS)
     assert board["count"] == 1
     assert board["items"][0]["status"] == "unknown"
+
+
+def test_board_stale_price_withholds_status_but_displays_price():
+    # A csv_cache-style fallback price hours old must not mark anything
+    # triggerable — status degrades to unknown, price stays visible + flagged.
+    stale_prices = {
+        "MES": {"last_price": 5000.0, "as_of": NOW_TS - 7200.0, "is_live": False}
+    }
+    board = derive_actionable_board([_row(entry=5000.0)], stale_prices, now=NOW, now_ts=NOW_TS)
+    item = board["items"][0]
+    assert item["status"] == "unknown"
+    assert item["price_stale"] is True
+    assert item["latest_price"] == 5000.0
+    assert item["distance_pct"] is None
+    assert item["current_r"] is None
+
+
+def test_board_fresh_delayed_price_still_derives_status():
+    # Fresh but non-live (e.g. polygon REST) is usable — flagged, not withheld.
+    delayed = {
+        "MES": {"last_price": 5000.0, "as_of": NOW_TS - 60.0, "is_live": False}
+    }
+    board = derive_actionable_board([_row(entry=5000.0)], delayed, now=NOW, now_ts=NOW_TS)
+    item = board["items"][0]
+    assert item["status"] == "triggerable"
+    assert item["price_stale"] is False
+    assert item["price_is_live"] is False
+
+
+def test_board_missing_as_of_counts_as_stale():
+    no_stamp = {"MES": {"last_price": 5000.0, "is_live": True}}
+    board = derive_actionable_board([_row(entry=5000.0)], no_stamp, now=NOW, now_ts=NOW_TS)
+    assert board["items"][0]["status"] == "unknown"
+    assert board["items"][0]["price_stale"] is True

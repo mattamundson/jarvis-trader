@@ -32,6 +32,12 @@ EXPIRY_DAYS = 3
 # entry => triggerable; past it toward target => triggered; short of it => awaiting.
 ENTRY_ZONE_ATR_FRAC = 0.25
 
+# A snapshot price older than this cannot honestly anchor a "triggerable NOW"
+# claim on a 60s-refresh board — the csv_cache fallback tier can be hours or
+# days old. Stale prices are still displayed (with a flag) but the status
+# degrades to "unknown" rather than presenting a cached close as a live tick.
+STALE_PRICE_MAX_S = 900.0
+
 # Chip vocabulary, priority order (highest wins) — mirrors amo-arbitrage.
 STATUSES = (
     "unknown",
@@ -105,12 +111,18 @@ def derive_actionable_item(
     price_as_of: Optional[float],
     *,
     now: date,
+    price_is_live: Optional[bool] = None,
+    price_stale: bool = False,
 ) -> dict:
     """Map one pending_trade_approvals row + latest price to a board item.
 
     ``row`` is the dict shape returned by the DB mixin (with parsed
     ``pipeline_snapshot``). Missing geometry degrades to nulls — never invented.
+    A stale price (``price_stale``) is kept for display but excluded from all
+    status/distance/R derivation, so the item honestly reads "unknown".
     """
+    # Status and math must never run off a stale price; display keeps it.
+    usable_close = None if price_stale else latest_close
     snap = row.get("pipeline_snapshot") or {}
     td = snap.get("trade_decision") or {}
     if not isinstance(td, dict):
@@ -132,9 +144,9 @@ def derive_actionable_item(
         age_days = (now - created).days
 
     distance_abs = distance_pct = distance_atr = None
-    if latest_close is not None and entry is not None and latest_close != 0:
-        distance_abs = round((entry - latest_close) * sign, 6)
-        distance_pct = round(distance_abs / latest_close * 100, 4)
+    if usable_close is not None and entry is not None and usable_close != 0:
+        distance_abs = round((entry - usable_close) * sign, 6)
+        distance_pct = round(distance_abs / usable_close * 100, 4)
         if atr and atr > 0:
             distance_atr = round(distance_abs / atr, 4)
 
@@ -144,15 +156,15 @@ def derive_actionable_item(
         if risk_per_unit > 0:
             if target is not None:
                 planned_rr = round(abs(target - entry) / risk_per_unit, 2)
-            if latest_close is not None:
-                current_r = round((latest_close - entry) * sign / risk_per_unit, 3)
+            if usable_close is not None:
+                current_r = round((usable_close - entry) * sign / risk_per_unit, 3)
 
     notional_per_contract = None
-    if latest_close is not None:
-        notional_per_contract = round(latest_close * get_contract_multiplier(symbol), 2)
+    if usable_close is not None:
+        notional_per_contract = round(usable_close * get_contract_multiplier(symbol), 2)
 
     status = derive_status(
-        latest_close=latest_close, entry=entry, stop=stop, target=target,
+        latest_close=usable_close, entry=entry, stop=stop, target=target,
         atr=atr, long=long, age_days=age_days,
     )
 
@@ -174,6 +186,8 @@ def derive_actionable_item(
         "atr": atr,
         "latest_price": latest_close,
         "price_as_of": price_as_of,
+        "price_is_live": price_is_live,
+        "price_stale": price_stale,
         "distance_abs": distance_abs,
         "distance_pct": distance_pct,
         "distance_atr": distance_atr,
@@ -188,15 +202,21 @@ def derive_actionable_board(
     prices: dict[str, dict],
     *,
     now: Optional[date] = None,
+    now_ts: Optional[float] = None,
 ) -> dict:
     """Derive the full board from recent approval rows + a price snapshot.
 
     Only directional (buy/sell), unresolved-or-recently-resolved rows appear;
     one item per (symbol, direction) — the newest — so re-scans don't stack
-    duplicates. ``prices`` is the /prices/snapshot shape keyed by symbol.
+    duplicates. ``prices`` is the /prices/snapshot shape keyed by symbol; a
+    price whose ``as_of`` is older than STALE_PRICE_MAX_S (vs ``now_ts``,
+    epoch seconds) is treated as stale — displayed but never used to derive a
+    status. Missing ``as_of``/``now_ts`` counts as stale (conservative).
     """
     if now is None:
         now = datetime.now(tz=timezone.utc).date()
+    if now_ts is None:
+        now_ts = datetime.now(tz=timezone.utc).timestamp()
 
     items: list[dict] = []
     seen: set[tuple[str, str]] = set()
@@ -214,12 +234,19 @@ def derive_actionable_board(
         seen.add(key)
 
         p = prices.get(symbol) or {}
+        last_price = _f(p.get("last_price"))
+        as_of = _f(p.get("as_of"))
+        stale = last_price is not None and (
+            as_of is None or (now_ts - as_of) > STALE_PRICE_MAX_S
+        )
         items.append(
             derive_actionable_item(
                 row,
-                _f(p.get("last_price")),
-                _f(p.get("as_of")),
+                last_price,
+                as_of,
                 now=now,
+                price_is_live=bool(p.get("is_live")) if last_price is not None else None,
+                price_stale=stale,
             )
         )
 
