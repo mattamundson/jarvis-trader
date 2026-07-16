@@ -183,6 +183,29 @@ def test_evaluate_missing_entry_not_evaluable():
     assert out["hypothetical_pnl_pct"] is None
 
 
+def test_evaluate_missing_stop_or_target_not_evaluable():
+    # Entry alone is not enough — without stop/T1 geometry the signal could
+    # never grade a target hit, so it must not enter the hit-rate denominator.
+    for missing in ("stop_price", "target_1"):
+        d = _decision()
+        d["pipeline_snapshot"]["trade_decision"][missing] = None
+        out = evaluate_signal(d, [_bar("2026-07-02", 5010.0, 4990.0)], now=NOW)
+        assert out["evaluable"] is False, missing
+        assert "geometry" in (out["note"] or "")
+
+
+def test_evaluate_expired_ignores_bars_beyond_window():
+    # 10 flat no-touch bars (=> expired), then a huge rally bar. The rally is
+    # outside the signal's useful life and must move neither MFE nor the
+    # mark-to-close P&L.
+    flat = [_bar(f"2026-07-{2 + i:02d}", 5005.0, 4995.0, close=5001.0) for i in range(EXPIRY_BARS)]
+    rally = [_bar("2026-07-14", 5500.0, 5400.0, close=5490.0)]
+    out = evaluate_signal(_decision(), flat + rally, now=NOW)
+    assert out["hit"] == "expired"
+    assert out["mfe_pct"] == round(5.0 / 5000.0 * 100, 4)  # window high 5005, not 5500
+    assert out["hypothetical_pnl_pct"] == round(1.0 / 5000.0 * 100, 4)  # close 5001, not 5490
+
+
 def test_bars_after_strictly_excludes_start_day():
     bars = [_bar("2026-07-01", 1, 0), _bar("2026-07-02", 1, 0)]
     post = bars_after(bars, date(2026, 7, 1))

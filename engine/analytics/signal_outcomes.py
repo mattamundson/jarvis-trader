@@ -190,11 +190,19 @@ def evaluate_signal(decision: dict, bars: list[dict], *, now: date) -> dict:
     if decided is None or entry is None:
         base["note"] = "missing decision date or entry level — not evaluable"
         return base
+    if stop is None or target_1 is None:
+        # Without full geometry the signal could never grade a target hit, so
+        # counting it in hit-rate would skew the denominator — honest exclusion.
+        base["note"] = "missing stop/target geometry — not evaluable"
+        return base
     if (now - decided).days < MIN_AGE_DAYS:
         base["note"] = f"younger than {MIN_AGE_DAYS}d — not yet evaluated"
         return base
 
-    post = bars_after(bars, decided)
+    # Cap the evaluation window at the signal's useful life: bars beyond
+    # EXPIRY_BARS must not move MFE/MAE or the mark-to-close P&L of an
+    # expired signal (the 120-day lookup exists only to cover old decisions).
+    post = bars_after(bars, decided)[:EXPIRY_BARS]
     if not post:
         base["note"] = "no post-decision bars available — not evaluated"
         return base
