@@ -760,6 +760,11 @@ export default function TrustPanePage() {
                 <p className="text-xs text-muted-foreground">Could not load /api/scoreboard.</p>
               ) : !amoScoreboard.data ? (
                 <p className="text-xs text-muted-foreground">Loading scoreboard…</p>
+              ) : amoScoreboard.data.available === false ? (
+                <p className="text-xs text-muted-foreground">
+                  amo scoreboard unavailable (fail-open payload) — a feed outage,
+                  not a claim that no strategies are validated.
+                </p>
               ) : amoScoreboard.data.strategies.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   No validated strategies on the scoreboard — nothing to compare. Honest empty, not a gap.
@@ -799,7 +804,12 @@ export default function TrustPanePage() {
                 <p className="text-xs text-muted-foreground">Could not load /api/actionable.</p>
               ) : !amoActionable.data ? (
                 <p className="text-xs text-muted-foreground">Loading actionable board…</p>
-              ) : !amoActionable.data.available || amoActionable.data.items.length === 0 ? (
+              ) : !amoActionable.data.available ? (
+                <p className="text-xs text-muted-foreground">
+                  amo actionable board unavailable — a feed outage, not a
+                  confirmed absence of setups.
+                </p>
+              ) : amoActionable.data.items.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No active setups on the amo board.</p>
               ) : (
                 <>
