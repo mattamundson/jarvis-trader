@@ -195,7 +195,9 @@ export default function SignalOutcomesPage() {
           </h1>
           <p className="text-xs text-muted-foreground">
             Did past predictions pay off? Recent directional decisions scored against
-            subsequent daily bars — executed or not.
+            subsequent daily bars — executed or not. Daily-bar granularity: a
+            ~10-trading-day horizon read of each signal&apos;s geometry, not a
+            live-trade replay (same-day resolution of 1h signals is not captured).
             {data?.universe && <> Universe: {data.universe}.</>}
           </p>
         </div>

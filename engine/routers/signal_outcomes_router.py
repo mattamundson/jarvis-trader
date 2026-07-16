@@ -107,9 +107,18 @@ async def get_signal_outcomes(limit: int = Query(50, ge=1, le=200)) -> dict[str,
         # scored yet — expanding the universe to those sources without
         # double-counting the same run is a tracked follow-up.
         "universe": "pending_trade_approvals (human-approval queue) only",
+        # Explicit granularity contract: outcomes are a DAILY-BAR, ~10-trading-
+        # day-horizon read of each signal's geometry. The decision-day bar is
+        # excluded (it contains pre-decision hours — look-ahead), so same-day
+        # resolution of intraday (1h) signals is NOT captured; this is a
+        # signal-direction horizon metric, not a live-trade replay. Scoring at
+        # the row's own timeframe is a tracked follow-up (with the universe
+        # expansion above).
         "model": (
-            "Hypothetical fill at decision entry on decision date; exit T1 on target "
-            "hit (conservative 1R), stop on stop hit, else mark-to-last-close; "
-            "same-bar stop+target resolves to stop."
+            "Daily-bar granularity, ~10-trading-day horizon. Hypothetical fill at "
+            "decision entry; exit T1 on target hit (conservative 1R), stop on stop "
+            "hit, else mark-to-last-close; same-bar stop+target resolves to stop; "
+            "decision-day bar excluded (no look-ahead), so same-day resolution of "
+            "intraday signals is not captured — horizon metric, not a trade replay."
         ),
     }
