@@ -164,11 +164,19 @@ export function ForwardVsBacktestCard() {
     { refreshInterval: REFRESH_MS, shouldRetryOnError: false }
   );
 
-  const rows = paperStatus ? Object.values(paperStatus) : [];
+  // Rows are keyed like "MES_1h"; older engines omit the row's `symbol`
+  // field, so fall back to the key prefix rather than sending symbol=undefined.
+  const entries = paperStatus ? Object.entries(paperStatus) : [];
+  const symbolOf = (key: string, r: { symbol?: string }): string =>
+    r.symbol && r.symbol.length > 0 ? r.symbol : key.split("_")[0];
   const activeSymbols = Array.from(
-    new Set(rows.filter((r) => r.authorized).map((r) => r.symbol))
+    new Set(
+      entries.filter(([, r]) => r.authorized).map(([k, r]) => symbolOf(k, r))
+    )
   ).sort();
-  const inactive = rows.filter((r) => !r.authorized);
+  const inactive = entries
+    .filter(([, r]) => !r.authorized)
+    .map(([k, r]) => ({ symbol: symbolOf(k, r), status: r.status }));
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">

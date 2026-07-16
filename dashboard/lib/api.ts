@@ -396,7 +396,9 @@ export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
 // + fresh PASS verdict) — the canonical "which symbols actually trade" source,
 // never a hardcoded list. Keyed like "MES_1h".
 export interface PaperStatusRow {
-  symbol: string;
+  // Absent on engines predating the additive `symbol` field — consumers must
+  // fall back to parsing the record key ("MES_1h" -> "MES").
+  symbol?: string;
   status: "ACTIVE" | "NO-TRADE" | "FAIL" | "NO-VERDICT" | string;
   authorized: boolean;
   verdict: string;

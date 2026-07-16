@@ -583,6 +583,7 @@ async def get_paper_status():
             # Legacy color column reflects authorization: only ACTIVE rows show
             # their quality score; the true dsr is always in the native field.
             row: dict = {
+                "symbol": symbol,
                 "status": status,
                 "wfe": round(dsr, 4) if status == "ACTIVE" else 0.0,
                 "wfe_label": label,

@@ -122,7 +122,8 @@ function QualityCard() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div>
               <p className="text-muted-foreground">Accuracy</p>
-              <p className="font-mono text-foreground">{fmt(data.overall.accuracy, 1, "%")}</p>
+              {/* Engine SignalMetrics.accuracy is a 0-1 fraction — scale for display. */}
+              <p className="font-mono text-foreground">{fmt(data.overall.accuracy * 100, 1, "%")}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Signals graded</p>
@@ -144,8 +145,8 @@ function QualityCard() {
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(data.by_regime).map(([regime, m]) => (
-                  <Badge key={regime} variant={m.accuracy >= 50 ? "bull" : "warn"}>
-                    {regime} · {fmt(m.accuracy, 0, "%")} ({m.total_signals})
+                  <Badge key={regime} variant={m.accuracy >= 0.5 ? "bull" : "warn"}>
+                    {regime} · {fmt(m.accuracy * 100, 0, "%")} ({m.total_signals})
                   </Badge>
                 ))}
               </div>
