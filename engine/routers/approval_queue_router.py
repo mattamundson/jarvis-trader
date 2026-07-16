@@ -125,6 +125,26 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
             d["verdict"] = None
     else:
         d["verdict"] = None
+    # Surface the strategy name and its quarantine status so dashboard readers
+    # (the /signals feed) don't have to duplicate VALIDATION_ONLY_STRATEGIES
+    # client-side, where it would silently drift from the engine's gate.
+    stark_signal = ""
+    try:
+        stark_signal = (
+            (((d.get("verdict") or {}).get("analyst_reports") or {}).get("technical") or {})
+            .get("indicators", {})
+            .get("stark_signal", "")
+            or ""
+        ).upper()
+    except Exception:
+        pass
+    d["stark_signal"] = stark_signal or None
+    try:
+        from agents.pipeline import VALIDATION_ONLY_STRATEGIES
+
+        d["validation_only"] = bool(stark_signal) and stark_signal in VALIDATION_ONLY_STRATEGIES
+    except Exception:
+        d["validation_only"] = False
     return d
 
 
@@ -342,6 +362,17 @@ async def list_pending() -> dict[str, Any]:
         logger.info("ApprovalQueue: expired %d stale candidates on list_pending", expired)
     candidates = _list_pending(db)
     return {"count": len(candidates), "candidates": candidates}
+
+
+@router.get("/history", summary="Historical approved/rejected/expired candidates")
+async def get_history(days: int = 7) -> dict[str, Any]:
+    # NOTE: must be registered BEFORE the parameterized /{candidate_id} route —
+    # FastAPI matches routes in declaration order, so with this below it,
+    # GET /approvals/history 422'd trying to parse "history" as an int
+    # (found 2026-07-16; the route was unreachable dead code until then).
+    db = _require_db()
+    rows = _list_history(db, days)
+    return {"days": days, "count": len(rows), "history": rows}
 
 
 @router.get("/{candidate_id}", summary="Get single candidate detail")
@@ -578,13 +609,6 @@ async def reject_candidate(
         "candidate_id": candidate_id,
         "reason": body.reason,
     }
-
-
-@router.get("/history", summary="Historical approved/rejected/expired candidates")
-async def get_history(days: int = 7) -> dict[str, Any]:
-    db = _require_db()
-    rows = _list_history(db, days)
-    return {"days": days, "count": len(rows), "history": rows}
 
 
 # ---------------------------------------------------------------------------
