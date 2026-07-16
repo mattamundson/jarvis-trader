@@ -64,6 +64,7 @@ _DATA_DIR = _ENGINE_DIR / "data" / "options_signals"
 _LATEST_PATH = _DATA_DIR / "latest.json"
 _REGIME_CACHE_PATH = _DATA_DIR / "vix_term_structure.json"
 _IV_HISTORY_PATH = _DATA_DIR / "iv_history.jsonl"
+_EM_TRACKING_PATH = _DATA_DIR / "em_tracking.jsonl"
 
 # RTH gate in CT: first fire a few minutes after the 08:30 CT equity open,
 # last useful snapshot just after the 15:00 CT close print settles.
@@ -179,6 +180,82 @@ def _update_iv_history(snapshot: dict, today_iso: str) -> None:
     )
 
 
+def _update_em_tracking(snapshot: dict, today_iso: str) -> None:
+    """Accumulate expected-move-vs-realized calibration from real delayed quotes.
+
+    One JSONL row per symbol per day (last snapshot of the day wins) recording the
+    nearest-horizon straddle expected move, for horizons expiring on a LATER day
+    (dte >= 1 — a 0-DTE row would measure its own overwritten spot against itself).
+    Each update also resolves any earlier unresolved row whose expiry date now has
+    a same-symbol row to read the closing spot from: realized = |spot(expiry) −
+    spot(record)|, ratio = realized / em_abs. The expiry-day spot is the last RTH
+    snapshot (~15:05 CT, after the 15:00 CT close) — close-approximate, disclosed.
+
+    Historical baseline (dense SPY 2010-2023, Study 3a): hit rate |realized| < EM
+    ≈ 70% overall, ~71% in CONTANGO vs ~55% in BACKWARDATION, median ratio 0.60.
+    """
+    fresh: dict[str, dict] = {}
+    for symbol, block in (snapshot.get("symbols") or {}).items():
+        if not block or block.get("spot") is None:
+            continue
+        nearest = next(
+            (h for h in block.get("horizons", []) if h.get("label") == "nearest"), None
+        )
+        if (
+            nearest is None
+            or nearest.get("expected_move_abs") is None
+            or nearest.get("quality") != "ok"
+            or (nearest.get("dte_calendar") or 0) < 1
+        ):
+            continue
+        fresh[symbol] = {
+            "date": today_iso,
+            "symbol": symbol,
+            "spot": block["spot"],
+            "expiry": nearest.get("expiry"),
+            "dte_calendar": nearest.get("dte_calendar"),
+            "em_abs": nearest["expected_move_abs"],
+            "em_pct": nearest.get("expected_move_pct"),
+        }
+
+    rows: list[dict] = []
+    if _EM_TRACKING_PATH.exists():
+        for line in _EM_TRACKING_PATH.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not (row.get("date") == today_iso and row.get("symbol") in fresh):
+                rows.append(row)
+    rows.extend(fresh.values())
+    if not rows:
+        return
+
+    # Resolution pass: close-approximate spot per (symbol, date) from the rows
+    # themselves plus today's snapshot spots (covers expiry days that produced no
+    # trackable row of their own, e.g. Fridays where the next expiry is 0 DTE).
+    spot_at: dict[tuple[str, str], float] = {
+        (r["symbol"], r["date"]): r["spot"] for r in rows if r.get("spot") is not None
+    }
+    for symbol, block in (snapshot.get("symbols") or {}).items():
+        if block and block.get("spot") is not None:
+            spot_at[(symbol, today_iso)] = block["spot"]
+    for r in rows:
+        if r.get("realized") is not None or not r.get("em_abs"):
+            continue
+        s_exp = spot_at.get((r["symbol"], r.get("expiry")))
+        if s_exp is None:
+            continue
+        r["realized"] = round(abs(s_exp - r["spot"]), 4)
+        r["ratio"] = round(r["realized"] / r["em_abs"], 4)
+        r["resolved_on"] = today_iso
+
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _EM_TRACKING_PATH.write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -220,6 +297,7 @@ async def _run(symbols: tuple[str, ...], dry_run: bool) -> int:
 
     _atomic_write_json(_LATEST_PATH, snapshot)
     _update_iv_history(snapshot, today_iso)
+    _update_em_tracking(snapshot, today_iso)
     logger.info("%s wrote %s", _LOG_TAG, _LATEST_PATH)
     return exit_code
 

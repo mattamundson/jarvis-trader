@@ -490,3 +490,92 @@ class TestOptionsSignalsRouter:
         (data_dir / "latest.json").write_text("{not json", encoding="utf-8")
         resp = tc.get("/options-signals/latest")
         assert resp.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# options_signals_snapshot._update_em_tracking — live EM-vs-realized tracker
+# ---------------------------------------------------------------------------
+
+
+def _em_snapshot(spot=600.0, em=6.0, expiry="2026-07-17", dte=1, quality="ok"):
+    return {
+        "symbols": {
+            "SPY": {
+                "spot": spot,
+                "horizons": [
+                    {
+                        "label": "nearest",
+                        "expiry": expiry,
+                        "dte_calendar": dte,
+                        "expected_move_abs": em,
+                        "expected_move_pct": em / spot,
+                        "quality": quality,
+                    }
+                ],
+            }
+        }
+    }
+
+
+class TestUpdateEmTracking:
+    @pytest.fixture()
+    def tracker(self, tmp_path, monkeypatch):
+        import scripts.options_signals_snapshot as oss
+
+        path = tmp_path / "em_tracking.jsonl"
+        monkeypatch.setattr(oss, "_EM_TRACKING_PATH", path)
+        monkeypatch.setattr(oss, "_DATA_DIR", tmp_path)
+        return oss, path
+
+    def _rows(self, path):
+        return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
+
+    def test_records_nearest_horizon_row(self, tracker):
+        oss, path = tracker
+        oss._update_em_tracking(_em_snapshot(), "2026-07-16")
+        rows = self._rows(path)
+        assert len(rows) == 1
+        assert rows[0]["symbol"] == "SPY"
+        assert rows[0]["em_abs"] == 6.0
+        assert "realized" not in rows[0]
+
+    def test_same_day_overwrite_last_wins(self, tracker):
+        oss, path = tracker
+        oss._update_em_tracking(_em_snapshot(spot=600.0, em=6.0), "2026-07-16")
+        oss._update_em_tracking(_em_snapshot(spot=602.5, em=5.5), "2026-07-16")
+        rows = self._rows(path)
+        assert len(rows) == 1
+        assert rows[0]["spot"] == 602.5
+        assert rows[0]["em_abs"] == 5.5
+
+    def test_skips_zero_dte_and_degraded(self, tracker):
+        oss, path = tracker
+        oss._update_em_tracking(_em_snapshot(dte=0), "2026-07-16")
+        assert not path.exists()
+        oss._update_em_tracking(_em_snapshot(quality="degraded"), "2026-07-16")
+        assert not path.exists()
+
+    def test_resolves_on_expiry_day_snapshot(self, tracker):
+        oss, path = tracker
+        oss._update_em_tracking(
+            _em_snapshot(spot=600.0, em=6.0, expiry="2026-07-17", dte=1), "2026-07-16"
+        )
+        # Expiry day: the nearest horizon is 0-DTE (no new trackable row), but the
+        # snapshot's own spot resolves yesterday's record.
+        oss._update_em_tracking(
+            _em_snapshot(spot=604.5, em=3.0, expiry="2026-07-17", dte=0), "2026-07-17"
+        )
+        rows = self._rows(path)
+        assert len(rows) == 1
+        assert rows[0]["realized"] == 4.5
+        assert rows[0]["ratio"] == 0.75
+        assert rows[0]["resolved_on"] == "2026-07-17"
+
+    def test_resolution_is_idempotent(self, tracker):
+        oss, path = tracker
+        oss._update_em_tracking(_em_snapshot(spot=600.0, em=6.0), "2026-07-16")
+        oss._update_em_tracking(_em_snapshot(spot=604.5, dte=0), "2026-07-17")
+        oss._update_em_tracking(_em_snapshot(spot=610.0, dte=0), "2026-07-17")
+        rows = self._rows(path)
+        assert len(rows) == 1
+        assert rows[0]["realized"] == 4.5  # first resolution sticks
