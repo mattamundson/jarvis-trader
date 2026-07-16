@@ -183,6 +183,24 @@ def test_evaluate_missing_entry_not_evaluable():
     assert out["hypothetical_pnl_pct"] is None
 
 
+def test_evaluate_truncated_bar_history_not_evaluable():
+    # Decision predates the bar lookback: the first available bar is months
+    # after entry. Scoring against it would corrupt the window — honest skip.
+    d = _decision(created_at="2026-01-05T15:00:00+00:00")
+    late_bars = [_bar("2026-07-02", 5025.0, 4995.0)]
+    out = evaluate_signal(d, late_bars, now=NOW)
+    assert out["evaluable"] is False
+    assert "does not cover" in (out["note"] or "")
+
+
+def test_evaluate_weekend_gap_still_evaluable():
+    # Friday decision, Monday first bar (3-day gap) is within tolerance.
+    d = _decision(created_at="2026-07-03T15:00:00+00:00")
+    out = evaluate_signal(d, [_bar("2026-07-06", 5025.0, 4995.0)], now=NOW)
+    assert out["evaluable"] is True
+    assert out["hit"] == "target1_hit"
+
+
 def test_evaluate_zero_sentinel_levels_not_evaluable():
     # 0.0 is the missing-value sentinel for price levels — a long with
     # target_1=0.0 must NOT grade as an instant target hit.

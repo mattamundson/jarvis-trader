@@ -33,6 +33,13 @@ MIN_AGE_DAYS = 1
 # "expired" — the thesis went nowhere within its useful life.
 EXPIRY_BARS = 10
 
+# The first post-decision bar must fall within this many calendar days of the
+# decision (generous for weekends/holidays). A larger gap means the supplied
+# bar history doesn't cover the decision window (e.g. the decision predates a
+# fixed bar lookback) — scoring against months-later bars would corrupt the
+# hit status, so such rows are honestly not evaluable.
+MAX_FIRST_BAR_GAP_DAYS = 7
+
 
 def _f(value: Any) -> Optional[float]:
     if value is None:
@@ -218,6 +225,12 @@ def evaluate_signal(decision: dict, bars: list[dict], *, now: date) -> dict:
     post = bars_after(bars, decided)[:EXPIRY_BARS]
     if not post:
         base["note"] = "no post-decision bars available — not evaluated"
+        return base
+    first_bar = _to_date(post[0].get("timestamp") or post[0].get("date"))
+    if first_bar is None or (first_bar - decided).days > MAX_FIRST_BAR_GAP_DAYS:
+        base["note"] = (
+            "bar history does not cover the decision window — not evaluated"
+        )
         return base
 
     hit = compute_hit_status(
