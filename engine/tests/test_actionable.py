@@ -212,7 +212,7 @@ PRICE_AS_OF = 1_752_600_000.0
 
 def _prices(**by_symbol: float) -> dict:
     return {
-        sym: {"last_price": px, "as_of": PRICE_AS_OF, "is_live": True}
+        sym: {"last_price": px, "as_of": PRICE_AS_OF, "is_live": True, "source": "ibkr"}
         for sym, px in by_symbol.items()
     }
 
@@ -252,13 +252,14 @@ def test_board_no_price_snapshot_degrades_honestly():
     assert board["items"][0]["status"] == "unknown"
 
 
-def test_board_stale_price_withholds_status_but_displays_price():
-    # A csv_cache-style fallback price hours old must not mark anything
-    # triggerable — status degrades to unknown, price stays visible + flagged.
-    stale_prices = {
-        "MES": {"last_price": 5000.0, "as_of": NOW_TS - 7200.0, "is_live": False}
+def test_board_cached_source_withheld_even_with_fresh_timestamp():
+    # THE trap: /prices/snapshot stamps as_of at FETCH time, so a csv_cache
+    # close from yesterday can carry a fresh timestamp. Tier membership must
+    # withhold the status regardless — price stays visible + flagged.
+    cached = {
+        "MES": {"last_price": 5000.0, "as_of": NOW_TS - 5.0, "is_live": False, "source": "csv_cache"}
     }
-    board = derive_actionable_board([_row(entry=5000.0)], stale_prices, now=NOW, now_ts=NOW_TS)
+    board = derive_actionable_board([_row(entry=5000.0)], cached, now=NOW, now_ts=NOW_TS)
     item = board["items"][0]
     assert item["status"] == "unknown"
     assert item["price_stale"] is True
@@ -267,10 +268,20 @@ def test_board_stale_price_withholds_status_but_displays_price():
     assert item["current_r"] is None
 
 
+def test_board_old_timestamp_on_live_source_is_stale():
+    # A live-tier price served from the 60s snapshot cache long ago is stale.
+    old = {
+        "MES": {"last_price": 5000.0, "as_of": NOW_TS - 7200.0, "is_live": True, "source": "ibkr"}
+    }
+    board = derive_actionable_board([_row(entry=5000.0)], old, now=NOW, now_ts=NOW_TS)
+    assert board["items"][0]["status"] == "unknown"
+    assert board["items"][0]["price_stale"] is True
+
+
 def test_board_fresh_delayed_price_still_derives_status():
-    # Fresh but non-live (e.g. polygon REST) is usable — flagged, not withheld.
+    # Fresh delayed REST read (polygon) is usable — flagged, not withheld.
     delayed = {
-        "MES": {"last_price": 5000.0, "as_of": NOW_TS - 60.0, "is_live": False}
+        "MES": {"last_price": 5000.0, "as_of": NOW_TS - 60.0, "is_live": False, "source": "polygon"}
     }
     board = derive_actionable_board([_row(entry=5000.0)], delayed, now=NOW, now_ts=NOW_TS)
     item = board["items"][0]
@@ -279,8 +290,13 @@ def test_board_fresh_delayed_price_still_derives_status():
     assert item["price_is_live"] is False
 
 
-def test_board_missing_as_of_counts_as_stale():
-    no_stamp = {"MES": {"last_price": 5000.0, "is_live": True}}
+def test_board_missing_as_of_or_source_counts_as_stale():
+    no_stamp = {"MES": {"last_price": 5000.0, "is_live": True, "source": "ibkr"}}
     board = derive_actionable_board([_row(entry=5000.0)], no_stamp, now=NOW, now_ts=NOW_TS)
+    assert board["items"][0]["status"] == "unknown"
+    assert board["items"][0]["price_stale"] is True
+
+    no_source = {"MES": {"last_price": 5000.0, "as_of": NOW_TS - 5.0, "is_live": True}}
+    board = derive_actionable_board([_row(entry=5000.0)], no_source, now=NOW, now_ts=NOW_TS)
     assert board["items"][0]["status"] == "unknown"
     assert board["items"][0]["price_stale"] is True

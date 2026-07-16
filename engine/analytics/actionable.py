@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
+from data.provenance import LIVE_SOURCES
 from utils.position_sizing import get_contract_multiplier
 
 # A pending decision older than this many calendar days is stale — the pipeline
@@ -33,10 +34,21 @@ EXPIRY_DAYS = 3
 ENTRY_ZONE_ATR_FRAC = 0.25
 
 # A snapshot price older than this cannot honestly anchor a "triggerable NOW"
-# claim on a 60s-refresh board — the csv_cache fallback tier can be hours or
-# days old. Stale prices are still displayed (with a flag) but the status
-# degrades to "unknown" rather than presenting a cached close as a live tick.
+# claim on a 60s-refresh board. Stale prices are still displayed (with a flag)
+# but the status degrades to "unknown" rather than presenting a cached close
+# as a live tick.
 STALE_PRICE_MAX_S = 900.0
+
+# Source tiers whose last_price is a market-current read at fetch time (live
+# feeds plus delayed-but-fresh REST reads). Cache/static/error tiers
+# (csv_cache, sqlite_cache, polygon_cache*, the "data_manager" default,
+# *_unavailable/_error) are EXCLUDED: /prices/snapshot stamps as_of at FETCH
+# time, so a cached close can carry a fresh timestamp over a days-old price —
+# tier membership, not timestamp age, is the trustworthy discriminator.
+DELAYED_OK_SOURCES = frozenset(
+    {"ibkr_delayed", "ibkr_historical", "polygon", "polygon_rest"}
+)
+STATUS_GRADE_SOURCES = frozenset(LIVE_SOURCES) | DELAYED_OK_SOURCES
 
 # Chip vocabulary, priority order (highest wins) — mirrors amo-arbitrage.
 STATUSES = (
@@ -236,8 +248,11 @@ def derive_actionable_board(
         p = prices.get(symbol) or {}
         last_price = _f(p.get("last_price"))
         as_of = _f(p.get("as_of"))
+        source = (p.get("source") or "").lower()
         stale = last_price is not None and (
-            as_of is None or (now_ts - as_of) > STALE_PRICE_MAX_S
+            source not in STATUS_GRADE_SOURCES
+            or as_of is None
+            or (now_ts - as_of) > STALE_PRICE_MAX_S
         )
         items.append(
             derive_actionable_item(
