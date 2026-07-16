@@ -183,6 +183,19 @@ def test_evaluate_missing_entry_not_evaluable():
     assert out["hypothetical_pnl_pct"] is None
 
 
+def test_evaluate_excursions_capped_at_exit_bar():
+    # T1 hit on bar 1; the bar-2 crash happens AFTER the hypothetical exit
+    # and must move neither MFE nor MAE.
+    bars = [
+        _bar("2026-07-02", 5025.0, 4995.0, close=5018.0),  # exit bar (T1 hit)
+        _bar("2026-07-03", 5010.0, 4800.0, close=4810.0),  # post-exit crash
+    ]
+    out = evaluate_signal(_decision(), bars, now=NOW)
+    assert out["hit"] == "target1_hit"
+    assert out["mfe_pct"] == round(25.0 / 5000.0 * 100, 4)  # bar-1 high only
+    assert out["mae_pct"] == round(5.0 / 5000.0 * 100, 4)   # bar-1 low, not 4800
+
+
 def test_evaluate_truncated_bar_history_not_evaluable():
     # Decision predates the bar lookback: the first available bar is months
     # after entry. Scoring against it would corrupt the window — honest skip.

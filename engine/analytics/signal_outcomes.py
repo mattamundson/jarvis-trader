@@ -83,22 +83,24 @@ def bars_after(bars: list[dict], start: date) -> list[dict]:
     return out
 
 
-def compute_hit_status(
+def compute_hit_with_index(
     *,
     long: bool,
     stop: Optional[float],
     target_1: Optional[float],
     target_2: Optional[float],
     post_bars: list[dict],
-) -> str:
+) -> tuple[str, Optional[int]]:
     """Walk post-entry bars chronologically; first touch wins.
 
-    Same-bar stop+target ambiguity resolves to the stop (pessimistic).
-    No post bars => "open"; no touch within EXPIRY_BARS => "expired";
-    still inside the expiry window with no touch => "open".
+    Returns ``(status, exit_bar_index)`` — the index is the resolving bar for
+    stop/target hits (so excursions can be capped at the hypothetical exit)
+    and None for open/expired. Same-bar stop+target ambiguity resolves to the
+    stop (pessimistic). No post bars => "open"; no touch within EXPIRY_BARS
+    => "expired"; still inside the expiry window with no touch => "open".
     """
     if not post_bars:
-        return "open"
+        return "open", None
     sign = 1.0 if long else -1.0
     for i, bar in enumerate(post_bars):
         high = _f(bar.get("high"))
@@ -108,14 +110,29 @@ def compute_hit_status(
         favorable = high if long else low
         adverse = low if long else high
         if stop is not None and (adverse - stop) * sign <= 0:
-            return "stop_hit"
+            return "stop_hit", i
         if target_2 is not None and (favorable - target_2) * sign >= 0:
-            return "target2_hit"
+            return "target2_hit", i
         if target_1 is not None and (favorable - target_1) * sign >= 0:
-            return "target1_hit"
+            return "target1_hit", i
         if i + 1 >= EXPIRY_BARS:
-            return "expired"
-    return "expired" if len(post_bars) >= EXPIRY_BARS else "open"
+            return "expired", None
+    return ("expired", None) if len(post_bars) >= EXPIRY_BARS else ("open", None)
+
+
+def compute_hit_status(
+    *,
+    long: bool,
+    stop: Optional[float],
+    target_1: Optional[float],
+    target_2: Optional[float],
+    post_bars: list[dict],
+) -> str:
+    """Status-only wrapper over :func:`compute_hit_with_index`."""
+    return compute_hit_with_index(
+        long=long, stop=stop, target_1=target_1, target_2=target_2,
+        post_bars=post_bars,
+    )[0]
 
 
 def compute_mfe_mae(
@@ -233,10 +250,14 @@ def evaluate_signal(decision: dict, bars: list[dict], *, now: date) -> dict:
         )
         return base
 
-    hit = compute_hit_status(
+    hit, exit_idx = compute_hit_with_index(
         long=long, stop=stop, target_1=target_1, target_2=target_2, post_bars=post
     )
-    mfe, mae = compute_mfe_mae(long=long, entry=entry, post_bars=post)
+    # Excursions describe the trade's EXPERIENCED path: capped at the
+    # hypothetical exit bar on a stop/target hit; the full window only for
+    # open/expired signals (their whole life is un-exited).
+    experienced = post[: exit_idx + 1] if exit_idx is not None else post
+    mfe, mae = compute_mfe_mae(long=long, entry=entry, post_bars=experienced)
     last_close = _f(post[-1].get("close"))
     pnl = compute_pnl_pct(
         long=long, entry=entry, stop=stop, target_1=target_1, hit=hit,
