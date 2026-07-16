@@ -43,6 +43,15 @@ def _f(value: Any) -> Optional[float]:
         return None
 
 
+def _pos(value: Any) -> Optional[float]:
+    """Positive float or None. Price levels stored as 0.0 are a missing-value
+    sentinel (the approval path only accepts positive prices); treating them
+    as real levels would grade e.g. a long with target_1=0.0 as an instant
+    target hit."""
+    f = _f(value)
+    return f if f is not None and f > 0 else None
+
+
 def _to_date(raw: Any) -> Optional[date]:
     if isinstance(raw, datetime):
         return raw.date()
@@ -162,10 +171,14 @@ def evaluate_signal(decision: dict, bars: list[dict], *, now: date) -> dict:
     symbol = (decision.get("symbol") or "").upper()
     action = (decision.get("action") or "").lower()
     long = action != "sell"
-    entry = _f(td.get("entry_price")) or _f(td.get("limit_price")) or _f(decision.get("entry_price"))
-    stop = _f(td.get("stop_price"))
-    target_1 = _f(td.get("target_1"))
-    target_2 = _f(td.get("target_2"))
+    entry = (
+        _pos(td.get("entry_price"))
+        or _pos(td.get("limit_price"))
+        or _pos(decision.get("entry_price"))
+    )
+    stop = _pos(td.get("stop_price"))
+    target_1 = _pos(td.get("target_1"))
+    target_2 = _pos(td.get("target_2"))
     decided = _to_date(decision.get("created_at"))
 
     base = {

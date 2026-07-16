@@ -72,6 +72,14 @@ def _f(value: Any) -> Optional[float]:
         return None
 
 
+def _pos(value: Any) -> Optional[float]:
+    """Positive float or None. Price levels stored as 0.0 are a missing-value
+    sentinel; treating them as real levels would grade e.g. a long with
+    target_1=0.0 as target_reached against any positive price."""
+    f = _f(value)
+    return f if f is not None and f > 0 else None
+
+
 def _parse_created_at(raw: Any) -> Optional[date]:
     """Parse the row's created_at into a date (None on garbage)."""
     if isinstance(raw, datetime):
@@ -145,10 +153,14 @@ def derive_actionable_item(
     long = action != "sell"
     sign = 1.0 if long else -1.0
 
-    entry = _f(td.get("entry_price")) or _f(td.get("limit_price")) or _f(row.get("entry_price"))
-    stop = _f(td.get("stop_price"))
-    target = _f(td.get("target_1"))
-    atr = _f(td.get("atr_used"))
+    entry = (
+        _pos(td.get("entry_price"))
+        or _pos(td.get("limit_price"))
+        or _pos(row.get("entry_price"))
+    )
+    stop = _pos(td.get("stop_price"))
+    target = _pos(td.get("target_1"))
+    atr = _pos(td.get("atr_used"))
 
     age_days: Optional[int] = None
     created = _parse_created_at(row.get("created_at"))

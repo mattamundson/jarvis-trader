@@ -183,6 +183,16 @@ def test_evaluate_missing_entry_not_evaluable():
     assert out["hypothetical_pnl_pct"] is None
 
 
+def test_evaluate_zero_sentinel_levels_not_evaluable():
+    # 0.0 is the missing-value sentinel for price levels — a long with
+    # target_1=0.0 must NOT grade as an instant target hit.
+    d = _decision()
+    d["pipeline_snapshot"]["trade_decision"]["target_1"] = 0.0
+    out = evaluate_signal(d, [_bar("2026-07-02", 5010.0, 4990.0)], now=NOW)
+    assert out["evaluable"] is False
+    assert out["hit"] == "open"
+
+
 def test_evaluate_missing_stop_or_target_not_evaluable():
     # Entry alone is not enough — without stop/T1 geometry the signal could
     # never grade a target hit, so it must not enter the hit-rate denominator.

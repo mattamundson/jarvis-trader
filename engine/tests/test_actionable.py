@@ -194,6 +194,16 @@ def test_item_missing_levels_degrade_to_null():
     assert item["current_r"] is None
 
 
+def test_item_zero_sentinel_target_not_target_reached():
+    # 0.0 levels are missing-value sentinels — a long with target_1=0.0 must
+    # not read as target_reached against any positive price.
+    row = _row(target=0.0)
+    item = derive_actionable_item(row, 4990.0, None, now=NOW)
+    assert item["target_1"] is None
+    assert item["status"] == "awaiting_entry"
+    assert item["planned_rr"] is None
+
+
 def test_item_missing_price_is_unknown_not_fabricated():
     item = derive_actionable_item(_row(), None, None, now=NOW)
     assert item["status"] == "unknown"
