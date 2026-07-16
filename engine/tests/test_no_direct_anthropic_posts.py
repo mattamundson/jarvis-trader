@@ -9,6 +9,18 @@ while routed agents kept working on the fallback.
 This test makes the invariant structural: any NEW file under engine/agents/
 or engine/discord/ containing the REST URL literal fails CI until it either
 routes through the client or earns a documented allowlist entry.
+
+2026-07-15: a second, distinct bypass shape was found live in
+DebateOrchestrator._score_confluence and PostTradeAnalyzer.analyze_trade --
+both called the Anthropic SDK object directly via
+`<JarvisLLMClient instance>.client.messages.create(...)`, skipping .call()
+and its fallback/retry/cost-tracking entirely. This never contains the
+REST URL literal in source (the SDK, not this code, owns that string), so
+test_no_unallowlisted_anthropic_url_literals never caught it -- both ran
+Anthropic-only for weeks, one of them (the confluence scorer) silently
+forcing every debate to INCONCLUSIVE during the outage. See
+test_no_unallowlisted_raw_sdk_message_create below for the second invariant
+that closes this gap.
 """
 
 from pathlib import Path
@@ -52,6 +64,14 @@ DECISION_AGENTS = (
 )
 
 GUARD_MARKER = 'hasattr(self._llm, "call")'
+
+# Second bypass shape: calling the wrapped Anthropic SDK client's
+# .messages.create(...) directly instead of going through .call(). No
+# allowlist entries exist -- every prior instance (debate.py, post_mortem.py)
+# was a genuine bug, not a deliberate exception, so any new occurrence should
+# fail outright rather than be silently permitted.
+SDK_BYPASS_PATTERN = ".client.messages.create("
+SDK_BYPASS_ALLOWLIST: dict[str, dict] = {}
 
 
 def _scan_files():
@@ -101,6 +121,26 @@ def test_guarded_fallbacks_keep_primary_guard():
     assert not broken, (
         f"Guarded-fallback files lost their client-first guard: {broken}. "
         "The raw POST may only run when the injected client lacks .call()."
+    )
+
+
+def test_no_unallowlisted_raw_sdk_message_create():
+    """Catches the bypass shape the URL-literal check above can't see: calling
+    the wrapped Anthropic SDK client's .messages.create(...) directly instead
+    of JarvisLLMClient.call(). Found live in _score_confluence and
+    PostTradeAnalyzer.analyze_trade (2026-07-15) -- both ran Anthropic-only,
+    with no fallback, for weeks."""
+    offenders = []
+    for path in _scan_files():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if SDK_BYPASS_PATTERN in text and _rel(path) not in SDK_BYPASS_ALLOWLIST:
+            offenders.append(_rel(path))
+    assert not offenders, (
+        f"Raw Anthropic SDK call found outside the allowlist: {offenders}. "
+        "Route the call through JarvisLLMClient.call() (engine/llm/client.py) "
+        "so it inherits the provider fallback chain, retries, and cost "
+        "tracking -- or, if this is a deliberate exception, add a documented "
+        "SDK_BYPASS_ALLOWLIST entry in this test."
     )
 
 
