@@ -4,14 +4,11 @@ import useSWR from "swr";
 import { CheckCircle2, AlertTriangle, XCircle, Clock } from "lucide-react";
 import {
   fetchForwardTestStatus,
+  fetchPaperStatus,
   type ForwardTestStatusResponse,
+  type PaperStatusResponse,
 } from "@/lib/api";
 import { ResultLabel } from "@/components/ResultLabel";
-
-// Active paper instruments (Tier-3 auth 2026-05-24). MCL/MNQ are HALTED and
-// deliberately absent — showing a forward-test row for a halted symbol would
-// read as progress toward promotion.
-const ACTIVE_SYMBOLS = ["MES", "MGC"] as const;
 
 const REFRESH_MS = 60_000;
 
@@ -157,6 +154,22 @@ function SymbolRow({ symbol }: { symbol: string }) {
 }
 
 export function ForwardVsBacktestCard() {
+  // Which symbols actually trade comes from the live gate-v2 policy
+  // (/backtest/paper-status: paper_config.enabled + fresh PASS verdict) —
+  // never a hardcoded list, which goes stale the moment a symbol is halted
+  // and would render a disabled instrument as progressing toward promotion.
+  const { data: paperStatus, error: paperStatusError } = useSWR<PaperStatusResponse>(
+    "/backtest/paper-status",
+    fetchPaperStatus,
+    { refreshInterval: REFRESH_MS, shouldRetryOnError: false }
+  );
+
+  const rows = paperStatus ? Object.values(paperStatus) : [];
+  const activeSymbols = Array.from(
+    new Set(rows.filter((r) => r.authorized).map((r) => r.symbol))
+  ).sort();
+  const inactive = rows.filter((r) => !r.authorized);
+
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -167,11 +180,38 @@ export function ForwardVsBacktestCard() {
           forward record vs backtest verdict · promotion is manual
         </span>
       </div>
-      <div className="space-y-2">
-        {ACTIVE_SYMBOLS.map((s) => (
-          <SymbolRow key={s} symbol={s} />
-        ))}
-      </div>
+      {paperStatusError ? (
+        <p className="text-xs text-muted-foreground">
+          /backtest/paper-status unreachable — cannot determine which symbols
+          are authorized, so no forward-test rows are shown (not a claim that
+          none are active).
+        </p>
+      ) : !paperStatus ? (
+        <p className="text-xs text-muted-foreground animate-pulse">
+          Loading authorized instruments…
+        </p>
+      ) : activeSymbols.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No paper instrument is currently authorized by the gate-v2 policy —
+          nothing is progressing toward promotion.
+          {inactive.length > 0 && (
+            <>
+              {" "}
+              (
+              {inactive
+                .map((r) => `${r.symbol}: ${r.status}`)
+                .join(" · ")}
+              )
+            </>
+          )}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {activeSymbols.map((s) => (
+            <SymbolRow key={s} symbol={s} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -391,6 +391,26 @@ export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
   return fetchEngine<ActionableBoardResponse>("/pipeline/actionable");
 }
 
+// ── Paper-trading authorization status (engine /backtest/paper-status) ───────
+// Per-symbol rows derived from the LIVE gate-v2 policy (paper_config.enabled
+// + fresh PASS verdict) — the canonical "which symbols actually trade" source,
+// never a hardcoded list. Keyed like "MES_1h".
+export interface PaperStatusRow {
+  symbol: string;
+  status: "ACTIVE" | "NO-TRADE" | "FAIL" | "NO-VERDICT" | string;
+  authorized: boolean;
+  verdict: string;
+  wfe_label?: string;
+  reason?: string;
+  [key: string]: unknown;
+}
+
+export type PaperStatusResponse = Record<string, PaperStatusRow>;
+
+export async function fetchPaperStatus(): Promise<PaperStatusResponse> {
+  return fetchEngine<PaperStatusResponse>("/backtest/paper-status");
+}
+
 // ── Forward-test status (engine /forward-test/status) ────────────────────────
 // Mirrors engine routers/forward_test_router.py ForwardTestStatus. Read-only
 // view of the paper-validation record for one symbol vs the canonical
