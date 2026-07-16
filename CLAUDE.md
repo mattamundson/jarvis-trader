@@ -75,8 +75,9 @@ cd engine && .venv/Scripts/activate && python main.py
 # Dashboard (http://localhost:3010)
 cd dashboard && pnpm install && pnpm dev
 
-# Tests
-cd engine && .venv/Scripts/python -m pytest tests/ -m "not slow"
+# Tests (restate `not manual` — a CLI -m overrides pyproject's default and
+# re-collects the IB-Gateway e2e tests, which hang when a gateway is reachable)
+cd engine && .venv/Scripts/python -m pytest tests/ -m "not slow and not manual"
 cd dashboard && pnpm run build
 ```
 

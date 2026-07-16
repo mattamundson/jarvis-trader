@@ -95,8 +95,11 @@ live Strategy-C signal has been generated; the page prints the command to create
 ### Lint / test / build
 
 - Engine lint: from `engine/`, `.venv/bin/ruff check . --config ruff.toml`.
-- Engine tests: from `engine/`, `.venv/bin/python -m pytest tests/ -m "not slow"`
-  (~2 min, 7000+ tests). `manual`/`integration_ib` tests auto-skip without IB Gateway.
+- Engine tests: from `engine/`, `.venv/bin/python -m pytest tests/ -m "not slow and not manual"`
+  (~11 min, 8000+ tests). Restate `not manual`: a CLI `-m` overrides pyproject's
+  `-m "not manual"` default, and while the `manual` IB-Gateway tests auto-skip when no
+  gateway is up, they connect for real — and can hang the asyncio loop — when one is.
+  `integration_ib` tests auto-skip without IB Gateway.
 - Dashboard typecheck: from `dashboard/`, `./node_modules/.bin/tsc --noEmit` (this is the
   type/lint gate — `pnpm lint` / `next lint` is unconfigured and prompts interactively).
 - Dashboard build: from `dashboard/`, `pnpm run build`. Gotcha: running a production build
