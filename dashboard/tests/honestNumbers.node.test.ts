@@ -119,8 +119,12 @@ test("equityCurve: cumulative equity + drawdown vs running peak", () => {
 
 // ── maxDrawdownPct ───────────────────────────────────────────────────────────
 test("maxDrawdownPct: worst fractional drop below peak (drawdown is safety-adjacent)", () => {
-  // peak 100 at T1; trough 30 at T3 => (100-30)/100 = 0.70
-  approx(maxDrawdownPct(TRADES), 0.7, 1e-12);
+  // peak 100 at T1; trough 30 at T3 => $70 dollar drawdown. Denominator is
+  // floored at DEFAULT_STARTING_CAPITAL ($10,000, see honestTrades.ts) since
+  // no real starting equity is passed here, so 70 / 10_000 = 0.007 -- not the
+  // raw peak-to-trough ratio (0.70), which predates the floor added in
+  // 40113b9 to stop tiny early peaks from producing exploding percentages.
+  approx(maxDrawdownPct(TRADES), 0.007, 1e-12);
 });
 
 test("maxDrawdownPct: 0 when equity never rises above zero base", () => {
