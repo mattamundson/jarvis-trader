@@ -342,6 +342,43 @@ export interface ForwardTestReport {
   note?: string;
 }
 
+// ── Forward-test status (engine /forward-test/status) ────────────────────────
+// Mirrors engine routers/forward_test_router.py ForwardTestStatus. Read-only
+// view of the paper-validation record for one symbol vs the canonical
+// live-readiness thresholds (no new strategy logic on either side).
+export interface ForwardTestStatusResponse {
+  symbol: string;
+  status: "not_run" | "in_progress" | "pass" | "fail" | string;
+  forward_pf: number | null;
+  forward_pf_infinite: boolean;
+  n_closed: number;
+  n_open: number;
+  days_elapsed: number | null;
+  total_pnl: number;
+  gate_verdict: string | null;
+  gate_family: string | null;
+  gate_created_at: string | null;
+  as_of: string | null;
+  as_of_age_days: number | null;
+  stale: boolean;
+  thresholds: {
+    min_days?: number;
+    min_trades?: number;
+    min_pf?: number;
+    verdict_ttl_days?: number;
+  };
+  detail: string;
+  generated_at: string;
+}
+
+export async function fetchForwardTestStatus(
+  symbol: string
+): Promise<ForwardTestStatusResponse> {
+  return fetchEngine<ForwardTestStatusResponse>(
+    `/forward-test/status?symbol=${encodeURIComponent(symbol)}`
+  );
+}
+
 export interface SafetyStatus {
   kill_switch_active: boolean;
   kill_switch_reason: string | null;

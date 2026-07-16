@@ -38,6 +38,9 @@ import { PnLStreakWidget } from "@/components/PnLStreakWidget";
 import { MaxDrawdownTrackerWidget } from "@/components/MaxDrawdownTrackerWidget";
 import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
+import { ForwardTestPanel } from "@/components/ForwardTestPanel";
+import { ForwardVsBacktestCard } from "@/components/ForwardVsBacktestCard";
+import { ResultLabel } from "@/components/ResultLabel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import {
   equityCurve,
@@ -478,8 +481,9 @@ export default function ScorecardPage() {
         <div className="flex items-center gap-3">
           <Target className="h-5 w-5 text-muted-foreground" />
           <div>
-            <h2 className="text-lg font-bold text-foreground">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
               Paper Trading Scorecard
+              <ResultLabel kind="paper" />
             </h2>
             <p className="text-xs text-muted-foreground">
               {baseline
@@ -601,6 +605,16 @@ export default function ScorecardPage() {
         <WidgetErrorBoundary name="Backtest Compare">
           <BacktestCompareWidget />
         </WidgetErrorBoundary>
+
+        {/* ── Evidence-to-Live Gate (forward record vs backtest verdict) ──── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <WidgetErrorBoundary name="Evidence-to-Live Gate">
+            <ForwardVsBacktestCard />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Forward Test">
+            <ForwardTestPanel />
+          </WidgetErrorBoundary>
+        </div>
 
         {/* ── Rolling Performance Windows ─────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
