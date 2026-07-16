@@ -342,6 +342,55 @@ export interface ForwardTestReport {
   note?: string;
 }
 
+// ── Actionable-now board (engine /pipeline/actionable) ───────────────────────
+// Mirrors engine analytics/actionable.py derive_actionable_board(). Display
+// only — the board derives status from stored decisions + latest price and
+// never routes, sizes, or gates anything.
+export interface ActionableItem {
+  approval_id: string | null;
+  symbol: string;
+  direction: "long" | "short" | string;
+  action: string;
+  approval_status: string | null;
+  quantity: number | null;
+  confidence: number | null;
+  timeframe: string | null;
+  created_at: string | null;
+  age_days: number | null;
+  status:
+    | "awaiting_entry"
+    | "triggerable"
+    | "triggered"
+    | "target_reached"
+    | "invalidated"
+    | "expired"
+    | "unknown"
+    | string;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target_1: number | null;
+  atr: number | null;
+  latest_price: number | null;
+  price_as_of: number | null;
+  distance_abs: number | null;
+  distance_pct: number | null;
+  distance_atr: number | null;
+  planned_rr: number | null;
+  current_r: number | null;
+  notional_per_contract: number | null;
+}
+
+export interface ActionableBoardResponse {
+  items: ActionableItem[];
+  count: number;
+  available: boolean;
+  note?: string;
+}
+
+export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
+  return fetchEngine<ActionableBoardResponse>("/pipeline/actionable");
+}
+
 // ── Forward-test status (engine /forward-test/status) ────────────────────────
 // Mirrors engine routers/forward_test_router.py ForwardTestStatus. Read-only
 // view of the paper-validation record for one symbol vs the canonical
@@ -1476,6 +1525,61 @@ export interface SignalQualityResponse {
   by_symbol: Record<string, SignalMetricsResponse>;
   by_regime: Record<string, SignalMetricsResponse>;
   recommendations: string[];
+}
+
+export async function fetchSignalQuality(): Promise<SignalQualityResponse> {
+  return fetchEngine<SignalQualityResponse>("/analytics/signal-quality");
+}
+
+// ── Signal outcomes (engine /analytics/signal-outcomes) ─────────────────────
+// Mirrors engine analytics/signal_outcomes.py — recent directional pipeline
+// decisions scored against subsequent daily bars. Hypothetical by design
+// (scores the SIGNAL, not an executed trade); the fill model is stated in
+// the response's `model` field.
+export interface SignalOutcome {
+  approval_id: string | null;
+  symbol: string;
+  direction: "long" | "short" | string;
+  decision_date: string | null;
+  approval_status: string | null;
+  confidence: number | null;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target_1: number | null;
+  target_2: number | null;
+  hit:
+    | "target1_hit"
+    | "target2_hit"
+    | "stop_hit"
+    | "expired"
+    | "open"
+    | string;
+  mfe_pct: number | null;
+  mae_pct: number | null;
+  hypothetical_pnl_pct: number | null;
+  evaluable: boolean;
+  note: string | null;
+}
+
+export interface SignalOutcomesAggregate {
+  hit_rate: number | null;
+  avg_hypothetical_pnl_pct: number | null;
+  total_evaluated: number;
+  total_signals: number;
+  count_by_hit: Record<string, number>;
+}
+
+export interface SignalOutcomesResponse {
+  outcomes: SignalOutcome[];
+  aggregate: SignalOutcomesAggregate;
+  available: boolean;
+  generated_at?: string;
+  note?: string | null;
+  model?: string;
+}
+
+export async function fetchSignalOutcomes(): Promise<SignalOutcomesResponse> {
+  return fetchEngine<SignalOutcomesResponse>("/analytics/signal-outcomes");
 }
 
 export interface TradesByDayItem {

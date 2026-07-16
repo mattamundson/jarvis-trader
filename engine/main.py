@@ -112,6 +112,12 @@ from routers.brokers_router import inject_dependencies as inject_brokers_deps
 from routers.options_router import router as options_router
 from routers.approval_router import router as approval_router
 from routers.approval_router import inject_dependencies as inject_approval_deps
+from routers.actionable_router import router as actionable_router
+from routers.actionable_router import inject_dependencies as inject_actionable_deps
+from routers.signal_outcomes_router import router as signal_outcomes_router
+from routers.signal_outcomes_router import (
+    inject_dependencies as inject_signal_outcomes_deps,
+)
 from routers.approval_queue_router import router as approval_queue_router
 from routers.approval_queue_router import inject_approval_queue_deps
 from routers.pipeline_router import router as pipeline_router
@@ -1745,6 +1751,8 @@ async def lifespan(app: FastAPI):
         db_path=str(db_manager._db_path),
     )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
+    inject_actionable_deps(db_manager)
+    inject_signal_outcomes_deps(db_manager, data_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
     inject_regime_deps(data_manager)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
@@ -3100,6 +3108,8 @@ app.include_router(instruments_router)
 app.include_router(brokers_router)
 app.include_router(options_router, prefix="/options", tags=["options"])
 app.include_router(approval_router)
+app.include_router(actionable_router)
+app.include_router(signal_outcomes_router)
 app.include_router(approval_queue_router)
 app.include_router(pipeline_router)
 app.include_router(session_brief_router)
