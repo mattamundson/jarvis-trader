@@ -319,15 +319,23 @@ class TestPostMortemsEndpoint:
 
         from agents.post_mortem import PostTradeAnalyzer
         from database.manager import DatabaseManager
+        from llm.client import LLMCallResult
 
         db = DatabaseManager(str(tmp_path / "post_mortem_populated.db"))
         db.initialize()
         mock_get_db.return_value = db
 
-        msg = SimpleNamespace(
-            content=[SimpleNamespace(text=_json.dumps({"analysis": "test analysis", "lesson": "test lesson"}))]
+        result = LLMCallResult(
+            success=True,
+            model="test-model",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            latency_ms=0,
+            retries=0,
+            content=_json.dumps({"analysis": "test analysis", "lesson": "test lesson"}),
         )
-        llm = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=msg))))
+        llm = SimpleNamespace(call=AsyncMock(return_value=result))
         analyzer = PostTradeAnalyzer(db_manager=db, llm_client=llm)
         asyncio.get_event_loop().run_until_complete(
             analyzer.analyze_trade("T-42", {"symbol": "MGC", "pnl": 88.5}, {})
@@ -351,15 +359,23 @@ class TestPostMortemsEndpoint:
 
         from agents.post_mortem import PostTradeAnalyzer
         from database.manager import DatabaseManager
+        from llm.client import LLMCallResult
 
         db = DatabaseManager(str(tmp_path / "post_mortem_filter.db"))
         db.initialize()
         mock_get_db.return_value = db
 
-        msg = SimpleNamespace(
-            content=[SimpleNamespace(text=_json.dumps({"analysis": "a", "lesson": "l"}))]
+        result = LLMCallResult(
+            success=True,
+            model="test-model",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            latency_ms=0,
+            retries=0,
+            content=_json.dumps({"analysis": "a", "lesson": "l"}),
         )
-        llm = SimpleNamespace(client=SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(return_value=msg))))
+        llm = SimpleNamespace(call=AsyncMock(return_value=result))
         analyzer = PostTradeAnalyzer(db_manager=db, llm_client=llm)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(analyzer.analyze_trade("T-A", {"symbol": "MGC", "pnl": 1.0}, {}))
