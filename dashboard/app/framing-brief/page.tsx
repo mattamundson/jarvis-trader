@@ -2,13 +2,34 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { Activity, Sunrise } from "lucide-react";
+import { Activity, Sunrise, Sunset } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 
 const REFRESH_MS = 5 * 60_000;
 
+type Session = "premarket" | "preclose";
+
+const SESSION_TABS: { id: Session; label: string }[] = [
+  { id: "premarket", label: "Pre-Market (AM)" },
+  { id: "preclose", label: "Pre-Close (PM)" },
+];
+
+const SESSION_META: Record<Session, { icon: typeof Sunrise; title: string; subtitle: string }> = {
+  premarket: {
+    icon: Sunrise,
+    title: "Morning Framing Brief",
+    subtitle: "Corey-style AMT read for ES/NQ — auto-generated every weekday morning",
+  },
+  preclose: {
+    icon: Sunset,
+    title: "Pre-Close Framing Brief",
+    subtitle: "Acceptance vs Rejection into the close — auto-generated ~1hr before RTH close",
+  },
+};
+
 interface FramingBrief {
   date: string;
+  session: Session;
   markdown: string;
   generated_at: number;
 }
@@ -29,13 +50,17 @@ function fmtGeneratedAt(epochSeconds: number): string {
 }
 
 export default function FramingBriefPage() {
+  const [session, setSession] = useState<Session>("premarket");
   // Empty string = "latest"; a YYYY-MM-DD string views a specific past brief.
   const [selectedDate, setSelectedDate] = useState("");
 
-  const url = selectedDate ? `/framing-brief/${selectedDate}` : "/framing-brief/latest";
+  const base = selectedDate ? `/framing-brief/${selectedDate}` : "/framing-brief/latest";
+  const url = `${base}?session=${session}`;
   const { data, error, isLoading } = useSWR<FramingBrief>(url, fetcher, {
     refreshInterval: selectedDate ? 0 : REFRESH_MS,
   });
+  const meta = SESSION_META[session];
+  const SessionIcon = meta.icon;
 
   return (
     <div className="min-h-screen bg-background">
@@ -47,24 +72,41 @@ export default function FramingBriefPage() {
             </div>
             <div>
               <h1 className="font-bold text-foreground tracking-tight">JARVIS TRADER</h1>
-              <p className="text-xs text-muted-foreground">Morning Framing Brief</p>
+              <p className="text-xs text-muted-foreground">Market Briefings</p>
             </div>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+        {/* Session tabs */}
+        <div className="flex gap-1 border-b border-border">
+          {SESSION_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setSession(tab.id)}
+              className={`px-4 py-2 font-mono text-xs font-medium transition-colors border-b-2 -mb-px ${
+                session === tab.id
+                  ? "border-accent text-accent"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10">
-              <Sunrise className="h-5 w-5 text-accent" />
+              <SessionIcon className="h-5 w-5 text-accent" />
             </div>
             <div>
               <h2 className="font-mono text-lg font-bold text-foreground tracking-tight">
-                Morning Framing Brief
+                {meta.title}
               </h2>
               <p className="font-mono text-[11px] text-muted-foreground mt-0.5">
-                Corey-style AMT read for ES/NQ — auto-generated every weekday morning
+                {meta.subtitle}
               </p>
             </div>
           </div>
