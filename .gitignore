@@ -45,6 +45,8 @@ dist/
 .eggs/
 venv/
 .venv/
+# Linux-side venv used by cloud/CI-parity sessions (Windows venv is .venv/)
+.venv-linux/
 env/
 .virtualenv/
 
