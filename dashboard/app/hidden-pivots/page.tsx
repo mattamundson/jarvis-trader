@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 import {
   Crosshair,
   TrendingUp,
@@ -182,6 +183,7 @@ export default function HiddenPivotsPage() {
 
   return (
     <div className="space-y-5 p-4 md:p-6">
+      <ExploratoryBanner what="Hidden Pivots is an analysis-only scanner" />
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
