@@ -32,6 +32,7 @@ import {
   Settings,
   Shield,
   Sliders,
+  Radar,
   Star,
   SunMedium,
   Target,
@@ -120,6 +121,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Intelligence",
     items: [
+      { label: "Signals", href: "/signals", icon: <Radar className="h-3.5 w-3.5" /> },
       { label: "Command Center", href: "/command-center", icon: <Cpu className="h-3.5 w-3.5" /> },
       { label: "Learning", href: "/learning", icon: <Rss className="h-3.5 w-3.5" /> },
       { label: "Research Log", href: "/research-log", icon: <FileText className="h-3.5 w-3.5" /> },
