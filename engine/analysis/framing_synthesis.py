@@ -26,20 +26,20 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 2500
 
-_SKILL_MD_PATH = (
-    Path(__file__).resolve().parent.parent.parent
-    / ".claude"
-    / "skills"
-    / "market-framing-brief"
-    / "SKILL.md"
-)
+_SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / ".claude" / "skills"
+_SKILL_MD_PATH = _SKILLS_DIR / "market-framing-brief" / "SKILL.md"
+_PRECLOSE_SKILL_MD_PATH = _SKILLS_DIR / "market-close-brief" / "SKILL.md"
+_SESSION_SKILL_PATHS: dict[str, Path] = {
+    "premarket": _SKILL_MD_PATH,
+    "preclose": _PRECLOSE_SKILL_MD_PATH,
+}
 
 # Section headers as they literally appear in SKILL.md today. If a future edit
 # renames these, `_extract_skill_sections` raises — caught by the guard test,
@@ -61,6 +61,17 @@ _REQUIRED_OUTPUT_HEADERS = (
     "Scenario Map",
     "Caveats:",
 )
+# Matches market-close-brief/SKILL.md's Output template.
+_REQUIRED_OUTPUT_HEADERS_PRECLOSE = (
+    "Level confidence:",
+    "Acceptance vs Rejection",
+    "Game Theory Cues",
+    "Key Levels",
+)
+_REQUIRED_HEADERS_BY_SESSION: dict[str, tuple[str, ...]] = {
+    "premarket": _REQUIRED_OUTPUT_HEADERS,
+    "preclose": _REQUIRED_OUTPUT_HEADERS_PRECLOSE,
+}
 
 _FRAMING_INSTRUCTION = (
     "You are generating a Corey-style Auction Market Theory morning framing "
@@ -75,6 +86,25 @@ _FRAMING_INSTRUCTION = (
     "'none'), open the AMT Cues or Overview section by noting whether today's "
     "data confirms, extends, or invalidates yesterday's stated bias."
 )
+_FRAMING_INSTRUCTION_PRECLOSE = (
+    "You are generating a Corey-style pre-close read for ES + NQ, roughly 1 "
+    "hour before the CME RTH close, for an automated/unattended run — no human "
+    "is reviewing this before it posts. Follow the Output template below "
+    "VERBATIM in structure (same section headers, same order). This is a "
+    "same-day companion to the morning framing brief, not a fresh forecast: "
+    "use `intraday_snapshot` (today's realized session range/value area) and, "
+    "if present, `corey_preclose_raw` (Corey's own pre-close commentary) as "
+    "the primary sources for today's action, and `corey_today`/`engine_levels` "
+    "as the morning's reference frame to reconcile against — state plainly "
+    "whether today confirms, extends, or invalidates that morning read. Never "
+    "invent a session-range number, price level, or fact not present in the "
+    "JSON context; if `intraday_snapshot` is unavailable for a symbol, say so "
+    "in the Caveats line rather than estimating one."
+)
+_INSTRUCTION_BY_SESSION: dict[str, str] = {
+    "premarket": _FRAMING_INSTRUCTION,
+    "preclose": _FRAMING_INSTRUCTION_PRECLOSE,
+}
 
 
 def _extract_skill_sections(skill_md_text: str) -> dict[str, str]:
@@ -104,19 +134,33 @@ def _extract_skill_sections(skill_md_text: str) -> dict[str, str]:
     return sections
 
 
-def _load_skill_sections(skill_md_path: Optional[Path] = None) -> dict[str, str]:
-    path = skill_md_path or _SKILL_MD_PATH
+def _load_skill_sections(
+    skill_md_path: Optional[Path] = None,
+    *,
+    session: Literal["premarket", "preclose"] = "premarket",
+) -> dict[str, str]:
+    path = skill_md_path or _SESSION_SKILL_PATHS[session]
     text = path.read_text(encoding="utf-8")
     return _extract_skill_sections(text)
 
 
-def build_system_prompt(skill_md_path: Optional[Path] = None) -> str:
+def build_system_prompt(
+    skill_md_path: Optional[Path] = None,
+    *,
+    session: Literal["premarket", "preclose"] = "premarket",
+) -> str:
     """Pure/testable: assemble the system prompt from SKILL.md's authoritative
-    template + rules text plus the automation-specific framing instruction."""
-    sections = _load_skill_sections(skill_md_path)
+    template + rules text plus the automation-specific framing instruction.
+
+    `skill_md_path`, when given explicitly, always wins (existing AM test
+    calls pass it explicitly and are unaffected by `session`). Otherwise the
+    path is resolved from `_SESSION_SKILL_PATHS[session]` — default
+    "premarket" preserves the exact current AM behavior."""
+    sections = _load_skill_sections(skill_md_path, session=session)
+    instruction = _INSTRUCTION_BY_SESSION[session]
     return "\n\n".join(
         [
-            _FRAMING_INSTRUCTION,
+            instruction,
             sections["output_template"],
             sections["bias_rules"],
             sections["hard_rules"],
@@ -134,7 +178,11 @@ def build_prompt(context: dict[str, Any]) -> str:
     )
 
 
-def parse_brief(raw: str) -> str:
+def parse_brief(
+    raw: str,
+    *,
+    session: Literal["premarket", "preclose"] = "premarket",
+) -> str:
     """Pure/testable: strip code fences, validate required section headers are
     present. Raises ValueError on malformed output — the caller must NOT post
     a brief that fails this check."""
@@ -148,7 +196,8 @@ def parse_brief(raw: str) -> str:
     if not text:
         raise ValueError("empty brief")
 
-    missing = [h for h in _REQUIRED_OUTPUT_HEADERS if h not in text]
+    required = _REQUIRED_HEADERS_BY_SESSION[session]
+    missing = [h for h in required if h not in text]
     if missing:
         raise ValueError(f"brief missing required section(s): {missing}")
 
@@ -174,6 +223,7 @@ async def generate_framing_brief(
     llm_client: Optional[object] = None,
     api_key: Optional[str] = None,
     skill_md_path: Optional[Path] = None,
+    session: Literal["premarket", "preclose"] = "premarket",
 ) -> dict[str, Any]:
     """Generate the framing brief. Always returns a dict; NEVER raises.
 
@@ -182,6 +232,12 @@ async def generate_framing_brief(
     synthesis (AMT judgment, scenario ranking), a materially bigger task than
     the closed-schema JSON extraction Haiku handles in
     ``corey_session_bias_report.py``.
+
+    `session` defaults to "premarket" and threads through to
+    ``build_system_prompt``/``parse_brief`` — the premarket path's
+    ``agent_name`` stays the literal ``"morning_framing_brief"`` (zero AM
+    behavior change); only the new preclose branch uses the session-derived
+    cost-ledger label.
     """
     import os
 
@@ -191,12 +247,13 @@ async def generate_framing_brief(
         return _fallback_brief("LLM unavailable (no API key, no client)")
 
     try:
-        system = build_system_prompt(skill_md_path)
+        system = build_system_prompt(skill_md_path, session=session)
     except Exception as exc:
         logger.error("SKILL.md template extraction failed: %s", exc)
         return _fallback_brief(f"template extraction failed: {exc}")
 
     prompt = build_prompt(context)
+    agent_name = "morning_framing_brief" if session == "premarket" else f"{session}_framing_brief"
 
     try:
         if has_client:
@@ -205,7 +262,7 @@ async def generate_framing_brief(
                 system=system,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=MAX_TOKENS,
-                agent_name="morning_framing_brief",
+                agent_name=agent_name,
             )
             if not getattr(result, "success", False):
                 raise RuntimeError(f"framing brief LLM call failed: {getattr(result, 'error', '?')}")
@@ -240,7 +297,7 @@ async def generate_framing_brief(
                 raw = resp.json()["content"][0]["text"].strip()
                 model_used = MODEL
 
-        markdown = parse_brief(raw)
+        markdown = parse_brief(raw, session=session)
         return {"markdown": markdown, "data_quality": "ok", "model_used": model_used}
     except Exception as exc:
         logger.warning("Framing brief generation degraded to fallback: %s", exc)
