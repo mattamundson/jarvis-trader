@@ -199,8 +199,14 @@ class TestDetectSuspectsPure:
         # id=296 is now status='phantom'. The suspect list must shrink as rows
         # are confirm-marked, not re-surface them at every EOD.
         trades = [
-            _trade("phantom296", side="sell", entry=5299.875, exit=7512.5, pnl=-11063.12,
-                   status="phantom"),
+            _trade(
+                "phantom296",
+                side="sell",
+                entry=5299.875,
+                exit=7512.5,
+                pnl=-11063.12,
+                status="phantom",
+            ),
         ]
         assert detect_suspects(trades) == []
 
@@ -215,8 +221,9 @@ class TestDetectSuspectsPure:
             # MES 1ct short: gross +43.75, stored +42.25.
             _trade("mes289", side="sell", entry=7563.0, exit=7554.25, pnl=42.25, key="k2"),
             # TSLA 2sh: gross -5.0562, stored -8.0562 (2 x $1.50).
-            _trade("tsla290", symbol="TSLA", qty=2, entry=393.12, exit=390.5919, pnl=-8.0562,
-                   key="k3"),
+            _trade(
+                "tsla290", symbol="TSLA", qty=2, entry=393.12, exit=390.5919, pnl=-8.0562, key="k3"
+            ),
         ]
         assert detect_suspects(trades) == []
 
