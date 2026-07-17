@@ -161,6 +161,72 @@ class TestDetectSuspectsPure:
         # (2 peers < min_peers=3) → C silent; both consistent → B silent.
         assert detect_suspects(trades, enable_price_outlier=True) == []
 
+    def test_entry_exit_excursion_flags_wrong_era_entry_with_no_peers(self):
+        # The real 2026-07-17 phantom (paper_trades id=296): a 2024-era 5299.875
+        # entry against a correct 7512.50 exit, booking a fictional -$11,063.12
+        # that tripped the daily_loss_limit kill switch.
+        #
+        # Presented ALONE — no peers — because that is the real condition: MES
+        # exits exactly 1 trade per day, so Signal C's min_peers=3 same-day group
+        # never forms. Signal B is silent too: (5299.875-7512.5)*-1*5*1 is
+        # -11063.12 to the cent, so the pnl is internally consistent. D is the
+        # only signal that can see this, and it must see it unaided.
+        trades = [_trade("phantom296", side="sell", entry=5299.875, exit=7512.5, pnl=-11063.12)]
+        sus = {s.trade_id: s for s in detect_suspects(trades)}
+        assert set(sus) == {"phantom296"}
+        assert sus["phantom296"].reasons == ["entry_exit_excursion"]
+        assert sus["phantom296"].detail["entry_exit_excursion"]["deviation_pct"] == pytest.approx(
+            0.4175, abs=1e-4
+        )
+
+    def test_excursion_does_not_flag_worst_genuine_trade(self):
+        # paper_trades id=292 — the LARGEST real intra-trade move in the whole
+        # closed MES ledger (7483.0 -> 7615.25, +$659.75, dev 1.77%). If the
+        # threshold ever false-positives on a real trade, it starts here.
+        trades = [_trade("real292", entry=7483.0, exit=7615.25, pnl=661.25)]
+        assert detect_suspects(trades) == []
+
+    def test_excursion_skips_rows_without_a_usable_exit(self):
+        # Open/partial rows carry exit_price NULL (and 0.0 shows up in the real
+        # ledger too). Neither is contamination evidence — skip, never divide.
+        trades = [
+            _trade("open1", entry=7500.0, exit=None, pnl=None),
+            _trade("zero1", entry=7500.0, exit=0.0, pnl=None, key="k-zero"),
+        ]
+        assert detect_suspects(trades) == []
+
+    def test_excursion_never_reflags_resolved_rows(self):
+        # id=296 is now status='phantom'. The suspect list must shrink as rows
+        # are confirm-marked, not re-surface them at every EOD.
+        trades = [
+            _trade("phantom296", side="sell", entry=5299.875, exit=7512.5, pnl=-11063.12,
+                   status="phantom"),
+        ]
+        assert detect_suspects(trades) == []
+
+    def test_commission_net_pnl_is_not_flagged_as_fabrication(self):
+        # Real closed rows (ids 294/289/288/290 on 2026-07-17). tracker.py:423
+        # stores pnl NET of a $1.50/unit round-trip commission while Signal B's
+        # `expected` is GROSS, so each sits exactly commission*qty below expected
+        # and used to trip pnl_price_inconsistent. Cost is not fabrication.
+        trades = [
+            # AAPL 1sh: gross -1.6369, stored -3.1369 (1 x $1.50).
+            _trade("aapl294", symbol="AAPL", entry=327.02, exit=325.3831, pnl=-3.1369, key="k1"),
+            # MES 1ct short: gross +43.75, stored +42.25.
+            _trade("mes289", side="sell", entry=7563.0, exit=7554.25, pnl=42.25, key="k2"),
+            # TSLA 2sh: gross -5.0562, stored -8.0562 (2 x $1.50).
+            _trade("tsla290", symbol="TSLA", qty=2, entry=393.12, exit=390.5919, pnl=-8.0562,
+                   key="k3"),
+        ]
+        assert detect_suspects(trades) == []
+
+    def test_fabricated_pnl_still_caught_through_the_commission_band(self):
+        # The widened band must not become a hiding place. The real -266.25
+        # frozen-exit phantom shape clears one commission by ~177x.
+        trades = [_trade("bad", entry=5600, exit=5600, pnl=-266.25)]
+        sus = {s.trade_id: s for s in detect_suspects(trades)}
+        assert "pnl_price_inconsistent" in sus["bad"].reasons
+
     def test_reasons_accumulate_on_one_trade(self):
         # A duplicate that is ALSO price-inconsistent carries both reasons.
         trades = [
