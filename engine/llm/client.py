@@ -1381,11 +1381,23 @@ class JarvisLLMClient:
         # survives the reasoning spend. Non-thinking models (gemini-2.0-flash) keep
         # the caller's value. Tunable via GEMINI_MIN_OUTPUT_TOKENS; only ever raises.
         effective_max_tokens = max_tokens
+        is_pro = model.startswith("gemini-2.5") and "pro" in model
         if model.startswith("gemini-2.5"):
+            # pro can never disable thinking (see reasoning_effort note below), so
+            # the same 2048 floor that's enough for flash (which runs effort=none)
+            # leaves pro's visible answer starved on large debate prompts. Live
+            # 2026-07-15: bull/bear_researcher calls with in:~5600 (full debate
+            # context) returned out:1/26/46/47/55/58 — thinking consumed nearly
+            # the whole 2048 budget, and the trader's JSON truncated mid-object
+            # ('...target_1' with no closing brace) at out:281. Give pro a much
+            # higher floor since raising max_tokens only raises the ceiling, not
+            # a mandatory spend. Tunable via GEMINI_PRO_MIN_OUTPUT_TOKENS.
+            default_floor = "8192" if is_pro else "2048"
+            env_var = "GEMINI_PRO_MIN_OUTPUT_TOKENS" if is_pro else "GEMINI_MIN_OUTPUT_TOKENS"
             try:
-                floor = int(os.getenv("GEMINI_MIN_OUTPUT_TOKENS", "2048"))
+                floor = int(os.getenv(env_var, default_floor))
             except (TypeError, ValueError):
-                floor = 2048
+                floor = int(default_floor)
             effective_max_tokens = max(max_tokens, floor)
 
         payload: dict = {
@@ -1412,7 +1424,6 @@ class JarvisLLMClient:
         # on (knob omitted) unless GEMINI_REASONING_EFFORT is explicitly set to a
         # non-"none" value; the token floor above lets the answer survive the spend.
         if model.startswith("gemini-2.5"):
-            is_pro = "pro" in model
             default_effort = "" if is_pro else "none"
             effort = os.getenv("GEMINI_REASONING_EFFORT", default_effort).strip().lower()
             if is_pro and effort in ("", "none"):
