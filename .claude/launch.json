@@ -8,21 +8,35 @@
       "port": 8010
     },
     {
+      "name": "bridge-api",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\api && C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\.venv\\Scripts\\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8020"],
+      "port": 8020
+    },
+    {
+      "_comment": "Port 3011 + NEXT_DIST_DIR are BOTH load-bearing, for different reasons. Port: pm2 serves the real dashboard on 3010, so a dev server there fights it. NEXT_DIST_DIR: `next dev` rewrites distDir in place REGARDLESS of --port, so without this it silently destroys the prod build pm2 is serving (empty BUILD_ID, no static/css/ -> 200 HTML + 400 on every stylesheet -> raw unstyled page while health checks still say 'up'). That took the dashboard down twice on 2026-07-17 (02:59, then again ~06:00 on a trading morning). Changing the port alone does NOT fix it.",
+      "name": "dashboard",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard && set NEXT_DIST_DIR=.next-dev && pnpm dev --port 3011"],
+      "port": 3011
+    },
+    {
+      "_comment": "Was ALSO on 3010, colliding with both pm2 and the `dashboard` config above. See the note there -- same clobber mechanism.",
       "name": "trading-desk",
       "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard && pnpm --filter trading-desk dev"],
-      "port": 3010
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard\\apps\\trading-desk && set NEXT_DIST_DIR=.next-dev && pnpm dev --port 3012"],
+      "port": 3012
     },
     {
       "name": "research-lab",
       "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard && pnpm --filter research-lab dev"],
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard\\apps\\research-lab && pnpm dev"],
       "port": 3020
     },
     {
       "name": "ops-console",
       "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard && pnpm --filter ops-console dev"],
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard\\apps\\ops-console && pnpm dev"],
       "port": 3030
     }
   ]
