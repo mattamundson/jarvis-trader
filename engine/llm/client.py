@@ -489,6 +489,31 @@ class JarvisLLMClient:
         ).strip().lower() not in {"0", "false", "no", "off"}
         self.google_fallback_count = 0  # incremented on each successful fallback
 
+        # 2026-07-17: decision-tier primary override. Anthropic pricing is no
+        # longer viable for always-on decision traffic (Sonnet $3/$15 per MTok
+        # vs gemini-2.5-pro $1.25/$10), and the 2026-06-22 credit outage already
+        # proved pro serves the decision tier well — it just did so via the
+        # credit-exhaustion failover, which pays a doomed Anthropic call on every
+        # decision first. Naming a Gemini model here makes it the PRIMARY for the
+        # decision tier (trader, risk_manager, fund_manager, debate/researchers),
+        # with Anthropic/OpenAI still behind it as fallbacks.
+        #
+        # Unset (default) => byte-identical to the previous Anthropic-primary
+        # behavior. Only Gemini values take effect today; a non-Gemini value is
+        # inert (logged at startup) rather than silently mis-routing, which is
+        # the trap JARVIS_LLM_PROVIDER=openai fell into — that var only ever
+        # distinguished ollama from everything-else, so it looked configured
+        # while changing nothing.
+        self.decision_primary_model = os.getenv("JARVIS_DECISION_PRIMARY", "").strip()
+        if self.decision_primary_model and not self.decision_primary_model.startswith("gemini"):
+            logger.warning(
+                "JARVIS_DECISION_PRIMARY='%s' is not a supported decision primary "
+                "(only gemini-* models route as primary today) — ignoring; "
+                "decision tier stays on %s.",
+                self.decision_primary_model,
+                "ollama" if self.provider == "ollama" else "anthropic",
+            )
+
         # Phase 3.4 (2026-05-22): DeepSeek-R1 support for reasoning chains.
         self.deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
         self.deepseek_endpoint = os.getenv(
@@ -520,9 +545,15 @@ class JarvisLLMClient:
             else ("disabled (no key)" if not self.openai_api_key else "disabled (env flag)")
         )
         deepseek_status = "enabled" if self.deepseek_api_key else "disabled (no key)"
+        decision_primary_status = (
+            self.decision_primary_model
+            if self.decision_primary_model.startswith("gemini") and self.google_fallback_enabled
+            else "anthropic (default)"
+        )
         logger.info(
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
-            f"(provider={self.provider}, google_fallback={google_status}, "
+            f"(provider={self.provider}, decision_primary={decision_primary_status}, "
+            f"google_fallback={google_status}, "
             f"openai_fallback={openai_status}, deepseek={deepseek_status})"
         )
 
@@ -530,11 +561,26 @@ class JarvisLLMClient:
         # Order matters: primary first, then the credit-exhaustion failover order
         # (vertex -> gemini -> openai), so get_llm_provider_summary can tell
         # whether the active leg has another behind it.
-        primary_provider = "vertex" if self.use_vertex else self.provider
+        # A configured Gemini decision primary IS the primary for trade
+        # decisions — report it as such so /health's single_leg_warning and the
+        # dashboard's provider badge describe the path decisions actually take,
+        # not the historical Anthropic-first one.
+        decision_primary_active = (
+            self.provider != "ollama"
+            and self.google_fallback_enabled
+            and self.decision_primary_model.startswith("gemini")
+        )
+        base_provider = "vertex" if self.use_vertex else self.provider
+        primary_provider = "gemini" if decision_primary_active else base_provider
         configured = [primary_provider]
+        if decision_primary_active and base_provider != primary_provider:
+            # The former primary (anthropic/vertex) stays wired BEHIND the Gemini
+            # primary as a real fallback leg — keep it listed so
+            # single_leg_warning doesn't fire on a fully-redundant chain.
+            configured.append(base_provider)
         if self.vertex_failover_enabled:
             configured.append("vertex")
-        if self.google_fallback_enabled:
+        if self.google_fallback_enabled and primary_provider != "gemini":
             configured.append("gemini")
         if self.openai_fallback_enabled:
             configured.append("openai")
@@ -700,6 +746,27 @@ class JarvisLLMClient:
         if not allow_fallback or current_model not in self.FALLBACK_CHAIN:
             return None
         return self.FALLBACK_CHAIN[current_model]
+
+    def _resolve_google_primary(self, agent_name: str) -> Optional[str]:
+        """Which Gemini model (if any) should serve this agent as PRIMARY.
+
+        Two independent routes, cheapest-intent first:
+
+        * Enrichment/classification agents (GEMINI_PRIMARY_AGENTS) are always
+          pinned to flash — they are not trade decisions and have been Gemini-
+          primary since 2026-06-04.
+        * Everything else (the decision tier: trader, risk_manager,
+          fund_manager, debate/researchers) routes to JARVIS_DECISION_PRIMARY
+          when that names a Gemini model. Unset => None => unchanged
+          Anthropic-primary behavior.
+
+        Returns None when Gemini should not serve as primary for this agent.
+        """
+        if agent_name in self.GEMINI_PRIMARY_AGENTS:
+            return "gemini-2.5-flash"
+        if self.decision_primary_model.startswith("gemini"):
+            return self.decision_primary_model
+        return None
 
     def _resolve_model_for_tier(
         self, model: str, tier: Literal["fast", "default", "advisor"]
@@ -896,21 +963,23 @@ class JarvisLLMClient:
         retries = 0
         last_error = None
 
-        # Proactive Gemini routing for non-decision agents — avoids burning
-        # Anthropic credits on enrichment tasks that don't need Sonnet quality.
-        # Falls through to the Anthropic retry loop on any Gemini failure.
+        # Proactive Gemini routing — avoids burning Anthropic credits when a
+        # Gemini tier is the intended primary. Falls through to the Anthropic
+        # retry loop on any Gemini failure, so this is never a single point of
+        # failure.
+        google_primary_model = self._resolve_google_primary(agent_name)
         if (
             self.provider != "ollama"
             and self.google_fallback_enabled
-            and agent_name in self.GEMINI_PRIMARY_AGENTS
+            and google_primary_model is not None
         ):
             # Enrichment/classification agents (news/technical/fundamental, etc.)
             # are pinned to the cost-efficient flash tier as their PRIMARY — they
             # are not trade decisions, and several call with a sonnet model id, so
             # routing them through GOOGLE_FAILOVER_MAP (which now sends sonnet->pro)
-            # would silently 4x their always-on cost. The pro upgrade is reserved
-            # for the decision-agent credit-exhaustion failover path below.
-            google_model = "gemini-2.5-flash"
+            # would silently 4x their always-on cost. Decision agents route here
+            # only when JARVIS_DECISION_PRIMARY names a Gemini model.
+            google_model = google_primary_model
             try:
                 google_result = await self._bounded(
                     self._call_google(
