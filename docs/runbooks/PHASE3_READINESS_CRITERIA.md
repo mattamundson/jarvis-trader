@@ -199,7 +199,7 @@ recognised in behavioral trading research.
 **Threshold:** At most 2 activations in the last 60 days.
 
 **Rationale:** Each kill switch activation represents a hard-limit breach
-(-2% daily or -10% drawdown). Zero activations is ideal. One activation with
+(-6% daily or -20% drawdown). Zero activations is ideal. One activation with
 a documented post-mortem is acceptable. Two activations suggests a systemic
 issue that must be investigated before live capital. Three or more is a
 disqualifying red flag.

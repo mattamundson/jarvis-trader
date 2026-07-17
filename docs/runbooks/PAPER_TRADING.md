@@ -437,8 +437,8 @@ JARVIS TRADER must meet ALL criteria below to qualify for live trading. These ar
 
 | Scenario | Expected Behavior | Validation Method |
 |----------|------------------|-------------------|
-| **Daily Loss Hits -2%** | Kill Switch auto-activates | Monitor P&L; trigger manually if needed |
-| **Drawdown Hits -10%** | Kill Switch auto-activates | Monitor max drawdown in dashboard |
+| **Daily Loss Hits -6%** | Kill Switch auto-activates | Monitor P&L; trigger manually if needed |
+| **Drawdown Hits -20%** | Kill Switch auto-activates | Monitor max drawdown in dashboard |
 | **Consecutive Losses (7)** | Position size auto-reduced (first 5 losses) then halt | Induce losses; verify position sizing |
 | **Order Rate > 10/min** | Orders throttled; oldest dropped | Stress test with high-frequency signal burst |
 | **Price Collar Violation** | Order rejected (logged) | Submit orders > 5% away from NBBO |

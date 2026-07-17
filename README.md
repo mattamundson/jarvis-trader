@@ -431,7 +431,7 @@ The safety layer is **hardcoded in Python** and **cannot be overridden by LLM re
 4. **Daily Loss Limit** — Halt at `-2%` cumulative daily loss
 5. **Max Drawdown** — Emergency stop at `-10%` from equity peak
 6. **Position Size Cap** — Max `5%` of portfolio per position
-7. **Single Order Cap** — No order > `$5,000` value
+7. **Single Order Cap** — No order > `$100,000` value (reconciled to `.env` live truth 2026-06-25)
 8. **Order Rate Throttle** — Max `10` orders per minute
 9. **Margin Utilization** — Never exceed `40%` available margin
 10. **Correlated Exposure** — Max `20%` in correlated positions
