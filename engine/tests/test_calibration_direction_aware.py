@@ -83,9 +83,11 @@ class TestBrierDirectionAware:
         tracker = BrierCalibrationTracker(db_path=str(db), agents=["technical"], min_trades=1)
 
         brier = tracker.compute_brier("technical")
-        # 4 correct @ conf 0.9 -> (0.9-1)^2 = 0.01 each; 1 wrong -> (0.9-0)^2 = 0.81
-        assert brier == pytest.approx((0.01 * 4 + 0.81) / 5, abs=1e-6)  # 0.17
-        # The pre-fix raw-pnl formula would have scored this 0.33 (worse than coin-flip).
+        # Proper rule (score_forecast): p=(|0.9|+1)/2=0.95.
+        #   4 correct -> (0.95-1)^2 = 0.0025 each; 1 wrong -> (0.95-0)^2 = 0.9025
+        assert brier == pytest.approx((0.0025 * 4 + 0.9025) / 5, abs=1e-6)  # 0.1825
+        # Direction-awareness intact: the 2 correct SHORT calls are credited, so
+        # a mostly-right analyst still beats the 0.25 coin-flip baseline.
         assert brier < 0.25
 
     def test_rolling_brier_matches(self, tmp_path):
@@ -99,7 +101,7 @@ class TestBrierDirectionAware:
         db = tmp_path / "fb.db"
         _make_db(db, rows)
         tracker = BrierCalibrationTracker(db_path=str(db), agents=["technical"], min_trades=1)
-        assert tracker.compute_rolling_brier() == pytest.approx(0.17, abs=1e-6)
+        assert tracker.compute_rolling_brier() == pytest.approx(0.1825, abs=1e-6)
 
 
 class TestICDirectionAware:
