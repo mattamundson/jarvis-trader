@@ -142,10 +142,10 @@ def test_closed_trade_writes_feedback_and_brier_reads_it(tmp_path, monkeypatch):
     )
     briers = brier.get_brier_summary()
 
-    # technical: |s|=0.8, correct (sign s == sign pnl) → brier = (0.8-1.0)^2 = 0.04
-    assert briers["technical"] == pytest.approx(0.04, abs=1e-6)
-    # news: |s|=0.6, wrong (sign s != sign pnl) → brier = (0.6-0.0)^2 = 0.36
-    assert briers["news"] == pytest.approx(0.36, abs=1e-6)
+    # technical: signal=0.8, outcome=1 (win) → p=(0.8+1)/2=0.9, brier=(0.9-1)^2=0.01
+    assert briers["technical"] == pytest.approx(0.01, abs=1e-6)
+    # news: signal=-0.6, outcome=1 (win) → p=(-0.6+1)/2=0.2, brier=(0.2-1)^2=0.64
+    assert briers["news"] == pytest.approx(0.64, abs=1e-6)
 
     weights = brier.get_calibration_weights()
     # technical must outweigh news after one correct-vs-wrong outcome
