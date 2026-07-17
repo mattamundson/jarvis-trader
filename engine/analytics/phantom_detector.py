@@ -14,7 +14,7 @@ the EOD self-heal (``repair_daily_pnl``) corrects the historical daily_pnl rows.
 
 Design constraint: the live price feed is frequently BLIND, so every signal here
 is *self-contained* — it needs only the trades' own stored fields, never a live
-quote. The three signals map onto the real historical phantom causes:
+quote. The four signals map onto the real historical phantom causes:
 
   duplicate_key          Same fill booked twice. Idempotency keys that share a
                          base (after stripping a ``-2`` / ``_3`` retry suffix)
@@ -29,6 +29,10 @@ quote. The three signals map onto the real historical phantom causes:
                          ``entry_price_sanity``'s reference-deviation check, using
                          the trades themselves as the reference (the median is
                          outlier-robust, so a lone contaminated entry stands out).
+  entry_exit_excursion   The row's own entry and exit are further apart than the
+                         instrument can plausibly travel while the trade is open.
+                         Needs no peer group, so it covers the sparse instruments
+                         ``entry_price_outlier`` structurally cannot (see below).
 
 Rows already resolved (``phantom`` / ``cancelled`` / ``void``) are never re-flagged.
 """
@@ -64,6 +68,29 @@ DEFAULT_PNL_TOL_ABS = 1.0  # account currency: absolute floor on the pnl toleran
 DEFAULT_PNL_TOL_PCT = 0.02  # ...or 2% of the expected magnitude, whichever larger
 DEFAULT_REF_DEV_PCT = 0.15  # entry-vs-peer-median deviation ceiling (matches sanity)
 DEFAULT_MIN_PEERS = 3  # need >=3 same-symbol trades before a median is trustworthy
+# Ceiling on |exit-entry|/entry for a single trade. Calibrated off the real MES
+# ledger (2026-07-17): the wrong-era phantom sat at 0.4175 while the WORST
+# genuine trade in 50 closed rows was 0.0177 — a 24x gap, so 0.15 is 8.5x above
+# anything real and 2.8x below the contamination. Flat rather than
+# holding-period-scaled on purpose: the signal is flag-only (a human confirms via
+# mark_phantom_trades.py), so precision past "obviously impossible" buys nothing.
+DEFAULT_EXCURSION_PCT = 0.15
+
+
+def _commission_allowance() -> float:
+    """Per-unit round-trip commission that a stored ``pnl`` may already net out.
+
+    Mirrors ``portfolio.tracker._commission_per_contract`` (same env var, same
+    $1.50 default) rather than importing it — analytics must not take a runtime
+    dependency on the portfolio layer, and this module is pure over its rows.
+    Keep the two in sync if the tracker's costing model changes.
+    """
+    import os
+
+    try:
+        return abs(float(os.getenv("COMMISSION_PER_CONTRACT", "1.50")))
+    except (TypeError, ValueError):
+        return 1.50
 
 
 @dataclass
@@ -130,6 +157,7 @@ def detect_suspects(
     pnl_tol_pct: float = DEFAULT_PNL_TOL_PCT,
     ref_dev_pct: float = DEFAULT_REF_DEV_PCT,
     min_peers: int = DEFAULT_MIN_PEERS,
+    excursion_pct: float = DEFAULT_EXCURSION_PCT,
     enable_price_outlier: bool = False,
 ) -> list:
     """Return the list of :class:`Suspect` closed trades in ``trades``.
@@ -139,9 +167,9 @@ def detect_suspects(
     ``entry_price``, ``exit_price``, ``pnl``, ``status``, ``idempotency_key``.
     Only ``status=='closed'`` rows are candidates; resolved rows are ignored.
 
-    The always-on signals (``duplicate_key``, ``pnl_price_inconsistent``) are
-    robust and self-contained — they never need a price reference and produce no
-    false positives on the real ledger.
+    The always-on signals (``duplicate_key``, ``pnl_price_inconsistent``,
+    ``entry_exit_excursion``) are robust and self-contained — they never need a
+    price reference and produce no false positives on the real ledger.
 
     ``enable_price_outlier`` (default **OFF**) gates the same-day entry-outlier
     signal. It is opt-in because it relies on the day's *own* trades as the price
@@ -198,7 +226,19 @@ def detect_suspects(
         direction = _direction(t.get("side"))
         if entry and exit_ and pnl is not None and qty and direction is not None:
             expected = (exit_ - entry) * direction * _multiplier(t.get("symbol")) * qty
-            tol = max(pnl_tol_abs, pnl_tol_pct * abs(expected))
+            # ``expected`` is GROSS, but tracker.close_paper_trade stores pnl NET
+            # of a flat round-trip commission (tracker.py:423). Absorb up to one
+            # commission per unit so that cost isn't read as fabrication — it was
+            # false-flagging every small-pnl trade (4 of 50 closed rows on
+            # 2026-07-17, each off by exactly $1.50 x qty).
+            #
+            # Widen rather than subtract: rows closed before the commission term
+            # existed are stored PRE-cost (see tracker._commission_per_contract),
+            # so a subtraction would fix the new rows and break the old ones. A
+            # widened band covers both eras and can only ever remove a false
+            # positive, never add one. Nothing real hides under it — a fabricated
+            # pnl (the -266.25 shape) clears this by orders of magnitude.
+            tol = max(pnl_tol_abs, pnl_tol_pct * abs(expected)) + _commission_allowance() * abs(qty)
             if abs(pnl - expected) > tol:
                 _flag(
                     t,
@@ -210,6 +250,34 @@ def detect_suspects(
                         "tol": round(tol, 4),
                     },
                 )
+
+    # --- Signal D: implausible intra-trade excursion (always-on) ----------
+    # Compares the row's OWN two prices, so it needs no peer group at all. That
+    # is what makes it work where Signal C structurally cannot: C requires
+    # >=min_peers same-symbol SAME-DAY exits, and MES exits exactly 1 trade per
+    # day — so C has never once evaluated an MES entry.
+    #
+    # It also catches what Signal B provably cannot. On a wrong-era entry the
+    # stored pnl is internally CONSISTENT with the corrupt price
+    # ((5299.875-7512.5)*-1*5*1 == -11063.12 exactly), so B passes it clean. The
+    # tell isn't the arithmetic — it's that no MES trade travels 41% while open.
+    for t in closed:
+        entry = _num(t.get("entry_price"))
+        exit_ = _num(t.get("exit_price"))
+        if not entry or entry <= 0 or not exit_ or exit_ <= 0:
+            continue
+        dev = abs(exit_ - entry) / entry
+        if dev > excursion_pct:
+            _flag(
+                t,
+                "entry_exit_excursion",
+                {
+                    "entry_price": round(entry, 4),
+                    "exit_price": round(exit_, 4),
+                    "deviation_pct": round(dev, 4),
+                    "threshold": excursion_pct,
+                },
+            )
 
     # --- Signal C: entry price outlier vs same-symbol, SAME-DAY peers -----
     # Grouped by (symbol, exit-date), NOT the whole window: MES was ~5300 in
