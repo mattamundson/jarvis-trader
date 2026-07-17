@@ -249,6 +249,9 @@ engine/.venv.failed-*/
 engine/data/morning_briefs/
 engine/data/framing_briefs/
 
+# Runtime options-implied snapshots (generated intraday by options_signals_snapshot.py)
+engine/data/options_signals/
+
 # Root-level generated/export files (not source)
 /*.html
 /*.pdf
