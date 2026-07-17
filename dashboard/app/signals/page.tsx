@@ -3,6 +3,7 @@
 import useSWR from "swr";
 import { Radar, TrendingDown, TrendingUp, ShieldAlert, Clock } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { OptionsSignalsPanel } from "@/components/OptionsSignalsPanel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -164,13 +165,14 @@ export default function SignalsPage() {
           <div>
             <h1 className="font-bold text-foreground tracking-tight">Trade Signals</h1>
             <p className="text-xs text-muted-foreground">
-              Autonomous pipeline candidates with model probabilities — futures now, options/equities next
+              Autonomous pipeline candidates with model probabilities — plus SPY/QQQ market-implied options context
             </p>
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+        <OptionsSignalsPanel />
         <Card>
           <CardHeader>
             <CardTitle className="font-mono text-sm flex items-center justify-between">
