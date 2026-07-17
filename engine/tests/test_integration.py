@@ -415,29 +415,65 @@ class TestPositionSizing(unittest.TestCase):
 
     # ── unknown symbol ─────────────────────────────────────────────────────
 
-    def test_unknown_symbol(self) -> None:
-        """An unrecognised symbol must fall back to the default multiplier ($5/pt)."""
-        from engine.utils.position_sizing import _DEFAULT_MULTIPLIER, INSTRUMENT_MULTIPLIERS
+    def test_unknown_symbol_is_refused_not_guessed(self) -> None:
+        """An unrecognised symbol must RAISE, not get a silently-invented multiplier.
+
+        This test previously asserted the opposite -- that an unknown symbol
+        falls back to $5/pt "same as MES". That fallback was the bug: $5/pt is a
+        FUTURES multiplier, so every equity (SPY/QQQ/AAPL/TSLA, all on the
+        OPTIONS_WATCHLIST) was sized as a micro future. TSLA at ~$390 with a $151
+        risk budget and a ~$2 stop should be ~75 shares; the engine computed 15
+        and clamped to 2.
+
+        Worse, portfolio.tracker RAISED on those same symbols, so the engine
+        could size a position its own P&L layer refused to price. Sizing and P&L
+        must resolve a symbol identically or not at all -- refusing to size is
+        strictly safer than opening an unpriceable position.
+        """
+        from engine.utils.position_sizing import (
+            INSTRUMENT_MULTIPLIERS,
+            UnknownInstrumentMultiplierError,
+        )
 
         unknown = "UNKNOWN_XYZ"
         self.assertNotIn(unknown, INSTRUMENT_MULTIPLIERS)
 
-        result = self._calc(
-            symbol=unknown,
-            account_value=10_000.0,
-            atr=12.5,
-            risk_pct=0.01,
-            atr_stop_multiplier=0.70,
-            max_contracts=5,
+        with self.assertRaises(UnknownInstrumentMultiplierError):
+            self._calc(
+                symbol=unknown,
+                account_value=10_000.0,
+                atr=12.5,
+                risk_pct=0.01,
+                atr_stop_multiplier=0.70,
+                max_contracts=5,
+            )
+
+    def test_unknown_symbol_env_escape_falls_back_to_1x(self) -> None:
+        """ALLOW_DEFAULT_MULTIPLIER=1 restores a fallback -- at 1.0, not 5.0.
+
+        Mirrors portfolio.tracker's escape hatch exactly, so the two layers stay
+        interchangeable. 1.0 is the honest default: it under-states a futures
+        P&L loudly rather than over-stating an equity position silently.
+        """
+        import os
+        from unittest import mock
+
+        from engine.utils.position_sizing import _DEFAULT_MULTIPLIER
+
+        self.assertEqual(_DEFAULT_MULTIPLIER, 1.0)
+        with mock.patch.dict(os.environ, {"ALLOW_DEFAULT_MULTIPLIER": "1"}):
+            result = self._calc(
+                symbol="UNKNOWN_XYZ",
+                account_value=10_000.0,
+                atr=12.5,
+                risk_pct=0.01,
+                atr_stop_multiplier=0.70,
+                max_contracts=5,
+            )
+        self.assertGreaterEqual(result.contracts, 1)
+        self.assertAlmostEqual(
+            result.dollar_risk_per_contract, result.stop_distance * 1.0, places=4
         )
-        # Should use _DEFAULT_MULTIPLIER — same as MES ($5/pt), same arithmetic as test_mes_standard
-        # raw = floor(100 / 43.75) = 2, clamped to min(2, 5) = 2
-        self.assertGreaterEqual(
-            result.contracts, 1, "Unknown symbol must return at least 1 contract"
-        )
-        # Confirm the dollar_risk_per_contract used the default multiplier
-        expected_drpc = result.stop_distance * _DEFAULT_MULTIPLIER
-        self.assertAlmostEqual(result.dollar_risk_per_contract, expected_drpc, places=4)
 
     # ── account too small ──────────────────────────────────────────────────
 
