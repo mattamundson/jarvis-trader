@@ -1,0 +1,277 @@
+{
+  "date": "2026-07-16",
+  "session_bias": {
+    "session_type": "uncertain",
+    "directional_bias": "bearish",
+    "conviction": 0.5,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 2
+  },
+  "sentiment_score": -0.5,
+  "sentiment_label": "bearish",
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7630.0,
+      "target2": 7657.0,
+      "stop1": 7585.0,
+      "win_rate": 84.68,
+      "rr": 0.64,
+      "timestamp": "2026-07-16T01:10:04.761-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7604.75,
+      "target2": 7631.75,
+      "stop1": 7559.75,
+      "win_rate": 84.43,
+      "rr": 0.64,
+      "timestamp": "2026-07-16T08:15:01.845-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7620.0,
+      "target2": 7647.0,
+      "stop1": 7575.0,
+      "win_rate": 84.08,
+      "rr": 0.64,
+      "timestamp": "2026-07-16T10:35:01.784-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7578.0,
+      "target2": 7605.0,
+      "stop1": 7533.0,
+      "win_rate": 83.81,
+      "rr": 0.63,
+      "timestamp": "2026-07-16T15:30:10.038-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 80.45,
+      "target2": 81.53,
+      "stop1": 78.65,
+      "win_rate": 82.64,
+      "rr": 0.62,
+      "timestamp": "2026-07-16T09:00:08.094-05:00"
+    }
+  ],
+  "corey_quote": "NQ has been lagging rallies badly for like the last month.",
+  "commentary_health": [
+    {
+      "date": "2026-07-17",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 1.0,
+      "message_count": 7
+    },
+    {
+      "date": "2026-07-16",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 2
+    },
+    {
+      "date": "2026-07-15",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 6
+    },
+    {
+      "date": "2026-07-14",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 10
+    },
+    {
+      "date": "2026-07-13",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 15
+    },
+    {
+      "date": "2026-07-12",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 30
+    },
+    {
+      "date": "2026-07-11",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 30
+    },
+    {
+      "date": "2026-07-10",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 9
+    },
+    {
+      "date": "2026-07-09",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 9
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 28,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "gemini",
+    "primary_provider": "gemini",
+    "primary_healthy": true,
+    "providers_available": 4,
+    "google_fallback_count": 165,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 105,
+    "failing_enabled": 8,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Gateway-Watchdog",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-Trader-StrategyRD",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-XBookmarks-FullSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VWAP-PaperTrack",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 21.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 29.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 29.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 6.3,
+        "newest": "2026-07-11T06:00:04.986505+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 1.0,
+        "newest": "2026-07-16T14:52:05.566894+00:00",
+        "files": 33,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 2.9,
+        "newest": "2026-07-14T15:33:24.451059+00:00",
+        "files": 18,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 6.3,
+        "newest": "2026-07-11T06:00:07.453201+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 29.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 29.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
