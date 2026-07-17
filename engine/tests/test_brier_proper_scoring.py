@@ -17,7 +17,6 @@ import pytest
 
 from analytics.ic_ensemble import score_forecast
 
-
 CONVICTIONS = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.75, 0.9, 1.0]
 
 
@@ -76,8 +75,7 @@ class TestExpectedScoreIsMinimisedByTruth:
     the report that minimises mean Brier is the truthful one."""
 
     def test_truthful_report_minimises_expected_score(self):
-        true_p = 0.7  # world: 70% up
-        # Outcomes proportional to true_p (deterministic, no RNG needed).
+        # World: 70% up. Outcomes proportional to that (deterministic, no RNG).
         outcomes = [+1.0] * 70 + [-1.0] * 30
         best_signal, best_score = None, 1e9
         for signal in [i / 10.0 for i in range(-10, 11)]:
