@@ -10,9 +10,36 @@ pushed_at: 2026-06-29
 analyzed_at: 2026-07-17
 recommendation: partial-integrate
 surfaces_with_value: [engine, dev-tooling, docs]
+status: Path-A-implemented (2026-07-17)
 ---
 
 # nautechsystems/nautilus_trader
+
+## Status update — 2026-07-17 (Path A shipped)
+
+Matt chose **Path A** (parity/differential harness). Implemented and verified:
+
+- `engine/backtest/nautilus_parity.py` — runs one reduced common spec (SMA
+  golden-cross in / death-cross out, 1 contract, zero costs) through BOTH the
+  in-house `Backtester` and Nautilus's `BacktestEngine`; reads the Nautilus
+  instrument multiplier and feeds the identical value to the custom engine so
+  contract economics match; returns a `ParityReport` (trade-count match + PnL
+  within tolerance).
+- `engine/tests/test_backtest_parity.py` — 3 tests, `importorskip`s
+  nautilus_trader/pandas so the suite stays green where the optional dep is
+  absent.
+
+Verification level: **ran and observed output** (not just type-checks). On
+deterministic synthetic bars both engines return exactly 1 trade / +170.00 PnL
+(|Δ|=0). On real MNQ 1h cache the trade counts match exactly (19/19 at 2000 bars,
+54/54 at 5000) with PnL agreeing to ~0.3–1% — the residual is the documented
+entry-fill convention (custom fills next-bar-open; Nautilus fills signal-bar
+close). Consequence: `nautilus_trader` is no longer a phantom dependency — the
+harness is a live consumer. Three real Nautilus quirks were surfaced and handled
+during bring-up (contract activation/expiry windows reject orders on a continuous
+multi-year series → switched to a non-expiring equity vehicle; open dangling
+position at data end must be excluded to match completed-trades semantics).
+`ruff` clean; safety files untouched (no `[safety-review]` needed).
 
 ## Core value proposition
 
