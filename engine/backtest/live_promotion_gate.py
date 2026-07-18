@@ -179,7 +179,9 @@ def evaluate_promotion(evidence: dict[str, Any]) -> dict[str, Any]:
     else:
         brier = evidence.get("ensemble_brier")
         criteria["ensemble_not_subneutral"] = (
-            isinstance(brier, (int, float)) and brier < ENSEMBLE_BRIER_CEILING
+            isinstance(brier, (int, float))
+            and not isinstance(brier, bool)  # bool is an int subclass; False<0.25 would wrongly pass
+            and brier < ENSEMBLE_BRIER_CEILING
         )
 
     # OOS-contamination cap (research integrity). Dormant unless OOS_CAP_ENFORCE is on
