@@ -25,9 +25,25 @@ print('Manifest reset')
 
 ## Model Tiering for Agents
 
-- **haiku** → Explore agents (file search, codebase orientation, quick lookups)
-- **sonnet** → Implementation agents (writing code, fixing bugs)
-- **opus** → Planning + safety review (architectural decisions, Tier 3 approvals)
+Route by task complexity, not by default. Real model IDs in parentheses.
+
+- **haiku** (`claude-haiku-4-5`) → Explore + grader agents (file search, codebase
+  orientation, quick lookups, and independent verifier/grader passes — a fresh
+  context that checks another agent's output beats self-critique)
+- **sonnet** (`claude-sonnet-5`) → Implementation agents (writing code, fixing bugs)
+- **opus** (`claude-opus-4-8`) → Planning + safety review (architectural
+  decisions, Tier 3 approvals); also the fallback when Fable declines a domain
+- **fable** (`claude-fable-5`) → Orchestrator role for long, multi-stage runs
+  that plan across sub-agents and distill results. Reserve for work that earns
+  the top-tier cost; delegate bounded subtasks down-tier.
+
+## Worktree Isolation for Parallel Writers
+
+When more than one agent writes files concurrently, give each its own checkout so
+edits cannot collide: set `isolation: "worktree"` on the subagent, or run it in a
+dedicated `git worktree`. Read-only Explore/grader agents do not need this. It
+complements the task-manifest checkout above — the manifest prevents two sessions
+*claiming* the same task; worktrees prevent *file-level* collisions during the work.
 
 ## Constraint: No Background Agents
 
