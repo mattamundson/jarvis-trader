@@ -2,8 +2,9 @@
 
 AI-powered futures & options trading engine for Matt Morrison.
 Capital $10K total, $5K/instrument. Active paper instruments: MES + MGC (Tier-3 auth
-2026-05-24); MCL + MNQ are HALTED (`DO_NOT_TRADE_SYMBOLS`). `engine/CLAUDE.md` "Active
-Instruments" is the authoritative status table. Paper mode on IB Gateway port 4002.
+2026-05-24); MCL, MNQ + M2K are HALTED (`DO_NOT_TRADE_SYMBOLS`, `engine/backtest/signals.py`).
+`engine/CLAUDE.md` "Active Instruments" is the authoritative status table. Paper mode on IB
+Gateway port 4002.
 
 ## Read first (in order)
 
