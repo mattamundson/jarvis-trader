@@ -94,6 +94,7 @@ Use `/jarvis-*` commands or invoke subagents by name from `.claude/agents/`:
 @.claude/rules/testing.md
 @.claude/rules/commits.md
 @.claude/rules/meta-discipline.md
+@.claude/rules/state-memory.md
 
 ---
 *Last updated 2026-04-16 — replaces prior stale Paperclip memory.*
