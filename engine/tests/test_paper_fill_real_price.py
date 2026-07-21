@@ -105,10 +105,25 @@ async def test_get_quote_unknown_symbol_returns_error_not_sentinel() -> None:
 
 
 @pytest.mark.asyncio
-async def test_known_symbol_still_fills_via_mock_without_manager(tmp_path) -> None:
-    """Backward-compat guard: a symbol in the mock table still fills when no
-    market-data manager is attached (degraded paper mode), so existing paper
-    flows and tests are unaffected."""
+async def test_known_symbol_refuses_to_fill_without_manager(tmp_path) -> None:
+    """INTENTIONALLY REVERSED 2026-07-21.
+
+    This test previously asserted the OPPOSITE -- that a symbol present in the
+    static mock table "still fills" when no market-data manager is attached,
+    retained as a backward-compat guard "so existing paper flows and tests are
+    unaffected". That guard *was* the phantom-price bug.
+
+    ``_real_last_price`` returns None whenever no manager is attached or the feed
+    is blind, and never raises, so the mock table was the DEFAULT path, not a
+    rare degraded one: every MES paper fill booked at the frozen constant 5300.10
+    while the real market traded near 7490. By 2026-07-21 that had produced 3,475
+    fills in paper_trades.json with every week from W19-W30 only 0-4% sane, and a
+    G2 readiness win rate of 2.3% that measured nothing but commission scratches.
+
+    The correct contract: with no real price basis, REFUSE. The mock table now
+    lives behind ``ALLOW_MOCK_QUOTES`` for fixtures only.
+    See ``test_paper_fill_refuses_mock_price.py`` for the full contract.
+    """
     cfg = _offline_simulated_cfg()
     tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
     safety = SafetyLayer(cfg, pnl_monitor=None)
@@ -116,7 +131,7 @@ async def test_known_symbol_still_fills_via_mock_without_manager(tmp_path) -> No
     assert await conn.connect() is True
 
     oid = await conn.place_paper_order("MES", "BUY", 1, "MKT", None)
-    assert oid is not None
+    assert oid is None, "listed symbol filled with no price basis -- phantom path open"
 
 
 @pytest.mark.asyncio
