@@ -14,6 +14,20 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Pattern-library bridge (roadmap 1.7). A closed-trade lesson now flows into
+# patterns.update_patterns_from_feedback so the trading_patterns table actually
+# gets populated — previously the generated feedback was returned and dropped by
+# the caller, and the module docstring's "persists the lesson for pattern
+# aggregation" was aspirational. Dual-import for the engine's two import roots;
+# None-guarded so a missing module can never break feedback generation.
+try:
+    from learning.patterns import update_patterns_from_feedback
+except ImportError:  # pragma: no cover - import-path resilience
+    try:
+        from engine.learning.patterns import update_patterns_from_feedback
+    except ImportError:
+        update_patterns_from_feedback = None
+
 
 class TradeOutcomeFeedback:
     """Represents feedback generated from a single trade closure."""
@@ -62,6 +76,7 @@ async def process_trade_outcome(
     entry_time: str,
     exit_time: str,
     action: str,
+    db_manager=None,
 ) -> TradeOutcomeFeedback:
     """
     Process a closed trade and generate feedback/lesson.
@@ -75,6 +90,8 @@ async def process_trade_outcome(
         entry_time: Entry timestamp (ISO format)
         exit_time: Exit timestamp (ISO format)
         action: Trade action (long/short/buy/sell)
+        db_manager: Optional DB manager; when supplied, the outcome is also fed
+            to patterns.update_patterns_from_feedback to upsert trading_patterns.
 
     Returns:
         TradeOutcomeFeedback object with lesson
@@ -119,6 +136,30 @@ async def process_trade_outcome(
         # Store feedback metadata for pattern extraction
         feedback.lesson_type = lesson_type
         feedback.lesson_text = lesson_text
+
+        # Feed the pattern library (roadmap 1.7). Closes the review->improve
+        # dead-end: the generated lesson used to be returned and dropped. Now the
+        # outcome also upserts the trading_patterns table (when a db_manager is
+        # supplied). Fail-open — a pattern-update error must never break
+        # trade-close feedback.
+        if update_patterns_from_feedback is not None:
+            try:
+                await update_patterns_from_feedback(
+                    {
+                        "symbol": symbol,
+                        "pnl": pnl,
+                        "entry_time": entry_time,
+                        "exit_time": exit_time,
+                        "action": action,
+                        "entry_price": entry_price,
+                        "exit_price": exit_price,
+                    },
+                    db_manager=db_manager,
+                )
+            except Exception as _pat_exc:
+                logger.debug(
+                    f"[LEARNING] Pattern update skipped for {trade_id[:8]}: {_pat_exc}"
+                )
 
         return feedback
 
