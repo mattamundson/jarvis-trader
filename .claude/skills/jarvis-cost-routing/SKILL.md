@@ -41,21 +41,36 @@ This matches `C:/Users/mattm/.claude/rules/workflow.md` — do NOT contradict it
 Add to every new call site:
 
 ```python
-# ❌ Wrong — hardcode sonnet for everything
+# ❌ Wrong — hardcode sonnet for everything, call the raw SDK
 client.messages.create(model="claude-sonnet-4-6", ...)
 
-# ✅ Right — route by task
-from engine.llm.client import get_client, route_model
+# ✅ Right — route by task type, call through JarvisLLMClient.call()
+from llm.model_router import route_task, MODEL_OPUS
+from llm.client import JarvisLLMClient
 
-model = route_model(
-    task_kind="analysis",          # orientation | analysis | implementation | safety
-    text_length=len(prompt),
-    item_count=len(items),
+# route_task(task_type: str, default_model=MODEL_SONNET, use_local=False) -> str
+# task_type is a key in model_router.TASK_CATEGORIES (e.g. "post_trade_analysis",
+# "debate", "orientation"); unknown keys fall back to default_model.
+model = route_task("post_trade_analysis", default_model=MODEL_OPUS)
+
+client = JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+result = await client.call(          # -> LLMCallResult (.success, .content, tokens, cost)
+    model=model,
+    system=system_prompt,
+    messages=[{"role": "user", "content": user_input}],
+    max_tokens=1000,
+    agent_name="my_agent",           # for cost attribution / logging
+    temperature=0.0,
+    tier="default",                  # "fast" | "default" | "advisor"
+    allow_fallback=True,             # Anthropic -> Gemini -> OpenAI cascade
 )
-client.messages.create(model=model, ...)
 ```
 
-If `engine/llm/client.py` doesn't yet expose `route_model()`, you can inline the decision, but file a note to extract it.
+`.call()` owns the fallback cascade, retries, cost tracking, and (when
+`compact=True`) prompt compaction — never hand-roll those at the call site.
+There is no `get_client()` / `route_model()` in the engine; the real symbols are
+`llm.model_router.route_task` and `llm.client.JarvisLLMClient`. Model constants
+(`MODEL_OPUS`/`MODEL_SONNET`/`MODEL_HAIKU`) also live in `llm.model_router`.
 
 ## Budget gates — live in advisor_client
 
