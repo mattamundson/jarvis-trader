@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Defaults mirror engine/config.py aggressive profile (Amo-confirmed 2026-06-25).
 # engine/.env overrides config at runtime; these are the code-default magnitudes.
 DEFAULT_CAPITAL = 10_000.0
-DEFAULT_DAILY_HALT = 0.06     # MAX_DAILY_LOSS_PCT
+DEFAULT_DAILY_HALT = 0.08     # MAX_DAILY_LOSS_PCT (reconciled to .env -8% 2026-07-21)
 DEFAULT_DD_KILL = 0.20        # MAX_DRAWDOWN_PCT (emergency halt from equity peak)
 
 
