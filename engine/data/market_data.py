@@ -11,7 +11,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -1093,7 +1093,7 @@ class MarketDataManager:
                 df.attrs["source"] = "ibkr"
                 df.attrs["symbol"] = symbol
                 self._last_bar_source = "ibkr"
-                self._last_ibkr_data_ts = time.time()
+                self._record_ibkr_freshness()
                 if _save_bars is not None:
                     _save_bars(df, symbol, timeframe, "ibkr")
                 return df
@@ -1204,6 +1204,39 @@ class MarketDataManager:
         self._last_bar_source = "none"
         return empty
 
+    def _record_ibkr_freshness(self) -> None:
+        """Mark that IBKR just served fresh data.
+
+        Updates the in-process timestamp IBDataWatchdog reads for staleness AND
+        publishes a Redis ``datasource:ib_gateway:last_update`` heartbeat so
+        ``/system/data-integrity`` (and the real-money-readiness ``feeds_live``
+        gate) can see the live IB feed. Until now only the TV Desktop scraper
+        wrote a ``datasource:*:last_update`` key, so the integrity panel showed
+        nothing but stale TV entries even while IB served live prices. The
+        timestamp value is a timezone-aware UTC ISO string because the
+        data-integrity endpoint does ``fromisoformat`` then subtracts from an
+        aware ``now`` -- a naive string would raise and be silently skipped.
+        Best-effort: a Redis failure must never break the price/bar hot path.
+        """
+        self._last_ibkr_data_ts = time.time()
+        try:
+            import redis
+
+            r = redis.Redis(
+                host="localhost",
+                port=6379,
+                db=0,
+                decode_responses=True,
+                socket_timeout=0.5,
+                socket_connect_timeout=0.5,
+            )
+            r.set(
+                "datasource:ib_gateway:last_update",
+                datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as _hb_err:  # noqa: BLE001 - heartbeat is best-effort
+            logger.debug(f"[ib-freshness] Redis heartbeat write failed: {_hb_err}")
+
     async def get_current_price(self, symbol: str, is_futures: bool = False) -> dict:
         """
         Get latest price. Returns {last_price, prev_close, change_pct, source}.
@@ -1257,7 +1290,7 @@ class MarketDataManager:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
             if result.get("last_price"):
                 self._last_price_source = "ibkr"
-                self._last_ibkr_data_ts = time.time()
+                self._record_ibkr_freshness()
                 return result
 
         # Tier 2: Schwab (real-time quotes, no historical bars)
@@ -1388,7 +1421,7 @@ class MarketDataManager:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
             if result.get("last_price"):
                 self._last_price_source = "ibkr"
-                self._last_ibkr_data_ts = time.time()
+                self._record_ibkr_freshness()
                 return result
 
         # Tier 2: Schwab quotes
