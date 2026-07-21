@@ -167,6 +167,29 @@ COST_SWEEP_TIERS: dict[str, dict[str, float]] = {
 COST_TIER_ORDER: list[str] = ["optimistic", "realistic", "pessimistic", "catastrophic"]
 
 
+class UntrustworthyCacheError(RuntimeError):
+    """Raised when cache trust is ENFORCED and no sound cache is available.
+
+    Deliberately a distinct type so the broad `except Exception` inside
+    `_find_latest_cache` cannot swallow a refusal it was meant to produce.
+    """
+
+
+#: Env flag: make cache-trust failures REFUSE instead of warn-and-continue.
+#: Default OFF -- ships dormant, mirroring `GATE_V2_ENFORCE_ROUTING`. Turning it
+#: on halts any run whose cache is holed or unverifiable, which is the point;
+#: enable once a trustworthy cache exists, or every gate-v2 run stops.
+_CACHE_TRUST_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _is_cache_trust_enforced() -> bool:
+    """Check `GATE_V2_ENFORCE_CACHE_TRUST` env var (case-insensitive truthy set)."""
+    return (
+        os.environ.get("GATE_V2_ENFORCE_CACHE_TRUST", "").strip().lower()
+        in _CACHE_TRUST_TRUTHY
+    )
+
+
 def _find_latest_cache(
     data_dir: Path, prefix: str, suffix: str = "_1h.csv", *, prefer_complete: bool = True
 ) -> Path:
@@ -264,7 +287,14 @@ def _find_latest_cache(
     # Completeness preference: prefer the latest-end fully-trustworthy cache over a
     # holed late-end one. Only engages with >1 candidate (single-cache dirs and the
     # common refreshed-pull case pay zero inspection cost).
-    if prefer_complete and len(candidates) > 1:
+    # Completeness preference. With >1 candidate this picks the sounder file
+    # (historical behavior). A SINGLE candidate was previously skipped outright
+    # -- exactly the case that shipped the 57%-complete MES 15m file into
+    # gate-v2 runs on 2026-07-21, since a one-file directory is not evidence
+    # the one file is sound. That hole is closed only when enforcement is on,
+    # because inspecting a lone cache on every call costs real wall-clock
+    # (~275ms on a 13k-bar file) and the dormant path must stay free.
+    if prefer_complete and (len(candidates) > 1 or _is_cache_trust_enforced()):
         try:
             from backtest.cache_completeness import (
                 US_MARKET_EARLY_CLOSES,
@@ -289,6 +319,13 @@ def _find_latest_cache(
                     pick["reason"],
                 )
             elif pick["fallback"]:
+                if _is_cache_trust_enforced():
+                    raise UntrustworthyCacheError(
+                        f"No fully-trustworthy {prefix}{suffix} cache in {data_dir}: "
+                        f"latest-end {latest.name} has {pick['n_suspicious_gaps']} "
+                        f"suspicious gap(s). Refusing to load "
+                        f"(GATE_V2_ENFORCE_CACHE_TRUST is on)."
+                    )
                 log.warning(
                     "Cache completeness: no fully-trustworthy %s%s cache; using "
                     "latest-end %s which has %s suspicious gap(s)",
@@ -298,7 +335,19 @@ def _find_latest_cache(
                     pick["n_suspicious_gaps"],
                 )
             return chosen
+        except UntrustworthyCacheError:
+            # An explicit refusal, not an infrastructure failure -- must not be
+            # swallowed by the broad handler below.
+            raise
         except Exception as exc:  # never let the completeness check break loading
+            if _is_cache_trust_enforced():
+                # Could not evaluate trust -> cannot assert it. Absence of
+                # evidence is not evidence of soundness.
+                raise UntrustworthyCacheError(
+                    f"Cache completeness check failed for {prefix}{suffix} in "
+                    f"{data_dir} ({exc}); refusing to load {latest.name} "
+                    f"(GATE_V2_ENFORCE_CACHE_TRUST is on)."
+                ) from exc
             logging.getLogger(__name__).warning(
                 "Cache completeness check failed (%s); using latest-end %s",
                 exc,
