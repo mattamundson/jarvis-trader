@@ -38,6 +38,30 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Plausibility guard shared with the Brier/IC calibration path (roadmap 0.6).
+try:
+    from analytics.outcome_hygiene import is_plausible_pnl
+except ImportError:  # pragma: no cover - import-path resilience
+    try:
+        from engine.analytics.outcome_hygiene import is_plausible_pnl
+    except ImportError:
+        def is_plausible_pnl(pnl):  # fail-open: never block the read path
+            return True
+
+
+def _coerce_pnl(row) -> "float | None":
+    """Extract a float P&L from a trade-row dict; None when absent/unparseable."""
+    if not isinstance(row, dict):
+        return None
+    val = row.get("pnl")
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
 # Minimum sample size for confidence adjustment to apply
 MIN_TRADES_REQUIRED = 20
 
@@ -160,6 +184,22 @@ async def _fetch_symbol_trades(db_manager: object, symbol: str) -> list[dict]:
         # Ensure trades is a list of dicts
         if not isinstance(trades, list):
             trades = list(trades) if trades else []
+
+        # Plausibility guard (roadmap 0.6): drop magnitude-corrupt rows so a
+        # single +$10k-class artifact cannot dominate win-rate — parity with
+        # the Brier/IC calibration path (analytics.outcome_hygiene). Catches
+        # the large-|pnl| corruption class only; the frozen-quote phantom class
+        # (sub-$10 scratches) is handled at fill time (roadmap 0.8), not here.
+        before = len(trades)
+        trades = [t for t in trades if is_plausible_pnl(_coerce_pnl(t))]
+        dropped = before - len(trades)
+        if dropped:
+            logger.warning(
+                "[Confidence] %s: excluded %d implausible-P&L row(s) from the "
+                "confidence sample",
+                symbol,
+                dropped,
+            )
 
         return trades
 
