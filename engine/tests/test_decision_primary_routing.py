@@ -36,6 +36,13 @@ def _make_client(tmp_path, monkeypatch, **env):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("JARVIS_CLAUDE_USE_VERTEX", raising=False)
     monkeypatch.delenv("JARVIS_LLM_VERTEX_FAILOVER", raising=False)
+    # 2026-07-21: this suite asserts on the gemini/anthropic redundancy chain;
+    # clear Kimi so it isn't appended to providers_configured (the live .env
+    # carries MOONSHOT_API_KEY), and reset the module-global active_provider so a
+    # real Kimi call leaked by an earlier test can't skew single_leg_warning.
+    monkeypatch.delenv("MOONSHOT_API_KEY", raising=False)
+    monkeypatch.delenv("JARVIS_LLM_KIMI_FALLBACK", raising=False)
+    _LLM_PATH_STATE["active_provider"] = None
     for key, val in env.items():
         monkeypatch.setenv(key, val)
     return JarvisLLMClient(api_key="test-key-12345", db_path=str(tmp_path / "costs.db"))

@@ -558,6 +558,21 @@ class JarvisLLMClient:
             "MOONSHOT_ENDPOINT", "https://api.moonshot.ai/v1/chat/completions"
         ).strip()
 
+        # 2026-07-21: Kimi K3 also serves as the FINAL last-resort leg of the
+        # credit-exhaustion cascade (after Vertex -> Gemini -> OpenAI). This is
+        # separate from Kimi-as-decision-primary above: it fires for ANY agent
+        # (including the enrichment analysts pinned to gemini-flash) when every
+        # cheaper provider is dead at once -- the exact outage on 2026-07-21 that
+        # left the analyst tier enrichment-blind (Gemini spend-capped, Anthropic
+        # credit-dead, OpenAI quota-dead simultaneously). It is slow (max-thinking
+        # 35-70s) and not free, so it only ever runs when there is no cheaper leg
+        # left; then it is strictly better than returning no enrichment at all.
+        # Disable via JARVIS_LLM_KIMI_FALLBACK=0. Silently off when no key.
+        self.kimi_fallback_enabled = self.kimi_api_key != "" and os.getenv(
+            "JARVIS_LLM_KIMI_FALLBACK", "1"
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        self.kimi_fallback_count = 0
+
         google_status = (
             "enabled"
             if self.google_fallback_enabled
@@ -569,7 +584,11 @@ class JarvisLLMClient:
             else ("disabled (no key)" if not self.openai_api_key else "disabled (env flag)")
         )
         deepseek_status = "enabled" if self.deepseek_api_key else "disabled (no key)"
-        kimi_status = "enabled" if self.kimi_api_key else "disabled (no key)"
+        kimi_status = (
+            "enabled"
+            if self.kimi_fallback_enabled
+            else ("disabled (no key)" if not self.kimi_api_key else "disabled (env flag)")
+        )
         decision_primary_usable = (
             self.decision_primary_model.startswith("gemini") and self.google_fallback_enabled
         ) or (self.decision_primary_model.startswith("kimi") and bool(self.kimi_api_key))
@@ -622,6 +641,11 @@ class JarvisLLMClient:
             configured.append("gemini")
         if self.openai_fallback_enabled:
             configured.append("openai")
+        if self.kimi_fallback_enabled and primary_provider != "kimi":
+            # Kimi sits at the very back of the credit-exhaustion cascade — the
+            # final leg after openai. List it so single_leg_warning and the
+            # dashboard provider badge count it as real redundancy.
+            configured.append("kimi")
         _LLM_PATH_STATE["primary_provider"] = primary_provider
         _LLM_PATH_STATE["providers_configured"] = configured
 
@@ -1362,6 +1386,65 @@ class JarvisLLMClient:
                             logger.error(
                                 f"[{openai_model}] OpenAI fallback also failed for "
                                 f"{agent_name}: {type(oex).__name__}: {oex}"
+                            )
+                            # fall through to Kimi last-resort below
+
+                    # 2026-07-21: Kimi K3 last-resort — the FINAL leg, fires only
+                    # when Anthropic, Vertex, Gemini, AND OpenAI have all failed.
+                    # `_resolve_kimi_primary(...) is None` skips agents that already
+                    # tried Kimi as their decision primary up top (no double-fire);
+                    # enrichment agents (never routed to Kimi) reach it here. Slow
+                    # and paid, but strictly better than enrichment-blind.
+                    if (
+                        self.kimi_fallback_enabled
+                        and self._resolve_kimi_primary(agent_name) is None
+                    ):
+                        kimi_fb_model = "kimi-k3"
+                        logger.warning(
+                            f"[{current_model}] Anthropic+Vertex+Gemini+OpenAI all "
+                            f"failed for {agent_name} -- attempting Kimi last-resort "
+                            f"fallback ({kimi_fb_model})"
+                        )
+                        start_time = time.time()
+                        try:
+                            kimi_fb_result = await self._bounded(
+                                self._call_kimi(
+                                    system=system,
+                                    messages=working_messages,
+                                    max_tokens=max_tokens,
+                                    temperature=temperature,
+                                    model=kimi_fb_model,
+                                ),
+                                what="kimi last-resort fallback call",
+                                model=kimi_fb_model,
+                                agent_name=agent_name,
+                            )
+                            self.kimi_fallback_count += 1
+                            _LLM_PATH_STATE["healthy"] = True
+                            _LLM_PATH_STATE["last_failure_ts"] = datetime.now(
+                                timezone.utc
+                            ).isoformat()
+                            _LLM_PATH_STATE["last_failure_reason"] = (
+                                f"anthropic+gemini+openai failed -> kimi last-resort ok "
+                                f"(count: {self.kimi_fallback_count})"
+                            )
+                            _LLM_PATH_STATE["last_failure_agent"] = agent_name
+                            return await self._handle_success(
+                                kimi_fb_result,
+                                kimi_fb_model,
+                                start_time,
+                                retries,
+                                agent_name,
+                                tier=tier,
+                                proxy=proxy,
+                                compressed_key=compressed_key,
+                                cache_salt=cache_salt,
+                                served_by="kimi",
+                            )
+                        except Exception as kex:
+                            logger.error(
+                                f"[{kimi_fb_model}] Kimi last-resort fallback also "
+                                f"failed for {agent_name}: {type(kex).__name__}: {kex}"
                             )
                             # fall through to unhealthy-path handling below
 

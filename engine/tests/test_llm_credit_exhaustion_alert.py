@@ -73,7 +73,23 @@ def test_is_credit_exhaustion_rejects_unrelated_errors():
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
+    # Hermetic: config.py load_dotenv(override=True) pulls the LIVE engine/.env
+    # (which now sets JARVIS_DECISION_PRIMARY=kimi-k3 + MOONSHOT_API_KEY) into
+    # os.environ. Without clearing it a decision agent routes straight to a real
+    # Kimi decision-primary call and never reaches the Anthropic credit-exhaustion
+    # path this suite exists to test. Clear all provider routing so the cascade
+    # deterministically ends unhealthy with no live network calls.
+    for _k in (
+        "JARVIS_DECISION_PRIMARY",
+        "MOONSHOT_API_KEY",
+        "JARVIS_LLM_KIMI_FALLBACK",
+        "GOOGLE_API_KEY",
+        "OPENAI_API_KEY",
+        "JARVIS_CLAUDE_USE_VERTEX",
+        "JARVIS_LLM_VERTEX_FAILOVER",
+    ):
+        monkeypatch.delenv(_k, raising=False)
     return JarvisLLMClient(api_key="test-key", db_path=str(tmp_path / "c.db"))
 
 
