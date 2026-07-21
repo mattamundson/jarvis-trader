@@ -79,6 +79,11 @@ def test_classify_planned_breakout_is_a_hit_not_mixed():
         classify_self_verdict("As called, we broke through resistance and ran to target.")
         == HIT
     )
+    # ...or trail it at a distance (word order / proximity must not matter).
+    assert (
+        classify_self_verdict("We broke through the key resistance and ran to target as called.")
+        == HIT
+    )
     # A bare / unqualified break still reads as a miss.
     assert classify_self_verdict("7500 broke through to the downside, no bid.") == MISS
     assert classify_self_verdict("Support broke through and we got stopped out.") == MISS

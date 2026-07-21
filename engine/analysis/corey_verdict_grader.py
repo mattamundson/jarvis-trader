@@ -97,12 +97,10 @@ _BREAK_MISS_PATTERNS = [
     r"\bbroke (?:right )?(?:through|down through|up through)\b",
 ]
 
-# A success/intent qualifier within a short window on EITHER side of a break
-# phrase marks it planned -- "broke through resistance as called" and "as called,
-# we broke through resistance" alike. A window (not an anchored match) so
-# punctuation/parentheticals are still caught.
+# A stated intent qualifier ("as called" / "as we planned") anywhere in the recap
+# marks a breakout as PLANNED regardless of word order or distance -- these are
+# short single-topic morning verdicts, so proximity is unreliable and unnecessary.
 _INTENT_QUALIFIER = re.compile(r"\bas (?:i |we |you )?(?:called|planned|drawn|mapped|expected)\b")
-_INTENT_WINDOW = 35
 
 # Negators that, when they immediately precede a HIT phrase, cancel it. Guards the
 # "held perfectly" -> "didn't hold perfectly" inversion. Kept small and explicit.
@@ -130,17 +128,14 @@ def _scan(patterns: list[str], text: str) -> tuple[bool, bool]:
 def _break_is_miss(text: str) -> bool:
     """True if a break phrase reads as a FAILED level (not a planned breakout).
 
-    A break with a success qualifier on either side ("broke through resistance as
-    called" / "as called, we broke through") is intentional and does not count as
-    miss evidence; a bare break does.
+    A break is failure evidence unless the recap also states the move was intended
+    ("broke through resistance as called", "as called, we broke through", "... ran
+    to target as we planned") -- a stated intent qualifier anywhere marks it
+    planned. A bare break ("7500 broke through to the downside") is a miss.
     """
-    for pat in _BREAK_MISS_PATTERNS:
-        for m in re.finditer(pat, text):
-            before = text[max(0, m.start() - _INTENT_WINDOW) : m.start()]
-            after = text[m.end() : m.end() + _INTENT_WINDOW]
-            if not (_INTENT_QUALIFIER.search(before) or _INTENT_QUALIFIER.search(after)):
-                return True
-    return False
+    if not any(re.search(pat, text) for pat in _BREAK_MISS_PATTERNS):
+        return False
+    return not _INTENT_QUALIFIER.search(text)
 
 
 def classify_self_verdict(recap: str) -> str:
