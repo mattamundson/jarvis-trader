@@ -133,7 +133,8 @@ class TradingConfig(BaseSettings):
         description="Max 10% of portfolio per position (reconciled to .env live truth 2026-06-25)",
     )
     MAX_DAILY_LOSS_PCT: float = Field(
-        0.06, description="Halt trading at -6% daily P&L ($10K aggressive profile, 2026-06-25)"
+        0.08,
+        description="Halt trading at -8% daily P&L ($10K aggressive profile). Reconciled to engine/.env live truth (-8%) on 2026-07-21; engine/.env remains the source of truth for the live value.",
     )
     MAX_DAILY_LOSS_USD: float = Field(100.0, description="Halt trading at flat $100 daily P&L")
     MAX_TRADE_LOSS_USD: float = Field(50.0, description="Max loss per single trade ticket is $50")
