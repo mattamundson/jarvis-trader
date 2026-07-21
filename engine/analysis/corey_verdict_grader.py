@@ -71,7 +71,7 @@ _HIT_PATTERNS = [
     r"\bnailed (?:the|that|it)\b",
     r"\bbounced (?:right |perfectly |cleanly )?off (?:the|that|our)\b",
     r"\brejected (?:right |perfectly |cleanly )?(?:at|from) (?:the|that|our)\b",
-    r"\btextbook\b",
+    r"\btextbook\b(?!\s+(?:failure|failed|fail|trap|fake|reversal))",
     r"\bright on (?:script|plan|the money)\b",
     r"\bas (?:i |we |you )?(?:called|drawn|mapped|planned)\b",
     r"\bdid (?:its|their) job\b",
@@ -123,8 +123,11 @@ _CLAUSE_BOUNDARY = re.compile(
 # "held perfectly" -> "didn't hold perfectly" inversion. The 0-2 intervening words
 # may NOT include a coordinating conjunction, so a negator does not reach across a
 # new clause -- "never invalidated AND held perfectly" leaves "held" un-negated.
+# "not only"/"not just" are emphatic intensifiers, NOT negators ("not only held
+# perfectly" is a HIT), so a negator immediately followed by only/just is excluded.
 _NEG_WINDOW = re.compile(
     r"\b(?:did ?n['o]?t|does ?n['o]?t|was ?n['o]?t|never|failed to|no|not)"
+    r"(?!\s+(?:only|just))"
     r"\s+(?:(?!and\b|but\b|or\b|then\b)\w+\s+){0,2}$"
 )
 

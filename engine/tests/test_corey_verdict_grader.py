@@ -125,6 +125,19 @@ def test_classify_negation_does_not_cross_a_conjunction():
     )
 
 
+def test_classify_not_only_is_an_intensifier_not_a_negator():
+    assert classify_self_verdict("Not only held perfectly, it ran to target.") == HIT
+    assert classify_self_verdict("It not only respected the level, it reversed hard.") == HIT
+
+
+def test_classify_textbook_failure_is_not_a_hit():
+    # "textbook" modifying a failure must not fire the HIT pattern.
+    assert classify_self_verdict("Textbook failure at resistance.") != HIT
+    assert classify_self_verdict("Textbook failed breakout, no follow-through.") == MISS
+    # ...but a bare "textbook" success read still hits.
+    assert classify_self_verdict("Textbook hold at 7500, bounced right off.") == HIT
+
+
 def test_classify_normalizes_smart_apostrophes():
     # Curly U+2019 from Discord/mobile paste must still read "didn't" as a miss.
     assert classify_self_verdict("The level didn’t hold and we faded the call.") == MISS
