@@ -42,6 +42,8 @@ SCHEMA (data/paper_trades.json):
 
 import json
 import logging
+import os
+import tempfile
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -89,6 +91,23 @@ class PaperTradeLogger:
         if trades_file is not None:
             self._trades_file = trades_file
             self._data_dir = trades_file.parent
+        elif os.environ.get("PYTEST_CURRENT_TEST"):
+            # Under pytest, NEVER default to the repo ledger (2026-07-21).
+            #
+            # ``trades_file`` was documented as a test override, but nothing enforced
+            # it: IBGatewayConnector constructs this logger with no override, so every
+            # test that placed a paper order appended to the real
+            # engine/data/paper_trades.json. Passing ``tmp_path`` to PortfolioTracker
+            # redirected only the tracker book -- the JSON ledger kept writing to the
+            # repo. Forensics on 2026-07-21 found fixture prices sitting in production
+            # data: MGC 2300.0/2310.0 and MES 5300.0 rows timestamped to the exact
+            # seconds of test-suite runs, alongside the mock-table constants. The
+            # ledger that G2 readiness scores was therefore part real, part pytest.
+            #
+            # Fail safe instead of fail silent: route to a process-scoped temp file so
+            # tests still exercise the full write path but can never touch the ledger.
+            self._data_dir = Path(tempfile.gettempdir()) / f"jarvis-paper-trades-{os.getpid()}"
+            self._trades_file = self._data_dir / "paper_trades.json"
         else:
             # paper_trade_logger.py lives at engine/execution/paper_trade_logger.py
             # parent       = engine/execution/

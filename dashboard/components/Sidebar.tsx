@@ -112,7 +112,11 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Strategies",
     items: [
       { label: "Strategy C+ (Live)", href: "/strategy-c", icon: <Activity className="h-3.5 w-3.5" /> },
-      { label: "Strategy C+ Console", href: "/strategy-c-command", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+      // "Strategy C+ Console" (/strategy-c-command) delisted 2026-07-21 -- it embedded a
+      // 9,597-line public/*.html build that synthesized prices, P&L and latency with
+      // Math.random() behind a hardcoded "CONNECTED (PAPER)" badge. Archived to
+      // ~/Archive/2026/jarvis-phantom-quarantine/; the route now renders a retirement
+      // notice. Do not relink without rebuilding it on lib/api.ts with provenance tags.
       { label: "RL Lab", href: "/strategies", icon: <LineChart className="h-3.5 w-3.5" /> },
       { label: "Strategy Ledger", href: "/strategy-ledger", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "Edge Research", href: "/strategy-research", icon: <Lightbulb className="h-3.5 w-3.5" /> },

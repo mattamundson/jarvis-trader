@@ -73,6 +73,12 @@ def _paper_offline_cfg():
             "REQUIRE_HUMAN_APPROVAL": False,
             "PAPER_TRADING": True,
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
+            # Order-routing fixtures: these exercise bracket/stop wiring with no
+            # market-data manager attached, so they need the static quote table to
+            # produce a fill at all. Production leaves this False and REFUSES to fill
+            # without a real price basis (2026-07-21) -- see
+            # tests/test_paper_fill_refuses_mock_price.py.
+            "ALLOW_MOCK_QUOTES": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
             "MAX_POSITION_SIZE_PCT": 5.0,
             "MAX_TRADE_LOSS_USD": 500.0,

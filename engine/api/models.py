@@ -193,6 +193,21 @@ class HealthResponse(BaseModel):
     tv_mcp_status: Optional[str] = Field(
         None, description="TV MCP status: not_running | connecting | healthy | degraded | disabled"
     )
+    market_data_fresh: Optional[bool] = Field(
+        None,
+        description="Whether a REAL price actually arrived for the probe symbol (MES), derived from the DataEnvelope's is_live (serving tier + freshness window + IBKR data-leg connection). Distinct from tradingview_mcp_healthy, which only proves a Chrome CDP endpoint answered on port 9222 and stays true while the engine is blind. false is the condition under which the paper connector used to book fills from a frozen mock quote table, so this field gates overall status as of 2026-07-21.",
+    )
+    market_data_source: Optional[str] = Field(
+        None,
+        description="Which data tier served the freshness probe (ibkr | schwab | tradingview | polygon_stream | redis_fabric | csv_cache | unavailable).",
+    )
+    market_data_age_s: Optional[float] = Field(
+        None,
+        description="Age in seconds of the probed price. None when the serving tier reports no observation timestamp.",
+    )
+    market_data_details: Optional[str] = Field(
+        None, description="Short diagnostic populated only when market_data_fresh=false"
+    )
     brier_30d_rolling: Optional[float] = Field(
         None,
         description="30-day rolling mean Brier score across agents with ≥ min_trades closed signals. 0 = perfect calibration, 1 = always confidently wrong. None when no agent has enough data.",
