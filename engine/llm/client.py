@@ -1731,10 +1731,26 @@ class JarvisLLMClient:
                 content = str(content)
             openai_messages.append({"role": role, "content": content})
 
+        # K3 always runs max thinking effort (no way to disable it -- see the
+        # reasoning_effort note below) and the completion budget is shared
+        # between internal reasoning and the visible answer, same failure
+        # class as gemini-2.5-pro above. Shadow-tested 2026-07-20 against real
+        # Trader/BullResearcher prompts at the production budget (1200): BOTH
+        # calls truncated mid-JSON (Trader cut mid-number, BullResearcher cut
+        # mid-word). Re-run at 6000 produced complete, valid JSON using only
+        # 603/1708 tokens -- so the failure is pure budget starvation, not a
+        # prompt or model-quality problem. Floor comfortably above the highest
+        # observed real need. Tunable via KIMI_MIN_OUTPUT_TOKENS; only ever raises.
+        try:
+            floor = int(os.getenv("KIMI_MIN_OUTPUT_TOKENS", "4096"))
+        except (TypeError, ValueError):
+            floor = 4096
+        effective_max_tokens = max(max_tokens, floor)
+
         payload: dict = {
             "model": model,
             "messages": openai_messages,
-            "max_completion_tokens": max_tokens,
+            "max_completion_tokens": effective_max_tokens,
         }
         # K3 supports only reasoning_effort="max" today (its own default) --
         # omit the field entirely unless explicitly overridden, rather than
