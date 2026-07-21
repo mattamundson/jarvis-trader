@@ -1,6 +1,15 @@
 # HERMES Autonomous Monitoring System
 > Your AI trading assistant runs 24/7 while you sleep or focus on other work.
 
+> **⚠️ Delivery-path status (2026-07-21):** The Telegram/HERMES gateway was
+> **stopped and disabled on 2026-07-20** after the shared-Gemini-key spend-cap
+> incident (Hermes and jarvis-trader were using the same Google API key/project;
+> 2 of 3 live surfaces were stopped). Until a dedicated key is provisioned and
+> the gateway is restarted, the Telegram delivery described below is **not
+> active** — the jobs may run but alerts will not reach your phone. Restart of
+> the Hermes gateway is a coordinated procedure (`hermes-safe-restart.sh`), never
+> a raw restart from a diagnostic flow.
+
 ## Overview
 
 Three autonomous jobs monitor your trading system, run analysis, and alert you only when critical:
@@ -79,7 +88,7 @@ Position: SHORT 1 ES | Current P&L: -$95
 ```
 14:30 CT | RTH Status: RED 🚨
 KILL SWITCH ACTIVE — Trading halted for 24 hours
-Reason: Daily loss exceeded -2% (-$232.40)
+Reason: Daily loss exceeded -8% (-$812.40)
 Action: Review positions, wait for manual reset
 ```
 
@@ -170,7 +179,9 @@ You don't micromanage. HERMES:
 
 ## Kill Switch Protection
 
-The kill switch is **hardcoded** at `-2% daily loss` or `-10% drawdown`. It's a safety mechanism, not a trading signal.
+The kill-switch **logic** is hardcoded Python (never LLM-driven). Its **thresholds** are config-sourced, not literals — from `engine/config.py` with `engine/.env` as the live source of truth. **Current live limits (verified 2026-07-21 against `engine/.env`): `-8% daily loss` (`MAX_DAILY_LOSS_PCT=0.08`, or a `$1,000` flat `MAX_DAILY_LOSS_USD` cap) or `-20% drawdown` from peak (`MAX_DRAWDOWN_PCT=0.20`).** It's a safety mechanism, not a trading signal.
+
+> Note: `engine/config.py` still carries `MAX_DAILY_LOSS_PCT=0.06` / `MAX_DAILY_LOSS_USD=100` as code defaults (its docstring says it was "reconciled to .env" on 2026-06-25). `.env` has since drifted to `0.08` / `1000`; `.env` wins at runtime. Reconciling the config defaults + docstrings to the live `.env` values is a `[safety-review]` change and has not been made here.
 
 **If kill switch fires:**
 1. All trading halts automatically
