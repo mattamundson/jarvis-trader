@@ -102,12 +102,19 @@ _BREAK_MISS_PATTERNS = [
 # "As called, support held perfectly but resistance broke through" stays MIXED --
 # the "but" separates the intended hold from the failed break.
 _INTENT_QUALIFIER = re.compile(r"\bas (?:i |we |you )?(?:called|planned|drawn|mapped|expected)\b")
-_CONTRAST = re.compile(r"\b(?:but|however|though|although|yet|whereas|while)\b")
+# A clause boundary ends the break's own clause: a sentence terminator OR a
+# contrastive marker. Both must stop the intent scan so a success claim in a
+# neighbouring sentence/clause ("Support broke through. As called, resistance
+# held perfectly") cannot launder a failed break.
+_CLAUSE_BOUNDARY = re.compile(r"[.;!?]|\b(?:but|however|though|although|yet|whereas|while)\b")
 
 # Negators that, when they immediately precede a HIT phrase, cancel it. Guards the
-# "held perfectly" -> "didn't hold perfectly" inversion. Kept small and explicit.
+# "held perfectly" -> "didn't hold perfectly" inversion. The 0-2 intervening words
+# may NOT include a coordinating conjunction, so a negator does not reach across a
+# new clause -- "never invalidated AND held perfectly" leaves "held" un-negated.
 _NEG_WINDOW = re.compile(
-    r"\b(?:did ?n['o]?t|does ?n['o]?t|was ?n['o]?t|never|failed to|no|not)\s+(?:\w+\s+){0,2}$"
+    r"\b(?:did ?n['o]?t|does ?n['o]?t|was ?n['o]?t|never|failed to|no|not)"
+    r"\s+(?:(?!and\b|but\b|or\b|then\b)\w+\s+){0,2}$"
 )
 
 
@@ -138,20 +145,21 @@ def _break_is_miss(text: str) -> bool:
 
     A break is failure evidence unless the move was stated as intended -- an "as
     called/planned" qualifier in the break's OWN clause, on either side and at any
-    distance, but not across a contrastive marker. So "broke through resistance as
-    called" and "as called, we broke through" are HITs, while "... support held
-    perfectly BUT resistance broke through" keeps the break as miss evidence. A
-    bare break ("7500 broke through to the downside") is a miss.
+    distance, but not across a clause boundary (sentence terminator or contrastive
+    marker). So "broke through resistance as called" and "as called, we broke
+    through" are HITs, while "... support held perfectly BUT resistance broke
+    through" and "Support broke through. As called, resistance held" keep the
+    break as miss evidence. A bare break ("7500 broke through") is a miss.
     """
     for pat in _BREAK_MISS_PATTERNS:
         for m in re.finditer(pat, text):
-            # Clause preceding the break: text after the nearest contrastive marker.
+            # Clause preceding the break: text after the nearest clause boundary.
             before = text[: m.start()]
-            cuts = list(_CONTRAST.finditer(before))
+            cuts = list(_CLAUSE_BOUNDARY.finditer(before))
             before_clause = before[cuts[-1].end() :] if cuts else before
-            # Clause following the break: text up to the next contrastive marker.
+            # Clause following the break: text up to the next clause boundary.
             after = text[m.end() :]
-            nxt = _CONTRAST.search(after)
+            nxt = _CLAUSE_BOUNDARY.search(after)
             after_clause = after[: nxt.start()] if nxt else after
             planned = _INTENT_QUALIFIER.search(before_clause) or _INTENT_QUALIFIER.search(
                 after_clause

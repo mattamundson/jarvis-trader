@@ -100,6 +100,21 @@ def test_classify_intent_is_scoped_to_the_break_clause():
     )
 
 
+def test_classify_intent_does_not_cross_a_sentence_boundary():
+    # A success claim in a separate sentence must not launder a failed break.
+    assert (
+        classify_self_verdict("Support broke through. As called, resistance held perfectly.")
+        == MIXED
+    )
+
+
+def test_classify_negation_does_not_cross_a_conjunction():
+    # "never" negates "invalidated" (adjacent), not the later coordinated hit.
+    assert (
+        classify_self_verdict("The plan never invalidated and held perfectly.") == HIT
+    )
+
+
 def test_classify_normalizes_smart_apostrophes():
     # Curly U+2019 from Discord/mobile paste must still read "didn't" as a miss.
     assert classify_self_verdict("The level didn’t hold and we faded the call.") == MISS
