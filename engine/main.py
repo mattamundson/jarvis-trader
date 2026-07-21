@@ -340,6 +340,7 @@ trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
 portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
 canary_manager: "CanaryManager | None" = None  # noqa: F821
 ib_data_watchdog: "IBDataWatchdog | None" = None  # noqa: F821
+ib_freshness_heartbeat: "IBFreshnessHeartbeat | None" = None  # noqa: F821
 paper_stop_monitor: "PaperStopMonitor | None" = None  # noqa: F821
 
 
@@ -453,7 +454,7 @@ async def lifespan(app: FastAPI):
         """Heavy lifting moved here to enable <10s server binding."""
         global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
         global tv_streamer, redis_trigger, trailing_stop_manager, canary_manager
-        global paper_stop_monitor, ib_data_watchdog
+        global paper_stop_monitor, ib_data_watchdog, ib_freshness_heartbeat
 
         logger.info("⏳ Starting heavy background initialization...")
 
@@ -555,6 +556,18 @@ async def lifespan(app: FastAPI):
             await ib_data_watchdog.start()
         except Exception as e:
             logger.warning(f"⚠️ IBDataWatchdog failed to start: {e}")
+
+        # 5.6. IB market-data freshness heartbeat. Keeps datasource:ib_gateway
+        # fresh in Redis on a fixed cadence regardless of open positions, so
+        # /system/data-integrity and the feeds_live readiness gate reflect the
+        # live IB feed instead of the dead TV scraper's stale keys.
+        try:
+            from services.ib_freshness_heartbeat import IBFreshnessHeartbeat
+
+            ib_freshness_heartbeat = IBFreshnessHeartbeat(data_manager)
+            await ib_freshness_heartbeat.start()
+        except Exception as e:
+            logger.warning(f"⚠️ IBFreshnessHeartbeat failed to start: {e}")
 
         # 6. Paper Stop-Loss Monitor (Initiative 1, Track A2)
         # Feed-independent backstop: enforces open paper stops via the tick-price
@@ -2964,6 +2977,10 @@ async def lifespan(app: FastAPI):
     # Stop IB data-leg watchdog
     if ib_data_watchdog:
         await ib_data_watchdog.stop()
+
+    # Stop IB market-data freshness heartbeat
+    if ib_freshness_heartbeat:
+        await ib_freshness_heartbeat.stop()
 
     # Stop Paper stop-loss monitor
     if paper_stop_monitor:
