@@ -15,6 +15,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from starlette.requests import Request
@@ -229,6 +230,84 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
 
     _tv_mcp_health_cache.update(checked_at=now, healthy=healthy, details=details, status=status)
     return healthy, details, status
+
+
+# Canonical symbol to probe for feed liveness. MES is the primary paper
+# instrument, so if anything is flowing at all it is flowing for MES.
+_MARKET_DATA_PROBE_SYMBOL = "MES"
+
+
+async def _check_market_data_freshness(
+    manager: Any,
+) -> tuple[bool, str | None, float | None, str | None]:
+    """Ask the market-data manager for a REAL price and report it honestly.
+
+    Returns ``(fresh, details, age_seconds, source)``.
+
+    Why this exists (2026-07-21): ``tradingview_mcp_healthy`` only proves that a
+    Chrome DevTools endpoint answered on port 9222 — it never requests a price,
+    so TV Desktop sitting on a login screen above a 20-day-stale Redis fabric
+    reported healthy. Meanwhile the overall status expression did not reference
+    market data at all. The engine could be completely blind and still serve
+    ``status="ok"``.
+
+    That is the precise condition under which the paper connector used to fall
+    back to a frozen mock quote table and book fills at a 2024-era constant, so a
+    green /health actively concealed the phantom-fill mechanism.
+
+    This probe reuses ``get_current_price_envelope``, which derives ``is_live``
+    from serving tier + per-symbol freshness + IBKR data-leg connection and never
+    hardcodes True. Fails closed: a missing manager, a raising feed, or a value
+    of None all report not-fresh rather than defaulting to healthy.
+    """
+    if manager is None:
+        return False, "market data manager not initialized", None, None
+
+    try:
+        env = await manager.get_current_price_envelope(
+            _MARKET_DATA_PROBE_SYMBOL, is_futures=True
+        )
+    except Exception as exc:
+        return False, f"market data probe failed: {exc}", None, None
+
+    if not isinstance(env, dict):
+        return False, "market data probe returned an unexpected shape", None, None
+
+    source = env.get("source")
+    as_of = env.get("as_of")
+    age_s = round(time.time() - float(as_of), 1) if as_of is not None else None
+
+    if env.get("value") is None:
+        return (
+            False,
+            f"no price available for {_MARKET_DATA_PROBE_SYMBOL} (source={source})",
+            age_s,
+            source,
+        )
+
+    if not env.get("is_live"):
+        if age_s is not None:
+            details = (
+                f"{_MARKET_DATA_PROBE_SYMBOL} price is stale: {age_s}s old "
+                f"(source={source}, window={env.get('stale_after_s')}s)"
+            )
+        else:
+            details = f"{_MARKET_DATA_PROBE_SYMBOL} price is not live (source={source})"
+        return False, details, age_s, source
+
+    return True, None, age_s, source
+
+
+def _derive_overall_status(
+    *, db_ok: bool, llm_path_healthy: bool, market_data_fresh: bool
+) -> str:
+    """Overall /health status. Market-data freshness is a first-class term.
+
+    Previously ``"ok" if (db_ok and llm_path_healthy) else "degraded"`` — which
+    let a blind engine report ok. A trading engine that cannot see a price is not
+    ok, regardless of how healthy its database and LLM path are.
+    """
+    return "ok" if (db_ok and llm_path_healthy and market_data_fresh) else "degraded"
 
 
 # Get limiter instance for rate limiting
@@ -525,7 +604,21 @@ async def _health_inner() -> dict:
     except Exception:
         pass
 
-    status = "ok" if (db_ok and llm_path_healthy) else "degraded"
+    # Market-data freshness is a first-class health term, not a nice-to-have: a
+    # blind engine used to report status="ok" while the paper connector filled
+    # orders from a frozen mock table. See _check_market_data_freshness.
+    (
+        market_data_fresh,
+        market_data_details,
+        market_data_age_s,
+        market_data_source,
+    ) = await _check_market_data_freshness(data_manager)
+
+    status = _derive_overall_status(
+        db_ok=db_ok,
+        llm_path_healthy=llm_path_healthy,
+        market_data_fresh=market_data_fresh,
+    )
 
     # Defensive read: a config missing this flag must never report live trading
     # (default False = paper). Also keeps /health resilient to a settings object
@@ -563,6 +656,12 @@ async def _health_inner() -> dict:
         "google_fallback_count": google_fallback_count,
         "tradingview_mcp_healthy": tv_mcp_healthy,
         "tv_mcp_status": tv_mcp_status,
+        # Whether a REAL price actually arrived, as opposed to whether a browser
+        # is listening on 9222. tradingview_mcp_healthy answers the latter and is
+        # routinely true while the engine is blind — trust this field instead.
+        "market_data_fresh": market_data_fresh,
+        "market_data_source": market_data_source,
+        "market_data_age_s": market_data_age_s,
         "brier_30d_rolling": _compute_brier_30d_rolling(),
         "pending_approvals": pending_approvals,
         "futures_sentiment": futures_sentiment,
@@ -571,6 +670,8 @@ async def _health_inner() -> dict:
         response["llm_path_details"] = llm_path_details
     if tv_mcp_details:
         response["tradingview_mcp_details"] = tv_mcp_details
+    if market_data_details:
+        response["market_data_details"] = market_data_details
     return response
 
 
