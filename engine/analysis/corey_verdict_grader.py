@@ -1,0 +1,226 @@
+"""
+Corey self-report vs mechanical divergence grader (Phase F extension).
+
+The scorekeeper's edge: neither Saty nor Corey grades ITSELF. ``corey_compare.py``
+already grades Corey's morning BIAS against the realized session. This module
+grades a different, harder thing -- Corey's own AFTER-THE-FACT VERDICT (his
+power-hour / next-morning recap language: "held perfectly", "respected the
+level", "got stopped") against the mechanical outcome. The gap between what he
+CLAIMS and what the tape actually did is his OVERSTATEMENT RATE -- the one metric
+that is genuinely ours and that neither source produces about itself.
+
+Design (honest by construction):
+
+- The self-verdict classifier reads CLAIM STRUCTURES, not bare keywords. The
+  bootstrap's naive matcher flagged "claims_success" off the word "exactly" in
+  "confidence is exactly what gets tested" -- the opposite of a success claim. We
+  anchor on hit/miss PHRASES, honor negation, and abstain ("none") rather than
+  guess.
+
+- The mechanical verdict is SUPPLIED by the caller (``corey_compare``'s outcome
+  grade off real bars / settle), NEVER invented here. This module does not
+  fabricate intraday truth -- it only compares a claim to a grade it is handed.
+  ``mechanical_from_correct`` bridges the existing ``corey_correct`` 1.0/0.5/0.0
+  score without recomputing anything.
+
+- Aggregates ALWAYS carry n. No function returns a bare rate; small, self-selected
+  samples are the norm for this source (~8 gradeable days at bootstrap), so every
+  summary reports n and labels itself provisional.
+
+Display / journal only -- imported by nothing in ``risk/`` or execution. Pure, no
+I/O, no LLM.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any, Optional
+
+# --- Verdict vocabulary --------------------------------------------------------
+
+HIT = "hit"
+MISS = "miss"
+FLAT = "flat"
+MIXED = "mixed"
+NONE = "none"
+
+# --- Divergence flags ----------------------------------------------------------
+
+OVERSTATE = "OVERSTATE"  # he claimed a win; the tape says miss/flat
+UNDERSTATE = "UNDERSTATE"  # he claimed a miss; the tape says hit
+AGREE = "AGREE"  # claim matches the tape
+NOEVIDENCE = "NOEVIDENCE"  # not gradeable (no claim, or no mechanical grade)
+
+# Claim structures that assert his morning call WORKED. Each anchors a "worked"
+# verb to a level/plan noun, or is an idiom that only reads as a win -- never a
+# bare adverb like "exactly", which the bootstrap false-flagged.
+_HIT_PATTERNS = [
+    r"\bheld (?:perfectly|nicely|beautifully|as called|the level|that level|support|resistance)\b",
+    r"\brespected (?:the|that|our|this) (?:level|zone|line|number|area)\b",
+    r"\bplayed out (?:exactly )?(?:as|like) (?:called|expected|planned|drawn)\b",
+    r"\b(?:worked|resolved) (?:perfectly|cleanly|well|as called|to the (?:tick|level))\b",
+    r"\bnailed (?:the|that|it)\b",
+    r"\bbounced (?:right |perfectly |cleanly )?off (?:the|that|our)\b",
+    r"\brejected (?:right |perfectly |cleanly )?(?:at|from) (?:the|that|our)\b",
+    r"\btextbook\b",
+    r"\bright on (?:script|plan|the money)\b",
+    r"\bas (?:called|drawn|mapped|planned)\b",
+    r"\bdid (?:its|their) job\b",
+    r"\bcall (?:was )?(?:spot[- ]on|dead[- ]on|correct)\b",
+]
+
+# Claim structures that admit the call DID NOT work.
+_MISS_PATTERNS = [
+    r"\b(?:got |we (?:got |were ))?stopped(?: out)?\b",
+    r"\binvalidated\b",
+    r"\b(?:did ?n['o]?t|failed to|never) (?:hold|respect|work)\b",
+    r"\bblew (?:right )?(?:through|past)\b",
+    r"\bbroke (?:right )?(?:through|down through|up through)\b",
+    r"\bno follow[- ]through\b",
+    r"\bchopped (?:us |me )?up\b",
+    r"\bwrong (?:call|side|way|read)\b",
+    r"\bfaded (?:the|our|my) (?:call|bias|read|plan)\b",
+    r"\bcall (?:was )?(?:off|wrong|a (?:miss|bust))\b",
+    r"\bgave (?:it )?back\b",
+]
+
+# Negators that, when they immediately precede a HIT phrase, cancel it. Guards the
+# "held perfectly" -> "didn't hold perfectly" inversion. Kept small and explicit.
+_NEG_WINDOW = re.compile(
+    r"\b(?:did ?n['o]?t|does ?n['o]?t|was ?n['o]?t|never|failed to|no|not)\s+(?:\w+\s+){0,2}$"
+)
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+
+
+def _scan(patterns: list[str], text: str) -> tuple[bool, bool]:
+    """Return (has_unnegated, has_negated) for the pattern set over ``text``."""
+    unneg = neg = False
+    for pat in patterns:
+        for m in re.finditer(pat, text):
+            if _NEG_WINDOW.search(text[: m.start()]):
+                neg = True
+            else:
+                unneg = True
+    return unneg, neg
+
+
+def classify_self_verdict(recap: str) -> str:
+    """Classify Corey's OWN claimed verdict from recap language.
+
+    Returns one of HIT / MISS / MIXED / NONE. Reads claim structures, honors
+    negation, and abstains (NONE) rather than guessing. Pure.
+
+    A NEGATED positive claim is itself a miss admission -- "never respected the
+    level" / "didn't hold" mean the call failed, so a negated hit phrase counts as
+    miss evidence rather than being silently dropped.
+    """
+    text = _norm(recap)
+    if not text:
+        return NONE
+    hit, hit_negated = _scan(_HIT_PATTERNS, text)
+    miss_direct, _ = _scan(_MISS_PATTERNS, text)
+    miss = miss_direct or hit_negated
+    if hit and miss:
+        return MIXED
+    if hit:
+        return HIT
+    if miss:
+        return MISS
+    return NONE
+
+
+def mechanical_from_correct(corey_correct: Optional[float]) -> str:
+    """Map ``corey_compare``'s outcome score (1.0/0.5/0.0/None) to a verdict.
+
+    1.0 -> HIT, 0.0 -> MISS, 0.5 -> FLAT, None -> NONE. Bridges the existing
+    outcome grade so this module never recomputes direction off a proxy.
+    """
+    if corey_correct is None:
+        return NONE
+    if corey_correct >= 1.0:
+        return HIT
+    if corey_correct <= 0.0:
+        return MISS
+    return FLAT
+
+
+def grade_divergence(self_verdict: str, mechanical_verdict: str) -> dict[str, Any]:
+    """Compare a self-claim to the mechanical grade. Evidence-gated. Pure.
+
+    Gradeable only when the self-verdict is a definite HIT or MISS AND the
+    mechanical verdict is present (HIT/MISS/FLAT). MIXED and NONE claims, or a
+    missing mechanical grade, yield NOEVIDENCE (gradeable=False) -- we do not
+    invent a verdict to force a flag.
+    """
+    out: dict[str, Any] = {
+        "self_verdict": self_verdict,
+        "mechanical_verdict": mechanical_verdict,
+        "flag": NOEVIDENCE,
+        "gradeable": False,
+    }
+    if self_verdict not in (HIT, MISS):
+        return out
+    if mechanical_verdict not in (HIT, MISS, FLAT):
+        return out
+
+    out["gradeable"] = True
+    claim_win = self_verdict == HIT
+    if claim_win:
+        # Claimed a win: only a mechanical HIT confirms it; MISS or FLAT overstates.
+        out["flag"] = AGREE if mechanical_verdict == HIT else OVERSTATE
+    else:
+        # Claimed a miss: a mechanical HIT means he undersold it; else they agree.
+        out["flag"] = UNDERSTATE if mechanical_verdict == HIT else AGREE
+    return out
+
+
+def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate a list of ``grade_divergence`` results. Always carries n.
+
+    ``overstatement_rate`` is overstate / gradeable, or None when nothing is
+    gradeable. A ``note`` is ALWAYS attached warning that the sample is small and
+    self-selected -- this function never hands back a bare, context-free rate.
+    """
+    n_total = len(records)
+    gradeable = [r for r in records if r.get("gradeable")]
+    n_grade = len(gradeable)
+    n_over = sum(1 for r in gradeable if r.get("flag") == OVERSTATE)
+    n_under = sum(1 for r in gradeable if r.get("flag") == UNDERSTATE)
+    n_agree = sum(1 for r in gradeable if r.get("flag") == AGREE)
+
+    rate = round(n_over / n_grade, 4) if n_grade else None
+    note = (
+        f"PROVISIONAL: n_gradeable={n_grade} (of {n_total}). Corey posts on "
+        "self-selected days and narrates his own outcomes, so this rate is biased "
+        "and small-sample. Do not quote without n and an independent-tape check."
+    )
+    return {
+        "n_total": n_total,
+        "n_gradeable": n_grade,
+        "n_overstate": n_over,
+        "n_understate": n_under,
+        "n_agree": n_agree,
+        "overstatement_rate": rate,
+        "note": note,
+    }
+
+
+def render_verdict_divergence(summary: dict[str, Any] | None) -> list[str]:
+    """Render a '## Corey Self-Report Divergence' section. Empty when no data."""
+    if not summary or not summary.get("n_gradeable"):
+        return []
+    lines = ["## Corey Self-Report Divergence"]
+    rate = summary.get("overstatement_rate")
+    rate_str = "n/a" if rate is None else f"{rate:.0%}"
+    lines.append(
+        f"**Overstatement {rate_str}** "
+        f"(overstate {summary['n_overstate']} / understate {summary['n_understate']} / "
+        f"agree {summary['n_agree']}; n_gradeable={summary['n_gradeable']} "
+        f"of {summary['n_total']})"
+    )
+    lines.append(f"> {summary.get('note', '')}")
+    lines.append("")
+    return lines
