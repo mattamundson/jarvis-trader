@@ -152,6 +152,26 @@ def _iter_verdict_files(verdicts_dir: Optional[Path] = None):
     for p in d.glob("*.json"):
         try:
             doc = json.loads(p.read_text())
+        except Exception as exc:
+            logger.warning("gate_v2_policy: unreadable verdict file %s: %s", p, exc)
+            continue
+        # Rankless verdicts (diversifier-family snapshots, FAIL/INSUFFICIENT_SAMPLE
+        # rows, or superseded backups whose rank was stripped) can never satisfy a
+        # (symbol, family, rank) authorization lookup -- so skip them QUIETLY instead
+        # of letting from_dict raise on int(None)/missing 'rank' and re-logging a
+        # WARNING on every scan.  This dir is iterated once per symbol per pipeline
+        # cycle, so the old behaviour produced hundreds of duplicate warnings/sec and
+        # churned the event loop.  Authorization is unchanged: these files were never
+        # yielded before (from_dict threw and was caught) and are not yielded now.
+        # Genuine JSON corruption is still surfaced by the WARNING above.
+        if doc.get("rank") is None:
+            logger.debug(
+                "gate_v2_policy: skipping rankless verdict %s (verdict=%s)",
+                p.name,
+                doc.get("verdict"),
+            )
+            continue
+        try:
             yield VerdictSnapshot.from_dict(doc)
         except Exception as exc:
             logger.warning("gate_v2_policy: unreadable verdict file %s: %s", p, exc)
@@ -179,8 +199,12 @@ def is_ungate_eligible(symbol: str, verdicts_dir: Optional[Path] = None) -> bool
     another (e.g. trend). The routing layer decides which family to trade;
     this function asks "is there a valid green light for this symbol at all."
 
-    Advisory only — does NOT block any routing decision. Call sites may
-    log a warning when this disagrees with the actual routing state.
+    Advisory ONLY. **Never use this to authorize trading.** Because it matches
+    on symbol alone, a PASS in a family that is not being traded satisfies it.
+    Measured on 2026-07-21: MES returned True here on the strength of
+    `MES_stark_gapfill_long_rank1` (PASS) while the config actually being traded,
+    `MES_trend_rank11`, was INSUFFICIENT_SAMPLE.  Use `is_verdict_authorized()`
+    for any decision that gates orders.
     """
     sym_upper = symbol.upper()
     return any(
@@ -188,6 +212,77 @@ def is_ungate_eligible(symbol: str, verdicts_dir: Optional[Path] = None) -> bool
         for v in _iter_verdict_files(verdicts_dir)
         if v.symbol.upper() == sym_upper and not v.is_stale()
     )
+
+
+def get_verdict_for(
+    symbol: str,
+    family: str,
+    rank: int,
+    verdicts_dir: Optional[Path] = None,
+) -> Optional[VerdictSnapshot]:
+    """Return the newest verdict matching exactly `(symbol, family, rank)`, or None.
+
+    Staleness is deliberately NOT filtered here -- callers need to distinguish
+    "no verdict was ever produced for this strategy" from "the verdict expired",
+    which are different failures with different remedies.  `is_verdict_authorized`
+    applies the staleness rule.
+    """
+    sym_upper = symbol.upper()
+    fam_lower = str(family).lower()
+    try:
+        rank_int = int(rank)
+    except (TypeError, ValueError):
+        return None
+
+    matches = [
+        v
+        for v in _iter_verdict_files(verdicts_dir)
+        if v.symbol.upper() == sym_upper
+        and v.family.lower() == fam_lower
+        and v.rank == rank_int
+    ]
+    if not matches:
+        return None
+    matches.sort(key=lambda v: v.created_at, reverse=True)
+    return matches[0]
+
+
+def is_verdict_authorized(
+    symbol: str,
+    family: str,
+    rank: int,
+    verdicts_dir: Optional[Path] = None,
+) -> tuple[bool, str]:
+    """Is the *specific* strategy `(symbol, family, rank)` cleared to trade?
+
+    This is the authorization primitive.  Unlike `is_ungate_eligible`, a PASS
+    belonging to a different family or a superseded rank cannot satisfy it, so
+    the verdict that green-lights a trade is always the verdict for the strategy
+    actually being traded.
+
+    Fails closed on every ambiguity: no verdict, an unreadable verdict, a stale
+    verdict, or any verdict other than PASS all return False.
+    """
+    label = f"{symbol.upper()}_{family}_rank{rank}"
+    snap = get_verdict_for(symbol, family, rank, verdicts_dir)
+
+    if snap is None:
+        return (
+            False,
+            f"{label} has no gate v2 verdict on disk "
+            "(a PASS for another family or rank does NOT authorize it — "
+            "re-run gate_v2_orchestrator for this exact strategy)",
+        )
+    if snap.is_stale():
+        return (
+            False,
+            f"{label} verdict is stale ({snap.age_days():.1f}d old, "
+            f"expires after {MAX_VERDICT_AGE_DAYS}d — re-run gate_v2_orchestrator)",
+        )
+    if snap.verdict != "PASS":
+        return False, f"{label} verdict is {snap.verdict}, not PASS"
+
+    return True, "authorized"
 
 
 def list_verdicts(
@@ -241,18 +336,37 @@ def is_strategy_authorized(
             "(gate v2 FAIL or not yet validated — see paper_config.py)",
         )
 
-    # 3. Non-stale gate v2 PASS verdict must exist on disk. Pseudo-symbols
-    # whose verdict was filed under their real underlying instrument (e.g.
-    # MES_VA30's verdict is under "MES" -- see MES_VA30_CONFIG's own
-    # verdict_symbol field) override which symbol's verdict is consulted,
-    # while messages still reference the actually-requested symbol.
+    # 3. A non-stale gate v2 PASS verdict must exist for THIS EXACT STRATEGY.
+    #
+    # Until 2026-07-21 this called is_ungate_eligible(symbol), which matches on
+    # symbol alone -- so any PASS anywhere in the symbol's verdict set authorized
+    # every strategy on that symbol.  MES was trading trend rank11
+    # (INSUFFICIENT_SAMPLE) under the authority of a gap-fill PASS and a
+    # superseded trend rank7.  The config must now name its own verdict, and a
+    # config that does not is denied rather than falling back to the old
+    # symbol-wide behaviour -- otherwise a forgotten declaration silently
+    # reintroduces the leak.
+    #
+    # Pseudo-symbols whose verdict was filed under their real underlying
+    # instrument (e.g. MES_VA30's verdict is under "MES") set verdict_symbol;
+    # messages still reference the actually-requested symbol.
     verdict_symbol = (cfg.get("verdict_symbol") or sym_upper).upper()
-    if not is_ungate_eligible(verdict_symbol, verdicts_dir):
-        lookup_note = f" (verdict lookup: {verdict_symbol})" if verdict_symbol != sym_upper else ""
+    verdict_family = cfg.get("verdict_family")
+    verdict_rank = cfg.get("verdict_rank")
+
+    if verdict_family is None or verdict_rank is None:
         return (
             False,
-            f"{sym_upper}{lookup_note} has no valid non-stale gate v2 PASS verdict "
-            f"(verdicts expire after {MAX_VERDICT_AGE_DAYS} days — re-run gate_v2_orchestrator)",
+            f"{sym_upper} paper_config declares no verdict_family/verdict_rank, so the "
+            "strategy being traded cannot be matched to the verdict that cleared it "
+            "(fail-closed — add both fields to the paper_config entry)",
         )
+
+    ok, reason = is_verdict_authorized(
+        verdict_symbol, verdict_family, verdict_rank, verdicts_dir
+    )
+    if not ok:
+        lookup_note = f" (verdict lookup: {verdict_symbol})" if verdict_symbol != sym_upper else ""
+        return False, f"{sym_upper}{lookup_note}: {reason}"
 
     return True, "authorized"

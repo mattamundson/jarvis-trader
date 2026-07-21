@@ -256,7 +256,10 @@ def test_list_verdicts_excludes_stale(tmp_verdicts_dir):
 
 
 _ENABLED_PAPER_CONFIGS = {
-    "XYZ": {"enabled": True, "symbol": "XYZ"},
+    # verdict_family/verdict_rank are REQUIRED by is_strategy_authorized (2026-07-21
+    # refactor): authorization now matches the exact (symbol, family, rank) verdict
+    # rather than any PASS on the symbol. Tests below write "trend" rank-1 verdicts.
+    "XYZ": {"enabled": True, "symbol": "XYZ", "verdict_family": "trend", "verdict_rank": 1},
 }
 
 _DISABLED_PAPER_CONFIGS = {
@@ -306,11 +309,11 @@ def test_is_strategy_authorized_blocked_by_missing_verdict(tmp_verdicts_dir):
 
     with patch("agents.pipeline.VALIDATION_ONLY_INSTRUMENTS", frozenset()):
         with patch("backtest.paper_config.PAPER_CONFIGS", _ENABLED_PAPER_CONFIGS):
-            # No verdict written → is_ungate_eligible returns False
+            # No verdict written → is_verdict_authorized reports none on disk
             authorized, reason = is_strategy_authorized("XYZ")
 
     assert authorized is False
-    assert "PASS verdict" in reason
+    assert "no gate v2 verdict on disk" in reason
 
 
 def test_is_strategy_authorized_authorized_when_all_conditions_met(tmp_verdicts_dir):
@@ -374,7 +377,7 @@ def test_is_strategy_authorized_stale_verdict_not_authorized(tmp_verdicts_dir):
             authorized, reason = is_strategy_authorized("XYZ")
 
     assert authorized is False
-    assert "PASS verdict" in reason
+    assert "stale" in reason
 
 
 # ---------------------------------------------------------- #
@@ -457,3 +460,67 @@ def test_iter_verdict_files_skips_corrupt_file(tmp_verdicts_dir):
     # Only the valid file loads; corrupt one is silently skipped
     assert len(results) == 1
     assert results[0].rank == 7
+
+
+def test_iter_verdict_files_skips_rankless_without_warning(tmp_verdicts_dir, caplog):
+    """Rankless verdicts (rank=null or missing) are skipped QUIETLY, not per-scan WARNINGs.
+
+    Regression guard for the event-loop-churning log spam (2026-07): diversifier-family
+    and pre-regate-backup verdicts carry no rank, so the loader raised int(None)/KeyError
+    and re-logged a WARNING on every scan.  A rankless verdict can never satisfy a
+    (symbol, family, rank) lookup, so it must be skipped without noise or affecting
+    authorization of the valid verdicts around it.
+    """
+    from backtest.gate_v2_policy import _iter_verdict_files
+
+    # A valid verdict that must still load normally
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MES",
+        family="trend",
+        rank=7,
+        verdict="PASS",
+        passed_via="alt",
+    )
+    # rank explicitly null (diversifier-style)
+    (tmp_verdicts_dir / "ZN_trend_diversifier.json").write_text(
+        '{"symbol":"ZN","family":"trend","rank":null,"verdict":"INSUFFICIENT_SAMPLE",'
+        '"passed_via":null,"created_at":"2026-07-01T00:00:00+00:00"}'
+    )
+    # rank key entirely absent
+    (tmp_verdicts_dir / "M2K_orb_rank1.json").write_text(
+        '{"symbol":"M2K","family":"orb","verdict":"FAIL",'
+        '"passed_via":null,"created_at":"2026-07-01T00:00:00+00:00"}'
+    )
+
+    with caplog.at_level("WARNING", logger="jarvis_trader.gate_v2_policy"):
+        loaded = list(_iter_verdict_files(tmp_verdicts_dir))
+
+    # Only the ranked verdict is yielded; both rankless files skipped
+    assert len(loaded) == 1
+    assert loaded[0].symbol == "MES" and loaded[0].rank == 7
+    # No "unreadable verdict" WARNING for the rankless files (the whole point of the fix)
+    unreadable_warnings = [
+        r for r in caplog.records if "unreadable verdict" in r.getMessage()
+    ]
+    assert unreadable_warnings == []
+
+
+def test_iter_verdict_files_still_warns_on_genuine_corruption(tmp_verdicts_dir, caplog):
+    """The rankless-skip fix must NOT silence genuinely malformed (invalid-enum) verdicts."""
+    from backtest.gate_v2_policy import _iter_verdict_files
+
+    # Ranked but with an invalid verdict enum → real corruption, must still WARN
+    (tmp_verdicts_dir / "MES_trend_rank99.json").write_text(
+        '{"symbol":"MES","family":"trend","rank":99,"verdict":"CORRUPTED",'
+        '"passed_via":null,"created_at":"2026-01-01T00:00:00+00:00"}'
+    )
+
+    with caplog.at_level("WARNING", logger="jarvis_trader.gate_v2_policy"):
+        loaded = list(_iter_verdict_files(tmp_verdicts_dir))
+
+    assert loaded == []
+    unreadable_warnings = [
+        r for r in caplog.records if "unreadable verdict" in r.getMessage()
+    ]
+    assert len(unreadable_warnings) == 1
