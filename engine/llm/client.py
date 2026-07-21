@@ -91,6 +91,8 @@ def _provider_from_model(model: str) -> str:
         return "deepseek"
     if "ollama" in m or m.startswith("llama") or m.startswith("qwen"):
         return "ollama"
+    if m.startswith("kimi"):
+        return "kimi"
     return "anthropic"  # claude-* (direct or via Vertex — Vertex passes served_by)
 
 
@@ -242,6 +244,12 @@ class JarvisLLMClient:
         "gpt-4o-mini": {"input": 0.15, "output": 0.60},
         "deepseek-reasoner": {"input": 0.55, "output": 2.19},
         "hermes3:latest": {"input": 0.0, "output": 0.0},
+        # Kimi K3 (Moonshot AI), added 2026-07-18. Live-verified pricing at
+        # platform.kimi.ai/docs/pricing/chat-k3: cache-hit input is $0.30/MTok,
+        # but the client doesn't yet parse cache-hit token counts from the
+        # response, so the conservative cache-miss rate is used here — this
+        # will overstate cost on cache hits, never understate it.
+        "kimi-k3": {"input": 3.0, "output": 15.0},
     }
 
     # Model fallback chain when overloaded
@@ -320,6 +328,7 @@ class JarvisLLMClient:
         "gpt-4o-mini": 128_000,
         "deepseek-reasoner": 64_000,
         "hermes3:latest": 4_096,
+        "kimi-k3": 1_048_576,
     }
 
     # Class-level default — read at line 445/650 etc. Subclasses or callers that
@@ -505,10 +514,12 @@ class JarvisLLMClient:
         # distinguished ollama from everything-else, so it looked configured
         # while changing nothing.
         self.decision_primary_model = os.getenv("JARVIS_DECISION_PRIMARY", "").strip()
-        if self.decision_primary_model and not self.decision_primary_model.startswith("gemini"):
+        if self.decision_primary_model and not self.decision_primary_model.startswith(
+            ("gemini", "kimi")
+        ):
             logger.warning(
                 "JARVIS_DECISION_PRIMARY='%s' is not a supported decision primary "
-                "(only gemini-* models route as primary today) — ignoring; "
+                "(only gemini-* or kimi-* models route as primary today) — ignoring; "
                 "decision tier stays on %s.",
                 self.decision_primary_model,
                 "ollama" if self.provider == "ollama" else "anthropic",
@@ -534,6 +545,19 @@ class JarvisLLMClient:
         ).strip().lower() not in {"0", "false", "no", "off"}
         self.openai_fallback_count = 0
 
+        # 2026-07-18: Kimi K3 (Moonshot AI) as an alternate decision-tier
+        # PRIMARY, selected the same way as the Gemini primary above --
+        # JARVIS_DECISION_PRIMARY names "kimi-k3" instead of a gemini-* model.
+        # Unlike Gemini, Kimi is not wired into the Anthropic credit-exhaustion
+        # cascade (GOOGLE_FAILOVER_MAP/OPENAI_FAILOVER_MAP) -- it only serves
+        # when explicitly chosen as the decision primary, with Anthropic/OpenAI
+        # still behind it as fallbacks on failure. API-only today (Moonshot's
+        # open weights release 2026-07-27); no local/self-hosted path yet.
+        self.kimi_api_key = os.getenv("MOONSHOT_API_KEY", "").strip()
+        self.kimi_endpoint = os.getenv(
+            "MOONSHOT_ENDPOINT", "https://api.moonshot.ai/v1/chat/completions"
+        ).strip()
+
         google_status = (
             "enabled"
             if self.google_fallback_enabled
@@ -545,16 +569,18 @@ class JarvisLLMClient:
             else ("disabled (no key)" if not self.openai_api_key else "disabled (env flag)")
         )
         deepseek_status = "enabled" if self.deepseek_api_key else "disabled (no key)"
+        kimi_status = "enabled" if self.kimi_api_key else "disabled (no key)"
+        decision_primary_usable = (
+            self.decision_primary_model.startswith("gemini") and self.google_fallback_enabled
+        ) or (self.decision_primary_model.startswith("kimi") and bool(self.kimi_api_key))
         decision_primary_status = (
-            self.decision_primary_model
-            if self.decision_primary_model.startswith("gemini") and self.google_fallback_enabled
-            else "anthropic (default)"
+            self.decision_primary_model if decision_primary_usable else "anthropic (default)"
         )
         logger.info(
             f"✅ JarvisLLMClient initialized with cost tracking at {db_path} "
             f"(provider={self.provider}, decision_primary={decision_primary_status}, "
             f"google_fallback={google_status}, "
-            f"openai_fallback={openai_status}, deepseek={deepseek_status})"
+            f"openai_fallback={openai_status}, deepseek={deepseek_status}, kimi={kimi_status})"
         )
 
         # Snapshot the wired legs for /health provider-redundancy reporting.
@@ -565,13 +591,25 @@ class JarvisLLMClient:
         # decisions — report it as such so /health's single_leg_warning and the
         # dashboard's provider badge describe the path decisions actually take,
         # not the historical Anthropic-first one.
-        decision_primary_active = (
+        gemini_decision_primary_active = (
             self.provider != "ollama"
             and self.google_fallback_enabled
             and self.decision_primary_model.startswith("gemini")
         )
+        kimi_decision_primary_active = (
+            self.provider != "ollama"
+            and bool(self.kimi_api_key)
+            and self.decision_primary_model.startswith("kimi")
+        )
+        decision_primary_active = gemini_decision_primary_active or kimi_decision_primary_active
         base_provider = "vertex" if self.use_vertex else self.provider
-        primary_provider = "gemini" if decision_primary_active else base_provider
+        primary_provider = (
+            "kimi"
+            if kimi_decision_primary_active
+            else "gemini"
+            if gemini_decision_primary_active
+            else base_provider
+        )
         configured = [primary_provider]
         if decision_primary_active and base_provider != primary_provider:
             # The former primary (anthropic/vertex) stays wired BEHIND the Gemini
@@ -765,6 +803,20 @@ class JarvisLLMClient:
         if agent_name in self.GEMINI_PRIMARY_AGENTS:
             return "gemini-2.5-flash"
         if self.decision_primary_model.startswith("gemini"):
+            return self.decision_primary_model
+        return None
+
+    def _resolve_kimi_primary(self, agent_name: str) -> Optional[str]:
+        """Which Kimi model (if any) should serve this agent as PRIMARY.
+
+        Mirrors _resolve_google_primary for the Kimi/Moonshot provider family.
+        Enrichment/classification agents (GEMINI_PRIMARY_AGENTS) never route
+        here even if JARVIS_DECISION_PRIMARY names a Kimi model -- they stay
+        pinned to gemini-2.5-flash, same precedent as the Gemini resolver.
+        """
+        if agent_name in self.GEMINI_PRIMARY_AGENTS:
+            return None
+        if self.decision_primary_model.startswith("kimi"):
             return self.decision_primary_model
         return None
 
@@ -1012,6 +1064,46 @@ class JarvisLLMClient:
                     google_model,
                     agent_name,
                     gex,
+                )
+
+        # Proactive Kimi K3 routing — mirrors the Gemini primary block above
+        # for the alternate decision-tier provider. Mutually exclusive with it
+        # in practice since JARVIS_DECISION_PRIMARY is a single value that can
+        # only start with "gemini" or "kimi", never both. Falls through to the
+        # Anthropic retry loop on any failure, same as the Gemini path.
+        kimi_primary_model = self._resolve_kimi_primary(agent_name)
+        if self.provider != "ollama" and self.kimi_api_key and kimi_primary_model is not None:
+            try:
+                kimi_result = await self._bounded(
+                    self._call_kimi(
+                        system=system,
+                        messages=working_messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        model=kimi_primary_model,
+                    ),
+                    what="kimi primary call",
+                    model=kimi_primary_model,
+                    agent_name=agent_name,
+                )
+                return await self._handle_success(
+                    kimi_result,
+                    kimi_primary_model,
+                    start_time,
+                    retries,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                    served_by="kimi",
+                )
+            except Exception as kex:
+                logger.warning(
+                    "[%s] Kimi primary failed for %s — falling through to Anthropic: %s",
+                    kimi_primary_model,
+                    agent_name,
+                    kex,
                 )
 
         # Retry loop with exponential backoff
@@ -1381,11 +1473,23 @@ class JarvisLLMClient:
         # survives the reasoning spend. Non-thinking models (gemini-2.0-flash) keep
         # the caller's value. Tunable via GEMINI_MIN_OUTPUT_TOKENS; only ever raises.
         effective_max_tokens = max_tokens
+        is_pro = model.startswith("gemini-2.5") and "pro" in model
         if model.startswith("gemini-2.5"):
+            # pro can never disable thinking (see reasoning_effort note below), so
+            # the same 2048 floor that's enough for flash (which runs effort=none)
+            # leaves pro's visible answer starved on large debate prompts. Live
+            # 2026-07-15: bull/bear_researcher calls with in:~5600 (full debate
+            # context) returned out:1/26/46/47/55/58 — thinking consumed nearly
+            # the whole 2048 budget, and the trader's JSON truncated mid-object
+            # ('...target_1' with no closing brace) at out:281. Give pro a much
+            # higher floor since raising max_tokens only raises the ceiling, not
+            # a mandatory spend. Tunable via GEMINI_PRO_MIN_OUTPUT_TOKENS.
+            default_floor = "8192" if is_pro else "2048"
+            env_var = "GEMINI_PRO_MIN_OUTPUT_TOKENS" if is_pro else "GEMINI_MIN_OUTPUT_TOKENS"
             try:
-                floor = int(os.getenv("GEMINI_MIN_OUTPUT_TOKENS", "2048"))
+                floor = int(os.getenv(env_var, default_floor))
             except (TypeError, ValueError):
-                floor = 2048
+                floor = int(default_floor)
             effective_max_tokens = max(max_tokens, floor)
 
         payload: dict = {
@@ -1412,7 +1516,6 @@ class JarvisLLMClient:
         # on (knob omitted) unless GEMINI_REASONING_EFFORT is explicitly set to a
         # non-"none" value; the token floor above lets the answer survive the spend.
         if model.startswith("gemini-2.5"):
-            is_pro = "pro" in model
             default_effort = "" if is_pro else "none"
             effort = os.getenv("GEMINI_REASONING_EFFORT", default_effort).strip().lower()
             if is_pro and effort in ("", "none"):
@@ -1591,6 +1694,87 @@ class JarvisLLMClient:
         input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
         output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
 
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+            content=[SimpleNamespace(text=text)],
+        )
+
+    async def _call_kimi(
+        self,
+        system: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        model: str,
+    ):
+        """Single call to Kimi K3 (Moonshot AI) via its OpenAI-compatible endpoint.
+
+        Returns a SimpleNamespace shaped like an Anthropic response, same
+        convention as _call_google/_call_openai/_call_deepseek. Per the
+        platform.kimi.ai quickstart, K3 always reasons server-side and fixes
+        temperature/top_p/penalties -- those must be OMITTED from the request,
+        not just left at a default, and the output budget field is
+        `max_completion_tokens` (not `max_tokens`). `temperature` (this
+        method's own param) is accepted only for call-site symmetry with the
+        other _call_* methods and is intentionally unused.
+        """
+        if not self.kimi_api_key:
+            raise RuntimeError("kimi_api_key not configured")
+
+        openai_messages: list[dict] = []
+        if system:
+            openai_messages.append({"role": "system", "content": system})
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            openai_messages.append({"role": role, "content": content})
+
+        payload: dict = {
+            "model": model,
+            "messages": openai_messages,
+            "max_completion_tokens": max_tokens,
+        }
+        # K3 supports only reasoning_effort="max" today (its own default) --
+        # omit the field entirely unless explicitly overridden, rather than
+        # risk sending an unsupported value as other levels roll out.
+        effort = os.getenv("KIMI_REASONING_EFFORT", "").strip().lower()
+        if effort:
+            payload["reasoning_effort"] = effort
+
+        # K3 always runs at max thinking effort, which is noticeably slower
+        # than a typical chat completion even for trivial prompts (observed
+        # 2026-07-18: a one-sentence request took well over 60s) -- default
+        # timeout is generous accordingly.
+        timeout = float(os.getenv("KIMI_TIMEOUT_SECONDS", "180"))
+        headers = {
+            "Authorization": f"Bearer {self.kimi_api_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=_granular_httpx_timeout(timeout)) as http_client:
+            response = await http_client.post(self.kimi_endpoint, json=payload, headers=headers)
+            if response.status_code >= 400:
+                try:
+                    body = response.text[:500]
+                except Exception:  # pragma: no cover - defensive
+                    body = "<unreadable>"
+                logger.warning(
+                    "[%s] Kimi endpoint returned HTTP %d: %s",
+                    model,
+                    response.status_code,
+                    body,
+                )
+            response.raise_for_status()
+            data = response.json()
+
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"Kimi response missing choices: {str(data)[:300]}")
+        text = (choices[0].get("message") or {}).get("content", "")
+        usage = data.get("usage") or {}
+        input_tokens = int(usage.get("prompt_tokens") or self._estimate_tokens(system, messages))
+        output_tokens = int(usage.get("completion_tokens") or max(1, len(text) // 4))
         return SimpleNamespace(
             usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
             content=[SimpleNamespace(text=text)],
