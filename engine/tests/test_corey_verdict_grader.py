@@ -108,6 +108,16 @@ def test_classify_intent_does_not_cross_a_sentence_boundary():
     )
 
 
+def test_classify_intent_does_not_cross_a_sequence_marker():
+    # "then" starts a new clause -- a later success claim must not launder the break.
+    assert (
+        classify_self_verdict(
+            "Support broke through, then as called resistance held perfectly."
+        )
+        == MIXED
+    )
+
+
 def test_classify_negation_does_not_cross_a_conjunction():
     # "never" negates "invalidated" (adjacent), not the later coordinated hit.
     assert (

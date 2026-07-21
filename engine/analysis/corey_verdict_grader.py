@@ -27,6 +27,15 @@ Design (honest by construction):
   samples are the norm for this source (~8 gradeable days at bootstrap), so every
   summary reports n and labels itself provisional.
 
+Known limitations: this is a regex heuristic over free text, not a parser. It
+handles the common Corey recap structures (and a matrix of word orders, negation,
+clause boundaries, and Discord smart-quote paste), but exotic multi-clause
+phrasings can still be misread. By design the residual failure mode is ABSTENTION
+(MIXED/NONE -> NOEVIDENCE, a day dropped from the denominator), which is why every
+summary is labelled PROVISIONAL and carries n -- an inverted grade would be the
+bug worth fixing, a dropped ambiguous day is expected. The vocabulary
+(_HIT_PATTERNS / _MISS_PATTERNS) is intentionally not exhaustive.
+
 Display / journal only -- imported by nothing in ``risk/`` or execution. Pure, no
 I/O, no LLM.
 """
@@ -106,7 +115,9 @@ _INTENT_QUALIFIER = re.compile(r"\bas (?:i |we |you )?(?:called|planned|drawn|ma
 # contrastive marker. Both must stop the intent scan so a success claim in a
 # neighbouring sentence/clause ("Support broke through. As called, resistance
 # held perfectly") cannot launder a failed break.
-_CLAUSE_BOUNDARY = re.compile(r"[.;!?]|\b(?:but|however|though|although|yet|whereas|while)\b")
+_CLAUSE_BOUNDARY = re.compile(
+    r"[.;!?]|\b(?:but|however|though|although|yet|whereas|while|then)\b"
+)
 
 # Negators that, when they immediately precede a HIT phrase, cancel it. Guards the
 # "held perfectly" -> "didn't hold perfectly" inversion. The 0-2 intervening words
