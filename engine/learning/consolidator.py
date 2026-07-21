@@ -15,6 +15,29 @@ try:
 except ImportError:
     get_promotion_engine = None
 
+# Plausibility guard shared with the Brier/IC calibration path (roadmap 0.6).
+try:
+    from analytics.outcome_hygiene import is_plausible_pnl
+except ImportError:  # pragma: no cover - import-path resilience
+    try:
+        from engine.analytics.outcome_hygiene import is_plausible_pnl
+    except ImportError:
+        def is_plausible_pnl(pnl):  # fail-open: never block the read path
+            return True
+
+
+def _coerce_pnl(row) -> "float | None":
+    """Extract a float P&L from a trade-row dict; None when absent/unparseable."""
+    if not isinstance(row, dict):
+        return None
+    val = row.get("pnl")
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
 
 class TradingMemoryConsolidator:
     """
@@ -210,7 +233,19 @@ class TradingMemoryConsolidator:
                 "SELECT * FROM paper_trades WHERE DATE(entry_time) = ? ORDER BY entry_time",
                 (target_date,),
             )
-            return [dict(r) for r in rows] if rows else []
+            trades = [dict(r) for r in rows] if rows else []
+            # Plausibility guard (roadmap 0.6): keep magnitude-corrupt rows out
+            # of pattern extraction and accuracy scoring — parity with the
+            # confidence scorer and the Brier/IC calibration path.
+            before = len(trades)
+            trades = [t for t in trades if is_plausible_pnl(_coerce_pnl(t))]
+            if before - len(trades):
+                logger.warning(
+                    "consolidator: excluded %d implausible-P&L row(s) for %s",
+                    before - len(trades),
+                    target_date,
+                )
+            return trades
         except Exception as e:
             logger.debug(f"fetch_trades: {e}")
             return []
