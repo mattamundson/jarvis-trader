@@ -29,9 +29,11 @@ This monitor closes that gap by decoupling stop enforcement from the
     closing the same position is harmless: whoever wins, the loser's UPDATE
     matches zero rows and no-ops.
 
-It is a *backstop*, not the primary path. It does not model slippage/commission
-the way the runner does (it records the observed breach price); the goal is to
-never again leave an open position unprotected, not to be the canonical fill.
+It is a *backstop*, not the primary path. It records the observed breach price
+as the fill (it does not model slippage the way the runner does), but it DOES
+deduct the same flat round-trip commission the runner does, so a backstop close
+books the same economic P&L as a runner close (T0-06). The goal is to never
+again leave an open position unprotected, not to be the canonical fill.
 
 Paper-only. Gated behind ``PAPER_STOP_MONITOR_ENABLED`` (default on).
 """
@@ -62,6 +64,21 @@ _FALLBACK_MULTIPLIERS: Dict[str, float] = {
 
 _LONG_ALIASES = {"long", "buy", "b", "bull", "1"}
 _SHORT_ALIASES = {"short", "sell", "s", "bear", "-1"}
+
+# Flat round-trip commission, reused from the primary close path so a
+# backstop-closed trade books the SAME economic P&L as the same trade closed by
+# PortfolioTracker.close_trade() (T0-06: without this, backstop closes — which
+# are how unprotected positions actually get closed — under-reported their cost
+# vs runner closes, giving the ledger two P&L conventions for one fill).
+# Fallback keeps the monitor loadable even if the import fails.
+try:
+    from portfolio.tracker import _commission_per_contract
+except ImportError:  # pragma: no cover - import-path resilience
+    try:
+        from engine.portfolio.tracker import _commission_per_contract
+    except ImportError:
+        def _commission_per_contract() -> float:
+            return float(os.getenv("COMMISSION_PER_CONTRACT", "1.50"))
 
 # Stop enforcement must act ONLY on live tick data. get_current_price()'s waterfall
 # can fall through to STALE fallback tiers — Polygon REST cache, the CSV daily-close
@@ -122,13 +139,21 @@ def compute_stop_pnl(
     quantity: float,
     multiplier: float,
 ) -> float:
-    """Realized PnL of closing at ``exit_price`` (no slippage/commission — backstop)."""
+    """Realized PnL of closing at ``exit_price``, net of the flat round-trip
+    commission (T0-06 — ledger parity with ``PortfolioTracker.close_trade``).
+
+    The backstop still records the observed breach price as the fill (it does
+    not model slippage), but it DOES deduct commission so a backstop-closed
+    trade books the same economic P&L as a runner-closed one.
+    """
     norm = normalize_side(side)
     qty = abs(float(quantity or 0.0))
     delta = float(exit_price) - float(entry_price)
     if norm == "short":
         delta = -delta
-    return round(delta * qty * float(multiplier), 2)
+    gross = delta * qty * float(multiplier)
+    net = gross - (_commission_per_contract() * qty)
+    return round(net, 2)
 
 
 def multiplier_for(symbol: str, configs: Optional[Dict[str, Any]] = None) -> float:
