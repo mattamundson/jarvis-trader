@@ -71,7 +71,12 @@ _HIT_PATTERNS = [
 
 # Claim structures that admit the call DID NOT work.
 _MISS_PATTERNS = [
-    r"\b(?:got |we (?:got |were ))?stopped(?: out)?\b",
+    # "stopped" is a miss ONLY with stop-out context. A bare "stopped" is
+    # market-structure language ("price stopped at support", "7460 stopped the
+    # selloff"), not an admission the call failed -- matching it flips clear
+    # hit/neutral recaps to MISS/MIXED and silently corrupts the overstatement score.
+    r"\bstopped out\b",
+    r"\b(?:got|we got|we were) stopped\b",
     r"\binvalidated\b",
     r"\b(?:did ?n['o]?t|failed to|never) (?:hold|respect|work)\b",
     r"\bblew (?:right )?(?:through|past)\b",

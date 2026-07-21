@@ -55,6 +55,16 @@ def test_classify_negation_cancels_hit():
     assert classify_self_verdict("It never respected the level.") == MISS
 
 
+def test_classify_bare_stopped_is_not_a_miss():
+    # "stopped" without stop-out context is market-structure language, not a
+    # failed-call admission -- must not flip a hit/neutral recap to MISS/MIXED.
+    assert classify_self_verdict("Price stopped at support and reversed higher.") == NONE
+    assert classify_self_verdict("7460 stopped the selloff cold.") == NONE
+    # ...but genuine stop-out language still reads as a miss.
+    assert classify_self_verdict("Stopped out at the open.") == MISS
+    assert classify_self_verdict("We got stopped for a small loss.") == MISS
+
+
 def test_classify_mixed_and_none():
     assert (
         classify_self_verdict("Support held perfectly but resistance broke through.")
