@@ -105,15 +105,42 @@ The fix is only "done" when observed against the **broker**, not the process:
 5. `test_safety_layer.py` and the bracket-linkage tests stay green against the
    sim path (flag off) — no hermeticity regression.
 
+## Open question — ANSWERED (verified 2026-07-21)
+
+`execution/ib_gateway.py` (`IBGatewayManager`) is **not a stub**: it is a
+1,099-line, working `ib_async` (v0.9.86, pinned in requirements.txt) client with
+a real `connect()` (`IB()` → `ib.connect`), `place_paper_order()` that calls
+`self._ib.placeOrder(contract, ib_order)` (line 748), plus `cancel_order`,
+`get_order_status`, `get_open_orders`, `get_positions`, `get_account_summary`,
+`get_portfolio_value`, `get_executions`, and contract/option resolution.
+
+**But it is missing exactly one method the safety layer depends on:
+`place_bracket_order`.** That method exists **only** on the sim
+(`ib_gateway_connector.py:719`), not on `IBGatewayManager` — and it is the method
+`safety_layer.py:1737` calls to rest a broker-side bracket. Since a resting
+broker-side stop **is the entire point** of P0, this gap is the real work.
+
+So P0 is neither a from-scratch broker build nor a one-line wiring swap:
+
+- The single-order client is done and real.
+- **What must be built:** `IBGatewayManager.place_bracket_order()` — a native IB
+  bracket via ib_async (parent entry + OCA-linked STP and TP children, transmit
+  flags set so all three arrive as one group), returning the same shape the
+  safety layer's `_verify_parent_linkage` / `ActiveBracketRegistry` expect from
+  the sim today.
+- Then Option C wiring + the broker-observed verification plan.
+
+Estimate: a focused multi-day task (bracket implementation + parity with the
+registry contract + on-broker verification on port 4002), not the ~1-day wiring
+job it would be if the method already existed.
+
 ## Recommended path
 
 **Option C**, gated behind an env flag, defaulting to the simulator. Sequence:
-1. ⚠️ Read `execution/ib_gateway.py` — confirm the method surface + connect API.
-   If it's incomplete, finishing it is the real P0 work (not the wiring).
-2. Add the flag + construction/attach branch at `main.py:476`.
-3. Run the broker-observed verification plan above on port 4002.
+1. Implement `IBGatewayManager.place_bracket_order()` (native ib_async bracket)
+   to the same return/registry contract the sim's `place_bracket_order`
+   (`ib_gateway_connector.py:719`) satisfies — read that method first for parity.
+2. Add the flag + construction/attach branch at `main.py:476` (Option C snippet).
+3. Run the broker-observed verification plan above on port 4002 — especially
+   step 3 (stop survives an engine restart), the property the sim can never have.
 4. `[safety-review]` PR; Tier-3 sign-off; then flip the flag in `engine/.env`.
-
-Open question for Amo: is `execution/ib_gateway.py` a working client that just
-needs wiring, or a stub? That determines whether P0 is a ~1-day wiring job or a
-broker-client build. Answer gates the estimate.
