@@ -65,6 +65,20 @@ def test_classify_bare_stopped_is_not_a_miss():
     assert classify_self_verdict("We got stopped for a small loss.") == MISS
 
 
+def test_classify_planned_breakout_is_a_hit_not_mixed():
+    # "broke through ... as called" is a planned breakout, not a failed level;
+    # it must not become MIXED (which grade_divergence drops as NOEVIDENCE).
+    assert (
+        classify_self_verdict("We broke through resistance as called and ran to target.")
+        == HIT
+    )
+    # A pronoun'd qualifier through a parenthetical still resolves to HIT.
+    assert classify_self_verdict("It broke through, as I planned, right to target.") == HIT
+    # A bare / unqualified break still reads as a miss.
+    assert classify_self_verdict("7500 broke through to the downside, no bid.") == MISS
+    assert classify_self_verdict("Support broke through and we got stopped out.") == MISS
+
+
 def test_classify_mixed_and_none():
     assert (
         classify_self_verdict("Support held perfectly but resistance broke through.")

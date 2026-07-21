@@ -64,7 +64,7 @@ _HIT_PATTERNS = [
     r"\brejected (?:right |perfectly |cleanly )?(?:at|from) (?:the|that|our)\b",
     r"\btextbook\b",
     r"\bright on (?:script|plan|the money)\b",
-    r"\bas (?:called|drawn|mapped|planned)\b",
+    r"\bas (?:i |we |you )?(?:called|drawn|mapped|planned)\b",
     r"\bdid (?:its|their) job\b",
     r"\bcall (?:was )?(?:spot[- ]on|dead[- ]on|correct)\b",
 ]
@@ -79,8 +79,6 @@ _MISS_PATTERNS = [
     r"\b(?:got|we got|we were) stopped\b",
     r"\binvalidated\b",
     r"\b(?:did ?n['o]?t|failed to|never) (?:hold|respect|work)\b",
-    r"\bblew (?:right )?(?:through|past)\b",
-    r"\bbroke (?:right )?(?:through|down through|up through)\b",
     r"\bno follow[- ]through\b",
     r"\bchopped (?:us |me )?up\b",
     r"\bwrong (?:call|side|way|read)\b",
@@ -88,6 +86,22 @@ _MISS_PATTERNS = [
     r"\bcall (?:was )?(?:off|wrong|a (?:miss|bust))\b",
     r"\bgave (?:it )?back\b",
 ]
+
+# Break language is DIRECTIONAL, unlike a stop-out: "broke through resistance as
+# called" is a planned breakout (a HIT), not a failed level. So a break phrase is
+# miss evidence ONLY when it is NOT immediately followed by a success qualifier;
+# otherwise it would flip a clean HIT recap to MIXED, which grade_divergence()
+# treats as NOEVIDENCE and silently drops from the overstatement denominator.
+_BREAK_MISS_PATTERNS = [
+    r"\bblew (?:right )?(?:through|past)\b",
+    r"\bbroke (?:right )?(?:through|down through|up through)\b",
+]
+
+# A success/intent qualifier within a short window after a break phrase marks it
+# planned. A window (not an anchored match) so punctuation/parentheticals -- e.g.
+# "broke through, as I planned," -- are still caught.
+_INTENT_AHEAD = re.compile(r"\bas (?:i |we |you )?(?:called|planned|drawn|mapped|expected)\b")
+_INTENT_WINDOW = 35
 
 # Negators that, when they immediately precede a HIT phrase, cancel it. Guards the
 # "held perfectly" -> "didn't hold perfectly" inversion. Kept small and explicit.
@@ -112,6 +126,19 @@ def _scan(patterns: list[str], text: str) -> tuple[bool, bool]:
     return unneg, neg
 
 
+def _break_is_miss(text: str) -> bool:
+    """True if a break phrase reads as a FAILED level (not a planned breakout).
+
+    A break followed by a success qualifier ("broke through resistance as called")
+    is intentional and does not count as miss evidence; a bare break does.
+    """
+    for pat in _BREAK_MISS_PATTERNS:
+        for m in re.finditer(pat, text):
+            if not _INTENT_AHEAD.search(text[m.end() : m.end() + _INTENT_WINDOW]):
+                return True
+    return False
+
+
 def classify_self_verdict(recap: str) -> str:
     """Classify Corey's OWN claimed verdict from recap language.
 
@@ -127,7 +154,7 @@ def classify_self_verdict(recap: str) -> str:
         return NONE
     hit, hit_negated = _scan(_HIT_PATTERNS, text)
     miss_direct, _ = _scan(_MISS_PATTERNS, text)
-    miss = miss_direct or hit_negated
+    miss = miss_direct or hit_negated or _break_is_miss(text)
     if hit and miss:
         return MIXED
     if hit:
