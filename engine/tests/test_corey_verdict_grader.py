@@ -89,6 +89,23 @@ def test_classify_planned_breakout_is_a_hit_not_mixed():
     assert classify_self_verdict("Support broke through and we got stopped out.") == MISS
 
 
+def test_classify_intent_is_scoped_to_the_break_clause():
+    # A leading "as called" for the HELD level must not launder a separate failed
+    # break across a contrastive marker -- this stays MIXED, not HIT.
+    assert (
+        classify_self_verdict(
+            "As called, support held perfectly but resistance broke through."
+        )
+        == MIXED
+    )
+
+
+def test_classify_normalizes_smart_apostrophes():
+    # Curly U+2019 from Discord/mobile paste must still read "didn't" as a miss.
+    assert classify_self_verdict("The level didn’t hold and we faded the call.") == MISS
+    assert classify_self_verdict("It never respected the level, wasn’t even close.") == MISS
+
+
 def test_classify_mixed_and_none():
     assert (
         classify_self_verdict("Support held perfectly but resistance broke through.")

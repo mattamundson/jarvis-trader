@@ -97,10 +97,12 @@ _BREAK_MISS_PATTERNS = [
     r"\bbroke (?:right )?(?:through|down through|up through)\b",
 ]
 
-# A stated intent qualifier ("as called" / "as we planned") anywhere in the recap
-# marks a breakout as PLANNED regardless of word order or distance -- these are
-# short single-topic morning verdicts, so proximity is unreliable and unnecessary.
+# A stated intent qualifier ("as called" / "as we planned") marks a breakout as
+# PLANNED. It is scoped to the break's own clause via contrastive markers so that
+# "As called, support held perfectly but resistance broke through" stays MIXED --
+# the "but" separates the intended hold from the failed break.
 _INTENT_QUALIFIER = re.compile(r"\bas (?:i |we |you )?(?:called|planned|drawn|mapped|expected)\b")
+_CONTRAST = re.compile(r"\b(?:but|however|though|although|yet|whereas|while)\b")
 
 # Negators that, when they immediately precede a HIT phrase, cancel it. Guards the
 # "held perfectly" -> "didn't hold perfectly" inversion. Kept small and explicit.
@@ -109,8 +111,14 @@ _NEG_WINDOW = re.compile(
 )
 
 
+_SMART_QUOTES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
+
+
 def _norm(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+    # Normalize typographic apostrophes/quotes (Discord/mobile paste) so patterns
+    # that use a straight ' still match "didn't", "we're", "wasn't".
+    t = (text or "").translate(_SMART_QUOTES)
+    return re.sub(r"\s+", " ", t.lower()).strip()
 
 
 def _scan(patterns: list[str], text: str) -> tuple[bool, bool]:
@@ -128,14 +136,29 @@ def _scan(patterns: list[str], text: str) -> tuple[bool, bool]:
 def _break_is_miss(text: str) -> bool:
     """True if a break phrase reads as a FAILED level (not a planned breakout).
 
-    A break is failure evidence unless the recap also states the move was intended
-    ("broke through resistance as called", "as called, we broke through", "... ran
-    to target as we planned") -- a stated intent qualifier anywhere marks it
-    planned. A bare break ("7500 broke through to the downside") is a miss.
+    A break is failure evidence unless the move was stated as intended -- an "as
+    called/planned" qualifier in the break's OWN clause, on either side and at any
+    distance, but not across a contrastive marker. So "broke through resistance as
+    called" and "as called, we broke through" are HITs, while "... support held
+    perfectly BUT resistance broke through" keeps the break as miss evidence. A
+    bare break ("7500 broke through to the downside") is a miss.
     """
-    if not any(re.search(pat, text) for pat in _BREAK_MISS_PATTERNS):
-        return False
-    return not _INTENT_QUALIFIER.search(text)
+    for pat in _BREAK_MISS_PATTERNS:
+        for m in re.finditer(pat, text):
+            # Clause preceding the break: text after the nearest contrastive marker.
+            before = text[: m.start()]
+            cuts = list(_CONTRAST.finditer(before))
+            before_clause = before[cuts[-1].end() :] if cuts else before
+            # Clause following the break: text up to the next contrastive marker.
+            after = text[m.end() :]
+            nxt = _CONTRAST.search(after)
+            after_clause = after[: nxt.start()] if nxt else after
+            planned = _INTENT_QUALIFIER.search(before_clause) or _INTENT_QUALIFIER.search(
+                after_clause
+            )
+            if not planned:
+                return True
+    return False
 
 
 def classify_self_verdict(recap: str) -> str:
