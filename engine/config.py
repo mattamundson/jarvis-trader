@@ -445,6 +445,19 @@ class TradingConfig(BaseSettings):
             "tests). Bump to 10-15s if launching Gateway races engine startup."
         ),
     )
+    IB_PAPER_BROKER_ENABLED: bool = Field(
+        False,  # P0-2 default OFF — flip only after the broker-observed proof passes
+        description=(
+            "Attach the real IBGatewayManager (port 4002 paper) to the order path "
+            "instead of the in-process IBGatewayConnector simulator. When False, "
+            "orders are simulated and never reach a broker. See "
+            "docs/ROADMAP_P0-2_SCOPE_2026-07-21.md. [safety-review]"
+        ),
+    )
+    IB_ACCOUNT_ID: str = Field(
+        "",
+        description="IB paper account id (e.g. DUxxxxxxx) tagged on real order routing when IB_PAPER_BROKER_ENABLED.",
+    )
 
     # ── Broker: Charles Schwab ────────────────────────────────────────────
     SCHWAB_APP_KEY: Optional[str] = Field(default=None, description="Charles Schwab app key")
