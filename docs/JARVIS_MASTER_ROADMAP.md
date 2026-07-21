@@ -103,7 +103,7 @@ So Phase 0 is **data + execution integrity**. Everything else (autonomy, monitor
   *Files:* `engine/learning/feedback.py`, `engine/learning/patterns.py`, `engine/agents/post_mortem.py`, `engine/portfolio/tracker.py:479-552`, `engine/agents/self_audit.py`.
   *Acceptance:* a closed paper trade produces a new `trading_patterns` row AND a `trade_post_mortem` row within one cycle; integration test asserts both.
 
-- [ ] **1.8 — Retire or wire the dead cost/caching systems.**
+- [~] **1.8 — Retire or wire the dead cost/caching systems.** — skill-doc half done, `6d491a0` (fixed the stale `route_model()`/`get_client()`/`client.messages.create()` refs → real `route_task`/`JarvisLLMClient.call`; import-checked clean against the venv). **Deferred to Amo:** the caching retire/wire half — picking `token_optimizer` vs `context_manager`, wiring into `main.py`'s `TradingPipeline`, and proving `cache_read_input_tokens>0` — is a design decision + live LLM-path change + credit-gated verification (Anthropic credits are dead).
   Prompt caching is built twice (`token_optimizer.py`, `context_manager.py`) and wired zero times — `main.py:905` constructs `TradingPipeline` without a context manager, so caching never happens in prod. Pick one, wire it (with a content-type guard so list-of-blocks content isn't `str()`-stringified into Gemini/Kimi), archive the other. Fix the stale `jarvis-cost-routing` skill's `route_model()`/`get_client()` references (they don't exist).
   *Acceptance:* a live Anthropic call shows `cache_read_input_tokens > 0` on a repeat system prompt; skill doc import-checks clean.
 
@@ -168,7 +168,7 @@ So Phase 0 is **data + execution integrity**. Everything else (autonomy, monitor
   One endpoint of N binary assertions so the dashboard renders rather than re-derives across ~10 `/health*` routes.
   *Acceptance:* dashboard reads one endpoint; each assertion maps to a real subsystem probe.
 
-- [ ] **3.7 — Reconcile stale ops docs.**
+- [x] **3.7 — Reconcile stale ops docs.** — done, `f48aaa3`. Fixed kill-switch numbers (-2%/-10% → live -8%/-20% from `.env`) + added a Telegram/HERMES delivery-path status banner (gateway stopped 2026-07-20). **Surfaced:** `.env` drifted from config.py defaults (0.08 vs 0.06 daily, 1000 vs 100 USD) — reconciling those is `[safety-review]`, left for Amo.
   `AUTONOMOUS_MONITORING_SYSTEM.md` cites dead kill-switch numbers and a possibly-dead Hermes/Telegram channel (gateway stopped 2026-07-20). Verify live state, update.
 
 ---
@@ -233,7 +233,7 @@ So Phase 0 is **data + execution integrity**. Everything else (autonomy, monitor
   Dead code that POSTs directly to `/orders/place` (bypassing the pipeline) with risk math hardcoded to a 5000 reference price and ×50 multiplier. Archive it, or rebuild against live prices + real contract specs and route through the approval pipeline.
   *Acceptance:* file gone from the live tree, or its numbers verified against a hand-computed value for MES + one non-MES symbol.
 
-- [ ] **5.5 — Orphan-component reconciliation.**
+- [~] **5.5 — Orphan-component reconciliation.** — audit done, `b422115` (`docs/dashboard-orphan-audit.md`): 69/200 true orphans, reliable directory-scoped git grep. Found the roadmap's own `RiskStatusWidget` "retired" claim is stale (still referenced by `app/paper/page.tsx`). **Deferred to Amo:** archiving 69 files is a destructive batch needing WIP-vs-dead triage + `pnpm run build` verification per batch — not autonomous-safe.
   Every component in `dashboard/components/` is imported from a route or archived (`RiskStatusWidget` retired-per-comment, `EnginePnlTruthCard` well-built-but-unreached, `CircuitBreakerPanel`, `ExecutionCockpitWidget`, etc.).
 
 - [ ] **5.6 — Mission Control approval visibility.**
