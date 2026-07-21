@@ -496,6 +496,7 @@ class PortfolioTracker:
                             entry_time=trade.entry_time or "",
                             exit_time=exit_time,
                             action=trade.action or "",
+                            db_manager=self._db,
                         )
                     )
                     logger.info("[LEARNING] Feedback queued for trade %s", str(trade_id)[:8])
@@ -557,6 +558,46 @@ class PortfolioTracker:
                     _loop_rv.create_task(_queue_review(trade))
         except Exception as _rv_exc:
             logger.debug("[REVIEW] Post-trade review skipped: %s", _rv_exc)
+
+        # Wire post-trade LLM post-mortem (roadmap 1.7). PostTradeAnalyzer had
+        # zero production callers; this closes the dead-end. OFF by default
+        # because it runs one Opus-tier call per close (a real cost change) —
+        # activate with JARVIS_POST_MORTEM_ON_CLOSE=1 once the spend is
+        # authorized. Non-blocking + fail-open, like the other close hooks.
+        try:
+            import asyncio as _asyncio_pm
+            import os as _os_pm
+
+            if (
+                not _os_pm.getenv("TESTING")
+                and _os_pm.getenv("JARVIS_POST_MORTEM_ON_CLOSE", "0") == "1"
+                and self._db is not None
+            ):
+                _loop_pm = _asyncio_pm.get_event_loop()
+                if _loop_pm.is_running():
+                    _pm_trade_data = {
+                        "symbol": trade.symbol,
+                        "side": trade.action or "",
+                        "quantity": trade.quantity,
+                        "entry_price": trade.entry_price or 0.0,
+                        "exit_price": float(exit_price),
+                        "pnl": trade.pnl or 0.0,
+                        "exit_reason": "close",
+                    }
+
+                    async def _run_post_mortem():
+                        try:
+                            from agents.post_mortem import PostTradeAnalyzer
+
+                            analyzer = PostTradeAnalyzer(self._db)
+                            await analyzer.analyze_trade(trade_id, _pm_trade_data, {})
+                        except Exception as _pm_run_exc:
+                            logger.debug("[LEARNING] Post-mortem run failed: %s", _pm_run_exc)
+
+                    _loop_pm.create_task(_run_post_mortem())
+                    logger.info("[LEARNING] Post-mortem queued for trade %s", str(trade_id)[:8])
+        except Exception as _pm_exc:
+            logger.debug("[LEARNING] Post-mortem skipped: %s", _pm_exc)
 
         return trade
 

@@ -21,12 +21,30 @@ Pattern types (10 total):
   10. consecutive_outcome_pattern — after win streaks vs loss streaks
 """
 
+import inspect
 import json
 import logging
 from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+async def _maybe_await(value):
+    """Await ``value`` if it is awaitable, else return it as-is.
+
+    The pattern-persistence path (roadmap 1.7) has to work against two
+    db-manager shapes: the live ``database/manager.py`` manager exposes SYNC
+    ``fetch_one``/``execute`` (used by main.py's init_db), while the async
+    ``database/connection.py`` layer exposes coroutine equivalents. This helper
+    lets ``_upsert_pattern_to_db`` call either without a hard-coded assumption —
+    the prior unconditional ``await db_manager.fetch_one(...)`` raised TypeError
+    on the sync manager, which is why this module never actually persisted a
+    pattern in production despite the extractor being complete.
+    """
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 # Session boundary definitions (UTC hours — adjust per market if needed)
 _SESSION_BOUNDARIES: dict[str, tuple[int, int]] = {
@@ -374,9 +392,11 @@ async def _upsert_pattern_to_db(db_manager, pattern: TradePattern) -> None:
     try:
         pattern_hash = _compute_pattern_hash(pattern.symbol, pattern.pattern_type)
 
-        existing = await db_manager.fetch_one(
-            "SELECT id, win_count, loss_count FROM trading_patterns WHERE pattern_hash = ?",
-            (pattern_hash,),
+        existing = await _maybe_await(
+            db_manager.fetch_one(
+                "SELECT id, win_count, loss_count FROM trading_patterns WHERE pattern_hash = ?",
+                (pattern_hash,),
+            )
         )
 
         if existing:
@@ -385,34 +405,38 @@ async def _upsert_pattern_to_db(db_manager, pattern: TradePattern) -> None:
             new_win_rate = (
                 round(new_win / (new_win + new_loss), 3) if (new_win + new_loss) > 0 else 0.0
             )
-            await db_manager.execute(
-                "UPDATE trading_patterns SET win_count=?, loss_count=?, win_rate=?, "
-                "last_seen=?, is_active=1 WHERE pattern_hash=?",
-                (
-                    new_win,
-                    new_loss,
-                    new_win_rate,
-                    datetime.now().isoformat(),
-                    pattern_hash,
-                ),
+            await _maybe_await(
+                db_manager.execute(
+                    "UPDATE trading_patterns SET win_count=?, loss_count=?, win_rate=?, "
+                    "last_seen=?, is_active=1 WHERE pattern_hash=?",
+                    (
+                        new_win,
+                        new_loss,
+                        new_win_rate,
+                        datetime.now().isoformat(),
+                        pattern_hash,
+                    ),
+                )
             )
         else:
-            await db_manager.execute(
-                "INSERT INTO trading_patterns "
-                "(pattern_hash, symbol, pattern_type, conditions, win_count, loss_count, "
-                "win_rate, is_active, last_seen, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                (
-                    pattern_hash,
-                    pattern.symbol,
-                    pattern.pattern_type,
-                    json.dumps(pattern.conditions),
-                    pattern.win_count,
-                    pattern.loss_count,
-                    pattern.win_rate,
-                    datetime.now().isoformat(),
-                    datetime.now().isoformat(),
-                ),
+            await _maybe_await(
+                db_manager.execute(
+                    "INSERT INTO trading_patterns "
+                    "(pattern_hash, symbol, pattern_type, conditions, win_count, loss_count, "
+                    "win_rate, is_active, last_seen, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                    (
+                        pattern_hash,
+                        pattern.symbol,
+                        pattern.pattern_type,
+                        json.dumps(pattern.conditions),
+                        pattern.win_count,
+                        pattern.loss_count,
+                        pattern.win_rate,
+                        datetime.now().isoformat(),
+                        datetime.now().isoformat(),
+                    ),
+                )
             )
     except Exception as e:
         logger.error(f"[LEARNING] DB upsert failed for pattern: {e}")
