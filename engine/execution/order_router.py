@@ -199,14 +199,15 @@ class OrderRouter:
             if not self.ibkr or not self.ibkr.is_connected():
                 raise RuntimeError(f"IBKR not connected — cannot route futures bracket for {symbol}")
 
-            # P0-2: the real IBGatewayManager has no place_bracket_order (only the
-            # simulator does). Fail loud with a redirect instead of an opaque
-            # AttributeError once IB_PAPER_BROKER_ENABLED flips the attached gateway.
+            # P0-2 defensive: both shipped gateways implement place_bracket_order
+            # (IBGatewayConnector sim + the real IBGatewayManager's native OCA
+            # bracket, ib_gateway.py:774). Guard a future/partial gateway so it
+            # fails loud with a redirect instead of an opaque AttributeError.
             if not hasattr(self.ibkr, "place_bracket_order"):
                 raise RuntimeError(
                     f"{type(self.ibkr).__name__} has no place_bracket_order — OrderRouter bracket "
-                    f"routing is unsupported on the real IB gateway (P0-2). Route brackets through "
-                    f"the approval path (SafetyLayer.submit_entry_with_stop) instead."
+                    f"routing is unavailable on this gateway. Route brackets through the approval "
+                    f"path (SafetyLayer.submit_entry_with_stop) instead."
                 )
 
             logger.info("Routing %s bracket order to IBKR", symbol)
