@@ -87,11 +87,16 @@ def test_live_port_rejected():
         )
 
 
-# ── OrderRouter guards against a real gateway lacking simulator-only methods ────
+# ── OrderRouter fail-loud guards for gateways missing optional methods ──────────
+#
+# NB: the real IBGatewayManager DOES implement place_bracket_order (native OCA
+# bracket, ib_gateway.py:774) but does NOT implement modify_order. These stubs
+# model a gateway *missing* a given optional method to exercise the defensive
+# guards — they are not a faithful mirror of the real gateway's full surface.
 
 
-class _RealGatewayLike:
-    """Stand-in for IBGatewayManager: has place_paper_order but NOT place_bracket_order/modify_order."""
+class _GatewayMissingOptionalMethods:
+    """Minimal gateway exposing only place_paper_order — lacks place_bracket_order/modify_order."""
 
     def is_connected(self):
         return True
@@ -100,22 +105,22 @@ class _RealGatewayLike:
         return 1
 
 
-async def test_route_bracket_order_raises_clear_error_on_real_gateway():
-    """Bracket routing via OrderRouter must fail loud (not AttributeError) on the real gateway."""
+async def test_route_bracket_order_fails_loud_when_gateway_lacks_bracket():
+    """A gateway without place_bracket_order must fail loud (not opaque AttributeError)."""
     from execution.order_router import OrderRouter
 
-    router = OrderRouter(ibkr=_RealGatewayLike())
+    router = OrderRouter(ibkr=_GatewayMissingOptionalMethods())
     with pytest.raises(RuntimeError, match="place_bracket_order"):
         await router.route_bracket_order(
             symbol="MES", action="BUY", quantity=1, stop_loss=5690.0, take_profit=5710.0
         )
 
 
-async def test_modify_order_returns_error_on_real_gateway():
-    """modify_order via OrderRouter returns a clear error dict on the real gateway."""
+async def test_modify_order_returns_error_when_gateway_lacks_modify():
+    """The real IBGatewayManager has no modify_order — OrderRouter returns a clear error dict."""
     from execution.order_router import OrderRouter
 
-    router = OrderRouter(ibkr=_RealGatewayLike())
+    router = OrderRouter(ibkr=_GatewayMissingOptionalMethods())
     out = await router.modify_order("abc", 5700.0)
     assert out["status"] == "error"
     assert "modify_order" in out["reason"]
