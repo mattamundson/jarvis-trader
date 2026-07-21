@@ -41,6 +41,22 @@ Criteria checked:
     C7 — DO_NOT_TRADE_SYMBOLS reflects validated symbols
         All FAIL-only symbols are blocked, all PASS symbols are NOT blocked
 
+    C8 — Execution path is real (broker-truth)
+        /health.execution_path reports simulated=false AND broker_ack=true. Without
+        this, C1's forward-test PF and every paper stat is measured on a simulator.
+
+    C9 — Price-basis integrity (no fabricated fills)
+        No genuine paper fill sits on a known mock-quote constant, carries an
+        implausible |pnl|, or shows an implausible intra-trade excursion — the three
+        signatures of the phantom-quote contamination.
+
+    C10 — Naked-position invariant
+        Every open position has a protective stop recorded AND the execution path is
+        broker-real (a stop guarantee is meaningless on a simulator).
+
+    C8–C10 exist because C1–C7 could all pass while no order ever reached a broker:
+    they close the gap that let a GREEN readiness verdict grade the simulator.
+
 Why this exists:
     Without a single gate, live-trading authorization is a judgment call across
     7+ different files and operational checks. This script makes the decision
@@ -79,6 +95,16 @@ DEFAULT_STATE_FILE = engine_root / "data" / "live_readiness_state.json"
 PAPER_MIN_DAYS = 30
 PAPER_MIN_TRADES = 30
 PAPER_MIN_PF = 1.0
+
+# C9 — price-basis integrity. The mock-quote table in
+# execution/ib_gateway_connector.py fabricates these exact values when the data
+# feed returns None; a genuine fill must never sit on one. (MES 5300.x, MCL 82.6x,
+# plus the legacy 100.5 default.) Kept in sync with that table by review.
+PHANTOM_PRICE_CONSTANTS = frozenset({5300.00, 5300.10, 5300.25, 82.50, 82.60, 82.75, 100.5})
+PHANTOM_PRICE_TOL = 0.02  # float-equality tolerance in price points
+# |exit-entry|/entry beyond this is an implausible intra-trade move — the wrong-era
+# entry contamination (e.g. 5300→7512 = 41.8%). Mirrors phantom_detector.DEFAULT_EXCURSION_PCT.
+EXCURSION_LIMIT_PCT = 0.15
 
 
 @dataclass
@@ -281,6 +307,38 @@ def _query_paper_trade_stats(symbol: str) -> dict[str, Any]:
             stats["forward_pf"] = wins / losses
 
     return stats
+
+
+def _query_genuine_trades() -> tuple[list[dict[str, Any]], bool]:
+    """Return (rows, available) for all genuine (open/closed) paper trades, all symbols.
+
+    Read-only, curated store only (excludes phantom/cancelled_* rows), mirroring
+    _query_paper_trade_stats. Each row carries trade_id, symbol, entry_price,
+    exit_price, pnl, status, stop_loss — the fields C9/C10 inspect. `available`
+    is False when the DB is missing/unreadable so callers fail closed rather than
+    reporting a clean scan over zero rows.
+    """
+    if not PAPER_TRADES_DB_PATH.exists():
+        return [], False
+    try:
+        conn = sqlite3.connect(
+            f"{PAPER_TRADES_DB_PATH.as_uri()}?mode=ro", uri=True, timeout=5.0
+        )
+    except sqlite3.Error:
+        return [], False
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT trade_id, symbol, entry_price, exit_price, pnl, status, stop_loss "
+            "FROM paper_trades WHERE status IN (?, ?)",
+            (GENUINE_OPEN_STATUS, GENUINE_CLOSED_STATUS),
+        ).fetchall()
+    except sqlite3.Error:
+        # Missing table / missing column / corrupt DB — fail closed.
+        return [], False
+    finally:
+        conn.close()
+    return [dict(r) for r in rows], True
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +696,159 @@ def check_c7_do_not_trade_symbols() -> CheckResult:
     )
 
 
+def check_c8_execution_path_real() -> CheckResult:
+    """Execution path routes to a real broker, not the in-process simulator.
+
+    Reads /health.execution_path (the P0-1 truth probe). PASS requires
+    simulated=False AND broker_ack=True — an order actually reaches IB. Until then
+    C1's forward-test PF and every paper stat is computed on simulated fills, so a
+    GREEN readiness verdict would be grading the simulator.
+    """
+    health = _fetch_engine_health()
+    if health is None:
+        return CheckResult(
+            name="C8 Execution path real",
+            passed=False,
+            detail=f"Engine unreachable at {ENGINE_HEALTH_URL}",
+            fix="Bring the engine up (C4) then re-check",
+        )
+    ep = health.get("execution_path")
+    if not isinstance(ep, dict):
+        return CheckResult(
+            name="C8 Execution path real",
+            passed=False,
+            detail="/health has no execution_path probe (pre-P0-1 build)",
+            fix="Ship the P0-1 execution-path truth probe in routers/health_router.py",
+        )
+    simulated = ep.get("simulated", True)  # default True (safe) if missing
+    broker_ack = ep.get("broker_ack", False)
+    cls = ep.get("class_name", "?")
+    if simulated or not broker_ack:
+        return CheckResult(
+            name="C8 Execution path real",
+            passed=False,
+            detail=(
+                f"class={cls}, simulated={simulated}, broker_ack={broker_ack} — "
+                f"orders do not reach a broker"
+            ),
+            fix="Wire IBGatewayManager into safety_layer + order_router (roadmap P0-2)",
+        )
+    return CheckResult(
+        name="C8 Execution path real",
+        passed=True,
+        detail=f"real broker path: class={cls}, broker_ack=true",
+    )
+
+
+def check_c9_price_basis_integrity() -> CheckResult:
+    """No genuine fill sits on a fabricated price or shows an implausible move.
+
+    Scans the curated paper_trades for the three phantom-contamination signatures:
+      * entry/exit price on a known mock-quote constant (MES 5300.x, MCL 82.6x, 100.5)
+      * |pnl| over the plausibility ceiling (analytics.outcome_hygiene)
+      * |exit-entry|/entry over EXCURSION_LIMIT_PCT (wrong-era entry contamination)
+    Any hit means the ledger still carries fabricated fills → readiness FAILs.
+    """
+    try:
+        from analytics.outcome_hygiene import is_plausible_pnl
+    except ImportError:  # keep the gate runnable even if analytics is unavailable
+        def is_plausible_pnl(p: float | None) -> bool:
+            return p is None or abs(p) <= 5000.0
+
+    rows, available = _query_genuine_trades()
+    if not available:
+        return CheckResult(
+            name="C9 Price-basis integrity",
+            passed=False,
+            detail="Curated paper_trades store unavailable; cannot verify price basis",
+            fix="Ensure engine/data/jarvis_trader.db exists and is readable",
+        )
+
+    offenders: list[str] = []
+    for r in rows:
+        tid = (r.get("trade_id") or "?")[:8]
+        sym = r.get("symbol")
+        entry = r.get("entry_price")
+        exit_ = r.get("exit_price")
+        for label, price in (("entry", entry), ("exit", exit_)):
+            if price is None:
+                continue
+            for c in PHANTOM_PRICE_CONSTANTS:
+                if abs(float(price) - c) <= PHANTOM_PRICE_TOL:
+                    offenders.append(f"{sym}:{tid} {label}={price} on mock-constant {c}")
+        pnl = r.get("pnl")
+        if pnl is not None and not is_plausible_pnl(float(pnl)):
+            offenders.append(f"{sym}:{tid} implausible pnl=${float(pnl):.2f}")
+        if entry and exit_ and float(entry) != 0:
+            exc = abs(float(exit_) - float(entry)) / abs(float(entry))
+            if exc > EXCURSION_LIMIT_PCT:
+                offenders.append(f"{sym}:{tid} excursion={exc:.1%} > {EXCURSION_LIMIT_PCT:.0%}")
+
+    if offenders:
+        shown = "; ".join(offenders[:6])
+        more = f" (+{len(offenders) - 6} more)" if len(offenders) > 6 else ""
+        return CheckResult(
+            name="C9 Price-basis integrity",
+            passed=False,
+            detail=f"{len(offenders)} contaminated fill(s): {shown}{more}",
+            fix="Void/quarantine contaminated rows; deploy the ALLOW_MOCK_QUOTES=False fix (roadmap 0.1)",
+        )
+    return CheckResult(
+        name="C9 Price-basis integrity",
+        passed=True,
+        detail=f"{len(rows)} genuine fills — none on a mock constant / implausible / over-excursion",
+    )
+
+
+def check_c10_naked_position_invariant() -> CheckResult:
+    """Every open position has a protective stop — and it is broker-real.
+
+    Two layers: (1) data-layer — no open position may have a null/zero stop_loss;
+    (2) broker-layer — the stop must actually rest at IB, which is only true once the
+    execution path is real (C8). A naked-position guarantee is meaningless on a
+    simulator, so C10 FAILs while execution is simulated even if the data layer is clean.
+    """
+    rows, available = _query_genuine_trades()
+    if not available:
+        return CheckResult(
+            name="C10 Naked-position invariant",
+            passed=False,
+            detail="Curated paper_trades store unavailable; cannot verify stops",
+            fix="Ensure engine/data/jarvis_trader.db exists and is readable",
+        )
+    open_rows = [r for r in rows if r.get("status") == GENUINE_OPEN_STATUS]
+    naked = [
+        f"{r.get('symbol')}:{(r.get('trade_id') or '?')[:8]}"
+        for r in open_rows
+        if r.get("stop_loss") is None or float(r.get("stop_loss") or 0) <= 0
+    ]
+    if naked:
+        return CheckResult(
+            name="C10 Naked-position invariant",
+            passed=False,
+            detail=f"{len(naked)} open position(s) with no stop recorded: {', '.join(naked)}",
+            fix="Attach a protective stop to every open position; investigate the stop-drop path",
+        )
+
+    base = "no open positions" if not open_rows else f"all {len(open_rows)} open position(s) have a stop recorded"
+
+    health = _fetch_engine_health()
+    ep = health.get("execution_path") if isinstance(health, dict) else None
+    broker_real = isinstance(ep, dict) and not ep.get("simulated", True) and ep.get("broker_ack", False)
+    if not broker_real:
+        return CheckResult(
+            name="C10 Naked-position invariant",
+            passed=False,
+            detail=f"{base}, but execution path is simulated — stops are not resting at IB (depends on C8/P0-2)",
+            fix="Route orders through the real gateway (P0-2), then add the continuous invariant monitor (P0-3)",
+        )
+    return CheckResult(
+        name="C10 Naked-position invariant",
+        passed=True,
+        detail=f"{base}; execution path is broker-real",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -650,6 +861,9 @@ CHECKS = [
     check_c5_kill_switch_inactive,
     check_c6_verdicts_current,
     check_c7_do_not_trade_symbols,
+    check_c8_execution_path_real,
+    check_c9_price_basis_integrity,
+    check_c10_naked_position_invariant,
 ]
 
 

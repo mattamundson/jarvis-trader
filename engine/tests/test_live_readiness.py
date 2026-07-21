@@ -68,6 +68,7 @@ def _make_paper_trades_db(path: Path) -> None:
                 exit_time TEXT,
                 pnl REAL,
                 status TEXT,
+                stop_loss REAL,
                 notes TEXT
             )
             """
@@ -109,12 +110,16 @@ def _write_trade(
     entry_age_days: float = 1.0,
     pnl: float | None = 0.0,
     status: str | None = None,
+    entry_price: float = 5800.0,
+    exit_price: float | None = 5810.0,
+    stop_loss: float | None = None,
 ) -> None:
     """Insert one paper_trades row into the curated SQLite store.
 
     status defaults to 'open' when is_open else 'closed'. Pass an explicit
     status (e.g. 'phantom', 'cancelled_duplicate') to exercise the
-    curated-out-exclusion path.
+    curated-out-exclusion path. entry_price/exit_price/stop_loss override the
+    defaults so C9 (price-basis) and C10 (naked-position) cases can be built.
     """
     if status is None:
         status = "open" if is_open else "closed"
@@ -125,25 +130,44 @@ def _write_trade(
     try:
         conn.execute(
             "INSERT INTO paper_trades (trade_id, symbol, side, quantity, "
-            "entry_price, exit_price, entry_time, exit_time, pnl, status, notes) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "entry_price, exit_price, entry_time, exit_time, pnl, status, stop_loss, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 f"test-{symbol}-{entry_age_days}-{status}",
                 symbol,
                 "buy",
                 1.0,
-                5800.0,
-                None if is_open else 5810.0,
+                entry_price,
+                None if is_open else exit_price,
                 entry_dt.isoformat(),
                 None if is_open else (entry_dt + timedelta(hours=2)).isoformat(),
                 None if is_open else pnl,
                 status,
+                stop_loss,
                 "test",
             ),
         )
         conn.commit()
     finally:
         conn.close()
+
+
+def _stub_health(monkeypatch, *, execution_path):
+    """Stub _fetch_engine_health to return a healthy body with a given execution_path.
+
+    Pass execution_path=None to omit the probe entirely (pre-P0-1 build).
+    """
+    body = {
+        "status": "ok",
+        "tradingview_mcp_healthy": True,
+        "tv_mcp_status": "healthy",
+        "llm_path_healthy": True,
+        "kill_switch_active": False,
+        "uptime_seconds": 3600,
+    }
+    if execution_path is not None:
+        body["execution_path"] = execution_path
+    monkeypatch.setattr(lr, "_fetch_engine_health", lambda: body)
 
 
 @pytest.fixture
@@ -578,10 +602,10 @@ def test_c7_pass_symbol_with_both_pass_and_fail_isnt_blocked(tmp_verdicts_dir, m
 # ---------------------------------------------------------- #
 
 
-def test_run_all_returns_seven_results(tmp_verdicts_dir, healthy_engine, monkeypatch):
+def test_run_all_returns_ten_results(tmp_verdicts_dir, healthy_engine, monkeypatch):
     monkeypatch.setattr("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset())
     results = lr.run_all_checks()
-    assert len(results) == 7
+    assert len(results) == 10
 
 
 def test_run_all_check_names_are_distinct(tmp_verdicts_dir, healthy_engine, monkeypatch):
@@ -598,3 +622,172 @@ def test_check_result_dataclass_serializes(tmp_verdicts_dir):
     r = lr.CheckResult(name="X", passed=True, detail="ok")
     d = asdict(r)
     assert json.loads(json.dumps(d))["name"] == "X"
+
+
+# ---------------------------------------------------------- #
+# C8 — Execution path real (broker-truth)                    #
+# ---------------------------------------------------------- #
+
+
+def test_c8_fail_when_simulated(monkeypatch):
+    """The live-today state: simulator attached → FAIL, points at P0-2."""
+    _stub_health(
+        monkeypatch,
+        execution_path={"class_name": "IBGatewayConnector", "simulated": True, "broker_ack": False},
+    )
+    result = lr.check_c8_execution_path_real()
+    assert result.passed is False
+    assert "do not reach a broker" in result.detail
+    assert "P0-2" in (result.fix or "")
+
+
+def test_c8_fail_when_probe_missing(monkeypatch):
+    """A pre-P0-1 build with no execution_path field → FAIL (never silently pass)."""
+    _stub_health(monkeypatch, execution_path=None)
+    result = lr.check_c8_execution_path_real()
+    assert result.passed is False
+    assert "no execution_path probe" in result.detail
+
+
+def test_c8_fail_when_real_class_but_no_broker_ack(monkeypatch):
+    """Real manager wired but the round-trip ack is false → still FAIL (ack is the proof)."""
+    _stub_health(
+        monkeypatch,
+        execution_path={"class_name": "IBGatewayManager", "simulated": False, "broker_ack": False},
+    )
+    result = lr.check_c8_execution_path_real()
+    assert result.passed is False
+
+
+def test_c8_pass_when_real_and_acked(monkeypatch):
+    _stub_health(
+        monkeypatch,
+        execution_path={"class_name": "IBGatewayManager", "simulated": False, "broker_ack": True},
+    )
+    result = lr.check_c8_execution_path_real()
+    assert result.passed is True
+    assert "broker_ack=true" in result.detail
+
+
+def test_c8_fail_when_engine_offline(offline_engine):
+    result = lr.check_c8_execution_path_real()
+    assert result.passed is False
+    assert "unreachable" in result.detail.lower()
+
+
+# ---------------------------------------------------------- #
+# C9 — Price-basis integrity (no fabricated fills)           #
+# ---------------------------------------------------------- #
+
+
+def test_c9_pass_on_clean_ledger(paper_trades_path):
+    """Sane MES fills (7500s, small moves) → PASS."""
+    _write_trade(paper_trades_path, symbol="MES", entry_price=7500.0, exit_price=7515.0, pnl=75.0)
+    _write_trade(paper_trades_path, symbol="MES", entry_price=7490.0, exit_price=7485.0, pnl=-25.0)
+    result = lr.check_c9_price_basis_integrity()
+    assert result.passed is True
+
+
+def test_c9_fail_on_mock_constant(paper_trades_path):
+    """A fill sitting on the MES 5300.10 mock-quote constant → FAIL."""
+    _write_trade(paper_trades_path, symbol="MES", entry_price=5300.10, exit_price=5310.0, pnl=48.0)
+    result = lr.check_c9_price_basis_integrity()
+    assert result.passed is False
+    assert "mock-constant" in result.detail
+
+
+def test_c9_fail_on_excursion(paper_trades_path):
+    """The real phantom shape (5299.875 → 7512.5, 41.8% excursion) → FAIL."""
+    _write_trade(
+        paper_trades_path, symbol="MES", entry_price=5299.875, exit_price=7512.5, pnl=-40.0
+    )
+    result = lr.check_c9_price_basis_integrity()
+    assert result.passed is False
+    assert "excursion" in result.detail
+
+
+def test_c9_fail_on_implausible_pnl(paper_trades_path):
+    """A >$5000-abs P&L row (the -$11,063 phantom class) → FAIL."""
+    _write_trade(
+        paper_trades_path, symbol="MES", entry_price=7500.0, exit_price=7505.0, pnl=-11063.0
+    )
+    result = lr.check_c9_price_basis_integrity()
+    assert result.passed is False
+    assert "implausible" in result.detail
+
+
+def test_c9_ignores_curated_out_phantom_rows(paper_trades_path):
+    """A contaminated row already voided (status='phantom') is excluded, not re-flagged."""
+    _write_trade(paper_trades_path, symbol="MES", entry_price=7500.0, exit_price=7515.0, pnl=75.0)
+    _write_trade(
+        paper_trades_path,
+        symbol="MES",
+        entry_price=5300.10,
+        exit_price=7512.5,
+        pnl=-11063.0,
+        status="phantom",
+    )
+    result = lr.check_c9_price_basis_integrity()
+    assert result.passed is True  # phantom row not scanned
+
+
+def test_c9_fail_when_db_missing(tmp_verdicts_dir):
+    """No curated store → fail closed, never a clean scan over zero rows."""
+    result = lr.check_c9_price_basis_integrity()
+    assert result.passed is False
+    assert "unavailable" in result.detail.lower()
+
+
+# ---------------------------------------------------------- #
+# C10 — Naked-position invariant                             #
+# ---------------------------------------------------------- #
+
+
+def test_c10_fail_on_open_position_without_stop(paper_trades_path, monkeypatch):
+    """An open position with a null stop_loss → FAIL (data-layer naked position)."""
+    _stub_health(
+        monkeypatch,
+        execution_path={"class_name": "IBGatewayManager", "simulated": False, "broker_ack": True},
+    )
+    _write_trade(paper_trades_path, symbol="MGC", is_open=True, entry_price=4067.7, stop_loss=None)
+    result = lr.check_c10_naked_position_invariant()
+    assert result.passed is False
+    assert "no stop recorded" in result.detail
+
+
+def test_c10_fail_when_simulated_even_with_stops(paper_trades_path, monkeypatch):
+    """Stops recorded but execution simulated → FAIL (stops aren't resting at IB)."""
+    _stub_health(
+        monkeypatch,
+        execution_path={"class_name": "IBGatewayConnector", "simulated": True, "broker_ack": False},
+    )
+    _write_trade(
+        paper_trades_path, symbol="MGC", is_open=True, entry_price=4067.7, stop_loss=4055.0
+    )
+    result = lr.check_c10_naked_position_invariant()
+    assert result.passed is False
+    assert "simulated" in result.detail
+
+
+def test_c10_pass_when_stops_present_and_broker_real(paper_trades_path, monkeypatch):
+    _stub_health(
+        monkeypatch,
+        execution_path={"class_name": "IBGatewayManager", "simulated": False, "broker_ack": True},
+    )
+    _write_trade(
+        paper_trades_path, symbol="MGC", is_open=True, entry_price=4067.7, stop_loss=4055.0
+    )
+    result = lr.check_c10_naked_position_invariant()
+    assert result.passed is True
+
+
+def test_c10_zero_open_positions_still_needs_broker_real(paper_trades_path, monkeypatch):
+    """No open positions is not a free pass while execution is simulated."""
+    _stub_health(
+        monkeypatch,
+        execution_path={"class_name": "IBGatewayConnector", "simulated": True, "broker_ack": False},
+    )
+    _write_trade(paper_trades_path, symbol="MES", entry_price=7500.0, exit_price=7510.0, pnl=50.0)
+    result = lr.check_c10_naked_position_invariant()
+    assert result.passed is False
+    assert "no open positions" in result.detail
