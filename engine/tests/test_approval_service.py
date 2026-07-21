@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from approval.service import ApprovalFlowError, approve_pending_trade, ensure_approval_allowed
+from approval.service import (
+    ApprovalFlowError,
+    approve_pending_trade,
+    ensure_approval_allowed,
+    preflight_approval_status,
+)
 
 _TEST_WATCHLIST = {"MCL", "MES", "MNQ", "MGC"}
 
@@ -183,3 +188,63 @@ async def test_approve_pending_trade_threads_stop_price_into_open_trade(
     open_positions = tracker.get_open_positions()
     assert len(open_positions) == 1
     assert open_positions[0]["stop_loss"] == pytest.approx(71.80)
+
+
+# ── preflight_approval_status: dashboard "can this be approved?" mirror ────────
+# Powers the disabled Approve button + block reason on un-approvable cards.
+# It MUST agree with ensure_approval_allowed (it wraps it), so these tests assert
+# agreement rather than re-deriving the gate logic.
+
+
+def test_preflight_approvable_when_gate_passes(mock_watchlist):
+    """A row ensure_approval_allowed accepts → (True, None)."""
+    row = _approval_row(symbol="MCL", stark_signal="LONG_VAL_BOUNCE")
+    # sanity: ensure the underlying gate really does pass for this row
+    assert ensure_approval_allowed(row, _make_mock_safety()) is None
+
+    approvable, reason = preflight_approval_status(row, _make_mock_safety())
+    assert approvable is True
+    assert reason is None
+
+
+def test_preflight_blocked_mirrors_ensure_reason(mock_watchlist):
+    """A validation-only strategy → (False, <same detail ensure_approval_allowed raises>)."""
+    row = _approval_row(symbol="MCL", stark_signal="SHORT_GAP_FILL")
+
+    # Capture the exact detail the real gate raises...
+    with pytest.raises(ApprovalFlowError) as exc_info:
+        ensure_approval_allowed(row, _make_mock_safety())
+    expected_reason = exc_info.value.detail
+
+    # ...and confirm preflight reports the identical reason without raising.
+    approvable, reason = preflight_approval_status(row, _make_mock_safety())
+    assert approvable is False
+    assert reason == expected_reason
+    assert "SHORT_GAP_FILL" in reason
+
+
+def test_preflight_blocked_by_kill_switch(mock_watchlist):
+    """Kill switch active → not approvable, kill-switch reason surfaced."""
+    safety = _make_mock_safety()
+    safety.get_status.return_value = {"is_killed": True}
+    row = _approval_row(symbol="MCL", stark_signal="LONG_VAL_BOUNCE")
+
+    approvable, reason = preflight_approval_status(row, safety)
+    assert approvable is False
+    assert "Kill switch active" in reason
+
+
+def test_preflight_blocked_by_unauthorized_instrument():
+    """paper_config-disabled instrument (the MGC case) → not approvable with the gate reason."""
+    row = _approval_row(symbol="MCL", stark_signal="")
+    with patch(
+        "approval.service.approved_watchlist_symbols", return_value={"MCL"}
+    ), patch(
+        "backtest.gate_v2_policy.is_strategy_authorized",
+        return_value=(False, "MCL paper_config.enabled=False (gate v2 FAIL or not yet validated)"),
+    ):
+        approvable, reason = preflight_approval_status(row, _make_mock_safety())
+
+    assert approvable is False
+    assert "not authorized for paper orders" in reason
+    assert "paper_config.enabled=False" in reason

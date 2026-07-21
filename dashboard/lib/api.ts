@@ -1291,6 +1291,12 @@ export interface PendingApproval {
   orb_contrib?: boolean | null;
   vwap_contrib?: boolean | null;
   risk_pct_used?: number | null;
+  // Approve-time gate preflight (engine enriches the list): when approvable is
+  // false the approve endpoint would 409, so the UI disables Approve and shows
+  // block_reason instead of a green button that errors. Absent → treat as
+  // approvable (older engine builds without the enrichment).
+  approvable?: boolean;
+  block_reason?: string | null;
 }
 
 export interface PendingApprovalRow {
@@ -2118,6 +2124,12 @@ export interface QuantStatsMetrics {
   profit_factor: number | null;
   monthly_returns: Record<string, number>;
   rolling_sharpe_30d: RollingSharpPoint[];
+  /** Fractional daily VaR at 95% confidence, e.g. -0.023 means -2.3% */
+  var_95: number | null;
+  /** Fractional daily CVaR/Expected Shortfall at 95% confidence, e.g. -0.031 means -3.1% */
+  cvar_95: number | null;
+  /** Probability of ruin, 0-1 fraction (e.g. 0.02 means 2%) */
+  risk_of_ruin: number | null;
 }
 
 export async function fetchQuantStats(opts?: {

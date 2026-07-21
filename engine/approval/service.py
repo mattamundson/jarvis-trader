@@ -201,6 +201,35 @@ def ensure_approval_allowed(approval_row: dict[str, Any], safety_layer) -> None:
             )
 
 
+def preflight_approval_status(
+    approval_row: dict[str, Any], safety_layer
+) -> tuple[bool, Optional[str]]:
+    """Read-only preflight: would ``ensure_approval_allowed`` accept this row?
+
+    Returns ``(approvable, block_reason)``.  Pending candidates are deliberately
+    queued for audit/dashboard visibility even when they can never be approved
+    (gate v2 FAIL, validation-only strategy, disabled paper_config, kill switch,
+    lockout).  The approve endpoint then 409s them.  This lets the dashboard
+    disable the Approve button and show *why* instead of surfacing a green
+    button that always errors (the MGC "Engine error 409" a trader hit
+    2026-07-21).
+
+    Implemented by calling ``ensure_approval_allowed`` and converting its raise
+    into a boolean, so it can never drift out of agreement with the actual
+    approve-time gate.  ``ensure_approval_allowed`` is side-effect-free (it only
+    reads safety state, the watchlist, and gate v2 verdicts), so calling it here
+    is safe.
+    """
+    try:
+        ensure_approval_allowed(approval_row, safety_layer)
+        return True, None
+    except ApprovalFlowError as exc:
+        return False, exc.detail
+    except Exception as exc:  # never let a preflight check break the list endpoint
+        logger.warning("preflight_approval_status unexpected error: %s", exc)
+        return False, f"preflight check failed: {exc}"
+
+
 async def execute_approved_trade(
     *,
     safety_layer,
