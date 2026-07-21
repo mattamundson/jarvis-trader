@@ -475,11 +475,24 @@ async def lifespan(app: FastAPI):
                 if _paper_ib_ok:
                     safety_layer.attach_ib_gateway(ib_paper_connector)
                     order_router.attach_ibkr(ib_paper_connector)
-                    logger.info("✅ IBGatewayConnector (paper) connected background")
-                else:
-                    logger.warning(
-                        "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                    logger.info(
+                        "✅ %s (paper) connected + attached to order path",
+                        type(ib_paper_connector).__name__,
                     )
+                else:
+                    if getattr(settings, "IB_PAPER_BROKER_ENABLED", False):
+                        # Real gateway requested but unreachable: leave the order path
+                        # UNATTACHED (fail-closed, no orders route) and shout about it.
+                        logger.critical(
+                            "IB_PAPER_BROKER_ENABLED=1 but the REAL IB gateway failed to connect "
+                            "after 3 attempts — order path is UNATTACHED (fail-closed: no orders "
+                            "will route). Check IB Gateway on port %s.",
+                            settings.IBKR_PORT,
+                        )
+                    else:
+                        logger.warning(
+                            "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                        )
         except Exception as e:
             logger.error(f"❌ Background data/IBKR init failed: {e}")
 
@@ -708,11 +721,12 @@ async def lifespan(app: FastAPI):
     # Paper IB connector — Instance creation (connection moved to background)
     ib_paper_connector = None
     if settings.PAPER_TRADING:
-        ib_paper_connector = IBGatewayConnector(
-            settings,
-            safety_layer,
-            portfolio_tracker=paper_tracker,
-        )
+        from execution.order_gateway_factory import build_order_gateway
+
+        # P0-2: simulator by default; the real IBGatewayManager (port 4002 paper)
+        # only when IB_PAPER_BROKER_ENABLED is set. Same variable + duck-typed
+        # interface, so the connect/attach wiring below is unchanged either way.
+        ib_paper_connector = build_order_gateway(settings, safety_layer, paper_tracker)
 
     order_manager = IBOrderManager(
         safety_layer=safety_layer,
