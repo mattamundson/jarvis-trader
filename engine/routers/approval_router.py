@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from approval.service import (
     ApprovalFlowError,
     approve_pending_trade,
+    preflight_approval_status,
     reject_pending_trade,
 )
 
@@ -72,12 +73,29 @@ def _extract_provenance(approval_row: dict[str, Any]) -> dict[str, Any]:
 
     # Merge provenance into approval row
     return {**approval_row, **provenance}
+def _enrich_approvability(row: dict[str, Any]) -> dict[str, Any]:
+    """Add approve-time gate status so the UI can disable un-approvable cards.
+
+    Candidates are queued for audit visibility even when the approve endpoint
+    would 409 them (gate v2 FAIL, disabled paper_config, validation-only, kill
+    switch, lockout).  Surface that here so the dashboard shows *why* instead of
+    a green Approve button that errors.  Best-effort: any failure leaves the row
+    unannotated (defaults to approvable on the client) rather than dropping it.
+    """
+    try:
+        approvable, block_reason = preflight_approval_status(row, _safety_layer)
+        return {**row, "approvable": approvable, "block_reason": block_reason}
+    except Exception as exc:  # never let enrichment break the list
+        logger.warning("[ApprovalRouter] approvability enrichment failed: %s", exc)
+        return row
+
+
 @router.get("/pending-approvals")
 async def list_pending_approvals(limit: int = 50) -> dict[str, Any]:
     if _db_manager is None:
         raise HTTPException(503, detail="Database not available")
     rows = _db_manager.list_pending_approvals(limit=limit)
-    enriched_rows = [_extract_provenance(row) for row in rows]
+    enriched_rows = [_enrich_approvability(_extract_provenance(row)) for row in rows]
     return {"pending": enriched_rows, "count": len(enriched_rows)}
 
 

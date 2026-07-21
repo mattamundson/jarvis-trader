@@ -248,6 +248,10 @@ export default function ApprovalPanel() {
               const isLoading = loadingApprovals[approval.approval_id] || false;
               const actionLower = approval.action.toLowerCase();
               const isBuy = actionLower === "buy";
+              // Engine preflight: when false, the approve endpoint would 409
+              // (gate v2 FAIL, disabled instrument, validation-only, kill switch,
+              // lockout). Absent → older engine build → treat as approvable.
+              const isBlocked = approval.approvable === false;
 
               return (
                 <div
@@ -343,14 +347,29 @@ export default function ApprovalPanel() {
                     </div>
                   )}
 
+                  {/* Un-approvable notice: engine would 409 this candidate.
+                      The card is still shown for audit visibility, but Approve
+                      is disabled so a trader isn't met with "Engine error 409". */}
+                  {isBlocked && (
+                    <div className="mt-2 flex flex-col gap-0.5 rounded border border-amber-300 bg-amber-100/70 px-3 py-2 text-xs">
+                      <span className="font-semibold uppercase tracking-wide text-amber-900">
+                        Cannot approve — gate blocked
+                      </span>
+                      <span className="text-amber-800">
+                        {approval.block_reason || "Not authorized for paper orders"}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Action buttons */}
                   <div className="flex gap-2 pt-2">
                     <button
                       onClick={() => handleApprove(approval)}
-                      disabled={isLoading}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-medium py-2 px-3 rounded transition-colors text-sm"
+                      disabled={isLoading || isBlocked}
+                      title={isBlocked ? approval.block_reason ?? "Not authorized" : undefined}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed text-white font-medium py-2 px-3 rounded transition-colors text-sm"
                     >
-                      {isLoading ? "Processing..." : "Approve"}
+                      {isLoading ? "Processing..." : isBlocked ? "Blocked" : "Approve"}
                     </button>
                     <button
                       onClick={() => handleReject(approval)}
