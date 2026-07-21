@@ -32,6 +32,11 @@ def _make_client(tmp_path, monkeypatch, **env):
         "JARVIS_LLM_GOOGLE_FALLBACK",
         "JARVIS_LLM_VERTEX_FAILOVER",
         "JARVIS_CLAUDE_USE_VERTEX",
+        # Kimi is now the final leg after OpenAI (2026-07-21); clear it so a
+        # shell with the real Moonshot key loaded can't rescue the
+        # "all-fallbacks-exhausted -> unhealthy" case and break this test.
+        "MOONSHOT_API_KEY",
+        "JARVIS_LLM_KIMI_FALLBACK",
     ):
         monkeypatch.delenv(key, raising=False)
     for key, val in env.items():
