@@ -74,6 +74,11 @@ def test_classify_planned_breakout_is_a_hit_not_mixed():
     )
     # A pronoun'd qualifier through a parenthetical still resolves to HIT.
     assert classify_self_verdict("It broke through, as I planned, right to target.") == HIT
+    # The qualifier may LEAD the break phrase, not just follow it.
+    assert (
+        classify_self_verdict("As called, we broke through resistance and ran to target.")
+        == HIT
+    )
     # A bare / unqualified break still reads as a miss.
     assert classify_self_verdict("7500 broke through to the downside, no bid.") == MISS
     assert classify_self_verdict("Support broke through and we got stopped out.") == MISS

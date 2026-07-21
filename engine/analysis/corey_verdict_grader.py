@@ -97,10 +97,11 @@ _BREAK_MISS_PATTERNS = [
     r"\bbroke (?:right )?(?:through|down through|up through)\b",
 ]
 
-# A success/intent qualifier within a short window after a break phrase marks it
-# planned. A window (not an anchored match) so punctuation/parentheticals -- e.g.
-# "broke through, as I planned," -- are still caught.
-_INTENT_AHEAD = re.compile(r"\bas (?:i |we |you )?(?:called|planned|drawn|mapped|expected)\b")
+# A success/intent qualifier within a short window on EITHER side of a break
+# phrase marks it planned -- "broke through resistance as called" and "as called,
+# we broke through resistance" alike. A window (not an anchored match) so
+# punctuation/parentheticals are still caught.
+_INTENT_QUALIFIER = re.compile(r"\bas (?:i |we |you )?(?:called|planned|drawn|mapped|expected)\b")
 _INTENT_WINDOW = 35
 
 # Negators that, when they immediately precede a HIT phrase, cancel it. Guards the
@@ -129,12 +130,15 @@ def _scan(patterns: list[str], text: str) -> tuple[bool, bool]:
 def _break_is_miss(text: str) -> bool:
     """True if a break phrase reads as a FAILED level (not a planned breakout).
 
-    A break followed by a success qualifier ("broke through resistance as called")
-    is intentional and does not count as miss evidence; a bare break does.
+    A break with a success qualifier on either side ("broke through resistance as
+    called" / "as called, we broke through") is intentional and does not count as
+    miss evidence; a bare break does.
     """
     for pat in _BREAK_MISS_PATTERNS:
         for m in re.finditer(pat, text):
-            if not _INTENT_AHEAD.search(text[m.end() : m.end() + _INTENT_WINDOW]):
+            before = text[max(0, m.start() - _INTENT_WINDOW) : m.start()]
+            after = text[m.end() : m.end() + _INTENT_WINDOW]
+            if not (_INTENT_QUALIFIER.search(before) or _INTENT_QUALIFIER.search(after)):
                 return True
     return False
 
