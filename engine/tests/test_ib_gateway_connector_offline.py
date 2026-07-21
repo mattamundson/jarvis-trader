@@ -12,13 +12,21 @@ from risk.safety_layer import SafetyLayer
 
 
 def _offline_simulated_cfg():
-    """Tier-3 live off + explicit simulated-paper opt-in + relaxed size limits for tests."""
+    """Tier-3 live off + explicit simulated-paper opt-in + relaxed size limits for tests.
+
+    ``ALLOW_MOCK_QUOTES`` is required here (2026-07-21): these tests exercise the
+    order-routing plumbing with no market-data manager attached, so they need the
+    static quote table to produce a fill at all. Production leaves this False and
+    REFUSES to fill without a real price basis -- see
+    ``test_paper_fill_refuses_mock_price.py``.
+    """
     return settings.model_copy(
         update={
             "LIVE_TRADING_ENABLED": False,
             "REQUIRE_HUMAN_APPROVAL": True,
             "PAPER_TRADING": True,
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
+            "ALLOW_MOCK_QUOTES": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
             "MAX_POSITION_SIZE_PCT": 5.0,
         }

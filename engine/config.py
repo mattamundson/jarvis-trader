@@ -371,6 +371,19 @@ class TradingConfig(BaseSettings):
         description="When True, paper trading mode allows simulated orders via check_order route",
     )
 
+    ALLOW_MOCK_QUOTES: bool = Field(
+        False,
+        description=(
+            "TEST FIXTURES ONLY. When True, IBGatewayConnector.get_quote may fall "
+            "back to a frozen static quote table (MES 5300.10, MCL 82.60, ...) if "
+            "no real price is available. MUST stay False in every real paper or "
+            "live context: until 2026-07-21 this fallback was unconditional, so "
+            "every fill booked at a 2024-era constant whenever the market-data "
+            "waterfall returned None, manufacturing a 3,475-fill phantom track "
+            "record. Production must refuse to fill without a real price basis."
+        ),
+    )
+
     # ── HB-1 broker-side bracket orders ────────────────────────────────────
     # When True, approved trades that carry stop_price (and optionally target_price)
     # are submitted via SafetyLayer.submit_entry_with_stop so broker-side STP + TP
