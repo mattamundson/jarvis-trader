@@ -1,0 +1,315 @@
+{
+  "date": "2026-07-21",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "neutral",
+    "conviction": 0.45,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 15
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 85.09,
+      "target2": 86.17,
+      "stop1": 83.29,
+      "win_rate": 84.48,
+      "rr": 0.67,
+      "timestamp": "2026-07-21T10:00:04.397-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 84.83,
+      "target2": 85.91,
+      "stop1": 83.03,
+      "win_rate": 84.35,
+      "rr": 0.67,
+      "timestamp": "2026-07-21T09:14:02.196-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 84.9,
+      "target2": 85.98,
+      "stop1": 83.1,
+      "win_rate": 84.21,
+      "rr": 0.66,
+      "timestamp": "2026-07-21T08:39:05.385-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 84.81,
+      "target2": 85.89,
+      "stop1": 83.01,
+      "win_rate": 84.07,
+      "rr": 0.66,
+      "timestamp": "2026-07-21T08:25:01.725-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 84.48,
+      "target2": 85.56,
+      "stop1": 82.68,
+      "win_rate": 83.93,
+      "rr": 0.65,
+      "timestamp": "2026-07-21T07:52:01.668-05:00"
+    }
+  ],
+  "corey_quote": "In divergence recovery phases, leadership defines direction \u2014 and acceptance into the close defines confirmation.",
+  "commentary_health": [
+    {
+      "date": "2026-07-22",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.85,
+      "message_count": 5
+    },
+    {
+      "date": "2026-07-21",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.45,
+      "message_count": 15
+    },
+    {
+      "date": "2026-07-20",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 6
+    },
+    {
+      "date": "2026-07-19",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 1.0,
+      "message_count": 16
+    },
+    {
+      "date": "2026-07-18",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 1.0,
+      "message_count": 16
+    },
+    {
+      "date": "2026-07-17",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 15
+    },
+    {
+      "date": "2026-07-16",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 2
+    },
+    {
+      "date": "2026-07-15",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 6
+    },
+    {
+      "date": "2026-07-14",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 10
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 24,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "anthropic",
+    "primary_provider": "kimi",
+    "primary_healthy": false,
+    "providers_available": 5,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": true
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 105,
+    "failing_enabled": 17,
+    "failing_disabled": 3,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Snapshot-Weekly",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-AlertSelfTest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-HermesUpgradeScan",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-InboxRotate",
+        "result": "0x46"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "jarvis-morning-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-PM2-AtLogon",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x2"
+      },
+      {
+        "name": "Jarvis-ScanHistorySecrets",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-Trader-StrategyRD",
+        "result": "0xC0000005"
+      },
+      {
+        "name": "Jarvis-TranscriptIngest",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultMOCRegen",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 26.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 34.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 34.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 11.3,
+        "newest": "2026-07-11T06:00:04.986505+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.7,
+        "newest": "2026-07-21T21:55:18.816396+00:00",
+        "files": 31,
+        "latest_verdict": "PASS",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 7.9,
+        "newest": "2026-07-14T15:33:24.451059+00:00",
+        "files": 17,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 11.3,
+        "newest": "2026-07-11T06:00:07.453201+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 34.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 34.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [
+      "MGC"
+    ],
+    "missing_active": [],
+    "alert": true
+  }
+}
