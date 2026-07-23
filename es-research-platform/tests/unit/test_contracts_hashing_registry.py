@@ -17,7 +17,6 @@ from es_research.contracts import (
 )
 from es_research.hashing import sha256_hash
 from es_research.manifests.models import DataManifest, SourceFileRecord
-from es_research.registry.repository import DuckDBExperimentRegistry
 
 UTC_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -73,6 +72,10 @@ def test_invalid_monetary_values() -> None:
 
 
 def test_duckdb_registry_initialization(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    duckdb = pytest.importorskip("duckdb")
+    assert duckdb is not None
+    from es_research.registry.repository import DuckDBExperimentRegistry
+
     db = tmp_path / "registry.duckdb"
     registry = DuckDBExperimentRegistry(db)
     registry.initialize()
@@ -93,6 +96,9 @@ def _candidate() -> StrategyCandidate:
 
 
 def test_experiment_insertion_and_retrieval(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    pytest.importorskip("duckdb")
+    from es_research.registry.repository import DuckDBExperimentRegistry
+
     registry = DuckDBExperimentRegistry(tmp_path / "registry.duckdb")
     candidate = _candidate()
     experiment = ExperimentRun(
@@ -115,6 +121,9 @@ def test_experiment_insertion_and_retrieval(tmp_path) -> None:  # type: ignore[n
 
 
 def test_duplicate_candidate_handling(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    pytest.importorskip("duckdb")
+    from es_research.registry.repository import DuckDBExperimentRegistry
+
     registry = DuckDBExperimentRegistry(tmp_path / "registry.duckdb")
     candidate = _candidate()
     registry.upsert_candidate(candidate)

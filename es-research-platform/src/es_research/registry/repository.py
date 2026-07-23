@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-import duckdb
+try:
+    import duckdb
+except ModuleNotFoundError as exc:  # pragma: no cover - exercised only in unprovisioned envs
+    msg = "DuckDB is required for the experiment registry; install with `pip install -e '.[dev]'`."
+    raise ModuleNotFoundError(msg) from exc
+
 from es_research.contracts import ExperimentRun, SimulationResult, StrategyCandidate
 from es_research.manifests.models import DataManifest
 
@@ -31,20 +36,32 @@ class DuckDBExperimentRegistry:
         return duckdb.connect(str(self.path))
 
     def initialize(self) -> None:
+        """Create idempotent Phase 1 registry tables and migration marker."""
         with self._connect() as con:
             con.execute(
                 "CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR PRIMARY KEY)"
             )
-            con.execute("INSERT OR IGNORE INTO schema_migrations VALUES ('phase1.v1')")
+            con.execute("INSERT OR IGNORE INTO schema_migrations VALUES ('phase1.v2')")
             con.execute(
                 """CREATE TABLE IF NOT EXISTS candidates (
                     candidate_id VARCHAR PRIMARY KEY,
+                    strategy_hash VARCHAR NOT NULL,
+                    feature_version VARCHAR NOT NULL,
+                    creation_timestamp TIMESTAMPTZ NOT NULL,
                     payload JSON NOT NULL
                 )"""
             )
             con.execute(
                 """CREATE TABLE IF NOT EXISTS experiments (
                     experiment_id VARCHAR PRIMARY KEY,
+                    strategy_hash VARCHAR NOT NULL,
+                    data_manifest_hash VARCHAR NOT NULL,
+                    configuration_hash VARCHAR NOT NULL,
+                    feature_version VARCHAR NOT NULL,
+                    simulation_level VARCHAR NOT NULL,
+                    status VARCHAR NOT NULL,
+                    code_commit VARCHAR NOT NULL,
+                    random_seed BIGINT NOT NULL,
                     payload JSON NOT NULL
                 )"""
             )
@@ -52,6 +69,14 @@ class DuckDBExperimentRegistry:
                 """CREATE TABLE IF NOT EXISTS simulation_results (
                     experiment_id VARCHAR NOT NULL,
                     candidate_id VARCHAR NOT NULL,
+                    gross_pnl DECIMAL(38, 10) NOT NULL,
+                    net_pnl DECIMAL(38, 10) NOT NULL,
+                    trade_count BIGINT NOT NULL,
+                    turnover DECIMAL(38, 10) NOT NULL,
+                    maximum_drawdown DECIMAL(38, 10) NOT NULL,
+                    sharpe_ratio DECIMAL(38, 10) NOT NULL,
+                    win_rate DECIMAL(38, 10) NOT NULL,
+                    result_timestamp TIMESTAMPTZ NOT NULL,
                     payload JSON NOT NULL,
                     PRIMARY KEY (experiment_id, candidate_id)
                 )"""
@@ -59,6 +84,9 @@ class DuckDBExperimentRegistry:
             con.execute(
                 """CREATE TABLE IF NOT EXISTS manifests (
                     manifest_hash VARCHAR PRIMARY KEY,
+                    schema_version VARCHAR NOT NULL,
+                    generation_timestamp TIMESTAMPTZ NOT NULL,
+                    code_commit VARCHAR NOT NULL,
                     payload JSON NOT NULL
                 )"""
             )
@@ -67,16 +95,33 @@ class DuckDBExperimentRegistry:
         self.initialize()
         with self._connect() as con:
             con.execute(
-                "INSERT OR IGNORE INTO candidates VALUES (?, ?)",
-                [candidate.candidate_id, candidate.model_dump_json()],
+                "INSERT OR IGNORE INTO candidates VALUES (?, ?, ?, ?, ?)",
+                [
+                    candidate.candidate_id,
+                    candidate.strategy_hash,
+                    candidate.feature_version,
+                    candidate.creation_timestamp,
+                    candidate.model_dump_json(),
+                ],
             )
 
     def insert_experiment(self, experiment: ExperimentRun) -> None:
         self.initialize()
         with self._connect() as con:
             con.execute(
-                "INSERT INTO experiments VALUES (?, ?)",
-                [experiment.experiment_id, experiment.model_dump_json()],
+                "INSERT INTO experiments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    experiment.experiment_id,
+                    experiment.strategy_hash,
+                    experiment.data_manifest_hash,
+                    experiment.configuration_hash,
+                    experiment.feature_version,
+                    experiment.simulation_level.value,
+                    experiment.status.value,
+                    experiment.code_commit,
+                    experiment.random_seed,
+                    experiment.model_dump_json(),
+                ],
             )
 
     def insert_manifest(self, manifest: DataManifest) -> str:
@@ -84,8 +129,14 @@ class DuckDBExperimentRegistry:
         manifest_hash = manifest.manifest_hash
         with self._connect() as con:
             con.execute(
-                "INSERT OR REPLACE INTO manifests VALUES (?, ?)",
-                [manifest_hash, manifest.model_dump_json()],
+                "INSERT OR REPLACE INTO manifests VALUES (?, ?, ?, ?, ?)",
+                [
+                    manifest_hash,
+                    manifest.schema_version,
+                    manifest.generation_timestamp,
+                    manifest.code_commit,
+                    manifest.model_dump_json(),
+                ],
             )
         return manifest_hash
 
@@ -93,8 +144,20 @@ class DuckDBExperimentRegistry:
         self.initialize()
         with self._connect() as con:
             con.execute(
-                "INSERT INTO simulation_results VALUES (?, ?, ?)",
-                [result.experiment_id, result.candidate_id, result.model_dump_json()],
+                "INSERT INTO simulation_results VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    result.experiment_id,
+                    result.candidate_id,
+                    result.gross_pnl,
+                    result.net_pnl,
+                    result.trade_count,
+                    result.turnover,
+                    result.maximum_drawdown,
+                    result.sharpe_ratio,
+                    result.win_rate,
+                    result.result_timestamp,
+                    result.model_dump_json(),
+                ],
             )
 
     def _fetch_payload(self, table: str, where: str, params: list[str]) -> str | None:

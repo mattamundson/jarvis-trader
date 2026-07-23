@@ -48,10 +48,6 @@ class ContractModel(BaseModel):
         frozen=True,
         extra="forbid",
         use_enum_values=False,
-        json_encoders={
-            Decimal: str,
-            datetime: lambda value: value.isoformat().replace("+00:00", "Z"),
-        },
     )
 
 
@@ -65,7 +61,21 @@ def require_utc(value: datetime) -> datetime:
 
 def require_non_negative_decimal(value: Decimal) -> Decimal:
     if value < Decimal("0"):
-        msg = "monetary and quantity values must be non-negative"
+        msg = "value must be non-negative"
+        raise ValueError(msg)
+    return value
+
+
+def require_positive_decimal(value: Decimal) -> Decimal:
+    if value <= Decimal("0"):
+        msg = "value must be positive"
+        raise ValueError(msg)
+    return value
+
+
+def require_unit_interval(value: Decimal) -> Decimal:
+    if value < Decimal("0") or value > Decimal("1"):
+        msg = "value must be between 0 and 1 inclusive"
         raise ValueError(msg)
     return value
 
@@ -124,9 +134,7 @@ class InstrumentDefinition(ContractModel):
     currency: str
 
     _positive = field_validator("contract_multiplier", "minimum_tick", "tick_value")(
-        lambda v: (
-            v if v > Decimal("0") else (_ for _ in ()).throw(ValueError("value must be positive"))
-        )
+        require_positive_decimal
     )
 
 
@@ -215,7 +223,6 @@ class SimulationResult(ContractModel):
     average_trade: Decimal
     result_timestamp: datetime
 
-    _money = field_validator("turnover", "maximum_drawdown", "win_rate")(
-        require_non_negative_decimal
-    )
+    _non_negative = field_validator("turnover", "maximum_drawdown")(require_non_negative_decimal)
+    _win_rate_interval = field_validator("win_rate")(require_unit_interval)
     _result_timestamp_utc = field_validator("result_timestamp")(require_utc)
