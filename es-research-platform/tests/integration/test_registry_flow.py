@@ -1,0 +1,19 @@
+from __future__ import annotations
+
+from es_research.demo import build_synthetic_objects
+from es_research.registry.repository import DuckDBExperimentRegistry
+
+
+def test_full_registry_flow(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    registry = DuckDBExperimentRegistry(tmp_path / "flow.duckdb")
+    manifest, candidate, experiment, result = build_synthetic_objects()
+    manifest_hash = registry.insert_manifest(manifest)
+    registry.upsert_candidate(candidate)
+    registry.insert_experiment(experiment)
+    registry.insert_result(result)
+    assert registry.get_manifest(manifest_hash) == manifest
+    assert registry.get_candidate(candidate.candidate_id) == candidate
+    assert registry.get_experiment(experiment.experiment_id) == experiment
+    assert registry.get_result(experiment.experiment_id, candidate.candidate_id) == result
+    assert experiment.data_manifest_hash == manifest_hash
+    assert result.experiment_id == experiment.experiment_id
