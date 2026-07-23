@@ -59,6 +59,8 @@ Architecture decision records are stored in `docs/adr/`:
 - Registry tables preserve full JSON payloads and expose queryable columns for common research dimensions such as strategy hash, manifest hash, status, simulation level, PnL, drawdown, and result timestamp.
 - Deterministic candidate and experiment identifiers are created by shared identity helpers instead of ad hoc demo code.
 
-## Phase 2 scope
+## Phase 2 synthetic-data slice
 
-The next vertical slice should add synthetic event data, normalized Parquet, session assignment, 5-minute bars, and validation tests. Real Databento data should wait until the following phase.
+The first Phase 2 vertical slice adds deterministic synthetic trade events, normalized trade rows with optional PyArrow Parquet IO, session assignment, 5-minute OHLCV bar construction, and validation tests. Real Databento data should wait until the following phase.
+
+This slice still does not implement strategy signals, backtesting, performance claims, or investment recommendations.
