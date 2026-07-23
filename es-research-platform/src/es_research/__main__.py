@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 from es_research.demo import run_reproducibility_demo
-from es_research.registry.repository import DuckDBExperimentRegistry
 
 
 def default_registry_path() -> Path:
@@ -24,11 +23,19 @@ def main() -> None:
     parser.add_argument("--registry-path", type=Path, default=default_registry_path())
     args = parser.parse_args()
     if args.area == "registry" and args.command == "init":
+        try:
+            from es_research.registry.repository import DuckDBExperimentRegistry
+        except ModuleNotFoundError as exc:
+            parser.exit(status=1, message=f"error: {exc}\n")
+
         DuckDBExperimentRegistry(args.registry_path).initialize()
         print(f"Initialized registry at {args.registry_path}")
         return
     if args.area == "demo" and args.command == "reproducibility":
-        values = run_reproducibility_demo(args.registry_path)
+        try:
+            values = run_reproducibility_demo(args.registry_path)
+        except ModuleNotFoundError as exc:
+            parser.exit(status=1, message=f"error: {exc}\n")
         print("Reproducibility demonstration succeeded with matching deterministic values:")
         for key, value in values.items():
             print(f"{key}={value}")

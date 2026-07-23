@@ -12,8 +12,8 @@ from es_research.contracts import (
     StrategyCandidate,
 )
 from es_research.hashing import sha256_hash
+from es_research.identity import build_candidate, build_experiment
 from es_research.manifests.models import DataManifest, SourceFileRecord
-from es_research.registry.repository import DuckDBExperimentRegistry
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -22,7 +22,6 @@ def build_synthetic_objects() -> tuple[
     DataManifest, StrategyCandidate, ExperimentRun, SimulationResult
 ]:
     strategy_definition = {"name": "phase1_identity", "rules": [{"if": "demo", "then": "record"}]}
-    strategy_hash = sha256_hash(strategy_definition)
     manifest = DataManifest(
         source_files=(
             SourceFileRecord(
@@ -38,26 +37,14 @@ def build_synthetic_objects() -> tuple[
         code_commit="demo-commit",
     )
     config_hash = sha256_hash({"registry": "demo", "seed": 7})
-    candidate_id = sha256_hash({"strategy_hash": strategy_hash, "parameters": {"lookback": 1}})
-    experiment_id = sha256_hash(
-        {
-            "strategy_hash": strategy_hash,
-            "manifest_hash": manifest.manifest_hash,
-            "configuration_hash": config_hash,
-            "seed": 7,
-        }
-    )
-    candidate = StrategyCandidate(
-        candidate_id=candidate_id,
+    candidate = build_candidate(
         canonical_strategy_definition=strategy_definition,
-        strategy_hash=strategy_hash,
         parameter_values={"lookback": 1},
         feature_version="demo.v1",
         creation_timestamp=FIXED_TIME,
     )
-    experiment = ExperimentRun(
-        experiment_id=experiment_id,
-        strategy_hash=strategy_hash,
+    experiment = build_experiment(
+        strategy_hash_value=candidate.strategy_hash,
         data_manifest_hash=manifest.manifest_hash,
         feature_version="demo.v1",
         code_commit="demo-commit",
@@ -70,8 +57,8 @@ def build_synthetic_objects() -> tuple[
         status=ExperimentStatus.COMPLETED,
     )
     result = SimulationResult(
-        experiment_id=experiment_id,
-        candidate_id=candidate_id,
+        experiment_id=experiment.experiment_id,
+        candidate_id=candidate.candidate_id,
         gross_pnl=Decimal("0"),
         net_pnl=Decimal("0"),
         trade_count=0,
@@ -85,15 +72,29 @@ def build_synthetic_objects() -> tuple[
     return manifest, candidate, experiment, result
 
 
+def deterministic_values() -> dict[str, str]:
+    """Return the stable values the demo is expected to reproduce."""
+    manifest, candidate, experiment, _ = build_synthetic_objects()
+    return {
+        "manifest_hash": manifest.manifest_hash,
+        "candidate_id": candidate.candidate_id,
+        "experiment_id": experiment.experiment_id,
+    }
+
+
 def run_reproducibility_demo(path: Path) -> dict[str, str]:
     first = build_synthetic_objects()
     second = build_synthetic_objects()
-    if [first[0].manifest_hash, first[1].candidate_id, first[2].experiment_id] != [
-        second[0].manifest_hash,
-        second[1].candidate_id,
-        second[2].experiment_id,
-    ]:
+    first_values = deterministic_values()
+    second_values = {
+        "manifest_hash": second[0].manifest_hash,
+        "candidate_id": second[1].candidate_id,
+        "experiment_id": second[2].experiment_id,
+    }
+    if first_values != second_values:
         raise RuntimeError("reproducibility demo produced mismatched deterministic identifiers")
+    from es_research.registry.repository import DuckDBExperimentRegistry
+
     registry = DuckDBExperimentRegistry(path)
     registry.initialize()
     manifest, candidate, experiment, result = first
@@ -103,8 +104,4 @@ def run_reproducibility_demo(path: Path) -> dict[str, str]:
         registry.insert_experiment(experiment)
     if registry.get_result(result.experiment_id, result.candidate_id) is None:
         registry.insert_result(result)
-    return {
-        "manifest_hash": manifest.manifest_hash,
-        "candidate_id": candidate.candidate_id,
-        "experiment_id": experiment.experiment_id,
-    }
+    return first_values

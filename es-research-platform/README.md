@@ -16,6 +16,8 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 ```
 
+DuckDB is a required runtime dependency for registry commands and registry integration tests. If dependency installation is blocked, contract and hashing tests can still run, but registry behavior is unverified until real DuckDB is installed.
+
 ## Checks
 
 ```bash
@@ -50,6 +52,12 @@ Architecture decision records are stored in `docs/adr/`:
 - Deterministic experiment hashing
 - DuckDB as the initial registry
 - Separation of screening from realistic simulation
+
+## Phase 1 hardening notes
+
+- The registry requires real DuckDB; there is no local SQLite-backed `duckdb` shim.
+- Registry tables preserve full JSON payloads and expose queryable columns for common research dimensions such as strategy hash, manifest hash, status, simulation level, PnL, drawdown, and result timestamp.
+- Deterministic candidate and experiment identifiers are created by shared identity helpers instead of ad hoc demo code.
 
 ## Phase 2 scope
 
