@@ -89,23 +89,16 @@ change, and only proceed on an explicit instruction.
 3. `data_get_ohlcv` (+ `data_get_study_values` if an indicator is on the chart).
 4. `capture_screenshot` if a visual helps.
 5. Summarize levels/structure. **Cross-check any price against the engine feed** for the same
-   symbol/timeframe you charted — but note the two encodings differ: the chart is set with a
-   **TradingView resolution** (`15`/`60`/`D`), while the engine wants an **alias**
-   (`5m`/`15m`/`1h`/`4h`/`1d`). Convert to the engine alias for these calls (`60`→`1h`,
-   `D`→`1d`); a bare TV resolution reaching `get_bars` silently degrades to 5m bars
-   (`market_data.py` bar maps). Send the engine API key on every call — these routes are not in
-   the middleware `EXEMPT_PATHS`, so a bare request 401s. Resolve the key the same way
-   `/jarvis-tv-chart` does: prefer an exported `$JARVIS_API_KEY`, else read `API_KEY` from
-   `engine/.env` (AGENTS.md: the local key lives there as `API_KEY=`); if neither resolves,
-   skip the cross-check rather than report bogus drift. Read it at use time — the value rotates,
-   do not hardcode — and pass it as `-H "X-API-Key: $API_KEY"`:
-   `GET /prices/snapshot?symbols=<symbol>` (its default set omits MGC) and
-   `GET /hidden-pivots/levels/<symbol>?timeframe=<eng_tf>` (defaults to `1d`; `get_bars` maps
-   `5m`/`15m`/`1h`/`4h`/`1d` directly, so pass the engine alias for the charted TF — `15m`
-   works — and only fall back to a nearest alias if that call comes back empty).
-   Round-trip
-   drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never present a
-   TV number as canonical without that check.
+   symbol/timeframe you charted, via the fixed read-only helper:
+   `bash scripts/tv-engine-crosscheck.sh <symbol> <engine_tf>`. It loads the key (exported
+   `$JARVIS_API_KEY`, else `API_KEY` from `engine/.env`; exits 3 to skip if neither resolves —
+   don't report bogus drift), sends `X-API-Key`, and GETs only `/prices/snapshot` (its default
+   set omits MGC) and `/hidden-pivots/levels` — no side-effecting routes. Mind the two timeframe
+   encodings: the chart is set with a **TradingView resolution** (`15`/`60`/`D`) but the helper
+   wants the **engine alias** (`5m`/`15m`/`1h`/`4h`/`1d`, e.g. `60`→`1h`, `D`→`1d`) — a bare TV
+   resolution reaching `get_bars` silently degrades to 5m bars (`market_data.py` bar maps).
+   Round-trip drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never
+   present a TV number as canonical without that check.
 
 ## Rejected integration (documented on purpose)
 
