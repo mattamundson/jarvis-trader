@@ -56,7 +56,7 @@ fields (enforced by `engine/backtest/candidate_registry.py`) are:
   "id": "extracted-<source>-<symbol>-<yyyymmdd>",
   "symbol": "MES",
   "family": "<e.g. vwap_rsi_reversion>",
-  "status": "forward_testing",
+  "status": "paused",
   "hypothesis": "One falsifiable sentence: what edge, on what instrument, in what regime.",
   "params": {
     "timeframe": "5m",
@@ -92,11 +92,14 @@ only enforces `id/symbol/family/status/hypothesis/params`, the forward-test loop
 Fill it from the **actual** in-sample backtest/MCPT run at registration time (the fields above
 mirror a real entry: `gate_verdict`, `pf_ci_lower`, `p_edge`, `dsr`, `mc_95th_dd`,
 `n_oos_windows`, `total_oos_trades`, `p_binom`) — never invented numbers, and never omitted.
-The template ships `gate_verdict: "PENDING"` with `<actual …>` placeholders **on purpose**: a
-half-filled copy must never read as a `PASS` baseline. Do not set `gate_verdict: "PASS"` or
-fill the metrics until the real Step-3 run produces them, and do not commit the candidate to
-`candidate_registry.json` before then — a registered `forward_testing` candidate with a fake
-PASS lock contaminates the frozen expectation the graduation decision depends on. Register it
+The template ships `status: "paused"` and `gate_verdict: "PENDING"` with `<actual …>`
+placeholders **on purpose** — two independent guards against a premature copy going live:
+`get_active_candidates()` keys only on `status == "forward_testing"`
+(`candidate_registry.py:103`), so a `paused` candidate is inert even if committed early; and a
+half-filled lock must never read as a `PASS` baseline. Do **not** flip `status` to
+`forward_testing`, set `gate_verdict: "PASS"`, or fill the metrics until the real Step-3 run
+produces them — a `forward_testing` candidate with a fake PASS lock enters the forward loop
+with no frozen expectation and contaminates the graduation decision. Register and activate it
 only *after* Step 3's backtest + MCPT produce these values.
 
 ## Step 3 — Route into the real gates (do NOT invent a parallel path)
