@@ -57,10 +57,14 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 - `data_get_pine_lines` / `_labels` / `_tables` / `_boxes` — read Pine-drawn levels
 - `capture_screenshot` — visual for a brief or a bug report
 
-**Chart control (UI only, safe):**
+**Chart control (transient view only, safe):**
 - `chart_set_symbol`, `chart_set_timeframe`, `chart_set_type`, `chart_scroll_to_date`,
-  `chart_set_visible_range`, `chart_manage_indicator`, `indicator_set_inputs`,
-  `pane_*`, `tab_*`, `watchlist_*`, `layout_*`
+  `chart_set_visible_range`, `chart_manage_indicator`, `indicator_set_inputs`
+- Read-only workspace queries: `pane_list`, `pane_focus`, `tab_list`, `tab_switch`,
+  `watchlist_get`, `layout_list`
+- NOT safe — these persist/alter Matt's workspace and are confirmation-gated below, so do not
+  treat `tab_*`/`watchlist_*`/`layout_*`/`pane_*` as a blanket-safe wildcard:
+  `watchlist_add`, `tab_new`, `tab_close`, `layout_switch`, `pane_set_layout`, `pane_set_symbol`.
 - **`chart_set_timeframe` takes a TradingView resolution** (`1`, `5`, `15`, `60`, `240`,
   `D`, `W`, `M`), not a `15m`/`1h` alias. Normalize aliases before the call (`15m`→`15`,
   `1h`→`60`, `4h`→`240`, `1d`→`D`) and confirm the switch with `chart_get_state` — an
@@ -77,10 +81,11 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 **Replay (practice only):** `replay_start/step/autoplay/trade/status/stop`
 
 **Confirmation-gated (real side effects):** `pine_save` (persists/overwrites Matt's saved
-Pine script — never save while merely linting/compiling), `pine_set_source`, `alert_create`,
-`alert_delete`, `draw_shape`, `draw_remove_one`, `draw_clear`, `ui_click`, `ui_evaluate`,
-`batch_run` — these mutate Matt's TV session/account. Read the current state first, state what you'll
-change, and only proceed on an explicit instruction.
+Pine script — never save while merely linting/compiling), `pine_set_source`,
+`watchlist_add`, `tab_new`, `tab_close`, `layout_switch`, `pane_set_layout`, `pane_set_symbol`,
+`alert_create`, `alert_delete`, `draw_shape`, `draw_remove_one`, `draw_clear`, `ui_click`,
+`ui_evaluate`, `batch_run` — these mutate Matt's TV session/account/workspace. Read the current
+state first, state what you'll change, and only proceed on an explicit instruction.
 
 ## Standard chart-read flow
 
@@ -95,8 +100,9 @@ change, and only proceed on an explicit instruction.
    don't report bogus drift), sends `X-API-Key`, and GETs only `/prices/snapshot` (its default
    set omits MGC) and `/hidden-pivots/levels` — no side-effecting routes. Mind the two timeframe
    encodings: the chart is set with a **TradingView resolution** (`15`/`60`/`D`) but the helper
-   wants the **engine alias** (`5m`/`15m`/`1h`/`4h`/`1d`, e.g. `60`→`1h`, `D`→`1d`) — a bare TV
-   resolution reaching `get_bars` silently degrades to 5m bars (`market_data.py` bar maps).
+   wants the **engine alias** (`1m`/`5m`/`15m`/`1h`/`4h`/`1d`, e.g. `60`→`1h`, `D`→`1d`; `1m` is a
+   real bar — `market_data.py` maps it for IBKR and Polygon) — a bare TV resolution reaching
+   `get_bars` silently degrades to 5m bars (`market_data.py` bar maps).
    Round-trip drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never
    present a TV number as canonical without that check.
 
