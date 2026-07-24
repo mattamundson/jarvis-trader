@@ -2210,18 +2210,29 @@ async def get_history_equity_curve(days: int = 90):
 
 @router.get("/history/decisions", response_model=DecisionHistoryResponse)
 async def get_decision_history(limit: int = 50, symbol: str = ""):
-    """Return historical agent decisions from SQLite."""
+    """Return historical agent decisions from SQLite.
+
+    ``count`` is the size of this page (bounded by ``limit``); ``total`` is
+    the true row count in the ``decisions`` table for the same filter,
+    via ``SELECT COUNT(*)`` -- NOT bounded by ``limit``. Dashboard tiles
+    ("Total Decisions") must read ``total``, not ``count``. See GT-04.
+    """
     if not db_manager:
-        return {"decisions": [], "count": 0, "note": "db_manager not initialized"}
+        return {"decisions": [], "count": 0, "total": 0, "note": "db_manager not initialized"}
     try:
+        symbol_upper = symbol.upper() if symbol else None
         decisions = db_manager.get_decisions(
             limit=limit,
-            symbol=symbol.upper() if symbol else None,
+            symbol=symbol_upper,
         )
-        return {"decisions": decisions, "count": len(decisions)}
+        if hasattr(db_manager, "count_decisions"):
+            total = db_manager.count_decisions(symbol=symbol_upper)
+        else:
+            total = len(decisions)
+        return {"decisions": decisions, "count": len(decisions), "total": total}
     except Exception as exc:
         logger.error(f"[DB] get_decisions failed: {exc}")
-        return {"decisions": [], "count": 0, "error": str(exc)}
+        return {"decisions": [], "count": 0, "total": 0, "error": str(exc)}
 
 
 @router.get("/stats/summary", response_model=StatsSummaryResponse)
