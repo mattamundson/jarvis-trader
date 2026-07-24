@@ -90,8 +90,10 @@ change, and only proceed on an explicit instruction.
    routes are not in the middleware `EXEMPT_PATHS`, so a bare request 401s; use
    `-H "X-API-Key: $JARVIS_API_KEY"` read at use time (the value rotates — do not hardcode):
    `GET /prices/snapshot?symbols=<symbol>` (its default set omits MGC) and
-   `GET /hidden-pivots/levels/<symbol>?timeframe=<tf>` (defaults to `1d`; supports `1d`/`1h`/`5m`
-   only — compare against the nearest and flag the gap for an intraday chart). Round-trip
+   `GET /hidden-pivots/levels/<symbol>?timeframe=<tf>` (defaults to `1d`, but pass the *same*
+   timeframe you charted — it forwards to `get_bars`, which maps `5m`/`15m`/`1h`/`4h`/`1d`
+   directly, so `15m` works; only fall back to a nearest value if that call comes back empty).
+   Round-trip
    drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never present a
    TV number as canonical without that check.
 

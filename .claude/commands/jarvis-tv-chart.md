@@ -75,11 +75,13 @@ curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/<sy
 - **Price:** `/prices/snapshot?symbols=<jarvis symbol>` — the endpoint defaults to
   `SPY,QQQ,MES,MNQ,MCL` (MGC is *not* in the default set), so always pass `?symbols=MGC`
   (or MES, etc.) explicitly or the snapshot won't include what you charted.
-- **Levels:** `/hidden-pivots/levels/<symbol>?timeframe=<tf>` — this endpoint defaults to
-  `timeframe=1d` and only supports `1d` / `1h` / `5m` (its `lookback_map`). Pass the value
-  closest to the chart TF you read (`≤15m`→`5m`, `30m–1h`→`1h`, `≥1d`→`1d`); do not compare
-  a daily level ladder against an intraday chart. If the chart TF has no exact levels match
-  (e.g. 15m), say so — compare against the nearest supported and note the granularity gap.
+- **Levels:** `/hidden-pivots/levels/<symbol>?timeframe=<tf>` — pass the **same timeframe you
+  charted**. The endpoint forwards `timeframe` straight to `MarketDataManager.get_bars`, which
+  maps `5m` / `15m` / `1h` / `4h` / `1d` directly, so `?timeframe=15m` returns a 15m ladder —
+  don't downshift it. (The route's `lookback_map` only sets lookback *days* — an unlisted key
+  like `15m` just falls back to a 200-day lookback, it does not change the bar size.) Only if
+  the call errors or returns empty for that timeframe, retry with the nearest supported value
+  and note the substitution. Never compare a daily ladder against an intraday chart.
 
 Compare last price / levels against what TradingView shows and report any drift explicitly —
 a mismatch between the TV feed and the engine feed is a bug to flag, not a rounding footnote.
