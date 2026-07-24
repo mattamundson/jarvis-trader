@@ -1,16 +1,18 @@
 ---
 description: Read a jarvis instrument's TradingView chart via the tradingview MCP server — health check, set symbol/timeframe, pull OHLCV + on-chart studies + screenshot, and summarize structure. Read-only; never creates alerts or trades.
 argument-hint: "<symbol> [timeframe]  e.g. MES 15m  |  MGC 1h  (default TF: 15m -> normalized to 15)"
-allowed-tools: mcp__tradingview__tv_health_check, mcp__tradingview__tv_discover, mcp__tradingview__chart_set_symbol, mcp__tradingview__chart_set_timeframe, mcp__tradingview__chart_get_state, mcp__tradingview__data_get_ohlcv, mcp__tradingview__data_get_study_values, mcp__tradingview__data_get_pine_lines, mcp__tradingview__data_get_pine_labels, mcp__tradingview__capture_screenshot, Bash(curl -s -X GET:*), Bash(grep:*), Read, Grep
+allowed-tools: mcp__tradingview__tv_health_check, mcp__tradingview__tv_discover, mcp__tradingview__chart_set_symbol, mcp__tradingview__chart_set_timeframe, mcp__tradingview__chart_get_state, mcp__tradingview__data_get_ohlcv, mcp__tradingview__data_get_study_values, mcp__tradingview__data_get_pine_lines, mcp__tradingview__data_get_pine_labels, mcp__tradingview__capture_screenshot, Bash(curl -s -X GET -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot:*), Bash(curl -s -X GET -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/:*), Bash(grep:*), Read, Grep
 ---
 
-<!-- allowed-tools is an explicit read-only allowlist: chart navigation + data reads +
-     GET-only cross-check curls. curl is pinned to `-X GET` so this command cannot POST/PUT/
-     DELETE against a protected engine endpoint even though it reads the API key. The
-     account/session mutators the MCP server also exposes (alert_create, alert_delete,
-     pine_save, pine_set_source, draw_*, ui_*, batch_run, replay_trade) are deliberately
-     omitted so a prompt or tool-output detour cannot reach them from this command. Do not add
-     them, and do not broaden curl to `Bash(curl:*)` — the read-only contract depends on it. -->
+<!-- allowed-tools is an explicit read-only allowlist: chart navigation + data reads + exactly
+     two read-only engine GETs. curl is pinned to the /prices/snapshot and
+     /hidden-pivots/levels/ URLs by full prefix — NOT `curl -s -X GET:*`, because some engine
+     GETs have side effects (e.g. GET /hidden-pivots/scan sends WhatsApp alerts via
+     _notify_hp_signal, hidden_pivots_router.py:194,232). The account/session mutators the MCP
+     server exposes (alert_create, alert_delete, pine_save, pine_set_source, draw_*, ui_*,
+     batch_run, replay_trade) are omitted so a prompt/tool-output detour cannot reach them.
+     Do not broaden these curl patterns — the read-only/no-alert contract depends on the exact
+     URL pins. To cross-check a new endpoint, add its exact URL prefix, never a wildcard host. -->
 
 
 # TV Chart Read — $ARGUMENTS
