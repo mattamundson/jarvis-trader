@@ -7,7 +7,7 @@ the full Tier A validation battery:
   * bootstrap_pf (IID resampling with replacement)
   * moving_block_bootstrap (serial-correlation-aware, block = ceil(sqrt(N)))
   * bootstrap_sharpe
-  * bootstrap_max_dd (permutation-based, path-dependent)
+  * permute_max_dd (permutation-based, path-dependent)
   * deflated_sharpe_from_returns (multiple-testing correction across N grid
     combinations)
 
@@ -60,12 +60,13 @@ _ENGINE = _HERE.parent
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
+from backtest._gate_v2_helpers import GATE_MC_DD_ALT, GATE_MC_DD_CORE  # noqa: E402
 from backtest.deflated_sharpe import deflated_sharpe_from_returns  # noqa: E402
 from backtest.monte_carlo import (  # noqa: E402
-    bootstrap_max_dd,
     bootstrap_pf,
     bootstrap_sharpe,
     moving_block_bootstrap,
+    permute_max_dd,
 )
 from backtest.stationarity_gate import h1_h2_split  # noqa: E402
 
@@ -76,9 +77,12 @@ CORE_GATE = {
     # overstates CI width against.
     "pf_ci_lower_min": 1.10,
     "p_positive_edge_min": 0.95,
-    # Raised from 5.0 → 6.0 per Phase A MC (p95 DD 6.58% on live MES EXCELLENT).
-    # 6.0% still respects the 60% of instrument-capital kill-switch at $5K/inst.
-    "max_dd_95th_pct_max": 6.0,
+    # Imported from _gate_v2_helpers (single source of truth) rather than a
+    # local hardcoded 6.0 -- that local copy drifted out of sync when the live
+    # gate's ceiling was tightened 6%->5% and was never updated here (found
+    # 2026-07-10). GATE_MC_DD_CORE is a fraction (0.05); this dict's convention
+    # is a percentage.
+    "max_dd_95th_pct_max": GATE_MC_DD_CORE * 100,
     # Bailey-convention floor for core path. Selection-bias-indistinguishable below.
     "dsr_min": 0.10,
 }
@@ -87,16 +91,19 @@ ALT_EVIDENCE_GATE = {
     # Tighter than core — relaxing sample-size demands tighter signal-quality.
     "dsr_min": 0.30,
     "fixed_params_min_pf_min": 1.20,
-    # Slightly looser DD ceiling given the supplementary evidence strength.
-    "max_dd_95th_pct_max": 7.0,
+    # Imported from _gate_v2_helpers -- was a local hardcoded 7.0 that drifted
+    # out of sync when the live ALT ceiling was tightened 7%->4% (found
+    # 2026-07-10). GATE_MC_DD_ALT is a fraction (0.04); this dict's convention
+    # is a percentage.
+    "max_dd_95th_pct_max": GATE_MC_DD_ALT * 100,
     # rolling_wfo_verdict must be in ROLLING_WFO_QUALIFYING below.
     # cost_survives_through must rank >= "realistic" in COST_SURVIVAL_LEVELS.
 }
 
 # ── Strategy-class drawdown ceilings ────────────────────────────────────────
 # The MC-95th DD ceiling is the ONE gate criterion that is class-dependent: an
-# intraday futures book is judged against the tight 6%/7% bar (tied to the $5K/
-# instrument 60% kill-switch), but a long-biased equity-swing strategy holds
+# intraday futures book is judged against the tight core/alt bar (tied to the
+# $5K/instrument 60% kill-switch), but a long-biased equity-swing strategy holds
 # through equity bear markets and is correctly judged against a much wider
 # equity-class bar. All OTHER criteria (PF-CI, p_edge, DSR) are class-INDEPENDENT
 # — signal quality does not get a class discount.
@@ -105,6 +112,17 @@ ALT_EVIDENCE_GATE = {
 # so the default path is unchanged. An UNKNOWN class falls back to the STRICTEST
 # (intraday_futures) ceiling — a class map must never accidentally LOOSEN a gate.
 #
+# CORRECTION (2026-07-10): this dict was still hardcoded to the OLDER 6.0/7.0
+# ceiling from a "Phase A MC" relaxation, even after the live routing ceiling in
+# `_gate_v2_helpers.py` was tightened back down to GATE_MC_DD_CORE=0.05/
+# GATE_MC_DD_ALT=0.04 on 2026-05-09 -- silently reopening the "byte-identical"
+# invariant this comment claims. Now imported directly so the two can't drift
+# again. This DID matter for live routing despite the SCOPE note below: the
+# weekly `gate_v2_orchestrator.py` cron calls this validator for one of MES's
+# candidates (trend rank 7) and persists the verdict into the same
+# `gate_v2_verdicts/` directory that `gate_v2_policy.is_ungate_eligible()` reads
+# to help decide whether MES-the-symbol stays authorized to paper trade.
+#
 # SCOPE (2026-07-02): this governs only how a verdict SCORES in this validator.
 # Capital routing is gated separately by engine/backtest/_gate_v2_helpers.py
 # (GATE_MC_DD_CORE/ALT) and engine/gate_v2_policy.py — a class ceiling that ever
@@ -112,7 +130,7 @@ ALT_EVIDENCE_GATE = {
 # touch either; equity-class verdicts score on the wider bar for VISIBILITY only
 # and cannot authorize trading.
 STRATEGY_CLASS_DD: dict[str, dict[str, float]] = {
-    "intraday_futures": {"core": 6.0, "alt": 7.0},
+    "intraday_futures": {"core": GATE_MC_DD_CORE * 100, "alt": GATE_MC_DD_ALT * 100},
     "equity_swing": {"core": 25.0, "alt": 30.0},
 }
 DEFAULT_STRATEGY_CLASS = "intraday_futures"
@@ -250,8 +268,8 @@ def _score_core_gate(
     correlation that IID overstates against.
 
     Only the MC-95th DD ceiling is class-dependent (``strategy_class``); all
-    other criteria are class-independent. Default class reproduces the historical
-    6.0% intraday-futures ceiling exactly."""
+    other criteria are class-independent. Default class reproduces the current
+    intraday-futures ceiling (``GATE_MC_DD_CORE``) exactly."""
     passes: list[bool] = []
     reasons: list[str] = []
     dd_max = _dd_ceiling(strategy_class, "core")
@@ -297,7 +315,8 @@ def _score_alt_gate(
 ) -> tuple[list[bool], list[str]]:
     """Evaluate the 5 alt-evidence criteria. Assumes the aux dict has already
     been validated for completeness. Only the MC-95th DD ceiling is
-    class-dependent; default class reproduces the historical 7.0% ceiling."""
+    class-dependent; default class reproduces the current intraday-futures
+    ceiling (``GATE_MC_DD_ALT``) exactly."""
     passes: list[bool] = []
     reasons: list[str] = []
     dd_max = _dd_ceiling(strategy_class, "alt")
@@ -347,8 +366,12 @@ def _score_alt_gate(
         passes.append(False)
         reasons.append(f"FAIL cost_survives_through={survives} < realistic")
 
-    # (5) MC 95th DD — looser than core (7% vs 6% for intraday_futures); the
-    # ceiling is class-dependent (equity_swing rides a wider bar).
+    # (5) MC 95th DD — for intraday_futures this is TIGHTER than core
+    # (GATE_MC_DD_ALT=4% vs GATE_MC_DD_CORE=5%), since alt relaxes
+    # sample-size requirements and compensates with a stricter DD bar, not a
+    # looser one (corrected 2026-07-10 -- this comment previously said
+    # "looser than core"). The ceiling is class-dependent (equity_swing rides
+    # a wider bar in both directions).
     mc_95 = report["drawdown_mc"]["mc_95th"]
     _cls_suffix = f", {strategy_class} class" if _is_nondefault_class(strategy_class) else ""
     if mc_95 <= dd_max:
@@ -386,7 +409,8 @@ def _evaluate_gate_v2(
       is rescued iff ``p_edge >= 0.60`` and the H1/H2 split is consistent.
 
     ``strategy_class`` ALSO selects the MC-95th DD ceiling via ``STRATEGY_CLASS_DD``:
-    ``""``/``"intraday_futures"``/``"beta_harvest"`` → 6%/7% (unchanged); ``"equity_swing"``
+    ``""``/``"intraday_futures"``/``"beta_harvest"`` → ``GATE_MC_DD_CORE``/``GATE_MC_DD_ALT``
+    (synced from ``_gate_v2_helpers.py``); ``"equity_swing"``
     → 25%/30% (long-biased equity rides equity bear DDs). Unknown classes fall back to
     the STRICTEST ceiling. This affects only how a verdict SCORES here — capital routing
     is gated separately (``_gate_v2_helpers.py`` / ``gate_v2_policy.py``), untouched by
@@ -587,7 +611,7 @@ def validate(
         "sharpe_ci": bootstrap_sharpe(
             pnls_arr, initial_capital=initial_capital, n_resamples=n_resamples, seed=seed
         ),
-        "drawdown_mc": bootstrap_max_dd(
+        "drawdown_mc": permute_max_dd(
             pnls_arr, initial_capital=initial_capital, n_resamples=n_resamples, seed=seed
         ),
         "deflated_sharpe": deflated_sharpe_from_returns(
@@ -637,7 +661,8 @@ def main():
     ap.add_argument(
         "--strategy-class",
         default="",
-        help="Strategy class tag. '' / 'intraday_futures' → 6%/7% MC-DD ceiling (default). "
+        help="Strategy class tag. '' / 'intraday_futures' → GATE_MC_DD_CORE/ALT ceiling "
+        "(synced from _gate_v2_helpers.py; 5%/4% as of 2026-07-10, default). "
         "'equity_swing' → 25%/30% ceiling (long-biased equity rides equity bear DDs; "
         "SCORING/visibility only — does NOT authorize routing). 'beta_harvest' (with "
         "BETA_HARVEST_GATE_ENFORCE=1) relaxes the p_edge floor for low-frequency long-beta "

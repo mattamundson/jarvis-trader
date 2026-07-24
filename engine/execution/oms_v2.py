@@ -325,14 +325,20 @@ class OMSManager:
         sym_upper = str(symbol or "").upper()
         if not sym_upper:
             return None
-        for trade in self.active_trades.values():
-            if trade.status != TradeState.ACTIVE:
-                continue
-            if trade.symbol.upper() != sym_upper:
-                continue
-            if trade.stop_loss_price is not None:
-                return trade.stop_loss_price
-        return None
+        candidates = [
+            trade
+            for trade in self.active_trades.values()
+            if trade.status == TradeState.ACTIVE
+            and trade.symbol.upper() == sym_upper
+            and trade.stop_loss_price is not None
+        ]
+        if not candidates:
+            return None
+        # dict insertion order is NOT the same as recency once
+        # adopt_existing_trade()/reload_from_db() are in play, so sort
+        # explicitly by opened_at rather than relying on iteration order.
+        most_recent = max(candidates, key=lambda t: t.opened_at)
+        return most_recent.stop_loss_price
 
     async def adopt_existing_trade(self, symbol: str, quantity: int, entry_price: float,
                                  stop_loss_id: Optional[str] = None,

@@ -105,6 +105,41 @@ def test_save_idempotent(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# test_save_bars_converts_non_utc_tz_aware_timestamps
+# ---------------------------------------------------------------------------
+
+
+def test_save_bars_converts_non_utc_tz_aware_timestamps(tmp_path):
+    """A tz-aware timestamp NOT already in UTC (e.g. IB's CME bars tagged
+    US/Central) must be converted to true UTC before storage, not have its
+    local wall-clock value printed verbatim into ts_utc.
+
+    Regression for: every futures bar looked ~5-6h "stale" (fetched_at fresh,
+    ts_utc chronically behind) because strftime() on a tz-aware-but-non-UTC
+    timestamp silently keeps that zone's local time.
+    """
+    db = _make_db(tmp_path)
+    central_ts = pd.Timestamp("2026-07-15 06:25:00", tz="US/Central")
+    df = pd.DataFrame([{
+        "timestamp": central_ts,
+        "open": 7600.0,
+        "high": 7603.0,
+        "low": 7599.0,
+        "close": 7601.0,
+        "volume": 400.0,
+    }])
+
+    saved = save_bars(df, "MES", "5m", "ibkr", db_path=db)
+    assert saved == 1
+
+    bar = latest_bar("MES", "5m", db_path=db)
+    assert bar is not None
+    # US/Central is UTC-5 in July (CDT) -> 06:25 CDT == 11:25 UTC.
+    # A bug that skips tz_convert would store "2026-07-15T06:25:00" instead.
+    assert str(bar["timestamp"]).startswith("2026-07-15T11:25:00")
+
+
+# ---------------------------------------------------------------------------
 # test_latest_bar_returns_most_recent
 # ---------------------------------------------------------------------------
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -31,6 +32,7 @@ from api import (
 )
 from approval.service import approved_watchlist_symbols
 from config import settings
+from data.provenance import DEFAULT_STALE_AFTER_S, derive_is_live
 from execution.order_router import FUTURES_SYMBOLS
 from utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
 from utils.trade_invariants import is_inverted_stop
@@ -55,6 +57,17 @@ def inject_dependencies(pt, dbm, dm=None, safety_layer=None):
     db_manager = dbm
     _data_manager = dm
     _safety_layer = safety_layer
+
+
+def _ibkr_connected() -> bool | None:
+    """IBKR data-leg connection state for the provenance envelope's ``is_live``
+    gate — mirrors ``MarketDataManager.get_current_price_envelope``'s check.
+    ``None`` (unknown) when no data manager is wired, rather than a hardcoded
+    True/False that could misrepresent connectivity.
+    """
+    if _data_manager is None:
+        return None
+    return bool(getattr(_data_manager, "ibkr", None) and _data_manager.ibkr.is_connected)
 
 
 @router.get("")
@@ -108,7 +121,11 @@ async def get_portfolio():
                     open_positions, marks, strict=True
                 ):
                     computed = _compute_unrealized(
-                        pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                        pos,
+                        current_price,
+                        INSTRUMENT_POINT_VALUES,
+                        mark_source=mark_source,
+                        ibkr_data_connected=_ibkr_connected(),
                     )
                     upnl = computed.get("unrealized_pnl")
                     if upnl:
@@ -132,6 +149,10 @@ async def get_portfolio():
                             "unrealized_pnl": upnl,
                             "unrealized_pnl_pct": computed.get("unrealized_pnl_pct"),
                             "is_futures": _is_futures_symbol(sym),
+                            "is_live": computed.get("is_live", False),
+                            "source": computed.get("source"),
+                            "as_of": computed.get("as_of"),
+                            "stale_after_s": computed.get("stale_after_s"),
                         }
                     )
         except Exception as exc:
@@ -270,6 +291,7 @@ async def portfolio_summary():
     # ── Unrealized P&L from open positions ───────────────────────────────────
     unrealized_pnl = 0.0
     unrealized_marks_stale = 0
+    unrealized_marks_live = 0
     if paper_tracker is not None:
         try:
             open_positions: list[dict] = paper_tracker.get_open_positions()
@@ -306,10 +328,16 @@ async def portfolio_summary():
 
                 for pos, (current_price, mark_source) in zip(open_positions, marks, strict=True):
                     computed = _compute_unrealized(
-                        pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                        pos,
+                        current_price,
+                        INSTRUMENT_POINT_VALUES,
+                        mark_source=mark_source,
+                        ibkr_data_connected=_ibkr_connected(),
                     )
                     if computed.get("mark_stale"):
                         unrealized_marks_stale += 1
+                    if computed.get("is_live"):
+                        unrealized_marks_live += 1
                     upnl = computed.get("unrealized_pnl") or 0.0
                     unrealized_pnl += upnl
         except Exception as exc:
@@ -324,6 +352,7 @@ async def portfolio_summary():
             "daily_target": 500.0,
             "target_progress_pct": 0.0,
             "unrealized_marks_stale": unrealized_marks_stale,
+            "unrealized_marks_live": unrealized_marks_live,
             "markets": {},
             "message": "Orchestrator not initialized",
         }
@@ -340,6 +369,9 @@ async def portfolio_summary():
     # >0 means some open positions were marked from a stale/unavailable feed and
     # excluded from unrealized — the degraded-state surface reads this.
     summary["unrealized_marks_stale"] = unrealized_marks_stale
+    # Count of open positions currently marked from a genuine live-tier,
+    # freshness-passing source (provenance envelope's is_live=True).
+    summary["unrealized_marks_live"] = unrealized_marks_live
     if daily_target:
         summary["target_progress_pct"] = round(total_pnl / daily_target * 100, 2)
     return summary
@@ -600,6 +632,49 @@ async def paper_positions():
     else:  # pragma: no cover - legacy tracker
         positions = paper_tracker.get_open_positions()
         recon = {"source": "memory", "reconciled": True, "count": len(positions)}
+
+    # Enrich with a live mark + unrealized P&L + provenance envelope, same
+    # helper/waterfall as /portfolio and /portfolio/summary, so OpenPositionsWidget
+    # (which reads this endpoint) is no longer stuck rendering "—" for P&L and can
+    # show the honest live/stale/static badge instead of a bare number.
+    if positions and _data_manager is not None:
+        try:
+            symbols = [str(p.get("symbol", "")) for p in positions]
+            results = await asyncio.gather(
+                *[_data_manager.get_tick_price(sym) for sym in symbols],
+                return_exceptions=True,
+            )
+            marks: list[tuple[float | None, str | None]] = [
+                (
+                    (
+                        (r.get("last_price"), r.get("source"))
+                        if isinstance(r, dict)
+                        else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
+                    )
+                    if not isinstance(r, Exception) and r is not None
+                    else (None, None)
+                )
+                for r in results
+            ]
+            ibkr_connected = _ibkr_connected()
+            for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
+                computed = _compute_unrealized(
+                    pos,
+                    current_price,
+                    INSTRUMENT_POINT_VALUES,
+                    mark_source=mark_source,
+                    ibkr_data_connected=ibkr_connected,
+                )
+                pos["current_price"] = computed.get("current_price")
+                pos["unrealized_pnl"] = computed.get("unrealized_pnl")
+                pos["unrealized_pnl_pct"] = computed.get("unrealized_pnl_pct")
+                pos["is_live"] = computed.get("is_live", False)
+                pos["source"] = computed.get("source")
+                pos["as_of"] = computed.get("as_of")
+                pos["stale_after_s"] = computed.get("stale_after_s")
+        except Exception as exc:
+            logger.warning("paper_positions: mark enrichment failed: %s", exc)
+
     return {"positions": positions, "count": len(positions), "reconciliation": recon}
 
 
@@ -711,7 +786,11 @@ async def paper_performance():
                 )
                 mark_source = price_result.get("source") if isinstance(price_result, dict) else None
                 computed = _compute_unrealized(
-                    pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                    pos,
+                    current_price,
+                    INSTRUMENT_POINT_VALUES,
+                    mark_source=mark_source,
+                    ibkr_data_connected=_ibkr_connected(),
                 )
                 upnl = computed.get("unrealized_pnl") or 0.0
                 unrealized_pnl += upnl
@@ -722,6 +801,10 @@ async def paper_performance():
                         "entry_price": computed["entry_price"],
                         "current_price": computed["current_price"],
                         "unrealized_pnl": round(upnl, 4),
+                        "is_live": computed.get("is_live", False),
+                        "source": computed.get("source"),
+                        "as_of": computed.get("as_of"),
+                        "stale_after_s": computed.get("stale_after_s"),
                     }
                 )
         except Exception as exc:
@@ -1594,6 +1677,11 @@ class UnrealizedPositionResponse(BaseModel):
     mark_suspect: bool = False
     mark_stale: bool = False
     mark_source: str | None = None
+    # Provenance envelope (Phase 1) — see data/provenance.py / dashboard/lib/provenance.ts.
+    is_live: bool = False
+    source: str | None = None
+    as_of: float | None = None
+    stale_after_s: float = DEFAULT_STALE_AFTER_S
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1664,13 +1752,27 @@ def _compute_unrealized(
     current_price: float | None,
     point_values: dict,
     mark_source: str | None = None,
+    ibkr_data_connected: bool | None = None,
 ) -> dict:
     """Compute unrealized P&L fields for one position.
 
     ``mark_source`` is the get_tick_price() source tag for ``current_price``. A
     stale mark (CSV-cache daily close / no data) is flagged ``mark_stale`` and
     does NOT produce an unrealized_pnl number, so it cannot poison the portfolio
-    aggregate when the live data leg is degraded.
+    aggregate when the live data leg is degraded. That P&L-blocking gate
+    (``_STALE_MARK_SOURCES``) is intentionally left untouched here — it is
+    incident-hardened (see the module comments above) and stricter changes to
+    it are out of scope.
+
+    Additionally builds the data-provenance envelope fields (``is_live``,
+    ``source``, ``as_of``, ``stale_after_s``) via ``derive_is_live`` (Phase 1
+    envelope, ``engine/data/provenance.py``) so the dashboard can render the
+    mark with the same honest live/stale/static badge every other price panel
+    uses (see ``dashboard/lib/provenance.ts`` / ``<DataValue>``), instead of a
+    portfolio-router-only ``mark_stale`` boolean nothing else understands.
+    ``LIVE_SOURCES`` and ``_STALE_MARK_SOURCES`` are disjoint, so
+    ``is_live=True`` always implies ``mark_stale=False`` — the new envelope
+    field never contradicts the existing P&L gate above.
     """
     symbol = str(pos.get("symbol", "")).upper()
     action = str(pos.get("action", "") or pos.get("side", "") or "").lower()
@@ -1700,6 +1802,20 @@ def _compute_unrealized(
     # Reject stale marks (CSV-cache daily close / no data) for the same reason —
     # a weeks-old close is not a live mark and must not drive unrealized P&L.
     mark_stale = mark_source in _STALE_MARK_SOURCES
+
+    # Provenance envelope (Phase 1). ``as_of`` is "now" when a price was
+    # actually fetched — every call site here fetches synchronously per
+    # request (no background cache to be stale relative to), so the only
+    # honest freshness signal is "did we get a value this call", not an age
+    # since some earlier poll. Mirrors ``get_current_price_envelope``'s own
+    # as_of semantics (set at fetch time via ``_mark_symbol_fresh``).
+    as_of = time.time() if current_price is not None else None
+    is_live = derive_is_live(
+        mark_source,
+        as_of,
+        DEFAULT_STALE_AFTER_S,
+        ibkr_data_connected=ibkr_data_connected,
+    )
 
     # Unrealized P&L
     unrealized_pnl: float | None = None
@@ -1746,6 +1862,12 @@ def _compute_unrealized(
         "mark_suspect": mark_suspect,
         "mark_stale": mark_stale,
         "mark_source": mark_source,
+        # Provenance envelope (Phase 1) — canonical is_live/source/as_of shape
+        # consumed by dashboard/lib/provenance.ts's classifyProvenance().
+        "is_live": is_live,
+        "source": mark_source or "unavailable",
+        "as_of": as_of,
+        "stale_after_s": DEFAULT_STALE_AFTER_S,
     }
 
 
@@ -1788,7 +1910,11 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
         enriched = []
         for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
             computed = _compute_unrealized(
-                pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                pos,
+                current_price,
+                INSTRUMENT_POINT_VALUES,
+                mark_source=mark_source,
+                ibkr_data_connected=_ibkr_connected(),
             )
             enriched.append(UnrealizedPositionResponse(**computed))
 

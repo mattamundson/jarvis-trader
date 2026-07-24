@@ -232,17 +232,27 @@ class TestMigration032Idempotent:
         """
 
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from database.migrations import migration_032, run_migrations
+        from database.migrations import MIGRATIONS, migration_032, run_migrations
 
         db_path = str(tmp_path / "test_run_idempotent.db")
         conn = _make_test_db(db_path)
         _insert_null_key_row(conn, "MES", "2026-05-09T13:37:34+00:00")
 
         migration_032(conn)
-        # Record version 32 so run_migrations skips it
+        # Record version 32, then dummy-stamp every migration after it too (same
+        # pattern _make_test_db uses for 1..31) so run_migrations() is a true
+        # no-op regardless of how many migrations ship after 032 -- otherwise
+        # this test breaks every time a new migration_0NN lands, since it would
+        # try to apply real migrations against this deliberately-minimal DB
+        # (which only has schema_version + paper_trades) and hit missing tables.
         conn.execute(
             "INSERT INTO schema_version (version, description) VALUES (32, 'idempotency NOT NULL')"
         )
+        for v in range(33, len(MIGRATIONS) + 1):
+            conn.execute(
+                "INSERT INTO schema_version (version, description) VALUES (?, ?)",
+                (v, f"dummy v{v}"),
+            )
         conn.commit()
 
         pre = conn.execute("SELECT COUNT(*) FROM paper_trades").fetchone()[0]

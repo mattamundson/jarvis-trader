@@ -57,6 +57,8 @@ engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -65,7 +67,12 @@ SYMBOL = "MGC"
 MULTIPLIER = 10.0
 CAPITAL = 50_000.0
 TICK_SIZE = 0.10
-COMMISSION = 0.62
+# Imported from contract_specs.py (single source of truth) rather than a
+# local literal -- this file previously hardcoded 0.62, MES's rate, instead
+# of MGC's documented 0.85 (found 2026-07-10). contract_specs.py's own
+# docstring exists precisely because this class of drift ("MCL commission
+# was 0.62 in one script and 0.85 in another") has happened before.
+COMMISSION = CONTRACT_SPECS["MGC"].commission
 SLIPPAGE_TICKS = 2.0
 
 TRAIN_MONTHS = 6
@@ -85,10 +92,10 @@ MIN_RV_ANNUALIZED = 0.0
 
 
 COST_SWEEP_TIERS = {
-    "optimistic": {"commission": 0.31, "slippage_ticks": 1.0},
-    "realistic": {"commission": 0.62, "slippage_ticks": 2.0},
-    "pessimistic": {"commission": 1.24, "slippage_ticks": 3.0},
-    "catastrophic": {"commission": 2.48, "slippage_ticks": 4.0},
+    "optimistic": {"commission": round(COMMISSION * 0.5, 4), "slippage_ticks": 1.0},
+    "realistic": {"commission": round(COMMISSION * 1.0, 4), "slippage_ticks": 2.0},
+    "pessimistic": {"commission": round(COMMISSION * 2.0, 4), "slippage_ticks": 3.0},
+    "catastrophic": {"commission": round(COMMISSION * 4.0, 4), "slippage_ticks": 4.0},
 }
 
 MIN_OOS_TRADES_PER_WINDOW = 1
@@ -245,7 +252,6 @@ from backtest._gate_v2_helpers import (  # noqa: E402  # noqa: E402
     _find_latest_cache,  # noqa: E402
     sample_adequacy_enforced,
 )  # noqa: E402
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
 )
@@ -362,6 +368,8 @@ def _compute_gate_v2(
         trade_level_dsr,
         trade_level_mc_95th_dd,
         trade_level_slippage_stress,
+        trade_level_p_edge,
+        trade_level_pf_ci_lower,
         trade_level_win_rate_ci_lower,
     )
 
@@ -370,8 +378,10 @@ def _compute_gate_v2(
     all_trades = sum(r.total_trades for r in oos_results)
     sample_adequate = all_trades >= MIN_OOS_TRADES_TOTAL
 
-    pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
-    p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
+    # Trade-level (not per-window-PF-list) bootstrap -- see _gate_v2_trade_metrics
+    # for why the old oos_pfs-based bootstrap was mis-specified for 1-trade windows.
+    pf_ci_lower = trade_level_pf_ci_lower(oos_results)
+    p_edge = trade_level_p_edge(oos_results)
 
     # Trade-level risk metrics (correct); legacy window-level DD retained for
     # transparency only (not used for the gate). See _gate_v2_trade_metrics.

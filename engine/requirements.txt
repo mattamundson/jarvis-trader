@@ -29,6 +29,7 @@ ta-lib==0.4.32            # TA-Lib C library (must install binary first)
 pandas>=3.0,<4.0          # converged to 3.x 2026-06-26 (kept in sync with requirements-core.txt; PR #161 str-Enum fix)
 numpy>=2.2.6
 scipy==1.15.2
+statsmodels>=0.14.0        # Ljung-Box + ADF tests. Used by engine/backtest/rigor_gates.py.
 
 # Backtesting
 vectorbt==0.26.2          # Fast vectorized backtesting

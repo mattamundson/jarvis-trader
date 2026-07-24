@@ -200,6 +200,14 @@ def save_bars(
             ts = pd.to_datetime(row["timestamp"])
             if ts.tzinfo is None:
                 ts = ts.tz_localize("UTC")
+            else:
+                # IB (and some other sources) hand back tz-aware timestamps in the
+                # exchange's local zone (e.g. CME bars tagged US/Central), not UTC.
+                # strftime() on a tz-aware datetime prints its own local wall-clock
+                # time verbatim -- without this conversion, a CME bar landed in
+                # ts_utc 5-6h "behind" its true UTC instant despite being fresh,
+                # making live bars look chronically stale.
+                ts = ts.tz_convert("UTC")
             ts_iso = ts.strftime("%Y-%m-%dT%H:%M:%S")
             vol = float(row["volume"]) if "volume" in df.columns and row["volume"] == row["volume"] else None
             parsed.append((

@@ -70,7 +70,7 @@ class TestSafetyDefaults:
         os.environ,
         {
             "API_KEY": "test-key",
-            "MAX_DAILY_LOSS_PCT": "0.10",
+            "MAX_DAILY_LOSS_PCT": "0.08",
             "MAX_DRAWDOWN_PCT": "0.20",
             "MAX_POSITION_SIZE_PCT": "0.10",
             "MAX_SINGLE_ORDER_VALUE": "5000.0",
@@ -83,7 +83,7 @@ class TestSafetyDefaults:
         from config import TradingConfig
 
         config = TradingConfig()
-        assert config.MAX_DAILY_LOSS_PCT == 0.10  # -10% (paper trading mode)
+        assert config.MAX_DAILY_LOSS_PCT == 0.08  # -8% (paper trading mode, reconciled 2026-07-10)
         assert config.MAX_DRAWDOWN_PCT == 0.20  # -20% (paper trading mode)
         assert config.MAX_POSITION_SIZE_PCT == 0.10  # 10% (paper trading mode)
         assert config.MAX_SINGLE_ORDER_VALUE == 5000.0

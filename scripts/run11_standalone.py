@@ -38,11 +38,11 @@ async def main():
     timesteps = 500_000
 
     print(f"\n{'='*60}")
-    print(f"JARVIS TRADER — RL Run 11 (Let-Winners-Run Config)")
+    print("JARVIS TRADER — RL Run 11 (Let-Winners-Run Config)")
     print(f"Symbol: {symbol} | Timesteps: {timesteps:,}")
-    print(f"hold_cost_only_when_losing=True | hold_cost=-0.010 (losers only)")
-    print(f"entry_cost=-0.01 | t1_bonus=0.50 | MAX_BARS_IN_TRADE=50")
-    print(f"Hypothesis: free holds while winning → agent runs to T1")
+    print("hold_cost_only_when_losing=True | hold_cost=-0.010 (losers only)")
+    print("entry_cost=-0.01 | t1_bonus=0.50 | MAX_BARS_IN_TRADE=50")
+    print("Hypothesis: free holds while winning → agent runs to T1")
     print(f"{'='*60}\n")
 
     trainer = RLTrainer(data_manager=None)
@@ -60,7 +60,7 @@ async def main():
     print(f"Status: {result.get('status')}")
     print(f"Model:  {result.get('model_path')}")
     metrics = result.get("metrics", {})
-    print(f"\nMetrics:")
+    print("\nMetrics:")
     print(f"  n_trades:          {metrics.get('n_trades')}")
     print(f"  win_rate:          {metrics.get('win_rate', 0):.1%}")
     print(f"  profit_factor:     {metrics.get('profit_factor', 0):.3f}")
@@ -70,11 +70,11 @@ async def main():
     print(f"  t1_hit_rate:       {metrics.get('t1_hit_rate', 0):.1%}")
     print(f"  avg_bars_in_trade: {metrics.get('avg_bars_in_trade', 0):.1f}")
     ts = result.get("training_summary", {})
-    print(f"\nAction distribution:")
+    print("\nAction distribution:")
     for action, pct in ts.get("action_distribution", {}).items():
         bar = "█" * int(pct * 30)
         print(f"  {action:5s}: {pct:.1%}  {bar}")
-    print(f"\nValidation gates:")
+    print("\nValidation gates:")
     gates = {
         "n_trades >= 30":          metrics.get("n_trades", 0) >= 30,
         "hold_rate < 0.60":        metrics.get("hold_rate", 0) < 0.60,

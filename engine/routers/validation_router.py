@@ -110,6 +110,17 @@ async def get_readiness_check():
             "requirement": f"≤{TARGETS['max_drawdown_pct']:.0f}%",
             "critical": True,
         },
+        {
+            # [safety-review] PR-10: blocks the false-PASS a raw Sharpe alone
+            # allowed on a tiny/lucky daily-P&L sample (observed 3.436).
+            # Requires BOTH the DSR floor and a minimum observation count --
+            # see analytics.validation_metrics for why DSR alone isn't enough.
+            "name": "Deflated Sharpe Ratio",
+            "passed": bool(tm.get("dsr_0_10")),
+            "value": f"{m.get('dsr', '—')} ({m.get('dsr_n_obs', 0)} obs)",
+            "requirement": f"≥{TARGETS['min_dsr']}, ≥{TARGETS['min_dsr_n_obs']} obs",
+            "critical": True,
+        },
     ]
 
     all_pass = bool(result.get("all_targets_met"))

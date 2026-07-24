@@ -15,17 +15,30 @@ import math
 
 import pandas as pd
 
+from backtest.contract_specs import CONTRACT_SPECS
 from backtest.indicators import atr_trailing_stop
 
 MULTIPLIERS = {"MES": 5.0, "ES": 50.0, "MNQ": 2.0, "MCL": 100.0, "MGC": 10.0}
 TICK = {"MES": 0.25, "ES": 0.25, "MNQ": 0.25, "MCL": 0.01, "MGC": 0.1}
-COMMISSION = 0.62  # $/round-trip
 SLIPPAGE_TICKS = 1.0  # per side
+
+# Fallback commission for symbols not in CONTRACT_SPECS -- MES's rate (0.62),
+# consistent with the existing MULTIPLIERS/TICK .get(symbol, ...) fallback
+# style in this module.
+_DEFAULT_COMMISSION = 0.62
 
 
 def _round_trip_cost(symbol: str) -> float:
     mult = MULTIPLIERS.get(symbol, 1.0)
-    return COMMISSION + 2 * SLIPPAGE_TICKS * TICK.get(symbol, 0.25) * mult
+    spec = CONTRACT_SPECS.get(symbol)
+    # Previously a single flat COMMISSION=0.62 was applied to every symbol.
+    # This endpoint serves MES/ES/MNQ/MCL/MGC -- MCL and MGC are both priced
+    # at 0.85/contract in contract_specs.py (the single source of truth),
+    # not 0.62 (MES's rate), so the flat constant silently understated cost
+    # for those two symbols (found 2026-07-10, same drift class as the MGC
+    # runner-script bug).
+    commission = spec.commission if spec is not None else _DEFAULT_COMMISSION
+    return commission + 2 * SLIPPAGE_TICKS * TICK.get(symbol, 0.25) * mult
 
 
 def reconstruct_flip_trades(
