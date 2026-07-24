@@ -11,64 +11,10 @@ import {
 } from "@/hooks/useChartData";
 import { useLiveLastPrice } from "@/hooks/useLiveLastPrice";
 import { fetchEngine, type TradeRecord } from "@/lib/api";
+import { buildTradeMarkers } from "@/lib/tradeMarkers";
 
 const SYMBOLS: ChartSymbol[] = ["MES", "MGC", "MNQ", "MCL"];
 const TIMEFRAMES: ChartTimeframe[] = ["5m", "15m", "1h", "4h", "1d"];
-
-const UP = "#00ff88";
-const DOWN = "#ff4466";
-
-function toUnix(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const ms = new Date(iso).getTime();
-  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
-}
-
-/**
- * Build entry/exit markers for closed trades on the selected symbol, clipped to
- * the loaded bar window so off-chart history doesn't clutter the axis.
- */
-function buildMarkers(
-  trades: TradeRecord[] | undefined,
-  symbol: ChartSymbol,
-  firstBarTime: number | null,
-  lastBarTime: number | null,
-): SeriesMarker<Time>[] {
-  if (!trades?.length || firstBarTime == null || lastBarTime == null) return [];
-  const out: SeriesMarker<Time>[] = [];
-
-  for (const t of trades) {
-    if (!t.symbol || !(t.symbol === symbol || t.symbol.startsWith(symbol))) continue;
-    const isLong = t.side === "BUY";
-
-    const entryT = toUnix(t.entry_time);
-    if (entryT != null && entryT >= firstBarTime && entryT <= lastBarTime) {
-      out.push({
-        time: entryT as Time,
-        position: isLong ? "belowBar" : "aboveBar",
-        shape: isLong ? "arrowUp" : "arrowDown",
-        color: isLong ? UP : DOWN,
-        text: `${t.side} ${t.entry_price}`,
-      });
-    }
-
-    const exitT = toUnix(t.exit_time);
-    if (exitT != null && exitT >= firstBarTime && exitT <= lastBarTime) {
-      const pnl = t.realized_pnl;
-      out.push({
-        time: exitT as Time,
-        position: isLong ? "aboveBar" : "belowBar",
-        shape: isLong ? "arrowDown" : "arrowUp",
-        color: (pnl ?? 0) >= 0 ? UP : DOWN,
-        text: pnl != null ? `${pnl >= 0 ? "+" : ""}${pnl.toFixed(0)}` : "EXIT",
-      });
-    }
-  }
-
-  // lightweight-charts requires markers in ascending time order.
-  out.sort((a, b) => (a.time as number) - (b.time as number));
-  return out;
-}
 
 interface PriceChartPanelProps {
   symbol: ChartSymbol;
@@ -107,7 +53,12 @@ export function PriceChartPanel({
 
   const markers = useMemo(() => {
     if (!showTrades || !bars.length) return [];
-    return buildMarkers(trades, symbol, bars[0].time, bars[bars.length - 1].time);
+    return buildTradeMarkers(
+      trades,
+      symbol,
+      bars[0].time,
+      bars[bars.length - 1].time,
+    ) as SeriesMarker<Time>[];
   }, [trades, symbol, bars, showTrades]);
 
   const pill = (active: boolean) =>
