@@ -58,7 +58,13 @@ async def _daily_bars(symbol: str) -> list[dict]:
 
 
 @router.get("/signal-outcomes")
-async def get_signal_outcomes(limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
+async def get_signal_outcomes(
+    # Capped at 50 to match get_recent_approvals_all_statuses()'s own clamp
+    # (engine/database/_mixins_pending_approvals.py) -- a higher API limit
+    # here would silently under-fill the aggregate with no indication in
+    # the response that fewer rows were actually evaluated.
+    limit: int = Query(50, ge=1, le=50),
+) -> dict[str, Any]:
     """Score recent directional decisions against subsequent daily bars."""
     if _db_manager is None:
         return {
