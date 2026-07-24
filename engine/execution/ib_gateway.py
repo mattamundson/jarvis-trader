@@ -1035,7 +1035,27 @@ class IBGatewayManager:
             return {}
 
         try:
-            account_values = await self._ib.accountSummaryAsync(account=self._config.account or "")
+            # Request ALL accounts, then select the target in Python. Filtering the
+            # REQUEST by a mis-configured IB_ACCOUNT_ID silently returns an empty set,
+            # so NetLiquidation stays 0.0 and the SafetyLayer would read equity as
+            # ZERO — a dangerous state. Fall back to the broker's actual account (and
+            # warn loudly) rather than report a false zero. (Observed 2026-07-23:
+            # IB_ACCOUNT_ID=DUP662235 but the Gateway is logged into DUR162217.)
+            account_values = await self._ib.accountSummaryAsync()
+
+            accounts_present = {av.account for av in account_values if av.account}
+            target = self._config.account or ""
+            if target and target not in accounts_present:
+                logger.warning(
+                    "get_account_summary: configured IB_ACCOUNT_ID=%s NOT found at IB "
+                    "(accounts present: %s). Falling back to the broker account so equity "
+                    "is not read as 0 - FIX IB_ACCOUNT_ID to match the logged-in account.",
+                    target,
+                    sorted(accounts_present),
+                )
+                target = ""
+            if not target and len(accounts_present) == 1:
+                target = next(iter(accounts_present))
 
             KEYS_OF_INTEREST = {
                 "NetLiquidation",
@@ -1051,13 +1071,14 @@ class IBGatewayManager:
 
             summary: dict = dict.fromkeys(KEYS_OF_INTEREST, 0.0)
             for av in account_values:
-                if av.tag in KEYS_OF_INTEREST:
+                if av.tag in KEYS_OF_INTEREST and (not target or av.account == target):
                     try:
                         summary[av.tag] = float(av.value)
                     except (ValueError, TypeError):
                         pass
 
-            # Convenience alias used by SafetyLayer / OrderRouter
+            # Convenience aliases used by SafetyLayer / OrderRouter
+            summary["account"] = target
             summary["equity"] = summary["NetLiquidation"]
             return summary
 
