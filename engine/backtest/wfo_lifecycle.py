@@ -439,8 +439,8 @@ def compute_gate_v2(
     core_reasons = [
         f"{'FAIL ' if pf_ci_lower < GATE_PF_CI_LOWER else ''}pf_ci_lower={pf_ci_lower:.4f} >= {GATE_PF_CI_LOWER}",
         f"{'FAIL ' if p_edge < GATE_P_EDGE else ''}p_edge={p_edge:.4f} >= {GATE_P_EDGE}",
-        f"mc_95th_dd_pct={mc_95th_dd*100:.4f} {'<=' if mc_95th_dd <= GATE_MC_DD_CORE else '>'} {GATE_MC_DD_CORE*100:.1f}",
-        f"dsr={dsr:.6f} >= {GATE_DSR}",
+        f"{'FAIL ' if mc_95th_dd > GATE_MC_DD_CORE else ''}mc_95th_dd_pct={mc_95th_dd*100:.4f} {'<=' if mc_95th_dd <= GATE_MC_DD_CORE else '>'} {GATE_MC_DD_CORE*100:.1f}",
+        f"{'FAIL ' if dsr < GATE_DSR else ''}dsr={dsr:.6f} >= {GATE_DSR}",
     ]
     alt_reasons = [
         f"{'FAIL ' if dsr < GATE_DSR_ALT else ''}dsr={dsr:.6f} >= {GATE_DSR_ALT} (alt floor)",

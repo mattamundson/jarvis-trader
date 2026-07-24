@@ -391,6 +391,33 @@ def test_compute_gate_v2_empty_oos_results():
     assert out["total_oos_trades"] == 0
 
 
+def test_compute_gate_v2_core_reasons_tags_fail_on_mc_dd_breach():
+    # pf_ci_lower/p_edge/dsr all comfortably pass; only mc_95th_dd (10% > 5% core
+    # ceiling) fails. core_reasons[2] must be FAIL-tagged and n_core_passed must
+    # count only 3 of 4 -- not 4, which is what an untagged f-string silently
+    # produces regardless of the actual comparison result.
+    oos = _make_oos_results(20, pf=2.0, dd=0.10, sharpe=2.0, trades=50)
+    fixed = {"fixed_params_min_pf": 1.3, "fixed_params_mean_pf": 1.5, "fixed_params_max_pf": 1.8}
+    cost = {"cost_survives_through": "realistic", "tier_results": {}}
+    out = compute_gate_v2(oos, n_grid_combos=5, fixed_params_metrics=fixed, cost_sweep_metrics=cost)
+    assert out["core_verdict"] == "FAIL"
+    assert out["core_reasons"][2].startswith("FAIL")
+    assert out["n_core_passed"] == 3
+
+
+def test_compute_gate_v2_core_reasons_tags_fail_on_dsr_breach():
+    # pf_ci_lower/p_edge/mc_95th_dd all pass; only dsr (near-zero, near-flat
+    # sharpe) fails. core_reasons[3] must be FAIL-tagged and n_core_passed must
+    # count only 3 of 4.
+    oos = _make_oos_results(20, pf=1.5, dd=0.02, sharpe=0.05, trades=50)
+    fixed = {"fixed_params_min_pf": 1.3, "fixed_params_mean_pf": 1.5, "fixed_params_max_pf": 1.8}
+    cost = {"cost_survives_through": "realistic", "tier_results": {}}
+    out = compute_gate_v2(oos, n_grid_combos=5, fixed_params_metrics=fixed, cost_sweep_metrics=cost)
+    assert out["core_verdict"] == "FAIL"
+    assert out["core_reasons"][3].startswith("FAIL")
+    assert out["n_core_passed"] == 3
+
+
 # ---------------------------------------------------------------------------
 # run_wfo end-to-end (synthetic data, real Backtester + signals)
 # ---------------------------------------------------------------------------
