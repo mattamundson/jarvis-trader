@@ -11,8 +11,9 @@ simultaneously).
 - Init: kimi_fallback_enabled toggles correctly with key / JARVIS_LLM_KIMI_FALLBACK.
 - Chain: Anthropic credit-exhaustion -> Gemini fail -> OpenAI fail -> Kimi fires.
 - Short-circuit: OpenAI success means Kimi is never called.
-- No double-fire: an agent that already tried Kimi as its decision primary does
-  NOT retry Kimi as the last resort.
+- Retry-on-primary-failure (2026-07-24): an agent that already tried Kimi as its
+  decision primary and failed DOES retry Kimi as the last resort -- the elapsed
+  cascade time often clears Kimi's tight per-key rate limit.
 - Disabled: with the flag off, the cascade ends unhealthy as before (no Kimi leg).
 - Visibility: Kimi is listed in providers_configured as a real redundancy leg.
 """
@@ -234,10 +235,16 @@ class TestKimiLastResortChain:
         assert client.kimi_fallback_count == 0
 
     @pytest.mark.asyncio
-    async def test_no_double_fire_when_agent_used_kimi_primary(self, tmp_path, monkeypatch):
+    async def test_kimi_retried_when_agent_used_kimi_primary_and_still_dead(
+        self, tmp_path, monkeypatch
+    ):
         """A decision agent on JARVIS_DECISION_PRIMARY=kimi-k3 tries Kimi once
-        (up top). When that fails and the whole cascade is dead, the last-resort
-        leg must NOT retry Kimi -- _call_kimi is called exactly once, total."""
+        (up top). When that fails and Anthropic/Vertex/Gemini/OpenAI are also
+        dead, the last-resort leg retries Kimi -- _call_kimi is called twice,
+        total. If Kimi is still down both times, the cascade still ends
+        unhealthy (2026-07-24: replaces the old no-double-fire guard, which
+        removed the only remaining retry leg exactly when Kimi is the
+        configured primary and transiently failed)."""
         client = _make_client(
             tmp_path,
             monkeypatch,
@@ -266,8 +273,47 @@ class TestKimiLastResortChain:
             )
 
         assert result.success is False
-        assert kimi_mock.await_count == 1  # decision-primary attempt only, no last-resort retry
+        assert kimi_mock.await_count == 2  # decision-primary attempt + last-resort retry
         assert client.kimi_fallback_count == 0
+
+    @pytest.mark.asyncio
+    async def test_kimi_retry_recovers_after_primary_attempt_failed(self, tmp_path, monkeypatch):
+        """A decision agent's Kimi-primary attempt fails transiently, but by
+        the time the last-resort leg retries it, Kimi has recovered -- the
+        retry rescues the call rather than ending the cascade unhealthy."""
+        client = _make_client(
+            tmp_path,
+            monkeypatch,
+            GOOGLE_API_KEY="gemini-key",
+            OPENAI_API_KEY="sk-openai-key",
+            MOONSHOT_API_KEY="fake-kimi-key",
+            JARVIS_DECISION_PRIMARY="kimi-k3",
+        )
+        client.google_fallback_enabled = True
+        client.openai_fallback_enabled = True
+        client.kimi_fallback_enabled = True
+
+        kimi_mock = AsyncMock(
+            side_effect=[RuntimeError("kimi timeout"), _kimi_response("BUY")]
+        )
+
+        with (
+            patch.object(client, "_call_with_retry", side_effect=_credit_exhaustion_error()),
+            patch.object(client, "_call_google", side_effect=RuntimeError("gemini down")),
+            patch.object(client, "_call_openai", side_effect=RuntimeError("openai down")),
+            patch.object(client, "_call_kimi", kimi_mock),
+        ):
+            result = await client.call(
+                model="claude-sonnet-4-6",
+                system="sys",
+                messages=[{"role": "user", "content": "trade?"}],
+                agent_name="trader",
+            )
+
+        assert result.success is True
+        assert result.content == "BUY"
+        assert kimi_mock.await_count == 2
+        assert client.kimi_fallback_count == 1
 
     @pytest.mark.asyncio
     async def test_disabled_flag_ends_unhealthy_without_kimi(self, tmp_path, monkeypatch):

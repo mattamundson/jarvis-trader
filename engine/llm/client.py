@@ -1389,16 +1389,21 @@ class JarvisLLMClient:
                             )
                             # fall through to Kimi last-resort below
 
-                    # 2026-07-21: Kimi K3 last-resort — the FINAL leg, fires only
-                    # when Anthropic, Vertex, Gemini, AND OpenAI have all failed.
-                    # `_resolve_kimi_primary(...) is None` skips agents that already
-                    # tried Kimi as their decision primary up top (no double-fire);
-                    # enrichment agents (never routed to Kimi) reach it here. Slow
-                    # and paid, but strictly better than enrichment-blind.
-                    if (
-                        self.kimi_fallback_enabled
-                        and self._resolve_kimi_primary(agent_name) is None
-                    ):
+                    # 2026-07-24: Kimi K3 last-resort — the FINAL leg, fires
+                    # whenever Anthropic, Vertex, Gemini, AND OpenAI have all
+                    # failed, INCLUDING when this agent already tried Kimi as
+                    # its decision primary up top and that attempt failed.
+                    # Previously a `_resolve_kimi_primary(...) is None` guard
+                    # skipped the retry for decision-primary agents to avoid a
+                    # "double-fire" -- but that removed the only remaining
+                    # fallback leg exactly when Kimi is the configured primary
+                    # and transiently fails (observed live: active_provider
+                    # went null with last_failure_agent="trader" while Kimi
+                    # was JARVIS_DECISION_PRIMARY). The elapsed wall-clock time
+                    # spent working through Anthropic/Vertex/Gemini/OpenAI
+                    # often clears Kimi's tight per-key rate limit, so retrying
+                    # here is strictly better than a hard cascade failure.
+                    if self.kimi_fallback_enabled:
                         kimi_fb_model = "kimi-k3"
                         logger.warning(
                             f"[{current_model}] Anthropic+Vertex+Gemini+OpenAI all "
