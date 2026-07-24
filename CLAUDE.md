@@ -22,7 +22,7 @@ Instruments" is the authoritative status table. Paper mode on IB Gateway port 40
 - Dashboard badge variants (strict): `"bull" | "bear" | "warn" | "info" | "neutral" | "live" | "static"` (`live`/`static` are Trust-Pane data-provenance badges).
 - No bare `await fetch(...)` in `dashboard/` — use `fetchEngine` / `postEngine` from `dashboard/lib/api.ts`.
 - Engine restart: `.\restart_engine.ps1`. Never use `--reload` (causes duplicate IB connections).
-- Live IB Gateway port 4001 is permanently blocked — paper only (port 4002, account DUP662235).
+- Live IB Gateway port 4001 is permanently blocked — paper only (port 4002, account DUR162217; corrected 2026-07-23 — engine/.env previously had a stale DUP662235 that didn't match the logged-in Gateway account).
 - Any change to `engine/config.py`, `engine/risk/`, or kill-switch code requires `[safety-review]` PR tag.
 - `LIVE_TRADING_ENABLED = False` and `REQUIRE_HUMAN_APPROVAL = True` are invariants. Kill switch: -8% daily P&L / -20% drawdown — the `MAX_DAILY_LOSS_PCT` (0.08) and `MAX_DRAWDOWN_PCT` (0.20) config defaults were reconciled to the `engine/.env` live values on 2026-07-21; `engine/.env` remains the source of truth for the live values. The kill-switch logic is hardcoded, no LLM route.
 - API auth header: `X-API-Key: <current value in `engine/.env`>` (value rotates — read at use time, do not hardcode here). Port 8010.
