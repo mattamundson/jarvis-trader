@@ -1,15 +1,16 @@
 ---
 description: Read a jarvis instrument's TradingView chart via the tradingview MCP server — health check, set symbol/timeframe, pull OHLCV + on-chart studies + screenshot, and summarize structure. Read-only; never creates alerts or trades.
 argument-hint: "<symbol> [timeframe]  e.g. MES 15m  |  MGC 1h  (default TF: 15m -> normalized to 15)"
-allowed-tools: mcp__tradingview__tv_health_check, mcp__tradingview__tv_discover, mcp__tradingview__chart_set_symbol, mcp__tradingview__chart_set_timeframe, mcp__tradingview__chart_get_state, mcp__tradingview__data_get_ohlcv, mcp__tradingview__data_get_study_values, mcp__tradingview__data_get_pine_lines, mcp__tradingview__data_get_pine_labels, mcp__tradingview__capture_screenshot, Bash(curl:*), Bash(grep:*), Read, Grep
+allowed-tools: mcp__tradingview__tv_health_check, mcp__tradingview__tv_discover, mcp__tradingview__chart_set_symbol, mcp__tradingview__chart_set_timeframe, mcp__tradingview__chart_get_state, mcp__tradingview__data_get_ohlcv, mcp__tradingview__data_get_study_values, mcp__tradingview__data_get_pine_lines, mcp__tradingview__data_get_pine_labels, mcp__tradingview__capture_screenshot, Bash(curl -s -X GET:*), Bash(grep:*), Read, Grep
 ---
 
 <!-- allowed-tools is an explicit read-only allowlist: chart navigation + data reads +
-     the cross-check curls only. The account/session mutators the MCP server also exposes
-     (alert_create, alert_delete, pine_save, pine_set_source, draw_*, ui_*, batch_run,
-     replay_trade) are deliberately omitted so a prompt or tool-output detour cannot reach
-     them from this command. Do not add them here — they belong to the confirmation-gated
-     flow in the tradingview-mcp skill, not to a read-only chart read. -->
+     GET-only cross-check curls. curl is pinned to `-X GET` so this command cannot POST/PUT/
+     DELETE against a protected engine endpoint even though it reads the API key. The
+     account/session mutators the MCP server also exposes (alert_create, alert_delete,
+     pine_save, pine_set_source, draw_*, ui_*, batch_run, replay_trade) are deliberately
+     omitted so a prompt or tool-output detour cannot reach them from this command. Do not add
+     them, and do not broaden curl to `Bash(curl:*)` — the read-only contract depends on it. -->
 
 
 # TV Chart Read — $ARGUMENTS
@@ -93,8 +94,9 @@ not the TV `15`) for these calls:
 # (AGENTS.md: the local dev key lives there as API_KEY=...).
 API_KEY="${JARVIS_API_KEY:-$(grep -E '^API_KEY=' engine/.env | cut -d= -f2- | tr -d '\"'\''')}"
 [ -z "$API_KEY" ] && echo "no engine API key found — skip cross-check, do not report drift" && exit 0
-curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot?symbols=<symbol>"
-curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/<symbol>?timeframe=<eng_tf>"
+# curl is pinned to -X GET (see allowed-tools) — these are the only two engine calls.
+curl -s -X GET -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot?symbols=<symbol>"
+curl -s -X GET -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/<symbol>?timeframe=<eng_tf>"
 ```
 
 - **Price:** `/prices/snapshot?symbols=<jarvis symbol>` — the endpoint defaults to
