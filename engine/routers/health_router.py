@@ -41,6 +41,35 @@ _tv_mcp_health_cache: dict = {
     "status": "connecting",
 }
 
+# SOTA P1.6 — TV MCP health-flap fix.
+#
+# Before this: a single missed CDP probe (Chrome momentarily busy, one dropped
+# packet) flipped `tradingview_mcp_healthy` False for up to _TV_MCP_CACHE_TTL_SEC,
+# which the dashboard renders as a hard red dot (EngineHealthWidget.tsx) — so a
+# TV Desktop that is actually up and fine appeared to flap between red and green
+# every poll. Meanwhile "TV Desktop not installed" (port 9222 never listening —
+# a steady, expected condition for Amo, who doesn't always run TV Desktop) was
+# indistinguishable from that transient case at the boolean level.
+#
+# Fix: a *grace* cache remembers the last genuinely-good CDP probe. A transient
+# post-port-open failure (status connecting/degraded) within the grace window is
+# treated as a blip and masked behind the last-known-good result, so top-line
+# health doesn't oscillate on it. `not_running` (port closed) is NEVER masked —
+# it is reported immediately every time, because it is steady/expected, not an
+# error to paper over, and masking it would hide real information. The grace
+# memory is cleared whenever the state goes to not_running so a later relaunch's
+# own startup blips aren't compared against a long-dead session.
+_TV_MCP_GRACE_TTL_SEC = 120.0
+_tv_mcp_last_good: dict = {"at": 0.0, "details": None}
+
+# Background refresher: probes run in a thread on a faster cadence than
+# _TV_MCP_CACHE_TTL_SEC so /health almost always serves an already-warm cache
+# entry instead of making a blocking urllib call inline on the request path.
+# Started lazily (idempotent) from _health_inner on first use, since an
+# APIRouter has no lifespan hook of its own to wire this at app startup.
+_TV_MCP_REFRESH_INTERVAL_SEC = 10.0
+_tv_mcp_refresher_task: "asyncio.Task | None" = None
+
 # Cost-DB observability cache + thresholds. The DB lives under engine/data
 # regardless of cwd; resolve relative to this file so the endpoint works whether
 # the engine was launched from engine/ (pm2/restart_engine path) or repo root.
@@ -68,15 +97,18 @@ _ibgw_health_cache: dict = {"checked_at": 0.0, "alive": False, "port": None}
 # /health single-flight snapshot cache (resilience under load spikes).
 #
 # The sub-diagnostics above are each 30s-cached, but `_health_inner` still makes
-# several *uncached* synchronous SQLite calls (db_manager.health_check,
-# get_pending_approval_stats, futures-sentiment staleness) inside an async
-# handler. Those block the event loop. When the dashboard polls /health many
+# several *uncached* synchronous SQLite calls (db_manager.ping, get_pending_
+# approval_stats, futures-sentiment staleness) inside an async handler. Left
+# un-offloaded, those block the event loop. When the dashboard polls /health many
 # times per second AND the box is under contention (multiple engines/sessions
 # hammering the 325MB SQLite DB), N concurrent blocking computes pile up on the
 # single event-loop thread and latency compounds — a warm 20ms call can spike to
 # 5-12s. port_guardian probes /health with an 8s timeout; a spike past that trips
 # a force-restart, which adds load — a self-amplifying cascade (4 such restarts
-# on 2026-07-06 22:11-22:40 UTC).
+# on 2026-07-06 22:11-22:40 UTC). SOTA plan P0.5: each of those three call sites
+# now runs via asyncio.to_thread so even a cache-miss recompute can't block the
+# loop — the single-flight cache below caps *how often* the blocking work runs;
+# to_thread caps *whether it blocks* when it does run.
 #
 # Single-flight fix: at most ONE recompute per TTL window regardless of request
 # volume. A polling storm collapses to one blocking compute/sec instead of N, so
@@ -180,6 +212,11 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
       connecting  — port open but CDP not responding correctly
       healthy     — CDP /json/version returned 200
       degraded    — port open, CDP responded with non-200
+
+    A transient post-port-open failure (connecting/degraded) within
+    _TV_MCP_GRACE_TTL_SEC of the last genuinely-good probe is masked and reported
+    as the last-known-good state instead — see the P1.6 comment above the cache
+    declarations. `not_running` is never masked; it always reports immediately.
     """
     now = time.monotonic()
     cached_at = _tv_mcp_health_cache.get("checked_at", 0.0)
@@ -199,10 +236,13 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
         sock.close()
 
     if port_result != 0:
+        # Steady, expected condition (Amo doesn't always run TV Desktop) — report
+        # it immediately and drop any stale grace memory from a prior session.
         details = "port 9222 not listening — TV Desktop is not running"
         _tv_mcp_health_cache.update(
             checked_at=now, healthy=False, details=details, status="not_running"
         )
+        _tv_mcp_last_good.update(at=0.0, details=None)
         return False, details, "not_running"
 
     # Stage 2: CDP HTTP probe (port is open; Chrome may be still binding)
@@ -227,6 +267,16 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
         except Exception as exc:
             details = f"CDP probe failed: {exc}"
             status = "connecting"
+
+    if healthy:
+        _tv_mcp_last_good.update(at=now, details=None)
+    elif now - _tv_mcp_last_good.get("at", 0.0) < _TV_MCP_GRACE_TTL_SEC:
+        # Port is open (TV Desktop IS running) but this one probe failed, and we
+        # had a real success inside the grace window — treat it as a blip, not a
+        # real outage, so top-line health doesn't flap on it. Preserve the raw
+        # failure in `details` so it's still observable, just not alarm-worthy.
+        details = f"CDP transient blip masked by grace cache (raw: {details})"
+        healthy, status = True, "healthy"
 
     _tv_mcp_health_cache.update(checked_at=now, healthy=healthy, details=details, status=status)
     return healthy, details, status
@@ -308,6 +358,40 @@ def _derive_overall_status(
     ok, regardless of how healthy its database and LLM path are.
     """
     return "ok" if (db_ok and llm_path_healthy and market_data_fresh) else "degraded"
+async def _tv_mcp_background_refresh_loop() -> None:
+    """Keep the TV-MCP health cache warm off the request path.
+
+    Probes at _TV_MCP_REFRESH_INTERVAL_SEC (faster than _TV_MCP_CACHE_TTL_SEC) so
+    a /health request almost always hits an already-warm cache entry instead of
+    making a blocking urllib call inline on the event loop. Runs forever once
+    started; exceptions from a single probe are swallowed (best effort) so one
+    bad probe never kills the loop.
+    """
+    while True:
+        try:
+            await asyncio.to_thread(_check_tradingview_mcp_health)
+        except Exception as exc:  # pragma: no cover - defensive, probe itself never raises
+            logger.debug("tv_mcp background refresh failed: %s", exc)
+        await asyncio.sleep(_TV_MCP_REFRESH_INTERVAL_SEC)
+
+
+def _ensure_tv_mcp_background_refresher() -> None:
+    """Start the TV-MCP background refresher once, idempotently.
+
+    Safe to call on every /health request (e.g. from _health_inner) — a no-op
+    after the first successful start. health_router is a plain APIRouter with no
+    lifespan hook of its own, so the task is started lazily on first use instead
+    of at app startup. Never raises; if there is no running event loop (e.g. a
+    sync test context) it silently skips.
+    """
+    global _tv_mcp_refresher_task
+    if _tv_mcp_refresher_task is not None and not _tv_mcp_refresher_task.done():
+        return
+    try:
+        loop = asyncio.get_running_loop()
+        _tv_mcp_refresher_task = loop.create_task(_tv_mcp_background_refresh_loop())
+    except RuntimeError:
+        pass
 
 
 # Get limiter instance for rate limiting
@@ -535,6 +619,7 @@ async def _health_inner() -> dict:
         # If the client module hasn't been imported yet, assume healthy
         pass
 
+    _ensure_tv_mcp_background_refresher()
     tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
     ibgateway_alive, ibgateway_port = _check_ibgateway_alive()
 
@@ -577,30 +662,39 @@ async def _health_inner() -> dict:
     # Futures-sentiment freshness: Corey #market-updates is the SOLE sanctioned
     # futures-sentiment source; its feed has silently frozen before (revoked
     # Discord token). Surface age + quality so a stale feed is observable.
+    #
+    # Both underlying reads (get_futures_sentiment_staleness, get_bias_extraction_
+    # health) open a synchronous sqlite3 connection and run a query — offload via
+    # asyncio.to_thread like the db_manager calls above so a cache-miss health
+    # check can't block the event loop on SQLite I/O (SOTA plan P0.5).
     futures_sentiment = {"quality": "unknown", "age_days": None}
     try:
-        from discord.commentary_processor import (
-            get_bias_extraction_health,
-            get_futures_sentiment_staleness,
-        )
 
-        st = get_futures_sentiment_staleness()
-        ext = get_bias_extraction_health()
-        futures_sentiment = {
-            "quality": st.get("quality", "unknown"),
-            "age_days": st.get("age_days"),
-            "latest_timestamp": st.get("latest_timestamp"),
-            "threshold_days": st.get("threshold_days"),
-            # LLM structured-bias extraction health — distinct from the ingestion
-            # freshness above. 'degraded' = extraction has fallen behind commentary
-            # (e.g. the 2026-06-29 Anthropic credit-exhaustion outage that ran two
-            # days undetected because ingestion still looked fresh). Cache-only —
-            # no LLM call. Surfaced as a field; does not flip top-level status
-            # (the live engine has its own Vertex-backed extraction path).
-            "extraction_quality": ext.get("extraction_quality", "unknown"),
-            "extraction_lag_days": ext.get("lag_days"),
-            "latest_bias_date": ext.get("latest_bias_date"),
-        }
+        def _fetch_futures_sentiment_sync() -> dict:
+            from discord.commentary_processor import (
+                get_bias_extraction_health,
+                get_futures_sentiment_staleness,
+            )
+
+            st = get_futures_sentiment_staleness()
+            ext = get_bias_extraction_health()
+            return {
+                "quality": st.get("quality", "unknown"),
+                "age_days": st.get("age_days"),
+                "latest_timestamp": st.get("latest_timestamp"),
+                "threshold_days": st.get("threshold_days"),
+                # LLM structured-bias extraction health — distinct from the ingestion
+                # freshness above. 'degraded' = extraction has fallen behind commentary
+                # (e.g. the 2026-06-29 Anthropic credit-exhaustion outage that ran two
+                # days undetected because ingestion still looked fresh). Cache-only —
+                # no LLM call. Surfaced as a field; does not flip top-level status
+                # (the live engine has its own Vertex-backed extraction path).
+                "extraction_quality": ext.get("extraction_quality", "unknown"),
+                "extraction_lag_days": ext.get("lag_days"),
+                "latest_bias_date": ext.get("latest_bias_date"),
+            }
+
+        futures_sentiment = await asyncio.to_thread(_fetch_futures_sentiment_sync)
     except Exception:
         pass
 

@@ -23,6 +23,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from backtest._gate_v2_helpers import GATE_DSR, MIN_OOS_TRADES_PER_WINDOW
 from paper.validation_gate_config import APPROVED_PAPER_SYMBOLS, PAPER_VALIDATION_GATES
 
 try:
@@ -311,6 +312,9 @@ def _build_validation_gate_rows(
         (gross_profit / gross_loss) if gross_loss > 0 else (9999.0 if gross_profit > 0 else 0.0)
     )
     sharpe_ratio = _compute_sharpe_ratio(closed_trades)
+    _dsr_result = _compute_dsr_ratio(closed_trades)
+    dsr_value = _dsr_result["dsr"]
+    dsr_n_obs = _dsr_result["n_obs"]
     max_dd_pct = _compute_max_drawdown_pct(closed_trades)
 
     pf_t = float(cfg["profit_factor"])
@@ -362,6 +366,19 @@ def _build_validation_gate_rows(
             target=dd_t,
             passes=max_dd_pct <= dd_t,
             unit="%",
+        ),
+        ValidationGate(
+            # [safety-review] PR-10: blocks the false-PASS a raw Sharpe alone
+            # allowed on a tiny/lucky daily-P&L sample. Requires BOTH the DSR
+            # floor and a minimum observation count (see
+            # analytics.validation_metrics for why DSR alone isn't enough at
+            # n_trials=1 -- its max-bias term is 0, so it can't reject a
+            # short lucky streak without the explicit n_obs floor).
+            name="deflated_sharpe_ratio",
+            current=round(dsr_value, 4),
+            target=GATE_DSR,
+            passes=dsr_value >= GATE_DSR and dsr_n_obs >= MIN_OOS_TRADES_PER_WINDOW,
+            unit="",
         ),
     ]
     avg_conviction = _compute_conviction_score(closed_trades)
@@ -415,6 +432,33 @@ def _compute_sharpe_ratio(trades: list[dict], risk_free_rate: float = 0.04) -> f
 
     sharpe = (annual_return - risk_free_rate) / annual_std if annual_std > 0 else 0.0
     return round(max(0.0, sharpe), 2)
+
+
+def _compute_dsr_ratio(trades: list[dict], n_trials: int = 1) -> dict:
+    """Deflated Sharpe Ratio over the same daily-P&L buckets as ``_compute_sharpe_ratio``.
+
+    ``n_trials=1`` -- live paper trading here is one strategy under
+    observation, not a grid search over N combinations, so DSR applies only
+    its sample-size/non-normality penalty. See ``backtest.deflated_sharpe``'s
+    own "n_trials=1 = no correction, an honest no-op" convention.
+    """
+    from collections import defaultdict
+    from datetime import datetime
+
+    from backtest.deflated_sharpe import deflated_sharpe_from_returns
+
+    daily_pnl = defaultdict(float)
+    for trade in trades:
+        exit_time_str = trade.get("exit_time")
+        if not exit_time_str:
+            continue
+        try:
+            dt = datetime.fromisoformat(exit_time_str.replace("Z", "+00:00"))
+            daily_pnl[dt.date()] += float(trade.get("pnl") or 0.0)
+        except (ValueError, AttributeError, TypeError):
+            continue
+
+    return deflated_sharpe_from_returns(list(daily_pnl.values()), n_trials=n_trials)
 
 
 def _compute_max_drawdown_pct(trades: list[dict]) -> float:
@@ -991,6 +1035,11 @@ async def get_validation_checkpoint():
         # Sharpe ratio from daily P&L
         sharpe_ratio = _compute_sharpe_ratio(closed_trades)
 
+        # Deflated Sharpe Ratio -- sample-size/non-normality-corrected Sharpe
+        _dsr_result = _compute_dsr_ratio(closed_trades)
+        dsr_value = _dsr_result["dsr"]
+        dsr_n_obs = _dsr_result["n_obs"]
+
         # Max drawdown
         max_drawdown_pct = _compute_max_drawdown_pct(closed_trades)
 
@@ -1103,6 +1152,25 @@ async def get_validation_checkpoint():
                 status="PASS" if dd_passes else "FAIL",
                 current_value=max_drawdown_pct,
                 target_value=dd_target,
+            )
+
+        # Deflated Sharpe Ratio gate
+        # [safety-review] PR-10: blocks the false-PASS a raw Sharpe alone
+        # allowed on a tiny/lucky daily-P&L sample. Requires BOTH the DSR
+        # floor and a minimum observation count -- see
+        # analytics.validation_metrics for why DSR alone isn't enough.
+        if trade_count < 5:
+            gates["deflated_sharpe"] = GateResult(
+                status="INSUFFICIENT_DATA",
+                current_value=dsr_value,
+                target_value=GATE_DSR,
+            )
+        else:
+            dsr_passes = dsr_value >= GATE_DSR and dsr_n_obs >= MIN_OOS_TRADES_PER_WINDOW
+            gates["deflated_sharpe"] = GateResult(
+                status="PASS" if dsr_passes else "FAIL",
+                current_value=dsr_value,
+                target_value=GATE_DSR,
             )
 
         # Overall status determination

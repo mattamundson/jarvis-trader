@@ -94,6 +94,48 @@ async def test_floor_is_env_tunable(llm_client, monkeypatch):
     assert await _captured_max_tokens(llm_client, "gemini-2.5-flash", 500) == 1500
 
 
+# --- pro needs a much higher floor than flash -------------------------------
+# Bug (2026-07-15, live log): pro can never disable thinking (see the
+# reasoning_effort tests below — effort=none is refused for pro), so unlike
+# flash it always pays the reasoning spend out of max_tokens. With the shared
+# 2048 floor, bull/bear_researcher calls carrying the full debate context
+# (in:~5600) returned out:1/26/46/47/55/58 and the trader's JSON truncated
+# mid-object ("...target_1" with no closing brace) at out:281 — thinking ate
+# nearly the whole budget. Pro gets its own, higher floor.
+
+
+@pytest.mark.asyncio
+async def test_25_pro_gets_higher_floor_than_flash(llm_client):
+    # Same requested budget; pro is floored to 8192, flash to 2048.
+    assert await _captured_max_tokens(llm_client, "gemini-2.5-pro", 500) == 8192
+    assert await _captured_max_tokens(llm_client, "gemini-2.5-flash", 500) == 2048
+
+
+@pytest.mark.asyncio
+async def test_25_pro_large_budget_unchanged(llm_client):
+    # Floor only ever raises — a caller above it is untouched.
+    assert await _captured_max_tokens(llm_client, "gemini-2.5-pro", 16000) == 16000
+
+
+@pytest.mark.asyncio
+async def test_25_pro_floor_is_env_tunable(llm_client, monkeypatch):
+    monkeypatch.setenv("GEMINI_PRO_MIN_OUTPUT_TOKENS", "12288")
+    assert await _captured_max_tokens(llm_client, "gemini-2.5-pro", 500) == 12288
+
+
+@pytest.mark.asyncio
+async def test_pro_floor_env_does_not_affect_flash(llm_client, monkeypatch):
+    # The two floors are independent knobs; setting pro's must not move flash.
+    monkeypatch.setenv("GEMINI_PRO_MIN_OUTPUT_TOKENS", "12288")
+    assert await _captured_max_tokens(llm_client, "gemini-2.5-flash", 500) == 2048
+
+
+@pytest.mark.asyncio
+async def test_25_pro_bad_env_falls_back_to_default_floor(llm_client, monkeypatch):
+    monkeypatch.setenv("GEMINI_PRO_MIN_OUTPUT_TOKENS", "not-a-number")
+    assert await _captured_max_tokens(llm_client, "gemini-2.5-pro", 500) == 8192
+
+
 # --- reasoning_effort: disable thinking on 2.5 so the budget feeds the answer ---
 # Bug (2026-06-06, live log): even with the 2048 floor, a heavy analyst prompt
 # made gemini-2.5-flash spend ~1900 tokens thinking and truncate the JSON at
@@ -163,4 +205,7 @@ async def test_25_pro_respects_explicit_nonzero_effort(llm_client, monkeypatch):
 @pytest.mark.asyncio
 async def test_25_pro_still_floored(llm_client):
     # The output-budget floor still applies to pro (thinking shares the budget).
-    assert await _captured_max_tokens(llm_client, "gemini-2.5-pro", 500) == 2048
+    # The floor VALUE moved 2048 -> 8192 on 2026-07-15: pro can't disable
+    # thinking, so it needs more headroom than flash. See the pro-floor tests
+    # above for the evidence; this case still pins "pro is floored at all".
+    assert await _captured_max_tokens(llm_client, "gemini-2.5-pro", 500) == 8192

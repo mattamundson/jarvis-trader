@@ -1297,6 +1297,10 @@ export interface PendingApproval {
   // approvable (older engine builds without the enrichment).
   approvable?: boolean;
   block_reason?: string | null;
+  // Tamper-evident audit chain (approval/audit_chain.py, migration 041).
+  // Undefined/null on rows created before this field existed.
+  prev_hash?: string | null;
+  audit_hash?: string | null;
 }
 
 export interface PendingApprovalRow {
@@ -1308,6 +1312,10 @@ export interface PendingApprovalRow {
   created_at: string;
   pipeline_snapshot: Record<string, unknown> | null;
   status: "pending" | "approved" | "rejected" | "error";
+  // Tamper-evident audit chain (approval/audit_chain.py, migration 041).
+  // Null on rows created before this field existed.
+  prev_hash?: string | null;
+  audit_hash?: string | null;
 }
 
 export interface PendingApprovalsResponse {
@@ -1825,6 +1833,13 @@ export interface UnrealizedPosition {
   take_profit: number | null;
   stop_distance: number | null;
   target_distance: number | null;
+  // Data-provenance envelope (Phase 1) — see engine/data/provenance.py /
+  // dashboard/lib/provenance.ts. Describes the CURRENT_PRICE mark, not the
+  // static entry/stop/target fields above.
+  is_live?: boolean;
+  source?: string | null;
+  as_of?: number | null;
+  stale_after_s?: number;
 }
 
 export type UnrealizedPositionsResponse = UnrealizedPosition[];
@@ -2186,6 +2201,172 @@ export interface CalibrationDiagnostics {
 
 export async function fetchCalibration(): Promise<CalibrationDiagnostics> {
   return fetchEngine<CalibrationDiagnostics>("/analytics/calibration");
+}
+
+// ── Agent debate weights (/analytics/agent-weights) ───────────────────────────
+// Distinct from calibration above: this is the P&L-correlation weight
+// (AgentFeedbackTracker, 0.70-1.30) that actually scales each Stage-1
+// analyst's signal in debate.py, not the Brier/IC calibration blend.
+
+export interface AgentWeightEntry {
+  // What debate.py actually applies right now (see weights_source on the
+  // parent response) -- get_weights_by_regime(regime) when a regime is known,
+  // load_weights() otherwise. This is the number that matches live behavior.
+  live_weight: number;
+  // Freshly recomputed all-regime AgentFeedbackTracker.get_agent_weights() --
+  // a diagnostic view that can legitimately differ from live_weight. Never
+  // present this as "the" weight without the live_weight alongside it.
+  recomputed_weight: number;
+  accuracy_30d: number;
+  accuracy_90d: number;
+  sample_count_30d: number;
+  ready: boolean;
+}
+
+export interface AgentWeightsResponse {
+  min_weight: number;
+  max_weight: number;
+  default_weight: number;
+  min_trades_threshold: number;
+  agents: string[];
+  per_agent: Record<string, AgentWeightEntry>;
+  regime: string | null;
+  weights_source: string;
+  weights_file_exists: boolean;
+  saved_weights_updated_at: string | null;
+  timestamp: string;
+}
+
+export async function fetchAgentWeights(regime?: string): Promise<AgentWeightsResponse> {
+  const suffix = regime ? `?regime=${encodeURIComponent(regime)}` : "";
+  return fetchEngine<AgentWeightsResponse>(`/analytics/agent-weights${suffix}`);
+}
+
+// ── LLM daily cost stats (/llm/stats) ─────────────────────────────────────────
+
+export interface LlmModelStats {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface LlmAgentStats {
+  calls: number;
+  cost_usd: number;
+}
+
+export interface LlmDailyStats {
+  date: string;
+  total_calls: number;
+  total_cost_usd: number;
+  success_rate: number;
+  avg_latency_ms: number;
+  per_model: Record<string, LlmModelStats>;
+  per_agent: Record<string, LlmAgentStats>;
+  per_provider: Record<string, LlmModelStats>;
+}
+
+export async function fetchLlmDailyStats(daysBack: number = 0): Promise<LlmDailyStats> {
+  return fetchEngine<LlmDailyStats>(`/llm/stats?days_back=${daysBack}`);
+}
+
+// ── Trade post-mortems (/analytics/post-mortems) ──────────────────────────────
+
+export interface PostMortemEntry {
+  trade_id: string;
+  symbol: string | null;
+  pnl: number | null;
+  analysis: string | null;
+  lesson: string | null;
+  created_at: string | null;
+}
+
+export interface PostMortemsResponse {
+  entries: PostMortemEntry[];
+  total: number;
+  timestamp: string;
+}
+
+export async function fetchPostMortems(opts?: {
+  limit?: number;
+  symbol?: string;
+}): Promise<PostMortemsResponse> {
+  const q = new URLSearchParams();
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.symbol) q.set("symbol", opts.symbol);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return fetchEngine<PostMortemsResponse>(`/analytics/post-mortems${suffix}`);
+}
+
+// ── Live pipeline regime classification (/analytics/regime-v2/{symbol}) ──────
+// This is backtest.regime_classifier.RegimeClassifierV2 -- the classifier
+// engine/agents/pipeline.py actually uses live for regime-based strategy
+// routing. Deterministic rule-based thresholds only: validated is always
+// false (no ground-truth accuracy score exists yet) and probability_vector
+// is always null (the classifier doesn't produce one).
+
+export interface RegimeV2Response {
+  symbol: string;
+  regime: string;
+  description: string | null;
+  atr_norm: number | null;
+  ema_alignment: Record<string, number> | null;
+  validated: boolean;
+  probability_vector: Record<string, number> | null;
+  note: string | null;
+  timestamp: string;
+}
+
+export async function fetchRegimeV2(symbol: string): Promise<RegimeV2Response> {
+  return fetchEngine<RegimeV2Response>(`/analytics/regime-v2/${encodeURIComponent(symbol)}`);
+}
+
+// ── Portfolio correlation preview (/analytics/correlation-preview) ───────────
+// risk/portfolio_sizer.py's correlation-aware sizing trim is validated but NOT
+// wired into the live order path (see the module's own docstring) -- this
+// endpoint always returns wired_into_live_sizing: false. Preview/display only.
+
+export interface CorrelationPreviewResponse {
+  symbols: string[];
+  pairs: Record<string, number>;
+  omitted_pairs: string[];
+  wired_into_live_sizing: boolean;
+  note: string;
+  timestamp: string;
+}
+
+export async function fetchCorrelationPreview(
+  symbols: string[] = ["MES", "MGC", "MCL", "MNQ"]
+): Promise<CorrelationPreviewResponse> {
+  return fetchEngine<CorrelationPreviewResponse>(
+    `/analytics/correlation-preview?symbols=${encodeURIComponent(symbols.join(","))}`
+  );
+}
+
+// ── Backup/DR health (/health/backup-status) ──────────────────────────────────
+// Note: an older, unused BackupStatusResponse/BackupFile type pair already
+// exists above (for the differently-shaped /system/backup-status endpoint,
+// with a stale `created_at` field) -- left untouched since nothing consumes
+// it. This is a fresh type matching the actual /health/backup-status shape.
+
+export interface BackupFileEntry {
+  filename: string;
+  size_bytes: number;
+  created_utc: string;
+}
+
+export interface HealthBackupStatus {
+  backup_count: number;
+  last_backup: string | null;
+  last_backup_path: string | null;
+  retention_days: number;
+  backup_dir: string | null;
+  available_backups: BackupFileEntry[];
+}
+
+export async function fetchHealthBackupStatus(): Promise<HealthBackupStatus> {
+  return fetchEngine<HealthBackupStatus>("/health/backup-status");
 }
 
 // ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────

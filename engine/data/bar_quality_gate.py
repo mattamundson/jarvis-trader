@@ -34,7 +34,8 @@ from __future__ import annotations
 import logging
 import math
 import os
-from typing import NamedTuple, Sequence
+import re
+from typing import NamedTuple, Optional, Sequence
 
 logger = logging.getLogger("jarvis_trader.bar_quality")
 
@@ -223,3 +224,166 @@ def apply_gate(
     bad_idx = {rj.index for rj in rejects}
     kept = [r for i, r in enumerate(rows) if i not in bad_idx]
     return kept, rejects
+
+
+# =============================================================================
+# Read-time freshness gate (interval-scaled, decision-path) — SOTA plan P1.4
+# =============================================================================
+#
+# The screen above is a WRITE-time guard: it keeps malformed ticks out of
+# ``market_data_bars``. It says nothing about a read that lands on GOOD but
+# OLD bars — a feed that has gone quietly stale (IBKR disconnected, no new
+# prints) still hands back well-formed historical rows, so the write-time
+# screen never fires and a decision can be made on data that is minutes-to-
+# hours stale. This is the READ-time counterpart: consulted at decision time
+# (``engine/agents/pipeline.py::pre_filter_signal``, before the LLM pipeline
+# runs), any traded symbol whose newest bar is older than an interval-scaled
+# ceiling is forced to NO_TRADE/HOLD.
+#
+# "Interval-scaled" matters because a fixed ceiling is either too loose for
+# fast timeframes (a 5m strategy trading on a bar that is 2h old is not
+# "slightly stale", it is a different session) or too tight for slow ones (a
+# 4h bar is not stale at 90 minutes old). The ceiling instead scales with the
+# bar's own interval: ``max(floor, multiplier * interval_seconds)``.
+#
+# Fails OPEN only when the comparison itself is impossible (no determinable
+# bar age, or an unparseable interval token) — mirrors the "indeterminate ->
+# skip this anchor" contract of ``latest_bar_age_seconds`` in
+# ``engine/risk/entry_price_sanity.py``, so a timestamp-less frame never
+# false-trips. Whenever a real age vs. threshold comparison IS possible, it
+# fails CLOSED (NO_TRADE) — this is a fail-safe gate, not a soft warning.
+
+_ENV_FRESHNESS_ENABLED = "BAR_FRESHNESS_GATE_ENABLED"
+_ENV_FRESHNESS_MULTIPLIER = "BAR_FRESHNESS_STALE_MULTIPLIER"
+_ENV_FRESHNESS_FLOOR = "BAR_FRESHNESS_MIN_FLOOR_SECONDS"
+
+#: A bar older than this many multiples of its own interval is stale. 3x
+#: tolerates one missed print plus ordinary feed jitter without masking a
+#: genuinely frozen feed.
+DEFAULT_STALE_MULTIPLIER: float = 3.0
+
+#: Absolute floor so a fast interval (e.g. 1m * 3 = 180s) is never tripped by
+#: sub-minute polling/fetch latency alone.
+DEFAULT_MIN_FLOOR_SECONDS: int = 300
+
+#: Interval token -> seconds. Covers the timeframe strings used across the
+#: pipeline (engine/agents/pipeline.py, engine/data/market_data.py).
+_INTERVAL_SECONDS: dict[str, int] = {
+    "1m": 60,
+    "3m": 180,
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3_600,
+    "2h": 7_200,
+    "4h": 14_400,
+    "1d": 86_400,
+    "d": 86_400,
+    "day": 86_400,
+    "daily": 86_400,
+    "1w": 604_800,
+    "w": 604_800,
+    "week": 604_800,
+    "weekly": 604_800,
+}
+
+_INTERVAL_TOKEN_RE = re.compile(r"^(\d+)\s*([a-zA-Z]+)$")
+_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3_600, "d": 86_400, "w": 604_800}
+
+
+def interval_to_seconds(interval: str) -> Optional[int]:
+    """Best-effort parse of a timeframe token ("5m", "1h", "1d", ...) to seconds.
+
+    Returns ``None`` when the token cannot be interpreted at all, so callers
+    fail open (freshness indeterminate) rather than fabricate a threshold.
+    """
+    if not interval:
+        return None
+    key = str(interval).strip().lower()
+    if key in _INTERVAL_SECONDS:
+        return _INTERVAL_SECONDS[key]
+    match = _INTERVAL_TOKEN_RE.match(key)
+    if not match:
+        return None
+    raw_n, unit = match.groups()
+    try:
+        n = int(raw_n)
+    except ValueError:
+        return None
+    unit_seconds = _UNIT_SECONDS.get(unit[0])
+    if unit_seconds is None or n <= 0:
+        return None
+    return n * unit_seconds
+
+
+def freshness_gate_enabled() -> bool:
+    """Whether the read-time freshness gate runs at all. Default ON (opt-out).
+
+    ``BAR_FRESHNESS_GATE_ENABLED=0`` fully disables the decision-time
+    staleness check. Read fresh on every call so it can be toggled at
+    runtime without a restart, matching the opt-out convention already used
+    by ``is_bar_freshness_check_enabled`` in engine/risk/entry_price_sanity.py.
+    """
+    return os.getenv(_ENV_FRESHNESS_ENABLED, "1").strip().lower() in _TRUTHY
+
+
+def _stale_multiplier() -> float:
+    try:
+        return float(os.getenv(_ENV_FRESHNESS_MULTIPLIER, "") or DEFAULT_STALE_MULTIPLIER)
+    except ValueError:
+        return DEFAULT_STALE_MULTIPLIER
+
+
+def _min_floor_seconds() -> int:
+    try:
+        return int(os.getenv(_ENV_FRESHNESS_FLOOR, "") or DEFAULT_MIN_FLOOR_SECONDS)
+    except ValueError:
+        return DEFAULT_MIN_FLOOR_SECONDS
+
+
+def stale_threshold_seconds(interval: str) -> Optional[float]:
+    """Interval-scaled staleness ceiling in seconds, or ``None`` if the
+    interval token cannot be parsed."""
+    interval_s = interval_to_seconds(interval)
+    if interval_s is None:
+        return None
+    return max(_min_floor_seconds(), _stale_multiplier() * interval_s)
+
+
+class FreshnessVerdict(NamedTuple):
+    """Result of a read-time freshness check for one symbol/interval pair."""
+
+    is_stale: bool
+    age_seconds: Optional[float]
+    threshold_seconds: Optional[float]
+    reason: str
+
+
+def check_freshness(age_seconds: Optional[float], interval: str) -> FreshnessVerdict:
+    """Pure predicate: is a bar of ``age_seconds`` age stale for ``interval``?
+
+    No I/O — callers supply the already-computed bar age (e.g. via
+    ``latest_bar_age_seconds`` from engine/risk/entry_price_sanity.py) so this
+    stays trivially testable, mirroring ``screen_bars``'s purity above.
+    """
+    if age_seconds is None:
+        return FreshnessVerdict(
+            False, None, None, "bar age indeterminate — freshness check skipped"
+        )
+    threshold = stale_threshold_seconds(interval)
+    if threshold is None:
+        return FreshnessVerdict(
+            False,
+            age_seconds,
+            None,
+            f"interval {interval!r} unparseable — freshness check skipped",
+        )
+    if age_seconds > threshold:
+        return FreshnessVerdict(
+            True,
+            age_seconds,
+            threshold,
+            f"newest bar is {age_seconds:.0f}s old (> {threshold:.0f}s interval-scaled "
+            f"ceiling for interval={interval!r}) — fail-safe NO_TRADE",
+        )
+    return FreshnessVerdict(False, age_seconds, threshold, "fresh")

@@ -54,6 +54,8 @@ engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -62,7 +64,12 @@ SYMBOL = "MES"
 MULTIPLIER = 5.0  # $5 per point (Micro E-mini S&P 500)
 CAPITAL = 50_000.0  # ALT path requires $50K+ accounts
 TICK_SIZE = 0.25
-COMMISSION = 0.62  # $/contract round-trip (IB micro futures)
+# Imported from contract_specs.py (single source of truth) rather than a
+# local literal (found 2026-07-10 while fixing the sibling MGC runner, which
+# had drifted to this same 0.62 value -- MES's own rate, but wrong for MGC).
+# Numerically unchanged for MES; this only removes the duplicate-literal
+# drift risk contract_specs.py's docstring warns about.
+COMMISSION = CONTRACT_SPECS["MES"].commission
 SLIPPAGE_TICKS = 2.0
 
 TRAIN_MONTHS = 6
@@ -243,7 +250,6 @@ from backtest._gate_v2_helpers import (  # noqa: E402  # noqa: E402
     _find_latest_cache,  # noqa: E402
     sample_adequacy_enforced,
 )  # noqa: E402
-from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
     classify_wfo_consistency as _classify_wfo_consistency,  # noqa: E402
 )
@@ -386,6 +392,8 @@ def _compute_gate_v2(
         trade_level_dsr,
         trade_level_mc_95th_dd,
         trade_level_slippage_stress,
+        trade_level_p_edge,
+        trade_level_pf_ci_lower,
         trade_level_win_rate_ci_lower,
     )
 
@@ -394,8 +402,10 @@ def _compute_gate_v2(
     all_trades = sum(r.total_trades for r in oos_results)
     sample_adequate = all_trades >= MIN_OOS_TRADES_TOTAL
 
-    pf_ci_lower = _bootstrap_pf_ci_lower(oos_pfs)
-    p_edge = float(sum(1 for pf in oos_pfs if pf > 1.0) / max(1, len(oos_pfs)))
+    # Trade-level (not per-window-PF-list) bootstrap -- see _gate_v2_trade_metrics
+    # for why the old oos_pfs-based bootstrap was mis-specified for 1-trade windows.
+    pf_ci_lower = trade_level_pf_ci_lower(oos_results)
+    p_edge = trade_level_p_edge(oos_results)
 
     # Trade-level risk metrics (correct). mc_95th_dd is a real permutation Monte
     # Carlo on the concatenated OOS trade list; dsr is the Deflated Sharpe from the

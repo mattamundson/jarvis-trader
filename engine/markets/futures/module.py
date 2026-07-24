@@ -104,9 +104,18 @@ class FuturesMarketModule(MarketModule):
         number. Falls back to whatever's on the raw dict when no data_manager
         is available (tests, or data-manager-less construction) so behavior
         is unchanged in that case.
+
+        Positions are sourced via ``get_open_positions_authoritative()``
+        (DB-reconciled) rather than the raw in-memory ``get_open_positions()``
+        read: the in-memory ``_open`` map can drift from the ``paper_trades``
+        table when a row is written by a path that bypasses the tracker (the
+        stop-monitor's ``db_manager.close_trade`` fallback, or a peer process),
+        which is what let ``/portfolio/health`` and ``/portfolio/summary``
+        disagree on ``open_positions`` for the same account. The live recompute
+        below then runs on the reconciled list.
         """
         try:
-            raw_positions = self._tracker.get_open_positions()
+            raw_positions, _recon = self._tracker.get_open_positions_authoritative()
         except Exception as exc:
             logger.error(f"Futures get_positions error: {exc}")
             return []
@@ -239,7 +248,19 @@ class FuturesMarketModule(MarketModule):
             logger.error(f"Futures shutdown error: {exc}")
 
     def health_check(self) -> HealthStatus:
-        """Return current health status."""
+        """Return current health status.
+
+        ``open_positions`` is read via ``get_open_positions_authoritative()``
+        (DB-reconciled) — the same source ``get_positions()`` now uses — so this
+        count can never disagree with ``/portfolio/summary``'s
+        ``total_open_positions``. Previously this called the raw in-memory
+        ``get_open_positions()`` directly with no exception guard, so any
+        transient error here (unlike the guarded call in ``get_positions()``)
+        propagated to ``MultiMarketOrchestrator.get_all_health()``, which
+        swallows it and substitutes a bare ``HealthStatus(status=ERROR)`` whose
+        ``open_positions`` silently defaults to 0 — surfacing a phantom "flat"
+        reading on the dashboard while real positions were still open.
+        """
         connected = False
         try:
             connected = self._ib.is_connected()
@@ -253,13 +274,20 @@ class FuturesMarketModule(MarketModule):
         else:
             status = MarketStatus.OFFLINE
 
+        try:
+            open_positions, _recon = self._tracker.get_open_positions_authoritative()
+            open_count = len(open_positions)
+        except Exception as exc:
+            logger.error(f"Futures health_check: open-position read failed: {exc}")
+            open_count = 0
+
         return HealthStatus(
             market=self.market_name,
             status=status,
             message=f"IB Gateway {'connected' if connected else 'disconnected'} | Paper mode",
             daily_pnl=self._daily_pnl,
             last_trade_at=self._last_cycle_at,
-            open_positions=len(self._tracker.get_open_positions()),
+            open_positions=open_count,
         )
 
     def halt(self, reason: str = "") -> None:

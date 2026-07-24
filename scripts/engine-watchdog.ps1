@@ -19,12 +19,12 @@ param([switch]$DryRun)
 
 $ErrorActionPreference = 'Continue'
 
-$EngineUrl  = 'http://127.0.0.1:8010/health'
-$Port       = 8010
-$JarvisDir  = 'C:\Users\mattm\ThinkorSwim\jarvis-trader'
-$LogDir     = "$JarvisDir\logs"
-$LogFile    = "$LogDir\engine-watchdog.log"
-$MaxLogKB   = 512
+$EngineUrl = 'http://127.0.0.1:8010/health'
+$Port = 8010
+$JarvisDir = 'C:\Users\mattm\ThinkorSwim\jarvis-trader'
+$LogDir = "$JarvisDir\logs"
+$LogFile = "$LogDir\engine-watchdog.log"
+$MaxLogKB = 512
 
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 
@@ -41,7 +41,8 @@ function Trim-Log {
             $lines = Get-Content $LogFile
             $lines | Select-Object -Last 400 | Set-Content $LogFile -Encoding UTF8
         }
-    } catch {}
+    }
+    catch {}
 }
 
 # Check health.
@@ -59,15 +60,16 @@ function Trim-Log {
 # few seconds apart (~45-75s of *sustained* unresponsiveness) before acting.
 # Transient saturation recovers within one or two probes; a genuine hang fails
 # all three. One success at any point clears the alarm.
-$ProbeTimeoutSec   = 15
-$ProbeCount        = 3
-$ProbeGapSec       = 8
+$ProbeTimeoutSec = 15
+$ProbeCount = 3
+$ProbeGapSec = 8
 $healthy = $false
 for ($probe = 1; $probe -le $ProbeCount; $probe++) {
     try {
         $resp = Invoke-WebRequest -Uri $EngineUrl -TimeoutSec $ProbeTimeoutSec -UseBasicParsing -ErrorAction Stop
         if ($resp.StatusCode -eq 200) { $healthy = $true; break }
-    } catch {}
+    }
+    catch {}
     if ($probe -lt $ProbeCount) { Start-Sleep -Seconds $ProbeGapSec }
 }
 
@@ -97,8 +99,49 @@ try {
         exit 0
     }
     Write-Log ("CONFIRM-DEAD: engine log stale ({0:N0}s) AND /health failed {1}x -- genuine hang, restarting" -f $logAgeSec, $ProbeCount)
-} catch {
+}
+catch {
     Write-Log "WARN: cannot stat engine log -- falling through to restart on /health failure"
+}
+# --------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
+# Cross-watchdog restart lock. This script and check-engine-health.ps1
+# (~/scripts/, hourly cadence) can both decide independently that the engine
+# needs a restart -- with no awareness of each other, each one's force-kill +
+# restart_engine.ps1 call can land while the OTHER's restart is still binding
+# to port 8010, producing an orphan-kill collision chain (204+ restarts/day
+# observed 2026-07-09, see engine/logs/port_guardian_restarts.jsonl). This
+# lock makes whichever watchdog fires first own the restart; the other skips
+# rather than force-killing a process that's mid-boot from a restart already
+# in flight. TTL-based (no explicit release) so a crashed watchdog can't wedge
+# the lock permanently -- 120s comfortably covers kill + restart_engine.ps1 +
+# PM2 rebind, well under this script's own 5-min cadence.
+$RestartLockFile = Join-Path $env:TEMP 'jarvis-engine-restart.lock'
+$RestartLockTTL = 120  # seconds
+
+if (Test-Path $RestartLockFile) {
+    try {
+        $lockAgeSec = ((Get-Date) - (Get-Item $RestartLockFile).LastWriteTime).TotalSeconds
+        if ($lockAgeSec -lt $RestartLockTTL) {
+            $lockOwner = Get-Content $RestartLockFile -Raw -ErrorAction SilentlyContinue
+            Write-Log ("SKIP: restart already in flight (lock: '{0}', {1:N0}s old, TTL {2}s) -- " -f $lockOwner, $lockAgeSec, $RestartLockTTL) `
+                + "not force-killing, avoiding restart-storm collision"
+            Trim-Log
+            exit 0
+        }
+    }
+    catch {
+        Write-Log "WARN: cannot read restart lock -- proceeding rather than blocking indefinitely"
+    }
+}
+
+if (-not $DryRun) {
+    "engine-watchdog.ps1 pid=$PID host=$env:COMPUTERNAME $(Get-Date -Format o)" |
+        Set-Content -Path $RestartLockFile -Force
+}
+else {
+    Write-Log "DRY-RUN: would claim restart lock at $RestartLockFile"
 }
 # --------------------------------------------------------------------------
 
@@ -118,12 +161,14 @@ if ($holders) {
         if (-not $DryRun) {
             Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
             Write-Log "KILL: sent Stop-Process to PID $pid"
-        } else {
+        }
+        else {
             Write-Log "DRY-RUN: would Stop-Process -Id $pid -Force"
         }
     }
     Start-Sleep -Seconds 3
-} else {
+}
+else {
     Write-Log "INFO: nothing listening on port $Port -- engine not running"
 }
 
@@ -132,10 +177,12 @@ if (-not $DryRun) {
     try {
         & "$JarvisDir\restart_engine.ps1"
         Write-Log "RESTART: restart_engine.ps1 completed (exit $LASTEXITCODE)"
-    } catch {
+    }
+    catch {
         Write-Log "RESTART ERROR: $($_.Exception.Message)"
     }
-} else {
+}
+else {
     Write-Log "DRY-RUN: would invoke restart_engine.ps1"
 }
 

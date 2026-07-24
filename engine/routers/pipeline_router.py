@@ -1051,7 +1051,26 @@ async def run_pipeline_sync(req: PipelineRunRequest):
         except Exception as exc:
             logger.error(f"[PAPER] Auto-log failed for {req.symbol}: {exc}")
 
-    if not settings.LIVE_TRADING_ENABLED and final_action != "hold" and _paper_tracker:
+    # Legacy catch-all auto-log path. The watchlist-gated block above already
+    # handles every symbol in _approved_for_paper -- either deferring to a
+    # human approval (requires_human=True) or auto-logging via
+    # add_paper_trade() (requires_human=False). This block must only run
+    # for the leftover case that block never reaches (symbol not on
+    # _approved_for_paper). Without this guard it ran unconditionally after
+    # the block above for every watchlist symbol too, defeating the human
+    # approval gate (opened a live paper trade the instant the gate above
+    # had just queued a pending approval for the same decision) and, even
+    # when no approval was required, duplicated the trade a second time
+    # (two open_trade calls for one pipeline decision). Found during the
+    # PR #331 naked-row completeness sweep (US-010); see
+    # docs/incident-notes/2026-07-07-trade-287-stop-enforcement-chain.md.
+    _already_handled = bool(result.get("pending_approval_id") or result.get("paper_trade_id"))
+    if (
+        not settings.LIVE_TRADING_ENABLED
+        and final_action != "hold"
+        and _paper_tracker
+        and not _already_handled
+    ):
         try:
             trade_dec = result.get("trade_decision") or {}
             entry_price = (
