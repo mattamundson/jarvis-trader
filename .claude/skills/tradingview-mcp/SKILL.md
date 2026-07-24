@@ -59,12 +59,14 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 
 **Chart control (transient view only, safe):**
 - `chart_set_symbol`, `chart_set_timeframe`, `chart_set_type`, `chart_scroll_to_date`,
-  `chart_set_visible_range`, `chart_manage_indicator`, `indicator_set_inputs`
+  `chart_set_visible_range`
 - Read-only workspace queries: `pane_list`, `pane_focus`, `tab_list`, `tab_switch`,
   `watchlist_get`, `layout_list`
-- NOT safe — these persist/alter Matt's workspace and are confirmation-gated below, so do not
-  treat `tab_*`/`watchlist_*`/`layout_*`/`pane_*` as a blanket-safe wildcard:
-  `watchlist_add`, `tab_new`, `tab_close`, `layout_switch`, `pane_set_layout`, `pane_set_symbol`.
+- NOT safe — these persist/alter Matt's workspace or saved chart setup and are confirmation-gated
+  below, so do not treat `tab_*`/`watchlist_*`/`layout_*`/`pane_*`/indicator tools as blanket-safe:
+  `chart_manage_indicator`, `indicator_set_inputs` (add/remove indicators and change their
+  settings), `watchlist_add`, `tab_new`, `tab_close`, `layout_switch`, `pane_set_layout`,
+  `pane_set_symbol`. To read an indicator, use `data_get_study_values` on one already on the chart.
 - **`chart_set_timeframe` takes a TradingView resolution** (`1`, `5`, `15`, `60`, `240`,
   `D`, `W`, `M`), not a `15m`/`1h` alias. Normalize aliases before the call (`15m`→`15`,
   `1h`→`60`, `4h`→`240`, `1d`→`D`) and confirm the switch with `chart_get_state` — an
@@ -82,9 +84,10 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 
 **Confirmation-gated (real side effects):** `pine_save` (persists/overwrites Matt's saved
 Pine script — never save while merely linting/compiling), `pine_set_source`,
-`watchlist_add`, `tab_new`, `tab_close`, `layout_switch`, `pane_set_layout`, `pane_set_symbol`,
-`alert_create`, `alert_delete`, `draw_shape`, `draw_remove_one`, `draw_clear`, `ui_click`,
-`ui_evaluate`, `batch_run` — these mutate Matt's TV session/account/workspace. Read the current
+`chart_manage_indicator`, `indicator_set_inputs`, `watchlist_add`, `tab_new`, `tab_close`,
+`layout_switch`, `pane_set_layout`, `pane_set_symbol`, `alert_create`, `alert_delete`,
+`draw_shape`, `draw_remove_one`, `draw_clear`, `ui_click`, `ui_evaluate`, `batch_run` — these
+mutate Matt's TV session/account/workspace/chart setup. Read the current
 state first, state what you'll change, and only proceed on an explicit instruction.
 
 ## Standard chart-read flow
