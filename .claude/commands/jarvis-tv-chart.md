@@ -23,22 +23,32 @@ Map the jarvis symbol in `$ARGUMENTS` to the TradingView ticker:
 
 Default timeframe if none given: `15m`.
 
-### Normalize the timeframe before calling the tool
+### Resolve the timeframe into TWO forms before making any call
 
-`mcp__tradingview__chart_set_timeframe` expects a **TradingView resolution string**
-(`1`, `5`, `15`, `60`, `240`, `D`, `W`, `M`), not a `15m`/`1h` alias — passing an alias can
-leave the chart on its previous resolution while OHLCV/screenshot are still summarized (a
-silently-wrong read). Map the human alias to a resolution first:
+The chart tool and the engine want **different** timeframe encodings, so keep both — do not
+pass one where the other belongs:
 
-| alias | resolution | | alias | resolution |
-|-------|-----------|-|-------|-----------|
-| `1m`  | `1`       | | `1h`  | `60`      |
-| `5m`  | `5`       | | `4h`  | `240`     |
-| `15m` | `15`      | | `1d` / `D` | `D`  |
-| `30m` | `30`      | | `1w` / `W` | `W`  |
+- `mcp__tradingview__chart_set_timeframe` wants a **TradingView resolution** (`1`/`5`/`15`/
+  `60`/`240`/`D`/`W`) — an unrecognized value can leave the chart on its prior resolution.
+- the engine cross-check (`get_bars` via `/hidden-pivots/levels`, `/prices/snapshot`) wants an
+  **engine alias** (`5m`/`15m`/`1h`/`4h`/`1d`) — a bare `15`/`60`/`D` is unknown to its
+  IB/Polygon maps and silently falls back to 5m bars (the wrong ladder).
 
-If already a bare resolution (`15`, `60`, `D`), pass it through unchanged. If the alias
-doesn't map cleanly, report it and stop rather than guessing.
+Map the input (a human alias *or* a bare TV resolution) to both columns:
+
+| input        | TV resolution (chart) | engine alias (cross-check) |
+|--------------|-----------------------|----------------------------|
+| `1m` / `1`   | `1`                   | `1m`                       |
+| `5m` / `5`   | `5`                   | `5m`                       |
+| `15m` / `15` | `15`                  | `15m`                      |
+| `1h` / `60`  | `60`                  | `1h`                       |
+| `4h` / `240` | `240`                 | `4h`                       |
+| `1d` / `D`   | `D`                   | `1d`                       |
+| `1w` / `W`   | `W`                   | `1d` (no intraday; flag)   |
+
+`30m`/`30` (TV `30`) has no engine bar mapping — chart it, but for the cross-check use the
+nearest engine alias (`15m` or `1h`) and flag the substitution. If an input maps to neither
+column cleanly, report it and stop rather than guessing.
 
 ## Steps
 
@@ -47,9 +57,9 @@ doesn't map cleanly, report it and stop rather than guessing.
    up — point to `docs/tv-mcp-startup.md` (exit-code 2 = TV running without CDP). Do not
    invent chart values.
 2. `mcp__tradingview__chart_set_symbol` → resolved ticker, then
-   `mcp__tradingview__chart_set_timeframe` → the **normalized** resolution (see table above).
-   After the call, confirm the chart actually switched (`chart_get_state`) before trusting
-   the read.
+   `mcp__tradingview__chart_set_timeframe` → the **TV resolution** (chart column of the table
+   above). After the call, confirm the chart actually switched (`chart_get_state`) before
+   trusting the read.
 3. `mcp__tradingview__data_get_ohlcv` for recent candles. If an indicator is already on the
    chart, `mcp__tradingview__data_get_study_values` for its latest values. Optionally
    `mcp__tradingview__data_get_pine_lines` / `_labels` for any Pine-drawn levels.
@@ -66,22 +76,27 @@ and timeframe**, otherwise the check silently validates the wrong thing.
 metrics are), so a bare call returns 401. Send the key on every request, read at use time
 (it rotates — do not hardcode), exactly as the other jarvis commands do:
 
+Use the **engine alias** (`<eng_tf>` — the right-hand column of the timeframe table, e.g. `15m`,
+not the TV `15`) for these calls:
+
 ```bash
 API_KEY="${JARVIS_API_KEY}"
 curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot?symbols=<symbol>"
-curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/<symbol>?timeframe=<tf>"
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/<symbol>?timeframe=<eng_tf>"
 ```
 
 - **Price:** `/prices/snapshot?symbols=<jarvis symbol>` — the endpoint defaults to
   `SPY,QQQ,MES,MNQ,MCL` (MGC is *not* in the default set), so always pass `?symbols=MGC`
   (or MES, etc.) explicitly or the snapshot won't include what you charted.
-- **Levels:** `/hidden-pivots/levels/<symbol>?timeframe=<tf>` — pass the **same timeframe you
-  charted**. The endpoint forwards `timeframe` straight to `MarketDataManager.get_bars`, which
-  maps `5m` / `15m` / `1h` / `4h` / `1d` directly, so `?timeframe=15m` returns a 15m ladder —
-  don't downshift it. (The route's `lookback_map` only sets lookback *days* — an unlisted key
-  like `15m` just falls back to a 200-day lookback, it does not change the bar size.) Only if
-  the call errors or returns empty for that timeframe, retry with the nearest supported value
-  and note the substitution. Never compare a daily ladder against an intraday chart.
+- **Levels:** `/hidden-pivots/levels/<symbol>?timeframe=<eng_tf>` — pass the **engine alias for
+  the same timeframe you charted** (`15m`, not the TV `15`). The endpoint forwards `timeframe`
+  straight to `MarketDataManager.get_bars`, which maps `5m`/`15m`/`1h`/`4h`/`1d` directly, so
+  `?timeframe=15m` returns a 15m ladder — don't downshift it, and don't send a bare TV
+  resolution (`15`/`60`/`D`), which its maps don't recognize and silently degrade to 5m bars.
+  (The route's `lookback_map` only sets lookback *days* — an unlisted key just falls back to a
+  200-day lookback, it does not change the bar size.) Only if the call errors or returns empty
+  for that timeframe, retry with the nearest supported alias and note the substitution. Never
+  compare a daily ladder against an intraday chart.
 
 Compare last price / levels against what TradingView shows and report any drift explicitly —
 a mismatch between the TV feed and the engine feed is a bug to flag, not a rounding footnote.

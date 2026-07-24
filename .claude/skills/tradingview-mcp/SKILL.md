@@ -66,17 +66,20 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
   `1h`→`60`, `4h`→`240`, `1d`→`D`) and confirm the switch with `chart_get_state` — an
   unrecognized value can silently leave the chart on its prior resolution.
 
-**Pine Script dev (for `jarvis_trader_strategy.pine` / STC strategy):**
-- `pine_get_source`, `pine_set_source`, `pine_smart_compile`, `pine_check`,
-  `pine_get_errors`, `pine_get_console`, `pine_analyze`, `pine_save`, `pine_list_scripts`
+**Pine Script dev — read/compile only (safe):**
+- `pine_get_source`, `pine_smart_compile`, `pine_check`, `pine_get_errors`,
+  `pine_get_console`, `pine_analyze`, `pine_list_scripts`
 - Use to lint/compile the STC + ATR strategy before wiring alerts (PF 5.27 / Sharpe 4.16
   on 1h per the setup doc). Backtest claims still go through the engine, not TV's tester.
+- Note: `pine_set_source` replaces the editor buffer and `pine_new`/`pine_open` change which
+  script is open — read `pine_get_source` first and treat these as edits, not reads.
 
 **Replay (practice only):** `replay_start/step/autoplay/trade/status/stop`
 
-**Confirmation-gated (real side effects):** `alert_create`, `alert_delete`,
-`draw_shape`, `draw_remove_one`, `draw_clear`, `ui_click`, `ui_evaluate`, `batch_run` —
-these mutate Matt's TV session/account. Read the current state first, state what you'll
+**Confirmation-gated (real side effects):** `pine_save` (persists/overwrites Matt's saved
+Pine script — never save while merely linting/compiling), `pine_set_source`, `alert_create`,
+`alert_delete`, `draw_shape`, `draw_remove_one`, `draw_clear`, `ui_click`, `ui_evaluate`,
+`batch_run` — these mutate Matt's TV session/account. Read the current state first, state what you'll
 change, and only proceed on an explicit instruction.
 
 ## Standard chart-read flow
