@@ -284,3 +284,24 @@ export function dedupCaveat(set: HonestTradeSet): string {
     ? `${set.trades.length} real trades · ${set.relogged} re-logged rows collapsed`
     : `${set.trades.length} real trades`;
 }
+
+/**
+ * GT-06: single source of truth for "the honest fetch settled with no data".
+ *
+ * `useHonestTrades()` (SWR over `fetchHonestTrades()`, which throws when
+ * master-api is unreachable/errored) resolves to exactly one of three states:
+ *   1. still in flight        -> loadingHonest === true,  set === null
+ *   2. succeeded               -> loadingHonest === false, set !== null
+ *   3. threw / settled empty   -> loadingHonest === false, set === null
+ *
+ * Only state 3 is "unavailable". Every consumer on the scorecard page (and
+ * any future page reading the shared hook) MUST gate its display on this
+ * function rather than naively falling back to `?? 0` and letting a fetch
+ * failure render as a real (and FAIL-colored) zero. See scorecard/page.tsx.
+ */
+export function isHonestUnavailable(
+  set: HonestTradeSet | null | undefined,
+  loadingHonest: boolean,
+): boolean {
+  return !loadingHonest && !set;
+}
