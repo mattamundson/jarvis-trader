@@ -209,17 +209,53 @@ def test_watchers_daemon_not_enabled(client):
 
 
 def test_watchers_daemon_running(client):
+    """The router enriches daemon.get_status()['watchers'] (bare name strings)
+    into full per-watcher objects — this is the real backend shape the daemon
+    produces, and the dashboard's WatcherCard requires enabled/hit_count_today/
+    warning_count_today/critical_count_today/last_observation on each entry
+    (GT-15 sub-issue 1)."""
     daemon = MagicMock()
     daemon.get_status.return_value = {
         "running": True,
         "watchers": ["vix_spike", "spread_widening"],
     }
-    with patch("routers.kairos_router.get_kairos", return_value=daemon):
+    mock_log = MagicMock()
+    mock_log.read_today.return_value = [
+        {"watcher": "vix_spike", "severity": "critical", "timestamp": "2026-07-24T10:00:00"},
+        {"watcher": "vix_spike", "severity": "warning", "timestamp": "2026-07-24T10:05:00"},
+    ]
+    with patch("routers.kairos_router.get_kairos", return_value=daemon), patch(
+        "kairos.observation_log.ObservationLog", return_value=mock_log
+    ):
         resp = client.get("/kairos/watchers")
     assert resp.status_code == 200
     data = resp.json()
     assert data["running"] is True
-    assert data["watchers"] == ["vix_spike", "spread_widening"]
+    assert len(data["watchers"]) == 2
+
+    vix = next(w for w in data["watchers"] if w["name"] == "vix_spike")
+    assert vix["enabled"] is True
+    assert vix["hit_count_today"] == 2
+    assert vix["warning_count_today"] == 1
+    assert vix["critical_count_today"] == 1
+    assert vix["last_observation"] == "2026-07-24T10:05:00"
+
+    spread = next(w for w in data["watchers"] if w["name"] == "spread_widening")
+    assert spread["hit_count_today"] == 0
+    assert spread["warning_count_today"] == 0
+    assert spread["critical_count_today"] == 0
+    assert spread["last_observation"] is None
+    # Every returned watcher object carries the full contract fields the
+    # frontend's KairosWatcher interface expects.
+    for w in data["watchers"]:
+        assert set(w.keys()) == {
+            "name",
+            "enabled",
+            "hit_count_today",
+            "warning_count_today",
+            "critical_count_today",
+            "last_observation",
+        }
 
 
 # ---------------------------------------------------------------------------
