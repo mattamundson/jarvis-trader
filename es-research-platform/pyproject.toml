@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "es-research-platform"
+version = "0.1.0"
+description = "Research-grade /ES strategy research and backtesting platform foundation."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "duckdb>=1.0.0",
+  "pydantic>=2.7.0",
+  "pyarrow>=16.0.0",
+  "polars>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "ruff>=0.5.0",
+  "mypy>=1.10.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["duckdb", "pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
