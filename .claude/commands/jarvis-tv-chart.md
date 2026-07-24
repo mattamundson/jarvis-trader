@@ -1,18 +1,20 @@
 ---
 description: Read a jarvis instrument's TradingView chart via the tradingview MCP server — health check, set symbol/timeframe, pull OHLCV + on-chart studies + screenshot, and summarize structure. Read-only; never creates alerts or trades.
 argument-hint: "<symbol> [timeframe]  e.g. MES 15m  |  MGC 1h  (default TF: 15m -> normalized to 15)"
-allowed-tools: 'mcp__tradingview__tv_health_check, mcp__tradingview__tv_discover, mcp__tradingview__chart_set_symbol, mcp__tradingview__chart_set_timeframe, mcp__tradingview__chart_get_state, mcp__tradingview__data_get_ohlcv, mcp__tradingview__data_get_study_values, mcp__tradingview__data_get_pine_lines, mcp__tradingview__data_get_pine_labels, mcp__tradingview__capture_screenshot, Bash(curl -s -X GET -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot:*), Bash(curl -s -X GET -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/:*), Bash(grep:*), Read, Grep'
+allowed-tools: mcp__tradingview__tv_health_check, mcp__tradingview__tv_discover, mcp__tradingview__chart_set_symbol, mcp__tradingview__chart_set_timeframe, mcp__tradingview__chart_get_state, mcp__tradingview__data_get_ohlcv, mcp__tradingview__data_get_study_values, mcp__tradingview__data_get_pine_lines, mcp__tradingview__data_get_pine_labels, mcp__tradingview__capture_screenshot, Bash(bash scripts/tv-engine-crosscheck.sh:*)
 ---
 
-<!-- allowed-tools is an explicit read-only allowlist: chart navigation + data reads + exactly
-     two read-only engine GETs. curl is pinned to the /prices/snapshot and
-     /hidden-pivots/levels/ URLs by full prefix — NOT `curl -s -X GET:*`, because some engine
-     GETs have side effects (e.g. GET /hidden-pivots/scan sends WhatsApp alerts via
-     _notify_hp_signal, hidden_pivots_router.py:194,232). The account/session mutators the MCP
-     server exposes (alert_create, alert_delete, pine_save, pine_set_source, draw_*, ui_*,
-     batch_run, replay_trade) are omitted so a prompt/tool-output detour cannot reach them.
-     Do not broaden these curl patterns — the read-only/no-alert contract depends on the exact
-     URL pins. To cross-check a new endpoint, add its exact URL prefix, never a wildcard host. -->
+<!-- allowed-tools is an explicit read-only allowlist: chart navigation + data reads, plus a
+     single fixed engine entry point (scripts/tv-engine-crosscheck.sh) that GETs ONLY
+     /prices/snapshot and /hidden-pivots/levels. Raw curl is deliberately NOT allowed here:
+     a bare `curl`/`-X GET` grant would expose side-effecting GETs like /hidden-pivots/scan
+     (fires WhatsApp via _notify_hp_signal, hidden_pivots_router.py:194,232) or POST routes,
+     and inlining the key-load + curls in the command made the allowlist fragile (unmatchable
+     `API_KEY=` line, YAML-breaking colons). The script hardcodes the two read-only URLs, so
+     this command cannot mutate engine state or send alerts. The MCP account/session mutators
+     (alert_create, alert_delete, pine_save, pine_set_source, draw_*, ui_*, batch_run,
+     replay_trade) are omitted so a prompt/tool-output detour cannot reach them. Do not add raw
+     curl or MCP mutators here — the read-only/no-alert contract depends on this allowlist. -->
 
 
 # TV Chart Read — $ARGUMENTS
@@ -84,22 +86,20 @@ column cleanly, report it and stop rather than guessing.
 If the engine is reachable, cross-check the chart you just read — but **query the same symbol
 and timeframe**, otherwise the check silently validates the wrong thing.
 
-**Auth:** these engine routes are not in the middleware `EXEMPT_PATHS` (only health/docs/
-metrics are), so a bare call returns 401. Send the key on every request, read at use time
-(it rotates — do not hardcode), exactly as the other jarvis commands do:
-
-Use the **engine alias** (`<eng_tf>` — the right-hand column of the timeframe table, e.g. `15m`,
-not the TV `15`) for these calls:
+Run the fixed read-only helper — it is the **only** engine access this command allows. It loads
+the key (exported `$JARVIS_API_KEY`, else `API_KEY` from `engine/.env`), exits 3 if no key is
+found (skip the cross-check; do not report drift), and GETs exactly the two read-only routes.
+Pass the **engine alias** for the timeframe (`15m`, not the TV `15` — right-hand column of the
+table above):
 
 ```bash
-# Prefer an exported JARVIS_API_KEY; otherwise read API_KEY from engine/.env
-# (AGENTS.md: the local dev key lives there as API_KEY=...).
-API_KEY="${JARVIS_API_KEY:-$(grep -E '^API_KEY=' engine/.env | cut -d= -f2- | tr -d '\"'\''')}"
-[ -z "$API_KEY" ] && echo "no engine API key found — skip cross-check, do not report drift" && exit 0
-# curl is pinned to -X GET (see allowed-tools) — these are the only two engine calls.
-curl -s -X GET -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot?symbols=<symbol>"
-curl -s -X GET -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/<symbol>?timeframe=<eng_tf>"
+bash scripts/tv-engine-crosscheck.sh <symbol> <eng_tf>   # e.g. MES 15m  |  MGC 1h
 ```
+
+These routes are not in the middleware `EXEMPT_PATHS` (only health/docs/metrics are), so the
+key is required or they 401. The helper hardcodes the two URLs, so no other engine route —
+including side-effecting GETs like `/hidden-pivots/scan` (fires WhatsApp) — is reachable from
+this command.
 
 - **Price:** `/prices/snapshot?symbols=<jarvis symbol>` — the endpoint defaults to
   `SPY,QQQ,MES,MNQ,MCL` (MGC is *not* in the default set), so always pass `?symbols=MGC`
