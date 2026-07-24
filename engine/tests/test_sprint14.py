@@ -207,6 +207,76 @@ def test_closed_trade_response_schema():
 
 
 # ===========================================================================
+# GT-11: duration_seconds must not silently default to 0 on a tz-aware vs
+# tz-naive entry/exit timestamp pair (was a swallowed TypeError).
+# ===========================================================================
+
+
+def test_duration_calc_handles_tz_aware_entry_naive_exit():
+    """tz-aware entry_time + tz-naive exit_time must not crash or return 0."""
+    from routers.paper_validation_router import _compute_trade_duration_seconds
+
+    entry_time = "2026-07-20T14:00:00Z"  # tz-aware (has 'Z')
+    exit_time = "2026-07-20T15:30:00"  # tz-naive (no offset)
+
+    duration = _compute_trade_duration_seconds("TEST-1", entry_time, exit_time)
+
+    assert duration == 90 * 60
+    assert duration != 0
+
+
+def test_duration_calc_handles_tz_naive_entry_aware_exit():
+    """tz-naive entry_time + tz-aware exit_time must not crash or return 0."""
+    from routers.paper_validation_router import _compute_trade_duration_seconds
+
+    entry_time = "2026-07-20T14:00:00"  # tz-naive
+    exit_time = "2026-07-20T14:45:00+00:00"  # tz-aware
+
+    duration = _compute_trade_duration_seconds("TEST-2", entry_time, exit_time)
+
+    assert duration == 45 * 60
+    assert duration != 0
+
+
+def test_duration_calc_both_aware_unaffected():
+    """Two tz-aware timestamps compute normally (no regression)."""
+    from routers.paper_validation_router import _compute_trade_duration_seconds
+
+    entry_time = "2026-07-20T14:00:00Z"
+    exit_time = "2026-07-20T16:00:00Z"
+
+    duration = _compute_trade_duration_seconds("TEST-3", entry_time, exit_time)
+
+    assert duration == 2 * 3600
+
+
+def test_duration_calc_unparseable_logs_and_defaults_to_zero(caplog):
+    """A genuinely unparseable timestamp still defaults to 0, but is logged."""
+    from routers.paper_validation_router import _compute_trade_duration_seconds
+
+    with caplog.at_level("WARNING"):
+        duration = _compute_trade_duration_seconds("TEST-4", "not-a-timestamp", "2026-07-20T14:00:00Z")
+
+    assert duration == 0
+    assert any("duration calc" in record.message for record in caplog.records)
+
+
+def test_duration_calc_tz_mismatch_logs_anomaly(caplog):
+    """A tz-awareness mismatch is logged instead of being silently swallowed."""
+    from routers.paper_validation_router import _compute_trade_duration_seconds
+
+    with caplog.at_level("WARNING"):
+        duration = _compute_trade_duration_seconds(
+            "TEST-5", "2026-07-20T14:00:00Z", "2026-07-20T15:00:00"
+        )
+
+    assert duration == 3600
+    assert any(
+        "tz-awareness mismatch" in record.message for record in caplog.records
+    )
+
+
+# ===========================================================================
 # (5) GET /paper-validation/gates — avg_conviction_score field
 # ===========================================================================
 
