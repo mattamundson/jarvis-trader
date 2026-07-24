@@ -219,3 +219,93 @@ def test_health_check_paper_trading_field_present(client):
     data = client.get("/config/health-check").json()
     assert "paper_trading" in data, "'paper_trading' field missing from health-check"
     assert isinstance(data["paper_trading"], bool), "'paper_trading' must be bool"
+
+
+# ---------------------------------------------------------------------------
+# GT-02: redact-by-default regression tests
+# ---------------------------------------------------------------------------
+#
+# These test the redaction decision (_redact) directly against fixture key
+# NAMES that are not part of the real TradingConfig schema, so a brand-new
+# secret-shaped env var the engine has never seen before is proven to
+# redact by default -- without ever touching a real secret value.
+
+
+@pytest.mark.parametrize(
+    "fixture_key",
+    [
+        "NEVER_BEFORE_SEEN_API_KEY",
+        "SOME_NEW_SERVICE_SECRET",
+        "BRAND_NEW_OAUTH_TOKEN",
+        "FRESH_DATABASE_URL",
+        "RANDOM_UNLISTED_PASSWORD",
+    ],
+)
+def test_unknown_secret_shaped_key_redacted_by_default(fixture_key):
+    """A never-before-seen _KEY/_SECRET/_TOKEN/_URL-shaped key must redact by
+    default (allowlist-not-denylist design) -- proving the fix doesn't
+    require remembering to add new secrets to a denylist."""
+    from routers.config_router import SAFE_TO_DISPLAY_KEYS, _redact
+
+    assert fixture_key not in SAFE_TO_DISPLAY_KEYS, (
+        f"fixture key {fixture_key!r} unexpectedly pre-listed as safe; "
+        "pick a different fixture name for this test"
+    )
+
+    displayed, sensitive = _redact(fixture_key, "fixture-placeholder-value-not-a-real-secret")
+    assert sensitive is True, f"unknown key {fixture_key!r} must be treated as sensitive by default"
+    assert str(displayed).startswith("***"), (
+        f"unknown key {fixture_key!r} must be masked, got {displayed!r}"
+    )
+
+
+def test_known_safe_key_not_redacted():
+    """A reviewed, explicitly allowlisted key (e.g. ENGINE_INTERNAL_URL) must
+    NOT be redacted, even though its name ends in _URL like many secret
+    connection strings do -- the allowlist, not the suffix, decides."""
+    from routers.config_router import SAFE_TO_DISPLAY_KEYS, _redact
+
+    assert "ENGINE_INTERNAL_URL" in SAFE_TO_DISPLAY_KEYS
+
+    fixture_value = "http://127.0.0.1:8010"  # placeholder, not a secret
+    displayed, sensitive = _redact("ENGINE_INTERNAL_URL", fixture_value)
+    assert sensitive is False
+    assert displayed == fixture_value, (
+        f"known-safe key ENGINE_INTERNAL_URL should pass through unmasked, got {displayed!r}"
+    )
+
+
+def test_overview_uncategorized_secret_shaped_field_is_redacted(monkeypatch, client):
+    """End-to-end: a fixture secret-shaped key injected into the settings
+    dump (simulating a newly-added env var nobody remembered to denylist)
+    must come back redacted from the live /config/overview response, not
+    echoed in plaintext through the 'other' (uncategorized) section."""
+    import routers.config_router as config_router_module
+
+    fixture_key = "NEVER_BEFORE_SEEN_DB_URL"
+    fixture_value = "placeholder://not-a-real-secret-value"
+
+    real_settings = config_router_module.settings
+
+    class _FixtureSettingsWrapper:
+        def model_dump(self):
+            base = real_settings.model_dump() if hasattr(real_settings, "model_dump") else real_settings.dict()
+            base = dict(base)
+            base[fixture_key] = fixture_value
+            return base
+
+    monkeypatch.setattr(config_router_module, "settings", _FixtureSettingsWrapper())
+
+    resp = client.get("/config/overview")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    other_items = data["categories"].get("other", [])
+    match = [item for item in other_items if item["key"] == fixture_key]
+    assert match, f"fixture key {fixture_key!r} not found in 'other' category: {other_items}"
+
+    item = match[0]
+    assert item["sensitive"] is True, f"fixture key {fixture_key!r} must be flagged sensitive"
+    assert str(item["value"]).startswith(
+        "***"
+    ), f"fixture key {fixture_key!r} leaked in plaintext: {item['value']!r}"

@@ -8,17 +8,59 @@ from config import settings
 
 router = APIRouter(prefix="/config", tags=["config"])
 
-SENSITIVE_KEYS = {
-    "ANTHROPIC_API_KEY",
-    "FINNHUB_API_KEY",
-    "POLYGON_API_KEY",
-    "ALPACA_API_KEY",
-    "ALPACA_SECRET_KEY",
-    "TWILIO_ACCOUNT_SID",
-    "TWILIO_AUTH_TOKEN",
-    "TWILIO_WHATSAPP_FROM",
-    "WHATSAPP_TO",
-    "IBKR_CLIENT_ID",
+# SECURITY: redact-by-default allowlist (GT-02).
+#
+# This used to be a hand-maintained SENSITIVE_KEYS *denylist* — every new
+# secret-bearing env var the engine loaded (SCHWAB_APP_SECRET, POSTGRES_URL
+# with an embedded username:password, KRAKEN_*_API_SECRET, API_KEY,
+# TELEGRAM_BOT_TOKEN, HERMES_CLOUD_API_KEY, ...) had to be remembered and
+# added by hand, and every one that was forgotten leaked in plaintext via
+# /config/overview's "other" (uncategorized) section.
+#
+# The allowlist below inverts that: a field is shown in full ONLY if it is
+# explicitly listed here as reviewed-and-confirmed to carry no credential
+# material. Every other key -- known today or added to TradingConfig
+# tomorrow -- is redacted by default. When adding a new config field that
+# should be visible on the dashboard, add it here deliberately; do nothing
+# and it stays safely masked.
+SAFE_TO_DISPLAY_KEYS = {
+    # risk/safety parameters -- plain numbers and booleans, not credentials
+    "MAX_POSITION_SIZE_PCT",
+    "MAX_DAILY_LOSS_PCT",
+    "MAX_DRAWDOWN_PCT",
+    "MAX_CONTRACTS_PER_INSTRUMENT",
+    "MAX_OVERNIGHT_CONTRACTS",
+    "MAX_SINGLE_ORDER_VALUE",
+    "MAX_MARGIN_UTILIZATION",
+    "MAX_CORRELATED_EXPOSURE_PCT",
+    "MAX_ORDERS_PER_MINUTE",
+    "LIVE_TRADING_ENABLED",
+    "REQUIRE_HUMAN_APPROVAL",
+    # broker connection topology -- no embedded credentials
+    "IBKR_HOST",
+    "IBKR_PORT",
+    "IBKR_PAPER_MODE",
+    # provider mode / selector flags, not secrets themselves
+    "ALPACA_PAPER",
+    "LLM_PROVIDER",
+    # deliberately public URL used in outbound alert links
+    "DASHBOARD_PUBLIC_URL",
+    # internal engine base URL (e.g. http://127.0.0.1:8010) -- a bare
+    # host:port, no embedded credentials
+    "ENGINE_INTERNAL_URL",
+    # feature flags -- booleans and plain tick intervals
+    "ENABLE_KAIROS",
+    "ENABLE_SPECULATION",
+    "ENABLE_TILT_DETECTION",
+    "ENABLE_DREAM_CONSOLIDATION",
+    "ENABLE_CONTEXT_COMPACTION",
+    "ENABLE_CRYPTO",
+    "ENABLE_POLYMARKET",
+    "ENABLE_RL_TRADING",
+    "ENABLE_SIGNAL_SANITIZATION",
+    "KAIROS_TICK_SECONDS",
+    "KAIROS_OFF_HOURS_TICK_SECONDS",
+    "KAIROS_NOTIFY_SEVERITY",
 }
 
 CATEGORIES: dict[str, list[str]] = {
@@ -75,13 +117,27 @@ CATEGORIES: dict[str, list[str]] = {
 }
 
 
-def _mask(key: str, value) -> str:
-    if key in SENSITIVE_KEYS and value:
-        s = str(value)
-        if len(s) > 4:
-            return "***" + s[-4:]
-        return "***"
-    return value
+def _redact(key: str, value):
+    """Return (displayed_value, sensitive_flag) for one config field.
+
+    Redact-by-default: any key not on SAFE_TO_DISPLAY_KEYS is treated as
+    potentially secret. Only non-empty *strings* can actually carry
+    credential material -- API keys, tokens, account SIDs, and connection
+    strings are always strings -- so a bool/int/float/list/dict/None value
+    passes through unmasked even for a not-yet-reviewed key: there is
+    nothing in e.g. a boolean feature flag that could leak a credential.
+    This keeps the "sensitive" flag and the masking decision atomic (a
+    field can never be reported sensitive=True while its value is shown
+    in the clear, or vice versa).
+    """
+    if key in SAFE_TO_DISPLAY_KEYS:
+        return value, False
+
+    if not isinstance(value, str) or not value:
+        return value, False
+
+    masked = "***" + value[-4:] if len(value) > 4 else "***"
+    return masked, True
 
 
 @router.get("/overview")
@@ -123,11 +179,12 @@ async def config_overview():
                 )
                 seen_keys.add(key)
             elif key in config_dict:
+                display_value, sensitive = _redact(key, config_dict[key])
                 items.append(
                     {
                         "key": key,
-                        "value": _mask(key, config_dict[key]),
-                        "sensitive": key in SENSITIVE_KEYS,
+                        "value": display_value,
+                        "sensitive": sensitive,
                     }
                 )
                 seen_keys.add(key)
@@ -137,11 +194,12 @@ async def config_overview():
     other: list = []
     for key, value in config_dict.items():
         if key not in seen_keys and key != "AGENT_MAX_TOKENS":
+            display_value, sensitive = _redact(key, value)
             other.append(
                 {
                     "key": key,
-                    "value": _mask(key, value),
-                    "sensitive": key in SENSITIVE_KEYS,
+                    "value": display_value,
+                    "sensitive": sensitive,
                 }
             )
     if other:
