@@ -61,6 +61,10 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 - `chart_set_symbol`, `chart_set_timeframe`, `chart_set_type`, `chart_scroll_to_date`,
   `chart_set_visible_range`, `chart_manage_indicator`, `indicator_set_inputs`,
   `pane_*`, `tab_*`, `watchlist_*`, `layout_*`
+- **`chart_set_timeframe` takes a TradingView resolution** (`1`, `5`, `15`, `60`, `240`,
+  `D`, `W`, `M`), not a `15m`/`1h` alias. Normalize aliases before the call (`15m`→`15`,
+  `1h`→`60`, `4h`→`240`, `1d`→`D`) and confirm the switch with `chart_get_state` — an
+  unrecognized value can silently leave the chart on its prior resolution.
 
 **Pine Script dev (for `jarvis_trader_strategy.pine` / STC strategy):**
 - `pine_get_source`, `pine_set_source`, `pine_smart_compile`, `pine_check`,
@@ -82,7 +86,7 @@ change, and only proceed on an explicit instruction.
 3. `data_get_ohlcv` (+ `data_get_study_values` if an indicator is on the chart).
 4. `capture_screenshot` if a visual helps.
 5. Summarize levels/structure. **Cross-check any price against the engine feed**
-   (`/prices/snapshot`, `/levels/{symbol}`) when both are available — round-trip drift is a
+   (`/prices/snapshot`, `/hidden-pivots/levels/{symbol}`) when both are available — round-trip drift is a
    bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never present a TV number
    as canonical without that check.
 
