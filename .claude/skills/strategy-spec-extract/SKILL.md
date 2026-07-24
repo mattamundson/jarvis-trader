@@ -66,6 +66,17 @@ fields (enforced by `engine/backtest/candidate_registry.py`) are:
     "exit":  ["rsi3 recrosses 50", "stop 0.3%", "tp at vwap/ema8 touch"],
     "risk":  ["<= 1R", "point-in-time only"]
   },
+  "lock_in_sample": {
+    "gate_verdict": "PASS",
+    "passed_via": "core",
+    "pf_ci_lower": 0.0,
+    "p_edge": 0.0,
+    "dsr": 0.0,
+    "mc_95th_dd": 0.0,
+    "n_oos_windows": 0,
+    "total_oos_trades": 0,
+    "p_binom": 1.0
+  },
   "source": "<trader / URL>",
   "notes": "Timeframe/asset caveats. Flag every inferred rule here."
 }
@@ -74,6 +85,16 @@ fields (enforced by `engine/backtest/candidate_registry.py`) are:
 Keep params **mechanical and locked** — the registry judges a *frozen* hypothesis. You register
 a new `id` rather than mutating params later. `allowed_status`:
 `forward_testing | graduated | rejected | paused`.
+
+**`lock_in_sample` is required discipline, not optional** — even though `verify_registry()`
+only enforces `id/symbol/family/status/hypothesis/params`, the forward-test loop reads
+`lock_in_sample` (`candidate_registry.py`) to compare OOS results against a *frozen* baseline.
+Fill it from the **actual** in-sample backtest/MCPT run at registration time (the fields above
+mirror a real entry: `gate_verdict`, `pf_ci_lower`, `p_edge`, `dsr`, `mc_95th_dd`,
+`n_oos_windows`, `total_oos_trades`, `p_binom`) — never invented numbers, and never omitted.
+A candidate registered with no lock stats enters forward testing with no expectation to beat
+and contaminates the graduation decision. Register it only *after* Step 3's backtest + MCPT
+produce these values.
 
 ## Step 3 — Route into the real gates (do NOT invent a parallel path)
 
