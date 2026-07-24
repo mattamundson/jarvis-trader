@@ -9,9 +9,12 @@ Extracts a testable strategy hypothesis from a human source (transcript / video 
 lands it as a **pre-registered candidate** in the engine's existing validation pipeline. The
 extracted spec is a *hypothesis to be tested*, never an executable bot.
 
-Idea source: the `prompts/01-extract-strategy.md` + `rules.json` pattern from
-[jackson-video-resources/claude-tradingview-mcp-trading](https://github.com/jackson-video-resources/claude-tradingview-mcp-trading)
-(MIT). That repo's crypto **execution** half is deliberately not integrated (see the
+Idea source: the `prompts/01-extract-strategy.md` + `rules.json` *pattern* from
+[jackson-video-resources/claude-tradingview-mcp-trading](https://github.com/jackson-video-resources/claude-tradingview-mcp-trading).
+That repo declares **no license** (its `LICENSE` URL 404s and `package.json` has no `license`
+field), so treat it as all-rights-reserved: this skill reuses only the *concept/approach* of
+spec extraction, remapped and rewritten for jarvis futures — it does not copy that repo's
+prompt or rules text. That repo's crypto **execution** half is deliberately not integrated (see the
 `tradingview-mcp` skill's "Rejected integration" section). Only the *specification* idea is
 kept, and it is remapped onto jarvis-trader's futures + pre-registration discipline.
 
