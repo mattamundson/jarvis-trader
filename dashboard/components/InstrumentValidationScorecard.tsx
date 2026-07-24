@@ -10,19 +10,8 @@ import type {
   ApprovedPaperGatesResponse,
   ApprovedInstrumentGateRow,
 } from "@/lib/api";
-
-type BadgeVariant = "bull" | "bear" | "warn" | "info" | "neutral";
-
-interface InstrumentRow {
-  symbol: string;
-  timeframe: string;
-  wfe: number | string;
-  pf: number | null;
-  sharpe: number | null;
-  wr: number | null;
-  status: string;
-  badgeVariant: BadgeVariant;
-}
+import { DEFAULT_BRIEFING_SYMBOLS, HALTED_SYMBOLS, ALL_TRACKED_SYMBOLS } from "@/lib/approvedSymbols";
+import { buildInstrumentRow, type InstrumentRow } from "@/lib/instrumentValidationRows";
 
 function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
@@ -38,129 +27,17 @@ function InstrumentValidationScorecard() {
     }
   );
 
-  // Build instrument rows from approved gates data
+  // Build instrument rows from approved gates data — one row per tracked
+  // symbol (active pair first, then halted pair), via buildInstrumentRow so
+  // MES/MGC always read APPROVED and MCL/MNQ always read HALTED regardless
+  // of what the live endpoint returns.
   const rows: InstrumentRow[] = React.useMemo(() => {
-    if (!data?.instruments) return getDefaultRows();
-
     const instrumentMap = new Map<string, ApprovedInstrumentGateRow>();
-    data.instruments.forEach((inst) => {
+    data?.instruments?.forEach((inst) => {
       instrumentMap.set(inst.symbol, inst);
     });
-
-    // MCL and MNQ from live data, MES static
-    const rows: InstrumentRow[] = [];
-
-    // MCL
-    const mcl = instrumentMap.get("MCL");
-    if (mcl) {
-      const pfGate = mcl.gates.find((g) => g.name === "profit_factor");
-      const sharpeGate = mcl.gates.find((g) => g.name === "sharpe_ratio");
-      const wrGate = mcl.gates.find(
-        (g) => g.name === "win_rate" || g.name === "wr"
-      );
-      rows.push({
-        symbol: "MCL",
-        timeframe: "1h",
-        wfe: "0.82",
-        pf: pfGate?.current ?? null,
-        sharpe: sharpeGate?.current ?? null,
-        wr: wrGate?.current ?? null,
-        status: mcl.overall_pass ? "APPROVED" : "REVIEWING",
-        badgeVariant: mcl.overall_pass ? "bull" : "info",
-      });
-    } else {
-      rows.push({
-        symbol: "MCL",
-        timeframe: "1h",
-        wfe: "0.82",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "APPROVED",
-        badgeVariant: "bull",
-      });
-    }
-
-    // MNQ
-    const mnq = instrumentMap.get("MNQ");
-    if (mnq) {
-      const pfGate = mnq.gates.find((g) => g.name === "profit_factor");
-      const sharpeGate = mnq.gates.find((g) => g.name === "sharpe_ratio");
-      const wrGate = mnq.gates.find(
-        (g) => g.name === "win_rate" || g.name === "wr"
-      );
-      rows.push({
-        symbol: "MNQ",
-        timeframe: "1h",
-        wfe: "0.57",
-        pf: pfGate?.current ?? null,
-        sharpe: sharpeGate?.current ?? null,
-        wr: wrGate?.current ?? null,
-        status: mnq.overall_pass ? "APPROVED" : "REVIEWING",
-        badgeVariant: mnq.overall_pass ? "bull" : "info",
-      });
-    } else {
-      rows.push({
-        symbol: "MNQ",
-        timeframe: "1h",
-        wfe: "0.57",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "APPROVED",
-        badgeVariant: "bull",
-      });
-    }
-
-    // MES - revalidating
-    rows.push({
-      symbol: "MES",
-      timeframe: "1h",
-      wfe: "0.09",
-      pf: null,
-      sharpe: null,
-      wr: null,
-      status: "Revalidating",
-      badgeVariant: "warn",
-    });
-
-    return rows;
+    return ALL_TRACKED_SYMBOLS.map((symbol) => buildInstrumentRow(symbol, instrumentMap));
   }, [data]);
-
-  function getDefaultRows(): InstrumentRow[] {
-    return [
-      {
-        symbol: "MCL",
-        timeframe: "1h",
-        wfe: "0.82",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "APPROVED",
-        badgeVariant: "bull",
-      },
-      {
-        symbol: "MNQ",
-        timeframe: "1h",
-        wfe: "0.57",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "APPROVED",
-        badgeVariant: "bull",
-      },
-      {
-        symbol: "MES",
-        timeframe: "1h",
-        wfe: "0.09",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "Revalidating",
-        badgeVariant: "warn",
-      },
-    ];
-  }
 
   return (
     <Card>
@@ -271,8 +148,9 @@ function InstrumentValidationScorecard() {
           <p className="flex items-start gap-2">
             <TrendingUp className="h-3 w-3 mt-0.5 flex-shrink-0" />
             <span>
-              <strong>WFE ≥ 0.40</strong> required for APPROVED status. MCL and
-              MNQ are approved and trading. MES is in active re-validation.
+              <strong>WFE ≥ 0.40</strong> required for APPROVED status.{" "}
+              {DEFAULT_BRIEFING_SYMBOLS.join(" and ")} are approved and trading.{" "}
+              {HALTED_SYMBOLS.join(" and ")} are HALTED (routing-blocked, DO_NOT_TRADE).
             </span>
           </p>
         </div>
