@@ -59,9 +59,20 @@ doesn't map cleanly, report it and stop rather than guessing.
 
 ## Cross-check (numeric discipline)
 
-If the engine is reachable, pull `/prices/snapshot` (or `/hidden-pivots/levels/{symbol}`) and compare the
-last price / levels against what TradingView shows. Report any drift explicitly — a
-mismatch between the TV feed and the engine feed is a bug to flag, not a rounding footnote.
+If the engine is reachable, cross-check the chart you just read — but **query the same symbol
+and timeframe**, otherwise the check silently validates the wrong thing:
+
+- **Price:** `/prices/snapshot?symbols=<jarvis symbol>` — the endpoint defaults to
+  `SPY,QQQ,MES,MNQ,MCL` (MGC is *not* in the default set), so always pass `?symbols=MGC`
+  (or MES, etc.) explicitly or the snapshot won't include what you charted.
+- **Levels:** `/hidden-pivots/levels/<symbol>?timeframe=<tf>` — this endpoint defaults to
+  `timeframe=1d` and only supports `1d` / `1h` / `5m` (its `lookback_map`). Pass the value
+  closest to the chart TF you read (`≤15m`→`5m`, `30m–1h`→`1h`, `≥1d`→`1d`); do not compare
+  a daily level ladder against an intraday chart. If the chart TF has no exact levels match
+  (e.g. 15m), say so — compare against the nearest supported and note the granularity gap.
+
+Compare last price / levels against what TradingView shows and report any drift explicitly —
+a mismatch between the TV feed and the engine feed is a bug to flag, not a rounding footnote.
 Never present a TV number as canonical without this check when both sources are available.
 
 ## Hard constraints

@@ -85,10 +85,13 @@ change, and only proceed on an explicit instruction.
 2. `chart_set_symbol` + `chart_set_timeframe` to the jarvis symbol/TF you were asked about.
 3. `data_get_ohlcv` (+ `data_get_study_values` if an indicator is on the chart).
 4. `capture_screenshot` if a visual helps.
-5. Summarize levels/structure. **Cross-check any price against the engine feed**
-   (`/prices/snapshot`, `/hidden-pivots/levels/{symbol}`) when both are available — round-trip drift is a
-   bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never present a TV number
-   as canonical without that check.
+5. Summarize levels/structure. **Cross-check any price against the engine feed**, querying
+   the same symbol and timeframe you charted:
+   `/prices/snapshot?symbols=<symbol>` (its default set omits MGC) and
+   `/hidden-pivots/levels/<symbol>?timeframe=<tf>` (defaults to `1d`; supports `1d`/`1h`/`5m`
+   only — compare against the nearest and flag the gap for an intraday chart). Round-trip
+   drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never present a
+   TV number as canonical without that check.
 
 ## Rejected integration (documented on purpose)
 
