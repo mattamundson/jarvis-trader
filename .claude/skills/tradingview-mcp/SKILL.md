@@ -88,14 +88,18 @@ change, and only proceed on an explicit instruction.
 2. `chart_set_symbol` + `chart_set_timeframe` to the jarvis symbol/TF you were asked about.
 3. `data_get_ohlcv` (+ `data_get_study_values` if an indicator is on the chart).
 4. `capture_screenshot` if a visual helps.
-5. Summarize levels/structure. **Cross-check any price against the engine feed**, querying
-   the same symbol and timeframe you charted. Send the engine API key on every call — these
-   routes are not in the middleware `EXEMPT_PATHS`, so a bare request 401s; use
-   `-H "X-API-Key: $JARVIS_API_KEY"` read at use time (the value rotates — do not hardcode):
+5. Summarize levels/structure. **Cross-check any price against the engine feed** for the same
+   symbol/timeframe you charted — but note the two encodings differ: the chart is set with a
+   **TradingView resolution** (`15`/`60`/`D`), while the engine wants an **alias**
+   (`5m`/`15m`/`1h`/`4h`/`1d`). Convert to the engine alias for these calls (`60`→`1h`,
+   `D`→`1d`); a bare TV resolution reaching `get_bars` silently degrades to 5m bars
+   (`market_data.py` bar maps). Send the engine API key on every call — these routes are not in
+   the middleware `EXEMPT_PATHS`, so a bare request 401s; use `-H "X-API-Key: $JARVIS_API_KEY"`
+   read at use time (the value rotates — do not hardcode):
    `GET /prices/snapshot?symbols=<symbol>` (its default set omits MGC) and
-   `GET /hidden-pivots/levels/<symbol>?timeframe=<tf>` (defaults to `1d`, but pass the *same*
-   timeframe you charted — it forwards to `get_bars`, which maps `5m`/`15m`/`1h`/`4h`/`1d`
-   directly, so `15m` works; only fall back to a nearest value if that call comes back empty).
+   `GET /hidden-pivots/levels/<symbol>?timeframe=<eng_tf>` (defaults to `1d`; `get_bars` maps
+   `5m`/`15m`/`1h`/`4h`/`1d` directly, so pass the engine alias for the charted TF — `15m`
+   works — and only fall back to a nearest alias if that call comes back empty).
    Round-trip
    drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never present a
    TV number as canonical without that check.
