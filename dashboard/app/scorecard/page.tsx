@@ -25,6 +25,7 @@ import {
   pickApprovedBacktestBaseline,
   type ScorecardBacktestBaseline,
 } from "@/lib/scorecardBaseline";
+import { PREFERRED_BASELINE_LABEL } from "@/lib/approvedSymbols";
 import { formatCurrency } from "@/lib/utils";
 import { ReadinessCheckWidget } from "@/components/ReadinessCheckWidget";
 import { StreakBadge } from "@/components/StreakBadge";
@@ -484,7 +485,7 @@ export default function ScorecardPage() {
             <p className="text-xs text-muted-foreground">
               {baseline
                 ? `${baseline.label} — ${baseline.timeframe} — Validation targets for live trading promotion`
-                : "No MCL/MNQ baseline JSON — Validation targets for live trading promotion"}
+                : `No ${PREFERRED_BASELINE_LABEL} baseline JSON — Validation targets for live trading promotion`}
             </p>
           </div>
         </div>
@@ -927,7 +928,7 @@ export default function ScorecardPage() {
             </>
           ) : (
             <>
-              Baseline from saved backtest (MCL/MNQ preferred) &mdash; none loaded &mdash;
+              Baseline from saved backtest ({PREFERRED_BASELINE_LABEL} preferred) &mdash; none loaded &mdash;
               Auto-refresh every 60s &mdash; Live metrics: deduped honest record
             </>
           )}
