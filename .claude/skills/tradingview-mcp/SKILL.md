@@ -94,8 +94,11 @@ change, and only proceed on an explicit instruction.
    (`5m`/`15m`/`1h`/`4h`/`1d`). Convert to the engine alias for these calls (`60`→`1h`,
    `D`→`1d`); a bare TV resolution reaching `get_bars` silently degrades to 5m bars
    (`market_data.py` bar maps). Send the engine API key on every call — these routes are not in
-   the middleware `EXEMPT_PATHS`, so a bare request 401s; use `-H "X-API-Key: $JARVIS_API_KEY"`
-   read at use time (the value rotates — do not hardcode):
+   the middleware `EXEMPT_PATHS`, so a bare request 401s. Resolve the key the same way
+   `/jarvis-tv-chart` does: prefer an exported `$JARVIS_API_KEY`, else read `API_KEY` from
+   `engine/.env` (AGENTS.md: the local key lives there as `API_KEY=`); if neither resolves,
+   skip the cross-check rather than report bogus drift. Read it at use time — the value rotates,
+   do not hardcode — and pass it as `-H "X-API-Key: $API_KEY"`:
    `GET /prices/snapshot?symbols=<symbol>` (its default set omits MGC) and
    `GET /hidden-pivots/levels/<symbol>?timeframe=<eng_tf>` (defaults to `1d`; `get_bars` maps
    `5m`/`15m`/`1h`/`4h`/`1d` directly, so pass the engine alias for the charted TF — `15m`
