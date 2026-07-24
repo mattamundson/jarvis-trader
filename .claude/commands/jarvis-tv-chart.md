@@ -80,7 +80,10 @@ Use the **engine alias** (`<eng_tf>` — the right-hand column of the timeframe 
 not the TV `15`) for these calls:
 
 ```bash
-API_KEY="${JARVIS_API_KEY}"
+# Prefer an exported JARVIS_API_KEY; otherwise read API_KEY from engine/.env
+# (AGENTS.md: the local dev key lives there as API_KEY=...).
+API_KEY="${JARVIS_API_KEY:-$(grep -E '^API_KEY=' engine/.env | cut -d= -f2- | tr -d '\"'\''')}"
+[ -z "$API_KEY" ] && echo "no engine API key found — skip cross-check, do not report drift" && exit 0
 curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot?symbols=<symbol>"
 curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/<symbol>?timeframe=<eng_tf>"
 ```

@@ -67,15 +67,15 @@ fields (enforced by `engine/backtest/candidate_registry.py`) are:
     "risk":  ["<= 1R", "point-in-time only"]
   },
   "lock_in_sample": {
-    "gate_verdict": "PASS",
-    "passed_via": "core",
-    "pf_ci_lower": 0.0,
-    "p_edge": 0.0,
-    "dsr": 0.0,
-    "mc_95th_dd": 0.0,
-    "n_oos_windows": 0,
-    "total_oos_trades": 0,
-    "p_binom": 1.0
+    "gate_verdict": "PENDING",
+    "passed_via": "<core|edge — from the real gate run>",
+    "pf_ci_lower": "<actual — from Step 3 backtest>",
+    "p_edge": "<actual>",
+    "dsr": "<actual>",
+    "mc_95th_dd": "<actual>",
+    "n_oos_windows": "<actual>",
+    "total_oos_trades": "<actual>",
+    "p_binom": "<actual>"
   },
   "source": "<trader / URL>",
   "notes": "Timeframe/asset caveats. Flag every inferred rule here."
@@ -92,9 +92,12 @@ only enforces `id/symbol/family/status/hypothesis/params`, the forward-test loop
 Fill it from the **actual** in-sample backtest/MCPT run at registration time (the fields above
 mirror a real entry: `gate_verdict`, `pf_ci_lower`, `p_edge`, `dsr`, `mc_95th_dd`,
 `n_oos_windows`, `total_oos_trades`, `p_binom`) — never invented numbers, and never omitted.
-A candidate registered with no lock stats enters forward testing with no expectation to beat
-and contaminates the graduation decision. Register it only *after* Step 3's backtest + MCPT
-produce these values.
+The template ships `gate_verdict: "PENDING"` with `<actual …>` placeholders **on purpose**: a
+half-filled copy must never read as a `PASS` baseline. Do not set `gate_verdict: "PASS"` or
+fill the metrics until the real Step-3 run produces them, and do not commit the candidate to
+`candidate_registry.json` before then — a registered `forward_testing` candidate with a fake
+PASS lock contaminates the frozen expectation the graduation decision depends on. Register it
+only *after* Step 3's backtest + MCPT produce these values.
 
 ## Step 3 — Route into the real gates (do NOT invent a parallel path)
 
