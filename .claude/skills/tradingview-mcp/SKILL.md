@@ -86,9 +86,11 @@ change, and only proceed on an explicit instruction.
 3. `data_get_ohlcv` (+ `data_get_study_values` if an indicator is on the chart).
 4. `capture_screenshot` if a visual helps.
 5. Summarize levels/structure. **Cross-check any price against the engine feed**, querying
-   the same symbol and timeframe you charted:
-   `/prices/snapshot?symbols=<symbol>` (its default set omits MGC) and
-   `/hidden-pivots/levels/<symbol>?timeframe=<tf>` (defaults to `1d`; supports `1d`/`1h`/`5m`
+   the same symbol and timeframe you charted. Send the engine API key on every call — these
+   routes are not in the middleware `EXEMPT_PATHS`, so a bare request 401s; use
+   `-H "X-API-Key: $JARVIS_API_KEY"` read at use time (the value rotates — do not hardcode):
+   `GET /prices/snapshot?symbols=<symbol>` (its default set omits MGC) and
+   `GET /hidden-pivots/levels/<symbol>?timeframe=<tf>` (defaults to `1d`; supports `1d`/`1h`/`5m`
    only — compare against the nearest and flag the gap for an intraday chart). Round-trip
    drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never present a
    TV number as canonical without that check.

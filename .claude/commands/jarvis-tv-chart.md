@@ -60,7 +60,17 @@ doesn't map cleanly, report it and stop rather than guessing.
 ## Cross-check (numeric discipline)
 
 If the engine is reachable, cross-check the chart you just read — but **query the same symbol
-and timeframe**, otherwise the check silently validates the wrong thing:
+and timeframe**, otherwise the check silently validates the wrong thing.
+
+**Auth:** these engine routes are not in the middleware `EXEMPT_PATHS` (only health/docs/
+metrics are), so a bare call returns 401. Send the key on every request, read at use time
+(it rotates — do not hardcode), exactly as the other jarvis commands do:
+
+```bash
+API_KEY="${JARVIS_API_KEY}"
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/prices/snapshot?symbols=<symbol>"
+curl -s -H "X-API-Key: $API_KEY" "http://localhost:8010/hidden-pivots/levels/<symbol>?timeframe=<tf>"
+```
 
 - **Price:** `/prices/snapshot?symbols=<jarvis symbol>` — the endpoint defaults to
   `SPY,QQQ,MES,MNQ,MCL` (MGC is *not* in the default set), so always pass `?symbols=MGC`
