@@ -10,7 +10,7 @@
 #
 # Usage: bash scripts/tv-engine-crosscheck.sh <SYMBOL> <ENGINE_TF>
 #   SYMBOL     jarvis symbol: MES | MGC | MNQ | MCL
-#   ENGINE_TF  engine alias:  5m | 15m | 1h | 4h | 1d  (NOT a TV resolution)
+#   ENGINE_TF  engine alias:  1m | 5m | 15m | 1h | 4h | 1d  (NOT a TV resolution)
 set -euo pipefail
 
 SYMBOL="${1:?usage: tv-engine-crosscheck.sh <SYMBOL> <ENGINE_TF>}"
@@ -27,8 +27,8 @@ case "$SYMBOL" in
   *) echo "refusing non-canonical symbol '$SYMBOL' (allowed: MES MGC MNQ MCL)" >&2; exit 2 ;;
 esac
 case "$ENGINE_TF" in
-  5m|15m|1h|4h|1d) ;;
-  *) echo "refusing unsupported engine timeframe '$ENGINE_TF' (allowed: 5m 15m 1h 4h 1d)" >&2; exit 2 ;;
+  1m|5m|15m|1h|4h|1d) ;;
+  *) echo "refusing unsupported engine timeframe '$ENGINE_TF' (allowed: 1m 5m 15m 1h 4h 1d)" >&2; exit 2 ;;
 esac
 
 # Prefer an exported key; else read API_KEY from engine/.env (AGENTS.md: the local
