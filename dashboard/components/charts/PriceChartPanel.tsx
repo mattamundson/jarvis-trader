@@ -11,7 +11,7 @@ import {
 } from "@/hooks/useChartData";
 import { useLiveLastPrice } from "@/hooks/useLiveLastPrice";
 import { fetchEngine, type TradeRecord } from "@/lib/api";
-import { buildTradeMarkers } from "@/lib/tradeMarkers";
+import { buildTradeMarkers, UP, DOWN } from "@/lib/tradeMarkers";
 
 const SYMBOLS: ChartSymbol[] = ["MES", "MGC", "MNQ", "MCL"];
 const TIMEFRAMES: ChartTimeframe[] = ["5m", "15m", "1h", "4h", "1d"];
