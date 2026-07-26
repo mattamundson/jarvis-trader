@@ -28,8 +28,8 @@ export interface TradeMarker {
   text: string;
 }
 
-const UP = "#00ff88";
-const DOWN = "#ff4466";
+export const UP = "#00ff88";
+export const DOWN = "#ff4466";
 
 export function toUnix(iso: string | null | undefined): number | null {
   if (!iso) return null;
