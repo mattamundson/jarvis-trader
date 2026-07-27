@@ -1,6 +1,8 @@
 // All dashboard calls MUST use fetchEngine() or postEngine() below.
 // These functions proxy through Next.js rewrites to the engine backend.
 // NEVER hardcode an absolute engine URL or make fetch calls directly.
+import type { ExecutionPathProbe } from "@/lib/executionPath";
+
 const ENGINE = "/api/engine";
 const FETCH_TIMEOUT_MS = 30000; // 30 seconds
 const RETRY_DELAY_MS = 2000; // 2 seconds
@@ -193,6 +195,13 @@ export interface HealthResponse {
   llm_providers?: LLMProviderSummary | null;
   vertex_failover_count?: number | null;
   google_fallback_count?: number | null;
+  // D3-01: the honest execution-path fields. `execution_connected_verified` is
+  // ALSO blind to `execution_path.simulated === true` at the engine level
+  // (health_router.py) — always resolve display state via
+  // `executionStatus()` from @/lib/executionPath, never read these directly.
+  execution_connected_verified?: boolean | null;
+  ib_execution_stale?: boolean | null;
+  execution_path?: ExecutionPathProbe | null;
 }
 
 export interface LLMProviderSummary {
