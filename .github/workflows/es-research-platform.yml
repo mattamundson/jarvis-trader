@@ -1,0 +1,57 @@
+name: ES Research Platform
+
+on:
+  pull_request:
+    paths:
+      - "es-research-platform/**"
+      - ".github/workflows/es-research-platform.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "es-research-platform/**"
+      - ".github/workflows/es-research-platform.yml"
+
+jobs:
+  checks:
+    name: Format, lint, type-check, test, and CLI smoke tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: es-research-platform
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: es-research-platform/pyproject.toml
+
+      - name: Install package and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Check formatting
+        run: python -m ruff format --check .
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Type-check
+        run: python -m mypy src
+
+      - name: Test
+        run: python -m pytest
+
+      - name: Initialize registry
+        run: python -m es_research registry init
+
+      - name: Run reproducibility demo
+        run: python -m es_research demo reproducibility
+
+      - name: Run synthetic pipeline demo
+        run: python -m es_research demo synthetic-pipeline
