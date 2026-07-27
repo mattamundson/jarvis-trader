@@ -3,6 +3,7 @@
 // NEVER hardcode an absolute engine URL or make fetch calls directly.
 
 import { fetchEngine, postEngine } from "@/lib/api";
+import type { ExecutionPathProbe } from "@/lib/executionPath";
 
 // ── Kill Switch ───────────────────────────────────────────────────────────
 
@@ -70,6 +71,10 @@ export interface IBGatewayStatus {
   account_id?: string | null;
   last_sync?: string | null;
   uptime_seconds?: number;
+  // D3-01: honest execution-path fields — see @/lib/executionPath.
+  execution_connected_verified?: boolean | null;
+  ib_execution_stale?: boolean | null;
+  execution_path?: ExecutionPathProbe | null;
 }
 
 export async function getIBGatewayStatus(): Promise<IBGatewayStatus> {

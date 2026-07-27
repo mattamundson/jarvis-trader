@@ -18,6 +18,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
 import { MarketChart } from "@/components/charts/MarketChart";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
 
@@ -52,6 +53,10 @@ interface HealthResponse {
   llm_path_healthy?: boolean | null;
   llm_available?: boolean | null;
   llm_providers?: LLMProviders | null;
+  // D3-01: honest execution-path fields — see @/lib/executionPath.
+  execution_connected_verified?: boolean | null;
+  ib_execution_stale?: boolean | null;
+  execution_path?: ExecutionPathProbe | null;
 }
 
 interface SessionTodayResponse {
@@ -277,7 +282,9 @@ export default function TodayPage() {
   const llmHealthy = health?.llm_path_healthy ?? null;
   const tvHealthy = health?.tradingview_mcp_healthy ?? null;
   const dataLegOk = health?.ibkr_data_connected ?? null;
-  const execLegOk = health?.ibkr_execution_connected ?? health?.ibkr_connected ?? null;
+  // D3-01: derive execution-leg status through the honesty layer — never
+  // read ibkr_execution_connected directly (see @/lib/executionPath).
+  const exec = executionStatus(health);
 
   // Validation status color
   const statusColor =
@@ -445,8 +452,8 @@ export default function TodayPage() {
                 label={`Engine — ${health?.status ?? "unknown"}`}
               />
               <StatusBadge
-                ok={execLegOk}
-                label={`IBKR execution — ${execLegOk ? "connected" : "disconnected"}`}
+                ok={exec.brokerReachable}
+                label={`IBKR execution — ${exec.label.toLowerCase()}`}
               />
               <StatusBadge
                 ok={dataLegOk}
