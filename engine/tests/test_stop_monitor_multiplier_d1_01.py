@@ -28,7 +28,6 @@ from portfolio.tracker import (
     _resolve_multiplier,
 )
 
-
 # ── _resolve_multiplier() itself ─────────────────────────────────────────
 
 
