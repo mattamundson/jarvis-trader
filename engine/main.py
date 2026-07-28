@@ -3437,4 +3437,5 @@ def _log_decision(
 # -- /alerts/stats -- served by routers/alerts_router.py (wired 2026-05-22) --
 
 
-# -- /portfolio/import/trades -- served by routers/portfolio_router.py (wired 2026-05-22) --
+# -- /portfolio/import/trades -- served by routers/portfolio_router.py (wired 2026-05-22,
+#    RETIRED 2026-07-26 / D3-02: now always returns 410 -- silently discarded every row) --
