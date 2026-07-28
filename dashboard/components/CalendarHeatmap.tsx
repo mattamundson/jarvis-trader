@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { fetchDailyPnLHistory } from "@/lib/api";
+import { calendarDateStr, calendarDisplayFor } from "@/lib/calendarHeatmap";
 
 interface DailyPnlEntry {
   date: string;
@@ -20,6 +21,22 @@ interface DailyPnlEntry {
 export function CalendarHeatmap() {
   const [records, setRecords] = useState<DailyPnlEntry[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // "today" is intentionally client-only state -- same hydration guard as
+  // DailyPnLCalendarWidget (GT-27) and WeeklyPnLCard (GT-30, PR #503).
+  // Computing `new Date()` directly during render makes SSR output
+  // (evaluated at server-render/build time) diverge from the client's first
+  // hydration pass (evaluated whenever the browser actually loads the page)
+  // whenever those two clock reads straddle a day/month boundary --
+  // producing a React #418 hydration mismatch on the month label, the
+  // calendar grid, and the "is today" ring highlight. Starting at `null`
+  // and setting it in a mount-only effect guarantees the server and the
+  // first client render agree (both render the loading skeleton), then the
+  // real calendar fills in client-side. See lib/calendarHeatmap.ts.
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -48,44 +65,9 @@ export function CalendarHeatmap() {
   }, []);
 
   // Build calendar for the current month
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const monthLabel = now.toLocaleString("default", {
-    month: "long",
-    year: "numeric",
-  });
+  const calendar = calendarDisplayFor(today);
 
-  // Map date string -> record for O(1) lookup
-  const pnlMap = new Map<string, DailyPnlEntry>();
-  for (const r of records) {
-    pnlMap.set(r.date, r);
-  }
-
-  // First weekday of the month (0=Sun) and number of days
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  // Build flat cell array: null = empty filler, number = day-of-month
-  const cells: (number | null)[] = Array<null>(firstDay).fill(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  // Pad to complete the last row
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const dateStr = (d: number) =>
-    `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-
-  // Monthly summary
-  const monthRecords = records.filter((r) => {
-    const rd = new Date(r.date);
-    return rd.getFullYear() === year && rd.getMonth() === month;
-  });
-  const monthPnl = monthRecords.reduce((s, r) => s + r.pnl, 0);
-  const tradingDays = monthRecords.filter((r) => r.num_trades > 0).length;
-
-  const todayDay = now.getDate();
-
-  if (loading) {
+  if (loading || !calendar) {
     return (
       <Card>
         <CardHeader>
@@ -97,6 +79,24 @@ export function CalendarHeatmap() {
       </Card>
     );
   }
+
+  const { year, month, monthLabel, cells, todayDay } = calendar;
+
+  // Map date string -> record for O(1) lookup
+  const pnlMap = new Map<string, DailyPnlEntry>();
+  for (const r of records) {
+    pnlMap.set(r.date, r);
+  }
+
+  const dateStr = (d: number) => calendarDateStr(year, month, d);
+
+  // Monthly summary
+  const monthRecords = records.filter((r) => {
+    const rd = new Date(r.date);
+    return rd.getFullYear() === year && rd.getMonth() === month;
+  });
+  const monthPnl = monthRecords.reduce((s, r) => s + r.pnl, 0);
+  const tradingDays = monthRecords.filter((r) => r.num_trades > 0).length;
 
   return (
     <Card>
@@ -143,10 +143,10 @@ export function CalendarHeatmap() {
             const rec = pnlMap.get(dateStr(day));
             const pnl = rec?.pnl ?? 0;
             const hasTrades = rec !== undefined && rec.num_trades > 0;
-            const isToday =
-              day === todayDay &&
-              now.getMonth() === month &&
-              now.getFullYear() === year;
+            // `todayDay`/`month`/`year` all come from the same `today`
+            // clock read (see calendarDisplayFor), so day === todayDay is
+            // sufficient -- no separate month/year re-check needed.
+            const isToday = day === todayDay;
 
             return (
               <div

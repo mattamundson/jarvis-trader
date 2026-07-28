@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { dailyPnl } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
+import { dailyPnlCalendarDisplayFor, toYMD } from "@/lib/dailyPnlCalendar";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -19,38 +20,12 @@ function formatPnl(value: number): string {
   return value >= 0 ? `+$${abs}` : `-$${abs}`;
 }
 
-function toYMD(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-
 function formatDateLabel(d: Date): string {
   return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
-}
-
-/**
- * Returns list of Mon–Fri dates spanning the past 30 calendar days
- * (from 29 days ago through today, inclusive).
- */
-function buildCalendarDays(): Date[] {
-  const days: Date[] = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const dow = d.getDay(); // 0=Sun, 6=Sat
-    if (dow >= 1 && dow <= 5) {
-      days.push(d);
-    }
-  }
-  return days;
 }
 
 /**
@@ -90,6 +65,28 @@ export function DailyPnLCalendarWidget() {
   const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(120_000);
   const error = !!loadError;
 
+  // "today" is intentionally client-only state -- same hydration guard as
+  // WeeklyPnLCard (GT-30, PR #503) and the other GT-33 date-guard fixes
+  // (CalendarHeatmap, CumulativeTradingDaysWidget, MonthlyTargetCard).
+  // Computing `new Date()` directly during render makes SSR output
+  // (evaluated at server-render/build time) diverge from the client's first
+  // hydration pass (evaluated whenever the browser actually loads the page
+  // -- which can be hours/days later for a statically-optimized route)
+  // whenever those two clock reads straddle a day/month boundary --
+  // producing a React #418 hydration mismatch on the month label, the day
+  // grid, and the "is today" cell highlight. Starting at `null` and setting
+  // it in a mount-only effect guarantees the server and the first client
+  // render agree (both render the existing empty-calendar state), then the
+  // real calendar fills in client-side. See lib/dailyPnlCalendar.ts.
+  //
+  // NOTE: this file is also touched by still-open PR #496 (GT-27) with a
+  // non-extracted version of the same guard -- see GT-33's PR description
+  // for the reconciliation note.
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
+
   // dailyPnl() returns {date, pnl, count}[] grouped by close date
   const dailyPnlMap: DailyPnLMap | null = set
     ? (() => {
@@ -104,8 +101,7 @@ export function DailyPnLCalendarWidget() {
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
-  const calDays = buildCalendarDays();
-  const todayStr = toYMD(new Date());
+  const { calDays, todayStr, monthLabel } = dailyPnlCalendarDisplayFor(today);
 
   // Compute summary stats from days that have data
   const pnlValues: number[] = [];
@@ -120,12 +116,6 @@ export function DailyPnLCalendarWidget() {
     pnlValues.length > 0
       ? pnlValues.reduce((a, b) => a + b, 0) / pnlValues.length
       : null;
-
-  const now = new Date();
-  const monthLabel = now.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
 
   // Leading empty cells so first weekday lands in correct Mon–Fri column
   const firstDay = calDays[0];
