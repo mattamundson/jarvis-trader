@@ -1315,7 +1315,12 @@ async def portfolio_history_trades(limit: int = 50):
         price = d.get("exit_price")
         if price is None:
             price = d.get("entry_price")
-        side = str(d.get("action", "hold")).upper()
+        # GT-10: paper_trades rows carry direction on the `side` column
+        # (buy | sell | buy_to_open | sell_to_open) — there is no `action`
+        # column on that table. Reading a nonexistent key silently returned
+        # None -> "hold" for every row, flattening all /analysis chart
+        # markers to HOLD instead of the real buy/sell split.
+        side = str(d.get("side", "hold")).upper()
         if "BUY" in side or side == "BUY":
             action = "BUY"
         elif "SELL" in side or side == "SELL":
