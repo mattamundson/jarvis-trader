@@ -23,6 +23,14 @@ real shareable `.ts` files (its schema requires a `file:` path and its loader
 test locks the script count), and this is a ThinkorSwim built-in with no `.ts`.
 This doc is its home in the bridge.
 
+**Provenance note (2026-07-28)**: `engine/backtest/atr_trail_bounce_signals.py`
+was added in commit `bca09e5`, whose message ("docs: analyze
+Alishahryar1/free-claude-code as noise, not integrated (#436)") describes an
+unrelated repo evaluation, not this file. The diff is correct and reviewed —
+only the commit message is mislabeled. Recorded here (and as a `git notes`
+annotation on `bca09e5`) rather than rewritten, since amending a commit that
+old on `master` would rewrite every commit after it.
+
 ## What the line is
 
 A stop-and-reverse trailing stop. It trails **below** price while long (acting
