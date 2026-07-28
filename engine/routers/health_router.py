@@ -725,6 +725,8 @@ async def _full_health_inner() -> dict:
         status["ib_gateway"] = await _get_ib_gateway_health()
     except Exception as e:
         status["ib_gateway"] = {"status": "error", "error": str(e)}
+        if overall == "healthy":
+            overall = "degraded"
 
     # 4. Circuit breakers
     try:
@@ -757,6 +759,8 @@ async def _full_health_inner() -> dict:
             status["portfolio"] = {"status": "not_initialized"}
     except Exception as e:
         status["portfolio"] = {"status": "error", "error": str(e)}
+        if overall == "healthy":
+            overall = "degraded"
 
     # 6. PnL monitor
     try:
@@ -774,6 +778,8 @@ async def _full_health_inner() -> dict:
             status["pnl_monitor"] = {"status": "not_initialized"}
     except Exception as e:
         status["pnl_monitor"] = {"status": "error", "error": str(e)}
+        if overall == "healthy":
+            overall = "degraded"
 
     # 7. LLM path — which provider is serving + whether we're on a fallback leg.
     # Sustained gemini/openai fallback has been a recurring silent degrade, so
