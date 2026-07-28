@@ -356,20 +356,18 @@ class TestSession4OfflineStrict:
         assert isinstance(body, dict), "Response must be a JSON object"
         assert len(body) > 0, "Streak response body must not be empty"
 
-    # ── POST /portfolio/import/trades — empty list ─────────────────────────
+    # ── POST /portfolio/import/trades — RETIRED (D3-02) ────────────────────
+    # Silently discarded every imported row (INSERT OR IGNORE swallowed a NOT
+    # NULL violation on idempotency_key) while reporting HTTP 200. No live
+    # caller found; now always returns 410 regardless of payload shape.
 
     def test_import_trades_empty(self) -> None:
-        """POST /portfolio/import/trades with empty list must return 200, imported=0."""
+        """POST /portfolio/import/trades — retired, must return 410 even for an empty list."""
         r = client.post("/portfolio/import/trades", json={"trades": []}, headers=_AUTH)
-        assert r.status_code == 200, f"Expected 200, got {r.status_code}. Body: {r.text}"
-        body = r.json()
-        assert body.get("imported") == 0, f"Expected 0 imports for empty list. Body: {body}"
-        assert "errors" in body, f"Response missing 'errors' field. Body: {body}"
-
-    # ── POST /portfolio/import/trades — single valid trade ─────────────────
+        assert r.status_code == 410, f"Expected 410 (retired), got {r.status_code}. Body: {r.text}"
 
     def test_import_trades_single(self) -> None:
-        """POST /portfolio/import/trades with one trade must return 200, imported=1."""
+        """POST /portfolio/import/trades — retired, must return 410 and write nothing."""
         trade = {
             "trade_id": "test-offline-strict-single-001",
             "symbol": "TEST",
@@ -382,17 +380,9 @@ class TestSession4OfflineStrict:
             "exit_time": "2026-03-01T10:00:00Z",
         }
         r = client.post("/portfolio/import/trades", json={"trades": [trade]}, headers=_AUTH)
-        assert r.status_code == 200, f"Expected 200, got {r.status_code}. Body: {r.text}"
-        body = r.json()
-        assert body.get("imported") == 1, f"Expected 1 import. Body: {body}"
-        assert body.get("skipped") == 0, f"Expected 0 skipped. Body: {body}"
-        assert isinstance(body.get("errors"), list), f"'errors' must be a list. Body: {body}"
-
-    # ── POST /portfolio/import/trades — bad body ───────────────────────────
+        assert r.status_code == 410, f"Expected 410 (retired), got {r.status_code}. Body: {r.text}"
 
     def test_import_trades_bad_body(self) -> None:
-        """POST /portfolio/import/trades with non-list 'trades' must return 400."""
+        """POST /portfolio/import/trades — retired, returns 410 regardless of body shape."""
         r = client.post("/portfolio/import/trades", json={"trades": "not-a-list"}, headers=_AUTH)
-        assert (
-            r.status_code == 400
-        ), f"Expected 400 for invalid body, got {r.status_code}. Body: {r.text}"
+        assert r.status_code == 410, f"Expected 410 (retired), got {r.status_code}. Body: {r.text}"
