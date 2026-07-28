@@ -5,16 +5,12 @@ import { Database, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { fetchEngine } from "@/lib/api";
+import { deriveTotalTradesCount, type TradesHistoryWrapper } from "@/lib/databaseStatsTrades";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface TradesResponse {
-  trades: unknown[];
-  count: number;
-  error?: string;
-  note?: string;
-}
+type TradesResponse = TradesHistoryWrapper;
 
 interface DecisionsResponse {
   decisions: unknown[];
@@ -81,7 +77,7 @@ export function DatabaseStatsCard() {
     let totalTrades = 0;
     let tradesOk = false;
     if (tradesResult.status === "fulfilled" && !tradesResult.value.error) {
-      totalTrades = tradesResult.value.count ?? tradesResult.value.trades?.length ?? 0;
+      totalTrades = deriveTotalTradesCount(tradesResult.value);
       tradesOk = true;
     } else {
       errors.push("trades");
