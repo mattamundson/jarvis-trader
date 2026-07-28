@@ -120,6 +120,39 @@ class DecisionsMixin:
             finally:
                 conn.close()
 
+    def count_decisions(
+        self,
+        symbol: Optional[str] = None,
+        action: Optional[str] = None,
+    ) -> int:
+        """
+        Return the TRUE total row count for the decisions log, ignoring any
+        pagination ``limit`` -- i.e. ``SELECT COUNT(*)``, not
+        ``len(get_decisions(limit=...))``.
+
+        Parameters mirror :meth:`get_decisions` (minus ``limit``) so the
+        count reflects the same filter the caller applied to the page.
+        """
+        clauses = []
+        params: list = []
+        if symbol:
+            clauses.append("symbol = ?")
+            params.append(symbol.upper())
+        if action:
+            clauses.append("action = ?")
+            params.append(action.lower())
+
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        sql = f"SELECT COUNT(*) AS n FROM decisions {where}"
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql, params).fetchone()
+                return int(row["n"]) if row else 0
+            finally:
+                conn.close()
+
     def get_decision_by_id(self, decision_id: int) -> Optional[Dict]:
         """
         Fetch a single decision row by primary key, deserialising all JSON fields.

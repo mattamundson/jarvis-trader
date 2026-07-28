@@ -135,7 +135,44 @@ class DailyPnLMixin:
         If ``days`` is set and ``start_date`` is not, rows on or after
         (today UTC − ``days`` calendar days) are returned.
         Results are ordered oldest-first (ascending date).
+
+        Self-heals undercounted rows on read (GT-19, 2026-07-27):
+        ``daily_pnl`` rows are write-time snapshots taken by
+        ``run_eod_snapshot`` (20:05 UTC) and corrected by
+        ``run_session_flatten`` (20:45 UTC) — but a trade that closes after
+        both of those scheduler jobs ran (or on a day the engine was
+        offline during either window) is silently excluded from the served
+        row until some LATER scheduled job happens to rebuild the table.
+        That is silent data loss on every read in between, not merely a
+        display bug: a real closed trade (P&L, trade count) is simply
+        missing from what the dashboard shows. Confirmed live case:
+        2026-07-23's row served ``{realized_pnl: -208.7054, total_trades: 3}``
+        for at least a day after a 4th trade (MGC +$18.50, closed
+        2026-07-23T20:45:00.563999+00:00) was already committed to
+        ``paper_trades``.
+
+        This patches ONLY the specific failure mode: a date where the
+        closed-trade ledger now has MORE trades than the stored row
+        recorded (``_self_heal_undercounted_daily_pnl``). It intentionally
+        does NOT run the broader ``reconcile_daily_pnl`` / full
+        ``repair_daily_pnl`` rebuild on every read — that also deletes
+        "orphan" rows (a stored date with no matching closed trade) and
+        rewrites every date's balance chain, which is safe as a deliberate
+        scheduled/manual operation but too broad a side effect to trigger
+        implicitly from a GET request. Never raises — a heal failure here
+        must not turn a read endpoint into a 500.
         """
+        try:
+            patched = self._self_heal_undercounted_daily_pnl()
+            if patched:
+                logger.warning(
+                    "[DB] get_daily_pnl self-heal — patched %d undercounted row(s): %s",
+                    len(patched),
+                    ", ".join(patched),
+                )
+        except Exception as exc:
+            logger.error("[DB] get_daily_pnl self-heal failed (serving as-is): %s", exc)
+
         clauses = []
         params: list = []
         if start_date:
@@ -157,6 +194,99 @@ class DailyPnLMixin:
             try:
                 rows = conn.execute(sql, params).fetchall()
                 return [dict(r) for r in rows]
+            finally:
+                conn.close()
+
+    def _self_heal_undercounted_daily_pnl(self) -> List[str]:
+        """Patch ``daily_pnl`` rows strictly undercounted vs. the closed-trade ledger.
+
+        Companion to ``reconcile_daily_pnl`` / ``repair_daily_pnl`` (2026-07-02,
+        2026-07-09) — GT-19 (2026-07-27) narrows the same anchoring formula to a
+        read-safe, additive-only patch: a date is touched ONLY when
+        ``COUNT(closed paper_trades for that date) > stored daily_pnl.total_trades``,
+        i.e. a trade genuinely closed after the snapshot was written and is
+        missing from what's served. Unlike ``repair_daily_pnl`` this NEVER
+        deletes an orphan row (a stored date with no closed trades — e.g. a
+        manually-seeded or pre-ledger row) and never rewrites a date whose
+        stored count already matches or exceeds the ledger, so it is safe to
+        call unconditionally on every read.
+
+        Uses ``INSERT OR REPLACE`` with the same absolute-anchoring formula as
+        ``repair_daily_pnl``/``_collect_db_trade_metrics`` (initial_capital +
+        cumulative closed P&L through that date) so a patched row's balances
+        stay internally consistent; per that established precedent, patched
+        rows' ``unrealized_pnl``/``max_drawdown`` are reset to 0 (reporting-only
+        columns — nothing load-bearing reads them).
+
+        Returns the list of patched dates (empty when nothing was undercounted).
+        """
+        try:
+            from schedulers.eod_scheduler import (
+                _DEFAULT_STARTING_BALANCE as initial_capital,
+            )
+        except Exception:
+            initial_capital = 10_000.0
+
+        recompute_sql = """
+            SELECT date(exit_time) AS d,
+                   COALESCE(SUM(pnl), 0.0) AS realized,
+                   COUNT(*) AS n,
+                   SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) AS wins,
+                   SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) AS losses
+            FROM paper_trades
+            WHERE status = 'closed' AND exit_time IS NOT NULL
+            GROUP BY date(exit_time)
+            ORDER BY date(exit_time)
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                grouped = [r for r in conn.execute(recompute_sql).fetchall() if r["d"] is not None]
+                stored_counts = {
+                    r["date"]: int(r["total_trades"] or 0)
+                    for r in conn.execute("SELECT date, total_trades FROM daily_pnl").fetchall()
+                }
+
+                if not any(int(r["n"]) > stored_counts.get(r["d"], 0) for r in grouped):
+                    return []
+
+                # Cumulative sum over the FULL ordered ledger (not just the
+                # undercounted dates) so a patched row's starting/ending
+                # balance stays anchored exactly like repair_daily_pnl.
+                running = float(initial_capital)
+                patched: List[str] = []
+                for r in grouped:
+                    start = round(running, 4)
+                    realized = round(float(r["realized"]), 4)
+                    end = round(start + realized, 4)
+                    running = end
+
+                    if int(r["n"]) <= stored_counts.get(r["d"], 0):
+                        continue  # not undercounted — leave this row alone
+
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO daily_pnl
+                            (date, starting_balance, ending_balance, realized_pnl,
+                             unrealized_pnl, total_trades, winning_trades,
+                             losing_trades, max_drawdown)
+                        VALUES (?, ?, ?, ?, 0.0, ?, ?, ?, 0.0)
+                        """,
+                        (
+                            r["d"],
+                            start,
+                            end,
+                            realized,
+                            int(r["n"]),
+                            int(r["wins"] or 0),
+                            int(r["losses"] or 0),
+                        ),
+                    )
+                    patched.append(r["d"])
+
+                if patched:
+                    conn.commit()
+                return patched
             finally:
                 conn.close()
 

@@ -79,9 +79,9 @@ export function DailyPnLCalendarWidget() {
   // render agree (both render the existing empty-calendar state), then the
   // real calendar fills in client-side. See lib/dailyPnlCalendar.ts.
   //
-  // NOTE: this file is also touched by still-open PR #496 (GT-27) with a
-  // non-extracted version of the same guard -- see GT-33's PR description
-  // for the reconciliation note.
+  // Reconciled with GT-27 (PR #496, inline-guard version of this same fix)
+  // at merge time -- this extracted lib/dailyPnlCalendar.ts version won per
+  // GT-33's PR description.
   const [today, setToday] = useState<Date | null>(null);
   useEffect(() => {
     setToday(new Date());
