@@ -518,7 +518,8 @@ class DecisionHistoryResponse(BaseModel):
     """Agent decisions."""
 
     decisions: List[Dict[str, Any]] = Field(default_factory=list, description="Decision records")
-    count: int = Field(0, description="Number of decisions")
+    count: int = Field(0, description="Number of decisions in this page (bounded by limit)")
+    total: int = Field(0, description="True total decision row count, ignoring limit")
 
 
 class StatsSummaryResponse(BaseModel):

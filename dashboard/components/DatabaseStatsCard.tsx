@@ -19,6 +19,7 @@ interface TradesResponse {
 interface DecisionsResponse {
   decisions: unknown[];
   count: number;
+  total?: number;
   error?: string;
   note?: string;
 }
@@ -26,6 +27,7 @@ interface DecisionsResponse {
 interface AlertsResponse {
   alerts: unknown[];
   count: number;
+  total?: number;
   error?: string;
 }
 
@@ -90,7 +92,14 @@ export function DatabaseStatsCard() {
     let totalDecisions = 0;
     let decisionsOk = false;
     if (decisionsResult.status === "fulfilled" && !decisionsResult.value.error) {
-      totalDecisions = decisionsResult.value.count ?? decisionsResult.value.decisions?.length ?? 0;
+      // Prefer the true row-count `total` (SELECT COUNT(*), unbounded) over
+      // `count`/`decisions.length`, which are bounded by the request's
+      // `limit` query param and understate the real total (GT-04).
+      totalDecisions =
+        decisionsResult.value.total ??
+        decisionsResult.value.count ??
+        decisionsResult.value.decisions?.length ??
+        0;
       decisionsOk = true;
     } else {
       errors.push("decisions");
@@ -99,7 +108,13 @@ export function DatabaseStatsCard() {
     let totalAlerts = 0;
     let alertsOk = false;
     if (alertsResult.status === "fulfilled" && !alertsResult.value.error) {
-      totalAlerts = alertsResult.value.count ?? alertsResult.value.alerts?.length ?? 0;
+      // Prefer the true row-count `total` over the limit-bounded `count`
+      // (GT-04) — see decisions handling above.
+      totalAlerts =
+        alertsResult.value.total ??
+        alertsResult.value.count ??
+        alertsResult.value.alerts?.length ??
+        0;
       alertsOk = true;
     } else {
       errors.push("alerts");
