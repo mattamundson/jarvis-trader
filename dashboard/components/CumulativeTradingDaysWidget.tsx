@@ -5,8 +5,9 @@ import { Calendar, Target, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import { computeTradingDaysDisplay, TARGET_TRADING_DAYS } from "@/lib/cumulativeTradingDays";
 
-const TARGET_DAYS = 30;
+const TARGET_DAYS = TARGET_TRADING_DAYS;
 const REFRESH_MS = 120_000;
 
 // ── Badge helpers ──────────────────────────────────────────────────────────────
@@ -25,26 +26,6 @@ function statusBadgeLabel(tradingDays: number): string {
   if (tradingDays >= 20) return "ON TRACK";
   if (tradingDays >= 10) return "IN PROGRESS";
   return "EARLY STAGE";
-}
-
-// ── Date helpers ───────────────────────────────────────────────────────────────
-
-function addDays(d: Date, n: number): Date {
-  const result = new Date(d);
-  result.setDate(result.getDate() + n);
-  return result;
-}
-
-function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function formatEstDate(d: Date): string {
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 // ── API type ───────────────────────────────────────────────────────────────────
@@ -84,6 +65,22 @@ export function CumulativeTradingDaysWidget() {
     return () => clearInterval(interval);
   }, []);
 
+  // "today" is intentionally client-only state -- same hydration guard as
+  // DailyPnLCalendarWidget (GT-27) and WeeklyPnLCard (GT-30, PR #503).
+  // Computing `new Date()` directly during render makes SSR output
+  // (evaluated at server-render/build time) diverge from the client's first
+  // hydration pass (evaluated whenever the browser actually loads the page)
+  // whenever those two clock reads straddle a day boundary -- producing a
+  // React #418 hydration mismatch on the "Est. completion" label and the
+  // 30-day activity dot grid. Starting at `null` and setting it in a
+  // mount-only effect guarantees the server and the first client render
+  // agree (both render the placeholder), then the real values fill in
+  // client-side. See lib/cumulativeTradingDays.ts.
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
+
   // ── Derived values ─────────────────────────────────────────────────────────
 
   // Unique trading days from exit_time
@@ -98,41 +95,19 @@ export function CumulativeTradingDaysWidget() {
   // Pace: days_with_trades / days_since_first_trade
   const sortedDays = [...tradingDaySet].sort();
   const firstTradeDateStr = sortedDays[0] ?? null;
-  const today = new Date();
 
-  let pace = 0;
-  let daysSinceFirst = 0;
-  if (firstTradeDateStr) {
-    const firstDate = new Date(firstTradeDateStr + "T00:00:00");
-    daysSinceFirst = Math.max(
-      1,
-      Math.floor((today.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    );
-    pace = tradingDays / daysSinceFirst;
-  }
-
-  // Estimated completion
-  const daysRemaining = Math.max(0, TARGET_DAYS - tradingDays);
-  let estCompletionLabel = "Insufficient data";
-  if (tradingDays >= TARGET_DAYS) {
-    estCompletionLabel = "Target met!";
-  } else if (pace > 0) {
-    const calendarDaysNeeded = Math.ceil(daysRemaining / pace);
-    const estDate = addDays(today, calendarDaysNeeded);
-    estCompletionLabel = `Est. completion: ${formatEstDate(estDate)}`;
-  }
+  const { pace, estCompletionLabel, activityDots } = computeTradingDaysDisplay(
+    today,
+    tradingDays,
+    firstTradeDateStr,
+    tradingDaySet,
+    TARGET_DAYS
+  );
 
   // Progress
+  const daysRemaining = Math.max(0, TARGET_DAYS - tradingDays);
   const progressPct = Math.min(100, (tradingDays / TARGET_DAYS) * 100);
   const pctLabel = `${Math.round(progressPct)}% complete`;
-
-  // Activity dots — last 30 calendar days (6 rows × 5 cols)
-  const activityDots: { dateStr: string; hasTraded: boolean }[] = [];
-  for (let i = 29; i >= 0; i--) {
-    const d = addDays(today, -i);
-    const dateStr = toDateStr(d);
-    activityDots.push({ dateStr, hasTraded: tradingDaySet.has(dateStr) });
-  }
 
   const badgeVariant = statusBadgeVariant(tradingDays);
   const badgeLabel = statusBadgeLabel(tradingDays);

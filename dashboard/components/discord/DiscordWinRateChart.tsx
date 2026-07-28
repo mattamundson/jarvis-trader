@@ -11,6 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fetchEngine } from "@/lib/api";
+import { winRatePercent } from "@/lib/discordWinRate";
 
 const REFRESH_MS = 30_000;
 
@@ -81,13 +82,14 @@ export function DiscordWinRateChart() {
 
   const rawSymbols = data?.signals_by_symbol ?? [];
 
-  // Filter to focus symbols + convert win_rate to percent
+  // Filter to focus symbols + format win_rate for display.
+  // avg_win_rate is already 0-100 (see lib/discordWinRate.ts) -- do NOT
+  // re-multiply by 100 here (GT-07).
   const chartData = FOCUS_SYMBOLS.map((sym) => {
     const found = rawSymbols.find((s) => s.symbol === sym);
     return {
       symbol: sym,
-      win_rate_pct:
-        found?.avg_win_rate != null ? found.avg_win_rate * 100 : 0,
+      win_rate_pct: winRatePercent(found?.avg_win_rate),
       cnt: found?.cnt ?? 0,
     };
   }).filter((d) => d.cnt > 0);
@@ -98,7 +100,7 @@ export function DiscordWinRateChart() {
       ? chartData
       : rawSymbols.slice(0, 8).map((s) => ({
           symbol: s.symbol,
-          win_rate_pct: s.avg_win_rate != null ? s.avg_win_rate * 100 : 0,
+          win_rate_pct: winRatePercent(s.avg_win_rate),
           cnt: s.cnt,
         }));
 

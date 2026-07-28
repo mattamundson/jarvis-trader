@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchDailyPnLHistory } from "@/lib/api";
+import { monthDisplayFor } from "@/lib/monthlyTarget";
 
 
 const MONTHLY_TARGET = 500;
@@ -22,18 +23,6 @@ function formatCurrencySigned(value: number): string {
 function formatCurrencyPlain(value: number): string {
   const abs = Math.abs(value).toFixed(2);
   return value >= 0 ? `+$${abs}` : `-$${abs}`;
-}
-
-function getCurrentYearMonth(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
-
-function getMonthLabel(): string {
-  const now = new Date();
-  return now.toLocaleString("en-US", { month: "long", year: "numeric" });
 }
 
 export function MonthlyTargetCard() {
@@ -65,10 +54,28 @@ export function MonthlyTargetCard() {
     fetchData();
   }, [fetchData]);
 
-  const yearMonth = getCurrentYearMonth();
-  const monthLabel = getMonthLabel();
+  // "today" is intentionally client-only state -- same hydration guard as
+  // DailyPnLCalendarWidget (GT-27) and WeeklyPnLCard (GT-30, PR #503).
+  // Computing `new Date()` directly during render makes SSR output
+  // (evaluated at server-render/build time) diverge from the client's first
+  // hydration pass (evaluated whenever the browser actually loads the page)
+  // whenever those two clock reads straddle a month boundary -- changing
+  // both which entries count toward "this month" and the "Month Year" label
+  // text -- producing a React #418 hydration mismatch. Starting at `null`
+  // and setting it in a mount-only effect guarantees the server and the
+  // first client render agree (both render the placeholder / empty-month
+  // state), then the real month fills in client-side. See
+  // lib/monthlyTarget.ts.
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
 
-  const monthEntries = entries.filter((e) => e.date.startsWith(yearMonth));
+  const { yearMonth, monthLabel } = monthDisplayFor(today);
+
+  // `today` is null pre-mount (yearMonth === ""); guard explicitly rather
+  // than relying on `"".startsWith("")` being vacuously true for every entry.
+  const monthEntries = today ? entries.filter((e) => e.date.startsWith(yearMonth)) : [];
   const monthlyPnl = monthEntries.reduce((sum, e) => sum + e.pnl, 0);
   const tradingDays = monthEntries.length;
   const bestDay = tradingDays > 0
