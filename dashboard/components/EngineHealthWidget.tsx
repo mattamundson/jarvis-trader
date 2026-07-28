@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import type { HealthResponse } from "@/lib/api";
+import { executionStatus } from "@/lib/executionPath";
 import { EngineWebSocketContext } from "@/lib/engine-websocket-context";
 
 function formatUptime(s: number): string {
@@ -117,15 +118,17 @@ export function EngineHealthWidget() {
     ? "LLM single-leg"
     : "LLM path";
 
+  // D3-01: derive through the honesty layer — never read
+  // ibkr_execution_connected directly (see @/lib/executionPath). The
+  // in-process simulator must yield "warn", never "ok".
+  const exec = executionStatus(data);
   const ibkrExec: StatusDot =
     data == null
       ? "unknown"
-      : data.ibkr_execution_connected === true
+      : exec.tone === "bull"
       ? "ok"
-      : data.ibkr_execution_connected === false
-      ? "warn"
-      : data.ibkr_connected
-      ? "ok"
+      : exec.tone === "bear"
+      ? "error"
       : "warn";
 
   const ibkrData: StatusDot =

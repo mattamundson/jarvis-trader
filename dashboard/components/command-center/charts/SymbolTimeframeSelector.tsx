@@ -2,6 +2,7 @@
 
 import { RefreshCw } from "lucide-react";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
+import { symbolTradeStatus } from "@/lib/approvedSymbols";
 
 const SYMBOLS: ChartSymbol[] = ["MES", "MCL", "MNQ", "MGC"];
 const TIMEFRAMES: ChartTimeframe[] = ["5m", "15m", "1h", "4h", "1d"];
@@ -13,12 +14,7 @@ const SYMBOL_LABELS: Record<ChartSymbol, string> = {
   MGC: "Micro Gold",
 };
 
-const SYMBOL_STATUS: Record<ChartSymbol, { label: string; color: string }> = {
-  MES: { label: "APPROVED", color: "#00ff88" },
-  MCL: { label: "APPROVED", color: "#00ff88" },
-  MNQ: { label: "APPROVED", color: "#00ff88" },
-  MGC: { label: "HALTED", color: "#ff4466" },
-};
+const STATUS_COLOR = { APPROVED: "#00ff88", HALTED: "#ff4466" } as const;
 
 interface Props {
   symbol: ChartSymbol;
@@ -45,7 +41,8 @@ export function SymbolTimeframeSelector({
       {/* Symbol selector */}
       <div className="flex items-center gap-1">
         {SYMBOLS.map((s) => {
-          const status = SYMBOL_STATUS[s];
+          const label = symbolTradeStatus(s);
+          const status = { label, color: STATUS_COLOR[label] };
           const isActive = s === symbol;
           return (
             <button
