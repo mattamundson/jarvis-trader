@@ -4,6 +4,8 @@ Pure-function coverage (deterministic synthetic bars) plus a handler-level test
 of GET /regime/intraday with a fake data manager. No network, no LLM.
 """
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -34,6 +36,31 @@ def _make_df(prices: np.ndarray, freq: str = "1h") -> pd.DataFrame:
             "volume": np.full(n, 1_000_000.0),
         },
         index=idx,
+    )
+
+
+def _make_raw_bars(prices: np.ndarray, freq: str = "1h", start: str = "2024-06-03 09:30") -> pd.DataFrame:
+    """OHLCV frame with a plain RangeIndex and a 'timestamp' column.
+
+    This is the *actual* shape data_manager.get_bars() returns in production —
+    every waterfall tier (TV/IBKR/SQLite-cache/Polygon/CSV-cache) builds bars
+    this way (see market_data.py's get_historical_bars / _load_csv_cache and
+    bars_repository.load_bars, none of which call set_index). The router-level
+    tests below feed bars in this exact shape to catch GT-21/GT-23-class bugs
+    that _make_df's already-indexed fixture cannot exercise.
+    """
+    n = len(prices)
+    idx = pd.date_range(start, periods=n, freq=freq)
+    close = pd.Series(prices)
+    return pd.DataFrame(
+        {
+            "timestamp": idx,
+            "open": close.shift(1).fillna(close.iloc[0]).to_numpy(),
+            "high": (close + 0.5).to_numpy(),
+            "low": (close - 0.5).to_numpy(),
+            "close": close.to_numpy(),
+            "volume": np.full(n, 1_000_000.0),
+        }
     )
 
 
@@ -173,3 +200,98 @@ async def test_endpoint_404_when_no_bars(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await regime_router.get_intraday_regime(symbol="SPY")
     assert exc.value.status_code == 404
+
+
+# ── _ensure_datetime_index (GT-21 / GT-23 shared root cause) ───────────────────
+
+def test_ensure_datetime_index_sets_index_from_timestamp_column():
+    raw = _make_raw_bars(np.linspace(100, 110, 48), freq="1h")
+    assert not isinstance(raw.index, pd.DatetimeIndex)
+
+    fixed = regime_router._ensure_datetime_index(raw)
+
+    assert isinstance(fixed.index, pd.DatetimeIndex)
+    assert fixed.index.is_monotonic_increasing
+    assert "timestamp" in fixed.columns  # column preserved for other consumers
+
+
+def test_ensure_datetime_index_passthrough_for_already_indexed():
+    df = _make_df(np.linspace(100, 105, 10))
+    result = regime_router._ensure_datetime_index(df)
+    assert result is df  # already a DatetimeIndex -> untouched
+
+
+def test_ensure_datetime_index_passthrough_for_empty_or_columnless():
+    empty = pd.DataFrame()
+    assert regime_router._ensure_datetime_index(empty) is empty
+
+    no_ts_col = pd.DataFrame({"close": [1, 2, 3]})
+    assert regime_router._ensure_datetime_index(no_ts_col) is no_ts_col
+
+
+class _RawBarsDataManager:
+    """Fake data manager returning bars in the real waterfall shape (RangeIndex
+    + 'timestamp' column) so the router's index-fixing step is actually exercised."""
+
+    def __init__(self, df: pd.DataFrame):
+        self._df = df
+
+    async def get_bars(self, symbol, lookback_days, timeframe, is_futures):
+        return self._df.copy()
+
+
+async def test_endpoint_vwap_uses_current_session_only(monkeypatch):
+    """Regression for GT-21: VWAP must reset per trading session, not cumulate
+    across the whole lookback window, when bars arrive as data_manager.get_bars()
+    actually returns them (RangeIndex + 'timestamp' column).
+
+    Day 1 trades flat around 100; day 2 trades flat around 200. A correct
+    session VWAP on the latest (day-2) bar should read close to 200. The
+    pre-fix behavior (compute_vwap's date-grouping silently failing on a
+    RangeIndex and falling back to one cumulative VWAP) would instead blend
+    toward ~150, matching the reported "frozen ~1-month cumulative" symptom.
+    """
+    # 20 bars/day (not just enough to span 2 sessions) -- build_indicators'
+    # ADX/rolling(20) sub-signals need a longer warm-up window than a handful
+    # of bars, so a too-short fixture would fail before reaching the VWAP card.
+    day1 = pd.date_range("2024-06-03 09:30", periods=20, freq="1h")
+    day2 = pd.date_range("2024-06-04 09:30", periods=20, freq="1h")
+    idx = day1.append(day2)
+    closes = np.array([100.0] * 20 + [200.0] * 20)
+    raw = pd.DataFrame(
+        {
+            "timestamp": idx,
+            "open": closes,
+            "high": closes + 0.5,
+            "low": closes - 0.5,
+            "close": closes,
+            "volume": np.full(40, 1_000_000.0),
+        }
+    )
+    monkeypatch.setattr(regime_router, "data_manager", _RawBarsDataManager(raw))
+
+    result = await regime_router.get_intraday_regime(symbol="TEST")
+
+    vwap_card = next(c for c in result["indicators"] if c["label"] == "VWAP")
+    vwap_value = float(vwap_card["detail"].lstrip("$").replace(",", ""))
+    assert vwap_value > 190, (
+        f"VWAP should reflect only the current session (~200), got {vwap_value} "
+        "-- looks like it cumulated across both sessions"
+    )
+
+
+async def test_endpoint_history_labels_are_clock_times_not_indices(monkeypatch):
+    """Regression for GT-23: score-history x-axis labels must be 'HH:MM AM/PM'
+    clock times, not raw positional bar-index integers, when bars arrive in
+    the real RangeIndex + 'timestamp'-column shape."""
+    raw = _make_raw_bars(np.linspace(100, 105, 50), freq="5min")
+    monkeypatch.setattr(regime_router, "data_manager", _RawBarsDataManager(raw))
+
+    result = await regime_router.get_intraday_regime(symbol="TEST")
+
+    labels = [pt["time"] for pt in result["history"]]
+    assert labels, "expected non-empty score history"
+    time_pattern = re.compile(r"^\d{1,2}:\d{2} (AM|PM)$")
+    assert all(time_pattern.match(lbl) for lbl in labels), (
+        f"expected HH:MM AM/PM labels, found non-time-like entries: {labels[:5]}"
+    )
