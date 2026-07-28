@@ -685,6 +685,39 @@ async def full_health_check():
         raise HTTPException(status_code=503, detail=f"Health check failed: {exc}") from exc
 
 
+# GT-51 ordering-bug fix. Each subsystem check below used to escalate `overall`
+# with its own `if overall == "healthy": overall = <state>` guard. That pattern
+# is only safe if every check that can set a *more* severe state always runs
+# *before* every check that can set a *less* severe one — which stopped being
+# true the moment `ib_gateway` (step 3, escalates to "degraded") started
+# running ahead of `circuit_breakers` (step 4, escalates to
+# "circuit_breaker_tripped"): an ib_gateway exception flipped overall to
+# "degraded" first, so circuit_breakers's `== "healthy"` guard went false and
+# a real circuit-breaker trip could never escalate past "degraded" — silently
+# downgrading a more actionable trading-safety state. Rank-based escalation
+# fixes this for the current order AND makes any future reordering of these
+# checks safe by construction: a candidate state only ever wins if it is
+# strictly more severe than whatever is already recorded, regardless of which
+# check ran first.
+_OVERALL_SEVERITY = {
+    "healthy": 0,
+    "degraded": 1,
+    "circuit_breaker_tripped": 2,
+    "kill_switch_active": 3,
+}
+
+
+def _escalate_overall(current: str, candidate: str) -> str:
+    """Return whichever of `current`/`candidate` is the more severe `overall` state.
+
+    Unknown state strings rank as 0 (== "healthy") so a typo'd/legacy value
+    can't accidentally block a real escalation.
+    """
+    if _OVERALL_SEVERITY.get(candidate, 0) > _OVERALL_SEVERITY.get(current, 0):
+        return candidate
+    return current
+
+
 async def _full_health_inner() -> dict:
     status: dict = {}
     overall = "healthy"
@@ -696,10 +729,10 @@ async def _full_health_inner() -> dict:
             status["database"] = {"status": "ok", "details": db_health}
         else:
             status["database"] = {"status": "not_initialized"}
-            overall = "degraded"
+            overall = _escalate_overall(overall, "degraded")
     except Exception as e:
         status["database"] = {"status": "error", "error": str(e)}
-        overall = "degraded"
+        overall = _escalate_overall(overall, "degraded")
 
     # 2. Safety layer
     try:
@@ -712,19 +745,20 @@ async def _full_health_inner() -> dict:
                 "kill_switch_reason": kill_reason.value if kill_reason else None,
             }
             if kill_switch:
-                overall = "kill_switch_active"
+                overall = _escalate_overall(overall, "kill_switch_active")
         else:
             status["safety_layer"] = {"status": "not_initialized"}
-            overall = "degraded"
+            overall = _escalate_overall(overall, "degraded")
     except Exception as e:
         status["safety_layer"] = {"status": "error", "error": str(e)}
-        overall = "degraded"
+        overall = _escalate_overall(overall, "degraded")
 
     # 3. IB Gateway (optional)
     try:
         status["ib_gateway"] = await _get_ib_gateway_health()
     except Exception as e:
         status["ib_gateway"] = {"status": "error", "error": str(e)}
+        overall = _escalate_overall(overall, "degraded")
 
     # 4. Circuit breakers
     try:
@@ -738,8 +772,7 @@ async def _full_health_inner() -> dict:
                 "details": breakers,
             }
             if not all_clear:
-                if overall == "healthy":
-                    overall = "circuit_breaker_tripped"
+                overall = _escalate_overall(overall, "circuit_breaker_tripped")
         else:
             status["circuit_breakers"] = {"status": "not_available"}
     except Exception as e:
@@ -757,6 +790,7 @@ async def _full_health_inner() -> dict:
             status["portfolio"] = {"status": "not_initialized"}
     except Exception as e:
         status["portfolio"] = {"status": "error", "error": str(e)}
+        overall = _escalate_overall(overall, "degraded")
 
     # 6. PnL monitor
     try:
@@ -774,6 +808,7 @@ async def _full_health_inner() -> dict:
             status["pnl_monitor"] = {"status": "not_initialized"}
     except Exception as e:
         status["pnl_monitor"] = {"status": "error", "error": str(e)}
+        overall = _escalate_overall(overall, "degraded")
 
     # 7. LLM path — which provider is serving + whether we're on a fallback leg.
     # Sustained gemini/openai fallback has been a recurring silent degrade, so
@@ -803,8 +838,8 @@ async def _full_health_inner() -> dict:
             "google_fallback_count": int(path_state.get("google_fallback_count", 0) or 0),
             "vertex_failover_count": int(path_state.get("vertex_failover_count", 0) or 0),
         }
-        if llm_status == "degraded" and overall == "healthy":
-            overall = "degraded"
+        if llm_status == "degraded":
+            overall = _escalate_overall(overall, "degraded")
     except Exception as e:
         status["llm"] = {"status": "unknown", "error": str(e)}
 
