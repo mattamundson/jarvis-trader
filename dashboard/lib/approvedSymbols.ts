@@ -29,20 +29,25 @@ export function matchesPreferredBaseline(symbolAndFilename: string): boolean {
  */
 export const PREFERRED_BASELINE_LABEL = DEFAULT_BRIEFING_SYMBOLS.join("/");
 
+/** Mirrors engine/backtest/signals.py::DO_NOT_TRADE_SYMBOLS (TS/Python cannot share a literal) -- update both together. Locked to this exact value by tests/symbol-status-halt-parity.node.test.ts. */
+export const HALTED_SYMBOLS = ["MCL", "MNQ", "M2K"] as const;
+
+export function symbolTradeStatus(sym: string): "APPROVED" | "HALTED" {
+  return (HALTED_SYMBOLS as readonly string[]).includes(sym.toUpperCase()) ? "HALTED" : "APPROVED";
+}
+
 /**
- * Symbols currently blocked from live/paper trading, per engine
- * `backtest/signals.py::DO_NOT_TRADE_SYMBOLS` (frozenset also contains
- * "M2K", which no dashboard view in this component set surfaces, so it's
- * intentionally omitted here — add it if a consumer ever needs it). Kept as
- * an explicit list rather than "everything not in DEFAULT_BRIEFING_SYMBOLS"
- * so callers can name the halted pair without inferring it.
+ * The subset of HALTED_SYMBOLS this component set's INSTRUMENT_STATUS table
+ * actually tracks. M2K has no dashboard view in this component set (see
+ * HALTED_SYMBOLS above for the full authoritative engine halt list) so it's
+ * intentionally excluded here — add it if a consumer ever needs it.
  */
-export const HALTED_SYMBOLS = ["MCL", "MNQ"] as const;
+const DASHBOARD_HALTED_SYMBOLS = ["MCL", "MNQ"] as const;
 
 /** Every symbol this component set knows about, active pair first. */
 export const ALL_TRACKED_SYMBOLS = [
   ...DEFAULT_BRIEFING_SYMBOLS,
-  ...HALTED_SYMBOLS,
+  ...DASHBOARD_HALTED_SYMBOLS,
 ] as const;
 
 export type TrackedSymbol = (typeof ALL_TRACKED_SYMBOLS)[number];

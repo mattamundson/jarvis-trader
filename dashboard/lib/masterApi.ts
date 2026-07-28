@@ -47,6 +47,15 @@ export function aggregationBannerState(
 // All master-api calls go through the server-side proxy at
 // app/api/master/[...path]/route.ts — never a direct client fetch to the
 // master-api host. Keeps MASTER_API_URL/MASTER_API_KEY server-only.
+//
+// NOTE on the doubled "master/master" segment below (e.g. `${BASE}/master/status`
+// -> "/api/master/master/status"): this is intentional, not a bug. BASE is only the
+// local Next.js proxy's mount point; the route.ts passthrough forwards everything
+// after it verbatim to the upstream master-api service, whose OWN routes are
+// namespaced under "master/" (see AGENTS.md "External service: master-api"). Do not
+// "collapse" this to a single "master/" segment — that would misroute every call here
+// to the wrong upstream path. Investigated + regression-tested 2026-07-27 (GT-26):
+// see tests/masterApiProxyPaths.node.test.ts for the full writeup.
 const BASE = "/api/master";
 
 export async function fetchMasterStatus(): Promise<MasterStatus> {

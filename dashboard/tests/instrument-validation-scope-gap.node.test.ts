@@ -50,8 +50,18 @@ test("HALTED_SYMBOLS never overlaps DEFAULT_BRIEFING_SYMBOLS", () => {
       `HALTED_SYMBOLS must not include an actively-traded symbol, found "${sym}"`
     );
   }
-  assert.deepEqual([...HALTED_SYMBOLS].sort(), ["MCL", "MNQ"]);
+  // Full engine-parity halt list (backtest/signals.py::DO_NOT_TRADE_SYMBOLS) --
+  // includes M2K, which this component set has no dashboard view for (see
+  // ALL_TRACKED_SYMBOLS below). Locked in parity with the engine by
+  // symbol-status-halt-parity.node.test.ts.
+  assert.deepEqual([...HALTED_SYMBOLS].sort(), ["M2K", "MCL", "MNQ"]);
 });
+
+// The subset of HALTED_SYMBOLS this component set actually renders a row for
+// (M2K has no dashboard view here -- see lib/approvedSymbols.ts).
+const DASHBOARD_HALTED_SYMBOLS = ALL_TRACKED_SYMBOLS.filter(
+  (sym) => !(DEFAULT_BRIEFING_SYMBOLS as readonly string[]).includes(sym)
+);
 
 test("ALL_TRACKED_SYMBOLS is the active pair followed by the halted pair, no duplicates", () => {
   assert.deepEqual([...ALL_TRACKED_SYMBOLS], ["MES", "MGC", "MCL", "MNQ"]);
@@ -66,11 +76,11 @@ test("INSTRUMENT_STATUS marks the active pair APPROVED and the halted pair HALTE
       `${sym} is in DEFAULT_BRIEFING_SYMBOLS and must read APPROVED`
     );
   }
-  for (const sym of HALTED_SYMBOLS) {
+  for (const sym of DASHBOARD_HALTED_SYMBOLS) {
     assert.equal(
       INSTRUMENT_STATUS[sym].status,
       "HALTED",
-      `${sym} is in HALTED_SYMBOLS and must read HALTED`
+      `${sym} is in DASHBOARD_HALTED_SYMBOLS and must read HALTED`
     );
   }
 });
@@ -101,7 +111,7 @@ test("buildInstrumentRow: halted symbols always read HALTED, even if the live en
     ["MCL", gateRow("MCL", true)],
     ["MNQ", gateRow("MNQ", true)],
   ]);
-  for (const sym of HALTED_SYMBOLS) {
+  for (const sym of DASHBOARD_HALTED_SYMBOLS) {
     const row = buildInstrumentRow(sym, map);
     assert.equal(row.status, "HALTED", `${sym} must read HALTED regardless of live gate data`);
     assert.equal(row.badgeVariant, "bear");
@@ -130,7 +140,7 @@ test("buildDefaultInstrumentRows never labels MCL/MNQ as approved-and-trading (t
   const rows = buildDefaultInstrumentRows();
   const bySymbol = new Map(rows.map((r) => [r.symbol, r]));
 
-  for (const sym of HALTED_SYMBOLS) {
+  for (const sym of DASHBOARD_HALTED_SYMBOLS) {
     assert.equal(bySymbol.get(sym)?.status, "HALTED");
   }
   for (const sym of DEFAULT_BRIEFING_SYMBOLS) {
@@ -139,7 +149,7 @@ test("buildDefaultInstrumentRows never labels MCL/MNQ as approved-and-trading (t
   // The original bug also pinned static WFE 0.82 (MCL) / 0.57 (MNQ) as if
   // those were passing walk-forward-efficiency scores. Halted symbols must
   // report the true 0.00.
-  for (const sym of HALTED_SYMBOLS) {
+  for (const sym of DASHBOARD_HALTED_SYMBOLS) {
     assert.equal(bySymbol.get(sym)?.wfe, "0.00");
   }
 });
