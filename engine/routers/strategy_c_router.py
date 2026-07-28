@@ -183,6 +183,7 @@ async def get_metrics() -> dict[str, Any]:
             "volatility": _pct(block.get("ann_vol")),
             "win_rate": _pct(block.get("win_rate_pct")),
             "final_equity": _num(block.get("final_equity")),
+            "final_multiple_x": _num(block.get("final_multiple_x")),
             "n_weeks": block.get("n_weeks"),
         }
 

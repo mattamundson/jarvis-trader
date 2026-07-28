@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { dailyPnl } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
@@ -90,6 +90,19 @@ export function DailyPnLCalendarWidget() {
   const { honest: set, isLoading: loading, error: loadError } = useHonestTrades(120_000);
   const error = !!loadError;
 
+  // "today" is intentionally client-only state. Computing `new Date()` inline
+  // during render makes SSR output (evaluated at server-render/build time)
+  // diverge from the client's first hydration pass (evaluated whenever the
+  // browser actually loads the page — which can be hours/days later for a
+  // statically-optimized route), producing a React #418 hydration mismatch
+  // on the month label. Starting at `null` and setting it in a mount-only
+  // effect guarantees the server and the first client render agree (both
+  // render the placeholder), then the real date fills in client-side.
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
+
   // dailyPnl() returns {date, pnl, count}[] grouped by close date
   const dailyPnlMap: DailyPnLMap | null = set
     ? (() => {
@@ -104,8 +117,8 @@ export function DailyPnLCalendarWidget() {
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
-  const calDays = buildCalendarDays();
-  const todayStr = toYMD(new Date());
+  const calDays = today ? buildCalendarDays() : [];
+  const todayStr = today ? toYMD(today) : "";
 
   // Compute summary stats from days that have data
   const pnlValues: number[] = [];
@@ -121,11 +134,9 @@ export function DailyPnLCalendarWidget() {
       ? pnlValues.reduce((a, b) => a + b, 0) / pnlValues.length
       : null;
 
-  const now = new Date();
-  const monthLabel = now.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+  const monthLabel = today
+    ? today.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : "";
 
   // Leading empty cells so first weekday lands in correct Mon–Fri column
   const firstDay = calDays[0];

@@ -79,13 +79,23 @@ export function pickApprovedBacktestBaseline(
       winRatePct = wrRaw * 100;
     }
   }
+  // GT-20 follow-up: engine's `max_drawdown_pct` is stored as a FRACTION
+  // (e.g. 0.18 means 18%; see engine/backtest/metrics.py's locked
+  // unit-convention comment, same convention as total_return_pct above).
+  // Must multiply by 100 before treating it as a whole-number percent, or a
+  // real -18% drawdown renders as the wrong-by-100x "-0.2%".
   const mddRaw = fm?.max_drawdown_pct;
-  const maxDrawdownPct = mddRaw == null ? null : Math.abs(mddRaw);
+  const maxDrawdownPct = mddRaw == null ? null : Math.abs(mddRaw) * 100;
   const maxDrawdownFraction =
     maxDrawdownPct == null ? null : -Math.abs(maxDrawdownPct) / 100;
+  // GT-20: engine's `total_return_pct` / `total_return` are stored as
+  // FRACTIONS (e.g. -0.0525 means -5.25%; see engine/backtest/metrics.py's
+  // locked unit-convention comment). Must multiply by 100 before formatting
+  // as a percent string, or -5.25% renders as the wrong-by-100x "-0.1%".
   const tr = fm?.total_return_pct ?? r.total_return;
+  const trPct = tr == null ? null : Number(tr) * 100;
   const totalReturnLabel =
-    tr == null ? null : `${tr >= 0 ? "+" : ""}${Number(tr).toFixed(1)}%`;
+    trPct == null ? null : `${trPct >= 0 ? "+" : ""}${trPct.toFixed(1)}%`;
   const sym = r.symbol ?? fm?.symbol ?? "Unknown";
   const interval = r.interval ?? "1h";
   const totalPnl = fm?.total_pnl ?? null;

@@ -20,12 +20,22 @@ def inject_dependencies(db_manager=None):
 
 @router.get("/alerts/history")
 async def get_alert_history(limit: int = 100, alert_type: str | None = None):
-    """Return recent alert log entries."""
+    """Return recent alert log entries.
+
+    ``count`` is the size of this page (bounded by ``limit``); ``total`` is
+    the true row count in ``alert_log`` for the same filter, via
+    ``SELECT COUNT(*)`` -- NOT bounded by ``limit``. Dashboard tiles
+    ("Total Alerts") must read ``total``, not ``count``. See GT-04.
+    """
     if _db_manager is None:
         raise HTTPException(status_code=503, detail="DB not initialized")
     try:
         rows = _db_manager.get_alert_history(limit=min(limit, 500), alert_type=alert_type)
-        return {"alerts": rows, "count": len(rows)}
+        if hasattr(_db_manager, "count_alert_history"):
+            total = _db_manager.count_alert_history(alert_type=alert_type)
+        else:
+            total = len(rows)
+        return {"alerts": rows, "count": len(rows), "total": total}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 

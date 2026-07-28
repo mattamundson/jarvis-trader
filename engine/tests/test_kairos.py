@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -928,6 +928,117 @@ class TestBaseWatcherHelper:
         assert obs.data == {}
         assert obs.notify is False
         assert obs.symbol is None
+
+
+# ===========================================================================
+# KairosDreamer — GT-15 sub-issues 2 & 3 (dream summary field contracts)
+# ===========================================================================
+
+
+class TestKairosDreamerFieldContracts:
+    """Confirms KairosDreamer.dream() emits the exact shape the dashboard's
+    Dream Summary accordion (dashboard/app/kairos/page.tsx) consumes:
+      - top_watchers as {watcher, count} objects, not bare (name, count) tuples
+        (a tuple serializes to a bare JSON array the frontend can't read).
+      - `insights` (not `llm_insights`) and a `generated_at` timestamp, both
+        of which the frontend reads and the backend previously never emitted
+        under those names.
+    """
+
+    def _log_with_observations(self, tmp_path):
+        from kairos.observation_log import ObservationLog
+        from kairos.watchers import Observation, Severity
+
+        log = ObservationLog(base_dir=str(tmp_path))
+        today = date.today().isoformat()
+        for watcher, severity in [
+            ("vix_spike", Severity.WARNING),
+            ("vix_spike", Severity.CRITICAL),
+            ("regime_change", Severity.INFO),
+        ]:
+            log.append(
+                Observation(
+                    timestamp=datetime.now().isoformat(),
+                    watcher=watcher,
+                    severity=severity,
+                    message="test",
+                )
+            )
+        return log, today
+
+    @pytest.mark.asyncio
+    async def test_top_watchers_are_dict_objects_not_tuples(self, tmp_path):
+        """top_watchers entries must be JSON objects with 'watcher'/'count'
+        keys — not two-element arrays (what a serialized Python tuple becomes)."""
+        from kairos.dreaming import KairosDreamer
+
+        log, today = self._log_with_observations(tmp_path)
+        dreamer = KairosDreamer(observation_log=log)
+
+        summary = await dreamer.dream(target_date=today)
+
+        assert len(summary["top_watchers"]) > 0
+        for entry in summary["top_watchers"]:
+            assert isinstance(entry, dict), f"expected dict, got {type(entry)}: {entry!r}"
+            assert set(entry.keys()) == {"watcher", "count"}
+
+        top = summary["top_watchers"][0]
+        assert top == {"watcher": "vix_spike", "count": 2}
+
+    @pytest.mark.asyncio
+    async def test_dream_emits_insights_and_generated_at_keys(self, tmp_path):
+        """dream() must emit `insights` (not `llm_insights`) and a non-null
+        `generated_at`, matching the frontend's DreamSummary interface."""
+        from kairos.dreaming import KairosDreamer
+
+        log, today = self._log_with_observations(tmp_path)
+        dreamer = KairosDreamer(observation_log=log)  # no llm_client → no LLM call
+
+        summary = await dreamer.dream(target_date=today)
+
+        assert "insights" in summary
+        assert "llm_insights" not in summary
+        assert summary["insights"] is None  # no LLM client configured
+
+        assert "generated_at" in summary
+        assert summary["generated_at"] is not None
+        datetime.fromisoformat(summary["generated_at"])  # must be a valid ISO timestamp
+
+    @pytest.mark.asyncio
+    async def test_dream_empty_day_still_emits_insights_and_generated_at(self, tmp_path):
+        """The no-observations early-return path must carry the same
+        insights/generated_at contract as the normal path."""
+        from kairos.dreaming import KairosDreamer
+        from kairos.observation_log import ObservationLog
+
+        log = ObservationLog(base_dir=str(tmp_path))
+        dreamer = KairosDreamer(observation_log=log)
+
+        summary = await dreamer.dream(target_date="2020-01-01")
+
+        assert summary["top_watchers"] == []
+        assert "insights" in summary
+        assert summary["insights"] is None
+        assert "llm_insights" not in summary
+        assert summary["generated_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_llm_insights_populates_insights_key(self, tmp_path):
+        """When an LLM client is configured, its output lands in `insights`,
+        not the old `llm_insights` key."""
+        from kairos.dreaming import KairosDreamer
+
+        log, today = self._log_with_observations(tmp_path)
+        mock_client = MagicMock()
+        mock_client.call = AsyncMock(
+            return_value=MagicMock(content="Pattern: elevated VIX activity today.")
+        )
+        dreamer = KairosDreamer(llm_client=mock_client, observation_log=log)
+
+        summary = await dreamer.dream(target_date=today)
+
+        assert summary["insights"] == "Pattern: elevated VIX activity today."
+        assert "llm_insights" not in summary
 
 
 # ===========================================================================
