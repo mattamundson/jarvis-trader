@@ -151,8 +151,14 @@ async def config_overview():
 
         try:
             flags_registry = get_flags()
+            # list_flags() returns a List[Dict] (one dict per flag), not a
+            # name -> dict mapping — GT-14: the old `.items()` call above
+            # raised AttributeError on every request, silently swallowed by
+            # the broad except below, leaving flag_data = {} and the /config
+            # Feature Flags card permanently empty despite ~9 live boot-time
+            # ENABLE_* flags.
             flag_data = {
-                name: info["enabled"] for name, info in flags_registry.list_flags().items()
+                info["name"]: info["enabled"] for info in flags_registry.list_flags()
             }
         except RuntimeError:
             # Singleton not initialized (e.g. in tests) — use static FLAG_DEFINITIONS defaults
@@ -189,6 +195,21 @@ async def config_overview():
                 )
                 seen_keys.add(key)
         categorized[category] = items
+
+    # GT-14: don't let the "feature_flags" category silently miss a flag that
+    # was added to FLAG_DEFINITIONS but never back-filled into the static
+    # CATEGORIES list above (e.g. ENABLE_MACRO_TREND_BIAS). The registry
+    # (flag_data) is the source of truth for which ENABLE_* flags actually
+    # exist at boot — surface all of them, not just the ones this file
+    # happens to enumerate.
+    feature_flag_items = categorized.setdefault("feature_flags", [])
+    already_listed = {item["key"] for item in feature_flag_items}
+    for flag_name, flag_enabled in flag_data.items():
+        if flag_name not in already_listed:
+            feature_flag_items.append(
+                {"key": flag_name, "value": flag_enabled, "sensitive": False}
+            )
+            seen_keys.add(flag_name)
 
     # Uncategorized fields
     other: list = []

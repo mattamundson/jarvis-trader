@@ -139,6 +139,153 @@ def test_overview_feature_flags_contains_enable_kairos(client):
     ), f"ENABLE_KAIROS not found in feature_flags category. Found: {flag_keys}"
 
 
+# ---------------------------------------------------------------------------
+# GT-14 regression: live FeatureFlags singleton (mirrors real engine boot)
+# ---------------------------------------------------------------------------
+#
+# The tests above (and every pre-existing test in this file) never register a
+# FeatureFlags singleton, so config_router.config_overview()'s inner
+# `get_flags()` call raises RuntimeError and the code takes the "singleton not
+# initialised" fallback branch (static FLAG_DEFINITIONS defaults). That branch
+# happens to build its dict correctly, so those tests passed even while the
+# *live* branch was broken.
+#
+# At real engine boot (engine/main.py ~line 621) the singleton IS registered,
+# so config_overview() takes the other branch: it called
+# `flags_registry.list_flags().items()` — but list_flags() returns a
+# List[Dict], which has no .items(). That raised AttributeError, was
+# swallowed by the router's broad `except Exception: flag_data = {}`, and the
+# /config Feature Flags card rendered as an empty list ([]) despite ~9 live
+# ENABLE_* flags being initialised at boot. These tests register a real
+# FeatureFlags singleton (backed by the same in-memory DB double used in
+# tests/test_feature_flags.py) to exercise that exact code path.
+
+
+class _GT14MockRow(dict):
+    """Behaves like sqlite3.Row (subscript access by column name)."""
+
+    def __getitem__(self, key):
+        return super().__getitem__(key)
+
+
+class _GT14MockConfig:
+    """Minimal TradingConfig stub with feature flag defaults (mirrors real settings)."""
+
+    ENABLE_KAIROS = False
+    ENABLE_SPECULATION = False
+    ENABLE_TILT_DETECTION = True
+    ENABLE_DREAM_CONSOLIDATION = False
+    ENABLE_CONTEXT_COMPACTION = True
+    ENABLE_CRYPTO = False
+    ENABLE_POLYMARKET = False
+    ENABLE_RL_TRADING = False
+    ENABLE_SIGNAL_SANITIZATION = False
+
+
+class _GT14MockDB:
+    """Minimal DatabaseManager stub — in-memory feature_flags table."""
+
+    def __init__(self):
+        import threading
+
+        self._lock = threading.Lock()
+        self._flags_store = {}
+
+    def _connect(self):
+        from unittest.mock import MagicMock
+
+        conn = MagicMock()
+
+        def _execute(sql, params=()):
+            sql_norm = " ".join(sql.split()).upper()
+            if "SELECT ENABLED" in sql_norm and "WHERE NAME" in sql_norm:
+                name = params[0]
+                if name in self._flags_store:
+                    row = _GT14MockRow({"enabled": self._flags_store[name]})
+                    conn.execute.return_value.fetchone.return_value = row
+                else:
+                    conn.execute.return_value.fetchone.return_value = None
+            elif "SELECT NAME, ENABLED" in sql_norm:
+                rows = [
+                    _GT14MockRow({"name": k, "enabled": v})
+                    for k, v in self._flags_store.items()
+                ]
+                conn.execute.return_value.fetchall.return_value = rows
+            elif "INSERT INTO FEATURE_FLAGS" in sql_norm:
+                self._flags_store[params[0]] = params[1]
+            elif "DELETE FROM FEATURE_FLAGS" in sql_norm:
+                self._flags_store.pop(params[0], None)
+            return conn.execute.return_value
+
+        conn.execute.side_effect = _execute
+        conn.commit = MagicMock()
+        conn.close = MagicMock()
+        return conn
+
+
+@pytest.fixture()
+def live_flags_singleton():
+    """Register a real FeatureFlags instance as the module-level singleton.
+
+    Mirrors engine/main.py's boot sequence (set_flags_instance) so the
+    router's `get_flags()` call takes the live-registry branch instead of
+    the RuntimeError fallback. Restores the prior singleton on teardown so
+    this test can't leak state into other test modules.
+    """
+    from flags import registry as flags_registry_module
+    from flags.registry import FeatureFlags, set_flags_instance
+
+    original = flags_registry_module._instance
+    instance = FeatureFlags(config=_GT14MockConfig(), db=_GT14MockDB())
+    set_flags_instance(instance)
+    try:
+        yield instance
+    finally:
+        flags_registry_module._instance = original
+
+
+def test_overview_feature_flags_nonempty_with_live_singleton(client, live_flags_singleton):
+    """GT-14: with a real FeatureFlags singleton registered (real-boot path),
+    the feature_flags category must be non-empty and contain the live
+    ENABLE_* flags — not silently drop to []."""
+    data = client.get("/config/overview").json()
+    flag_items = data["categories"].get("feature_flags", [])
+    enable_items = [i for i in flag_items if i["key"].startswith("ENABLE_")]
+
+    assert len(enable_items) > 0, (
+        "feature_flags category has zero ENABLE_* entries with a live FeatureFlags "
+        "singleton registered — GT-14 regression (list_flags().items() bug)"
+    )
+
+    from flags.registry import FLAG_DEFINITIONS
+
+    expected_names = {f["name"] for f in FLAG_DEFINITIONS}
+    found_names = {i["key"] for i in enable_items}
+    assert found_names == expected_names, (
+        f"feature_flags category names {found_names} do not match the live "
+        f"registry's FLAG_DEFINITIONS {expected_names}"
+    )
+
+
+def test_overview_feature_flags_matches_live_registry_state(client, live_flags_singleton):
+    """GT-14: values served by /config/overview must reflect the live
+    registry's resolved state, including runtime overrides — proving the
+    endpoint reads the real singleton rather than static fallback defaults."""
+    # ENABLE_KAIROS defaults to False; flip it via a runtime override and
+    # confirm /config/overview reflects the override, not the static default.
+    live_flags_singleton.set_flag("ENABLE_KAIROS", True, updated_by="test")
+
+    data = client.get("/config/overview").json()
+    flag_items = {i["key"]: i["value"] for i in data["categories"].get("feature_flags", [])}
+
+    assert flag_items.get("ENABLE_KAIROS") is True, (
+        f"/config/overview reported ENABLE_KAIROS={flag_items.get('ENABLE_KAIROS')!r} "
+        "after a runtime override to True — endpoint is not reading the live registry"
+    )
+    # Untouched flag should still reflect its live (registered) default.
+    assert flag_items.get("ENABLE_TILT_DETECTION") is True
+
+
 def test_overview_safety_category_present(client):
     """The 'safety' category must be present."""
     data = client.get("/config/overview").json()
