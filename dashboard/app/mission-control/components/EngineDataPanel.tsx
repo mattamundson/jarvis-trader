@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { HealthResponse } from "@/lib/api";
+import { executionStatus } from "@/lib/executionPath";
 import { fetcher, UnreachableNote } from "./shared";
 
 // GET /brokers/positions — engine/routers/brokers_router.py get_broker_positions()
@@ -73,7 +74,11 @@ export function EngineDataPanel() {
             </div>
             <BoolBadge label="TradingView MCP" value={health?.tradingview_mcp_healthy} />
             <BoolBadge label="LLM Path" value={health?.llm_path_healthy} />
-            <BoolBadge label="IB Exec" value={health?.ibkr_execution_connected} warnOnFalse={false} />
+            {/* D3-01: BoolBadge is boolean-only, can't show "SIMULATED" text here —
+                brokerReachable is derived through the honesty layer (never
+                ibkr_execution_connected directly), so this at least stops
+                reading true while the order path is simulated. */}
+            <BoolBadge label="IB Exec" value={executionStatus(health).brokerReachable} warnOnFalse={false} />
             <BoolBadge label="IB Data" value={health?.ibkr_data_connected} warnOnFalse={false} />
             <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5">
               <span className="text-[11px] text-muted-foreground">Uptime</span>
