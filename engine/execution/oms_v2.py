@@ -342,7 +342,8 @@ class OMSManager:
 
     async def adopt_existing_trade(self, symbol: str, quantity: int, entry_price: float,
                                  stop_loss_id: Optional[str] = None,
-                                 take_profit_id: Optional[str] = None) -> str:
+                                 take_profit_id: Optional[str] = None,
+                                 stop_loss_price: Optional[float] = None) -> str:
         """
         Adopt an existing position (e.g. found during reconciliation) into the OMS.
         """
@@ -353,7 +354,8 @@ class OMSManager:
                 entry_price=entry_price,
                 status=TradeState.ACTIVE,
                 stop_loss_id=stop_loss_id,
-                take_profit_id=take_profit_id
+                take_profit_id=take_profit_id,
+                stop_loss_price=stop_loss_price
             )
             self.active_trades[trade.trade_id] = trade
             logger.info("[OMS] Adopted existing position: %s Qty: %d ID: %s",
@@ -379,12 +381,14 @@ class OMSManager:
             async with self._lock:
                 for row in rows:
                     # Map DB row to BracketOrder
+                    _raw_stop = row.get('stop_loss')
                     trade = BracketOrder(
                         trade_id=row.get("id"),
                         symbol=row.get("symbol"),
                         quantity=int(row.get("quantity", 0)),
                         entry_price=float(row.get("entry_price", 0.0)),
                         entry_order_id=row.get("order_id"),
+                        stop_loss_price=(float(_raw_stop) if _raw_stop is not None else None),
                         status=TradeState.ACTIVE
                     )
                     # We might need to find SL/TP IDs from the broker if not in DB

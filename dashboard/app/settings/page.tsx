@@ -23,6 +23,7 @@ import {
   activateKillSwitch,
   deactivateKillSwitch,
   resetDailyPnl,
+  resolvePaperMode,
   type KillSwitchStatus,
   type SafetyConfig,
   type IBGatewayStatus,
@@ -524,7 +525,12 @@ function IBGatewayPanel({
   // The execution path is what actually routes orders — this surface needs to
   // reflect that, not the data-feed connector that's separately healthy.
   const connected = (data?.ibkr_execution_connected ?? data?.ibkr_connected) ?? false;
-  const paperMode = config?.ibkr_paper_mode ?? data?.paper_mode ?? true;
+  // GT-13: resolvePaperMode() prefers the /health-derived paper_mode (live
+  // IB Gateway connection) over the config snapshot, and flags disagreement
+  // instead of letting a stale `ibkr_paper_mode: false` silently win via `??`.
+  const { paperMode, mismatch: paperModeMismatch } = resolvePaperMode(config, data);
+  const configPaperMode = config?.ibkr_paper_mode;
+  const healthPaperMode = data?.paper_mode;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
@@ -562,6 +568,22 @@ function IBGatewayPanel({
           </div>
         </div>
       </div>
+
+      {paperModeMismatch && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-bear/40 bg-bear/10 px-3 py-2 text-xs text-bear"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            Paper/live mode disagreement: config reports{" "}
+            <strong>{configPaperMode ? "paper" : "live"}</strong>, but the live IB
+            Gateway connection (/health) reports{" "}
+            <strong>{healthPaperMode ? "paper" : "live"}</strong>. Displaying the
+            /health-derived value below — verify before trading.
+          </span>
+        </div>
+      )}
 
       <div className="space-y-0">
         <ConfigRow label="Host" value={config?.ibkr_host ?? "—"} mono />

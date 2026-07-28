@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchDailyPnLHistory } from "@/lib/api";
+import { weekDisplayFor } from "@/lib/weekDates";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -15,18 +16,6 @@ interface DailyPnLEntry {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function getThisWeekDates(): string[] {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-  return Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
-}
 
 function formatDollar(value: number): string {
   const abs = Math.abs(value);
@@ -47,6 +36,21 @@ export function WeeklyPnLCard() {
   const [entries, setEntries] = useState<DailyPnLEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // "today" is intentionally client-only state -- same hydration guard as
+  // DailyPnLCalendarWidget (GT-27, PR #496). getThisWeekDates() used to call
+  // `new Date()` directly during render, which can make SSR output (evaluated
+  // at server-render/build time) diverge from the client's first hydration
+  // pass (evaluated whenever the browser actually loads the page) whenever
+  // those two clock reads straddle a day/week boundary -- producing a React
+  // #418 hydration mismatch on the "Week of ..." text and the day grid.
+  // Starting at `null` and setting it in a mount-only effect guarantees the
+  // server and the first client render agree (both render the placeholder),
+  // then the real week fills in client-side. See lib/weekDates.ts.
+  const [today, setToday] = useState<Date | null>(null);
+  useEffect(() => {
+    setToday(new Date());
+  }, []);
 
   async function fetchData() {
     setLoading(true);
@@ -73,8 +77,7 @@ export function WeeklyPnLCard() {
   }, []);
 
   // Build week map
-  const weekDates = getThisWeekDates();
-  const mondayDate = weekDates[0];
+  const { weekDates, mondayDate } = weekDisplayFor(today);
 
   const pnlByDate = new Map<string, number>();
   for (const entry of entries) {
