@@ -16,10 +16,18 @@ interface PipelineRun {
   signal_generated?: string;
   started_at?: string;
   created_at?: string;
-  // pipeline/decisions shape
+  // /pipeline/recent-with-reasoning shape (pending_trade_approvals row) —
+  // regime/momentum_score live nested under pipeline_snapshot.technical,
+  // hoisted onto the top-level fields above by fetchData() below.
   action?: string;
   confidence?: number;
   timestamp?: string;
+  pipeline_snapshot?: {
+    technical?: {
+      regime?: string;
+      momentum_score?: number;
+    };
+  };
 }
 
 interface PipelineHistoryResponse {
@@ -134,7 +142,7 @@ export function RegimeHistoryWidget() {
   const [tick, setTick] = useState(0);
 
   const fetchData = async () => {
-    // Try /pipeline/history first, then /pipeline/decisions
+    // Try /pipeline/history first, then /pipeline/recent-with-reasoning
     let fetched: PipelineRun[] = [];
     let success = false;
 
@@ -151,15 +159,20 @@ export function RegimeHistoryWidget() {
       // fall through to attempt 2
     }
 
-    // Attempt 2: GET /pipeline/decisions?limit=20
+    // Attempt 2: GET /pipeline/recent-with-reasoning?limit=20
+    // (/pipeline/decisions was never a real engine route — confirmed absent
+    // from /openapi.json — GT-42). This route returns pending_trade_approvals
+    // rows keyed under "decisions"; regime/momentum_score aren't top-level
+    // there, so hoist them out of the nested pipeline_snapshot.technical blob.
     if (!success || fetched.length === 0) {
       try {
-        const raw = await fetchEngine(`/pipeline/decisions?limit=20`);
-        if (Array.isArray(raw)) {
-          fetched = raw;
-        } else {
-          fetched = (raw as DecisionsResponse).decisions ?? [];
-        }
+        const raw = await fetchEngine(`/pipeline/recent-with-reasoning?limit=20`);
+        const decisions = Array.isArray(raw) ? raw : (raw as DecisionsResponse).decisions ?? [];
+        fetched = decisions.map((d) => ({
+          ...d,
+          regime: d.regime ?? d.pipeline_snapshot?.technical?.regime,
+          momentum_score: d.momentum_score ?? d.pipeline_snapshot?.technical?.momentum_score,
+        }));
         success = true;
       } catch {
         // both failed
