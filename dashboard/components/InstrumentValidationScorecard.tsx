@@ -11,7 +11,7 @@ import type {
   ApprovedInstrumentGateRow,
 } from "@/lib/api";
 import { DEFAULT_BRIEFING_SYMBOLS, HALTED_SYMBOLS, ALL_TRACKED_SYMBOLS } from "@/lib/approvedSymbols";
-import { buildInstrumentRow, type InstrumentRow } from "@/lib/instrumentValidationRows";
+import { buildInstrumentRow, formatWinRatePct, type InstrumentRow } from "@/lib/instrumentValidationRows";
 
 function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
@@ -128,9 +128,7 @@ function InstrumentValidationScorecard() {
                         : "—"}
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
-                      {row.wr !== null
-                        ? `${(row.wr * 100).toFixed(0)}%`
-                        : "—"}
+                      {formatWinRatePct(row.wr)}
                     </td>
                     <td className="py-2.5 text-center">
                       <Badge variant={row.badgeVariant}>
