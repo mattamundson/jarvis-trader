@@ -1172,8 +1172,26 @@ class MarketDataManager:
 
         # Tier 1: IBKR
         if self.ibkr and self.ibkr.is_connected:
-            duration_map = [(1, "1 D"), (7, "1 W"), (30, "1 M"), (90, "3 M"), (365, "1 Y")]
-            duration = next((v for k, v in duration_map if lookback_days <= k), "1 M")
+            # GT-22 fix (2026-07-27): the map used to top out at 365 days -> "1 Y",
+            # and `next(..., "1 M")` silently fell back to a 1-MONTH request for any
+            # lookback_days beyond that (e.g. /regime/vix-percentile's default
+            # lookback=252 + momentum_window=63 needs ~514 calendar days, so it was
+            # quietly served ~21 daily bars instead of the ~252 its own label
+            # claimed). Extended to 5 Y so multi-year daily-bar requests actually
+            # fetch what they ask for; IBKR's reqHistoricalDataAsync accepts "N Y"
+            # duration strings natively for daily bars.
+            duration_map = [
+                (1, "1 D"),
+                (7, "1 W"),
+                (30, "1 M"),
+                (90, "3 M"),
+                (180, "6 M"),
+                (365, "1 Y"),
+                (730, "2 Y"),
+                (1095, "3 Y"),
+                (1825, "5 Y"),
+            ]
+            duration = next((v for k, v in duration_map if lookback_days <= k), "5 Y")
             bar_size_map = {
                 "1m": "1 min",
                 "5m": "5 mins",
