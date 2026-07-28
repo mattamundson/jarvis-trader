@@ -160,11 +160,23 @@ def _fake_ticker(last: float, close: float, market_data_type: int) -> MagicMock:
     return t
 
 
+def _mock_ib_with_qualify(tickers, qualified_conid: int = 265598) -> MagicMock:
+    """IBKR mock wired for the qualify-then-snapshot path get_snapshot_price
+    now uses for every symbol (see GT-17 regression tests below): a stock
+    Contract starts with conId=0, so _qualified_contract calls
+    qualifyContractsAsync before reqTickersAsync is ever reached."""
+    mock_ib = MagicMock()
+    qualified = MagicMock()
+    qualified.conId = qualified_conid
+    mock_ib.qualifyContractsAsync = AsyncMock(return_value=[qualified])
+    mock_ib.reqTickersAsync = AsyncMock(return_value=tickers)
+    return mock_ib
+
+
 @pytest.mark.asyncio
 async def test_get_snapshot_price_tags_live_marketdatatype_as_ibkr():
     conn = IBKRDataConnector()
-    mock_ib = MagicMock()
-    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 1)])
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(228.5, 227.0, 1)])
     conn._ib = mock_ib
     conn._connected = True
 
@@ -176,8 +188,7 @@ async def test_get_snapshot_price_tags_live_marketdatatype_as_ibkr():
 @pytest.mark.asyncio
 async def test_get_snapshot_price_tags_delayed_marketdatatype_as_ibkr_delayed():
     conn = IBKRDataConnector()
-    mock_ib = MagicMock()
-    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 3)])
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(228.5, 227.0, 3)])
     conn._ib = mock_ib
     conn._connected = True
 
@@ -189,8 +200,7 @@ async def test_get_snapshot_price_tags_delayed_marketdatatype_as_ibkr_delayed():
 @pytest.mark.asyncio
 async def test_get_snapshot_price_tags_delayed_frozen_marketdatatype_as_ibkr_delayed():
     conn = IBKRDataConnector()
-    mock_ib = MagicMock()
-    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 4)])
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(228.5, 227.0, 4)])
     conn._ib = mock_ib
     conn._connected = True
 
@@ -203,10 +213,62 @@ async def test_get_snapshot_price_tags_frozen_marketdatatype_as_ibkr_not_delayed
     """marketDataType 2 (Frozen, non-delayed) is out of scope for this tag —
     only 3/4 (Delayed/Delayed-frozen) mean the price value itself is stale."""
     conn = IBKRDataConnector()
-    mock_ib = MagicMock()
-    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 2)])
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(228.5, 227.0, 2)])
     conn._ib = mock_ib
     conn._connected = True
 
     out = await conn.get_snapshot_price("AAPL", is_futures=False)
     assert out["source"] == "ibkr"
+
+
+# ---------------------------------------------------------------------------
+# GT-17 regression (2026-07-27): AAPL last_price=$7494.10 (~23x real ~$325)
+# with change_pct=null. Root cause: get_snapshot_price() qualified futures
+# contracts via _resolve_front_month (real conId) but passed an UNQUALIFIED
+# Contract (conId=0) straight to reqTickersAsync for every other symbol.
+# ib_async keys in-flight market-data requests by conId, so an unqualified
+# stock contract risks resolving against whatever other request is
+# outstanding when multiple symbols are snapshotted concurrently — exactly
+# what get_batch_prices() does for the whole /watchlist in one
+# asyncio.gather. Fix: get_snapshot_price now always resolves through
+# _qualified_contract (same helper get_historical_bars already used via
+# _qualified_contract) before requesting a ticker.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_price_qualifies_stock_contract_before_ticker_request():
+    """A stock snapshot must qualify the contract (real conId) before
+    reqTickersAsync — never hand IB an unqualified conId=0 Contract."""
+    conn = IBKRDataConnector()
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(325.89, 324.50, 1)], qualified_conid=265598)
+    conn._ib = mock_ib
+    conn._connected = True
+
+    out = await conn.get_snapshot_price("AAPL", is_futures=False)
+
+    mock_ib.qualifyContractsAsync.assert_awaited_once()
+    assert out["last_price"] == 325.89
+    assert out["source"] == "ibkr"
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_price_futures_still_skip_qualify_when_conid_present():
+    """Regression guard: futures resolve via _resolve_front_month, which
+    already carries a real conId — get_snapshot_price must not introduce a
+    redundant qualifyContractsAsync call on the futures path."""
+    conn = IBKRDataConnector()
+    mock_ib = MagicMock()
+    mock_ib.qualifyContractsAsync = AsyncMock()
+    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(7494.10, 7480.00, 1)])
+    conn._ib = mock_ib
+    conn._connected = True
+
+    resolved = MagicMock()
+    resolved.conId = 495512563
+    conn._resolve_front_month = AsyncMock(return_value=resolved)
+
+    out = await conn.get_snapshot_price("MES", is_futures=True)
+
+    mock_ib.qualifyContractsAsync.assert_not_called()
+    assert out["last_price"] == 7494.10
