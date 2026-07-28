@@ -47,7 +47,7 @@ export interface ScorecardBacktestBaseline {
   totalTrades: number | null;
 }
 
-/** Prefer MCL/MNQ files; then rows with full_metrics. */
+/** Prefer active-pair (MES/MGC) files; then rows with full_metrics. */
 export function pickApprovedBacktestBaseline(
   rows: BacktestBaselineRow[] | undefined
 ): ScorecardBacktestBaseline | null {

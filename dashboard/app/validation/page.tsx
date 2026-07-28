@@ -52,6 +52,11 @@ import {
   pickApprovedBacktestBaseline,
   type ScorecardBacktestBaseline,
 } from "@/lib/scorecardBaseline";
+import {
+  DEFAULT_BRIEFING_SYMBOLS,
+  ALL_TRACKED_SYMBOLS,
+  PREFERRED_BASELINE_LABEL,
+} from "@/lib/approvedSymbols";
 
 // ── Constants — strategy params (canonical STC; not symbol-specific) ─────────
 
@@ -847,7 +852,7 @@ function StatisticalSignificanceCard() {
 // ── Backtest Reference Card ───────────────────────────────────────────────────
 
 function baselineInstrumentLine(baseline: ScorecardBacktestBaseline | null): string {
-  if (!baseline) return "No MCL/MNQ baseline JSON";
+  if (!baseline) return `No ${PREFERRED_BASELINE_LABEL} baseline JSON`;
   const head = baseline.label.split(" — ")[0]?.trim();
   return head || baseline.label;
 }
@@ -867,8 +872,8 @@ function BacktestReferenceCard({ baseline }: { baseline: ScorecardBacktestBaseli
             </p>
             <p className="text-[10px] text-muted-foreground">
               {hasBaseline
-                ? "Baseline from saved backtest (MCL/MNQ preferred)"
-                : "Baseline from saved backtest (MCL/MNQ preferred) — none loaded"}
+                ? `Baseline from saved backtest (${PREFERRED_BASELINE_LABEL} preferred)`
+                : `Baseline from saved backtest (${PREFERRED_BASELINE_LABEL} preferred) — none loaded`}
             </p>
           </div>
           <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-bull bg-bull/10 border border-bull/20 rounded-full px-2 py-0.5">
@@ -1294,7 +1299,7 @@ function PhaseStatusCard({
             <div className="min-w-0">
               <p className="text-sm font-semibold text-bull">Phase 1 — Backtest</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Complete — saved baseline (MCL/MNQ preferred); metrics from engine JSON when loaded
+                Complete — saved baseline ({PREFERRED_BASELINE_LABEL} preferred); metrics from engine JSON when loaded
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <span className="rounded-md bg-bull/10 border border-bull/20 px-2 py-0.5 text-[10px] font-mono text-bull">
@@ -1379,14 +1384,20 @@ function PhaseStatusCard({
 
 // ── Simulate Trade Panel ──────────────────────────────────────────────────────
 
-const SYMBOLS = ["MCL", "MNQ", "MES"] as const;
+// Derived from the shared instrument constants (D2-03-v2, 2026-07-24) so this
+// selector's default can't drift back to a halted symbol — was hardcoded
+// ["MCL","MNQ","MES"] defaulting to MCL, which is DO_NOT_TRADE. All four
+// symbols stay selectable (this panel is a manual-simulation tool, so
+// testing a halted symbol's behavior is still a valid use case); only the
+// default changes to the actively-traded pair.
+const SYMBOLS = ALL_TRACKED_SYMBOLS;
 type Symbol = (typeof SYMBOLS)[number];
 
 const ACTIONS = ["LONG", "SHORT"] as const;
 type Action = (typeof ACTIONS)[number];
 
 function SimulateTradePanel() {
-  const [symbol, setSymbol] = useState<Symbol>("MCL");
+  const [symbol, setSymbol] = useState<Symbol>(DEFAULT_BRIEFING_SYMBOLS[0]);
   const [action, setAction] = useState<Action>("LONG");
   const [entryPrice, setEntryPrice] = useState<string>("5000");
   const [stopLoss, setStopLoss] = useState<string>("4990");
