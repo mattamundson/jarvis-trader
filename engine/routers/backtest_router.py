@@ -1084,6 +1084,35 @@ async def get_pending_signals():
     return signals if isinstance(signals, list) else []
 
 
+@router.post("/paper/reset-pending-signals")
+async def reset_pending_signals():
+    """Clear the pending entry-signal queue written by the daily MGC scanner.
+
+    This only touches the display/notification file (`pending_signals.json`) —
+    it is read solely by GET /paper/pending-signals for the dashboard's paper
+    page and is never consumed by any execution path, so clearing it cannot
+    affect an in-flight paper trade.
+    """
+    import json as _json
+    from pathlib import Path
+
+    pending_file = Path(__file__).parent.parent / "backtest" / "results" / "pending_signals.json"
+
+    cleared = 0
+    if pending_file.exists():
+        try:
+            existing = _json.loads(pending_file.read_text(encoding="utf-8"))
+            if isinstance(existing, list):
+                cleared = len(existing)
+        except Exception:
+            cleared = 0
+
+    pending_file.write_text(_json.dumps([]), encoding="utf-8")
+    logger.info(f"[MGC-daily] Pending signal queue reset -> cleared {cleared} signal(s)")
+
+    return {"cleared": cleared}
+
+
 @router.get("/paper/mgc-performance")
 async def get_mgc_paper_performance():
     """Return current MGC paper trading performance metrics."""

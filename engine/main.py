@@ -3213,6 +3213,7 @@ app.websocket("/ws/events")(events_handler)
 
 
 # -- /paper/pending-signals -- served by routers/backtest_router.py (wired 2026-05-22) --
+# -- /paper/reset-pending-signals (POST) -- served by routers/backtest_router.py (wired 2026-07-28, GT-40) --
 
 
 # ── Historical Query Endpoints (SQLite) ───────────────────────────────────
