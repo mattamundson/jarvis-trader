@@ -18,11 +18,8 @@ interface IBConnectionTestResult {
 }
 
 interface IBConnectResult {
-  success: boolean;
-  port: number;
-  mode: string;
+  reconnected: boolean;
   message: string;
-  latency_ms: number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -81,12 +78,16 @@ export function IBGatewayStatus() {
     setIsConnecting(true);
     setConnectMessage(null);
     try {
-      const result = await postEngine<IBConnectResult>("/ib/connect");
+      // GT-38: there is no /ib/connect route — the engine only exposes the
+      // IBKR data-leg reconnect at POST /data/reconnect (idempotent, safe to
+      // call any time; no-ops if already connected). That's the real action
+      // behind this button's "Start IB Gateway, then click Connect" copy.
+      const result = await postEngine<IBConnectResult>("/data/reconnect");
       setConnectMessage(result.message);
       // Immediately re-poll to refresh status
       await poll();
     } catch {
-      setConnectMessage("Failed to reach engine. Is the engine running?");
+      setConnectMessage("Reconnect failed. Is IB Gateway running on port 4002?");
     } finally {
       setIsConnecting(false);
       // Clear the feedback message after 8 seconds
