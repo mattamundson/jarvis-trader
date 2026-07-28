@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -895,7 +896,7 @@ class ClosedTrade(BaseModel):
     duration_seconds: int
 
 
-def _parse_trade_datetime(ts: str) -> "datetime":
+def _parse_trade_datetime(ts: str) -> datetime:
     """Parse an ISO8601 timestamp, treating a trailing 'Z' as UTC offset."""
     from datetime import datetime
 
