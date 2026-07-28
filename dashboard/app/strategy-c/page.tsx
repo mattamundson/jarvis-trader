@@ -179,7 +179,18 @@ export default function StrategyCPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+
+  // `lastRefresh` is intentionally client-only state -- same hydration guard
+  // as WeeklyPnLCard's `today` (GT-30) and DailyPnLCalendarWidget (GT-27,
+  // PR #496). Initializing with `new Date()` directly runs the clock read
+  // during both the server render and the client's first hydration pass,
+  // and since real wall-clock time elapses between the two, the rendered
+  // "Refreshed HH:MM:SS" text can diverge -- producing a React #418
+  // hydration mismatch. Starting at `null` and letting loadData()'s finally
+  // block (below) set the real value keeps the server and first client
+  // render in agreement; the render guard near the "Refreshed" text only
+  // shows the timestamp once it's non-null.
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -326,9 +337,11 @@ export default function StrategyCPage() {
                 Signal stale
               </div>
             )}
-            <span className="text-slate-500 text-xs">
-              Refreshed {lastRefresh.toLocaleTimeString()}
-            </span>
+            {lastRefresh && (
+              <span className="text-slate-500 text-xs">
+                Refreshed {lastRefresh.toLocaleTimeString()}
+              </span>
+            )}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
