@@ -31,6 +31,7 @@ import {
   type DailyAttributionResponse,
   type TradeJournalEntry,
 } from "@/lib/api";
+import { executionStatus } from "@/lib/executionPath";
 import {
   fetchAmoHealth,
   fetchAmoEdgeVerdict,
@@ -280,6 +281,9 @@ export default function TrustPanePage() {
   const jarvisLive = !!h && h.status === "ok";
   const dataLegDown = h?.ibkr_data_connected === false;
   const llmDegraded = !!h && h.llm_path_healthy === false;
+  // D3-01: this page's whole purpose is telling the operator what's real —
+  // never read ibkr_execution_connected directly (see @/lib/executionPath).
+  const exec = executionStatus(h);
   const jarvisDegraded = !!health.error || (!!h && h.status !== "ok");
   const openPaper = positions.data?.paper?.positions ?? [];
   const suspectCount = openPaper.filter((p) => suspectPrice(p.symbol, p.entry_price)).length;
@@ -389,7 +393,7 @@ export default function TrustPanePage() {
                 <Stat label="LLM" value={h?.llm_path_healthy ? "OK" : "DEGRADED"} tone={h?.llm_path_healthy ? "bull" : "bear"} />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Badge variant={h?.ibkr_execution_connected ? "bull" : "warn"}>exec IB {h?.ibkr_execution_connected ? "✓" : "✗"}</Badge>
+                <Badge variant={exec.tone} title={exec.detail}>exec IB {exec.label}</Badge>
                 <Badge variant={h?.ibkr_data_connected ? "bull" : "bear"}>data IB {h?.ibkr_data_connected ? "✓" : "✗"}</Badge>
                 <Badge variant={h?.kill_switch_active ? "bear" : "neutral"}>kill {h?.kill_switch_active ? "ON" : "off"}</Badge>
                 <Badge variant={h?.tradingview_mcp_healthy ? "bull" : "warn"}>TV {h?.tradingview_mcp_healthy ? "✓" : "✗"}</Badge>
