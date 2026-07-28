@@ -2535,8 +2535,8 @@ async def lifespan(app: FastAPI):
                 if not open_trades:
                     return
                 from portfolio.tracker import (
-                    INSTRUMENT_MULTIPLIERS as _MULT,
-                    _DEFAULT_MULTIPLIER as _DEF_MULT,
+                    _resolve_multiplier as _resolve_mult_fn,
+                    UnknownInstrumentMultiplierError as _UnknownMultErr,
                     _commission_per_contract as _commission_per_contract_fn,
                 )  # noqa: E501
 
@@ -2589,7 +2589,15 @@ async def lifespan(app: FastAPI):
                     _hit = (_is_long and _cur <= _stop_f) or (not _is_long and _cur >= _stop_f)
                     if not _hit:
                         continue
-                    _mult = _MULT.get(_sym, _DEF_MULT)
+                    try:
+                        _mult = _resolve_mult_fn(_sym)
+                    except _UnknownMultErr:
+                        logger.error(
+                            "[stop_monitor] no contract multiplier for %s -- "
+                            "skipping stop close to avoid mis-stated P&L",
+                            _sym,
+                        )
+                        continue
                     _qty = float(_trade.get("quantity") or 1.0)
                     _gross_pnl = (
                         (_stop_f - _entry) * _qty * _mult
