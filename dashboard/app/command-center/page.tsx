@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { fetchEngine, fetchJournalStats, fetchBars, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
+import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
 import {
   fetchHonestTrades,
   type HonestTradeSet,
@@ -72,6 +73,10 @@ interface HealthData {
   ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
+  // D3-01: honest execution-path fields — see @/lib/executionPath.
+  execution_connected_verified?: boolean | null;
+  ib_execution_stale?: boolean | null;
+  execution_path?: ExecutionPathProbe | null;
 }
 
 interface SafetyData {
@@ -387,6 +392,9 @@ export default function CommandCenterPage() {
 
   const engineOnline = !healthErr && !!health;
   const killSwitchActive = health?.kill_switch_active ?? false;
+  // D3-01: derive the IBKR Gateway badge through the honesty layer — never
+  // read ibkr_execution_connected directly (see @/lib/executionPath).
+  const exec = executionStatus(health);
 
   const liveWfeRows = useMemo(() => {
     if (!paperStatus) return WFE_ROWS;
@@ -1398,13 +1406,15 @@ export default function CommandCenterPage() {
               <span className="text-xs text-slate-500">IBKR Gateway</span>
               <Badge
                 className={`text-xs font-mono py-0 border ${
-                  (health?.ibkr_execution_connected ?? health?.ibkr_connected)
+                  exec.tone === "bull"
                     ? "bg-green-950 text-green-400 border-green-800"
+                    : exec.tone === "warn"
+                    ? "bg-yellow-950 text-yellow-400 border-yellow-800"
                     : "bg-red-950 text-red-400 border-red-800"
                 }`}
-                title="Reports execution-connector state when /health exposes ibkr_execution_connected; falls back to legacy ibkr_connected (OR of execution + data) on older engines."
+                title={exec.detail}
               >
-                {(health?.ibkr_execution_connected ?? health?.ibkr_connected) ? "CONNECTED" : "DISCONNECTED"}
+                {exec.label}
               </Badge>
             </div>
             <div className="flex justify-between items-center">

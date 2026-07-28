@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import useSWR from "swr";
 import { fetchEngine, postEngine } from "@/lib/api";
+import { executionStatus } from "@/lib/executionPath";
 import {
   Activity,
   AlertTriangle,
@@ -23,6 +24,7 @@ import {
   activateKillSwitch,
   deactivateKillSwitch,
   resetDailyPnl,
+  resolvePaperMode,
   type KillSwitchStatus,
   type SafetyConfig,
   type IBGatewayStatus,
@@ -519,12 +521,22 @@ function IBGatewayPanel({
   data: IBGatewayStatus | undefined;
   config: SafetyConfig | undefined;
 }) {
-  // Prefer execution-connector state when /health exposes it (newer engines).
-  // Falls back to legacy ibkr_connected (OR of execution + data) on older engines.
-  // The execution path is what actually routes orders — this surface needs to
-  // reflect that, not the data-feed connector that's separately healthy.
-  const connected = (data?.ibkr_execution_connected ?? data?.ibkr_connected) ?? false;
-  const paperMode = config?.ibkr_paper_mode ?? data?.paper_mode ?? true;
+  // D3-01: `ibkr_execution_connected` / `ibkr_connected` are cached connector
+  // booleans that go true the instant the TCP socket to the paper Gateway is
+  // up — they say nothing about whether an order can reach a broker. The
+  // engine's own /health also exposes an honest `execution_path` probe
+  // (`{ simulated, broker_ack, detail }`) that can read `simulated: true`
+  // while both legacy booleans still read true. Route through
+  // executionStatus() so this surface reflects the honest state, not the
+  // legacy connector flags.
+  const exec = executionStatus(data);
+  const connected = exec.brokerReachable;
+  // GT-13: resolvePaperMode() prefers the /health-derived paper_mode (live
+  // IB Gateway connection) over the config snapshot, and flags disagreement
+  // instead of letting a stale `ibkr_paper_mode: false` silently win via `??`.
+  const { paperMode, mismatch: paperModeMismatch } = resolvePaperMode(config, data);
+  const configPaperMode = config?.ibkr_paper_mode;
+  const healthPaperMode = data?.paper_mode;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
@@ -533,22 +545,24 @@ function IBGatewayPanel({
       <div className="flex items-center gap-4">
         <div
           className={`flex h-12 w-12 items-center justify-center rounded-full ${
-            connected ? "bg-bull/10" : "bg-muted"
+            exec.tone === "bull" ? "bg-bull/10" : exec.tone === "warn" ? "bg-warn/10" : "bg-muted"
           }`}
+          title={exec.detail}
         >
           {connected ? (
             <Wifi className="h-6 w-6 text-bull" />
           ) : (
-            <WifiOff className="h-6 w-6 text-muted-foreground" />
+            <WifiOff className={`h-6 w-6 ${exec.tone === "warn" ? "text-warn" : "text-muted-foreground"}`} />
           )}
         </div>
         <div>
           <p
             className={`font-semibold ${
-              connected ? "text-bull" : "text-muted-foreground"
+              exec.tone === "bull" ? "text-bull" : exec.tone === "warn" ? "text-warn" : "text-muted-foreground"
             }`}
+            title={exec.detail}
           >
-            {connected ? "Connected" : "Disconnected"}
+            {exec.label}
           </p>
           <div className="flex items-center gap-2 mt-0.5">
             {paperMode && (
@@ -562,6 +576,22 @@ function IBGatewayPanel({
           </div>
         </div>
       </div>
+
+      {paperModeMismatch && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-bear/40 bg-bear/10 px-3 py-2 text-xs text-bear"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            Paper/live mode disagreement: config reports{" "}
+            <strong>{configPaperMode ? "paper" : "live"}</strong>, but the live IB
+            Gateway connection (/health) reports{" "}
+            <strong>{healthPaperMode ? "paper" : "live"}</strong>. Displaying the
+            /health-derived value below — verify before trading.
+          </span>
+        </div>
+      )}
 
       <div className="space-y-0">
         <ConfigRow label="Host" value={config?.ibkr_host ?? "—"} mono />
