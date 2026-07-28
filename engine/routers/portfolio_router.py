@@ -459,6 +459,60 @@ async def portfolio_capital():
 
 
 @router.get(
+    "/stats/trading-days",
+    description="Distinct calendar days with at least one closed paper exit — validation-gate counter.",
+)
+async def get_trading_days_stats():
+    """
+    Distinct calendar days with at least one closed paper trade (SQLite-first, in-memory fallback).
+
+    Restores GET /portfolio/stats/trading-days (documented in CHANGELOG v1.3.0; the handler was
+    dropped when main.py's inline routes were migrated into this router on 2026-05-22 — see
+    docs/session-logs/archive/IMPLEMENTATION_PATCH_trading_days_2026-04-02.md for the original
+    contract). Response aliases match every known dashboard consumer:
+    TradingDaysCountdownCard (``trading_days``) and ValidationChecklist
+    (``trading_days_completed`` / ``days_traded`` / ``completed_days``).
+    """
+    threshold = TARGET_TRADING_DAYS
+
+    rows: list[Any] = []
+    if db_manager:
+        try:
+            rows = db_manager.get_trade_history(limit=5000)
+        except Exception as exc:
+            logger.warning(
+                "get_trading_days_stats: SQLite get_trade_history failed, using in-memory: %s", exc
+            )
+            rows = []
+
+    if not rows and paper_tracker:
+        try:
+            rows = paper_tracker.get_trade_history(limit=5000)
+        except Exception as exc:
+            logger.warning(
+                "get_trading_days_stats: in-memory get_trade_history failed: %s", exc
+            )
+            rows = []
+
+    days_set: set[date] = set()
+    for r in rows:
+        if _row_is_closed(r):
+            d = _parse_trade_day(r)
+            if d is not None:
+                days_set.add(d)
+
+    n = len(days_set)
+    return {
+        "trading_days": n,
+        "trading_days_completed": n,
+        "days_traded": n,
+        "completed_days": n,
+        "threshold": threshold,
+        "threshold_met": n >= threshold,
+    }
+
+
+@router.get(
     "/stats/paper-phase-summary",
     description="Paper validation phase rollup with balance, return percentage, trading days, and validation status.",
 )

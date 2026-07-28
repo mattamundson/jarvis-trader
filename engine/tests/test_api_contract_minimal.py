@@ -159,3 +159,26 @@ def test_paper_phase_summary_shape(contract_client: TestClient) -> None:
     assert isinstance(body["target_trading_days"], int)
     assert isinstance(body["trades_completed"], int)
     assert isinstance(body["validation_status"], str)
+
+
+def test_trading_days_stats_shape(contract_client: TestClient) -> None:
+    """GET /portfolio/stats/trading-days (GT-25): route was dropped in the 2026-05-22
+    main.py -> router migration, producing a live 404 on /validation. Verifies every
+    field alias TradingDaysCountdownCard and ValidationChecklist consume."""
+    r = contract_client.get("/portfolio/stats/trading-days")
+    assert r.status_code == 200
+    body = r.json()
+    for key in (
+        "trading_days",
+        "trading_days_completed",
+        "days_traded",
+        "completed_days",
+        "threshold",
+        "threshold_met",
+    ):
+        assert key in body, f"missing contract key: {key}"
+    assert isinstance(body["trading_days"], int)
+    assert body["trading_days"] == body["trading_days_completed"] == body["days_traded"] == body["completed_days"]
+    assert isinstance(body["threshold"], int)
+    assert isinstance(body["threshold_met"], bool)
+    assert body["threshold_met"] == (body["trading_days"] >= body["threshold"])
