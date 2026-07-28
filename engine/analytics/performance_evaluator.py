@@ -3,15 +3,16 @@
 JARVIS TRADER -- performance_evaluator.py
 =========================================
 Task 4 of the Top-5 ROI Priority List: The Learn Loop.
-Reads the most recent QuantStats output or SQLite PnL history and modulates
-the system's baseline risk exposure mathematically.
+Reads the most recent QuantStats output or SQLite PnL history and classifies
+the trailing regime (toxic / confirmed / neutral) for the TPO strategy.
 
-If we hit a streak of high volatility failing TPO bounds (regime change),
-this script automatically suppresses contract limits.
+NOTE (D3-06): this script does NOT modulate risk automatically. It only logs
+the regime read (see the docstring on `evaluate_daily_performance` for the
+history and why real modulation is out of scope pending D1-03). Any actual
+change to MAX_CONTRACTS_PER_INSTRUMENT is a manual, Amo-gated action.
 """
 
 import logging
-import os
 import sys
 
 try:
@@ -27,9 +28,24 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 def evaluate_daily_performance(db: DatabaseManager):
     """
-    Evaluates trailing 5-day performance to modulate the algorithmic risk edge.
-    If the Win Rate of the TPO strategy drops below 40% in the last 5 days,
-    we have encountered structural market rot and must scale down.
+    Evaluates trailing 5-day performance and reports whether the algorithmic
+    edge looks toxic, confirmed, or neutral.
+
+    NOTE (D3-06, 2026-07-26): this function used to call a `_modulate_env_risk`
+    helper on the two branches below. That helper never wrote to .env, never
+    wrote to the database, and had no return value anything downstream
+    consumed -- it only logged an INFO line reporting a fake success, which
+    made a dead control indistinguishable from a working one in the
+    operational record. It has been removed rather than "fixed" because
+    implementing real dynamic risk modulation (actually rewriting
+    MAX_CONTRACTS_PER_INSTRUMENT, or wiring a DB-backed setting into the live
+    config) is a new safety control that needs its own Amo sign-off and is
+    blocked on D1-03 (unresolved: what the real MAX_CONTRACTS ceiling should
+    even be). Every real enforcement site reads
+    `settings.MAX_CONTRACTS_PER_INSTRUMENT` straight from the environment
+    (safety_layer.py, trader.py, portfolio_router.py, safety_router.py) and
+    was never touched by the removed call. This function now only reports the
+    regime read; it takes no risk-limiting action.
     """
     logger.info("Initializing Performance Evaluator Cron...")
 
@@ -47,36 +63,20 @@ def evaluate_daily_performance(db: DatabaseManager):
 
     logger.info(f"Trailing 5-Day Alpha metrics -> Win Rate: {win_rate*100:.1f}% | Net PnL: ${total_trailing_pnl:.2f}")
 
-    # The Mathematical Modulation
-    # If the environment is toxic to our strategy, we dynamically halve size.
-    # This prevents total drawdown during sustained VIX compression bridging.
+    # Regime classification only. No automatic risk-limit change is applied --
+    # see the D3-06 note in the docstring above for why.
     if win_rate < 0.40 and total_trailing_pnl < 0:
-        logger.warning("ALGORITHMIC ROT DETECTED: Modulating max contract limits down.")
-        _modulate_env_risk(scaler=0.5)
+        logger.warning(
+            "ALGORITHMIC ROT DETECTED (win_rate=%.1f%%, trailing_pnl=$%.2f) -- "
+            "NO automatic risk modulation is applied; MAX_CONTRACTS_PER_INSTRUMENT "
+            "is unchanged. Manual review required.",
+            win_rate * 100,
+            total_trailing_pnl,
+        )
     elif win_rate >= 0.60 and total_trailing_pnl > 0:
-        logger.info("EDGE CONFIRMED: Market regime aligns perfectly with bounds. Holding steady.")
-        _modulate_env_risk(scaler=1.0)
+        logger.info("EDGE CONFIRMED: Market regime aligns with bounds. Holding steady.")
     else:
         logger.info("MARKET REGIME NEUTRAL. Awaiting further data.")
-
-
-def _modulate_env_risk(scaler: float):
-    """
-    Dynamically adjusts `MAX_CONTRACTS_PER_INSTRUMENT` in the environment configuration
-    to prevent the system from betting full size in a toxic regime.
-    """
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
-
-    if not os.path.exists(env_path):
-        logger.error(f"Cannot modulate risk: .env not found at {env_path}")
-        return
-
-    # Base memory for JARVIS: Base configs shouldn't be totally erased, just over-ridden.
-    # In a full deployment, this would use a redis key or dynamic config DB.
-    # For Phase 2, we simulate the log reflection.
-    logger.info(f"Modulation Signal Sent: Scale Base Risk by {scaler}x")
-    # Active .env rewrites are dangerous without process restarts, so normally this is
-    # picked up by the Database state or the `PositionSizer` automatically.
 
 
 def main():

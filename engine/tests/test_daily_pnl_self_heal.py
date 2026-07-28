@@ -242,3 +242,70 @@ class TestEodSelfHealWiring:
         rows = {r["date"]: r for r in db.get_daily_pnl()}
         assert rows["2026-06-20"]["realized_pnl"] == pytest.approx(100.0)  # healed from 500
         assert rows["2026-06-20"]["ending_balance"] == pytest.approx(10_100.0)
+
+
+class TestGetDailyPnlSelfHealsOnRead:
+    """GT-19 (2026-07-27): get_daily_pnl() must never serve a stale snapshot.
+
+    Reproduces the live incident exactly: an EOD snapshot row written at
+    20:05 UTC (3 trades) that a 20:45 UTC session-flatten close (a 4th
+    trade) never reached — because the scheduler's own same-day self-heal
+    is scheduler-timing-dependent (misses if the engine was offline, or a
+    trade closes after both daily heal call sites run). The read path must
+    reconcile-and-heal itself on every call instead of trusting the stored
+    row, so GET /portfolio/history/daily-pnl can never silently drop a
+    real closed trade.
+    """
+
+    def test_get_daily_pnl_heals_missing_trade_without_scheduler(self, dbp):
+        db, path = dbp
+
+        # Real ledger: SPY/QQQ/MES closed same UTC date the EOD snapshot saw,
+        # plus MGC closed later (session-flatten) that the snapshot never saw.
+        _insert_closed_trade(
+            path, trade_id="spy1", symbol="SPY", exit_time="2026-07-23T13:07:43.634125+00:00",
+            pnl=-5.626,
+        )
+        _insert_closed_trade(
+            path, trade_id="qqq1", symbol="QQQ", exit_time="2026-07-23T15:11:09.673167+00:00",
+            pnl=-7.5794,
+        )
+        _insert_closed_trade(
+            path, trade_id="mes1", symbol="MES", exit_time="2026-07-23T15:11:46",
+            pnl=-195.50,
+        )
+        _insert_closed_trade(
+            path, trade_id="mgc1", symbol="MGC", exit_time="2026-07-23T20:45:00.563999+00:00",
+            pnl=18.50,
+        )
+        # Stale row exactly as the EOD 20:05 UTC snapshot wrote it — 3 trades,
+        # the MGC close (20:45 UTC) not yet reflected. No scheduler run here;
+        # get_daily_pnl() itself must detect and heal this on read.
+        _insert_daily_pnl(
+            path,
+            date="2026-07-23",
+            starting=INITIAL,
+            ending=INITIAL - 208.7054,
+            realized=-208.7054,
+            total_trades=3,
+        )
+
+        rows = {r["date"]: r for r in db.get_daily_pnl(days=90)}
+        assert "2026-07-23" in rows
+        row = rows["2026-07-23"]
+        assert row["total_trades"] == 4
+        assert row["realized_pnl"] == pytest.approx(-190.2054)
+        assert row["ending_balance"] == pytest.approx(INITIAL - 190.2054)
+        # Detective control confirms the read-time heal actually persisted,
+        # not just returned a patched-in-memory value.
+        assert db.reconcile_daily_pnl()["ok"] is True
+
+    def test_get_daily_pnl_no_heal_needed_is_a_no_op(self, dbp):
+        """A clean table must not be rewritten (repair_daily_pnl not invoked)."""
+        db, path = dbp
+        _seed_ledger(path)
+        db.repair_daily_pnl(initial_capital=INITIAL, dry_run=False)
+        before = db.get_daily_pnl()
+        after = db.get_daily_pnl()
+        assert before == after
+        assert db.reconcile_daily_pnl()["ok"] is True

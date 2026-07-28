@@ -20,6 +20,7 @@ import {
 import { fetchEngine } from "@/lib/api";
 import { MarketChart } from "@/components/charts/MarketChart";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
+import { getBannerVariant, type BannerVariant } from "@/lib/todayBanner";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -113,17 +114,8 @@ function fetcher<T>(url: string): Promise<T> {
 }
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
-
-type BannerVariant = "live_ok" | "paper_ok" | "degraded" | "unreachable";
-
-function getBannerVariant(health: HealthResponse | undefined, isError: boolean): BannerVariant {
-  if (isError || !health) return "unreachable";
-  if (health.status !== "ok") return "unreachable";
-  // If execution leg down: degraded
-  if (!health.ibkr_connected && !health.schwab_connected) return "degraded";
-  if (health.live_trading) return "live_ok";
-  return "paper_ok";
-}
+// getBannerVariant itself now lives in @/lib/todayBanner (GT-09) so it can be
+// unit-tested with node:test without pulling in this file's JSX/React deps.
 
 const BANNER_CONFIG: Record<BannerVariant, { label: string; sublabel: string; color: string; bg: string; borderColor: string }> = {
   live_ok: {
@@ -142,7 +134,7 @@ const BANNER_CONFIG: Record<BannerVariant, { label: string; sublabel: string; co
   },
   degraded: {
     label: "DEGRADED",
-    sublabel: "Engine up — data or execution leg down",
+    sublabel: "Engine connected — a subsystem (LLM/data/execution) needs attention",
     color: "#ffcc00",
     bg: "rgba(255,204,0,0.06)",
     borderColor: "rgba(255,204,0,0.35)",

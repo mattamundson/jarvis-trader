@@ -20,6 +20,17 @@ from config import settings
 
 logger = logging.getLogger("jarvis_trader.tv_stream")
 
+# GT-17 follow-up (2026-07-27): market:latest:{symbol} used to be SET with no
+# expiry, so a stale or mislabeled tick (e.g. a TV chart pane that hadn't
+# finished switching symbols) could sit there and be served forever by
+# get_tick_price's Tier 0 read — see the freshness gate added there. This TTL
+# is a second, independent line of defense: even if a reader forgets to check
+# the datasource:ticks:{symbol}:last_update marker, the cache entry itself
+# self-heals within a couple of missed stream cycles instead of persisting
+# indefinitely.
+MARKET_LATEST_TTL_S = 120
+
+
 class TVStreamer:
     """
     Manages WebSocket connection to TradingView and dispatches data.
@@ -57,7 +68,7 @@ class TVStreamer:
             # Latest: market:latest:{symbol}
             payload = json.dumps(data)
             await self.redis_client.publish(f"market:ticks:{symbol}", payload)
-            await self.redis_client.set(f"market:latest:{symbol}", payload)
+            await self.redis_client.set(f"market:latest:{symbol}", payload, ex=MARKET_LATEST_TTL_S)
 
             # Freshness tracking (Phase 2.6)
             now_ts = datetime.now(timezone.utc).isoformat()
