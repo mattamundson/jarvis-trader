@@ -18,6 +18,7 @@ import {
   Layers,
 } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
+import { buildAdditionalMetricsTiles } from "@/lib/strategyCTiles";
 import { Badge } from "@/components/ui/badge";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ interface Metrics {
     win_rate: number;
     calmar: number;
     final_equity: number;
+    final_multiple_x: number;
     n_weeks: number;
   };
   in_sample?: {
@@ -682,29 +684,8 @@ export default function StrategyCPage() {
             )}
 
             {/* Additional metrics row */}
-            <div className="grid grid-cols-4 gap-3 mt-3">
-              {[
-                {
-                  label: "Sortino",
-                  live: metrics.full_period?.sortino != null,
-                  value: metrics.full_period?.sortino != null ? fmtNum(metrics.full_period.sortino) : "3.75",
-                },
-                {
-                  label: "Calmar",
-                  live: metrics.full_period?.calmar != null,
-                  value: metrics.full_period?.calmar != null ? fmtNum(metrics.full_period.calmar) : "2.09",
-                },
-                {
-                  label: "Win Rate",
-                  live: metrics.full_period?.win_rate != null,
-                  value: metrics.full_period?.win_rate != null ? fmtPct(metrics.full_period.win_rate) : "57.6%",
-                },
-                {
-                  label: "Final Equity",
-                  live: metrics.full_period?.final_equity != null,
-                  value: metrics.full_period?.final_equity != null ? `${fmtNum(metrics.full_period.final_equity)}×` : "4.12×",
-                },
-              ].map((m) => (
+            <div className="grid grid-cols-5 gap-3 mt-3">
+              {buildAdditionalMetricsTiles(metrics.full_period).map((m) => (
                 <div key={m.label} className="bg-slate-800/30 rounded-lg p-2.5 text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <p className="text-xs text-slate-500">{m.label}</p>
