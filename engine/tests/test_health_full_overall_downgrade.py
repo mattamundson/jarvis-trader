@@ -65,6 +65,45 @@ def test_pnl_monitor_exception_downgrades_overall():
     assert body["overall"] == "degraded"
 
 
+def test_ib_gateway_exception_then_circuit_breaker_trip_still_escalates():
+    """Ordering regression: an earlier subsystem exception must never block a
+    later, more-severe escalation.
+
+    `ib_gateway` (step 3) runs before `circuit_breakers` (step 4). Before this
+    fix, `circuit_breakers`'s escalation guard was `if overall == "healthy"`:
+    if `ib_gateway` threw first and downgraded `overall` to "degraded", that
+    guard was false by the time `circuit_breakers` tripped, so `overall` got
+    stuck at "degraded" instead of correctly escalating to the more severe
+    "circuit_breaker_tripped" — silently masking a real trading-safety state.
+    """
+    class _FakeSafetyLayer:
+        _kill_switch_active = False
+        _kill_switch_reason = None
+
+        def check_circuit_breakers(self):
+            return {"daily_limit_breached": True, "drawdown_breached": False}
+
+    safety_layer = _FakeSafetyLayer()
+
+    app = FastAPI()
+    app.include_router(health_router.router)
+    health_router.inject_dependencies(
+        start_time=datetime.now(timezone.utc),
+        dm=None, sl=safety_layer, dbm=None, pt=None, pm=None, tp=None, schwab=None,
+    )
+    client = TestClient(app)
+
+    with patch.object(
+        health_router, "_get_ib_gateway_health", side_effect=RuntimeError("boom")
+    ):
+        resp = client.get("/health/full")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["subsystems"]["ib_gateway"]["status"] == "error"
+    assert body["subsystems"]["circuit_breakers"]["status"] == "tripped"
+    assert body["overall"] == "circuit_breaker_tripped"
+
+
 def test_ib_gateway_exception_does_not_downgrade_kill_switch_active():
     """Severity ordering: a subsystem error must never *reduce* severity.
 
