@@ -533,12 +533,20 @@ class IBKRDataConnector:
                 "source": "ibkr_not_connected",
             }
         try:
-            # For futures symbols, resolve to front month contract; otherwise use standard contract
-            if is_futures or symbol.upper() in FUTURES_MAP:
-                exchange = FUTURES_EXCHANGE.get(symbol.upper(), "CME")
-                contract = await self._resolve_front_month(symbol, exchange)
-            else:
-                contract = self._make_contract(symbol, is_futures)
+            # Always qualify before requesting a ticker snapshot. ib_async keys
+            # in-flight market-data requests by conId; a generic/unqualified
+            # Contract (conId=0) risks resolving to whatever other request is
+            # outstanding when multiple symbols are snapshotted concurrently —
+            # exactly what get_batch_prices() does (one reqTickersAsync per
+            # watchlist symbol, fired together via asyncio.gather).
+            # GT-17: AAPL's unqualified Stock contract picked up a futures
+            # quote (~$7494, ~23x AAPL's real price) because it was requested
+            # in the same batch as MES/MGC/etc, which resolve to a real conId
+            # via _resolve_front_month. _qualified_contract already handles
+            # both cases (front-month for futures, qualifyContractsAsync for
+            # everything else) — reuse it instead of duplicating the branch
+            # with an unqualified fallback for non-futures symbols.
+            contract = await self._qualified_contract(symbol, is_futures)
             tickers = await self._ib.reqTickersAsync(contract)
             if tickers:
                 t = tickers[0]
