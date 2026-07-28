@@ -202,6 +202,83 @@ async def test_endpoint_404_when_no_bars(monkeypatch):
     assert exc.value.status_code == 404
 
 
+# ── /regime/vix-percentile: n_vix_bars must honestly reflect the lookback label ──
+# GT-22 (2026-07-27): the live endpoint returned n_vix_bars=21 while labeling the
+# snapshot lookback=252 (momentum_window=63) — a full year's worth of percentile
+# math computed off ~one month of data. Root cause was in the IBKR duration_map
+# (data/market_data.py), not here, but this asserts the contract this router
+# promises callers: when enough calendar history is available, n_vix_bars must be
+# large enough to actually support the claimed lookback/momentum_window, not stop
+# two orders of magnitude short of it.
+
+
+def _daily_df(n: int, start: str = "2023-01-02") -> pd.DataFrame:
+    idx = pd.bdate_range(start, periods=n)
+    close = pd.Series(np.linspace(10.0, 30.0, n), index=idx)
+    return pd.DataFrame(
+        {
+            "open": close,
+            "high": close + 0.5,
+            "low": close - 0.5,
+            "close": close,
+            "volume": np.full(n, 1_000.0),
+        },
+        index=idx,
+    )
+
+
+class _FakeVixDataManager:
+    """Stands in for MarketDataManager.get_bars, returning a bar count that
+    depends on the symbol -- mimics a healthy fetch layer that actually honors
+    the requested lookback (contrast with the pre-fix IBKR duration_map bug,
+    which silently truncated every long-window request to ~21 daily bars
+    regardless of what was asked for)."""
+
+    def __init__(self, n_bars: int):
+        self._n_bars = n_bars
+        self.requested_lookback_days: list[int] = []
+
+    async def get_bars(self, symbol, lookback_days, timeframe):
+        self.requested_lookback_days.append(lookback_days)
+        return _daily_df(self._n_bars)
+
+
+async def test_vix_percentile_n_bars_consistent_with_lookback_label(monkeypatch):
+    """When the fetch layer honors the request, n_vix_bars must be large enough
+    to actually back a lookback=252/momentum_window=63 label -- not the ~21-bar
+    (one month) shortfall GT-22 found live. 300 bars comfortably covers
+    252 + 63 with the endpoint's own 1.6x calendar buffer."""
+    fake_dm = _FakeVixDataManager(n_bars=300)
+    monkeypatch.setattr(regime_router, "data_manager", fake_dm)
+
+    result = await regime_router.get_vix_percentile_regime()
+
+    assert result["lookback"] == 252
+    assert result["momentum_window"] == 63
+    # The core GT-22 assertion: n_vix_bars must be commensurate with the claimed
+    # 252-day lookback (at least the lookback itself), never a ~21-bar (1-month)
+    # shortfall dressed up with a 252-day label.
+    assert result["n_vix_bars"] >= 252, (
+        f"n_vix_bars={result['n_vix_bars']} is far short of the labeled "
+        f"lookback={result['lookback']} — dishonest label (GT-22 regression)"
+    )
+    # And the router must actually have asked the fetch layer for a window sized
+    # to the lookback + momentum_window it claims, not something ~1-month-sized.
+    assert all(d >= 252 for d in fake_dm.requested_lookback_days)
+
+
+async def test_vix_percentile_n_bars_matches_true_available_window(monkeypatch):
+    """If genuinely fewer bars are available than the label implies, n_vix_bars
+    must reflect that true (smaller) count rather than lying upward -- the
+    'honest label' half of the GT-22 fix criteria."""
+    fake_dm = _FakeVixDataManager(n_bars=40)
+    monkeypatch.setattr(regime_router, "data_manager", fake_dm)
+
+    result = await regime_router.get_vix_percentile_regime()
+
+    assert result["n_vix_bars"] == 40
+
+
 # ── _ensure_datetime_index (GT-21 / GT-23 shared root cause) ───────────────────
 
 def test_ensure_datetime_index_sets_index_from_timestamp_column():

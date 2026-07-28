@@ -3,9 +3,11 @@
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pandas as pd
 import pytest
 
-from data.market_data import IBKRDataConnector
+import data.market_data as market_data_module
+from data.market_data import IBKRDataConnector, MarketDataManager
 
 
 @pytest.mark.asyncio
@@ -183,6 +185,76 @@ async def test_get_snapshot_price_tags_live_marketdatatype_as_ibkr():
     out = await conn.get_snapshot_price("AAPL", is_futures=False)
     assert out["source"] == "ibkr"
     assert out["last_price"] == 228.5
+
+
+# ---------------------------------------------------------------------------
+# GT-22 regression (2026-07-27): IBKR duration_map used to top out at 365
+# days -> "1 Y", and `next(..., "1 M")` silently fell back to a 1-MONTH
+# request for any lookback_days beyond that. /regime/vix-percentile's default
+# lookback=252 + momentum_window=63 needs ~514 calendar days of daily bars,
+# so it was quietly served ~21 daily bars from IBKR while its own response
+# still labeled itself lookback=252 -- a dishonest label, not just a data gap.
+# ---------------------------------------------------------------------------
+
+
+def _empty_bars_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+
+@pytest.mark.asyncio
+async def test_get_bars_uses_multiyear_duration_for_long_lookback(monkeypatch):
+    """A 514-day lookback (vix-percentile's default lookback+momentum_window
+    window) must request more than 1 month of IBKR history -- it must land in
+    a 2-year bucket, not silently fall back to the 1-month default."""
+    # Force past Tier 0 (TradingView) deterministically, regardless of whether
+    # TV Desktop happens to be live on the box running this test.
+    monkeypatch.setattr(market_data_module, "_tv_feed", None)
+    mgr = MarketDataManager(config=MagicMock())
+    fake_ibkr = MagicMock()
+    fake_ibkr.is_connected = True
+    fake_ibkr.get_historical_bars = AsyncMock(return_value=_empty_bars_df())
+    mgr.ibkr = fake_ibkr
+
+    await mgr._get_bars_impl("VIX", lookback_days=514, timeframe="1d", is_futures=False)
+
+    fake_ibkr.get_historical_bars.assert_awaited_once()
+    called_args = fake_ibkr.get_historical_bars.await_args
+    duration = called_args.args[1] if len(called_args.args) > 1 else called_args.kwargs["duration"]
+    assert duration == "2 Y", f"514-day lookback should request '2 Y', got {duration!r}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lookback_days,expected_duration",
+    [
+        (1, "1 D"),
+        (7, "1 W"),
+        (30, "1 M"),
+        (90, "3 M"),
+        (180, "6 M"),
+        (365, "1 Y"),
+        (514, "2 Y"),
+        (730, "2 Y"),
+        (1000, "3 Y"),
+        (1825, "5 Y"),
+        (5000, "5 Y"),  # beyond every bucket -> caps at 5 Y, never regresses to 1 M
+    ],
+)
+async def test_get_bars_duration_map_never_falls_back_to_one_month_for_long_windows(
+    lookback_days, expected_duration, monkeypatch
+):
+    monkeypatch.setattr(market_data_module, "_tv_feed", None)
+    mgr = MarketDataManager(config=MagicMock())
+    fake_ibkr = MagicMock()
+    fake_ibkr.is_connected = True
+    fake_ibkr.get_historical_bars = AsyncMock(return_value=_empty_bars_df())
+    mgr.ibkr = fake_ibkr
+
+    await mgr._get_bars_impl("VIX", lookback_days=lookback_days, timeframe="1d", is_futures=False)
+
+    called_args = fake_ibkr.get_historical_bars.await_args
+    duration = called_args.args[1] if len(called_args.args) > 1 else called_args.kwargs["duration"]
+    assert duration == expected_duration
 
 
 @pytest.mark.asyncio
