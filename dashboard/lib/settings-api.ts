@@ -76,6 +76,36 @@ export async function getIBGatewayStatus(): Promise<IBGatewayStatus> {
   return fetchEngine<IBGatewayStatus>("/health");
 }
 
+// ── Paper/live mode resolution ───────────────────────────────────────────
+//
+// GT-13: the /settings paper/live badge is a safety-relevant indicator (is
+// this account paper or live?) and must never silently show the wrong
+// answer. The naive `config?.ibkr_paper_mode ?? data?.paper_mode ?? true`
+// only falls through on null/undefined, so a stale `ibkr_paper_mode: false`
+// in config would silently beat a disagreeing, more-trustworthy live
+// /health-derived value. Resolution policy: prefer the /health-derived
+// value (it reflects the live IB Gateway connection, not a config
+// snapshot), and flag it when the two sources disagree so the discrepancy
+// is visible rather than silently swallowed.
+export interface PaperModeResolution {
+  paperMode: boolean;
+  mismatch: boolean;
+}
+
+export function resolvePaperMode(
+  config: Pick<SafetyConfig, "ibkr_paper_mode"> | undefined,
+  data: Pick<IBGatewayStatus, "paper_mode"> | undefined
+): PaperModeResolution {
+  const configPaperMode = config?.ibkr_paper_mode;
+  const healthPaperMode = data?.paper_mode;
+  const paperMode = healthPaperMode ?? configPaperMode ?? true;
+  const mismatch =
+    configPaperMode !== undefined &&
+    healthPaperMode !== undefined &&
+    configPaperMode !== healthPaperMode;
+  return { paperMode, mismatch };
+}
+
 // ── Circuit Breakers ──────────────────────────────────────────────────────
 
 export interface CircuitBreakerFull {

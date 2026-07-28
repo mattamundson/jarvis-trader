@@ -11,24 +11,26 @@ import {
   postApprovePending,
   postRejectPending,
 } from "@/lib/api";
+import { timeAgo } from "@/lib/timeAgo";
 
 // Module-level SWR fetchers (not inside component to avoid re-render loops)
 const fetchPendingApprovals = () =>
   fetchEngine<PendingApprovalsResponse>("/pipeline/pending-approvals?limit=50");
 
-// Format ISO string as "X minutes ago" or "X hours ago"
-function timeAgo(isoString: string): string {
-  const now = new Date();
-  const then = new Date(isoString);
-  const diffMs = now.getTime() - then.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMins / 60);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return isoString;
-}
+// GT-33 audit note: `timeAgo` (imported from lib/timeAgo.ts) and
+// `ExpiryTimer` below both call `new Date()`, but NEITHER needs the
+// client-only useState<Date|null>+useEffect hydration guard used elsewhere
+// in this GT-33 pass (CalendarHeatmap, CumulativeTradingDaysWidget,
+// MonthlyTargetCard, DailyPnLCalendarWidget) or in GT-27/GT-30. `timeAgo`'s
+// only call site is inside the `pending.map(...)` branch below, gated
+// behind useSWR's `isLoading`/`data` readiness -- useSWR returns
+// `data: undefined, isLoading: true` on both the server render and the
+// client's first (pre-fetch) hydration render, so both always take the
+// loading-skeleton branch, never the timeAgo() branch, until the fetch
+// resolves client-side well after hydration. `ExpiryTimer`'s `new Date()`
+// call is likewise already safe -- it only runs inside a `useEffect`
+// (`calculateTimeLeft`), never during render. See lib/timeAgo.ts for the
+// full writeup.
 
 // Check if approval has any provenance data
 function hasProvenance(approval: PendingApproval): boolean {
@@ -272,7 +274,7 @@ export default function ApprovalPanel() {
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <span className="text-xs text-gray-500">
-                        {timeAgo(approval.created_at)}
+                        {timeAgo(approval.created_at, new Date())}
                       </span>
                       <ExpiryTimer createdAt={approval.created_at} />
                     </div>

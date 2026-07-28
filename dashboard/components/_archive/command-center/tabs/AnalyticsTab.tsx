@@ -9,6 +9,13 @@ import {
   Tooltip,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import {
+  WINDOW_DAYS,
+  START_DATE_STORAGE_KEY,
+  resolveStartDate,
+  trackerStatsFor,
+  buildCalendarCells,
+} from "@/lib/thirtyDayTracker";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -566,37 +573,33 @@ function VixRegimeVisualizer({ macro }: { macro?: MacroData }) {
 // ── 30-Day Progress Tracker ────────────────────────────────────────────────
 
 function ThirtyDayTracker() {
-  const [startDate, setStartDate] = useState<Date>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("jarvis-paper-start-date");
-      if (stored) {
-        const d = new Date(stored);
-        if (!isNaN(d.getTime())) return d;
-      }
-    }
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
+  // "today" and "startDate" are intentionally client-only state (GT-34,
+  // sibling fix to GT-27 PR #496 / GT-30 PR #503 / GT-33 PR #506). See
+  // lib/thirtyDayTracker.ts for the two hydration defects this closes:
+  //   1. The old useState lazy initializer branched on `typeof window`
+  //      directly, which is guaranteed to diverge between the server
+  //      render and the client's first hydration render on every render
+  //      -- not just across a clock boundary.
+  //   2. `const today = new Date()` read directly during render is the
+  //      unguarded-new-Date() class already fixed elsewhere in GT-27/30/33.
+  // Both start at `null` and are only ever set from a mount-only effect, so
+  // the server render and the client's pre-mount render always take the
+  // same placeholder branch and can never disagree.
+  const [today, setToday] = useState<Date | null>(null);
+  const [startDate, setStartDate] = useState<Date | null>(null);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 30);
-
-  const totalMs = endDate.getTime() - startDate.getTime();
-  const elapsedMs = today.getTime() - startDate.getTime();
-  const daysElapsed = Math.max(0, Math.min(30, Math.floor(elapsedMs / 86400000)));
-  const daysRemaining = Math.max(0, 30 - daysElapsed);
-  const progress = Math.min(100, (daysElapsed / 30) * 100);
+  useEffect(() => {
+    const now = new Date();
+    const stored = localStorage.getItem(START_DATE_STORAGE_KEY);
+    setToday(now);
+    setStartDate(resolveStartDate(now, stored));
+  }, []);
 
   function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
     const d = new Date(e.target.value + "T00:00:00");
     if (!isNaN(d.getTime())) {
       setStartDate(d);
-      localStorage.setItem("jarvis-paper-start-date", e.target.value);
+      localStorage.setItem(START_DATE_STORAGE_KEY, e.target.value);
     }
   }
 
@@ -608,32 +611,11 @@ function ThirtyDayTracker() {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
 
-  // Build calendar grid — 5 rows × 7 cols = 35 cells
-  const calStart = new Date(startDate);
-  const calCells: { date: Date; status: "before" | "active-past" | "today" | "future" | "outside" }[] = [];
-
-  // Start on Sunday of the week containing startDate
-  const dow = calStart.getDay();
-  const gridStart = new Date(calStart);
-  gridStart.setDate(gridStart.getDate() - dow);
-
-  for (let i = 0; i < 35; i++) {
-    const d = new Date(gridStart);
-    d.setDate(gridStart.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-
-    if (d < startDate) {
-      calCells.push({ date: d, status: "before" });
-    } else if (d.getTime() === today.getTime()) {
-      calCells.push({ date: d, status: "today" });
-    } else if (d < today && d < endDate) {
-      calCells.push({ date: d, status: "active-past" });
-    } else if (d >= endDate || d > today) {
-      calCells.push({ date: d, status: d >= endDate ? "outside" : "future" });
-    } else {
-      calCells.push({ date: d, status: "future" });
-    }
-  }
+  const stats = startDate ? trackerStatsFor(startDate, today) : null;
+  const calCells = startDate && stats ? buildCalendarCells(startDate, stats.endDate, today) : [];
+  const daysElapsed = stats?.daysElapsed ?? 0;
+  const daysRemaining = stats?.daysRemaining ?? WINDOW_DAYS;
+  const progress = stats?.progress ?? 0;
 
   const cellColor: Record<string, string> = {
     before: "rgba(30,41,59,0.3)",
@@ -669,7 +651,7 @@ function ThirtyDayTracker() {
             className="text-3xl font-bold"
             style={{ fontFamily: "'JetBrains Mono', monospace", color: "#94a3b8" }}
           >
-            30
+            {WINDOW_DAYS}
           </div>
           <div className="text-xs font-mono text-slate-600 tracking-wider">TARGET</div>
         </div>
@@ -687,7 +669,7 @@ function ThirtyDayTracker() {
       {/* Progress bar */}
       <div className="mb-3">
         <div className="flex justify-between text-xs font-mono text-slate-500 mb-1">
-          <span>Day {daysElapsed} of 30</span>
+          <span>Day {daysElapsed} of {WINDOW_DAYS}</span>
           <span>{progress.toFixed(0)}%</span>
         </div>
         <div className="relative h-2 rounded overflow-hidden" style={{ background: "#0a1628" }}>
@@ -706,11 +688,11 @@ function ThirtyDayTracker() {
       <div className="flex items-center justify-between mb-3 text-xs font-mono">
         <div>
           <span className="text-slate-500">Start: </span>
-          <span className="text-slate-300">{formatDisplayDate(startDate)}</span>
+          <span className="text-slate-300">{startDate ? formatDisplayDate(startDate) : "—"}</span>
         </div>
         <div>
           <span className="text-slate-500">End: </span>
-          <span className="text-slate-300">{formatDisplayDate(endDate)}</span>
+          <span className="text-slate-300">{stats ? formatDisplayDate(stats.endDate) : "—"}</span>
         </div>
       </div>
 
@@ -721,9 +703,10 @@ function ThirtyDayTracker() {
         </label>
         <input
           type="date"
-          value={formatDateStr(startDate)}
+          value={startDate ? formatDateStr(startDate) : ""}
           onChange={handleDateChange}
-          className="flex-1 rounded px-2 py-1 text-xs font-mono"
+          disabled={!startDate}
+          className="flex-1 rounded px-2 py-1 text-xs font-mono disabled:opacity-50"
           style={{
             background: "rgba(6,13,26,0.8)",
             border: "1px solid rgba(0,212,255,0.2)",
@@ -743,28 +726,34 @@ function ThirtyDayTracker() {
           ))}
         </div>
         <div className="grid grid-cols-7 gap-1">
-          {calCells.map((cell, i) => {
-            const isToday = cell.status === "today";
-            return (
-              <div
-                key={i}
-                className="aspect-square rounded flex items-center justify-center text-xs font-mono relative"
-                style={{
-                  background: cellColor[cell.status],
-                  color: isToday ? "#000" : cell.status === "active-past" ? "#00d4ff" : "#334155",
-                  fontWeight: isToday ? "700" : "400",
-                }}
-              >
-                {isToday && (
+          {calCells.length > 0
+            ? calCells.map((cell, i) => {
+                const isToday = cell.status === "today";
+                return (
                   <div
-                    className="absolute inset-0 rounded animate-ping"
-                    style={{ background: "rgba(0,212,255,0.4)" }}
-                  />
-                )}
-                <span className="relative z-10">{cell.date.getDate()}</span>
-              </div>
-            );
-          })}
+                    key={i}
+                    className="aspect-square rounded flex items-center justify-center text-xs font-mono relative"
+                    style={{
+                      background: cellColor[cell.status],
+                      color: isToday ? "#000" : cell.status === "active-past" ? "#00d4ff" : "#334155",
+                      fontWeight: isToday ? "700" : "400",
+                    }}
+                  >
+                    {isToday && (
+                      <div
+                        className="absolute inset-0 rounded animate-ping"
+                        style={{ background: "rgba(0,212,255,0.4)" }}
+                      />
+                    )}
+                    <span className="relative z-10">{cell.date.getDate()}</span>
+                  </div>
+                );
+              })
+            : // Pre-mount placeholder: same 35-cell grid, stable across
+              // server and client-pre-mount renders (see lib/thirtyDayTracker.ts).
+              Array.from({ length: 35 }).map((_, i) => (
+                <div key={i} className="aspect-square rounded" style={{ background: cellColor.outside }} />
+              ))}
         </div>
       </div>
     </div>
