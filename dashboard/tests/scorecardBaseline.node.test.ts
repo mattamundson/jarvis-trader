@@ -84,3 +84,35 @@ test("scorecardBaseline: falls back to top-level total_return fraction when full
   assert.ok(baseline);
   assert.equal(baseline!.totalReturnLabel, "+1.6%");
 });
+
+test("scorecardBaseline: max_drawdown_pct fraction is scaled to a whole-number percent (GT-20 follow-up)", () => {
+  // Sibling bug to the total_return_pct fix above, same file, same root
+  // cause: engine/backtest/metrics.py's locked unit-convention comment
+  // (lines 6-8) documents max_drawdown_pct as a FRACTION too (e.g. -0.18
+  // means -18%), but maxDrawdownPct here was computed as Math.abs(mddRaw)
+  // with no *100 -- rendered directly as a percent by
+  // dashboard/app/validation/page.tsx and dashboard/app/scorecard/page.tsx,
+  // a real -18% drawdown showed as "-0.2%".
+  const row: BacktestBaselineRow = {
+    symbol: "MES",
+    interval: "1h",
+    full_metrics: {
+      profit_factor: 0.21,
+      sharpe_ratio: -2.09,
+      max_drawdown_pct: -0.18,
+      total_return_pct: -0.0525,
+      total_trades: 40,
+      symbol: "MES",
+    },
+  };
+
+  const baseline = pickApprovedBacktestBaseline([row]);
+  assert.ok(baseline, "expected a baseline to be picked");
+  // Was 0.18 before the fix (raw fraction, magnitude only). Correct scaled
+  // value is 18.0 -- consumers do `${Math.abs(x).toFixed(1)}%"`, so this is
+  // what renders as "-18.0%" instead of the wrong-by-100x "-0.2%".
+  assert.equal(baseline!.maxDrawdownPct, 18);
+  // maxDrawdownFraction is derived from maxDrawdownPct and must still land
+  // back on the correct signed fraction once maxDrawdownPct is scaled.
+  assert.equal(baseline!.maxDrawdownFraction, -0.18);
+});
