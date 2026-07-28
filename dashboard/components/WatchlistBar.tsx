@@ -10,6 +10,7 @@ import {
   type DataEnvelope,
   type ProvenanceView,
 } from "@/lib/provenance";
+import { formatPrice, formatChangePct } from "@/lib/watchlistBarFormatters";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const POLL_MS = 10_000;
@@ -68,19 +69,9 @@ function fmtAge(seconds: number | null): string {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function formatPrice(price: number | null): string {
-  if (price == null) return "—";
-  if (price >= 1000) {
-    return price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-  return price.toFixed(2);
-}
-
-function formatChangePct(pct: number | null): string {
-  if (pct == null) return "";
-  const sign = pct >= 0 ? "+" : "";
-  return `${sign}${(pct * 100).toFixed(2)}%`;
-}
+// formatPrice / formatChangePct now live in lib/watchlistBarFormatters.ts
+// (GT-29 fix -- see that module's header comment for the double-scaling
+// root cause and why it's a separate module from GT-18's watchlistFormatters.ts).
 
 function changeArrow(pct: number | null): string {
   if (pct == null || Math.abs(pct) < 0.00005) return "◆";

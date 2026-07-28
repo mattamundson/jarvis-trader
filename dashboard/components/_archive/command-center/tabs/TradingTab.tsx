@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { PipelineFlowDiagram } from "@/components/command-center/PipelineFlowDiagram";
+import { PipelineFlowDiagram } from "@/components/_archive/command-center/PipelineFlowDiagram";
 import type { SWRResponse } from "swr";
 import {
   CheckCircle2,
