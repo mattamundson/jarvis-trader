@@ -1391,13 +1391,18 @@ function SimulateTradePanel() {
   const [entryPrice, setEntryPrice] = useState<string>("5000");
   const [stopLoss, setStopLoss] = useState<string>("4990");
   const [quantity, setQuantity] = useState<string>("1");
-  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SimulateTradeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // GT-41: submission is disabled below (button `disabled`) because no backend
+  // endpoint implements a non-persisting trade simulation -- see simulateTrade()
+  // in settings-api.ts for the full explanation. handleSubmit is kept functional
+  // (rather than deleted) purely as a defensive fallback: if the button's
+  // `disabled` attribute is ever bypassed, simulateTrade() throws a clear
+  // "not yet implemented" error that lands in the existing error UI below
+  // instead of silently 404ing or touching live portfolio state.
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setResult(null);
     setError(null);
 
@@ -1414,8 +1419,6 @@ function SimulateTradePanel() {
       setResult(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Simulation failed");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -1436,7 +1439,7 @@ function SimulateTradePanel() {
               Simulate Trade
             </p>
             <p className="text-[10px] text-muted-foreground">
-              Manual paper trade simulation — POST /test/simulate-trade
+              Manual paper trade simulation — not yet implemented (GT-41)
             </p>
           </div>
         </div>
@@ -1521,16 +1524,17 @@ function SimulateTradePanel() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled
+            title="Disabled (GT-41): the backend endpoint this panel depended on (/test/simulate-trade) was never registered on the engine, and no equivalent non-persisting simulate endpoint exists. Repointing to the real manual-trade route would open an actual paper position instead of a dry-run estimate."
             className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? (
-              <span className="h-3.5 w-3.5 rounded-full border-2 border-accent-foreground border-t-transparent animate-spin" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
-            {loading ? "Simulating..." : "Simulate Trade"}
+            <Play className="h-3.5 w-3.5" />
+            Simulate Trade (not yet implemented)
           </button>
+          <p className="text-[10px] text-muted-foreground">
+            Disabled — GT-41: no backend endpoint implements a non-persisting trade
+            simulation. See settings-api.ts simulateTrade() for details.
+          </p>
         </form>
 
         {result && (
