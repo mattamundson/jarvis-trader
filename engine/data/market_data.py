@@ -1458,6 +1458,22 @@ class MarketDataManager:
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
 
         # Tier 0: Redis Real-Time Fabric (Phase 2.1)
+        #
+        # GT-17 follow-up (2026-07-27): this tier used to trust whatever was
+        # cached under market:latest:{symbol} unconditionally and forever —
+        # _stream_to_redis() (tradingview_stream.py) SETs that key with no
+        # TTL, and nothing here checked the sibling
+        # datasource:ticks:{symbol}:last_update freshness marker it writes
+        # alongside it. A stale or mislabeled TV pane (e.g. a chart that
+        # hadn't finished switching symbols) could poison a symbol's entry
+        # and it would be served to /watchlist indefinitely — completely
+        # bypassing Tier 1 IBKR (and the qualified-contract fix above) since
+        # this tier returns first. That mechanism, not the Tier-1 contract
+        # hash collision, matches the originally-reported symptom: a wrong
+        # last_price *and* change_pct=null (this tier hardcodes change_pct
+        # to None; Tier 1's historical-bars fallback would have produced a
+        # non-null change_pct). Now gated on freshness so a stale cache
+        # entry falls through to Tier 1 instead of being trusted forever.
         try:
             import json
 
@@ -1468,6 +1484,31 @@ class MarketDataManager:
             for sym_key in [symbol, symbol.upper()]:
                 val = r.get(f"market:latest:{sym_key}")
                 if val:
+                    last_update_raw = r.get(f"datasource:ticks:{sym_key}:last_update")
+                    if not last_update_raw:
+                        logger.debug(
+                            f"[get_tick_price] Redis fabric hit for {symbol} has no "
+                            f"freshness marker — treating as stale, skipping"
+                        )
+                        continue
+                    try:
+                        last_update = datetime.fromisoformat(last_update_raw)
+                        age_s = (
+                            datetime.now(last_update.tzinfo) - last_update
+                        ).total_seconds()
+                    except (ValueError, TypeError) as _ts_err:
+                        logger.debug(
+                            f"[get_tick_price] Redis fabric freshness marker for "
+                            f"{symbol} unparseable ({_ts_err}) — treating as stale"
+                        )
+                        continue
+                    if age_s > DEFAULT_STALE_AFTER_S or age_s < 0:
+                        logger.debug(
+                            f"[get_tick_price] Redis fabric entry for {symbol} is "
+                            f"{age_s:.0f}s old (> {DEFAULT_STALE_AFTER_S:.0f}s) — "
+                            f"stale, falling through to Tier 1"
+                        )
+                        continue
                     data = json.loads(val)
                     if data.get("close"):
                         return {
