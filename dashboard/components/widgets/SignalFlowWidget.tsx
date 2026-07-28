@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
+import { formatChangePct } from "@/lib/signalFlowFormatters";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -201,8 +202,7 @@ function InstrumentRow({ symbol, latestEntry, price }: InstrumentRowProps) {
                   className="font-mono text-[10px] tabular-nums"
                   style={{ color: pctColor(price.change_pct) }}
                 >
-                  {price.change_pct >= 0 ? "+" : ""}
-                  {(price.change_pct * 100).toFixed(2)}%
+                  {formatChangePct(price.change_pct)}
                 </span>
               )}
             </div>

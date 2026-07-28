@@ -3,9 +3,11 @@
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pandas as pd
 import pytest
 
-from data.market_data import IBKRDataConnector
+import data.market_data as market_data_module
+from data.market_data import IBKRDataConnector, MarketDataManager
 
 
 @pytest.mark.asyncio
@@ -160,11 +162,23 @@ def _fake_ticker(last: float, close: float, market_data_type: int) -> MagicMock:
     return t
 
 
+def _mock_ib_with_qualify(tickers, qualified_conid: int = 265598) -> MagicMock:
+    """IBKR mock wired for the qualify-then-snapshot path get_snapshot_price
+    now uses for every symbol (see GT-17 regression tests below): a stock
+    Contract starts with conId=0, so _qualified_contract calls
+    qualifyContractsAsync before reqTickersAsync is ever reached."""
+    mock_ib = MagicMock()
+    qualified = MagicMock()
+    qualified.conId = qualified_conid
+    mock_ib.qualifyContractsAsync = AsyncMock(return_value=[qualified])
+    mock_ib.reqTickersAsync = AsyncMock(return_value=tickers)
+    return mock_ib
+
+
 @pytest.mark.asyncio
 async def test_get_snapshot_price_tags_live_marketdatatype_as_ibkr():
     conn = IBKRDataConnector()
-    mock_ib = MagicMock()
-    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 1)])
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(228.5, 227.0, 1)])
     conn._ib = mock_ib
     conn._connected = True
 
@@ -173,11 +187,80 @@ async def test_get_snapshot_price_tags_live_marketdatatype_as_ibkr():
     assert out["last_price"] == 228.5
 
 
+# ---------------------------------------------------------------------------
+# GT-22 regression (2026-07-27): IBKR duration_map used to top out at 365
+# days -> "1 Y", and `next(..., "1 M")` silently fell back to a 1-MONTH
+# request for any lookback_days beyond that. /regime/vix-percentile's default
+# lookback=252 + momentum_window=63 needs ~514 calendar days of daily bars,
+# so it was quietly served ~21 daily bars from IBKR while its own response
+# still labeled itself lookback=252 -- a dishonest label, not just a data gap.
+# ---------------------------------------------------------------------------
+
+
+def _empty_bars_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+
+@pytest.mark.asyncio
+async def test_get_bars_uses_multiyear_duration_for_long_lookback(monkeypatch):
+    """A 514-day lookback (vix-percentile's default lookback+momentum_window
+    window) must request more than 1 month of IBKR history -- it must land in
+    a 2-year bucket, not silently fall back to the 1-month default."""
+    # Force past Tier 0 (TradingView) deterministically, regardless of whether
+    # TV Desktop happens to be live on the box running this test.
+    monkeypatch.setattr(market_data_module, "_tv_feed", None)
+    mgr = MarketDataManager(config=MagicMock())
+    fake_ibkr = MagicMock()
+    fake_ibkr.is_connected = True
+    fake_ibkr.get_historical_bars = AsyncMock(return_value=_empty_bars_df())
+    mgr.ibkr = fake_ibkr
+
+    await mgr._get_bars_impl("VIX", lookback_days=514, timeframe="1d", is_futures=False)
+
+    fake_ibkr.get_historical_bars.assert_awaited_once()
+    called_args = fake_ibkr.get_historical_bars.await_args
+    duration = called_args.args[1] if len(called_args.args) > 1 else called_args.kwargs["duration"]
+    assert duration == "2 Y", f"514-day lookback should request '2 Y', got {duration!r}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lookback_days,expected_duration",
+    [
+        (1, "1 D"),
+        (7, "1 W"),
+        (30, "1 M"),
+        (90, "3 M"),
+        (180, "6 M"),
+        (365, "1 Y"),
+        (514, "2 Y"),
+        (730, "2 Y"),
+        (1000, "3 Y"),
+        (1825, "5 Y"),
+        (5000, "5 Y"),  # beyond every bucket -> caps at 5 Y, never regresses to 1 M
+    ],
+)
+async def test_get_bars_duration_map_never_falls_back_to_one_month_for_long_windows(
+    lookback_days, expected_duration, monkeypatch
+):
+    monkeypatch.setattr(market_data_module, "_tv_feed", None)
+    mgr = MarketDataManager(config=MagicMock())
+    fake_ibkr = MagicMock()
+    fake_ibkr.is_connected = True
+    fake_ibkr.get_historical_bars = AsyncMock(return_value=_empty_bars_df())
+    mgr.ibkr = fake_ibkr
+
+    await mgr._get_bars_impl("VIX", lookback_days=lookback_days, timeframe="1d", is_futures=False)
+
+    called_args = fake_ibkr.get_historical_bars.await_args
+    duration = called_args.args[1] if len(called_args.args) > 1 else called_args.kwargs["duration"]
+    assert duration == expected_duration
+
+
 @pytest.mark.asyncio
 async def test_get_snapshot_price_tags_delayed_marketdatatype_as_ibkr_delayed():
     conn = IBKRDataConnector()
-    mock_ib = MagicMock()
-    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 3)])
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(228.5, 227.0, 3)])
     conn._ib = mock_ib
     conn._connected = True
 
@@ -189,8 +272,7 @@ async def test_get_snapshot_price_tags_delayed_marketdatatype_as_ibkr_delayed():
 @pytest.mark.asyncio
 async def test_get_snapshot_price_tags_delayed_frozen_marketdatatype_as_ibkr_delayed():
     conn = IBKRDataConnector()
-    mock_ib = MagicMock()
-    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 4)])
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(228.5, 227.0, 4)])
     conn._ib = mock_ib
     conn._connected = True
 
@@ -203,10 +285,62 @@ async def test_get_snapshot_price_tags_frozen_marketdatatype_as_ibkr_not_delayed
     """marketDataType 2 (Frozen, non-delayed) is out of scope for this tag —
     only 3/4 (Delayed/Delayed-frozen) mean the price value itself is stale."""
     conn = IBKRDataConnector()
-    mock_ib = MagicMock()
-    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(228.5, 227.0, 2)])
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(228.5, 227.0, 2)])
     conn._ib = mock_ib
     conn._connected = True
 
     out = await conn.get_snapshot_price("AAPL", is_futures=False)
     assert out["source"] == "ibkr"
+
+
+# ---------------------------------------------------------------------------
+# GT-17 regression (2026-07-27): AAPL last_price=$7494.10 (~23x real ~$325)
+# with change_pct=null. Root cause: get_snapshot_price() qualified futures
+# contracts via _resolve_front_month (real conId) but passed an UNQUALIFIED
+# Contract (conId=0) straight to reqTickersAsync for every other symbol.
+# ib_async keys in-flight market-data requests by conId, so an unqualified
+# stock contract risks resolving against whatever other request is
+# outstanding when multiple symbols are snapshotted concurrently — exactly
+# what get_batch_prices() does for the whole /watchlist in one
+# asyncio.gather. Fix: get_snapshot_price now always resolves through
+# _qualified_contract (same helper get_historical_bars already used via
+# _qualified_contract) before requesting a ticker.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_price_qualifies_stock_contract_before_ticker_request():
+    """A stock snapshot must qualify the contract (real conId) before
+    reqTickersAsync — never hand IB an unqualified conId=0 Contract."""
+    conn = IBKRDataConnector()
+    mock_ib = _mock_ib_with_qualify([_fake_ticker(325.89, 324.50, 1)], qualified_conid=265598)
+    conn._ib = mock_ib
+    conn._connected = True
+
+    out = await conn.get_snapshot_price("AAPL", is_futures=False)
+
+    mock_ib.qualifyContractsAsync.assert_awaited_once()
+    assert out["last_price"] == 325.89
+    assert out["source"] == "ibkr"
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_price_futures_still_skip_qualify_when_conid_present():
+    """Regression guard: futures resolve via _resolve_front_month, which
+    already carries a real conId — get_snapshot_price must not introduce a
+    redundant qualifyContractsAsync call on the futures path."""
+    conn = IBKRDataConnector()
+    mock_ib = MagicMock()
+    mock_ib.qualifyContractsAsync = AsyncMock()
+    mock_ib.reqTickersAsync = AsyncMock(return_value=[_fake_ticker(7494.10, 7480.00, 1)])
+    conn._ib = mock_ib
+    conn._connected = True
+
+    resolved = MagicMock()
+    resolved.conId = 495512563
+    conn._resolve_front_month = AsyncMock(return_value=resolved)
+
+    out = await conn.get_snapshot_price("MES", is_futures=True)
+
+    mock_ib.qualifyContractsAsync.assert_not_called()
+    assert out["last_price"] == 7494.10

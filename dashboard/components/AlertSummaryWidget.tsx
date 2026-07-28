@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { fetchEngine } from "@/lib/api";
+import { summarizeAlertStatusCounts, type AlertStatsRaw } from "@/lib/alertStats";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -26,13 +27,6 @@ interface Alert {
 
 interface AlertHistoryResponse {
   alerts: Alert[];
-  total: number;
-}
-
-interface AlertStatsResponse {
-  by_type: Record<string, number>;
-  by_status: Record<string, number>;
-  by_channel: Record<string, number>;
   total: number;
 }
 
@@ -86,14 +80,14 @@ function timeAgo(isoString: string): string {
 
 export function AlertSummaryWidget() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [stats, setStats] = useState<AlertStatsResponse | null>(null);
+  const [stats, setStats] = useState<AlertStatsRaw | null>(null);
   const [historyTotal, setHistoryTotal] = useState(0);
 
   async function fetchData() {
     try {
       const [historyRes, statsRes] = await Promise.allSettled([
         fetchEngine<AlertHistoryResponse>(`/alerts/history?limit=10`),
-        fetchEngine<AlertStatsResponse>(`/alerts/stats`),
+        fetchEngine<AlertStatsRaw>(`/alerts/stats`),
       ]);
 
       if (historyRes.status === "fulfilled") {
@@ -116,9 +110,10 @@ export function AlertSummaryWidget() {
     return () => clearInterval(interval);
   }, []);
 
-  const sentCount = stats?.by_status?.sent ?? 0;
-  const failedCount = stats?.by_status?.failed ?? 0;
-  const pendingCount = stats?.by_status?.pending ?? 0;
+  const statusCounts = summarizeAlertStatusCounts(stats);
+  const sentCount = statusCounts.sent;
+  const failedCount = statusCounts.failed;
+  const pendingCount = statusCounts.pending;
   const total = stats?.total ?? historyTotal;
 
   return (

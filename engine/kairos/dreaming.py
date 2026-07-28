@@ -9,7 +9,7 @@ Works without an LLM client (returns statistical summary only).
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ class KairosDreamer:
 
         Returns a dict with:
           date, total_observations, severity_counts, watcher_hits,
-          top_watchers, patterns, llm_insights
+          top_watchers, patterns, insights, generated_at
         """
         target_date = target_date or date.today().isoformat()
 
@@ -52,7 +52,8 @@ class KairosDreamer:
                 "severity_counts": {"info": 0, "warning": 0, "critical": 0},
                 "watcher_hits": {},
                 "top_watchers": [],
-                "llm_insights": None,
+                "insights": None,
+                "generated_at": datetime.now().isoformat(),
             }
 
         counts = self._log.count_by_severity(target_date)
@@ -72,7 +73,14 @@ class KairosDreamer:
             if obs.get("severity") == "critical":
                 critical_messages.append(obs.get("message", ""))
 
-        top_watchers = sorted(watcher_hits.items(), key=lambda x: x[1], reverse=True)[:5]
+        # {watcher, count} objects, not bare tuples — a plain Python tuple
+        # serializes to a bare JSON array ([name, count]), which the
+        # dashboard's Top Watchers section (expecting {watcher, count}) can't
+        # consume.
+        top_watchers = [
+            {"watcher": name, "count": count}
+            for name, count in sorted(watcher_hits.items(), key=lambda x: x[1], reverse=True)[:5]
+        ]
 
         # Rule-based pattern detection
         patterns: list[str] = self._detect_patterns(observations, counts, watcher_hits)
@@ -86,12 +94,13 @@ class KairosDreamer:
             "symbol_hits": symbol_hits,
             "critical_messages": critical_messages[:10],
             "patterns": patterns,
-            "llm_insights": None,
+            "insights": None,
+            "generated_at": datetime.now().isoformat(),
         }
 
         # Optional LLM insights via Haiku
         if self._client is not None and len(observations) > 0:
-            summary["llm_insights"] = await self._call_llm(observations, target_date)
+            summary["insights"] = await self._call_llm(observations, target_date)
 
         return summary
 
