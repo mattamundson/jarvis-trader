@@ -165,8 +165,22 @@ export interface SimulateTradeResult {
   [key: string]: unknown;
 }
 
+// GT-41: this panel called POST /test/simulate-trade, which was never
+// registered on the engine (confirmed via a full diff against the live
+// /openapi.json -- 404 on every submit). No equivalent "dry run" endpoint
+// exists that returns pnl_estimate/risk_amount without mutating state. The
+// closest real capability, POST /portfolio/paper/trade/manual, actually
+// opens a live position in the paper tracker (real trade record, feeds the
+// honest-performance/Sharpe/Calmar stats this very page renders) and uses a
+// different field contract (buy/sell/sell_short/buy_to_cover vs LONG/SHORT,
+// no stop_loss input, no pnl_estimate/risk_amount output) -- repointing here
+// would silently turn a "simulate" click into a real portfolio mutation.
+// Disabled pending a genuine non-persisting simulate endpoint; see the
+// SimulateTradePanel component in validation/page.tsx.
 export async function simulateTrade(
-  payload: SimulateTradePayload
+  _payload: SimulateTradePayload
 ): Promise<SimulateTradeResult> {
-  return postEngine<SimulateTradeResult>("/test/simulate-trade", payload);
+  throw new Error(
+    "Manual trade simulation is not yet implemented (GT-41) -- no backend endpoint exists that simulates a trade without opening a real paper position."
+  );
 }
