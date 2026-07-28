@@ -20,7 +20,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from api import (
@@ -2472,58 +2472,41 @@ async def get_commission_stats():
 
 
 @router.post("/import/trades")
-async def import_paper_trades(request: Request):
-    """Bulk import paper trades from JSON array."""
-    if db_manager is None:
-        raise HTTPException(status_code=503, detail="DB not initialized")
-    try:
-        body = await request.json()
-        trades = body.get("trades", [])
-        if not isinstance(trades, list):
-            raise HTTPException(status_code=400, detail="'trades' must be a list")
-        if len(trades) > 1000:
-            raise HTTPException(status_code=400, detail="Max 1000 trades per import")
+async def import_paper_trades():
+    """RETIRED (D3-02, 2026-07-26) -- do not resurrect this handler's old body.
 
-        imported = 0
-        errors = []
+    The previous implementation ran a raw ``INSERT OR IGNORE INTO paper_trades``
+    that listed 12 columns and omitted ``idempotency_key`` (NOT NULL, no default
+    since migration 032), ``epoch`` and ``quote_source``. ``INSERT OR IGNORE``
+    downgrades the resulting NOT NULL violation to a silent no-op, so the insert
+    wrote ZERO rows -- while the surrounding loop did ``imported += 1``
+    unconditionally, so the endpoint returned HTTP 200
+    ``{imported: N, skipped: 0, errors: []}`` having persisted nothing. It also
+    hardcoded ``status='CLOSED'`` (uppercase) against a schema every downstream
+    analytics query filters as lowercase ``'closed'``, and defaulted ``side`` to
+    ``'LONG'`` against the live 'buy'/'sell' vocabulary.
 
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            try:
-                for i, t in enumerate(trades):
-                    try:
-                        import uuid as _uuid
+    Caller search (dashboard/, engine/scripts/, docs/, root-level *.ps1) found no
+    live caller -- only this repo's own contract tests exercised it. The endpoint
+    likely served the one-time JSONL-to-SQLite migration; that migration is (and
+    always was) done via the standalone script engine/scripts/migrate_json_to_sqlite.py,
+    not this HTTP route.
 
-                        trade_id = t.get("trade_id") or str(_uuid.uuid4())
-                        conn.execute(
-                            """INSERT OR IGNORE INTO paper_trades
-                               (trade_id, symbol, side, entry_price, exit_price, quantity,
-                                pnl, status, entry_time, exit_time, strategy_params, notes)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                            (
-                                trade_id,
-                                str(t.get("symbol", "UNKNOWN")),
-                                str(t.get("action", t.get("side", "LONG"))),
-                                float(t.get("entry_price", 0)),
-                                float(t.get("exit_price", 0)),
-                                int(t.get("quantity", 1)),
-                                float(t.get("pnl", 0)),
-                                "CLOSED",
-                                str(t.get("entry_time", datetime.now(timezone.utc).isoformat())),
-                                str(t.get("exit_time", datetime.now(timezone.utc).isoformat())),
-                                str(t.get("strategy", t.get("strategy_params", "imported"))),
-                                str(t.get("notes", "")),
-                            ),
-                        )
-                        imported += 1
-                    except Exception as e:
-                        errors.append({"index": i, "error": str(e)})
-                conn.commit()
-            finally:
-                conn.close()
-
-        return {"imported": imported, "skipped": len(errors), "errors": errors[:10]}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+    Any future bulk-import need should call db_manager.insert_paper_trade(...,
+    quote_source=<explicit non-empty tag, e.g. 'bulk_import'>) directly -- that
+    helper (engine/database/_mixins_trades.py) enforces idempotency_key/epoch and
+    the P1-1 provenance guard (raises on empty quote_source), so it cannot
+    reproduce this bug.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "POST /portfolio/import/trades has been retired (D3-02). It silently "
+            "discarded every imported row (INSERT OR IGNORE swallowed a NOT NULL "
+            "violation on idempotency_key) while reporting success. No live caller "
+            "was found in dashboard/, engine/scripts/, or docs/. For bulk trade "
+            "import use db_manager.insert_paper_trade(..., quote_source='bulk_import') "
+            "directly, or engine/scripts/migrate_json_to_sqlite.py for the one-time "
+            "JSONL migration this endpoint used to serve."
+        ),
+    )
