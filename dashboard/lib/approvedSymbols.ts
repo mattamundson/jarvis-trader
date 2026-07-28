@@ -15,3 +15,10 @@ export function matchesPreferredBaseline(symbolAndFilename: string): boolean {
  * together if the active pair ever changes again.
  */
 export const DEFAULT_BRIEFING_SYMBOLS = ["MES", "MGC"] as const;
+
+/** Mirrors engine/backtest/signals.py::DO_NOT_TRADE_SYMBOLS (TS/Python cannot share a literal) -- update both together. */
+export const HALTED_SYMBOLS = ["MCL", "MNQ", "M2K"] as const;
+
+export function symbolTradeStatus(sym: string): "APPROVED" | "HALTED" {
+  return (HALTED_SYMBOLS as readonly string[]).includes(sym.toUpperCase()) ? "HALTED" : "APPROVED";
+}
