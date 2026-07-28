@@ -683,6 +683,16 @@ class PortfolioTracker:
             max_dd           : maximum drawdown from peak equity (negative or 0)
             best_trade       : highest single-trade P&L
             worst_trade      : lowest single-trade P&L
+            equity_curve     : absolute account equity after each closed trade,
+                               starting_balance-anchored (GT-05: downstream
+                               consumers — e.g. risk/pnl_monitor.py's
+                               PnLMonitor.get_drawdown_pct() — read this key to
+                               find the peak equity used for the drawdown_pct
+                               shown on /health and /mission-control; before
+                               this fix the key was never populated, so the
+                               drawdown calc always saw an empty series and
+                               floored at 0.0 (or -0.0 once SafetyLayer negates
+                               it) regardless of the true drawdown depth)
         """
         # B9 fix: prefer SQLite as single source of truth (Sprint 17 US-1703)
         # Fall back to in-memory _closed if the DB handle isn't available.
@@ -708,6 +718,7 @@ class PortfolioTracker:
         else:
             closed = self._closed
         if not closed:
+            starting_balance = self._get_starting_balance()
             return {
                 "total_pnl": 0.0,
                 "today_pnl": 0.0,
@@ -720,6 +731,8 @@ class PortfolioTracker:
                 "max_dd": 0.0,
                 "best_trade": None,
                 "worst_trade": None,
+                "starting_balance": round(starting_balance, 4),
+                "equity_curve": [round(starting_balance, 4)],
             }
 
         pnls = [t.pnl for t in closed if t.pnl is not None]
@@ -747,10 +760,22 @@ class PortfolioTracker:
 
         profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else None
 
-        # Equity curve for max drawdown
+        # Equity curve for max drawdown. `equity`/`peak`/`max_dd` track the
+        # relative (pnl-only) series used for the `max_dd` dollar figure below;
+        # `equity_curve` tracks the ABSOLUTE account equity (starting_balance +
+        # cumulative pnl) after each closed trade — this is the series consumers
+        # like PnLMonitor.get_drawdown_pct() (risk/pnl_monitor.py) need, since
+        # they compare it against an absolute `current_balance` (also
+        # starting_balance + total_pnl). GT-05: this key was never populated
+        # before, so that downstream peak lookup always saw `[]` and
+        # drawdown_pct floored at 0.0 (or -0.0 once SafetyLayer negates it via
+        # `-pnl_monitor.get_drawdown_pct()`) on /health and /mission-control,
+        # regardless of the true drawdown depth.
+        starting_balance = self._get_starting_balance()
         peak = 0.0
         equity = 0.0
         max_dd = 0.0
+        equity_curve = [round(starting_balance, 4)]
         for p in pnls:
             equity += p
             if equity > peak:
@@ -758,6 +783,7 @@ class PortfolioTracker:
             dd = equity - peak
             if dd < max_dd:
                 max_dd = dd
+            equity_curve.append(round(starting_balance + equity, 4))
 
         return {
             "total_pnl": round(sum(pnls), 4),
@@ -771,7 +797,8 @@ class PortfolioTracker:
             "max_dd": round(max_dd, 4),
             "best_trade": round(max(pnls), 4) if pnls else None,
             "worst_trade": round(min(pnls), 4) if pnls else None,
-            "starting_balance": round(self._get_starting_balance(), 4),
+            "starting_balance": round(starting_balance, 4),
+            "equity_curve": equity_curve,
         }
 
     def _get_starting_balance(self) -> float:
