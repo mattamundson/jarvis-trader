@@ -707,11 +707,19 @@ class SafetyLayer:
                 "cleared_at": None,
             }
         if self._db_path is None:
+            # FAIL CLOSED: no DB path configured means kill state cannot be
+            # verified at all — the same unknown-state class as a DB read
+            # exception below, not evidence the account is safe to trade.
+            logger.error(
+                "SafetyLayer: get_per_account_kill_state(%s) — no DB path "
+                "configured, failing CLOSED (active=True)",
+                account_id,
+            )
             return {
                 "account_id": account_id,
-                "active": False,
+                "active": True,
                 "triggered_at": None,
-                "reason": None,
+                "reason": "kill-state unavailable: no DB path configured",
                 "trigger_metric": None,
                 "trigger_value": None,
                 "cleared_at": None,
@@ -748,14 +756,24 @@ class SafetyLayer:
                 "cleared_at": row["cleared_at"],
             }
         except Exception as exc:
-            logger.warning(
-                "SafetyLayer: get_per_account_kill_state(%s) failed: %s", account_id, exc
+            # FAIL CLOSED: an unreadable kill-state DB is an UNKNOWN state, not a
+            # safe one. Reporting active=False here would silently convert a DB
+            # read failure (lock contention, corruption, disk issue) into
+            # fail-open behavior — the same defect class as the 2026-06-15
+            # inert-kill-switch incident (12+ safety gates rendered inert).
+            # "Unknown state" must never resolve to "safe to trade": treat the
+            # account as halted until a real read succeeds.
+            logger.error(
+                "SafetyLayer: get_per_account_kill_state(%s) failed — failing CLOSED "
+                "(active=True) until DB read succeeds: %s",
+                account_id,
+                exc,
             )
             return {
                 "account_id": account_id,
-                "active": False,
+                "active": True,
                 "triggered_at": None,
-                "reason": None,
+                "reason": f"kill-state read failed: {exc}",
                 "trigger_metric": None,
                 "trigger_value": None,
                 "cleared_at": None,
