@@ -251,6 +251,37 @@ export interface LLMSubsystemHealth {
   vertex_failover_count?: number | null;
 }
 
+// Process-supervision cross-check (/health/full -> subsystems.process_supervision,
+// PRB-24). Compares pm2's believed status+pid for each supervised app against an
+// independent TCP port probe + the real port-owner PID (netstat -ano). A MISMATCH
+// (pm2 says one thing, the OS says another) is the exact failure shape behind the
+// 2026-07-28/29 incidents: an orphan process serving a port pm2 thinks is dead, or
+// pm2 believing a port is up when nothing is actually listening. `status` is
+// "ok" | "mismatch" | "unavailable" | "error"; `unavailable` means pm2 itself
+// couldn't be queried (e.g. not on PATH) — an environment fact, not a live
+// incident, so it renders as a neutral/warn state, not red.
+export interface ProcessSupervisionAppStatus {
+  port: number;
+  pm2_found: boolean;
+  pm2_status: string | null;
+  pm2_pid: number | null;
+  port_alive: boolean;
+  actual_pid: number | null;
+  mismatch_reason: string | null;
+}
+
+export interface ProcessSupervisionHealth {
+  status?: string | null; // ok | mismatch | unavailable | error
+  details?: {
+    available: boolean;
+    supervision_ok: boolean | null;
+    error: string | null;
+    checked_at: string;
+    apps: Record<string, ProcessSupervisionAppStatus>;
+  };
+  error?: string;
+}
+
 export interface FullHealthResponse {
   overall: string;
   timestamp: string;
@@ -260,6 +291,7 @@ export interface FullHealthResponse {
   subsystems: {
     ib_gateway?: IBGatewayHealth;
     llm?: LLMSubsystemHealth;
+    process_supervision?: ProcessSupervisionHealth;
     [key: string]: unknown;
   };
 }
