@@ -176,6 +176,234 @@ def _check_ibgateway_alive() -> tuple[bool, int]:
     return alive, port
 
 
+# ---------------------------------------------------------------------------
+# PRB-24 — pm2-vs-reality process-supervision cross-check.
+#
+# Root cause this guards against: pm2 jlist (what pm2 BELIEVES it is
+# supervising) and a raw TCP port probe (what is ACTUALLY listening) can
+# independently disagree, and nothing before this cross-checked the two. A
+# WinError 10048 port-bind race left a healthy-but-pm2-unsupervised orphan
+# process serving :8010 for a stretch (2026-07-28/29 incident), and a
+# separate 2026-07-28 audit found pm2 believed jarvis-dashboard/jarvis-engine
+# were errored/stopped while orphan processes actually served both ports. A
+# human had to run `pm2 jlist` AND hit /health AND check the port side-by-side
+# to ever notice — this makes that comparison automatic and a MISMATCH a
+# first-class, unambiguous signal instead of something buried in raw JSON.
+#
+# Port-liveness probe pattern mirrors _check_ibgateway_alive above: 127.0.0.1
+# explicit (never 'localhost' — Windows resolves it to ::1 first), short
+# timeout, cached. Must NEVER raise / crash /health — pm2 missing from PATH,
+# a timed-out shell-out, or a malformed netstat parse all degrade to
+# "supervision check unavailable" rather than a 500.
+# ---------------------------------------------------------------------------
+_SUPERVISED_APPS: dict[str, int] = {
+    "jarvis-engine": 8010,
+    "jarvis-dashboard": 3010,
+    "jarvis-bridge-api": 8020,
+}
+_SUPERVISION_CACHE_TTL_SEC = 30.0
+_supervision_cache: dict = {"checked_at": 0.0, "payload": None}
+_supervision_port_cache: dict[int, dict] = {}
+
+
+async def _run_pm2_jlist() -> tuple[list[dict] | None, str | None]:
+    """Shell out to `pm2 jlist`. Returns (processes, error) — error is None on success.
+
+    Never raises: pm2 missing from PATH, a timeout, a non-zero exit, or
+    malformed JSON all resolve to (None, "<reason>") so callers can degrade
+    gracefully to "supervision check unavailable" instead of a 500.
+    """
+    import json
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            "pm2 jlist",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        if proc.returncode != 0:
+            reason = stderr.decode(errors="replace")[:200] if stderr else "no output"
+            return None, f"pm2 jlist exited {proc.returncode}: {reason}"
+        return json.loads(stdout.decode()), None
+    except FileNotFoundError:
+        return None, "pm2 not found on PATH"
+    except asyncio.TimeoutError:
+        return None, "pm2 jlist timed out after 5s"
+    except Exception as exc:
+        return None, f"pm2 jlist failed: {exc}"
+
+
+def _parse_netstat_listening_pid(output: str, port: int) -> int | None:
+    """Parse `netstat -ano` text for the PID LISTENING on the given port.
+
+    Pure function (no subprocess) so it's directly unit-testable against fixed
+    fixture text. Matches any local address ending in ':<port>' (covers
+    127.0.0.1, 0.0.0.0, and IPv6 '[::]' forms) with state LISTENING. The
+    leading colon in the match anchor prevents a numeric-suffix false match
+    (e.g. port 10 never matches a ':8010' row). Returns None if no row matches
+    or the row is malformed.
+    """
+    needle = f":{port}"
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) < 5 or parts[0] != "TCP":
+            continue
+        local_addr, state = parts[1], parts[3]
+        if state != "LISTENING" or not local_addr.endswith(needle):
+            continue
+        try:
+            return int(parts[-1])
+        except ValueError:
+            continue
+    return None
+
+
+async def _get_port_owner_pid(port: int) -> int | None:
+    """Best-effort actual TCP port-owner PID via `netstat -ano` (Windows).
+
+    Never raises — any subprocess/parse failure yields None ("can't confirm
+    owner"), which the cross-check treats as unknown rather than asserting a
+    hard mismatch it can't actually back up.
+    """
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            "netstat -ano",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        return _parse_netstat_listening_pid(stdout.decode(errors="replace"), port)
+    except Exception as exc:
+        logger.debug("supervision: netstat probe for port %s failed: %s", port, exc)
+        return None
+
+
+def _check_port_alive(port: int) -> bool:
+    """TCP liveness probe for an arbitrary port — same pattern/timeout as
+    _check_ibgateway_alive, generalized and cached per-port."""
+    now = time.monotonic()
+    cached = _supervision_port_cache.get(port)
+    if cached and now - cached["checked_at"] < _SUPERVISION_CACHE_TTL_SEC:
+        return cached["alive"]
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.5)
+    try:
+        alive = sock.connect_ex(("127.0.0.1", port)) == 0
+    except Exception:
+        alive = False
+    finally:
+        sock.close()
+
+    _supervision_port_cache[port] = {"checked_at": now, "alive": alive}
+    return alive
+
+
+async def _compute_supervision_status() -> dict:
+    """Cross-check pm2's believed state for each supervised app against the
+    actual TCP port owner. See module-level PRB-24 comment above for the
+    incident this guards against.
+
+    Returns:
+      available     : bool  — False only when pm2 itself couldn't be queried
+      supervision_ok: bool | None — None when unavailable; True iff every app
+                       agrees; False if any app has a mismatch_reason
+      error         : str | None — populated only when unavailable
+      checked_at    : ISO timestamp
+      apps          : {name: {port, pm2_found, pm2_status, pm2_pid, port_alive,
+                        actual_pid, mismatch_reason}}
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    processes, pm2_error = await _run_pm2_jlist()
+
+    if processes is None:
+        return {
+            "available": False,
+            "supervision_ok": None,
+            "error": pm2_error,
+            "checked_at": now_iso,
+            "apps": {},
+        }
+
+    by_name = {p.get("name"): p for p in processes if isinstance(p, dict)}
+    apps: dict[str, dict] = {}
+    all_ok = True
+
+    for app_name, port in _SUPERVISED_APPS.items():
+        entry = by_name.get(app_name)
+        pm2_status = entry.get("pm2_env", {}).get("status") if entry else None
+        pm2_pid = (entry.get("pid") if entry else None) or None  # pm2 uses 0 for stopped
+
+        port_alive = _check_port_alive(port)
+        actual_pid = await _get_port_owner_pid(port) if port_alive else None
+
+        mismatch_reason: str | None = None
+        pm2_believes_up = pm2_status == "online"
+
+        if entry is None and port_alive:
+            mismatch_reason = (
+                f"pm2 has no '{app_name}' entry at all, but port {port} is live "
+                f"(actual_pid={actual_pid}) — an unsupervised/orphan process is serving it"
+            )
+        elif pm2_believes_up and not port_alive:
+            mismatch_reason = (
+                f"pm2 reports '{app_name}' status=online (pid={pm2_pid}) but port {port} "
+                "is not accepting connections"
+            )
+        elif entry is not None and not pm2_believes_up and port_alive:
+            mismatch_reason = (
+                f"pm2 reports '{app_name}' status={pm2_status!r} but port {port} is live "
+                f"(actual_pid={actual_pid}) — an orphan process is serving it under pm2's back"
+            )
+        elif (
+            pm2_believes_up
+            and port_alive
+            and actual_pid is not None
+            and pm2_pid is not None
+            and actual_pid != pm2_pid
+        ):
+            mismatch_reason = (
+                f"pid mismatch on '{app_name}': pm2 believes pid={pm2_pid} but port {port} "
+                f"is actually owned by pid={actual_pid}"
+            )
+
+        if mismatch_reason is not None:
+            all_ok = False
+
+        apps[app_name] = {
+            "port": port,
+            "pm2_found": entry is not None,
+            "pm2_status": pm2_status,
+            "pm2_pid": pm2_pid,
+            "port_alive": port_alive,
+            "actual_pid": actual_pid,
+            "mismatch_reason": mismatch_reason,
+        }
+
+    return {
+        "available": True,
+        "supervision_ok": all_ok,
+        "error": None,
+        "checked_at": now_iso,
+        "apps": apps,
+    }
+
+
+async def _supervision_cached() -> dict:
+    """TTL-cached wrapper around _compute_supervision_status — avoids shelling
+    out to pm2/netstat on every /health/full or /health/supervision hit."""
+    now = time.monotonic()
+    payload = _supervision_cache["payload"]
+    if payload is not None and (now - _supervision_cache["checked_at"]) < _SUPERVISION_CACHE_TTL_SEC:
+        return payload
+
+    fresh = await _compute_supervision_status()
+    _supervision_cache["payload"] = fresh
+    _supervision_cache["checked_at"] = now
+    return fresh
+
+
 def _compute_brier_30d_rolling() -> float | None:
     """Cached 30d rolling Brier surface.
 
@@ -843,6 +1071,22 @@ async def _full_health_inner() -> dict:
     except Exception as e:
         status["llm"] = {"status": "unknown", "error": str(e)}
 
+    # 8. Process supervision cross-check (PRB-24) — pm2 belief vs TCP-port
+    # reality for jarvis-engine/jarvis-dashboard/jarvis-bridge-api. Reuses the
+    # 30s-cached compute so /health/full never adds its own extra pm2/netstat
+    # shell-out latency. supervision_ok=False (a real mismatch) escalates
+    # overall to "degraded" — unavailable (pm2 not on PATH) does not, since
+    # that's an environment fact, not a live incident.
+    try:
+        supervision = await _supervision_cached()
+        ok = supervision.get("supervision_ok")
+        sup_status = "ok" if ok else ("unavailable" if ok is None else "mismatch")
+        status["process_supervision"] = {"status": sup_status, "details": supervision}
+        if ok is False:
+            overall = _escalate_overall(overall, "degraded")
+    except Exception as e:
+        status["process_supervision"] = {"status": "error", "error": str(e)}
+
     return {
         "overall": overall,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1207,6 +1451,35 @@ async def pm2_status():
         return {"found": False, "note": "jarvis-engine not found in pm2 list"}
     except Exception as exc:
         return {"found": False, "error": str(exc)}
+
+
+@router.get(
+    "/health/supervision",
+    description="Cross-check pm2's believed process state against actual TCP "
+    "port liveness and the real port-owner PID (PRB-24). Never raises — pm2 "
+    "unavailable degrades to available=false rather than a 500.",
+)
+async def health_supervision():
+    """pm2-vs-reality process supervision cross-check.
+
+    Independently probes each supervised app's TCP port and (when the port is
+    live) the actual owning PID via `netstat -ano`, then compares against
+    pm2's believed status+pid from `pm2 jlist`. A MISMATCH — pm2 says one
+    thing, the OS says another — is the specific failure class from the
+    2026-07-28/29 incidents (an orphan process serving a port pm2 thinks is
+    dead, or pm2 believing a port is up when nothing is actually listening).
+    """
+    try:
+        return await _supervision_cached()
+    except Exception as exc:
+        logger.exception("health/supervision endpoint error: %s", exc)
+        return {
+            "available": False,
+            "supervision_ok": None,
+            "error": f"supervision check crashed: {exc}",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "apps": {},
+        }
 
 
 @router.get(
