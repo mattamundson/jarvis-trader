@@ -70,6 +70,96 @@ class TestKillSwitch:
             assert result.approved is False
 
 
+class TestDoNotTradeSymbols:
+    """PRB-03 (2026-07-29 prod-readiness audit): DO_NOT_TRADE_SYMBOLS was
+    enforced at signal-generation time only. Anything that built an
+    OrderRequest directly and called check_order() -- e.g. POST
+    /strategies/rl/deploy's RLExecutor path -- bypassed the halt list
+    entirely. This asserts the fix lives at check_order()'s own choke
+    point, independent of live-trading config."""
+
+    def test_do_not_trade_symbol_blocks_regardless_of_live_trading_state(
+        self, mock_safety_layer
+    ):
+        """MCL (a current DO_NOT_TRADE_SYMBOLS member) is rejected by
+        check_order() even with default test settings (LIVE_TRADING_ENABLED
+        is False) -- proves the check fires before, and independent of,
+        the live-trading gate."""
+        # Arrange
+        safety = mock_safety_layer
+        order = OrderRequest(
+            symbol="MCL",
+            quantity=1,
+            order_type="market",
+            estimated_value=1000.0,
+        )
+
+        # Act
+        result = safety.check_order(order, 100_000.0)
+
+        # Assert
+        assert result.approved is False
+        assert "MCL" in result.rejection_reason
+        assert "DO_NOT_TRADE_SYMBOLS" in result.rejection_reason
+
+    def test_do_not_trade_symbol_blocks_lowercase_input(self, mock_safety_layer):
+        """Symbol matching is case-insensitive (matches order.symbol.upper()
+        convention used by every other check in this file)."""
+        safety = mock_safety_layer
+        order = OrderRequest(
+            symbol="mcl",
+            quantity=1,
+            order_type="market",
+            estimated_value=1000.0,
+        )
+
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is False
+        assert "DO_NOT_TRADE_SYMBOLS" in result.rejection_reason
+
+    def test_non_halted_symbol_still_passes_this_check(self, mock_safety_layer, mock_settings):
+        """Regression guard against over-blocking: MES (not on
+        DO_NOT_TRADE_SYMBOLS) must clear check_order() end-to-end once the
+        rest of the gate is opened up, exactly like
+        test_live_trading_enabled_allows_valid_orders above."""
+        # Arrange
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        safety = SafetyLayer(mock_settings)
+
+        order = OrderRequest(
+            symbol="MES",
+            quantity=1,
+            order_type="market",
+            estimated_value=1000.0,
+        )
+
+        # Act
+        result = safety.check_order(order, 100_000.0)
+
+        # Assert
+        assert result.approved is True
+
+    def test_check_do_not_trade_symbols_direct(self, mock_safety_layer):
+        """Direct unit test on the new private check method itself."""
+        safety = mock_safety_layer
+
+        blocked = OrderRequest(
+            symbol="MNQ", quantity=1, order_type="market", estimated_value=1000.0
+        )
+        allowed = OrderRequest(
+            symbol="MES", quantity=1, order_type="market", estimated_value=1000.0
+        )
+
+        blocked_result = safety._check_do_not_trade_symbols(blocked)
+        allowed_result = safety._check_do_not_trade_symbols(allowed)
+
+        assert blocked_result.approved is False
+        assert "MNQ" in blocked_result.rejection_reason
+        assert allowed_result.approved is True
+
+
 class TestLiveTrading:
     """Live trading gate."""
 
@@ -820,7 +910,16 @@ class TestOvernightContractLimit:
         assert result.approved is True
 
     def test_non_overnight_symbol_not_affected(self, mock_safety_layer, mock_settings):
-        """MCL is not in OVERNIGHT_SYMBOLS — no overnight check applied."""
+        """MGC is not in OVERNIGHT_SYMBOLS — no overnight check applied.
+
+        PRB-03 (2026-07-29): was MCL until DO_NOT_TRADE_SYMBOLS gating was
+        added directly to check_order() — MCL is halted (backtest/signals.py)
+        and would now be rejected before ever reaching the overnight check
+        this test exists to exercise. See TestDoNotTradeSymbols above for
+        MCL/MNQ/M2K halt-list coverage. MGC preserves the original intent
+        (a non-MES futures root not in _OVERNIGHT_SYMBOLS) without being a
+        halted symbol.
+        """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
         mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
@@ -828,7 +927,7 @@ class TestOvernightContractLimit:
         safety = SafetyLayer(mock_settings)
 
         order = OrderRequest(
-            symbol="MCL",
+            symbol="MGC",
             quantity=2,
             order_type="market",
             is_futures=True,
@@ -983,14 +1082,17 @@ class TestFuturesMarginGate:
         "symbol,quantity,equity,expected_approved,reason_substr",
         [
             # Active watchlist roots — boundary cases at $10K equity, 30% cap.
-            # MCL margin $1100 → 11% on $10K → ALLOW
-            ("MCL", 1, 10_000.0, True, None),
-            # MCL × 3 = $3300 → 33% on $10K → REJECT
-            ("MCL", 3, 10_000.0, False, "Futures margin"),
-            # MNQ margin $1780 → 17.8% on $10K → ALLOW
-            ("MNQ", 1, 10_000.0, True, None),
-            # MNQ × 2 = $3560 → 35.6% on $10K → REJECT
-            ("MNQ", 2, 10_000.0, False, "Futures margin"),
+            #
+            # PRB-03 (2026-07-29): MCL and MNQ boundary cases previously lived
+            # here were removed. Both are DO_NOT_TRADE_SYMBOLS halt-list
+            # members (backtest/signals.py) and, since check_order() now
+            # gates on that list directly, are rejected before ever reaching
+            # this margin check — their margin math is no longer reachable
+            # through check_order(). Halt-list rejection is covered by
+            # TestDoNotTradeSymbols above; _futures_margin_required() itself
+            # still has direct coverage regardless of halt status
+            # (test_futures_margin_helper_returns_none_for_unknown et al).
+            #
             # MGC margin $1400 → 14% on $10K → ALLOW
             ("MGC", 1, 10_000.0, True, None),
             # MGC × 3 = $4200 → 42% on $10K → REJECT
