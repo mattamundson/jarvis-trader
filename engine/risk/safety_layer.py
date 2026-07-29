@@ -737,6 +737,40 @@ class SafetyLayer:
             finally:
                 conn.close()
             if row is None:
+                # INTENTIONAL FAIL-OPEN (PRB-09, reviewed alongside the GT-49
+                # fail-closed hardening of the two sibling branches below).
+                #
+                # Unlike the _db_path-is-None and except-Exception branches,
+                # "row is None" here is NOT an unknown/unverifiable state — it
+                # is the documented, expected representation of "this account
+                # has never been triggered or cleared":
+                #   - migration_028 (engine/database/migrations.py) creates
+                #     this table empty; it does not seed active=0 rows for
+                #     any account_id at migration time.
+                #   - No code path in this codebase ever DELETEs a row from
+                #     per_account_kill_state — trigger_per_account_kill() and
+                #     clear_per_account_kill() only INSERT ... ON CONFLICT DO
+                #     UPDATE, so a row that once existed cannot silently
+                #     disappear through normal application logic.
+                #   - A genuinely wiped/dropped TABLE (as opposed to a row
+                #     that was simply never created) raises a sqlite3
+                #     OperationalError from the SELECT above, which is
+                #     already caught and fails CLOSED by the except block
+                #     below — that failure mode is covered by the sibling
+                #     branch, not this one.
+                # Flipping this branch to fail-closed would make every new
+                # account permanently halted from creation, since nothing
+                # ever auto-seeds an active=0 row and clear_per_account_kill()
+                # is explicitly a human-only path (see its docstring) — not
+                # invoked automatically on startup. That would break the
+                # per-account kill switch feature outright, not just harden
+                # it. Residual risk: out-of-band manual DB tampering (e.g. a
+                # raw `DELETE FROM per_account_kill_state ...` run outside
+                # this application) could still produce a false "never
+                # triggered" read here — that is treated as a distinct,
+                # out-of-band DB-integrity threat model equivalent to
+                # directly editing this table's active column, not something
+                # this code-level fail-closed/fail-open decision can address.
                 return {
                     "account_id": account_id,
                     "active": False,
