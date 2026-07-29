@@ -2778,14 +2778,20 @@ def _make_parallel_paper_db(tmp_path) -> str:
 class TestParallelPaperKillState:
     """Per-account kill state when ENABLE_PARALLEL_PAPER=1."""
 
-    def test_get_per_account_kill_state_enabled_db_path_none(self, mock_settings):
-        """ENABLE_PARALLEL_PAPER=1 but no db_path → returns dict with active=False."""
+    def test_get_per_account_kill_state_enabled_db_path_none_fails_closed(self, mock_settings):
+        """ENABLE_PARALLEL_PAPER=1 but no db_path -> unknown state, fails CLOSED (active=True).
+
+        GT-49 follow-up: no DB path means kill state cannot be verified at
+        all -- the same unknown-state class as a DB read exception, not
+        evidence the account is safe to trade.
+        """
         with patch.dict("os.environ", {"ENABLE_PARALLEL_PAPER": "1"}):
             safety = SafetyLayer(mock_settings)
             safety._db_path = None  # ensure no db_path despite env var
             state = safety.get_per_account_kill_state("A")
-            assert state["active"] is False
+            assert state["active"] is True
             assert state["account_id"] == "A"
+            assert "no db path" in state["reason"].lower()
 
     def test_get_per_account_kill_state_no_row(self, mock_settings, tmp_path):
         """ENABLE_PARALLEL_PAPER=1, DB has no row → active=False."""

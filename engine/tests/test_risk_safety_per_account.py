@@ -67,13 +67,14 @@ class TestGetPerAccountKillStateWithDb:
         assert state["account_id"] == "A"
         assert state["active"] is False
 
-    def test_db_path_none_returns_inactive(self, mock_settings):
+    def test_db_path_none_returns_active_fail_closed(self, mock_settings):
+        """GT-49 follow-up: no db_path is an unknown state, fails CLOSED."""
         os.environ["ENABLE_PARALLEL_PAPER"] = "1"
         try:
             sl = SafetyLayer(mock_settings)  # no db_path → _db_path=None
             sl._db_path = None
             state = sl.get_per_account_kill_state("A")
-            assert state["active"] is False
+            assert state["active"] is True
         finally:
             del os.environ["ENABLE_PARALLEL_PAPER"]
 
@@ -198,6 +199,22 @@ class TestGetPerAccountKillStateException:
                     "is_account_halted must fail CLOSED (block orders) when the "
                     "per-account kill-state DB read raises, not fail open"
                 )
+        finally:
+            del os.environ["ENABLE_PARALLEL_PAPER"]
+
+    def test_no_db_path_makes_real_caller_treat_account_as_halted(self, mock_settings):
+        """Real-caller trace for the sibling `_db_path is None` branch (GT-49
+        follow-up): is_account_halted must block orders when no DB path is
+        configured at all, not just when a configured DB read raises.
+        """
+        os.environ["ENABLE_PARALLEL_PAPER"] = "1"
+        try:
+            sl = SafetyLayer(mock_settings)
+            sl._db_path = None
+            assert sl.is_account_halted("A") is True, (
+                "is_account_halted must fail CLOSED (block orders) when no "
+                "per-account kill-state DB path is configured, not fail open"
+            )
         finally:
             del os.environ["ENABLE_PARALLEL_PAPER"]
 
