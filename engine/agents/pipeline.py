@@ -2132,19 +2132,27 @@ class TradingPipeline:
             return fund.to_dict() if hasattr(fund, "to_dict") else fund
 
         except Exception as e:
+            # FAIL CLOSED (PRB-11, mirrors GT-49): an exception at the Fund
+            # Manager stage is an UNKNOWN portfolio-level verdict, not evidence
+            # the trade is safe. This is the real-caller wrapper around
+            # FundManagerAgent.approve() — even with fund_manager.py's own
+            # internal exception handling fixed to fail closed, an exception
+            # raised outside that inner try (e.g. a malformed trade/risk
+            # decision) would still reach here, so this site must independently
+            # fail closed too. Silently approving at qty=1 previously converted
+            # a stage failure into fail-open behavior — the same defect class
+            # as the 2026-06-15 inert-kill-switch incident.
             err = f"Fund Manager stage failed: {e}"
             logger.error(f"[Pipeline] {err}")
             errors.append(err)
-            qty = risk_decision.get("modified_quantity") or trade_decision.get("quantity", 1)
-            from config import settings as _cfg
 
             return {
-                "approved": True,
-                "final_quantity": min(int(qty), 1),
-                "priority": "immediate",
-                "portfolio_impact": "Fund Manager failed — conservative fallback approval",
-                "reasoning": f"Fund Manager exception: {e}. Approved at min size (approval per REQUIRE_HUMAN_APPROVAL flag).",
-                "requires_human_approval": bool(_cfg.REQUIRE_HUMAN_APPROVAL),
+                "approved": False,
+                "final_quantity": 0,
+                "priority": "skip",
+                "portfolio_impact": "Fund Manager stage failed — rejected, fail-closed on unknown portfolio-level verdict",
+                "reasoning": f"Fund Manager exception: {e}. Failing CLOSED (rejected) rather than auto-approving.",
+                "requires_human_approval": True,  # Surface to Matt regardless of REQUIRE_HUMAN_APPROVAL
                 "timestamp": datetime.now().isoformat(),
             }
 
