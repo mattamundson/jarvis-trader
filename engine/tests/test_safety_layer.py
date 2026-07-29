@@ -2987,14 +2987,21 @@ class TestGetPerAccountKillStateDisabled:
 
 class TestParallelPaperDbExceptions:
     def test_get_per_account_kill_state_db_exception(self, mock_settings, tmp_path):
-        """sqlite3.connect raises during get_per_account_kill_state → except (lines 612–616)."""
+        """sqlite3.connect raises during get_per_account_kill_state → FAILS CLOSED (GT-49).
+
+        An unreadable kill-state DB is an UNKNOWN state, not a safe one — the
+        except branch must report active=True (halted) rather than converting
+        a DB read failure into fail-open behavior (2026-06-15 inert-kill-switch
+        defect class).
+        """
         db_path = _make_parallel_paper_db(tmp_path)
         with patch.dict("os.environ", {"ENABLE_PARALLEL_PAPER": "1"}):
             safety = SafetyLayer(mock_settings, db_path=db_path)
             with patch("sqlite3.connect", side_effect=Exception("DB dead")):
                 state = safety.get_per_account_kill_state("A")
-        assert state["active"] is False
+        assert state["active"] is True
         assert state["account_id"] == "A"
+        assert "DB dead" in state["reason"]
 
     def test_trigger_per_account_kill_db_exception(self, mock_settings, tmp_path):
         """sqlite3.connect raises during trigger_per_account_kill → except (lines 684–685)."""
