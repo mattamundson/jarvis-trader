@@ -34,6 +34,7 @@ from approval.service import approved_watchlist_symbols
 from config import settings
 from data.provenance import DEFAULT_STALE_AFTER_S, derive_is_live
 from execution.order_router import FUTURES_SYMBOLS
+from portfolio.tracker import TradeCloseNotPersistedError
 from utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
 from utils.trade_invariants import is_inverted_stop
 
@@ -950,6 +951,11 @@ async def paper_trade(req: PaperTradeSyncRequest):
             # ExitPriceSanityError (phantom-price guard) subclasses ValueError —
             # reject a corrupt exit with 422 rather than letting it 500.
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except TradeCloseNotPersistedError as exc:
+            # GT-48: DB UPDATE affected 0 rows (stale id, already closed
+            # elsewhere, or a race) — surface a real conflict instead of a
+            # false "closed" success or an unhandled 500.
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {
             "status": "closed",
             "trade_id": closed.trade_id,
@@ -2175,6 +2181,11 @@ async def submit_paper_trade(req: PaperTradeRequest):
         except ValueError as e:
             # ExitPriceSanityError (phantom-price guard) subclasses ValueError.
             raise HTTPException(422, str(e)) from e
+        except TradeCloseNotPersistedError as e:
+            # GT-48: DB UPDATE affected 0 rows (stale id, already closed
+            # elsewhere, or a race) — surface a real conflict instead of a
+            # false "closed" success or an unhandled 500.
+            raise HTTPException(409, str(e)) from e
 
         try:
             from notifications.whatsapp import format_trade_closed_alert, send_whatsapp_message
