@@ -1,0 +1,305 @@
+{
+  "date": "2026-07-28",
+  "session_bias": {
+    "session_type": "trend_day",
+    "directional_bias": "bearish",
+    "conviction": 0.85,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 12
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 82.43,
+      "target2": 83.51,
+      "stop1": 80.63,
+      "win_rate": 84.85,
+      "rr": 0.69,
+      "timestamp": "2026-07-28T00:55:06.116-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 82.08,
+      "target2": 83.16,
+      "stop1": 80.28,
+      "win_rate": 84.76,
+      "rr": 0.69,
+      "timestamp": "2026-07-27T23:44:03.803-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 81.77,
+      "target2": 82.85,
+      "stop1": 79.97,
+      "win_rate": 84.66,
+      "rr": 0.69,
+      "timestamp": "2026-07-27T21:24:04.047-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 81.77,
+      "target2": 82.85,
+      "stop1": 79.97,
+      "win_rate": 84.43,
+      "rr": 0.68,
+      "timestamp": "2026-07-28T02:46:03.234-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 81.47,
+      "target2": 82.55,
+      "stop1": 79.67,
+      "win_rate": 84.34,
+      "rr": 0.68,
+      "timestamp": "2026-07-28T02:06:01.542-05:00"
+    }
+  ],
+  "corey_quote": "Watch for relief rallies back up to test 7500. Then if it still holds they'll be looking to break support and trade under 7400",
+  "commentary_health": [
+    {
+      "date": "2026-07-29",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 5
+    },
+    {
+      "date": "2026-07-28",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.85,
+      "message_count": 12
+    },
+    {
+      "date": "2026-07-26",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.85,
+      "message_count": 14
+    },
+    {
+      "date": "2026-07-22",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 9
+    },
+    {
+      "date": "2026-07-21",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.45,
+      "message_count": 15
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 23,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "anthropic",
+    "primary_provider": "openai",
+    "primary_healthy": false,
+    "providers_available": 4,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": true
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 106,
+    "failing_enabled": 22,
+    "failing_disabled": 3,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Snapshot-Weekly",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-CoreyFeedStaleness",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DailyMorningBriefing",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiscordGitDigest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-forecast-scorer",
+        "result": "0x80070002"
+      },
+      {
+        "name": "jarvis-heartbeat-brief",
+        "result": "0x80070002"
+      },
+      {
+        "name": "jarvis-heartbeat-framing-brief",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-heartbeat-gapfill-papertrack",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-heartbeat-options-signals",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-heartbeat-preclose-framing-brief",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-HermesUpgradeScan",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-IngestStaleAlert",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-InsightsReview",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-LLMWatchdog",
+        "result": "0x41306"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x80070002"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-SystemStatus",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Trader-StrategyRD",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-TranscriptIngest",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 2.4,
+        "newest": "2026-07-27T04:24:35.587736+00:00",
+        "files": 6,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 41.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 41.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 2.4,
+        "newest": "2026-07-27T04:43:33.248255+00:00",
+        "files": 8,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 1.9,
+        "newest": "2026-07-27T15:35:23.005772+00:00",
+        "files": 38,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 2.4,
+        "newest": "2026-07-27T04:53:47.787738+00:00",
+        "files": 23,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 2.4,
+        "newest": "2026-07-27T04:58:10.444947+00:00",
+        "files": 13,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 41.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 41.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
