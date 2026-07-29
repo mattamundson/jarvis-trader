@@ -563,6 +563,24 @@ class IBGatewayConnector:
             for w in risk_result.warnings:
                 logger.warning("IBGatewayConnector order warning | %s", w)
 
+        # PRB-01: check_order() may return an adjusted_order with a reduced
+        # quantity (loss-tracker de-risking after consecutive losses). The
+        # order actually filled below MUST reflect that reduced size, not the
+        # caller's original `quantity` -- discarding adjusted_order here
+        # previously meant the safety layer believed it had de-risked while
+        # full-size paper fills still went out (2026-07-29 prod-readiness
+        # audit). This is the OrderRouter's live futures/equity paper path.
+        final_order = risk_result.adjusted_order or order_req
+        final_quantity = int(final_order.quantity)
+        if final_quantity != quantity:
+            logger.warning(
+                "IBGatewayConnector.submit_order: risk-adjusted size %d -> %d for symbol=%s",
+                quantity,
+                final_quantity,
+                symbol,
+            )
+            order = {**order, "quantity": final_quantity}
+
         # ── Paper trading: simulate fill with slippage ────────────────────────
         if self._settings.PAPER_TRADING:
             return await self._submit_paper_order(order, risk_result.warnings)
