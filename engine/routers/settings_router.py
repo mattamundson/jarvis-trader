@@ -220,6 +220,36 @@ async def update_strategy_params(params: StrategyParams):
         raise HTTPException(500, f"Failed to update strategy parameters: {e}") from e
 
 
+@router.post("/strategy/params/reset")
+async def reset_strategy_params():
+    """
+    Reset strategy parameter configuration to defaults.
+
+    Restores every field to the StrategyParams pydantic defaults (the same
+    values documented on GET /strategy/params: ema_short=8, ema_long=21,
+    ema_smoother=34, atr_length=14, atr_mult_stop=1.5, atr_mult_target=3.0,
+    min_volume_sma=20, rsi_length=14, rsi_oversold=30, rsi_overbought=70,
+    adaptive_regime=True, volume_filter=False, mtf_filter=False).
+
+    Changes take effect immediately for future backtests and live trading,
+    same as PUT /strategy/params. Existing positions are unaffected.
+    """
+    global _strategy_params
+    try:
+        old_params = _strategy_params.model_dump()
+        _strategy_params = StrategyParams()
+        logger.info(f"[STRATEGY] Parameters reset to defaults: {_strategy_params.model_dump()}")
+
+        return {
+            "status": "reset",
+            "old_params": old_params,
+            "new_params": _strategy_params.model_dump(),
+        }
+    except Exception as e:
+        logger.error(f"[STRATEGY] Reset failed: {e}")
+        raise HTTPException(500, f"Failed to reset strategy parameters: {e}") from e
+
+
 # ── Analysis ──────────────────────────────────────────────────────────────
 
 

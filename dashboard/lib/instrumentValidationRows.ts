@@ -78,3 +78,22 @@ export function buildInstrumentRow(
 export function buildDefaultInstrumentRows(): InstrumentRow[] {
   return ALL_TRACKED_SYMBOLS.map((symbol) => buildInstrumentRow(symbol, new Map()));
 }
+
+/**
+ * Format a scorecard row's win rate for display (GT-36, 2026-07-28 audit).
+ *
+ * `row.wr` is already percent-scaled by the time it reaches a row — it comes
+ * straight from `wrGate?.current` above, which is sourced from the engine's
+ * `/paper/validation/approved-paper-gates` gate object
+ * (`engine/routers/paper_validation_router.py::_build_validation_gate_rows`),
+ * where `current = round(win_rate_pct, 2)` and `win_rate_pct` is already
+ * `winning_trades / total_trades * 100` (the gate also carries `unit: "%"`).
+ * InstrumentValidationScorecard.tsx previously re-multiplied this by 100 in
+ * its JSX (`${(row.wr * 100).toFixed(0)}%`), turning a real 43.75% win rate
+ * into "4375%". Extracted here (mirroring the instrumentValidationRows.ts
+ * split for D2-03-v2) so the formatting is unit-testable without rendering
+ * JSX.
+ */
+export function formatWinRatePct(wr: number | null): string {
+  return wr !== null ? `${wr.toFixed(0)}%` : "—";
+}
