@@ -126,6 +126,11 @@ def test_check_order_blocks_unpromoted_strategy_when_enforced(mock_settings, mon
     monkeypatch.setenv("PROMOTION_GATE_ENFORCE", "1")
     sl = _sl(mock_settings)
     monkeypatch.setattr(sl, "_check_kill_switch", lambda: RiskCheckResult(approved=True))
+    # PRB-22 (2026-07-29): MGC now carries paper_config.enabled=False
+    # (backtest/paper_config.py) and would be rejected here first, before ever
+    # reaching the promotion gate this test exists to isolate — stub it out
+    # the same way the two checks above it already are.
+    monkeypatch.setattr(sl, "_check_paper_config_enabled", lambda order: RiskCheckResult(approved=True))
     monkeypatch.setattr(sl, "_check_gating_conditions", lambda: RiskCheckResult(approved=True))
     order = OrderRequest(
         symbol="MGC",
