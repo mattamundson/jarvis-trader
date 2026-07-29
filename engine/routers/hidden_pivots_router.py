@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -125,6 +126,44 @@ def _get_watchlist() -> list[str]:
         if symbols:
             return list(symbols)
     return DEFAULT_WATCHLIST
+
+
+# ── Price-coverage floor (PRB-21) ───────────────────────────────────────────────
+# The HP scan (above) covers the full watchlist via get_bars(), which has its own
+# multi-tier waterfall. The dashboard's separate LIVE-PRICE ticker column goes
+# through /prices/snapshot -> MarketDataManager.get_current_price(), whose last
+# resort is a CSV backtest-cache read (Tier 5). When IBKR is down and Polygon's
+# 4-calls/60s free-tier rate limit is exhausted (engine/data/market_data.py
+# PolygonDataConnector._RATE_LIMIT), a symbol with no CSV cache has zero floor
+# and shows "--" with certainty. Only 11 of the 33 watchlist symbols have ever
+# been backtested and so only those 11 have a cache file. Rather than let the
+# other 22 poll a floor that structurally can't exist, the dashboard should only
+# poll live prices for the covered subset -- pattern/level scanning is
+# unaffected (still runs the full watchlist above). See PRB-21 for the b3
+# (Polygon batch snapshot) option ruled out: live probe against the configured
+# key returned 403 NOT_AUTHORIZED (plan doesn't include the multi-ticker
+# snapshot endpoint), and b2 (proactively seeding cache for all 33) is tracked
+# as PRB-22, a separate follow-up.
+_CSV_CACHE_DIR = Path(__file__).resolve().parent.parent / "backtest" / "cache"
+
+
+def _has_csv_price_floor(symbol: str) -> bool:
+    """True if a 1d CSV backtest-cache file exists for ``symbol``.
+
+    Mirrors the glob pattern MarketDataManager._load_csv_cache uses for its
+    Tier-5 (CSV cache) fallback inside get_current_price — kept in sync
+    deliberately rather than imported, since this only needs a cheap existence
+    check, not a bar load.
+    """
+    try:
+        return next(_CSV_CACHE_DIR.glob(f"{symbol.upper()}_*_1d.csv"), None) is not None
+    except OSError:
+        return False
+
+
+def get_price_covered_watchlist() -> list[str]:
+    """Subset of the current watchlist that has a real price-fallback floor."""
+    return [s for s in _get_watchlist() if _has_csv_price_floor(s)]
 
 
 async def _fetch_and_scan(
@@ -244,6 +283,24 @@ async def scan_watchlist(
     )
     _last_scan_cache = response
     return response
+
+
+@router.get("/price-coverage")
+async def get_price_coverage() -> dict[str, Any]:
+    """
+    Which watchlist symbols currently have a real live-price fallback floor
+    (PRB-21). The dashboard's live-price ticker poll should only request this
+    `covered_symbols` subset -- pattern/level scanning via /scan still covers
+    the full watchlist regardless.
+    """
+    watchlist = _get_watchlist()
+    covered = get_price_covered_watchlist()
+    covered_set = set(covered)
+    return {
+        "watchlist_size": len(watchlist),
+        "covered_symbols": covered,
+        "uncovered_symbols": [s for s in watchlist if s not in covered_set],
+    }
 
 
 @router.get("/analyze/{symbol}", response_model=HPSignal)

@@ -18,9 +18,10 @@ import {
   XCircle,
   Clock,
   BarChart2,
+  GitCompare,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, type ProcessSupervisionHealth } from "@/lib/api";
 import { PreFlightWidget } from "@/components/PreFlightWidget";
 import { SystemMetricsPanel } from "@/components/SystemMetricsPanel";
 import { AlertSummaryWidget } from "@/components/AlertSummaryWidget";
@@ -69,6 +70,7 @@ interface FullHealthResponse {
     circuit_breakers?: SubsystemStatus;
     portfolio?: SubsystemStatus;
     pnl_monitor?: SubsystemStatus;
+    process_supervision?: ProcessSupervisionHealth;
   };
 }
 
@@ -152,8 +154,10 @@ function OverallStatusBadge({ overall }: { overall: string }) {
 
 // ── Subsystem card ─────────────────────────────────────────────────────────────
 
+// Excludes "process_supervision": it has its own richer shape (ProcessSupervisionHealth)
+// and is rendered via the dedicated ProcessSupervisionCard below, not this generic loop.
 interface SubsystemConfig {
-  key: keyof FullHealthResponse["subsystems"];
+  key: Exclude<keyof FullHealthResponse["subsystems"], "process_supervision">;
   label: string;
   icon: React.ReactNode;
   detail: (s: SubsystemStatus) => string | null;
@@ -335,6 +339,118 @@ function SubsystemCard({
       {data?.error && (
         <div className="rounded-lg bg-bear/10 border border-bear/20 px-3 py-2">
           <p className="text-xs text-bear font-mono break-all">{data.error}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Process supervision card (PRB-24) ────────────────────────────────────────
+//
+// pm2 jlist (what pm2 BELIEVES it supervises) and a live TCP port + PID probe
+// (what is ACTUALLY listening) can independently disagree — an orphan process
+// serving a port pm2 thinks is dead, or vice versa. This is the specific
+// failure shape behind the 2026-07-28/29 incidents where nothing surfaced a
+// mismatch as a finding and a human had to check pm2/health/the port
+// side-by-side to notice. Rendered as its own card (not folded into the
+// generic SUBSYSTEMS grid above) because a mismatch needs the per-app
+// pm2-vs-actual detail, not just a one-line status.
+function ProcessSupervisionCard({ data }: { data: ProcessSupervisionHealth | undefined }) {
+  const status = data?.status; // ok | mismatch | unavailable | error
+  const details = data?.details;
+  const apps = details?.apps ?? {};
+  const appEntries = Object.entries(apps);
+  const hasMismatch = status === "mismatch";
+
+  const borderClass = hasMismatch
+    ? "border-bear/40 bg-bear/5"
+    : status === "ok"
+    ? "border-bull/20 bg-card"
+    : "border-border bg-card";
+
+  const badgeVariant: "bull" | "warn" | "bear" | "neutral" =
+    status === "ok" ? "bull" : hasMismatch ? "bear" : "neutral";
+
+  const badgeLabel =
+    status === "ok"
+      ? "In sync"
+      : hasMismatch
+      ? "MISMATCH"
+      : status === "unavailable"
+      ? "Unavailable"
+      : status === "error"
+      ? "Error"
+      : "Unknown";
+
+  const badgeIcon = hasMismatch ? (
+    <AlertTriangle className="h-4 w-4 text-bear" />
+  ) : status === "ok" ? (
+    <CheckCircle2 className="h-4 w-4 text-bull" />
+  ) : (
+    <Clock className="h-4 w-4 text-muted-foreground" />
+  );
+
+  return (
+    <div className={`rounded-xl border p-4 space-y-3 ${borderClass}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div
+            className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+              hasMismatch ? "text-bear bg-bear/10" : status === "ok" ? "text-bull bg-bull/10" : "text-muted-foreground bg-muted"
+            }`}
+          >
+            <GitCompare className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Process Supervision (pm2 vs reality)</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {status === "unavailable"
+                ? (data?.error ?? details?.error ?? "pm2 unreachable")
+                : hasMismatch
+                ? "pm2's belief disagrees with the actual TCP port owner"
+                : status === "ok"
+                ? "pm2 and live port/PID state agree"
+                : "No data yet"}
+            </p>
+          </div>
+        </div>
+        <Badge variant={badgeVariant}>
+          <span className="flex items-center gap-1">
+            {badgeIcon}
+            {badgeLabel}
+          </span>
+        </Badge>
+      </div>
+
+      {appEntries.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+          {appEntries.map(([name, app]) => {
+            const mismatched = !!app.mismatch_reason;
+            return (
+              <div
+                key={name}
+                className={`rounded-lg border px-3 py-2 space-y-1 ${
+                  mismatched ? "border-bear/30 bg-bear/10" : "border-border bg-muted/30"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-semibold text-foreground">{name}</span>
+                  <span className="text-[10px] font-mono text-muted-foreground">:{app.port}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  pm2: <span className="font-mono">{app.pm2_status ?? "not tracked"}</span>
+                  {app.pm2_pid != null && <span className="font-mono"> (pid {app.pm2_pid})</span>}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  port: <span className="font-mono">{app.port_alive ? "alive" : "dead"}</span>
+                  {app.actual_pid != null && <span className="font-mono"> (pid {app.actual_pid})</span>}
+                </p>
+                {mismatched && (
+                  <p className="text-[11px] text-bear font-mono break-words">{app.mismatch_reason}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -551,6 +667,9 @@ export default function HealthPage() {
             ))}
           </div>
         )}
+
+        {/* Process supervision (PRB-24) — pm2 belief vs TCP-port/PID reality */}
+        {data && <ProcessSupervisionCard data={subsystems.process_supervision} />}
 
         {/* System Metrics Panel — DB record counts + engine meta */}
         <SystemMetricsPanel />
