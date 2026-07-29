@@ -14,8 +14,9 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { fetchHiddenPivotsScan, fetchPriceSnapshot } from "@/lib/api";
+import { fetchHiddenPivotsScan, fetchPriceCoverage, fetchPriceSnapshot } from "@/lib/api";
 import type { HPSignal, PriceSnapshot } from "@/lib/api";
+import { filterToPriceCoveredSymbols } from "@/lib/hiddenPivotsPriceCoverage";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,9 @@ const REFRESH_MS = 60_000;
 // Price snapshot has a 60s server cache; poll a bit faster so the UI catches a
 // refresh within ~15s of it landing. Cheap — repeats just hit the cache.
 const PRICE_REFRESH_MS = 15_000;
+// Which watchlist symbols have a real price floor changes only when the CSV
+// backtest cache is refreshed (occasional) — no need to poll this often.
+const PRICE_COVERAGE_REFRESH_MS = 5 * 60_000;
 
 const PATTERN_LABEL: Record<string, string> = {
   rounded_base: "Rounded base / saucer",
@@ -153,11 +157,21 @@ export default function HiddenPivotsPage() {
     { refreshInterval: REFRESH_MS, revalidateOnFocus: false, shouldRetryOnError: false }
   );
 
-  // Live prices for the scanned symbols, polled independently of the (slow) scan.
-  const symbolList = useMemo(
-    () => (data?.details ?? []).map((d) => d.symbol),
-    [data]
+  // Which symbols have a real live-price fallback floor (PRB-21) — a symbol
+  // with no CSV-cache floor shows "--" with certainty once IBKR + Polygon's
+  // rate limit both miss, so there's no point polling it every 15s. Scanning
+  // (above) is unaffected and still covers the full watchlist.
+  const { data: priceCoverage } = useSWR(
+    "hp-price-coverage",
+    fetchPriceCoverage,
+    { refreshInterval: PRICE_COVERAGE_REFRESH_MS, revalidateOnFocus: false, shouldRetryOnError: false }
   );
+
+  // Live prices for the scanned symbols, polled independently of the (slow) scan.
+  const symbolList = useMemo(() => {
+    const scanned = (data?.details ?? []).map((d) => d.symbol);
+    return filterToPriceCoveredSymbols(scanned, priceCoverage?.covered_symbols);
+  }, [data, priceCoverage]);
   const { data: prices } = useSWR<PriceSnapshot>(
     symbolList.length ? ["hp-prices", symbolList.join(",")] : null,
     () => fetchPriceSnapshot(symbolList),
