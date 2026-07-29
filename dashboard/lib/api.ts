@@ -604,6 +604,24 @@ export async function fetchHiddenPivotsScan(
   );
 }
 
+/** GET /hidden-pivots/price-coverage response (PRB-21). */
+export interface PriceCoverageResponse {
+  watchlist_size: number;
+  covered_symbols: string[];
+  uncovered_symbols: string[];
+}
+
+/**
+ * Which watchlist symbols have a real live-price fallback floor (CSV cache).
+ * The dashboard's live-price ticker poll uses this to avoid hammering symbols
+ * that will show "--" with certainty once IBKR + Polygon's rate limit both
+ * miss — see PRB-21. Pattern/level scanning (fetchHiddenPivotsScan) is
+ * unaffected and still covers the full watchlist.
+ */
+export async function fetchPriceCoverage(): Promise<PriceCoverageResponse> {
+  return fetchEngine<PriceCoverageResponse>(`/hidden-pivots/price-coverage`);
+}
+
 /**
  * Last price + daily change for the given symbols (GET /prices/snapshot).
  * Goes through the engine proxy (REST), so it works on the remote/Vercel
