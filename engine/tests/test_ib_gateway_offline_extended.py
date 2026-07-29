@@ -92,11 +92,16 @@ async def test_ib_order_manager_uses_gateway(tmp_path) -> None:
     safety.attach_ib_gateway(conn)
 
     om = IBOrderManager(safety, ib_gateway=conn, portfolio_tracker=tracker)
+    # Symbol was MNQ; switched to MES (PRB-03, 2026-07-29). MNQ is a
+    # DO_NOT_TRADE_SYMBOLS halt-list member (backtest/signals.py) and, since
+    # check_order() now gates on that list directly, is rejected before ever
+    # reaching the IBOrderManager/connector plumbing this test exists to
+    # exercise. MES is unaffected and preserves the original intent.
     res = await om.submit_order(
-        symbol="MNQ",
+        symbol="MES",
         action="BUY",
         quantity=1,
-        price=17500.0,
+        price=5300.0,
         order_type="MKT",
         limit_price=None,
     )
