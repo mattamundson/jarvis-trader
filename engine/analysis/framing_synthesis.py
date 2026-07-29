@@ -31,7 +31,12 @@ from typing import Any, Literal, Optional
 logger = logging.getLogger(__name__)
 
 MODEL = "claude-sonnet-4-6"
-MAX_TOKENS = 2500
+# 2500 was too tight: 07-22 and 07-29 both hit the cap exactly (out:2500) and
+# got degraded to fallback because generation was truncated before the
+# required trailing "Caveats:" section. Working runs (07-16/07-17) used
+# ~1512-1521 tokens, so 4096 leaves real headroom without materially
+# changing cost.
+MAX_TOKENS = 4096
 
 _SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / ".claude" / "skills"
 _SKILL_MD_PATH = _SKILLS_DIR / "market-framing-brief" / "SKILL.md"
