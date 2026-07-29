@@ -160,6 +160,148 @@ class TestDoNotTradeSymbols:
         assert allowed_result.approved is True
 
 
+class TestPaperConfigEnabled:
+    """PRB-22 (2026-07-29 prod-readiness audit): backtest/paper_config.py's
+    per-symbol `enabled` flag was never consulted by check_order() -- the
+    universal choke point submit_paper_order() and every other broker-facing
+    call site routes through (confirmed by the PRB-01 call-graph audit).
+    A separate service-layer check (gate_v2_policy.is_strategy_authorized(),
+    consulted by approval/service.py's ensure_approval_allowed()) DID read
+    the flag, but routers/approval_queue_router.py's own
+    POST /{candidate_id}/approve endpoint -- the autonomous-scheduler
+    candidate-queue path -- never called it, so a symbol explicitly marked
+    enabled=False in paper_config.py (e.g. MGC, disabled since 2026-06-26)
+    could still reach submit_paper_order() and the broker through that path.
+    This asserts the fix lives at check_order()'s own choke point, independent
+    of which approval router a candidate came through."""
+
+    def test_disabled_symbol_blocks_regardless_of_approval_path(self, mock_safety_layer):
+        """MGC (paper_config.enabled=False as of 2026-06-26) is rejected by
+        check_order() even with default test settings (LIVE_TRADING_ENABLED
+        is False) -- proves the check fires before, and independent of, the
+        live-trading gate, exactly like TestDoNotTradeSymbols above."""
+        safety = mock_safety_layer
+        order = OrderRequest(
+            symbol="MGC",
+            quantity=1,
+            order_type="market",
+            estimated_value=1000.0,
+        )
+
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is False
+        assert "MGC" in result.rejection_reason
+        assert "paper_config.enabled" in result.rejection_reason
+
+    def test_disabled_symbol_blocks_lowercase_input(self, mock_safety_layer):
+        """Symbol matching is case-insensitive (matches order.symbol.upper()
+        convention used by every other check in this file)."""
+        safety = mock_safety_layer
+        order = OrderRequest(
+            symbol="mgc",
+            quantity=1,
+            order_type="market",
+            estimated_value=1000.0,
+        )
+
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is False
+        assert "paper_config.enabled" in result.rejection_reason
+
+    def test_enabled_symbol_still_passes_this_check(self, mock_settings):
+        """Regression guard against over-blocking: MES (paper_config.enabled=True
+        in MES_TREND_PAPER_CONFIG) must clear check_order() end-to-end once the
+        rest of the gate is opened up."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        safety = SafetyLayer(mock_settings)
+
+        order = OrderRequest(
+            symbol="MES",
+            quantity=1,
+            order_type="market",
+            estimated_value=1000.0,
+        )
+
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is True, result.rejection_reason
+
+    def test_symbol_with_no_paper_config_entry_unaffected(self, mock_settings):
+        """Regression guard against over-blocking the other direction:
+        a symbol with NO PAPER_CONFIGS entry at all (e.g. an equity/option,
+        or a futures root JARVIS doesn't run a paper strategy for) must not
+        be blocked by this check -- it only fires on an entry explicitly
+        marked enabled=False, never on the absence of an entry."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        safety = SafetyLayer(mock_settings)
+
+        order = OrderRequest(
+            symbol="SPY",
+            quantity=1,
+            order_type="market",
+            is_futures=False,
+            estimated_value=450.0,
+        )
+
+        result = safety.check_order(order, 100_000.0)
+
+        assert result.approved is True, result.rejection_reason
+
+    def test_check_paper_config_enabled_direct(self, mock_safety_layer):
+        """Direct unit test on the new private check method itself."""
+        safety = mock_safety_layer
+
+        blocked = OrderRequest(
+            symbol="MGC", quantity=1, order_type="market", estimated_value=1000.0
+        )
+        allowed = OrderRequest(
+            symbol="MES", quantity=1, order_type="market", estimated_value=1000.0
+        )
+        no_entry = OrderRequest(
+            symbol="SPY", quantity=1, order_type="market", estimated_value=450.0
+        )
+
+        blocked_result = safety._check_paper_config_enabled(blocked)
+        allowed_result = safety._check_paper_config_enabled(allowed)
+        no_entry_result = safety._check_paper_config_enabled(no_entry)
+
+        assert blocked_result.approved is False
+        assert "MGC" in blocked_result.rejection_reason
+        assert allowed_result.approved is True
+        assert no_entry_result.approved is True
+
+    @pytest.mark.asyncio
+    async def test_submit_paper_order_rejects_disabled_symbol(self, mock_settings):
+        """End-to-end through submit_paper_order() -- the same real path
+        routers/approval_queue_router.py's approve_candidate() calls -- proves
+        a disabled symbol never reaches the (mock) broker via this route
+        either. This is the exact real-world path MGC's live paper orders
+        were taking despite paper_config.enabled=False (PRB-22)."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        safety = SafetyLayer(mock_settings)
+        gw = AsyncMock()
+        gw.is_connected = Mock(return_value=True)
+        safety._ib_gateway = gw
+
+        result = await safety.submit_paper_order(
+            symbol="MGC",
+            action="BUY",
+            quantity=1,
+            price=2150.0,
+            order_type="MKT",
+        )
+
+        assert result["approved"] is False
+        assert "paper_config.enabled" in result["reason"]
+        assert result["routed_to_ib"] is False
+        gw.place_paper_order.assert_not_called()
+
+
 class TestLiveTrading:
     """Live trading gate."""
 
@@ -910,15 +1052,21 @@ class TestOvernightContractLimit:
         assert result.approved is True
 
     def test_non_overnight_symbol_not_affected(self, mock_safety_layer, mock_settings):
-        """MGC is not in OVERNIGHT_SYMBOLS — no overnight check applied.
+        """ES is not in OVERNIGHT_SYMBOLS — no overnight check applied.
 
-        PRB-03 (2026-07-29): was MCL until DO_NOT_TRADE_SYMBOLS gating was
-        added directly to check_order() — MCL is halted (backtest/signals.py)
-        and would now be rejected before ever reaching the overnight check
-        this test exists to exercise. See TestDoNotTradeSymbols above for
-        MCL/MNQ/M2K halt-list coverage. MGC preserves the original intent
-        (a non-MES futures root not in _OVERNIGHT_SYMBOLS) without being a
-        halted symbol.
+        Was MCL, then briefly MGC (PRB-03) / M2K (PRB-22) as each of those
+        symbols in turn picked up a new upstream reject in check_order():
+        MCL/MNQ/M2K/MGC are all on DO_NOT_TRADE_SYMBOLS (backtest/signals.py,
+        PRB-03's _check_do_not_trade_symbols), and MCL/MNQ/MGC additionally
+        carry paper_config.enabled=False (backtest/paper_config.py, PRB-22's
+        _check_paper_config_enabled) — any of them would now be rejected
+        before ever reaching the overnight check this test exists to
+        exercise. ES (the full-size E-mini, not one of the micro contracts
+        JARVIS actually paper-trades) has no PAPER_CONFIGS entry and is not
+        on DO_NOT_TRADE_SYMBOLS, so it clears both new gates while still
+        preserving the original intent (a non-MES futures root not in
+        _OVERNIGHT_SYMBOLS). See TestDoNotTradeSymbols and
+        TestPaperConfigEnabled above for that coverage directly.
         """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
@@ -927,7 +1075,7 @@ class TestOvernightContractLimit:
         safety = SafetyLayer(mock_settings)
 
         order = OrderRequest(
-            symbol="MGC",
+            symbol="ES",
             quantity=2,
             order_type="market",
             is_futures=True,
@@ -1102,7 +1250,17 @@ class TestFuturesMarginGate:
     def test_active_watchlist_margin_boundaries(
         self, mock_settings, symbol, quantity, equity, expected_approved, reason_substr
     ):
-        """Boundary coverage for the four active futures roots (MES tested above)."""
+        """Boundary coverage for the four active futures roots (MES tested above).
+
+        PRB-22 (2026-07-29): calls `_check_order_value_limits()` directly rather
+        than the full `check_order()` — same isolation rationale as
+        `test_futures_margin_gate_zero_equity_rejects` above. MCL, MNQ, and MGC
+        all currently carry paper_config.enabled=False (backtest/paper_config.py),
+        so since SafetyLayer._check_paper_config_enabled was added to
+        check_order()'s check list, going through the full gate would reject
+        every case here before the margin math this test exists to verify ever
+        runs.
+        """
         # Bypass MAX_CONTRACTS_PER_INSTRUMENT to isolate the margin gate
         mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
         safety = self._live_safety(mock_settings)
@@ -1113,7 +1271,7 @@ class TestFuturesMarginGate:
             is_futures=True,
             estimated_value=equity,  # value irrelevant for futures branch
         )
-        result = safety.check_order(order, equity)
+        result = safety._check_order_value_limits(order, equity)
         assert result.approved is expected_approved, (
             f"{symbol}×{quantity} on ${equity:,.0f}: expected approved={expected_approved}, "
             f"got reason={result.rejection_reason}"
@@ -2536,6 +2694,14 @@ class TestTrade287RegressionRiskGate:
         entry price argument and stop_loss now wired into the OrderRequest,
         the oversized-risk bracket is rejected before it ever reaches the
         (mock) broker -- routed_to_ib must stay False.
+
+        PRB-22 (2026-07-29): MGC's real paper_config.enabled has been False
+        since 2026-06-26 (a later, unrelated config<->verdict desync — trade
+        #287 predates it), so with SafetyLayer._check_paper_config_enabled now
+        wired into check_order(), MGC orders are rejected there first,
+        masking the TRADE_LOSS_LIMIT gate this test exists to prove. Force
+        MGC enabled=True for the duration of this test so the trade-loss
+        gate — not the unrelated paper_config gate — is what's exercised.
         """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
@@ -2550,9 +2716,12 @@ class TestTrade287RegressionRiskGate:
         gw.is_connected = Mock(return_value=True)
         safety._ib_gateway = gw
 
-        result = await safety.submit_paper_bracket_order(
-            "MGC", "BUY", 1, self.MGC_ENTRY, stop_loss=self.MGC_STOP, take_profit=None
-        )
+        from backtest.paper_config import PAPER_CONFIGS
+
+        with patch.dict(PAPER_CONFIGS["MGC"], {"enabled": True}):
+            result = await safety.submit_paper_bracket_order(
+                "MGC", "BUY", 1, self.MGC_ENTRY, stop_loss=self.MGC_STOP, take_profit=None
+            )
 
         assert result["approved"] is False
         assert "TRADE_LOSS_LIMIT" in result["reason"]
