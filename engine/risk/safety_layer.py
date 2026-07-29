@@ -707,11 +707,19 @@ class SafetyLayer:
                 "cleared_at": None,
             }
         if self._db_path is None:
+            # FAIL CLOSED: no DB path configured means kill state cannot be
+            # verified at all — the same unknown-state class as a DB read
+            # exception below, not evidence the account is safe to trade.
+            logger.error(
+                "SafetyLayer: get_per_account_kill_state(%s) — no DB path "
+                "configured, failing CLOSED (active=True)",
+                account_id,
+            )
             return {
                 "account_id": account_id,
-                "active": False,
+                "active": True,
                 "triggered_at": None,
-                "reason": None,
+                "reason": "kill-state unavailable: no DB path configured",
                 "trigger_metric": None,
                 "trigger_value": None,
                 "cleared_at": None,
@@ -748,14 +756,24 @@ class SafetyLayer:
                 "cleared_at": row["cleared_at"],
             }
         except Exception as exc:
-            logger.warning(
-                "SafetyLayer: get_per_account_kill_state(%s) failed: %s", account_id, exc
+            # FAIL CLOSED: an unreadable kill-state DB is an UNKNOWN state, not a
+            # safe one. Reporting active=False here would silently convert a DB
+            # read failure (lock contention, corruption, disk issue) into
+            # fail-open behavior — the same defect class as the 2026-06-15
+            # inert-kill-switch incident (12+ safety gates rendered inert).
+            # "Unknown state" must never resolve to "safe to trade": treat the
+            # account as halted until a real read succeeds.
+            logger.error(
+                "SafetyLayer: get_per_account_kill_state(%s) failed — failing CLOSED "
+                "(active=True) until DB read succeeds: %s",
+                account_id,
+                exc,
             )
             return {
                 "account_id": account_id,
-                "active": False,
+                "active": True,
                 "triggered_at": None,
-                "reason": None,
+                "reason": f"kill-state read failed: {exc}",
                 "trigger_metric": None,
                 "trigger_value": None,
                 "cleared_at": None,
@@ -987,6 +1005,52 @@ class SafetyLayer:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=f"Kill switch active: {self._kill_switch_reason.value if self._kill_switch_reason else 'unknown'}",
+            )
+        return RiskCheckResult(approved=True)
+
+    def _check_paper_config_enabled(self, order: OrderRequest) -> RiskCheckResult:
+        """Reject any order for a symbol whose backtest/paper_config.py entry
+        has enabled=False.
+
+        paper_config.enabled records that a strategy is NOT currently
+        authorized (gate v2 FAIL, config<->verdict desync, or research
+        explicitly parked it) -- e.g. MGC_PAPER_CONFIG has carried
+        enabled=False since 2026-06-26. backtest.gate_v2_policy's
+        is_strategy_authorized() already reads this flag and IS consulted by
+        approval/service.py's ensure_approval_allowed() (the manual /
+        messaging-bot approval path via approval_router.py). But
+        routers/approval_queue_router.py's POST /{candidate_id}/approve
+        endpoint -- the autonomous-scheduler's own candidate queue, fed by
+        scheduler/pipeline_autonomous.py reading AUTONOMOUS_ACTIVE_SYMBOLS
+        directly from env, independent of paper_config.py entirely -- never
+        calls is_strategy_authorized() at all. That parallel path goes
+        straight from the pipeline_approval_queue table to
+        safety_layer.submit_paper_order(), so a symbol disabled in
+        paper_config.py could still reach the broker through it (PRB-22,
+        2026-07-29 prod-readiness audit: MGC kept placing paper trades for
+        over a month after being marked enabled=False). check_order() is the
+        one choke point every current and future order-submission call site
+        shares -- submit_paper_order() calls it directly, and PRB-01's
+        call-graph audit confirmed every other broker-facing call site
+        (IBKRExecutor, SchwabConnector, IBGatewayConnector) does too -- so
+        the gate belongs here rather than duplicated per-approval-router.
+
+        Symbols with no PAPER_CONFIGS entry at all (equities, options, and
+        anything outside the MCL/MNQ/MGC/MES futures set) are unaffected --
+        this only blocks a symbol that HAS an entry explicitly marked
+        disabled, never the absence of an entry.
+        """
+        from backtest.paper_config import PAPER_CONFIGS  # noqa: PLC0415 — lazy, cycle-free
+
+        symbol = order.symbol.upper()
+        cfg = PAPER_CONFIGS.get(symbol)
+        if cfg is not None and not cfg.get("enabled", False):
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"{symbol} paper_config.enabled=False (backtest/paper_config.py) "
+                    "- trading is disabled for this symbol pending re-authorization"
+                ),
             )
         return RiskCheckResult(approved=True)
 
@@ -1289,6 +1353,7 @@ class SafetyLayer:
         # Run sequential checks, return early on failure
         for check_fn in [
             lambda: self._check_kill_switch(),
+            lambda: self._check_paper_config_enabled(order),
             lambda: self._check_gating_conditions(),
             lambda: self._check_promotion_gate(order),
             lambda: self._check_daily_loss_limit(portfolio_equity),

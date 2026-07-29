@@ -192,11 +192,16 @@ function SummaryCard({
   value,
   sub,
   color,
+  note,
 }: {
   label: string;
   value: string;
   sub?: string;
   color?: string;
+  /** Inline historical/disclosure caption — matches the page's amber
+   * "Historical backtest" banner convention (see frozen-snapshot sections
+   * above) so this card reads correctly even in isolation. */
+  note?: string;
 }) {
   return (
     <div
@@ -218,6 +223,11 @@ function SummaryCard({
       {sub && (
         <span className="font-mono text-[10px]" style={{ color: "#555" }}>
           {sub}
+        </span>
+      )}
+      {note && (
+        <span className="font-mono text-[10px]" style={{ color: "#9a8030" }}>
+          {note}
         </span>
       )}
     </div>
@@ -819,10 +829,22 @@ export default function PerformancePage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCard label="Active Instruments" value="2" sub="MCL 1h (0.82) + MNQ 1h (0.57) APPROVED" color="#00ff88" />
+          <SummaryCard
+            label="Best Backtested Instruments"
+            value="2"
+            sub="MCL 1h (0.82) + MNQ 1h (0.57) APPROVED"
+            color="#00ff88"
+            note="2026-03-30 snapshot — since halted, see Strategy Ledger"
+          />
           <SummaryCard label="Research" value="0" sub="All cleared or halted" color="#555" />
           <SummaryCard label="Do Not Trade" value="8" sub="Failed walk-forward" color="#ff4444" />
-          <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
+          <SummaryCard
+            label="Best WFE"
+            value="0.82"
+            sub="MCL 1h APPROVED (static)"
+            color="#00ff88"
+            note="2026-03-30 snapshot — not current status"
+          />
         </div>
 
         {/* Live per-symbol price chart — our own real-time futures bars */}

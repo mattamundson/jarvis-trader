@@ -80,6 +80,19 @@ class UnknownInstrumentMultiplierError(ValueError):
     """
 
 
+class TradeCloseNotPersistedError(RuntimeError):
+    """Raised when the DB layer's close_paper_trade() reports 0 rows updated.
+
+    DatabaseManager.close_paper_trade() returns True/False based on
+    ``cur.rowcount == 1`` — it does NOT raise on a no-op UPDATE (stale
+    trade_id, already closed elsewhere, or a race). Fail-closed by design
+    (GT-48): if the DB write didn't actually land, the in-memory _open /
+    _closed mutation must not proceed either, or the SQLite ledger and the
+    in-memory/JSONL state silently diverge while the API still reports
+    "closed".
+    """
+
+
 def _resolve_multiplier(symbol: str) -> float:
     """Return the contract multiplier for ``symbol``, fail-closed on unknowns.
 
@@ -406,12 +419,22 @@ class PortfolioTracker:
         # SQLite-first: write to DB before mutating in-memory state.
         # If this raises, _open is unchanged — no ghost position on restart.
         if self._db is not None:
-            self._db.close_paper_trade(
+            _db_updated = self._db.close_paper_trade(
                 trade_id=trade_id,
                 exit_price=float(exit_price),
                 exit_time=exit_time,
                 pnl=computed_pnl,
             )
+            if not _db_updated:
+                # GT-48: close_paper_trade() returns False (not an exception)
+                # when the UPDATE affects 0 rows. Don't proceed with the
+                # in-memory mutation below — that would report "closed" while
+                # the SQLite ledger row was never actually updated.
+                raise TradeCloseNotPersistedError(
+                    f"close_trade: DB close_paper_trade affected 0 rows for "
+                    f"trade_id={trade_id!r} (stale id, already closed, or a "
+                    f"race) — refusing to mark closed in-memory."
+                )
 
         # DB write succeeded (or no DB) — now mutate in-memory and JSONL
         self._open.pop(trade_id)
@@ -994,12 +1017,22 @@ class PortfolioTracker:
 
         # SQLite-first: if this raises, _open remains unchanged (Bug B9 / US-2004).
         if self._db is not None:
-            self._db.close_paper_trade(
+            _db_updated = self._db.close_paper_trade(
                 trade_id=trade_id,
                 exit_price=float(exit_price),
                 exit_time=resolved_exit_time,
                 pnl=computed_pnl,
             )
+            if not _db_updated:
+                # GT-48: close_paper_trade() returns False (not an exception)
+                # when the UPDATE affects 0 rows. Don't proceed with the
+                # in-memory mutation below — that would report "closed" while
+                # the SQLite ledger row was never actually updated.
+                raise TradeCloseNotPersistedError(
+                    f"close_paper_trade: DB close_paper_trade affected 0 rows "
+                    f"for trade_id={trade_id!r} (stale id, already closed, or "
+                    f"a race) — refusing to mark closed in-memory."
+                )
 
         # DB write succeeded (or no DB) — mutate in-memory and JSONL
         self._open.pop(trade_id)
