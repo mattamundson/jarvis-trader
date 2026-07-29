@@ -12,6 +12,26 @@
 > equity-peak clamp activates on the next `restart_engine.ps1`. For live instrument status always
 > prefer the `/validation` scorecard over the static table below.
 
+> **PRB-02 correction (2026-07-29, PR held for Amo's review — not yet merged):** the "APPROVED —
+> paper active" rows below for MES and MGC do NOT currently survive verification. Live
+> `GET /paper/validation/approved-paper-gates` shows `overall_pass: false` for BOTH symbols right
+> now (MES: profit_factor 1.79 < 2.0 target, win_rate 43.75% < 55%, 16/60 trades, 15/30 days;
+> MGC: win_rate 44% < 55%, 25/60 trades, 19/30 days, **max_drawdown 18.27% vs a 15% target —
+> already breaching**). Root cause: `gate_v2_policy.is_ungate_eligible(symbol)` was symbol-wide —
+> an unrelated strategy's PASS (`MES_stark_gapfill_long_rank1.json`, a gap-fill scanner MES's
+> live SMA-trend router never invokes) was authorizing MES's actually-traded, actually-failing
+> trend strategy. MGC's authorizing verdict (`MGC_trend_baseline.json`, dsr=0.999375) is a
+> multiple-testing artifact of the same class the 2026-07-27 honest-data-drain loop already
+> found and corrected elsewhere — recomputed at the true campaign trial count (54–70, per
+> `~/.claude/loops/jarvis-honest-data-drain/ledger.json`) its DSR collapses to 0.0, below both
+> gate floors. See `engine/data/GATE_V2_FDR_ANALYSIS.md` §6 and PRB-02 in
+> `~/.claude/loops/jarvis-prod-readiness/backlog.json`. The code fix (branch
+> `fix/prb-02-gate-v2-symbol-wide-eligibility`) makes eligibility strategy-specific and is
+> sufficient by itself to halt MES's autonomous order routing once merged + deployed; MGC
+> additionally needs its live, intentionally-gitignored verdict file manually superseded
+> (git cannot carry that data change — see the PR description) before MGC is actually halted
+> too. This banner should be updated again once Amo decides and the fix deploys.
+
 **See also:** [Strategic command center (index)](strategic/README.md) — executive brief, system map, risk register, execution spine, and analysis passes.
 
 **New runbooks (2026-04-10):** [SECURITY_OPERATOR_CHECKLIST.md](runbooks/SECURITY_OPERATOR_CHECKLIST.md) · [PAPER_SOURCE_OF_TRUTH.md](runbooks/PAPER_SOURCE_OF_TRUTH.md) · [IB_RECONNECT_AND_HEALTH.md](runbooks/IB_RECONNECT_AND_HEALTH.md) · [HEALTH_API_CONTRACT.md](runbooks/HEALTH_API_CONTRACT.md) · [SQLITE_BACKUP.md](runbooks/SQLITE_BACKUP.md) · [MARKET_DATA_WATERFALL.md](runbooks/MARKET_DATA_WATERFALL.md)
@@ -37,12 +57,15 @@
 
 ## Approved Instruments
 
-_Updated 2026-06-04 from `engine/CLAUDE.md` canon (Tier-3 auth 2026-05-24). Live status: `/validation`._
+_Updated 2026-06-04 from `engine/CLAUDE.md` canon (Tier-3 auth 2026-05-24). Live status: `/validation`.
+**2026-07-29: MES and MGC rows below are STALE — see the PRB-02 banner above. Both currently
+fail live `/paper/validation/approved-paper-gates`; treat as NOT authorized pending Amo's
+review of the held PR.**_
 
 | Symbol | Timeframe | Edge | Status | Notes |
 |--------|-----------|------|--------|-------|
-| **MGC** | 1h | p_edge 0.6842 | **APPROVED — paper active** | SMA(50,120) trend, atr_trail_mult=2.0; ALT gate-v2 PASS |
-| **MES** | 1h | p_edge 0.75 | **APPROVED — paper active** | SMA(60,200) trend, atr_trail_mult=2.0; ALT gate-v2 PASS |
+| **MGC** | 1h | p_edge 0.6842 | **STALE APPROVAL — see PRB-02 banner** | SMA(50,120) trend, atr_trail_mult=2.0; authorizing verdict's DSR is a multiple-testing artifact (collapses to 0.0 at true trial count) |
+| **MES** | 1h | p_edge 0.75 | **STALE APPROVAL — see PRB-02 banner** | SMA(50,200)+RV9 trend, atr_trail_mult=2.0; every trend-family verdict FAILs or is INSUFFICIENT_SAMPLE — was wrongly authorized by an unrelated strategy's PASS |
 | MCL | 1h | WFE 0.82 | HALTED | `DO_NOT_TRADE` — hypotheses A–E exhausted 2026-05-07 |
 | MNQ | 1h | WFE 0.57 | HALTED | `DO_NOT_TRADE` — trend/breakout/ORB all fail gate-v2 |
 | M2K | 1h | — | REJECTED | SMA/ORB/Donchian rank-1 all FAIL 2026-05-24 |
