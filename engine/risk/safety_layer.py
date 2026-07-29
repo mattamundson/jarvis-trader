@@ -707,11 +707,19 @@ class SafetyLayer:
                 "cleared_at": None,
             }
         if self._db_path is None:
+            # FAIL CLOSED: no DB path configured means kill state cannot be
+            # verified at all — the same unknown-state class as a DB read
+            # exception below, not evidence the account is safe to trade.
+            logger.error(
+                "SafetyLayer: get_per_account_kill_state(%s) — no DB path "
+                "configured, failing CLOSED (active=True)",
+                account_id,
+            )
             return {
                 "account_id": account_id,
-                "active": False,
+                "active": True,
                 "triggered_at": None,
-                "reason": None,
+                "reason": "kill-state unavailable: no DB path configured",
                 "trigger_metric": None,
                 "trigger_value": None,
                 "cleared_at": None,
