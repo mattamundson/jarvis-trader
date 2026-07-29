@@ -239,9 +239,17 @@ class TestPositionSizeAndContractLimitRedTeam:
         quantity. It is gated on raw quantity — this must still be rejected
         even though the order 'looks' tiny in dollar terms.
 
-        Uses MGC (not in the overnight-symbol set) so the test is wall-clock
+        Uses M2K (not in the overnight-symbol set) so the test is wall-clock
         independent, unlike MES which has a separate post-15:00-CT overnight
         cap that would otherwise confound this specific assertion.
+
+        PRB-22 (2026-07-29): was MGC until SafetyLayer._check_paper_config_enabled
+        was added to check_order() — MGC now carries paper_config.enabled=False
+        (backtest/paper_config.py) and would be rejected before ever reaching
+        the contract-cap check this test exists to exercise. M2K has no
+        PAPER_CONFIGS entry at all (only symbols with an explicit enabled=False
+        entry are blocked, never the absence of one) and is also outside
+        _OVERNIGHT_SYMBOLS, preserving the original test intent.
         """
         settings = _armed_settings(mock_settings)
         settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
@@ -249,7 +257,7 @@ class TestPositionSizeAndContractLimitRedTeam:
         safety = SafetyLayer(settings)
 
         order = OrderRequest(
-            symbol="MGC",
+            symbol="M2K",
             quantity=3,  # exceeds the 2-contract cap
             order_type="market",
             is_futures=True,
@@ -260,28 +268,31 @@ class TestPositionSizeAndContractLimitRedTeam:
         assert "contracts exceeds max" in (result.rejection_reason or "").lower()
 
     def test_contract_cap_boundary_not_exploitable(self, mock_settings):
+        """PRB-22 (2026-07-29): symbol swapped MGC -> M2K; see docstring on
+        test_contract_cap_survives_estimated_value_manipulation above for why.
+        """
         settings = _armed_settings(mock_settings)
         settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
         settings.MAX_FUTURES_MARGIN_PCT = 0.30
         safety = SafetyLayer(settings)
 
         at_limit = OrderRequest(
-            symbol="MGC",
+            symbol="M2K",
             quantity=2,
             order_type="market",
             is_futures=True,
-            estimated_value=2800.0,
+            estimated_value=1800.0,
         )
         result = safety.check_order(at_limit, 100_000.0)
         assert result.approved is True
 
         safety2 = SafetyLayer(settings)
         over_limit = OrderRequest(
-            symbol="MGC",
+            symbol="M2K",
             quantity=3,
             order_type="market",
             is_futures=True,
-            estimated_value=4200.0,
+            estimated_value=2700.0,
         )
         result2 = safety2.check_order(over_limit, 100_000.0)
         assert result2.approved is False
@@ -384,6 +395,13 @@ class TestFuturesMarginUtilizationRedTeam:
         reads that field instead of computing margin from the symbol/quantity
         table. It does not — the margin table lookup is independent of
         whatever value the caller claims, so this must still be rejected.
+
+        PRB-22 (2026-07-29): was MGC until SafetyLayer._check_paper_config_enabled
+        was added to check_order() — MGC now carries paper_config.enabled=False
+        (backtest/paper_config.py) and would be rejected before ever reaching
+        the margin check this test exists to exercise. M2K has no PAPER_CONFIGS
+        entry at all, so it clears the new gate; the 90% utilization figure
+        below (vs. the prior 140%) still comfortably breaches the 30% cap.
         """
         settings = _armed_settings(mock_settings)
         settings.MAX_FUTURES_MARGIN_PCT = 0.30
@@ -391,10 +409,10 @@ class TestFuturesMarginUtilizationRedTeam:
         safety = SafetyLayer(settings)
         safety._equity_peak = 2_000.0  # neutralize the drawdown check (see note above)
 
-        # MGC margin = $1,400/contract; 2 contracts = $2,800 margin against a
-        # $2,000 account = 140% utilization, but estimated_value claims $0.01.
+        # M2K margin = $900/contract; 2 contracts = $1,800 margin against a
+        # $2,000 account = 90% utilization, but estimated_value claims $0.01.
         order = OrderRequest(
-            symbol="MGC",
+            symbol="M2K",
             quantity=2,
             order_type="market",
             is_futures=True,
@@ -572,9 +590,17 @@ class TestConsecutiveLossLadderRedTeam:
         self, mock_settings, tmp_path
     ):
         """Attacker racks up 7 consecutive losses on MES, then tries a
-        symbol that has never lost a single trade (MGC), hoping the halt is
+        symbol that has never lost a single trade (M2K), hoping the halt is
         scoped per-symbol. The halt tracks GLOBAL consecutive losses, so a
         never-traded symbol must be blocked too.
+
+        PRB-22 (2026-07-29): was MGC until SafetyLayer._check_paper_config_enabled
+        was added to check_order() — MGC now carries paper_config.enabled=False
+        (backtest/paper_config.py) and would be rejected there first, which
+        would make this test pass for the WRONG reason (paper_config, not the
+        global consecutive-loss halt this test exists to prove). M2K has no
+        PAPER_CONFIGS entry at all and, being a symbol nobody has ever traded
+        in this fixture, still satisfies "never lost a single trade".
         """
         settings = _armed_settings(mock_settings)
         settings.MAX_CONTRACTS_PER_INSTRUMENT = 20
@@ -582,15 +608,15 @@ class TestConsecutiveLossLadderRedTeam:
         tracker = self._tracker(tmp_path)
         for _ in range(7):
             tracker.record_trade("MES", -100.0)
-        assert tracker.get_consecutive_losses("MGC") == 0  # never lost on MGC
+        assert tracker.get_consecutive_losses("M2K") == 0  # never lost on M2K
         safety = SafetyLayer(settings, loss_tracker=tracker)
 
         order = OrderRequest(
-            symbol="MGC",
+            symbol="M2K",
             quantity=1,
             order_type="market",
             is_futures=True,
-            estimated_value=1_400.0,
+            estimated_value=900.0,
         )
         result = safety.check_order(order, 100_000.0)
         assert result.approved is False
