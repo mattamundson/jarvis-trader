@@ -78,11 +78,15 @@ async def test_ib_order_manager_with_connector(tmp_path) -> None:
     await conn.connect()
     safety.attach_ib_gateway(conn)
     om = IBOrderManager(safety, ib_gateway=conn, portfolio_tracker=tracker)
+    # PRB-22 (2026-07-29): was MNQ, which now carries paper_config.enabled=False
+    # (backtest/paper_config.py) and is rejected before ever reaching the
+    # IBOrderManager/gateway routing behavior this test exists to exercise.
+    # MES is the one PAPER_CONFIGS entry with enabled=True.
     res = await om.submit_order(
-        symbol="MNQ",
+        symbol="MES",
         action="BUY",
         quantity=1,
-        price=17500.0,
+        price=5300.0,
         order_type="MKT",
         limit_price=None,
     )

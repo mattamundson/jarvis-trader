@@ -1,19 +1,32 @@
 # JARVIS TRADER — Current System State
 
-**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** June 18, 2026
+**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** July 30, 2026
+
+> **Trading eligibility is no longer tracked in this file (PRB-25, 2026-07-30).** This
+> doc's old "Approved Instruments" table was a hand-maintained snapshot that repeatedly
+> went stale and contradicted live reality — most recently it showed MES/MGC "APPROVED —
+> paper active" while the engine's own live gates reported both `overall_pass=false`. A
+> markdown table requires a human to remember to update it every time a gate verdict
+> changes, so re-syncing it once would only start the same drift again. **For current
+> trading eligibility, always use the live [Trading Eligibility](../dashboard/app/trading-eligibility/page.tsx)
+> dashboard page** (`/trading-eligibility`), which reads directly from
+> `GET /paper/validation/approved-paper-gates` on every load — it cannot go stale the way
+> a doc can. The rest of this file (architecture, ports, config, safety invariants, key
+> file locations, run instructions) is durable reference material, not eligibility data,
+> and is kept below.
 
 > **Current reality (2026-06-04, verified against live `/health`):** Engine healthy on
 > 8010 — `status=ok`, `ibkr_connected/data_connected=true`, `ibgateway_alive=true` (4002),
 > `llm_path_healthy=true`, `tv_mcp=healthy`. Dashboard on 3010. `brier_30d_rolling` is still
-> null (calibration populates as paper trades accrue). Approved paper instruments changed since
-> the April snapshot below — **MES + MGC are active (Tier-3 2026-05-24); MCL + MNQ are HALTED
-> (`DO_NOT_TRADE`)**. A dashboard honesty/safety + Stark-enhancement branch
-> (`worktree-dashboard-honesty-safety`) is staged but not yet pushed/merged; its `[safety-review]`
-> equity-peak clamp activates on the next `restart_engine.ps1`. For live instrument status always
-> prefer the `/validation` scorecard over the static table below.
+> null (calibration populates as paper trades accrue). A dashboard honesty/safety +
+> Stark-enhancement branch (`worktree-dashboard-honesty-safety`) is staged but not yet
+> pushed/merged; its `[safety-review]` equity-peak clamp activates on the next
+> `restart_engine.ps1`.
 
 > **PRB-02 correction (2026-07-29, PR held for Amo's review — not yet merged):** the "APPROVED —
-> paper active" rows below for MES and MGC do NOT currently survive verification. Live
+> paper active" status this file used to show for MES and MGC (before PRB-25 retired the static
+> table below in favor of the live Trading Eligibility page) does NOT currently survive
+> verification. Live
 > `GET /paper/validation/approved-paper-gates` shows `overall_pass: false` for BOTH symbols right
 > now (MES: profit_factor 1.79 < 2.0 target, win_rate 43.75% < 55%, 16/60 trades, 15/30 days;
 > MGC: win_rate 44% < 55%, 25/60 trades, 19/30 days, **max_drawdown 18.27% vs a 15% target —
@@ -57,18 +70,15 @@
 
 ## Approved Instruments
 
-_Updated 2026-06-04 from `engine/CLAUDE.md` canon (Tier-3 auth 2026-05-24). Live status: `/validation`.
-**2026-07-29: MES and MGC rows below are STALE — see the PRB-02 banner above. Both currently
-fail live `/paper/validation/approved-paper-gates`; treat as NOT authorized pending Amo's
-review of the held PR.**_
-
-| Symbol | Timeframe | Edge | Status | Notes |
-|--------|-----------|------|--------|-------|
-| **MGC** | 1h | p_edge 0.6842 | **STALE APPROVAL — see PRB-02 banner** | SMA(50,120) trend, atr_trail_mult=2.0; authorizing verdict's DSR is a multiple-testing artifact (collapses to 0.0 at true trial count) |
-| **MES** | 1h | p_edge 0.75 | **STALE APPROVAL — see PRB-02 banner** | SMA(50,200)+RV9 trend, atr_trail_mult=2.0; every trend-family verdict FAILs or is INSUFFICIENT_SAMPLE — was wrongly authorized by an unrelated strategy's PASS |
-| MCL | 1h | WFE 0.82 | HALTED | `DO_NOT_TRADE` — hypotheses A–E exhausted 2026-05-07 |
-| MNQ | 1h | WFE 0.57 | HALTED | `DO_NOT_TRADE` — trend/breakout/ORB all fail gate-v2 |
-| M2K | 1h | — | REJECTED | SMA/ORB/Donchian rank-1 all FAIL 2026-05-24 |
+**This section is retired as of PRB-25 (2026-07-30) — see the banner at the top of this
+file.** It used to hold a static, hand-maintained table of per-symbol approval status;
+that table is exactly what went stale and contradicted the live gates twice in one night
+(most recently the PRB-02 finding below, before this table was even removed). Use the live
+[Trading Eligibility](../dashboard/app/trading-eligibility/page.tsx) dashboard page
+(`/trading-eligibility`) instead — it is sourced directly from
+`GET /paper/validation/approved-paper-gates` and reflects the engine's actual current
+verdict per symbol, including per-gate pass/fail detail (profit factor, Sharpe, win rate,
+trade count, days active, max drawdown, deflated Sharpe).
 
 ---
 
@@ -119,8 +129,9 @@ API_KEY=<from engine/.env>
 # WORKING_TODAY smoke do not require this flag.
 
 # Approved Futures
-# config.py code default. Tradeable set is gated separately: MCL + MNQ are HALTED
-# (DO_NOT_TRADE_SYMBOLS); MES + MGC are the active paper instruments (Tier-3 2026-05-24).
+# config.py code default. Tradeable set is gated separately by DO_NOT_TRADE_SYMBOLS +
+# gate-v2 verdicts — see the live Trading Eligibility page for current per-symbol status,
+# this list is not an eligibility statement.
 FUTURES_WATCHLIST=MCL,MNQ,MES
 ```
 
@@ -158,10 +169,12 @@ FUTURES_WATCHLIST=MCL,MNQ,MES
 
 ## Paper Validation Status
 
-**Period:** MES + MGC active paper validation since 2026-05-24 (Tier-3 auth). The prior MCL/MNQ window (Apr 2–May 2, 2026) is closed — both instruments are now HALTED (`DO_NOT_TRADE`).
+**Which instruments are currently active/halted is eligibility data — see the banner at
+the top of this file. Use the live [Trading Eligibility](../dashboard/app/trading-eligibility/page.tsx)
+page, not this section, for current per-symbol status.**
+
 **Target:** Profit Factor > 1.5, Sharpe > 1.0, Max Drawdown < 10%, Win Rate > 45%
 
-**Instruments:** MES (1h), MGC (1h) — active paper. MCL + MNQ HALTED (`DO_NOT_TRADE`).
 **Broker:** IB Gateway (paper), port 4002
 **Mode:** All orders logged but NOT submitted (PAPER_TRADING=True)
 
@@ -205,5 +218,5 @@ All live trading changes require **Tier 3 confirmation** from the trader.
 
 ---
 
-**Document Version:** 1.0 | **Lines:** 150 | **Scope:** System snapshot, not development log
+**Document Version:** 1.1 (PRB-25 eligibility-pointer edit, 2026-07-30) | **Scope:** System snapshot, not development log. Trading eligibility specifically: not authoritative here — see the live Trading Eligibility dashboard page.
 

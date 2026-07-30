@@ -213,3 +213,132 @@ class TestConfluenceEndpoint:
                 "HP_ONLY",
                 "NO_SIGNAL",
             )
+
+
+# ─── PRB-21: price-coverage floor ─────────────────────────────────────────────
+# Hidden Pivots dashboard shows "--" with certainty for watchlist symbols with
+# no CSV backtest-cache floor once IBKR is down and Polygon's 4-calls/60s rate
+# limit is exhausted. _has_csv_price_floor / get_price_covered_watchlist /
+# GET /price-coverage let the dashboard cap its live-price poll to the
+# symbols that actually have a floor, without touching /scan (which must
+# still cover the full watchlist regardless of price-cache state).
+
+import routers.hidden_pivots_router as hp_router_module
+
+
+class TestHasCsvPriceFloor:
+    def test_true_when_matching_1d_cache_file_exists(self, tmp_path, monkeypatch):
+        (tmp_path / "AAPL_2025-01-01_2026-01-01_1d.csv").write_text("timestamp,close\n")
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+        assert hp_router_module._has_csv_price_floor("AAPL") is True
+
+    def test_false_when_symbol_only_has_a_non_1d_cache_file(self, tmp_path, monkeypatch):
+        # e.g. MCL has 1h/5m backtest slices but the price floor specifically
+        # needs a 1d file — see get_current_price's Tier 5 (_load_csv_cache
+        # is called with timeframe="1d").
+        (tmp_path / "AAPL_2025-01-01_2026-01-01_1h.csv").write_text("timestamp,close\n")
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+        assert hp_router_module._has_csv_price_floor("AAPL") is False
+
+    def test_false_when_only_a_different_symbol_is_cached(self, tmp_path, monkeypatch):
+        (tmp_path / "SPY_2025-01-01_2026-01-01_1d.csv").write_text("timestamp,close\n")
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+        assert hp_router_module._has_csv_price_floor("AAPL") is False
+
+    def test_case_insensitive(self, tmp_path, monkeypatch):
+        (tmp_path / "AAPL_2025-01-01_2026-01-01_1d.csv").write_text("timestamp,close\n")
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+        assert hp_router_module._has_csv_price_floor("aapl") is True
+
+    def test_false_when_cache_dir_does_not_exist(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path / "does-not-exist")
+        assert hp_router_module._has_csv_price_floor("AAPL") is False
+
+
+class TestGetPriceCoveredWatchlist:
+    def test_filters_watchlist_to_symbols_with_a_cache_floor(self, tmp_path, monkeypatch):
+        (tmp_path / "MCL_2025-01-01_2026-01-01_1d.csv").write_text("timestamp,close\n")
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(hp_router_module, "_get_watchlist", lambda: ["MCL", "NFLX"])
+        assert hp_router_module.get_price_covered_watchlist() == ["MCL"]
+
+    def test_empty_when_nothing_in_the_watchlist_is_cached(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(hp_router_module, "_get_watchlist", lambda: ["NFLX", "MSFT"])
+        assert hp_router_module.get_price_covered_watchlist() == []
+
+    def test_preserves_watchlist_order(self, tmp_path, monkeypatch):
+        (tmp_path / "SPY_2025-01-01_2026-01-01_1d.csv").write_text("timestamp,close\n")
+        (tmp_path / "MCL_2025-01-01_2026-01-01_1d.csv").write_text("timestamp,close\n")
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(hp_router_module, "_get_watchlist", lambda: ["MCL", "NFLX", "SPY"])
+        assert hp_router_module.get_price_covered_watchlist() == ["MCL", "SPY"]
+
+
+class TestPriceCoverageEndpoint:
+    @pytest.fixture
+    def coverage_client(self, tmp_path, monkeypatch):
+        (tmp_path / "MCL_2025-01-01_2026-01-01_1d.csv").write_text("timestamp,close\n")
+        (tmp_path / "SPY_2025-01-01_2026-01-01_1d.csv").write_text("timestamp,close\n")
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+
+        mock_config = MagicMock()
+        mock_config.SCAN_SYMBOLS = ["MCL", "MNQ", "SPY", "NFLX"]
+        inject_dependencies(MagicMock(), mock_config)
+
+        app = FastAPI()
+        app.include_router(hp_router)
+        return TestClient(app)
+
+    def test_returns_200(self, coverage_client):
+        resp = coverage_client.get("/hidden-pivots/price-coverage")
+        assert resp.status_code == 200
+
+    def test_watchlist_size_matches_configured_watchlist(self, coverage_client):
+        resp = coverage_client.get("/hidden-pivots/price-coverage")
+        assert resp.json()["watchlist_size"] == 4
+
+    def test_covered_symbols_are_exactly_the_ones_with_a_cache_file(self, coverage_client):
+        resp = coverage_client.get("/hidden-pivots/price-coverage")
+        data = resp.json()
+        assert set(data["covered_symbols"]) == {"MCL", "SPY"}
+
+    def test_uncovered_symbols_are_the_complement_of_covered(self, coverage_client):
+        resp = coverage_client.get("/hidden-pivots/price-coverage")
+        data = resp.json()
+        assert set(data["uncovered_symbols"]) == {"MNQ", "NFLX"}
+        assert set(data["covered_symbols"]) | set(data["uncovered_symbols"]) == {
+            "MCL",
+            "MNQ",
+            "SPY",
+            "NFLX",
+        }
+        assert not (set(data["covered_symbols"]) & set(data["uncovered_symbols"]))
+
+
+class TestScanEndpointUnaffectedByPriceCoverage:
+    """PRB-21: /scan must keep scanning the FULL watchlist regardless of
+    which symbols have a CSV price-cache floor — only the dashboard's live-
+    price poll is capped, never pattern/level scanning."""
+
+    def test_scan_covers_full_watchlist_even_with_zero_price_coverage(self, tmp_path, monkeypatch):
+        # Empty cache dir -> get_price_covered_watchlist() would report zero
+        # covered symbols, but /scan is a completely separate code path and
+        # must be untouched by that.
+        monkeypatch.setattr(hp_router_module, "_CSV_CACHE_DIR", tmp_path)
+
+        mock_data_manager = MagicMock()
+        mock_data_manager.get_bars = AsyncMock(return_value=_fake_bars())
+        mock_config = MagicMock()
+        mock_config.SCAN_SYMBOLS = ["MCL", "MNQ", "NFLX"]
+        inject_dependencies(mock_data_manager, mock_config)
+
+        app = FastAPI()
+        app.include_router(hp_router)
+        local_client = TestClient(app)
+
+        assert hp_router_module.get_price_covered_watchlist() == []
+
+        resp = local_client.get("/hidden-pivots/scan")
+        assert resp.status_code == 200
+        assert resp.json()["symbols_scanned"] == 3
