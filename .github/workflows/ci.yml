@@ -245,10 +245,7 @@ jobs:
             echo "No slow coverage file; using fast slice only"
             cp "${FAST}" .coverage
           fi
-          # --fail-under=0 here: emit the XML artifact unconditionally (even if
-          # below the floor) so it's available for debugging a coverage-floor
-          # failure below. The real gate is the "Enforce coverage floor" step.
-          coverage xml -o coverage.xml --rcfile=engine/pyproject.toml --fail-under=0
+          coverage xml -o coverage.xml --rcfile=engine/pyproject.toml
 
       - name: Upload coverage artifact
         if: always()
@@ -257,16 +254,6 @@ jobs:
           name: coverage-report
           path: coverage.xml
           retention-days: 30
-
-      # PRB-17: coverage.xml was generated and uploaded as an artifact above,
-      # but historically nothing gated on it -- a PR could drop coverage to 0%
-      # and this job would still report success. This step fails the job (via
-      # `fail_under` in engine/pyproject.toml's [tool.coverage.report], see the
-      # comment there for how the baseline/floor were picked) if total line
-      # coverage is below the pinned floor, and prints the per-file breakdown
-      # so a genuine regression is easy to trace.
-      - name: Enforce coverage floor (PRB-17)
-        run: coverage report --rcfile=engine/pyproject.toml -m
 
   dashboard-build:
     name: Dashboard Build (Next.js)
