@@ -32,6 +32,7 @@ import {
   Rss,
   Settings,
   Shield,
+  ShieldCheck,
   Sliders,
   Radar,
   Star,
@@ -141,6 +142,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },
       { label: "Settings", href: "/settings", icon: <Settings className="h-3.5 w-3.5" /> },
       { label: "Validation", href: "/validation", icon: <Shield className="h-3.5 w-3.5" /> },
+      { label: "Trading Eligibility", href: "/trading-eligibility", icon: <ShieldCheck className="h-3.5 w-3.5" /> },
     ],
   },
 ];
