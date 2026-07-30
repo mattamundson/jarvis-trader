@@ -1,0 +1,265 @@
+{
+  "date": "2026-07-29",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "neutral",
+    "conviction": 0.35,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 21
+  },
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 85.59,
+      "target2": 86.67,
+      "stop1": 83.79,
+      "win_rate": 84.15,
+      "rr": 0.67,
+      "timestamp": "2026-07-29T10:20:09.88-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 85.05,
+      "target2": 86.13,
+      "stop1": 83.25,
+      "win_rate": 84.07,
+      "rr": 0.67,
+      "timestamp": "2026-07-29T09:26:03.134-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 84.8,
+      "target2": 85.88,
+      "stop1": 83.0,
+      "win_rate": 83.98,
+      "rr": 0.66,
+      "timestamp": "2026-07-29T08:45:02.777-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 84.58,
+      "target2": 85.66,
+      "stop1": 82.78,
+      "win_rate": 83.89,
+      "rr": 0.66,
+      "timestamp": "2026-07-29T07:49:04.264-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 83.66,
+      "target2": 84.74,
+      "stop1": 81.86,
+      "win_rate": 83.8,
+      "rr": 0.66,
+      "timestamp": "2026-07-29T06:03:00.643-05:00"
+    }
+  ],
+  "corey_quote": "Market remains in balance, preparing for expansion \u2014 not yet in expansion.",
+  "commentary_health": [
+    {
+      "date": "2026-07-30",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.35,
+      "message_count": 4
+    },
+    {
+      "date": "2026-07-29",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.35,
+      "message_count": 21
+    },
+    {
+      "date": "2026-07-28",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.85,
+      "message_count": 12
+    },
+    {
+      "date": "2026-07-26",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.85,
+      "message_count": 14
+    },
+    {
+      "date": "2026-07-22",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 9
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 23,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": null,
+    "primary_provider": "openai",
+    "primary_healthy": true,
+    "providers_available": 4,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 106,
+    "failing_enabled": 12,
+    "failing_disabled": 3,
+    "failing_tasks": [
+      {
+        "name": "Hermes-Snapshot-Weekly",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-FinanceSync",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-forecast-scorer",
+        "result": "0x80070002"
+      },
+      {
+        "name": "jarvis-heartbeat-brief",
+        "result": "0x80070002"
+      },
+      {
+        "name": "Jarvis-InsightsReview",
+        "result": "0x41306"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x80070002"
+      },
+      {
+        "name": "jarvis-morning-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "jarvis-preclose-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-ScanCredentials",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-TranscriptIngest",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 3.4,
+        "newest": "2026-07-27T04:24:35.587736+00:00",
+        "files": 6,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 42.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 42.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 3.4,
+        "newest": "2026-07-27T04:43:33.248255+00:00",
+        "files": 8,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.9,
+        "newest": "2026-07-29T15:36:49.019560+00:00",
+        "files": 39,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 3.4,
+        "newest": "2026-07-27T04:53:47.787738+00:00",
+        "files": 23,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 3.4,
+        "newest": "2026-07-27T04:58:10.444947+00:00",
+        "files": 13,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 42.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 42.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
