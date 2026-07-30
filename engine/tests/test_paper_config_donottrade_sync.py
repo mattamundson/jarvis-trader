@@ -385,14 +385,21 @@ class TestDoNotTradeSymbolsConstant:
         assert "MNQ" in DO_NOT_TRADE_SYMBOLS
         assert "M2K" in DO_NOT_TRADE_SYMBOLS
 
-    def test_donottrade_symbols_does_not_block_active_instruments(self):
-        """MES and MGC (both gate v2 PASS) must NOT be in DO_NOT_TRADE_SYMBOLS."""
+    def test_donottrade_symbols_blocks_mgc_not_mes(self):
+        """MGC is blocked as of 2026-07-29 (honest-data-drain DSR correction).
+
+        MES is deliberately NOT blocked -- it remains Amo's most-traded vehicle
+        and must never be added to DO_NOT_TRADE_SYMBOLS without his explicit
+        direction, regardless of what any analysis (including honest-data-drain)
+        concludes about it.
+        """
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
         assert "MES" not in DO_NOT_TRADE_SYMBOLS, (
-            "MES is in DO_NOT_TRADE_SYMBOLS but has a gate v2 PASS verdict — remove it."
+            "MES must never be in DO_NOT_TRADE_SYMBOLS -- it is Amo's most-traded vehicle."
         )
-        assert "MGC" not in DO_NOT_TRADE_SYMBOLS, (
-            "MGC is in DO_NOT_TRADE_SYMBOLS but has a gate v2 PASS verdict — remove it."
+        assert "MGC" in DO_NOT_TRADE_SYMBOLS, (
+            "MGC's gate v2 PASS did not survive DSR correction at the true trial "
+            "count (honest-data-drain, 2026-07-27) — it should be in DO_NOT_TRADE_SYMBOLS."
         )
 
 
@@ -435,14 +442,18 @@ class TestCapitalAllocatorUsesSingleAuthority:
             "must import the authority from backtest.signals, not keep a private list."
         )
 
-    def test_rebalance_blocks_m2k_and_allows_mgc(self):
-        """Pins the two symbols the old private list got wrong: M2K and MGC."""
+    def test_rebalance_blocks_m2k_and_mgc(self):
+        """Pins the symbols the old private list got wrong (M2K) plus the
+        2026-07-29 honest-data-drain addition (MGC). MES stays tradeable --
+        it is Amo's most-traded vehicle and must never be blocked without his
+        explicit direction. See test_donottrade_symbols_blocks_mgc_not_mes above.
+        """
         from orchestrator.capital_allocator import CapitalAllocator
 
         perf = {
             "M2K": {"sharpe": 2.0, "current_allocation": 0.25},  # blocked authority
-            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable (gate-v2 PASS)
-            "MES": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable
+            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # blocked (honest-data-drain)
+            "MES": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable (gate-v2 PASS)
         }
         allocator = CapitalAllocator(
             {"M2K": 10_000.0, "MGC": 50_000.0, "MES": 50_000.0}
@@ -452,6 +463,9 @@ class TestCapitalAllocatorUsesSingleAuthority:
         assert new_alloc.get("M2K", 1.0) == 0.0, (
             "M2K is in DO_NOT_TRADE_SYMBOLS and must be zeroed by rebalance()."
         )
-        assert new_alloc.get("MGC", 0.0) > 0.0, (
-            "MGC is tradeable (gate-v2 PASS) and must receive a non-zero allocation."
+        assert new_alloc.get("MGC", 1.0) == 0.0, (
+            "MGC is in DO_NOT_TRADE_SYMBOLS (honest-data-drain, 2026-07-29) and must be zeroed."
+        )
+        assert new_alloc.get("MES", 0.0) > 0.0, (
+            "MES is tradeable (gate-v2 PASS) and must receive a non-zero allocation."
         )

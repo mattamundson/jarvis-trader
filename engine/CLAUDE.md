@@ -1,7 +1,10 @@
 # Engine — Python Backend Context
 
 > FastAPI trading engine, port 8010. See parent CLAUDE.md for full project overview.
-> Wave 3 instrument expansion (2026-05-21): MES + MGC added as VALIDATION_ONLY — pipeline runs, no paper orders.
+> Wave 3 instrument expansion (2026-05-21): MES + MGC added as VALIDATION_ONLY, promoted to active
+> paper trading 2026-05-24. MGC HALTED again 2026-07-29 (honest-data-drain DSR correction — see
+> Active Instruments table below) and back in `DO_NOT_TRADE_SYMBOLS`. MES remains active — Amo's
+> most-traded vehicle, must not be added to `DO_NOT_TRADE_SYMBOLS` without his explicit direction.
 
 ## Entry Points
 
@@ -58,7 +61,7 @@
 |--------|----|-----|--------|
 | MCL | 1h | 0.82 | HALTED — hypotheses A-E exhausted 2026-05-07; `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False` |
 | MNQ | 1h | 0.57 | HALTED — trend/breakout/ORB all fail gate v2 (55 trades, 0 wins 2026-05-06/07); `DO_NOT_TRADE_SYMBOLS` |
-| MGC | 1h | 0.6842 (p_edge) | APPROVED — paper active, SMA(50,120) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24. RV filter (min_rv=9%) validated CORE gate v2 2026-05-24 (p_edge=1.0, wfo=STRONG, mc_dd=0.65%, cost=catastrophic) — NOT yet enabled; requires 60+ live MGC trades for calibration |
+| MGC | 1h | 0.6842 (p_edge) | HALTED 2026-07-29 — the 2026-05-24 Tier-3 "APPROVED" verdict below did not survive the honest-data-drain DSR correction (memory `project_honest_data_drain_zero_survivors_2026_07_27`): rebuilding non-contaminated continuous-futures data and recomputing DSR at the true 54-70 trial count collapsed its one nominal ALT-path PASS (dsr 0.869307 → ~0.000002). `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False` (was already False since 2026-06-26 for an unrelated gate-v2 FAIL, now doubly confirmed). ~~APPROVED — paper active, SMA(50,120) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24~~ (superseded). RV filter (min_rv=9%) validated CORE gate v2 2026-05-24 (p_edge=1.0, wfo=STRONG, mc_dd=0.65%, cost=catastrophic) — moot until re-authorized |
 | MES | 1h | 0.75 (p_edge) | APPROVED — paper active, SMA(60,200) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24. RV filter (min_rv=9%) validated ALT gate v2 2026-05-24 — NOT yet enabled in paper config; requires 60+ live trades for confirmation |
 | M2K | 1h | — | REJECTED — SMA trend ranks 1-3 FAIL + ORB rank1 FAIL + Donchian rank1 FAIL 2026-05-24 (dch: p_edge=0.50, wfo=WEAK, dsr=0.0; cost=catastrophic but wfo blocks ALT); 3 families exhausted at 1h |
 | SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 — **but see Equities below: trading live in paper anyway** |
@@ -94,7 +97,10 @@ Amo's call, not resolved here.
 ### Validation-only lifecycle
 
 `VALIDATION_ONLY_INSTRUMENTS` (defined in `engine/agents/pipeline.py`) is currently empty —
-both MES and MGC were promoted to active paper trading on 2026-05-24 (Tier 3 auth).
+both MES and MGC were promoted to active paper trading on 2026-05-24 (Tier 3 auth). MGC was
+HALTED again 2026-07-29 via `DO_NOT_TRADE_SYMBOLS` + `paper_config.py enabled=False` once the
+honest-data-drain DSR correction invalidated that PASS (see Active Instruments table above) —
+it is blocked at the trading gate, not routed back through VALIDATION_ONLY. MES remains active.
 The pipeline runs for all approved symbols; verdicts appear in the dashboard and Discord briefing feed.
 The approval gate in `approval/service.py:ensure_approval_allowed()` blocks paper orders for any
 symbol remaining in this set with HTTP 409.

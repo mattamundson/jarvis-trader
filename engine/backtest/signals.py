@@ -110,7 +110,19 @@ TREND_INSTRUMENTS = {"MES", "MGC"}
 #   MCL — Mean-Rev hyp A/B/C + SMA Trend hyp D/E all FAIL (5 hypotheses exhausted)
 #   MNQ — SMA Trend ranks 1-2 + Breakout ranks 1-7 + ORB rank 1 all FAIL
 #   M2K — SMA Trend ranks 1-2 + ORB rank 1 all FAIL
-DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
+#
+# MGC added 2026-07-29 per the honest-data-drain finding (2026-07-27,
+# memory project_honest_data_drain_zero_survivors_2026_07_27): after rebuilding
+# non-contaminated continuous-futures reference data and recomputing DSR at the
+# true combined-campaign trial count (54-70, not each script's own n=1), MGC's
+# one nominal gate-v2 PASS collapses (dsr 0.869307 -> ~0.000002). The prior
+# "MGC gate-v2 PASS, Tier-3 approved 2026-05-24" status was computed before
+# this correction and no longer holds.
+#
+# MES is deliberately NOT in this set. Amo trades MES as his primary vehicle --
+# do not add it here without his explicit, direct instruction, regardless of
+# what any other analysis (including honest-data-drain) concludes about it.
+DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K", "MGC"})
 
 # Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
 # Canonical active paper-trading pair per the 2026-05-24 instrument switch —

@@ -105,7 +105,11 @@ MGC_PAPER_CONFIG = {
     "symbol": "MGC",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
-    "enabled": False,  # 2026-06-26: rank4 re-run FAILs gate v2; was enabled on a stale 2026-05-06 PASS
+    "enabled": False,  # 2026-06-26: rank4 re-run FAILs gate v2; was enabled on a stale 2026-05-06 PASS.
+    #  Corroborated 2026-07-29 by the honest-data-drain finding: this same script's ALT-path
+    #  dsr=0.869307 (computed as if n_grid_combos=1) collapses to ~0.000002 once corrected for
+    #  the true 54-70 trial count -- the one nominal PASS in the whole re-scored universe. Now
+    #  also in DO_NOT_TRADE_SYMBOLS (previously relied on this flag alone).
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade

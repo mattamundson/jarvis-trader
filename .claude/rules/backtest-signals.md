@@ -32,13 +32,17 @@ Any parameter change requires a new walk-forward evaluation:
 Current status — authoritative source is `engine/CLAUDE.md` "Active Instruments"
 (update that table, not this line):
 
-- APPROVED, paper active (Tier-3 auth 2026-05-24): **MES** (p_edge 0.75), **MGC** (p_edge 0.68)
-- HALTED, in `DO_NOT_TRADE_SYMBOLS`: **MCL**, **MNQ**
+- APPROVED, paper active (Tier-3 auth 2026-05-24): **MES** (p_edge 0.75)
+- HALTED, in `DO_NOT_TRADE_SYMBOLS`: **MGC** (2026-07-29, honest-data-drain DSR correction), **MCL**, **MNQ**
 - REJECTED: **M2K**, **SPY**
 
-Note: MES/MGC were validated via the gate-v2 rolling walk-forward (p_edge / DSR),
-which superseded the older single-number WFE figures once quoted here (the prior
-"MCL 0.82 / MNQ 0.57 approved, MES/MGC do-not-trade" line was stale and inverted).
+Note: MGC's 2026-05-24 gate-v2 PASS (p_edge 0.68) did not survive the 2026-07-29
+honest-data-drain DSR correction — recomputing DSR at the true combined-campaign trial
+count collapsed its one nominal ALT-path PASS to ~0. MES's 2026-05-24 gate-v2 PASS
+(p_edge 0.75) is unaffected and remains approved — MES is Amo's most-traded vehicle
+and must never be added to `DO_NOT_TRADE_SYMBOLS` without his explicit direction. See
+`engine/CLAUDE.md` and memory `project_honest_data_drain_zero_survivors_2026_07_27`
+for full detail.
 
 ## RL Agent Rules
 

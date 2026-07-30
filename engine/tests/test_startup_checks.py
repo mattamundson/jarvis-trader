@@ -242,7 +242,12 @@ class TestAutonomousActiveSymbolsCheck:
         assert "MCL" in result.message
 
     def test_all_tradeable_passes(self, monkeypatch):
+        """MGC dropped from this fixture (halted 2026-07-29, honest-data-drain
+        DSR correction) -- MES remains tradeable and is Amo's most-traded
+        vehicle, must never be added to DO_NOT_TRADE_SYMBOLS without his
+        explicit direction.
+        """
         monkeypatch.setenv("ENABLE_AUTONOMOUS_PIPELINE", "1")
-        monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MES,MGC")  # both tradeable
+        monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MES")  # tradeable
         result = _check_autonomous_active_symbols()
         assert result.status == "pass"

@@ -1,16 +1,19 @@
 # JARVIS TRADER — Current System State
 
-**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** June 18, 2026
+**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** July 29, 2026
 
-> **Current reality (2026-06-04, verified against live `/health`):** Engine healthy on
-> 8010 — `status=ok`, `ibkr_connected/data_connected=true`, `ibgateway_alive=true` (4002),
-> `llm_path_healthy=true`, `tv_mcp=healthy`. Dashboard on 3010. `brier_30d_rolling` is still
-> null (calibration populates as paper trades accrue). Approved paper instruments changed since
-> the April snapshot below — **MES + MGC are active (Tier-3 2026-05-24); MCL + MNQ are HALTED
-> (`DO_NOT_TRADE`)**. A dashboard honesty/safety + Stark-enhancement branch
-> (`worktree-dashboard-honesty-safety`) is staged but not yet pushed/merged; its `[safety-review]`
-> equity-peak clamp activates on the next `restart_engine.ps1`. For live instrument status always
-> prefer the `/validation` scorecard over the static table below.
+> **Current reality (2026-07-29):** MGC is **HALTED**, not approved — the 2026-05-24
+> Tier-3 "APPROVED" verdict did not survive the honest-data-drain DSR correction
+> (memory `project_honest_data_drain_zero_survivors_2026_07_27`): rebuilding non-contaminated
+> continuous-futures reference data and recomputing DSR at the true 54-70 combined-campaign trial
+> count collapsed MGC's one nominal ALT-path PASS (dsr 0.869307 → ~0.000002). MGC moved into
+> `DO_NOT_TRADE_SYMBOLS` and `paper_config.py enabled=False` on 2026-07-29. **MES remains
+> APPROVED and actively trading** — it is Amo's most-traded vehicle and must never be added to
+> `DO_NOT_TRADE_SYMBOLS` or disabled without his explicit, direct instruction. The June 2026
+> "MES + MGC active" status below is now stale for MGC only; the April 2026 static table further
+> below (MCL/MNQ approved, MES/MGC do-not-trade) was already noted as stale/inverted before this
+> correction. For live instrument status always prefer the `/validation` scorecard over the
+> static table below.
 
 **See also:** [Strategic command center (index)](strategic/README.md) — executive brief, system map, risk register, execution spine, and analysis passes.
 
@@ -37,12 +40,12 @@
 
 ## Approved Instruments
 
-_Updated 2026-06-04 from `engine/CLAUDE.md` canon (Tier-3 auth 2026-05-24). Live status: `/validation`._
+_Updated 2026-07-29 — honest-data-drain DSR correction halted MGC. Live status: `/validation`._
 
 | Symbol | Timeframe | Edge | Status | Notes |
 |--------|-----------|------|--------|-------|
-| **MGC** | 1h | p_edge 0.6842 | **APPROVED — paper active** | SMA(50,120) trend, atr_trail_mult=2.0; ALT gate-v2 PASS |
-| **MES** | 1h | p_edge 0.75 | **APPROVED — paper active** | SMA(60,200) trend, atr_trail_mult=2.0; ALT gate-v2 PASS |
+| MGC | 1h | p_edge 0.6842 (superseded) | **HALTED 2026-07-29** | `DO_NOT_TRADE` — nominal ALT gate-v2 PASS collapsed to dsr~0 once corrected for the true trial count (honest-data-drain, 2026-07-27) |
+| MES | 1h | p_edge 0.75 | **APPROVED — paper active** | SMA(60,200) trend, atr_trail_mult=2.0; ALT gate-v2 PASS. Not subject to the honest-data-drain halt applied to MGC — this is Amo's most-traded vehicle, must never be halted without his explicit direction |
 | MCL | 1h | WFE 0.82 | HALTED | `DO_NOT_TRADE` — hypotheses A–E exhausted 2026-05-07 |
 | MNQ | 1h | WFE 0.57 | HALTED | `DO_NOT_TRADE` — trend/breakout/ORB all fail gate-v2 |
 | M2K | 1h | — | REJECTED | SMA/ORB/Donchian rank-1 all FAIL 2026-05-24 |
@@ -96,8 +99,8 @@ API_KEY=<from engine/.env>
 # WORKING_TODAY smoke do not require this flag.
 
 # Approved Futures
-# config.py code default. Tradeable set is gated separately: MCL + MNQ are HALTED
-# (DO_NOT_TRADE_SYMBOLS); MES + MGC are the active paper instruments (Tier-3 2026-05-24).
+# config.py code default. Tradeable set is gated separately: MCL + MNQ + MGC are HALTED
+# (DO_NOT_TRADE_SYMBOLS); MES is the active paper instrument (Tier-3 2026-05-24).
 FUTURES_WATCHLIST=MCL,MNQ,MES
 ```
 
@@ -135,10 +138,14 @@ FUTURES_WATCHLIST=MCL,MNQ,MES
 
 ## Paper Validation Status
 
-**Period:** MES + MGC active paper validation since 2026-05-24 (Tier-3 auth). The prior MCL/MNQ window (Apr 2–May 2, 2026) is closed — both instruments are now HALTED (`DO_NOT_TRADE`).
+**Period:** MES + MGC active paper validation 2026-05-24 through 2026-07-29 (Tier-3 auth). MGC then
+HALTED 2026-07-29 (honest-data-drain DSR correction invalidated its underlying gate-v2 PASS); MES
+continues uninterrupted — not subject to that halt. The prior MCL/MNQ window (Apr 2–May 2, 2026) is
+closed — both instruments are also HALTED (`DO_NOT_TRADE`).
 **Target:** Profit Factor > 1.5, Sharpe > 1.0, Max Drawdown < 10%, Win Rate > 45%
 
-**Instruments:** MES (1h), MGC (1h) — active paper. MCL + MNQ HALTED (`DO_NOT_TRADE`).
+**Instruments:** MES active — MGC HALTED 2026-07-29 alongside MCL + MNQ (all three now in
+`DO_NOT_TRADE`).
 **Broker:** IB Gateway (paper), port 4002
 **Mode:** All orders logged but NOT submitted (PAPER_TRADING=True)
 

@@ -60,7 +60,9 @@ def test_warn_fires_for_blocked_symbols(monkeypatch, caplog):
 
 
 def test_no_warn_for_tradeable_symbols(monkeypatch, caplog):
-    monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MES,MGC")
+    # MGC moved into DO_NOT_TRADE_SYMBOLS 2026-07-29 (honest-data-drain DSR
+    # correction) -- MES alone is the tradeable exemplar now.
+    monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MES")
     with caplog.at_level(logging.WARNING):
         pa._warn_blocked_active_symbols()
     assert not any("DO_NOT_TRADE" in r.getMessage() for r in caplog.records)
