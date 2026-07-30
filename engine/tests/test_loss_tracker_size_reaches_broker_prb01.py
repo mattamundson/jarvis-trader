@@ -29,9 +29,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from execution.schwab_connector import ConnectionState, SchwabConnector
-from execution.ibkr_executor import IB_AVAILABLE, IBKRExecutor
 from execution.ib_gateway_connector import IBGatewayConnector
+from execution.ibkr_executor import IB_AVAILABLE, IBKRExecutor
+from execution.schwab_connector import ConnectionState, SchwabConnector
 from risk.loss_tracker import ConsecutiveLossTracker
 from risk.safety_layer import SafetyLayer
 
