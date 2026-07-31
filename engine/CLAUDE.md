@@ -1,7 +1,7 @@
 # Engine — Python Backend Context
 
 > FastAPI trading engine, port 8010. See parent CLAUDE.md for full project overview.
-> Wave 3 instrument expansion (2026-05-21): MES + MGC added as VALIDATION_ONLY — pipeline runs, no paper orders.
+> Wave 3 instrument expansion (2026-05-21): MES + MGC added as VALIDATION_ONLY — pipeline runs, no paper orders. MGC was later promoted to paper-active (2026-05-24) then HALTED again (2026-06-26) — see Active Instruments below.
 
 ## Entry Points
 
@@ -58,7 +58,7 @@
 |--------|----|-----|--------|
 | MCL | 1h | 0.82 | HALTED — hypotheses A-E exhausted 2026-05-07; `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False` |
 | MNQ | 1h | 0.57 | HALTED — trend/breakout/ORB all fail gate v2 (55 trades, 0 wins 2026-05-06/07); `DO_NOT_TRADE_SYMBOLS` |
-| MGC | 1h | 0.6842 (p_edge) | APPROVED — paper active, SMA(50,120) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24. RV filter (min_rv=9%) validated CORE gate v2 2026-05-24 (p_edge=1.0, wfo=STRONG, mc_dd=0.65%, cost=catastrophic) — NOT yet enabled; requires 60+ live MGC trades for calibration |
+| MGC | 1h | 0.6842 (p_edge) | HALTED 2026-06-26 — `paper_config.py MGC_PAPER_CONFIG["enabled"] = False`. Was APPROVED/paper-active on a 2026-05-05 rank4 ALT PASS (Tier 3 auth 2026-05-24), but rank4 was re-run 2026-06-24 and now FAILs gate v2 (p_edge=0.60, fixed_params_min_pf=1.179, mc_95th_dd=4.011% > 4.0% ALT ceiling); the 2026-05-05 dsr=1.0 was later found to be a degenerate-variance fallback artifact (fixed af35329). Verdict file: `engine/data/gate_v2_verdicts/MGC_trend_rank4.json`. RV filter (min_rv=9%) validated CORE gate v2 2026-05-24 (p_edge=1.0, wfo=STRONG, mc_dd=0.65%, cost=catastrophic) but was never enabled and requires 60+ live MGC trades for calibration — moot while the base config is disabled. Re-enable only on a fresh honest rank4 PASS. |
 | MES | 1h | 0.75 (p_edge) | APPROVED — paper active, SMA(60,200) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24. RV filter (min_rv=9%) validated ALT gate v2 2026-05-24 — NOT yet enabled in paper config; requires 60+ live trades for confirmation |
 | M2K | 1h | — | REJECTED — SMA trend ranks 1-3 FAIL + ORB rank1 FAIL + Donchian rank1 FAIL 2026-05-24 (dch: p_edge=0.50, wfo=WEAK, dsr=0.0; cost=catastrophic but wfo blocks ALT); 3 families exhausted at 1h |
 | SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 — **but see Equities below: trading live in paper anyway** |
@@ -94,7 +94,11 @@ Amo's call, not resolved here.
 ### Validation-only lifecycle
 
 `VALIDATION_ONLY_INSTRUMENTS` (defined in `engine/agents/pipeline.py`) is currently empty —
-both MES and MGC were promoted to active paper trading on 2026-05-24 (Tier 3 auth).
+both MES and MGC were promoted to active paper trading on 2026-05-24 (Tier 3 auth). MGC has
+**not** been put back in this set since (still empty, confirmed 2026-07-24) — its 2026-06-26
+halt is a separate, config-level gate (`paper_config.py MGC_PAPER_CONFIG["enabled"] = False`),
+not a VALIDATION_ONLY reversion. The pipeline still runs and produces verdicts for MGC; the
+config flag is what blocks paper orders.
 The pipeline runs for all approved symbols; verdicts appear in the dashboard and Discord briefing feed.
 The approval gate in `approval/service.py:ensure_approval_allowed()` blocks paper orders for any
 symbol remaining in this set with HTTP 409.
