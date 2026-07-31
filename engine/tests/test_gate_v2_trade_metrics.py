@@ -104,6 +104,41 @@ class TestTradeLevelDsr:
         dsr = trade_level_dsr(windows, n_grid_combos=8, initial_capital=CAP)
         assert 0.0 <= dsr <= 1.0
 
+    def test_prb02_single_fixed_params_run_understates_selection_bias(self):
+        """PRB-02 regression: a runner that evaluates ONE fixed champion param
+        set (no grid search) always calls `trade_level_dsr(..., n_grid_combos=1)`
+        -- exactly like `run_mgc_trend_mtf_rank1.py` -- which computes DSR as
+        if the strategy were the only one ever tried anywhere. That is wrong
+        whenever the strategy is actually the survivor of a larger research
+        campaign (many scripts/hypotheses tried, only the best one kept and
+        reported). This test pins the general property PRB-02's fix and the
+        `recompute_mgc_trend_baseline_dsr.py` script both rely on: the SAME
+        trade series' DSR is monotonically non-increasing in n_trials, and a
+        marginal (not overwhelming) edge that nominally PASSes at n_trials=1
+        can and does collapse below both gate floors once corrected for the
+        true campaign trial count. (Real-world instances of exactly this:
+        MGC_trend_baseline.json dsr 0.999375->0.0 at n=54/70, and
+        run_bottom_detector_sd088.py dsr 0.869307->0.000002 at n=54, per
+        ~/.claude/loops/jarvis-honest-data-drain/ledger.json.)
+        """
+        rng = np.random.default_rng(7)
+        # A modest, not-overwhelming edge (unlike a Sharpe-5.0 monster) --
+        # representative of the marginal WFO-champion strategies gate v2
+        # actually evaluates, where trial-count correction can flip the verdict.
+        pnls = (rng.normal(15, 300, size=31)).tolist()  # 31 trades, matches MGC_trend_baseline
+        windows = [_window(pnls)]
+
+        dsr_1 = trade_level_dsr(windows, n_grid_combos=1, initial_capital=CAP)
+        dsr_54 = trade_level_dsr(windows, n_grid_combos=54, initial_capital=CAP)
+        dsr_70 = trade_level_dsr(windows, n_grid_combos=70, initial_capital=CAP)
+
+        assert dsr_1 >= dsr_54 >= dsr_70, (
+            "DSR must be monotonically non-increasing in n_trials for a fixed "
+            "trade series -- a runner that never accounts for the real "
+            "campaign trial count can only ever overstate significance, never "
+            "understate it."
+        )
+
 
 class TestTradeLevelPfCiLower:
     def test_matches_canonical_primitive(self):
