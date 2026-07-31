@@ -201,6 +201,87 @@ def test_is_ungate_eligible_case_insensitive_symbol(tmp_verdicts_dir):
 
 
 # ---------------------------------------------------------- #
+# is_ungate_eligible — family_prefixes (PRB-02)               #
+# ---------------------------------------------------------- #
+
+
+def test_is_ungate_eligible_family_scope_rejects_unrelated_family(tmp_verdicts_dir):
+    """PRB-02 regression: an unrelated family's PASS (e.g. a gap-fill scanner)
+    must NOT authorize a symbol-wide check scoped to a different family (e.g.
+    the trend-crossover path actually being traded) — this is the exact live
+    bug (MES_stark_gapfill_long_rank1 PASS wrongly authorizing the failing
+    trend strategy).
+    """
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MES",
+        family="stark_gapfill_long",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+    )
+    # Symbol-wide (no family_prefixes) still sees the unrelated PASS.
+    assert is_ungate_eligible("MES") is True
+    # Family-scoped to "trend" must reject it — no trend-family verdict exists.
+    assert is_ungate_eligible("MES", family_prefixes=frozenset({"trend"})) is False
+
+
+def test_is_ungate_eligible_family_scope_accepts_exact_and_underscore_variants(tmp_verdicts_dir):
+    """`family_prefixes={"trend"}` must match "trend" exactly and "trend_*"
+    variants (trend_rv_filter, trend_baseline, ...), matching how the real
+    verdict files are named.
+    """
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MGC",
+        family="trend",
+        rank=1,
+        verdict="FAIL",
+        passed_via=None,
+    )
+    assert is_ungate_eligible("MGC", family_prefixes=frozenset({"trend"})) is False
+
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MGC",
+        family="trend_rv_filter",
+        rank=2,
+        verdict="PASS",
+        passed_via="alt",
+    )
+    assert is_ungate_eligible("MGC", family_prefixes=frozenset({"trend"})) is True
+
+
+def test_is_ungate_eligible_family_scope_rejects_prefix_boundary_false_positive(tmp_verdicts_dir):
+    """A family that merely starts with the prefix string (no underscore
+    boundary) must NOT match — "trendline_break" is a different family than
+    "trend", not a variant of it.
+    """
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MES",
+        family="trendline_break",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+    )
+    assert is_ungate_eligible("MES", family_prefixes=frozenset({"trend"})) is False
+
+
+def test_is_ungate_eligible_family_scope_multiple_prefixes(tmp_verdicts_dir):
+    _write_verdict(
+        tmp_verdicts_dir,
+        symbol="MCL",
+        family="meanrev",
+        rank=1,
+        verdict="PASS",
+        passed_via="core",
+    )
+    assert is_ungate_eligible("MCL", family_prefixes=frozenset({"trend"})) is False
+    assert is_ungate_eligible("MCL", family_prefixes=frozenset({"trend", "meanrev"})) is True
+
+
+# ---------------------------------------------------------- #
 # list_verdicts                                              #
 # ---------------------------------------------------------- #
 
