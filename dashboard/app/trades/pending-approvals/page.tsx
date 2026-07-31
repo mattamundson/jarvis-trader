@@ -17,6 +17,7 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
 
 const REFRESH_MS = 20_000;
 /** Fallback base ONLY when the engine can't report live equity — never the
@@ -175,6 +176,11 @@ export default function PendingApprovalsPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-6 py-8 space-y-6">
+        {/* Live status board over recent directional decisions — where each
+            signal stands vs the market right now. Display-only; approving/
+            rejecting happens in the queue below. */}
+        <ActionableBoardWidget />
+
         {isLoading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground" />
