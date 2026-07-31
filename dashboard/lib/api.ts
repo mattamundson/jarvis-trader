@@ -2531,6 +2531,26 @@ export async function fetchRegimeV2(symbol: string): Promise<RegimeV2Response> {
   return fetchEngine<RegimeV2Response>(`/analytics/regime-v2/${encodeURIComponent(symbol)}`);
 }
 
+// ── Legacy per-symbol regime classification (/analytics/regime/{symbol}) ─────
+// backtest.regime.RegimeClassifier (3-state: TRENDING/RANGING/VOLATILE, or
+// UNKNOWN when bar data is insufficient) -- NOT the classifier the live
+// pipeline uses for routing (that's regime-v2 above). Still a genuine live
+// read off real bar data, not fabricated -- this is the endpoint /jarvis's
+// RegimePulsePanel already calls; reused here (PRB-34) for /command-center's
+// Signal Cards so `regime` stops rendering a hardcoded constant.
+
+export interface SymbolRegimeResponse {
+  symbol: string;
+  regime?: string;
+  current_regime?: string;
+  note?: string;
+  error?: string;
+}
+
+export async function fetchSymbolRegime(symbol: string): Promise<SymbolRegimeResponse> {
+  return fetchEngine<SymbolRegimeResponse>(`/analytics/regime/${encodeURIComponent(symbol)}`);
+}
+
 // ── Portfolio correlation preview (/analytics/correlation-preview) ───────────
 // risk/portfolio_sizer.py's correlation-aware sizing trim is validated but NOT
 // wired into the live order path (see the module's own docstring) -- this

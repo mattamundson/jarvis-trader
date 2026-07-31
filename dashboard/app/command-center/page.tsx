@@ -25,7 +25,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { fetchEngine, fetchJournalStats, fetchBars, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
+import {
+  fetchEngine,
+  fetchJournalStats,
+  fetchBars,
+  fetchSymbolRegime,
+  toggleKillSwitch,
+  type JournalTradeStats,
+  type OHLCVBar,
+} from "@/lib/api";
 import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
 import {
   fetchHonestTrades,
@@ -287,6 +295,34 @@ function pnlColor(n: number | undefined | null): string {
 
 function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
+}
+
+// ── Live per-instrument regime (PRB-34) ─────────────────────────────────────
+// Ports /jarvis's RegimePulsePanel pattern: GET /analytics/regime/{symbol},
+// same live source, same 60s poll cadence. Replaces the Signal Cards' hardcoded
+// `regime` constant. lastSignal/atr have no equivalent live source from this
+// endpoint (it returns only symbol/regime/current_regime/note/error) and stay
+// static -- see constants.ts.
+function useSymbolRegime(symbol: string) {
+  const { data, error, isLoading } = useSWR(
+    `/analytics/regime/${symbol}`,
+    () => fetchSymbolRegime(symbol),
+    { refreshInterval: 60_000, shouldRetryOnError: false }
+  );
+  return {
+    regime: data?.current_regime ?? data?.regime ?? null,
+    isLoading,
+    error,
+  };
+}
+
+function regimeColorClass(regime: string | null): string {
+  if (!regime) return "text-slate-500";
+  const r = regime.toUpperCase();
+  if (r.includes("TREND") || r.includes("BULL")) return "text-green-400";
+  if (r.includes("BEAR") || r.includes("CRASH")) return "text-red-400";
+  if (r.includes("RANG") || r.includes("CHOP") || r === "UNKNOWN") return "text-yellow-400";
+  return "text-cyan-400";
 }
 
 // ── Page Component ────────────────────────────────────────────────────────
@@ -844,100 +880,7 @@ export default function CommandCenterPage() {
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         {liveInstruments.map((inst) => (
-          <Card
-            key={inst.symbol}
-            className={`bg-slate-900/60 border ${
-              inst.status === "HALTED"
-                ? "border-red-900/60"
-                : "border-cyan-900/50"
-            }`}
-          >
-            <CardHeader className="pb-2 pt-3 px-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="font-mono text-base text-white font-bold tracking-wider">
-                    {inst.symbol}
-                  </CardTitle>
-                  <span className="font-mono text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
-                    {inst.tf}
-                  </span>
-                </div>
-                <Badge
-                  className={`text-xs font-mono py-0 px-2 border ${
-                    inst.status === "APPROVED"
-                      ? "bg-green-950 text-green-400 border-green-800"
-                      : "bg-red-950 text-red-400 border-red-800"
-                  }`}
-                >
-                  {inst.status}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              {inst.status === "HALTED" ? (
-                <div className="flex flex-col items-center justify-center py-5 gap-2">
-                  <XCircle className="w-9 h-9 text-red-500/70" />
-                  <span className="font-mono text-sm text-red-400 font-bold tracking-wider">
-                    TRADING HALTED
-                  </span>
-                  <span className="font-mono text-xs text-slate-500 text-center">
-                    DSR={inst.wfe} — OVERFIT DETECTED
-                    <br />
-                    Regime-adaptive boost insufficient
-                  </span>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">
-                      Deflated Sharpe
-                    </div>
-                    <div className="font-mono text-lg text-cyan-400 font-bold leading-none">
-                      {inst.wfe}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Regime (static)</div>
-                    <div
-                      className={`font-mono text-sm font-bold ${
-                        inst.regime === "BULL"
-                          ? "text-green-400"
-                          : inst.regime === "BEAR"
-                            ? "text-red-400"
-                            : "text-yellow-400"
-                      }`}
-                    >
-                      {inst.regime}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">
-                      Last Signal
-                    </div>
-                    <div
-                      className={`font-mono text-sm font-bold ${
-                        inst.lastSignal === "LONG"
-                          ? "text-green-400"
-                          : inst.lastSignal === "SHORT"
-                            ? "text-red-400"
-                            : "text-slate-400"
-                      }`}
-                    >
-                      {inst.lastSignal}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">
-                      ATR Approx
-                    </div>
-                    <div className="font-mono text-sm text-white">
-                      {inst.atr}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <SignalCard key={inst.symbol} inst={inst} />
         ))}
       </div>
 
@@ -1550,5 +1493,103 @@ export default function CommandCenterPage() {
         </WidgetErrorBoundary>
       </div>
     </div>
+  );
+}
+
+// ── SignalCard (PRB-34: live regime, static lastSignal/atr) ────────────────
+
+function SignalCard({ inst }: { inst: (typeof INSTRUMENTS)[number] }) {
+  const { regime: liveRegime, isLoading: regimeLoading } = useSymbolRegime(inst.symbol);
+
+  return (
+    <Card
+      className={`bg-slate-900/60 border ${
+        inst.status === "HALTED" ? "border-red-900/60" : "border-cyan-900/50"
+      }`}
+    >
+      <CardHeader className="pb-2 pt-3 px-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CardTitle className="font-mono text-base text-white font-bold tracking-wider">
+              {inst.symbol}
+            </CardTitle>
+            <span className="font-mono text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
+              {inst.tf}
+            </span>
+          </div>
+          <Badge
+            className={`text-xs font-mono py-0 px-2 border ${
+              inst.status === "APPROVED"
+                ? "bg-green-950 text-green-400 border-green-800"
+                : "bg-red-950 text-red-400 border-red-800"
+            }`}
+          >
+            {inst.status}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-3">
+        {inst.status === "HALTED" ? (
+          <div className="flex flex-col items-center justify-center py-5 gap-2">
+            <XCircle className="w-9 h-9 text-red-500/70" />
+            <span className="font-mono text-sm text-red-400 font-bold tracking-wider">
+              TRADING HALTED
+            </span>
+            <span className="font-mono text-xs text-slate-500 text-center">
+              DSR={inst.wfe} — OVERFIT DETECTED
+              <br />
+              Regime-adaptive boost insufficient
+            </span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">
+                Deflated Sharpe
+              </div>
+              <div className="font-mono text-lg text-cyan-400 font-bold leading-none">
+                {inst.wfe}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">Regime</div>
+              {regimeLoading ? (
+                <div className="h-4 w-16 animate-pulse rounded bg-slate-800" />
+              ) : liveRegime ? (
+                <div className={`font-mono text-sm font-bold ${regimeColorClass(liveRegime)}`}>
+                  {liveRegime}
+                </div>
+              ) : (
+                <div className="font-mono text-sm text-slate-600">unavailable</div>
+              )}
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">
+                Last Signal (static)
+              </div>
+              <div
+                className={`font-mono text-sm font-bold ${
+                  inst.lastSignal === "LONG"
+                    ? "text-green-400"
+                    : inst.lastSignal === "SHORT"
+                      ? "text-red-400"
+                      : "text-slate-400"
+                }`}
+              >
+                {inst.lastSignal}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">
+                ATR Approx (static)
+              </div>
+              <div className="font-mono text-sm text-white">
+                {inst.atr}
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

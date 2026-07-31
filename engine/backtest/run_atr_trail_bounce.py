@@ -30,6 +30,7 @@ A REJECT verdict means discard the hypothesis, not tweak-and-rerun.
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 import sys
 from datetime import date
@@ -37,6 +38,8 @@ from itertools import product
 from pathlib import Path
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 ENGINE_ROOT = Path(__file__).resolve().parent.parent
 if str(ENGINE_ROOT) not in sys.path:
@@ -255,6 +258,16 @@ def _make_optimize_fn(symbol: str, mode: str):
             try:
                 res = _backtest(df, symbol, mode, params)
             except Exception:
+                # Do not let this look identical to "too rare on this data" --
+                # a crash (bad env, bad data, a real bug) is a different failure
+                # than a param set that legitimately clears too few trades.
+                logger.warning(
+                    "ATR-trail %s backtest raised for params=%s -- skipping this "
+                    "param set, NOT counting it as 'too rare'. See traceback.",
+                    mode,
+                    params,
+                    exc_info=True,
+                )
                 continue
             if res.total_trades < MIN_TRADES:
                 continue
@@ -285,6 +298,13 @@ def _make_walkforward_fn(symbol: str, mode: str):
         try:
             res = _backtest(oos, symbol, mode, params)
         except Exception:
+            logger.warning(
+                "ATR-trail %s walk-forward backtest raised for params=%s -- "
+                "scoring this OOS window 0.0, NOT counting it as 'too rare'.",
+                mode,
+                params,
+                exc_info=True,
+            )
             return 0.0
         return res.profit_factor if res.total_trades >= MIN_TRADES else 0.0
 
