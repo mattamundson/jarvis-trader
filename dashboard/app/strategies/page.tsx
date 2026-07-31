@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Brain, ArrowLeft, Play, RefreshCw, CheckCircle, XCircle, Clock, Zap, Activity, Cpu, StopCircle } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 import { SectionHeader } from "./SectionHeader";
 import { HowItWorksPanel } from "./HowItWorksPanel";
 import { StrategyDiscoveryBrowser } from "@/components/StrategyDiscoveryBrowser";
@@ -2145,6 +2146,7 @@ export default function StrategiesPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+        <ExploratoryBanner what="RL strategy discovery is in its research phase" />
 
         {/* Page title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
