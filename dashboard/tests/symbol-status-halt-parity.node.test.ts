@@ -8,6 +8,18 @@
 // one side without the other becomes a failing test instead of a live badge
 // showing MCL/MNQ green-APPROVED and MGC red-HALTED (exactly backwards).
 //
+// PRB-36 NOTE (2026-07-30): this file's contract (HALTED_SYMBOLS parity +
+// symbolTradeStatus()) is orthogonal to the bug PRB-36 fixed and needed no
+// expectation changes here. The retired bug lived in a *different* export --
+// approvedSymbols.ts's INSTRUMENT_STATUS table (a static per-symbol WFE +
+// status override with a fabricated "APPROVED" fallback for symbols the live
+// gates endpoint didn't return), consumed only by the now-deleted
+// InstrumentValidationScorecard.tsx / lib/instrumentValidationRows.ts (see
+// tests/instrument-validation-scope-gap.node.test.ts, trimmed accordingly).
+// HALTED_SYMBOLS and symbolTradeStatus() below are still hand-mirrored,
+// still-hardcoded-by-design (the engine's DO_NOT_TRADE_SYMBOLS has no TS-side
+// live source), and still correct -- so this test's assertions are unchanged.
+//
 // Run: cd dashboard && pnpm run test:unit
 //   (node --test --experimental-strip-types "tests/**/*.node.test.ts")
 
