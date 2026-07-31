@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import useSWR from "swr";
-import { fetchEngine, postEngine } from "@/lib/api";
+import { postEngine } from "@/lib/api";
 import { executionStatus } from "@/lib/executionPath";
 import {
   Activity,
@@ -84,180 +84,6 @@ function ConfigRow({
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs">{displayValue}</span>
     </div>
-  );
-}
-
-// ── Risk Settings Panel ───────────────────────────────────────────────────
-
-interface RiskConfig {
-  daily_loss_limit: number;
-  max_drawdown_pct: number;
-  max_contracts: number;
-  risk_per_trade_pct: number;
-  atr_stop_multiplier: number;
-  atr_target_multiplier: number;
-}
-
-interface RiskSettingsResponse {
-  config: RiskConfig;
-  circuit_breakers: Record<string, unknown>;
-  editable_keys: string[];
-}
-
-async function fetchRiskSettings(): Promise<RiskSettingsResponse> {
-  return fetchEngine<RiskSettingsResponse>("/settings/risk");
-}
-
-async function postRiskSettings(payload: Partial<RiskConfig>): Promise<{
-  updated: Partial<RiskConfig>;
-  errors: Record<string, string>;
-  count: number;
-}> {
-  return postEngine<{
-    updated: Partial<RiskConfig>;
-    errors: Record<string, string>;
-    count: number;
-  }>("/settings/risk", payload);
-}
-
-function RiskSettingsPanel() {
-  const [config, setConfig] = useState<RiskConfig | null>(null);
-  const [form, setForm] = useState<Partial<RiskConfig>>({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await fetchRiskSettings();
-      setConfig(data.config);
-      setForm(data.config);
-    } catch {
-      setFeedback({ ok: false, msg: "Failed to load risk settings from engine." });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Load on mount
-  useEffect(() => { load(); }, [load]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setFeedback(null);
-    try {
-      const result = await postRiskSettings(form);
-      if (result.count > 0 && Object.keys(result.errors).length === 0) {
-        setFeedback({ ok: true, msg: `Saved ${result.count} setting(s).` });
-        setConfig((prev) => (prev ? { ...prev, ...result.updated } : prev));
-      } else if (Object.keys(result.errors).length > 0) {
-        const msgs = Object.entries(result.errors)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join("; ");
-        setFeedback({ ok: false, msg: `Errors — ${msgs}` });
-      } else {
-        setFeedback({ ok: true, msg: "No changes." });
-      }
-    } catch (err) {
-      setFeedback({ ok: false, msg: String(err) });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleChange(key: keyof RiskConfig, raw: string) {
-    const prev = config?.[key];
-    let parsed: number = parseFloat(raw);
-    if (key === "max_contracts") parsed = parseInt(raw, 10);
-    if (isNaN(parsed)) return;
-    setForm((f) => ({ ...f, [key]: parsed }));
-    void prev; // suppress unused warning
-  }
-
-  const fields: { key: keyof RiskConfig; label: string; step: string; min: string; max: string }[] = [
-    { key: "daily_loss_limit", label: "Daily Loss Limit ($)", step: "10", min: "1", max: "100000" },
-    { key: "max_drawdown_pct", label: "Max Drawdown (0–1)", step: "0.01", min: "0.01", max: "1.0" },
-    { key: "max_contracts", label: "Max Contracts (1–2)", step: "1", min: "1", max: "2" },
-    { key: "risk_per_trade_pct", label: "Risk Per Trade (0–0.05)", step: "0.001", min: "0.001", max: "0.05" },
-    { key: "atr_stop_multiplier", label: "ATR Stop Multiplier (0.1–3.0)", step: "0.05", min: "0.1", max: "3.0" },
-    { key: "atr_target_multiplier", label: "ATR Target Multiplier (0.1–5.0)", step: "0.05", min: "0.1", max: "5.0" },
-  ];
-
-  return (
-    <details className="rounded-xl border border-border bg-card">
-      <summary className="flex items-center justify-between px-5 py-3.5 cursor-pointer select-none list-none">
-        <div className="flex items-center gap-2">
-          <Settings className="h-4 w-4 text-accent" />
-          <span className="text-sm font-semibold text-foreground">Risk Limits</span>
-        </div>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Edit circuit breaker thresholds
-        </span>
-      </summary>
-
-      <div className="px-5 pb-5 pt-1 space-y-4 border-t border-border/50">
-        {loading && (
-          <div className="space-y-2 animate-pulse">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-9 w-full bg-muted rounded-lg" />
-            ))}
-          </div>
-        )}
-
-        {!loading && (
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {fields.map(({ key, label, step, min, max }) => (
-              <div key={key} className="flex items-center gap-3">
-                <label className="w-52 shrink-0 text-xs text-muted-foreground">
-                  {label}
-                </label>
-                <input
-                  type="number"
-                  step={step}
-                  min={min}
-                  max={max}
-                  value={form[key] ?? ""}
-                  onChange={(e) => handleChange(key, e.target.value)}
-                  className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-              </div>
-            ))}
-
-            {feedback && (
-              <p
-                className={`text-xs rounded-lg px-3 py-2 ${
-                  feedback.ok
-                    ? "bg-bull/10 text-bull"
-                    : "bg-bear/10 text-bear"
-                }`}
-              >
-                {feedback.msg}
-              </p>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex-1 rounded-lg bg-accent/10 border border-accent/30 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Save Risk Settings"}
-              </button>
-              <button
-                type="button"
-                onClick={load}
-                disabled={loading || saving}
-                className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
-              >
-                Reset
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </details>
   );
 }
 
@@ -968,9 +794,6 @@ export default function SettingsPage() {
             <CircuitBreakerSummary data={cbData} />
           </div>
         </div>
-
-        {/* Risk Limits — full width, collapsible */}
-        <RiskSettingsPanel />
 
         {/* WhatsApp alert status */}
         <WhatsAppStatusCard />
