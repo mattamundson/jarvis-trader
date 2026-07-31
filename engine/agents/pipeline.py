@@ -1498,68 +1498,64 @@ class TradingPipeline:
                 ),
             }
 
-        # Directional signal — build minimal trade/risk/fund decisions
+        # ── PRB-12 (2026-07-29) fail-safe fix ──────────────────────────────
+        # This branch previously took a REAL qty=1 order off a bare STC
+        # reading alone — no LLM synthesis, no debate, no genuine risk/fund
+        # review (risk_decision/fund_decision were hardcoded "approved").
+        # That contradicts every other LLM-failure path in this pipeline,
+        # which defaults to HOLD (see e.g. _run_trader's own docstring:
+        # "Returns HOLD on failure"). No comment, ticket, or test in this
+        # codebase documents the qty=1 behavior as intentional — it was
+        # introduced silently inside an unrelated commit (0826dea) and is
+        # not exercised by any existing test. Fail safe: log what the
+        # technical signal *would have* triggered, but never place a live
+        # order on a bare indicator with conviction=3/10 and no LLM review.
         conviction = 3
-        quantity = 1
-        trade_decision = {
-            "symbol": symbol,
-            "action": stc_action,
-            "quantity": quantity,
-            "order_type": "market",
-            "limit_price": None,
-            "stop_price": None,
-            "time_in_force": "day",
-            "signal_score": 0.3 if stc_action == "buy" else -0.3,
-            "confidence": 0.3,
-            "reasoning": (
-                f"LLM credits exhausted — technical-only mode. "
-                f"STC={stc_val:.1f} ({stc_signal}). "
-                f"Conviction={conviction}/10 (pure technical, no LLM synthesis)."
-            ),
-            "risk_notes": "Technical-only mode — reduced conviction",
-            "technical_only_mode": True,
-            "technical_only_stc": round(stc_val, 2),
-            "technical_only_signal": stc_signal,
-            "timestamp": datetime.now().isoformat(),
-        }
-        risk_decision = {
-            "approved": True,
-            "veto_reason": None,
-            "modified_quantity": quantity,
-            "modified_limit_price": None,
-            "risk_score": 0.5,
-            "reasoning": "Technical-only fallback — risk auto-approved at minimum size",
-            "timestamp": datetime.now().isoformat(),
-        }
-        # Human-approval gate honors the REQUIRE_HUMAN_APPROVAL flag even in
-        # degraded technical-only mode (owner directive 2026-06-15).
-        from config import settings as _cfg
-
-        _require_human = bool(_cfg.REQUIRE_HUMAN_APPROVAL)
-        fund_decision = {
-            "approved": True,
-            "final_quantity": quantity,
-            "priority": "immediate",
-            "portfolio_impact": "Technical-only fallback — minimum size",
-            "reasoning": f"Technical-only mode: STC={stc_val:.1f} {stc_signal} conviction={conviction}/10",
-            "requires_human_approval": _require_human,
-            "timestamp": datetime.now().isoformat(),
-        }
+        logger.warning(
+            "[Pipeline] %s — LLM credits exhausted; STC=%.1f (%s) would have "
+            "signaled %s, but technical-only mode never takes a live trade off "
+            "a bare indicator (conviction=%d/10, no LLM synthesis) — forcing HOLD.",
+            symbol,
+            stc_val,
+            stc_signal,
+            stc_action.upper(),
+            conviction,
+        )
         return {
-            "final_action": stc_action,
-            "final_quantity": quantity,
-            "requires_human": _require_human,
+            "final_action": "hold",
+            "final_quantity": 0,
+            "requires_human": False,
             "technical_only_mode": True,
             "technical_only_stc": round(stc_val, 2),
             "technical_only_signal": stc_signal,
+            "technical_only_would_have_signaled": stc_action,
             "final_conviction": conviction / 10.0,
-            "trade_decision": trade_decision,
-            "risk_decision": risk_decision,
-            "fund_decision": fund_decision,
+            "trade_decision": {
+                "symbol": symbol,
+                "action": "hold",
+                "quantity": 0,
+                "signal_score": 0.3 if stc_action == "buy" else -0.3,
+                "confidence": 0.3,
+                "reasoning": (
+                    f"LLM credits exhausted — technical-only mode. "
+                    f"STC={stc_val:.1f} ({stc_signal}) would have signaled "
+                    f"{stc_action.upper()}, but a bare technical indicator with no LLM "
+                    f"synthesis is never sufficient for a live order. "
+                    f"Conviction={conviction}/10 — forced HOLD (fail-safe)."
+                ),
+                "risk_notes": "Technical-only mode — directional signal forced to HOLD (fail-safe)",
+                "technical_only_mode": True,
+                "timestamp": datetime.now().isoformat(),
+            },
+            "risk_decision": {
+                "approved": False,
+                "reason": "Technical-only fallback — fail-safe HOLD, no LLM/risk synthesis available",
+            },
+            "fund_decision": None,
             "summary": (
                 f"{symbol} | technical-only mode | STC={stc_val:.1f} {stc_signal} | "
-                f"action={stc_action.upper()} qty={quantity} | conviction={conviction}/10 "
-                f"human={_require_human}"
+                f"action=HOLD (would-have-been {stc_action.upper()}) "
+                f"conviction={conviction}/10 fail-safe"
             ),
         }
 
@@ -2010,39 +2006,52 @@ class TradingPipeline:
             errors.append(err)
 
             # ── Last-resort STC fallback: TraderAgent also hit LLM 400 ───────
-            # If this is an Anthropic 400 (credits exhausted), try to act on
-            # the raw STC value from the technical analyst report.
+            # PRB-12 (2026-07-29) fail-safe fix: this branch previously
+            # returned a REAL qty=1 order off a bare STC reading whenever the
+            # TraderAgent's own LLM call hit an Anthropic 400 — with no LLM
+            # synthesis, no debate, no genuine trader review. That directly
+            # contradicts this function's own docstring ("Run the Trader
+            # agent. Returns HOLD on failure.") and every other LLM-failure
+            # path in this file. No comment, ticket, or test documents the
+            # qty=1 behavior as intentional. Log what the technical signal
+            # would have triggered for observability, but always fail safe
+            # to HOLD — matching the default return below.
             if self._is_anthropic_400_error(str(e)):
                 stc_val = self._extract_technical_stc(analyst_reports)
                 if stc_val is not None:
                     stc_action, stc_signal = self._stc_to_action(stc_val)
                     if stc_action != "hold":
                         logger.warning(
-                            "[Pipeline] %s — LLM credits exhausted, using technical-only "
-                            "fallback (TraderAgent). STC=%.1f, signal=%s, conviction=3/10",
+                            "[Pipeline] %s — LLM credits exhausted; TraderAgent offline. "
+                            "STC=%.1f (%s) would have signaled %s, but a bare technical "
+                            "reading is never sufficient for a live order — forcing HOLD.",
                             symbol,
                             stc_val,
                             stc_signal,
+                            stc_action.upper(),
                         )
                         return {
                             "symbol": symbol,
-                            "action": stc_action,
-                            "quantity": 1,
+                            "action": "hold",
+                            "quantity": 0,
                             "order_type": "market",
                             "limit_price": None,
                             "stop_price": None,
                             "time_in_force": "day",
-                            "signal_score": 0.3 if stc_action == "buy" else -0.3,
-                            "confidence": 0.3,
+                            "signal_score": 0.0,
+                            "confidence": 0.0,
                             "reasoning": (
                                 f"LLM credits exhausted — TraderAgent offline. "
-                                f"Last-resort STC fallback: STC={stc_val:.1f} ({stc_signal}). "
-                                f"Conviction=3/10 (technical-only)."
+                                f"STC={stc_val:.1f} ({stc_signal}) would have signaled "
+                                f"{stc_action.upper()}, but technical-only fallback never "
+                                f"takes a live trade off a bare indicator. "
+                                f"Forced HOLD (fail-safe)."
                             ),
-                            "risk_notes": "Technical-only last-resort — no LLM synthesis",
+                            "risk_notes": "Technical-only last-resort — forced HOLD (fail-safe, no LLM synthesis)",
                             "technical_only_mode": True,
                             "technical_only_stc": round(stc_val, 2),
                             "technical_only_signal": stc_signal,
+                            "technical_only_would_have_signaled": stc_action,
                             "timestamp": datetime.now().isoformat(),
                         }
 
