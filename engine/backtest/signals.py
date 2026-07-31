@@ -110,7 +110,16 @@ TREND_INSTRUMENTS = {"MES", "MGC"}
 #   MCL — Mean-Rev hyp A/B/C + SMA Trend hyp D/E all FAIL (5 hypotheses exhausted)
 #   MNQ — SMA Trend ranks 1-2 + Breakout ranks 1-7 + ORB rank 1 all FAIL
 #   M2K — SMA Trend ranks 1-2 + ORB rank 1 all FAIL
-DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
+#   MGC — added 2026-07-31 (PRB-33). The 2026-07-29 honest-data-drain loop found
+#   MGC's one nominal gate-v2 PASS was a multiple-testing artifact: recomputing
+#   DSR at the true combined-campaign trial count collapses it from 0.999 to ~0
+#   (see engine/scripts/recompute_mgc_trend_baseline_dsr.py, PR #529). A prior
+#   session (2026-07-29) intended to halt MGC by adding it here, but that edit
+#   was left uncommitted in the working tree and was lost — MGC has been
+#   protected since only by paper_config.py's softer `enabled=False` flag, not
+#   this hard blocklist. This closes that gap; do not remove without a fresh
+#   gate-v2 PASS at the corrected trial count and Amo's explicit authorization.
+DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K", "MGC"})
 
 # Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
 # Canonical active paper-trading pair per the 2026-05-24 instrument switch —

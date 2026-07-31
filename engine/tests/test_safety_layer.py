@@ -177,9 +177,18 @@ class TestPaperConfigEnabled:
 
     def test_disabled_symbol_blocks_regardless_of_approval_path(self, mock_safety_layer):
         """MGC (paper_config.enabled=False as of 2026-06-26) is rejected by
-        check_order() even with default test settings (LIVE_TRADING_ENABLED
-        is False) -- proves the check fires before, and independent of, the
-        live-trading gate, exactly like TestDoNotTradeSymbols above."""
+        _check_paper_config_enabled() even with default test settings
+        (LIVE_TRADING_ENABLED is False) -- proves the check fires before, and
+        independent of, the live-trading gate, exactly like
+        TestDoNotTradeSymbols above.
+
+        Calls the private check directly rather than check_order(): MGC also
+        joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
+        correction), and that check runs first in check_order()'s pipeline,
+        so going through check_order() would test the DO_NOT_TRADE_SYMBOLS
+        gate instead of this one. See TestDoNotTradeSymbols and
+        test_submit_paper_order_rejects_disabled_symbol below for the
+        DO_NOT_TRADE_SYMBOLS-first behavior end-to-end."""
         safety = mock_safety_layer
         order = OrderRequest(
             symbol="MGC",
@@ -188,7 +197,7 @@ class TestPaperConfigEnabled:
             estimated_value=1000.0,
         )
 
-        result = safety.check_order(order, 100_000.0)
+        result = safety._check_paper_config_enabled(order)
 
         assert result.approved is False
         assert "MGC" in result.rejection_reason
@@ -196,7 +205,9 @@ class TestPaperConfigEnabled:
 
     def test_disabled_symbol_blocks_lowercase_input(self, mock_safety_layer):
         """Symbol matching is case-insensitive (matches order.symbol.upper()
-        convention used by every other check in this file)."""
+        convention used by every other check in this file). Calls the
+        private check directly for the same reason as the test above --
+        MGC now also hits DO_NOT_TRADE_SYMBOLS first in check_order()."""
         safety = mock_safety_layer
         order = OrderRequest(
             symbol="mgc",
@@ -205,7 +216,7 @@ class TestPaperConfigEnabled:
             estimated_value=1000.0,
         )
 
-        result = safety.check_order(order, 100_000.0)
+        result = safety._check_paper_config_enabled(order)
 
         assert result.approved is False
         assert "paper_config.enabled" in result.rejection_reason
@@ -280,7 +291,15 @@ class TestPaperConfigEnabled:
         routers/approval_queue_router.py's approve_candidate() calls -- proves
         a disabled symbol never reaches the (mock) broker via this route
         either. This is the exact real-world path MGC's live paper orders
-        were taking despite paper_config.enabled=False (PRB-22)."""
+        were taking despite paper_config.enabled=False (PRB-22).
+
+        MGC also joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
+        correction), and that check now runs first in check_order()'s
+        pipeline, so the rejection reason below is DO_NOT_TRADE_SYMBOLS, not
+        paper_config.enabled -- a strictly stronger guarantee (MGC is now
+        double-gated). The paper_config.enabled path itself is still covered
+        in isolation by test_check_paper_config_enabled_direct and
+        test_disabled_symbol_blocks_regardless_of_approval_path above."""
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
         safety = SafetyLayer(mock_settings)
@@ -297,7 +316,7 @@ class TestPaperConfigEnabled:
         )
 
         assert result["approved"] is False
-        assert "paper_config.enabled" in result["reason"]
+        assert "DO_NOT_TRADE_SYMBOLS" in result["reason"]
         assert result["routed_to_ib"] is False
         gw.place_paper_order.assert_not_called()
 
@@ -2702,6 +2721,13 @@ class TestTrade287RegressionRiskGate:
         masking the TRADE_LOSS_LIMIT gate this test exists to prove. Force
         MGC enabled=True for the duration of this test so the trade-loss
         gate — not the unrelated paper_config gate — is what's exercised.
+
+        MGC also joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
+        correction), which runs even earlier in check_order()'s pipeline and
+        would mask TRADE_LOSS_LIMIT the same way. Patch it out for the
+        duration of this test too, for the same reason: this test isolates
+        the trade-loss gate specifically, not MGC's (separate, real) halted
+        status.
         """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
@@ -2718,7 +2744,10 @@ class TestTrade287RegressionRiskGate:
 
         from backtest.paper_config import PAPER_CONFIGS
 
-        with patch.dict(PAPER_CONFIGS["MGC"], {"enabled": True}):
+        with (
+            patch.dict(PAPER_CONFIGS["MGC"], {"enabled": True}),
+            patch("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset({"MCL", "MNQ", "M2K"})),
+        ):
             result = await safety.submit_paper_bracket_order(
                 "MGC", "BUY", 1, self.MGC_ENTRY, stop_loss=self.MGC_STOP, take_profit=None
             )
