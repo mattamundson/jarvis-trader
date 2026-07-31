@@ -251,6 +251,37 @@ export interface LLMSubsystemHealth {
   vertex_failover_count?: number | null;
 }
 
+// Process-supervision cross-check (/health/full -> subsystems.process_supervision,
+// PRB-24). Compares pm2's believed status+pid for each supervised app against an
+// independent TCP port probe + the real port-owner PID (netstat -ano). A MISMATCH
+// (pm2 says one thing, the OS says another) is the exact failure shape behind the
+// 2026-07-28/29 incidents: an orphan process serving a port pm2 thinks is dead, or
+// pm2 believing a port is up when nothing is actually listening. `status` is
+// "ok" | "mismatch" | "unavailable" | "error"; `unavailable` means pm2 itself
+// couldn't be queried (e.g. not on PATH) — an environment fact, not a live
+// incident, so it renders as a neutral/warn state, not red.
+export interface ProcessSupervisionAppStatus {
+  port: number;
+  pm2_found: boolean;
+  pm2_status: string | null;
+  pm2_pid: number | null;
+  port_alive: boolean;
+  actual_pid: number | null;
+  mismatch_reason: string | null;
+}
+
+export interface ProcessSupervisionHealth {
+  status?: string | null; // ok | mismatch | unavailable | error
+  details?: {
+    available: boolean;
+    supervision_ok: boolean | null;
+    error: string | null;
+    checked_at: string;
+    apps: Record<string, ProcessSupervisionAppStatus>;
+  };
+  error?: string;
+}
+
 export interface FullHealthResponse {
   overall: string;
   timestamp: string;
@@ -260,6 +291,7 @@ export interface FullHealthResponse {
   subsystems: {
     ib_gateway?: IBGatewayHealth;
     llm?: LLMSubsystemHealth;
+    process_supervision?: ProcessSupervisionHealth;
     [key: string]: unknown;
   };
 }
@@ -349,6 +381,118 @@ export interface ForwardTestReport {
   n_lineages?: number;
   n_lineages_graduated?: number;
   note?: string;
+}
+
+// ── Actionable-now board (engine /pipeline/actionable) ───────────────────────
+// Mirrors engine analytics/actionable.py derive_actionable_board(). Display
+// only — the board derives status from stored decisions + latest price and
+// never routes, sizes, or gates anything.
+export interface ActionableItem {
+  approval_id: string | null;
+  symbol: string;
+  direction: "long" | "short" | string;
+  action: string;
+  approval_status: string | null;
+  quantity: number | null;
+  confidence: number | null;
+  timeframe: string | null;
+  created_at: string | null;
+  age_days: number | null;
+  status:
+    | "awaiting_entry"
+    | "triggerable"
+    | "triggered"
+    | "target_reached"
+    | "invalidated"
+    | "expired"
+    | "unknown"
+    | string;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target_1: number | null;
+  atr: number | null;
+  latest_price: number | null;
+  price_as_of: number | null;
+  // Price provenance: is_live from the snapshot tier; stale = too old to
+  // derive a status from (the engine already degraded status to "unknown").
+  price_is_live?: boolean | null;
+  price_stale?: boolean;
+  distance_abs: number | null;
+  distance_pct: number | null;
+  distance_atr: number | null;
+  planned_rr: number | null;
+  current_r: number | null;
+  notional_per_contract: number | null;
+}
+
+export interface ActionableBoardResponse {
+  items: ActionableItem[];
+  count: number;
+  available: boolean;
+  note?: string;
+}
+
+export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
+  return fetchEngine<ActionableBoardResponse>("/pipeline/actionable");
+}
+
+// ── Paper-trading authorization status (engine /backtest/paper-status) ───────
+// Per-symbol rows derived from the LIVE gate-v2 policy (paper_config.enabled
+// + fresh PASS verdict) — the canonical "which symbols actually trade" source,
+// never a hardcoded list. Keyed like "MES_1h".
+export interface PaperStatusRow {
+  // Absent on engines predating the additive `symbol` field — consumers must
+  // fall back to parsing the record key ("MES_1h" -> "MES").
+  symbol?: string;
+  status: "ACTIVE" | "NO-TRADE" | "FAIL" | "NO-VERDICT" | string;
+  authorized: boolean;
+  verdict: string;
+  wfe_label?: string;
+  reason?: string;
+  [key: string]: unknown;
+}
+
+export type PaperStatusResponse = Record<string, PaperStatusRow>;
+
+export async function fetchPaperStatus(): Promise<PaperStatusResponse> {
+  return fetchEngine<PaperStatusResponse>("/backtest/paper-status");
+}
+
+// ── Forward-test status (engine /forward-test/status) ────────────────────────
+// Mirrors engine routers/forward_test_router.py ForwardTestStatus. Read-only
+// view of the paper-validation record for one symbol vs the canonical
+// live-readiness thresholds (no new strategy logic on either side).
+export interface ForwardTestStatusResponse {
+  symbol: string;
+  status: "not_run" | "in_progress" | "pass" | "fail" | string;
+  forward_pf: number | null;
+  forward_pf_infinite: boolean;
+  n_closed: number;
+  n_open: number;
+  days_elapsed: number | null;
+  total_pnl: number;
+  gate_verdict: string | null;
+  gate_family: string | null;
+  gate_created_at: string | null;
+  as_of: string | null;
+  as_of_age_days: number | null;
+  stale: boolean;
+  thresholds: {
+    min_days?: number;
+    min_trades?: number;
+    min_pf?: number;
+    verdict_ttl_days?: number;
+  };
+  detail: string;
+  generated_at: string;
+}
+
+export async function fetchForwardTestStatus(
+  symbol: string
+): Promise<ForwardTestStatusResponse> {
+  return fetchEngine<ForwardTestStatusResponse>(
+    `/forward-test/status?symbol=${encodeURIComponent(symbol)}`
+  );
 }
 
 export interface SafetyStatus {
@@ -602,6 +746,24 @@ export async function fetchHiddenPivotsScan(
   return fetchEngine<HPScanResponse>(
     `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
   );
+}
+
+/** GET /hidden-pivots/price-coverage response (PRB-21). */
+export interface PriceCoverageResponse {
+  watchlist_size: number;
+  covered_symbols: string[];
+  uncovered_symbols: string[];
+}
+
+/**
+ * Which watchlist symbols have a real live-price fallback floor (CSV cache).
+ * The dashboard's live-price ticker poll uses this to avoid hammering symbols
+ * that will show "--" with certainty once IBKR + Polygon's rate limit both
+ * miss — see PRB-21. Pattern/level scanning (fetchHiddenPivotsScan) is
+ * unaffected and still covers the full watchlist.
+ */
+export async function fetchPriceCoverage(): Promise<PriceCoverageResponse> {
+  return fetchEngine<PriceCoverageResponse>(`/hidden-pivots/price-coverage`);
 }
 
 /**
@@ -1448,6 +1610,64 @@ export interface SignalQualityResponse {
   by_symbol: Record<string, SignalMetricsResponse>;
   by_regime: Record<string, SignalMetricsResponse>;
   recommendations: string[];
+}
+
+export async function fetchSignalQuality(): Promise<SignalQualityResponse> {
+  return fetchEngine<SignalQualityResponse>("/analytics/signal-quality");
+}
+
+// ── Signal outcomes (engine /analytics/signal-outcomes) ─────────────────────
+// Mirrors engine analytics/signal_outcomes.py — recent directional pipeline
+// decisions scored against subsequent daily bars. Hypothetical by design
+// (scores the SIGNAL, not an executed trade); the fill model is stated in
+// the response's `model` field.
+export interface SignalOutcome {
+  approval_id: string | null;
+  symbol: string;
+  direction: "long" | "short" | string;
+  decision_date: string | null;
+  approval_status: string | null;
+  confidence: number | null;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target_1: number | null;
+  target_2: number | null;
+  hit:
+    | "target1_hit"
+    | "target2_hit"
+    | "stop_hit"
+    | "expired"
+    | "open"
+    | string;
+  mfe_pct: number | null;
+  mae_pct: number | null;
+  hypothetical_pnl_pct: number | null;
+  evaluable: boolean;
+  note: string | null;
+}
+
+export interface SignalOutcomesAggregate {
+  hit_rate: number | null;
+  avg_hypothetical_pnl_pct: number | null;
+  total_evaluated: number;
+  total_signals: number;
+  count_by_hit: Record<string, number>;
+}
+
+export interface SignalOutcomesResponse {
+  outcomes: SignalOutcome[];
+  aggregate: SignalOutcomesAggregate;
+  available: boolean;
+  generated_at?: string;
+  note?: string | null;
+  // Which decision store the outcomes were drawn from (approval queue only
+  // for now — scheduler-only runs are a tracked expansion).
+  universe?: string;
+  model?: string;
+}
+
+export async function fetchSignalOutcomes(): Promise<SignalOutcomesResponse> {
+  return fetchEngine<SignalOutcomesResponse>("/analytics/signal-outcomes");
 }
 
 export interface TradesByDayItem {
@@ -2309,6 +2529,26 @@ export interface RegimeV2Response {
 
 export async function fetchRegimeV2(symbol: string): Promise<RegimeV2Response> {
   return fetchEngine<RegimeV2Response>(`/analytics/regime-v2/${encodeURIComponent(symbol)}`);
+}
+
+// ── Legacy per-symbol regime classification (/analytics/regime/{symbol}) ─────
+// backtest.regime.RegimeClassifier (3-state: TRENDING/RANGING/VOLATILE, or
+// UNKNOWN when bar data is insufficient) -- NOT the classifier the live
+// pipeline uses for routing (that's regime-v2 above). Still a genuine live
+// read off real bar data, not fabricated -- this is the endpoint /jarvis's
+// RegimePulsePanel already calls; reused here (PRB-34) for /command-center's
+// Signal Cards so `regime` stops rendering a hardcoded constant.
+
+export interface SymbolRegimeResponse {
+  symbol: string;
+  regime?: string;
+  current_regime?: string;
+  note?: string;
+  error?: string;
+}
+
+export async function fetchSymbolRegime(symbol: string): Promise<SymbolRegimeResponse> {
+  return fetchEngine<SymbolRegimeResponse>(`/analytics/regime/${encodeURIComponent(symbol)}`);
 }
 
 // ── Portfolio correlation preview (/analytics/correlation-preview) ───────────

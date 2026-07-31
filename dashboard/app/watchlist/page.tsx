@@ -372,7 +372,7 @@ const INSTRUMENT_SPECS: InstrumentSpec[] = [
     exchange: "CME Globex",
     multiplier: 2,
     tick: 0.25,
-    status: "RESEARCH",
+    status: "DO NOT TRADE",
   },
   {
     symbol: "MES",

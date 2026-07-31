@@ -58,7 +58,26 @@ def _build_retry_error(underlying: Exception) -> RetryError:
 
 
 @pytest.fixture
-def llm_client(tmp_path: Path):
+def llm_client(tmp_path: Path, monkeypatch):
+    # Hermetic: PRB-10 broadened the cross-provider cascade to fire on ANY
+    # Anthropic-side failure, not just the credit-exhaustion string match --
+    # these tests deliberately raise non-credit errors from _call_with_retry,
+    # so without clearing the ambient/live-.env provider keys the cascade
+    # would now attempt REAL Vertex/Gemini/OpenAI/Kimi network calls instead
+    # of falling straight through to the terminal log assertions below.
+    for _k in (
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "JARVIS_LLM_GOOGLE_FALLBACK",
+        "OPENAI_API_KEY",
+        "JARVIS_LLM_OPENAI_FALLBACK",
+        "MOONSHOT_API_KEY",
+        "JARVIS_LLM_KIMI_FALLBACK",
+        "JARVIS_CLAUDE_USE_VERTEX",
+        "JARVIS_LLM_VERTEX_FAILOVER",
+        "JARVIS_DECISION_PRIMARY",
+    ):
+        monkeypatch.delenv(_k, raising=False)
     client = JarvisLLMClient(api_key="test-key", db_path=str(tmp_path / "costs.db"))
     yield client
 

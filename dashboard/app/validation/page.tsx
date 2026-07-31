@@ -22,9 +22,15 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { ResultLabel } from "@/components/ResultLabel";
+import { fetchEngine, fetchApprovedPaperGates } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
+import type {
+  ValidationReport,
+  CompareToBacktestResponse,
+  ApprovedPaperGatesResponse,
+} from "@/lib/api";
+import { eligibilityRows, eligibleCount } from "@/lib/tradingEligibility";
 import {
   fetchHonestTrades,
   maxDrawdownPct,
@@ -42,7 +48,7 @@ import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
-import { InstrumentValidationScorecard } from "@/components/InstrumentValidationScorecard";
+import { InstrumentEligibilityCard } from "@/components/InstrumentEligibilityCard";
 import { PortfolioPLChart } from "@/components/PortfolioPLChart";
 import { MESRevalidationTracker } from "@/components/MESRevalidationTracker";
 import { MESForwardRecorderPanel } from "@/components/MESForwardRecorderPanel";
@@ -440,6 +446,77 @@ function ValidationScorecardCard() {
   );
 }
 
+// ── Section 1B: Instrument Approval Gates (live, PRB-36) ─────────────────────
+// Was InstrumentValidationScorecard.tsx: a static per-symbol WFE/status
+// override table (INSTRUMENT_STATUS in lib/approvedSymbols.ts) that hardcoded
+// MES/MGC=APPROVED WFE 1.00 and MCL/MNQ=HALTED WFE 0.00 regardless of live
+// data, with a fabricated "APPROVED" fallback for any symbol the live gates
+// endpoint didn't return a row for -- a fail-open default in the one place
+// that should never have one. Replaced with the live-sourced pattern PRB-25
+// already built for /trading-eligibility: every row read straight off
+// GET /paper/validation/approved-paper-gates via eligibilityRows(), zero
+// hardcoded symbol table, rendered with the same InstrumentEligibilityCard
+// this section now shares with /trading-eligibility (no reinvented UI).
+
+function InstrumentEligibilityGatesCard() {
+  const { data, error, isLoading } = useSWR<ApprovedPaperGatesResponse>(
+    "/paper/validation/approved-paper-gates",
+    () => fetchApprovedPaperGates(),
+    { refreshInterval: REFRESH_MS, revalidateOnFocus: false },
+  );
+  const rows = eligibilityRows(data);
+  const nEligible = eligibleCount(rows);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] text-muted-foreground">
+          Live from{" "}
+          <code className="font-mono">GET /paper/validation/approved-paper-gates</code>{" "}
+          — no hardcoded per-symbol overrides.{" "}
+          <a href="/trading-eligibility" className="text-accent hover:underline">
+            Full eligibility view →
+          </a>
+        </p>
+        {data && (
+          <Badge variant={nEligible > 0 ? "bull" : "neutral"}>
+            {nEligible}/{rows.length} eligible
+          </Badge>
+        )}
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 p-3 bg-bear/10 border border-bear/20 text-bear rounded-lg text-xs">
+          <WifiOff className="h-3.5 w-3.5 shrink-0" />
+          /paper/validation/approved-paper-gates unreachable — engine may be down
+          or restarting. Not showing stale data.
+        </div>
+      )}
+
+      {isLoading && !data && !error && (
+        <p className="text-xs text-muted-foreground py-4 text-center">
+          Loading live eligibility gates…
+        </p>
+      )}
+
+      {data && rows.length === 0 && !error && (
+        <div className="p-4 border border-border rounded-xl text-center text-xs text-muted-foreground">
+          The engine returned no instruments. Nothing is currently tracked by
+          this endpoint.
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {rows.map((row) => (
+            <InstrumentEligibilityCard key={row.symbol} row={row} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Section 2: Monte Carlo Risk (live) ───────────────────────────────────────
 
 function signedPct(v: number | null): { text: string; cls: string } {
@@ -467,8 +544,9 @@ function MonteCarloCard() {
             <BarChart3 className="h-4 w-4 text-info" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-info">
+            <p className="text-xs font-semibold uppercase tracking-widest text-info flex items-center gap-2">
               Monte Carlo Risk
+              <ResultLabel kind="simulated" />
             </p>
             <p className="text-[10px] text-muted-foreground">
               Gate-v2 95th-pctile drawdown per strategy; return percentiles where a live sim exists
@@ -1344,7 +1422,7 @@ function PhaseStatusCard({
                 Phase 2 — Paper Trading
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                April-May 2026 — Forward-test with live market data
+                Ongoing — Forward-test with live market data
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
@@ -1367,7 +1445,7 @@ function PhaseStatusCard({
                 Phase 3 — Live Trading
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                June 2026+ — Locked until Phase 2 passes
+                TBD, pending Amo decision — Locked until Phase 2 passes
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
@@ -1402,13 +1480,18 @@ function SimulateTradePanel() {
   const [entryPrice, setEntryPrice] = useState<string>("5000");
   const [stopLoss, setStopLoss] = useState<string>("4990");
   const [quantity, setQuantity] = useState<string>("1");
-  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SimulateTradeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // GT-41: submission is disabled below (button `disabled`) because no backend
+  // endpoint implements a non-persisting trade simulation -- see simulateTrade()
+  // in settings-api.ts for the full explanation. handleSubmit is kept functional
+  // (rather than deleted) purely as a defensive fallback: if the button's
+  // `disabled` attribute is ever bypassed, simulateTrade() throws a clear
+  // "not yet implemented" error that lands in the existing error UI below
+  // instead of silently 404ing or touching live portfolio state.
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setResult(null);
     setError(null);
 
@@ -1425,8 +1508,6 @@ function SimulateTradePanel() {
       setResult(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Simulation failed");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -1447,7 +1528,7 @@ function SimulateTradePanel() {
               Simulate Trade
             </p>
             <p className="text-[10px] text-muted-foreground">
-              Manual paper trade simulation — POST /test/simulate-trade
+              Manual paper trade simulation — not yet implemented (GT-41)
             </p>
           </div>
         </div>
@@ -1532,16 +1613,17 @@ function SimulateTradePanel() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled
+            title="Disabled (GT-41): the backend endpoint this panel depended on (/test/simulate-trade) was never registered on the engine, and no equivalent non-persisting simulate endpoint exists. Repointing to the real manual-trade route would open an actual paper position instead of a dry-run estimate."
             className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? (
-              <span className="h-3.5 w-3.5 rounded-full border-2 border-accent-foreground border-t-transparent animate-spin" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
-            {loading ? "Simulating..." : "Simulate Trade"}
+            <Play className="h-3.5 w-3.5" />
+            Simulate Trade (not yet implemented)
           </button>
+          <p className="text-[10px] text-muted-foreground">
+            Disabled — GT-41: no backend endpoint implements a non-persisting trade
+            simulation. See settings-api.ts simulateTrade() for details.
+          </p>
         </form>
 
         {result && (
@@ -1719,13 +1801,14 @@ export default function ValidationPage() {
             <h2 className="text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
               <TrendingUp className="h-6 w-6 text-accent" />
               Strategy Validation Dashboard
+              <ResultLabel kind="backtest" />
             </h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               Walk-forward results, statistical significance, and parameter robustness
             </p>
           </div>
           <Badge variant="info" className="text-xs px-3 py-1 font-mono tracking-wider self-start sm:self-auto">
-            PAPER PHASE — April-May 2026
+            PAPER PHASE — ONGOING
           </Badge>
         </div>
 
@@ -1758,10 +1841,10 @@ export default function ValidationPage() {
           <ValidationScorecardCard />
         </section>
 
-        {/* Section 1B: Instrument Validation Scorecard */}
+        {/* Section 1B: Instrument Approval Gates (live, PRB-36) */}
         <section>
           <SectionLabel>1B — Instrument Approval Gates</SectionLabel>
-          <InstrumentValidationScorecard />
+          <InstrumentEligibilityGatesCard />
         </section>
 
         {/* Section 1C: MES Re-Validation Progress */}

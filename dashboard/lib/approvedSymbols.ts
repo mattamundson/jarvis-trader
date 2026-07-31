@@ -52,20 +52,12 @@ export const ALL_TRACKED_SYMBOLS = [
 
 export type TrackedSymbol = (typeof ALL_TRACKED_SYMBOLS)[number];
 
-/**
- * Static WFE ("Deflated Sharpe" in some UI copy) + approval status per
- * instrument, mirroring live gate-v2 reality — the same values already
- * encoded in `app/command-center/constants.ts::INSTRUMENTS` (kept in sync
- * manually; that file is page-scoped and out of scope for this fix, this is
- * the shared-lib twin other components should read from). MES/MGC are the
- * actively-traded pair; MCL/MNQ are HALTED (routing-blocked).
- */
-export const INSTRUMENT_STATUS: Record<
-  TrackedSymbol,
-  { wfe: number; status: "APPROVED" | "HALTED"; timeframe: string }
-> = {
-  MES: { wfe: 1.0, status: "APPROVED", timeframe: "1h" },
-  MGC: { wfe: 1.0, status: "APPROVED", timeframe: "1d" },
-  MCL: { wfe: 0.0, status: "HALTED", timeframe: "1h" },
-  MNQ: { wfe: 0.0, status: "HALTED", timeframe: "1h" },
-};
+// NOTE (PRB-36, 2026-07-30): INSTRUMENT_STATUS used to live here — a static
+// per-symbol WFE + approval-status override table (MES/MGC hardcoded 1.00
+// WFE/APPROVED, MCL/MNQ hardcoded 0.00/HALTED, with a fabricated "APPROVED"
+// fallback for any symbol the live gates endpoint didn't return a row for).
+// It powered InstrumentValidationScorecard.tsx / instrumentValidationRows.ts,
+// both retired by this fix in favor of the live-sourced pattern in
+// lib/tradingEligibility.ts (GET /paper/validation/approved-paper-gates,
+// zero hardcoded symbol table, no fail-open default) -- see
+// app/trading-eligibility/page.tsx and /validation section 1B.
