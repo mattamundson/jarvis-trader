@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 import {
   Activity,
   AlertTriangle,
@@ -385,6 +386,7 @@ export default function KairosPage() {
 
       {/* Page content */}
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+        <ExploratoryBanner what="KAIROS is an experimental monitoring subsystem" />
         {/* Page title */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
