@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import { Activity, TrendingUp, Award, BarChart2, Percent } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { ResultLabel } from "@/components/ResultLabel";
 import { BacktestComparisonCard } from "@/components/BacktestComparisonCard";
 import { StrategyParamsCard } from "@/components/StrategyParamsCard";
 import { SignalAccuracyWidget } from "@/components/SignalAccuracyWidget";
@@ -475,7 +476,10 @@ export default function BacktestPage() {
             <Activity className="h-5 w-5 text-accent" />
           </div>
           <div>
-            <h1 className="font-bold text-foreground tracking-tight">JARVIS TRADER — Backtest Results</h1>
+            <h1 className="font-bold text-foreground tracking-tight flex items-center gap-2">
+              JARVIS TRADER — Backtest Results
+              <ResultLabel kind="backtest" />
+            </h1>
             <p className="text-xs text-muted-foreground">Historical strategy performance</p>
           </div>
           <nav className="hidden lg:flex items-center gap-4 ml-6">
