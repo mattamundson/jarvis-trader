@@ -129,7 +129,7 @@ Account B halt **independently** during parallel paper testing.
                    ┌────────────────────────────────┐
                    │  GLOBAL kill switch             │
                    │  (system_state table)           │
-                   │  Fires on: -2% daily / -10% DD  │
+                   │  Fires on: -6% daily / -20% DD  │
                    │  Halts: ALL order emission      │
                    └────────────────────────────────┘
                             │ defense in depth
@@ -235,7 +235,7 @@ Default state: no rows.  A missing row for an account_id is equivalent to
   the challenger config — it is hard-blocked in `config_challenger.py`.
 - `IBKR_PORT` cannot be overridden — both accounts share the same paper
   broker connection.
-- Kill switch (`-2% daily / -10% drawdown`) remains at production thresholds
+- Kill switch (`-6% daily / -20% drawdown`) remains at production thresholds
   for the engine-level safety layer.  Account B's `MAX_DAILY_LOSS_PCT` is a
   per-account risk parameter for the per-account kill check, not a global
   kill-switch override.
