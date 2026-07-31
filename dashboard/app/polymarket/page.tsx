@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 import { Activity } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 
@@ -140,6 +141,7 @@ export default function PolymarketPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
+        <ExploratoryBanner what="Polymarket scanning is a research module" />
         {/* Regulatory disclaimer banner */}
         <div className="rounded-xl border border-warn/30 bg-warn/5 p-4 space-y-2">
           <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-warn">

@@ -1,4 +1,5 @@
 import { StrategyResearchPanel } from "@/components/StrategyResearchPanel";
+import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 
 export const metadata = {
   title: "Strategy Research · JARVIS",
@@ -11,6 +12,7 @@ export const metadata = {
 export default function StrategyResearchPage() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto flex flex-col gap-4">
+      <ExploratoryBanner what="Edge candidates here are research-gate output" />
       <div>
         <h1 className="font-mono text-lg font-bold text-foreground">Strategy Research</h1>
         <p className="font-mono text-xs text-muted-foreground mt-1">
