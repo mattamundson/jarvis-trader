@@ -260,7 +260,7 @@ export default function TrustPanePage() {
   const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: 30_000 });
   const verdict = useSWR<AmoEdgeVerdictResponse>("amo-edge-verdict", () => fetchAmoEdgeVerdict(), { refreshInterval: 60_000 });
   // Commodities rarely change — refresh slowly, just enough to pick up a new listing.
-  const commodities = useSWR<AmoCommodity[]>("amo-commodities", () => fetchAmoCommodities(), { refreshInterval: 600_000 });
+  const commodities = useSWR<AmoCommodity[]>("amo-commodities", () => fetchAmoCommodities(), { refreshInterval: 300_000 });
 
   const [secondsSince, setSecondsSince] = useState(0);
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
