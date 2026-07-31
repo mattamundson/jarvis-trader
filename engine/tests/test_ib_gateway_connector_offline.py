@@ -78,10 +78,13 @@ async def test_ib_order_manager_with_connector(tmp_path) -> None:
     await conn.connect()
     safety.attach_ib_gateway(conn)
     om = IBOrderManager(safety, ib_gateway=conn, portfolio_tracker=tracker)
-    # PRB-22 (2026-07-29): was MNQ, which now carries paper_config.enabled=False
-    # (backtest/paper_config.py) and is rejected before ever reaching the
-    # IBOrderManager/gateway routing behavior this test exists to exercise.
-    # MES is the one PAPER_CONFIGS entry with enabled=True.
+    # Symbol was MNQ; switched to MES (PRB-03/PRB-22, 2026-07-29). MNQ is
+    # both a DO_NOT_TRADE_SYMBOLS halt-list member (backtest/signals.py) and
+    # carries paper_config.enabled=False (backtest/paper_config.py) — since
+    # check_order() now gates on both directly, it's rejected before ever
+    # reaching the IBOrderManager/connector plumbing this test exists to
+    # exercise. MES is unaffected by either check and preserves the original
+    # intent.
     res = await om.submit_order(
         symbol="MES",
         action="BUY",
