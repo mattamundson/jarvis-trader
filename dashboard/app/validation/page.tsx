@@ -23,9 +23,14 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ResultLabel } from "@/components/ResultLabel";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, fetchApprovedPaperGates } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
+import type {
+  ValidationReport,
+  CompareToBacktestResponse,
+  ApprovedPaperGatesResponse,
+} from "@/lib/api";
+import { eligibilityRows, eligibleCount } from "@/lib/tradingEligibility";
 import {
   fetchHonestTrades,
   maxDrawdownPct,
@@ -43,7 +48,7 @@ import { BacktestVsPaperWidget } from "@/components/BacktestVsPaperWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { ValidationChecklist } from "@/components/ValidationChecklist";
 import { GoLivePlanCard } from "@/components/GoLivePlanCard";
-import { InstrumentValidationScorecard } from "@/components/InstrumentValidationScorecard";
+import { InstrumentEligibilityCard } from "@/components/InstrumentEligibilityCard";
 import { PortfolioPLChart } from "@/components/PortfolioPLChart";
 import { MESRevalidationTracker } from "@/components/MESRevalidationTracker";
 import { MESForwardRecorderPanel } from "@/components/MESForwardRecorderPanel";
@@ -438,6 +443,77 @@ function ValidationScorecardCard() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ── Section 1B: Instrument Approval Gates (live, PRB-36) ─────────────────────
+// Was InstrumentValidationScorecard.tsx: a static per-symbol WFE/status
+// override table (INSTRUMENT_STATUS in lib/approvedSymbols.ts) that hardcoded
+// MES/MGC=APPROVED WFE 1.00 and MCL/MNQ=HALTED WFE 0.00 regardless of live
+// data, with a fabricated "APPROVED" fallback for any symbol the live gates
+// endpoint didn't return a row for -- a fail-open default in the one place
+// that should never have one. Replaced with the live-sourced pattern PRB-25
+// already built for /trading-eligibility: every row read straight off
+// GET /paper/validation/approved-paper-gates via eligibilityRows(), zero
+// hardcoded symbol table, rendered with the same InstrumentEligibilityCard
+// this section now shares with /trading-eligibility (no reinvented UI).
+
+function InstrumentEligibilityGatesCard() {
+  const { data, error, isLoading } = useSWR<ApprovedPaperGatesResponse>(
+    "/paper/validation/approved-paper-gates",
+    () => fetchApprovedPaperGates(),
+    { refreshInterval: REFRESH_MS, revalidateOnFocus: false },
+  );
+  const rows = eligibilityRows(data);
+  const nEligible = eligibleCount(rows);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] text-muted-foreground">
+          Live from{" "}
+          <code className="font-mono">GET /paper/validation/approved-paper-gates</code>{" "}
+          — no hardcoded per-symbol overrides.{" "}
+          <a href="/trading-eligibility" className="text-accent hover:underline">
+            Full eligibility view →
+          </a>
+        </p>
+        {data && (
+          <Badge variant={nEligible > 0 ? "bull" : "neutral"}>
+            {nEligible}/{rows.length} eligible
+          </Badge>
+        )}
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 p-3 bg-bear/10 border border-bear/20 text-bear rounded-lg text-xs">
+          <WifiOff className="h-3.5 w-3.5 shrink-0" />
+          /paper/validation/approved-paper-gates unreachable — engine may be down
+          or restarting. Not showing stale data.
+        </div>
+      )}
+
+      {isLoading && !data && !error && (
+        <p className="text-xs text-muted-foreground py-4 text-center">
+          Loading live eligibility gates…
+        </p>
+      )}
+
+      {data && rows.length === 0 && !error && (
+        <div className="p-4 border border-border rounded-xl text-center text-xs text-muted-foreground">
+          The engine returned no instruments. Nothing is currently tracked by
+          this endpoint.
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {rows.map((row) => (
+            <InstrumentEligibilityCard key={row.symbol} row={row} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1765,10 +1841,10 @@ export default function ValidationPage() {
           <ValidationScorecardCard />
         </section>
 
-        {/* Section 1B: Instrument Validation Scorecard */}
+        {/* Section 1B: Instrument Approval Gates (live, PRB-36) */}
         <section>
           <SectionLabel>1B — Instrument Approval Gates</SectionLabel>
-          <InstrumentValidationScorecard />
+          <InstrumentEligibilityGatesCard />
         </section>
 
         {/* Section 1C: MES Re-Validation Progress */}
