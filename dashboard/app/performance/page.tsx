@@ -51,15 +51,21 @@ interface BacktestRow {
   returnPct: number;
   maxDD: number | null;
   wfe: number;
-  status: "ACTIVE" | "RESEARCH" | "DO NOT TRADE";
 }
 
+// NOTE: this table intentionally has no per-symbol trading-status column.
+// It previously hardcoded a "Status" of ACTIVE/DO NOT TRADE frozen as of
+// 2026-03-30, which drifted out of sync with the live DO_NOT_TRADE_SYMBOLS
+// halt list and used the exact same vocabulary as current-status pages —
+// a real misread risk on a fast skim (PRB-33). For current trade
+// eligibility, see the Strategy Ledger (live gate-v2 verdicts) or
+// /trading-eligibility, not this frozen research snapshot.
 const BACKTEST_DATA: BacktestRow[] = [
-  { rank: 1, symbol: "MGC", tf: "1d", trades: 47, wr: 51.1, pf: 2.60, sharpe: 2.04, returnPct: 34.4, maxDD: 3.0, wfe: 0.14, status: "DO NOT TRADE" },
-  { rank: 2, symbol: "SPY", tf: "1h", trades: 23, wr: 65.2, pf: 3.00, sharpe: -1.55, returnPct: 0.7, maxDD: 5.0, wfe: -1.11, status: "DO NOT TRADE" },
-  { rank: 3, symbol: "MNQ", tf: "1h", trades: 86, wr: 47.7, pf: 1.46, sharpe: 0.19, returnPct: 13.6, maxDD: 0.1, wfe: 0.57, status: "ACTIVE" },
-  { rank: 4, symbol: "MCL", tf: "1h", trades: 65, wr: 60.0, pf: 1.83, sharpe: 0.15, returnPct: 0.2, maxDD: null, wfe: 0.82, status: "ACTIVE" },
-  { rank: 5, symbol: "MES", tf: "1h", trades: 21, wr: 42.9, pf: 0.96, sharpe: -0.12, returnPct: -4.0, maxDD: 0.1, wfe: 0.09, status: "DO NOT TRADE" },
+  { rank: 1, symbol: "MGC", tf: "1d", trades: 47, wr: 51.1, pf: 2.60, sharpe: 2.04, returnPct: 34.4, maxDD: 3.0, wfe: 0.14 },
+  { rank: 2, symbol: "SPY", tf: "1h", trades: 23, wr: 65.2, pf: 3.00, sharpe: -1.55, returnPct: 0.7, maxDD: 5.0, wfe: -1.11 },
+  { rank: 3, symbol: "MNQ", tf: "1h", trades: 86, wr: 47.7, pf: 1.46, sharpe: 0.19, returnPct: 13.6, maxDD: 0.1, wfe: 0.57 },
+  { rank: 4, symbol: "MCL", tf: "1h", trades: 65, wr: 60.0, pf: 1.83, sharpe: 0.15, returnPct: 0.2, maxDD: null, wfe: 0.82 },
+  { rank: 5, symbol: "MES", tf: "1h", trades: 21, wr: 42.9, pf: 0.96, sharpe: -0.12, returnPct: -4.0, maxDD: 0.1, wfe: 0.09 },
 ];
 
 interface WFERow {
@@ -124,23 +130,6 @@ function wfeColor(wfe: number): string {
   if (wfe >= 0.70) return "#00ff88";
   if (wfe >= 0.30) return "#ffcc00";
   return "#ff4444";
-}
-
-function statusBadge(status: "ACTIVE" | "RESEARCH" | "DO NOT TRADE") {
-  const map = {
-    ACTIVE: { bg: "#00ff8818", border: "#00ff8840", color: "#00ff88" },
-    RESEARCH: { bg: "#ffcc0018", border: "#ffcc0040", color: "#ffcc00" },
-    "DO NOT TRADE": { bg: "#ff444418", border: "#ff444440", color: "#ff4444" },
-  };
-  const s = map[status];
-  return (
-    <span
-      className="font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
-      style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, color: s.color }}
-    >
-      {status}
-    </span>
-  );
 }
 
 /** CSS bar that scales to max=1.0 for WFE, clamped to [-1.5, 1.0] visual range */
@@ -319,12 +308,6 @@ function BacktestMatrix() {
                   {c.label}<SortIcon col={c.key} />
                 </th>
               ))}
-              <th
-                className="pb-2 px-2 text-center font-semibold uppercase tracking-wider"
-                style={{ color: "#555", fontSize: "10px" }}
-              >
-                Status
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -356,7 +339,6 @@ function BacktestMatrix() {
                 <td className="py-2 px-2 text-right tabular-nums font-bold" style={{ color: wfeColor(row.wfe) }}>
                   {row.wfe.toFixed(2)}
                 </td>
-                <td className="py-2 px-2 text-center">{statusBadge(row.status)}</td>
               </tr>
             ))}
           </tbody>
