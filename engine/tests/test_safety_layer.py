@@ -982,8 +982,12 @@ class TestOvernightContractLimit:
         """MGC is not in OVERNIGHT_SYMBOLS — no overnight check applied.
 
         Was MCL until T0-01 (DO_NOT_TRADE_SYMBOLS wired into check_order) started
-        correctly rejecting it earlier in the check chain — MGC is the active,
-        non-halted, non-MES symbol this test actually needs.
+        correctly rejecting it earlier in the check chain. MGC joined
+        DO_NOT_TRADE_SYMBOLS itself 2026-07-31 (honest-data-drain DSR
+        correction) and MES (the only other active symbol) IS in
+        OVERNIGHT_SYMBOLS, so no currently-active symbol is left to exercise
+        this path -- patch DO_NOT_TRADE_SYMBOLS out for MGC's sake, isolating
+        the overnight-check-not-applied behavior this test exists to prove.
         """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
@@ -999,7 +1003,10 @@ class TestOvernightContractLimit:
             estimated_value=1000.0,  # Low to pass order-value check
         )
         fake_time = datetime(2026, 4, 21, 16, 0, tzinfo=self._CT)
-        with patch("risk.safety_layer.datetime") as mock_dt:
+        with (
+            patch("risk.safety_layer.datetime") as mock_dt,
+            patch("risk.safety_layer.DO_NOT_TRADE_SYMBOLS", frozenset({"MCL", "MNQ", "M2K"})),
+        ):
             mock_dt.now.return_value = fake_time
             result = safety.check_order(order, 100_000.0)
 
@@ -1162,7 +1169,14 @@ class TestFuturesMarginGate:
     def test_active_watchlist_margin_boundaries(
         self, mock_settings, symbol, quantity, equity, expected_approved, reason_substr
     ):
-        """Boundary coverage for the currently-active futures roots (MES tested above)."""
+        """Boundary coverage for the currently-active futures roots (MES tested above).
+
+        MGC joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
+        correction) and would now be rejected by the halt gate before ever
+        reaching margin math -- patch it out so these cases keep isolating
+        the margin gate specifically, not MGC's (separate, real) halted
+        status.
+        """
         # Bypass MAX_CONTRACTS_PER_INSTRUMENT to isolate the margin gate
         mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 10
         safety = self._live_safety(mock_settings)
@@ -1173,7 +1187,8 @@ class TestFuturesMarginGate:
             is_futures=True,
             estimated_value=equity,  # value irrelevant for futures branch
         )
-        result = safety.check_order(order, equity)
+        with patch("risk.safety_layer.DO_NOT_TRADE_SYMBOLS", frozenset({"MCL", "MNQ", "M2K"})):
+            result = safety.check_order(order, equity)
         assert result.approved is expected_approved, (
             f"{symbol}×{quantity} on ${equity:,.0f}: expected approved={expected_approved}, "
             f"got reason={result.rejection_reason}"
@@ -2596,6 +2611,12 @@ class TestTrade287RegressionRiskGate:
         entry price argument and stop_loss now wired into the OrderRequest,
         the oversized-risk bracket is rejected before it ever reaches the
         (mock) broker -- routed_to_ib must stay False.
+
+        MGC joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
+        correction), which runs even earlier in check_order()'s pipeline and
+        would mask TRADE_LOSS_LIMIT the same way. Patch it out for the
+        duration of this test: this test isolates the trade-loss gate
+        specifically, not MGC's (separate, real) halted status.
         """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
@@ -2610,9 +2631,10 @@ class TestTrade287RegressionRiskGate:
         gw.is_connected = Mock(return_value=True)
         safety._ib_gateway = gw
 
-        result = await safety.submit_paper_bracket_order(
-            "MGC", "BUY", 1, self.MGC_ENTRY, stop_loss=self.MGC_STOP, take_profit=None
-        )
+        with patch("risk.safety_layer.DO_NOT_TRADE_SYMBOLS", frozenset({"MCL", "MNQ", "M2K"})):
+            result = await safety.submit_paper_bracket_order(
+                "MGC", "BUY", 1, self.MGC_ENTRY, stop_loss=self.MGC_STOP, take_profit=None
+            )
 
         assert result["approved"] is False
         assert "TRADE_LOSS_LIMIT" in result["reason"]
