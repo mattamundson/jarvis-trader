@@ -1346,7 +1346,7 @@ function PhaseStatusCard({
                 Phase 2 — Paper Trading
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                April-May 2026 — Forward-test with live market data
+                Ongoing — Forward-test with live market data
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
@@ -1369,7 +1369,7 @@ function PhaseStatusCard({
                 Phase 3 — Live Trading
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                June 2026+ — Locked until Phase 2 passes
+                TBD, pending Amo decision — Locked until Phase 2 passes
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
@@ -1732,7 +1732,7 @@ export default function ValidationPage() {
             </p>
           </div>
           <Badge variant="info" className="text-xs px-3 py-1 font-mono tracking-wider self-start sm:self-auto">
-            PAPER PHASE — April-May 2026
+            PAPER PHASE — ONGOING
           </Badge>
         </div>
 
