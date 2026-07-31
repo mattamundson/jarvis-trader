@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useState } from "react";
 import { Activity, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
+import { ResultLabel } from "@/components/ResultLabel";
 import { WeeklyStatsWidget } from "@/components/WeeklyStatsWidget";
 import { CommissionTrackerWidget } from "@/components/CommissionTrackerWidget";
 import { TradeDurationWidget } from "@/components/TradeDurationWidget";
@@ -801,10 +802,11 @@ export default function PerformancePage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h2
-              className="text-2xl font-bold tracking-tight font-mono"
+              className="text-2xl font-bold tracking-tight font-mono flex items-center gap-2"
               style={{ color: "#e0e0e0" }}
             >
               Backtest Performance Analytics
+              <ResultLabel kind="backtest" />
             </h2>
             <p className="text-sm mt-1 font-mono" style={{ color: "#555" }}>
               JARVIS TRADER v2.7 | STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter
