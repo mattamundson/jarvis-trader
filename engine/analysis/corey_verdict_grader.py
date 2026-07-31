@@ -154,19 +154,24 @@ def _scan(patterns: list[str], text: str) -> tuple[bool, bool]:
     return unneg, neg
 
 
-def _break_is_miss(text: str) -> bool:
-    """True if a break phrase reads as a FAILED level (not a planned breakout).
+def _break_signals(text: str) -> tuple[bool, bool]:
+    """Return (has_break_miss, has_break_hit) for the directional break phrases.
 
-    A break is failure evidence unless the move was stated as intended -- an "as
-    called/planned" qualifier in the break's OWN clause, on either side and at any
-    distance, but not across a clause boundary (sentence terminator or contrastive
-    marker). So "broke through resistance as called" and "as called, we broke
-    through" are HITs, while "... support held perfectly BUT resistance broke
-    through" and "Support broke through. As called, resistance held" keep the
-    break as miss evidence. A bare break ("7500 broke through") is a miss.
+    A break phrase is:
+      - NEITHER when negated ("Support never broke through" = the break did not
+        happen, a hold -- neither failure nor an as-called success);
+      - a HIT when stated as intended -- an "as called/planned/expected" qualifier
+        in the break's OWN clause (either side, any distance, not across a clause
+        boundary): "broke through resistance as expected" is a planned breakout;
+      - a MISS otherwise -- a bare/unqualified break ("7500 broke through") or one
+        separated from a success claim by a clause boundary ("... held perfectly
+        BUT resistance broke through").
     """
+    miss = hit = False
     for pat in _BREAK_MISS_PATTERNS:
         for m in re.finditer(pat, text):
+            if _NEG_WINDOW.search(text[: m.start()]):
+                continue  # negated break -> no break happened; not miss evidence
             # Clause preceding the break: text after the nearest clause boundary.
             before = text[: m.start()]
             cuts = list(_CLAUSE_BOUNDARY.finditer(before))
@@ -175,12 +180,11 @@ def _break_is_miss(text: str) -> bool:
             after = text[m.end() :]
             nxt = _CLAUSE_BOUNDARY.search(after)
             after_clause = after[: nxt.start()] if nxt else after
-            planned = _INTENT_QUALIFIER.search(before_clause) or _INTENT_QUALIFIER.search(
-                after_clause
-            )
-            if not planned:
-                return True
-    return False
+            if _INTENT_QUALIFIER.search(before_clause) or _INTENT_QUALIFIER.search(after_clause):
+                hit = True  # planned breakout -> success evidence
+            else:
+                miss = True
+    return miss, hit
 
 
 def classify_self_verdict(recap: str) -> str:
@@ -196,9 +200,11 @@ def classify_self_verdict(recap: str) -> str:
     text = _norm(recap)
     if not text:
         return NONE
-    hit, hit_negated = _scan(_HIT_PATTERNS, text)
+    hit_phrase, hit_negated = _scan(_HIT_PATTERNS, text)
     miss_direct, _ = _scan(_MISS_PATTERNS, text)
-    miss = miss_direct or hit_negated or _break_is_miss(text)
+    break_miss, break_hit = _break_signals(text)
+    hit = hit_phrase or break_hit
+    miss = miss_direct or hit_negated or break_miss
     if hit and miss:
         return MIXED
     if hit:

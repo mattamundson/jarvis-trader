@@ -138,6 +138,22 @@ def test_classify_textbook_failure_is_not_a_hit():
     assert classify_self_verdict("Textbook hold at 7500, bounced right off.") == HIT
 
 
+def test_classify_negated_break_is_not_a_miss():
+    # "never broke through" = a hold, not a failed level -- must not read as MISS.
+    assert classify_self_verdict("Support never broke through the level.") != MISS
+    assert classify_self_verdict("Support never broke through the level.") == NONE
+
+
+def test_classify_planned_breakout_as_expected_is_a_hit():
+    # "as expected" qualifies the break as planned -> HIT, not a dropped NONE.
+    assert (
+        classify_self_verdict("We broke through resistance as expected and ran to target.")
+        == HIT
+    )
+    # ...but a bare "as expected" with no breakout claim is not a hit on its own.
+    assert classify_self_verdict("Choppy range as expected, stood aside.") == NONE
+
+
 def test_classify_normalizes_smart_apostrophes():
     # Curly U+2019 from Discord/mobile paste must still read "didn't" as a miss.
     assert classify_self_verdict("The level didn’t hold and we faded the call.") == MISS
