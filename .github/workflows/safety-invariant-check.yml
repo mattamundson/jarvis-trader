@@ -36,7 +36,12 @@ jobs:
           # Safety-critical surface: config.py (hard limits), kill switch,
           # risk manager, position sizer math.
           PATTERNS='^engine/config\.py$|^engine/risk/|^engine/notifications/openclaw_notifier\.py$|^engine/agents/trader\.py$'
-          CHANGED=$(git diff --name-only "$BASE" "$HEAD" | (grep -E "$PATTERNS" || true))
+          # Three-dot (merge-base) diff, not two-dot: two-dot compares BASE's
+          # tip directly against HEAD, so it picks up every file the base
+          # branch has drifted on since this PR forked, not just what this PR
+          # itself changed. On a fast-moving base that false-positives on
+          # nearly every PR (see PR #532, 2026-07-31).
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" | (grep -E "$PATTERNS" || true))
           if [[ -n "$CHANGED" ]]; then
             echo "touches_safety=true" >> "$GITHUB_OUTPUT"
             {
