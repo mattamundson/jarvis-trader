@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ResultLabel } from "@/components/ResultLabel";
 import { fetchEngine } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import type { ValidationReport, CompareToBacktestResponse } from "@/lib/api";
@@ -467,8 +468,9 @@ function MonteCarloCard() {
             <BarChart3 className="h-4 w-4 text-info" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-info">
+            <p className="text-xs font-semibold uppercase tracking-widest text-info flex items-center gap-2">
               Monte Carlo Risk
+              <ResultLabel kind="simulated" />
             </p>
             <p className="text-[10px] text-muted-foreground">
               Gate-v2 95th-pctile drawdown per strategy; return percentiles where a live sim exists
@@ -1723,6 +1725,7 @@ export default function ValidationPage() {
             <h2 className="text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
               <TrendingUp className="h-6 w-6 text-accent" />
               Strategy Validation Dashboard
+              <ResultLabel kind="backtest" />
             </h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               Walk-forward results, statistical significance, and parameter robustness
