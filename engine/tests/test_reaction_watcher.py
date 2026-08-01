@@ -6,8 +6,11 @@ Uses mocks for all Discord gateway and engine HTTP calls — no live connections
 
 from __future__ import annotations
 
+import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -322,3 +325,82 @@ def test_extract_candidate_id_returns_none_for_no_match():
     from discord.reaction_watcher import _extract_candidate_id
 
     assert _extract_candidate_id("Just a normal message") is None
+
+
+# ---------------------------------------------------------------------------
+# Extra: reconnect backoff must not reset before authentication succeeds
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_backoff_grows_when_gateway_rejects_identify_before_ready():
+    """
+    Regression test: a WebSocket connect that gets IDENTIFY-rejected and closed
+    before READY must NOT reset the reconnect backoff to the 2s floor.
+
+    Previously, backoff was reset immediately after the raw ws_connect() call
+    succeeded — before the gateway ever authenticated. A bad token/intents
+    config (or any close-before-READY) then spun the reconnect loop at the 2s
+    floor forever instead of backing off exponentially (2, 4, 8, ...).
+    """
+    from discord import reaction_watcher
+
+    backoff_sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        if seconds > 10:
+            # Heartbeat-loop sleep (41.25s) — not part of the reconnect backoff
+            # under test. Cancel it immediately so it can't interleave.
+            raise asyncio.CancelledError()
+        backoff_sleep_calls.append(seconds)
+        if len(backoff_sleep_calls) >= 3:
+            raise asyncio.CancelledError()
+
+    class FakeWS:
+        close_code = 4004  # Discord: Authentication failed (non-resumable)
+
+        def __init__(self) -> None:
+            self._msgs = [
+                MagicMock(
+                    type=aiohttp.WSMsgType.TEXT,
+                    data=json.dumps({"op": 10, "d": {"heartbeat_interval": 41250}}),
+                ),
+                MagicMock(type=aiohttp.WSMsgType.CLOSE, data=None),
+            ]
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._msgs:
+                raise StopAsyncIteration
+            return self._msgs.pop(0)
+
+        async def send_str(self, _s: str) -> None:
+            return None
+
+    class FakeWSConnectCM:
+        async def __aenter__(self):
+            return FakeWS()
+
+        async def __aexit__(self, *_a):
+            return False
+
+    class FakeClientSession:
+        def ws_connect(self, *_a, **_kw):
+            return FakeWSConnectCM()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+
+    with (
+        patch.dict("os.environ", _env_with_both(), clear=True),
+        patch("asyncio.sleep", side_effect=fake_sleep),
+        patch("aiohttp.ClientSession", return_value=FakeClientSession()),
+    ):
+        await reaction_watcher.watch_approval_reactions()
+
+    assert backoff_sleep_calls == [2, 4, 8]
