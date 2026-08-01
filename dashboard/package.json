@@ -14,6 +14,7 @@
     "test:e2e": "playwright test",
     "test:e2e:fresh": "playwright test --config=playwright.fresh.config.ts",
     "check:live": "node scripts/check-live-data.mjs",
+    "guards": "node scripts/check-guards.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
