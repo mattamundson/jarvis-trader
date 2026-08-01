@@ -349,11 +349,20 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: dashboard
 
+      # Output is tee'd so the bundle-budget gate below can read the route table
+      # instead of paying for a second ~2 minute build to reprint numbers this
+      # one already produced. pipefail keeps a build failure fatal through tee.
       - name: Build Next.js
-        run: pnpm run build
+        run: |
+          set -euo pipefail
+          pnpm run build 2>&1 | tee ../build-output.log
         working-directory: dashboard
         env:
           NODE_ENV: production
+
+      - name: Bundle-size budget (First Load JS)
+        run: node scripts/check-bundle-budget.mjs ../build-output.log
+        working-directory: dashboard
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
