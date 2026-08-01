@@ -4,6 +4,7 @@ import { EngineAvailabilityHint } from "@/components/EngineAvailabilityHint";
 import { IBDataDegradedBanner } from "@/components/IBDataDegradedBanner";
 import { LLMProviderBadge } from "@/components/LLMProviderBadge";
 import { AnomalySentinelStrip } from "@/components/AnomalySentinelStrip";
+import { SystemFreshnessStrip } from "@/components/SystemFreshnessStrip";
 import { CommandPalette } from "@/components/CommandPalette";
 import { PendingApprovalToastListener } from "@/components/PendingApprovalToastListener";
 import { SafetyEventListener } from "@/components/SafetyEventListener";
@@ -45,6 +46,7 @@ export default function RootLayout({
             <CommandPalette />
             <AnomalySentinelStrip />
             <EngineAvailabilityHint />
+            <SystemFreshnessStrip />
             <IBDataDegradedBanner />
             <LLMProviderBadge />
             <div className="flex min-h-screen">

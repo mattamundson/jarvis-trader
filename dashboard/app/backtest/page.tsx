@@ -13,8 +13,17 @@ import { StrategyParamsCard } from "@/components/StrategyParamsCard";
 import { SignalAccuracyWidget } from "@/components/SignalAccuracyWidget";
 import { LongShortBalanceWidget } from "@/components/LongShortBalanceWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
-import { DecisionBreakdownCard } from "@/components/DecisionBreakdownCard";
-import { LightweightSeriesChart, type SeriesPoint } from "@/components/charts/LightweightSeriesChart";
+import dynamic from "next/dynamic";
+import type { SeriesPoint } from "@/components/charts/LightweightSeriesChart";
+
+const DynamicDecisionBreakdownCard = dynamic(
+  () => import("@/components/DecisionBreakdownCard").then(mod => ({ default: mod.DecisionBreakdownCard })),
+  { ssr: false, loading: () => <div className="rounded-lg border border-panel-border bg-muted/40 p-4 text-sm text-muted-foreground">Loading decision breakdown...</div> }
+);
+const DynamicLightweightSeriesChart = dynamic(
+  () => import("@/components/charts/LightweightSeriesChart").then(mod => ({ default: mod.LightweightSeriesChart })),
+  { ssr: false, loading: () => <div className="rounded-lg border border-panel-border bg-muted/40 p-4 text-sm text-muted-foreground">Loading chart...</div> }
+);
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -198,7 +207,7 @@ function EquityMiniChart({ result }: { result: BacktestResult }) {
   }));
 
   return (
-    <LightweightSeriesChart
+    <DynamicLightweightSeriesChart
       data={series}
       type="area"
       color={strokeColor}
@@ -527,7 +536,7 @@ export default function BacktestPage() {
         </WidgetErrorBoundary>
 
         {/* Decision breakdown from pipeline history */}
-        <DecisionBreakdownCard />
+        <DynamicDecisionBreakdownCard />
 
         {/* Summary stat cards */}
         {summaryStats && (
