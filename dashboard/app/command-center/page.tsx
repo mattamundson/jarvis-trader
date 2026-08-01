@@ -48,6 +48,7 @@ import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWid
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
+import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
 
 // Candlestick chart (lightweight-charts) — only renders once bar data resolves, so
 // load it on demand to keep lightweight-charts off the command-center landing critical path.
@@ -297,6 +298,17 @@ function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
+function shouldRevalidateCommandCenter(event: WsEvent): boolean {
+  return (
+    event.type === "order_fill" ||
+    event.type === "pending_approval_created" ||
+    event.type === "kill_switch" ||
+    event.type === "safety_event" ||
+    event.type === "circuit_breaker" ||
+    event.type === "pipeline_complete"
+  );
+}
+
 // ── Live per-instrument regime (PRB-34) ─────────────────────────────────────
 // Ports /jarvis's RegimePulsePanel pattern: GET /analytics/regime/{symbol},
 // same live source, same 60s poll cadence. Replaces the Signal Cards' hardcoded
@@ -374,44 +386,44 @@ export default function CommandCenterPage() {
     mutate: mutateHealth,
   } = useSWR<HealthData>("/health", fetcher, { refreshInterval });
 
-  const { data: safety } = useSWR<SafetyData>("/safety/status", fetcher, {
+  const { data: safety, mutate: mutateSafety } = useSWR<SafetyData>("/safety/status", fetcher, {
     refreshInterval,
   });
 
-  const { data: portfolio } = useSWR<PortfolioData>("/portfolio", fetcher, {
+  const { data: portfolio, mutate: mutatePortfolio } = useSWR<PortfolioData>("/portfolio", fetcher, {
     refreshInterval,
   });
 
-  const { data: decisions } = useSWR<Decision[]>(
+  const { data: decisions, mutate: mutateDecisions } = useSWR<Decision[]>(
     "/decisions/recent?limit=5",
     fetcher,
     { refreshInterval }
   );
 
-  const { data: scheduler } = useSWR<SchedulerData>(
+  const { data: scheduler, mutate: mutateScheduler } = useSWR<SchedulerData>(
     "/scheduler/status",
     fetcher,
     { refreshInterval }
   );
 
-  const { data: macro } = useSWR<MacroData>("/macro/snapshot", fetcher, {
+  const { data: macro, mutate: mutateMacro } = useSWR<MacroData>("/macro/snapshot", fetcher, {
     refreshInterval: 120_000,
     shouldRetryOnError: false,
   });
 
-  const { data: paperStatus } = useSWR<Record<string, PaperStatusRow>>(
+  const { data: paperStatus, mutate: mutatePaperStatus } = useSWR<Record<string, PaperStatusRow>>(
     "/backtest/paper-status",
     fetcher,
     { refreshInterval: 120_000, shouldRetryOnError: false }
   );
 
-  const { data: trades } = useSWR<Trade[]>(
+  const { data: trades, mutate: mutateTrades } = useSWR<Trade[]>(
     "/portfolio/history/trades",
     fetcher,
     { refreshInterval }
   );
 
-  const { data: journalStats } = useSWR<JournalTradeStats>(
+  const { data: journalStats, mutate: mutateJournalStats } = useSWR<JournalTradeStats>(
     "/journal/review/stats?limit=30",
     fetcher,
     { refreshInterval: 60_000, shouldRetryOnError: false }
@@ -420,11 +432,25 @@ export default function CommandCenterPage() {
   // Honest deduped set for the journal HUD row (win_rate + EV/trade).
   // /journal/review/stats over-counts re-logged winners; fetchHonestTrades
   // applies dedup at read time. All other command-center cards are LEGIT.
-  const { data: honestSet } = useSWR<HonestTradeSet>(
+  const { data: honestSet, mutate: mutateHonestSet } = useSWR<HonestTradeSet>(
     "honest-trades-cc",
     fetchHonestTrades,
     { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
   );
+
+  useWebSocket(undefined, (event) => {
+    if (!shouldRevalidateCommandCenter(event)) return;
+    mutateHealth();
+    mutateSafety();
+    mutatePortfolio();
+    mutateDecisions();
+    mutateScheduler();
+    mutateMacro();
+    mutatePaperStatus();
+    mutateTrades();
+    mutateJournalStats();
+    mutateHonestSet();
+  });
 
   const engineOnline = !healthErr && !!health;
   const killSwitchActive = health?.kill_switch_active ?? false;
