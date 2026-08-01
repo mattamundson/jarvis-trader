@@ -1042,6 +1042,31 @@ class SafetyLayer:
             )
         return RiskCheckResult(approved=True)
 
+    def _check_do_not_trade_symbols(self, order: OrderRequest) -> RiskCheckResult:
+        """Reject any order for a symbol on the static DO_NOT_TRADE_SYMBOLS
+        halt list (backtest/signals.py).
+
+        That blocklist already forces NO_TRADE at signal-generation time,
+        but nothing previously stopped a caller from building an
+        OrderRequest directly and routing it straight to check_order() --
+        e.g. POST /strategies/rl/deploy's RLExecutor path bypasses the
+        signal-generation layer entirely (PRB-03, 2026-07-29 prod-readiness
+        audit). check_order() is the single choke point every current and
+        future order-submission call site shares, so the gate belongs here.
+        """
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+        symbol = order.symbol.upper()
+        if symbol in DO_NOT_TRADE_SYMBOLS:
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"{symbol} is on the DO_NOT_TRADE_SYMBOLS halt list "
+                    "(backtest/signals.py) - trading is blocked for this symbol"
+                ),
+            )
+        return RiskCheckResult(approved=True)
+
     def _check_paper_config_enabled(self, order: OrderRequest) -> RiskCheckResult:
         """Reject any order for a symbol whose backtest/paper_config.py entry
         has enabled=False.
@@ -1387,6 +1412,7 @@ class SafetyLayer:
         # Run sequential checks, return early on failure
         for check_fn in [
             lambda: self._check_kill_switch(),
+            lambda: self._check_do_not_trade_symbols(order),
             lambda: self._check_paper_config_enabled(order),
             lambda: self._check_gating_conditions(),
             lambda: self._check_promotion_gate(order),

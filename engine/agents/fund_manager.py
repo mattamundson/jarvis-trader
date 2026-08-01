@@ -236,17 +236,26 @@ class FundManagerAgent:
             return self._parse_fund_decision(result, trade, risk)
 
         except Exception as e:
-            logger.error(f"[FundManager] LLM approval failed: {e}")
-            # On failure, approve conservatively with reduced quantity (1 contract max)
-            original_qty = int(trade.get("quantity", 1))
-            safe_qty = min(original_qty, 1)
+            # FAIL CLOSED (PRB-11, mirrors GT-49): an LLM/parse failure during
+            # Fund Manager review is an UNKNOWN portfolio-level verdict, not
+            # evidence the trade is safe. Silently approving at qty=1 here
+            # converted an approval failure into fail-open behavior — the same
+            # defect class as the 2026-06-15 inert-kill-switch incident and
+            # the GT-49 per-account kill-state fix (safety_layer.py). "Unknown
+            # state" must never resolve to "safe to trade": reject/hold the
+            # trade until a real Fund Manager verdict succeeds.
+            logger.error(
+                "[FundManager] LLM approval failed — failing CLOSED (rejected) "
+                "rather than auto-approving: %s",
+                e,
+            )
             return FundDecision(
-                approved=True,
-                final_quantity=safe_qty,
-                priority="immediate",
-                portfolio_impact=f"LLM failure — conservative approval at qty={safe_qty}.",
-                reasoning=f"Fund Manager LLM call failed ({e}). Approved conservatively at minimum size.",
-                requires_human_approval=True,  # Force human review on LLM failure
+                approved=False,
+                final_quantity=0,
+                priority="skip",
+                portfolio_impact=f"Fund Manager LLM call failed ({e}) — rejected, fail-closed on unknown portfolio-level verdict.",
+                reasoning=f"Fund Manager LLM call failed ({e}). Failing CLOSED (rejected) rather than auto-approving.",
+                requires_human_approval=True,  # Surface to Matt regardless of REQUIRE_HUMAN_APPROVAL
                 timestamp=datetime.now(),
             )
 
