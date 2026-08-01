@@ -42,6 +42,10 @@ export const ROUTES: RouteSpec[] = [
   { path: "/", name: "root redirect", kind: "redirect", criticality: "critical", landmark: null, target: "/command-center" },
   { path: "/stats", name: "stats redirect", kind: "redirect", criticality: "standard", landmark: null, target: "/performance" },
   { path: "/trades/journal", name: "trades journal redirect", kind: "redirect", criticality: "standard", landmark: null, target: "/journal" },
+  // Added by PR #558. Its page.tsx comment claims a client-side navigation but the
+  // code calls the server-side redirect() -- the comment is wrong, the behaviour is
+  // a server redirect, which is what this entry asserts. Filed as a follow-up.
+  { path: "/dashboard", name: "dashboard alias redirect", kind: "redirect", criticality: "standard", landmark: null, target: "/command-center" },
 
   // ---- critical: operator decision surfaces --------------------------------
   { path: "/command-center", name: "command center", kind: "page", criticality: "critical", landmark: /JARVIS TRADER.*COMMAND CENTER/i },
