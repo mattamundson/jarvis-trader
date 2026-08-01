@@ -23,6 +23,28 @@
 > pushed/merged; its `[safety-review]` equity-peak clamp activates on the next
 > `restart_engine.ps1`.
 
+> **PRB-02 correction (2026-07-29, PR held for Amo's review — not yet merged):** the "APPROVED —
+> paper active" status this file used to show for MES and MGC (before PRB-25 retired the static
+> table below in favor of the live Trading Eligibility page) does NOT currently survive
+> verification. Live
+> `GET /paper/validation/approved-paper-gates` shows `overall_pass: false` for BOTH symbols right
+> now (MES: profit_factor 1.79 < 2.0 target, win_rate 43.75% < 55%, 16/60 trades, 15/30 days;
+> MGC: win_rate 44% < 55%, 25/60 trades, 19/30 days, **max_drawdown 18.27% vs a 15% target —
+> already breaching**). Root cause: `gate_v2_policy.is_ungate_eligible(symbol)` was symbol-wide —
+> an unrelated strategy's PASS (`MES_stark_gapfill_long_rank1.json`, a gap-fill scanner MES's
+> live SMA-trend router never invokes) was authorizing MES's actually-traded, actually-failing
+> trend strategy. MGC's authorizing verdict (`MGC_trend_baseline.json`, dsr=0.999375) is a
+> multiple-testing artifact of the same class the 2026-07-27 honest-data-drain loop already
+> found and corrected elsewhere — recomputed at the true campaign trial count (54–70, per
+> `~/.claude/loops/jarvis-honest-data-drain/ledger.json`) its DSR collapses to 0.0, below both
+> gate floors. See `engine/data/GATE_V2_FDR_ANALYSIS.md` §6 and PRB-02 in
+> `~/.claude/loops/jarvis-prod-readiness/backlog.json`. The code fix (branch
+> `fix/prb-02-gate-v2-symbol-wide-eligibility`) makes eligibility strategy-specific and is
+> sufficient by itself to halt MES's autonomous order routing once merged + deployed; MGC
+> additionally needs its live, intentionally-gitignored verdict file manually superseded
+> (git cannot carry that data change — see the PR description) before MGC is actually halted
+> too. This banner should be updated again once Amo decides and the fix deploys.
+
 **See also:** [Strategic command center (index)](strategic/README.md) — executive brief, system map, risk register, execution spine, and analysis passes.
 
 **New runbooks (2026-04-10):** [SECURITY_OPERATOR_CHECKLIST.md](runbooks/SECURITY_OPERATOR_CHECKLIST.md) · [PAPER_SOURCE_OF_TRUTH.md](runbooks/PAPER_SOURCE_OF_TRUTH.md) · [IB_RECONNECT_AND_HEALTH.md](runbooks/IB_RECONNECT_AND_HEALTH.md) · [HEALTH_API_CONTRACT.md](runbooks/HEALTH_API_CONTRACT.md) · [SQLITE_BACKUP.md](runbooks/SQLITE_BACKUP.md) · [MARKET_DATA_WATERFALL.md](runbooks/MARKET_DATA_WATERFALL.md)
@@ -50,9 +72,10 @@
 
 **This section is retired as of PRB-25 (2026-07-30) — see the banner at the top of this
 file.** It used to hold a static, hand-maintained table of per-symbol approval status;
-that table is exactly what went stale and contradicted the live gates twice in one night.
-Use the live [Trading Eligibility](../dashboard/app/trading-eligibility/page.tsx) dashboard
-page (`/trading-eligibility`) instead — it is sourced directly from
+that table is exactly what went stale and contradicted the live gates twice in one night
+(most recently the PRB-02 finding below, before this table was even removed). Use the live
+[Trading Eligibility](../dashboard/app/trading-eligibility/page.tsx) dashboard page
+(`/trading-eligibility`) instead — it is sourced directly from
 `GET /paper/validation/approved-paper-gates` and reflects the engine's actual current
 verdict per symbol, including per-gate pass/fail detail (profit factor, Sharpe, win rate,
 trade count, days active, max drawdown, deflated Sharpe).
