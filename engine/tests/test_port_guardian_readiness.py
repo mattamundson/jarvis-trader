@@ -68,6 +68,123 @@ class TestWslRelayDetection:
             assert port_guardian._is_wsl_relay(name) is False
 
 
+class TestProcessNameRetry:
+    """2026-07-31: _process_name() retries a transient miss instead of giving up
+    on the first failed shell-out (2026-07-30 restart storm root cause)."""
+
+    def test_returns_name_on_first_success_no_retry(self, monkeypatch):
+        calls = []
+
+        def fake_check_output(*a, **k):
+            calls.append(1)
+            return "python\n"
+
+        monkeypatch.setattr(port_guardian.subprocess, "check_output", fake_check_output)
+        sleeps = []
+
+        name = port_guardian._process_name(111, sleep_fn=lambda s: sleeps.append(s))
+
+        assert name == "python"
+        assert len(calls) == 1
+        assert sleeps == []
+
+    def test_retries_once_after_transient_miss_then_succeeds(self, monkeypatch):
+        results = iter(["", "python\n"])
+
+        def fake_check_output(*a, **k):
+            return next(results)
+
+        monkeypatch.setattr(port_guardian.subprocess, "check_output", fake_check_output)
+        sleeps = []
+
+        name = port_guardian._process_name(111, sleep_fn=lambda s: sleeps.append(s))
+
+        assert name == "python"
+        assert sleeps == [0.5]
+
+    def test_returns_none_after_all_attempts_fail(self, monkeypatch):
+        import subprocess as subprocess_module
+
+        def fake_check_output(*a, **k):
+            raise subprocess_module.TimeoutExpired(cmd="powershell", timeout=5)
+
+        monkeypatch.setattr(port_guardian.subprocess, "check_output", fake_check_output)
+        sleeps = []
+
+        name = port_guardian._process_name(111, attempts=2, sleep_fn=lambda s: sleeps.append(s))
+
+        assert name is None
+        assert sleeps == [0.5]  # sleeps between attempts, not after the last one
+
+    def test_attempts_and_retry_delay_are_configurable(self, monkeypatch):
+        calls = []
+
+        def fake_check_output(*a, **k):
+            calls.append(1)
+            return ""
+
+        monkeypatch.setattr(port_guardian.subprocess, "check_output", fake_check_output)
+        sleeps = []
+
+        name = port_guardian._process_name(
+            111, attempts=3, retry_delay_s=0.1, sleep_fn=lambda s: sleeps.append(s)
+        )
+
+        assert name is None
+        assert len(calls) == 3
+        assert sleeps == [0.1, 0.1]
+
+
+class TestLooksLikeOrphanUvicorn:
+    """2026-07-31: takes the already-resolved name instead of re-deriving it via a
+    second _process_name() shell-out — dedupes the double PowerShell call main()
+    used to make per holder PID."""
+
+    def test_recognizes_python_and_uvicorn_names(self):
+        for name in ("python", "python3.12", "python3.11", "python3.10", "uvicorn", "PYTHON"):
+            assert port_guardian._looks_like_orphan_uvicorn(name) is True
+
+    def test_refuses_unrecognized_or_missing_name(self):
+        for name in ("chrome", "wslrelay", "", None):
+            assert port_guardian._looks_like_orphan_uvicorn(name) is False
+
+
+class TestMainUnidentifiedHolderBackoff:
+    """2026-07-31: the unidentified-port-holder exit path previously had zero
+    backoff (unlike the WSL-squat and unkillable-healthy-orphan siblings), which
+    contributed to the 2026-07-30 restart storm."""
+
+    def test_sleeps_backoff_before_returning(self, monkeypatch):
+        monkeypatch.setattr(port_guardian, "_check_venv_python", lambda: None)
+        monkeypatch.setattr(port_guardian, "_port_holders", lambda port: [4242])
+        monkeypatch.setattr(port_guardian, "_process_name", lambda pid: "chrome")
+        sleeps = []
+        monkeypatch.setattr(port_guardian.time, "sleep", lambda s: sleeps.append(s))
+
+        result = port_guardian.main()
+
+        assert result == 1
+        assert sleeps == [port_guardian.UNIDENTIFIED_HOLDER_BACKOFF]
+
+    def test_process_name_result_is_reused_not_refetched(self, monkeypatch):
+        """main() must call _process_name() once per holder PID, not twice
+        (previously: once directly, once again inside _looks_like_orphan_uvicorn)."""
+        monkeypatch.setattr(port_guardian, "_check_venv_python", lambda: None)
+        monkeypatch.setattr(port_guardian, "_port_holders", lambda port: [4242])
+        calls = []
+
+        def fake_process_name(pid):
+            calls.append(pid)
+            return "chrome"
+
+        monkeypatch.setattr(port_guardian, "_process_name", fake_process_name)
+        monkeypatch.setattr(port_guardian.time, "sleep", lambda s: None)
+
+        port_guardian.main()
+
+        assert calls == [4242]
+
+
 class TestRestartEventRecord:
     def test_appends_structured_jsonl_record(self, tmp_path):
         log = tmp_path / "restarts.jsonl"
