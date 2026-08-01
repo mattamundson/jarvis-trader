@@ -409,6 +409,14 @@ jobs:
         with:
           node-version: '22'
 
+      # Runs BEFORE install on purpose: check-guards.mjs uses only node built-ins,
+      # so a guard violation fails in seconds instead of after a ~90s install.
+      # Invoked as `node` rather than `pnpm run guards` precisely because pnpm is
+      # not on PATH yet at this point -- `pnpm run guards` is the local entrypoint.
+      - name: Static guards (engine URL, bare fetch, dead dynamic import, poll ratchet)
+        run: node scripts/check-guards.mjs
+        working-directory: dashboard
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
