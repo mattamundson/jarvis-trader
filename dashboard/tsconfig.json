@@ -38,6 +38,7 @@
     "node_modules",
     "tests",
     "**/*.node.test.ts",
-    "components/_archive/**"
+    "components/_archive/**",
+    "apps/**"
   ]
 }
