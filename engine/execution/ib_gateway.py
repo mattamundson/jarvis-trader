@@ -771,6 +771,163 @@ class IBGatewayManager:
             )
             return None
 
+    async def place_bracket_order(
+        self,
+        symbol: str,
+        action: str,
+        quantity: int,
+        entry_type: str = "MKT",
+        limit_price: Optional[float] = None,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+    ) -> dict:
+        """Place a native IB bracket: entry + OCA-linked stop-loss + take-profit.
+
+        Drop-in replacement for ``IBGatewayConnector.place_bracket_order`` — same
+        signature and same return contract — but this routes a REAL broker-side
+        bracket so the stop actually rests at IB (survives an engine restart),
+        which the in-process simulator can never do.
+
+        Atomicity via transmit sequencing: the parent entry is placed with
+        ``transmit=False`` and only the LAST leg placed carries ``transmit=True``,
+        so IB releases all legs as one group. Because the parent stays
+        un-transmitted until the final child is accepted, there is no window in
+        which the entry can fill without its stop already staged — a mid-sequence
+        failure leaves nothing resting (the opposite of the immediate-transmit
+        ``submit_bracket`` path, which needs a rollback-cancel to close a naked
+        position). The two children share an OCA group (``ocaType=1``) so a fill
+        on one cancels the other, and both carry ``parentId=<entry orderId>`` so
+        ``get_order_status`` / ``SafetyLayer._verify_parent_linkage`` confirm the
+        broker-side linkage.
+
+        Returns the connector's exact dict shape:
+            success -> {"status":"placed","entry_id","sl_id","tp_id",
+                        "symbol","action","quantity"}   (sl_id/tp_id may be None)
+            failure -> {"status":"error","error": <reason>}
+
+        Registry / DB / migration-031 writes are intentionally NOT done here — the
+        simulator does none either; those live in ``brokers.bracket_orders``.
+        """
+        if not self.is_connected():
+            return {"status": "error", "error": "Not connected"}
+
+        action_upper = self._validate_order_preconditions(action, quantity)
+        if action_upper is None:
+            return {"status": "error", "error": "Failed to place entry order"}
+
+        # Normalise entry type. entry_type arrives lowercased from the safety
+        # layer (req.order_type = order_type.lower()); alias MARKET/LIMIT so the
+        # exact-match _build_order_object accepts it.
+        entry_type_upper = entry_type.upper()
+        entry_type_upper = {"MARKET": "MKT", "LIMIT": "LMT"}.get(
+            entry_type_upper, entry_type_upper
+        )
+        if entry_type_upper not in ("MKT", "LMT"):
+            logger.error("place_bracket_order: unsupported entry_type '%s'", entry_type)
+            return {"status": "error", "error": "Failed to place entry order"}
+
+        exit_action = "SELL" if action_upper == "BUY" else "BUY"
+        want_sl = stop_loss is not None
+        want_tp = take_profit is not None
+        has_children = want_sl or want_tp
+        # Shared reconciliation tag + unique OCA group for this bracket.
+        order_ref = f"JARVIS-{uuid.uuid4().hex[:12]}"
+        oca_group = f"JARVIS-OCA-{uuid.uuid4().hex[:12]}"
+
+        placed_trades: list = []
+        try:
+            contract = self._resolve_contract(symbol)
+            if contract is None:
+                logger.error("place_bracket_order: could not resolve contract for %s", symbol)
+                return {"status": "error", "error": "Failed to place entry order"}
+            contract = await self._qualify_contract(contract)
+            if contract is None:
+                logger.error("place_bracket_order: could not qualify contract for %s", symbol)
+                return {"status": "error", "error": "Failed to place entry order"}
+
+            # Parent entry. transmit=False while children follow (atomic bundle).
+            parent = self._build_order_object(
+                entry_type_upper, action_upper, quantity, limit_price, None,
+                order_ref=order_ref,
+            )
+            if parent is None:
+                return {"status": "error", "error": "Failed to place entry order"}
+            if self._config.account:
+                parent.account = self._config.account
+            parent.transmit = not has_children
+            parent_trade = self._ib.placeOrder(contract, parent)
+            placed_trades.append(parent_trade)
+            entry_id = int(parent_trade.order.orderId)
+
+            # Children: SL then TP; the LAST leg placed carries transmit=True to
+            # release the whole bracket at the broker.
+            child_specs = []
+            if want_sl:
+                child_specs.append(("STP", None, stop_loss))
+            if want_tp:
+                child_specs.append(("LMT", take_profit, None))
+
+            sl_id = None
+            tp_id = None
+            for idx, (otype, lmt, aux) in enumerate(child_specs):
+                child = self._build_order_object(
+                    otype, exit_action, quantity, lmt, aux, order_ref=order_ref,
+                )
+                if child is None:
+                    raise RuntimeError(f"failed to build {otype} child order")
+                if self._config.account:
+                    child.account = self._config.account
+                child.parentId = entry_id
+                child.ocaGroup = oca_group
+                child.ocaType = 1
+                child.transmit = idx == len(child_specs) - 1
+                child_trade = self._ib.placeOrder(contract, child)
+                placed_trades.append(child_trade)
+                child_id = int(child_trade.order.orderId)
+                if otype == "STP":
+                    sl_id = child_id
+                else:
+                    tp_id = child_id
+
+            logger.info(
+                "place_bracket_order placed | symbol=%s entry=%d sl=%s tp=%s ref=%s oca=%s",
+                symbol, entry_id, sl_id, tp_id, order_ref, oca_group,
+            )
+            return {
+                "status": "placed",
+                "entry_id": entry_id,
+                "sl_id": sl_id,
+                "tp_id": tp_id,
+                "symbol": symbol,
+                "action": action,
+                "quantity": quantity,
+            }
+
+        except Exception as exc:
+            if not placed_trades:
+                logger.error(
+                    "place_bracket_order: entry failed symbol=%s: %s",
+                    symbol, exc, exc_info=True,
+                )
+                return {"status": "error", "error": "Failed to place entry order"}
+            # A child leg failed AFTER the parent was placed. Every leg so far is
+            # transmit=False -> none is live -> no naked position. Best-effort
+            # cancel the un-transmitted legs, then surface the failure.
+            logger.critical(
+                "place_bracket_order: child leg failed symbol=%s — rolling back "
+                "%d un-transmitted leg(s): %s",
+                symbol, len(placed_trades), exc, exc_info=True,
+            )
+            for tr in reversed(placed_trades):
+                try:
+                    self._ib.cancelOrder(tr.order)
+                except Exception as cexc:
+                    logger.critical(
+                        "place_bracket_order: rollback cancel FAILED id=%s: %s",
+                        getattr(getattr(tr, "order", None), "orderId", "?"), cexc,
+                    )
+            return {"status": "error", "error": "Failed to place bracket child order"}
+
     async def cancel_order(self, order_id: int) -> bool:
         """
         Cancel an open IB order by order ID.
@@ -878,7 +1035,27 @@ class IBGatewayManager:
             return {}
 
         try:
-            account_values = await self._ib.accountSummaryAsync(account=self._config.account or "")
+            # Request ALL accounts, then select the target in Python. Filtering the
+            # REQUEST by a mis-configured IB_ACCOUNT_ID silently returns an empty set,
+            # so NetLiquidation stays 0.0 and the SafetyLayer would read equity as
+            # ZERO — a dangerous state. Fall back to the broker's actual account (and
+            # warn loudly) rather than report a false zero. (Observed 2026-07-23:
+            # IB_ACCOUNT_ID=DUP662235 but the Gateway is logged into DUR162217.)
+            account_values = await self._ib.accountSummaryAsync()
+
+            accounts_present = {av.account for av in account_values if av.account}
+            target = self._config.account or ""
+            if target and target not in accounts_present:
+                logger.warning(
+                    "get_account_summary: configured IB_ACCOUNT_ID=%s NOT found at IB "
+                    "(accounts present: %s). Falling back to the broker account so equity "
+                    "is not read as 0 - FIX IB_ACCOUNT_ID to match the logged-in account.",
+                    target,
+                    sorted(accounts_present),
+                )
+                target = ""
+            if not target and len(accounts_present) == 1:
+                target = next(iter(accounts_present))
 
             KEYS_OF_INTEREST = {
                 "NetLiquidation",
@@ -894,13 +1071,14 @@ class IBGatewayManager:
 
             summary: dict = dict.fromkeys(KEYS_OF_INTEREST, 0.0)
             for av in account_values:
-                if av.tag in KEYS_OF_INTEREST:
+                if av.tag in KEYS_OF_INTEREST and (not target or av.account == target):
                     try:
                         summary[av.tag] = float(av.value)
                     except (ValueError, TypeError):
                         pass
 
-            # Convenience alias used by SafetyLayer / OrderRouter
+            # Convenience aliases used by SafetyLayer / OrderRouter
+            summary["account"] = target
             summary["equity"] = summary["NetLiquidation"]
             return summary
 
