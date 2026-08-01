@@ -56,6 +56,57 @@ jobs:
       # `ruff check` lint gate above is what we enforce; a deliberate formatter
       # adoption can be a separate, planned change.
 
+  # The complement of the draft gate above. Every other job here skips draft PRs,
+  # on the stated grounds that the local pr-local-ci loop covers them for free.
+  # That justification does not hold:
+  #   - pr-local-ci fires once a day and needs this machine awake;
+  #   - on 2026-07-31 it was found to have been checking ZERO PRs since it was
+  #     created -- a malformed `gh pr list --json` argument split across argv and
+  #     silently skipped every repo, with stderr suppressed;
+  #   - drafts are not a rounding error: 7 of 30 open PRs target master as drafts,
+  #     carrying 49 changed .py files between them.
+  #
+  # This job runs ONLY on drafts, so it never duplicates engine-lint. The two
+  # together mean every PR gets ruff in every state, from cloud CI rather than
+  # from a machine that may be asleep.
+  #
+  # Deliberately cheap (~1 min): lint plus a byte-compile, not the pytest suite.
+  # Full tests still wait for ready-for-review, which is in the trigger `types`
+  # above so the conversion re-fires CI.
+  #
+  # Not added to required status checks and not wired into ci-summary: it runs
+  # only while a PR is a draft, and a draft cannot merge, so a red result here
+  # blocks nothing -- it is signal for the author, not a gate.
+  engine-draft-check:
+    name: Engine Draft Check (ruff + compile)
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'engine/requirements-core.txt'
+
+      - name: Install ruff
+        run: pip install ruff==0.8.0
+
+      # Same invocation as engine-lint: run from engine/ so isort treats agents,
+      # config, database, ... as first-party (from repo root it fails I001).
+      - name: Run ruff check
+        run: |
+          cd engine
+          ruff check . --config ruff.toml
+
+      # Catches syntax errors that reach the parser but never a test run, which
+      # matters most on drafts precisely because pytest is not running here.
+      - name: Byte-compile engine sources
+        run: python -m compileall -q engine -x '(\.venv|node_modules|__pycache__|site-packages)'
+
   engine-typecheck:
     name: Engine Type Check (mypy)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
@@ -298,11 +349,20 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: dashboard
 
+      # Output is tee'd so the bundle-budget gate below can read the route table
+      # instead of paying for a second ~2 minute build to reprint numbers this
+      # one already produced. pipefail keeps a build failure fatal through tee.
       - name: Build Next.js
-        run: pnpm run build
+        run: |
+          set -euo pipefail
+          pnpm run build 2>&1 | tee ../build-output.log
         working-directory: dashboard
         env:
           NODE_ENV: production
+
+      - name: Bundle-size budget (First Load JS)
+        run: node scripts/check-bundle-budget.mjs ../build-output.log
+        working-directory: dashboard
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
@@ -357,6 +417,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      # Runs BEFORE install on purpose: check-guards.mjs uses only node built-ins,
+      # so a guard violation fails in seconds instead of after a ~90s install.
+      # Invoked as `node` rather than `pnpm run guards` precisely because pnpm is
+      # not on PATH yet at this point -- `pnpm run guards` is the local entrypoint.
+      - name: Static guards (engine URL, bare fetch, dead dynamic import, poll ratchet)
+        run: node scripts/check-guards.mjs
+        working-directory: dashboard
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
