@@ -163,6 +163,7 @@ async def test_approve_submits_paper_order(tmp_path: Path) -> None:
 
         with (
             patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
         ):
             from routers.approval_queue_router import ApproveBody, approve_candidate
 
@@ -210,7 +211,10 @@ async def test_approve_records_to_shared_dedup(tmp_path: Path) -> None:
         mod._db_path = db_path
         mod._dedup = SubmissionDedup(Path(tmp_path) / "dedup.jsonl")
 
-        with patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False):
+        with (
+            patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+        ):
             from routers.approval_queue_router import ApproveBody, approve_candidate
 
             await approve_candidate(row_id, ApproveBody(entry_price=2010.0))
@@ -251,7 +255,10 @@ async def test_approve_skips_when_cross_path_already_submitted(tmp_path: Path) -
         )
         mod._dedup = shared
 
-        with patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False):
+        with (
+            patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+            patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+        ):
             from routers.approval_queue_router import ApproveBody, approve_candidate
 
             with pytest.raises(HTTPException) as exc_info:
