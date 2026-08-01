@@ -648,11 +648,17 @@ async def watch_approval_reactions() -> None:
                     timeout=30,
                     compress=0,
                 ) as ws:
-                    backoff = _INITIAL_BACKOFF_SECONDS  # reset on successful connect
                     logger.info("reaction_watcher: WebSocket connected")
                     resume_session_id, resume_seq, should_resume = await _gateway_session(
                         ws, http_session, resume_session_id, resume_seq
                     )
+                    if resume_session_id is not None:
+                        # Only reset backoff once the gateway actually authenticated
+                        # (READY/RESUMED set session_id). A raw TCP/TLS connect that
+                        # gets IDENTIFY-rejected and closed immediately must NOT reset
+                        # backoff, or a bad token/intents config spins the reconnect
+                        # loop at the 2s floor forever instead of backing off.
+                        backoff = _INITIAL_BACKOFF_SECONDS
                     if not should_resume:
                         # Non-resumable close code — clear resume state and re-identify
                         resume_session_id = None
