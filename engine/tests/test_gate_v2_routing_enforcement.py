@@ -243,14 +243,24 @@ def test_prb02_mes_unrelated_family_pass_no_longer_authorizes(
     assert (out["entry_signal"] == "NO_TRADE").all()
 
 
-def test_prb02_mgc_trend_family_pass_still_authorizes(
+def test_prb02_trend_family_pass_still_authorizes(
     bullish_ohlcv_df, tmp_verdicts_dir, monkeypatch
 ):
     """Sanity check the fix is not overly restrictive: a genuine "trend"
-    (or "trend_*") family PASS for MGC must still authorize it -- the fix
-    narrows WHICH families count, it does not block trend-family PASSes."""
+    (or "trend_*") family PASS for a TREND_INSTRUMENTS symbol must still
+    authorize it -- the fix narrows WHICH families count, it does not block
+    trend-family PASSes.
+
+    Uses MES, not MGC: MGC joined DO_NOT_TRADE_SYMBOLS 2026-07-31
+    (honest-data-drain DSR correction), and per this module's own documented
+    precedence (module docstring above: "DO_NOT_TRADE_SYMBOLS is checked
+    first, static blocklist wins"), generate_instrument_signals now short
+    -circuits MGC to NO_TRADE before ever reaching is_ungate_eligible --
+    which would make spy.called always False regardless of this fix. MES is
+    the other TREND_INSTRUMENTS member and is not blocked, so it still
+    isolates the routing behavior this test exists to prove."""
     _write_verdict_family(
-        tmp_verdicts_dir, "MGC", family="trend_baseline", rank=1,
+        tmp_verdicts_dir, "MES", family="trend_baseline", rank=1,
         verdict="PASS", passed_via="alt",
     )
     monkeypatch.setenv("GATE_V2_ENFORCE_ROUTING", "1")
@@ -258,7 +268,7 @@ def test_prb02_mgc_trend_family_pass_still_authorizes(
     from backtest import gate_v2_policy as policy
 
     with patch.object(policy, "is_ungate_eligible", wraps=policy.is_ungate_eligible) as spy:
-        generate_instrument_signals(bullish_ohlcv_df, symbol="MGC")
+        generate_instrument_signals(bullish_ohlcv_df, symbol="MES")
 
     assert spy.called
     _, kwargs = spy.call_args
@@ -267,7 +277,7 @@ def test_prb02_mgc_trend_family_pass_still_authorizes(
     # is accepted under the family scope (the fixture's own crossover may or
     # may not fire on this short synthetic series, so assert on the gate's
     # own answer directly rather than on entry_signal output).
-    assert policy.is_ungate_eligible("MGC", family_prefixes=TREND_GATE_V2_FAMILY_PREFIXES) is True
+    assert policy.is_ungate_eligible("MES", family_prefixes=TREND_GATE_V2_FAMILY_PREFIXES) is True
 
 
 def test_prb02_non_trend_symbol_keeps_symbol_wide_check(
