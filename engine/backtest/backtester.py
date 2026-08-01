@@ -80,15 +80,34 @@ class Backtester:
         self.max_drawdown = max_drawdown
         self.t1_exit_pct = t1_exit_pct
         self.t2_exit_pct = t2_exit_pct
-        # Pull from config if not explicitly overridden by caller
-        cfg = _get_settings()
+        # Runtime settings are unnecessary when a research harness supplies all
+        # execution-cost assumptions explicitly. Keeping that path config-free
+        # makes offline backtests reproducible without loading service secrets.
+        cfg = (
+            _get_settings()
+            if commission_per_contract is None
+            or slippage_ticks is None
+            or spread_ticks is None
+            else None
+        )
         self.commission_per_contract = (
             commission_per_contract
             if commission_per_contract is not None
-            else cfg.COMMISSION_PER_CONTRACT
+            else cfg.COMMISSION_PER_CONTRACT  # type: ignore[union-attr]
         )
-        self.slippage_ticks = slippage_ticks if slippage_ticks is not None else cfg.SLIPPAGE_TICKS
-        self.spread_ticks = spread_ticks if spread_ticks is not None else cfg.SPREAD_TICKS
+        self.slippage_ticks = (
+            slippage_ticks
+            if slippage_ticks is not None
+            else cfg.SLIPPAGE_TICKS  # type: ignore[union-attr]
+        )
+        self.spread_ticks = (
+            spread_ticks
+            if spread_ticks is not None
+            else cfg.SPREAD_TICKS  # type: ignore[union-attr]
+        )
+        self.commission_enabled = True if cfg is None else cfg.COMMISSION_ENABLED
+        self.slippage_enabled = self.slippage_ticks > 0 if cfg is None else cfg.SLIPPAGE_ENABLED
+        self.spread_enabled = self.spread_ticks > 0 if cfg is None else cfg.SPREAD_ENABLED
         self.trailing_stop = trailing_stop
         self.trailing_atr_mult = trailing_atr_mult
         self.trailing_post_t1 = trailing_post_t1
@@ -140,8 +159,7 @@ class Backtester:
         Long exit → sell at bid (mid - half_spread). Short exit → buy at ask (mid + half_spread).
         Cost = contracts * spread_ticks * tick_size * multiplier.
         """
-        cfg = _get_settings()
-        if not cfg.SPREAD_ENABLED:
+        if not self.spread_enabled:
             return 0.0
         return contracts * self.spread_ticks * tick_size * multiplier
 
@@ -154,10 +172,9 @@ class Backtester:
         Note: slippage is applied as adverse fill price in _apply_execution_costs(), not doubled here.
               Exit spread cost is applied separately via _exit_spread_cost().
         """
-        cfg = _get_settings()
         return (
             self._round_trip_cost(contracts, self.commission_per_contract)
-            if cfg.COMMISSION_ENABLED
+            if self.commission_enabled
             else 0.0
         )
 
@@ -196,14 +213,13 @@ class Backtester:
         direction = pending_entry["direction"]
 
         # Apply execution costs (adverse slippage + half-spread) on the fill price
-        cfg = _get_settings()
-        effective_spread = self.spread_ticks if cfg.SPREAD_ENABLED else 0.0
-        if cfg.SLIPPAGE_ENABLED or cfg.SPREAD_ENABLED:
+        effective_spread = self.spread_ticks if self.spread_enabled else 0.0
+        if self.slippage_enabled or self.spread_enabled:
             entry_price = self._apply_execution_costs(
                 raw_entry_price,
                 direction,
                 tick_size,
-                self.slippage_ticks if cfg.SLIPPAGE_ENABLED else 0.0,
+                self.slippage_ticks if self.slippage_enabled else 0.0,
                 effective_spread,
             )
         else:
@@ -862,8 +878,7 @@ class Backtester:
                 high_water_mark = capital
 
         # Compute total spread cost across all trades (entry half-spread + exit half-spread)
-        cfg = _get_settings()
-        if cfg.SPREAD_ENABLED:
+        if self.spread_enabled:
             spread_cost_total = sum(
                 t.contracts * self.spread_ticks * tick_size * multiplier * 2  # entry + exit
                 for t in completed_trades
