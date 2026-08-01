@@ -71,7 +71,11 @@ async def get_portfolio():
     if not _safety_layer:
         raise HTTPException(503, "Safety layer not initialized")
     status = _safety_layer.get_status()
-    equity = status.get("portfolio_equity", 0.0)
+    # SafetyLayer.get_status() emits current_equity / daily_realized_pnl — NOT
+    # portfolio_equity / daily_pnl (those names belong to /safety/status's
+    # response shape, a different endpoint). Reading the wrong keys here always
+    # fell through to the 0.0 default. See GT-01.
+    equity = status.get("current_equity", 0.0)
 
     positions: list[dict] = []
     unrealized_total = 0.0
@@ -140,9 +144,10 @@ async def get_portfolio():
     return {
         "total_equity": equity,
         "cash_balance": equity,
+        "cash": equity,  # stable alias — dashboard's command-center page reads `cash` (GT-01)
         "unrealized_pnl": round(unrealized_total, 4),
         "realized_pnl": 0.0,
-        "daily_pnl": status.get("daily_pnl", 0.0),
+        "daily_pnl": status.get("daily_realized_pnl", 0.0),
         "margin_used": 0.0,
         "margin_available": equity,
         "positions": positions,
