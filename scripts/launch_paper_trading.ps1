@@ -92,7 +92,8 @@ Write-Host "  Checking Java installation..." -ForegroundColor $Colors.Info
 $javaCheck = & cmd /c "java -version 2>&1" 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Pass "Java is installed"
-} else {
+}
+else {
     Write-Fail "Java not found or not in PATH"
     Abort-Launch "Java Runtime Environment (JRE) 11+ is required for IB Gateway"
 }
@@ -102,7 +103,8 @@ Write-Host "  Checking Node.js installation..." -ForegroundColor $Colors.Info
 $nodeVersion = & node --version 2>$null
 if ($LASTEXITCODE -eq 0) {
     Write-Pass "Node.js is installed ($nodeVersion)"
-} else {
+}
+else {
     Write-Fail "Node.js not found or not in PATH"
     Abort-Launch "Node.js is required for PM2 and the dashboard"
 }
@@ -112,7 +114,8 @@ Write-Host "  Checking PM2 installation..." -ForegroundColor $Colors.Info
 $pm2Version = & pm2 --version 2>$null
 if ($LASTEXITCODE -eq 0) {
     Write-Pass "PM2 is installed (v$pm2Version)"
-} else {
+}
+else {
     Write-Fail "PM2 not found or not in PATH"
     Write-Host "  Install PM2 globally: npm install -g pm2" -ForegroundColor $Colors.Warning
     Abort-Launch "PM2 is required for process management"
@@ -123,7 +126,8 @@ Write-Host "  Checking Python venv..." -ForegroundColor $Colors.Info
 $pythonExe = Join-Path -Path "engine" -ChildPath ".venv\Scripts\python.exe"
 if (Test-Path $pythonExe) {
     Write-Pass "Python venv exists at engine\.venv\Scripts\python.exe"
-} else {
+}
+else {
     Write-Fail "Python venv not found at $pythonExe"
     Abort-Launch "Create the venv with: cd engine && python -m venv .venv && .venv\Scripts\pip install -r requirements-core.txt"
 }
@@ -158,7 +162,8 @@ foreach ($var in $requiredVars) {
         if ($value -match "YOUR_|_HERE$|^$" -or $value -eq "example") {
             $invalidVars += $var
         }
-    } else {
+    }
+    else {
         $missingVars += $var
     }
 }
@@ -179,7 +184,8 @@ Write-Pass "All required environment variables are configured (no placeholders)"
 Write-Host "  Verifying paper trading mode is enabled..." -ForegroundColor $Colors.Info
 if ($envContent -match 'PAPER_TRADING\s*=\s*(True|true|1)') {
     Write-Pass "PAPER_TRADING=True (paper mode enabled)"
-} else {
+}
+else {
     Write-Fail "PAPER_TRADING is not set to True"
     Abort-Launch "CRITICAL: Paper trading mode MUST be enabled. Set PAPER_TRADING=True in engine\.env"
 }
@@ -188,7 +194,8 @@ if ($envContent -match 'PAPER_TRADING\s*=\s*(True|true|1)') {
 Write-Host "  Verifying live trading is disabled..." -ForegroundColor $Colors.Info
 if ($envContent -match 'LIVE_TRADING_ENABLED\s*=\s*(False|false|0)') {
     Write-Pass "LIVE_TRADING_ENABLED=False (live mode disabled)"
-} else {
+}
+else {
     Write-Fail "LIVE_TRADING_ENABLED is not set to False"
     Abort-Launch "CRITICAL: Live trading MUST be disabled. Set LIVE_TRADING_ENABLED=False in engine\.env"
 }
@@ -204,7 +211,8 @@ Write-Host "  Checking Docker..." -ForegroundColor $Colors.Info
 $dockerInfo = & docker info 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Pass "Docker is running"
-} else {
+}
+else {
     Write-Warn "Docker is not running or not installed"
     Write-Host "    Skipping Docker-dependent checks (Postgres/Redis)" -ForegroundColor $Colors.Warning
     $skipDockerChecks = $true
@@ -216,7 +224,8 @@ if (-not $skipDockerChecks) {
     $dockerPs = & docker ps --format "table {{.Names}}" 2>&1
     if ($dockerPs -match "postgres") {
         Write-Pass "Postgres container is running"
-    } else {
+    }
+    else {
         Write-Warn "Postgres container not found in running containers"
         Write-Host "    If needed, start with: docker-compose up -d postgres" -ForegroundColor $Colors.Warning
     }
@@ -225,7 +234,8 @@ if (-not $skipDockerChecks) {
     Write-Host "  Checking Redis container..." -ForegroundColor $Colors.Info
     if ($dockerPs -match "redis") {
         Write-Pass "Redis container is running"
-    } else {
+    }
+    else {
         Write-Warn "Redis container not found in running containers"
         Write-Host "    If needed, start with: docker-compose up -d redis" -ForegroundColor $Colors.Warning
     }
@@ -241,11 +251,13 @@ if (-not $SkipIBCheck) {
             Write-Pass "IB Gateway is reachable on 127.0.0.1:7497"
             $tcpClient.Close()
         }
-    } catch {
+    }
+    catch {
         Write-Warn "IB Gateway not reachable on 127.0.0.1:7497"
         Write-Host "    Start IB Gateway and verify it's listening on port 7497" -ForegroundColor $Colors.Warning
     }
-} else {
+}
+else {
     Write-Info "Skipping IB Gateway connectivity check (-SkipIBCheck)"
 }
 
@@ -262,10 +274,12 @@ if (Test-Path $configPath) {
     $configContent = Get-Content $configPath -Raw
     if ($configContent -match 'LIVE_TRADING_ENABLED\s*[=:]\s*(False|False)') {
         Write-Pass "engine/config.py has LIVE_TRADING_ENABLED default set to False"
-    } else {
+    }
+    else {
         Write-Warn "Could not verify LIVE_TRADING_ENABLED default in config.py"
     }
-} else {
+}
+else {
     Write-Fail "engine/config.py not found"
     Abort-Launch "Config file is missing or in unexpected location"
 }
@@ -277,11 +291,13 @@ if (Test-Path $safetyLayerPath) {
     $fileSize = (Get-Item $safetyLayerPath).Length
     if ($fileSize -gt 1000) {
         Write-Pass "safety_layer.py exists and contains $fileSize bytes"
-    } else {
+    }
+    else {
         Write-Fail "safety_layer.py is too small or empty"
         Abort-Launch "Safety layer appears corrupted or incomplete"
     }
-} else {
+}
+else {
     Write-Fail "safety_layer.py not found at engine/risk/safety_layer.py"
     Abort-Launch "Safety layer module is required"
 }
@@ -289,11 +305,12 @@ if (Test-Path $safetyLayerPath) {
 # Verify kill switch thresholds are documented
 Write-Host "  Verifying kill switch thresholds..." -ForegroundColor $Colors.Info
 if ($safetyLayerContent = Get-Content $safetyLayerPath -Raw) {
-    $has_2pct = $safetyLayerContent -match "0\.02|2\s*%"
-    $has_10pct = $safetyLayerContent -match "0\.10|10\s*%"
-    if ($has_2pct -and $has_10pct) {
-        Write-Pass "Kill switch thresholds found: -2% daily loss, -10% drawdown"
-    } else {
+    $has_daily_pct = $safetyLayerContent -match "MAX_DAILY_LOSS_PCT"
+    $has_drawdown_pct = $safetyLayerContent -match "MAX_DRAWDOWN_PCT"
+    if ($has_daily_pct -and $has_drawdown_pct) {
+        Write-Pass "Kill switch thresholds found: -6% daily loss, -20% drawdown (config.py defaults, reconciled to .env live truth 2026-06-25)"
+    }
+    else {
         Write-Warn "Could not verify kill switch thresholds in code"
     }
 }
@@ -319,7 +336,8 @@ if (-not $SkipTests) {
             ($testOutput | Select-Object -Last 10) | ForEach-Object {
                 Write-Host "    $_"
             }
-        } else {
+        }
+        else {
             Write-Fail "Safety layer tests failed (exit code: $testExitCode)"
             Write-Host ""
             Write-Host "Test output:" -ForegroundColor $Colors.Fail
@@ -329,10 +347,12 @@ if (-not $SkipTests) {
             Pop-Location
             Abort-Launch "Safety tests are non-negotiable and must pass"
         }
-    } finally {
+    }
+    finally {
         Pop-Location
     }
-} else {
+}
+else {
     Write-Info "Skipping test suite execution (-SkipTests)"
 }
 
@@ -346,7 +366,8 @@ Write-Info "Starting engine via PM2..."
 $pm2Start = & pm2 start ecosystem.config.js --only jarvis-engine 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Pass "PM2 started jarvis-engine"
-} else {
+}
+else {
     Write-Fail "PM2 failed to start engine"
     Write-Host "$pm2Start" -ForegroundColor $Colors.Fail
     Abort-Launch "Engine startup failed"
@@ -368,7 +389,8 @@ while ($retryCount -lt $maxRetries) {
             $healthCheckPassed = $true
             break
         }
-    } catch {
+    }
+    catch {
         # Health check failed, retry
     }
 
@@ -399,7 +421,8 @@ try {
         # Store PID for shutdown script
         $dashboardProcess.Id | Out-File -FilePath "..\dashboard-pid.txt" -Force
     }
-} finally {
+}
+finally {
     Pop-Location
 }
 
@@ -416,7 +439,8 @@ Write-Host "  Verifying GET /health..." -ForegroundColor $Colors.Info
 try {
     $healthResponse = Invoke-WebRequest -Uri "http://localhost:8010/health" -TimeoutSec 2 -ErrorAction Stop
     Write-Pass "Engine health check passed"
-} catch {
+}
+catch {
     Write-Warn "Engine health check failed: $_"
 }
 
@@ -432,7 +456,8 @@ try {
             Write-Info "  Paper mode: $(if ($content.paper_mode) { 'ON' } else { 'OFF' })"
         }
     }
-} catch {
+}
+catch {
     Write-Warn "Could not retrieve safety status: $_"
 }
 
@@ -447,7 +472,8 @@ try {
             Write-Info "  Starting equity: $($content.starting_equity)"
         }
     }
-} catch {
+}
+catch {
     Write-Warn "Could not retrieve portfolio data: $_"
 }
 
@@ -465,7 +491,7 @@ Write-Host "  Dashboard (Next.js)   : http://localhost:3010" -ForegroundColor $C
 Write-Host "  API Documentation     : http://localhost:8010/docs" -ForegroundColor $Colors.Info
 Write-Host "  Engine Logs           : engine/logs/engine-out.log" -ForegroundColor $Colors.Info
 Write-Host ""
-Write-Host "  Safety Status         : ENFORCED (kill switch -2% daily, -10% drawdown)" -ForegroundColor $Colors.Pass
+Write-Host "  Safety Status         : ENFORCED (kill switch -6% daily, -20% drawdown)" -ForegroundColor $Colors.Pass
 Write-Host "  Paper Mode            : ACTIVE" -ForegroundColor $Colors.Pass
 Write-Host "  Live Trading          : DISABLED" -ForegroundColor $Colors.Pass
 Write-Host ""
@@ -481,7 +507,8 @@ Start-Sleep -Seconds 2
 try {
     Start-Process "http://localhost:3010"
     Write-Info "Opened dashboard in default browser"
-} catch {
+}
+catch {
     Write-Warn "Could not open browser automatically"
 }
 

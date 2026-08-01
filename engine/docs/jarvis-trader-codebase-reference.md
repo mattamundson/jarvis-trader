@@ -80,9 +80,9 @@ engine/
 |------|------|---------|
 | `TradingConfig` | class (Pydantic BaseSettings) | Master configuration container — all 40+ settings with defaults and descriptions |
 | `settings` | module-level singleton | Pre-instantiated `TradingConfig` used by all engine modules via `from config import settings` |
-| `MAX_POSITION_SIZE_PCT` | field (float) | Caps any single position at 5% of total portfolio value |
-| `MAX_DAILY_LOSS_PCT` | field (float) | Kill-switch threshold — halts all trading at -2% daily P&L |
-| `MAX_DRAWDOWN_PCT` | field (float) | Emergency halt at -10% from equity high-water mark |
+| `MAX_POSITION_SIZE_PCT` | field (float) | Caps any single position at 10% of total portfolio value |
+| `MAX_DAILY_LOSS_PCT` | field (float) | Kill-switch threshold — halts all trading at -6% daily P&L |
+| `MAX_DRAWDOWN_PCT` | field (float) | Emergency halt at -20% from equity high-water mark |
 | `LIVE_TRADING_ENABLED` | field (bool) | Master enable/disable for live order routing — defaults False |
 | `REQUIRE_HUMAN_APPROVAL` | field (bool) | Requires Matt's explicit approval for every live trade |
 | `FUTURES_WATCHLIST` | field (list[str]) | Micro futures to trade: MES, MNQ, MCL |
@@ -105,13 +105,13 @@ class TradingConfig(BaseSettings):
     """Risk parameters — all configurable, never LLM-modifiable"""
 
     # ── Risk Controls (Safety Layer) ─────────────────────────────────────
-    MAX_POSITION_SIZE_PCT: float = Field(0.05, description="Max 5% of portfolio per position")
-    MAX_DAILY_LOSS_PCT: float = Field(0.02, description="Halt trading at -2% daily P&L")
-    MAX_DRAWDOWN_PCT: float = Field(0.10, description="Emergency halt at -10% from equity peak")
+    MAX_POSITION_SIZE_PCT: float = Field(0.10, description="Max 10% of portfolio per position")
+    MAX_DAILY_LOSS_PCT: float = Field(0.06, description="Halt trading at -6% daily P&L")
+    MAX_DRAWDOWN_PCT: float = Field(0.20, description="Emergency halt at -20% from equity peak")
     MAX_ORDERS_PER_MINUTE: int = Field(10, description="Rate throttle")
-    MAX_CORRELATED_EXPOSURE_PCT: float = Field(0.20, description="Max 20% in correlated positions")
+    MAX_CORRELATED_EXPOSURE_PCT: float = Field(0.50, description="Max 50% in correlated positions")
     PRICE_COLLAR_PCT: float = Field(0.05, description="Reject orders >5% from NBBO")
-    MAX_SINGLE_ORDER_VALUE: float = Field(5000.0, description="No single order > $5,000")
+    MAX_SINGLE_ORDER_VALUE: float = Field(100000.0, description="No single order > $100,000")
     MAX_MARGIN_UTILIZATION: float = Field(0.40, description="Never exceed 40% of available margin")
 
     # ── Futures-Specific ─────────────────────────────────────────────────

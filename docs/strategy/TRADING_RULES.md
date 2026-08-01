@@ -132,7 +132,7 @@ All paths require **non-NEUTRAL bias** from `layer3_bias` except where noted. **
 
 ### 2.2 Hard caps (`TradingConfig` + safety)
 
-From [`engine/config.py`](../../engine/config.py): `MAX_POSITION_SIZE_PCT` (5% of portfolio per position), `MAX_DAILY_LOSS_PCT` (−2% daily halt), `MAX_DRAWDOWN_PCT` (−10% from peak), `MAX_CONTRACTS_PER_INSTRUMENT` (2 micros), `MAX_OVERNIGHT_CONTRACTS`, `MAX_SINGLE_ORDER_VALUE` ($5k), `MAX_MARGIN_UTILIZATION` (40%), `MAX_CORRELATED_EXPOSURE_PCT` (20%), `CONSECUTIVE_LOSS_HALF_SIZE`, `CONSECUTIVE_LOSS_QUARTER_SIZE`, `CONSECUTIVE_LOSS_HALT`, `CONSECUTIVE_LOSS_HALT_HOURS`, `PRICE_COLLAR_PCT`, `MAX_ORDERS_PER_MINUTE`. **Enforcement** is in the hardcoded safety layer—not LLM.
+From [`engine/config.py`](../../engine/config.py): `MAX_POSITION_SIZE_PCT` (10% of portfolio per position), `MAX_DAILY_LOSS_PCT` (−6% daily halt), `MAX_DRAWDOWN_PCT` (−20% from peak), `MAX_CONTRACTS_PER_INSTRUMENT` (2 micros), `MAX_OVERNIGHT_CONTRACTS`, `MAX_SINGLE_ORDER_VALUE` ($100k), `MAX_MARGIN_UTILIZATION` (40%), `MAX_CORRELATED_EXPOSURE_PCT` (50%), `CONSECUTIVE_LOSS_HALF_SIZE`, `CONSECUTIVE_LOSS_QUARTER_SIZE`, `CONSECUTIVE_LOSS_HALT`, `CONSECUTIVE_LOSS_HALT_HOURS`, `PRICE_COLLAR_PCT`, `MAX_ORDERS_PER_MINUTE`. All values reconciled to `.env` live truth 2026-06-25. **Enforcement** is in the hardcoded safety layer—not LLM.
 
 ### 2.3 Pipeline `final_quantity`
 
