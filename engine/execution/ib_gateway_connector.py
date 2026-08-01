@@ -1189,12 +1189,30 @@ class IBGatewayConnector:
                     "source": "live",
                 }
 
-            # Tier 2: static mock table — degraded fallback for KNOWN symbols only.
-            # NOTE: these are frozen constants, NOT real-time. They exist so paper
-            # trading degrades gracefully when no data manager is attached (e.g.
-            # unit tests). An unlisted symbol gets NO fabricated price — we return
-            # an error so the fill path refuses to book a phantom (100.5-sentinel)
-            # trade rather than poisoning paper_trades. (2026-06-22 integrity fix.)
+            # Tier 2: static mock table — TEST FIXTURES ONLY, behind an explicit
+            # opt-in. These are frozen 2024-era constants, NOT real-time.
+            #
+            # The 2026-06-22 fix stopped fabricating a ~100.05 quote for UNLISTED
+            # symbols but deliberately kept this table as an unconditional fallback
+            # for listed ones ("backward-compat"). Because _real_last_price returns
+            # None whenever no manager is attached OR the feed is blind — and never
+            # raises — that made fabrication the DEFAULT: every MES paper fill
+            # booked at 5300.10 against a market near 7490. Measured 2026-07-21:
+            # 3,475 fills in paper_trades.json, every week from W19-W30 only 0-4%
+            # sane, which drove the G2 readiness gate to a meaningless 2.3% win
+            # rate (161 of 163 "losses" under $10, both legs off the same frozen
+            # constant). A paper system that declines to trade while blind is
+            # correct; one that invents a price manufactures a track record.
+            if not getattr(self._settings, "ALLOW_MOCK_QUOTES", False):
+                return {
+                    "symbol": symbol,
+                    "error": (
+                        "no live price basis (real-price lookup returned None); "
+                        "refusing to fabricate a quote. Set ALLOW_MOCK_QUOTES=True "
+                        "only in test fixtures."
+                    ),
+                }
+
             mock_quotes = {
                 "MES": {"bid": 5300.00, "ask": 5300.25, "last": 5300.10, "volume": 1000000},
                 "MNQ": {"bid": 17500.00, "ask": 17500.50, "last": 17500.25, "volume": 500000},
