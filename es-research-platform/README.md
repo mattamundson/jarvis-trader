@@ -71,6 +71,23 @@ The command refuses to overwrite an existing DBN file or sidecar. Dates above ar
 example only; use a range covered by your Databento entitlement. Do not commit the API key or
 downloaded market data.
 
+Normalize an immutable DBN file using separately versioned symbology and session inputs:
+
+```bash
+python -m es_research data normalize-databento \
+  --input data/bronze/databento/es-trades.dbn.zst \
+  --instrument-map config/databento-instruments.json \
+  --sessions config/es-sessions.json \
+  --output-dir data/silver/databento/es-trades
+```
+
+The instrument map is a JSON object such as `{"12345":"ESH6"}`. The sessions file is a JSON
+array of `SessionCalendar` objects with timezone-aware ISO-8601 timestamps. The command validates
+and hashes both inputs, decodes DBN through the optional Databento SDK, writes and reads back the
+versioned silver Parquet file, assigns sessions, builds and validates five-minute bars, and writes
+`acceptance_report.json` with source, reference-data, silver-row, and bar hashes. Session files
+must come from an authoritative vendor or exchange calendar and must be retained with the report.
+
 The reproducibility demo constructs the same synthetic experiment twice and fails if deterministic hashes or identifiers differ. The synthetic pipeline demo writes normalized Parquet, reads it back, assigns sessions, builds 5-minute OHLCV bars, validates outputs, and prints deterministic hashes, and writes a deterministic `pipeline_report.json`. These demos use synthetic metadata and artificial engineering fixtures, not fabricated market data.
 
 ## Architecture decisions
