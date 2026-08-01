@@ -17,7 +17,6 @@ import pytest
 
 from services.ib_freshness_heartbeat import IBFreshnessHeartbeat
 
-
 # --- MarketDataManager._record_ibkr_freshness ------------------------------
 
 def test_record_ibkr_freshness_writes_aware_utc_heartbeat(monkeypatch):
@@ -49,8 +48,9 @@ def test_record_ibkr_freshness_writes_aware_utc_heartbeat(monkeypatch):
 
 
 def test_record_ibkr_freshness_survives_redis_down(monkeypatch):
-    from data import market_data as md
     import sys
+
+    from data import market_data as md
 
     class _BoomRedis:
         def __init__(self, **kw):
