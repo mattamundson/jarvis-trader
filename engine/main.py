@@ -340,6 +340,7 @@ trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
 portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
 canary_manager: "CanaryManager | None" = None  # noqa: F821
 ib_data_watchdog: "IBDataWatchdog | None" = None  # noqa: F821
+ib_freshness_heartbeat: "IBFreshnessHeartbeat | None" = None  # noqa: F821
 paper_stop_monitor: "PaperStopMonitor | None" = None  # noqa: F821
 
 
@@ -453,7 +454,7 @@ async def lifespan(app: FastAPI):
         """Heavy lifting moved here to enable <10s server binding."""
         global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
         global tv_streamer, redis_trigger, trailing_stop_manager, canary_manager
-        global paper_stop_monitor, ib_data_watchdog
+        global paper_stop_monitor, ib_data_watchdog, ib_freshness_heartbeat
 
         logger.info("⏳ Starting heavy background initialization...")
 
@@ -478,11 +479,24 @@ async def lifespan(app: FastAPI):
                 if _paper_ib_ok:
                     safety_layer.attach_ib_gateway(ib_paper_connector)
                     order_router.attach_ibkr(ib_paper_connector)
-                    logger.info("✅ IBGatewayConnector (paper) connected background")
-                else:
-                    logger.warning(
-                        "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                    logger.info(
+                        "✅ %s (paper) connected + attached to order path",
+                        type(ib_paper_connector).__name__,
                     )
+                else:
+                    if getattr(settings, "IB_PAPER_BROKER_ENABLED", False):
+                        # Real gateway requested but unreachable: leave the order path
+                        # UNATTACHED (fail-closed, no orders route) and shout about it.
+                        logger.critical(
+                            "IB_PAPER_BROKER_ENABLED=1 but the REAL IB gateway failed to connect "
+                            "after 3 attempts — order path is UNATTACHED (fail-closed: no orders "
+                            "will route). Check IB Gateway on port %s.",
+                            settings.IBKR_PORT,
+                        )
+                    else:
+                        logger.warning(
+                            "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                        )
         except Exception as e:
             logger.error(f"❌ Background data/IBKR init failed: {e}")
 
@@ -555,6 +569,18 @@ async def lifespan(app: FastAPI):
             await ib_data_watchdog.start()
         except Exception as e:
             logger.warning(f"⚠️ IBDataWatchdog failed to start: {e}")
+
+        # 5.6. IB market-data freshness heartbeat. Keeps datasource:ib_gateway
+        # fresh in Redis on a fixed cadence regardless of open positions, so
+        # /system/data-integrity and the feeds_live readiness gate reflect the
+        # live IB feed instead of the dead TV scraper's stale keys.
+        try:
+            from services.ib_freshness_heartbeat import IBFreshnessHeartbeat
+
+            ib_freshness_heartbeat = IBFreshnessHeartbeat(data_manager)
+            await ib_freshness_heartbeat.start()
+        except Exception as e:
+            logger.warning(f"⚠️ IBFreshnessHeartbeat failed to start: {e}")
 
         # 6. Paper Stop-Loss Monitor (Initiative 1, Track A2)
         # Feed-independent backstop: enforces open paper stops via the tick-price
@@ -699,11 +725,12 @@ async def lifespan(app: FastAPI):
     # Paper IB connector — Instance creation (connection moved to background)
     ib_paper_connector = None
     if settings.PAPER_TRADING:
-        ib_paper_connector = IBGatewayConnector(
-            settings,
-            safety_layer,
-            portfolio_tracker=paper_tracker,
-        )
+        from execution.order_gateway_factory import build_order_gateway
+
+        # P0-2: simulator by default; the real IBGatewayManager (port 4002 paper)
+        # only when IB_PAPER_BROKER_ENABLED is set. Same variable + duck-typed
+        # interface, so the connect/attach wiring below is unchanged either way.
+        ib_paper_connector = build_order_gateway(settings, safety_layer, paper_tracker)
 
     order_manager = IBOrderManager(
         safety_layer=safety_layer,
@@ -2964,6 +2991,10 @@ async def lifespan(app: FastAPI):
     # Stop IB data-leg watchdog
     if ib_data_watchdog:
         await ib_data_watchdog.stop()
+
+    # Stop IB market-data freshness heartbeat
+    if ib_freshness_heartbeat:
+        await ib_freshness_heartbeat.stop()
 
     # Stop Paper stop-loss monitor
     if paper_stop_monitor:
