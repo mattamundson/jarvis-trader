@@ -243,6 +243,8 @@ class TestAutonomousActiveSymbolsCheck:
 
     def test_all_tradeable_passes(self, monkeypatch):
         monkeypatch.setenv("ENABLE_AUTONOMOUS_PIPELINE", "1")
-        monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MES,MGC")  # both tradeable
+        # MGC joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
+        # correction) -- MES is the only currently-tradeable symbol left.
+        monkeypatch.setenv("AUTONOMOUS_ACTIVE_SYMBOLS", "MES")
         result = _check_autonomous_active_symbols()
         assert result.status == "pass"
