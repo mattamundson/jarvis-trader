@@ -340,6 +340,43 @@ jobs:
           fi
           echo "OK: no bare await fetch in dashboard/components."
 
+  dashboard-quality:
+    name: Dashboard Quality (typecheck + unit tests)
+    # Deliberately NOT gated on draft == false. dashboard-build and every other
+    # job here skip drafts, and 7 of 30 open PRs are drafts, so nothing checks
+    # their .tsx at all. The stated fallback was the pr-local-ci loop, but that
+    # runs py_compile + ruff on changed *.py only, once daily, and needs this
+    # machine awake -- it has never checked a TypeScript file. This job is cheap
+    # (~2 min, no browser, no build) so it runs on drafts too.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2  # pinned to match dashboard-build
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: dashboard
+
+      # `next build` does NOT fail on unused imports or most type-adjacent
+      # smells, so it was never the typecheck it was being treated as.
+      - name: Typecheck (tsc --noEmit)
+        run: pnpm run typecheck
+        working-directory: dashboard
+
+      - name: Unit tests (node:test)
+        run: pnpm run test:unit
+        working-directory: dashboard
+
   security-scan:
     name: Security Scan
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
@@ -379,6 +416,7 @@ jobs:
       - engine-test-slow
       - engine-coverage-merge
       - dashboard-build
+      - dashboard-quality
       - security-scan
     runs-on: ubuntu-latest
     # always() so it reports even when a needed job fails -- but still skip on draft PRs.
@@ -391,6 +429,7 @@ jobs:
                 "${{ needs.engine-test-fast.result }}" != "success" || \
                 "${{ needs.engine-test-slow.result }}" != "success" || \
                 "${{ needs.dashboard-build.result }}" != "success" || \
+                "${{ needs.dashboard-quality.result }}" != "success" || \
                 "${{ needs.security-scan.result }}" != "success" ]]; then
             echo "⚠️  Some CI checks failed. Please review the logs above."
             exit 1
