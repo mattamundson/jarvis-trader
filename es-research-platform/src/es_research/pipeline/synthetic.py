@@ -125,7 +125,7 @@ def run_synthetic_pipeline(output_dir: Path) -> SyntheticPipelineResult:
     manifest = DataManifest(
         source_files=(
             SourceFileRecord(
-                path=str(parquet_path),
+                path=parquet_path.name,
                 sha256=parquet_sha256,
                 row_count=len(parquet_rows),
                 min_timestamp=min_timestamp,

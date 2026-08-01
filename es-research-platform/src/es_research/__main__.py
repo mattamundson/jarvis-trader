@@ -36,6 +36,11 @@ def main() -> None:
     databento_parser.add_argument("--end", required=True, type=datetime.fromisoformat)
     databento_parser.add_argument("--stype-in", default="parent")
     databento_parser.add_argument("--output", required=True, type=Path)
+    normalize_parser = data_sub.add_parser("normalize-databento")
+    normalize_parser.add_argument("--input", required=True, type=Path)
+    normalize_parser.add_argument("--instrument-map", required=True, type=Path)
+    normalize_parser.add_argument("--sessions", required=True, type=Path)
+    normalize_parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--registry-path", type=Path, default=default_registry_path())
     args = parser.parse_args()
     if args.area == "registry" and args.command == "init":
@@ -84,6 +89,31 @@ def main() -> None:
         print(f"metadata_path={artifact.metadata_path}")
         print(f"sha256={artifact.sha256}")
         print(f"byte_count={artifact.byte_count}")
+        return
+    if args.area == "data" and args.command == "normalize-databento":
+        from es_research.configuration.reference_data import (
+            load_instrument_map,
+            load_session_calendars,
+        )
+        from es_research.pipeline.databento import run_databento_pipeline
+
+        instrument_map, instrument_map_hash = load_instrument_map(args.instrument_map)
+        sessions, session_calendar_hash = load_session_calendars(args.sessions)
+        databento_result = run_databento_pipeline(
+            args.input,
+            args.output_dir,
+            symbol_by_instrument=instrument_map,
+            sessions=sessions,
+            instrument_map_hash=instrument_map_hash,
+            session_calendar_hash=session_calendar_hash,
+        )
+        print(f"bronze_sha256={databento_result.bronze_sha256}")
+        print(f"silver_rows_hash={databento_result.silver_rows_hash}")
+        print(f"bars_hash={databento_result.bars_hash}")
+        print(f"row_count={databento_result.row_count}")
+        print(f"bar_count={databento_result.bar_count}")
+        print(f"silver_path={databento_result.silver_path}")
+        print(f"report_path={databento_result.report_path}")
         return
     parser.error("unknown command")
 
