@@ -26,6 +26,7 @@ interface PaperPhaseSummary {
 
 interface ROIState {
   startingBalance: number;
+  startingBalanceIsLive: boolean;
   // P&L comes from honest deduped set — NOT the raw engine total
   totalPnl: number;
   roi: number;
@@ -88,6 +89,7 @@ export function AccountROIWidget() {
     json: PaperPhaseSummary,
     honest: HonestTradeSet | null,
   ): ROIState => {
+    const startingBalanceIsLive = typeof json.starting_balance === "number";
     const startingBalance = json.starting_balance ?? STARTING_BALANCE_FALLBACK;
 
     // P&L: prefer honest deduped net; fall back to raw only if honest unavailable
@@ -105,7 +107,7 @@ export function AccountROIWidget() {
       ? ((dailyAvgPnl * 252) / startingBalance) * 100
       : 0;
 
-    return { startingBalance, totalPnl, roi, tradingDays, dailyAvgPnl, annualizedROI };
+    return { startingBalance, startingBalanceIsLive, totalPnl, roi, tradingDays, dailyAvgPnl, annualizedROI };
   };
 
   return (
@@ -140,11 +142,22 @@ export function AccountROIWidget() {
 
               {/* 2x2 stats grid */}
               <div className="grid grid-cols-2 gap-3 mb-4">
-                <StatCell
-                  label="Starting Balance"
-                  value={`$${data.startingBalance.toLocaleString()}`}
-                  valueColor="#888"
-                />
+                <div className="relative">
+                  <StatCell
+                    label="Starting Balance"
+                    value={`$${data.startingBalance.toLocaleString()}`}
+                    valueColor="#888"
+                  />
+                  {!data.startingBalanceIsLive && (
+                    <Badge
+                      variant="static"
+                      className="absolute top-2 right-2 text-[9px] px-1.5 py-0 leading-4"
+                      title="API did not report starting_balance — showing the $10,000 fallback, not the configured account size."
+                    >
+                      Static
+                    </Badge>
+                  )}
+                </div>
                 <StatCell
                   label="Current P&L"
                   value={fmt$(data.totalPnl)}
