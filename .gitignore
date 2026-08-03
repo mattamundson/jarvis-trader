@@ -1,3 +1,12 @@
+# === 2026-08-03 MES monitor cleanup ===
+# Old feature-branch scratch; ignore noisy untracked files
+/.vercel/
+/400
+/dashboard/.cursor/
+/docs/loop-reports/.heartbeat
+/engine/=0.3.14
+/engine/system2/
+
 # JARVIS TRADER — Git Ignore
 # NEVER commit secrets, API keys, or sensitive data
 
