@@ -92,6 +92,25 @@ def _tracker_with_losses(tmpdir: str, n: int) -> ConsecutiveLossTracker:
     return tracker
 
 
+class _FakeMarketData:
+    """Minimal stand-in for MarketDataManager.get_tick_price (mirrors
+    test_paper_fill_real_price.py). PRB-01's tests exercise loss-tracker size
+    reduction, not price mechanics; a real price basis is attached purely so
+    the post-#556 no_price_basis fail-closed guard doesn't reject the paper
+    fill these tests need to inspect."""
+
+    def __init__(self, price: float) -> None:
+        self._price = price
+
+    async def get_tick_price(self, symbol: str, is_futures: bool = False) -> dict:
+        return {
+            "last_price": self._price,
+            "prev_close": None,
+            "change_pct": None,
+            "source": "test",
+        }
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # 1. SafetyLayer.submit_paper_order (+ submit_entry_with_stop)
 # ══════════════════════════════════════════════════════════════════════════
@@ -104,6 +123,7 @@ class TestSubmitPaperOrderAppliesReduction:
         safety = SafetyLayer(settings, loss_tracker=tracker)
         conn = IBGatewayConnector(settings, safety)
         assert await conn.connect() is True
+        conn.attach_market_data(_FakeMarketData(7130.0))
         safety.attach_ib_gateway(conn)
         return safety, conn
 
@@ -197,6 +217,7 @@ class TestSubmitEntryWithStopAppliesReduction:
         safety = SafetyLayer(prb01_settings, loss_tracker=tracker)
         conn = IBGatewayConnector(prb01_settings, safety)
         assert await conn.connect() is True
+        conn.attach_market_data(_FakeMarketData(7130.0))
         safety.attach_ib_gateway(conn)
 
         result = await safety.submit_entry_with_stop(
@@ -426,6 +447,7 @@ class TestIBGatewayConnectorSubmitOrderAppliesReduction:
         safety = SafetyLayer(prb01_settings, loss_tracker=tracker)
         conn = IBGatewayConnector(prb01_settings, safety)
         assert await conn.connect() is True
+        conn.attach_market_data(_FakeMarketData(7130.0))
 
         result = await conn.submit_order(
             {
