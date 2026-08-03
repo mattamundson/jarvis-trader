@@ -126,9 +126,17 @@ this command.
   for that timeframe, retry with the nearest supported alias and note the substitution. Never
   compare a daily ladder against an intraday chart.
 
+**Provenance is required — a cross-check is only independent if the engine value came from a
+different feed than TradingView.** The engine waterfalls to TradingView itself when the broker
+feeds are down: `/prices/snapshot` has a "Tier 2.5 TradingView" fallback and `get_bars` (behind
+`/hidden-pivots/levels`) is `TradingView → IBKR → Polygon → CSV` (`market_data.py`). So check the
+snapshot's `source` field: only `ibkr` / `schwab` / `polygon` / `db` is an **independent**
+validation. If `source: tradingview` (or the levels bars came from TV), the engine agreed with
+TV because it *is* TV — report the number as **unverified (same-source)**, not confirmed.
+
 Compare last price / levels against what TradingView shows and report any drift explicitly —
-a mismatch between the TV feed and the engine feed is a bug to flag, not a rounding footnote.
-Never present a TV number as canonical without this check when both sources are available.
+a mismatch between an *independent* engine feed and TV is a bug to flag, not a rounding footnote.
+Never present a TV number as canonical without an independent-source check.
 
 ## Hard constraints
 

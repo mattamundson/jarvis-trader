@@ -76,8 +76,11 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 **Pine Script dev — read/compile only (safe):**
 - `pine_get_source`, `pine_smart_compile`, `pine_check`, `pine_get_errors`,
   `pine_get_console`, `pine_analyze`, `pine_list_scripts`
-- Use to lint/compile the STC + ATR strategy before wiring alerts (PF 5.27 / Sharpe 4.16
-  on 1h per the setup doc). Backtest claims still go through the engine, not TV's tester.
+- Use to lint/compile the STC + ATR strategy before wiring alerts. Do NOT cite the old
+  "PF 5.27 / Sharpe 4.16 on 1h" headline as current evidence — canon §11 `RT-UI-001` marks it
+  `ui_only` / **superseded** (`docs/JARVIS_TRADER_UNIFIED_CANON.md:327`); it's a legacy widget
+  benchmark, not a validated result. Backtest claims go through the engine (WFE + post-fix
+  rows), not TV's tester.
 - Note: `pine_set_source` replaces the editor buffer and `pine_new`/`pine_open` change which
   script is open — read `pine_get_source` first and treat these as edits, not reads.
 
@@ -107,8 +110,12 @@ state first, state what you'll change, and only proceed on an explicit instructi
    wants the **engine alias** (`1m`/`5m`/`15m`/`1h`/`4h`/`1d`, e.g. `60`→`1h`, `D`→`1d`; `1m` is a
    real bar — `market_data.py` maps it for IBKR and Polygon) — a bare TV resolution reaching
    `get_bars` silently degrades to 5m bars (`market_data.py` bar maps).
-   Round-trip drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline). Never
-   present a TV number as canonical without that check.
+   Round-trip drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline).
+   **Check provenance:** the engine waterfalls to TradingView when brokers are down
+   (`/prices/snapshot` Tier-2.5 TV fallback; `get_bars` is `TV → IBKR → Polygon → CSV`), so a
+   cross-check is only independent when the snapshot `source` is `ibkr`/`schwab`/`polygon`/`db`.
+   If `source: tradingview`, the engine agreed with TV because it *is* TV — report the value as
+   unverified (same-source), never as an independent confirmation.
 
 ## Rejected integration (documented on purpose)
 
