@@ -8,6 +8,7 @@ import useSWR from "swr";
 import { fetchTradeFullReview, fetchBars, type TradeFullReview, type OHLCVBar } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import type { SeriesMarker, Time } from "lightweight-charts";
 
 // lightweight-charts backed candle view — only renders once `bars` has loaded, so defer
@@ -200,7 +201,9 @@ export default function TradeReviewPage() {
           </CardHeader>
           <CardContent>
             {bars && bars.length ? (
-              <CandlestickChart bars={bars} markers={markers} priceLines={priceLines} height={420} />
+              <WidgetErrorBoundary name="Price Chart">
+                <CandlestickChart bars={bars} markers={markers} priceLines={priceLines} height={420} />
+              </WidgetErrorBoundary>
             ) : (
               <p className="text-xs text-muted-foreground py-8 text-center">
                 No bar data available for {String(t.symbol ?? "this symbol")} in the trade window.
@@ -336,12 +339,16 @@ export default function TradeReviewPage() {
 
         {/* MAE/MFE POST-TRADE EXCURSION — how far adverse vs favorable it ran */}
         {Boolean(t.symbol) && (
-          <ExcursionPanel tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+          <WidgetErrorBoundary name="Excursion">
+            <ExcursionPanel tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+          </WidgetErrorBoundary>
         )}
 
         {/* ENTRY-TIMING WHAT-IF — PnL if entered ±N bars (exit held constant) */}
         {Boolean(t.symbol) && (
-          <EntryTimingScenarios tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+          <WidgetErrorBoundary name="Entry Timing Scenarios">
+            <EntryTimingScenarios tradeId={String(t.trade_id ?? id)} symbol={String(t.symbol)} />
+          </WidgetErrorBoundary>
         )}
       </div>
     </div>

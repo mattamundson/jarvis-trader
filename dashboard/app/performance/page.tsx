@@ -832,7 +832,9 @@ export default function PerformancePage() {
         </div>
 
         {/* Live per-symbol price chart — our own real-time futures bars */}
-        <LivePriceSection />
+        <WidgetErrorBoundary name="Live Price">
+          <LivePriceSection />
+        </WidgetErrorBoundary>
 
         {/* Hold time analytics */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -644,7 +644,9 @@ export default function CommandCenterPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3">
-            <ApprovalPanel />
+            <WidgetErrorBoundary name="Trade Approvals">
+              <ApprovalPanel />
+            </WidgetErrorBoundary>
           </CardContent>
         </Card>
       </div>
@@ -906,7 +908,9 @@ export default function CommandCenterPage() {
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         {liveInstruments.map((inst) => (
-          <SignalCard key={inst.symbol} inst={inst} />
+          <WidgetErrorBoundary key={inst.symbol} name={`Signal Card: ${inst.symbol}`}>
+            <SignalCard inst={inst} />
+          </WidgetErrorBoundary>
         ))}
       </div>
 

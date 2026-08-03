@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { Radar, TrendingDown, TrendingUp, ShieldAlert, Clock } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { OptionsSignalsPanel } from "@/components/OptionsSignalsPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -172,7 +173,9 @@ export default function SignalsPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
-        <OptionsSignalsPanel />
+        <WidgetErrorBoundary name="Options Signals">
+          <OptionsSignalsPanel />
+        </WidgetErrorBoundary>
         <Card>
           <CardHeader>
             <CardTitle className="font-mono text-sm flex items-center justify-between">
