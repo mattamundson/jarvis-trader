@@ -109,8 +109,16 @@ only *after* Step 3's backtest + MCPT produce these values.
 1. **Point-in-time check first.** Confirm every rule uses only bars `<= t` (no `shift(-n)`, no
    full-series fit, gate news on publish timestamp). See `.claude/rules/testing.md` "No
    look-ahead bias". A leaked rule is discarded, not tuned.
-2. **Backtest** through the engine (`/backtest/*`, `engine/backtest/backtester.py`) — not
-   TradingView's tester. Summarize with the `backtest-report` skill.
+2. **Backtest the EXTRACTED rules — not the built-in strategy.** ⚠️ `POST /backtest/run` does
+   **not** accept a strategy/params body: `BacktestRequest` is only symbol/date/interval/capital
+   and `run_backtest()` unconditionally calls `generate_instrument_signals(df, symbol=...)`
+   (`engine/routers/backtest_router.py`), i.e. it runs the symbol's *canonical* strategy. So that
+   endpoint validates the extracted candidate **only if** the candidate is literally the canonical
+   rule set. For a genuinely new extracted spec you MUST implement its rules as a point-in-time
+   signal function (a candidate-specific runner over `engine/backtest/backtester.py`) and confirm
+   the *exact locked rules* were exercised before trusting any metric. Never copy metrics from the
+   default `/backtest/run` (or TradingView's tester) into `lock_in_sample` as if they belonged to
+   the extracted rules — that corrupts the pre-registration. Summarize with the `backtest-report` skill.
 3. **MCPT** — run the `mcpt-validation` skill (bar-permutation) to check the edge isn't
    data-mining noise. One run per locked spec; a fail means discard, not adjust.
 4. **Pre-register** the candidate in `engine/backtest/candidate_registry.json` with its

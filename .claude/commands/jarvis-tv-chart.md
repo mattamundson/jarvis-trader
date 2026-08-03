@@ -58,14 +58,17 @@ Map the input (a human alias *or* a bare TV resolution) to both columns:
 | `1h` / `60`  | `60`                  | `1h`                       |
 | `4h` / `240` | `240`                 | `4h`                       |
 | `1d` / `D`   | `D`                   | `1d`                       |
-| `1w` / `W`   | `W`                   | `1d` (no intraday; flag)   |
+| `1w` / `W`   | `W`                   | (levels skipped — no alias) |
 
 The engine cross-check helper accepts `1m`/`5m`/`15m`/`1h`/`4h`/`1d` — each has a real
 `get_bars` bar mapping (`market_data.py` IBKR `bar_size_map` and Polygon `tf_map`, both
-including `1m`). Pass the matching engine alias, `1m` included. Inputs *outside* that set are
-charted at their TV resolution but **substituted to the nearest supported alias for the
-cross-check, flagged**: `30m`/`30`→`15m` or `1h`, `1w`/`W`→`1d`. If an input maps to neither
-column cleanly, report it and stop rather than guessing.
+including `1m`). When the charted TF has an **exact** engine alias (the six above), pass it and
+cross-check both price and levels. When it does **not** (`30m`/`30`, `1w`/`W`): still run the
+**price** snapshot check (it's timeframe-independent), but **skip the levels comparison** — the
+HP ladder is timeframe-dependent, so comparing a 30m/weekly chart against a substituted `15m`/
+`1h`/`1d` ladder would manufacture false drift. Say "levels skipped (no exact engine timeframe)"
+rather than substituting a nearest ladder. If an input maps to neither column cleanly, report it
+and stop rather than guessing.
 
 **Levels lookback caveat:** the levels route's `lookback_map` only bounds `1d`/`1h`/`5m`; any
 other alias (`1m`/`15m`/`4h`) falls back to a **200-day** lookback, which at small bar sizes is
