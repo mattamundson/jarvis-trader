@@ -1306,6 +1306,58 @@ class SafetyLayer:
                     )
         return RiskCheckResult(approved=True)
 
+    def _check_cumulative_position_limit(self, order: OrderRequest) -> RiskCheckResult:
+        """Bound the RESULTING position after this order, not just the order's
+        own size.
+
+        ``_check_contract_limits`` above only checks the incoming order's
+        quantity against ``MAX_CONTRACTS_PER_INSTRUMENT`` -- a sequence of
+        individually-compliant orders can still accumulate a naked position far
+        past that limit, since nothing anywhere in ``check_order`` ever reads
+        what's already held before approving the next order (2026-07-29
+        prod-readiness audit: a naked 58-lot MES/MNQ position slipped through
+        this exact gap).
+
+        Scoped to futures (mirrors ``_check_contract_limits``) and skips
+        cleanly when no IB Gateway connector is attached (e.g. Schwab-only
+        equity paths, unit tests) -- there is no cumulative position to check
+        without a broker-truth position source.
+        """
+        if not order.is_futures:
+            return RiskCheckResult(approved=True)
+        gateway = self._ib_gateway
+        positions = getattr(gateway, "_positions", None)
+        # isinstance, not just "is not None": test doubles built on
+        # Mock/AsyncMock auto-vivify any attribute access (including
+        # `_positions`) into another Mock, which is truthy but not a real
+        # dict -- `positions.get(...)` would then return a Mock/coroutine
+        # and blow up the arithmetic below. Only a genuine dict is a
+        # broker-truth position source.
+        if gateway is None or not isinstance(positions, dict):
+            return RiskCheckResult(approved=True)
+        sym = order.symbol.upper()
+        current = positions.get(sym, 0)
+        resulting = current + order.quantity
+        limit = self._config.MAX_CONTRACTS_PER_INSTRUMENT
+        if abs(resulting) > limit:
+            logger.warning(
+                "CUMULATIVE_POSITION_LIMIT: %s holds %d, order qty=%d would result "
+                "in %d contracts, exceeds max %d",
+                sym,
+                current,
+                order.quantity,
+                resulting,
+                limit,
+            )
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"CUMULATIVE_POSITION_LIMIT: {sym} holds {current} contracts, "
+                    f"this order would result in {resulting}, exceeds max {limit}"
+                ),
+            )
+        return RiskCheckResult(approved=True)
+
     def _check_stark_tpo_constraint(self, order: OrderRequest) -> RiskCheckResult:
         """Ensure order strictly obeys the Stark-TPO math signal."""
         if order.stark_signal:
@@ -1387,6 +1439,7 @@ class SafetyLayer:
             lambda: self._check_order_value_limits(order, portfolio_equity),
             lambda: self._check_trade_loss_gate(order),
             lambda: self._check_contract_limits(order),
+            lambda: self._check_cumulative_position_limit(order),
             lambda: self._check_stark_tpo_constraint(order),
         ]:
             result = check_fn()
