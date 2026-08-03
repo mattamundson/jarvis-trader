@@ -70,7 +70,7 @@ fields (enforced by `engine/backtest/candidate_registry.py`) are:
   },
   "lock_in_sample": {
     "gate_verdict": "PENDING",
-    "passed_via": "<core|edge — from the real gate run>",
+    "passed_via": "<core|alt — copy verbatim from the gate verdict; wfo_lifecycle.py emits exactly these>",
     "pf_ci_lower": "<actual — from Step 3 backtest>",
     "p_edge": "<actual>",
     "dsr": "<actual>",
@@ -122,9 +122,16 @@ only *after* Step 3's backtest + MCPT produce these values.
 3. **MCPT** — run the `mcpt-validation` skill (bar-permutation) to check the edge isn't
    data-mining noise. One run per locked spec; a fail means discard, not adjust.
 4. **Pre-register** the candidate in `engine/backtest/candidate_registry.json` with its
-   in-sample lock stats, then let the forward-test loop accumulate **independent paper OOS
-   windows**. Graduation rule (from the registry): `min_forward_oos_windows: 6`,
+   in-sample lock stats. Graduation rule (from the registry): `min_forward_oos_windows: 6`,
    `min_forward_pf_ci_lower: 1.10`, `min_forward_p_edge: 0.95`, `must_survive_family_fdr: true`.
+   ⚠️ **Flipping `status` to `forward_testing` is NOT enough to accumulate those windows.** The
+   live entry path is LLM-driven, not mechanical, so a mechanical registry candidate "never fires
+   live and only ever attributes at symbol level (never graduates)" unless its forward paper
+   trades are tagged with the `candidate_id` (`engine/backtest/forward_test.py`). A genuinely new
+   extracted rule set therefore needs a **candidate-specific, observe-only paper generation +
+   `candidate_id` tagging path** before window accumulation is real — without it the candidate sits
+   at non-graduating symbol-level attribution indefinitely. Don't promise graduation until that
+   tagging path exists.
 5. **WFE** — check the `jarvis-wfe-check` thresholds before anyone considers sizing.
 
 At every step the candidate is paper-only and human-gated. Nothing here can place an order.
