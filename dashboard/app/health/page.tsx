@@ -562,16 +562,24 @@ export default function HealthPage() {
       {/* Page content */}
       <main className="mx-auto max-w-[1600px] 2xl:max-w-[2000px] px-6 py-6 space-y-6">
         {/* Both-systems liveness (C5) — engine + data + watchdog + LLM at a glance */}
-        <SystemLivenessCard />
+        <WidgetErrorBoundary name="System Liveness">
+          <SystemLivenessCard />
+        </WidgetErrorBoundary>
 
         {/* Connection health — most critical info at the top */}
-        <ConnectionHealthCard />
+        <WidgetErrorBoundary name="Connection Health">
+          <ConnectionHealthCard />
+        </WidgetErrorBoundary>
 
         {/* Engine uptime + /health summary */}
-        <EngineUptimeCard />
+        <WidgetErrorBoundary name="Engine Uptime">
+          <EngineUptimeCard />
+        </WidgetErrorBoundary>
 
         {/* IB Gateway detail — connection status, account, mode, latency */}
-        <IbGatewayDetailCard />
+        <WidgetErrorBoundary name="IB Gateway Detail">
+          <IbGatewayDetailCard />
+        </WidgetErrorBoundary>
 
         {/*
           IB Gateway status (Phase 6.5, D3) — was built, never mounted anywhere.
@@ -689,7 +697,9 @@ export default function HealthPage() {
         {data && <ProcessSupervisionCard data={subsystems.process_supervision} />}
 
         {/* System Metrics Panel — DB record counts + engine meta */}
-        <SystemMetricsPanel />
+        <WidgetErrorBoundary name="System Metrics">
+          <SystemMetricsPanel />
+        </WidgetErrorBoundary>
 
         {/* Alert Summary Widget — recent alert log + stats */}
         <WidgetErrorBoundary name="Alert Summary">
@@ -697,7 +707,9 @@ export default function HealthPage() {
         </WidgetErrorBoundary>
 
         {/* Database Statistics — record counts across trades, decisions, alerts */}
-        <DatabaseStatsCard />
+        <WidgetErrorBoundary name="Database Stats">
+          <DatabaseStatsCard />
+        </WidgetErrorBoundary>
 
         {/* Engine signal-cache hit/miss stats — read-only */}
         <WidgetErrorBoundary name="Cache Stats">
