@@ -32,6 +32,7 @@ import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
 import { IBGatewayStatus } from "@/components/IBGatewayStatus";
 import { SystemLivenessCard } from "@/components/SystemLivenessCard";
+import { CacheStatsCard } from "@/components/CacheStatsCard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -697,6 +698,11 @@ export default function HealthPage() {
 
         {/* Database Statistics — record counts across trades, decisions, alerts */}
         <DatabaseStatsCard />
+
+        {/* Engine signal-cache hit/miss stats — read-only */}
+        <WidgetErrorBoundary name="Cache Stats">
+          <CacheStatsCard />
+        </WidgetErrorBoundary>
 
         {/* Auto-refresh notice */}
         <p className="text-xs text-muted-foreground text-center pb-2">
