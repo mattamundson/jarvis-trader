@@ -186,3 +186,135 @@ async def test_get_tick_price_falls_to_schwab_when_ibkr_empty(monkeypatch) -> No
     assert out["last_price"] == 72.1
     # Still must not touch TV even in Schwab-fallback case.
     mock_tv.get_quote.assert_not_called()
+
+
+# ── get_tick_price Tier 0 — Redis real-time fabric freshness gate ──────────
+#
+# GT-17 follow-up (2026-07-27): the original GT-17 fix qualified contracts
+# before Tier 1 IBKR ticker snapshots, but an adversarial verifier found that
+# unqualified-contract hash collisions actually raise inside reqTickersAsync
+# and get caught, falling through to get_snapshot_price's ALREADY-qualified
+# historical-bars fallback -- which would produce a non-null change_pct, not
+# the reported change_pct=null. Tier 0 (this section) is the mechanism that
+# actually matches the report: it hardcodes change_pct=None and, pre-fix,
+# trusted whatever was cached under market:latest:{symbol} forever, with no
+# staleness check and no TTL on the write side. These tests exercise the
+# real Tier-0 code path (a fake redis.Redis client standing in for a real
+# Redis server) rather than mocking around it.
+
+
+class _FakeRedisClient:
+    """Minimal stand-in for redis.Redis — enough for get_tick_price's Tier 0
+    (two blocking `.get()` calls per symbol key: the cached tick, then its
+    freshness marker)."""
+
+    def __init__(self, store: dict) -> None:
+        self._store = store
+
+    def get(self, key):
+        return self._store.get(key)
+
+
+def _install_fake_redis(monkeypatch, store: dict) -> None:
+    import redis as redis_module
+
+    monkeypatch.setattr(redis_module, "Redis", lambda *a, **kw: _FakeRedisClient(store))
+
+
+@pytest.mark.asyncio
+async def test_get_tick_price_redis_fabric_serves_fresh_data(monkeypatch) -> None:
+    """Tier 0 should still serve Redis-cached data when it's genuinely fresh
+    -- the freshness gate must not defeat the fabric's whole purpose."""
+    import json
+    from datetime import datetime, timezone
+
+    store = {
+        "market:latest:AAPL": json.dumps({"close": 325.89, "open": 320.0}),
+        "datasource:ticks:AAPL:last_update": datetime.now(timezone.utc).isoformat(),
+    }
+    _install_fake_redis(monkeypatch, store)
+
+    mgr = MarketDataManager(_MinimalConfig())
+    mgr.ibkr = MagicMock()
+    mgr.ibkr.is_connected = False
+    mgr.schwab = None
+    mgr.polygon = MagicMock()
+
+    out = await mgr.get_tick_price("AAPL", is_futures=False)
+
+    assert out["source"] == "redis_fabric"
+    assert out["last_price"] == 325.89
+
+
+@pytest.mark.asyncio
+async def test_get_tick_price_redis_fabric_falls_through_when_stale(monkeypatch) -> None:
+    """A poisoned/stale market:latest:AAPL entry (e.g. a TV chart pane that
+    hadn't finished switching symbols, publishing under the wrong key) must
+    NOT be served forever. Once its freshness marker is older than
+    DEFAULT_STALE_AFTER_S, Tier 0 must fall through to Tier 1 IBKR -- which
+    is now correctly contract-qualified per the original GT-17 fix.
+
+    Values mirror the originally-reported GT-17 symptom (~$7494.10, ~23x
+    AAPL's real ~$325 price, with the cached entry never carrying a
+    change_pct)."""
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    stale_ts = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
+    store = {
+        "market:latest:AAPL": json.dumps({"close": 7494.10, "open": 7400.0}),
+        "datasource:ticks:AAPL:last_update": stale_ts,
+    }
+    _install_fake_redis(monkeypatch, store)
+
+    mgr = MarketDataManager(_MinimalConfig())
+    mock_ib = MagicMock()
+    mock_ib.is_connected = True
+    mock_ib.get_snapshot_price = AsyncMock(
+        return_value={
+            "last_price": 325.89,
+            "prev_close": 324.0,
+            "change_pct": 0.58,
+            "source": "ibkr",
+        }
+    )
+    mgr.ibkr = mock_ib
+    mgr.schwab = None
+    mgr.polygon = MagicMock()
+
+    out = await mgr.get_tick_price("AAPL", is_futures=False)
+
+    assert out["source"] == "ibkr"
+    assert out["last_price"] == 325.89
+    mock_ib.get_snapshot_price.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_tick_price_redis_fabric_falls_through_when_no_freshness_marker(
+    monkeypatch,
+) -> None:
+    """A cached tick with no sibling last_update marker must be treated as
+    stale rather than trusted blindly -- e.g. an entry written before the
+    freshness marker existed, or one whose marker key expired independently
+    of the value key."""
+    import json
+
+    store = {
+        "market:latest:AAPL": json.dumps({"close": 7494.10, "open": 7400.0}),
+    }
+    _install_fake_redis(monkeypatch, store)
+
+    mgr = MarketDataManager(_MinimalConfig())
+    mock_ib = MagicMock()
+    mock_ib.is_connected = True
+    mock_ib.get_snapshot_price = AsyncMock(
+        return_value={"last_price": 325.89, "source": "ibkr"}
+    )
+    mgr.ibkr = mock_ib
+    mgr.schwab = None
+    mgr.polygon = MagicMock()
+
+    out = await mgr.get_tick_price("AAPL", is_futures=False)
+
+    assert out["source"] == "ibkr"
+    assert out["last_price"] == 325.89

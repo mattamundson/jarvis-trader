@@ -17,6 +17,7 @@ ib_async>=1.0.0          # Interactive Brokers (successor to ib_insync)
 schwab-py==1.5.1          # Charles Schwab Trader API
 alpaca-py==0.35.0         # Alpaca (for paper trading / data)
 polygon-api-client==1.14.4 # Polygon.io market data
+databento                 # optional cross-check adapter (data/databento_adapter.py) — lazy-imported, install only when DATABENTO_API_KEY is set; unpinned pending vendor decision, see docs/decisions/market-data-vendor-roadmap-2026-07-28.md
 py-clob-client==0.4.0      # Polymarket CLOB
 py_order_utils==0.3.2      # pinned: <0.3.0 needs pysha3 (no Py3.12 wheels); 0.3.x drops .config — guard in main.py:149 absorbs ImportError
 openbb>=4.0.0             # OpenBB SDK

@@ -18,9 +18,10 @@ import {
   XCircle,
   Clock,
   BarChart2,
+  GitCompare,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetchEngine } from "@/lib/api";
+import { fetchEngine, type ProcessSupervisionHealth } from "@/lib/api";
 import { PreFlightWidget } from "@/components/PreFlightWidget";
 import { SystemMetricsPanel } from "@/components/SystemMetricsPanel";
 import { AlertSummaryWidget } from "@/components/AlertSummaryWidget";
@@ -30,6 +31,7 @@ import { DatabaseStatsCard } from "@/components/DatabaseStatsCard";
 import { EngineUptimeCard } from "@/components/EngineUptimeCard";
 import { IbGatewayDetailCard } from "@/components/IbGatewayDetailCard";
 import { SystemLivenessCard } from "@/components/SystemLivenessCard";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,6 +71,7 @@ interface FullHealthResponse {
     circuit_breakers?: SubsystemStatus;
     portfolio?: SubsystemStatus;
     pnl_monitor?: SubsystemStatus;
+    process_supervision?: ProcessSupervisionHealth;
   };
 }
 
@@ -152,8 +155,10 @@ function OverallStatusBadge({ overall }: { overall: string }) {
 
 // ── Subsystem card ─────────────────────────────────────────────────────────────
 
+// Excludes "process_supervision": it has its own richer shape (ProcessSupervisionHealth)
+// and is rendered via the dedicated ProcessSupervisionCard below, not this generic loop.
 interface SubsystemConfig {
-  key: keyof FullHealthResponse["subsystems"];
+  key: Exclude<keyof FullHealthResponse["subsystems"], "process_supervision">;
   label: string;
   icon: React.ReactNode;
   detail: (s: SubsystemStatus) => string | null;
@@ -227,6 +232,36 @@ const SUBSYSTEMS: SubsystemConfig[] = [
     },
   },
 ];
+
+function StalenessBadge({ secondsSince }: { secondsSince: number }) {
+  const isStale = secondsSince > 60;
+  const isVeryStale = secondsSince > 300;
+
+  if (isVeryStale) {
+    return (
+      <span className="flex items-center gap-1 rounded-full border border-bear/40 bg-bear/10 px-2 py-1 text-[11px] font-mono text-bear">
+        <AlertTriangle className="h-3 w-3" />
+        {secondsSince}s
+      </span>
+    );
+  }
+
+  if (isStale) {
+    return (
+      <span className="flex items-center gap-1 rounded-full border border-warn/40 bg-warn/10 px-2 py-1 text-[11px] font-mono text-warn">
+        <Clock className="h-3 w-3" />
+        {secondsSince}s
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1 rounded-full border border-bull/30 bg-bull/10 px-2 py-1 text-[11px] font-mono text-bull">
+      <CheckCircle2 className="h-3 w-3" />
+      {secondsSince}s
+    </span>
+  );
+}
 
 function subsystemIsHealthy(key: string, s: SubsystemStatus | undefined): "healthy" | "warn" | "error" | "unknown" {
   if (!s) return "unknown";
@@ -341,10 +376,124 @@ function SubsystemCard({
   );
 }
 
+// ── Process supervision card (PRB-24) ────────────────────────────────────────
+//
+// pm2 jlist (what pm2 BELIEVES it supervises) and a live TCP port + PID probe
+// (what is ACTUALLY listening) can independently disagree — an orphan process
+// serving a port pm2 thinks is dead, or vice versa. This is the specific
+// failure shape behind the 2026-07-28/29 incidents where nothing surfaced a
+// mismatch as a finding and a human had to check pm2/health/the port
+// side-by-side to notice. Rendered as its own card (not folded into the
+// generic SUBSYSTEMS grid above) because a mismatch needs the per-app
+// pm2-vs-actual detail, not just a one-line status.
+function ProcessSupervisionCard({ data }: { data: ProcessSupervisionHealth | undefined }) {
+  const status = data?.status; // ok | mismatch | unavailable | error
+  const details = data?.details;
+  const apps = details?.apps ?? {};
+  const appEntries = Object.entries(apps);
+  const hasMismatch = status === "mismatch";
+
+  const borderClass = hasMismatch
+    ? "border-bear/40 bg-bear/5"
+    : status === "ok"
+    ? "border-bull/20 bg-card"
+    : "border-border bg-card";
+
+  const badgeVariant: "bull" | "warn" | "bear" | "neutral" =
+    status === "ok" ? "bull" : hasMismatch ? "bear" : "neutral";
+
+  const badgeLabel =
+    status === "ok"
+      ? "In sync"
+      : hasMismatch
+      ? "MISMATCH"
+      : status === "unavailable"
+      ? "Unavailable"
+      : status === "error"
+      ? "Error"
+      : "Unknown";
+
+  const badgeIcon = hasMismatch ? (
+    <AlertTriangle className="h-4 w-4 text-bear" />
+  ) : status === "ok" ? (
+    <CheckCircle2 className="h-4 w-4 text-bull" />
+  ) : (
+    <Clock className="h-4 w-4 text-muted-foreground" />
+  );
+
+  return (
+    <div className={`rounded-xl border p-4 space-y-3 ${borderClass}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div
+            className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+              hasMismatch ? "text-bear bg-bear/10" : status === "ok" ? "text-bull bg-bull/10" : "text-muted-foreground bg-muted"
+            }`}
+          >
+            <GitCompare className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Process Supervision (pm2 vs reality)</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {status === "unavailable"
+                ? (data?.error ?? details?.error ?? "pm2 unreachable")
+                : hasMismatch
+                ? "pm2's belief disagrees with the actual TCP port owner"
+                : status === "ok"
+                ? "pm2 and live port/PID state agree"
+                : "No data yet"}
+            </p>
+          </div>
+        </div>
+        <Badge variant={badgeVariant}>
+          <span className="flex items-center gap-1">
+            {badgeIcon}
+            {badgeLabel}
+          </span>
+        </Badge>
+      </div>
+
+      {appEntries.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+          {appEntries.map(([name, app]) => {
+            const mismatched = !!app.mismatch_reason;
+            return (
+              <div
+                key={name}
+                className={`rounded-lg border px-3 py-2 space-y-1 ${
+                  mismatched ? "border-bear/30 bg-bear/10" : "border-border bg-muted/30"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-semibold text-foreground">{name}</span>
+                  <span className="text-[10px] font-mono text-muted-foreground">:{app.port}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  pm2: <span className="font-mono">{app.pm2_status ?? "not tracked"}</span>
+                  {app.pm2_pid != null && <span className="font-mono"> (pid {app.pm2_pid})</span>}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  port: <span className="font-mono">{app.port_alive ? "alive" : "dead"}</span>
+                  {app.actual_pid != null && <span className="font-mono"> (pid {app.actual_pid})</span>}
+                </p>
+                {mismatched && (
+                  <p className="text-[11px] text-bear font-mono break-words">{app.mismatch_reason}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function HealthPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const {
     data,
@@ -353,8 +502,33 @@ export default function HealthPage() {
     mutate,
   } = useSWR<FullHealthResponse>("/health/full", fetcher, {
     refreshInterval: 15_000,
-    onSuccess: () => setLastUpdated(new Date()),
+    shouldRetryOnError: false,
+    onSuccess: () => {
+      setLastUpdated(new Date());
+      setRetryCount(0);
+      setIsRetrying(false);
+    },
+    onError: () => {
+      setRetryCount((c) => c + 1);
+    },
   });
+
+  // Bounded retry/backoff after failures so transient engine hiccups do not
+  // hammer the proxy or silently stale out the page.
+  useEffect(() => {
+    if (!error || retryCount >= 3) {
+      if (retryCount >= 3) setIsRetrying(false);
+      return;
+    }
+
+    const backoffMs = Math.min(30_000, 2_000 * Math.pow(2, retryCount - 1));
+    setIsRetrying(true);
+    const timer = setTimeout(() => {
+      mutate();
+    }, backoffMs);
+
+    return () => clearTimeout(timer);
+  }, [error, retryCount, mutate]);
 
   // Track time since last update
   const [secondsSince, setSecondsSince] = useState(0);
@@ -367,7 +541,28 @@ export default function HealthPage() {
     return () => clearInterval(interval);
   }, [lastUpdated]);
 
+  const { isConnected: wsConnected, lastEvent: wsLastEvent } = useWebSocket();
+  const [wsLastEventAt, setWsLastEventAt] = useState<Date | null>(null);
+  const [wsSecondsSince, setWsSecondsSince] = useState(0);
+
+  useEffect(() => {
+    if (wsLastEvent) {
+      setWsLastEventAt(new Date());
+    }
+  }, [wsLastEvent]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (wsLastEventAt) {
+        setWsSecondsSince(Math.floor((Date.now() - wsLastEventAt.getTime()) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [wsLastEventAt]);
+
   const handleRefresh = useCallback(() => {
+    setRetryCount(0);
+    setIsRetrying(false);
     mutate();
   }, [mutate]);
 
@@ -429,6 +624,15 @@ export default function HealthPage() {
               <span className="text-xs text-muted-foreground">
                 Updated {secondsSince}s ago
               </span>
+            )}
+            {data?.timestamp && lastUpdated && (
+              <StalenessBadge secondsSince={secondsSince} />
+            )}
+            <span className="text-xs text-muted-foreground">
+              WS {wsConnected ? "live" : "down"}
+            </span>
+            {wsLastEventAt && (
+              <StalenessBadge secondsSince={wsSecondsSince} />
             )}
             <button
               onClick={handleRefresh}
@@ -551,6 +755,9 @@ export default function HealthPage() {
             ))}
           </div>
         )}
+
+        {/* Process supervision (PRB-24) — pm2 belief vs TCP-port/PID reality */}
+        {data && <ProcessSupervisionCard data={subsystems.process_supervision} />}
 
         {/* System Metrics Panel — DB record counts + engine meta */}
         <SystemMetricsPanel />

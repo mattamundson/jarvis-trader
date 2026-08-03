@@ -323,7 +323,7 @@ function Header() {
         href="/master"
         className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
       >
-        ← Mission Control
+        ← Master Jarvis
       </Link>
       <h1 className="text-2xl font-bold text-zinc-100">Finances</h1>
     </div>

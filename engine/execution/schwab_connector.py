@@ -260,9 +260,19 @@ class SchwabConnector:
         is_futures=False,
         is_options=False,
     ):
-        """Run safety layer check. Returns (approved, rejection_reason, warnings)."""
+        """
+        Run safety layer check.
+
+        Returns (approved, rejection_reason, warnings, adjusted_order). The
+        4th element is the risk-layer's post-adjustment OrderRequest (e.g.
+        loss-tracker de-risking after consecutive losses) or None when no
+        adjustment was applied -- callers MUST use it to build the actual
+        broker order, not the pre-check `quantity` (PRB-01, 2026-07-29
+        prod-readiness audit: this helper used to drop adjusted_order
+        entirely, so a computed size reduction never reached the fill).
+        """
         if self._safety_layer is None:
-            return True, None, []
+            return True, None, [], None
         from risk.safety_layer import OrderRequest  # noqa: PLC0415
 
         req = OrderRequest(
@@ -274,7 +284,12 @@ class SchwabConnector:
             is_options=is_options,
         )
         result = self._safety_layer.check_order(req, portfolio_equity)
-        return result.approved, getattr(result, "rejection_reason", ""), result.warnings
+        return (
+            result.approved,
+            getattr(result, "rejection_reason", ""),
+            result.warnings,
+            result.adjusted_order,
+        )
 
     # ── Account ───────────────────────────────────────────────────────────────
 
@@ -628,6 +643,21 @@ class SchwabConnector:
             for w in result.warnings:
                 logger.warning("SchwabConnector: options warning | %s", w)
             warnings = result.warnings
+            # PRB-01: use the risk-layer's adjusted (e.g. loss-tracker
+            # de-risked) quantity for the actual order below, not the
+            # pre-check request -- same defect class as the equity path.
+            if result.adjusted_order is not None:
+                adjusted_quantity = abs(int(result.adjusted_order.quantity))
+                if adjusted_quantity != quantity:
+                    logger.warning(
+                        "SchwabConnector.submit_options_order: risk-adjusted size "
+                        "%d -> %d for %s %s",
+                        quantity,
+                        adjusted_quantity,
+                        symbol,
+                        option_symbol,
+                    )
+                quantity = adjusted_quantity
         else:
             warnings = []
 
@@ -800,9 +830,10 @@ class SchwabConnector:
         )
 
         # Equity-path safety check (options path runs its own inside submit_options_order)
+        final_quantity = int(order.get("quantity", 0))
         if not is_options and self._safety_layer is not None:
             quantity = int(order.get("quantity", 0))
-            approved, reason, warnings = self._run_safety_check(
+            approved, reason, warnings, adjusted_order = self._run_safety_check(
                 symbol=symbol,
                 quantity=quantity,
                 order_type=order.get("order_type", "market").lower(),
@@ -814,6 +845,18 @@ class SchwabConnector:
                 return {"status": "rejected", "reason": reason, "warnings": warnings}
             for w in warnings:
                 logger.warning("SchwabConnector: equity warning | %s", w)
+            # PRB-01: use the risk-layer's adjusted (e.g. loss-tracker
+            # de-risked) quantity for the actual order, not the caller's
+            # pre-check request.
+            if adjusted_order is not None:
+                final_quantity = int(adjusted_order.quantity)
+                if abs(final_quantity) != abs(quantity):
+                    logger.warning(
+                        "SchwabConnector.place_paper_order: risk-adjusted size %d -> %d for %s",
+                        quantity,
+                        final_quantity,
+                        symbol,
+                    )
 
         # Route
         if is_options:
@@ -821,7 +864,7 @@ class SchwabConnector:
         else:
             result = await self.submit_equity_order(
                 symbol=symbol,
-                quantity=int(order.get("quantity", 0)),
+                quantity=final_quantity,
                 side=order.get("side", "BUY"),
                 order_type=order.get("order_type", "MARKET"),
                 limit_price=order.get("limit_price"),
@@ -830,7 +873,7 @@ class SchwabConnector:
         # Mirror to portfolio tracker
         if result.get("status") == "placed" and self._portfolio_tracker is not None:
             try:
-                signed_qty = int(order.get("quantity", 0))
+                signed_qty = final_quantity if not is_options else int(order.get("quantity", 0))
                 if not is_options and order.get("side", "BUY").upper() == "SELL":
                     signed_qty = -abs(signed_qty)
                 await self._get_paper_trade_logger().log_trade(

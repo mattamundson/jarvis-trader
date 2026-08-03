@@ -64,7 +64,14 @@ if _ENGINE_ROOT not in sys.path:
 
 
 def _paper_offline_cfg():
-    """Relaxed config for offline paper simulation (mirrors other offline tests)."""
+    """Relaxed config for offline paper simulation (mirrors other offline tests).
+
+    ``ALLOW_MOCK_QUOTES`` is required (2026-07-21, see
+    ``test_ib_gateway_connector_offline.py``): these tests exercise the STP
+    wiring with no market-data manager attached, so they need the static quote
+    table to produce a fill at all. Production leaves this False and refuses to
+    fill without a real price basis -- see ``test_paper_fill_refuses_mock_price.py``.
+    """
     from config import settings
 
     return settings.model_copy(
@@ -73,6 +80,7 @@ def _paper_offline_cfg():
             "REQUIRE_HUMAN_APPROVAL": False,
             "PAPER_TRADING": True,
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
+            "ALLOW_MOCK_QUOTES": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
             "MAX_POSITION_SIZE_PCT": 5.0,
             "MAX_TRADE_LOSS_USD": 500.0,

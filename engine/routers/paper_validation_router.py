@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -895,6 +896,61 @@ class ClosedTrade(BaseModel):
     duration_seconds: int
 
 
+def _parse_trade_datetime(ts: str) -> datetime:
+    """Parse an ISO8601 timestamp, treating a trailing 'Z' as UTC offset."""
+    from datetime import datetime
+
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def _compute_trade_duration_seconds(trade_id: str, entry_time: str, exit_time: str) -> int:
+    """Compute a closed trade's duration in seconds.
+
+    A handful of rows pair a tz-aware timestamp with a tz-naive one (missing
+    'Z'/offset), which makes ``exit_dt - entry_dt`` raise ``TypeError``
+    ("can't subtract offset-naive and offset-aware datetimes"). Rather than
+    silently swallowing that and defaulting to 0, normalize the naive side to
+    UTC (this table's timestamp convention) and log the anomaly so it's
+    visible instead of hidden inside a bogus "0" duration.
+    """
+    from datetime import timezone
+
+    try:
+        entry_dt = _parse_trade_datetime(entry_time)
+        exit_dt = _parse_trade_datetime(exit_time)
+    except (ValueError, AttributeError, TypeError) as exc:
+        logger.warning(
+            "duration calc: could not parse entry/exit time for trade %s "
+            "(entry=%r exit=%r): %s -- defaulting duration to 0",
+            trade_id, entry_time, exit_time, exc,
+        )
+        return 0
+
+    if (entry_dt.tzinfo is None) != (exit_dt.tzinfo is None):
+        # tz-awareness mismatch -- would raise TypeError on subtraction.
+        # Normalize the naive side to UTC instead of crashing/swallowing.
+        logger.warning(
+            "duration calc: tz-awareness mismatch for trade %s "
+            "(entry=%r tzinfo=%s, exit=%r tzinfo=%s) -- normalizing naive "
+            "side to UTC",
+            trade_id, entry_time, entry_dt.tzinfo, exit_time, exit_dt.tzinfo,
+        )
+        if entry_dt.tzinfo is None:
+            entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+        else:
+            exit_dt = exit_dt.replace(tzinfo=timezone.utc)
+
+    try:
+        return int((exit_dt - entry_dt).total_seconds())
+    except TypeError as exc:
+        logger.warning(
+            "duration calc: subtraction still failed for trade %s "
+            "(entry=%r exit=%r): %s -- defaulting duration to 0",
+            trade_id, entry_time, exit_time, exc,
+        )
+        return 0
+
+
 @router.get("/trades/closed")
 async def get_closed_trades():
     """Get all closed paper trades from SQLite, ordered by exit_time DESC."""
@@ -925,8 +981,6 @@ async def get_closed_trades():
         finally:
             conn.close()
 
-        from datetime import datetime
-
         trades: list[ClosedTrade] = []
         for row in rows:
             trade_id, symbol, side, entry_price, exit_price, entry_time, exit_time, pnl = row
@@ -934,13 +988,7 @@ async def get_closed_trades():
             # Normalize direction from side (buy/sell/buy_to_open/sell_to_open -> LONG/SHORT)
             direction = "LONG" if side in ("buy", "buy_to_open") else "SHORT"
 
-            # Compute duration in seconds
-            try:
-                entry_dt = datetime.fromisoformat(entry_time.replace("Z", "+00:00"))
-                exit_dt = datetime.fromisoformat(exit_time.replace("Z", "+00:00"))
-                duration_seconds = int((exit_dt - entry_dt).total_seconds())
-            except (ValueError, AttributeError, TypeError):
-                duration_seconds = 0
+            duration_seconds = _compute_trade_duration_seconds(trade_id, entry_time, exit_time)
 
             trades.append(
                 ClosedTrade(

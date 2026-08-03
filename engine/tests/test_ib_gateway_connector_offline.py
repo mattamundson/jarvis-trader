@@ -12,13 +12,21 @@ from risk.safety_layer import SafetyLayer
 
 
 def _offline_simulated_cfg():
-    """Tier-3 live off + explicit simulated-paper opt-in + relaxed size limits for tests."""
+    """Tier-3 live off + explicit simulated-paper opt-in + relaxed size limits for tests.
+
+    ``ALLOW_MOCK_QUOTES`` is required here (2026-07-21): these tests exercise the
+    order-routing plumbing with no market-data manager attached, so they need the
+    static quote table to produce a fill at all. Production leaves this False and
+    REFUSES to fill without a real price basis -- see
+    ``test_paper_fill_refuses_mock_price.py``.
+    """
     return settings.model_copy(
         update={
             "LIVE_TRADING_ENABLED": False,
             "REQUIRE_HUMAN_APPROVAL": True,
             "PAPER_TRADING": True,
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
+            "ALLOW_MOCK_QUOTES": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
             "MAX_POSITION_SIZE_PCT": 5.0,
         }
@@ -78,11 +86,18 @@ async def test_ib_order_manager_with_connector(tmp_path) -> None:
     await conn.connect()
     safety.attach_ib_gateway(conn)
     om = IBOrderManager(safety, ib_gateway=conn, portfolio_tracker=tracker)
+    # Symbol was MNQ; switched to MES (PRB-03/PRB-22, 2026-07-29). MNQ is
+    # both a DO_NOT_TRADE_SYMBOLS halt-list member (backtest/signals.py) and
+    # carries paper_config.enabled=False (backtest/paper_config.py) — since
+    # check_order() now gates on both directly, it's rejected before ever
+    # reaching the IBOrderManager/connector plumbing this test exists to
+    # exercise. MES is unaffected by either check and preserves the original
+    # intent.
     res = await om.submit_order(
-        symbol="MNQ",
+        symbol="MES",
         action="BUY",
         quantity=1,
-        price=17500.0,
+        price=5300.0,
         order_type="MKT",
         limit_price=None,
     )
