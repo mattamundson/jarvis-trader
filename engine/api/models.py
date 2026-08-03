@@ -197,6 +197,10 @@ class HealthResponse(BaseModel):
         None,
         description="30-day rolling mean Brier score across agents with ≥ min_trades closed signals. 0 = perfect calibration, 1 = always confidently wrong. None when no agent has enough data.",
     )
+    batch_jobs_health: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Anthropic Message Batches summary: {jobs_by_status, unconsumed_results}. Non-blocking — batches are async by design, so this never flips top-level status to degraded, only surfaces counts for observability. Populated by engine/llm/batch_client.py's JarvisBatchClient.get_batch_health_summary(). Field must exist here or _health_inner's dict key gets silently stripped by FastAPI's response_model, same class of bug as llm_providers/futures_sentiment above.",
+    )
 
 
 class SubsystemStatus(BaseModel):
