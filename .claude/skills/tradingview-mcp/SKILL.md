@@ -112,10 +112,12 @@ state first, state what you'll change, and only proceed on an explicit instructi
    `get_bars` silently degrades to 5m bars (`market_data.py` bar maps).
    Round-trip drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline).
    **Check provenance:** the engine waterfalls to TradingView when brokers are down
-   (`/prices/snapshot` Tier-2.5 TV fallback; `get_bars` is `TV → IBKR → Polygon → CSV`), so a
-   cross-check is only independent when the snapshot `source` is `ibkr`/`schwab`/`polygon`/`db`.
-   If `source: tradingview`, the engine agreed with TV because it *is* TV — report the value as
-   unverified (same-source), never as an independent confirmation.
+   (`/prices/snapshot` Tier-2.5 TV fallback; `get_bars` is `TV → IBKR → Polygon → CSV`). The
+   **price** snapshot exposes a `source` — a cross-check is independent only when it is
+   `ibkr`/`schwab`/`polygon`/`db`; `source: tradingview` is same-source → report unverified. The
+   **levels** endpoint exposes **no `source`** and its bars waterfall independently, so its ladder
+   provenance is unknowable from the response — treat every levels comparison as
+   provenance-unverified (don't borrow the snapshot's `source` for it).
 
 ## Rejected integration (documented on purpose)
 

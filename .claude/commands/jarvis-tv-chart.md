@@ -127,16 +127,22 @@ this command.
   compare a daily ladder against an intraday chart.
 
 **Provenance is required — a cross-check is only independent if the engine value came from a
-different feed than TradingView.** The engine waterfalls to TradingView itself when the broker
-feeds are down: `/prices/snapshot` has a "Tier 2.5 TradingView" fallback and `get_bars` (behind
-`/hidden-pivots/levels`) is `TradingView → IBKR → Polygon → CSV` (`market_data.py`). So check the
-snapshot's `source` field: only `ibkr` / `schwab` / `polygon` / `db` is an **independent**
-validation. If `source: tradingview` (or the levels bars came from TV), the engine agreed with
-TV because it *is* TV — report the number as **unverified (same-source)**, not confirmed.
+different feed than TradingView**, because the engine waterfalls to TV itself when the broker
+feeds are down.
 
-Compare last price / levels against what TradingView shows and report any drift explicitly —
-a mismatch between an *independent* engine feed and TV is a bug to flag, not a rounding footnote.
-Never present a TV number as canonical without an independent-source check.
+- **Price (`/prices/snapshot`)** returns a `source` field and has a "Tier 2.5 TradingView"
+  fallback. Check it: only `ibkr` / `schwab` / `polygon` / `db` is an **independent** validation.
+  `source: tradingview` means the engine agreed with TV because it *is* TV → report the price as
+  **unverified (same-source)**, not confirmed.
+- **Levels (`/hidden-pivots/levels`)** returns only symbol/timeframe/ladder/swing — **no `source`
+  field** — and its bars waterfall `TradingView → IBKR → Polygon → CSV` *independently* of the
+  snapshot. You therefore **cannot** establish the ladder's provenance from the response, and must
+  not borrow the snapshot's `source` for it. Treat every levels-ladder comparison as
+  **provenance-unverified**: report drift if you see it, but never call the ladder engine-confirmed.
+  (Exposing bar `source` on that endpoint is an out-of-scope engine change.)
+
+Report any drift explicitly — a mismatch against an *independent* feed is a bug to flag, not a
+rounding footnote. Never present a TV number as canonical without an independent-source check.
 
 ## Hard constraints
 

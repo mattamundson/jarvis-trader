@@ -49,7 +49,9 @@ not around it. Concretely, to add or extend execution one would need:
    caps in `engine/config.py` still apply. A crypto exchange has none of these wired — it would be a
    from-scratch safety build, and crypto is out of the current mandate anyway.
 3. **`[safety-review]` PR tag + safety-reviewer sign-off** for any diff touching `engine/config.py`,
-   `engine/risk/`, `engine/execution/kill_switch.py`, or sizing bounds.
+   `engine/risk/` (the hardcoded kill switch is `engine/risk/safety_layer.py`), the kill-switch
+   enforcement in `engine/execution/` (e.g. `ib_order_manager.py`, `ibkr_executor.py` — there is
+   no single `kill_switch.py` file), or position-sizing bounds.
 4. **A validated edge first.** A strategy reaches "sizeable" only by graduating the candidate
    registry (6 independent forward paper OOS windows, PF CI-lower ≥ 1.10, p_edge ≥ 0.95, survives
    family-FDR) — and graduation is *necessary, not sufficient* (gate-v2 routing still governs).
