@@ -3,14 +3,30 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import useSWR from "swr";
 import { fetchTradeFullReview, fetchBars, type TradeFullReview, type OHLCVBar } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
-import { ExcursionPanel } from "@/components/ExcursionPanel";
-import { EntryTimingScenarios } from "@/components/EntryTimingScenarios";
 import type { SeriesMarker, Time } from "lightweight-charts";
+
+// lightweight-charts backed candle view — only renders once `bars` has loaded, so defer
+// the chunk instead of paying for it in the initial route JS.
+const CandlestickChart = dynamic(
+  () => import("@/components/command-center/charts/CandlestickChart").then((m) => ({ default: m.CandlestickChart })),
+  { ssr: false, loading: () => <div className="h-[420px] animate-pulse rounded-md bg-muted/20" /> }
+);
+
+// Both panels are gated behind `Boolean(t.symbol)` at render time (i.e. only after the
+// trade record has loaded) — defer their JS the same way.
+const ExcursionPanel = dynamic(
+  () => import("@/components/ExcursionPanel").then((m) => ({ default: m.ExcursionPanel })),
+  { ssr: false, loading: () => <div className="h-40 animate-pulse rounded-md bg-muted/20" /> }
+);
+const EntryTimingScenarios = dynamic(
+  () => import("@/components/EntryTimingScenarios").then((m) => ({ default: m.EntryTimingScenarios })),
+  { ssr: false, loading: () => <div className="h-40 animate-pulse rounded-md bg-muted/20" /> }
+);
 
 /** Pick a bar timeframe + lookback window sized to how old the trade is. */
 function chartWindow(entryTime: string | null | undefined): { timeframe: string; days: number } {

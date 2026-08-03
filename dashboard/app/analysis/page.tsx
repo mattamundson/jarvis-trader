@@ -12,7 +12,6 @@ import {
   type JarvisQuickAnalysisPeriod,
   type JarvisQuickAnalysisResponse,
 } from "@/lib/api";
-import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
 import { AuctionBiasCard } from "@/components/AuctionBiasCard";
 import { SymbolTimeframeSelector } from "@/components/command-center/charts/SymbolTimeframeSelector";
@@ -23,6 +22,14 @@ import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
 const PriceTerrain3D = dynamic(
   () => import("@/components/charts/PriceTerrain3D").then((m) => ({ default: m.PriceTerrain3D })),
   { ssr: false, loading: () => <div className="h-[400px] animate-pulse rounded bg-card" /> }
+);
+
+// lightweight-charts backed panel — keep it out of the initial /analysis bundle the
+// same way PriceTerrain3D is deferred; the "jarvis" tab still shows a loading skeleton
+// until the chunk arrives, but the JS itself only loads once the tab actually mounts.
+const PriceChartPanel = dynamic(
+  () => import("@/components/charts/PriceChartPanel").then((m) => ({ default: m.PriceChartPanel })),
+  { ssr: false, loading: () => <div className="h-[460px] animate-pulse rounded-xl border border-border bg-card" /> }
 );
 
 type ChartView = "jarvis" | "terrain3d";
