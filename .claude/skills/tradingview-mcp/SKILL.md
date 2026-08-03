@@ -87,7 +87,8 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 **Replay (practice only):** `replay_start/step/autoplay/trade/status/stop`
 
 **Confirmation-gated (real side effects):** `pine_save` (persists/overwrites Matt's saved
-Pine script — never save while merely linting/compiling), `pine_set_source`,
+Pine script — never save while merely linting/compiling), `pine_set_source`, `pine_open`,
+`pine_new` (both change the active editor/script and can replace or abandon unsaved editor state),
 `chart_manage_indicator`, `indicator_set_inputs`, `watchlist_add`, `tab_new`, `tab_close`,
 `layout_switch`, `pane_set_layout`, `pane_set_symbol`, `alert_create`, `alert_delete`,
 `draw_shape`, `draw_remove_one`, `draw_clear`, `ui_click`, `ui_evaluate`, `batch_run` — these

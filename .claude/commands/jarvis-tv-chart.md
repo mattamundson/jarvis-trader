@@ -141,8 +141,14 @@ feeds are down.
   **provenance-unverified**: report drift if you see it, but never call the ladder engine-confirmed.
   (Exposing bar `source` on that endpoint is an out-of-scope engine change.)
 
-Report any drift explicitly — a mismatch against an *independent* feed is a bug to flag, not a
-rounding footnote. Never present a TV number as canonical without an independent-source check.
+**Account for staleness and tolerance before calling a mismatch drift.** `/prices/snapshot` is
+cached with a **60-second TTL** (`price_cache.py`), so an engine price can be up to ~60s behind a
+just-captured TV read — in a moving market that difference is ordinary movement, not a feed bug.
+Before flagging: use the response's freshness/`as_of` if present (else assume up to 60s old), and
+apply a **contract-aware tick tolerance** (a few ticks for MES/MGC). Only a mismatch that exceeds
+what price could plausibly move in the staleness window — or any mismatch from a *fresh*
+independent feed — is real drift worth flagging; otherwise note it as within staleness/tolerance.
+Never present a TV number as canonical without an independent-source check.
 
 ## Hard constraints
 
