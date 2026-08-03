@@ -70,6 +70,11 @@ class ScanResponse(BaseModel):
     # render the level ladder for non-armed setups. Additive; `signals` /
     # `soh_symbols` / `watch_symbols` keep their original meaning.
     details: list[HPSignal] = Field(default_factory=list)
+    # Cache/single-flight metadata. Existing dashboard consumers can ignore
+    # these additive fields; they let refresh callers know when the response is
+    # a stale-but-safe cache served while another scan is already running.
+    refresh_in_progress: bool = False
+    cache_status: str = "fresh"
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -118,6 +123,10 @@ DEFAULT_WATCHLIST = [
 ]
 
 _last_scan_cache: Optional[ScanResponse] = None
+_scan_in_progress = False
+_scan_lock: Optional[asyncio.Lock] = None
+_MAX_SCAN_CONCURRENCY = 6
+_PER_SYMBOL_SCAN_TIMEOUT_SECONDS = 20.0
 
 
 def _get_watchlist() -> list[str]:
@@ -126,6 +135,54 @@ def _get_watchlist() -> list[str]:
         if symbols:
             return list(symbols)
     return DEFAULT_WATCHLIST
+
+
+def _get_scan_lock() -> asyncio.Lock:
+    global _scan_lock
+    if _scan_lock is None:
+        _scan_lock = asyncio.Lock()
+    return _scan_lock
+
+
+def _copy_scan_response(
+    response: ScanResponse,
+    *,
+    refresh_in_progress: bool,
+    cache_status: str,
+) -> ScanResponse:
+    return response.model_copy(
+        update={
+            "refresh_in_progress": refresh_in_progress,
+            "cache_status": cache_status,
+        }
+    )
+
+
+async def _run_bounded_scans(
+    symbols: list[str],
+    timeframe: str,
+    benchmark_df=None,
+) -> list[Optional[HPSignal]]:
+    """Run per-symbol scans without stampeding the engine event loop."""
+    semaphore = asyncio.Semaphore(_MAX_SCAN_CONCURRENCY)
+
+    async def run_one(symbol: str) -> Optional[HPSignal]:
+        async with semaphore:
+            try:
+                return await asyncio.wait_for(
+                    _fetch_and_scan(symbol, timeframe, benchmark_df),
+                    timeout=_PER_SYMBOL_SCAN_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "HP scan timed out for %s/%s after %.1fs",
+                    symbol,
+                    timeframe,
+                    _PER_SYMBOL_SCAN_TIMEOUT_SECONDS,
+                )
+                return None
+
+    return await asyncio.gather(*(run_one(sym) for sym in symbols), return_exceptions=False)
 
 
 # ── Price-coverage floor (PRB-21) ───────────────────────────────────────────────
@@ -239,17 +296,48 @@ async def scan_watchlist(
     Scan all watchlist symbols for HiddenPivots patterns.
     Returns signals, SOH symbols, and WATCH setups.
     """
-    global _last_scan_cache
+    global _last_scan_cache, _scan_in_progress
 
     if _data_manager is None:
         raise HTTPException(status_code=503, detail="Data manager not initialized")
 
-    symbols = _get_watchlist()
-    benchmark_df = await _fetch_benchmark(benchmark, timeframe)
+    # Single-flight guard: dashboard refreshes must not stack multiple full
+    # watchlist scans while the engine is already saturated. If a cached report
+    # exists, return it immediately and let the active refresh finish.
+    if _scan_in_progress and _last_scan_cache is not None:
+        return _copy_scan_response(
+            _last_scan_cache,
+            refresh_in_progress=True,
+            cache_status="stale_while_refreshing",
+        )
 
-    # Run all scans concurrently
-    tasks = [_fetch_and_scan(sym, timeframe, benchmark_df) for sym in symbols]
-    results = await asyncio.gather(*tasks, return_exceptions=False)
+    scan_lock = _get_scan_lock()
+    waited_for_scan = scan_lock.locked()
+    if waited_for_scan and _last_scan_cache is not None:
+        return _copy_scan_response(
+            _last_scan_cache,
+            refresh_in_progress=True,
+            cache_status="stale_while_refreshing",
+        )
+
+    async with scan_lock:
+        # If this request arrived while the first scan was running and there was
+        # no cache yet, wait once and return the completed first scan instead of
+        # immediately starting a duplicate refresh.
+        if waited_for_scan and _last_scan_cache is not None:
+            return _copy_scan_response(
+                _last_scan_cache,
+                refresh_in_progress=False,
+                cache_status="fresh_after_wait",
+            )
+
+        _scan_in_progress = True
+        try:
+            symbols = _get_watchlist()
+            benchmark_df = await _fetch_benchmark(benchmark, timeframe)
+            results = await _run_bounded_scans(symbols, timeframe, benchmark_df)
+        finally:
+            _scan_in_progress = False
 
     signals = []
     soh_symbols = []
