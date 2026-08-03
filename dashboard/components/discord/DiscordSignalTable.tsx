@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
+import { winRatePercent } from "@/lib/discordWinRate";
 
 const REFRESH_MS = 10_000;
 
@@ -43,7 +44,7 @@ function fmt(ts: string): string {
 
 function winRateColor(rate: number | null): string {
   if (rate == null) return "#888";
-  const pct = rate * 100;
+  const pct = winRatePercent(rate);
   if (pct >= 60) return "#00ff88";
   if (pct >= 40) return "#ffcc00";
   return "#ff4444";
@@ -162,7 +163,7 @@ export function DiscordSignalTable() {
                       style={{ color: wrColor }}
                     >
                       {row.win_rate != null
-                        ? `${(row.win_rate * 100).toFixed(1)}%`
+                        ? `${winRatePercent(row.win_rate).toFixed(1)}%`
                         : "—"}
                     </td>
                   </tr>

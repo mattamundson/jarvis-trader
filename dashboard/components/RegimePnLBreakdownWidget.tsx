@@ -5,25 +5,14 @@ import { RefreshCw, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
 import { RawRecordBadge } from "@/components/RawRecordBadge";
+import {
+  parseTradesHistoryResponse,
+  type RegimeTradeRecord as TradeRecord,
+  type TradesHistoryPayload,
+} from "@/lib/regimePnlTrades";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TradeRecord {
-  trade_id?: string;
-  symbol?: string;
-  side?: string;
-  pnl?: number;
-  status?: string;
-  // regime may be a top-level field (from some code paths)
-  regime?: string;
-  // strategy_params JSON blob — regime stored here as regime or regime_type
-  strategy_params?: {
-    regime?: string;
-    regime_type?: string;
-    [key: string]: unknown;
-  } | null;
-}
 
 interface RegimeStat {
   regime: string;
@@ -108,10 +97,10 @@ export function RegimePnLBreakdownWidget() {
     setLoading(true);
     setError(null);
     try {
-      const json = await fetchEngine<{ trades?: TradeRecord[]; count?: number }>(
+      const json = await fetchEngine<TradesHistoryPayload>(
         `/portfolio/history/trades?status=CLOSED&limit=500`
       );
-      setTrades(json.trades ?? []);
+      setTrades(parseTradesHistoryResponse(json));
       setLastRefreshed(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

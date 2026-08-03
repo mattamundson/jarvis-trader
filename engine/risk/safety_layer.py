@@ -707,11 +707,19 @@ class SafetyLayer:
                 "cleared_at": None,
             }
         if self._db_path is None:
+            # FAIL CLOSED: no DB path configured means kill state cannot be
+            # verified at all — the same unknown-state class as a DB read
+            # exception below, not evidence the account is safe to trade.
+            logger.error(
+                "SafetyLayer: get_per_account_kill_state(%s) — no DB path "
+                "configured, failing CLOSED (active=True)",
+                account_id,
+            )
             return {
                 "account_id": account_id,
-                "active": False,
+                "active": True,
                 "triggered_at": None,
-                "reason": None,
+                "reason": "kill-state unavailable: no DB path configured",
                 "trigger_metric": None,
                 "trigger_value": None,
                 "cleared_at": None,
@@ -729,6 +737,40 @@ class SafetyLayer:
             finally:
                 conn.close()
             if row is None:
+                # INTENTIONAL FAIL-OPEN (PRB-09, reviewed alongside the GT-49
+                # fail-closed hardening of the two sibling branches below).
+                #
+                # Unlike the _db_path-is-None and except-Exception branches,
+                # "row is None" here is NOT an unknown/unverifiable state — it
+                # is the documented, expected representation of "this account
+                # has never been triggered or cleared":
+                #   - migration_028 (engine/database/migrations.py) creates
+                #     this table empty; it does not seed active=0 rows for
+                #     any account_id at migration time.
+                #   - No code path in this codebase ever DELETEs a row from
+                #     per_account_kill_state — trigger_per_account_kill() and
+                #     clear_per_account_kill() only INSERT ... ON CONFLICT DO
+                #     UPDATE, so a row that once existed cannot silently
+                #     disappear through normal application logic.
+                #   - A genuinely wiped/dropped TABLE (as opposed to a row
+                #     that was simply never created) raises a sqlite3
+                #     OperationalError from the SELECT above, which is
+                #     already caught and fails CLOSED by the except block
+                #     below — that failure mode is covered by the sibling
+                #     branch, not this one.
+                # Flipping this branch to fail-closed would make every new
+                # account permanently halted from creation, since nothing
+                # ever auto-seeds an active=0 row and clear_per_account_kill()
+                # is explicitly a human-only path (see its docstring) — not
+                # invoked automatically on startup. That would break the
+                # per-account kill switch feature outright, not just harden
+                # it. Residual risk: out-of-band manual DB tampering (e.g. a
+                # raw `DELETE FROM per_account_kill_state ...` run outside
+                # this application) could still produce a false "never
+                # triggered" read here — that is treated as a distinct,
+                # out-of-band DB-integrity threat model equivalent to
+                # directly editing this table's active column, not something
+                # this code-level fail-closed/fail-open decision can address.
                 return {
                     "account_id": account_id,
                     "active": False,
@@ -748,14 +790,24 @@ class SafetyLayer:
                 "cleared_at": row["cleared_at"],
             }
         except Exception as exc:
-            logger.warning(
-                "SafetyLayer: get_per_account_kill_state(%s) failed: %s", account_id, exc
+            # FAIL CLOSED: an unreadable kill-state DB is an UNKNOWN state, not a
+            # safe one. Reporting active=False here would silently convert a DB
+            # read failure (lock contention, corruption, disk issue) into
+            # fail-open behavior — the same defect class as the 2026-06-15
+            # inert-kill-switch incident (12+ safety gates rendered inert).
+            # "Unknown state" must never resolve to "safe to trade": treat the
+            # account as halted until a real read succeeds.
+            logger.error(
+                "SafetyLayer: get_per_account_kill_state(%s) failed — failing CLOSED "
+                "(active=True) until DB read succeeds: %s",
+                account_id,
+                exc,
             )
             return {
                 "account_id": account_id,
-                "active": False,
+                "active": True,
                 "triggered_at": None,
-                "reason": None,
+                "reason": f"kill-state read failed: {exc}",
                 "trigger_metric": None,
                 "trigger_value": None,
                 "cleared_at": None,
@@ -987,6 +1039,77 @@ class SafetyLayer:
             return RiskCheckResult(
                 approved=False,
                 rejection_reason=f"Kill switch active: {self._kill_switch_reason.value if self._kill_switch_reason else 'unknown'}",
+            )
+        return RiskCheckResult(approved=True)
+
+    def _check_do_not_trade_symbols(self, order: OrderRequest) -> RiskCheckResult:
+        """Reject any order for a symbol on the static DO_NOT_TRADE_SYMBOLS
+        halt list (backtest/signals.py).
+
+        That blocklist already forces NO_TRADE at signal-generation time,
+        but nothing previously stopped a caller from building an
+        OrderRequest directly and routing it straight to check_order() --
+        e.g. POST /strategies/rl/deploy's RLExecutor path bypasses the
+        signal-generation layer entirely (PRB-03, 2026-07-29 prod-readiness
+        audit). check_order() is the single choke point every current and
+        future order-submission call site shares, so the gate belongs here.
+        """
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+        symbol = order.symbol.upper()
+        if symbol in DO_NOT_TRADE_SYMBOLS:
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"{symbol} is on the DO_NOT_TRADE_SYMBOLS halt list "
+                    "(backtest/signals.py) - trading is blocked for this symbol"
+                ),
+            )
+        return RiskCheckResult(approved=True)
+
+    def _check_paper_config_enabled(self, order: OrderRequest) -> RiskCheckResult:
+        """Reject any order for a symbol whose backtest/paper_config.py entry
+        has enabled=False.
+
+        paper_config.enabled records that a strategy is NOT currently
+        authorized (gate v2 FAIL, config<->verdict desync, or research
+        explicitly parked it) -- e.g. MGC_PAPER_CONFIG has carried
+        enabled=False since 2026-06-26. backtest.gate_v2_policy's
+        is_strategy_authorized() already reads this flag and IS consulted by
+        approval/service.py's ensure_approval_allowed() (the manual /
+        messaging-bot approval path via approval_router.py). But
+        routers/approval_queue_router.py's POST /{candidate_id}/approve
+        endpoint -- the autonomous-scheduler's own candidate queue, fed by
+        scheduler/pipeline_autonomous.py reading AUTONOMOUS_ACTIVE_SYMBOLS
+        directly from env, independent of paper_config.py entirely -- never
+        calls is_strategy_authorized() at all. That parallel path goes
+        straight from the pipeline_approval_queue table to
+        safety_layer.submit_paper_order(), so a symbol disabled in
+        paper_config.py could still reach the broker through it (PRB-22,
+        2026-07-29 prod-readiness audit: MGC kept placing paper trades for
+        over a month after being marked enabled=False). check_order() is the
+        one choke point every current and future order-submission call site
+        shares -- submit_paper_order() calls it directly, and PRB-01's
+        call-graph audit confirmed every other broker-facing call site
+        (IBKRExecutor, SchwabConnector, IBGatewayConnector) does too -- so
+        the gate belongs here rather than duplicated per-approval-router.
+
+        Symbols with no PAPER_CONFIGS entry at all (equities, options, and
+        anything outside the MCL/MNQ/MGC/MES futures set) are unaffected --
+        this only blocks a symbol that HAS an entry explicitly marked
+        disabled, never the absence of an entry.
+        """
+        from backtest.paper_config import PAPER_CONFIGS  # noqa: PLC0415 — lazy, cycle-free
+
+        symbol = order.symbol.upper()
+        cfg = PAPER_CONFIGS.get(symbol)
+        if cfg is not None and not cfg.get("enabled", False):
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"{symbol} paper_config.enabled=False (backtest/paper_config.py) "
+                    "- trading is disabled for this symbol pending re-authorization"
+                ),
             )
         return RiskCheckResult(approved=True)
 
@@ -1289,6 +1412,8 @@ class SafetyLayer:
         # Run sequential checks, return early on failure
         for check_fn in [
             lambda: self._check_kill_switch(),
+            lambda: self._check_do_not_trade_symbols(order),
+            lambda: self._check_paper_config_enabled(order),
             lambda: self._check_gating_conditions(),
             lambda: self._check_promotion_gate(order),
             lambda: self._check_daily_loss_limit(portfolio_equity),
@@ -1486,6 +1611,25 @@ class SafetyLayer:
             for w in risk_result.warnings:
                 logger.warning("submit_paper_order safety warning (order allowed): %s", w)
 
+        # â”€â”€ 2b. Apply any risk-layer size adjustment (e.g. loss-tracker) â”€â”€â”€â”€â”€
+        # check_order() may return an adjusted_order with a reduced quantity
+        # (loss-tracker de-risking after consecutive losses). The ACTUAL order
+        # sent to the broker/paper-fill path -- entry AND its linked stop leg
+        # -- must reflect that reduced size, not the caller's original
+        # `quantity`. Discarding adjusted_order here previously meant the
+        # safety layer believed it had de-risked while full-size orders still
+        # went out (PRB-01, 2026-07-29 prod-readiness audit).
+        final_order = risk_result.adjusted_order or order
+        final_quantity = abs(int(final_order.quantity))
+        if final_quantity != quantity:
+            logger.warning(
+                "submit_paper_order: risk-adjusted size %d -> %d for symbol=%s action=%s",
+                quantity,
+                final_quantity,
+                symbol,
+                action,
+            )
+
         # â”€â”€ 3. Route to IB Gateway if available â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if self._ib_gateway is None:
             logger.info(
@@ -1493,13 +1637,14 @@ class SafetyLayer:
                 "(dry-run mode). symbol=%s action=%s qty=%d",
                 symbol,
                 action,
-                quantity,
+                final_quantity,
             )
             return {
                 "approved": True,
                 "reason": "Safety checks passed - IB gateway not attached (dry-run)",
                 "order_id": None,
                 "routed_to_ib": False,
+                "quantity": final_quantity,
             }
 
         if not self._ib_gateway.is_connected():
@@ -1508,20 +1653,21 @@ class SafetyLayer:
                 "symbol=%s action=%s qty=%d",
                 symbol,
                 action,
-                quantity,
+                final_quantity,
             )
             return {
                 "approved": True,
                 "reason": "Safety checks passed - IB gateway not connected",
                 "order_id": None,
                 "routed_to_ib": False,
+                "quantity": final_quantity,
             }
 
         try:
             order_id = await self._ib_gateway.place_paper_order(
                 symbol=symbol,
                 action=action_upper,
-                quantity=quantity,
+                quantity=final_quantity,
                 order_type=order_type.upper(),
                 limit_price=limit_price,
             )
@@ -1532,7 +1678,7 @@ class SafetyLayer:
                 await self._ib_gateway.place_paper_order(
                     symbol=symbol,
                     action=stp_action,
-                    quantity=quantity,
+                    quantity=final_quantity,
                     order_type="STP",
                     aux_price=stop_price,
                     parent_order_id=order_id,
@@ -1542,7 +1688,7 @@ class SafetyLayer:
                 "qty=%d order_type=%s order_id=%s",
                 symbol,
                 action_upper,
-                quantity,
+                final_quantity,
                 order_type.upper(),
                 order_id,
             )
@@ -1551,6 +1697,7 @@ class SafetyLayer:
                 "reason": "Order submitted to IB Gateway (paper trading)",
                 "order_id": str(order_id) if order_id is not None else None,
                 "routed_to_ib": True,
+                "quantity": final_quantity,
             }
         except Exception as exc:
             logger.error(
@@ -1564,6 +1711,7 @@ class SafetyLayer:
                 "reason": f"Safety checks passed but IB Gateway raised: {exc}",
                 "order_id": None,
                 "routed_to_ib": False,
+                "quantity": final_quantity,
             }
 
     async def submit_paper_bracket_order(
@@ -1769,12 +1917,19 @@ class SafetyLayer:
         entry_id = entry_res["order_id"]
         child_action = "SELL" if action.upper() == "BUY" else "BUY"
 
+        # submit_paper_order() may have risk-adjusted (loss-tracker) the entry
+        # down from `quantity` (the caller's requested size). The child STP/TP
+        # legs MUST match the entry's actual filled size -- a full-size stop
+        # protecting a reduced-size entry would (on trigger) sell more than is
+        # held, opening an unintended new position in the opposite direction.
+        actual_quantity = entry_res.get("quantity") or quantity
+
         # --- Child STP (stop-loss) ---
         try:
             stp_id_raw = await self._ib_gateway.place_paper_order(
                 symbol=symbol,
                 action=child_action,
-                quantity=quantity,
+                quantity=actual_quantity,
                 order_type="STP",
                 limit_price=None,
                 aux_price=stop_price,
@@ -1844,7 +1999,7 @@ class SafetyLayer:
                 tp_id_raw = await self._ib_gateway.place_paper_order(
                     symbol=symbol,
                     action=child_action,
-                    quantity=quantity,
+                    quantity=actual_quantity,
                     order_type="LMT",
                     limit_price=float(target_price),
                     aux_price=None,

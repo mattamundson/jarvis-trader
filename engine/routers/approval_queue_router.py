@@ -441,6 +441,35 @@ async def approve_candidate(
         )
 
     symbol = row["symbol"]
+
+    # Gate v2 verdict authorization (PRB-22 sibling gap, found 2026-08-01): this
+    # autonomous-scheduler approve path never called gate_v2_policy.is_strategy_authorized(),
+    # unlike the manual/messaging-bot path in approval.service.ensure_approval_allowed(). PRB-22
+    # (2026-07-29) closed the "enabled=False but still trades" half of this gap by adding an
+    # enabled-boolean check to safety_layer.check_order(), but that check only reads the
+    # PAPER_CONFIGS[symbol]["enabled"] flag -- it does not re-derive whether the specific
+    # strategy's gate v2 verdict is a fresh PASS. A symbol can have enabled=True (as MES's
+    # sma_trend config does, deliberately, per its own comment) while its verdict file is
+    # INSUFFICIENT_SAMPLE/FAIL/stale, and this path would submit the order anyway. Mirrors the
+    # exact check approval.service.ensure_approval_allowed() already runs for the manual path.
+    try:
+        from backtest.gate_v2_policy import is_strategy_authorized
+
+        _authorized, _reason = is_strategy_authorized(symbol)
+        if not _authorized:
+            _audit("approve_refused_gate_v2", candidate_id, {"symbol": symbol, "reason": _reason})
+            raise HTTPException(
+                409,
+                detail=f"{symbol} is not authorized for paper orders: {_reason}",
+            )
+    except HTTPException:
+        raise
+    except Exception as _gate_exc:
+        logger.warning(
+            "ApprovalQueue: gate_v2_policy.is_strategy_authorized check raised (non-blocking): %s",
+            _gate_exc,
+        )
+
     direction = row["direction"]
 
     # Derive entry price: caller override > pipeline snapshot > reject

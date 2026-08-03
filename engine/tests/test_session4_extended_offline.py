@@ -314,10 +314,10 @@ class TestSession4ExtendedOffline(unittest.TestCase):
         body = r.json()
         self.assertIn("symbols", body, f"Response missing 'symbols' field. Body: {body}")
 
-    # ── POST /portfolio/import/trades — over-limit validation ─────────────────
+    # ── POST /portfolio/import/trades — over-limit, RETIRED (D3-02) ─────────
 
     def test_import_trades_over_limit(self) -> None:
-        """POST /portfolio/import/trades with >1000 trades must return HTTP 400."""
+        """POST /portfolio/import/trades — retired, returns 410 even for an over-limit payload."""
         with patch.object(main_mod, "db_manager", self._db_mock):
             r = client.post(
                 "/portfolio/import/trades",
@@ -326,8 +326,8 @@ class TestSession4ExtendedOffline(unittest.TestCase):
             )
         self.assertEqual(
             r.status_code,
-            400,
-            f"Expected 400 for >1000-trade payload, got {r.status_code}. Body: {r.text}",
+            410,
+            f"Expected 410 (retired), got {r.status_code}. Body: {r.text}",
         )
 
     # ── POST /notifications/whatsapp/test ─────────────────────────────────────

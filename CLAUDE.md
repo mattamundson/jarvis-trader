@@ -1,9 +1,11 @@
 # jarvis-trader — project memory
 
 AI-powered futures & options trading engine for Matt Morrison.
-Capital $10K total, $5K/instrument. Active paper instruments: MES + MGC (Tier-3 auth
-2026-05-24); MCL + MNQ are HALTED (`DO_NOT_TRADE_SYMBOLS`). `engine/CLAUDE.md` "Active
-Instruments" is the authoritative status table. Paper mode on IB Gateway port 4002.
+Capital $10K total, $5K/instrument. Active paper instrument: MES (Tier-3 auth 2026-05-24).
+MCL, MNQ, M2K, and MGC are HALTED (`DO_NOT_TRADE_SYMBOLS`) — MGC joined 2026-07-31 after
+the honest-data-drain DSR correction invalidated its 2026-05-24 gate-v2 PASS.
+`engine/CLAUDE.md` "Active Instruments" is the authoritative status table. Paper mode on
+IB Gateway port 4002.
 
 ## Read first (in order)
 

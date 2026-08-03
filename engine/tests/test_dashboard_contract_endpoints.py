@@ -26,7 +26,7 @@ def test_strategy_c_metrics_maps_keys_and_rescales_units(tmp_path, monkeypatch):
                 "full": {
                     "cagr": 17.09, "sharpe": 1.42, "sortino": 2.1, "calmar": 0.9,
                     "max_dd_close_pct": 12.5, "ann_vol": 18.0, "win_rate_pct": 56.0,
-                    "final_equity": 24700.0, "n_weeks": 260,
+                    "final_equity": 24700.0, "final_multiple_x": 2.47, "n_weeks": 260,
                 },
                 "is_period": {"cagr": 20.0, "sharpe": 1.6, "max_dd_close_pct": 10.0},
                 "oos_period": {"cagr": 15.0, "sharpe": 1.3, "max_dd_close_pct": 14.0},
@@ -52,6 +52,11 @@ def test_strategy_c_metrics_maps_keys_and_rescales_units(tmp_path, monkeypatch):
     # non-percent passthrough
     assert fp["sharpe"] == 1.42
     assert fp["final_equity"] == 24700.0
+    # GT-12: final_equity (dollar figure) and final_multiple_x (equity-curve
+    # multiple, e.g. "2.47x") are distinct fields — never conflate them. The
+    # dashboard's "Final Equity" tile must render final_equity, not this one.
+    assert fp["final_multiple_x"] == 2.47
+    assert fp["final_equity"] != fp["final_multiple_x"]
     # retention mapped + rescaled
     oos = out["out_of_sample"]
     assert oos["sharpe_retention"] == 0.81

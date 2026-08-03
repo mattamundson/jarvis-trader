@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import useSWR from "swr";
-import { fetchEngine, postEngine } from "@/lib/api";
+import { postEngine } from "@/lib/api";
+import { executionStatus } from "@/lib/executionPath";
 import {
   Activity,
   AlertTriangle,
@@ -23,6 +24,7 @@ import {
   activateKillSwitch,
   deactivateKillSwitch,
   resetDailyPnl,
+  resolvePaperMode,
   type KillSwitchStatus,
   type SafetyConfig,
   type IBGatewayStatus,
@@ -82,180 +84,6 @@ function ConfigRow({
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs">{displayValue}</span>
     </div>
-  );
-}
-
-// ── Risk Settings Panel ───────────────────────────────────────────────────
-
-interface RiskConfig {
-  daily_loss_limit: number;
-  max_drawdown_pct: number;
-  max_contracts: number;
-  risk_per_trade_pct: number;
-  atr_stop_multiplier: number;
-  atr_target_multiplier: number;
-}
-
-interface RiskSettingsResponse {
-  config: RiskConfig;
-  circuit_breakers: Record<string, unknown>;
-  editable_keys: string[];
-}
-
-async function fetchRiskSettings(): Promise<RiskSettingsResponse> {
-  return fetchEngine<RiskSettingsResponse>("/settings/risk");
-}
-
-async function postRiskSettings(payload: Partial<RiskConfig>): Promise<{
-  updated: Partial<RiskConfig>;
-  errors: Record<string, string>;
-  count: number;
-}> {
-  return postEngine<{
-    updated: Partial<RiskConfig>;
-    errors: Record<string, string>;
-    count: number;
-  }>("/settings/risk", payload);
-}
-
-function RiskSettingsPanel() {
-  const [config, setConfig] = useState<RiskConfig | null>(null);
-  const [form, setForm] = useState<Partial<RiskConfig>>({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await fetchRiskSettings();
-      setConfig(data.config);
-      setForm(data.config);
-    } catch {
-      setFeedback({ ok: false, msg: "Failed to load risk settings from engine." });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Load on mount
-  useEffect(() => { load(); }, [load]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setFeedback(null);
-    try {
-      const result = await postRiskSettings(form);
-      if (result.count > 0 && Object.keys(result.errors).length === 0) {
-        setFeedback({ ok: true, msg: `Saved ${result.count} setting(s).` });
-        setConfig((prev) => (prev ? { ...prev, ...result.updated } : prev));
-      } else if (Object.keys(result.errors).length > 0) {
-        const msgs = Object.entries(result.errors)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join("; ");
-        setFeedback({ ok: false, msg: `Errors — ${msgs}` });
-      } else {
-        setFeedback({ ok: true, msg: "No changes." });
-      }
-    } catch (err) {
-      setFeedback({ ok: false, msg: String(err) });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleChange(key: keyof RiskConfig, raw: string) {
-    const prev = config?.[key];
-    let parsed: number = parseFloat(raw);
-    if (key === "max_contracts") parsed = parseInt(raw, 10);
-    if (isNaN(parsed)) return;
-    setForm((f) => ({ ...f, [key]: parsed }));
-    void prev; // suppress unused warning
-  }
-
-  const fields: { key: keyof RiskConfig; label: string; step: string; min: string; max: string }[] = [
-    { key: "daily_loss_limit", label: "Daily Loss Limit ($)", step: "10", min: "1", max: "100000" },
-    { key: "max_drawdown_pct", label: "Max Drawdown (0–1)", step: "0.01", min: "0.01", max: "1.0" },
-    { key: "max_contracts", label: "Max Contracts (1–2)", step: "1", min: "1", max: "2" },
-    { key: "risk_per_trade_pct", label: "Risk Per Trade (0–0.05)", step: "0.001", min: "0.001", max: "0.05" },
-    { key: "atr_stop_multiplier", label: "ATR Stop Multiplier (0.1–3.0)", step: "0.05", min: "0.1", max: "3.0" },
-    { key: "atr_target_multiplier", label: "ATR Target Multiplier (0.1–5.0)", step: "0.05", min: "0.1", max: "5.0" },
-  ];
-
-  return (
-    <details className="rounded-xl border border-border bg-card">
-      <summary className="flex items-center justify-between px-5 py-3.5 cursor-pointer select-none list-none">
-        <div className="flex items-center gap-2">
-          <Settings className="h-4 w-4 text-accent" />
-          <span className="text-sm font-semibold text-foreground">Risk Limits</span>
-        </div>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Edit circuit breaker thresholds
-        </span>
-      </summary>
-
-      <div className="px-5 pb-5 pt-1 space-y-4 border-t border-border/50">
-        {loading && (
-          <div className="space-y-2 animate-pulse">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-9 w-full bg-muted rounded-lg" />
-            ))}
-          </div>
-        )}
-
-        {!loading && (
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {fields.map(({ key, label, step, min, max }) => (
-              <div key={key} className="flex items-center gap-3">
-                <label className="w-52 shrink-0 text-xs text-muted-foreground">
-                  {label}
-                </label>
-                <input
-                  type="number"
-                  step={step}
-                  min={min}
-                  max={max}
-                  value={form[key] ?? ""}
-                  onChange={(e) => handleChange(key, e.target.value)}
-                  className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-              </div>
-            ))}
-
-            {feedback && (
-              <p
-                className={`text-xs rounded-lg px-3 py-2 ${
-                  feedback.ok
-                    ? "bg-bull/10 text-bull"
-                    : "bg-bear/10 text-bear"
-                }`}
-              >
-                {feedback.msg}
-              </p>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex-1 rounded-lg bg-accent/10 border border-accent/30 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Save Risk Settings"}
-              </button>
-              <button
-                type="button"
-                onClick={load}
-                disabled={loading || saving}
-                className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
-              >
-                Reset
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </details>
   );
 }
 
@@ -519,12 +347,22 @@ function IBGatewayPanel({
   data: IBGatewayStatus | undefined;
   config: SafetyConfig | undefined;
 }) {
-  // Prefer execution-connector state when /health exposes it (newer engines).
-  // Falls back to legacy ibkr_connected (OR of execution + data) on older engines.
-  // The execution path is what actually routes orders — this surface needs to
-  // reflect that, not the data-feed connector that's separately healthy.
-  const connected = (data?.ibkr_execution_connected ?? data?.ibkr_connected) ?? false;
-  const paperMode = config?.ibkr_paper_mode ?? data?.paper_mode ?? true;
+  // D3-01: `ibkr_execution_connected` / `ibkr_connected` are cached connector
+  // booleans that go true the instant the TCP socket to the paper Gateway is
+  // up — they say nothing about whether an order can reach a broker. The
+  // engine's own /health also exposes an honest `execution_path` probe
+  // (`{ simulated, broker_ack, detail }`) that can read `simulated: true`
+  // while both legacy booleans still read true. Route through
+  // executionStatus() so this surface reflects the honest state, not the
+  // legacy connector flags.
+  const exec = executionStatus(data);
+  const connected = exec.brokerReachable;
+  // GT-13: resolvePaperMode() prefers the /health-derived paper_mode (live
+  // IB Gateway connection) over the config snapshot, and flags disagreement
+  // instead of letting a stale `ibkr_paper_mode: false` silently win via `??`.
+  const { paperMode, mismatch: paperModeMismatch } = resolvePaperMode(config, data);
+  const configPaperMode = config?.ibkr_paper_mode;
+  const healthPaperMode = data?.paper_mode;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 space-y-4">
@@ -533,22 +371,24 @@ function IBGatewayPanel({
       <div className="flex items-center gap-4">
         <div
           className={`flex h-12 w-12 items-center justify-center rounded-full ${
-            connected ? "bg-bull/10" : "bg-muted"
+            exec.tone === "bull" ? "bg-bull/10" : exec.tone === "warn" ? "bg-warn/10" : "bg-muted"
           }`}
+          title={exec.detail}
         >
           {connected ? (
             <Wifi className="h-6 w-6 text-bull" />
           ) : (
-            <WifiOff className="h-6 w-6 text-muted-foreground" />
+            <WifiOff className={`h-6 w-6 ${exec.tone === "warn" ? "text-warn" : "text-muted-foreground"}`} />
           )}
         </div>
         <div>
           <p
             className={`font-semibold ${
-              connected ? "text-bull" : "text-muted-foreground"
+              exec.tone === "bull" ? "text-bull" : exec.tone === "warn" ? "text-warn" : "text-muted-foreground"
             }`}
+            title={exec.detail}
           >
-            {connected ? "Connected" : "Disconnected"}
+            {exec.label}
           </p>
           <div className="flex items-center gap-2 mt-0.5">
             {paperMode && (
@@ -562,6 +402,22 @@ function IBGatewayPanel({
           </div>
         </div>
       </div>
+
+      {paperModeMismatch && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-bear/40 bg-bear/10 px-3 py-2 text-xs text-bear"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            Paper/live mode disagreement: config reports{" "}
+            <strong>{configPaperMode ? "paper" : "live"}</strong>, but the live IB
+            Gateway connection (/health) reports{" "}
+            <strong>{healthPaperMode ? "paper" : "live"}</strong>. Displaying the
+            /health-derived value below — verify before trading.
+          </span>
+        </div>
+      )}
 
       <div className="space-y-0">
         <ConfigRow label="Host" value={config?.ibkr_host ?? "—"} mono />
@@ -938,9 +794,6 @@ export default function SettingsPage() {
             <CircuitBreakerSummary data={cbData} />
           </div>
         </div>
-
-        {/* Risk Limits — full width, collapsible */}
-        <RiskSettingsPanel />
 
         {/* WhatsApp alert status */}
         <WhatsAppStatusCard />
