@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _BASE_DIR = Path(__file__).parent.parent.parent
 _CLI = _BASE_DIR / "tradingview-mcp" / "src" / "cli" / "index.js"
+_LAUNCHER = Path(r"C:\Users\mattm\master-jarvis\launch-tv-cdp.ps1")
 _SYMBOL = "MES1!"
 _TIMEFRAME = "5"
 _BARS_LIMIT = 300
@@ -49,11 +50,13 @@ class TradingViewFeed:
     def __init__(
         self,
         cli: Optional[Path] = None,
+        launcher: Optional[Path] = None,
         symbol: str = _SYMBOL,
         timeframe: str = _TIMEFRAME,
         limit: int = _BARS_LIMIT,
     ) -> None:
         self.cli = cli or _CLI
+        self.launcher = launcher or _LAUNCHER
         self.symbol = symbol
         self.timeframe = timeframe
         self.limit = limit
@@ -91,6 +94,36 @@ class TradingViewFeed:
         if timeframe.endswith("m"):
             return timeframe[:-1]
         return timeframe
+
+    def _self_heal(self) -> bool:
+        launcher = self.launcher
+        if not launcher.exists():
+            logger.warning("[TradingViewFeed] launcher not found at %s", launcher)
+            return False
+        try:
+            subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(launcher),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except Exception as exc:
+            logger.warning("[TradingViewFeed] self-heal launch failed: %s", exc)
+            return False
+
+        deadline = time.time() + _CHART_STABILIZE_TIMEOUT_SECONDS
+        while time.time() < deadline:
+            if self.is_available():
+                return True
+            time.sleep(_CHART_STABILIZE_POLL_INTERVAL_SECONDS)
+        return False
 
     def _stabilize_chart(self) -> bool:
         deadline = time.time() + _CHART_STABILIZE_TIMEOUT_SECONDS
@@ -134,7 +167,10 @@ class TradingViewFeed:
         limit = limit or self.limit
 
         if not self.is_available():
-            return pd.DataFrame()
+            logger.info("[TradingViewFeed] CDP unavailable, attempting self-heal...")
+            if not self._self_heal() or not self.is_available():
+                logger.warning("[TradingViewFeed] self-heal failed; returning empty bars")
+                return pd.DataFrame()
 
         try:
             set_symbol = self._run("symbol", symbol)
