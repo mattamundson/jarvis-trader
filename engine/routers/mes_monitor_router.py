@@ -57,16 +57,35 @@ def _default_suggestions_csv() -> Path:
 )
 async def get_mes_status(_api_key: str = Depends(verify_api_key)):
     """
-    Return current monitor status.
-    In initial implementation, this is a conservative placeholder.
+    Return current monitor status, reading from the last recorded suggestion.
     """
+    csv_path = _default_suggestions_csv()
+    last_price = None
+    last_signal = None
+    last_confidence = None
+    last_update_utc = None
+
+    if csv_path.exists():
+        try:
+            with csv_path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+                if rows:
+                    last_row = rows[-1]
+                    last_price = float(last_row.get("price")) if last_row.get("price") else None
+                    last_signal = last_row.get("direction")
+                    last_confidence = float(last_row.get("confidence")) if last_row.get("confidence") else None
+                    last_update_utc = last_row.get("timestamp")
+        except Exception as exc:
+            logger.warning("Failed to read last suggestion for status: %s", exc)
+
     return MonitorStatusResponse(
         symbol="MES",
         state="active",
-        last_price=None,
-        last_signal=None,
-        last_confidence=None,
-        last_update_utc=datetime.now(timezone.utc).isoformat(),
+        last_price=last_price,
+        last_signal=last_signal,
+        last_confidence=last_confidence,
+        last_update_utc=last_update_utc or datetime.now(timezone.utc).isoformat(),
     )
 
 
