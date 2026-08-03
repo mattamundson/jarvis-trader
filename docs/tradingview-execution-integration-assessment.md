@@ -28,7 +28,7 @@ the bot's design breaks:
 | `REQUIRE_HUMAN_APPROVAL = True` — every trade | Fires autonomously on a cron; no human in the loop |
 | Safety layer is **hardcoded Python**, never LLM | An LLM one-shot prompt makes the go/no-go call |
 | Orders route **only** engine → IB Gateway paper (4002) | Routes to crypto exchange REST APIs |
-| Instruments are futures (MES/MGC active) | Crypto pairs (BTCUSDT, …) |
+| Instruments are futures (MES active; MGC/MNQ/MCL halted, `DO_NOT_TRADE_SYMBOLS`) | Crypto pairs (BTCUSDT, …) |
 | No credentials in-repo; `.env` gitignored | Ships `BITGET_API_KEY`/`SECRET`/`PASSPHRASE` env contract |
 
 This is not a "tighten the config" gap — the bot's *architecture* (LLM-decided, autonomous,
