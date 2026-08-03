@@ -88,8 +88,11 @@ pre-2026-04-02, all folded into the REJECTED verdict above); QQQ/AAPL/TSLA have 
 **Net: QQQ, AAPL, and TSLA are auto-submitting live paper orders with no gate-v2/WFE validation on
 file at all — not a failing verdict, an absent one. SPY is auto-submitting despite an explicit
 REJECTED verdict.** This is a documentation-only correction (this PR does not change routing,
-config, or gating behavior); whether these four symbols should keep trading given the above is
-Amo's call, not resolved here.
+config, or gating behavior).
+
+**Decision (Amo, 2026-08-03): keep all four names (SPY, QQQ, AAPL, TSLA) trading as-is.** No
+routing/config change made or requested — this is an explicit, informed acceptance of the gap
+above, not a silent one. Revisit if a future gate-v2/WFE run actually fails one of these four.
 
 ### Validation-only lifecycle
 
