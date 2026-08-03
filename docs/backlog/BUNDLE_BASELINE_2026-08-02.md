@@ -112,3 +112,45 @@ to fix. `/validation` First Load JS is unchanged: **201 kB before, 201 kB after*
 (13 statically-mounted widgets, zero code-splitting), but converting it to `dynamic()`
 imports is a materially larger change than the "dead duplicate import" defect this task
 was scoped to, so it was left for a follow-up rather than done unscoped here.
+
+## P5-3: /analysis, /trades/[id]/review, /today
+
+Same defect-class check as P5-1: none of these 3 routes had any `dynamic()` call being
+negated by a static import — `/analysis` had exactly one pre-existing `dynamic()`
+(`PriceTerrain3D`, correctly deferring three.js) and no defect; `/today` and
+`/trades/[id]/review` had zero `dynamic()` calls to begin with. So this was purely the
+"genuinely missed `next/dynamic` opportunity" branch of the spec, not the double-import
+defect class.
+
+All three routes statically imported a `lightweight-charts`-backed chart component that
+is only meaningful after client-side data has loaded (`PriceChartPanel` on `/analysis`,
+`CandlestickChart` directly on `/trades/[id]/review`, `MarketChart` on `/today`) —
+`/trades/[id]/review` additionally statically imported `ExcursionPanel` and
+`EntryTimingScenarios`, both gated behind `Boolean(t.symbol)` at render time (i.e. dead
+weight until the trade record itself has loaded). Converted all of these to
+`next/dynamic(..., { ssr: false, loading: () => <skeleton /> })`, mirroring the existing
+`PriceTerrain3D` pattern already on `/analysis`.
+
+**Measurement note:** `pnpm run build` in the shared worktree `dashboard/` directory was
+racing several other wave-4 agents' concurrent builds against the same `.next` output
+dir (confirmed via `Get-CimInstance Win32_Process` — 3+ concurrent `next build`/
+`build:clean` processes at once) and failed with `ENOENT` (`.next/types/**`,
+`.next/diagnostics/framework.json`) twice in a row. Switched to the same isolated-build
+approach P5-1 used independently: source copied to a scratch dir, `node_modules`
+junctioned back in, built there to avoid the shared `.next` race.
+
+Before (measured pre-change, in-place build, before the `.next` race was diagnosed —
+this one build completed cleanly prior to peer agents piling on) vs. after (isolated
+build, matches the P5-1 table above exactly for these 3 routes since both were measured
+against the same post-fix tree state):
+
+| Route | Before | After | Delta |
+|---|---|---|---|
+| `/analysis` | 189 kB | 130 kB | **-59 kB (-31%)** |
+| `/today` | 177 kB | 119 kB | **-58 kB (-33%)** |
+| `/trades/[id]/review` | 183 kB | 126 kB | **-57 kB (-31%)** |
+
+Shared First Load JS baseline (103 kB) was identical before and after, confirming these
+are real per-route deltas, not build noise. All three exceeded the plan's own
+measurable-benefit stop rule (Phase 5.3), so all three changes were kept — no revert
+needed on this task. Commit: `c0fc3c2`.
