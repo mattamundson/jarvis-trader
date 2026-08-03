@@ -108,7 +108,7 @@ def _warn_blocked_active_symbols() -> None:
         logger.warning(
             "AUTONOMOUS_ACTIVE_SYMBOLS contains DO_NOT_TRADE symbols %s — the "
             "autonomous loop can never trade these (gated to NO_TRADE). Active "
-            "set=%s. Set %s to tradeable symbols (e.g. MES,MGC) to activate.",
+            "set=%s. Set %s to tradeable symbols (e.g. MES) to activate.",
             blocked,
             active,
             _SYMBOLS_NAME,

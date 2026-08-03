@@ -11,6 +11,7 @@ import {
   pickApprovedBacktestBaseline,
   type ScorecardBacktestBaseline,
 } from "@/lib/scorecardBaseline";
+import { PREFERRED_BASELINE_LABEL } from "@/lib/approvedSymbols";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ export function BacktestVsPaperWidget() {
               Backtest vs Paper Reality
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Backtest column from saved engine results (MCL/MNQ preferred)
+              Backtest column from saved engine results ({PREFERRED_BASELINE_LABEL} preferred)
             </p>
           </div>
           {loading && (

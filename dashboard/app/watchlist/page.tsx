@@ -32,6 +32,7 @@ import {
 } from "@/lib/honestTrades";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatPrice, formatChangePct } from "@/lib/watchlistFormatters";
 // WatchlistScanWidget and SymbolPerformanceWidget are inlined below with the
 // double-json bug fixed (those components called fetchEngine().then(r=>r.json())
 // but fetchEngine already returns parsed JSON, so r.json() threw TypeError and
@@ -371,7 +372,7 @@ const INSTRUMENT_SPECS: InstrumentSpec[] = [
     exchange: "CME Globex",
     multiplier: 2,
     tick: 0.25,
-    status: "RESEARCH",
+    status: "DO NOT TRADE",
   },
   {
     symbol: "MES",
@@ -434,23 +435,8 @@ function fetcher<T>(url: string): Promise<T> {
 }
 
 // ── Formatters ─────────────────────────────────────────────────────────────
-
-function formatPrice(price: number | null, symbol: string): string {
-  if (price == null) return "\u2014";
-  if (price >= 1000) {
-    return price.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-  return price.toFixed(2);
-}
-
-function formatChangePct(pct: number | null): string {
-  if (pct == null) return "\u2014";
-  const sign = pct >= 0 ? "+" : "";
-  return `${sign}${(pct * 100).toFixed(2)}%`;
-}
+// formatPrice / formatChangePct now live in lib/watchlistFormatters.ts
+// (GT-18 fix + unit tests -- see tests/watchlistFormatters.node.test.ts).
 
 function formatTimestamp(ts: string | undefined): string {
   if (!ts) return "\u2014";
@@ -1341,7 +1327,7 @@ export default function WatchlistPage() {
                           <td className="px-4 py-3 text-right">
                             <span className="font-mono tabular-nums text-sm text-foreground">
                               {row.last_price != null
-                                ? `$${formatPrice(row.last_price, row.symbol)}`
+                                ? `$${formatPrice(row.last_price)}`
                                 : "\u2014"}
                             </span>
                           </td>

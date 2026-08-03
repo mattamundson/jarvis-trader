@@ -589,9 +589,26 @@ async def deploy_model(
     - **model_path**: path to saved model file (without .zip extension)
     - **active**: True to deploy, False to deactivate
     """
+    from backtest.signals import DO_NOT_TRADE_SYMBOLS
     from strategies.rl_executor import RLExecutor, _executor_registry, _executor_registry_lock
 
     symbol = req.symbol.upper()
+
+    if req.active and symbol in DO_NOT_TRADE_SYMBOLS:
+        # Fast, specific 4xx before constructing an executor at all. This is
+        # a UX/latency improvement, not the safety boundary itself -- the
+        # authoritative gate is SafetyLayer.check_order()'s
+        # _check_do_not_trade_symbols() check (PRB-03), which every order
+        # this executor would ever submit must pass regardless of this
+        # earlier check's presence or correctness.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{symbol} is on the DO_NOT_TRADE_SYMBOLS halt list "
+                "(backtest/signals.py) and cannot be deployed for live "
+                "execution."
+            ),
+        )
 
     if req.active:
         # Validate model_path exists before touching the executor registry.
