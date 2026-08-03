@@ -4,6 +4,7 @@ Uses FastAPI TestClient with a mocked data_manager so no network calls are made.
 Auth is handled by main.py middleware, not the router — standalone tests skip auth checks.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import numpy as np
@@ -151,6 +152,80 @@ class TestScanEndpoint:
 
 
 # ─── /hidden-pivots/report ───────────────────────────────────────────────────
+
+
+class TestScanSingleFlight:
+    def test_returns_cached_report_when_scan_already_running(self, monkeypatch):
+        cached = hp_router_module.ScanResponse(
+            scan_time="2026-08-03T00:00:00+00:00",
+            symbols_scanned=1,
+            signals=[],
+            soh_symbols=[],
+            watch_symbols=["MCL"],
+            details=[],
+        )
+        monkeypatch.setattr(hp_router_module, "_last_scan_cache", cached)
+        monkeypatch.setattr(hp_router_module, "_scan_in_progress", True, raising=False)
+        monkeypatch.setattr(hp_router_module, "_fetch_benchmark", AsyncMock(return_value=None))
+        monkeypatch.setattr(
+            hp_router_module,
+            "_fetch_and_scan",
+            AsyncMock(side_effect=AssertionError("in-flight scan should not start another fetch")),
+        )
+
+        mock_config = MagicMock()
+        mock_config.SCAN_SYMBOLS = ["MCL", "MNQ"]
+        inject_dependencies(MagicMock(), mock_config)
+
+        response = asyncio.run(hp_router_module.scan_watchlist(timeframe="1d", benchmark="SPY"))
+
+        assert response.scan_time == cached.scan_time
+        assert response.refresh_in_progress is True
+        assert response.cache_status == "stale_while_refreshing"
+
+    def test_scan_limits_per_symbol_fetch_concurrency(self, monkeypatch):
+        active = 0
+        max_active = 0
+
+        async def slow_scan(symbol, timeframe, benchmark_df=None):
+            nonlocal active, max_active
+            active += 1
+            max_active = max(max_active, active)
+            await asyncio.sleep(0.01)
+            active -= 1
+            return hp_router_module.HPSignal(
+                symbol=symbol,
+                timeframe=timeframe,
+                pattern=None,
+                bias="WATCH",
+                trigger_price=None,
+                tight_stop=None,
+                riskier_stop=None,
+                targets=[],
+                hp_ou_level=None,
+                ema_alignment="MIXED",
+                rs_rw_score=0.0,
+                rs_rw_label="neutral",
+                soh=False,
+                oscillator_state="FLAT",
+                confidence=0.1,
+                notes="test",
+            )
+
+        monkeypatch.setattr(hp_router_module, "_last_scan_cache", None)
+        monkeypatch.setattr(hp_router_module, "_scan_in_progress", False, raising=False)
+        monkeypatch.setattr(hp_router_module, "_MAX_SCAN_CONCURRENCY", 2, raising=False)
+        monkeypatch.setattr(hp_router_module, "_fetch_benchmark", AsyncMock(return_value=None))
+        monkeypatch.setattr(hp_router_module, "_fetch_and_scan", slow_scan)
+
+        mock_config = MagicMock()
+        mock_config.SCAN_SYMBOLS = ["MCL", "MNQ", "SPY", "QQQ", "IWM"]
+        inject_dependencies(MagicMock(), mock_config)
+
+        response = asyncio.run(hp_router_module.scan_watchlist(timeframe="1d", benchmark="SPY"))
+
+        assert response.symbols_scanned == 5
+        assert max_active <= 2
 
 
 class TestReportEndpoint:
