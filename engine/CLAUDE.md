@@ -58,7 +58,7 @@
 |--------|----|-----|--------|
 | MCL | 1h | 0.82 | HALTED — hypotheses A-E exhausted 2026-05-07; `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False` |
 | MNQ | 1h | 0.57 | HALTED — trend/breakout/ORB all fail gate v2 (55 trades, 0 wins 2026-05-06/07); `DO_NOT_TRADE_SYMBOLS` |
-| MGC | 1h | 0.6842 (p_edge) | APPROVED — paper active, SMA(50,120) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24. RV filter (min_rv=9%) validated CORE gate v2 2026-05-24 (p_edge=1.0, wfo=STRONG, mc_dd=0.65%, cost=catastrophic) — NOT yet enabled; requires 60+ live MGC trades for calibration |
+| MGC | 1h | 0.6842 (p_edge, stale) | **HALTED 2026-07-31** — `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False`. 2026-05-24 Tier-3 "APPROVED" verdict did not survive the 2026-07-29 honest-data-drain DSR correction (recomputing DSR at the true combined-campaign trial count collapsed its one nominal ALT-path PASS to ~0 — `engine/scripts/recompute_mgc_trend_baseline_dsr.py`, PR #529). A 2026-07-29 session intended to halt it here but the edit was left uncommitted and lost; re-added 2026-07-31 (PR TBD) closing that gap. |
 | MES | 1h | 0.75 (p_edge) | APPROVED — paper active, SMA(60,200) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24. RV filter (min_rv=9%) validated ALT gate v2 2026-05-24 — NOT yet enabled in paper config; requires 60+ live trades for confirmation |
 | M2K | 1h | — | REJECTED — SMA trend ranks 1-3 FAIL + ORB rank1 FAIL + Donchian rank1 FAIL 2026-05-24 (dch: p_edge=0.50, wfo=WEAK, dsr=0.0; cost=catastrophic but wfo blocks ALT); 3 families exhausted at 1h |
 | SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 — **but see Equities below: trading live in paper anyway** |
