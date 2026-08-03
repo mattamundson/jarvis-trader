@@ -15,6 +15,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import risk.entry_price_sanity as sanity_mod
 import routers.orders_router as mod
 from routers.orders_router import router
 
@@ -147,6 +148,125 @@ def test_place_order_limit_without_price_rejected_by_validation():
     )
     assert r.status_code == 422
     order_router.route_order.assert_not_awaited()
+
+
+def test_place_limit_order_garbage_price_rejected_by_sanity_check(monkeypatch):
+    """Regression guard for the 2026-08-03 incident: a resting BUY 1 MES LMT
+    @1000.00 against a ~$7,610 market (87% deviation) reached IB Gateway
+    because this endpoint had zero price-sanity validation on a client-supplied
+    limit_price. The sanity check must now reject it before SafetyLayer/IB."""
+    safety = MagicMock()
+    safety.is_killed = False
+    safety.submit_paper_order = AsyncMock(return_value={"status": "placed", "fill_id": "SHOULD-NOT-FILL"})
+    order_router = MagicMock()
+    data_manager = MagicMock()
+    mod.inject_dependencies(order_router, safety_layer=safety, data_manager=data_manager)
+
+    monkeypatch.setattr(
+        sanity_mod,
+        "check_entry_price_sanity",
+        AsyncMock(
+            return_value=(
+                False,
+                "[MES] entry_price=1000.0 is 87.32 ATR units from market=7610.0; max allowed=1.00",
+            )
+        ),
+    )
+
+    r = _client().post(
+        "/orders/place",
+        json={
+            "symbol": "MES",
+            "direction": "BUY",
+            "quantity": 1,
+            "order_type": "LIMIT",
+            "limit_price": 1000.0,
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert "sanity" in r.json()["detail"].lower()
+    safety.submit_paper_order.assert_not_awaited()
+
+
+def test_place_limit_order_sane_price_passes_through(monkeypatch):
+    """A plausible limit_price must not be blocked by the new sanity gate."""
+    safety = MagicMock()
+    safety.is_killed = False
+    safety.submit_paper_order = AsyncMock(
+        return_value={"status": "placed", "fill_id": "FILL-2", "broker": "ibkr"}
+    )
+    order_router = MagicMock()
+    data_manager = MagicMock()
+    mod.inject_dependencies(order_router, safety_layer=safety, data_manager=data_manager)
+
+    monkeypatch.setattr(
+        sanity_mod, "check_entry_price_sanity", AsyncMock(return_value=(True, ""))
+    )
+
+    r = _client().post(
+        "/orders/place",
+        json={
+            "symbol": "MES",
+            "direction": "BUY",
+            "quantity": 1,
+            "order_type": "LIMIT",
+            "limit_price": 7600.0,
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "placed"
+    safety.submit_paper_order.assert_awaited_once()
+
+
+def test_place_limit_order_sanity_check_error_fails_closed(monkeypatch):
+    """An exception while verifying the price must reject the order (fail
+    closed), never fall through to submission."""
+    safety = MagicMock()
+    safety.is_killed = False
+    safety.submit_paper_order = AsyncMock(return_value={"status": "placed"})
+    order_router = MagicMock()
+    data_manager = MagicMock()
+    mod.inject_dependencies(order_router, safety_layer=safety, data_manager=data_manager)
+
+    monkeypatch.setattr(
+        sanity_mod,
+        "check_entry_price_sanity",
+        AsyncMock(side_effect=RuntimeError("data manager unreachable")),
+    )
+
+    r = _client().post(
+        "/orders/place",
+        json={
+            "symbol": "MES",
+            "direction": "BUY",
+            "quantity": 1,
+            "order_type": "LIMIT",
+            "limit_price": 7600.0,
+        },
+    )
+    assert r.status_code == 422, r.text
+    safety.submit_paper_order.assert_not_awaited()
+
+
+def test_place_market_order_skips_sanity_check(monkeypatch):
+    """MARKET orders have no client-supplied entry price to validate against
+    market — the sanity gate must not run (and must not require data_manager)."""
+    safety = MagicMock()
+    safety.is_killed = False
+    safety.submit_paper_order = AsyncMock(
+        return_value={"status": "placed", "fill_id": "FILL-3", "broker": "ibkr"}
+    )
+    order_router = MagicMock()
+    mock_check = AsyncMock(return_value=(True, ""))
+    monkeypatch.setattr(sanity_mod, "check_entry_price_sanity", mock_check)
+    mod.inject_dependencies(order_router, safety_layer=safety, data_manager=MagicMock())
+
+    r = _client().post(
+        "/orders/place",
+        json={"symbol": "MES", "direction": "BUY", "quantity": 1, "order_type": "MARKET"},
+    )
+    assert r.status_code == 200, r.text
+    mock_check.assert_not_awaited()
 
 
 def test_place_order_broker_not_connected_returns_503():
