@@ -64,10 +64,17 @@ The engine cross-check helper accepts `1m`/`5m`/`15m`/`1h`/`4h`/`1d` — each ha
 `get_bars` bar mapping (`market_data.py` IBKR `bar_size_map` and Polygon `tf_map`, both
 including `1m`). Pass the matching engine alias, `1m` included. Inputs *outside* that set are
 charted at their TV resolution but **substituted to the nearest supported alias for the
-cross-check, flagged**: `30m`/`30`→`15m` or `1h`, `1w`/`W`→`1d`. (Note: the levels route's
-`lookback_map` has no `1m` entry, so a `1m` cross-check defaults to a 200-day lookback — it
-returns a real 1m ladder but is heavier; fine for a spot check.) If an input maps to neither
+cross-check, flagged**: `30m`/`30`→`15m` or `1h`, `1w`/`W`→`1d`. If an input maps to neither
 column cleanly, report it and stop rather than guessing.
+
+**Levels lookback caveat:** the levels route's `lookback_map` only bounds `1d`/`1h`/`5m`; any
+other alias (`1m`/`15m`/`4h`) falls back to a **200-day** lookback, which at small bar sizes is
+an oversized IBKR request that can come back empty (and futures don't fall back to Polygon) →
+a 404. That is handled safely, not silently: the helper uses `curl -f`, so an empty/404 levels
+response makes it **exit 4** ("unreachable, not drift"), not fabricate a ladder. When levels are
+unavailable for the charted TF, fall back to the **price-snapshot** drift check alone and say
+levels were unavailable — never report a levels comparison you didn't get. (A future engine
+change could add bounded `1m`/`15m`/`4h` entries to that `lookback_map`; out of scope here.)
 
 ## Steps
 
