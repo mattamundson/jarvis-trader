@@ -125,9 +125,11 @@ this command.
   `?timeframe=15m` returns a 15m ladder — don't downshift it, and don't send a bare TV
   resolution (`15`/`60`/`D`), which its maps don't recognize and silently degrade to 5m bars.
   (The route's `lookback_map` only sets lookback *days* — an unlisted key just falls back to a
-  200-day lookback, it does not change the bar size.) Only if the call errors or returns empty
-  for that timeframe, retry with the nearest supported alias and note the substitution. Never
-  compare a daily ladder against an intraday chart.
+  200-day lookback, it does not change the bar size.) If the call errors or returns empty for
+  that timeframe, **report levels unavailable and keep the successful price check** — do NOT
+  retry a different alias (a substituted ladder is timeframe-mismatched and would manufacture
+  false drift, same reason the 30m/1w path is price-only). Never compare a daily ladder against
+  an intraday chart.
 
 **Provenance is required — a cross-check is only independent if the engine value came from a
 different feed than TradingView**, because the engine waterfalls to TV itself when the broker

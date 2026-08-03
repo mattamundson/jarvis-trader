@@ -103,7 +103,10 @@ state first, state what you'll change, and only proceed on an explicit instructi
 4. `capture_screenshot` if a visual helps.
 5. Summarize levels/structure. **Cross-check any price against the engine feed** for the same
    symbol/timeframe you charted, via the fixed read-only helper:
-   `bash scripts/tv-engine-crosscheck.sh <symbol> <engine_tf>`. It loads the key (exported
+   `bash scripts/tv-engine-crosscheck.sh <symbol> <engine_tf>`, where `<engine_tf>` is one of
+   `1m`/`5m`/`15m`/`1h`/`4h`/`1d` — or `none` for **price-only** mode when the charted TF has no
+   exact engine alias (`30m`, weekly): `none` checks the timeframe-independent price snapshot and
+   skips levels, rather than comparing a mismatched ladder. It loads the key (exported
    `$JARVIS_API_KEY`, else `API_KEY` from `engine/.env`; exits 3 to skip if neither resolves —
    don't report bogus drift), sends `X-API-Key`, and GETs only `/prices/snapshot` (its default
    set omits MGC) and `/hidden-pivots/levels` — no side-effecting routes. Mind the two timeframe
