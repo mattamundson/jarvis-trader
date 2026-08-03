@@ -124,6 +124,7 @@ from routers.scanner_router import router as scanner_router
 from routers.scanner_router import inject_dependencies as inject_scanner_deps
 from routers.super_engine_router import router as super_engine_router, inject_super_engine
 from routers.tradingview_router import router as tradingview_router
+from routers.mes_monitor_router import router as mes_monitor_router
 from routers.scheduler_router import router as scheduler_router
 from routers.scheduler_router import inject_scheduler as inject_scheduler_router_scheduler
 from routers.trades_router import router as trades_router
@@ -2997,6 +2998,7 @@ app.include_router(strategy_lab_router)
 app.include_router(pipeline_board_router)
 app.include_router(config_router)
 app.include_router(crypto_router)
+app.include_router(mes_monitor_router)
 app.include_router(openclaw_router)
 
 # ── WebSocket Price Feed ────────────────────────────────────────────────────────

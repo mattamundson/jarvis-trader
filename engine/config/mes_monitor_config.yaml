@@ -1,0 +1,37 @@
+mes_monitor:
+  symbol: "MES"
+  watch:
+    - symbol: "MES"
+      timeframe: "5min"
+      ibkr_contract: "MES"
+    - symbol: "ES"
+      timeframe: "5min"
+      ibkr_contract: "ES"
+  levels:
+    pullback_long_zone:
+      low: 7615
+      high: 7625
+    breakout_long_level: 7635
+    no_trade_chop_range_pct: 0.0035
+  regime:
+    vix_hard_stop: 18.0
+    vix_ideal_max: 15.0
+    news_blackout_minutes: 60
+    max_risk_per_trade: 125
+    daily_loss_limit: 375
+  alerts:
+    dispatch:
+      - discord
+      - windows_toast
+      - dashboard
+    dedup_window_seconds: 300
+    min_confidence: 0.65
+  schedule:
+    start: "08:30"
+    end: "16:45"
+    timezone: "America/Chicago"
+    scan_interval_seconds: 900
+  data:
+    primary_source: "ibkr"
+    fallback_source: "tradingview"
+    require_live: true
