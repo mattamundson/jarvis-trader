@@ -11,10 +11,13 @@
 # Usage: bash scripts/tv-engine-crosscheck.sh <SYMBOL> <ENGINE_TF>
 #   SYMBOL     jarvis symbol: MES | MGC | MNQ | MCL
 #   ENGINE_TF  engine alias:  1m | 5m | 15m | 1h | 4h | 1d  (NOT a TV resolution)
+#              OR `none` for PRICE-ONLY mode — the price snapshot is
+#              timeframe-independent, so a chart TF with no exact engine alias
+#              (e.g. 30m, weekly) passes `none` to check price and skip levels.
 set -euo pipefail
 
-SYMBOL="${1:?usage: tv-engine-crosscheck.sh <SYMBOL> <ENGINE_TF>}"
-ENGINE_TF="${2:?usage: tv-engine-crosscheck.sh <SYMBOL> <ENGINE_TF>}"
+SYMBOL="${1:?usage: tv-engine-crosscheck.sh <SYMBOL> <ENGINE_TF|none>}"
+ENGINE_TF="${2:?usage: tv-engine-crosscheck.sh <SYMBOL> <ENGINE_TF|none>}"
 BASE="${JARVIS_ENGINE_BASE:-http://localhost:8010}"
 
 # Validate BOTH args against fixed allowlists BEFORE building any URL. Without
@@ -27,8 +30,8 @@ case "$SYMBOL" in
   *) echo "refusing non-canonical symbol '$SYMBOL' (allowed: MES MGC MNQ MCL)" >&2; exit 2 ;;
 esac
 case "$ENGINE_TF" in
-  1m|5m|15m|1h|4h|1d) ;;
-  *) echo "refusing unsupported engine timeframe '$ENGINE_TF' (allowed: 1m 5m 15m 1h 4h 1d)" >&2; exit 2 ;;
+  1m|5m|15m|1h|4h|1d|none) ;;
+  *) echo "refusing unsupported engine timeframe '$ENGINE_TF' (allowed: 1m 5m 15m 1h 4h 1d | none)" >&2; exit 2 ;;
 esac
 
 # Prefer an exported key; else read API_KEY from engine/.env (AGENTS.md: the local
@@ -61,5 +64,10 @@ get() {
 
 echo "# /prices/snapshot?symbols=$SYMBOL"
 get "/prices/snapshot?symbols=$SYMBOL"
-echo "# /hidden-pivots/levels/$SYMBOL?timeframe=$ENGINE_TF"
-get "/hidden-pivots/levels/$SYMBOL?timeframe=$ENGINE_TF"
+
+if [ "$ENGINE_TF" = "none" ]; then
+  echo "# levels skipped — price-only mode (no exact engine timeframe for the charted TF)"
+else
+  echo "# /hidden-pivots/levels/$SYMBOL?timeframe=$ENGINE_TF"
+  get "/hidden-pivots/levels/$SYMBOL?timeframe=$ENGINE_TF"
+fi

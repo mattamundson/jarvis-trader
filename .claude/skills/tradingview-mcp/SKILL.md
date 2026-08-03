@@ -111,7 +111,12 @@ state first, state what you'll change, and only proceed on an explicit instructi
    wants the **engine alias** (`1m`/`5m`/`15m`/`1h`/`4h`/`1d`, e.g. `60`→`1h`, `D`→`1d`; `1m` is a
    real bar — `market_data.py` maps it for IBKR and Polygon) — a bare TV resolution reaching
    `get_bars` silently degrades to 5m bars (`market_data.py` bar maps).
-   Round-trip drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline).
+   Round-trip drift is a bug, not cosmetic (see CLAUDE.md numeric-accuracy discipline) — but
+   **apply staleness + tolerance before calling it drift**: `/prices/snapshot` is cached with a
+   60s TTL (`price_cache.py`), so an engine price can be up to ~60s behind a just-captured TV read.
+   Always allow a contract-aware tick tolerance (a few ticks for MES/MGC), plus the movement price
+   could make over the snapshot's age (`as_of` if present, else assume ≤60s); only a mismatch
+   beyond that is real drift.
    **Check provenance:** the engine waterfalls to TradingView when brokers are down
    (`/prices/snapshot` Tier-2.5 TV fallback; `get_bars` is `TV → IBKR → Polygon → CSV`). The
    **price** snapshot exposes a `source` — a cross-check is independent only when it is
