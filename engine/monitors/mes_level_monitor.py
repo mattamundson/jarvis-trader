@@ -25,7 +25,8 @@ class LevelMonitorConfig:
     pullback_low: float = 7615.0
     pullback_high: float = 7625.0
     breakout_level: float = 7635.0
-    chop_range_pct: float = 0.0035
+    chop_threshold: float = 3.5
+    min_candles: int = 1
 
 
 @dataclass(frozen=True)
@@ -53,21 +54,22 @@ class MesLevelMonitor:
 
     def evaluate(self, candles: Iterable[Candle]) -> Optional[LevelSignal]:
         recent = list(candles)
-        if not recent:
+        if len(recent) < self.config.min_candles:
+            logger.debug("Not enough candles: %s", len(recent))
             return None
 
         last = recent[-1]
         price = last.close_
-        range_size = self.config.breakout_level * self.config.chop_range_pct
-        chop_low = self.config.breakout_level - range_size
-        chop_high = self.config.breakout_level + range_size
+        recent_high = max(c.high for c in recent)
+        recent_low = min(c.low for c in recent)
+        recent_range = recent_high - recent_low
 
-        if chop_low <= price <= chop_high:
-            logger.info("MES in chop zone at %s", price)
+        if recent_range <= self.config.chop_threshold:
+            logger.info("MES in chop; recent range=%s", recent_range)
             return None
 
         if self.config.pullback_low <= price <= self.config.pullback_high:
-            confidence = 0.65 if last.close_ > last.open_ else 0.55
+            confidence = 0.65 if last.close_ >= last.open_ else 0.55
             return LevelSignal(
                 direction="long",
                 confidence=confidence,

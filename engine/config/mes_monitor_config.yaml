@@ -12,7 +12,7 @@ mes_monitor:
       low: 7615
       high: 7625
     breakout_long_level: 7635
-    no_trade_chop_range_pct: 0.0035
+    no_trade_chop_threshold: 3.5
   regime:
     vix_hard_stop: 18.0
     vix_ideal_max: 15.0

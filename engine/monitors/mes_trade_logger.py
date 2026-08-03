@@ -39,7 +39,7 @@ class MesTradeLogger:
         if not self.csv_path.exists():
             with self.csv_path.open("w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=list(MonitorSuggestion.__annotations__.keys()))
-                writer.write_header()
+                writer.writeheader()
 
     def log(self, suggestion: MonitorSuggestion) -> None:
         with self.csv_path.open("a", newline="", encoding="utf-8") as f:

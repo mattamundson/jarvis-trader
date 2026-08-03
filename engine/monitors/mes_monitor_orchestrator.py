@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -44,7 +45,7 @@ class MesMonitorOrchestrator:
         self.level_monitor = MesLevelMonitor(level_config)
         self.regime_filter = MesRegimeFilter(regime_config)
         self.dispatcher = MesAlertDispatcher(alert_dir)
-        self.logger = MesTradeLogger(suggestion_csv)
+        self.logger_ = MesTradeLogger(suggestion_csv)
 
     def run(self, candles: Iterable[Candle], regime_inputs: RegimeInputs) -> MesMonitorVerdict:
         signal: Optional[LevelSignal] = self.level_monitor.evaluate(candles)
@@ -80,7 +81,7 @@ class MesMonitorOrchestrator:
             "regime": regime.reason,
         }
         self.dispatcher.dispatch(alert)
-        self.logger.log(
+        self.logger_.log(
             MonitorSuggestion(
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 symbol="MES",
