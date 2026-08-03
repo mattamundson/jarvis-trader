@@ -823,6 +823,20 @@ async def _health_inner() -> dict:
     except Exception:
         pass
 
+    # Batch jobs (Anthropic Message Batches). Non-blocking observability only —
+    # batches are async by design, so this never contributes to `status` below.
+    # get_batch_health_summary() does sync sqlite3 I/O, so offload it like the
+    # other DB-backed reads above.
+    batch_jobs_health: dict = {}
+    try:
+        from llm.batch_client import JarvisBatchClient
+
+        batch_jobs_health = await asyncio.to_thread(
+            JarvisBatchClient().get_batch_health_summary
+        )
+    except Exception:
+        pass
+
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
 
     # Defensive read: a config missing this flag must never report live trading
@@ -864,6 +878,7 @@ async def _health_inner() -> dict:
         "brier_30d_rolling": _compute_brier_30d_rolling(),
         "pending_approvals": pending_approvals,
         "futures_sentiment": futures_sentiment,
+        "batch_jobs_health": batch_jobs_health,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
