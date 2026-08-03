@@ -61,12 +61,12 @@ fields (enforced by `engine/backtest/candidate_registry.py`) are:
   "status": "paused",
   "hypothesis": "One falsifiable sentence: what edge, on what instrument, in what regime.",
   "params": {
-    "timeframe": "5m",
-    "indicators": { "ema": 8, "rsi": 3, "vwap": "session" },
-    "entry_long":  ["price>vwap", "price>ema8", "rsi3<30"],
-    "entry_short": ["price<vwap", "price<ema8", "rsi3>70"],
-    "exit":  ["rsi3 recrosses 50", "stop 0.3%", "tp at vwap/ema8 touch"],
-    "risk":  ["<= 1R", "point-in-time only"]
+    "timeframe": "<tf the source states, e.g. 5m>",
+    "indicators": { "<name>": "<setting the source gives — omit any the source doesn't state>" },
+    "entry_long":  ["<long condition verbatim from source>", "..."],
+    "entry_short": ["<short condition verbatim from source>", "..."],
+    "exit":  ["<exit/target/stop rule from source>", "..."],
+    "risk":  ["<risk rule from source>", "point-in-time only"]
   },
   "lock_in_sample": {
     "gate_verdict": "PENDING",

@@ -144,11 +144,14 @@ feeds are down.
 **Account for staleness and tolerance before calling a mismatch drift.** `/prices/snapshot` is
 cached with a **60-second TTL** (`price_cache.py`), so an engine price can be up to ~60s behind a
 just-captured TV read — in a moving market that difference is ordinary movement, not a feed bug.
-Before flagging: use the response's freshness/`as_of` if present (else assume up to 60s old), and
-apply a **contract-aware tick tolerance** (a few ticks for MES/MGC). Only a mismatch that exceeds
-what price could plausibly move in the staleness window — or any mismatch from a *fresh*
-independent feed — is real drift worth flagging; otherwise note it as within staleness/tolerance.
-Never present a TV number as canonical without an independent-source check.
+Before flagging, **always apply a contract-aware tick tolerance** (a few ticks for MES/MGC) —
+even a fresh feed differs by a tick or two from ordinary quote timing / adjacent trades.
+Freshness only sets the *additional* movement allowance on top of that tolerance: use the
+response's `as_of`/freshness if present (else assume up to 60s old), and add the amount price
+could plausibly move over that age. A mismatch is real drift **only if it exceeds tick tolerance
++ staleness allowance** (staleness allowance is ~zero for a fresh feed); anything within that is
+ordinary quote timing, not a bug. Never present a TV number as canonical without an
+independent-source check.
 
 ## Hard constraints
 
