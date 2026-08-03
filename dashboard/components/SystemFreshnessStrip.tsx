@@ -7,6 +7,7 @@ import { useEngineWebSocketContext } from "@/lib/engine-websocket-context";
 import { StalenessIndicator } from "@/components/ui/staleness-indicator";
 import { Badge } from "@/components/ui/badge";
 import { fetchMasterStatus, aggregationBannerState } from "@/lib/masterApi";
+import { POLL_INTERVAL } from "@/lib/polling-config";
 import { cn } from "@/lib/utils";
 
 function fmtEventType(type: string | undefined): string {
@@ -45,7 +46,7 @@ export function SystemFreshnessStrip() {
   const { data: masterStatus, error: masterError, isLoading: masterLoading } = useSWR(
     "master-status",
     fetchMasterStatus,
-    { refreshInterval: 15000 },
+    { refreshInterval: POLL_INTERVAL.HEALTH },
   );
   const masterBanner = masterLoading
     ? null
