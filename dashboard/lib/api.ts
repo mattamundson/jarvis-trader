@@ -3217,3 +3217,99 @@ export interface AuctionBiasResponse {
 export async function fetchAuctionBias(symbol: string): Promise<AuctionBiasResponse> {
   return fetchEngine<AuctionBiasResponse>(`/auction/bias/${symbol}`);
 }
+
+// ── ThinkScript registry + generation (engine/routers/thinkscript_router.py) ──
+// Registry is a read-only catalog of the JARVIS-authored .ts studies backed by
+// thinkorswim-scripts/registry.yaml (engine/utils/thinkscript_registry_loader.py).
+// Generation calls the LLM-backed ThinkScriptGeneratorAgent. IMPORTANT: see the
+// honesty note on ThinkScriptGenerateResponse below before trusting a generated
+// script's "signals_included" as evidence of real technical analysis.
+
+export type ThinkScriptStatus =
+  | "ported"
+  | "orphan"
+  | "deprecated"
+  | "reference_only"
+  | "active"
+  | "experimental";
+
+export interface ThinkScriptRegistryEntry {
+  id: string;
+  /** Single .ts file, or a list for consolidated entries. */
+  file: string | string[];
+  docs: string;
+  author: string;
+  /** 0 = supporting, 1-5 = JARVIS layers. */
+  layer: number;
+  layer_name: string;
+  status: ThinkScriptStatus;
+  python_counterpart: string | null;
+  panel: "upper" | "lower" | null;
+  jarvis_signals: string[];
+  tos_inputs: Record<string, unknown>;
+}
+
+export interface ThinkScriptRegistryResponse {
+  version: number;
+  generated: string;
+  source_of_truth: Record<string, string>;
+  duplicates_to_skip: string[];
+  scripts: ThinkScriptRegistryEntry[];
+}
+
+export interface ThinkScriptWithDocs {
+  entry: ThinkScriptRegistryEntry;
+  doc_markdown: string;
+}
+
+/** GET /thinkscript/registry — full catalog of ThinkScript studies wired into JARVIS. */
+export async function fetchThinkScriptRegistry(): Promise<ThinkScriptRegistryResponse> {
+  return fetchEngine<ThinkScriptRegistryResponse>("/thinkscript/registry");
+}
+
+/** GET /thinkscript/registry/{script_id} — one entry plus its full markdown doc body. */
+export async function fetchThinkScriptRegistryEntry(
+  scriptId: string
+): Promise<ThinkScriptWithDocs> {
+  return fetchEngine<ThinkScriptWithDocs>(
+    `/thinkscript/registry/${encodeURIComponent(scriptId)}`
+  );
+}
+
+export interface ThinkScriptGenerateRequest {
+  symbol: string;
+  timeframe?: string;
+  is_futures?: boolean;
+}
+
+/**
+ * Response from POST /thinkscript/generate.
+ *
+ * HONESTY NOTE (load-bearing — do not remove without fixing the engine first):
+ * `engine/routers/thinkscript_router.py`'s `generate_thinkscript` handler wraps
+ * its call to the technical analyst in a bare `except Exception: pass`. If that
+ * call fails, generation proceeds anyway with `technical_report=None`, and this
+ * response type has NO field indicating that happened — a script can come back
+ * with a confident-looking title/description/code and zero real TA behind it,
+ * indistinguishable from a fully-grounded generation. Every caller must treat
+ * generation output as exploratory (see ExploratoryBanner on /thinkscript) until
+ * the engine ships a `technical_report_available` boolean
+ * (see docs/backlog/DASHBOARD_PUNCHLIST.md, "Engine follow-ups" section).
+ */
+export interface ThinkScriptGenerateResponse {
+  symbol: string;
+  timeframe: string;
+  title: string;
+  code: string;
+  description: string;
+  usage_instructions: string;
+  signals_included: string[];
+  timestamp: string;
+}
+
+/** POST /thinkscript/generate — LLM-backed ThinkScript study generation. */
+export async function generateThinkScript(
+  body: ThinkScriptGenerateRequest
+): Promise<ThinkScriptGenerateResponse> {
+  return postEngine<ThinkScriptGenerateResponse>("/thinkscript/generate", body);
+}

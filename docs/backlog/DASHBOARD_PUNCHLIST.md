@@ -151,3 +151,7 @@ Recorded here for traceability; full text in the plan doc.
 | D14 | Remove P3 endpoints from HTTP entirely | Yes | Deferred with Phase 11 |
 | D15 | Autonomy enforcement mechanism | Scoped `APIKeyMiddleware`, audit-only first | Deferred with Phase 11 — substantial prior art on `wip/health-assertions-mr-3.6` |
 | D16 | `enforce_admins` on master | Decide explicitly | **Decided: `true`** (confirmed live 2026-08-01) |
+
+## Engine follow-ups filed by dashboard-only agents (out of dashboard scope)
+
+- **`POST /thinkscript/generate` honesty gap** (filed 2026-08-02, agent-3, P8-thinkscript): `engine/routers/thinkscript_router.py` wraps the technical-analyst call in a bare `except Exception: pass`, so a "generated" script can ship with zero real TA behind it and `ThinkScriptGenerateResponse` gives the caller no way to detect that. Recommend the engine add a `technical_report_available: bool` field to the response so the dashboard can eventually distinguish a real vs. hollow generation; not implemented here — out of scope for a dashboard-only agent. Mitigated client-side for now via an unconditional `ExploratoryBanner` on `/thinkscript`.
