@@ -3313,3 +3313,83 @@ export async function generateThinkScript(
 ): Promise<ThinkScriptGenerateResponse> {
   return postEngine<ThinkScriptGenerateResponse>("/thinkscript/generate", body);
 }
+
+// ── MES forward experiment (GET /experiments/mes-forward/summary) ───────────
+// Mirrors engine routers/experiments_router.py. Aggregate metrics for the
+// mes_session_hypothesis forward-recorder table -- hit-rate by hypothesis
+// side plus totals. HONESTY NOTE (load-bearing): `overall_non_skip.n` /
+// `n_with_outcome` is almost always a tiny fraction of `n_rows` early in the
+// experiment's life (one row/day). Any consumer of `hit_rate` MUST render it
+// beside its own denominator (n wins of n rows with a recorded outcome) --
+// never as a bare percentage -- so a 100% hit rate over 4 rows reads as
+// exactly what it is: statistically meaningless, not a validated edge.
+export interface MesForwardSideStats {
+  n: number;
+  wins: number;
+  losses: number;
+  hit_rate: number; // 0..1 fraction
+  avg_delta: number;
+}
+
+export interface MesForwardOverallStats {
+  n: number;
+  wins: number;
+  hit_rate: number; // 0..1 fraction
+  avg_delta: number;
+}
+
+export interface MesForwardSummaryResponse {
+  n_rows: number;
+  n_with_outcome: number;
+  n_pending_outcome: number;
+  first_date: string | null;
+  last_date: string | null;
+  by_side: Record<string, MesForwardSideStats>;
+  overall_non_skip: MesForwardOverallStats;
+}
+
+/** GET /experiments/mes-forward/summary -- MES session forward-recorder aggregate. */
+export async function fetchMesForwardSummary(): Promise<MesForwardSummaryResponse> {
+  return fetchEngine<MesForwardSummaryResponse>("/experiments/mes-forward/summary");
+}
+
+// ── Engine cache stats (GET /cache/stats) ────────────────────────────────────
+// Mirrors engine routers/cache_router.py -> cache.get_cache_stats(). Read-only
+// display of the 30-minute signal-cache hit/miss counters. The router also
+// exposes POST /cache/invalidate[/{symbol}] -- intentionally never called from
+// here, this wave is read-only display only.
+export interface CacheStatsResponse {
+  cache_hits: number;
+  cache_misses: number;
+  total_accesses: number;
+  hit_rate_percent: number;
+  redis_connected: boolean;
+}
+
+/** GET /cache/stats -- signal-cache hit/miss statistics (read-only). */
+export async function fetchCacheStats(): Promise<CacheStatsResponse> {
+  return fetchEngine<CacheStatsResponse>("/cache/stats");
+}
+
+// ── Feature flags registry (GET /flags/) ─────────────────────────────────────
+// Mirrors engine routers/flags_router.py -> flags/registry.py FeatureFlags.
+// Full two-layer flag registry (config default + runtime SQLite override) with
+// per-flag metadata. READ-ONLY here by design: PUT /flags/{name} and
+// DELETE /flags/{name} exist on the engine but plan decision D9 explicitly
+// excludes any toggle/mutate UI this wave -- a toggle would lie for any flag
+// with requires_restart=true, since the change is persisted immediately but
+// inert until the engine process restarts. Do not add a write path against
+// these types without re-reading D9.
+export interface FeatureFlagInfo {
+  name: string;
+  enabled: boolean;
+  description: string;
+  category: string;
+  requires_restart: boolean;
+  source: "config" | "runtime" | string;
+}
+
+/** GET /flags/ -- full feature-flag registry (read-only; never PUT/DELETE from here). */
+export async function fetchFeatureFlags(): Promise<FeatureFlagInfo[]> {
+  return fetchEngine<FeatureFlagInfo[]>("/flags/");
+}

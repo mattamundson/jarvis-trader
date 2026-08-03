@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { fetchEngine } from "@/lib/api";
+import { FeatureFlagsReadOnlyPanel } from "@/components/FeatureFlagsReadOnlyPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import {
   Activity,
   AlertTriangle,
@@ -380,6 +382,11 @@ export default function ConfigPage() {
 
         {/* API Key Status */}
         {health && <ApiKeyStatusCard health={health} />}
+
+        {/* Feature flags registry -- read-only (Plan Phase 8 row 6, D9: no toggle) */}
+        <WidgetErrorBoundary name="Feature Flags Registry">
+          <FeatureFlagsReadOnlyPanel />
+        </WidgetErrorBoundary>
 
         {/* Category cards */}
         {data && (
