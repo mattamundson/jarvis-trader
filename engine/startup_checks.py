@@ -43,6 +43,7 @@ def run_startup_checks(config) -> list[CheckResult]:
     results.append(_check_disk_space())
     results.append(_check_paper_config_do_not_trade_sync())
     results.append(_check_autonomous_active_symbols())
+    results.append(_check_tradingview_cdp())
 
     for r in results:
         if r.status == "fail":
@@ -378,6 +379,45 @@ def _check_disk_space() -> CheckResult:
             status="warn",
             message=f"Could not check disk space: {e}",
         )
+
+
+def _check_tradingview_cdp() -> CheckResult:
+    """
+    WARN if TradingView Desktop CDP is unreachable.
+
+    This does not block boot, but makes TV Tier 0 availability visible
+    alongside the other startup checks.
+    """
+    name = "TradingView CDP"
+    try:
+        from data.startup_health import check_tradingview_cdp as _check_tv  # type: ignore[import]
+
+        result = _check_tv()
+    except Exception as exc:
+        return CheckResult(
+            name=name,
+            status="warn",
+            message=f"TradingView startup health check failed to load: {exc}",
+        )
+
+    if result.get("ok"):
+        return CheckResult(
+            name=name,
+            status="pass",
+            message=(
+                f"TradingView CDP reachable "
+                f"(symbol={result.get('symbol')}, resolution={result.get('resolution')})"
+            ),
+        )
+
+    return CheckResult(
+        name=name,
+        status="warn",
+        message=(
+            f"TradingView CDP unavailable: {result.get('error')} "
+            f"(path={result.get('path')})"
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

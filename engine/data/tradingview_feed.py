@@ -11,6 +11,7 @@ import json
 import logging
 import subprocess
 import time
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -42,6 +43,10 @@ _TIMEFRAME_MAP = {
     "1w": "W",
     "1M": "M",
 }
+
+_DISCORD_WEBHOOK = (
+    __import__("os").getenv("DISCORD_WEBHOOK_URL") or ""
+).strip()
 
 
 class TradingViewFeed:
@@ -94,6 +99,23 @@ class TradingViewFeed:
         if timeframe.endswith("m"):
             return timeframe[:-1]
         return timeframe
+
+    def _send_alert(self, message: str) -> None:
+        if not _DISCORD_WEBHOOK:
+            return
+        try:
+            payload = json.dumps({"content": message}).encode("utf-8")
+            req = urllib.request.Request(
+                _DISCORD_WEBHOOK,
+                data=payload,
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                if response.status != 204:
+                    logger.warning("[TradingViewFeed] webhook returned %s", response.status)
+        except Exception as exc:
+            logger.warning("[TradingViewFeed] webhook send failed: %s", exc)
 
     def _self_heal(self) -> bool:
         launcher = self.launcher
@@ -168,27 +190,33 @@ class TradingViewFeed:
 
         if not self.is_available():
             logger.info("[TradingViewFeed] CDP unavailable, attempting self-heal...")
+            self._send_alert("[JARVIS] TradingView CDP unavailable; attempting self-heal.")
             if not self._self_heal() or not self.is_available():
                 logger.warning("[TradingViewFeed] self-heal failed; returning empty bars")
+                self._send_alert("[JARVIS] TradingView CDP self-heal failed.")
                 return pd.DataFrame()
 
         try:
             set_symbol = self._run("symbol", symbol)
             if not isinstance(set_symbol, dict) or not set_symbol.get("success"):
                 logger.warning("[TradingViewFeed] symbol switch failed: %s", set_symbol)
+                self._send_alert("[JARVIS] TradingView symbol switch failed.")
                 return pd.DataFrame()
 
             set_tf = self._run("timeframe", timeframe)
             if not isinstance(set_tf, dict) or not set_tf.get("success"):
                 logger.warning("[TradingViewFeed] timeframe switch failed: %s", set_tf)
+                self._send_alert("[JARVIS] TradingView timeframe switch failed.")
                 return pd.DataFrame()
 
             if not self._stabilize_chart():
                 logger.warning("[TradingViewFeed] chart did not stabilize after symbol/tf change")
+                self._send_alert("[JARVIS] TradingView chart did not stabilize after symbol/timeframe change.")
                 return pd.DataFrame()
 
             frame = self._fetch_ohlcv(limit)
             if frame is None or frame.empty:
+                self._send_alert("[JARVIS] TradingView returned empty bars after successful connection.")
                 return pd.DataFrame()
 
             frame.attrs["source"] = "tradingview"
@@ -196,4 +224,5 @@ class TradingViewFeed:
             return frame
         except Exception as exc:
             logger.warning("[TradingViewFeed] get_bars failed: %s", exc)
+            self._send_alert(f"[JARVIS] TradingView feed error: {exc}")
             return pd.DataFrame()
