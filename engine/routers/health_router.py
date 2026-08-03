@@ -611,7 +611,15 @@ async def _get_ib_gateway_health() -> dict:
         }
 
     if hasattr(ib_gw, "health_check"):
-        health = await ib_gw.health_check()
+        # Bounded: health_check() has no internal timeout of its own, so with IB
+        # Gateway down (wrong port, not logged in, dead process) this can block on
+        # the connector's internal connect timeout -- observed 30s+ hang 2026-08-03,
+        # which stalls /health, /health/full, and /ib/connection-test outright.
+        # A bounded, degraded read beats an unusable liveness signal.
+        try:
+            health = await asyncio.wait_for(ib_gw.health_check(), timeout=3.0)
+        except asyncio.TimeoutError:
+            health = {"status": "timeout", "error": "health_check exceeded 3s budget"}
     else:
         is_connected = execution_connected if ib_gw is execution_ib else data_connected
         health = {
