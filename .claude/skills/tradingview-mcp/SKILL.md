@@ -34,16 +34,17 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 - **No LLM-driven safety or trade decisions.** Chart reads inform Matt; they never gate the
   kill switch, position sizing, or approval. Those stay in hardcoded `engine/risk/`.
 - **Do not auto-execute on any crypto exchange.** (See "Rejected integration" below.)
-- Active paper instruments are **MES + MGC** only. MCL + MNQ are HALTED
-  (`DO_NOT_TRADE_SYMBOLS`) — you may *read* their charts for context, never wire them to a
-  signal or alert.
+- The only active paper instrument is **MES**. **MGC, MNQ, and MCL are HALTED**
+  (`DO_NOT_TRADE_SYMBOLS`, `engine/backtest/signals.py`) — MGC was halted 2026-07-31 when the
+  DSR correction collapsed its earlier Tier-3 PASS (`engine/CLAUDE.md`). You may *read* their
+  charts for context, never wire any of them to a signal or alert.
 
 ## TradingView ↔ jarvis symbol map
 
 | jarvis | TradingView symbol   |
 |--------|----------------------|
 | MES    | `CME_MINI:MES1!`     |
-| MGC    | `COMEX_MINI:MGC1!`   |
+| MGC    | `COMEX_MINI:MGC1!` (read-only — HALTED) |
 | MNQ    | `CME_MINI:MNQ1!` (read-only — HALTED) |
 | MCL    | `NYMEX:MCL1!` (read-only — HALTED)    |
 
