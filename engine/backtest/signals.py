@@ -110,7 +110,16 @@ TREND_INSTRUMENTS = {"MES", "MGC"}
 #   MCL — Mean-Rev hyp A/B/C + SMA Trend hyp D/E all FAIL (5 hypotheses exhausted)
 #   MNQ — SMA Trend ranks 1-2 + Breakout ranks 1-7 + ORB rank 1 all FAIL
 #   M2K — SMA Trend ranks 1-2 + ORB rank 1 all FAIL
-DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
+#   MGC — added 2026-07-31 (PRB-33). The 2026-07-29 honest-data-drain loop found
+#   MGC's one nominal gate-v2 PASS was a multiple-testing artifact: recomputing
+#   DSR at the true combined-campaign trial count collapses it from 0.999 to ~0
+#   (see engine/scripts/recompute_mgc_trend_baseline_dsr.py, PR #529). A prior
+#   session (2026-07-29) intended to halt MGC by adding it here, but that edit
+#   was left uncommitted in the working tree and was lost — MGC has been
+#   protected since only by paper_config.py's softer `enabled=False` flag, not
+#   this hard blocklist. This closes that gap; do not remove without a fresh
+#   gate-v2 PASS at the corrected trial count and Amo's explicit authorization.
+DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K", "MGC"})
 
 # Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
 # Canonical active paper-trading pair per the 2026-05-24 instrument switch —
@@ -125,6 +134,19 @@ DEFAULT_BRIEFING_SYMBOLS = ("MES", "MGC")
 # files exist and the policy module reads them correctly.
 # See: memory/project_gate_v2_proposal.md, engine/backtest/gate_v2_policy.py
 _GATE_V2_ROUTING_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+# PRB-02 (2026-07-29): TREND_INSTRUMENTS route exclusively through
+# generate_sma_trend_signals() (the SMA-crossover path below). Only gate v2
+# verdicts for that SAME code path — family "trend" or a "trend_*" variant
+# (trend_rv_filter, trend_baseline, trend_adx_filter, ...) — are valid
+# evidence this specific routing is authorized. A PASS for an unrelated
+# family (e.g. "stark_gapfill_long", a completely different signal generator
+# that TREND_INSTRUMENTS never invoke) must never authorize this path — that
+# was the live bug: MES stayed "ungated" solely because
+# MES_stark_gapfill_long_rank1.json PASSed, while every trend-family verdict
+# for MES was FAIL or INSUFFICIENT_SAMPLE. See gate_v2_policy.is_ungate_eligible's
+# `family_prefixes` param and PRB-02 in ~/.claude/loops/jarvis-prod-readiness/backlog.json.
+TREND_GATE_V2_FAMILY_PREFIXES = frozenset({"trend"})
 
 
 def _is_gate_v2_routing_enforced() -> bool:
@@ -150,7 +172,10 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
       1. DO_NOT_TRADE_SYMBOLS — static blocklist, always forces NO_TRADE.
       2. Gate v2 routing enforcement (optional, env-flagged) — force NO_TRADE
          when `GATE_V2_ENFORCE_ROUTING` is set and the symbol lacks a fresh
-         PASS verdict per `gate_v2_policy.is_ungate_eligible`.
+         PASS verdict per `gate_v2_policy.is_ungate_eligible`. For
+         TREND_INSTRUMENTS this is scoped to `TREND_GATE_V2_FAMILY_PREFIXES`
+         (PRB-02) — a PASS for an unrelated strategy family can no longer
+         authorize the trend-crossover path these symbols actually trade.
 
     DO_NOT_TRADE takes precedence — MCL/MNQ stay blocked even if a
     gate_v2 PASS verdict exists. Gate v2 enforcement fails open: a missing
@@ -200,7 +225,13 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
         # for callers that never enable enforcement.
         from backtest.gate_v2_policy import is_ungate_eligible
 
-        if not is_ungate_eligible(symbol):
+        # PRB-02: TREND_INSTRUMENTS may only be authorized by a verdict for
+        # the SAME family they actually trade (trend / trend_*) — an
+        # unrelated family's PASS (e.g. a gap-fill scanner) must not
+        # authorize this path. Other routing paths keep the broader
+        # symbol-wide check until they get the same per-path audit.
+        family_prefixes = TREND_GATE_V2_FAMILY_PREFIXES if symbol in TREND_INSTRUMENTS else None
+        if not is_ungate_eligible(symbol, family_prefixes=family_prefixes):
             return _force_no_trade(result)
 
     return result

@@ -60,6 +60,11 @@ WSL_SQUAT_BACKOFF = 30        # seconds to sleep before exiting on a wslrelay po
                               # (see _is_wsl_relay) so PM2's restart_delay+min_uptime slow
                               # the crash-loop instead of hammering ~every 2s (the
                               # 81k-restart incident, 2026-07-04)
+UNIDENTIFIED_HOLDER_BACKOFF = 30  # seconds to sleep before exiting when the port holder's
+                              # name can't be resolved at all (was 0 -- the 2026-07-30
+                              # restart storm found _process_name() intermittently missing
+                              # under host load, which fails safe into this exact branch
+                              # with no backoff, unlike its WSL-squat/healthy-orphan siblings)
 PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring failure
 # Readiness gate (P0.1): the guardian launches uvicorn IN-PROCESS and blocks, so PM2
 # only ever sees the guardian PID. If uvicorn never binds / never serves /health, PM2
@@ -279,28 +284,47 @@ def _port_holders(port: int) -> list[int]:
     return sorted(pids)
 
 
-def _process_name(pid: int) -> str | None:
-    """Best-effort process name lookup. Returns None on failure."""
-    try:
-        out = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command",
-             f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | "
-             "Select-Object -ExpandProperty ProcessName"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        ).strip()
-        return out or None
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return None
+def _process_name(
+    pid: int,
+    attempts: int = 2,
+    retry_delay_s: float = 0.5,
+    sleep_fn=time.sleep,
+) -> str | None:
+    """Best-effort process name lookup. Returns None only after all attempts fail.
+
+    The 2026-07-30 restart storm found this PowerShell shell-out intermittently
+    returning no name for a real, live PID under host RAM pressure -- which made
+    the conservative orphan-check below fail safe (refuse to kill) with no retry.
+    One retry gives a transient miss a second chance before giving up.
+    """
+    for attempt in range(attempts):
+        try:
+            out = subprocess.check_output(
+                ["powershell", "-NoProfile", "-Command",
+                 f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | "
+                 "Select-Object -ExpandProperty ProcessName"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            ).strip()
+            if out:
+                return out
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        if attempt < attempts - 1:
+            sleep_fn(retry_delay_s)
+    return None
 
 
-def _looks_like_orphan_uvicorn(pid: int) -> bool:
+def _looks_like_orphan_uvicorn(name: str | None) -> bool:
     """
     Conservative check: only kill processes that look like uvicorn/python.
     Refuses to kill anything else (e.g. a debugger, Excel, etc).
+
+    Takes the already-resolved name rather than re-deriving it, so callers do a
+    single _process_name() shell-out per PID instead of two (main() used to call
+    _process_name(pid) directly, then this function called it again internally).
     """
-    name = _process_name(pid)
     if not name:
         return False
     return name.lower() in {"python", "python3.12", "python3.11", "python3.10", "uvicorn"}
@@ -458,9 +482,10 @@ def main() -> int:
         print(f"[port_guardian] port {PORT} is free", flush=True)
     else:
         for pid in holders:
-            name = _process_name(pid) or "unknown"
+            resolved_name = _process_name(pid)
+            name = resolved_name or "unknown"
             print(f"[port_guardian] port {PORT} held by PID {pid} ({name})", flush=True)
-            if not _looks_like_orphan_uvicorn(pid):
+            if not _looks_like_orphan_uvicorn(resolved_name):
                 if _is_wsl_relay(name):
                     print(
                         f"[port_guardian] port {PORT} is held by wslrelay (PID {pid}): a "
@@ -486,6 +511,13 @@ def main() -> int:
                     "REFUSING to kill. Resolve manually.",
                     flush=True,
                 )
+                # Back off before exiting non-zero so PM2's restart_delay + min_uptime
+                # slow the crash-loop instead of relaunching us immediately -- mirrors
+                # the wsl-port-squat and unkillable-healthy-orphan backoffs. This branch
+                # previously had zero backoff, which contributed to the 2026-07-30
+                # restart storm when a transient _process_name() miss on the guardian's
+                # own prior instance landed here repeatedly.
+                time.sleep(UNIDENTIFIED_HOLDER_BACKOFF)
                 return 1
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
             killed = _kill_pid(pid)

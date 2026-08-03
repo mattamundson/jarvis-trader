@@ -12,7 +12,10 @@
     "lint": "next lint",
     "test:unit": "node --test --experimental-strip-types --import ./tests/_register-alias.mjs \"tests/**/*.node.test.ts\"",
     "test:e2e": "playwright test",
+    "test:e2e:fresh": "playwright test --config=playwright.fresh.config.ts",
     "check:live": "node scripts/check-live-data.mjs",
+    "guards": "node scripts/check-guards.mjs",
+    "budget": "node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

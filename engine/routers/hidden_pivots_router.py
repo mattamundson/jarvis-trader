@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -69,6 +70,11 @@ class ScanResponse(BaseModel):
     # render the level ladder for non-armed setups. Additive; `signals` /
     # `soh_symbols` / `watch_symbols` keep their original meaning.
     details: list[HPSignal] = Field(default_factory=list)
+    # Cache/single-flight metadata. Existing dashboard consumers can ignore
+    # these additive fields; they let refresh callers know when the response is
+    # a stale-but-safe cache served while another scan is already running.
+    refresh_in_progress: bool = False
+    cache_status: str = "fresh"
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -117,6 +123,10 @@ DEFAULT_WATCHLIST = [
 ]
 
 _last_scan_cache: Optional[ScanResponse] = None
+_scan_in_progress = False
+_scan_lock: Optional[asyncio.Lock] = None
+_MAX_SCAN_CONCURRENCY = 6
+_PER_SYMBOL_SCAN_TIMEOUT_SECONDS = 20.0
 
 
 def _get_watchlist() -> list[str]:
@@ -125,6 +135,92 @@ def _get_watchlist() -> list[str]:
         if symbols:
             return list(symbols)
     return DEFAULT_WATCHLIST
+
+
+def _get_scan_lock() -> asyncio.Lock:
+    global _scan_lock
+    if _scan_lock is None:
+        _scan_lock = asyncio.Lock()
+    return _scan_lock
+
+
+def _copy_scan_response(
+    response: ScanResponse,
+    *,
+    refresh_in_progress: bool,
+    cache_status: str,
+) -> ScanResponse:
+    return response.model_copy(
+        update={
+            "refresh_in_progress": refresh_in_progress,
+            "cache_status": cache_status,
+        }
+    )
+
+
+async def _run_bounded_scans(
+    symbols: list[str],
+    timeframe: str,
+    benchmark_df=None,
+) -> list[Optional[HPSignal]]:
+    """Run per-symbol scans without stampeding the engine event loop."""
+    semaphore = asyncio.Semaphore(_MAX_SCAN_CONCURRENCY)
+
+    async def run_one(symbol: str) -> Optional[HPSignal]:
+        async with semaphore:
+            try:
+                return await asyncio.wait_for(
+                    _fetch_and_scan(symbol, timeframe, benchmark_df),
+                    timeout=_PER_SYMBOL_SCAN_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "HP scan timed out for %s/%s after %.1fs",
+                    symbol,
+                    timeframe,
+                    _PER_SYMBOL_SCAN_TIMEOUT_SECONDS,
+                )
+                return None
+
+    return await asyncio.gather(*(run_one(sym) for sym in symbols), return_exceptions=False)
+
+
+# ── Price-coverage floor (PRB-21) ───────────────────────────────────────────────
+# The HP scan (above) covers the full watchlist via get_bars(), which has its own
+# multi-tier waterfall. The dashboard's separate LIVE-PRICE ticker column goes
+# through /prices/snapshot -> MarketDataManager.get_current_price(), whose last
+# resort is a CSV backtest-cache read (Tier 5). When IBKR is down and Polygon's
+# 4-calls/60s free-tier rate limit is exhausted (engine/data/market_data.py
+# PolygonDataConnector._RATE_LIMIT), a symbol with no CSV cache has zero floor
+# and shows "--" with certainty. Only 11 of the 33 watchlist symbols have ever
+# been backtested and so only those 11 have a cache file. Rather than let the
+# other 22 poll a floor that structurally can't exist, the dashboard should only
+# poll live prices for the covered subset -- pattern/level scanning is
+# unaffected (still runs the full watchlist above). See PRB-21 for the b3
+# (Polygon batch snapshot) option ruled out: live probe against the configured
+# key returned 403 NOT_AUTHORIZED (plan doesn't include the multi-ticker
+# snapshot endpoint), and b2 (proactively seeding cache for all 33) is tracked
+# as PRB-22, a separate follow-up.
+_CSV_CACHE_DIR = Path(__file__).resolve().parent.parent / "backtest" / "cache"
+
+
+def _has_csv_price_floor(symbol: str) -> bool:
+    """True if a 1d CSV backtest-cache file exists for ``symbol``.
+
+    Mirrors the glob pattern MarketDataManager._load_csv_cache uses for its
+    Tier-5 (CSV cache) fallback inside get_current_price — kept in sync
+    deliberately rather than imported, since this only needs a cheap existence
+    check, not a bar load.
+    """
+    try:
+        return next(_CSV_CACHE_DIR.glob(f"{symbol.upper()}_*_1d.csv"), None) is not None
+    except OSError:
+        return False
+
+
+def get_price_covered_watchlist() -> list[str]:
+    """Subset of the current watchlist that has a real price-fallback floor."""
+    return [s for s in _get_watchlist() if _has_csv_price_floor(s)]
 
 
 async def _fetch_and_scan(
@@ -200,17 +296,48 @@ async def scan_watchlist(
     Scan all watchlist symbols for HiddenPivots patterns.
     Returns signals, SOH symbols, and WATCH setups.
     """
-    global _last_scan_cache
+    global _last_scan_cache, _scan_in_progress
 
     if _data_manager is None:
         raise HTTPException(status_code=503, detail="Data manager not initialized")
 
-    symbols = _get_watchlist()
-    benchmark_df = await _fetch_benchmark(benchmark, timeframe)
+    # Single-flight guard: dashboard refreshes must not stack multiple full
+    # watchlist scans while the engine is already saturated. If a cached report
+    # exists, return it immediately and let the active refresh finish.
+    if _scan_in_progress and _last_scan_cache is not None:
+        return _copy_scan_response(
+            _last_scan_cache,
+            refresh_in_progress=True,
+            cache_status="stale_while_refreshing",
+        )
 
-    # Run all scans concurrently
-    tasks = [_fetch_and_scan(sym, timeframe, benchmark_df) for sym in symbols]
-    results = await asyncio.gather(*tasks, return_exceptions=False)
+    scan_lock = _get_scan_lock()
+    waited_for_scan = scan_lock.locked()
+    if waited_for_scan and _last_scan_cache is not None:
+        return _copy_scan_response(
+            _last_scan_cache,
+            refresh_in_progress=True,
+            cache_status="stale_while_refreshing",
+        )
+
+    async with scan_lock:
+        # If this request arrived while the first scan was running and there was
+        # no cache yet, wait once and return the completed first scan instead of
+        # immediately starting a duplicate refresh.
+        if waited_for_scan and _last_scan_cache is not None:
+            return _copy_scan_response(
+                _last_scan_cache,
+                refresh_in_progress=False,
+                cache_status="fresh_after_wait",
+            )
+
+        _scan_in_progress = True
+        try:
+            symbols = _get_watchlist()
+            benchmark_df = await _fetch_benchmark(benchmark, timeframe)
+            results = await _run_bounded_scans(symbols, timeframe, benchmark_df)
+        finally:
+            _scan_in_progress = False
 
     signals = []
     soh_symbols = []
@@ -244,6 +371,24 @@ async def scan_watchlist(
     )
     _last_scan_cache = response
     return response
+
+
+@router.get("/price-coverage")
+async def get_price_coverage() -> dict[str, Any]:
+    """
+    Which watchlist symbols currently have a real live-price fallback floor
+    (PRB-21). The dashboard's live-price ticker poll should only request this
+    `covered_symbols` subset -- pattern/level scanning via /scan still covers
+    the full watchlist regardless.
+    """
+    watchlist = _get_watchlist()
+    covered = get_price_covered_watchlist()
+    covered_set = set(covered)
+    return {
+        "watchlist_size": len(watchlist),
+        "covered_symbols": covered,
+        "uncovered_symbols": [s for s in watchlist if s not in covered_set],
+    }
 
 
 @router.get("/analyze/{symbol}", response_model=HPSignal)

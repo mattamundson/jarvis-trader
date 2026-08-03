@@ -112,6 +112,12 @@ from routers.brokers_router import inject_dependencies as inject_brokers_deps
 from routers.options_router import router as options_router
 from routers.approval_router import router as approval_router
 from routers.approval_router import inject_dependencies as inject_approval_deps
+from routers.actionable_router import router as actionable_router
+from routers.actionable_router import inject_dependencies as inject_actionable_deps
+from routers.signal_outcomes_router import router as signal_outcomes_router
+from routers.signal_outcomes_router import (
+    inject_dependencies as inject_signal_outcomes_deps,
+)
 from routers.approval_queue_router import router as approval_queue_router
 from routers.approval_queue_router import inject_approval_queue_deps
 from routers.pipeline_router import router as pipeline_router
@@ -334,6 +340,7 @@ trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
 portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
 canary_manager: "CanaryManager | None" = None  # noqa: F821
 ib_data_watchdog: "IBDataWatchdog | None" = None  # noqa: F821
+ib_freshness_heartbeat: "IBFreshnessHeartbeat | None" = None  # noqa: F821
 paper_stop_monitor: "PaperStopMonitor | None" = None  # noqa: F821
 
 
@@ -447,7 +454,7 @@ async def lifespan(app: FastAPI):
         """Heavy lifting moved here to enable <10s server binding."""
         global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
         global tv_streamer, redis_trigger, trailing_stop_manager, canary_manager
-        global paper_stop_monitor, ib_data_watchdog
+        global paper_stop_monitor, ib_data_watchdog, ib_freshness_heartbeat
 
         logger.info("⏳ Starting heavy background initialization...")
 
@@ -472,11 +479,24 @@ async def lifespan(app: FastAPI):
                 if _paper_ib_ok:
                     safety_layer.attach_ib_gateway(ib_paper_connector)
                     order_router.attach_ibkr(ib_paper_connector)
-                    logger.info("✅ IBGatewayConnector (paper) connected background")
-                else:
-                    logger.warning(
-                        "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                    logger.info(
+                        "✅ %s (paper) connected + attached to order path",
+                        type(ib_paper_connector).__name__,
                     )
+                else:
+                    if getattr(settings, "IB_PAPER_BROKER_ENABLED", False):
+                        # Real gateway requested but unreachable: leave the order path
+                        # UNATTACHED (fail-closed, no orders route) and shout about it.
+                        logger.critical(
+                            "IB_PAPER_BROKER_ENABLED=1 but the REAL IB gateway failed to connect "
+                            "after 3 attempts — order path is UNATTACHED (fail-closed: no orders "
+                            "will route). Check IB Gateway on port %s.",
+                            settings.IBKR_PORT,
+                        )
+                    else:
+                        logger.warning(
+                            "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                        )
         except Exception as e:
             logger.error(f"❌ Background data/IBKR init failed: {e}")
 
@@ -549,6 +569,18 @@ async def lifespan(app: FastAPI):
             await ib_data_watchdog.start()
         except Exception as e:
             logger.warning(f"⚠️ IBDataWatchdog failed to start: {e}")
+
+        # 5.6. IB market-data freshness heartbeat. Keeps datasource:ib_gateway
+        # fresh in Redis on a fixed cadence regardless of open positions, so
+        # /system/data-integrity and the feeds_live readiness gate reflect the
+        # live IB feed instead of the dead TV scraper's stale keys.
+        try:
+            from services.ib_freshness_heartbeat import IBFreshnessHeartbeat
+
+            ib_freshness_heartbeat = IBFreshnessHeartbeat(data_manager)
+            await ib_freshness_heartbeat.start()
+        except Exception as e:
+            logger.warning(f"⚠️ IBFreshnessHeartbeat failed to start: {e}")
 
         # 6. Paper Stop-Loss Monitor (Initiative 1, Track A2)
         # Feed-independent backstop: enforces open paper stops via the tick-price
@@ -693,11 +725,12 @@ async def lifespan(app: FastAPI):
     # Paper IB connector — Instance creation (connection moved to background)
     ib_paper_connector = None
     if settings.PAPER_TRADING:
-        ib_paper_connector = IBGatewayConnector(
-            settings,
-            safety_layer,
-            portfolio_tracker=paper_tracker,
-        )
+        from execution.order_gateway_factory import build_order_gateway
+
+        # P0-2: simulator by default; the real IBGatewayManager (port 4002 paper)
+        # only when IB_PAPER_BROKER_ENABLED is set. Same variable + duck-typed
+        # interface, so the connect/attach wiring below is unchanged either way.
+        ib_paper_connector = build_order_gateway(settings, safety_layer, paper_tracker)
 
     order_manager = IBOrderManager(
         safety_layer=safety_layer,
@@ -1746,6 +1779,8 @@ async def lifespan(app: FastAPI):
         db_path=str(db_manager._db_path),
     )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
+    inject_actionable_deps(db_manager)
+    inject_signal_outcomes_deps(db_manager, data_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
     inject_regime_deps(data_manager)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
@@ -2535,8 +2570,8 @@ async def lifespan(app: FastAPI):
                 if not open_trades:
                     return
                 from portfolio.tracker import (
-                    INSTRUMENT_MULTIPLIERS as _MULT,
-                    _DEFAULT_MULTIPLIER as _DEF_MULT,
+                    _resolve_multiplier as _resolve_mult_fn,
+                    UnknownInstrumentMultiplierError as _UnknownMultErr,
                     _commission_per_contract as _commission_per_contract_fn,
                 )  # noqa: E501
 
@@ -2589,7 +2624,15 @@ async def lifespan(app: FastAPI):
                     _hit = (_is_long and _cur <= _stop_f) or (not _is_long and _cur >= _stop_f)
                     if not _hit:
                         continue
-                    _mult = _MULT.get(_sym, _DEF_MULT)
+                    try:
+                        _mult = _resolve_mult_fn(_sym)
+                    except _UnknownMultErr:
+                        logger.error(
+                            "[stop_monitor] no contract multiplier for %s -- "
+                            "skipping stop close to avoid mis-stated P&L",
+                            _sym,
+                        )
+                        continue
                     _qty = float(_trade.get("quantity") or 1.0)
                     _gross_pnl = (
                         (_stop_f - _entry) * _qty * _mult
@@ -2858,6 +2901,100 @@ async def lifespan(app: FastAPI):
             )
             logger.info("✅ Weekly self-audit & drift detection registered (Sunday 18:00 CT)")
 
+        # ── Batch processing (Anthropic Message Batches API) ───────────────
+        # Generic poll sweep: harvests any ended batch job (any agent) into
+        # batch_results as soon as it ends, decoupled from each consumer's
+        # own collection cadence. See engine/llm/batch_client.py.
+        async def _run_batch_poll_sweep() -> None:
+            try:
+                from llm.batch_client import JarvisBatchClient
+
+                summary = await JarvisBatchClient().sweep_pending()
+                if summary["newly_ended"] or summary["newly_stale"]:
+                    logger.info("[BatchPollSweep] %s", summary)
+            except Exception as _sweep_err:
+                logger.warning(f"[BatchPollSweep] failed (non-fatal): {_sweep_err}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_batch_poll_sweep,
+                CronTrigger(minute="*/15"),
+                id="batch_poll_sweep",
+                name="Batch Job Poll Sweep",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("✅ Batch poll sweep registered (every 15 minutes)")
+
+        # Research agent weekend pass — batch-API pilot (replaces the
+        # standalone Windows Scheduled Task; same default symbols/cadence).
+        async def _run_research_agent_weekend_submit() -> None:
+            try:
+                from scheduler.research_agent_weekend import run_weekend_research_pass_submit
+
+                symbols_env = os.environ.get("RESEARCH_AGENT_SYMBOLS", "")
+                symbols = [s.strip().upper() for s in symbols_env.split(",") if s.strip()] or [
+                    "MES",
+                    "MNQ",
+                    "MCL",
+                    "MGC",
+                ]
+                n_hyp_env = os.environ.get("RESEARCH_AGENT_N_HYPOTHESES", "3")
+                try:
+                    n_hypotheses = int(n_hyp_env)
+                except ValueError:
+                    n_hypotheses = 3
+
+                result = await run_weekend_research_pass_submit(
+                    symbols=symbols, n_hypotheses_per_symbol=n_hypotheses
+                )
+                logger.info("[ResearchAgentWeekendSubmit] %s", result)
+            except Exception as _submit_err:
+                logger.warning(f"[ResearchAgentWeekendSubmit] failed (non-fatal): {_submit_err}")
+
+        async def _run_research_agent_weekend_collect() -> None:
+            try:
+                from scheduler.research_agent_weekend import run_weekend_research_pass_collect
+
+                result = await run_weekend_research_pass_collect()
+                logger.info("[ResearchAgentWeekendCollect] %s", result)
+            except Exception as _collect_err:
+                logger.warning(f"[ResearchAgentWeekendCollect] failed (non-fatal): {_collect_err}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_research_agent_weekend_submit,
+                CronTrigger(day_of_week="sat", hour=10, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_submit",
+                name="Research Agent Weekend Batch Submit",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            scheduler.add_job(
+                _run_research_agent_weekend_collect,
+                CronTrigger(day_of_week="sat", hour=16, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_collect_sat",
+                name="Research Agent Weekend Batch Collect (Saturday)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            scheduler.add_job(
+                _run_research_agent_weekend_collect,
+                CronTrigger(day_of_week="sun", hour=8, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_collect_sun",
+                name="Research Agent Weekend Batch Collect (Sunday)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ Research agent weekend batch pass registered "
+                "(submit Sat 10:00 CT, collect Sat 16:00 CT + Sun 08:00 CT)"
+            )
+
     except Exception as _gv2_init_err:
         logger.warning(f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}")
 
@@ -2948,6 +3085,10 @@ async def lifespan(app: FastAPI):
     # Stop IB data-leg watchdog
     if ib_data_watchdog:
         await ib_data_watchdog.stop()
+
+    # Stop IB market-data freshness heartbeat
+    if ib_freshness_heartbeat:
+        await ib_freshness_heartbeat.stop()
 
     # Stop Paper stop-loss monitor
     if paper_stop_monitor:
@@ -3101,6 +3242,8 @@ app.include_router(instruments_router)
 app.include_router(brokers_router)
 app.include_router(options_router, prefix="/options", tags=["options"])
 app.include_router(approval_router)
+app.include_router(actionable_router)
+app.include_router(signal_outcomes_router)
 app.include_router(approval_queue_router)
 app.include_router(pipeline_router)
 app.include_router(session_brief_router)
@@ -3205,6 +3348,7 @@ app.websocket("/ws/events")(events_handler)
 
 
 # -- /paper/pending-signals -- served by routers/backtest_router.py (wired 2026-05-22) --
+# -- /paper/reset-pending-signals (POST) -- served by routers/backtest_router.py (wired 2026-07-28, GT-40) --
 
 
 # ── Historical Query Endpoints (SQLite) ───────────────────────────────────
@@ -3429,4 +3573,5 @@ def _log_decision(
 # -- /alerts/stats -- served by routers/alerts_router.py (wired 2026-05-22) --
 
 
-# -- /portfolio/import/trades -- served by routers/portfolio_router.py (wired 2026-05-22) --
+# -- /portfolio/import/trades -- served by routers/portfolio_router.py (wired 2026-05-22,
+#    RETIRED 2026-07-26 / D3-02: now always returns 410 -- silently discarded every row) --
