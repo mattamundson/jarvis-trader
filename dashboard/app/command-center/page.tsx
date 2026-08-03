@@ -357,6 +357,9 @@ export default function CommandCenterPage() {
   // session is also deferred to post-mount: getMarketSession() reads new Date()
   // which differs server (UTC) vs client (local tz) → hydration mismatch.
   const [session, setSession] = useState<SessionInfo>(SESSION_PLACEHOLDER);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+
   useEffect(() => {
     // Initialise both clock and session together so they are always in sync.
     const tick = () => {
@@ -384,26 +387,31 @@ export default function CommandCenterPage() {
     data: health,
     error: healthErr,
     mutate: mutateHealth,
-  } = useSWR<HealthData>("/health", fetcher, { refreshInterval });
-
-  const { data: safety, mutate: mutateSafety } = useSWR<SafetyData>("/safety/status", fetcher, {
+  } = useSWR<HealthData>("/health", fetcher, {
     refreshInterval,
+    shouldRetryOnError: false,
   });
 
-  const { data: portfolio, mutate: mutatePortfolio } = useSWR<PortfolioData>("/portfolio", fetcher, {
+  const { data: safety, mutate: mutateSafety, error: safetyErr } = useSWR<SafetyData>("/safety/status", fetcher, {
     refreshInterval,
+    shouldRetryOnError: false,
   });
 
-  const { data: decisions, mutate: mutateDecisions } = useSWR<Decision[]>(
+  const { data: portfolio, mutate: mutatePortfolio, error: portfolioErr } = useSWR<PortfolioData>("/portfolio", fetcher, {
+    refreshInterval,
+    shouldRetryOnError: false,
+  });
+
+  const { data: decisions, mutate: mutateDecisions, error: decisionsErr } = useSWR<Decision[]>(
     "/decisions/recent?limit=5",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: scheduler, mutate: mutateScheduler } = useSWR<SchedulerData>(
+  const { data: scheduler, mutate: mutateScheduler, error: schedulerErr } = useSWR<SchedulerData>(
     "/scheduler/status",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
   const { data: macro, mutate: mutateMacro } = useSWR<MacroData>("/macro/snapshot", fetcher, {
@@ -417,10 +425,10 @@ export default function CommandCenterPage() {
     { refreshInterval: 120_000, shouldRetryOnError: false }
   );
 
-  const { data: trades, mutate: mutateTrades } = useSWR<Trade[]>(
+  const { data: trades, mutate: mutateTrades, error: tradesErr } = useSWR<Trade[]>(
     "/portfolio/history/trades",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
   const { data: journalStats, mutate: mutateJournalStats } = useSWR<JournalTradeStats>(
@@ -437,6 +445,37 @@ export default function CommandCenterPage() {
     fetchHonestTrades,
     { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
   );
+
+  // Bounded retry/backoff for critical command-center data so transient engine
+  // hiccups do not hammer the proxy or silently stale out the flagship page.
+  useEffect(() => {
+    if (!healthErr && !safetyErr && !portfolioErr && !decisionsErr && !schedulerErr && !tradesErr) {
+      if (retryCount > 0) {
+        setRetryCount(0);
+        setIsRetrying(false);
+      }
+      return;
+    }
+
+    const hasError = healthErr || safetyErr || portfolioErr || decisionsErr || schedulerErr || tradesErr;
+    if (!hasError || retryCount >= 3) {
+      if (retryCount >= 3) setIsRetrying(false);
+      return;
+    }
+
+    const backoffMs = Math.min(30_000, 2_000 * Math.pow(2, retryCount - 1));
+    setIsRetrying(true);
+    const timer = setTimeout(() => {
+      mutateHealth();
+      mutateSafety();
+      mutatePortfolio();
+      mutateDecisions();
+      mutateScheduler();
+      mutateTrades();
+    }, backoffMs);
+
+    return () => clearTimeout(timer);
+  }, [healthErr, safetyErr, portfolioErr, decisionsErr, schedulerErr, tradesErr, retryCount, mutateHealth, mutateSafety, mutatePortfolio, mutateDecisions, mutateScheduler, mutateTrades]);
 
   useWebSocket(undefined, (event) => {
     if (!shouldRevalidateCommandCenter(event)) return;
