@@ -67,6 +67,46 @@ class TestGetPerAccountKillStateWithDb:
         assert state["account_id"] == "A"
         assert state["active"] is False
 
+    def test_no_row_is_intentional_fail_open_not_missed_hardening(
+        self, sl_parallel, parallel_paper_db
+    ):
+        """PRB-09: 'row is None' stays fail-open by design; document why.
+
+        This is a *different* class of missing-state than the two GT-49
+        siblings (no db_path configured / DB read raised an exception),
+        both of which were hardened to fail CLOSED because they represent
+        a genuinely unknown/unverifiable state. 'row is None' is not that:
+
+          - migration_028 creates per_account_kill_state empty and never
+            seeds an active=0 row for any account_id, so a brand-new,
+            never-triggered account legitimately has no row.
+          - Neither trigger_per_account_kill() nor clear_per_account_kill()
+            ever DELETEs a row (both are INSERT ... ON CONFLICT DO UPDATE),
+            so a row that once existed cannot vanish through normal
+            application code.
+          - A fully wiped/dropped TABLE raises a sqlite3.OperationalError
+            from the SELECT, which is caught by the except block and
+            already fails CLOSED there — that failure mode is the sibling
+            branch's job, not this one's.
+
+        This test proves the table is genuinely empty (no row for A at
+        all, not merely active=0) and that get_per_account_kill_state
+        still — intentionally — reports active=False, matching the
+        justification comment in risk/safety_layer.py.
+        """
+        conn = sqlite3.connect(parallel_paper_db)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM per_account_kill_state WHERE account_id='A'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row[0] == 0, "test setup must start with a genuinely absent row, not active=0"
+
+        state = sl_parallel.get_per_account_kill_state("A")
+        assert state["active"] is False
+        assert sl_parallel.is_account_halted("A") is False
+
     def test_db_path_none_returns_active_fail_closed(self, mock_settings):
         """GT-49 follow-up: no db_path is an unknown state, fails CLOSED."""
         os.environ["ENABLE_PARALLEL_PAPER"] = "1"
