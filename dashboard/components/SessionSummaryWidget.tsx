@@ -7,6 +7,7 @@ import { useHonestTrades } from "@/lib/useHonestTrades";
 import { isHonestUnavailable, dailyPnl } from "@/lib/honestTrades";
 import { fetchPnlTruth, type PnlTruthResponse } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { POLL_INTERVAL } from "@/lib/polling-config";
 
 /**
  * Today's closed-trade P&L, sourced from the honest deduped trade record
@@ -44,7 +45,7 @@ export function SessionSummaryWidget() {
   const { data: truth } = useSWR<PnlTruthResponse>(
     unavailable ? "pnl-truth-fallback-session-summary" : null,
     fetchPnlTruth,
-    { refreshInterval: 60_000, shouldRetryOnError: false, errorRetryCount: 0 },
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false, errorRetryCount: 0 },
   );
 
   // ── Primary: honest deduped record, filtered to today's local close date ──
