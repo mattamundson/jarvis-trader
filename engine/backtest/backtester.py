@@ -73,6 +73,16 @@ class Backtester:
         eod_close: bool = True,
         use_targets: bool = True,
         fixed_contracts: Optional[int] = None,
+        # ── SOTA execution-realism hardening (2026-08-04) — all optional, all
+        # default to current (unchanged) behavior. See docs/backtest-sota-hardening.md.
+        pessimistic_tie_breaker: bool = False,
+        volatility_scaled_slippage: bool = False,
+        vol_slippage_lookback: int = 20,
+        vol_slippage_min_mult: float = 0.5,
+        vol_slippage_max_mult: float = 4.0,
+        initial_margin_per_contract: Optional[float] = None,
+        max_volume_pct: Optional[float] = None,
+        gap_stop_worst_fill: bool = False,
     ):
         self.initial_capital = initial_capital
         self.risk_per_trade = risk_per_trade
@@ -103,6 +113,102 @@ class Backtester:
         # match WFO equal-weight basis (ATR sizing inverts trend edge: small-ATR → more
         # contracts → amplified losses; large-ATR/trending → fewer contracts → muted wins).
         self.fixed_contracts = fixed_contracts
+
+        # pessimistic_tie_breaker=True: on a bar where BOTH the stop and a target are
+        # touched, always assume the stop was hit first (worst-case ordering) instead of
+        # inferring from bar_open direction. Default False preserves existing
+        # target_first-from-open behavior exactly (see _process_bar_exits).
+        self.pessimistic_tie_breaker = pessimistic_tie_breaker
+
+        # volatility_scaled_slippage=True: scale slippage_ticks by the ratio of the
+        # current bar's ATR to a trailing mean ATR (clamped to
+        # [vol_slippage_min_mult, vol_slippage_max_mult]), so slippage widens during
+        # volatility spikes instead of staying flat. Default False = flat slippage_ticks
+        # (unchanged behavior).
+        self.volatility_scaled_slippage = volatility_scaled_slippage
+        self.vol_slippage_lookback = vol_slippage_lookback
+        self.vol_slippage_min_mult = vol_slippage_min_mult
+        self.vol_slippage_max_mult = vol_slippage_max_mult
+
+        # gap_stop_worst_fill=True: if the bar's OPEN already violates the stop level
+        # (a gap through the stop), fill at the worse of (bar_open, stop_price) instead
+        # of always assuming a fill exactly at stop_price. Default False preserves
+        # existing behavior (fill at stop_price regardless of gap).
+        self.gap_stop_worst_fill = gap_stop_worst_fill
+
+        # initial_margin_per_contract: if set, caps contracts so
+        # contracts * initial_margin_per_contract <= available capital, in addition to
+        # (not instead of) the existing risk-based sizing in _calculate_contracts.
+        # None (default) = no margin cap (unchanged behavior).
+        self.initial_margin_per_contract = initial_margin_per_contract
+
+        # max_volume_pct: if set (e.g. 0.10 for 10% POV), caps contracts to
+        # max_volume_pct * bar_volume when the bar carries a real "volume" column, and
+        # applies an Almgren-Chriss-style quadratic temporary-impact slippage surcharge
+        # when a fill's requested size exceeds that cap. None (default) = no POV cap or
+        # impact surcharge (unchanged behavior).
+        self.max_volume_pct = max_volume_pct
+
+    def _pov_impact_multiplier(self, contracts: int, bar_volume: Optional[float]) -> float:
+        """Almgren-Chriss-style quadratic temporary impact multiplier for slippage.
+
+        Returns 1.0 (no extra impact) unless max_volume_pct is set AND the bar carries
+        a usable volume figure. When both are true, orders that exceed the POV cap pay
+        a slippage surcharge that grows with the SQUARE of how far size exceeds the cap
+        — modeling the fact that market impact accelerates non-linearly as an order
+        consumes more of the available liquidity in one bar.
+        """
+        if self.max_volume_pct is None or not bar_volume or bar_volume <= 0:
+            return 1.0
+        pov = contracts / bar_volume
+        if pov <= self.max_volume_pct:
+            return 1.0
+        excess_ratio = pov / self.max_volume_pct
+        return 1.0 + (excess_ratio - 1.0) ** 2
+
+    def _volatility_slippage_multiplier(self, bar_atr: float, mean_atr: Optional[float]) -> float:
+        """Ratio of current-bar ATR to trailing mean ATR, clamped to configured bounds.
+
+        Returns 1.0 (flat, unchanged behavior) unless volatility_scaled_slippage=True
+        and a valid mean_atr is available.
+        """
+        if not self.volatility_scaled_slippage or not mean_atr or mean_atr <= 0:
+            return 1.0
+        raw_mult = bar_atr / mean_atr
+        return max(self.vol_slippage_min_mult, min(self.vol_slippage_max_mult, raw_mult))
+
+    def _margin_capped_contracts(self, contracts: int, capital: float) -> int:
+        """Clamp contracts so contracts * initial_margin_per_contract <= capital.
+
+        No-op (returns contracts unchanged) unless initial_margin_per_contract is set.
+        Applied ON TOP OF (never instead of) the existing risk-based sizing — this is a
+        hard ceiling, not a replacement sizing model.
+        """
+        if self.initial_margin_per_contract is None or self.initial_margin_per_contract <= 0:
+            return contracts
+        max_by_margin = int(capital // self.initial_margin_per_contract)
+        return max(0, min(contracts, max_by_margin))
+
+    def _trailing_mean_atr(self, df: pd.DataFrame, idx) -> Optional[float]:
+        """Mean of the ``atr`` column over the vol_slippage_lookback bars prior to idx.
+
+        Returns None (→ multiplier of 1.0, unchanged behavior) if the frame has no
+        ``atr`` column or there isn't at least one prior bar to average.
+        """
+        if "atr" not in df.columns:
+            return None
+        try:
+            pos = df.index.get_loc(idx)
+        except KeyError:
+            return None
+        if isinstance(pos, slice) or pos <= 0:
+            return None
+        start = max(0, pos - self.vol_slippage_lookback)
+        window = df["atr"].iloc[start:pos]
+        window = window.dropna()
+        if window.empty:
+            return None
+        return float(window.mean())
 
     def _apply_slippage(
         self, price: float, direction: str, tick_size: float, slippage_ticks: float
@@ -173,13 +279,15 @@ class Backtester:
     def _calculate_contracts(
         self, capital: float, entry: float, stop: float, multiplier: float
     ) -> int:
-        """contracts = (capital x risk%) / (stop_distance x multiplier)"""
+        """contracts = (capital x risk%) / (stop_distance x multiplier), then clamped
+        to the initial-margin ceiling when initial_margin_per_contract is set."""
         stop_dist = abs(entry - stop)
         if stop_dist <= 0 or multiplier <= 0:
             return 0
         risk_dollars = capital * self.risk_per_trade
         contracts = risk_dollars / (stop_dist * multiplier)
-        return max(0, min(int(contracts), 50))  # cap at 50
+        contracts = max(0, min(int(contracts), 50))  # cap at 50
+        return self._margin_capped_contracts(contracts, capital)
 
     def _process_pending_entry(
         self,
@@ -195,15 +303,38 @@ class Backtester:
         atr_val = pending_entry["atr"]
         direction = pending_entry["direction"]
 
-        # Apply execution costs (adverse slippage + half-spread) on the fill price
+        # Apply execution costs (adverse slippage + half-spread) on the fill price.
+        # slippage_ticks is optionally scaled by current-vs-trailing-mean ATR
+        # (volatility_scaled_slippage) and by a POV/impact surcharge
+        # (max_volume_pct) before being applied — both no-ops unless configured.
         cfg = _get_settings()
         effective_spread = self.spread_ticks if cfg.SPREAD_ENABLED else 0.0
+        effective_slippage_ticks = self.slippage_ticks if cfg.SLIPPAGE_ENABLED else 0.0
+        if effective_slippage_ticks and self.volatility_scaled_slippage:
+            mean_atr = self._trailing_mean_atr(df, idx)
+            effective_slippage_ticks *= self._volatility_slippage_multiplier(atr_val, mean_atr)
+        if effective_slippage_ticks and self.max_volume_pct is not None:
+            approx_contracts = (
+                self.fixed_contracts
+                if self.fixed_contracts is not None
+                else self._calculate_contracts(
+                    row.get("capital", self.initial_capital),
+                    raw_entry_price,
+                    raw_entry_price - pending_entry["stop_atr_mult"] * atr_val
+                    if direction == "long"
+                    else raw_entry_price + pending_entry["stop_atr_mult"] * atr_val,
+                    multiplier,
+                )
+            )
+            effective_slippage_ticks *= self._pov_impact_multiplier(
+                approx_contracts, row.get("volume")
+            )
         if cfg.SLIPPAGE_ENABLED or cfg.SPREAD_ENABLED:
             entry_price = self._apply_execution_costs(
                 raw_entry_price,
                 direction,
                 tick_size,
-                self.slippage_ticks if cfg.SLIPPAGE_ENABLED else 0.0,
+                effective_slippage_ticks,
                 effective_spread,
             )
         else:
@@ -315,8 +446,15 @@ class Backtester:
         tick_size: float,
         stop_touched: bool,
         targets_hit: list,
+        bar_open: Optional[float] = None,
     ) -> tuple[Optional[Trade], int, int, int, float, list]:
-        """Check and process stop loss exit."""
+        """Check and process stop loss exit.
+
+        When gap_stop_worst_fill=True and bar_open is provided, fills at the WORSE of
+        (bar_open, stop_price) — modeling a gap that blows through the stop before the
+        stop price itself is ever touchable. Default (bar_open=None or the flag unset)
+        preserves the existing always-fill-at-stop_price behavior exactly.
+        """
         if not stop_touched or (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) <= 0:
             return (
                 open_trade,
@@ -329,6 +467,14 @@ class Backtester:
 
         remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
         exit_price = open_trade.stop_price
+        if self.gap_stop_worst_fill and bar_open is not None:
+            if open_trade.direction == "long":
+                # Long stop: worse fill is the LOWER of (bar_open, stop_price) —
+                # a gap-down open below the stop fills at the open, not the stop.
+                exit_price = min(bar_open, open_trade.stop_price)
+            else:
+                # Short stop: worse fill is the HIGHER of (bar_open, stop_price).
+                exit_price = max(bar_open, open_trade.stop_price)
         if open_trade.direction == "long":
             pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
         else:
@@ -522,7 +668,12 @@ class Backtester:
 
         # Process exits in priority order
         both_stop_and_target = stop_touched and (t1_touched or t2_touched)
-        check_targets_first = both_stop_and_target and target_first
+        # pessimistic_tie_breaker=True: on a genuine dual-touch bar, always assume the
+        # stop was hit first (worst-case), overriding the bar_open-direction inference.
+        if both_stop_and_target and self.pessimistic_tie_breaker:
+            check_targets_first = False
+        else:
+            check_targets_first = both_stop_and_target and target_first
 
         if check_targets_first:
             open_contracts_t1, open_contracts_t2, capital_from_targets, new_targets = (
@@ -550,6 +701,7 @@ class Backtester:
                         tick_size,
                         stop_touched,
                         targets_hit,
+                        bar_open,
                     )
                 )
                 if open_trade is None:
@@ -568,6 +720,7 @@ class Backtester:
                     tick_size,
                     stop_touched,
                     targets_hit,
+                    bar_open,
                 )
             )
             # Always credit stop PnL to capital, whether trade closed or not.
