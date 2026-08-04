@@ -71,6 +71,10 @@ class Backtester:
         eod_close: bool = True,
         use_targets: bool = True,
         fixed_contracts: Optional[int] = None,
+        pessimistic_tie_breaker: bool = False,
+        volatility_scaled_slippage: bool = False,
+        initial_margin_per_contract: float = 0.0,
+        max_volume_pct: Optional[float] = None,
     ):
         self.initial_capital = initial_capital
         self.risk_per_trade = risk_per_trade
@@ -97,6 +101,11 @@ class Backtester:
         # match WFO equal-weight basis (ATR sizing inverts trend edge: small-ATR → more
         # contracts → amplified losses; large-ATR/trending → fewer contracts → muted wins).
         self.fixed_contracts = fixed_contracts
+        # State-of-the-art enhancements
+        self.pessimistic_tie_breaker = pessimistic_tie_breaker
+        self.volatility_scaled_slippage = volatility_scaled_slippage
+        self.initial_margin_per_contract = initial_margin_per_contract
+        self.max_volume_pct = max_volume_pct
 
     def _apply_slippage(self, price: float, direction: str, tick_size: float, slippage_ticks: float) -> float:
         """Long entries pay up, short entries get worse fills. Realistic 1-tick adverse selection."""
@@ -167,6 +176,12 @@ class Backtester:
             return 0
         risk_dollars = capital * self.risk_per_trade
         contracts = risk_dollars / (stop_dist * multiplier)
+        
+        # Apply futures initial margin constraints (SOTA)
+        if self.initial_margin_per_contract > 0:
+            max_contracts_margin = int(capital / self.initial_margin_per_contract)
+            contracts = min(contracts, max_contracts_margin)
+            
         return max(0, min(int(contracts), 50))  # cap at 50
 
     def _process_pending_entry(
@@ -177,18 +192,68 @@ class Backtester:
         df: pd.DataFrame,
         multiplier: float,
         tick_size: float,
+        mean_atr: float = 1.0,
     ) -> tuple[Optional[Trade], int, int, int, list, float]:
         """Process a pending entry signal (avoid look-ahead bias)."""
         raw_entry_price = row["open"]
         atr_val = pending_entry["atr"]
         direction = pending_entry["direction"]
 
+        # Support state-of-the-art entry order types (Limit & Stop-Market)
+        order_type = pending_entry.get("order_type", "market")
+        entry_trigger_price = pending_entry.get("entry_trigger_price", raw_entry_price)
+        high = row.get("high", raw_entry_price)
+        low = row.get("low", raw_entry_price)
+
+        if order_type == "limit":
+            if direction == "long":
+                if low > entry_trigger_price:
+                    return None, 0, 0, 0, [], 0.0
+                raw_entry_price = entry_trigger_price
+            else:
+                if high < entry_trigger_price:
+                    return None, 0, 0, 0, [], 0.0
+                raw_entry_price = entry_trigger_price
+        elif order_type == "stop_market":
+            if direction == "long":
+                if high < entry_trigger_price:
+                    return None, 0, 0, 0, [], 0.0
+                raw_entry_price = entry_trigger_price
+            else:
+                if low > entry_trigger_price:
+                    return None, 0, 0, 0, [], 0.0
+                raw_entry_price = entry_trigger_price
+
+        # State-of-the-art: Volatility-scaled slippage
+        bar_atr = row.get("atr", mean_atr)
+        base_slippage = self.slippage_ticks
+        if self.volatility_scaled_slippage and mean_atr > 0 and bar_atr > 0:
+            scale_factor = bar_atr / mean_atr
+            base_slippage = self.slippage_ticks * scale_factor
+
         # Apply execution costs (adverse slippage + half-spread) on the fill price
         cfg = _get_settings()
         effective_spread = self.spread_ticks if cfg.SPREAD_ENABLED else 0.0
+
+        # Determine total contract size pre-check (for volume-impact cost scaling)
+        capital = row.get("capital", self.initial_capital)
+        temp_stop = raw_entry_price - pending_entry["stop_atr_mult"] * atr_val if direction == "long" else raw_entry_price + pending_entry["stop_atr_mult"] * atr_val
+        if self.fixed_contracts is not None:
+            pre_contracts = self.fixed_contracts
+        else:
+            pre_contracts = self._calculate_contracts(capital, raw_entry_price, temp_stop, multiplier)
+
+        # State-of-the-art: Percentage of Volume (POV) temporary market impact (Almgren-Chriss)
+        volume = row.get("volume", 0)
+        if self.max_volume_pct is not None and volume > 0 and pre_contracts > 0:
+            pov = pre_contracts / volume
+            if pov > self.max_volume_pct:
+                impact_factor = 1.0 + (pov / self.max_volume_pct) ** 2
+                base_slippage = base_slippage * impact_factor
+
         if cfg.SLIPPAGE_ENABLED or cfg.SPREAD_ENABLED:
             entry_price = self._apply_execution_costs(
-                raw_entry_price, direction, tick_size, self.slippage_ticks if cfg.SLIPPAGE_ENABLED else 0.0, effective_spread
+                raw_entry_price, direction, tick_size, base_slippage if cfg.SLIPPAGE_ENABLED else 0.0, effective_spread
             )
         else:
             entry_price = raw_entry_price
@@ -215,8 +280,14 @@ class Backtester:
             total_contracts = self.fixed_contracts
         else:
             total_contracts = self._calculate_contracts(
-                row.get("capital", self.initial_capital), entry_price, stop_price, multiplier
+                capital, entry_price, stop_price, multiplier
             )
+
+        # State-of-the-art: POV Volume constraint
+        if self.max_volume_pct is not None and volume > 0:
+            max_contracts_pov = max(1, int(volume * self.max_volume_pct))
+            total_contracts = min(total_contracts, max_contracts_pov)
+
         if total_contracts < 1:
             return None, 0, 0, 0, [], 0.0
 
@@ -291,6 +362,7 @@ class Backtester:
         tick_size: float,
         stop_touched: bool,
         targets_hit: list,
+        bar_open: Optional[float] = None,
     ) -> tuple[Optional[Trade], int, int, int, float, list]:
         """Check and process stop loss exit."""
         if not stop_touched or (open_contracts_t1 + open_contracts_t2 + open_contracts_t3) <= 0:
@@ -305,6 +377,14 @@ class Backtester:
 
         remaining = open_contracts_t1 + open_contracts_t2 + open_contracts_t3
         exit_price = open_trade.stop_price
+
+        # SOTA: Gap Stop-Loss Rule (fill at worse of open or stop price)
+        if bar_open is not None:
+            if open_trade.direction == "long":
+                exit_price = min(exit_price, bar_open)
+            else:
+                exit_price = max(exit_price, bar_open)
+
         if open_trade.direction == "long":
             pnl = remaining * (exit_price - open_trade.entry_price) * multiplier
         else:
@@ -325,6 +405,7 @@ class Backtester:
         bar_atr: float,
         close: float,
         low: float,
+        bar_open: Optional[float] = None,
     ) -> tuple[Optional[Trade], int, float, bool]:
         """Process trailing stop for long positions."""
         capital_change = 0.0
@@ -339,6 +420,11 @@ class Backtester:
 
             if low <= open_trade.stop_price:
                 exit_price = open_trade.stop_price
+
+                # SOTA: Gap Stop-Loss Rule
+                if bar_open is not None:
+                    exit_price = min(exit_price, bar_open)
+
                 pnl = open_contracts * (exit_price - open_trade.entry_price) * multiplier
                 capital_change = pnl - self._transaction_cost(open_contracts, tick_size) - self._exit_spread_cost(open_contracts, tick_size, multiplier)
                 open_trade.exit_price = exit_price
@@ -358,6 +444,7 @@ class Backtester:
         bar_atr: float,
         close: float,
         high: float,
+        bar_open: Optional[float] = None,
     ) -> tuple[Optional[Trade], int, float, bool]:
         """Process trailing stop for short positions."""
         capital_change = 0.0
@@ -371,6 +458,11 @@ class Backtester:
 
             if high >= open_trade.stop_price:
                 exit_price = open_trade.stop_price
+
+                # SOTA: Gap Stop-Loss Rule
+                if bar_open is not None:
+                    exit_price = max(exit_price, bar_open)
+
                 pnl = open_contracts * (open_trade.entry_price - exit_price) * multiplier
                 capital_change = pnl - self._transaction_cost(open_contracts, tick_size) - self._exit_spread_cost(open_contracts, tick_size, multiplier)
                 open_trade.exit_price = exit_price
@@ -467,12 +559,26 @@ class Backtester:
             stop_touched = low <= open_trade.stop_price
             t1_touched = high >= open_trade.target_1 if open_contracts_t1 > 0 else False
             t2_touched = high >= open_trade.target_2 if open_contracts_t2 > 0 else False
-            target_first = bar_open >= open_trade.entry_price
+            
+            if self.pessimistic_tie_breaker:
+                target_first = False
+            else:
+                # SOTA Proximity-based path-estimation tie-breaker (NautilusTrader logic)
+                dist_to_high = abs(high - bar_open)
+                dist_to_low = abs(bar_open - low)
+                target_first = dist_to_high < dist_to_low
         else:
             stop_touched = high >= open_trade.stop_price
             t1_touched = low <= open_trade.target_1 if open_contracts_t1 > 0 else False
             t2_touched = low <= open_trade.target_2 if open_contracts_t2 > 0 else False
-            target_first = bar_open <= open_trade.entry_price
+            
+            if self.pessimistic_tie_breaker:
+                target_first = False
+            else:
+                # SOTA Proximity-based path-estimation tie-breaker (NautilusTrader logic)
+                dist_to_high = abs(high - bar_open)
+                dist_to_low = abs(bar_open - low)
+                target_first = dist_to_low < dist_to_high
 
         # Strict trailing: _process_trailing_stop_long updates trail BEFORE checking
         # (matching WFO's update-then-check order). Delegating stop here (prev-bar trail)
@@ -510,6 +616,7 @@ class Backtester:
                         tick_size,
                         stop_touched,
                         targets_hit,
+                        bar_open=bar_open,
                     )
                 )
                 if open_trade is None:
@@ -528,6 +635,7 @@ class Backtester:
                     tick_size,
                     stop_touched,
                     targets_hit,
+                    bar_open=bar_open,
                 )
             )
             # Always credit stop PnL to capital, whether trade closed or not.
@@ -600,6 +708,11 @@ class Backtester:
 
         tick_size = self._get_tick_size(symbol, multiplier)
 
+        # Calculate mean ATR for volatility-scaled slippage
+        mean_atr = df["atr"].mean() if "atr" in df.columns else 1.0
+        if pd.isna(mean_atr) or mean_atr <= 0:
+            mean_atr = 1.0
+
         capital = self.initial_capital
         high_water_mark = capital
         completed_trades: List[Trade] = []
@@ -640,9 +753,8 @@ class Backtester:
                 row_with_capital["capital"] = capital
                 row_with_capital["symbol"] = symbol
                 new_trade, t1c, t2c, t3c, targets_hit, capital_cost = self._process_pending_entry(
-                    pending_entry, row_with_capital, idx, df, multiplier, tick_size
+                    pending_entry, row_with_capital, idx, df, multiplier, tick_size, mean_atr
                 )
-                pending_entry = None
                 if new_trade is not None:
                     open_trade = new_trade
                     open_contracts_t1 = t1c
@@ -650,6 +762,15 @@ class Backtester:
                     open_contracts_t3 = t3c
                     targets_hit = []
                     capital -= capital_cost
+                    pending_entry = None
+                else:
+                    # GTC / Day Limit & Stop order TTL logic (SOTA)
+                    if pending_entry.get("order_type", "market") == "market":
+                        pending_entry = None
+                    else:
+                        pending_entry["ttl"] = pending_entry.get("ttl", 10) - 1
+                        if pending_entry["ttl"] <= 0:
+                            pending_entry = None
 
             # -- Manage open trade (process exits on this bar) ---------
             close = row["close"]
@@ -688,6 +809,7 @@ class Backtester:
                     if bar_atr > 0:
                         trade_before_trail = open_trade  # save ref before function sets it to None
                         ts_exited = False
+                        bar_open = row["open"]
                         if open_trade.direction == "long":
                             open_trade, open_contracts_t1, capital_ts, ts_exited = (
                                 self._process_trailing_stop_long(
@@ -698,6 +820,7 @@ class Backtester:
                                     bar_atr,
                                     close,
                                     low,
+                                    bar_open=bar_open,
                                 )
                             )
                         else:
@@ -710,6 +833,7 @@ class Backtester:
                                     bar_atr,
                                     close,
                                     high,
+                                    bar_open=bar_open,
                                 )
                             )
                         capital += capital_ts
@@ -810,6 +934,8 @@ class Backtester:
                         "t2_atr_mult": abs(target_2 - signal_price) / atr_val,
                         "atr": atr_val,
                         "regime": row.get("regime", ""),
+                        "order_type": row.get("order_type", "market"),
+                        "entry_trigger_price": row.get("entry_trigger_price", signal_price),
                     }
 
             # Update equity curve
