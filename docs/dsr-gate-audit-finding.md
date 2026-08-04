@@ -243,3 +243,33 @@ honest, SOTA-hardened gate — trend/SMA, RV-filter, VIX, VWAP, ORB, plus the
 earlier confirmed-dead families. Zero currently-authorized strategies, but
 every FAIL is now a TRUE FAIL. The gate and both backtest engines
 (shared + custom) are execution-honest.
+
+---
+
+## FOLLOW-UP 3: FULL corrected-gate sweep — all MES families + MGC PASS (same session)
+
+Completed the complete re-validation sweep through the corrected empirical
+DSR (all 16 MES verdict files + MGC rank4):
+
+| Family | Verdict | DSR (corrected) | Key blocker |
+|---|---|---|---|
+| trend (SMA) rank11 | INSUFFICIENT_SAMPLE | 0.362 | sample size (17 OOS) |
+| trend_rv_filter rank2 | INSUFFICIENT_SAMPLE | 0.222 | sample size (18 OOS) |
+| trend_15m rank1 | FAIL | 0.0 | DD 25.1% |
+| trend_vix rank1/2/3 | FAIL | 0.007-0.008 | p_edge 0.36-0.43 |
+| trend_vix_pctile rank1 | FAIL | 0.105 | p_edge 0.36 |
+| meanrev rank1/rank2 | FAIL | 0.14-0.19 | p_edge < 0.5 |
+| donchian rank1 | FAIL | 0.0 | p_edge 0.35 |
+| orb rank1 | FAIL | 0.0 | p_edge 0.10 |
+| overnight rank1 | FAIL | 0.13 | DD 20.4% (600 trades) |
+| overnight_regime rank1 | FAIL | 0.03 | DD 12.0% (381 trades) |
+| calendar (turn_of_month) | FAIL | 0.57 | DD 7.9%, p_edge 0.5 |
+| calendar (pre_fomc) | INSUFFICIENT_SAMPLE | 0.07 | DD 8.0% |
+| vwap rank1 | FAIL | 1.0 | param fragility (SOTA: minpf 1.099) |
+| **MGC trend rank4** | **PASS (CORE)** | **0.9952** | **67 OOS trades, 19/19 windows, all 8 combos PF>=1.36, catastrophic-cost survival** |
+
+CONCLUSION: MGC Trend Rank4 (fast=50, slow=120, atr_trail_mult=2.0, 1h) is
+the ONLY strategy in the library that passes gate v2 under corrected DSR +
+SOTA execution. Re-authorized for paper trading in PR #598. MCL/MNQ/M2K
+remain hard-blocked. MES remains the primary paper vehicle per Amo's
+standing directive (gate_v2_policy carve-out, 2026-06-26).
