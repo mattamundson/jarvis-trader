@@ -273,3 +273,28 @@ the ONLY strategy in the library that passes gate v2 under corrected DSR +
 SOTA execution. Re-authorized for paper trading in PR #598. MCL/MNQ/M2K
 remain hard-blocked. MES remains the primary paper vehicle per Amo's
 standing directive (gate_v2_policy carve-out, 2026-06-26).
+
+---
+
+## FOLLOW-UP 4: Complete MGC sweep — TWO passing strategies (same session)
+
+Swept all 8 MGC runners through the corrected gate (fixed 3 more broken
+runners with the same GATE_* import bug — rank1/rank2/rank3 now produce
+verdicts; PR #599):
+
+| MGC Family | Verdict | DSR | p_edge | DD |
+|---|---|---|---|---|
+| trend rank4 | PASS (CORE) | 0.9952 | 0.9999 | 3.03% | 67 OOS trades |
+| trend rv_filter rank1 | PASS (CORE) | 0.9977 | 1.0000 | 0.66% | — |
+| trend rank1 | FAIL | 0.0 | 0.60 | 0.09% |
+| trend rank2 | FAIL | 0.0015 | 0.75 | 0.01% |
+| trend rank3 | FAIL | 0.849 | 0.63 | 1.44% | DSR passes, p_edge fails |
+| meanrev rank1 | FAIL | 0.0 | 0.32 | 5.73% |
+| meanrev rank2 | FAIL | 0.0 | 0.19 | 5.17% |
+| mtf / baseline | INSUFFICIENT_SAMPLE | — | — | — |
+
+MGC is the ONLY instrument with gate-v2-clearing strategies: the trend
+family on gold works under the honest gate, unlike every MES family.
+rv_filter PASS verified on baseline; --sota verification wired (PR #599)
+and pending re-run under host memory pressure (95%+ RAM SIGTERM'd the
+first SOTA attempt mid-sweep).
