@@ -55,10 +55,23 @@ module.exports = {
       interpreter: "none",
 
       // Environment
+      // PYTHONHOME: "" is REQUIRED — PM2's daemon environment carries a stray
+      // PYTHONHOME pointing at a uv-managed CPython 3.11 install (captured from
+      // whatever shell first ran `pm2` on this machine; not in the Windows
+      // registry, so re-imaging PM2 won't fix it). That forces this venv's
+      // Python 3.12 python.exe to load the 3.11 stdlib (`re`, `json`, ...),
+      // which trips `assert _sre.MAGIC == MAGIC` in re/_compiler.py because the
+      // compiled _sre extension (3.12) doesn't match the 3.11 pure-Python re
+      // module it's being forced to import. Root-caused + reproduced 2026-08-04:
+      // `PYTHONHOME=<the uv 3.11 path> .venv/Scripts/python.exe -c "import json"`
+      // crashes identically; unset or empty-string PYTHONHOME fixes it outright.
+      // Explicitly blanking it here (rather than editing PM2's daemon env or the
+      // registry) scopes the fix to this app only and survives `pm2 resurrect`.
       env: {
         PYTHONPATH: ENGINE_DIR,
         PYTHONDONTWRITEBYTECODE: "1",
         PYTHONUNBUFFERED: "1",
+        PYTHONHOME: "",
       },
 
       // Restart policy — no --reload so PM2 is the sole restart mechanism
