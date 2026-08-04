@@ -151,6 +151,7 @@ def _run_signals_and_backtest(
     atr_trail_mult: float,
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
+    sota_hardening: bool = False,
 ) -> object:
     from backtest.backtester import Backtester
     from backtest.trend_signals import generate_sma_trend_signals
@@ -172,6 +173,23 @@ def _run_signals_and_backtest(
         t2_exit_pct=0.30,
         commission_per_contract=commission,
         slippage_ticks=slippage_ticks,
+        # SOTA execution-realism hardening (PR #592). Opt-in: baseline runs leave
+        # all flags at defaults (False/None) so the non-SOTA invocation is
+        # byte-identical to pre-hardening behavior.
+        **(
+            {
+                "gap_stop_worst_fill": True,
+                "pessimistic_tie_breaker": True,
+                "volatility_scaled_slippage": True,
+                "vol_slippage_lookback": 20,
+                "vol_slippage_min_mult": 0.5,
+                "vol_slippage_max_mult": 4.0,
+                "max_volume_pct": 0.10,
+                "initial_margin_per_contract": 1500.0,
+            }
+            if sota_hardening
+            else {}
+        )
     )
     return bt.run(df_sig, symbol=SYMBOL, multiplier=MULTIPLIER)
 
@@ -181,14 +199,18 @@ def _run_signals_and_backtest(
 # ---------------------------------------------------------------------------
 
 
-def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple[dict | None, object | None]:
+def _best_is_params(
+    df_train: pd.DataFrame, grid: list[tuple], sota_hardening: bool = False
+) -> tuple[dict | None, object | None]:
     best_pf = -1.0
     best_params = None
     best_result = None
 
     for fast, slow, atr_trail_mult in grid:
         try:
-            result = _run_signals_and_backtest(df_train, fast, slow, atr_trail_mult)
+            result = _run_signals_and_backtest(
+                df_train, fast, slow, atr_trail_mult, sota_hardening=sota_hardening
+            )
         except Exception as exc:
             print(f"    [WARN] IS error ({fast},{slow},{atr_trail_mult}): {exc}")
             continue
@@ -236,12 +258,16 @@ from backtest._gate_v2_helpers import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def _run_fixed_params_sweep(df: pd.DataFrame, grid: list[tuple]) -> dict:
+def _run_fixed_params_sweep(
+    df: pd.DataFrame, grid: list[tuple], sota_hardening: bool = False
+) -> dict:
     pfs = []
     combo_results = []
     for fast, slow, atr_trail_mult in grid:
         try:
-            result = _run_signals_and_backtest(df, fast, slow, atr_trail_mult)
+            result = _run_signals_and_backtest(
+                df, fast, slow, atr_trail_mult, sota_hardening=sota_hardening
+            )
             if result.total_trades >= MIN_OOS_TRADES_PER_WINDOW:
                 pfs.append(result.profit_factor)
                 combo_results.append(
@@ -288,7 +314,7 @@ def _run_fixed_params_sweep(df: pd.DataFrame, grid: list[tuple]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
+def _run_cost_sweep(df: pd.DataFrame, champion_params: dict, sota_hardening: bool = False) -> dict:
     results = {}
     last_surviving = None
 
@@ -302,6 +328,7 @@ def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
                 atr_trail_mult=champion_params["atr_trail_mult"],
                 commission=costs["commission"],
                 slippage_ticks=costs["slippage_ticks"],
+                sota_hardening=sota_hardening,
             )
             pf = result.profit_factor
             passes = pf > 1.0 and result.total_trades >= MIN_OOS_TRADES_PER_WINDOW
@@ -486,7 +513,10 @@ def _compute_gate_v2(
 # ---------------------------------------------------------------------------
 
 
-def run_wfo() -> dict:
+def run_wfo(sota_hardening: bool = False) -> dict:
+    if sota_hardening:
+        print("[MES-RV-R2] SOTA EXECUTION-REALISM HARDENING ENABLED (gap stops, pessimistic "
+              "tie-break, vol-scaled slippage, POV impact, margin cap).")
     from backtest._gate_v2_helpers import _find_latest_cache
 
     data_dir = engine_root / "backtest" / "cache"
@@ -540,7 +570,7 @@ def run_wfo() -> dict:
         df_train = df[(df.index >= ts) & (df.index < te)].copy()
         df_test = df[(df.index >= os_) & (df.index <= oe)].copy()
 
-        best_params, is_result = _best_is_params(df_train, grid)
+        best_params, is_result = _best_is_params(df_train, grid, sota_hardening=sota_hardening)
 
         if best_params is None:
             print(
@@ -560,6 +590,7 @@ def run_wfo() -> dict:
                 fast=best_params["fast"],
                 slow=best_params["slow"],
                 atr_trail_mult=best_params["atr_trail_mult"],
+                sota_hardening=sota_hardening,
             )
         except Exception as exc:
             print(f"  [SKIP] OOS error: {exc}")
@@ -596,7 +627,7 @@ def run_wfo() -> dict:
     print(
         f"\n[MES-RV-R2] Running fixed-params sweep on full dataset ({n_combos} combos, RV>={MIN_RV_ANNUALIZED}%)..."
     )
-    fixed_params_metrics = _run_fixed_params_sweep(df, grid)
+    fixed_params_metrics = _run_fixed_params_sweep(df, grid, sota_hardening=sota_hardening)
     print(
         f"  fixed_params_min_pf  = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
         f"(need >= {GATE_FIXED_PARAMS_MIN_PF}, rank11 no-filter was 1.3506)"
@@ -618,7 +649,7 @@ def run_wfo() -> dict:
     print(
         f"\n[MES-RV-R2] Running cost sweep (champion: {champion_params}, RV>={MIN_RV_ANNUALIZED}%)..."
     )
-    cost_sweep_metrics = _run_cost_sweep(df, champion_params)
+    cost_sweep_metrics = _run_cost_sweep(df, champion_params, sota_hardening=sota_hardening)
     print(f"  cost_survives_through = {cost_sweep_metrics['cost_survives_through']}")
 
     gate = _compute_gate_v2(
@@ -768,7 +799,19 @@ def run_wfo() -> dict:
 
 
 def main():
-    verdict = run_wfo()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="MES Trend RV-Filter Rank2 gate-v2 validation")
+    parser.add_argument(
+        "--sota",
+        action="store_true",
+        help="Enable SOTA execution-realism hardening (gap stops, pessimistic "
+        "tie-break, vol-scaled slippage, POV impact, margin cap). Default: off "
+        "(baseline behavior, byte-identical to pre-hardening runs).",
+    )
+    args = parser.parse_args()
+
+    verdict = run_wfo(sota_hardening=args.sota)
 
     if not verdict:
         print("[MES-RV-R2] No verdict produced.")
