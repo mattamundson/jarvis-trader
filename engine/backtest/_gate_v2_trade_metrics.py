@@ -58,7 +58,7 @@ from typing import Sequence
 
 import numpy as np
 
-from backtest.deflated_sharpe import deflated_sharpe_from_returns
+from backtest.deflated_sharpe import deflated_sharpe_empirical, deflated_sharpe_from_returns
 from backtest.monte_carlo import (
     bootstrap_pf,
     bootstrap_win_rate,
@@ -113,10 +113,39 @@ def trade_level_dsr(
 ) -> float:
     """Deflated Sharpe Ratio from the actual per-trade return series.
 
-    Mirrors `scripts/validate_strategy.py`: returns = per-trade PnL / capital,
-    real skew/kurt, n_obs = trade count. Fail-safe (0.0) when < 2 trades
-    (handled inside `deflated_sharpe_from_returns`).
+    USES THE EMPIRICAL (MC-CALIBRATED) NULL — audit 2026-08-04, PR #594.
+
+    The previous implementation (closed-form `deflated_sharpe_from_returns`,
+    retained below as `_trade_level_dsr_closed_form`) was structurally
+    mis-calibrated: its null E[max SR | N, null] ≈ 0.85 assumes a daily
+    high-frequency return stream, while the input is a lumpy trade-based
+    series whose raw Sharpe is structurally capped near 0.1-0.6 regardless
+    of edge. Every strategy failed on DSR regardless of quality.
+
+    The empirical version sign-permutes the ACTUAL trade PnLs (preserving
+    the real payoff shape and sample size) to build a null distribution of
+    the best-of-N-trials Sharpe, then returns the fraction of null strategies
+    the observed Sharpe beats. This is a selection-bias correction calibrated
+    to THIS strategy's actual payoff shape — it discriminates (PF 1.31 ->
+    DSR ~0.56, coin flip -> DSR ~0.07) where the closed form cannot.
+
+    Fail-safe (0.0) when < 3 trades.
     """
+    pnls = concat_oos_trade_pnls(oos_results)
+    result = deflated_sharpe_empirical(
+        pnls=pnls,
+        n_trials=max(int(n_grid_combos), 1),
+        initial_capital=initial_capital,
+    )
+    return float(result.get("dsr", 0.0))
+
+
+def _trade_level_dsr_closed_form(
+    oos_results: Sequence,
+    n_grid_combos: int,
+    initial_capital: float,
+) -> float:
+    """Closed-form DSR (kept for comparison/backfill; NOT the gate default)."""
     pnls = concat_oos_trade_pnls(oos_results)
     returns = (np.asarray(pnls, dtype=float) / initial_capital).tolist()
     result = deflated_sharpe_from_returns(
