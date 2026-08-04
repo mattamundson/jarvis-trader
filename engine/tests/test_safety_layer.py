@@ -743,6 +743,85 @@ class TestFuturesContractLimit:
         assert result.approved is True
 
 
+class TestCumulativePositionCap:
+    """CUMULATIVE_POSITION_CAP (2026-08-03 incident): several individually-
+    compliant orders stacked a live MES position to 5 contracts against a
+    configured cap of 2, because check_order() only ever validated each new
+    order's OWN quantity against the cap, never the resulting net position.
+    """
+
+    def _live_safety(self, mock_settings) -> SafetyLayer:
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock independent
+        return SafetyLayer(mock_settings)
+
+    def test_second_order_rejected_when_cumulative_exceeds_cap(self, mock_settings):
+        """Two sequential 2-contract BUY orders on a symbol with cap=2 — the
+        second must be rejected even though each order's OWN quantity (2) is
+        individually within the per-order cap."""
+        safety = self._live_safety(mock_settings)
+        mock_gw = Mock()
+        mock_gw.get_cached_position = Mock(return_value=0.0)
+        safety._ib_gateway = mock_gw
+
+        order = OrderRequest(
+            symbol="MES", quantity=2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        first = safety.check_order(order, 100_000.0)
+        assert first.approved is True
+
+        # Simulate the first order having filled — live position is now 2.
+        mock_gw.get_cached_position = Mock(return_value=2.0)
+        second = safety.check_order(order, 100_000.0)
+        assert second.approved is False
+        assert "CUMULATIVE_POSITION_CAP" in second.rejection_reason
+
+    def test_opposite_direction_order_reducing_position_allowed(self, mock_settings):
+        """A SELL that reduces an over-cap position back within the cap must
+        not be blocked by the cumulative check — it closes exposure rather
+        than adding to it. (The order's own size, 2, also individually
+        satisfies the pre-existing per-order cap check.)"""
+        safety = self._live_safety(mock_settings)
+        mock_gw = Mock()
+        mock_gw.get_cached_position = Mock(return_value=3.0)  # already over cap
+        safety._ib_gateway = mock_gw
+
+        order = OrderRequest(
+            symbol="MES", quantity=-2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True  # 3 - 2 = 1, within cap
+
+    def test_gateway_unavailable_fails_open_on_this_check_only(self, mock_settings):
+        """No gateway attached → the cumulative check can't verify a live
+        position and must not block on that basis (the per-order cap check
+        immediately above it in _check_contract_limits still applies
+        unconditionally)."""
+        safety = self._live_safety(mock_settings)
+        assert safety._ib_gateway is None
+        order = OrderRequest(
+            symbol="MES", quantity=2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True
+
+    def test_cache_read_failure_fails_open_on_this_check_only(self, mock_settings):
+        """get_cached_position() returning None (cache read failed) must not
+        block — it's the explicit 'cannot verify' signal, distinct from a
+        verified zero position."""
+        safety = self._live_safety(mock_settings)
+        mock_gw = Mock()
+        mock_gw.get_cached_position = Mock(return_value=None)
+        safety._ib_gateway = mock_gw
+        order = OrderRequest(
+            symbol="MES", quantity=2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True
+
+
 class TestNaNPriceHandling:
     """NaN and missing price data handling."""
 
@@ -1477,6 +1556,99 @@ class TestSubmitPaperOrder:
         mock_gw = AsyncMock()
         mock_gw.is_connected = Mock(return_value=True)
         mock_gw.place_paper_order = AsyncMock(return_value="lmt_order_1")
+        safety._ib_gateway = mock_gw
+        result = await safety.submit_paper_order(
+            "MES", "BUY", 1, 5800.0, order_type="LMT", limit_price=5795.0
+        )
+        assert result["approved"] is True
+
+    @pytest.mark.asyncio
+    async def test_lmt_order_garbage_price_rejected_before_ib(self, mock_settings):
+        """ENTRY_PRICE_SANITY (2026-08-03 incident): a client-supplied limit_price
+        wildly off market (a $1000 LMT order on ~$7,600 MES) must be rejected
+        before ever reaching IB Gateway, once a data manager is attached."""
+        safety = self._live_safety(mock_settings)
+        mock_gw = AsyncMock()
+        mock_gw.is_connected = Mock(return_value=True)
+        mock_gw.place_paper_order = AsyncMock(return_value="should_not_be_called")
+        mock_gw.get_cached_position = Mock(return_value=0.0)
+        safety._ib_gateway = mock_gw
+
+        import pandas as pd
+
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(
+            return_value={"last_price": 7609.75, "source": "ibkr"}
+        )
+        rows = 30
+        mock_dm.get_bars = AsyncMock(
+            return_value=pd.DataFrame(
+                {
+                    "high": [7620.0] * rows,
+                    "low": [7600.0] * rows,
+                    "close": [7610.0] * rows,
+                }
+            )
+        )
+        safety._data_manager = mock_dm
+
+        result = await safety.submit_paper_order(
+            "MES", "BUY", 1, 1000.0, order_type="LMT", limit_price=1000.0
+        )
+        assert result["approved"] is False
+        assert result["routed_to_ib"] is False
+        assert result["order_id"] is None
+        mock_gw.place_paper_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_lmt_order_sane_price_still_routes_with_data_manager_attached(
+        self, mock_settings
+    ):
+        """A plausible limit price near market still routes to IB once a data
+        manager is attached — the sanity check must not false-positive on a
+        normal, well-formed manual order."""
+        safety = self._live_safety(mock_settings)
+        mock_gw = AsyncMock()
+        mock_gw.is_connected = Mock(return_value=True)
+        mock_gw.place_paper_order = AsyncMock(return_value="lmt_order_ok")
+        mock_gw.get_cached_position = Mock(return_value=0.0)
+        safety._ib_gateway = mock_gw
+
+        import pandas as pd
+
+        mock_dm = MagicMock()
+        mock_dm.get_current_price = AsyncMock(
+            return_value={"last_price": 7609.75, "source": "ibkr"}
+        )
+        rows = 30
+        mock_dm.get_bars = AsyncMock(
+            return_value=pd.DataFrame(
+                {
+                    "high": [7620.0] * rows,
+                    "low": [7600.0] * rows,
+                    "close": [7610.0] * rows,
+                }
+            )
+        )
+        safety._data_manager = mock_dm
+
+        result = await safety.submit_paper_order(
+            "MES", "BUY", 1, 7609.75, order_type="LMT", limit_price=7608.0
+        )
+        assert result["approved"] is True
+        assert result["routed_to_ib"] is True
+
+    @pytest.mark.asyncio
+    async def test_lmt_order_no_data_manager_skips_sanity_check(self, mock_settings):
+        """No data manager attached (attach_data_manager() never called) →
+        the sanity check is silently skipped, preserving prior behavior for
+        any deployment/test that doesn't wire one in."""
+        safety = self._live_safety(mock_settings)
+        assert safety._data_manager is None
+        mock_gw = AsyncMock()
+        mock_gw.is_connected = Mock(return_value=True)
+        mock_gw.place_paper_order = AsyncMock(return_value="lmt_order_1")
+        mock_gw.get_cached_position = Mock(return_value=0.0)
         safety._ib_gateway = mock_gw
         result = await safety.submit_paper_order(
             "MES", "BUY", 1, 5800.0, order_type="LMT", limit_price=5795.0
