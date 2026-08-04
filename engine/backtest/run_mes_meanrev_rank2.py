@@ -769,6 +769,7 @@ def main():
             n_with = gate.get("n_oos_windows_with_trades", 0)
             print(f"  p_edge={p_edge_val:.4f}: {n_with}/{n_oos} OOS windows had trades.")
         if dsr_val < GATE_DSR_ALT:
+            n_combos = verdict.get("wfo_config", {}).get("grid_combos", 0)
             print(
                 f"  dsr={dsr_val:.6f} < {GATE_DSR_ALT} alt floor -- selection bias after {n_combos} grid trials."
             )
