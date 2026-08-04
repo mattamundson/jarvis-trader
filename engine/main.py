@@ -776,6 +776,10 @@ async def lifespan(app: FastAPI):
     # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
     set_analytics_data_manager(data_manager)
+    # Wire the data manager into SafetyLayer so submit_paper_order() can run the
+    # entry-price-sanity check on client-supplied limit prices (2026-08-03 incident —
+    # see the price-sanity block in SafetyLayer.submit_paper_order()).
+    safety_layer.attach_data_manager(data_manager)
     # Wire the real-price source into the paper connector so simulated fills use
     # the live get_tick_price waterfall instead of static mock quotes. Without
     # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
