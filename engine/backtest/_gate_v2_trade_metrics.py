@@ -110,6 +110,7 @@ def trade_level_dsr(
     oos_results: Sequence,
     n_grid_combos: int,
     initial_capital: float,
+    n_permutations: int = _MC_N_RESAMPLES,
 ) -> float:
     """Deflated Sharpe Ratio from the actual per-trade return series.
 
@@ -129,6 +130,9 @@ def trade_level_dsr(
     to THIS strategy's actual payoff shape — it discriminates (PF 1.31 ->
     DSR ~0.56, coin flip -> DSR ~0.07) where the closed form cannot.
 
+    `n_permutations` is threaded through so callers/tests can trade MC
+    precision for wall-clock speed (defaults to the gate standard 10,000).
+
     Fail-safe (0.0) when < 3 trades.
     """
     pnls = concat_oos_trade_pnls(oos_results)
@@ -136,6 +140,7 @@ def trade_level_dsr(
         pnls=pnls,
         n_trials=max(int(n_grid_combos), 1),
         initial_capital=initial_capital,
+        n_permutations=max(int(n_permutations), 100),
     )
     return float(result.get("dsr", 0.0))
 
