@@ -2,6 +2,7 @@
 
 import { RefreshCw } from "lucide-react";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
+import { symbolTradeStatus } from "@/lib/approvedSymbols";
 
 const SYMBOLS: ChartSymbol[] = ["MES", "MCL", "MNQ", "MGC"];
 const TIMEFRAMES: ChartTimeframe[] = ["5m", "15m", "1h", "4h", "1d"];
@@ -13,12 +14,15 @@ const SYMBOL_LABELS: Record<ChartSymbol, string> = {
   MGC: "Micro Gold",
 };
 
-const SYMBOL_STATUS: Record<ChartSymbol, { label: string; color: string }> = {
-  MES: { label: "APPROVED", color: "#00ff88" },
-  MCL: { label: "APPROVED", color: "#00ff88" },
-  MNQ: { label: "APPROVED", color: "#00ff88" },
-  MGC: { label: "HALTED", color: "#ff4466" },
-};
+// Derived from symbolTradeStatus() (mirrors engine DO_NOT_TRADE_SYMBOLS) —
+// D2-02: this used to be a hand-maintained map that drifted backwards
+// (MCL/MNQ shown APPROVED, MGC shown HALTED). Never hardcode this again.
+function symbolStatusDisplay(s: ChartSymbol): { label: string; color: string } {
+  const status = symbolTradeStatus(s);
+  return status === "APPROVED"
+    ? { label: "APPROVED", color: "#00ff88" }
+    : { label: "HALTED", color: "#ff4466" };
+}
 
 interface Props {
   symbol: ChartSymbol;
@@ -45,7 +49,7 @@ export function SymbolTimeframeSelector({
       {/* Symbol selector */}
       <div className="flex items-center gap-1">
         {SYMBOLS.map((s) => {
-          const status = SYMBOL_STATUS[s];
+          const status = symbolStatusDisplay(s);
           const isActive = s === symbol;
           return (
             <button
