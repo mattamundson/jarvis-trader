@@ -20,6 +20,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { EquityCurveMini } from "@/components/command-center/EquityCurveMini";
 import { DrawdownMini } from "@/components/command-center/DrawdownMini";
+import { symbolTradeStatus } from "@/lib/approvedSymbols";
 
 // ── Local types (mirrors what the command center page uses) ───────────────
 
@@ -106,10 +107,13 @@ export interface CommandCenterData {
 
 // ── Instruments config ────────────────────────────────────────────────────
 
+// D2-02: `status` used to be hand-maintained here and drifted backwards
+// (MCL/MNQ shown APPROVED, MGC shown HALTED). Status is now always derived
+// from symbolTradeStatus() below — never hardcode it in this list again.
 const INSTRUMENTS = [
-  { symbol: "MCL", tf: "1h", status: "APPROVED" as const, wfe: 0.82 },
-  { symbol: "MNQ", tf: "1h", status: "APPROVED" as const, wfe: 0.57 },
-  { symbol: "MGC", tf: "1d", status: "HALTED" as const, wfe: 0.14 },
+  { symbol: "MCL", tf: "1h", wfe: 0.82 },
+  { symbol: "MNQ", tf: "1h", wfe: 0.57 },
+  { symbol: "MGC", tf: "1d", wfe: 0.14 },
 ] as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -291,10 +295,11 @@ function InstrumentsCard({
       <CardContent className="px-4 pb-3 space-y-3">
         {INSTRUMENTS.map((inst) => {
           const price = livePrices[inst.symbol];
+          const status = symbolTradeStatus(inst.symbol);
           return (
             <div key={inst.symbol} className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {inst.status === "APPROVED" ? (
+                {status === "APPROVED" ? (
                   <CheckCircle className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
                 ) : (
                   <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
@@ -323,12 +328,12 @@ function InstrumentsCard({
                 <Badge
                   className={cn(
                     "text-xs font-mono py-0 px-1.5 border",
-                    inst.status === "APPROVED"
+                    status === "APPROVED"
                       ? "bg-green-950 text-green-400 border-green-800"
                       : "bg-red-950 text-red-400 border-red-800"
                   )}
                 >
-                  {inst.status === "APPROVED" ? "ACTIVE" : "HALTED"}
+                  {status === "APPROVED" ? "ACTIVE" : "HALTED"}
                 </Badge>
               </div>
             </div>
