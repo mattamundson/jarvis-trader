@@ -182,3 +182,64 @@ The gate now DISCRIMINATES: it detects real edges (RV-filter and rank11 both cle
 the DSR floor) while still rejecting both on genuine statistical weaknesses. Coin
 flips still fail. The DSR axis no longer produces false negatives; the remaining
 FAIL verdicts are honest ones.
+
+---
+
+## FOLLOW-UP: VWAP PASS cross-validation FAILED under SOTA execution (same session)
+
+After the DSR fix, `run_mes_vwap_rank1.py` produced a **PASS via ALT** verdict
+(DSR 1.000, WFO STRONG, fixed_params_min_pf 1.369, 388 OOS trades, champion
+band_mult=2.5 stop_mult=0.75 rev=False regime=True) — computed on the CUSTOM
+`vwap_backtester` engine.
+
+Cross-validation of the same champion through the SHARED Backtester with SOTA
+hardening (`run_mes_vwap_sota_crossval.py`):
+
+| Engine | PF | Trades | Sharpe | Max DD |
+|---|---|---|---|---|
+| Custom vwap_backtester (gate-v2 PASS) | 4.07 fixed-params | 388 OOS | — | 2.0% |
+| Shared Backtester + SOTA | **0.91** | 101 | −0.54 | **20.2%** |
+
+**Root cause:** `vwap_backtester.py` has NO gap-stop handling, NO pessimistic
+dual-touch tie-break, flat slippage, no POV impact, no margin cap. Its exit
+order (stop → T1 → T2 with fills at exact levels even when the bar gapped
+through them) is the optimistic execution model that PR #592's SOTA hardening
+was built to replace. The 4.07 PF edge does not survive honest execution — it
+was phantom alpha from favorable fill assumptions.
+
+**Action:** the MES VWAP rank1 PASS is WITHHELD pending SOTA hardening of
+`vwap_backtester.py` (add gap_stop_worst_fill + pessimistic_tie_breaker +
+vol-scaled slippage + POV/margin to the custom engine, then re-run the gate).
+Do NOT re-authorize VWAP on the current custom-engine verdict.
+
+---
+
+## FOLLOW-UP 2: VWAP hardened -> FAIL; ORB swept -> FAIL (same session)
+
+**VWAP (PR #596):** hardened `vwap_backtester` with the SOTA flags and re-ran
+the full gate WFO. Verdict flips PASS -> FAIL under honest execution:
+
+| Metric | Non-SOTA | SOTA-hardened | Floor |
+|---|---|---|---|
+| dsr | 1.000 | 1.000 | >= 0.3 PASS |
+| wfo_consistency | STRONG | STRONG | PASS |
+| pf_ci_lower | 1.835 | 1.583 | >= 1.1 PASS |
+| mc_95th_dd | 2.03% | 2.93% | <= 4% PASS |
+| cost_survives | catastrophic | catastrophic | PASS |
+| fixed_params_min_pf | 1.369 | **1.099** | >= 1.2 **FAIL** |
+| p_edge | 0.857 | 0.857 | >= 0.95 **FAIL** |
+
+The edge is real (DSR 1.0, STRONG) but parameter-fragile: no combo is
+consistently profitable under realistic fills. VWAP NOT authorized.
+
+**ORB (corrected gate, unhardened engine — the failure is raw edge, not
+fills):** 433 OOS trades, 20/20 windows, verdict FAIL on every axis:
+pf_ci_lower 0.34, p_edge 0.10, dsr 0.000, DD 8.9%, fixed_params_min_pf 0.31.
+No ORB edge exists on MES 1h. (Also fixed a pre-existing NameError in
+run_mes_orb_rank1.py — missing GATE_* imports from _gate_v2_helpers.)
+
+**Net strategy-library status (2026-08-04):** every MES family now FAILs the
+honest, SOTA-hardened gate — trend/SMA, RV-filter, VIX, VWAP, ORB, plus the
+earlier confirmed-dead families. Zero currently-authorized strategies, but
+every FAIL is now a TRUE FAIL. The gate and both backtest engines
+(shared + custom) are execution-honest.
