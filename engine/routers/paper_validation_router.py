@@ -744,13 +744,20 @@ def _compute_rolling_wfe(
         (gross_profit / gross_loss) if gross_loss > 0 else (9999.0 if gross_profit > 0 else 0.0)
     )
 
-    # WFE formula: (current_pf - 1.0) / (in_sample_pf - 1.0), clamped [0, 1]
-    in_sample_pf = IN_SAMPLE_PF.get(symbol, 1.0)
-    if in_sample_pf <= 1.0:
-        wfe = 0.0
-    else:
-        wfe = (current_pf - 1.0) / (in_sample_pf - 1.0)
-        wfe = max(0.0, min(1.0, wfe))
+    # WFE formula: (current_pf - 1.0) / (in_sample_pf - 1.0), clamped [0, 1].
+    # No default fallback -- IN_SAMPLE_PF only has real backtest references
+    # for MCL/MNQ (frozen historical values). The 2026-05-24 instrument
+    # switch made MES/MGC the active paper pair, but this dict was never
+    # updated; the old `.get(symbol, 1.0)` default silently forced wfe=0.0
+    # for both (reading as "actively overfit" rather than "no reference"),
+    # since neither is in this dict. A confidently-wrong number is worse
+    # than an honest insufficient_data.
+    in_sample_pf = IN_SAMPLE_PF.get(symbol)
+    if in_sample_pf is None or in_sample_pf <= 1.0:
+        return None, current_pf, "insufficient_data"
+
+    wfe = (current_pf - 1.0) / (in_sample_pf - 1.0)
+    wfe = max(0.0, min(1.0, wfe))
 
     return wfe, current_pf, "ok"
 
