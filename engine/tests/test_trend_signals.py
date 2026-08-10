@@ -103,9 +103,14 @@ def test_no_nan_in_entry_signal():
     assert df["entry_signal"].isna().sum() == 0
 
 
-def test_generate_instrument_signals_routes_mes_to_trend():
+def test_generate_instrument_signals_routes_mes_to_trend(monkeypatch):
     from backtest.signals import TREND_INSTRUMENTS, generate_instrument_signals
     assert "MES" in TREND_INSTRUMENTS
+    # Isolate from live gate-v2 routing enforcement -- this test checks routing
+    # to the trend path, not gate-v2 authorization, and must not depend on
+    # whether MES's on-disk gate-v2 trend verdict happens to be fresh right now
+    # (it currently isn't: newest PASS is 30+ days old, past the 14-day TTL).
+    monkeypatch.delenv("GATE_V2_ENFORCE_ROUTING", raising=False)
     # Use 700 bars: SMA(50,200) needs 200-bar warmup + decline + rise for golden cross.
     # Pass min_rv_annualized=0.0 explicitly to disable the RV filter (which would suppress
     # entries on the zero-noise linear test data regardless of MES_MIN_RV_ANNUALIZED env var).
