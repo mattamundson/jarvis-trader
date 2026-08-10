@@ -55,10 +55,23 @@ module.exports = {
       interpreter: "none",
 
       // Environment
+      // PYTHONHOME: "" is REQUIRED — PM2's daemon environment carries a stray
+      // PYTHONHOME pointing at a uv-managed CPython 3.11 install (captured from
+      // whatever shell first ran `pm2` on this machine; not in the Windows
+      // registry, so re-imaging PM2 won't fix it). That forces this venv's
+      // Python 3.12 python.exe to load the 3.11 stdlib (`re`, `json`, ...),
+      // which trips `assert _sre.MAGIC == MAGIC` in re/_compiler.py because the
+      // compiled _sre extension (3.12) doesn't match the 3.11 pure-Python re
+      // module it's being forced to import. Root-caused + reproduced 2026-08-04:
+      // `PYTHONHOME=<the uv 3.11 path> .venv/Scripts/python.exe -c "import json"`
+      // crashes identically; unset or empty-string PYTHONHOME fixes it outright.
+      // Explicitly blanking it here (rather than editing PM2's daemon env or the
+      // registry) scopes the fix to this app only and survives `pm2 resurrect`.
       env: {
         PYTHONPATH: ENGINE_DIR,
         PYTHONDONTWRITEBYTECODE: "1",
         PYTHONUNBUFFERED: "1",
+        PYTHONHOME: "",
       },
 
       // Restart policy — no --reload so PM2 is the sole restart mechanism
@@ -412,6 +425,43 @@ module.exports = {
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: path.join(ENGINE_DIR, "logs", "bridge-api-error.log"),
       out_file: path.join(ENGINE_DIR, "logs", "bridge-api-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
+    // ── DOM / Order-Flow service (port 8030) ─────────────────────────────────
+    // Isolated read-only MES depth + imbalance consumer (Phase 1). Same
+    // isolation pattern as jarvis-bridge-api: its own process, own IB client
+    // ID (DOMFLOW_IB_CLIENT_ID, default 3), own SQLite DB. No engine/risk/ or
+    // config.py imports — no path to order placement. See
+    // docs/superpowers/specs/2026-08-05-dom-orderflow-phase1-design.md.
+    {
+      name: "jarvis-domflow",
+      script: PYTHON,
+      args: "-m uvicorn domflow.main:app --host 127.0.0.1 --port 8030",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 20,
+      min_uptime: "10s",
+      restart_delay: 5000,
+
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        DOMFLOW_IB_HOST: "127.0.0.1",
+        DOMFLOW_IB_PORT: "4002",
+        DOMFLOW_IB_CLIENT_ID: "3",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "domflow-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "domflow-out.log"),
       merge_logs: true,
 
       exec_interpreter: "none",
