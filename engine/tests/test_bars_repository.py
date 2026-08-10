@@ -220,7 +220,10 @@ def test_default_db_path_is_isolated_from_production():
             "volume": [1.0],
         }
     )
-    inserted = save_bars(df, "MCL", "1h", "smoke_test")  # db_path=None on purpose
+    # db_path=None on purpose. Source label must not be "smoke_test" -- that
+    # literal is in bar_quality_gate.BLOCKED_SOURCES (a separate, intentional
+    # guard) and would make this path-isolation test fail on an unrelated gate.
+    inserted = save_bars(df, "MCL", "1h", "test_fixture")
     assert inserted == 1
 
     loaded = load_bars("MCL", "1h")  # default path again
