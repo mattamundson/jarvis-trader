@@ -828,7 +828,11 @@ class TestReadinessRoute:
             patch("readiness.phase3_criteria.subprocess.run", return_value=_cov),
             patch("routers.readiness_router._default_db_path", return_value=fake_db),
         ):
-            resp = readiness_client.get("/readiness/phase3")
+            # Pin the legacy 10-criterion shape explicitly via the endpoint's own
+            # inspection param -- READINESS_EDGE_MODE in engine/.env is a real,
+            # intentional opt-in to wfo_plus_fidelity (12 criteria) and this test
+            # must not depend on that ambient config to assert the default shape.
+            resp = readiness_client.get("/readiness/phase3?edge_mode=paper_accrual")
 
         assert resp.status_code == 200
         data = resp.json()
