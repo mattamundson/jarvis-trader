@@ -34,17 +34,20 @@ Chrome DevTools Protocol (port 9222). It exposes 78 `mcp__tradingview__*` tools.
 - **No LLM-driven safety or trade decisions.** Chart reads inform Matt; they never gate the
   kill switch, position sizing, or approval. Those stay in hardcoded `engine/risk/`.
 - **Do not auto-execute on any crypto exchange.** (See "Rejected integration" below.)
-- The only active paper instrument is **MES**. **MGC, MNQ, and MCL are HALTED**
-  (`DO_NOT_TRADE_SYMBOLS`, `engine/backtest/signals.py`) — MGC was halted 2026-07-31 when the
-  DSR correction collapsed its earlier Tier-3 PASS (`engine/CLAUDE.md`). You may *read* their
-  charts for context, never wire any of them to a signal or alert.
+- Active paper instruments are **MES and MGC**. **MNQ and MCL are HALTED**
+  (`DO_NOT_TRADE_SYMBOLS`, `engine/backtest/signals.py`). MGC's status has flipped twice: halted
+  2026-07-31 (DSR correction), then **re-authorized 2026-08-04** on a fresh honest gate-v2 CORE
+  PASS — removed from `DO_NOT_TRADE_SYMBOLS`, `paper_config.py MGC_PAPER_CONFIG enabled=True`
+  (PR #597). The code (signals.py + paper_config.py) is the operational source of truth; note
+  `engine/CLAUDE.md`'s Active-Instruments row still reads "HALTED" and lags the code. You may
+  *read* MNQ/MCL charts for context, but never wire a halted symbol to a signal or alert.
 
 ## TradingView ↔ jarvis symbol map
 
 | jarvis | TradingView symbol   |
 |--------|----------------------|
 | MES    | `CME_MINI:MES1!`     |
-| MGC    | `COMEX_MINI:MGC1!` (read-only — HALTED) |
+| MGC    | `COMEX_MINI:MGC1!` (active paper — re-auth 2026-08-04) |
 | MNQ    | `CME_MINI:MNQ1!` (read-only — HALTED) |
 | MCL    | `NYMEX:MCL1!` (read-only — HALTED)    |
 

@@ -31,7 +31,7 @@ Map the jarvis symbol in `$ARGUMENTS` to the TradingView ticker:
 | jarvis | TradingView        | status                 |
 |--------|--------------------|------------------------|
 | MES    | `CME_MINI:MES1!`   | active paper           |
-| MGC    | `COMEX_MINI:MGC1!` | HALTED — read-only     |
+| MGC    | `COMEX_MINI:MGC1!` | active paper (re-auth 2026-08-04) |
 | MNQ    | `CME_MINI:MNQ1!`   | HALTED — read-only     |
 | MCL    | `NYMEX:MCL1!`      | HALTED — read-only     |
 

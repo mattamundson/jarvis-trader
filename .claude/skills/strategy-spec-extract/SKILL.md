@@ -25,11 +25,12 @@ kept, and it is remapped onto jarvis-trader's futures + pre-registration discipl
   and even graduation is *necessary, not sufficient* (gate-v2 routing still governs).
 - **No LLM-invented rules.** Extract only what the source explicitly states. Mark anything you
   inferred as `inferred: true` in `notes` — an inferred rule is a question for Matt, not a fact.
-- **Futures only, active paper instruments only.** Map the source to **MES** — the only active
-  paper instrument. If the source is crypto/equities/FX with no clean futures analog, say so and
-  stop — do not force-fit. **MGC, MNQ, and MCL are HALTED** (`DO_NOT_TRADE_SYMBOLS`; MGC halted
-  2026-07-31 per the DSR correction); you may draft a candidate for a halted symbol but mark it
-  `status: "paused"`, never `forward_testing`.
+- **Futures only, active paper instruments only.** Map the source to **MES or MGC** — the active
+  paper instruments (MGC re-authorized 2026-08-04 on a fresh gate-v2 CORE PASS, PR #597; verify
+  `DO_NOT_TRADE_SYMBOLS` / `paper_config.py` at use time since its status has flipped before). If
+  the source is crypto/equities/FX with no clean futures analog, say so and stop — do not
+  force-fit. **MNQ and MCL are HALTED** (`DO_NOT_TRADE_SYMBOLS`); you may draft a candidate for a
+  halted symbol but mark it `status: "paused"`, never `forward_testing`.
 - **No exchange keys, no `.env` execution knobs.** The crypto repo's `BITGET_*`,
   `MAX_TRADE_SIZE_USD`, `PAPER_TRADING`, etc. do NOT come across. Position sizing and risk
   live in hardcoded `engine/config.py` / `engine/risk/`, which this skill never touches.
