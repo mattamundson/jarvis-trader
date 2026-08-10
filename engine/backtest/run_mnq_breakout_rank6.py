@@ -570,8 +570,11 @@ def run_wfo() -> dict:
         "windows": window_records,
         "aux_freshness": {
             "data_file": data_file.name,
-            "n_total_oos_trades": gate["total_oos_trades"],
-            "n_windows_suppressed_by_regime_filter": total_regime_suppressed,
+            # aux_freshness values are typed str|None (VerdictSchema /
+            # gate_v2_orchestrator.VerdictSnapshot) -- these are diagnostic
+            # counts, not timestamps, so they must be stringified to conform.
+            "n_total_oos_trades": str(gate["total_oos_trades"]),
+            "n_windows_suppressed_by_regime_filter": str(total_regime_suppressed),
         },
         "lineage": {
             "rank5_hypothesis": "capital-sizing artifact ($10K → 0-2 contracts)",

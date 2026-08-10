@@ -548,7 +548,10 @@ def run_wfo() -> dict:
         "windows": window_records,
         "aux_freshness": {
             "data_file": data_file.name,
-            "n_total_oos_trades": gate["total_oos_trades"],
+            # aux_freshness values are typed str|None (VerdictSchema /
+            # gate_v2_orchestrator.VerdictSnapshot) -- this is a diagnostic
+            # count, not a timestamp, so it must be stringified to conform.
+            "n_total_oos_trades": str(gate["total_oos_trades"]),
         },
         "lineage": {
             "rank1_pf_ci_lower": 1.0696,

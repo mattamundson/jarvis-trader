@@ -415,7 +415,10 @@ def run_wfo(fast: bool = False) -> dict:
         "windows": window_records,
         "aux_freshness": {
             "data_file": data_file.name,
-            "n_total_oos_trades": gate["total_oos_trades"],
+            # aux_freshness values are typed str|None (VerdictSchema /
+            # gate_v2_orchestrator.VerdictSnapshot) -- this is a diagnostic
+            # count, not a timestamp, so it must be stringified to conform.
+            "n_total_oos_trades": str(gate["total_oos_trades"]),
         },
         "n_core_passed": 1 if gate["core_verdict"] == "PASS" else 0,
         "n_alt_passed": 1 if gate["alt_verdict"] == "PASS" else 0,
