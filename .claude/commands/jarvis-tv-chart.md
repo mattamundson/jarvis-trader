@@ -55,10 +55,11 @@ Map the input (a human alias *or* a bare TV resolution) to both columns:
 | `1m` / `1`   | `1`                   | `1m`                       |
 | `5m` / `5`   | `5`                   | `5m`                       |
 | `15m` / `15` | `15`                  | `15m`                      |
+| `30m` / `30` | `30`                  | `none` (price-only; levels skipped) |
 | `1h` / `60`  | `60`                  | `1h`                       |
 | `4h` / `240` | `240`                 | `4h`                       |
 | `1d` / `D`   | `D`                   | `1d`                       |
-| `1w` / `W`   | `W`                   | (levels skipped — no alias) |
+| `1w` / `W`   | `W`                   | `none` (price-only; levels skipped) |
 
 The engine cross-check helper accepts `1m`/`5m`/`15m`/`1h`/`4h`/`1d` — each has a real
 `get_bars` bar mapping (`market_data.py` IBKR `bar_size_map` and Polygon `tf_map`, both
@@ -139,6 +140,13 @@ feeds are down.
   fallback. Check it: only `ibkr` / `schwab` / `polygon` / `db` is an **independent** validation.
   `source: tradingview` means the engine agreed with TV because it *is* TV → report the price as
   **unverified (same-source)**, not confirmed.
+  ⚠️ **`source: ibkr` may be DELAYED, not real-time.** The IB paper account lacks a futures
+  real-time subscription, so the connector defaults to `reqMarketDataType(3)` = delayed
+  (~15 min), and `as_of` is the *fetch* time, not the *quote* time (`market_data.py`,
+  `prices_router.py`). So a `source: ibkr` value can be quarter-hour-stale yet look fresh. Trust
+  the response's live/static/stale badge (or `IB_MARKET_DATA_TYPE`): only a **LIVE** (type-1) IB
+  quote is a fresh independent feed; a delayed/frozen one (type 3/4) is **unverified** — do not
+  flag its gap vs TV as drift, and don't present it as confirmation.
 - **Levels (`/hidden-pivots/levels`)** returns only symbol/timeframe/ladder/swing — **no `source`
   field** — and its bars waterfall `TradingView → IBKR → Polygon → CSV` *independently* of the
   snapshot. You therefore **cannot** establish the ladder's provenance from the response, and must

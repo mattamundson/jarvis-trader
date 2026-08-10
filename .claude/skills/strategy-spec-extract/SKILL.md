@@ -122,8 +122,16 @@ only *after* Step 3's backtest + MCPT produce these values.
    the extracted rules — that corrupts the pre-registration. Summarize with the `backtest-report` skill.
 3. **MCPT** — run the `mcpt-validation` skill (bar-permutation) to check the edge isn't
    data-mining noise. One run per locked spec; a fail means discard, not adjust.
+3b. **Gate-v2 WFO produces the lock stats — not the single backtest/MCPT.** ⚠️ The
+   `lock_in_sample` fields (`gate_verdict`, `passed_via`, `pf_ci_lower`, `p_edge`, `dsr`,
+   `mc_95th_dd`, `n_oos_windows`) are computed by `wfo_lifecycle.compute_gate_v2()` over a
+   **walk-forward** run — a single Backtester run + bar-permutation MCPT cannot produce them. So
+   run a candidate-specific WFO / gate-v2 pass BEFORE step 4 and fill the lock verbatim from that
+   verdict; never hand-fill or borrow backtest/MCPT numbers into the lock. (This is why the WFE
+   step below is really a precondition of registration for a genuinely new candidate, not an
+   afterthought.)
 4. **Pre-register** the candidate in `engine/backtest/candidate_registry.json` with its
-   in-sample lock stats. Graduation rule (from the registry): `min_forward_oos_windows: 6`,
+   in-sample lock stats **(from the step-3b gate-v2 verdict)**. Graduation rule (from the registry): `min_forward_oos_windows: 6`,
    `min_forward_pf_ci_lower: 1.10`, `min_forward_p_edge: 0.95`, `must_survive_family_fdr: true`.
    ⚠️ **Flipping `status` to `forward_testing` is NOT enough to accumulate those windows.** The
    live entry path is LLM-driven, not mechanical, so a mechanical registry candidate "never fires
