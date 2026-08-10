@@ -1,11 +1,3 @@
-/** Substrings matched against `symbol` + `_filename` when picking a dashboard backtest baseline. */
-export const PREFERRED_BASELINE_SYMBOL_SUBSTRINGS = ["MCL", "MNQ"] as const;
-
-export function matchesPreferredBaseline(symbolAndFilename: string): boolean {
-  const u = symbolAndFilename.toUpperCase();
-  return PREFERRED_BASELINE_SYMBOL_SUBSTRINGS.some((s) => u.includes(s));
-}
-
 /**
  * Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
  * Canonical active paper-trading pair per the 2026-05-24 instrument switch —
@@ -15,3 +7,18 @@ export function matchesPreferredBaseline(symbolAndFilename: string): boolean {
  * together if the active pair ever changes again.
  */
 export const DEFAULT_BRIEFING_SYMBOLS = ["MES", "MGC"] as const;
+
+/**
+ * Substrings matched against `symbol` + `_filename` when picking a dashboard
+ * backtest baseline. Derived from DEFAULT_BRIEFING_SYMBOLS (not a separate
+ * literal) so it can't drift the way it did before -- this used to be its own
+ * hardcoded ["MCL", "MNQ"] array, self-contradicting the pair defined two
+ * lines above in the same file, and silently making pickApprovedBacktestBaseline()
+ * prefer a halted instrument's backtest over the actually-approved pair's.
+ */
+export const PREFERRED_BASELINE_SYMBOL_SUBSTRINGS: readonly string[] = DEFAULT_BRIEFING_SYMBOLS;
+
+export function matchesPreferredBaseline(symbolAndFilename: string): boolean {
+  const u = symbolAndFilename.toUpperCase();
+  return PREFERRED_BASELINE_SYMBOL_SUBSTRINGS.some((s) => u.includes(s));
+}
