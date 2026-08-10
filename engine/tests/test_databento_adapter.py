@@ -1,11 +1,12 @@
 """
 JARVIS TRADER — Databento cross-check adapter tests
 ====================================================
-Covers data/databento_adapter.py. The `databento` package is NOT installed
-in this venv by design (it's an optional, lazy-imported dependency — see
-requirements.txt) — several tests below exercise that real absence rather
-than mocking it, since it's the actual "dark by default" state described
-in docs/decisions/market-data-vendor-roadmap-2026-07-28.md.
+Covers data/databento_adapter.py. `databento` is installed in this venv —
+it's an optional, lazy-imported dependency installed because
+DATABENTO_API_KEY is set (see requirements.txt). "Dark by default" now
+turns on the API key, not the package: TestDarkByDefault and TestMissingKey
+below exercise that real gate rather than mocking it, per
+docs/decisions/market-data-vendor-roadmap-2026-07-28.md.
 """
 
 from __future__ import annotations
@@ -52,19 +53,27 @@ class TestSymbolMap:
             adapter.fetch_minute_bars("ZZFAKE", start=None, end=None)  # type: ignore[arg-type]
 
 
-class TestMissingPackage:
-    """`databento` genuinely isn't installed yet (optional dep) — this
-    exercises the real import-failure path, not a mock."""
+class TestMissingKey:
+    """`databento` is installed, but a DatabentoAdapter reached with no API
+    key must still fail clearly rather than firing a network request with
+    an empty key. Exercises the real guard in fetch_minute_bars, not a
+    mock — get_adapter() itself never constructs a keyless adapter in
+    production, so these reach the adapter directly, same as the prior
+    missing-package tests did."""
 
     def test_fetch_raises_clear_runtime_error(self):
-        adapter = dba.DatabentoAdapter(api_key="db-fake-key")
+        adapter = dba.DatabentoAdapter(api_key="")
         from datetime import datetime, timezone
 
-        with pytest.raises(RuntimeError, match="databento.*package is not installed"):
+        with pytest.raises(RuntimeError, match="without an API key"):
             adapter.fetch_minute_bars("MES", datetime.now(timezone.utc), datetime.now(timezone.utc))
 
     def test_reconcile_reports_error_status_not_exception(self, monkeypatch):
+        # DATABENTO_API_KEY stays truthy so get_adapter() doesn't short-circuit
+        # to "skipped" — get_adapter() itself is patched to hand back an
+        # adapter with an empty key, forcing fetch_minute_bars's real guard.
         monkeypatch.setattr(dba, "DATABENTO_API_KEY", "db-fake-key")
+        monkeypatch.setattr(dba, "get_adapter", lambda: dba.DatabentoAdapter(api_key=""))
         fake_cache = pd.DataFrame({
             "timestamp": pd.to_datetime(["2026-07-27T14:30:00Z"]),
             "open": [5900.0], "high": [5901.0], "low": [5899.0],
@@ -75,7 +84,7 @@ class TestMissingPackage:
         )
         result = dba.reconcile_vs_cache("MES")
         assert result["status"] == "error"
-        assert "not installed" in result["reason"]
+        assert "without an API key" in result["reason"]
 
 
 class TestReconcileNoCache:
