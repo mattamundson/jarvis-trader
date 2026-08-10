@@ -30,8 +30,18 @@ _TARGETS = {"MGC": 13.3}
 # ---------------------------------------------------------------------------
 
 def test_vol_target_disabled_by_default():
-    from config import settings
-    assert settings.VOL_TARGET_ENABLED is False, "vol-targeting must default OFF"
+    """Field-level default, not the live settings singleton -- engine/.env
+    currently sets VOL_TARGET_ENABLED=true (a real, deliberate opt-in; the
+    only configured target is MGC, which is separately halted via
+    DO_NOT_TRADE_SYMBOLS, so the overlay is inert in practice). This test's
+    job is the ship-dark guarantee -- what a fresh checkout with no .env
+    override defaults to -- so it must read the declared Field default
+    directly rather than the env-loaded singleton.
+    """
+    from config import TradingConfig
+    assert TradingConfig.model_fields["VOL_TARGET_ENABLED"].default is False, (
+        "vol-targeting must default OFF"
+    )
 
 
 def test_default_config_values_present():
