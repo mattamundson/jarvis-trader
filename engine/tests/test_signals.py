@@ -601,6 +601,11 @@ def test_mes_rv_filter_env_var_default_off(monkeypatch):
     from backtest.signals import generate_instrument_signals
 
     monkeypatch.delenv("MES_MIN_RV_ANNUALIZED", raising=False)
+    # This test isolates the RV-filter env var, not gate-v2 routing -- must not
+    # depend on whether the live engine/.env has GATE_V2_ENFORCE_ROUTING=1 or
+    # whether MES's on-disk gate-v2 trend verdict happens to be fresh right now
+    # (it currently isn't: newest PASS is 30+ days old, past the 14-day TTL).
+    monkeypatch.delenv("GATE_V2_ENFORCE_ROUTING", raising=False)
 
     df = _make_mes_cross_df()
     out = generate_instrument_signals(df, symbol="MES")
@@ -614,6 +619,8 @@ def test_mes_rv_filter_env_var_invalid_safe(monkeypatch):
     from backtest.signals import generate_instrument_signals
 
     monkeypatch.setenv("MES_MIN_RV_ANNUALIZED", "not_a_number")
+    # Isolate from live gate-v2 routing enforcement -- see comment above.
+    monkeypatch.delenv("GATE_V2_ENFORCE_ROUTING", raising=False)
     df = _make_mes_cross_df()
     # Must not raise — invalid env silently defaults to 0.0
     out = generate_instrument_signals(df, symbol="MES")
@@ -625,6 +632,11 @@ def test_mes_rv_filter_env_var_high_blocks_entries(monkeypatch):
     from backtest.signals import generate_instrument_signals
 
     monkeypatch.setenv("MES_MIN_RV_ANNUALIZED", "999.0")
+    # Isolate from live gate-v2 routing enforcement -- without this the
+    # assertion below passes even if the RV filter is doing nothing, because
+    # gate-v2 independently forces 0 entries whenever MES's on-disk trend
+    # verdict is stale (it currently is). See sibling tests above.
+    monkeypatch.delenv("GATE_V2_ENFORCE_ROUTING", raising=False)
     df = _make_mes_cross_df()
     out = generate_instrument_signals(df, symbol="MES")
     assert (out["entry_signal"] == "ENTRY_NOW").sum() == 0
