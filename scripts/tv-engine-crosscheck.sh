@@ -44,6 +44,10 @@ else
   API_KEY="$(grep -E '^API_KEY=' engine/.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
   API_KEY="${API_KEY%\"}"; API_KEY="${API_KEY#\"}"
 fi
+# Strip a trailing CR: on Windows (the intended env) engine/.env is often CRLF,
+# which leaves \r in the value -> a malformed X-API-Key header that Uvicorn 400s
+# (making every cross-check exit 4 despite a valid key). Applies to both sources.
+API_KEY="${API_KEY%$'\r'}"
 
 if [ -z "${API_KEY:-}" ]; then
   echo "no engine API key (JARVIS_API_KEY unset and engine/.env has none) — skipping cross-check" >&2
