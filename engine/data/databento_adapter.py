@@ -68,6 +68,11 @@ class DatabentoAdapter:
         db_symbol = SYMBOL_MAP.get(symbol.upper())
         if db_symbol is None:
             raise ValueError(f"No Databento continuous-symbol mapping for {symbol!r}")
+        if not self.api_key:
+            raise RuntimeError(
+                "DatabentoAdapter.fetch_minute_bars called without an API key "
+                "(DATABENTO_API_KEY is not set)."
+            )
         try:
             import databento as db
         except ImportError as e:
