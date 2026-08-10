@@ -150,6 +150,131 @@ def deflated_sharpe_ratio(
     }
 
 
+def deflated_sharpe_empirical(
+    pnls: Sequence[float],
+    n_trials: int,
+    initial_capital: float = 50_000.0,
+    n_permutations: int = 10_000,
+    seed: int = 42,
+    ann_factor: float = 252.0,
+) -> dict:
+    """Empirical (MC-calibrated) Deflated Sharpe Ratio for TRADE-based series.
+
+    WHY THIS EXISTS — the closed-form `deflated_sharpe_ratio` is structurally
+    mis-calibrated for trade-based return series (audit 2026-08-04, PR #594):
+
+    The Bailey-López de Prado null E[max SR | N, null] ≈ 0.85 (at N=3 trials)
+    assumes a HIGH-FREQUENCY DAILY return stream where an SR of 0.85 is a
+    plausible lucky outcome. A trade-based series (one observation per closed
+    trade, ~18-40 total, mostly binary wins/losses) structurally cannot reach
+    raw Sharpe 0.85 no matter how strong the edge — a PF 10 strategy at 160
+    trades still only reaches raw Sharpe ~0.6. The closed-form gate therefore
+    degenerates to "always fail," rejecting every realistic edge.
+
+    Instead of a closed-form null, this function builds the null EMPIRICALLY:
+    it permutes the sign pattern of the ACTUAL trade PnLs (preserving the real
+    payoff shape: win size distribution, loss size distribution, trade count)
+    and computes the distribution of the maximum Sharpe over n_trials random
+    signings. The observed Sharpe is then compared against that null — a
+    selection-bias correction calibrated to THIS strategy's actual payoff
+    shape and sample size, not to a hypothetical daily-return stream.
+
+    The annualization factor only rescales the final DSR's informational
+    `ann_sharpe` field; the DSR itself is computed on the native per-trade
+    Sharpe, so the null and observed statistic share a frequency regime.
+
+    Returns the same keys as `deflated_sharpe_ratio` plus:
+        null_p95_sharpe      : 95th pct of the max-of-N-trials null Sharpe
+        null_mean_sharpe     : mean of the null max distribution
+        null_std_sharpe      : std of the null max distribution
+        n_permutations       : iterations used
+    """
+    pnl_arr = np.asarray(pnls, dtype=float)
+    T = len(pnl_arr)
+    if T < 3 or n_trials < 1:
+        return {
+            "raw_sharpe": 0.0,
+            "expected_max_sharpe": 0.0,
+            "sharpe_std_error": 0.0,
+            "dsr": 0.0,
+            "passes_at_10pct": False,
+            "dsr_degenerate": True,
+            "n_trials": int(n_trials),
+            "n_obs": T,
+            "skew": 0.0,
+            "kurt": 3.0,
+            "ann_sharpe": 0.0,
+            "null_p95_sharpe": 0.0,
+            "null_mean_sharpe": 0.0,
+            "null_std_sharpe": 0.0,
+            "n_permutations": int(n_permutations),
+        }
+
+    # Observed per-trade Sharpe on the ACTUAL trade list (native frequency).
+    returns = pnl_arr / initial_capital
+    mean = float(returns.mean())
+    std = float(returns.std(ddof=1))
+    raw_sharpe = mean / std if std > 0 else 0.0
+    ann_sharpe = raw_sharpe * np.sqrt(ann_factor)
+
+    # Build the empirical null: for each permutation, sign-flip each trade PnL
+    # at random (preserving magnitude distribution, destroying any edge), then
+    # compute the Sharpe of that "random strategy." Repeat n_trials times per
+    # permutation and keep the MAX (that is the selection-bias effect: we
+    # searched n_trials grid combos and report the best). Collect the null
+    # distribution of the best-of-N strategy.
+    rng = np.random.default_rng(seed)
+    mags = np.abs(pnl_arr)
+    null_maxes = np.empty(n_permutations, dtype=float)
+    for i in range(n_permutations):
+        best = -np.inf
+        for _ in range(max(int(n_trials), 1)):
+            signs = rng.choice([-1.0, 1.0], size=T)
+            trial_returns = (mags * signs) / initial_capital
+            t_mean = float(trial_returns.mean())
+            t_std = float(trial_returns.std(ddof=1))
+            trial_sr = t_mean / t_std if t_std > 0 else 0.0
+            if trial_sr > best:
+                best = trial_sr
+        null_maxes[i] = best
+
+    null_mean = float(np.mean(null_maxes))
+    null_std = float(np.std(null_maxes, ddof=1))
+    null_p95 = float(np.percentile(null_maxes, 95.0))
+
+    # DSR = P(null max Sharpe < observed Sharpe). This is the fraction of
+    # random strategies that our observed strategy beats — an empirical
+    # p-value under the null. Also report a z-style DSR for compatibility
+    # with the closed-form's 0..1 scale (it IS a probability here, not a
+    # CDF value, so it reads naturally: 0.95 = beats 95% of luck).
+    dsr = float(np.mean(null_maxes < raw_sharpe))
+
+    # std error of the observed Sharpe (Lo/Mertens on the actual series) for
+    # reporting parity with the closed-form output.
+    skew_val = float(stats.skew(returns, bias=False)) if T > 2 else 0.0
+    kurt_excess = float(stats.kurtosis(returns, bias=False)) if T > 2 else 0.0
+    kurt_raw = kurt_excess + 3.0
+    se = _sharpe_standard_error(raw_sharpe, skew_val, kurt_raw, T)
+
+    return {
+        "raw_sharpe": round(raw_sharpe, 6),
+        "expected_max_sharpe": round(null_mean, 6),  # empirical expected max
+        "sharpe_std_error": round(float(se) if np.isfinite(se) else -1.0, 6),
+        "dsr": round(dsr, 6),
+        "passes_at_10pct": bool(dsr >= 0.10),
+        "dsr_degenerate": bool(not np.isfinite(dsr)),
+        "n_trials": int(n_trials),
+        "n_obs": T,
+        "skew": round(skew_val, 6),
+        "kurt": round(kurt_raw, 6),
+        "ann_sharpe": round(ann_sharpe, 6),
+        "null_p95_sharpe": round(null_p95, 6),
+        "null_mean_sharpe": round(null_mean, 6),
+        "null_std_sharpe": round(null_std, 6),
+        "n_permutations": int(n_permutations),
+    }
+
+
 def deflated_sharpe_from_returns(
     returns: Sequence[float],
     n_trials: int,
