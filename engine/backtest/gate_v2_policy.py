@@ -286,8 +286,14 @@ def is_strategy_authorized(
             "(gate v2 FAIL or not yet validated — see paper_config.py)",
         )
 
-    # 3. Non-stale gate v2 PASS verdict must exist on disk
-    if not is_ungate_eligible(sym_upper, verdicts_dir):
+    # 3. Non-stale gate v2 PASS verdict must exist on disk.
+    # MES is exempt from this specific check only: Amo's standing directive
+    # (2026-06-26, emphatic — "I 10000% never want to disable MES") keeps it
+    # active as the primary paper vehicle regardless of gate v2 / re-validation
+    # outcome. It still must clear checks 1-2 above like every other symbol —
+    # this carve-out narrowly targets the gate-v2-verdict check the directive
+    # is actually about, not a blanket bypass of authorization.
+    if sym_upper != "MES" and not is_ungate_eligible(sym_upper, verdicts_dir):
         return (
             False,
             f"{sym_upper} has no valid non-stale gate v2 PASS verdict "

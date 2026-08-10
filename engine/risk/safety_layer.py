@@ -228,6 +228,7 @@ class SafetyLayer:
         """
         self._config = config
         self._ib_gateway = ib_gateway  # used only by submit_paper_order()
+        self._data_manager: Optional[object] = None  # MarketDataManager | None
         self._pnl_monitor: Optional[object] = pnl_monitor  # PnLMonitor | None
         self._loss_tracker: Optional[object] = loss_tracker  # ConsecutiveLossTracker | None
         self._db_manager = db_manager  # DatabaseManager | None - for P&L snapshot persistence
@@ -277,6 +278,11 @@ class SafetyLayer:
     def attach_ib_gateway(self, gateway) -> None:
         """Wire in an IB gateway after construction (called after paper connector connects)."""
         self._ib_gateway = gateway
+
+    def attach_data_manager(self, data_manager) -> None:
+        """Wire in a MarketDataManager after construction (used by submit_paper_order()'s
+        entry-price-sanity check on client-supplied limit prices)."""
+        self._data_manager = data_manager
 
     def attach_schwab(self, connector) -> None:
         """Attach Schwab connector for equity/options order routing."""
@@ -737,6 +743,40 @@ class SafetyLayer:
             finally:
                 conn.close()
             if row is None:
+                # INTENTIONAL FAIL-OPEN (PRB-09, reviewed alongside the GT-49
+                # fail-closed hardening of the two sibling branches below).
+                #
+                # Unlike the _db_path-is-None and except-Exception branches,
+                # "row is None" here is NOT an unknown/unverifiable state — it
+                # is the documented, expected representation of "this account
+                # has never been triggered or cleared":
+                #   - migration_028 (engine/database/migrations.py) creates
+                #     this table empty; it does not seed active=0 rows for
+                #     any account_id at migration time.
+                #   - No code path in this codebase ever DELETEs a row from
+                #     per_account_kill_state — trigger_per_account_kill() and
+                #     clear_per_account_kill() only INSERT ... ON CONFLICT DO
+                #     UPDATE, so a row that once existed cannot silently
+                #     disappear through normal application logic.
+                #   - A genuinely wiped/dropped TABLE (as opposed to a row
+                #     that was simply never created) raises a sqlite3
+                #     OperationalError from the SELECT above, which is
+                #     already caught and fails CLOSED by the except block
+                #     below — that failure mode is covered by the sibling
+                #     branch, not this one.
+                # Flipping this branch to fail-closed would make every new
+                # account permanently halted from creation, since nothing
+                # ever auto-seeds an active=0 row and clear_per_account_kill()
+                # is explicitly a human-only path (see its docstring) — not
+                # invoked automatically on startup. That would break the
+                # per-account kill switch feature outright, not just harden
+                # it. Residual risk: out-of-band manual DB tampering (e.g. a
+                # raw `DELETE FROM per_account_kill_state ...` run outside
+                # this application) could still produce a false "never
+                # triggered" read here — that is treated as a distinct,
+                # out-of-band DB-integrity threat model equivalent to
+                # directly editing this table's active column, not something
+                # this code-level fail-closed/fail-open decision can address.
                 return {
                     "account_id": account_id,
                     "active": False,
@@ -1286,6 +1326,40 @@ class SafetyLayer:
                 rejection_reason=f"Requested {abs(order.quantity)} contracts exceeds max {self._config.MAX_CONTRACTS_PER_INSTRUMENT}",
             )
         sym = order.symbol.upper()
+
+        # CUMULATIVE_POSITION_CAP (2026-08-03 incident): the check above only
+        # validates THIS order's size in isolation — several individually-compliant
+        # orders can stack a net position well past MAX_CONTRACTS_PER_INSTRUMENT
+        # (five 1-2 contract MES BUYs stacked the account to 5 against a cap of 2).
+        # Fold in the current live position so the cap is enforced on the
+        # RESULTING net position, not just the new order's own quantity.
+        # Uses the sync IB position cache (no network round-trip, no failure mode
+        # of its own) — see IBGatewayManager.get_cached_position(). None means
+        # "cannot verify right now" (no gateway attached, not connected, or the
+        # cache read failed) — fail OPEN on this specific check only; the
+        # per-order cap above still applies unconditionally.
+        if order.is_futures and self._ib_gateway is not None:
+            current_net = None
+            try:
+                getter = getattr(self._ib_gateway, "get_cached_position", None)
+                if callable(getter):
+                    raw = getter(sym)
+                    if raw is not None:
+                        current_net = float(raw)
+            except (TypeError, ValueError):
+                current_net = None
+            if current_net is not None:
+                resulting_net = current_net + order.quantity
+                if abs(resulting_net) > self._config.MAX_CONTRACTS_PER_INSTRUMENT:
+                    return RiskCheckResult(
+                        approved=False,
+                        rejection_reason=(
+                            f"CUMULATIVE_POSITION_CAP: {sym} current position={current_net:+g}, "
+                            f"this order ({order.quantity:+d}) would bring the net position to "
+                            f"{resulting_net:+g} contracts — exceeds max "
+                            f"{self._config.MAX_CONTRACTS_PER_INSTRUMENT}"
+                        ),
+                    )
         if order.is_futures and sym in _OVERNIGHT_SYMBOLS:
             now_ct = datetime.now(_CT_ZONE)
             if now_ct.hour >= _OVERNIGHT_CUTOFF_HOUR:
@@ -1551,6 +1625,54 @@ class SafetyLayer:
             estimated_value=estimated_value,
         )
 
+        # â”€â”€ 1b. Entry-price sanity on a client-supplied limit price â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # 2026-08-03 incident: the Dashboard's manual /orders/place endpoint (the
+        # only caller that can supply an arbitrary client-side limit_price) has no
+        # upstream sanity check of its own — a $1000 LMT order on MES (~87% below
+        # a ~$7,600 market) reached IB Gateway unchecked. The other three callers
+        # of check_entry_price_sanity() (scheduler/pipeline_autonomous.py,
+        # approval/service.py, scanner/signal_scanner.py) already validate before
+        # calling submit_paper_order(); running it here as well means EVERY caller
+        # of this method — the sole approved path to the broker — is covered by
+        # construction, not by each caller remembering to wire it in. Runs only
+        # for LIMIT orders with a client-supplied price and only when a data
+        # manager is attached (attach_data_manager()); silently skipped otherwise
+        # to preserve backward compatibility with callers/tests that don't wire
+        # one in.
+        if (
+            normalised_order_type == "limit"
+            and limit_price is not None
+            and self._data_manager is not None
+        ):
+            from risk.entry_price_sanity import (  # noqa: PLC0415 — lazy, cycle-free
+                check_entry_price_sanity,
+                is_entry_price_sanity_enabled,
+            )
+
+            if is_entry_price_sanity_enabled():
+                is_sane, sanity_reason = await check_entry_price_sanity(
+                    symbol=symbol,
+                    entry_price=limit_price,
+                    data_manager=self._data_manager,
+                    is_futures=is_futures,
+                )
+                if not is_sane:
+                    logger.error(
+                        "submit_paper_order REJECTED by entry-price-sanity - symbol=%s "
+                        "action=%s qty=%d limit_price=%s: %s",
+                        symbol,
+                        action,
+                        quantity,
+                        limit_price,
+                        sanity_reason,
+                    )
+                    return {
+                        "approved": False,
+                        "reason": sanity_reason,
+                        "order_id": None,
+                        "routed_to_ib": False,
+                    }
+
         # â”€â”€ 2. Full pre-trade safety gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         # check_order() re-checks the kill switch internally (check #0 above
         # is an early-exit optimisation to avoid building OrderRequest at all
@@ -1577,6 +1699,25 @@ class SafetyLayer:
             for w in risk_result.warnings:
                 logger.warning("submit_paper_order safety warning (order allowed): %s", w)
 
+        # â”€â”€ 2b. Apply any risk-layer size adjustment (e.g. loss-tracker) â”€â”€â”€â”€â”€
+        # check_order() may return an adjusted_order with a reduced quantity
+        # (loss-tracker de-risking after consecutive losses). The ACTUAL order
+        # sent to the broker/paper-fill path -- entry AND its linked stop leg
+        # -- must reflect that reduced size, not the caller's original
+        # `quantity`. Discarding adjusted_order here previously meant the
+        # safety layer believed it had de-risked while full-size orders still
+        # went out (PRB-01, 2026-07-29 prod-readiness audit).
+        final_order = risk_result.adjusted_order or order
+        final_quantity = abs(int(final_order.quantity))
+        if final_quantity != quantity:
+            logger.warning(
+                "submit_paper_order: risk-adjusted size %d -> %d for symbol=%s action=%s",
+                quantity,
+                final_quantity,
+                symbol,
+                action,
+            )
+
         # â”€â”€ 3. Route to IB Gateway if available â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if self._ib_gateway is None:
             logger.info(
@@ -1584,13 +1725,14 @@ class SafetyLayer:
                 "(dry-run mode). symbol=%s action=%s qty=%d",
                 symbol,
                 action,
-                quantity,
+                final_quantity,
             )
             return {
                 "approved": True,
                 "reason": "Safety checks passed - IB gateway not attached (dry-run)",
                 "order_id": None,
                 "routed_to_ib": False,
+                "quantity": final_quantity,
             }
 
         if not self._ib_gateway.is_connected():
@@ -1599,20 +1741,21 @@ class SafetyLayer:
                 "symbol=%s action=%s qty=%d",
                 symbol,
                 action,
-                quantity,
+                final_quantity,
             )
             return {
                 "approved": True,
                 "reason": "Safety checks passed - IB gateway not connected",
                 "order_id": None,
                 "routed_to_ib": False,
+                "quantity": final_quantity,
             }
 
         try:
             order_id = await self._ib_gateway.place_paper_order(
                 symbol=symbol,
                 action=action_upper,
-                quantity=quantity,
+                quantity=final_quantity,
                 order_type=order_type.upper(),
                 limit_price=limit_price,
             )
@@ -1623,7 +1766,7 @@ class SafetyLayer:
                 await self._ib_gateway.place_paper_order(
                     symbol=symbol,
                     action=stp_action,
-                    quantity=quantity,
+                    quantity=final_quantity,
                     order_type="STP",
                     aux_price=stop_price,
                     parent_order_id=order_id,
@@ -1633,7 +1776,7 @@ class SafetyLayer:
                 "qty=%d order_type=%s order_id=%s",
                 symbol,
                 action_upper,
-                quantity,
+                final_quantity,
                 order_type.upper(),
                 order_id,
             )
@@ -1642,6 +1785,7 @@ class SafetyLayer:
                 "reason": "Order submitted to IB Gateway (paper trading)",
                 "order_id": str(order_id) if order_id is not None else None,
                 "routed_to_ib": True,
+                "quantity": final_quantity,
             }
         except Exception as exc:
             logger.error(
@@ -1655,6 +1799,7 @@ class SafetyLayer:
                 "reason": f"Safety checks passed but IB Gateway raised: {exc}",
                 "order_id": None,
                 "routed_to_ib": False,
+                "quantity": final_quantity,
             }
 
     async def submit_paper_bracket_order(
@@ -1860,12 +2005,19 @@ class SafetyLayer:
         entry_id = entry_res["order_id"]
         child_action = "SELL" if action.upper() == "BUY" else "BUY"
 
+        # submit_paper_order() may have risk-adjusted (loss-tracker) the entry
+        # down from `quantity` (the caller's requested size). The child STP/TP
+        # legs MUST match the entry's actual filled size -- a full-size stop
+        # protecting a reduced-size entry would (on trigger) sell more than is
+        # held, opening an unintended new position in the opposite direction.
+        actual_quantity = entry_res.get("quantity") or quantity
+
         # --- Child STP (stop-loss) ---
         try:
             stp_id_raw = await self._ib_gateway.place_paper_order(
                 symbol=symbol,
                 action=child_action,
-                quantity=quantity,
+                quantity=actual_quantity,
                 order_type="STP",
                 limit_price=None,
                 aux_price=stop_price,
@@ -1935,7 +2087,7 @@ class SafetyLayer:
                 tp_id_raw = await self._ib_gateway.place_paper_order(
                     symbol=symbol,
                     action=child_action,
-                    quantity=quantity,
+                    quantity=actual_quantity,
                     order_type="LMT",
                     limit_price=float(target_price),
                     aux_price=None,
