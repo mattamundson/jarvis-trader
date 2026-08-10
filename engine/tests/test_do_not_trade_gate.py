@@ -42,11 +42,12 @@ def bullish_ohlcv_df() -> pd.DataFrame:
 
 class TestDoNotTradeGate:
     def test_membership(self):
-        """MCL, MNQ, M2K, and MGC must be in the blocklist; MES must NOT be."""
+        """MCL, MNQ, and M2K must be in the blocklist; MGC (re-authorized
+        2026-08-04, PR #598) and MES must NOT be."""
         assert "MCL" in DO_NOT_TRADE_SYMBOLS
         assert "MNQ" in DO_NOT_TRADE_SYMBOLS
         assert "M2K" in DO_NOT_TRADE_SYMBOLS
-        assert "MGC" in DO_NOT_TRADE_SYMBOLS
+        assert "MGC" not in DO_NOT_TRADE_SYMBOLS
         assert "MES" not in DO_NOT_TRADE_SYMBOLS
 
     def test_mcl_forced_no_trade(self, bullish_ohlcv_df):
@@ -58,13 +59,6 @@ class TestDoNotTradeGate:
 
     def test_mnq_forced_no_trade(self, bullish_ohlcv_df):
         out = generate_instrument_signals(bullish_ohlcv_df, symbol="MNQ")
-        assert (out["entry_signal"] == "NO_TRADE").all()
-
-    def test_mgc_forced_no_trade(self, bullish_ohlcv_df):
-        """MGC is TREND_INSTRUMENTS-routed (unlike MCL/MNQ), so this also
-        proves the blocklist override fires AFTER trend routing, not just on
-        the plain generate_signals path."""
-        out = generate_instrument_signals(bullish_ohlcv_df, symbol="MGC")
         assert (out["entry_signal"] == "NO_TRADE").all()
 
     def test_mcl_exit_signal_also_cleared_when_present(self, bullish_ohlcv_df):
