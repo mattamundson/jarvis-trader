@@ -1102,6 +1102,40 @@ class IBGatewayManager:
 
         try:
             positions = await self._ib.reqPositionsAsync()
+        except Exception as exc:
+            logger.error("get_positions: reqPositionsAsync failed: %s", exc, exc_info=True)
+            positions = []
+
+        # Cross-check against ib_async's continuously-updated position cache
+        # (self._ib.positions() — no I/O, populated automatically on connect).
+        # 2026-08-03 incident: reqPositionsAsync() silently returned [] while the
+        # account genuinely held 5 MES contracts (2.5x over the configured cap) —
+        # the dashboard's /brokers/positions showed a flat/reconciled view while
+        # the real account was over its limit. The cache reflects the same
+        # account state a fresh manual IB query hits and isn't subject to
+        # whatever made that particular reqPositionsAsync round-trip come back
+        # empty, so prefer it over silently trusting an empty result.
+        try:
+            cached = self._ib.positions()
+        except Exception:
+            cached = []
+        if not positions and cached:
+            logger.error(
+                "get_positions: reqPositionsAsync returned EMPTY but the position cache "
+                "holds %d entries — using the cache instead. This mismatch indicates "
+                "reqPositionsAsync is unreliable right now and is worth investigating.",
+                len(cached),
+            )
+            positions = cached
+        elif positions and cached and len(positions) != len(cached):
+            logger.warning(
+                "get_positions: reqPositionsAsync (%d) and position cache (%d) entry "
+                "counts disagree",
+                len(positions),
+                len(cached),
+            )
+
+        try:
             result = []
             for pos in positions:
                 contract = pos.contract
@@ -1124,6 +1158,34 @@ class IBGatewayManager:
         except Exception as exc:
             logger.error("get_positions failed: %s", exc, exc_info=True)
             return []
+
+    def get_cached_position(self, symbol: str) -> Optional[float]:
+        """
+        Sync, no-I/O net position for ``symbol`` from ib_async's continuously-
+        updated position cache (``self._ib.positions()``).
+
+        Intended for latency-sensitive pre-trade risk checks (e.g. the
+        cumulative-position cap in SafetyLayer.check_order()) where an async
+        round-trip to IB is undesirable and, per the 2026-08-03 incident,
+        reqPositionsAsync() can itself silently return an empty result.
+
+        Returns None when the gateway isn't connected/available — callers
+        should treat that as "cannot verify" and fail open on this specific
+        check, not as "position is zero".
+        """
+        if self._ib is None or not IB_INSYNC_AVAILABLE or not self.is_connected():
+            return None
+        try:
+            total = 0.0
+            found = False
+            for pos in self._ib.positions():
+                if pos.contract.symbol.upper() == symbol.upper():
+                    total += float(pos.position)
+                    found = True
+            return total if found else 0.0
+        except Exception as exc:
+            logger.warning("get_cached_position(%s) failed: %s", symbol, exc)
+            return None
 
     async def get_portfolio_value(self) -> float:
         """

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+﻿import { test, expect } from "@playwright/test";
 
 test("trade-history smoke: renders trade history shell under mocked engine", async ({ page }) => {
   await page.route("**/api/engine/**", (route) => {

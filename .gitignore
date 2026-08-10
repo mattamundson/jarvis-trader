@@ -114,6 +114,8 @@ engine/data/*.jsonl
 # SQLite database files (runtime data — never commit)
 *.db-wal
 *.db-shm
+engine/domflow/domflow.db
+engine/domflow/domflow.db-*
 **/.fuse_hidden*
 engine/data/*.db
 engine/data/*.backup_*

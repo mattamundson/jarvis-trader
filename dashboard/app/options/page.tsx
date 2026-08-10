@@ -71,9 +71,9 @@ function strategyLabel(strategy: string): string {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function OptionsPage() {
-  const { data: status } = useSWR<OptionsModuleStatus>("/options/module/status", fetcher, { refreshInterval: REFRESH_MS });
-  const { data: scan, error: scanError } = useSWR<OptionsScanResponse>("/options/module/scan", fetcher, { refreshInterval: 30_000 });
-  const { data: pnlData, error: pnlError } = useSWR<OptionsPnLResponse>("/options/module/pnl", fetcher, { refreshInterval: REFRESH_MS });
+  const { data: status } = useSWR<OptionsModuleStatus>("/options/module/status", fetcher, { refreshInterval: REFRESH_MS, shouldRetryOnError: false });
+  const { data: scan, error: scanError } = useSWR<OptionsScanResponse>("/options/module/scan", fetcher, { refreshInterval: 30_000, shouldRetryOnError: false });
+  const { data: pnlData, error: pnlError } = useSWR<OptionsPnLResponse>("/options/module/pnl", fetcher, { refreshInterval: REFRESH_MS, shouldRetryOnError: false });
 
   const pnlPositive = (pnlData?.daily_pnl ?? 0) >= 0;
 
