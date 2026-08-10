@@ -37,7 +37,7 @@ export default function PaperTradingPage() {
   const { data: health, error: healthError, isLoading: healthLoading } = useSWR<EngineHealthPayload>(
     "/health",
     fetcher,
-    { refreshInterval: 30_000, revalidateOnFocus: true }
+    { refreshInterval: 30_000, revalidateOnFocus: true, shouldRetryOnError: false }
   );
 
   // Same live source that gates MGC's ACTIVE/HALTED badge on /command-center —
