@@ -119,7 +119,12 @@ TREND_INSTRUMENTS = {"MES", "MGC"}
 #   protected since only by paper_config.py's softer `enabled=False` flag, not
 #   this hard blocklist. This closes that gap; do not remove without a fresh
 #   gate-v2 PASS at the corrected trial count and Amo's explicit authorization.
-DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K", "MGC"})
+#   2026-08-04: MGC REMOVED from blocklist. Fresh rank4 verdict PASSes gate v2
+#   (CORE) honestly — empirical DSR 0.9952 (not the degenerate-variance
+#   fallback), SOTA-hardened execution, 67 OOS trades, 19/19 windows, all 8
+#   grid combos PF>=1.36, survives catastrophic costs. See PR #597 verdict
+#   file engine/data/gate_v2_verdicts/MGC_trend_rank4.json.
+DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
 
 # Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
 # Canonical active paper-trading pair per the 2026-05-24 instrument switch —
