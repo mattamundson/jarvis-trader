@@ -36,10 +36,16 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     "NQ": (8_000.0, 32_000.0),
     "NQ_F": (8_000.0, 32_000.0),
     # S&P 500 futures. Equity "ES" = ESSA Pharma (~$1-$15 penny stock).
-    # Band ceiling set above 2026 all-time highs (~$7036).
-    "MES": (3_000.0, 8_500.0),
-    "ES": (3_000.0, 8_500.0),
-    "ES_F": (3_000.0, 8_500.0),
+    # Band ceiling set above 2026 all-time highs (~$7036). Floor lowered from
+    # 3_000 to 2_500 (2026-08-10) to cover the back-adjusted continuous MES
+    # series (backtest/cache/MES_2021-08-01_2026-07-30_*_cont.csv, the
+    # Databento continuous-series build): back-adjustment legitimately shifts
+    # older bars below the nominal 2021-era MES level (observed low ~2696 at
+    # the 2022-10 bar) as the cumulative roll-gap correction compounds --
+    # that's expected behavior for a _cont file, not an equity-ticker leak.
+    "MES": (2_500.0, 8_500.0),
+    "ES": (2_500.0, 8_500.0),
+    "ES_F": (2_500.0, 8_500.0),
     # Gold futures. Equity "GC" is various small caps (<$100).
     # Band ceiling set above 2026 all-time highs (~$5591).
     "MGC": (1_400.0, 6_500.0),
