@@ -278,8 +278,8 @@ async def get_discord_intelligence(
 ):
     """
     Aggregated Discord bot features for the default briefing symbols
-    (``DEFAULT_BRIEFING_SYMBOLS`` — MES and MGC as of the 2026-05-24
-    instrument switch; dashboard widget).
+    (``DEFAULT_BRIEFING_SYMBOLS`` — MES only as of 2026-08-01, after MGC
+    joined DO_NOT_TRADE_SYMBOLS (PR #552); dashboard widget).
 
     Uses ``DiscordSignalContext`` — same five features as the RL state vector.
     Live last prices come from ``data_manager`` when connected; otherwise
