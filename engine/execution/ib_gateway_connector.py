@@ -998,6 +998,26 @@ class IBGatewayConnector:
 
     # ── Account Methods ───────────────────────────────────────────────────────
 
+    def get_cached_position(self, symbol: str) -> Optional[float]:
+        """
+        Sync, no-I/O net position for ``symbol`` from the paper-sim's own
+        ``self._positions`` book — the duck-typed counterpart to
+        ``IBGatewayManager.get_cached_position()``.
+
+        Required by ``SafetyLayer.check_order()``'s cumulative-position cap
+        (CUMULATIVE_POSITION_CAP, 2026-08-03 incident): that check calls
+        ``self._ib_gateway.get_cached_position(sym)`` regardless of which
+        gateway implementation is wired in, per ``order_gateway_factory``'s
+        duck-typing contract. This connector is the DEFAULT gateway
+        (simulator) whenever ``IB_PAPER_BROKER_ENABLED`` is unset, so without
+        this method the cap check silently fails open on every paper order.
+
+        Unlike the real-broker version, there's no "not connected" ambiguity
+        here — ``_positions`` is authoritative paper-sim state, so a symbol
+        with no recorded fill is a genuine, known zero, not "cannot verify."
+        """
+        return float(self._positions.get(symbol.upper(), 0.0))
+
     async def get_positions(self) -> list[dict]:
         """
         Return positions in the same list shape as ``IBGatewayManager.get_positions``

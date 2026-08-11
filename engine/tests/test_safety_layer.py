@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from execution.ib_gateway_connector import IBGatewayConnector
 from risk.safety_layer import KillSwitchReason, OrderRequest, RiskCheckResult, SafetyLayer
 
 
@@ -820,6 +821,71 @@ class TestCumulativePositionCap:
         )
         result = safety.check_order(order, 100_000.0)
         assert result.approved is True
+
+
+class TestCumulativePositionCapRealSimulator:
+    """Same CUMULATIVE_POSITION_CAP behavior as TestCumulativePositionCap
+    above, but wired to a real IBGatewayConnector instance instead of a
+    bare Mock().
+
+    The 2026-08-03 fix (commit 98ad397) originally read gateway._positions
+    directly, which works against the real simulator. It was later replaced
+    (commit 13384bbe9 / merged b932556) with a call to
+    gateway.get_cached_position(sym) — a method that only ever existed on
+    the real-broker IBGatewayManager, never on IBGatewayConnector (the
+    default-wired gateway when IB_PAPER_BROKER_ENABLED is unset). Every
+    existing regression test used Mock(get_cached_position=...), so this
+    gap was invisible to the suite: the tests validated the check's logic
+    against a mock shaped exactly how the check wanted, never against the
+    real production-default class. These tests use the real class instead.
+    """
+
+    def _live_safety(self, mock_settings) -> SafetyLayer:
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        mock_settings.MAX_CONTRACTS_PER_INSTRUMENT = 2
+        mock_settings.MAX_OVERNIGHT_CONTRACTS = 5  # wall-clock independent
+        return SafetyLayer(mock_settings)
+
+    def test_real_connector_rejects_when_cumulative_exceeds_cap(self, mock_settings):
+        safety = self._live_safety(mock_settings)
+        connector = IBGatewayConnector(mock_settings, safety)
+        # Simulate a prior fill having already landed the account at 2 MES —
+        # exactly how a real fill updates _positions (ib_gateway_connector.py
+        # place_paper_order / _fill_paper_order).
+        connector._positions["MES"] = 2.0
+        safety._ib_gateway = connector
+
+        order = OrderRequest(
+            symbol="MES", quantity=2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is False
+        assert "CUMULATIVE_POSITION_CAP" in result.rejection_reason
+
+    def test_real_connector_allows_reducing_order_when_over_cap(self, mock_settings):
+        safety = self._live_safety(mock_settings)
+        connector = IBGatewayConnector(mock_settings, safety)
+        connector._positions["MES"] = 3.0  # already over cap
+        safety._ib_gateway = connector
+
+        order = OrderRequest(
+            symbol="MES", quantity=-2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True  # 3 - 2 = 1, within cap
+
+    def test_real_connector_no_prior_position_is_treated_as_zero(self, mock_settings):
+        safety = self._live_safety(mock_settings)
+        connector = IBGatewayConnector(mock_settings, safety)
+        # No fill ever recorded for this symbol -- _positions has no entry.
+        safety._ib_gateway = connector
+
+        order = OrderRequest(
+            symbol="MES", quantity=2, order_type="market", is_futures=True, estimated_value=2000.0
+        )
+        result = safety.check_order(order, 100_000.0)
+        assert result.approved is True  # 0 + 2 = 2, at cap, not over
 
 
 class TestNaNPriceHandling:
