@@ -57,6 +57,12 @@ def _ibkr_connected() -> bool:
     return _ibkr is not None and _ibkr.is_connected()
 
 
+def _real_ibkr_connected() -> bool:
+    """The data-leg's own connectivity — same object used for bars/quotes.
+    ``is_connected`` is a property here (IBKRDataConnector), not a method."""
+    return _real_ibkr is not None and bool(_real_ibkr.is_connected)
+
+
 def _schwab_connected() -> bool:
     return _schwab is not None and _schwab.is_connected
 
@@ -244,14 +250,42 @@ async def get_broker_positions():
         # see the same "queryable" answer the response reports.
         ibkr_conn = _ibkr_connected()
         schwab_conn = _schwab_connected()
+        # "Queryable" is broader than "order-routing connected" -- the
+        # read-only data-leg fallback below can supply real positions even
+        # when the order-routing connector is a disconnected/simulator no-op.
+        ibkr_queryable = ibkr_conn or _real_ibkr_connected()
 
-        # IBKR positions
+        # IBKR positions.
+        #
+        # 2026-08-10 finding: _ibkr is the order-routing object -- the real
+        # IBGatewayManager when IB_PAPER_BROKER_ENABLED is set, but an
+        # in-process simulator that never talks to the real broker otherwise.
+        # With the flag off, this endpoint previously had NO live check
+        # against the real account at all, so a real position placed outside
+        # the engine's own order path (a manually-run script, a stale flag
+        # toggle) was invisible here no matter what. _real_ibkr is the data
+        # leg's connection -- always up regardless of that flag -- used here
+        # as a read-only fallback so the dashboard reflects true broker state.
         ibkr_raw: list = []
+        ibkr_source = "none"
+        ibkr_positions_stale = False
         if ibkr_conn:
             try:
                 ibkr_raw = await _ibkr.get_positions() or []
+                ibkr_source = "order_routing"
+                if hasattr(_ibkr, "positions_stale"):
+                    ibkr_positions_stale = bool(_ibkr.positions_stale())
             except Exception as exc:
                 logger.warning("IBKR get_positions failed: %s", exc)
+
+        if not ibkr_conn or ibkr_source != "order_routing":
+            if _real_ibkr_connected():
+                try:
+                    ibkr_raw = await _real_ibkr.get_positions() or []
+                    ibkr_source = "read_only_data_leg"
+                    ibkr_positions_stale = bool(_real_ibkr.positions_stale())
+                except Exception as exc:
+                    logger.warning("Read-only data-leg get_positions failed: %s", exc)
 
         ibkr_normalised = [_normalise_ibkr_position(p) for p in ibkr_raw]
 
@@ -279,14 +313,20 @@ async def get_broker_positions():
             ibkr_normalised,
             schwab_normalised,
             paper_normalised,
-            ibkr_connected=ibkr_conn,
+            ibkr_connected=ibkr_queryable,
             schwab_connected=schwab_conn,
         )
 
         return {
             "ibkr": {
-                "connected": ibkr_conn,
+                "connected": ibkr_queryable,
                 "positions": ibkr_normalised,
+                # Which connection actually supplied this data -- "order_routing"
+                # (the live IBGatewayManager), "read_only_data_leg" (the always-on
+                # data connection, used when order routing is off/simulated), or
+                # "none" (neither queryable). See the 2026-08-10 comment above.
+                "source": ibkr_source,
+                "positions_stale": ibkr_positions_stale,
             },
             "schwab": {
                 "connected": schwab_conn,

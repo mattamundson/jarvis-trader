@@ -40,7 +40,14 @@ addopts = [
     # 'manual' tests need a live IB Gateway and hang the asyncio loop (no timeout
     # can interrupt the tick subscription), so exclude them by default. Opt back
     # in explicitly with `pytest -m manual` (a CLI -m overrides this addopts -m).
-    "-m", "not manual",
+    # 'integration_ib' carries the same risk from the opposite direction: it
+    # doesn't hang, it CONNECTS and PLACES REAL ORDERS against IB Gateway
+    # whenever port 4002 happens to be reachable (2026-08-11 incident: running
+    # this file's tests during unrelated regression testing silently bought 1
+    # MES on the live paper account). README.md's own documented usage was
+    # always `pytest ... -m integration_ib` explicit opt-in -- this addopts
+    # entry was just never added to make that the enforced default.
+    "-m", "not manual and not integration_ib",
 ]
 markers = [
     "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
