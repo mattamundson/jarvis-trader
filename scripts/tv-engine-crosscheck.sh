@@ -42,12 +42,15 @@ else
   # `|| true` so a missing engine/.env or no API_KEY line yields an empty string
   # and the exit-3 skip below fires, instead of set -e aborting on grep's non-zero.
   API_KEY="$(grep -E '^API_KEY=' engine/.env 2>/dev/null | head -1 | cut -d= -f2- || true)"
-  API_KEY="${API_KEY%\"}"; API_KEY="${API_KEY#\"}"
 fi
-# Strip a trailing CR: on Windows (the intended env) engine/.env is often CRLF,
-# which leaves \r in the value -> a malformed X-API-Key header that Uvicorn 400s
-# (making every cross-check exit 4 despite a valid key). Applies to both sources.
+# ORDER MATTERS: strip the trailing CR FIRST, then surrounding quotes. On Windows
+# (the intended env) engine/.env is often CRLF, so a quoted value arrives as
+# API_KEY="secret"\r -- the \r is the last char, so a quote-strip-first would leave
+# the closing quote in place (curl sends `secret"` -> 401), and an unquoted CRLF
+# value would send `secret\r` -> a malformed header Uvicorn 400s. Doing CR then
+# quotes handles both.
 API_KEY="${API_KEY%$'\r'}"
+API_KEY="${API_KEY%\"}"; API_KEY="${API_KEY#\"}"
 
 if [ -z "${API_KEY:-}" ]; then
   echo "no engine API key (JARVIS_API_KEY unset and engine/.env has none) — skipping cross-check" >&2
