@@ -54,7 +54,11 @@ def inject_dependencies(
 
 
 def _ibkr_connected() -> bool:
-    return _ibkr is not None and _ibkr.is_connected()
+    """Live IBKR connectivity — backed by the real ib_async connection
+    (`_real_ibkr`), not the paper-sim order-routing mock (`_ibkr`). Those two
+    are unrelated: the mock can report connected=True with zero relationship
+    to whether the actual Gateway session is up."""
+    return _real_ibkr is not None and _real_ibkr.is_connected()
 
 
 def _schwab_connected() -> bool:
@@ -249,7 +253,7 @@ async def get_broker_positions():
         ibkr_raw: list = []
         if ibkr_conn:
             try:
-                ibkr_raw = await _ibkr.get_positions() or []
+                ibkr_raw = await _real_ibkr.get_positions() or []
             except Exception as exc:
                 logger.warning("IBKR get_positions failed: %s", exc)
 
