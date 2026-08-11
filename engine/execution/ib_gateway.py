@@ -701,6 +701,23 @@ class IBGatewayManager:
         if action_upper is None:
             return None
 
+        # Defense-in-depth: SafetyLayer._check_do_not_trade_symbols() is the
+        # designed choke point for this halt list, but not every caller routes
+        # through SafetyLayer first (2026-08-11: a test called this method
+        # directly, which would have bypassed the halt entirely for a
+        # DO_NOT_TRADE_SYMBOLS instrument had a client-ID collision not
+        # incidentally prevented the connection). Mirror the check here too.
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+        symbol_upper = symbol.upper()
+        if symbol_upper in DO_NOT_TRADE_SYMBOLS:
+            logger.error(
+                "place_paper_order: REJECTED — %s is on the DO_NOT_TRADE_SYMBOLS "
+                "halt list (backtest/signals.py); refusing to route to IB",
+                symbol_upper,
+            )
+            return None
+
         order_type_upper = order_type.upper()
 
         # Tag every JARVIS-routed order so reconciliation can filter our fills
