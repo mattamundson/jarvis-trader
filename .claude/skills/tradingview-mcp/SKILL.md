@@ -122,7 +122,12 @@ state first, state what you'll change, and only proceed on an explicit instructi
    60s TTL (`price_cache.py`), so an engine price can be up to ~60s behind a just-captured TV read.
    Always allow a contract-aware tick tolerance (a few ticks for MES/MGC), plus the movement price
    could make over the snapshot's age (`as_of` if present, else assume ≤60s); only a mismatch
-   beyond that is real drift.
+   beyond that is real drift. Also mind **continuous vs dated contract**: TV `MES1!`/`MGC1!` is a
+   continuous (back-adjusted) contract while the engine resolves a dated front month
+   (`_resolve_front_month`), so near a rollover the basis can exceed that tolerance — a
+   contract-basis difference, not feed drift. And `source: ibkr` may be *delayed* (IB paper
+   defaults to `reqMarketDataType(3)`, ~15min) with `as_of` = fetch time, so only a LIVE (type-1)
+   IB quote is a fresh independent feed; treat delayed/frozen ones as unverified.
    **Check provenance:** the engine waterfalls to TradingView when brokers are down
    (`/prices/snapshot` Tier-2.5 TV fallback; `get_bars` is `TV → IBKR → Polygon → CSV`). The
    **price** snapshot exposes a `source` — a cross-check is independent only when it is

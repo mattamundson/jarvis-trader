@@ -89,12 +89,20 @@ Keep params **mechanical and locked** — the registry judges a *frozen* hypothe
 a new `id` rather than mutating params later. `allowed_status`:
 `forward_testing | graduated | rejected | paused`.
 
-**`lock_in_sample` is required discipline, not optional** — even though `verify_registry()`
-only enforces `id/symbol/family/status/hypothesis/params`, the forward-test loop reads
-`lock_in_sample` (`candidate_registry.py`) to compare OOS results against a *frozen* baseline.
-Fill it from the **actual** gate-v2 WFO verdict (the fields above mirror a real entry:
+**`lock_in_sample` is required discipline, not optional** — but understand what enforces what:
+`verify_registry()` only requires `id/symbol/family/status/hypothesis/params`, and
+`run_forward_test()` graduates a candidate on **absolute registry thresholds**
+(`meets_graduation()`), *not* by comparing forward results to the lock. `lock_in_sample` is a
+**frozen record for human review + multiple-testing discipline** (it's read by
+`candidate_registry.summarize()` for display, and by nothing that gates graduation). So it is not
+an automated safeguard — a wrong/fake lock won't be caught by the loop, only by a reviewer, which
+is exactly why it must be honest. Fill it from the **actual** gate-v2 WFO verdict (the fields
+above mirror a real entry:
 `gate_verdict`, `pf_ci_lower`, `p_edge`, `dsr`, `mc_95th_dd`, `n_oos_windows`,
-`total_oos_trades` — all from `wfo_lifecycle.compute_gate_v2()`). `p_binom` is the **exception**:
+`total_oos_trades` — all from `wfo_lifecycle.compute_gate_v2()`). Note the **key mapping**:
+`compute_gate_v2()` returns the verdict under the key `verdict`, not `gate_verdict` — map it as
+the activation helpers do (`gate_verdict = result["verdict"]`), or the lock stays `PENDING`.
+`p_binom` is the **exception**:
 `compute_gate_v2()` does not emit it — it comes from `family_fdr.binomial_oos_pvalue(p_edge,
 n_windows)` / the family report, so copy it from there if you ran the family FDR pass, else omit
 it (the registry validator does not require it). Never invent any of these numbers.
