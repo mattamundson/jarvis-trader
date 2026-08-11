@@ -431,6 +431,43 @@ module.exports = {
       exec_mode: "fork",
     },
 
+    // ── DOM / Order-Flow service (port 8030) ─────────────────────────────────
+    // Isolated read-only MES depth + imbalance consumer (Phase 1). Same
+    // isolation pattern as jarvis-bridge-api: its own process, own IB client
+    // ID (DOMFLOW_IB_CLIENT_ID, default 3), own SQLite DB. No engine/risk/ or
+    // config.py imports — no path to order placement. See
+    // docs/superpowers/specs/2026-08-05-dom-orderflow-phase1-design.md.
+    {
+      name: "jarvis-domflow",
+      script: PYTHON,
+      args: "-m uvicorn domflow.main:app --host 127.0.0.1 --port 8030",
+      cwd: ENGINE_DIR,
+      interpreter: "none",
+
+      autorestart: true,
+      watch: false,
+      max_restarts: 20,
+      min_uptime: "10s",
+      restart_delay: 5000,
+
+      env: {
+        PYTHONPATH: ENGINE_DIR,
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+        DOMFLOW_IB_HOST: "127.0.0.1",
+        DOMFLOW_IB_PORT: "4002",
+        DOMFLOW_IB_CLIENT_ID: "3",
+      },
+
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: path.join(ENGINE_DIR, "logs", "domflow-error.log"),
+      out_file: path.join(ENGINE_DIR, "logs", "domflow-out.log"),
+      merge_logs: true,
+
+      exec_interpreter: "none",
+      exec_mode: "fork",
+    },
+
     // ── Next.js Dashboard ─────────────────────────────────────────────────────
     // Serves the React dashboard at http://localhost:3010
     // Uses pnpm start (production build) — run `pnpm build` in dashboard/ first.

@@ -379,14 +379,13 @@ class TestDoNotTradeSymbolsConstant:
         assert isinstance(DO_NOT_TRADE_SYMBOLS, frozenset)
 
     def test_donottrade_symbols_contains_expected_blocked(self):
-        """MCL, MNQ, M2K, MGC are all in DO_NOT_TRADE_SYMBOLS. MCL/MNQ/M2K per
-        2026-05-06 exhaustion; MGC added 2026-07-31 after the honest-data-drain
-        DSR correction invalidated its 2026-05-24 gate-v2 PASS."""
+        """MCL, MNQ, M2K are all in DO_NOT_TRADE_SYMBOLS. MGC removed
+        2026-08-04 (fresh honest gate-v2 PASS, PR #597/#598)."""
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
         assert "MCL" in DO_NOT_TRADE_SYMBOLS
         assert "MNQ" in DO_NOT_TRADE_SYMBOLS
         assert "M2K" in DO_NOT_TRADE_SYMBOLS
-        assert "MGC" in DO_NOT_TRADE_SYMBOLS
+        assert "MGC" not in DO_NOT_TRADE_SYMBOLS
 
     def test_donottrade_symbols_does_not_block_mes(self):
         """MES (gate v2 PASS, still active) must NOT be in DO_NOT_TRADE_SYMBOLS."""
@@ -396,18 +395,15 @@ class TestDoNotTradeSymbolsConstant:
         )
 
     def test_donottrade_symbols_includes_mgc(self):
-        """MGC's 2026-05-24 Tier-3 PASS did not survive the 2026-07-29
-        honest-data-drain DSR correction: recomputing DSR at the true
-        combined-campaign trial count collapsed its one nominal ALT-path PASS
-        to ~0 (see engine/scripts/recompute_mgc_trend_baseline_dsr.py, PR
-        #529). A 2026-07-29 session intended to halt MGC here but the edit
-        was left uncommitted and lost; this pins the 2026-07-31 fix so the
-        gap can't silently reopen."""
+        """MGC's 2026-07-31 blocklist addition is REVERSED: the fresh rank4
+        gate-v2 PASS at the corrected trial count (empirical DSR 0.9952, PR
+        #597) plus Amo's explicit re-authorization (PR #598) satisfied the
+        blocklist's documented removal contract — the exact precondition this
+        test previously demanded before allowing MGC out."""
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
-        assert "MGC" in DO_NOT_TRADE_SYMBOLS, (
-            "MGC's gate v2 PASS was a multiple-testing artifact (honest-data-drain "
-            "DSR correction) — it must stay in DO_NOT_TRADE_SYMBOLS pending a fresh "
-            "PASS at the corrected trial count and Amo's explicit re-authorization."
+        assert "MGC" not in DO_NOT_TRADE_SYMBOLS, (
+            "MGC re-authorized on fresh honest gate-v2 PASS (PR #597/#598, "
+            "2026-08-04) — it must NOT stay in DO_NOT_TRADE_SYMBOLS."
         )
 
 
@@ -451,17 +447,17 @@ class TestCapitalAllocatorUsesSingleAuthority:
         )
 
     def test_rebalance_blocks_m2k_and_mgc(self):
-        """M2K was always blocked by the shared authority. MGC joined it
-        2026-07-31 (honest-data-drain DSR correction invalidated its gate-v2
-        PASS) — since rebalance() reads DO_NOT_TRADE_SYMBOLS directly rather
-        than a private list, it picked up the change with zero code edits
-        here, which is exactly the single-authority guarantee this class
-        exists to pin."""
+        """M2K is blocked by the shared authority. MGC was re-authorized
+        2026-08-04 (PR #597/#598: fresh honest gate-v2 PASS + Amo's explicit
+        re-authorization) so it must NOT be zeroed by rebalance() — the
+        allocator reads DO_NOT_TRADE_SYMBOLS directly, so it picked up the
+        change with zero code edits here, which is exactly the
+        single-authority guarantee this class exists to pin."""
         from orchestrator.capital_allocator import CapitalAllocator
 
         perf = {
             "M2K": {"sharpe": 2.0, "current_allocation": 0.25},  # blocked authority
-            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # blocked authority (2026-07-31)
+            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # re-authorized 2026-08-04
             "MES": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable
         }
         allocator = CapitalAllocator(
@@ -472,8 +468,9 @@ class TestCapitalAllocatorUsesSingleAuthority:
         assert new_alloc.get("M2K", 1.0) == 0.0, (
             "M2K is in DO_NOT_TRADE_SYMBOLS and must be zeroed by rebalance()."
         )
-        assert new_alloc.get("MGC", 1.0) == 0.0, (
-            "MGC is in DO_NOT_TRADE_SYMBOLS (2026-07-31) and must be zeroed by rebalance()."
+        assert new_alloc.get("MGC", 0.0) > 0.0, (
+            "MGC is NOT in DO_NOT_TRADE_SYMBOLS (re-authorized 2026-08-04, "
+            "PR #598) and must receive a non-zero allocation."
         )
         assert new_alloc.get("MES", 0.0) > 0.0, (
             "MES is tradeable and must receive a non-zero allocation."

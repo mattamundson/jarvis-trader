@@ -21,7 +21,7 @@ import {
 } from "../lib/approvedSymbols.ts";
 
 // ── Case 1: reproduce — must fail pre-fix, pass post-fix ───────────────────
-test("pickApprovedBacktestBaseline prefers the active MES/MGC pair over the halted MCL/MNQ pair", () => {
+test("pickApprovedBacktestBaseline prefers the active MES symbol over halted MCL/MNQ/MGC", () => {
   const rows: BacktestBaselineRow[] = [
     {
       symbol: "MCL",
@@ -52,19 +52,21 @@ test("pickApprovedBacktestBaseline prefers the active MES/MGC pair over the halt
   const baseline = pickApprovedBacktestBaseline(rows);
   assert.ok(baseline, "expected a baseline to be picked");
   assert.ok(
-    baseline!.label.startsWith("MES") || baseline!.label.startsWith("MGC"),
-    `expected baseline label to start with MES or MGC (active pair), got "${baseline!.label}"`,
+    baseline!.label.startsWith("MES"),
+    `expected baseline label to start with MES (the only active symbol), got "${baseline!.label}"`,
   );
   assert.ok(
-    !baseline!.label.startsWith("MCL") && !baseline!.label.startsWith("MNQ"),
-    `baseline must not be drawn from the halted MCL/MNQ pair, got "${baseline!.label}"`,
+    !baseline!.label.startsWith("MCL") &&
+      !baseline!.label.startsWith("MNQ") &&
+      !baseline!.label.startsWith("MGC"),
+    `baseline must not be drawn from a halted symbol, got "${baseline!.label}"`,
   );
 });
 
 // ── Case 2: pin both directions ─────────────────────────────────────────────
-test("matchesPreferredBaseline is true for the active pair, false for the halted pair", () => {
+test("matchesPreferredBaseline is true for the active symbol, false for halted symbols", () => {
   assert.equal(matchesPreferredBaseline("MES composite_MES_1h.json"), true);
-  assert.equal(matchesPreferredBaseline("MGC composite_MGC_1h.json"), true);
+  assert.equal(matchesPreferredBaseline("MGC composite_MGC_1h.json"), false);
   assert.equal(matchesPreferredBaseline("MCL composite_MCL_1h.json"), false);
   assert.equal(matchesPreferredBaseline("MNQ composite_MNQ_1h.json"), false);
 });
@@ -73,8 +75,9 @@ test("matchesPreferredBaseline is true for the active pair, false for the halted
 test("PREFERRED_BASELINE_SYMBOL_SUBSTRINGS never overlaps engine DO_NOT_TRADE_SYMBOLS and tracks DEFAULT_BRIEFING_SYMBOLS", () => {
   // Mirrors engine/backtest/signals.py DO_NOT_TRADE_SYMBOLS (checked-in fixture,
   // not a live import — TS/Python can't share a literal source; see
-  // approvedSymbols.ts's DEFAULT_BRIEFING_SYMBOLS docstring).
-  const ENGINE_DO_NOT_TRADE = ["MCL", "MNQ", "M2K"];
+  // approvedSymbols.ts's DEFAULT_BRIEFING_SYMBOLS docstring). MGC added
+  // 2026-08-01 (PR #552).
+  const ENGINE_DO_NOT_TRADE = ["MCL", "MNQ", "M2K", "MGC"];
 
   for (const sym of PREFERRED_BASELINE_SYMBOL_SUBSTRINGS) {
     assert.ok(
