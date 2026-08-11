@@ -113,8 +113,10 @@ placeholders **on purpose** — two independent guards against a premature copy 
 half-filled lock must never read as a `PASS` baseline. Do **not** flip `status` to
 `forward_testing`, set `gate_verdict: "PASS"`, or fill the metrics until the real Step-3 run
 produces them — a `forward_testing` candidate with a fake PASS lock enters the forward loop
-with no frozen expectation and contaminates the graduation decision. Register and activate it
-only *after* Step 3's backtest + MCPT produce these values.
+with no frozen expectation and misleads the human review of the pre-registration. Backtest +
+MCPT (steps 2–3) are necessary screens but do **not** produce these fields — only the
+Step-3b gate-v2 WFO (`compute_gate_v2()`, plus `family_fdr` for `p_binom`) does. Register and
+flip `status` to `forward_testing` only *after* Step 3b has produced a real lock.
 
 ## Step 3 — Route into the real gates (do NOT invent a parallel path)
 
