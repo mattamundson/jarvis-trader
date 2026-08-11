@@ -1,6 +1,6 @@
 """Regression test for the 2026-08-10 finding: GET /brokers/positions and
 GET /brokers/status read live IBKR state from the paper-sim order-routing
-mock (`_ibkr`) instead of the real ib_async connection (`_real_ibkr`).
+mock (`_ibkr`) instead of the real ib_async connection (`_real_ibkr()`).
 
 The mock always reports its own internal paper-sim book, completely
 disconnected from the actual IB Gateway session -- so a real position (or a
@@ -9,6 +9,16 @@ Gateway held 2 MES contracts (verified via direct reqPositionsAsync/
 reqExecutionsAsync queries) while GET /brokers/positions returned
 ibkr.positions=[] with ibkr.connected=true, reproducing the exact 2026-08-03
 dashboard blind spot.
+
+2026-08-11 follow-up: the first version of this fix (merged as #608) wired
+`_real_ibkr` but was still functionally broken two more ways, both now
+covered here and in brokers_router.py's `_data_manager` comment: (1) it
+snapshotted `data_manager.ibkr` once at injection time, which is None until
+MarketDataManager.initialize() reassigns it asynchronously afterward, so the
+snapshot froze on None forever; (2) IBKRDataConnector.is_connected is a
+@property (no parens) but the fix called it as a method, and the class had no
+get_positions() at all. Live-verified against the real running engine (not
+just these mocks) after the corrected fix landed.
 
 Run with:
     cd engine
@@ -48,7 +58,11 @@ def _build_client(mock_paper_sim_ibkr, mock_real_ibkr, data_manager=None):
 
 def _make_mock(*, connected: bool, positions: list[dict]):
     mock = MagicMock()
-    mock.is_connected = MagicMock(return_value=connected)
+    # is_connected is a @property on the real IBKRDataConnector (accessed
+    # without parens) -- a plain bool attribute here reproduces that, unlike
+    # a MagicMock-as-callable which is always truthy whether or not it's
+    # actually invoked. See brokers_router.py's _data_manager comment.
+    mock.is_connected = connected
     mock.get_positions = AsyncMock(return_value=positions)
     return mock
 
@@ -109,3 +123,50 @@ def test_status_connected_flag_reads_real_ibkr():
         "paper-sim mock's own (unrelated) connected state"
     )
     assert body["order_router"]["futures_broker"] == "unavailable"
+
+
+def test_real_ibkr_resolved_lazily_not_snapshotted_at_injection():
+    """MarketDataManager.initialize() reassigns data_manager.ibkr from None to
+    the real connector ASYNCHRONOUSLY, after inject_dependencies() runs at
+    lifespan startup (same reasoning the code already documents for
+    `_reconciler`). A first attempt at this fix (2026-08-11) snapshotted
+    `data_manager.ibkr` once at injection time, freezing on that pre-init None
+    forever -- this reproduces that startup ordering and asserts the router
+    still sees the connector once it shows up."""
+    paper_sim_mock = _make_mock(connected=False, positions=[])
+    data_manager = SimpleNamespace(ibkr=None)  # pre-initialize() state
+
+    client = _build_client(paper_sim_mock, mock_real_ibkr=None, data_manager=data_manager)
+
+    resp = client.get("/brokers/positions")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ibkr"]["connected"] is False, "no connector yet -- must not crash"
+
+    # initialize() completes in the background and reassigns .ibkr.
+    data_manager.ibkr = _make_mock(
+        connected=True,
+        positions=[
+            {
+                "symbol": "MES",
+                "sec_type": "FUT",
+                "exchange": "CME",
+                "currency": "USD",
+                "position": 3.0,
+                "avg_cost": 7762.0,
+                "market_price": None,
+                "market_value": None,
+                "unrealized_pnl": None,
+                "account": "DUR375089",
+            }
+        ],
+    )
+
+    resp = client.get("/brokers/positions")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ibkr"]["connected"] is True, (
+        "router still using a stale None snapshot taken before "
+        "data_manager.initialize() assigned the real connector"
+    )
+    symbols = {p["symbol"] for p in body["ibkr"]["positions"]}
+    assert "MES" in symbols
