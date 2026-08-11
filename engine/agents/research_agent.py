@@ -312,7 +312,7 @@ class ResearchAgent:
                 )
                 return self._hardcoded_mes_mean_reversion(symbol)
 
-            prompt = self._build_prompt(symbol, context or {})
+            prompt = self.build_prompt(symbol, context or {})
             result = await client.llm.call(
                 model=_HAIKU_MODEL,
                 system=_SYSTEM_PROMPT,
@@ -347,7 +347,26 @@ class ResearchAgent:
             return self._hardcoded_mes_mean_reversion(symbol)
 
         # --- parse & validate ---
-        return self._parse_hypothesis(result.content, symbol=symbol)
+        return self.parse_hypothesis(result.content, symbol=symbol)
+
+    def has_budget_for(self, n_calls: int) -> bool:
+        """
+        True if the daily research_agent_costs budget has headroom for
+        n_calls more haiku-tier calls, estimated at _COST_PER_CALL_ESTIMATE
+        each (the same per-call estimate used for the pre-call sync gate).
+
+        Used by batch consumers to size a submission before it goes out —
+        batch cost is billed at 50% of this estimate, so this is a
+        conservative (over-, never under-) pre-submission check.
+        """
+        today_spend = _get_today_spend(self._db_path)
+        budget = _get_daily_budget()
+        projected = today_spend + (n_calls * _COST_PER_CALL_ESTIMATE)
+        return projected <= budget
+
+    def record_spend(self, amount_usd: float) -> None:
+        """Increment today's recorded spend (e.g. after a batch collects)."""
+        _increment_today_spend(self._db_path, amount_usd)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -359,7 +378,12 @@ class ResearchAgent:
             return _HARDCODED_MES_MEAN_REV
         return _HARDCODED_MES_MEAN_REV.model_copy(update={"symbol": symbol})
 
-    def _build_prompt(self, symbol: str, context: dict[str, Any]) -> str:
+    # ------------------------------------------------------------------
+    # Public prompt/parse helpers — shared by the sync path above and any
+    # batch consumer (engine/scheduler/research_agent_weekend.py)
+    # ------------------------------------------------------------------
+
+    def build_prompt(self, symbol: str, context: dict[str, Any]) -> str:
         """
         Build a compact user prompt embedding recent trade history and params.
 
@@ -409,7 +433,7 @@ class ResearchAgent:
         )
         return "\n\n".join(parts)
 
-    def _parse_hypothesis(self, raw: str, symbol: str) -> StrategyHypothesis:
+    def parse_hypothesis(self, raw: str, symbol: str) -> StrategyHypothesis:
         """
         Extract JSON from LLM output and validate as StrategyHypothesis.
 
@@ -431,7 +455,7 @@ class ResearchAgent:
         brace_end = cleaned.rfind("}")
         if brace_start == -1 or brace_end == -1 or brace_end <= brace_start:
             logger.warning(
-                "ResearchAgent._parse_hypothesis: no JSON object found in LLM output "
+                "ResearchAgent.parse_hypothesis: no JSON object found in LLM output "
                 "(symbol=%s) — falling back to stub. raw[:200]=%r",
                 symbol,
                 raw[:200],
@@ -444,7 +468,7 @@ class ResearchAgent:
             data = json.loads(json_str)
         except json.JSONDecodeError as exc:
             logger.warning(
-                "ResearchAgent._parse_hypothesis: JSON decode failed (%s) "
+                "ResearchAgent.parse_hypothesis: JSON decode failed (%s) "
                 "(symbol=%s) — falling back to stub",
                 exc,
                 symbol,
@@ -458,7 +482,7 @@ class ResearchAgent:
             hypothesis = StrategyHypothesis.model_validate(data)
         except Exception as exc:
             logger.warning(
-                "ResearchAgent._parse_hypothesis: Pydantic validation failed (%s) "
+                "ResearchAgent.parse_hypothesis: Pydantic validation failed (%s) "
                 "(symbol=%s) — falling back to stub",
                 exc,
                 symbol,

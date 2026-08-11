@@ -611,7 +611,15 @@ async def _get_ib_gateway_health() -> dict:
         }
 
     if hasattr(ib_gw, "health_check"):
-        health = await ib_gw.health_check()
+        # Bounded: health_check() has no internal timeout of its own, so with IB
+        # Gateway down (wrong port, not logged in, dead process) this can block on
+        # the connector's internal connect timeout -- observed 30s+ hang 2026-08-03,
+        # which stalls /health, /health/full, and /ib/connection-test outright.
+        # A bounded, degraded read beats an unusable liveness signal.
+        try:
+            health = await asyncio.wait_for(ib_gw.health_check(), timeout=3.0)
+        except asyncio.TimeoutError:
+            health = {"status": "timeout", "error": "health_check exceeded 3s budget"}
     else:
         is_connected = execution_connected if ib_gw is execution_ib else data_connected
         health = {
@@ -823,6 +831,20 @@ async def _health_inner() -> dict:
     except Exception:
         pass
 
+    # Batch jobs (Anthropic Message Batches). Non-blocking observability only —
+    # batches are async by design, so this never contributes to `status` below.
+    # get_batch_health_summary() does sync sqlite3 I/O, so offload it like the
+    # other DB-backed reads above.
+    batch_jobs_health: dict = {}
+    try:
+        from llm.batch_client import JarvisBatchClient
+
+        batch_jobs_health = await asyncio.to_thread(
+            JarvisBatchClient().get_batch_health_summary
+        )
+    except Exception:
+        pass
+
     status = "ok" if (db_ok and llm_path_healthy) else "degraded"
 
     # Defensive read: a config missing this flag must never report live trading
@@ -864,6 +886,7 @@ async def _health_inner() -> dict:
         "brier_30d_rolling": _compute_brier_30d_rolling(),
         "pending_approvals": pending_approvals,
         "futures_sentiment": futures_sentiment,
+        "batch_jobs_health": batch_jobs_health,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
