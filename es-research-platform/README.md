@@ -1,8 +1,27 @@
 # ES Research Platform
 
-Phase 1 foundation for a research-grade S&P 500 E-mini futures (`/ES`) strategy research and backtesting platform.
+Deterministic data and experiment foundation for research on S&P 500 E-mini futures (`/ES`).
 
-This milestone intentionally implements only repository structure, data contracts, deterministic hashing, reproducibility manifests, a DuckDB experiment registry, CLI commands, and tests. It does not download market data, compute indicators, run strategies, backtest, use GPUs, distribute workloads, or trade live.
+The package owns data contracts, provenance, normalization, sessionization, bars, manifests, and
+the experiment registry. Existing strategy simulation remains in `../engine/backtest`; the package
+does not place orders or enable live trading. See [verification status](docs/verification-status.md)
+for the precise implemented, tested, and unverified boundaries.
+
+## Current status
+
+| Capability | Status | Verification level |
+|---|---|---|
+| Typed contracts, canonical JSON, deterministic IDs | Implemented | Unit-tested |
+| DuckDB experiment registry | Implemented | Integration-tested with real DuckDB |
+| Synthetic trades → Parquet → sessions → 5-minute bars | Implemented | Executed and integration-tested |
+| Immutable Databento DBN download adapter | Implemented | Unit-tested with an injected client; credentialed download unverified |
+| Decoded Databento trades → silver Parquet and bars | Implemented | Integration-tested with vendor-shaped fixtures; real DBN unverified |
+| Representative `/ES` session fixtures | Implemented | Unit-tested; not an authoritative exchange calendar |
+| ThinkScript source catalog | Implemented | Repository inventory integration-tested; not strategy-equivalence proof |
+| Strategy WFO and locked forward simulation | Existing engine integration | Focused engine-tested; not owned by this package |
+| Real `/ES` bar parity against an independent aggregator | Not complete | Open acceptance gate |
+| Event-level order-book simulation | Not implemented | Out of scope for the current milestone |
+| Live trading | Not implemented | Explicitly out of scope |
 
 ## WSL2 setup
 
@@ -27,10 +46,10 @@ DuckDB is a required runtime dependency for registry commands and registry integ
 ## Checks
 
 ```bash
-ruff format .
-ruff check .
-mypy src
-pytest
+python -m ruff format .
+python -m ruff check .
+python -m mypy src
+python -m pytest
 ```
 
 ## CLI
@@ -100,8 +119,9 @@ The catalog validates every registry script, documentation path, and declared du
 records SHA-256 hashes, statuses, layers, parameters, and Python-counterpart references. It is a
 location-independent provenance artifact—not evidence that a ThinkScript is a complete strategy,
 that an existing Python counterpart is equivalent, or that either has passed out-of-sample tests.
-ThinkScript implementation and strategy backtesting remain gated on credentialed real-data
-acceptance and independent bar-value validation.
+New ThinkScript implementation and strategy promotion remain gated on credentialed real-data
+acceptance and independent bar-value validation. Existing engine study runners are integration
+tools, not evidence that the package's real-data gate has passed.
 
 The reproducibility demo constructs the same synthetic experiment twice and fails if deterministic hashes or identifiers differ. The synthetic pipeline demo writes normalized Parquet, reads it back, assigns sessions, builds 5-minute OHLCV bars, validates outputs, and prints deterministic hashes, and writes a deterministic `pipeline_report.json`. These demos use synthetic metadata and artificial engineering fixtures, not fabricated market data.
 
@@ -115,13 +135,13 @@ Architecture decision records are stored in `docs/adr/`:
 - DuckDB as the initial registry
 - Separation of screening from realistic simulation
 
-## Phase 1 hardening notes
+## Foundation notes
 
 - The registry requires real DuckDB; there is no local SQLite-backed `duckdb` shim.
 - Registry tables preserve full JSON payloads and expose queryable columns for common research dimensions such as strategy hash, manifest hash, status, simulation level, PnL, drawdown, and result timestamp.
 - Deterministic candidate and experiment identifiers are created by shared identity helpers instead of ad hoc demo code.
 
-## Phase 2 data vertical slice
+## Data vertical slice
 
 The first Phase 2 vertical slice adds deterministic synthetic trade events, normalized trade rows with versioned PyArrow Parquet IO, session assignment, 5-minute OHLCV bar construction, and validation tests. The normalized Parquet reader rejects missing schema-version metadata or physical schema drift.
 
@@ -137,7 +157,9 @@ Friday close, a closed date, and an early-close shape. They are deterministic en
 fixtures—not an authoritative exchange calendar. Production jobs must persist the vendor or
 exchange calendar source and version used for each dataset.
 
-This slice still does not implement strategy signals, backtesting, performance claims, or investment recommendations.
+The package does not implement strategy signals or make performance claims. The adjacent engine
+contains screening and locked-forward runners; their outputs remain research evidence and are not
+investment recommendations or authorization to trade.
 
 ## Next milestone
 
@@ -145,5 +167,5 @@ This slice still does not implement strategy signals, backtesting, performance c
 2. Persist vendor symbology and authoritative exchange session definitions with source hashes.
 3. Decode that DBN file into the versioned silver Parquet schema and compare row counts,
    timestamp ranges, prices, quantities, and hashes with the Databento metadata.
-4. Validate 5-minute bars against independently aggregated values before introducing any
-   features, strategy rules, or backtesting.
+4. Validate 5-minute bars against independently aggregated values before adding new strategy
+   families or treating engine backtests as accepted platform experiments.
