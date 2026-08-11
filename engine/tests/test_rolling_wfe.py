@@ -179,6 +179,33 @@ class TestRollingWFEState:
         state = RollingWFEState(state_file=bad_file)
         assert state.get_instrument_state("MCL") == {}
 
+    def test_no_arg_construction_honors_patched_state_file(self, tmp_path):
+        """RollingWFEState() with no state_file arg must resolve STATE_FILE at
+        call time, not bind a stale default at module-load time.
+
+        Regression for 2026-08-11: run_scheduler() calls RollingWFEState()
+        with no args (rolling_wfe_scheduler.py), so any caller relying on
+        `patch("backtest.rolling_wfe_scheduler.STATE_FILE", ...)` for
+        isolation -- as every TestRunSchedulerDryRun test below does --
+        depends on this. Before the fix, the `state_file: Path = STATE_FILE`
+        parameter default was bound once at import time and never saw the
+        patch, so isolated tests silently wrote into the real production
+        rolling_wfe_state.json.
+        """
+        fake_state_file = tmp_path / "isolated_state.json"
+        with patch("backtest.rolling_wfe_scheduler.STATE_FILE", fake_state_file):
+            state = RollingWFEState()
+            state.update_instrument(
+                symbol="MCL",
+                wfe=0.99,
+                run_ts=datetime.utcnow().isoformat(),
+                result_path="/tmp/wfe.json",
+            )
+            state.save()
+
+        assert fake_state_file.exists()
+        assert json.loads(fake_state_file.read_text())["instruments"]["MCL"]["last_wfe"] == 0.99
+
 
 # ── evaluate_wfe tests ────────────────────────────────────────────────────────
 
