@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -106,7 +107,7 @@ async def get_signal() -> dict[str, Any]:
         "signal_age_hours": round(age, 1) if age is not None else None,
         "stale": age is not None and age > 168,  # > 7 days
         "execution_timing": "MOO Monday (T+1 lag from Friday signal)",
-        "account": "DUP662235",
+        "account": os.environ.get("IB_ACCOUNT_ID", ""),
         "mode": "PAPER",
     }
     return signal

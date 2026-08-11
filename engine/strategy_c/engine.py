@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -647,7 +648,7 @@ class StrategyCEngine:
         Respects paper trading constraint (LIVE_TRADING_ENABLED = False).
         """
         instructions = {
-            "account": "DUP662235",
+            "account": os.environ.get("IB_ACCOUNT_ID", ""),
             "mode": "PAPER",
             "gateway_port": 4002,
             "execution_timing": "MOO (Market On Open) — Monday morning",
