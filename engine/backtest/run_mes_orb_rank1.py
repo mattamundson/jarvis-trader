@@ -276,6 +276,12 @@ from backtest._constants import (  # noqa: E402
 from backtest._gate_v2_helpers import (  # noqa: E402
     COST_SWEEP_TIERS,
     COST_TIER_ORDER,
+    GATE_DSR,
+    GATE_DSR_ALT,
+    GATE_MC_DD_ALT,
+    GATE_MC_DD_CORE,
+    GATE_P_EDGE,
+    GATE_PF_CI_LOWER,
     _find_latest_cache,  # noqa: E402
 )
 from backtest._gate_v2_helpers import bootstrap_pf_ci_lower as _bootstrap_pf_ci_lower  # noqa: E402
