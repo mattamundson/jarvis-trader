@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import pytest
-
 from es_research.pipeline.synthetic import run_synthetic_pipeline
 
 
 def test_synthetic_pipeline_reproducibility(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    pytest.importorskip("pyarrow")
     first = run_synthetic_pipeline(tmp_path / "first")
     second = run_synthetic_pipeline(tmp_path / "second")
 

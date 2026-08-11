@@ -4,17 +4,39 @@ on:
   pull_request:
     paths:
       - "es-research-platform/**"
+      - "engine/backtest/backtester.py"
+      - "engine/backtest/indicators.py"
+      - "engine/backtest/contract_specs.py"
+      - "engine/backtest/metrics.py"
+      - "engine/backtest/studies/**"
+      - "engine/backtest/study_forward_runner.py"
+      - "engine/backtest/study_wfo_runner.py"
+      - "engine/backtest/trade_manager.py"
+      - "engine/backtest/test_backtester_explicit_costs.py"
+      - "engine/backtest/test_kama_vectorized_volatility.py"
+      - "engine/backtest/test_study_forward_runner.py"
       - ".github/workflows/es-research-platform.yml"
   push:
     branches:
       - main
     paths:
       - "es-research-platform/**"
+      - "engine/backtest/backtester.py"
+      - "engine/backtest/indicators.py"
+      - "engine/backtest/contract_specs.py"
+      - "engine/backtest/metrics.py"
+      - "engine/backtest/studies/**"
+      - "engine/backtest/study_forward_runner.py"
+      - "engine/backtest/study_wfo_runner.py"
+      - "engine/backtest/trade_manager.py"
+      - "engine/backtest/test_backtester_explicit_costs.py"
+      - "engine/backtest/test_kama_vectorized_volatility.py"
+      - "engine/backtest/test_study_forward_runner.py"
       - ".github/workflows/es-research-platform.yml"
 
 jobs:
-  checks:
-    name: Format, lint, type-check, test, and CLI smoke tests
+  platform-checks:
+    name: Platform format, lint, types, tests, and CLI smoke tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -35,6 +57,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
 
+      - name: Verify mandatory integration dependencies
+        run: python -c "import duckdb, pyarrow; print('DuckDB and PyArrow available')"
+
       - name: Check formatting
         run: python -m ruff format --check .
 
@@ -47,6 +72,9 @@ jobs:
       - name: Test
         run: python -m pytest
 
+      - name: Run mandatory integration tests
+        run: python -m pytest -q tests/integration
+
       - name: Initialize registry
         run: python -m es_research registry init
 
@@ -55,3 +83,54 @@ jobs:
 
       - name: Run synthetic pipeline demo
         run: python -m es_research demo synthetic-pipeline
+
+  engine-research-checks:
+    name: Focused engine research checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: engine/requirements-core.txt
+
+      - name: Install focused research dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            'numpy>=2.2.6' \
+            'pandas>=3.0,<4.0' \
+            'pytest==8.3.5' \
+            'pytest-asyncio==0.26.0' \
+            'pytest-timeout==2.3.1' \
+            ruff
+
+      - name: Lint focused research files
+        run: |
+          python -m ruff check \
+            backtest/backtester.py \
+            backtest/contract_specs.py \
+            backtest/indicators.py \
+            backtest/metrics.py \
+            backtest/studies \
+            backtest/study_forward_runner.py \
+            backtest/study_wfo_runner.py \
+            backtest/trade_manager.py \
+            backtest/test_backtester_explicit_costs.py \
+            backtest/test_kama_vectorized_volatility.py \
+            backtest/test_study_forward_runner.py \
+            --config ruff.toml
+
+      - name: Run focused research tests
+        run: |
+          python -m pytest -q \
+            backtest/test_backtester_explicit_costs.py \
+            backtest/test_kama_vectorized_volatility.py \
+            backtest/test_study_forward_runner.py

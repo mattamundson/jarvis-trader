@@ -4,10 +4,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
-pytest.importorskip("pyarrow")
-
 from es_research.features.bars import build_time_bars
 from es_research.normalization.databento import normalize_databento_trades
 from es_research.normalization.events import (
