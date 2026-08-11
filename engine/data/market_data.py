@@ -302,6 +302,12 @@ class IBKRDataConnector:
         # client. No callers today (subscribe_real_time is unused) — kept so a
         # future streaming feed survives a watchdog reconnect.
         self._realtime_subs: list = []
+        # 2026-08-10: this data-leg connection is the only one guaranteed to be
+        # up regardless of IB_PAPER_BROKER_ENABLED, so /brokers/positions uses
+        # it as a read-only real-broker position check. Same staleness-tracking
+        # fields as IBGatewayManager — see classify_positions_staleness().
+        self._last_known_positions: dict = {}
+        self._positions_stale: bool = False
 
     async def connect(self, retries: int = 2, retry_backoff: float = 2.0) -> bool:
         """Connect to IB Gateway, with a bounded retry on transient failures.
@@ -411,6 +417,89 @@ class IBKRDataConnector:
         if self._ib and self._connected:
             self._ib.disconnect()
             self._connected = False
+
+    async def get_positions(self, _retrying: bool = False) -> list[dict]:
+        """
+        Read-only real-broker position check. Unlike the order-routing
+        IBGatewayManager, this connection is always up regardless of
+        IB_PAPER_BROKER_ENABLED — 2026-08-10 finding: when that flag is off,
+        /brokers/positions had NO live check against the real broker at all,
+        so a real position placed outside the engine's order path (e.g. a
+        manually-run script) was invisible to the dashboard no matter what.
+        This method closes that gap by reusing the data leg's always-on
+        connection purely for reads.
+        """
+        if self._ib is None or not self.is_connected:
+            logger.warning("IBKRDataConnector.get_positions: not connected")
+            return []
+
+        try:
+            positions = await self._ib.reqPositionsAsync()
+        except Exception as exc:
+            logger.error("IBKRDataConnector.get_positions: reqPositionsAsync failed: %s", exc)
+            positions = []
+
+        try:
+            cached = self._ib.positions()
+        except Exception:
+            cached = []
+        if not positions and cached:
+            logger.error(
+                "IBKRDataConnector.get_positions: reqPositionsAsync EMPTY but cache "
+                "holds %d entries — using the cache instead.",
+                len(cached),
+            )
+            positions = cached
+
+        result = []
+        for pos in positions:
+            contract = pos.contract
+            result.append(
+                {
+                    "symbol": contract.symbol,
+                    "sec_type": contract.secType,
+                    "exchange": getattr(contract, "exchange", ""),
+                    "currency": contract.currency,
+                    "position": pos.position,
+                    "avg_cost": pos.avgCost,
+                    "market_price": None,
+                    "market_value": None,
+                    "unrealized_pnl": None,
+                    "account": pos.account,
+                }
+            )
+
+        from execution.ib_gateway import classify_positions_staleness
+
+        is_stale, updated_last_known, unexplained = classify_positions_staleness(
+            result, self._last_known_positions, self._ib
+        )
+        self._last_known_positions = updated_last_known
+        self._positions_stale = is_stale
+
+        if not is_stale:
+            return result
+
+        logger.critical(
+            "IBKRDataConnector.get_positions: %s previously held non-zero but now "
+            "reads EMPTY with NO explaining fill on record — treating as stale, "
+            "not a real flatten.%s",
+            unexplained,
+            " Retry after reconnect also came back this way." if _retrying else "",
+        )
+
+        if not _retrying:
+            logger.warning("IBKRDataConnector.get_positions: reconnecting + retrying once.")
+            await self.disconnect()
+            if await self.connect():
+                return await self.get_positions(_retrying=True)
+
+        return result
+
+    def positions_stale(self) -> bool:
+        """True when the last get_positions() call hit the staleness signature
+        and couldn't resync via reconnect."""
+        return self._positions_stale
 
     def _make_contract(self, symbol: str, is_futures: bool):
         from ib_async import Future, Index, Stock

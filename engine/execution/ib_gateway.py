@@ -291,6 +291,15 @@ class IBGatewayManager:
         self._status = IBConnectionStatus.DISCONNECTED
         self._connect_time: Optional[float] = None
         self._last_error: Optional[str] = None
+        # Set when get_positions() finds reqPositionsAsync() AND the local
+        # position cache BOTH empty while is_connected() reports True — the
+        # 2026-08-03/08-10 failure signature where the execution leg's own
+        # position subscription is desynced even though the socket is alive.
+        # Cleared on a successful get_positions() call that returns real data
+        # or is legitimately flat (confirmed by a clean, non-empty cache read
+        # at some point, or by a fresh connect()).
+        self._positions_stale: bool = False
+        self._last_known_positions: dict[str, float] = {}
 
         logger.info(
             "IBGatewayManager created | broker=%s host=%s port=%d client_id=%d account=%s",
@@ -1088,7 +1097,7 @@ class IBGatewayManager:
 
     # ── Positions ─────────────────────────────────────────────────────────
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self, _retrying: bool = False) -> list[dict]:
         """
         Return current IB positions as a list of dicts.
 
@@ -1153,11 +1162,83 @@ class IBGatewayManager:
                         "account": pos.account,
                     }
                 )
-            return result
-
         except Exception as exc:
             logger.error("get_positions failed: %s", exc, exc_info=True)
             return []
+
+        return await self._reconcile_positions_staleness(result, _retrying=_retrying)
+
+    async def _reconcile_positions_staleness(
+        self, result: list[dict], _retrying: bool
+    ) -> list[dict]:
+        """See ``classify_positions_staleness`` for the shared decision logic
+        (also used by ``IBKRDataConnector`` in ``data/market_data.py``)."""
+        is_stale, updated_last_known, unexplained = classify_positions_staleness(
+            result, self._last_known_positions, self._ib
+        )
+        self._last_known_positions = updated_last_known
+        self._positions_stale = is_stale
+
+        if not is_stale:
+            return result
+
+        logger.critical(
+            "get_positions: %s previously held non-zero but now reads EMPTY with "
+            "NO explaining fill on record — treating as a stale/desynced execution "
+            "leg, not a real flatten (2026-08-03/08-10 failure signature).%s",
+            unexplained,
+            " Retry after reconnect also came back this way." if _retrying else "",
+        )
+
+        if not _retrying:
+            logger.warning("get_positions: attempting one reconnect + retry to resync.")
+            if await self.reconnect():
+                return await self.get_positions(_retrying=True)
+
+        # Don't fabricate the last-known data as if it were fresh — an
+        # unreachable retry means we genuinely don't know current state.
+        # Surface the uncertainty via positions_stale rather than guessing.
+        return result
+
+    def positions_stale(self) -> bool:
+        """True when the last get_positions() call hit the double-empty /
+        no-explaining-fill staleness signature and couldn't resync via reconnect."""
+        return self._positions_stale
+
+
+def classify_positions_staleness(
+    result: list[dict], last_known: dict, ib_client
+) -> tuple[bool, dict, list[str]]:
+    """
+    Shared decision logic for both the order-routing ``IBGatewayManager`` and
+    the always-on ``IBKRDataConnector`` (data leg) — 2026-08-10 follow-up to
+    the 08-03 incident (see ``IBGatewayManager._reconcile_positions_staleness``).
+
+    reqPositionsAsync() AND the local position cache can BOTH come back empty
+    even though a real position exists on the account. Emptiness alone can't
+    be the staleness signal — that's ALSO what a genuinely flat account looks
+    like. Instead, compare against the caller's last confirmed non-zero
+    snapshot: if it flips to empty with no fill on record that would explain
+    the close, that's suspicious rather than a legitimate flatten.
+
+    Returns (is_stale, updated_last_known_positions, unexplained_symbols).
+    """
+    current_map = {r["symbol"]: r["position"] for r in result if r["position"] != 0}
+
+    if current_map or not last_known:
+        return False, current_map, []
+
+    try:
+        fills = ib_client.fills()
+    except Exception:
+        fills = []
+    filled_symbols = {f.contract.symbol for f in fills}
+    unexplained = sorted(set(last_known) - filled_symbols)
+
+    if not unexplained:
+        return False, {}, []
+
+    return True, last_known, unexplained
 
     def get_cached_position(self, symbol: str) -> Optional[float]:
         """
