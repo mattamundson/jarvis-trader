@@ -19,19 +19,40 @@ router = APIRouter(prefix="/brokers", tags=["brokers"])
 
 # Module-level refs injected by main.py at startup
 _ibkr = None  # IBGatewayConnector (mock, for paper-sim order routing)
-_real_ibkr = None  # IBGatewayManager   (real ib_async connection, for read-side data)
+_data_manager = None  # MarketDataManager — holds the real ib_async connection
+# at .ibkr (an IBKRDataConnector), reassigned by data_manager.initialize()
+# ASYNCHRONOUSLY, after inject_dependencies() runs. Snapshotting `.ibkr` once
+# here (as 2026-08-11's #608 did) freezes on the pre-initialize None/stale
+# value forever -- read it lazily via _real_ibkr() below instead, same
+# reasoning already applied to _reconciler just below.
+#
+# Also: IBKRDataConnector.is_connected is a @property (no parens);
+# IBGatewayManager.is_connected (used elsewhere, e.g. safety_layer._ib_gateway)
+# is a plain method (calls with parens). #608 called `_real_ibkr.is_connected()`
+# assuming the IBGatewayManager convention -- on an IBKRDataConnector that's
+# either a silent short-circuit to False (when the snapshot was None) or a
+# TypeError. IBKRDataConnector also had no get_positions() at all before this
+# fix (data-only connector) -- added below, mirroring
+# IBGatewayManager.get_positions()'s reqPositionsAsync()+cache-fallback
+# hardening (2026-08-03 incident).
 _schwab = None
 _tracker = None
 _reconciler = None  # IBKRReconciler — lazily created on first use
+
+
+def _real_ibkr():
+    """Lazily resolve the live ib_async data connection. See _data_manager
+    comment above for why this can't be a snapshot taken at injection time."""
+    return getattr(_data_manager, "ibkr", None) if _data_manager is not None else None
 
 
 def inject_dependencies(
     ibkr=None, schwab=None, tracker=None, data_manager=None, db_path: str = ""
 ) -> None:
     """Wire connector and tracker singletons in from main.py lifespan."""
-    global _ibkr, _real_ibkr, _schwab, _tracker, _reconciler
+    global _ibkr, _data_manager, _schwab, _tracker, _reconciler
     _ibkr = ibkr
-    _real_ibkr = getattr(data_manager, "ibkr", None) if data_manager else None
+    _data_manager = data_manager
     _schwab = schwab
     _tracker = tracker
     # Reconciler holds data_manager (not ibkr) because ibkr is initialized
@@ -55,10 +76,13 @@ def inject_dependencies(
 
 def _ibkr_connected() -> bool:
     """Live IBKR connectivity — backed by the real ib_async connection
-    (`_real_ibkr`), not the paper-sim order-routing mock (`_ibkr`). Those two
+    (`_real_ibkr()`), not the paper-sim order-routing mock (`_ibkr`). Those two
     are unrelated: the mock can report connected=True with zero relationship
-    to whether the actual Gateway session is up."""
-    return _real_ibkr is not None and _real_ibkr.is_connected()
+    to whether the actual Gateway session is up. `.is_connected` is a
+    property on IBKRDataConnector (no parens) — see the _data_manager
+    comment above."""
+    real = _real_ibkr()
+    return real is not None and bool(real.is_connected)
 
 
 def _schwab_connected() -> bool:
@@ -253,7 +277,7 @@ async def get_broker_positions():
         ibkr_raw: list = []
         if ibkr_conn:
             try:
-                ibkr_raw = await _real_ibkr.get_positions() or []
+                ibkr_raw = await _real_ibkr().get_positions() or []
             except Exception as exc:
                 logger.warning("IBKR get_positions failed: %s", exc)
 
