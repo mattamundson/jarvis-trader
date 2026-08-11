@@ -39,8 +39,8 @@ import {
 
 // ── approvedSymbols.ts additions ────────────────────────────────────────────
 
-test("PREFERRED_BASELINE_LABEL renders the active pair, not the halted one", () => {
-  assert.equal(PREFERRED_BASELINE_LABEL, "MES/MGC");
+test("PREFERRED_BASELINE_LABEL renders the active symbol(s), not a halted one", () => {
+  assert.equal(PREFERRED_BASELINE_LABEL, "MES");
 });
 
 test("HALTED_SYMBOLS never overlaps DEFAULT_BRIEFING_SYMBOLS", () => {
@@ -53,11 +53,11 @@ test("HALTED_SYMBOLS never overlaps DEFAULT_BRIEFING_SYMBOLS", () => {
   // Full engine-parity halt list (backtest/signals.py::DO_NOT_TRADE_SYMBOLS) --
   // includes M2K, which this component set has no dashboard view for (see
   // ALL_TRACKED_SYMBOLS below). Locked in parity with the engine by
-  // symbol-status-halt-parity.node.test.ts.
-  assert.deepEqual([...HALTED_SYMBOLS].sort(), ["M2K", "MCL", "MNQ"]);
+  // symbol-status-halt-parity.node.test.ts. MGC added 2026-08-01 (PR #552).
+  assert.deepEqual([...HALTED_SYMBOLS].sort(), ["M2K", "MCL", "MGC", "MNQ"]);
 });
 
-test("ALL_TRACKED_SYMBOLS is the active pair followed by the halted pair, no duplicates", () => {
-  assert.deepEqual([...ALL_TRACKED_SYMBOLS], ["MES", "MGC", "MCL", "MNQ"]);
+test("ALL_TRACKED_SYMBOLS is the active symbol(s) followed by the halted symbols, no duplicates", () => {
+  assert.deepEqual([...ALL_TRACKED_SYMBOLS], ["MES", "MCL", "MNQ", "MGC"]);
   assert.equal(new Set(ALL_TRACKED_SYMBOLS).size, ALL_TRACKED_SYMBOLS.length);
 });

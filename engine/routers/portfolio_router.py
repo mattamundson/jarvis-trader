@@ -32,7 +32,7 @@ from api import (
 )
 from approval.service import approved_watchlist_symbols
 from config import settings
-from data.provenance import DEFAULT_STALE_AFTER_S, derive_is_live
+from data.provenance import DEFAULT_STALE_AFTER_S, DataEnvelope, derive_is_live
 from execution.order_router import FUTURES_SYMBOLS
 from portfolio.tracker import TradeCloseNotPersistedError
 from utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
@@ -266,6 +266,47 @@ def _row_pnl(row: Any) -> float:
         return 0.0
 
 
+def _build_price_envelope(value: float, marks: list[tuple[bool, str, float | None]]) -> dict:
+    """Aggregate per-position provenance (Phase 1) into a summary-level envelope.
+
+    P4-1: /portfolio/summary's price-derived aggregates (unrealized_pnl,
+    total_pnl, total_daily_pnl) must carry the same honest live/stale badge as
+    the individual marks that feed them. Fail-safe aggregation: ``is_live`` is
+    True only when EVERY contributing mark is live -- one stale/disconnected
+    position taints the whole aggregate (mirrors the existing
+    ``unrealized_marks_stale`` gate). No open positions -> trivially live
+    (nothing to be stale about; matches the "trade counts stay live" framing).
+    """
+    if not marks:
+        return DataEnvelope(
+            value=value, source="ledger", as_of=time.time(), is_live=True,
+            stale_after_s=DEFAULT_STALE_AFTER_S,
+        ).to_dict()
+    sources = {s for _, s, _ in marks}
+    source = next(iter(sources)) if len(sources) == 1 else "mixed"
+    as_of_values = [a for _, _, a in marks if a is not None]
+    as_of = min(as_of_values) if as_of_values else None
+    is_live = all(live for live, _, _ in marks)
+    return DataEnvelope(
+        value=value, source=source, as_of=as_of, is_live=is_live,
+        stale_after_s=DEFAULT_STALE_AFTER_S,
+    ).to_dict()
+
+
+def _ledger_envelope(value: float) -> dict:
+    """Provenance envelope for a trade-count/ledger-derived field (P4-1).
+
+    Closed-trade P&L is a booked fact from the trade ledger, not a live-feed
+    read -- it does not go stale when the price feed stops, so it is always
+    ``is_live=True`` (distinct from the price-derived envelopes above, which
+    flip False the moment a contributing mark is stale/disconnected).
+    """
+    return DataEnvelope(
+        value=value, source="ledger", as_of=time.time(), is_live=True,
+        stale_after_s=DEFAULT_STALE_AFTER_S,
+    ).to_dict()
+
+
 @router.get(
     "/summary",
     description="Unified multi-market P&L summary with total daily P&L, market breakdown, and daily target progress.",
@@ -278,6 +319,9 @@ async def portfolio_summary():
     unrealized_pnl = 0.0
     unrealized_marks_stale = 0
     unrealized_marks_live = 0
+    # (is_live, source, as_of) per contributing position -- feeds the summary-
+    # level provenance envelope built below (P4-1).
+    unrealized_marks_provenance: list[tuple[bool, str, float | None]] = []
     if paper_tracker is not None:
         try:
             open_positions: list[dict] = paper_tracker.get_open_positions()
@@ -324,12 +368,20 @@ async def portfolio_summary():
                         unrealized_marks_stale += 1
                     if computed.get("is_live"):
                         unrealized_marks_live += 1
+                    unrealized_marks_provenance.append(
+                        (
+                            bool(computed.get("is_live")),
+                            str(computed.get("source") or "unavailable"),
+                            computed.get("as_of"),
+                        )
+                    )
                     upnl = computed.get("unrealized_pnl") or 0.0
                     unrealized_pnl += upnl
         except Exception as exc:
             logger.warning("portfolio_summary: unrealized P&L fetch failed: %s", exc)
 
     if not orch:
+        unrealized_env = _build_price_envelope(round(unrealized_pnl, 4), unrealized_marks_provenance)
         return {
             "total_daily_pnl": round(unrealized_pnl, 4),
             "realized_pnl": 0.0,
@@ -341,6 +393,11 @@ async def portfolio_summary():
             "unrealized_marks_live": unrealized_marks_live,
             "markets": {},
             "message": "Orchestrator not initialized",
+            # Provenance envelopes (Phase 1, P4-1) — additive; see data/provenance.py.
+            "unrealized_pnl_envelope": unrealized_env,
+            "total_pnl_envelope": {**unrealized_env, "value": round(unrealized_pnl, 4)},
+            "total_daily_pnl_envelope": {**unrealized_env, "value": round(unrealized_pnl, 4)},
+            "realized_pnl_envelope": _ledger_envelope(0.0),
         }
 
     summary = await orch.get_portfolio_summary()
@@ -360,6 +417,18 @@ async def portfolio_summary():
     summary["unrealized_marks_live"] = unrealized_marks_live
     if daily_target:
         summary["target_progress_pct"] = round(total_pnl / daily_target * 100, 2)
+
+    # Provenance envelopes (Phase 1, P4-1): additive {value,source,as_of,is_live,
+    # stale_after_s} shape alongside the existing plain numbers, so the dashboard
+    # can render an honest live/stale badge without breaking any existing
+    # consumer of the plain fields. Price-derived aggregates flip is_live False
+    # the moment any contributing mark goes stale/disconnected; realized_pnl is
+    # a ledger fact (already-booked closed trades) and always stays live.
+    unrealized_envelope = _build_price_envelope(summary["unrealized_pnl"], unrealized_marks_provenance)
+    summary["unrealized_pnl_envelope"] = unrealized_envelope
+    summary["total_pnl_envelope"] = {**unrealized_envelope, "value": summary["total_pnl"]}
+    summary["total_daily_pnl_envelope"] = {**unrealized_envelope, "value": summary["total_daily_pnl"]}
+    summary["realized_pnl_envelope"] = _ledger_envelope(summary["realized_pnl"])
     return summary
 
 
