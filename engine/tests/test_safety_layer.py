@@ -177,22 +177,22 @@ class TestPaperConfigEnabled:
     of which approval router a candidate came through."""
 
     def test_disabled_symbol_blocks_regardless_of_approval_path(self, mock_safety_layer):
-        """MGC (paper_config.enabled=False as of 2026-06-26) is rejected by
-        _check_paper_config_enabled() even with default test settings
-        (LIVE_TRADING_ENABLED is False) -- proves the check fires before, and
-        independent of, the live-trading gate, exactly like
+        """MCL (paper_config.enabled=False, in DO_NOT_TRADE_SYMBOLS) is
+        rejected by _check_paper_config_enabled() even with default test
+        settings (LIVE_TRADING_ENABLED is False) -- proves the check fires
+        before, and independent of, the live-trading gate, exactly like
         TestDoNotTradeSymbols above.
 
-        Calls the private check directly rather than check_order(): MGC also
-        joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
-        correction), and that check runs first in check_order()'s pipeline,
-        so going through check_order() would test the DO_NOT_TRADE_SYMBOLS
-        gate instead of this one. See TestDoNotTradeSymbols and
+        Calls the private check directly rather than check_order(): MCL is
+        also in DO_NOT_TRADE_SYMBOLS, and that check runs first in
+        check_order()'s pipeline, so going through check_order() would test
+        the DO_NOT_TRADE_SYMBOLS gate instead of this one. See
+        TestDoNotTradeSymbols and
         test_submit_paper_order_rejects_disabled_symbol below for the
         DO_NOT_TRADE_SYMBOLS-first behavior end-to-end."""
         safety = mock_safety_layer
         order = OrderRequest(
-            symbol="MGC",
+            symbol="MCL",
             quantity=1,
             order_type="market",
             estimated_value=1000.0,
@@ -201,17 +201,17 @@ class TestPaperConfigEnabled:
         result = safety._check_paper_config_enabled(order)
 
         assert result.approved is False
-        assert "MGC" in result.rejection_reason
+        assert "MCL" in result.rejection_reason
         assert "paper_config.enabled" in result.rejection_reason
 
     def test_disabled_symbol_blocks_lowercase_input(self, mock_safety_layer):
         """Symbol matching is case-insensitive (matches order.symbol.upper()
         convention used by every other check in this file). Calls the
         private check directly for the same reason as the test above --
-        MGC now also hits DO_NOT_TRADE_SYMBOLS first in check_order()."""
+        MCL also hits DO_NOT_TRADE_SYMBOLS first in check_order()."""
         safety = mock_safety_layer
         order = OrderRequest(
-            symbol="mgc",
+            symbol="mcl",
             quantity=1,
             order_type="market",
             estimated_value=1000.0,
@@ -268,7 +268,7 @@ class TestPaperConfigEnabled:
         safety = mock_safety_layer
 
         blocked = OrderRequest(
-            symbol="MGC", quantity=1, order_type="market", estimated_value=1000.0
+            symbol="MCL", quantity=1, order_type="market", estimated_value=1000.0
         )
         allowed = OrderRequest(
             symbol="MES", quantity=1, order_type="market", estimated_value=1000.0
@@ -282,7 +282,7 @@ class TestPaperConfigEnabled:
         no_entry_result = safety._check_paper_config_enabled(no_entry)
 
         assert blocked_result.approved is False
-        assert "MGC" in blocked_result.rejection_reason
+        assert "MCL" in blocked_result.rejection_reason
         assert allowed_result.approved is True
         assert no_entry_result.approved is True
 
@@ -292,15 +292,16 @@ class TestPaperConfigEnabled:
         routers/approval_queue_router.py's approve_candidate() calls -- proves
         a disabled symbol never reaches the (mock) broker via this route
         either. This is the exact real-world path MGC's live paper orders
-        were taking despite paper_config.enabled=False (PRB-22).
+        were taking despite paper_config.enabled=False (PRB-22); MGC has been
+        re-authorized (PR #598), so MCL — still disabled and blocklisted — is
+        the canonical disabled symbol.
 
-        MGC also joined DO_NOT_TRADE_SYMBOLS 2026-07-31 (honest-data-drain DSR
-        correction), and that check now runs first in check_order()'s
-        pipeline, so the rejection reason below is DO_NOT_TRADE_SYMBOLS, not
-        paper_config.enabled -- a strictly stronger guarantee (MGC is now
-        double-gated). The paper_config.enabled path itself is still covered
-        in isolation by test_check_paper_config_enabled_direct and
-        test_disabled_symbol_blocks_regardless_of_approval_path above."""
+        MCL is in DO_NOT_TRADE_SYMBOLS, and that check runs first in
+        check_order()'s pipeline, so the rejection reason below is
+        DO_NOT_TRADE_SYMBOLS, not paper_config.enabled — a strictly stronger
+        guarantee (MCL is double-gated). The paper_config.enabled path itself
+        is still covered in isolation by test_check_paper_config_enabled_direct
+        and test_disabled_symbol_blocks_regardless_of_approval_path above."""
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
         safety = SafetyLayer(mock_settings)
@@ -309,7 +310,7 @@ class TestPaperConfigEnabled:
         safety._ib_gateway = gw
 
         result = await safety.submit_paper_order(
-            symbol="MGC",
+            symbol="MCL",
             action="BUY",
             quantity=1,
             price=2150.0,
