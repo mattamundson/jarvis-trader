@@ -183,12 +183,34 @@ def run_vwap_backtest(
     atr_period: int = 14,
     require_reversal_bar: bool = True,
     regime_filter: bool = False,
+    # SOTA execution-realism hardening (aligned with PR #592 shared Backtester)
+    pessimistic_tie_breaker: bool = False,
+    gap_stop_worst_fill: bool = False,
+    volatility_scaled_slippage: bool = False,
+    max_volume_pct: Optional[float] = None,
+    initial_margin_per_contract: Optional[float] = None,
+    initial_capital: float = 50_000.0,
 ) -> VWAPBacktestResult:
     """
     Run VWAP reversion backtest on a 1-hour OHLCV DataFrame.
 
     Full position exits: T1 (VWAP) → exit 100%, then stop/T2/EOD are irrelevant.
     Simple clean model — no partial exits.
+
+    SOTA hardening (all optional, default False/None = unchanged behavior):
+      pessimistic_tie_breaker: on a bar where BOTH the stop and a target are
+        touched, assume the STOP was hit first (worst case) instead of the
+        stop-first order below which is actually already conservative on
+        order but optimistic on fill price. This overrides gap/direction
+        inference.
+      gap_stop_worst_fill: if the bar OPEN already violates the stop level
+        (gap through the stop), fill at the worse of (bar_open, stop_price).
+      volatility_scaled_slippage: scale slippage by current-bar ATR / trailing
+        mean ATR (clamped 0.5x-4.0x) — wider fills during vol spikes.
+      max_volume_pct: cap effective contracts at pct of bar volume and apply a
+        quadratic POV impact surcharge on slippage.
+      initial_margin_per_contract: cap contracts at floor(capital /
+        margin_per_contract).
     """
     spec = CONTRACT_SPECS.get(symbol, DEFAULT_SPEC)
     params = {
@@ -223,13 +245,46 @@ def run_vwap_backtest(
         bar_high = float(df["high"].iloc[i])
         bar_low = float(df["low"].iloc[i])
         bar_close = float(df["close"].iloc[i])
+        bar_open = float(df["open"].iloc[i])
+        bar_vol = float(df["volume"].iloc[i]) if "volume" in df.columns else 0.0
         bar_time = str(df.index[i])
         bar_hour = int(eastern_hours.iloc[i])
 
+        # SOTA: volatility-scaled slippage multiplier (ATR-relative)
+        slip_mult = 1.0
+        if volatility_scaled_slippage and "atr" in df.columns:
+            atr_val = float(df["atr"].iloc[i])
+            lookback = max(0, i - 20)
+            hist = df["atr"].iloc[lookback:i].dropna()
+            if len(hist) >= 1 and atr_val > 0:
+                mean_atr = float(hist.mean())
+                if mean_atr > 0:
+                    raw = atr_val / mean_atr
+                    slip_mult = max(0.5, min(4.0, raw))
+
+        # SOTA: POV impact surcharge on the slippage multiplier
+        if max_volume_pct is not None and bar_vol > 0 and contracts > 0:
+            pov = contracts / bar_vol
+            if pov > max_volume_pct:
+                excess = pov / max_volume_pct
+                slip_mult *= 1.0 + (excess - 1.0) ** 2
+
+        # SOTA: effective contracts capped by initial margin
+        eff_contracts = contracts
+        if initial_margin_per_contract is not None and initial_margin_per_contract > 0:
+            cap = int(initial_capital // initial_margin_per_contract)
+            eff_contracts = max(0, min(contracts, cap))
+            if eff_contracts < 1:
+                eff_contracts = 1
+
+        # SOTA: effective slippage ticks = base * multiplier
+        eff_spec = dict(spec)
+        eff_spec["slippage_ticks"] = spec["slippage_ticks"] * slip_mult
+
         # EOD: force-close at 15:xx
         if open_pos is not None and bar_hour >= RTH_FINAL_HOUR:
-            exit_p = _slip(bar_close, open_pos["side"], False, spec)
-            pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], contracts, spec)
+            exit_p = _slip(bar_close, open_pos["side"], False, eff_spec)
+            pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], eff_contracts, eff_spec)
             trades.append(
                 VWAPTrade(
                     symbol=symbol,
@@ -238,7 +293,7 @@ def run_vwap_backtest(
                     side=open_pos["side"],
                     entry_price=open_pos["entry"],
                     exit_price=round(exit_p, 4),
-                    contracts=contracts,
+                    contracts=eff_contracts,
                     exit_reason="eod",
                     vwap_at_entry=open_pos["vwap"],
                     atr_at_entry=open_pos["atr"],
@@ -260,8 +315,14 @@ def run_vwap_backtest(
                 side == "short" and bar_high >= stop
             )
             if stop_hit:
-                exit_p = _slip(stop, side, False, spec)
-                pnl = _pnl(entry, exit_p, side, contracts, spec)
+                exit_p = _slip(stop, side, False, eff_spec)
+                # SOTA: gap through the stop -> fill at worse of (bar_open, stop)
+                if gap_stop_worst_fill:
+                    if side == "long":
+                        exit_p = min(_slip(bar_open, side, False, eff_spec), exit_p)
+                    else:
+                        exit_p = max(_slip(bar_open, side, False, eff_spec), exit_p)
+                pnl = _pnl(entry, exit_p, side, eff_contracts, eff_spec)
                 trades.append(
                     VWAPTrade(
                         symbol=symbol,
@@ -270,7 +331,7 @@ def run_vwap_backtest(
                         side=side,
                         entry_price=entry,
                         exit_price=round(exit_p, 4),
-                        contracts=contracts,
+                        contracts=eff_contracts,
                         exit_reason="stop",
                         vwap_at_entry=open_pos["vwap"],
                         atr_at_entry=open_pos["atr"],
@@ -283,8 +344,8 @@ def run_vwap_backtest(
             # Check T1 (VWAP)
             t1_hit = (side == "long" and bar_high >= t1) or (side == "short" and bar_low <= t1)
             if t1_hit:
-                exit_p = _slip(t1, side, False, spec)
-                pnl = _pnl(entry, exit_p, side, contracts, spec)
+                exit_p = _slip(t1, side, False, eff_spec)
+                pnl = _pnl(entry, exit_p, side, eff_contracts, eff_spec)
                 trades.append(
                     VWAPTrade(
                         symbol=symbol,
@@ -293,7 +354,7 @@ def run_vwap_backtest(
                         side=side,
                         entry_price=entry,
                         exit_price=round(exit_p, 4),
-                        contracts=contracts,
+                        contracts=eff_contracts,
                         exit_reason="target_1",
                         vwap_at_entry=open_pos["vwap"],
                         atr_at_entry=open_pos["atr"],
@@ -306,8 +367,8 @@ def run_vwap_backtest(
             # Check T2 (opposite band)
             t2_hit = (side == "long" and bar_high >= t2) or (side == "short" and bar_low <= t2)
             if t2_hit:
-                exit_p = _slip(t2, side, False, spec)
-                pnl = _pnl(entry, exit_p, side, contracts, spec)
+                exit_p = _slip(t2, side, False, eff_spec)
+                pnl = _pnl(entry, exit_p, side, eff_contracts, eff_spec)
                 trades.append(
                     VWAPTrade(
                         symbol=symbol,
@@ -316,7 +377,7 @@ def run_vwap_backtest(
                         side=side,
                         entry_price=entry,
                         exit_price=round(exit_p, 4),
-                        contracts=contracts,
+                        contracts=eff_contracts,
                         exit_reason="target_2",
                         vwap_at_entry=open_pos["vwap"],
                         atr_at_entry=open_pos["atr"],
@@ -331,7 +392,7 @@ def run_vwap_backtest(
             sig = str(df["vwap_signal"].iloc[i])
             if sig in ("LONG_ENTRY", "SHORT_ENTRY"):
                 side = "long" if sig == "LONG_ENTRY" else "short"
-                entry_p = _slip(bar_close, side, True, spec)
+                entry_p = _slip(bar_close, side, True, eff_spec)
                 stop_p = float(df["vwap_stop"].iloc[i])
                 t1_p = float(df["vwap_target_1"].iloc[i])
                 t2_p = float(df["vwap_target_2"].iloc[i])
@@ -352,8 +413,8 @@ def run_vwap_backtest(
     # Force-close any remaining open position
     if open_pos is not None:
         last_close = float(df["close"].iloc[-1])
-        exit_p = _slip(last_close, open_pos["side"], False, spec)
-        pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], contracts, spec)
+        exit_p = _slip(last_close, open_pos["side"], False, eff_spec)
+        pnl = _pnl(open_pos["entry"], exit_p, open_pos["side"], eff_contracts, eff_spec)
         trades.append(
             VWAPTrade(
                 symbol=symbol,
@@ -362,7 +423,7 @@ def run_vwap_backtest(
                 side=open_pos["side"],
                 entry_price=open_pos["entry"],
                 exit_price=round(exit_p, 4),
-                contracts=contracts,
+                contracts=eff_contracts,
                 exit_reason="eod",
                 vwap_at_entry=open_pos["vwap"],
                 atr_at_entry=open_pos["atr"],

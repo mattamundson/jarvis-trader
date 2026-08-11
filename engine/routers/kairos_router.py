@@ -59,12 +59,68 @@ async def get_observations_by_date(date_str: str):
 
 @router.get("/watchers")
 async def get_watchers():
-    """List registered watchers and their hit rates."""
+    """List registered watchers with today's per-watcher hit stats.
+
+    daemon.get_status()["watchers"] is only a list of bare name strings —
+    per-watcher counters aren't tracked on the daemon itself. Enrich each
+    name here from today's ObservationLog so the dashboard's Watchers list
+    gets the {name, enabled, hit_count_today, warning_count_today,
+    critical_count_today, last_observation} shape it expects.
+    """
     daemon = get_kairos()
     if not daemon:
         return {"watchers": [], "enabled": False}
     status = daemon.get_status()
-    return {"watchers": status.get("watchers", []), "running": status.get("running", False)}
+    watcher_names = status.get("watchers", [])
+
+    from kairos.observation_log import ObservationLog
+
+    log = ObservationLog()
+    today_obs = log.read_today()
+
+    stats_by_watcher: dict[str, dict] = {}
+    for obs in today_obs:
+        name = obs.get("watcher")
+        if not name:
+            continue
+        entry = stats_by_watcher.setdefault(
+            name,
+            {
+                "hit_count_today": 0,
+                "warning_count_today": 0,
+                "critical_count_today": 0,
+                "last_observation": None,
+            },
+        )
+        entry["hit_count_today"] += 1
+        severity = obs.get("severity")
+        if severity == "warning":
+            entry["warning_count_today"] += 1
+        elif severity == "critical":
+            entry["critical_count_today"] += 1
+        timestamp = obs.get("timestamp")
+        if timestamp and (
+            entry["last_observation"] is None or timestamp > entry["last_observation"]
+        ):
+            entry["last_observation"] = timestamp
+
+    watchers = []
+    for name in watcher_names:
+        stats = stats_by_watcher.get(name, {})
+        watchers.append(
+            {
+                "name": name,
+                # All registered watchers run every tick — there is no
+                # per-watcher disable switch on the daemon today.
+                "enabled": True,
+                "hit_count_today": stats.get("hit_count_today", 0),
+                "warning_count_today": stats.get("warning_count_today", 0),
+                "critical_count_today": stats.get("critical_count_today", 0),
+                "last_observation": stats.get("last_observation"),
+            }
+        )
+
+    return {"watchers": watchers, "running": status.get("running", False)}
 
 
 @router.post("/tick")

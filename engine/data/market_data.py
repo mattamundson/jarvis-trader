@@ -11,7 +11,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -533,12 +533,20 @@ class IBKRDataConnector:
                 "source": "ibkr_not_connected",
             }
         try:
-            # For futures symbols, resolve to front month contract; otherwise use standard contract
-            if is_futures or symbol.upper() in FUTURES_MAP:
-                exchange = FUTURES_EXCHANGE.get(symbol.upper(), "CME")
-                contract = await self._resolve_front_month(symbol, exchange)
-            else:
-                contract = self._make_contract(symbol, is_futures)
+            # Always qualify before requesting a ticker snapshot. ib_async keys
+            # in-flight market-data requests by conId; a generic/unqualified
+            # Contract (conId=0) risks resolving to whatever other request is
+            # outstanding when multiple symbols are snapshotted concurrently —
+            # exactly what get_batch_prices() does (one reqTickersAsync per
+            # watchlist symbol, fired together via asyncio.gather).
+            # GT-17: AAPL's unqualified Stock contract picked up a futures
+            # quote (~$7494, ~23x AAPL's real price) because it was requested
+            # in the same batch as MES/MGC/etc, which resolve to a real conId
+            # via _resolve_front_month. _qualified_contract already handles
+            # both cases (front-month for futures, qualifyContractsAsync for
+            # everything else) — reuse it instead of duplicating the branch
+            # with an unqualified fallback for non-futures symbols.
+            contract = await self._qualified_contract(symbol, is_futures)
             tickers = await self._ib.reqTickersAsync(contract)
             if tickers:
                 t = tickers[0]
@@ -695,6 +703,64 @@ class IBKRDataConnector:
             return result
         except Exception as exc:
             logger.warning("IBKRDataConnector.get_executions failed: %s", exc)
+            return []
+
+    async def get_positions(self) -> list[dict]:
+        """
+        Return current IB positions as a list of dicts. Same schema as
+        IBGatewayManager.get_positions() (engine/execution/ib_gateway.py) so
+        GET /brokers/positions can use either connector interchangeably.
+
+        Positions are account-level in IB, not per-clientId, so this data-leg
+        connection sees the same account state as the order-leg connection --
+        added 2026-08-11 (#608 follow-up) because this connector previously
+        had no position-query method at all, silently masking that gap behind
+        a broad try/except in the router.
+        """
+        if not self._ib or not self._connected:
+            return []
+        try:
+            positions = await self._ib.reqPositionsAsync()
+        except Exception as exc:
+            logger.error("IBKRDataConnector.get_positions: reqPositionsAsync failed: %s", exc)
+            positions = []
+
+        # Cross-check against ib_async's continuously-updated position cache,
+        # same reqPositionsAsync-can-return-empty hardening as
+        # IBGatewayManager.get_positions() (2026-08-03 incident).
+        try:
+            cached = self._ib.positions()
+        except Exception:
+            cached = []
+        if not positions and cached:
+            logger.error(
+                "IBKRDataConnector.get_positions: reqPositionsAsync returned EMPTY but "
+                "the position cache holds %d entries — using the cache instead.",
+                len(cached),
+            )
+            positions = cached
+
+        try:
+            result = []
+            for pos in positions:
+                contract = pos.contract
+                result.append(
+                    {
+                        "symbol": contract.symbol,
+                        "sec_type": contract.secType,
+                        "exchange": getattr(contract, "exchange", ""),
+                        "currency": contract.currency,
+                        "position": pos.position,
+                        "avg_cost": pos.avgCost,
+                        "market_price": None,
+                        "market_value": None,
+                        "unrealized_pnl": None,
+                        "account": pos.account,
+                    }
+                )
+            return result
+        except Exception as exc:
+            logger.error("IBKRDataConnector.get_positions failed: %s", exc, exc_info=True)
             return []
 
     async def health_check(self) -> dict:
@@ -1172,8 +1238,26 @@ class MarketDataManager:
 
         # Tier 1: IBKR
         if self.ibkr and self.ibkr.is_connected:
-            duration_map = [(1, "1 D"), (7, "1 W"), (30, "1 M"), (90, "3 M"), (365, "1 Y")]
-            duration = next((v for k, v in duration_map if lookback_days <= k), "1 M")
+            # GT-22 fix (2026-07-27): the map used to top out at 365 days -> "1 Y",
+            # and `next(..., "1 M")` silently fell back to a 1-MONTH request for any
+            # lookback_days beyond that (e.g. /regime/vix-percentile's default
+            # lookback=252 + momentum_window=63 needs ~514 calendar days, so it was
+            # quietly served ~21 daily bars instead of the ~252 its own label
+            # claimed). Extended to 5 Y so multi-year daily-bar requests actually
+            # fetch what they ask for; IBKR's reqHistoricalDataAsync accepts "N Y"
+            # duration strings natively for daily bars.
+            duration_map = [
+                (1, "1 D"),
+                (7, "1 W"),
+                (30, "1 M"),
+                (90, "3 M"),
+                (180, "6 M"),
+                (365, "1 Y"),
+                (730, "2 Y"),
+                (1095, "3 Y"),
+                (1825, "5 Y"),
+            ]
+            duration = next((v for k, v in duration_map if lookback_days <= k), "5 Y")
             bar_size_map = {
                 "1m": "1 min",
                 "5m": "5 mins",
@@ -1189,7 +1273,7 @@ class MarketDataManager:
                 df.attrs["source"] = "ibkr"
                 df.attrs["symbol"] = symbol
                 self._last_bar_source = "ibkr"
-                self._last_ibkr_data_ts = time.time()
+                self._record_ibkr_freshness()
                 if _save_bars is not None:
                     _save_bars(df, symbol, timeframe, "ibkr")
                 return df
@@ -1292,6 +1376,39 @@ class MarketDataManager:
         self._last_bar_source = "none"
         return empty
 
+    def _record_ibkr_freshness(self) -> None:
+        """Mark that IBKR just served fresh data.
+
+        Updates the in-process timestamp IBDataWatchdog reads for staleness AND
+        publishes a Redis ``datasource:ib_gateway:last_update`` heartbeat so
+        ``/system/data-integrity`` (and the real-money-readiness ``feeds_live``
+        gate) can see the live IB feed. Until now only the TV Desktop scraper
+        wrote a ``datasource:*:last_update`` key, so the integrity panel showed
+        nothing but stale TV entries even while IB served live prices. The
+        timestamp value is a timezone-aware UTC ISO string because the
+        data-integrity endpoint does ``fromisoformat`` then subtracts from an
+        aware ``now`` -- a naive string would raise and be silently skipped.
+        Best-effort: a Redis failure must never break the price/bar hot path.
+        """
+        self._last_ibkr_data_ts = time.time()
+        try:
+            import redis
+
+            r = redis.Redis(
+                host="localhost",
+                port=6379,
+                db=0,
+                decode_responses=True,
+                socket_timeout=0.5,
+                socket_connect_timeout=0.5,
+            )
+            r.set(
+                "datasource:ib_gateway:last_update",
+                datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as _hb_err:  # noqa: BLE001 - heartbeat is best-effort
+            logger.debug(f"[ib-freshness] Redis heartbeat write failed: {_hb_err}")
+
     async def get_current_price(self, symbol: str, is_futures: bool = False) -> dict:
         """
         Get latest price. Returns {last_price, prev_close, change_pct, source}.
@@ -1345,7 +1462,7 @@ class MarketDataManager:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
             if result.get("last_price"):
                 self._last_price_source = "ibkr"
-                self._last_ibkr_data_ts = time.time()
+                self._record_ibkr_freshness()
                 return result
 
         # Tier 2: Schwab (real-time quotes, no historical bars)
@@ -1450,6 +1567,22 @@ class MarketDataManager:
         is_futures = is_futures or symbol.upper() in FUTURES_MAP
 
         # Tier 0: Redis Real-Time Fabric (Phase 2.1)
+        #
+        # GT-17 follow-up (2026-07-27): this tier used to trust whatever was
+        # cached under market:latest:{symbol} unconditionally and forever —
+        # _stream_to_redis() (tradingview_stream.py) SETs that key with no
+        # TTL, and nothing here checked the sibling
+        # datasource:ticks:{symbol}:last_update freshness marker it writes
+        # alongside it. A stale or mislabeled TV pane (e.g. a chart that
+        # hadn't finished switching symbols) could poison a symbol's entry
+        # and it would be served to /watchlist indefinitely — completely
+        # bypassing Tier 1 IBKR (and the qualified-contract fix above) since
+        # this tier returns first. That mechanism, not the Tier-1 contract
+        # hash collision, matches the originally-reported symptom: a wrong
+        # last_price *and* change_pct=null (this tier hardcodes change_pct
+        # to None; Tier 1's historical-bars fallback would have produced a
+        # non-null change_pct). Now gated on freshness so a stale cache
+        # entry falls through to Tier 1 instead of being trusted forever.
         try:
             import json
 
@@ -1460,6 +1593,31 @@ class MarketDataManager:
             for sym_key in [symbol, symbol.upper()]:
                 val = r.get(f"market:latest:{sym_key}")
                 if val:
+                    last_update_raw = r.get(f"datasource:ticks:{sym_key}:last_update")
+                    if not last_update_raw:
+                        logger.debug(
+                            f"[get_tick_price] Redis fabric hit for {symbol} has no "
+                            f"freshness marker — treating as stale, skipping"
+                        )
+                        continue
+                    try:
+                        last_update = datetime.fromisoformat(last_update_raw)
+                        age_s = (
+                            datetime.now(last_update.tzinfo) - last_update
+                        ).total_seconds()
+                    except (ValueError, TypeError) as _ts_err:
+                        logger.debug(
+                            f"[get_tick_price] Redis fabric freshness marker for "
+                            f"{symbol} unparseable ({_ts_err}) — treating as stale"
+                        )
+                        continue
+                    if age_s > DEFAULT_STALE_AFTER_S or age_s < 0:
+                        logger.debug(
+                            f"[get_tick_price] Redis fabric entry for {symbol} is "
+                            f"{age_s:.0f}s old (> {DEFAULT_STALE_AFTER_S:.0f}s) — "
+                            f"stale, falling through to Tier 1"
+                        )
+                        continue
                     data = json.loads(val)
                     if data.get("close"):
                         return {
@@ -1476,7 +1634,7 @@ class MarketDataManager:
             result = await self.ibkr.get_snapshot_price(symbol, is_futures)
             if result.get("last_price"):
                 self._last_price_source = "ibkr"
-                self._last_ibkr_data_ts = time.time()
+                self._record_ibkr_freshness()
                 return result
 
         # Tier 2: Schwab quotes

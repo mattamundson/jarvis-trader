@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useState } from "react";
 import { Activity, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
+import { ResultLabel } from "@/components/ResultLabel";
 import { WeeklyStatsWidget } from "@/components/WeeklyStatsWidget";
 import { CommissionTrackerWidget } from "@/components/CommissionTrackerWidget";
 import { TradeDurationWidget } from "@/components/TradeDurationWidget";
@@ -51,15 +52,21 @@ interface BacktestRow {
   returnPct: number;
   maxDD: number | null;
   wfe: number;
-  status: "ACTIVE" | "RESEARCH" | "DO NOT TRADE";
 }
 
+// NOTE: this table intentionally has no per-symbol trading-status column.
+// It previously hardcoded a "Status" of ACTIVE/DO NOT TRADE frozen as of
+// 2026-03-30, which drifted out of sync with the live DO_NOT_TRADE_SYMBOLS
+// halt list and used the exact same vocabulary as current-status pages —
+// a real misread risk on a fast skim (PRB-33). For current trade
+// eligibility, see the Strategy Ledger (live gate-v2 verdicts) or
+// /trading-eligibility, not this frozen research snapshot.
 const BACKTEST_DATA: BacktestRow[] = [
-  { rank: 1, symbol: "MGC", tf: "1d", trades: 47, wr: 51.1, pf: 2.60, sharpe: 2.04, returnPct: 34.4, maxDD: 3.0, wfe: 0.14, status: "DO NOT TRADE" },
-  { rank: 2, symbol: "SPY", tf: "1h", trades: 23, wr: 65.2, pf: 3.00, sharpe: -1.55, returnPct: 0.7, maxDD: 5.0, wfe: -1.11, status: "DO NOT TRADE" },
-  { rank: 3, symbol: "MNQ", tf: "1h", trades: 86, wr: 47.7, pf: 1.46, sharpe: 0.19, returnPct: 13.6, maxDD: 0.1, wfe: 0.57, status: "ACTIVE" },
-  { rank: 4, symbol: "MCL", tf: "1h", trades: 65, wr: 60.0, pf: 1.83, sharpe: 0.15, returnPct: 0.2, maxDD: null, wfe: 0.82, status: "ACTIVE" },
-  { rank: 5, symbol: "MES", tf: "1h", trades: 21, wr: 42.9, pf: 0.96, sharpe: -0.12, returnPct: -4.0, maxDD: 0.1, wfe: 0.09, status: "DO NOT TRADE" },
+  { rank: 1, symbol: "MGC", tf: "1d", trades: 47, wr: 51.1, pf: 2.60, sharpe: 2.04, returnPct: 34.4, maxDD: 3.0, wfe: 0.14 },
+  { rank: 2, symbol: "SPY", tf: "1h", trades: 23, wr: 65.2, pf: 3.00, sharpe: -1.55, returnPct: 0.7, maxDD: 5.0, wfe: -1.11 },
+  { rank: 3, symbol: "MNQ", tf: "1h", trades: 86, wr: 47.7, pf: 1.46, sharpe: 0.19, returnPct: 13.6, maxDD: 0.1, wfe: 0.57 },
+  { rank: 4, symbol: "MCL", tf: "1h", trades: 65, wr: 60.0, pf: 1.83, sharpe: 0.15, returnPct: 0.2, maxDD: null, wfe: 0.82 },
+  { rank: 5, symbol: "MES", tf: "1h", trades: 21, wr: 42.9, pf: 0.96, sharpe: -0.12, returnPct: -4.0, maxDD: 0.1, wfe: 0.09 },
 ];
 
 interface WFERow {
@@ -126,23 +133,6 @@ function wfeColor(wfe: number): string {
   return "#ff4444";
 }
 
-function statusBadge(status: "ACTIVE" | "RESEARCH" | "DO NOT TRADE") {
-  const map = {
-    ACTIVE: { bg: "#00ff8818", border: "#00ff8840", color: "#00ff88" },
-    RESEARCH: { bg: "#ffcc0018", border: "#ffcc0040", color: "#ffcc00" },
-    "DO NOT TRADE": { bg: "#ff444418", border: "#ff444440", color: "#ff4444" },
-  };
-  const s = map[status];
-  return (
-    <span
-      className="font-mono text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
-      style={{ backgroundColor: s.bg, border: `1px solid ${s.border}`, color: s.color }}
-    >
-      {status}
-    </span>
-  );
-}
-
 /** CSS bar that scales to max=1.0 for WFE, clamped to [-1.5, 1.0] visual range */
 function WFEBar({ value, maxWidth }: { value: number; maxWidth?: number }) {
   const max = maxWidth ?? 1.0;
@@ -192,11 +182,16 @@ function SummaryCard({
   value,
   sub,
   color,
+  note,
 }: {
   label: string;
   value: string;
   sub?: string;
   color?: string;
+  /** Inline historical/disclosure caption — matches the page's amber
+   * "Historical backtest" banner convention (see frozen-snapshot sections
+   * above) so this card reads correctly even in isolation. */
+  note?: string;
 }) {
   return (
     <div
@@ -218,6 +213,11 @@ function SummaryCard({
       {sub && (
         <span className="font-mono text-[10px]" style={{ color: "#555" }}>
           {sub}
+        </span>
+      )}
+      {note && (
+        <span className="font-mono text-[10px]" style={{ color: "#9a8030" }}>
+          {note}
         </span>
       )}
     </div>
@@ -309,12 +309,6 @@ function BacktestMatrix() {
                   {c.label}<SortIcon col={c.key} />
                 </th>
               ))}
-              <th
-                className="pb-2 px-2 text-center font-semibold uppercase tracking-wider"
-                style={{ color: "#555", fontSize: "10px" }}
-              >
-                Status
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -346,7 +340,6 @@ function BacktestMatrix() {
                 <td className="py-2 px-2 text-right tabular-nums font-bold" style={{ color: wfeColor(row.wfe) }}>
                   {row.wfe.toFixed(2)}
                 </td>
-                <td className="py-2 px-2 text-center">{statusBadge(row.status)}</td>
               </tr>
             ))}
           </tbody>
@@ -791,10 +784,11 @@ export default function PerformancePage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h2
-              className="text-2xl font-bold tracking-tight font-mono"
+              className="text-2xl font-bold tracking-tight font-mono flex items-center gap-2"
               style={{ color: "#e0e0e0" }}
             >
               Backtest Performance Analytics
+              <ResultLabel kind="backtest" />
             </h2>
             <p className="text-sm mt-1 font-mono" style={{ color: "#555" }}>
               JARVIS TRADER v2.7 | STC (Schaff Trend Cycle) + ATR Stops/Targets + Regime Filter
@@ -819,10 +813,22 @@ export default function PerformancePage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCard label="Active Instruments" value="2" sub="MCL 1h (0.82) + MNQ 1h (0.57) APPROVED" color="#00ff88" />
+          <SummaryCard
+            label="Best Backtested Instruments"
+            value="2"
+            sub="MCL 1h (0.82) + MNQ 1h (0.57) APPROVED"
+            color="#00ff88"
+            note="2026-03-30 snapshot — since halted, see Strategy Ledger"
+          />
           <SummaryCard label="Research" value="0" sub="All cleared or halted" color="#555" />
           <SummaryCard label="Do Not Trade" value="8" sub="Failed walk-forward" color="#ff4444" />
-          <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
+          <SummaryCard
+            label="Best WFE"
+            value="0.82"
+            sub="MCL 1h APPROVED (static)"
+            color="#00ff88"
+            note="2026-03-30 snapshot — not current status"
+          />
         </div>
 
         {/* Live per-symbol price chart — our own real-time futures bars */}

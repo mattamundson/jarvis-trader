@@ -3,11 +3,21 @@
 import useSWR from "swr";
 import { Activity, TrendingUp, TrendingDown, Circle, AlertCircle } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
 
 const REFRESH_MS = 5000;
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
+}
+
+function shouldRevalidatePortfolio(event: WsEvent): boolean {
+  return (
+    event.type === "order_fill" ||
+    event.type === "kill_switch" ||
+    event.type === "safety_event" ||
+    event.type === "circuit_breaker"
+  );
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -209,9 +219,16 @@ function MarketHealthCard({ market, mod, capital }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
-  const { data: summary } = useSWR<PortfolioSummary>("/portfolio/summary", fetcher, { refreshInterval: REFRESH_MS });
-  const { data: health } = useSWR<PortfolioHealth>("/portfolio/health", fetcher, { refreshInterval: REFRESH_MS });
-  const { data: capital, error: capitalError } = useSWR<CapitalAllocation>("/portfolio/capital", fetcher, { refreshInterval: 30_000 });
+  const { data: summary, mutate: mutateSummary } = useSWR<PortfolioSummary>("/portfolio/summary", fetcher, { refreshInterval: REFRESH_MS });
+  const { data: health, mutate: mutateHealth } = useSWR<PortfolioHealth>("/portfolio/health", fetcher, { refreshInterval: REFRESH_MS });
+  const { data: capital, error: capitalError, mutate: mutateCapital } = useSWR<CapitalAllocation>("/portfolio/capital", fetcher, { refreshInterval: 30_000 });
+
+  useWebSocket(undefined, (event) => {
+    if (!shouldRevalidatePortfolio(event)) return;
+    mutateSummary();
+    mutateHealth();
+    mutateCapital();
+  });
 
   const moduleMap: Record<string, ModuleHealth> = {};
   for (const m of health?.modules ?? []) moduleMap[m.market] = m;

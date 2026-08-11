@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from es_research.demo import build_synthetic_objects
-from es_research.registry.repository import DuckDBExperimentRegistry
 
 
 def test_full_registry_flow(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    pytest.importorskip("duckdb")
+    from es_research.registry.repository import DuckDBExperimentRegistry
+
     registry = DuckDBExperimentRegistry(tmp_path / "flow.duckdb")
     manifest, candidate, experiment, result = build_synthetic_objects()
     manifest_hash = registry.insert_manifest(manifest)
@@ -20,6 +24,7 @@ def test_full_registry_flow(tmp_path) -> None:  # type: ignore[no-untyped-def]
 
 
 def test_reproducibility_values_survive_database_deletion(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    pytest.importorskip("duckdb")
     from es_research.demo import run_reproducibility_demo
 
     first_db = tmp_path / "first.duckdb"

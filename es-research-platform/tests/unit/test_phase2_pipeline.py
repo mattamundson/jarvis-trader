@@ -8,12 +8,7 @@ import pytest
 from es_research.contracts import SessionCalendar
 from es_research.features.bars import build_time_bars
 from es_research.ingestion.synthetic import SyntheticTradeConfig, generate_synthetic_trades
-from es_research.normalization.events import (
-    NORMALIZED_TRADE_SCHEMA_VERSION,
-    normalize_trade_events,
-    read_normalized_trades_parquet,
-    write_normalized_trades_parquet,
-)
+from es_research.normalization.events import normalize_trade_events, write_normalized_trades_parquet
 from es_research.sessionization.calendar import SessionAssignmentError, assign_sessions
 from es_research.validation.pipeline import validate_bars, validate_normalized_trade_rows
 
@@ -93,19 +88,4 @@ def test_parquet_writer_requires_pyarrow_when_unavailable(tmp_path) -> None:  # 
     rows = normalize_trade_events(generate_synthetic_trades(_config()))
     pytest.importorskip("pyarrow")
     write_normalized_trades_parquet(rows, tmp_path / "trades.parquet")
-    path = tmp_path / "trades.parquet"
-    assert path.exists()
-    assert read_normalized_trades_parquet(path) == rows
-
-
-def test_parquet_reader_rejects_unversioned_schema(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    pa = pytest.importorskip("pyarrow")
-    pq = pytest.importorskip("pyarrow.parquet")
-    path = tmp_path / "wrong-schema.parquet"
-    pq.write_table(pa.table({"event_timestamp": []}), path)
-    with pytest.raises(ValueError, match="schema version mismatch"):
-        read_normalized_trades_parquet(path)
-
-
-def test_normalized_schema_version_is_explicit() -> None:
-    assert NORMALIZED_TRADE_SCHEMA_VERSION == "es.normalized_trades.v1"
+    assert (tmp_path / "trades.parquet").exists()

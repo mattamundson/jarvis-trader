@@ -199,6 +199,16 @@ class OrderRouter:
             if not self.ibkr or not self.ibkr.is_connected():
                 raise RuntimeError(f"IBKR not connected — cannot route futures bracket for {symbol}")
 
+            # P0-2: the real IBGatewayManager has no place_bracket_order (only the
+            # simulator does). Fail loud with a redirect instead of an opaque
+            # AttributeError once IB_PAPER_BROKER_ENABLED flips the attached gateway.
+            if not hasattr(self.ibkr, "place_bracket_order"):
+                raise RuntimeError(
+                    f"{type(self.ibkr).__name__} has no place_bracket_order — OrderRouter bracket "
+                    f"routing is unsupported on the real IB gateway (P0-2). Route brackets through "
+                    f"the approval path (SafetyLayer.submit_entry_with_stop) instead."
+                )
+
             logger.info("Routing %s bracket order to IBKR", symbol)
             return await self.ibkr.place_bracket_order(
                 symbol=symbol,
@@ -231,6 +241,15 @@ class OrderRouter:
         Modify an existing order's price.
         """
         if self.ibkr and self.ibkr.is_connected():
+            # P0-2: the real IBGatewayManager has no modify_order yet (simulator-only).
+            if not hasattr(self.ibkr, "modify_order"):
+                return {
+                    "status": "error",
+                    "reason": (
+                        f"{type(self.ibkr).__name__} has no modify_order — unsupported on the "
+                        f"real IB gateway (P0-2); cancel and re-submit instead."
+                    ),
+                }
             return await self.ibkr.modify_order(order_id, new_price)
 
         if self.schwab and self.schwab.is_connected:

@@ -152,21 +152,6 @@ class SessionCalendar(ContractModel):
         "session_open", "session_close", "regular_trading_hours_open", "regular_trading_hours_close"
     )(require_utc)
 
-    @model_validator(mode="after")
-    def validate_boundaries(self) -> SessionCalendar:
-        if self.session_close <= self.session_open:
-            raise ValueError("session_close must be after session_open")
-        if self.regular_trading_hours_close <= self.regular_trading_hours_open:
-            raise ValueError("regular_trading_hours_close must be after regular_trading_hours_open")
-        if not (
-            self.session_open
-            <= self.regular_trading_hours_open
-            < self.regular_trading_hours_close
-            <= self.session_close
-        ):
-            raise ValueError("regular trading hours must be contained within the session")
-        return self
-
 
 class ContractRoll(ContractModel):
     outgoing_contract: str

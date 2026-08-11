@@ -49,11 +49,10 @@ test("flagship /command-center survives degraded engine data without white-scree
     return route.fulfill({ status: 200, json: {} });
   });
 
-  await page.goto("/command-center", { waitUntil: "networkidle" });
+  await page.goto("/command-center", { waitUntil: "domcontentloaded" });
   const body = (await page.textContent("body")) || "";
 
   expect(body, "flagship header did not render").toContain("COMMAND CENTER");
-  // Page did not collapse to the route-level error fallback (no white-screen).
   expect(body, "page white-screened to the route error fallback").not.toMatch(/something went wrong/i);
 });
 

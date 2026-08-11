@@ -133,7 +133,8 @@ class PositionReconciler:
                     symbol=symbol,
                     quantity=quantity,
                     entry_price=avg_cost,
-                    stop_loss_id=sl_id
+                    stop_loss_id=sl_id,
+                    stop_loss_price=stop_price
                 )
 
             # Send notification
