@@ -153,6 +153,12 @@ feeds are down.
   not borrow the snapshot's `source` for it. Treat every levels-ladder comparison as
   **provenance-unverified**: report drift if you see it, but never call the ladder engine-confirmed.
   (Exposing bar `source` on that endpoint is an out-of-scope engine change.)
+- **Continuous vs dated contract.** TradingView `MES1!`/`MGC1!` is a *continuous* (stitched,
+  back-adjusted) contract, but the engine resolves the bare symbol to a *dated front month*
+  (`MarketDataManager._resolve_front_month`). Near a futures rollover the roll/back-adjustment
+  basis can legitimately exceed the tick/staleness tolerance — that's a contract-basis
+  difference, **not feed drift**. Either chart the same dated contract the engine resolved, or
+  label a continuous-vs-dated gap as basis (unverified), never a bug.
 
 **Account for staleness and tolerance before calling a mismatch drift.** `/prices/snapshot` is
 cached with a **60-second TTL** (`price_cache.py`), so an engine price can be up to ~60s behind a

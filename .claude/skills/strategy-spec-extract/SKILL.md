@@ -72,13 +72,13 @@ fields (enforced by `engine/backtest/candidate_registry.py`) are:
   "lock_in_sample": {
     "gate_verdict": "PENDING",
     "passed_via": "<core|alt — copy verbatim from the gate verdict; wfo_lifecycle.py emits exactly these>",
-    "pf_ci_lower": "<actual — from Step 3 backtest>",
-    "p_edge": "<actual>",
-    "dsr": "<actual>",
-    "mc_95th_dd": "<actual>",
-    "n_oos_windows": "<actual>",
-    "total_oos_trades": "<actual>",
-    "p_binom": "<actual>"
+    "pf_ci_lower": "<actual — from the gate-v2 WFO verdict>",
+    "p_edge": "<actual — gate-v2>",
+    "dsr": "<actual — gate-v2>",
+    "mc_95th_dd": "<actual — gate-v2>",
+    "n_oos_windows": "<actual — gate-v2>",
+    "total_oos_trades": "<actual — gate-v2>",
+    "p_binom": "<actual — from family_fdr.binomial_oos_pvalue(p_edge, n_windows), NOT gate-v2; omit if the family report wasn't run>"
   },
   "source": "<trader / URL>",
   "notes": "Timeframe/asset caveats. Flag every inferred rule here."
@@ -92,9 +92,12 @@ a new `id` rather than mutating params later. `allowed_status`:
 **`lock_in_sample` is required discipline, not optional** — even though `verify_registry()`
 only enforces `id/symbol/family/status/hypothesis/params`, the forward-test loop reads
 `lock_in_sample` (`candidate_registry.py`) to compare OOS results against a *frozen* baseline.
-Fill it from the **actual** in-sample backtest/MCPT run at registration time (the fields above
-mirror a real entry: `gate_verdict`, `pf_ci_lower`, `p_edge`, `dsr`, `mc_95th_dd`,
-`n_oos_windows`, `total_oos_trades`, `p_binom`) — never invented numbers, and never omitted.
+Fill it from the **actual** gate-v2 WFO verdict (the fields above mirror a real entry:
+`gate_verdict`, `pf_ci_lower`, `p_edge`, `dsr`, `mc_95th_dd`, `n_oos_windows`,
+`total_oos_trades` — all from `wfo_lifecycle.compute_gate_v2()`). `p_binom` is the **exception**:
+`compute_gate_v2()` does not emit it — it comes from `family_fdr.binomial_oos_pvalue(p_edge,
+n_windows)` / the family report, so copy it from there if you ran the family FDR pass, else omit
+it (the registry validator does not require it). Never invent any of these numbers.
 The template ships `status: "paused"` and `gate_verdict: "PENDING"` with `<actual …>`
 placeholders **on purpose** — two independent guards against a premature copy going live:
 `get_active_candidates()` keys only on `status == "forward_testing"`
