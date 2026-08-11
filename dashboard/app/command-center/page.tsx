@@ -43,6 +43,7 @@ import {
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
+import { DecisionLogWidget } from "@/components/DecisionLogWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
@@ -694,6 +695,17 @@ export default function CommandCenterPage() {
       <div className="mb-4">
         <WidgetErrorBoundary name="Pipeline Reasoning">
           <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          DECISION LOG — every pipeline verdict, including WAIT/HOLD/NO_ENTRY.
+          Pipeline Reasoning above covers trades that fired; this covers the
+          "why didn't we trade" case that had no dashboard home before.
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Decision Log">
+          <DecisionLogWidget />
         </WidgetErrorBoundary>
       </div>
 
