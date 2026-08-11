@@ -40,13 +40,23 @@ addopts = [
     # 'manual' tests need a live IB Gateway and hang the asyncio loop (no timeout
     # can interrupt the tick subscription), so exclude them by default. Opt back
     # in explicitly with `pytest -m manual` (a CLI -m overrides this addopts -m).
-    "-m", "not manual",
+    #
+    # 'integration_ib' was excluded from this default 2026-08-11 after
+    # test_ib_gateway_connector_safety_wiring.py's tests (marked integration_ib
+    # only, not manual) placed 3 REAL orders -- BUY 1 MES, BUY 1 MCL, BUY 1 MNQ --
+    # against a live-reachable Gateway during an ordinary unfiltered `pytest tests/`
+    # run, moving MES from 2.0 to 3.0 (1 over MAX_CONTRACTS_PER_INSTRUMENT=2).
+    # The marker's own doc below claimed these tests "skip if unavailable", but
+    # that's only true when Gateway is unreachable -- on this dev machine, where
+    # Gateway is routinely live for actual paper trading, they don't skip, they
+    # fire. Opt back in explicitly with `pytest -m integration_ib`.
+    "-m", "not manual and not integration_ib",
 ]
 markers = [
     "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
-    "integration_ib: needs IB Gateway on paper port 4002 (skips if unavailable)",
+    "integration_ib: needs IB Gateway on paper port 4002; places REAL orders against it when reachable -- NOT auto-skipped, excluded from default addopts instead (see above). Opt in with `pytest -m integration_ib` only when you intend live order placement.",
     "manual: opt-in tests that require external setup (e.g. IB Gateway running); never collected in CI",
     "unit: marks tests as unit tests",
     "smoke: marks tests as smoke tests",
