@@ -136,7 +136,10 @@ def symbol_from_filename(name: str) -> str:
     # ``dryrun`` marker so the real symbol is still validated.
     stem = Path(name).stem
     parts = [p for p in stem.split("_") if p]
-    while parts and parts[0] == "dryrun":
+    # Some dry-runs stack a second "_unverified_" marker (e.g.
+    # "_dryrun__unverified_M2K_...csv") -- skip that too, or the "symbol"
+    # resolves to the literal string "unverified" instead of the real ticker.
+    while parts and parts[0] in ("dryrun", "unverified"):
         parts.pop(0)
     if len(parts) >= 2 and parts[0] == "ES" and parts[1] == "F":
         return "ES_F"
