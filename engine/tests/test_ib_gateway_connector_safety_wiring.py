@@ -1,6 +1,22 @@
-"""IBGatewayManager ↔ SafetyLayer / IBOrderManager contract (paper path)."""
+"""IBGatewayManager ↔ SafetyLayer / IBOrderManager contract (paper path).
+
+These tests place REAL orders (BUY 1 MES / MCL / MNQ) against whatever IB
+Gateway is reachable on port 4002 -- that is their point, they verify the
+actual live wiring contract, not a mock. The 2026-08-11 incident (see
+pyproject.toml's addopts comment) happened because the *only* thing gating
+that was the `integration_ib` pytest marker via addopts -- a single config
+line that is one edit, one CI override, or one non-addopts-respecting test
+runner away from firing again with no other safeguard.
+
+`ALLOW_LIVE_IB_ORDER_TESTS=1` is a second, independent gate checked inside
+the test body itself, so it holds even if the marker/addopts layer is ever
+bypassed or misconfigured. Unset (or anything other than "1") -> skip,
+unconditionally, before any connection is attempted.
+"""
 
 from __future__ import annotations
+
+import os
 
 import pytest
 
@@ -9,6 +25,15 @@ from execution.ib_gateway import IBGatewayConfig, IBGatewayManager
 from execution.ib_order_manager import IBOrderManager
 from portfolio.tracker import PortfolioTracker
 from risk.safety_layer import SafetyLayer
+
+
+def _require_live_ib_order_tests_allowed() -> None:
+    if os.environ.get("ALLOW_LIVE_IB_ORDER_TESTS", "0") != "1":
+        pytest.skip(
+            "ALLOW_LIVE_IB_ORDER_TESTS != 1 -- this test places a REAL order "
+            "against IB Gateway; set the env var explicitly to opt in "
+            "(second gate, independent of the integration_ib marker)"
+        )
 
 
 def _paper_order_settings():
@@ -27,6 +52,7 @@ def _paper_order_settings():
 @pytest.mark.asyncio
 async def test_place_paper_order_after_safety_no_double_reject(tmp_path) -> None:
     """IBGatewayManager routes orders through SafetyLayer.submit_paper_order()."""
+    _require_live_ib_order_tests_allowed()
     cfg = _paper_order_settings()
     store = tmp_path / "book.jsonl"
     tracker = PortfolioTracker(store_path=store)
@@ -62,6 +88,7 @@ async def test_place_paper_order_after_safety_no_double_reject(tmp_path) -> None
 @pytest.mark.integration_ib
 @pytest.mark.asyncio
 async def test_get_positions_list_shape_for_order_manager(tmp_path) -> None:
+    _require_live_ib_order_tests_allowed()
     store = tmp_path / "book.jsonl"
     tracker = PortfolioTracker(store_path=store)
     safety = SafetyLayer(settings, pnl_monitor=None)
@@ -88,6 +115,7 @@ async def test_get_positions_list_shape_for_order_manager(tmp_path) -> None:
 @pytest.mark.integration_ib
 @pytest.mark.asyncio
 async def test_ib_order_manager_uses_gateway(tmp_path) -> None:
+    _require_live_ib_order_tests_allowed()
     cfg = _paper_order_settings()
     store = tmp_path / "book.jsonl"
     tracker = PortfolioTracker(store_path=store)
