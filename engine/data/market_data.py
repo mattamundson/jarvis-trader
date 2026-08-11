@@ -705,6 +705,64 @@ class IBKRDataConnector:
             logger.warning("IBKRDataConnector.get_executions failed: %s", exc)
             return []
 
+    async def get_positions(self) -> list[dict]:
+        """
+        Return current IB positions as a list of dicts. Same schema as
+        IBGatewayManager.get_positions() (engine/execution/ib_gateway.py) so
+        GET /brokers/positions can use either connector interchangeably.
+
+        Positions are account-level in IB, not per-clientId, so this data-leg
+        connection sees the same account state as the order-leg connection --
+        added 2026-08-11 (#608 follow-up) because this connector previously
+        had no position-query method at all, silently masking that gap behind
+        a broad try/except in the router.
+        """
+        if not self._ib or not self._connected:
+            return []
+        try:
+            positions = await self._ib.reqPositionsAsync()
+        except Exception as exc:
+            logger.error("IBKRDataConnector.get_positions: reqPositionsAsync failed: %s", exc)
+            positions = []
+
+        # Cross-check against ib_async's continuously-updated position cache,
+        # same reqPositionsAsync-can-return-empty hardening as
+        # IBGatewayManager.get_positions() (2026-08-03 incident).
+        try:
+            cached = self._ib.positions()
+        except Exception:
+            cached = []
+        if not positions and cached:
+            logger.error(
+                "IBKRDataConnector.get_positions: reqPositionsAsync returned EMPTY but "
+                "the position cache holds %d entries — using the cache instead.",
+                len(cached),
+            )
+            positions = cached
+
+        try:
+            result = []
+            for pos in positions:
+                contract = pos.contract
+                result.append(
+                    {
+                        "symbol": contract.symbol,
+                        "sec_type": contract.secType,
+                        "exchange": getattr(contract, "exchange", ""),
+                        "currency": contract.currency,
+                        "position": pos.position,
+                        "avg_cost": pos.avgCost,
+                        "market_price": None,
+                        "market_value": None,
+                        "unrealized_pnl": None,
+                        "account": pos.account,
+                    }
+                )
+            return result
+        except Exception as exc:
+            logger.error("IBKRDataConnector.get_positions failed: %s", exc, exc_info=True)
+            return []
+
     async def health_check(self) -> dict:
         return {
             "status": "connected" if self._connected else "disconnected",
