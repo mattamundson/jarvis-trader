@@ -22,13 +22,20 @@ interface ParamSuggestion {
   direction?: "increase" | "decrease" | "change" | null;
 }
 
-interface SuggestionsResponse {
+interface SuggestionsData {
   symbol: string;
   generated_at?: string | null;
   suggestions: ParamSuggestion[];
   summary?: string | null;
   data_quality?: string | null;
   trades_analyzed?: number | null;
+}
+
+// Engine wraps every /learning/* response in {status, data: {...}} — verified
+// live against engine/routers/learning_router.py get_suggestions() 2026-08-12.
+interface SuggestionsResponse {
+  status: string;
+  data: SuggestionsData;
   error?: string;
 }
 
@@ -85,11 +92,13 @@ interface SuggestionPanelProps {
 }
 
 export function SuggestionPanel({ symbol }: SuggestionPanelProps) {
-  const { data, isLoading, error } = useSWR<SuggestionsResponse>(
+  const { data: resp, isLoading, error } = useSWR<SuggestionsResponse>(
     `/learning/suggestions?symbol=${symbol}`,
     fetcher,
     { refreshInterval: REFRESH_MS }
   );
+
+  const data = resp?.data;
 
   if (isLoading) {
     return (
@@ -104,14 +113,14 @@ export function SuggestionPanel({ symbol }: SuggestionPanelProps) {
     );
   }
 
-  if (error || data?.error) {
+  if (error || resp?.error) {
     return (
       <div className="rounded-xl border border-border bg-card p-4 space-y-2">
         <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           Strategy Tuning — {symbol}
         </p>
         <p className="font-mono text-xs text-red-400/70 italic">
-          {data?.error ?? "No suggestions available — the StrategyTuner needs more trade data"}
+          {resp?.error ?? "No suggestions available — the StrategyTuner needs more trade data"}
         </p>
         <p className="font-mono text-[10px] text-muted-foreground/40">
           Suggestions appear after 30+ completed trades with consistent market conditions.
