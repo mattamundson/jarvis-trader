@@ -431,16 +431,21 @@ module.exports = {
       exec_mode: "fork",
     },
 
-    // ── DOM / Order-Flow service (port 8030) ─────────────────────────────────
+    // ── DOM / Order-Flow service (port 8031) ─────────────────────────────────
     // Isolated read-only MES depth + imbalance consumer (Phase 1). Same
     // isolation pattern as jarvis-bridge-api: its own process, own IB client
     // ID (DOMFLOW_IB_CLIENT_ID, default 3), own SQLite DB. No engine/risk/ or
     // config.py imports — no path to order placement. See
     // docs/superpowers/specs/2026-08-05-dom-orderflow-phase1-design.md.
+    // NOTE: was originally 8030, which collides with the external master-api
+    // service (see AGENTS.md "External service: master-api (:8030)", entirely
+    // outside this repo). Moved to 8031 (2026-08-12) to eliminate the port
+    // conflict — 8031 is free of any other pm2 app or documented external
+    // service in this repo.
     {
       name: "jarvis-domflow",
       script: PYTHON,
-      args: "-m uvicorn domflow.main:app --host 127.0.0.1 --port 8030",
+      args: "-m uvicorn domflow.main:app --host 127.0.0.1 --port 8031",
       cwd: ENGINE_DIR,
       interpreter: "none",
 

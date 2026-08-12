@@ -4,20 +4,23 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-// Same-origin proxy to the isolated jarvis-domflow service (port 8030).
+// Same-origin proxy to the isolated jarvis-domflow service (port 8031).
 // Mirrors app/api/engine/[...path]/route.ts but WITHOUT engine auth headers:
 // domflow is a read-only, 127.0.0.1-bound market-data consumer with no API key
 // (its PM2 app env pins DOMFLOW_IB_HOST/PORT/CLIENT_ID, and it has no order
 // path). Keeping the proxy here (rather than a bare cross-origin fetch in the
 // browser) preserves the repo's "all dashboard calls go through the proxy"
 // convention and avoids CORS in production.
+// NOTE: was originally 8030, which collides with the separate external
+// master-api service (see AGENTS.md "External service: master-api (:8030)").
+// Moved to 8031 (2026-08-12) — see engine/ecosystem.config.js jarvis-domflow entry.
 function getDomflowBaseUrl(): string {
   return (
     process.env.DOMFLOW_INTERNAL_URL ??
     process.env.DOMFLOW_URL_INTERNAL ??
     // 127.0.0.1, not localhost: Windows resolves localhost to ::1 first
     // and the domflow service binds IPv4 only.
-    "http://127.0.0.1:8030"
+    "http://127.0.0.1:8031"
   ).replace(/\/$/, "");
 }
 
