@@ -942,6 +942,22 @@ class EODScheduler:
             self._reconcile_and_heal_daily_pnl(context="session_flatten")
         except Exception as exc:
             logger.exception("[EODScheduler] session_flatten failed: %s", exc)
+            # session_flatten is the only mechanism that closes MES (the sole
+            # overnight-eligible symbol, risk/safety_layer.py _OVERNIGHT_SYMBOLS)
+            # before session close. A failed or skipped fire previously had no
+            # alert at all -- best-effort; a notifier failure must not mask the
+            # original exception.
+            if self._notifier is not None and getattr(self._notifier, "enabled", False):
+                try:
+                    await self._notifier.send(
+                        "JARVIS session_flatten FAILED: "
+                        f"{exc}\nOpen positions may still be live past session close. "
+                        "Check engine logs and current positions now."
+                    )
+                except Exception as notify_exc:
+                    logger.warning(
+                        "[EODScheduler] session_flatten failure notify failed: %s", notify_exc
+                    )
 
     def register_with_scheduler(self, scheduler: Any) -> None:
         """
@@ -1033,6 +1049,9 @@ class EODScheduler:
             self.run_session_flatten,
             CronTrigger(day_of_week="mon-fri", hour=20, minute=45, timezone="UTC"),
             id="session_flatten",
+            name="Session Flatten (close all open positions)",
+            max_instances=1,
+            misfire_grace_time=600,
             replace_existing=True,
         )
         logger.info("[EODScheduler] Session flatten job registered: Mon-Fri 20:45 UTC (3:45 PM ET)")
