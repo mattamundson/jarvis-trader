@@ -7,6 +7,7 @@ import {
   type HonestTradeSet,
   dailyPnl,
   dedupCaveat,
+  isHonestUnavailable,
 } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
 
@@ -26,12 +27,16 @@ interface PaperPhaseSummary {
 
 interface ROIState {
   startingBalance: number;
-  // P&L comes from honest deduped set — NOT the raw engine total
-  totalPnl: number;
-  roi: number;
+  // P&L comes from the honest deduped set ONLY. Null when the honest record
+  // is unavailable — NEVER falls back to the raw engine total (json.total_pnl),
+  // which over-counts re-logged winners (see lib/honestTrades.ts). Every
+  // consumer below must render an explicit "unavailable" state on null rather
+  // than substituting the raw (inflated) figure.
+  totalPnl: number | null;
+  roi: number | null;
   tradingDays: number;
-  dailyAvgPnl: number;
-  annualizedROI: number;
+  dailyAvgPnl: number | null;
+  annualizedROI: number | null;
 }
 
 function fmt$(value: number): string {
@@ -76,8 +81,10 @@ function StatCell({
 }
 
 export function AccountROIWidget() {
-  const { honest: honestSet, error: loadError } = useHonestTrades(300_000);
-  const honestError = loadError ? (loadError instanceof Error ? loadError.message : "honest trades unavailable") : null;
+  const { honest: honestSet, isLoading: honestLoading } = useHonestTrades(300_000);
+  // GT-06 pattern (see lib/honestTrades.ts / scorecard/page.tsx): only "settled
+  // with no record" counts as unavailable — not "still loading".
+  const honestUnavailable = isHonestUnavailable(honestSet, honestLoading);
 
   // Derive trading days from unique close dates in honest set
   const honestTradingDays = honestSet
@@ -87,23 +94,30 @@ export function AccountROIWidget() {
   const transformData = (
     json: PaperPhaseSummary,
     honest: HonestTradeSet | null,
+    unavailable: boolean,
   ): ROIState => {
     const startingBalance = json.starting_balance ?? STARTING_BALANCE_FALLBACK;
 
-    // P&L: prefer honest deduped net; fall back to raw only if honest unavailable
-    const totalPnl = honest !== null ? honest.net : (json.total_pnl ?? 0);
+    // P&L: ONLY the honest deduped net. Never fall back to json.total_pnl
+    // (raw engine total) — that field over-counts re-logged winners and would
+    // silently inflate the headline ROI%. Null means "unavailable", not zero.
+    const totalPnl = unavailable ? null : (honest?.net ?? 0);
 
-    const roi = startingBalance ? (totalPnl / startingBalance) * 100 : 0;
+    const roi =
+      totalPnl === null ? null : startingBalance ? (totalPnl / startingBalance) * 100 : 0;
 
     // Trading days: prefer honest unique close dates; fall back to raw
     const tradingDays = Math.max(
       honestTradingDays ?? json.trading_days ?? json.days_traded ?? 1,
       1,
     );
-    const dailyAvgPnl = totalPnl / tradingDays;
-    const annualizedROI = startingBalance
-      ? ((dailyAvgPnl * 252) / startingBalance) * 100
-      : 0;
+    const dailyAvgPnl = totalPnl === null ? null : totalPnl / tradingDays;
+    const annualizedROI =
+      dailyAvgPnl === null
+        ? null
+        : startingBalance
+        ? ((dailyAvgPnl * 252) / startingBalance) * 100
+        : 0;
 
     return { startingBalance, totalPnl, roi, tradingDays, dailyAvgPnl, annualizedROI };
   };
@@ -114,13 +128,13 @@ export function AccountROIWidget() {
       title="Account ROI"
       refreshInterval={300_000}
       render={(json) => {
-        const data = transformData(json, honestSet);
+        const data = transformData(json, honestSet, honestUnavailable);
         return (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle>Account ROI</CardTitle>
-              <Badge variant={badgeVariant(data.roi)}>
-                {data.roi >= 0 ? "PROFIT" : "LOSS"}
+              <Badge variant={data.roi === null ? "info" : badgeVariant(data.roi)}>
+                {data.roi === null ? "DATA UNAVAILABLE" : data.roi >= 0 ? "PROFIT" : "LOSS"}
               </Badge>
             </CardHeader>
 
@@ -129,12 +143,20 @@ export function AccountROIWidget() {
               <div className="flex items-baseline gap-3 mb-4">
                 <span
                   className="font-mono text-4xl font-bold tabular-nums"
-                  style={{ color: data.roi >= 0 ? "#00ff88" : "#ff4444" }}
+                  style={{ color: data.roi === null ? "#888" : data.roi >= 0 ? "#00ff88" : "#ff4444" }}
                 >
-                  {data.roi >= 0 ? "+" : ""}{data.roi.toFixed(2)}%
+                  {data.roi === null
+                    ? "—"
+                    : `${data.roi >= 0 ? "+" : ""}${data.roi.toFixed(2)}%`}
                 </span>
-                <Badge variant={badgeVariant(data.roi)}>
-                  {data.roi >= 5 ? "On Track" : data.roi >= 0 ? "Break Even" : "Drawdown"}
+                <Badge variant={data.roi === null ? "info" : badgeVariant(data.roi)}>
+                  {data.roi === null
+                    ? "Unavailable"
+                    : data.roi >= 5
+                    ? "On Track"
+                    : data.roi >= 0
+                    ? "Break Even"
+                    : "Drawdown"}
                 </Badge>
               </div>
 
@@ -147,23 +169,35 @@ export function AccountROIWidget() {
                 />
                 <StatCell
                   label="Current P&L"
-                  value={fmt$(data.totalPnl)}
-                  valueColor={data.totalPnl >= 0 ? "#00ff88" : "#ff4444"}
+                  value={data.totalPnl === null ? "—" : fmt$(data.totalPnl)}
+                  valueColor={
+                    data.totalPnl === null ? "#555" : data.totalPnl >= 0 ? "#00ff88" : "#ff4444"
+                  }
                 />
                 <StatCell
                   label="Daily Avg"
-                  value={`${fmt$(data.dailyAvgPnl)}/day`}
-                  valueColor={data.dailyAvgPnl >= 0 ? "#00ff88" : "#ff4444"}
+                  value={data.dailyAvgPnl === null ? "—" : `${fmt$(data.dailyAvgPnl)}/day`}
+                  valueColor={
+                    data.dailyAvgPnl === null
+                      ? "#555"
+                      : data.dailyAvgPnl >= 0
+                      ? "#00ff88"
+                      : "#ff4444"
+                  }
                 />
                 <StatCell
                   label="Annualized"
                   value={
-                    data.tradingDays >= 5
+                    data.annualizedROI === null
+                      ? "—"
+                      : data.tradingDays >= 5
                       ? `${fmtPct(data.annualizedROI, 1)}/yr`
                       : "Calculating..."
                   }
                   valueColor={
-                    data.tradingDays < 5
+                    data.annualizedROI === null
+                      ? "#555"
+                      : data.tradingDays < 5
                       ? "#555"
                       : data.annualizedROI >= 0
                       ? "#00ff88"
@@ -173,14 +207,23 @@ export function AccountROIWidget() {
               </div>
 
               {/* Note */}
-              <p className="font-mono text-[10px]" style={{ color: "#444" }}>
+              <p
+                className="font-mono text-[10px]"
+                style={{ color: honestUnavailable ? "#ffaa00" : "#444" }}
+              >
                 Paper account · ${data.startingBalance.toLocaleString()} starting capital
-                {data.tradingDays < 5 && " · Annualized projection available after 5 trading days"}
-                {honestSet && (
+                {!honestUnavailable &&
+                  data.tradingDays < 5 &&
+                  " · Annualized projection available after 5 trading days"}
+                {honestSet && !honestUnavailable && (
                   <> · {dedupCaveat(honestSet)}</>
                 )}
-                {honestError && (
-                  <> · P&amp;L: raw (honest record unavailable)</>
+                {honestUnavailable && (
+                  <>
+                    {" "}
+                    · Honest P&amp;L record unavailable — figures hidden rather than shown from
+                    the raw (inflated) total
+                  </>
                 )}
               </p>
             </CardContent>
