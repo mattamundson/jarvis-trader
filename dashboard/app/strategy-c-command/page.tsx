@@ -12,7 +12,15 @@
  */
 export default function StrategyCCommandPage() {
   return (
-    <div className="h-[calc(100vh-1rem)] w-full">
+    <div className="flex h-[calc(100vh-1rem)] w-full flex-col">
+      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950 px-4 py-2 text-xs text-slate-400">
+        <span>
+          Full console (equity, regime, options, P&amp;L, IBKR, brief, paper track) — separate data bridge on :8020
+        </span>
+        <a href="/strategy-c" className="text-violet-400 hover:text-violet-300">
+          View live signal snapshot →
+        </a>
+      </div>
       <iframe
         src="/strategy-c-command-center.html"
         title="JARVIS Strategy C+ Command Center"

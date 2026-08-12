@@ -350,6 +350,13 @@ export default function StrategyCPage() {
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
               {refreshing ? "Generating…" : "Refresh Signal"}
             </button>
+            <Link
+              href="/strategy-c-command"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-900/40 hover:bg-violet-900/60 border border-violet-500/30 rounded-lg text-sm text-violet-300 transition-colors"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Full Console
+            </Link>
           </div>
         </div>
       </div>
