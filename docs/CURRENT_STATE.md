@@ -1,6 +1,6 @@
 # JARVIS TRADER — Current System State
 
-**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** July 30, 2026
+**Status:** Paper Trading Validation | **Mode:** Paper only (IB Gateway 4002) | **Last Updated:** August 11, 2026
 
 > **Trading eligibility is no longer tracked in this file (PRB-25, 2026-07-30).** This
 > doc's old "Approved Instruments" table was a hand-maintained snapshot that repeatedly
@@ -103,7 +103,7 @@ trade count, days active, max drawdown, deflated Sharpe).
 # Safety & Autonomy
 PAPER_TRADING=True
 LIVE_TRADING_ENABLED=False
-REQUIRE_HUMAN_APPROVAL=True
+REQUIRE_HUMAN_APPROVAL=False   # standing decision, confirmed by Amo 2026-08-11 -- not a test leftover
 
 # IB Gateway
 IBKR_HOST=127.0.0.1
@@ -111,13 +111,16 @@ IBKR_PORT=4002
 IBKR_CLIENT_ID=1
 IB_ACCOUNT_ID=YOUR_ACCOUNT_ID
 
-# Risk Parameters (hardcoded in engine/config.py)
-MAX_POSITION_SIZE_PCT=0.05
-MAX_DAILY_LOSS_PCT=0.02
-MAX_DRAWDOWN_PCT=0.10   # config.py code default; paper phase overrides higher (-20%) in engine/.env
+# Risk Parameters (live values from engine/.env, the source of truth --
+# engine/config.py's Field() defaults are fallbacks only and can differ)
+MAX_POSITION_SIZE_PCT=0.10
+MAX_DAILY_LOSS_PCT=0.08
+MAX_DRAWDOWN_PCT=0.20
 MAX_ORDERS_PER_MINUTE=10
-MAX_SINGLE_ORDER_VALUE=5000.0
+MAX_SINGLE_ORDER_VALUE=100000.0
 MAX_MARGIN_UTILIZATION=0.40
+MAX_CONTRACTS_PER_INSTRUMENT=4
+MAX_OVERNIGHT_CONTRACTS=2
 
 # API Key (rotate locally; never commit real values)
 # python scripts/rotate_dev_api_key.py — see docs/setup-guides/DEV_API_KEY_ROTATION.md
@@ -141,8 +144,8 @@ FUTURES_WATCHLIST=MCL,MNQ,MES
 
 **Non-Negotiable Kill Switch Rules:**
 
-- **Daily Loss Halt:** -2% of account → Auto-activates kill switch
-- **Drawdown Halt:** -10% from peak (`config.py` code default) → Auto-activates kill switch. The paper phase overrides this higher (-20%) via `MAX_DRAWDOWN_PCT` in `engine/.env`, which is the source of truth for the live value.
+- **Daily Loss Halt:** -8% of account (`MAX_DAILY_LOSS_PCT` in `engine/.env`; `config.py`'s Field() default is a lower, unused fallback) → Auto-activates kill switch
+- **Drawdown Halt:** -20% from peak (`MAX_DRAWDOWN_PCT` in `engine/.env`, the source of truth for the live value; matches the `config.py` code default) → Auto-activates kill switch
 - **Manual Halt:** Operator can activate anytime via API or dashboard
 - **Consecutive Loss Limits:** 3→half-size, 5→quarter-size, 7→halt (24 hours)
 
