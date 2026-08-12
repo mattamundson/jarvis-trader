@@ -31,7 +31,7 @@ import argparse
 import json
 import sqlite3
 from collections import Counter, defaultdict
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Hygiene rule mirrored from engine/analytics/outcome_hygiene.py: drop corrupt rows whose
@@ -221,7 +221,7 @@ def main() -> int:
         if pnls:
             print(f"  total pnl_usd   : {sum(pnls):+.2f}   avg {sum(pnls)/len(pnls):+.2f}")
         by_state_out = defaultdict(list)
-        for state, sym, action, o in joined_outcomes:
+        for state, _sym, _action, o in joined_outcomes:
             by_state_out[state].append(o)
         for state, outs in sorted(by_state_out.items()):
             w = sum(1 for o in outs if (o["outcome"] or "").upper() == "WIN")
