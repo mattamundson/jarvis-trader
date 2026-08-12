@@ -1971,6 +1971,23 @@ class TestCheckCircuitBreakers:
         assert status["kill_switch_active"] is False
         assert status["kill_switch_reason"] is None
 
+    def test_orders_per_minute_limit_reflects_config(self, mock_settings):
+        """orders_per_minute_limit mirrors config.MAX_ORDERS_PER_MINUTE (MR-5.2)."""
+        mock_settings.MAX_ORDERS_PER_MINUTE = 25
+        safety = SafetyLayer(mock_settings)
+        status = safety.check_circuit_breakers()
+        assert status["orders_per_minute_limit"] == 25
+
+    def test_orders_per_minute_limit_falls_back_when_config_lacks_field(self):
+        """A config object missing the field (e.g. a partial test mock) never
+        crashes /safety/status — falls back to the real config.py default."""
+        from types import SimpleNamespace
+
+        cfg = SimpleNamespace(MAX_DAILY_LOSS_PCT=0.02, MAX_DRAWDOWN_PCT=0.10)
+        safety = SafetyLayer(cfg)
+        status = safety.check_circuit_breakers()
+        assert status["orders_per_minute_limit"] == 10
+
     def test_daily_pnl_below_limit_breached(self, mock_settings):
         """Daily PnL exceeds configured loss limit → daily_limit_breached=True."""
         mock_settings.MAX_DAILY_LOSS_PCT = 0.02
