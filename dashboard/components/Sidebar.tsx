@@ -123,8 +123,8 @@ const NAV_GROUPS: NavGroup[] = [
     // P2.3 folds it into /readiness.
     title: "Strategies",
     items: [
-      { label: "Strategy C+ (Live)", href: "/strategy-c", icon: <Activity className="h-3.5 w-3.5" /> },
-      { label: "Strategy C+ Console", href: "/strategy-c-command", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+      { label: "Strategy C+ Signal", href: "/strategy-c", icon: <Activity className="h-3.5 w-3.5" /> },
+      { label: "Strategy C+ Console (9 tabs)", href: "/strategy-c-command", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { label: "RL Lab", href: "/strategies", icon: <LineChart className="h-3.5 w-3.5" />, exploratory: true },
       { label: "Strategy Ledger", href: "/strategy-ledger", icon: <FlaskConical className="h-3.5 w-3.5" /> },
       { label: "Edge Research", href: "/strategy-research", icon: <Lightbulb className="h-3.5 w-3.5" />, exploratory: true },
