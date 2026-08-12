@@ -658,6 +658,18 @@ async def _get_ib_gateway_health() -> dict:
     return health
 
 
+# Per-source staleness thresholds for /system/data-integrity. Tick sources
+# (tradingview_stream.py) publish sub-second while alive, so the 10s default
+# correctly separates "streaming" from "dead" for them. ib_gateway is
+# different: its heartbeat only fires on-demand or via IBFreshnessHeartbeat's
+# fixed cadence (IBKR_HEARTBEAT_INTERVAL, default 60s, floored at 15s), so a
+# flat 10s threshold flipped it healthy->stale every cycle even while IB was
+# fully connected and serving data (found 2026-08-12). 90s gives 1.5x the
+# default cadence as margin without blunting real dead-feed detection.
+_DATA_INTEGRITY_STALE_THRESHOLDS_SEC = {"ib_gateway": 90.0}
+_DATA_INTEGRITY_DEFAULT_STALE_THRESHOLD_SEC = 10.0
+
+
 @router.get("/system/data-integrity")
 async def get_data_integrity():
     """
@@ -678,12 +690,16 @@ async def get_data_integrity():
             try:
                 last_update = datetime.fromisoformat(val)
                 latency = (now - last_update).total_seconds()
+                source = key.replace("datasource:", "").replace(":last_update", "")
+                threshold = _DATA_INTEGRITY_STALE_THRESHOLDS_SEC.get(
+                    source, _DATA_INTEGRITY_DEFAULT_STALE_THRESHOLD_SEC
+                )
                 results.append(
                     {
-                        "source": key.replace("datasource:", "").replace(":last_update", ""),
+                        "source": source,
                         "last_update": val,
                         "latency_sec": round(latency, 2),
-                        "status": "healthy" if latency < 10 else "stale",
+                        "status": "healthy" if latency < threshold else "stale",
                     }
                 )
             except Exception:
