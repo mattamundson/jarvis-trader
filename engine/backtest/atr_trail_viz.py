@@ -42,14 +42,25 @@ def _round_trip_cost(symbol: str) -> float:
 
 
 def reconstruct_flip_trades(
-    df: pd.DataFrame, symbol: str = "MES", period: int = 5, factor: float = 3.5
+    df: pd.DataFrame,
+    symbol: str = "MES",
+    period: int = 5,
+    factor: float = 3.5,
+    *,
+    state: pd.Series | None = None,
 ) -> list[dict]:
     """Flip-to-flip trades for the ATR trailing stop. Pure; needs a DatetimeIndex.
 
     Each trade dict carries entry/exit timestamps (pd.Timestamp), prices,
     direction (+1 long / -1 short), and pnl in points and dollars (net of cost).
+
+    ``state`` lets a caller that already ran ``atr_trailing_stop`` (e.g.
+    ``compute_atr_trail_viz``) pass the result through instead of paying for
+    the same O(n) pure-Python loop twice on the same data (found 2026-08-12 --
+    this doubling was most of the ~74s latency on the largest MES cache file).
     """
-    trail, state = atr_trailing_stop(df["high"], df["low"], df["close"], period=period, factor=factor)
+    if state is None:
+        _, state = atr_trailing_stop(df["high"], df["low"], df["close"], period=period, factor=factor)
     mult = MULTIPLIERS.get(symbol, 1.0)
     cost = _round_trip_cost(symbol)
     close = df["close"]
@@ -100,7 +111,7 @@ def compute_atr_trail_viz(
     stride = max(1, math.ceil(n / max_points))
     strided_idx = set(range(0, n, stride))
 
-    raw = reconstruct_flip_trades(df, symbol, period, factor)
+    raw = reconstruct_flip_trades(df, symbol, period, factor, state=state)
 
     # Trade entry/exit bars MUST be present in the sampled price series -- it's
     # the series AtrTrailChart attaches trade markers to, and lightweight-charts
