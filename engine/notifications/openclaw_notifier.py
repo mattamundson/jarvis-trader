@@ -537,6 +537,42 @@ async def notify_corey_stale(days_stale: int, last_message_date: str) -> bool:
     return result
 
 
+_safety_equity_sync_last_alert_ts: float = 0.0
+_SAFETY_EQUITY_SYNC_ALERT_COOLDOWN = 3600  # 1 hour -- job runs every 60s, avoid spam
+
+
+async def notify_safety_equity_sync_failure(consecutive_failures: int, last_error: str) -> bool:
+    """Send WhatsApp alert when the SafetyLayer equity/P&L sync job fails repeatedly.
+
+    This job feeds the kill switch's live equity/drawdown view every 60s
+    (main.py:_sync_safety_equity). A sustained failure here already went
+    undetected for 5 weeks once (2026-06-02 to 2026-07-09, T0-02 audit)
+    because the only failure signal was logger.warning. Fires at most once
+    per hour to avoid spam while a fix is pending.
+    """
+    if os.getenv("TESTING"):
+        logger.debug("OpenClaw safety-equity-sync-failure notify suppressed in TESTING mode")
+        return False
+
+    global _safety_equity_sync_last_alert_ts
+    now_ts = datetime.now().timestamp()
+    if now_ts - _safety_equity_sync_last_alert_ts < _SAFETY_EQUITY_SYNC_ALERT_COOLDOWN:
+        logger.info("Safety-equity-sync-failure alert on cooldown -- suppressing")
+        return False
+
+    ts = _ct_time()
+    msg = (
+        f"JARVIS SAFETY EQUITY SYNC FAILING — {ts} CT\n"
+        f"The kill switch's equity/P&L feed has failed {consecutive_failures} time(s) in a row.\n"
+        f"Last error: {last_error}\n"
+        f"Kill switch is now operating on stale/degraded equity data. Check engine logs."
+    )
+    result = await _send(msg)
+    if result:
+        _safety_equity_sync_last_alert_ts = now_ts
+    return result
+
+
 _credits_exhausted_last_alert_date: str = ""
 
 

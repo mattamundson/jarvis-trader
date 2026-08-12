@@ -2478,8 +2478,10 @@ async def lifespan(app: FastAPI):
 
     # Periodic SafetyLayer equity sync (every 60 seconds) — ground-truth from PnLMonitor
     try:
+        _safety_equity_consecutive_failures = 0
 
         async def _sync_safety_equity() -> None:
+            nonlocal _safety_equity_consecutive_failures
             """Push JARVIS paper-trade P&L to SafetyLayer circuit breakers.
 
             Reads daily PnL directly from paper_trades (trades closed today),
@@ -2540,8 +2542,31 @@ async def lifespan(app: FastAPI):
                     paper_daily_pnl,
                     today_str,
                 )
+                _safety_equity_consecutive_failures = 0
             except Exception as exc:
                 logger.warning("[sync_safety_equity] error: %s", exc, exc_info=True)
+                _safety_equity_consecutive_failures += 1
+                # Alert starting at the 3rd consecutive failure (~3 min of degraded
+                # kill-switch data) -- a single transient DB blip shouldn't page, but
+                # this exact failure mode already went undetected for 5 weeks once
+                # (T0-02, 2026-06-02 to 2026-07-09) with only this logger.warning as
+                # the signal. See notify_safety_equity_sync_failure's docstring.
+                if _safety_equity_consecutive_failures >= 3:
+                    try:
+                        from notifications.openclaw_notifier import (
+                            notify_safety_equity_sync_failure,
+                        )
+
+                        asyncio.create_task(
+                            notify_safety_equity_sync_failure(
+                                _safety_equity_consecutive_failures, str(exc)
+                            )
+                        )
+                    except Exception as _notify_exc:
+                        logger.warning(
+                            "[sync_safety_equity] failed to schedule failure alert: %s",
+                            _notify_exc,
+                        )
 
         if scheduler is not None:
             scheduler.add_job(
@@ -2552,6 +2577,7 @@ async def lifespan(app: FastAPI):
                 name="SafetyLayer Equity Sync",
                 max_instances=1,
                 replace_existing=True,
+                misfire_grace_time=60,
             )
             if not scheduler.running:
                 scheduler.start()
