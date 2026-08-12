@@ -81,6 +81,7 @@ def _wire_globals(monkeyish, gateway):
     )
     hr.data_manager = None
     hr.db_manager = SimpleNamespace(
+        ping=lambda: None,
         health_check=lambda: None,
         get_pending_approval_stats=lambda: {"count": 0, "oldest_created_at": None},
     )
