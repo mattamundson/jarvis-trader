@@ -171,6 +171,7 @@ async def get_safety_status(request: Request) -> dict[str, Any]:
         "consecutive_losses": consecutive_losses,
         "equity_peak": float(base.get("equity_peak") or 0.0),
         "daily_realized_pnl": float(base.get("daily_realized_pnl") or 0.0),
+        "orders_per_minute_limit": cb.get("orders_per_minute_limit"),
     }
     # Feed the Prometheus safety gauges off this read-path (P1.0b). Tolerant and
     # non-raising — observability must never break the safety endpoint.
