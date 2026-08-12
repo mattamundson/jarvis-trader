@@ -93,6 +93,7 @@ class KillSwitchReason(Enum):
     BROKER_DISCONNECT = "broker_disconnect"
     ANOMALOUS_ORDER_RATE = "anomalous_order_rate"
     EMERGENCY_FLATTEN = "emergency_flatten"
+    STATE_UNKNOWN = "state_unknown"
 
 
 class HaltLevel(Enum):
@@ -430,9 +431,26 @@ class SafetyLayer:
         """
         Read persisted kill switch state from SQLite on startup.
 
-        If the DB is unavailable or the table does not yet exist, the kill
-        switch remains inactive (fail-safe to trading paused, not trading
-        enabled).  DB failure here is non-fatal - logged as a warning.
+        If the DB read fails (locked DB, corruption, disk error), this fails
+        CLOSED: the kill switch is set active rather than left at its default
+        inactive state. A read failure here is an UNKNOWN prior state, not a
+        verified-safe one -- if the switch was persisted active=True from a
+        prior halt, silently resuming at inactive=False would defeat the
+        entire persisted-halt mechanism on nothing more than a transient DB
+        hiccup at startup. Mirrors the fail-closed hardening already applied
+        to the sibling get_per_account_kill_state() after the 2026-06-15
+        inert-kill-switch incident.
+
+        Note this is stricter than that sibling method: there, a genuinely
+        absent ROW (table exists, key never written) is a documented,
+        deliberate fail-open case. Here there is no equivalent "row is None"
+        branch to distinguish -- a migrated-but-empty system_state table
+        (real "never triggered" state) is read successfully and resolves to
+        inactive via the normal else-branch below, without raising. Only an
+        unreadable DB (locked, corrupt, missing table because migrations
+        never ran) reaches this except block, so failing closed here does not
+        block a legitimate fresh install -- it blocks starting up against a
+        DB that cannot actually be verified.
         """
         if self._db_path is None:
             logger.debug("SafetyLayer: no DB path - skipping kill switch state load")
@@ -478,7 +496,17 @@ class SafetyLayer:
             finally:
                 conn.close()
         except Exception as exc:
-            logger.warning("SafetyLayer: failed to load kill switch state from DB: %s", exc)
+            # FAIL CLOSED: see docstring. An unreadable persisted kill-switch
+            # state must not resolve to "safe to trade" -- same defect class
+            # as the 2026-06-15 inert-kill-switch incident.
+            self._kill_switch_active = True
+            self._kill_switch_reason = KillSwitchReason.STATE_UNKNOWN
+            logger.critical(
+                "SafetyLayer: failed to load kill switch state from DB - failing "
+                "CLOSED (kill switch set ACTIVE) until a human confirms real "
+                "state and deactivates: %s",
+                exc,
+            )
 
     def _persist_kill_switch_state(self, active: bool, reason: Optional[KillSwitchReason]) -> None:
         """
