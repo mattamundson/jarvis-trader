@@ -7063,6 +7063,42 @@ function showTab(id) {
 
 
 
+// ─── QUOTES: engine (:8010) directly via the dashboard's authed proxy ───
+// The :8020 "data bridge" below has no running service behind it (nothing
+// listens on that port -- confirmed 2026-08-12, no pm2 entry, source exists
+// at engine/api/main.py but was never deployed). Quotes no longer wait on
+// it; they go straight through /api/engine/* (same-origin, server injects
+// the engine's X-API-Key) to the same prices/snapshot endpoint the rest of
+// the dashboard uses.
+const ENGINE_QUOTE_MAP = {
+  'XLK': 'XLK', 'QQQ': 'QQQ', 'SPY': 'SPY', 'VIX': '^VIX', 'GLD': 'GLD',
+  'BTC-USD': 'BTC-USD', 'MES': 'ES=F', 'MNQ': 'NQ=F', 'MCL': 'MCL=F',
+};
+
+function fetchEngineQuotes() {
+  const symbols = Object.keys(ENGINE_QUOTE_MAP).join(',');
+  fetch(`/api/engine/prices/snapshot?symbols=${symbols}`)
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('http ' + r.status)))
+    .then(raw => {
+      const data = {};
+      let liveCount = 0;
+      Object.entries(ENGINE_QUOTE_MAP).forEach(([engineSym, consoleSym]) => {
+        const q = raw[engineSym];
+        if (!q || q.last_price == null) return;
+        data[consoleSym] = { price: q.last_price, change_pct: q.change_pct, is_live: q.is_live, source: q.source };
+        if (q.is_live) liveCount++;
+      });
+      updateTickerBar(data);
+      updateQuoteRows(data);
+      updateFutures(data);
+      addLog(liveCount > 0 ? 'ok' : 'warn',
+        `[FEED] Engine quotes refreshed — ${Object.keys(data).length}/${Object.keys(ENGINE_QUOTE_MAP).length} instruments (${liveCount} live)`);
+    })
+    .catch(err => addLog('warn', `[FEED] Engine quotes fetch failed — ${err.message}`));
+}
+fetchEngineQuotes();
+setInterval(fetchEngineQuotes, 30000);
+
 // ─── T2: LIVE API SEARCH ───
 const API_BASE = 'http://127.0.0.1:8020';
 let apiOnline = false;
@@ -7116,15 +7152,10 @@ function startLiveDataPolling() {
 }
 
 function fetchLiveQuotes() {
-  fetch(`${API_BASE}/api/quotes?symbols=XLK,QQQ,SPY,CASH,^VIX,GLD,BTC-USD,ES=F,NQ=F,MCL=F`)
-    .then(r => r.json())
-    .then(data => {
-      updateTickerBar(data);
-      updateQuoteRows(data);
-      updateFutures(data);
-      addLog('info', `[FEED] Live quotes refreshed — ${Object.keys(data).length} instruments`);
-    }).catch(() => {});
-  
+  // Quotes now come from fetchEngineQuotes() (:8010 via the dashboard proxy,
+  // always-on, not gated on this bridge) -- not requested here anymore, so
+  // this loop and the engine-quotes loop never fight over the same DOM nodes.
+
   // T3: Poll signal (includes MTF layer)
   fetch(`${API_BASE}/api/signal`)
     .then(r => r.json())
