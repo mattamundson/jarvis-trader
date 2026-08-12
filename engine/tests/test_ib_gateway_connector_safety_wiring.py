@@ -1,4 +1,11 @@
-"""IBGatewayManager ↔ SafetyLayer / IBOrderManager contract (paper path)."""
+"""IBGatewayManager <-> SafetyLayer / IBOrderManager contract (paper path).
+
+All three tests below are marked `integration_ib` and are NOT collected by
+default (see `addopts` in pyproject.toml). They require a live IB Gateway on
+port 4002 and, when one is reachable, submit REAL paper orders against it --
+`pytest.skip()` only fires when Gateway is unreachable, not as a general-purpose
+guard. Run explicitly and deliberately with `pytest -m integration_ib`.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +40,9 @@ async def test_place_paper_order_after_safety_no_double_reject(tmp_path) -> None
     safety = SafetyLayer(cfg, pnl_monitor=None)
     ib_config = IBGatewayConfig(host="127.0.0.1", port=4002, client_id=1)
     gateway = IBGatewayManager(ib_config)
-    # Note: connect() will fail if IB Gateway is not running, so wrap in try/except
+    # WARNING: if Gateway IS reachable on 4002 (the normal state while trading),
+    # this connects for real and the submit_paper_order() call below places a
+    # genuine paper order against it. The try/except only skips the down case.
     try:
         conn_ok = await gateway.connect()
         if not conn_ok:

@@ -10,6 +10,22 @@ the whole campaign treated as ONE family (mirrors amo-arbitrage's `_bh_fdr`,
 PR #44). It is a *secondary* gate: it can only SHRINK the gate-v2-validated set,
 never add to it.
 
+FDR family redefinition (P5-1, 2026-08-10): the campaign scanned here (every
+gate_v2_verdicts/*.json ever produced) is a POST-HOC discovery set, not a
+pre-registered hypothesis family -- it grows every time a new strategy x
+instrument x param-grid combination is screened, and which candidates get
+screened is itself influenced by earlier results. A family-wide BH line over a
+family like that cannot honestly certify a "robust" edge no matter what the
+p-values say: pre-registration must happen BEFORE the data is seen
+(`candidate_registry.json`'s methodology note), and this module runs entirely
+AFTER. So `robust_edge` here is diagnostic-only and is now hard-coded to False
+-- it can rank candidates by closeness-to-significance and report the honest
+0-survivor campaign result, but it can never authorize. The only path that CAN
+certify is the pre-registered forward path in `forward_test.py`
+(`run_forward_test`), which recomputes the BH line over exactly the frozen
+`candidate_registry.json` active set (n_family == len(active_candidates)) using
+independent forward (paper) OOS windows gathered AFTER registration.
+
 Per-strategy p-value
 --------------------
 PRIMARY -- a binomial sign-test on out-of-sample window profitability. Under H0
@@ -280,21 +296,22 @@ def run(q: float = DEFAULT_Q, verdict_dir: str = _VERDICT_DIR) -> dict[str, Any]
         for r, bf, df in zip(family, binom_flags, dsr_flags, strict=True):
             r["bh_significant_binom"] = bool(bf)
             r["bh_significant_dsr"] = bool(df)
-            # Actionable: gate-v2 PASS AND survives the PRIMARY (binomial) family
-            # FDR AND has a sample-adequate OOS trade count AND is not per-window
-            # thin. The aggregate-adequacy clause blocks 26-OOS-trade mirages;
-            # the per-window clause blocks the NECESSARY-NOT-SUFFICIENT case where
-            # 30+ aggregate trades hide a degenerate per-window distribution
-            # (median < MIN_OOS_TRADES_PER_WINDOW, PF inflated by 1-2-trade windows
-            # -- e.g. trend_rank4). Unknown aggregate size (None) is fail-safe
-            # (blocks); absent per-window data (None) fails OPEN (no extra block
-            # beyond the aggregate floor). Both clauses can only SHRINK the set.
-            r["robust_edge"] = bool(
+            # would_survive_binom_fdr mirrors what "robust_edge" used to mean here:
+            # gate-v2 PASS AND survives the PRIMARY (binomial) family FDR AND has a
+            # sample-adequate OOS trade count AND is not per-window thin. Kept as a
+            # diagnostic ranking signal only (P5-1: the campaign family is post-hoc,
+            # not pre-registered, so it can never itself authorize -- see module
+            # docstring). robust_edge below is hard-coded False for every row.
+            r["would_survive_binom_fdr"] = bool(
                 r["gate_verdict"] == "PASS"
                 and bf
                 and r.get("sample_adequate") is True
                 and r.get("per_window_adequate") is not False
             )
+            # P5-1: the campaign path can never certify -- only the pre-registered
+            # forward path (forward_test.run_forward_test, BH-FDR over exactly
+            # candidate_registry.json's active set) can set an edge as robust.
+            r["robust_edge"] = False
 
     family_sorted = sorted(family, key=lambda r: r["p_binom"])
     gate_pass = [r for r in family_sorted if r["gate_verdict"] == "PASS"]
@@ -350,14 +367,20 @@ def _markdown(report: dict[str, Any]) -> str:
         f"FDR family (have OOS data): **{report['n_family']}**  |  "
         f"excluded (no OOS data): **{report['n_excluded']}**",
         f"- gate-v2 PASS: **{report['n_gate_pass']}**  |  "
-        f"survive family BH-FDR (q={q}) AND gate-PASS = **ROBUST_EDGE: "
+        f"would survive family BH-FDR (q={q}) AND gate-PASS = **CLOSEST-TO-ROBUST: "
+        f"{sum(1 for r in report['family'] if r.get('would_survive_binom_fdr'))}**  |  "
+        f"**ROBUST_EDGE (this path can never certify — see below): "
         f"{report['n_robust_edge']}**",
         "",
         "Primary p-value = binomial sign-test on OOS-window profitability. "
-        "`robust_edge` = gate-v2 PASS AND survives the primary family BH line.",
+        "`would_survive_binom_fdr` = gate-v2 PASS AND survives the primary family "
+        "BH line — a diagnostic ranking signal only. `robust_edge` is hard-coded "
+        "False on every row (P5-1): this campaign is a post-hoc discovery set, not "
+        "a pre-registered family, so it cannot itself certify an edge. See "
+        "`forward_test.py` for the pre-registered path that can.",
         "",
         "| id | gate | pf_ci_lo | p_edge | n_oos | oos_tr | adq | med_tr/win | "
-        "thin | pwadq | p_binom | BH-binom | p_dsr | BH-dsr | ROBUST |",
+        "thin | pwadq | p_binom | BH-binom | p_dsr | BH-dsr | CLOSEST |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     _adq = {True: "Y", False: "**n**", None: "?"}
@@ -381,7 +404,7 @@ def _markdown(report: dict[str, Any]) -> str:
                 bb="Y" if r.get("bh_significant_binom") else "·",
                 pd="" if r["p_dsr"] is None else f"{r['p_dsr']:.4f}",
                 bd="Y" if r.get("bh_significant_dsr") else "·",
-                rob="**YES**" if r.get("robust_edge") else "·",
+                rob="**YES**" if r.get("would_survive_binom_fdr") else "·",
             )
         )
     if report["excluded"]:
@@ -392,25 +415,31 @@ def _markdown(report: dict[str, Any]) -> str:
         "",
         "## Honest read",
         "",
-        f"- **{report['n_robust_edge']}** strategies are both gate-v2 PASS and "
-        "survive the whole-campaign BH-FDR. ",
+        "- **`robust_edge` is always False here (P5-1)** — this campaign family is "
+        "everything gate-v2 has ever screened, which grows with every new run and "
+        "was never pre-registered, so a family-wide BH line over it cannot honestly "
+        "certify anything. It can only rank candidates and report the honest "
+        "survivor count, never authorize. The pre-registered family "
+        "(`candidate_registry.json`'s active set) is checked separately in "
+        "`forward_test.py`, and only that path can set an edge robust.",
         "- With only 5–19 non-overlapping OOS windows per strategy the binomial "
         "sign-test is deliberately conservative; a strict BH line over a "
         f"{report['n_family']}-member family can reject strong-PF strategies on "
         "window count alone. The ranking (lowest `p_binom` first) shows which "
-        "strategies are *closest* to robust — but read it together with `adq`.",
+        "strategies are *closest* to (diagnostically) significant — but read it "
+        "together with `adq`.",
         f"- **`adq` = sample adequacy** (total OOS trades >= {MIN_OOS_TRADES}). An "
         "`adq=n` row is a small-sample mirage: its p_binom/PF can look strong while "
         "resting on a handful of OOS trades (PF inflated by 2-trade windows). Such a "
         "row can rank high on p_binom yet is **not** where durable edge lives, and it "
-        "can never be certified `ROBUST` regardless of the BH line. Treat the "
+        "can never be `CLOSEST-TO-ROBUST` regardless of the BH line. Treat the "
         "lowest-p_binom `adq=Y` row as the genuine lead.",
         f"- **`pwadq` = per-window adequacy** (MEDIAN window >= "
         f"{MIN_OOS_TRADES_PER_WINDOW} OOS trades; `med_tr/win` and `thin` = count of "
         "windows below that floor). The aggregate `adq` floor is necessary but NOT "
         "sufficient: a strategy can clear 30 aggregate trades while most windows are "
         "1-4 trades with degenerate PFs (inf/666/295) — `pwadq=n` flags exactly that. "
-        "A `pwadq=n` row can never be `ROBUST` even if `adq=Y` (e.g. `trend_rank4`: 67 "
+        "A `pwadq=n` row can never be `CLOSEST-TO-ROBUST` even if `adq=Y` (e.g. `trend_rank4`: 67 "
         "aggregate trades, median 4/window, 14 of 19 windows thin). `pwadq=?` means no "
         "per-window data (fails open — the aggregate floor still applies).",
         "- This correction can only SHRINK the validated set. A NO survivor result "
