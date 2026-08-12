@@ -260,6 +260,15 @@ class SafetyLayer:
 
         # Alert manager (optional â€” injected after construction via inject_alert_manager())
         self._alert_manager: Optional[object] = None  # AlertManager | None
+        # A4: alert-channel observability. A kill-switch can fire with no
+        # notification if the manager was never wired or its send fails; track
+        # that state so a dark channel is queryable. Not a safety-decision input.
+        self._alert_health: dict = {
+            "manager_wired": False,
+            "last_send_ok": None,
+            "last_send_ts": None,
+            "last_error": None,
+        }
 
         # Re-entry lockouts: symbol -> lockout_until datetime
         self._reentry_lockouts: dict[str, datetime] = {}
@@ -301,6 +310,7 @@ class SafetyLayer:
         SafetyLayer are initialised.  Passing None is a no-op (disables alerts).
         """
         self._alert_manager = manager
+        self._alert_health["manager_wired"] = manager is not None
         logger.info("SafetyLayer: AlertManager injected â€” P&L push alerts active")
 
     # â”€â”€ Kill Switch DB Persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2365,7 +2375,13 @@ class SafetyLayer:
                     consecutive_losses=consecutive_losses,
                     portfolio_equity=equity,
                 )
+                self._alert_health["last_send_ok"] = True
+                self._alert_health["last_send_ts"] = datetime.now(timezone.utc).isoformat()
+                self._alert_health["last_error"] = None
             except Exception as _alert_exc:
+                self._alert_health["last_send_ok"] = False
+                self._alert_health["last_send_ts"] = datetime.now(timezone.utc).isoformat()
+                self._alert_health["last_error"] = str(_alert_exc)
                 logger.warning("SafetyLayer: AlertManager.check_and_alert failed: %s", _alert_exc)
 
     def check_circuit_breakers(self) -> dict:
