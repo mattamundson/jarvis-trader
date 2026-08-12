@@ -394,8 +394,19 @@ class RiskManagerAgent:
                     "correlation_exposure", f"Net exposure within limit ({monitor.max_directional_pct:.0%})"
                 )
             except Exception as _cm_err:
-                logger.warning("[RiskManager] CorrelationMonitor check failed (non-fatal): %s", _cm_err)
-                _pass("correlation_exposure", f"Check skipped (non-fatal): {_cm_err}")
+                # Fail CLOSED, not open: this is a hard rule (function docstring:
+                # "If any hard rule fails the trade is vetoed immediately"), and an
+                # exception here previously converted straight to _pass(), silently
+                # approving a trade the exposure check never actually evaluated.
+                logger.error(
+                    "[RiskManager] CorrelationMonitor check errored -- failing closed "
+                    "(vetoing trade): %s",
+                    _cm_err,
+                )
+                return _fail(
+                    "correlation_exposure",
+                    f"Correlation-exposure check errored -- failing closed: {_cm_err}",
+                )
         else:
             _pass("correlation_exposure", "CorrelationMonitor not available — skipped")
 
