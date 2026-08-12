@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 import pytest
 
@@ -61,6 +62,27 @@ logger = logging.getLogger(__name__)
 
 _PAPER_PORT = 4002
 _CLIENT_ID_BASE = 91  # Use high client IDs to avoid collisions with the engine (IDs 1–44)
+
+
+def _require_live_ib_order_tests_allowed() -> None:
+    """Second, independent gate on top of the `manual` pytest marker.
+
+    The marker/addopts layer is a single config line (pyproject.toml's
+    `-m "not manual and not integration_ib"`) away from firing for real --
+    see tests/test_ib_gateway_connector_safety_wiring.py, which had exactly
+    this gap fixed 2026-08-11 after the addopts-only version of this pattern
+    let 3 live orders through. This file's own docstring even documents the
+    single-flag `-m manual` invocation as the intended run command, so it
+    carries the same risk. Unset (or anything other than "1") -> skip,
+    unconditionally, before any connection is attempted.
+    """
+    if os.environ.get("ALLOW_LIVE_IB_ORDER_TESTS", "0") != "1":
+        pytest.skip(
+            "ALLOW_LIVE_IB_ORDER_TESTS != 1 -- this test talks to a REAL IB "
+            "Gateway (and test_paper_order_dry_run places a real order); set "
+            "the env var explicitly to opt in (second gate, independent of "
+            "the manual marker)"
+        )
 
 
 async def _connect_or_skip(client_id: int) -> IBGatewayManager:
@@ -117,6 +139,7 @@ async def test_ibkr_gateway_reachable() -> None:
     Fail message if Gateway is not running:
         "IB Gateway not started — run TWS / IB Gateway paper on port 4002."
     """
+    _require_live_ib_order_tests_allowed()
     gw = await _connect_or_skip(client_id=_CLIENT_ID_BASE)
     try:
         assert gw.is_connected(), "Gateway reported is_connected()=False after successful connect()"
@@ -161,6 +184,7 @@ async def test_mes_front_month_subscribe_ticks() -> None:
 
     Teardown: ``cancelMktData`` is always called, even on failure.
     """
+    _require_live_ib_order_tests_allowed()
     gw = await _connect_or_skip(client_id=_CLIENT_ID_BASE + 1)
     ib = gw._ib  # type: ignore[attr-defined]
 
@@ -248,6 +272,7 @@ async def test_paper_order_dry_run() -> None:
     the simulated paper path in ``IBGatewayConnector``. The former actually
     sends the order to IB's paper account engine.
     """
+    _require_live_ib_order_tests_allowed()
     gw = await _connect_or_skip(client_id=_CLIENT_ID_BASE + 2)
     order_id: int | None = None
 
