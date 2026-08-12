@@ -2276,6 +2276,7 @@ class SafetyLayer:
             drawdown_breached    (bool)  - if drawdown limit has been breached
             kill_switch_active   (bool)  - if emergency halt is engaged
             kill_switch_reason   (str)   - reason for kill switch if active
+            orders_per_minute_limit (int) - configured max orders per minute (rate throttle)
         """
         # Use PnLMonitor when available; fall back to in-memory values
         if self._pnl_monitor is not None:
@@ -2324,6 +2325,7 @@ class SafetyLayer:
             "kill_switch_reason": (
                 self._kill_switch_reason.value if self._kill_switch_reason else None
             ),
+            "orders_per_minute_limit": getattr(self._config, "MAX_ORDERS_PER_MINUTE", 10),
         }
 
     # â”€â”€ Loss Tracking API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
