@@ -4941,6 +4941,7 @@
     </div>
     <span class="panel-title">J.A.R.V.I.S. BRIEF</span>
     <div class="header-meta">
+      <span id="brief-data-src" class="pnl-status-demo">● OFFLINE · NO LIVE BRIEF</span>
       <span class="gen-status ready" id="genStatus">READY</span>
       <span class="header-time" id="headerTime">--:--:--</span>
     </div>
@@ -9218,6 +9219,13 @@ function updateCountdown() {
   }
 }
 
+function setBriefLiveStatus(isLive) {
+  var src = document.getElementById('brief-data-src');
+  if (!src) return;
+  src.textContent = isLive ? '● LIVE DATA · API CONNECTED' : '● OFFLINE · EXAMPLE BRIEF (NOT LIVE)';
+  src.className = isLive ? 'pnl-status-live' : 'pnl-status-demo';
+}
+
 async function generateBrief() {
   document.getElementById('genStatus').className = 'gen-status generating';
   document.getElementById('genStatus').textContent = 'FETCHING…';
@@ -9227,9 +9235,11 @@ async function generateBrief() {
     var data = await res.json();
     currentBrief = data;
     document.getElementById('metaEngine').textContent = data.engine || 'Strategy C+ v3.0';
+    setBriefLiveStatus(true);
     renderBrief(data, true);
   } catch {
     currentBrief = { ...FALLBACK_BRIEF };
+    setBriefLiveStatus(false);
     renderBrief(FALLBACK_BRIEF, true);
   }
 }
@@ -9256,8 +9266,12 @@ async function copyBrief() {
   }
 }
 
-// Init
-renderBrief(FALLBACK_BRIEF, true);
+// Init — attempt a live fetch first; generateBrief() falls back to the
+// clearly-labeled example brief (setBriefLiveStatus(false)) only if the
+// data bridge is unreachable, instead of always opening on stale fake data.
+setBriefLiveStatus(false);
+renderBrief(FALLBACK_BRIEF, false);
+generateBrief();
 renderPrevBriefs();
 updateClock();
 setInterval(updateClock, 1000);
