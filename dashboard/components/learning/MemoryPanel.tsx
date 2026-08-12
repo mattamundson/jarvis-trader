@@ -13,31 +13,41 @@ function fetcher<T = unknown>(url: string): Promise<T> {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// Mirrors engine SessionMemory.Lesson (learning/_experimental/session_memory.py)
+// as serialized by GET /learning/memory (engine/routers/learning_router.py
+// get_memory(), dataclasses.asdict(lesson)) — verified live 2026-08-12. The
+// engine has no `type`/`content`/`symbol`/`created_at`/`confidence`/`tags`/`id`
+// fields; it returns `date`, `condition`, `lesson_text`, `trades_affected`,
+// `outcome`.
 interface MemoryLesson {
-  id?: string | number;
-  type: "lesson" | "pattern" | "warning" | "rule";
-  content: string;
-  symbol?: string | null;
-  created_at?: string | null;
-  confidence?: number | null;
-  tags?: string[];
+  date: string;
+  condition: string;
+  lesson_text: string;
+  trades_affected: string[];
+  outcome: "positive" | "negative" | "neutral" | string;
 }
 
-interface MemoryResponse {
+interface MemoryData {
+  filter_condition?: string | null;
+  total: number;
   lessons: MemoryLesson[];
-  total?: number;
+}
+
+// Engine wraps every /learning/* response in {status, data: {...}}.
+interface MemoryResponse {
+  status: string;
+  data: MemoryData;
   error?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function lessonTypeBadgeVariant(type: string): "bull" | "warn" | "bear" | "info" | "neutral" {
-  switch (type) {
-    case "lesson":  return "info";
-    case "pattern": return "bull";
-    case "warning": return "warn";
-    case "rule":    return "bear";
-    default:        return "neutral";
+function outcomeBadgeVariant(outcome: string): "bull" | "warn" | "bear" | "info" | "neutral" {
+  switch (outcome) {
+    case "positive": return "bull";
+    case "negative": return "bear";
+    case "neutral":   return "neutral";
+    default:          return "info";
   }
 }
 
@@ -57,7 +67,7 @@ function fmtDate(ts: string | null | undefined): string {
 function AddLessonForm({ onAdded }: { onAdded: () => void }) {
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState("");
-  const [type, setType] = useState<MemoryLesson["type"]>("lesson");
+  const [type, setType] = useState<"lesson" | "pattern" | "warning" | "rule">("lesson");
   const [symbol, setSymbol] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -68,10 +78,14 @@ function AddLessonForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true);
     setSaveError(null);
     try {
+      // Engine POST /learning/memory expects LessonRequest {lesson, category}
+      // (engine/routers/learning_router.py record_lesson) — there is no
+      // symbol/content/type field on the backend, so fold the symbol into the
+      // lesson text and use the type picker as the category.
+      const lessonText = symbol.trim() ? `[${symbol.trim()}] ${content.trim()}` : content.trim();
       await postEngine("/learning/memory", {
-        type,
-        content: content.trim(),
-        symbol: symbol.trim() || null,
+        lesson: lessonText,
+        category: type,
       });
       setContent("");
       setSymbol("");
@@ -103,7 +117,7 @@ function AddLessonForm({ onAdded }: { onAdded: () => void }) {
       </p>
 
       <div className="flex gap-2">
-        {(["lesson", "pattern", "warning", "rule"] as MemoryLesson["type"][]).map((t) => (
+        {(["lesson", "pattern", "warning", "rule"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -162,12 +176,13 @@ function AddLessonForm({ onAdded }: { onAdded: () => void }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function MemoryPanel() {
-  const { data, isLoading, error, mutate } = useSWR<MemoryResponse>(
+  const { data: resp, isLoading, error, mutate } = useSWR<MemoryResponse>(
     "/learning/memory",
     fetcher,
     { refreshInterval: REFRESH_MS }
   );
 
+  const data = resp?.data;
   const lessons = data?.lessons ?? [];
 
   return (
@@ -200,10 +215,10 @@ export function MemoryPanel() {
             Loading memory…
           </p>
         </div>
-      ) : error || data?.error ? (
+      ) : error || resp?.error ? (
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="font-mono text-xs text-red-400/70 italic">
-            {data?.error ?? "Memory unavailable — learning system may not be initialized"}
+            {resp?.error ?? "Memory unavailable — learning system may not be initialized"}
           </p>
         </div>
       ) : lessons.length === 0 ? (
@@ -217,59 +232,36 @@ export function MemoryPanel() {
         <div className="space-y-2">
           {lessons.map((lesson, i) => (
             <div
-              key={lesson.id ?? i}
+              key={i}
               className="rounded-xl border border-border bg-card p-4 space-y-2 hover:border-border/80 transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant={lessonTypeBadgeVariant(lesson.type)}>
-                    {lesson.type}
+                  <Badge variant={outcomeBadgeVariant(lesson.outcome)}>
+                    {lesson.outcome}
                   </Badge>
-                  {lesson.symbol && (
-                    <Badge variant="neutral">{lesson.symbol}</Badge>
+                  {lesson.condition && (
+                    <Badge variant="neutral">{lesson.condition}</Badge>
                   )}
-                  {lesson.tags?.map((tag) => (
+                  {lesson.trades_affected?.map((tradeId) => (
                     <span
-                      key={tag}
+                      key={tradeId}
                       className="font-mono text-[9px] text-muted-foreground/50 border border-border/40 rounded px-1.5 py-0.5"
                     >
-                      {tag}
+                      {tradeId}
                     </span>
                   ))}
                 </div>
-                {lesson.created_at && (
+                {lesson.date && (
                   <span className="font-mono text-[10px] text-muted-foreground/40 whitespace-nowrap shrink-0">
-                    {fmtDate(lesson.created_at)}
+                    {fmtDate(lesson.date)}
                   </span>
                 )}
               </div>
 
               <p className="font-mono text-[11px] text-foreground/80 leading-relaxed">
-                {lesson.content}
+                {lesson.lesson_text}
               </p>
-
-              {lesson.confidence != null && (
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-muted-foreground/40 uppercase tracking-wider">
-                    Confidence
-                  </span>
-                  <div className="flex-1 max-w-[80px] h-1 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.min(100, lesson.confidence * 100)}%`,
-                        backgroundColor:
-                          lesson.confidence >= 0.7 ? "#00ff88"
-                          : lesson.confidence >= 0.4 ? "#ffcc00"
-                          : "#888",
-                      }}
-                    />
-                  </div>
-                  <span className="font-mono text-[10px] text-muted-foreground/40 tabular-nums">
-                    {(lesson.confidence * 100).toFixed(0)}%
-                  </span>
-                </div>
-              )}
             </div>
           ))}
         </div>
