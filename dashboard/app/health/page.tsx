@@ -19,6 +19,7 @@ import {
   Clock,
   BarChart2,
   GitCompare,
+  Cpu,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine, type ProcessSupervisionHealth } from "@/lib/api";
@@ -56,6 +57,16 @@ interface SubsystemStatus {
   source?: string;
   current_balance?: number;
   starting_balance?: number;
+  // llm
+  provider?: string;
+  fallback_active?: boolean;
+  healthy?: boolean;
+  primary_provider?: string;
+  active_provider?: string;
+  providers_available?: number;
+  single_leg_warning?: boolean;
+  google_fallback_count?: number;
+  vertex_failover_count?: number;
 }
 
 interface FullHealthResponse {
@@ -71,6 +82,7 @@ interface FullHealthResponse {
     circuit_breakers?: SubsystemStatus;
     portfolio?: SubsystemStatus;
     pnl_monitor?: SubsystemStatus;
+    llm?: SubsystemStatus;
     process_supervision?: ProcessSupervisionHealth;
   };
 }
@@ -231,6 +243,20 @@ const SUBSYSTEMS: SubsystemConfig[] = [
       return s.error ?? null;
     },
   },
+  {
+    key: "llm",
+    label: "LLM Path",
+    icon: <Cpu className="h-5 w-5" />,
+    detail: (s) => {
+      if (s.fallback_active) {
+        return `Fallback active: serving on ${s.active_provider ?? "unknown"} (primary: ${s.primary_provider ?? "unknown"})`;
+      }
+      if (s.status === "ok" || s.status === "healthy") {
+        return `Serving on ${s.active_provider ?? s.provider ?? "primary"}`;
+      }
+      return s.error ?? null;
+    },
+  },
 ];
 
 function StalenessBadge({ secondsSince }: { secondsSince: number }) {
@@ -275,6 +301,10 @@ function subsystemIsHealthy(key: string, s: SubsystemStatus | undefined): "healt
 
   // Circuit breakers tripped = warn
   if (key === "circuit_breakers" && s.all_clear === false) return "warn";
+
+  // LLM: fallback/degraded still serving (healthy:true) = warn, not error
+  if (key === "llm" && s.status === "degraded") return s.healthy ? "warn" : "error";
+  if (key === "llm" && s.fallback_active) return "warn";
 
   if (s.status === "ok" || s.status === "healthy") return "healthy";
   if (s.status === "not_initialized") return "warn";
@@ -666,7 +696,7 @@ export default function HealthPage() {
             <div>
               <h2 className="text-lg font-bold text-foreground">System Health</h2>
               <p className="text-xs text-muted-foreground">
-                6-subsystem health check — auto-refreshes every 15 seconds
+                7-subsystem health check — auto-refreshes every 15 seconds
               </p>
             </div>
           </div>
@@ -713,7 +743,7 @@ export default function HealthPage() {
         {/* Loading state */}
         {isLoading && !data && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
+            {Array.from({ length: 7 }).map((_, i) => (
               <div key={i} className="rounded-xl border border-border bg-card p-4 animate-pulse space-y-3">
                 <div className="flex items-center gap-2.5">
                   <div className="h-9 w-9 rounded-lg bg-muted" />
