@@ -50,6 +50,7 @@ from execution.schwab_connector import SchwabConnector
 from llm.client import JarvisLLMClient
 from llm.cost_tracker import CostTracker
 from utils.inference_router import get_inference_router
+from utils.git_provenance import get_git_provenance
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.exception_handler import GlobalExceptionHandler
 from middleware.rate_limit import get_limiter, rate_limit_exception_handler
@@ -448,6 +449,7 @@ async def lifespan(app: FastAPI):
     setup_logging(log_level=settings.LOG_LEVEL)
 
     logger.info("🤖 JARVIS TRADER starting up...")
+    logger.info("Engine code state: %s", get_git_provenance())
 
     # ── Heavy Init Background Task (Phase 1.8) ───────────────────────────
     async def _complete_background_init():

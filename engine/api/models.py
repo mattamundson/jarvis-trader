@@ -201,6 +201,10 @@ class HealthResponse(BaseModel):
         None,
         description="Anthropic Message Batches summary: {jobs_by_status, unconsumed_results}. Non-blocking — batches are async by design, so this never flips top-level status to degraded, only surfaces counts for observability. Populated by engine/llm/batch_client.py's JarvisBatchClient.get_batch_health_summary(). Field must exist here or _health_inner's dict key gets silently stripped by FastAPI's response_model, same class of bug as llm_providers/futures_sentiment above.",
     )
+    git_provenance: Optional[str] = Field(
+        None,
+        description="\"<branch>@<short-sha>\" of the code actually loaded into this running process, or \"unknown\". Added 2026-08-13 (fix/engine-pythonhome-crashloop Phase 0b, finding 1): the shared engine checkout's branch can drift between restarts with no record of what commit was actually deployed, which let a safety-relevant fix (MGC halt) silently go undeployed for days. Turns that git-archaeology into a one-line live check.",
+    )
 
 
 class SubsystemStatus(BaseModel):
