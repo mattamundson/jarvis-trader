@@ -44,7 +44,7 @@ Performs 7 phases of validation and startup before launching the paper trading s
 #### PHASE 4: Safety Verification
 - **config.py**: Reads and confirms LIVE_TRADING_ENABLED default is False
 - **safety_layer.py**: Validates file exists and is not empty (>1000 bytes)
-- **Kill switch thresholds**: Confirms -2% daily and -10% drawdown are documented
+- **Kill switch thresholds**: Confirms `MAX_DAILY_LOSS_PCT`/`MAX_DRAWDOWN_PCT` are wired in `safety_layer.py` (currently -6% daily / -20% drawdown per `config.py`)
 
 #### PHASE 5: Test Suite Execution (default enabled)
 - **Safety layer tests**: Runs `pytest tests\test_safety_layer.py -v`
@@ -106,7 +106,7 @@ The script enforces critical safety rules from `.claude/rules/safety.md`:
 LIVE_TRADING_ENABLED = False     (hardcoded — never True in paper phase)
 REQUIRE_HUMAN_APPROVAL = True     (always enforced)
 PAPER_TRADING = True              (must be enabled)
-Kill switch: -2% daily / -10%     (non-negotiable)
+Kill switch: -6% daily / -20% drawdown     (non-negotiable)
 ```
 
 ---
@@ -293,7 +293,7 @@ The launch script enforces safety through:
 2. **.env validation**: Rejects placeholder values and missing critical vars
 3. **Test suite gate**: Aborts if safety_layer tests fail
 4. **Phase-by-phase abort**: Fails fast on ANY critical issue
-5. **Kill switch verification**: Confirms -2% daily, -10% drawdown limits
+5. **Kill switch verification**: Confirms -6% daily, -20% drawdown limits
 
 These guarantees ensure paper trading cannot accidentally become live trading.
 
