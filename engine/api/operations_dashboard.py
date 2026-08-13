@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.request import urlopen
@@ -221,9 +221,19 @@ def _get_uptime_7d() -> List[bool]:
     Return a list of 7 booleans (oldest first) indicating engine snapshot
     presence for each of the last 7 calendar days.  True = snapshot present
     (engine was alive that day).
+
+    Uses the LOCAL system date, matching how pnl_snapshots.date is actually
+    written (risk/safety_layer.py's _persist_pnl_snapshot/_load_pnl_snapshot
+    both key off date.today(), not UTC). Comparing against
+    datetime.utcnow().date() made "today" read as DOWN for several hours
+    after the local-midnight-UTC crossover (any evening, in a timezone
+    behind UTC) even when the engine had genuinely written today's local
+    snapshot, since this was looking for a row dated tomorrow (UTC) instead.
     """
     if not _DB_PATH.exists():
         return [False] * 7
+    today = date.today()
+    start = today - timedelta(days=6)
     try:
         conn = sqlite3.connect(str(_DB_PATH), timeout=5)
         try:
@@ -231,18 +241,16 @@ def _get_uptime_7d() -> List[bool]:
                 """
                 SELECT DISTINCT date("date") AS d
                 FROM pnl_snapshots
-                WHERE date("date") >= date('now', '-7 days')
-                """
+                WHERE date("date") >= ?
+                """,
+                (start.isoformat(),),
             ).fetchall()
             known_days = {r[0] for r in rows}
         finally:
             conn.close()
         result = []
         for i in range(6, -1, -1):
-            day = datetime.utcnow().date()
-            from datetime import timedelta
-
-            day = day - timedelta(days=i)
+            day = today - timedelta(days=i)
             result.append(day.isoformat() in known_days)
         return result
     except Exception:
