@@ -1,5 +1,7 @@
 "use client";
 
+import { HEALTH_KEY, POLL_INTERVAL, POSITIONS_KEY } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -48,12 +50,12 @@ export function EngineDataPanel() {
     data: health,
     error: healthError,
     isLoading: healthLoading,
-  } = useSWR<HealthResponse>("/health", fetcher, { refreshInterval: 15_000 });
+  } = useSWR<HealthResponse>(HEALTH_KEY, fetcher, { refreshInterval: POLL_INTERVAL.STATUS });
 
   const { data: brokers, error: brokersError } = useSWR<BrokerPositionsLive>(
-    "/brokers/positions",
+    POSITIONS_KEY,
     fetcher,
-    { refreshInterval: 30_000 }
+    { refreshInterval: POLL_INTERVAL.SLOW }
   );
 
   return (

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchCalibration, type CalibrationDiagnostics } from "@/lib/api";
 
@@ -15,7 +17,7 @@ export function ConfidenceGauge() {
   const { data, error } = useSWR<CalibrationDiagnostics>(
     "/analytics/calibration",
     fetchCalibration,
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
 
   const readyAgents = data

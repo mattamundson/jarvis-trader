@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchDiscordBriefing } from "@/lib/api";
 import type { BriefingResponse, KnowledgeContextHit } from "@/lib/api";
@@ -82,7 +84,7 @@ export function KnowledgeContextWidget({ symbol = "MES" }: { symbol?: string }) 
   const { data, error, isLoading } = useSWR<BriefingResponse>(
     ["/discord/briefing", symbol, "enriched"],
     () => fetchDiscordBriefing(symbol, { enriched: true }),
-    { refreshInterval: 300_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FIVE_MINUTES, shouldRetryOnError: false }
   );
 
   const hits = data?.knowledge_context ?? [];

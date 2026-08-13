@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useState } from "react";
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,7 +68,7 @@ export function BookmarkThemesPanel() {
   const { data, error, isLoading, mutate } = useSWR<BookmarkThemesResponse>(
     swrKey,
     (path: string) => fetchEngine<BookmarkThemesResponse>(path),
-    { refreshInterval: 30 * 60 * 1000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.HALF_HOUR, revalidateOnFocus: false }
   );
 
   const handleRefresh = async () => {

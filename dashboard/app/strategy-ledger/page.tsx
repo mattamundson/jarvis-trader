@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
@@ -39,7 +41,7 @@ export default function StrategyLedgerPage() {
   const { data, error, isLoading } = useSWR<LedgerResponse>(
     "strategy-ledger",
     fetchStrategyLedger,
-    { refreshInterval: 60000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
   const [sortKey, setSortKey] = useState<SortKey>("verdict");
   const [asc, setAsc] = useState(false);

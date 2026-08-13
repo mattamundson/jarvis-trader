@@ -175,18 +175,10 @@ const ENGINE_URL_ALLOW = new Map([
 }
 
 // ---------------------------------------------------------------------------
-// GUARD 4 -- hardcoded SWR refreshInterval. RATCHET, not a hard gate.
-//
-// Measured on master: 128 hardcoded call-sites against 3 using POLL_INTERVAL.
-// Making this blocking today would fail every PR and force a 128-site refactor
-// as a drive-by, so it ships as a ceiling instead: new hardcoded intervals are
-// rejected, and Phase 6.4's cleanup lowers the number.
-//
-// Deliberately does NOT fail when the count drops. During a planned 128 -> 0
-// migration, failing on improvement is pure friction; it prints a reminder to
-// lower the ceiling instead.
+// GUARD 4 -- hardcoded SWR refreshInterval. All active polling uses a named
+// POLL_INTERVAL tier so cadence changes remain centralized and reviewable.
 // ---------------------------------------------------------------------------
-const REFRESH_INTERVAL_CEILING = 128;
+const REFRESH_INTERVAL_CEILING = 0;
 {
   const re = /refreshInterval:\s*[0-9]/;
   let count = 0;
@@ -202,11 +194,8 @@ const REFRESH_INTERVAL_CEILING = 128;
     console.log("       Use a POLL_INTERVAL.* tier from lib/polling-config.ts, not a literal.");
     console.log("       Market-data polls must not exceed POLL_INTERVAL.MARKET_DATA_MAX (5 min).");
     failures.push("hardcoded-refresh-interval");
-  } else if (count < REFRESH_INTERVAL_CEILING) {
-    console.log(`OK   hardcoded-refresh-interval (${count}, ceiling ${REFRESH_INTERVAL_CEILING})`);
-    notes.push(`refreshInterval debt dropped to ${count}; lower REFRESH_INTERVAL_CEILING to lock it in.`);
   } else {
-    console.log(`OK   hardcoded-refresh-interval (${count}, at ceiling ${REFRESH_INTERVAL_CEILING})`);
+    console.log(`OK   hardcoded-refresh-interval (${count})`);
   }
 }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -168,7 +170,7 @@ export function PriceTerrain3D({ symbol, height = 460 }: PriceTerrain3DProps) {
   const { data: grid, isLoading } = useSWR(
     ["price-terrain", symbol],
     () => fetchTerrain(symbol),
-    { refreshInterval: 120_000, revalidateOnFocus: false },
+    { refreshInterval: POLL_INTERVAL.TWO_MINUTES, revalidateOnFocus: false },
   );
 
   const ready = grid && grid.length >= 2 && grid[0]?.length === COLS;

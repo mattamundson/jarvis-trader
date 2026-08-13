@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
@@ -444,7 +446,7 @@ export default function BacktestPage() {
   const { data: results, isLoading, error } = useSWR<BacktestResult[]>(
     "/backtest/results",
     fetcher,
-    { refreshInterval: 60_000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);

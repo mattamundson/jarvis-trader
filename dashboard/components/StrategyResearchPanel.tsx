@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import {
   fetchResearchCandidates,
@@ -117,7 +119,7 @@ export function StrategyResearchPanel() {
   const { data, error, isLoading } = useSWR<ResearchCandidatesResponse>(
     "research-candidates",
     fetchResearchCandidates,
-    { refreshInterval: 300000 }
+    { refreshInterval: POLL_INTERVAL.FIVE_MINUTES }
   );
 
   const candidates = data?.candidates ?? [];

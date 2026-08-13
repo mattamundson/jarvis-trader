@@ -1,4 +1,6 @@
 "use client";
+
+import { POLL_INTERVAL } from "@/lib/polling-config";
 import useSWR from "swr";
 import {
   fetchMasterSchedulerRuns,
@@ -31,12 +33,12 @@ export function SchedulerPanel() {
   const { data: status, error: statusErr } = useSWR(
     "master-scheduler-status",
     fetchMasterSchedulerStatus,
-    { refreshInterval: 15000 },
+    { refreshInterval: POLL_INTERVAL.STATUS },
   );
   const { data: runsData, error: runsErr } = useSWR(
     "master-scheduler-runs",
     () => fetchMasterSchedulerRuns(8),
-    { refreshInterval: 15000 },
+    { refreshInterval: POLL_INTERVAL.STATUS },
   );
 
   // Both failing => the scheduler endpoints aren't deployed yet. Degrade quietly

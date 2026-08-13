@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useMemo, useState } from "react";
 import useSWR from "swr";
 import { ChevronDown } from "lucide-react";
@@ -38,7 +40,7 @@ export function TradeJournalWidget() {
   const { data: trades, isLoading, error } = useSWR<TradeJournalEntry[]>(
     endpoint,
     fetcher,
-    { refreshInterval: 60000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   // Filter and sort

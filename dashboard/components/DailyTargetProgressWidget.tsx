@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 
@@ -34,7 +36,7 @@ export function DailyTargetProgressWidget({ compact = false }: DailyTargetProgre
   const { data } = useSWR<PortfolioSummary>(
     "/portfolio/summary",
     fetcher,
-    { refreshInterval: 5000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FAST, shouldRetryOnError: false }
   );
 
   const target = data?.daily_target ?? 500;

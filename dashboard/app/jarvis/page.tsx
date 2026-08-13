@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useState, useCallback } from "react";
 import useSWR from "swr";
 import { Activity, Cpu, Radio, Shield, ShieldOff, Zap } from "lucide-react";
@@ -250,7 +252,7 @@ function RegimeRow({
   const { data, error, isLoading } = useSWR(
     `/analytics/regime/${symbol}`,
     () => fetcher(symbol),
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
 
   const regime = data?.current_regime ?? data?.regime ?? null;

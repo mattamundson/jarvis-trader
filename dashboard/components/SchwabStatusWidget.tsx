@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Loader2, RefreshCw, WifiOff, Wifi, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +44,7 @@ export function SchwabStatusWidget() {
   const { data, error, isLoading, mutate } = useSWR<SchwabStatus>(
     "/schwab/status",
     fetcher,
-    { refreshInterval: 5000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FAST, shouldRetryOnError: false }
   );
 
   const connected = data?.connected ?? false;

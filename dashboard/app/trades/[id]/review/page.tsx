@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -70,7 +72,7 @@ export default function TradeReviewPage() {
   const { data, error, isLoading } = useSWR<TradeFullReview>(
     id ? `full-review-${id}` : null,
     () => fetchTradeFullReview(id),
-    { refreshInterval: 30000 }
+    { refreshInterval: POLL_INTERVAL.SLOW }
   );
   const [showPipeline, setShowPipeline] = useState(false);
 
@@ -81,7 +83,7 @@ export default function TradeReviewPage() {
   const { data: bars } = useSWR<OHLCVBar[]>(
     tradeSym ? `bars-${tradeSym}-${win.timeframe}-${win.days}` : null,
     () => fetchBars(tradeSym, { timeframe: win.timeframe, days: win.days, futures: true }),
-    { refreshInterval: 60000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false }
   );
 
   const markers = useMemo<SeriesMarker<Time>[]>(() => {

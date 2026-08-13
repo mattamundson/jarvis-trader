@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import Link from "next/link";
 import useSWR from "swr";
 import {
@@ -60,13 +62,13 @@ export default function TradesPage() {
   const { data, error, isLoading } = useSWR<ClosedPaperTradesResponse>(
     "closed-paper-trades",
     fetchClosedPaperTrades,
-    { refreshInterval: 30000 }
+    { refreshInterval: POLL_INTERVAL.SLOW }
   );
 
   const { data: openData } = useSWR<ExecutionFidelityStatus>(
     "execution-open-trades",
     fetchExecutionOpenTrades,
-    { refreshInterval: 15000 }
+    { refreshInterval: POLL_INTERVAL.STATUS }
   );
 
   // Honest deduped trade record — same underlying paper_trades table as the

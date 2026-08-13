@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { X, CheckCircle, XCircle, AlertTriangle, BookOpen } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
@@ -80,7 +82,7 @@ export function TradeReviewPanel({
   const { data, isLoading, error } = useSWR<TradeWithReviewResponse>(
     `/trades/${tradeId}/review`,
     fetcher,
-    { refreshInterval: 15_000 }
+    { refreshInterval: POLL_INTERVAL.STATUS }
   );
 
   if (isLoading) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React from "react";
 import useSWR from "swr";
 import { fetchShadowMetrics, ShadowMetricsResponse } from "@/lib/api";
@@ -9,7 +11,7 @@ export default function ShadowPerformanceWidget() {
   const { data, error, isLoading } = useSWR<ShadowMetricsResponse>(
     "/pipeline/shadow-metrics",
     () => fetchShadowMetrics(),
-    { refreshInterval: 10000 }
+    { refreshInterval: POLL_INTERVAL.NORMAL }
   );
 
   if (isLoading) return <div className="animate-pulse bg-gray-800/50 rounded-xl h-48 w-full" />;

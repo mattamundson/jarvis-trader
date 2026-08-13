@@ -1,5 +1,7 @@
 "use client";
 
+import { APPROVALS_KEY, POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useCallback, useEffect } from "react";
 import useSWR from "swr";
 import {
@@ -20,9 +22,9 @@ import { useToast } from "@/lib/toast-context";
 export default function PendingApprovals() {
   const { addToast } = useToast();
   const { data, mutate, isLoading } = useSWR<PendingApprovalsResponse>(
-    "/pipeline/pending-approvals",
-    () => fetchEngine<PendingApprovalsResponse>("/pipeline/pending-approvals?limit=5"),
-    { refreshInterval: 3000 }
+    APPROVALS_KEY,
+    () => fetchEngine<PendingApprovalsResponse>(`${APPROVALS_KEY}?limit=5`),
+    { refreshInterval: POLL_INTERVAL.APPROVALS }
   );
 
   const pending = data?.pending || [];

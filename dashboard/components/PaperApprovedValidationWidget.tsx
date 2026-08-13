@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { ClipboardCheck, Loader2 } from "lucide-react";
 import {
@@ -94,7 +96,7 @@ export function PaperApprovedValidationWidget() {
   const { data, error, isLoading } = useSWR<ApprovedPaperGatesResponse>(
     "approved-paper-gates",
     fetcher,
-    { refreshInterval: 60_000, revalidateOnFocus: true }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: true }
   );
 
   return (

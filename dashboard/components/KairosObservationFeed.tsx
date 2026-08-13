@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useState } from "react";
 import useSWR from "swr";
 import { AlertTriangle, Info, XCircle, Inbox } from "lucide-react";
@@ -88,7 +90,7 @@ export function KairosObservationFeed({ minutes = 60 }: KairosObservationFeedPro
   const { data, error, isLoading } = useSWR<ObservationsResponse>(
     `/kairos/observations?minutes=${minutes}`,
     fetcher,
-    { refreshInterval: 15_000 }
+    { refreshInterval: POLL_INTERVAL.STATUS }
   );
 
   const allObservations = data?.observations ?? [];

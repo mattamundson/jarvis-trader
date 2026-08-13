@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { AlertTriangle, CheckCircle2, ShieldAlert, ShieldOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -85,7 +87,7 @@ export function CircuitBreakerPanel() {
     error,
     isLoading,
   } = useSWR<CircuitBreakerState>("/safety/circuit-breakers", fetcher, {
-    refreshInterval: 10_000,
+    refreshInterval: POLL_INTERVAL.NORMAL,
     shouldRetryOnError: true,
   });
 

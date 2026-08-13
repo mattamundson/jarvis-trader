@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useMemo } from "react";
 import useSWR from "swr";
 import type { SeriesMarker, Time } from "lightweight-charts";
@@ -48,7 +50,7 @@ export function PriceChartPanel({
           return w?.trades ?? w?.data ?? [];
         })
         .catch(() => [] as TradeRecord[]),
-    { refreshInterval: 60_000, revalidateOnFocus: false },
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false },
   );
 
   const markers = useMemo(() => {

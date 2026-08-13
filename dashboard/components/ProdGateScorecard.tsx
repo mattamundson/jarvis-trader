@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchStrategyGates, type GateResult, type GatesResponse } from "@/lib/api";
 
@@ -32,7 +34,7 @@ export function ProdGateScorecard({ symbol }: { symbol: string }) {
   const { data, error, isLoading } = useSWR<GatesResponse>(
     symbol ? `strategy-gates-${symbol}` : null,
     () => fetchStrategyGates(symbol),
-    { refreshInterval: 60000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   if (!symbol) return null;

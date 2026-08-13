@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
@@ -531,7 +533,7 @@ export default function HealthPage() {
     isLoading,
     mutate,
   } = useSWR<FullHealthResponse>("/health/full", fetcher, {
-    refreshInterval: 15_000,
+    refreshInterval: POLL_INTERVAL.STATUS,
     shouldRetryOnError: false,
     onSuccess: () => {
       setLastUpdated(new Date());

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +53,7 @@ function SymbolSuite({ symbol }: { symbol: (typeof SYMBOLS)[number] }) {
   const { data, error, isLoading } = useSWR<ProactiveReportLive>(
     `/validate/proactive-suite?symbol=${symbol}`,
     fetcher,
-    { refreshInterval: 60_000 } // heavier endpoint (8 live checks) — poll slower
+    { refreshInterval: POLL_INTERVAL.MINUTE } // heavier endpoint (8 live checks) — poll slower
   );
 
   if (error) return <UnreachableNote endpoint={`/validate/proactive-suite?symbol=${symbol}`} />;
@@ -107,7 +109,7 @@ export function ValidationGatesPanel() {
     data: ledger,
     error: ledgerError,
     isLoading: ledgerLoading,
-  } = useSWR<LedgerResponse>("/strategy/ledger", fetcher, { refreshInterval: 60_000 });
+  } = useSWR<LedgerResponse>("/strategy/ledger", fetcher, { refreshInterval: POLL_INTERVAL.MINUTE });
 
   const verdicts = latestVerdictPerSymbol(ledger?.entries ?? []);
 

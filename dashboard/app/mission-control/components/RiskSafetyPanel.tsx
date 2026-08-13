@@ -1,5 +1,7 @@
 "use client";
 
+import { EXECUTION_STATE_KEY, HEALTH_KEY, POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -52,14 +54,14 @@ export function RiskSafetyPanel() {
     data: safety,
     error: safetyError,
     isLoading: safetyLoading,
-  } = useSWR<SafetyStatusLive>("/safety/status", fetcher, { refreshInterval: 15_000 });
+  } = useSWR<SafetyStatusLive>(EXECUTION_STATE_KEY, fetcher, { refreshInterval: POLL_INTERVAL.STATUS });
 
-  const { data: health } = useSWR<HealthResponse>("/health", fetcher, { refreshInterval: 15_000 });
+  const { data: health } = useSWR<HealthResponse>(HEALTH_KEY, fetcher, { refreshInterval: POLL_INTERVAL.STATUS });
 
   const { data: positions } = useSWR<PaperPositionsResponse>(
     "/portfolio/paper/positions",
     fetcher,
-    { refreshInterval: 15_000 }
+    { refreshInterval: POLL_INTERVAL.STATUS }
   );
 
   const contractsHeld = (positions?.positions ?? []).reduce(

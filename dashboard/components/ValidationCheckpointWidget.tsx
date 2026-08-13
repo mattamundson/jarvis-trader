@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchValidationCheckpoint, ValidationCheckpointResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +10,7 @@ export default function ValidationCheckpointWidget() {
   const { data, error, isLoading } = useSWR<ValidationCheckpointResponse>(
     "/paper/validation/checkpoint",
     fetchValidationCheckpoint,
-    { refreshInterval: 60000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   if (isLoading) {

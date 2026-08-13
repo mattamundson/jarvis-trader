@@ -1,5 +1,7 @@
 'use client';
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from 'swr';
 import { fetchEngine } from '@/lib/api';
 import type { JarvisEvent, EventsResponse } from '@/lib/api';
@@ -8,7 +10,7 @@ export function EventsFeedWidget() {
   const { data, isLoading, error } = useSWR<EventsResponse>(
     '/events/recent',
     fetchEngine,
-    { refreshInterval: 5000 }
+    { refreshInterval: POLL_INTERVAL.FAST }
   );
 
   if (error) {

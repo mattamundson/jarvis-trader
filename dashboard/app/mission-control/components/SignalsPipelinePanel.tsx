@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -77,18 +79,18 @@ export function SignalsPipelinePanel() {
     data: pipeline,
     error: pipelineError,
     isLoading: pipelineLoading,
-  } = useSWR<PipelineStatusLive>("/pipeline/status", fetcher, { refreshInterval: 15_000 });
+  } = useSWR<PipelineStatusLive>("/pipeline/status", fetcher, { refreshInterval: POLL_INTERVAL.STATUS });
 
   const {
     data: decisions,
     error: decisionsError,
     isLoading: decisionsLoading,
-  } = useSWR<DecisionRow[]>("/decisions/recent?limit=50", fetcher, { refreshInterval: 15_000 });
+  } = useSWR<DecisionRow[]>("/decisions/recent?limit=50", fetcher, { refreshInterval: POLL_INTERVAL.STATUS });
 
   const { data: scheduler, error: schedulerError } = useSWR<SchedulerStatusLive>(
     "/scheduler/status",
     fetcher,
-    { refreshInterval: 15_000 }
+    { refreshInterval: POLL_INTERVAL.STATUS }
   );
 
   const perSymbol = lastDecisionPerSymbol(Array.isArray(decisions) ? decisions : []);

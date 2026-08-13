@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import { formatChangePct } from "@/lib/signalFlowFormatters";
@@ -280,13 +282,13 @@ function fetcher<T = unknown>(url: string): Promise<T> {
 export function SignalFlowWidget() {
   const { data: debugData, isLoading: loadingDebug } =
     useSWR<SignalDebugResponse>("/pipeline/signal-debug", fetcher, {
-      refreshInterval: 30_000,
+      refreshInterval: POLL_INTERVAL.SLOW,
       shouldRetryOnError: false,
     });
 
   const { data: pricesData } =
     useSWR<PricesResponse>("/prices/snapshot", fetcher, {
-      refreshInterval: 15_000,
+      refreshInterval: POLL_INTERVAL.STATUS,
       shouldRetryOnError: false,
     });
 

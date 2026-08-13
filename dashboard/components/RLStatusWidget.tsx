@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Brain, Cpu, TrendingUp, Activity } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -92,7 +94,7 @@ export function RLStatusWidget() {
   const { data, error } = useSWR<RLStatusResponse>(
     "/strategies/rl/status",
     fetcher,
-    { refreshInterval: 30_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.SLOW, shouldRetryOnError: false }
   );
 
   const loading = !data && !error;

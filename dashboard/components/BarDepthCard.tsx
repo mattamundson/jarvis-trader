@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Database, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +45,7 @@ export function BarDepthCard() {
   const { data, error, isLoading } = useSWR<BarDepthResponse>(
     "/analytics/bar-depth",
     (p: string) => fetchBarDepth(),
-    { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FIVE_MINUTES, shouldRetryOnError: false }
   );
 
   const pairs = data?.pairs ?? [];

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import { Radio } from "lucide-react";
@@ -47,7 +49,7 @@ export function KairosStatusWidget() {
   const router = useRouter();
 
   const { data, error } = useSWR<KairosStatus>("/kairos/status", fetcher, {
-    refreshInterval: 30_000,
+    refreshInterval: POLL_INTERVAL.SLOW,
   });
 
   if (error || !data) {

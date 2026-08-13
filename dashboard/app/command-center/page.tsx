@@ -1,5 +1,7 @@
 "use client";
 
+import { EXECUTION_STATE_KEY, HEALTH_KEY, POLL_INTERVAL } from "@/lib/polling-config";
+
 import dynamic from "next/dynamic";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
@@ -319,7 +321,7 @@ function useSymbolRegime(symbol: string) {
   const { data, error, isLoading } = useSWR(
     `/analytics/regime/${symbol}`,
     () => fetchSymbolRegime(symbol),
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
   return {
     regime: data?.current_regime ?? data?.regime ?? null,
@@ -378,7 +380,7 @@ export default function CommandCenterPage() {
   const { data: ccBars } = useSWR<OHLCVBar[]>(
     `cc-bars-${chartSym}`,
     () => fetchBars(chartSym, { timeframe: "15m", days: 14, futures: true }),
-    { refreshInterval: 60_000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false }
   );
 
   const { addToast } = useToast();
@@ -387,12 +389,12 @@ export default function CommandCenterPage() {
     data: health,
     error: healthErr,
     mutate: mutateHealth,
-  } = useSWR<HealthData>("/health", fetcher, {
+  } = useSWR<HealthData>(HEALTH_KEY, fetcher, {
     refreshInterval,
     shouldRetryOnError: false,
   });
 
-  const { data: safety, mutate: mutateSafety, error: safetyErr } = useSWR<SafetyData>("/safety/status", fetcher, {
+  const { data: safety, mutate: mutateSafety, error: safetyErr } = useSWR<SafetyData>(EXECUTION_STATE_KEY, fetcher, {
     refreshInterval,
     shouldRetryOnError: false,
   });
@@ -415,14 +417,14 @@ export default function CommandCenterPage() {
   );
 
   const { data: macro, mutate: mutateMacro } = useSWR<MacroData>("/macro/snapshot", fetcher, {
-    refreshInterval: 120_000,
+    refreshInterval: POLL_INTERVAL.TWO_MINUTES,
     shouldRetryOnError: false,
   });
 
   const { data: paperStatus, mutate: mutatePaperStatus } = useSWR<Record<string, PaperStatusRow>>(
     "/backtest/paper-status",
     fetcher,
-    { refreshInterval: 120_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.TWO_MINUTES, shouldRetryOnError: false }
   );
 
   const { data: trades, mutate: mutateTrades, error: tradesErr } = useSWR<Trade[]>(
@@ -434,7 +436,7 @@ export default function CommandCenterPage() {
   const { data: journalStats, mutate: mutateJournalStats } = useSWR<JournalTradeStats>(
     "/journal/review/stats?limit=30",
     fetcher,
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
 
   // Honest deduped set for the journal HUD row (win_rate + EV/trade).
@@ -443,7 +445,7 @@ export default function CommandCenterPage() {
   const { data: honestSet, mutate: mutateHonestSet } = useSWR<HonestTradeSet>(
     "honest-trades-cc",
     fetchHonestTrades,
-    { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FIVE_MINUTES, shouldRetryOnError: false }
   );
 
   // Bounded retry/backoff for critical command-center data so transient engine

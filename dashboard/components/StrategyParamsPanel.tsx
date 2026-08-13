@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useState } from "react";
 import useSWR from "swr";
 import { ChevronDown, ChevronUp, AlertCircle, RefreshCw } from "lucide-react";
@@ -38,7 +40,7 @@ export function StrategyParamsPanel() {
   const { data: params, mutate: mutateParams, isLoading } = useSWR<StrategyParams>(
     "/strategy/params",
     fetcher,
-    { refreshInterval: 30000 }
+    { refreshInterval: POLL_INTERVAL.SLOW }
   );
 
   const [isExpanded, setIsExpanded] = useState(false);

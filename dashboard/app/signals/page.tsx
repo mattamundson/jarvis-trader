@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Radar, TrendingDown, TrendingUp, ShieldAlert, Clock } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
@@ -152,7 +154,7 @@ export default function SignalsPage() {
     useSWR<PendingResponse>("/approvals/pending", fetcher, { refreshInterval: REFRESH_MS });
   const { data: history, error: historyError } =
     useSWR<HistoryResponse>(`/approvals/history?days=${HISTORY_DAYS}`, fetcher, {
-      refreshInterval: 5 * 60_000,
+      refreshInterval: POLL_INTERVAL.FIVE_MINUTES,
     });
 
   return (

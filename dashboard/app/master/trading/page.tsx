@@ -1,4 +1,6 @@
 "use client";
+
+import { POLL_INTERVAL } from "@/lib/polling-config";
 import Link from "next/link";
 import useSWR from "swr";
 import { fetchRealizedPnl, type RealizedPnl } from "@/lib/masterApi";
@@ -19,7 +21,7 @@ function fmtTime(t: string | null): string {
 
 export default function TradingDetailPage() {
   const { data, error } = useSWR<RealizedPnl>("trading-realized", fetchRealizedPnl, {
-    refreshInterval: 60000,
+    refreshInterval: POLL_INTERVAL.MINUTE,
   });
 
   if (error) {

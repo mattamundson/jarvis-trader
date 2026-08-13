@@ -1,4 +1,6 @@
 "use client";
+
+import { POLL_INTERVAL } from "@/lib/polling-config";
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import type { OptionsChainData, OptionsGreeksPortfolio } from "@/lib/api";
@@ -14,7 +16,7 @@ export function useOptionsChain(symbol: ChartSymbol) {
     [`/options/chain`, symbol],
     (): Promise<OptionsChainData | null> =>
       fetchEngine<OptionsChainData>(`/options/chain/${symbol}`).catch(() => null),
-    { refreshInterval: 300_000, revalidateOnFocus: false, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FIVE_MINUTES, revalidateOnFocus: false, shouldRetryOnError: false }
   );
 
   const {
@@ -25,7 +27,7 @@ export function useOptionsChain(symbol: ChartSymbol) {
     "/options/greeks",
     (): Promise<OptionsGreeksPortfolio | null> =>
       fetchEngine<OptionsGreeksPortfolio>("/options/greeks").catch(() => null),
-    { refreshInterval: 60_000, revalidateOnFocus: false, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false, shouldRetryOnError: false }
   );
 
   return {

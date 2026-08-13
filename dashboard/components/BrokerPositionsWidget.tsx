@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL, POSITIONS_KEY } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Loader2, RefreshCw, WifiOff, CheckCircle, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -95,15 +97,15 @@ export function BrokerPositionsWidget() {
     error: posError,
     isLoading: posLoading,
     mutate: mutatePositions,
-  } = useSWR<BrokerPositionsResponse>("/brokers/positions", positionsFetcher, {
-    refreshInterval: 10_000,
+  } = useSWR<BrokerPositionsResponse>(POSITIONS_KEY, positionsFetcher, {
+    refreshInterval: POLL_INTERVAL.NORMAL,
     shouldRetryOnError: false,
   });
 
   const { mutate: mutateStatus } = useSWR<BrokerStatusResponse>(
     "/brokers/status",
     statusFetcher,
-    { refreshInterval: 5_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FAST, shouldRetryOnError: false }
   );
 
   const handleRefresh = () => {

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Activity, TrendingUp, TrendingDown, Circle, AlertCircle } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
@@ -221,7 +223,7 @@ function MarketHealthCard({ market, mod, capital }: {
 export default function PortfolioPage() {
   const { data: summary, mutate: mutateSummary } = useSWR<PortfolioSummary>("/portfolio/summary", fetcher, { refreshInterval: REFRESH_MS });
   const { data: health, mutate: mutateHealth } = useSWR<PortfolioHealth>("/portfolio/health", fetcher, { refreshInterval: REFRESH_MS });
-  const { data: capital, error: capitalError, mutate: mutateCapital } = useSWR<CapitalAllocation>("/portfolio/capital", fetcher, { refreshInterval: 30_000 });
+  const { data: capital, error: capitalError, mutate: mutateCapital } = useSWR<CapitalAllocation>("/portfolio/capital", fetcher, { refreshInterval: POLL_INTERVAL.SLOW });
 
   useWebSocket(undefined, (event) => {
     if (!shouldRevalidatePortfolio(event)) return;

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useState } from "react";
 import useSWR from "swr";
 import { Search, Play, RefreshCw, CheckCircle, XCircle, Clock, Filter } from "lucide-react";
@@ -96,7 +98,7 @@ export function StrategyDiscoveryBrowser() {
   const { data, error, mutate, isValidating } = useSWR<StrategiesResponse>(
     "/discovery/strategies",
     fetcher,
-    { refreshInterval: 30_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.SLOW, shouldRetryOnError: false }
   );
 
   const loading = !data && !error;

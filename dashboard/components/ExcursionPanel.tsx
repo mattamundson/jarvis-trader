@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchExcursion, type ExcursionResponse, type ExcursionTrade } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,7 +52,7 @@ export function ExcursionPanel({ tradeId, symbol }: { tradeId: string; symbol: s
   const { data, error, isLoading } = useSWR<ExcursionResponse>(
     symbol ? `excursion-${symbol}` : null,
     () => fetchExcursion({ symbol, limit: 500 }),
-    { refreshInterval: 60000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false }
   );
 
   const row: ExcursionTrade | undefined = data?.trades?.find((t) => t.trade_id === tradeId);

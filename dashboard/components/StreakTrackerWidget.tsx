@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import type { StreaksResponse, StreakRecord } from "@/lib/api";
@@ -62,7 +64,7 @@ export function StreakTrackerWidget() {
   const { data, error, isLoading } = useSWR(
     "/portfolio/paper/streaks",
     fetcher,
-    { refreshInterval: 60000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   return (

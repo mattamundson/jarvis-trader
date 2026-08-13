@@ -1,5 +1,7 @@
 "use client";
 
+import { APPROVALS_KEY, POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useCallback, useState } from "react";
 import useSWR from "swr";
 import {
@@ -151,9 +153,9 @@ function ExpiryTimer({ createdAt }: { createdAt: string }) {
 export default function ApprovalPanel() {
   // SWR for pending approvals (5s refresh)
   const { data, error, isLoading, mutate } = useSWR<PendingApprovalsResponse>(
-    "/pipeline/pending-approvals",
+    APPROVALS_KEY,
     fetchPendingApprovals,
-    { refreshInterval: 5000 }
+    { refreshInterval: POLL_INTERVAL.FAST }
   );
 
   // Track loading state per approval (approval_id -> boolean)

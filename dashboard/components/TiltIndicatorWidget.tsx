@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -91,7 +93,7 @@ export function TiltIndicatorWidget() {
   const { data, error, isLoading } = useSWR<TiltStatus>(
     "/safety/tilt",
     fetcher,
-    { refreshInterval: 10_000, revalidateOnFocus: true }
+    { refreshInterval: POLL_INTERVAL.NORMAL, revalidateOnFocus: true }
   );
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
