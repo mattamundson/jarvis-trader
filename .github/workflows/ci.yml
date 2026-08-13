@@ -115,18 +115,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # engine/requirements-core.txt pulls torch + gymnasium + stable-baselines3 (RL
-      # test deps). Combined with the ~3.5GB pip cache restore below, that has run
-      # ubuntu-latest's advertised free space down to 0 mid-install multiple times
-      # (2026-08-12: 6 flaked installs across this job and its siblings in one day,
-      # every one clearing on a bare rerun with no code change -- runner disk
-      # pressure, not a real failure). The Android SDK and .NET runtime this repo
-      # never touches account for ~10GB+ of the image; freeing them before install
-      # is the standard fix for this GitHub-hosted-runner symptom.
+      # See .github/actions/free-disk-space/action.yml for why this runs here
+      # (engine/requirements-core.txt's torch/gymnasium/stable-baselines3 install
+      # + pip's ~3.5GB cache restore ran this runner out of disk repeatedly).
       - name: Free disk space (unused Android SDK + .NET toolchains)
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
-          df -h /
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -170,11 +163,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # See the matching step in engine-typecheck above for why this is here.
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
-          df -h /
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -240,11 +231,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # See the matching step in engine-typecheck above for why this is here.
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
-          df -h /
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -284,11 +273,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # See the matching step in engine-typecheck above for why this is here.
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
       - name: Free disk space (unused Android SDK + .NET toolchains)
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
-          df -h /
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
