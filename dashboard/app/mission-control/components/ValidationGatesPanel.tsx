@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { LedgerEntry, LedgerResponse } from "@/lib/api";
+import { DEFAULT_BRIEFING_SYMBOLS } from "@/lib/approvedSymbols";
 import { fetcher, LoadingRows, UnreachableNote } from "./shared";
 
 // GET /validate/proactive-suite?symbol=X —
@@ -25,7 +26,11 @@ interface ProactiveReportLive {
   next_milestone: string;
 }
 
-const SYMBOLS = ["MCL", "MNQ"] as const;
+// Was hardcoded to ["MCL", "MNQ"] -- the pre-2026-05-24 flagship pair, now
+// DO_NOT_TRADE_SYMBOLS (halted). This panel never showed the actually-approved
+// pair. DEFAULT_BRIEFING_SYMBOLS is the shared source of truth so it tracks
+// the active pair automatically if it changes again.
+const SYMBOLS = DEFAULT_BRIEFING_SYMBOLS;
 
 function overallBadgeVariant(
   overall: ProactiveReportLive["overall"] | undefined

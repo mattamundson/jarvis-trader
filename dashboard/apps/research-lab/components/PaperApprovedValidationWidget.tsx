@@ -93,6 +93,14 @@ export function PaperApprovedValidationWidget() {
     { refreshInterval: 60_000, revalidateOnFocus: true }
   );
 
+  // Heading derives from whatever the live endpoint actually returns rather
+  // than a hardcoded pair — it previously said "MCL & MNQ" (the pre-2026-05-24
+  // flagship pair, now DO_NOT_TRADE_SYMBOLS) while the endpoint has iterated
+  // APPROVED_PAPER_SYMBOLS (MES/MGC) since the instrument switch.
+  const symbolsLabel = data?.instruments?.length
+    ? data.instruments.map((r) => r.symbol).join(" & ")
+    : "approved instruments";
+
   return (
     <section
       className="rounded-xl border p-4 space-y-3"
@@ -101,12 +109,12 @@ export function PaperApprovedValidationWidget() {
       <div className="flex items-center gap-2">
         <ClipboardCheck className="h-4 w-4" style={{ color: "#60a5fa" }} />
         <h2 className="text-sm font-semibold tracking-tight" style={{ color: "#e5e5e5" }}>
-          Paper validation — MCL &amp; MNQ
+          Paper validation — {symbolsLabel}
         </h2>
         {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "#666" }} />}
       </div>
       <p className="text-[10px] leading-relaxed" style={{ color: "#666" }}>
-        Tier-1 approved futures vs project gates (PF ≥ 2, Sharpe ≥ 1.5, WR ≥ 55%, trades ≥ 60,
+        Currently-approved futures vs project gates (PF ≥ 2, Sharpe ≥ 1.5, WR ≥ 55%, trades ≥ 60,
         distinct days ≥ 30, max DD ≤ 15%). Source: engine{" "}
         <code className="text-[9px]">/paper/validation/approved-paper-gates</code>.
       </p>
