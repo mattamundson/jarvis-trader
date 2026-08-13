@@ -716,7 +716,14 @@ class PortfolioTracker:
                 for row in rows:
                     t = PaperTrade.__new__(PaperTrade)
                     t.trade_id = row.get("trade_id", "")
-                    t.pnl = row.get("pnl") or row.get("realized_pnl")
+                    # NOTE: `row.get("pnl") or row.get("realized_pnl")` previously
+                    # treated a genuine $0.00 breakeven pnl as falsy and fell
+                    # through to "realized_pnl" -- a key paper_trades rows don't
+                    # have -- yielding None, which silently dropped the trade
+                    # from every aggregate below (`if t.pnl is not None`). Use an
+                    # explicit None-check so 0.0 is preserved.
+                    _row_pnl = row.get("pnl")
+                    t.pnl = _row_pnl if _row_pnl is not None else row.get("realized_pnl")
                     t.exit_time = row.get("exit_time")
                     closed.append(t)
             except Exception as exc:
@@ -758,8 +765,17 @@ class PortfolioTracker:
             and str(t.exit_time)[:10] == _today
         )
 
+        # pnl == 0 is a true breakeven -- neither a win nor a loss. This matches
+        # the project-wide convention (engine/paper/validation_tracker.py's
+        # _build_instrument_metrics, engine/analytics/post_trade.py, and
+        # scripts/repair_daily_pnl.py's build_rows()); folding a $0.00 trade
+        # into `losses` here previously made this stat disagree with
+        # repair_daily_pnl.py's classification of the same ledger row (T1-14).
+        # NOTE: this line regressed back to `p <= 0` in commit 51715bd (a
+        # multi-PR stop-loss merge reconciliation unrelated to breakeven
+        # logic) after being fixed in 621d45c; restored here (2026-07-17).
         wins = [p for p in pnls if p > 0]
-        losses = [p for p in pnls if p <= 0]
+        losses = [p for p in pnls if p < 0]
 
         gross_profit = sum(wins) if wins else 0.0
         gross_loss = abs(sum(losses)) if losses else 0.0
