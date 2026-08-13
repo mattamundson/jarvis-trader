@@ -352,13 +352,17 @@ def test_health_check_live_trading_false_by_default(client):
     ), "live_trading_enabled should default to False for safety"
 
 
-def test_health_check_require_human_approval_true_by_default(client):
-    """require_human_approval must default to True (safety posture)."""
+def test_health_check_require_human_approval_reflects_standing_decision(client):
+    """require_human_approval must be False -- Amo's 2026-08-11 explicit
+    standing decision for autonomous paper-order approval (confirmed
+    permanent, not a test/config leftover; see engine/.claude/rules/safety.md
+    and jarvis-trader/CLAUDE.md). LIVE_TRADING_ENABLED stays False regardless
+    -- this only affects paper-mode approval gating."""
     data = client.get("/config/health-check").json()
     assert "require_human_approval" in data, "'require_human_approval' missing"
     assert (
-        data["require_human_approval"] is True
-    ), "require_human_approval should default to True for safety"
+        data["require_human_approval"] is False
+    ), "require_human_approval should be False per the 2026-08-11 standing decision"
 
 
 def test_health_check_paper_trading_field_present(client):

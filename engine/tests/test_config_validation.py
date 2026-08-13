@@ -52,10 +52,20 @@ class TestSafetyDefaults:
 
     @patch.dict(os.environ, {"API_KEY": "test-key"})
     def test_human_approval_default_true(self):
-        """REQUIRE_HUMAN_APPROVAL defaults to True."""
+        """REQUIRE_HUMAN_APPROVAL's code-level Field default is True (safe
+        fallback for a config with no .env override).
+
+        config.py's own load_dotenv(override=True) at import time already
+        wrote engine/.env's REQUIRE_HUMAN_APPROVAL=False (Amo's 2026-08-11
+        standing decision for THIS deployment) into os.environ, so a plain
+        TradingConfig() here would reflect that override, not the code
+        default this test claims to check. Pop it and skip re-reading .env
+        to isolate the actual Field default.
+        """
         from config import TradingConfig
 
-        config = TradingConfig()
+        os.environ.pop("REQUIRE_HUMAN_APPROVAL", None)
+        config = TradingConfig(_env_file=None)
         assert config.REQUIRE_HUMAN_APPROVAL is True
 
     @patch.dict(os.environ, {"API_KEY": "test-key"})
