@@ -14,13 +14,15 @@ Test plan
 5.  test_cancel_all_entries_cancels_pending — pending entries are cancelled
 6.  test_cancel_all_entries_skips_filled   — filled entries are skipped
 7.  test_cancel_all_entries_no_gateway     — None gateway is a no-op
-8.  test_cancel_all_entries_no_cancel_order_method — gateway without method
-9.  test_cancel_all_entries_partial_failure — one fails, rest still cancel
-10. test_cancel_all_cancels_every_leg      — all 3 legs cancelled
-11. test_cancel_all_no_tp                  — partial bracket (no TP) handled
-12. test_cancel_all_no_gateway             — None gateway is a no-op
-13. test_get_registry_returns_singleton    — module singleton identity
-14. test_submit_bracket_registers_in_registry — submit_bracket wires registry
+8.  test_cancel_all_entries_no_cancel_order_method — gateway without method surfaces as errors
+9.  test_cancel_all_entries_no_cancel_order_method_empty_registry — same, nothing pending
+10. test_cancel_all_entries_partial_failure — one fails, rest still cancel
+11. test_cancel_all_cancels_every_leg      — all 3 legs cancelled
+12. test_cancel_all_no_tp                  — partial bracket (no TP) handled
+13. test_cancel_all_no_gateway             — None gateway is a no-op
+14. test_cancel_all_no_cancel_order_method — gateway without method surfaces as errors
+15. test_get_registry_returns_singleton    — module singleton identity
+16. test_submit_bracket_registers_in_registry — submit_bracket wires registry
 """
 
 from __future__ import annotations
@@ -140,6 +142,10 @@ async def test_cancel_all_entries_no_gateway():
 
 @pytest.mark.asyncio
 async def test_cancel_all_entries_no_cancel_order_method():
+    """A gateway missing cancel_order must surface as errors, not a silent
+    empty result -- this is what the kill-switch path checks to know pending
+    entries are still live and unprotected (2026-08-11 fail-open-safety-checks
+    audit finding #4)."""
     reg = _fresh_registry()
     reg.register("MES", "1001", "1002", "1003")
 
@@ -148,7 +154,23 @@ async def test_cancel_all_entries_no_cancel_order_method():
 
     result = await reg.cancel_all_entries(_MinimalGateway())
     assert result["cancelled"] == []
-    assert result["errors"] == []
+    assert len(result["errors"]) == 1
+    assert result["errors"][0]["entry_id"] == "1001"
+    assert result["errors"][0]["symbol"] == "MES"
+    assert "cancel_order" in result["errors"][0]["error"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_entries_no_cancel_order_method_empty_registry():
+    """No pending entries at all -- still a clean empty result, not an error
+    per record that doesn't exist."""
+    reg = _fresh_registry()
+
+    class _MinimalGateway:
+        pass
+
+    result = await reg.cancel_all_entries(_MinimalGateway())
+    assert result == {"cancelled": [], "errors": [], "skipped_filled": 0}
 
 
 @pytest.mark.asyncio
@@ -222,6 +244,24 @@ async def test_cancel_all_no_gateway():
     result = await reg.cancel_all(None)
     assert result["cancelled"] == []
     assert result["errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_no_cancel_order_method():
+    """Emergency-flatten path: a gateway missing cancel_order must surface
+    every leg as an error, not a silent empty result (2026-08-11
+    fail-open-safety-checks audit finding #4)."""
+    reg = _fresh_registry()
+    reg.register("MES", "1001", "1002", "1003")  # entry + stp + tp = 3 legs
+
+    class _MinimalGateway:
+        pass
+
+    result = await reg.cancel_all(_MinimalGateway())
+    assert result["cancelled"] == []
+    assert len(result["errors"]) == 3
+    legs = {e["leg"] for e in result["errors"]}
+    assert legs == {"entry", "stp", "tp"}
 
 
 # ── singleton ─────────────────────────────────────────────────────────────────
