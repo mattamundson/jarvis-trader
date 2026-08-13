@@ -21,7 +21,7 @@ if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
 
 # ── Instrument the DSR function BEFORE importing the runner ─────────────────
-import backtest.deflated_sharpe as ds_module
+import backtest.deflated_sharpe as ds_module  # noqa: E402
 
 _original = ds_module.deflated_sharpe_from_returns
 
@@ -70,7 +70,6 @@ ds_module.deflated_sharpe_from_returns = _instrumented
 
 # ── Import the runner and its gate internals AFTER the patch ────────────────
 import run_mes_trend_rv_filter_rank2 as runner  # noqa: E402
-import backtest._gate_v2_trade_metrics as trade_metrics  # noqa: E402
 
 
 def main():
