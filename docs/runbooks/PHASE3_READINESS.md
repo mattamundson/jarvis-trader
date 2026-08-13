@@ -83,11 +83,11 @@ All validated instruments must meet minimum performance thresholds over a contin
 Hardcoded kill switches and limits must be verified operational.
 
 **Tests Required**:
-- [ ] Daily P&L halt at -2% triggers correctly
-- [ ] Drawdown halt at -10% from peak triggers correctly
+- [ ] Daily P&L halt at -6% triggers correctly
+- [ ] Drawdown halt at -20% from peak triggers correctly
 - [ ] Kill switch activation/deactivation works (requires human auth)
 - [ ] Order rate limiting (10/min) enforced
-- [ ] Position size caps enforced (max 2 micro contracts, max 5% capital)
+- [ ] Position size caps enforced (max 2 micro contracts, max 10% capital)
 
 **Check**: `GET /safety/status` returns all circuit breakers green
 
@@ -128,8 +128,8 @@ Max position size calculated via ATR-based framework respects hardcoded caps.
 **Hardcoded Limits** (non-negotiable):
 - Max contracts per instrument: 2 (micro)
 - Max overnight position: 1 contract
-- Max single order value: $5,000
-- Max position size: 5% of portfolio (=$500 on $10k)
+- Max single order value: $100,000 (reconciled to `.env` live truth 2026-06-25)
+- Max position size: 10% of portfolio (=$1,000 on $10k)
 - Max margin utilization: 40%
 
 **Check**: `GET /safety/position-size?symbol=MCL&atr=10&account_value=10000`
@@ -217,7 +217,7 @@ curl http://localhost:8010/system/phase3-readiness \
 ## Rollback
 
 If critical failure:
-1. Kill switch activates automatically at -2% daily or -10% drawdown
+1. Kill switch activates automatically at -6% daily or -20% drawdown
 2. Manual fallback: POST /safety/kill-switch/activate
 3. Code rollback: Set `LIVE_TRADING_ENABLED = False` and restart
 

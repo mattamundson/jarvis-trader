@@ -428,10 +428,10 @@ The safety layer is **hardcoded in Python** and **cannot be overridden by LLM re
 1. **Kill Switch** — Manual or automatic activation stops all trading immediately
 2. **Live Trading Gate** — `LIVE_TRADING_ENABLED=False` blocks all real orders
 3. **Human Approval** — All live orders require Matt's explicit approval
-4. **Daily Loss Limit** — Halt at `-2%` cumulative daily loss
-5. **Max Drawdown** — Emergency stop at `-10%` from equity peak
-6. **Position Size Cap** — Max `5%` of portfolio per position
-7. **Single Order Cap** — No order > `$5,000` value
+4. **Daily Loss Limit** — Halt at `-6%` cumulative daily loss (reconciled to `.env` live truth 2026-06-25)
+5. **Max Drawdown** — Emergency stop at `-20%` from equity peak (reconciled to `.env` live truth 2026-06-25)
+6. **Position Size Cap** — Max `10%` of portfolio per position (reconciled to `.env` live truth 2026-06-25)
+7. **Single Order Cap** — No order > `$100,000` value (reconciled to `.env` live truth 2026-06-25)
 8. **Order Rate Throttle** — Max `10` orders per minute
 9. **Margin Utilization** — Never exceed `40%` available margin
 10. **Correlated Exposure** — Max `20%` in correlated positions
@@ -565,9 +565,9 @@ nano .env
 | `PAPER_TRADING` | bool | `True` | Simulate orders if enabled |
 | `IBKR_HOST` | str | `127.0.0.1` | IB Gateway address |
 | `IBKR_PORT` | int | `4002` | IB Gateway port (4002=paper) |
-| `MAX_DAILY_LOSS_PCT` | float | `0.02` | Daily loss limit (-2%) |
-| `MAX_DRAWDOWN_PCT` | float | `0.10` | Max drawdown (-10%) |
-| `MAX_POSITION_SIZE_PCT` | float | `0.05` | Position cap (5%) |
+| `MAX_DAILY_LOSS_PCT` | float | `0.06` | Daily loss limit (-6%, reconciled to `.env` live truth 2026-06-25) |
+| `MAX_DRAWDOWN_PCT` | float | `0.20` | Max drawdown (-20%, reconciled to `.env` live truth 2026-06-25) |
+| `MAX_POSITION_SIZE_PCT` | float | `0.10` | Position cap (10%, reconciled to `.env` live truth 2026-06-25) |
 | `LOG_LEVEL` | str | `INFO` | Logging verbosity |
 
 See **[.env.example](.env.example)** for complete list with descriptions.

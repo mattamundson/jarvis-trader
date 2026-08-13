@@ -49,7 +49,7 @@ See `docs/runbooks/PHASE3_READINESS_CRITERIA.md` for full detail.
 
 ## Operational checklist
 
-- Kill switch and drawdown limits unchanged (-2% daily / -10% drawdown per project policy).
+- Kill switch and drawdown limits unchanged (-6% daily / -20% drawdown per project policy, reconciled to `.env` live truth 2026-06-25).
 - Human approval UI / pending approvals workflow exercised on staging.
 - Rollback: revert config flags, restart engine (`restart_engine.ps1`), confirm `GET /safety/status`.
 
