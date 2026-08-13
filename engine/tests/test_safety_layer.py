@@ -323,6 +323,110 @@ class TestPaperConfigEnabled:
         gw.place_paper_order.assert_not_called()
 
 
+class TestGateV2VerdictCheck:
+    """2026-08-13 Phase 0b finding: MGC's gate v2 verdict regressed to FAIL
+    on 2026-08-11 (data/gate_v2_verdicts/MGC_trend_rank4.json), but
+    paper_config.enabled stayed True from its 2026-08-04 reauthorization
+    (PR #598) -- nothing resyncs that static flag when a verdict later
+    regresses. The only function that reads the *live* verdict is
+    gate_v2_policy.is_strategy_authorized(), and it's only consulted by the
+    manual-approval path (approval/service.py) -- the autonomous-scheduler's
+    own candidate queue (routers/approval_queue_router.py) never calls it,
+    the same class of gap PRB-22 closed for paper_config.enabled. A real
+    MGC order filled 2026-08-12 against a currently-FAIL strategy as a
+    result. This asserts the fix lives at check_order()'s own choke point,
+    independent of which approval router a candidate came through -- same
+    shape as TestPaperConfigEnabled above."""
+
+    def test_symbol_with_no_pass_verdict_blocks_regardless_of_approval_path(
+        self, mock_safety_layer
+    ):
+        """MGC currently has no non-stale PASS verdict on disk (real FAIL
+        verdict, 2026-08-11) -- rejected by _check_gate_v2_verdict() even
+        though paper_config.enabled=True and MGC is not in
+        DO_NOT_TRADE_SYMBOLS, proving this check is a real, independent
+        gate rather than a duplicate of the other two."""
+        safety = mock_safety_layer
+        order = OrderRequest(
+            symbol="MGC", quantity=1, order_type="market", estimated_value=1000.0
+        )
+
+        result = safety._check_gate_v2_verdict(order)
+
+        assert result.approved is False
+        assert "MGC" in result.rejection_reason
+        assert "gate v2" in result.rejection_reason
+
+    def test_symbol_with_fresh_pass_verdict_clears_this_check(self, mock_safety_layer):
+        """Regression guard against over-blocking: a symbol with a fresh
+        non-stale PASS verdict must clear this specific check (other checks
+        may still gate it -- this only asserts THIS gate doesn't false-block)."""
+        safety = mock_safety_layer
+        order = OrderRequest(
+            symbol="MGC", quantity=1, order_type="market", estimated_value=1000.0
+        )
+
+        with patch("backtest.gate_v2_policy.is_ungate_eligible", return_value=True):
+            result = safety._check_gate_v2_verdict(order)
+
+        assert result.approved is True
+
+    def test_mes_exempt_regardless_of_verdict(self, mock_safety_layer):
+        """MES carve-out (Amo's 2026-06-26 standing directive) must hold
+        here exactly as it does in gate_v2_policy.is_strategy_authorized() --
+        MES must clear this check even with no PASS verdict on disk at all."""
+        safety = mock_safety_layer
+        order = OrderRequest(
+            symbol="MES", quantity=1, order_type="market", estimated_value=1000.0
+        )
+
+        with patch("backtest.gate_v2_policy.is_ungate_eligible", return_value=False):
+            result = safety._check_gate_v2_verdict(order)
+
+        assert result.approved is True
+
+    def test_symbol_with_no_paper_config_entry_unaffected(self, mock_safety_layer):
+        """Regression guard the other direction: a symbol with no
+        PAPER_CONFIGS entry at all (equities/options) must not be blocked --
+        gate v2 verdicts only exist for the validated futures universe."""
+        safety = mock_safety_layer
+        order = OrderRequest(
+            symbol="SPY", quantity=1, order_type="market", is_futures=False, estimated_value=450.0
+        )
+
+        with patch("backtest.gate_v2_policy.is_ungate_eligible", return_value=False):
+            result = safety._check_gate_v2_verdict(order)
+
+        assert result.approved is True
+
+    @pytest.mark.asyncio
+    async def test_submit_paper_order_rejects_verdict_regressed_symbol(self, mock_settings):
+        """End-to-end through submit_paper_order() -- the exact real path
+        the autonomous scheduler's approve_candidate() calls -- proves a
+        symbol whose verdict regressed after reauthorization never reaches
+        the (mock) broker via that route. This is the exact real-world path
+        the 2026-08-12 MGC trade took."""
+        mock_settings.LIVE_TRADING_ENABLED = True
+        mock_settings.REQUIRE_HUMAN_APPROVAL = False
+        safety = SafetyLayer(mock_settings)
+        gw = AsyncMock()
+        gw.is_connected = Mock(return_value=True)
+        safety._ib_gateway = gw
+
+        result = await safety.submit_paper_order(
+            symbol="MGC",
+            action="BUY",
+            quantity=1,
+            price=2300.0,
+            order_type="MKT",
+        )
+
+        assert result["approved"] is False
+        assert "gate v2" in result["reason"]
+        assert result["routed_to_ib"] is False
+        gw.place_paper_order.assert_not_called()
+
+
 class TestLiveTrading:
     """Live trading gate."""
 
@@ -2967,6 +3071,13 @@ class TestTrade287RegressionRiskGate:
         duration of this test too, for the same reason: this test isolates
         the trade-loss gate specifically, not MGC's (separate, real) halted
         status.
+
+        MGC's on-disk gate v2 verdict also regressed to FAIL 2026-08-11
+        (unrelated to trade #287 or PRB-22), so _check_gate_v2_verdict
+        (2026-08-13, closing the same-shaped gap PRB-22 closed for
+        paper_config.enabled, this time for the live verdict) would now mask
+        TRADE_LOSS_LIMIT the same way as the other two. Patch it out too, for
+        the same "isolate the one gate under test" reason.
         """
         mock_settings.LIVE_TRADING_ENABLED = True
         mock_settings.REQUIRE_HUMAN_APPROVAL = False
@@ -2986,6 +3097,7 @@ class TestTrade287RegressionRiskGate:
         with (
             patch.dict(PAPER_CONFIGS["MGC"], {"enabled": True}),
             patch("backtest.signals.DO_NOT_TRADE_SYMBOLS", frozenset({"MCL", "MNQ", "M2K"})),
+            patch("backtest.gate_v2_policy.is_ungate_eligible", return_value=True),
         ):
             result = await safety.submit_paper_bracket_order(
                 "MGC", "BUY", 1, self.MGC_ENTRY, stop_loss=self.MGC_STOP, take_profit=None

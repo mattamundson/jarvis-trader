@@ -136,6 +136,10 @@ def test_check_order_blocks_unpromoted_strategy_when_enforced(mock_settings, mon
     # reaching the promotion gate this test exists to isolate — stub it out
     # the same way the two checks above it already are.
     monkeypatch.setattr(sl, "_check_paper_config_enabled", lambda order: RiskCheckResult(approved=True))
+    # 2026-08-11: MGC's on-disk gate v2 verdict regressed to FAIL and would be
+    # rejected by _check_gate_v2_verdict (2026-08-13) right after the above --
+    # stub it out for the same isolation reason.
+    monkeypatch.setattr(sl, "_check_gate_v2_verdict", lambda order: RiskCheckResult(approved=True))
     monkeypatch.setattr(sl, "_check_gating_conditions", lambda: RiskCheckResult(approved=True))
     order = OrderRequest(
         symbol="MGC",

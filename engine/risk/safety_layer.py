@@ -1147,6 +1147,55 @@ class SafetyLayer:
             )
         return RiskCheckResult(approved=True)
 
+    def _check_gate_v2_verdict(self, order: OrderRequest) -> RiskCheckResult:
+        """Reject any order for a PAPER_CONFIGS symbol with no non-stale gate v2
+        PASS verdict on disk.
+
+        backtest.gate_v2_policy.is_strategy_authorized() already performs this
+        check, but it is only consulted by approval/service.py's
+        ensure_approval_allowed() (the manual / messaging-bot approval path).
+        The autonomous-scheduler's own candidate queue
+        (routers/approval_queue_router.py's POST /{candidate_id}/approve,
+        fed by scheduler/pipeline_autonomous.py) goes straight to
+        submit_paper_order() and never calls it -- the same class of gap
+        PRB-22 closed for paper_config.enabled (2026-07-29), recurring here
+        for the live verdict. Confirmed 2026-08-13: MGC's paper_config.enabled
+        stayed True after its 08-04 reauthorization while its gate v2 verdict
+        regressed back to FAIL on 08-11 -- neither the hard blocklist nor the
+        static enabled flag can see a same-symbol verdict regression, only a
+        live read of the verdict file can, so a real order filled on 08-12
+        against a currently-FAIL strategy. check_order() is the one choke
+        point every order-submission call site shares, so (like PRB-22) the
+        gate belongs here.
+
+        MES is exempt, matching is_strategy_authorized()'s carve-out: Amo's
+        standing 2026-06-26 directive keeps it active regardless of gate v2
+        outcome.
+
+        Symbols with no PAPER_CONFIGS entry (equities, options, and anything
+        outside the futures set) are unaffected -- gate v2 verdicts only
+        exist for the validated futures universe.
+        """
+        from backtest.gate_v2_policy import (  # noqa: PLC0415 — lazy, cycle-free
+            MAX_VERDICT_AGE_DAYS,
+            is_ungate_eligible,
+        )
+        from backtest.paper_config import PAPER_CONFIGS  # noqa: PLC0415
+
+        symbol = order.symbol.upper()
+        if symbol == "MES" or PAPER_CONFIGS.get(symbol) is None:
+            return RiskCheckResult(approved=True)
+        if not is_ungate_eligible(symbol):
+            return RiskCheckResult(
+                approved=False,
+                rejection_reason=(
+                    f"{symbol} has no valid non-stale gate v2 PASS verdict "
+                    f"(verdicts expire after {MAX_VERDICT_AGE_DAYS} days - "
+                    "see data/gate_v2_verdicts/, re-run gate_v2_orchestrator)"
+                ),
+            )
+        return RiskCheckResult(approved=True)
+
     def _check_gating_conditions(self) -> RiskCheckResult:
         """Check live trading enabled and human approval conditions."""
         # Defensive read (matches the getattr pattern at line ~1705 and the
@@ -1482,6 +1531,7 @@ class SafetyLayer:
             lambda: self._check_kill_switch(),
             lambda: self._check_do_not_trade_symbols(order),
             lambda: self._check_paper_config_enabled(order),
+            lambda: self._check_gate_v2_verdict(order),
             lambda: self._check_gating_conditions(),
             lambda: self._check_promotion_gate(order),
             lambda: self._check_daily_loss_limit(portfolio_equity),
