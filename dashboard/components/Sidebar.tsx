@@ -5,12 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
-  BarChart2,
+  ArrowUpRight,
   BookOpen,
   Brain,
   ChevronRight,
   Cpu,
   Crosshair,
+  Database,
   FileText,
   Flame,
   FlaskConical,
@@ -31,9 +32,12 @@ import {
   Rss,
   Settings,
   Shield,
+  ShieldCheck,
   Sliders,
+  Radar,
   Star,
   SunMedium,
+  Target,
   TrendingUp,
   Trophy,
   Wallet,
@@ -48,6 +52,14 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
+  /**
+   * Evidence status, not topic: true = research under investigation that has
+   * NOT passed the validation gate (gate v2 + forward test). Rendered with a
+   * flask marker + muted label so exploratory surfaces never sit visually
+   * equal to validated MES/MGC surfaces. Keep in sync with the pages that
+   * mount <ExploratoryBanner /> (amo-arbitrage honesty-layer pattern).
+   */
+  exploratory?: boolean;
 }
 
 interface NavGroup {
@@ -55,6 +67,19 @@ interface NavGroup {
   items: NavItem[];
 }
 
+// Orphan audit (Phase 2 IA §6 — P2.6). Every real page.tsx route is now either in
+// a nav group below, an intentional redirect stub, a dynamic detail route, or is
+// justified link-only here. Routes deliberately NOT surfaced in nav:
+//   /jarvis          — pending P2.1 fold into flagship + redirect; not surfaced so
+//                      nav doesn't advertise a page about to be dissolved.
+//   /journal-review  — link-only by design: reached from /journal ("Review"),
+//                      /command-center, and /research-log. Folds into /performance +
+//                      /journal Review tab in P2.3; kept out of nav to avoid a 4th
+//                      journal-namespace link.
+//   /parallel-paper  — ENABLE_PARALLEL_PAPER-gated A/B compare; folds into /paper as
+//                      a tab (Phase 2 disposition). Off by default, so not in nav.
+//   /trades/[id]/review — dynamic per-trade detail, reached from Trade History/Journal.
+//   /trades/journal → /journal, /stats → /performance — intentional redirect stubs.
 const NAV_GROUPS: NavGroup[] = [
   {
     title: "Trading",
@@ -73,13 +98,14 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Analysis", href: "/analysis", icon: <Brain className="h-3.5 w-3.5" /> },
       { label: "Intraday Regime", href: "/regime", icon: <Flame className="h-3.5 w-3.5" /> },
+      { label: "Hidden Pivots", href: "/hidden-pivots", icon: <Target className="h-3.5 w-3.5" />, exploratory: true },
       { label: "Backtest", href: "/backtest", icon: <FlaskConical className="h-3.5 w-3.5" /> },
+      { label: "Signal Outcomes", href: "/signal-outcomes", icon: <Crosshair className="h-3.5 w-3.5" /> },
       { label: "ATR-Trail Viz", href: "/atr-trail", icon: <LineChart className="h-3.5 w-3.5" /> },
-      { label: "Hidden Pivots", href: "/hidden-pivots", icon: <Crosshair className="h-3.5 w-3.5" /> },
       { label: "Options Chain", href: "/options", icon: <Hash className="h-3.5 w-3.5" /> },
       { label: "Crypto", href: "/crypto", icon: <Waves className="h-3.5 w-3.5" /> },
-      { label: "Polymarket", href: "/polymarket", icon: <Globe className="h-3.5 w-3.5" /> },
-      { label: "Kairos", href: "/kairos", icon: <Moon className="h-3.5 w-3.5" /> },
+      { label: "Polymarket", href: "/polymarket", icon: <Globe className="h-3.5 w-3.5" />, exploratory: true },
+      { label: "Kairos", href: "/kairos", icon: <Moon className="h-3.5 w-3.5" />, exploratory: true },
     ],
   },
   {
@@ -89,30 +115,43 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Performance", href: "/performance", icon: <TrendingUp className="h-3.5 w-3.5" /> },
       { label: "Journal", href: "/journal", icon: <BookOpen className="h-3.5 w-3.5" /> },
       { label: "Scorecard", href: "/scorecard", icon: <Trophy className="h-3.5 w-3.5" /> },
-      { label: "Stats", href: "/stats", icon: <BarChart2 className="h-3.5 w-3.5" /> },
+    ],
+  },
+  {
+    // Four "Strategy*" routes do four unrelated things; grouped + relabeled so
+    // each purpose reads at a glance (Phase 2 IA §4). Ledger stays here until
+    // P2.3 folds it into /readiness.
+    title: "Strategies",
+    items: [
+      { label: "Strategy C+ (Live)", href: "/strategy-c", icon: <Activity className="h-3.5 w-3.5" /> },
+      { label: "Strategy C+ Console", href: "/strategy-c-command", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
+      { label: "RL Lab", href: "/strategies", icon: <LineChart className="h-3.5 w-3.5" />, exploratory: true },
+      { label: "Strategy Ledger", href: "/strategy-ledger", icon: <FlaskConical className="h-3.5 w-3.5" /> },
+      { label: "Edge Research", href: "/strategy-research", icon: <Lightbulb className="h-3.5 w-3.5" />, exploratory: true },
     ],
   },
   {
     title: "Intelligence",
     items: [
+      { label: "Signals", href: "/signals", icon: <Radar className="h-3.5 w-3.5" /> },
       { label: "Command Center", href: "/command-center", icon: <Cpu className="h-3.5 w-3.5" /> },
-      { label: "Strategy C+ Center", href: "/strategy-c-command", icon: <Activity className="h-3.5 w-3.5" /> },
-      { label: "Strategies", href: "/strategies", icon: <LineChart className="h-3.5 w-3.5" /> },
-      { label: "Strategy Ledger", href: "/strategy-ledger", icon: <FlaskConical className="h-3.5 w-3.5" /> },
-      { label: "Strategy Research", href: "/strategy-research", icon: <Lightbulb className="h-3.5 w-3.5" /> },
       { label: "Learning", href: "/learning", icon: <Rss className="h-3.5 w-3.5" /> },
+      { label: "Research Log", href: "/research-log", icon: <FileText className="h-3.5 w-3.5" /> },
       { label: "Discord", href: "/discord", icon: <MessageSquare className="h-3.5 w-3.5" /> },
+      { label: "Framing Brief", href: "/framing-brief", icon: <SunMedium className="h-3.5 w-3.5" /> },
     ],
   },
   {
     title: "System",
     items: [
+      { label: "Mission Control", href: "/mission-control", icon: <Cpu className="h-3.5 w-3.5" /> },
       { label: "Trust Pane", href: "/trust-pane", icon: <Gauge className="h-3.5 w-3.5" /> },
-      { label: "Master", href: "/master", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { label: "Health", href: "/health", icon: <HeartPulse className="h-3.5 w-3.5" /> },
+      { label: "Data Integrity", href: "/data-integrity", icon: <Database className="h-3.5 w-3.5" /> },
       { label: "Config", href: "/config", icon: <Sliders className="h-3.5 w-3.5" /> },
       { label: "Settings", href: "/settings", icon: <Settings className="h-3.5 w-3.5" /> },
       { label: "Validation", href: "/validation", icon: <Shield className="h-3.5 w-3.5" /> },
+      { label: "Trading Eligibility", href: "/trading-eligibility", icon: <ShieldCheck className="h-3.5 w-3.5" /> },
     ],
   },
 ];
@@ -177,8 +216,20 @@ export function Sidebar() {
                   <span className={active ? "text-accent" : "text-muted-foreground/70"}>
                     {item.icon}
                   </span>
-                  <span className="font-mono tracking-wide">{item.label}</span>
-                  {active && (
+                  <span
+                    className={`font-mono tracking-wide ${
+                      item.exploratory && !active ? "opacity-70" : ""
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                  {item.exploratory && (
+                    <FlaskConical
+                      className="ml-auto h-3 w-3 text-warn/60 shrink-0"
+                      aria-label="Exploratory — not validated"
+                    />
+                  )}
+                  {active && !item.exploratory && (
                     <ChevronRight className="ml-auto h-3 w-3 text-accent/60" />
                   )}
                 </Link>
@@ -189,10 +240,28 @@ export function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-border">
-        <p className="font-mono text-[9px] text-muted-foreground/40 tracking-wider uppercase">
-          v5 · Paper Mode
-        </p>
+      <div className="border-t border-border">
+        {/* Master Jarvis is a separate product on a different backend (:8030), not a
+            trading surface. Walled off from the trading nav groups into a single
+            de-emphasized portal link (Phase 2 IA §5). */}
+        <Link
+          href="/master"
+          onClick={() => setMobileOpen(false)}
+          className={[
+            "flex items-center gap-2 mx-2 mt-2 px-3 py-2 rounded-md text-[10px] transition-colors",
+            isActive("/master")
+              ? "text-accent"
+              : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30",
+          ].join(" ")}
+        >
+          <ArrowUpRight className="h-3 w-3" />
+          <span className="font-mono tracking-wide uppercase">Personal · Master Jarvis</span>
+        </Link>
+        <div className="px-4 py-3">
+          <p className="font-mono text-[9px] text-muted-foreground/40 tracking-wider uppercase">
+            v5 · Paper Mode
+          </p>
+        </div>
       </div>
     </nav>
   );

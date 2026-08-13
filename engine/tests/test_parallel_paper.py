@@ -299,3 +299,118 @@ def test_account_stats_endpoint_returns_shape():
     assert result.n_trades == 0
     assert result.win_rate is None
     assert isinstance(result.equity_curve, list)
+
+
+# ── 8. test_calmar_floored_below_min_dd ───────────────────────────────────────
+
+
+def _seed_account_stats_db(rows: list[tuple[str, float, str]]) -> MagicMock:
+    """Build an in-memory paper_trades DB with the given (pnl, exit_time) rows.
+
+    `rows` entries are (trade_id, pnl, exit_date_iso).
+    """
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            entry_price REAL NOT NULL,
+            exit_price REAL,
+            entry_time TEXT NOT NULL,
+            exit_time TEXT,
+            pnl REAL,
+            status TEXT NOT NULL DEFAULT 'open',
+            strategy_params TEXT,
+            notes TEXT DEFAULT '',
+            account_id TEXT NOT NULL DEFAULT 'A'
+        )
+        """
+    )
+    for trade_id, pnl, exit_time in rows:
+        conn.execute(
+            """
+            INSERT INTO paper_trades
+                (trade_id, symbol, side, quantity, entry_price, exit_price,
+                 entry_time, exit_time, pnl, status, account_id)
+            VALUES (?, 'MES', 'buy', 1.0, 5000.0, 5000.0, ?, ?, ?, 'closed', 'A')
+            """,
+            (trade_id, exit_time, exit_time, pnl),
+        )
+    conn.commit()
+
+    import threading
+
+    mock_db = MagicMock()
+    mock_db._lock = threading.Lock()
+    mock_db._connect = lambda: conn
+    return mock_db
+
+
+def test_calmar_floored_below_min_dd():
+    """
+    Reproduces the 2026-07-02 root-cause bug: a razor-thin drawdown
+    (max_dd magnitude below CALMAR_MIN_DD_FLOOR) combined with a healthy
+    annualized return must NOT explode Calmar into the millions -- it must
+    come back None so the dashboard renders "--" instead of a fabricated
+    ratio like 2,014,774.72.
+    """
+    from datetime import date, timedelta
+
+    d0 = date.today() - timedelta(days=10)
+    rows = [
+        ("t1", 1000.0, (d0).isoformat()),
+        ("t2", -0.01, (d0 + timedelta(days=1)).isoformat()),  # dd = -0.00001 (0.001%)
+        ("t3", 1000.0, (d0 + timedelta(days=2)).isoformat()),
+    ]
+    mock_db = _seed_account_stats_db(rows)
+
+    import importlib
+
+    import routers.portfolio_router as pr
+
+    importlib.reload(pr)
+    pr.db_manager = mock_db
+
+    import asyncio
+
+    result = asyncio.run(pr.get_paper_account_stats(account_id="A", days=30))
+
+    assert result.n_trades == 3
+    assert result.max_dd is not None and abs(result.max_dd) < 0.005
+    assert result.calmar is None, (
+        f"Calmar must be floored to None when abs(max_dd)={result.max_dd} is below "
+        f"CALMAR_MIN_DD_FLOOR, got {result.calmar}"
+    )
+
+
+def test_calmar_computed_above_min_dd():
+    """Non-regression: a real (>= floor) drawdown must still produce a Calmar value."""
+    from datetime import date, timedelta
+
+    d0 = date.today() - timedelta(days=10)
+    rows = [
+        ("t1", 1000.0, (d0).isoformat()),
+        ("t2", -100.0, (d0 + timedelta(days=1)).isoformat()),  # dd = -0.10 (10%)
+        ("t3", 50.0, (d0 + timedelta(days=2)).isoformat()),
+    ]
+    mock_db = _seed_account_stats_db(rows)
+
+    import importlib
+
+    import routers.portfolio_router as pr
+
+    importlib.reload(pr)
+    pr.db_manager = mock_db
+
+    import asyncio
+
+    result = asyncio.run(pr.get_paper_account_stats(account_id="A", days=30))
+
+    assert result.n_trades == 3
+    assert result.max_dd is not None and abs(result.max_dd) >= 0.005
+    assert result.calmar is not None

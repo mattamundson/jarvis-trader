@@ -9,6 +9,15 @@ filters via heuristic scanner, sends survivors through the LLM classifier,
 tiers each result, then writes a fresh `~/.hermes/upgrade/backlog.md` (+ a
 JSONL sidecar). Re-runs preserve apply_status from the prior JSONL unless
 ``--no-merge`` is passed.
+
+Classification is incremental by default: the scanner has no date/already-seen
+filter (it re-scores the channel's entire history every run), so without a
+cache, every run would re-classify candidates it already classified in a
+prior run at full LLM cost. Instead, a bookmark_id with a real (non-error)
+prior result in ``backlog.jsonl`` is reused as-is; only new candidates and
+prior classifier-error placeholders (network/credit failures, not real
+"not applicable" verdicts) get a fresh LLM call. Pass ``--force-reclassify``
+to bypass the cache entirely (e.g. after a prompt change).
 """
 
 from __future__ import annotations
@@ -47,6 +56,8 @@ from .backlog import (
     assign_tier,
     default_backlog_dir,
     hydrate_entry,
+    is_classifier_error,
+    load_prior_entries,
     merge_with_existing,
     write_backlog,
 )
@@ -97,6 +108,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Do NOT preserve apply_status from the existing JSONL (full reset).",
     )
     p.add_argument(
+        "--force-reclassify",
+        action="store_true",
+        help=(
+            "Re-run the LLM classifier on every scanned candidate, even ones "
+            "already classified in a prior run. Default is incremental: only "
+            "new candidates and prior classifier-error placeholders get a "
+            "fresh LLM call. Use this after a prompt change."
+        ),
+    )
+    p.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -125,22 +146,47 @@ def main(argv: list[str] | None = None) -> int:
         print("No candidates. Exiting.")
         return 0
 
-    print(
-        f"Classifying {len(candidates)} candidates via LLM " f"(concurrency={args.concurrency}) ..."
-    )
-    classified = asyncio.run(classify_batch(candidates, concurrency=args.concurrency))
-    applicable_count = sum(1 for c in classified if c.applicable)
-    print(f"  {applicable_count} applicable / {len(classified)} classified")
+    out_dir = Path(args.out_dir) if args.out_dir else default_backlog_dir()
+    jsonl_path = out_dir / "backlog.jsonl"
 
-    # Hydrate each classification into a BacklogEntry and assign tier.
-    entries = []
+    # Incremental scan: a bookmark_id already classified with a real (non-error)
+    # result in the prior run's JSONL is reused as-is instead of costing another
+    # LLM call. Without this, every daily run re-classified the channel's ENTIRE
+    # history from scratch (scanner.py has no date/already-seen filter), which is
+    # what was burning through the Anthropic + Kimi credit budget so fast.
+    prior_entries = {} if args.force_reclassify else load_prior_entries(jsonl_path)
+    cached_entries: list = []
+    to_classify = []
+    for cand in candidates:
+        prior = prior_entries.get(cand.bookmark_id)
+        if prior is not None and not is_classifier_error(prior):
+            cached_entries.append(prior)
+        else:
+            to_classify.append(cand)
+
+    if cached_entries:
+        print(f"  {len(cached_entries)} candidates already classified -- reused from cache")
+
+    print(
+        f"Classifying {len(to_classify)} new/retry candidates via LLM "
+        f"(concurrency={args.concurrency}) ..."
+    )
+    classified = (
+        asyncio.run(classify_batch(to_classify, concurrency=args.concurrency))
+        if to_classify
+        else []
+    )
+    applicable_count = sum(1 for c in classified if c.applicable)
+    print(f"  {applicable_count} applicable / {len(classified)} freshly classified")
+
+    # Hydrate each fresh classification into a BacklogEntry and assign tier;
+    # cached entries already carry both from a prior run.
+    entries = list(cached_entries)
     for cls in classified:
         be = hydrate_entry(cls, args.db, channel_id=args.channel_id)
         be.tier = assign_tier(cls)
         entries.append(be)
 
-    out_dir = Path(args.out_dir) if args.out_dir else default_backlog_dir()
-    jsonl_path = out_dir / "backlog.jsonl"
     if not args.no_merge and jsonl_path.exists():
         entries = merge_with_existing(entries, jsonl_path)
 

@@ -10,10 +10,10 @@ import {
   fetchHonestTrades,
   equityCurve,
   dedupCaveat,
+  DEFAULT_STARTING_CAPITAL,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
 import { OpenPositionsWidget } from "@/components/OpenPositionsWidget";
-import { RiskStatusWidget } from "@/components/RiskStatusWidget";
 import { CircuitBreakerWidget } from "@/components/CircuitBreakerWidget";
 import { RecentSignalsWidget } from "@/components/RecentSignalsWidget";
 import { MarketRegimeWidget } from "@/components/MarketRegimeWidget";
@@ -24,6 +24,7 @@ import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
 import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
 import ValidationCheckpointWidget from "@/components/ValidationCheckpointWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 function fetcher<T = unknown>(url: string): Promise<T> {
   return fetchEngine<T>(url);
@@ -36,8 +37,16 @@ export default function PaperTradingPage() {
   const { data: health, error: healthError, isLoading: healthLoading } = useSWR<EngineHealthPayload>(
     "/health",
     fetcher,
-    { refreshInterval: 30_000, revalidateOnFocus: true }
+    { refreshInterval: 30_000, revalidateOnFocus: true, shouldRetryOnError: false }
   );
+
+  // Same live source that gates MGC's ACTIVE/HALTED badge on /command-center —
+  // drives the suspension banner below instead of a static hardcoded WFE value.
+  const { data: paperStatus, error: paperStatusError } = useSWR<
+    Record<string, { status?: string; wfe?: number; reason?: string }>
+  >("/backtest/paper-status", fetcher, { refreshInterval: 120_000, shouldRetryOnError: false });
+  const mgcStatus = paperStatus?.["MGC_1d"];
+  const mgcHalted = (mgcStatus?.status || "").toUpperCase() !== "ACTIVE";
 
   let engineHealthLabel = "ENGINE …";
   let engineHealthStyle: React.CSSProperties = {
@@ -84,7 +93,7 @@ export default function PaperTradingPage() {
                 JARVIS TRADER
               </h1>
               <p className="text-xs text-muted-foreground">
-                MGC Daily Paper Trading — SUSPENDED
+                MGC Daily Paper Trading{mgcHalted ? " — SUSPENDED" : ""}
               </p>
             </div>
             <nav className="hidden lg:flex items-center gap-4 ml-6">
@@ -120,49 +129,75 @@ export default function PaperTradingPage() {
       </header>
 
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-4 space-y-4">
-        {/* WFE Halt Banner */}
-        <div className="rounded-xl p-4 font-mono"
-          style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
-          <div className="flex items-start gap-3">
-            <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
-              PAPER TRADING SUSPENDED
-            </span>
-            <span className="text-[10px]" style={{ color: "#ff8888" }}>
-              MGC 1d WFE corrected to 0.14 (was 0.27) — below 0.30 threshold. Status: OVERFIT.
-              Paper trading suspended pending MTF filter validation.
-            </span>
+        {/* Halt banner — driven by the live /backtest/paper-status MGC_1d row
+            (the same source that gates the MGC ACTIVE/HALTED badge on
+            /command-center), not a hardcoded WFE value. */}
+        {mgcHalted && (
+          <div className="rounded-xl p-4 font-mono"
+            style={{ backgroundColor: "#ff444410", border: "1px solid #ff444440" }}>
+            <div className="flex items-start gap-3">
+              <span className="text-[11px] font-bold tracking-wider" style={{ color: "#ff4444" }}>
+                PAPER TRADING SUSPENDED
+              </span>
+              <span className="text-[10px]" style={{ color: "#ff8888" }}>
+                {paperStatusError
+                  ? "Could not reach /backtest/paper-status to confirm trading status."
+                  : mgcStatus
+                    ? `MGC 1d — ${mgcStatus.reason || `status="${mgcStatus.status}"`}${
+                        typeof mgcStatus.wfe === "number" ? ` (wfe=${mgcStatus.wfe})` : ""
+                      }.`
+                    : "MGC 1d status unavailable from the engine."}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Open Positions — safety-critical, first widget at top of page */}
-        <OpenPositionsWidget />
-
-        {/* Risk Status — always visible at top of page */}
-        <RiskStatusWidget />
+        <WidgetErrorBoundary name="Open Positions">
+          <OpenPositionsWidget />
+        </WidgetErrorBoundary>
 
         {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
-        <PaperApprovedValidationWidget />
+        <WidgetErrorBoundary name="Paper Approved Validation">
+          <PaperApprovedValidationWidget />
+        </WidgetErrorBoundary>
 
         {/* Overall validation checkpoint (30-day window progress) */}
-        <ValidationCheckpointWidget />
+        <WidgetErrorBoundary name="Validation Checkpoint">
+          <ValidationCheckpointWidget />
+        </WidgetErrorBoundary>
 
-        {/* Circuit breaker / safety status */}
-        <CircuitBreakerWidget />
+        {/* Risk status / circuit breaker — sole panel for /safety/circuit-breakers
+            (was previously duplicated with RiskStatusWidget, which read the same
+            endpoint; RiskStatusWidget mount removed as redundant, T3-22). */}
+        <WidgetErrorBoundary name="Circuit Breaker">
+          <CircuitBreakerWidget />
+        </WidgetErrorBoundary>
 
         {/* Today's session summary */}
-        <TodaySummaryWidget />
+        <WidgetErrorBoundary name="Today Summary">
+          <TodaySummaryWidget />
+        </WidgetErrorBoundary>
 
         {/* ATR-based position sizing */}
-        <PositionSizingWidget />
+        <WidgetErrorBoundary name="Position Sizing">
+          <PositionSizingWidget />
+        </WidgetErrorBoundary>
 
         {/* Current signal state: entry signal, direction, regime, STC, ATR levels */}
-        <SignalQueueWidget />
+        <WidgetErrorBoundary name="Signal Queue">
+          <SignalQueueWidget />
+        </WidgetErrorBoundary>
 
         {/* Recent pipeline signals */}
-        <RecentSignalsWidget />
+        <WidgetErrorBoundary name="Recent Signals">
+          <RecentSignalsWidget />
+        </WidgetErrorBoundary>
 
         {/* Market regime / MTF analysis */}
-        <MarketRegimeWidget />
+        <WidgetErrorBoundary name="Market Regime">
+          <MarketRegimeWidget />
+        </WidgetErrorBoundary>
 
         {/* Top row: Signal + Performance */}
         <div className="grid grid-cols-12 gap-4">
@@ -184,10 +219,14 @@ export default function PaperTradingPage() {
         <TradeLoggerPanel />
 
         {/* Recent AI Decisions */}
-        <RecentDecisionsWidget />
+        <WidgetErrorBoundary name="Recent Decisions">
+          <RecentDecisionsWidget />
+        </WidgetErrorBoundary>
 
         {/* Today's session summary (P&L, trades, win rate, best/worst trade) */}
-        <SessionSummaryWidget />
+        <WidgetErrorBoundary name="Session Summary">
+          <SessionSummaryWidget />
+        </WidgetErrorBoundary>
       </main>
     </div>
   );
@@ -682,10 +721,14 @@ function PerformanceMetricsPanel() {
       ? Math.abs(Math.min(...mgcCurve.map((p) => p.drawdown)))
       : null;
 
-  // Derive peak for percentage expression
+  // Derive peak for percentage expression. Floored at DEFAULT_STARTING_CAPITAL
+  // so a tiny-but-positive peak (e.g. one small early MGC win) can't divide a
+  // later large-dollar loss into an absurd percentage -- denominate against
+  // account starting capital instead, same fix as lib/honestTrades.ts's
+  // maxDrawdownPct().
   const mgcPeak =
     mgcCurve && mgcCurve.length > 0
-      ? Math.max(...mgcCurve.map((p) => p.equity), 0)
+      ? Math.max(...mgcCurve.map((p) => p.equity), 0, DEFAULT_STARTING_CAPITAL)
       : null;
   const mgcMaxDdPct =
     mgcMaxDd != null && mgcPeak != null && mgcPeak > 0

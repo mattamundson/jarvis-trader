@@ -276,22 +276,19 @@ class TestSession4Endpoints:
             assert isinstance(body, dict), "Response must be a JSON object"
             assert len(body) > 0, "Streak response body must not be empty"
 
-    # ── POST /portfolio/import/trades ─────────────────────────────────────
+    # ── POST /portfolio/import/trades — RETIRED (D3-02) ────────────────────
+    # The old raw-SQL writer silently discarded every row (INSERT OR IGNORE
+    # swallowed a NOT NULL violation on idempotency_key) while reporting HTTP
+    # 200 {imported: N}. No live caller was found; the endpoint now always
+    # returns 410 regardless of payload shape.
 
     def test_import_trades_empty(self) -> None:
-        """POST /portfolio/import/trades with empty list — imported=0."""
+        """POST /portfolio/import/trades — retired, must return 410 even for an empty list."""
         r = client.post("/portfolio/import/trades", json={"trades": []}, headers=_AUTH)
-        assert r.status_code in (
-            200,
-            503,
-        ), f"Expected 200 or 503 for empty import, got {r.status_code}. Body: {r.text}"
-        if r.status_code == 200:
-            body = r.json()
-            assert body.get("imported") == 0, f"Expected 0 imports for empty list. Body: {body}"
-            assert "errors" in body, f"Response missing 'errors' field. Body: {body}"
+        assert r.status_code == 410, f"Expected 410 (retired), got {r.status_code}. Body: {r.text}"
 
     def test_import_trades_single(self) -> None:
-        """POST /portfolio/import/trades with one valid trade — imported=1."""
+        """POST /portfolio/import/trades — retired, must return 410 and write nothing."""
         trade = {
             "symbol": "MES",
             "action": "LONG",
@@ -303,22 +300,12 @@ class TestSession4Endpoints:
             "exit_time": "2026-03-01T10:00:00Z",
         }
         r = client.post("/portfolio/import/trades", json={"trades": [trade]}, headers=_AUTH)
-        assert r.status_code in (
-            200,
-            503,
-        ), f"Expected 200 or 503 for single trade import, got {r.status_code}. Body: {r.text}"
-        if r.status_code == 200:
-            body = r.json()
-            assert body.get("imported") == 1, f"Expected 1 import. Body: {body}"
-            assert body.get("skipped") == 0, f"Expected 0 skipped. Body: {body}"
-            assert isinstance(body.get("errors"), list), f"'errors' must be a list. Body: {body}"
+        assert r.status_code == 410, f"Expected 410 (retired), got {r.status_code}. Body: {r.text}"
 
     def test_import_trades_bad_body(self) -> None:
-        """POST /portfolio/import/trades with non-list 'trades' — must return 400."""
+        """POST /portfolio/import/trades — retired, returns 410 regardless of body shape."""
         r = client.post("/portfolio/import/trades", json={"trades": "not-a-list"}, headers=_AUTH)
-        assert (
-            r.status_code == 400
-        ), f"Expected 400 for invalid body, got {r.status_code}. Body: {r.text}"
+        assert r.status_code == 410, f"Expected 410 (retired), got {r.status_code}. Body: {r.text}"
 
 
 # ===========================================================================
@@ -421,14 +408,12 @@ class TestSession4ExtendedEndpoints:
             body = r.json()
             assert "symbols" in body, f"Response missing 'symbols' field. Body: {body}"
 
-    # ── POST /portfolio/import/trades — over-limit ─────────────────────────
+    # ── POST /portfolio/import/trades — over-limit, RETIRED (D3-02) ─────────
 
     def test_import_trades_over_limit(self) -> None:
-        """POST /portfolio/import/trades with >1000 trades — must return 400."""
+        """POST /portfolio/import/trades — retired, returns 410 even for an over-limit payload."""
         r = client.post("/portfolio/import/trades", json={"trades": [{}] * 1001}, headers=_AUTH)
-        assert (
-            r.status_code == 400
-        ), f"Expected 400 for >1000-trade payload, got {r.status_code}. Body: {r.text}"
+        assert r.status_code == 410, f"Expected 410 (retired), got {r.status_code}. Body: {r.text}"
 
     # ── POST /notifications/whatsapp/test ─────────────────────────────────
 
@@ -554,7 +539,7 @@ class TestSession4ContinuationEndpoints:
     # ── GET /validation/readiness-check ───────────────────────────────────
 
     def test_validation_readiness_check(self) -> None:
-        """GET /validation/readiness-check — returns criteria list."""
+        """GET /validation/readiness-check — returns the live ReadinessReport contract."""
         r = client.get("/validation/readiness-check", headers=_AUTH)
         assert r.status_code in (
             200,
@@ -562,7 +547,7 @@ class TestSession4ContinuationEndpoints:
         ), f"Expected 200 or 503, got {r.status_code}. Body: {r.text}"
         if r.status_code == 200:
             body = r.json()
-            assert "criteria" in body, f"Response missing 'criteria'. Body: {body}"
+            assert "checks" in body, f"Response missing 'checks'. Body: {body}"
             assert isinstance(
-                body["criteria"], list
-            ), f"Expected 'criteria' to be a list. Body: {body}"
+                body["checks"], list
+            ), f"Expected 'checks' to be a list. Body: {body}"

@@ -18,6 +18,8 @@ import {
   Layers,
 } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
+import { buildAdditionalMetricsTiles } from "@/lib/strategyCTiles";
+import { Badge } from "@/components/ui/badge";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,6 +90,7 @@ interface Metrics {
     win_rate: number;
     calmar: number;
     final_equity: number;
+    final_multiple_x: number;
     n_weeks: number;
   };
   in_sample?: {
@@ -176,7 +179,18 @@ export default function StrategyCPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+
+  // `lastRefresh` is intentionally client-only state -- same hydration guard
+  // as WeeklyPnLCard's `today` (GT-30) and DailyPnLCalendarWidget (GT-27,
+  // PR #496). Initializing with `new Date()` directly runs the clock read
+  // during both the server render and the client's first hydration pass,
+  // and since real wall-clock time elapses between the two, the rendered
+  // "Refreshed HH:MM:SS" text can diverge -- producing a React #418
+  // hydration mismatch. Starting at `null` and letting loadData()'s finally
+  // block (below) set the real value keeps the server and first client
+  // render in agreement; the render guard near the "Refreshed" text only
+  // shows the timestamp once it's non-null.
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -323,9 +337,11 @@ export default function StrategyCPage() {
                 Signal stale
               </div>
             )}
-            <span className="text-slate-500 text-xs">
-              Refreshed {lastRefresh.toLocaleTimeString()}
-            </span>
+            {lastRefresh && (
+              <span className="text-slate-500 text-xs">
+                Refreshed {lastRefresh.toLocaleTimeString()}
+              </span>
+            )}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -606,31 +622,46 @@ export default function StrategyCPage() {
               {[
                 {
                   label: "CAGR",
+                  live: metrics.full_period?.cagr != null,
                   value: metrics.full_period?.cagr != null ? fmtPct(metrics.full_period.cagr) : "17.09%",
                   target: "17.4%",
                   good: true,
                 },
                 {
                   label: "Sharpe",
+                  live: metrics.full_period?.sharpe != null,
                   value: metrics.full_period?.sharpe != null ? fmtNum(metrics.full_period.sharpe) : "2.12",
                   target: "2.13",
                   good: true,
                 },
                 {
                   label: "Max DD",
+                  live: metrics.full_period?.max_drawdown != null,
                   value: metrics.full_period?.max_drawdown != null ? fmtPct(metrics.full_period.max_drawdown) : "-8.16%",
                   target: "-7.7%",
                   good: false,
                 },
                 {
                   label: "Volatility",
+                  live: metrics.full_period?.volatility != null,
                   value: metrics.full_period?.volatility != null ? fmtPct(metrics.full_period.volatility) : "7.57%",
                   target: "7.7%",
                   good: true,
                 },
               ].map((m) => (
                 <div key={m.label} className="bg-slate-800/50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">{m.label}</p>
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <p className="text-xs text-slate-500">{m.label}</p>
+                    {!m.live && (
+                      <Badge
+                        variant="static"
+                        className="text-[10px] px-1.5 py-0 leading-4 shrink-0"
+                        title="Engine metrics endpoint did not return this field — showing a placeholder value, not live backtest output."
+                      >
+                        Static
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-2xl font-bold text-white">{m.value}</p>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Target: {m.target}
@@ -666,15 +697,21 @@ export default function StrategyCPage() {
             )}
 
             {/* Additional metrics row */}
-            <div className="grid grid-cols-4 gap-3 mt-3">
-              {[
-                { label: "Sortino", value: metrics.full_period?.sortino != null ? fmtNum(metrics.full_period.sortino) : "3.75" },
-                { label: "Calmar", value: metrics.full_period?.calmar != null ? fmtNum(metrics.full_period.calmar) : "2.09" },
-                { label: "Win Rate", value: metrics.full_period?.win_rate != null ? fmtPct(metrics.full_period.win_rate) : "57.6%" },
-                { label: "Final Equity", value: metrics.full_period?.final_equity != null ? `${fmtNum(metrics.full_period.final_equity)}×` : "4.12×" },
-              ].map((m) => (
+            <div className="grid grid-cols-5 gap-3 mt-3">
+              {buildAdditionalMetricsTiles(metrics.full_period).map((m) => (
                 <div key={m.label} className="bg-slate-800/30 rounded-lg p-2.5 text-center">
-                  <p className="text-xs text-slate-500 mb-1">{m.label}</p>
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <p className="text-xs text-slate-500">{m.label}</p>
+                    {!m.live && (
+                      <Badge
+                        variant="static"
+                        className="text-[10px] px-1.5 py-0 leading-4 shrink-0"
+                        title="Engine metrics endpoint did not return this field — showing a placeholder value, not live backtest output."
+                      >
+                        Static
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-lg font-bold text-white">{m.value}</p>
                 </div>
               ))}

@@ -24,7 +24,7 @@ Three vault roots co-exist on this machine. Only one is ingested.
 | Root | Status | Purpose |
 |------|--------|---------|
 | `C:\Users\mattm\master-jarvis\second-brain\` | **Canonical — ingested** | All new writes go here; `Jarvis-VaultGbrainSync` watches this path |
-| `C:\Users\mattm\second-brain\` | Legacy — NOT ingested | Pre-existing inbox/archive content; treat as read-only historical store |
+| `C:\Users\mattm\second-brain\` | **Archived 2026-07-07 — GONE** | Empty 25-file remnant moved to `~/Archive/2026/second-brain-vault-a/` after the 2026-05-29 merge into the canonical root. Any code still pointing here now hits an absent path (see Known Issues). |
 | `C:\Users\mattm\my-vault\` | Separate Obsidian vault — NOT ingested | Distinct purpose; not part of the trading brain pipeline |
 
 **Rule:** all new vault writes from any session must target `master-jarvis/second-brain/raw/`. A naive `Glob ~/second-brain/` hits the legacy root and finds nothing recent — always qualify the full path.
@@ -111,19 +111,9 @@ engine\.venv\Scripts\python scripts\extract_discord_to_vault.py
 
 Key behaviors:
 - Idempotent — uses `message_id` for dedup; re-running on the same data is safe
-- Default output path is `~/second-brain/raw/` (the legacy root) — see Known Issues
+- Default output path is `master-jarvis/second-brain/raw/` (the canonical, ingested root) since the 2026-07-08 fix — no post-run migration needed. Pass `--output-path` to target a session-stamped subdir instead (e.g. `master-jarvis/second-brain/raw/_session-<DATE>-amo`).
 
-**Post-run migration step (required until path-config is fixed):**
-
-After extraction, robocopy the output to the canonical root under a session-stamped subdir:
-
-```powershell
-robocopy "C:\Users\mattm\second-brain\raw" `
-         "C:\Users\mattm\master-jarvis\second-brain\raw\_session-<DATE>-amo" `
-         /E /COPY:DAT /MT:8
-```
-
-Then trigger the sync task manually to ingest the new files.
+Trigger the sync task manually if you need the new files ingested before the next 30-minute cron tick (see Scheduled Ingest below).
 
 ---
 
@@ -219,8 +209,10 @@ partial-success fix ensures exported content before the crash is still merged.
 
 | Issue | Impact | Resolution |
 |-------|--------|------------|
-| `extract_discord_to_vault.py` writes to `~/second-brain/raw/` by default | Output lands in legacy root, not ingested automatically | Add `--output-path` config flag pointing to `master-jarvis/second-brain/raw/_session-<DATE>-amo/`; until then, post-run robocopy is required |
-| `Jarvis-VaultGbrainSync` watches only `master-jarvis/second-brain/` | Content in `~/second-brain/raw/inbox/` is never auto-ingested | Consider extending the task if that dir becomes a working ingest area |
+| ~~`extract_discord_to_vault.py` writes to `~/second-brain/raw/` by default~~ | FIXED 2026-07-07 | `DEFAULT_VAULT_RAW` now targets `master-jarvis/second-brain/raw/` (the canonical ingested root). The `--output-path` flag still overrides for session-dated subdirs (`_session-<DATE>-amo/`). |
+| ~~Bookmark scripts hardcode the archived legacy root~~ | FIXED 2026-07-07 | `enrich_discord_bookmarks.py` (read dir) repointed `second-brain\raw\discord-bookmarks` → `master-jarvis\second-brain\raw\discord-bookmarks` (subpath preserved). `render_bookmarks_to_vault.py` (write default) repointed to `master-jarvis\second-brain\raw\wiki\discord-bookmarks` — note the added `raw\` segment: the old Vault A default (`second-brain\wiki\...`, no `raw\`) was carried over uncorrected in the first pass, which would have written outside the tree `Jarvis-VaultGbrainSync` watches (`raw/` only, §"Vault Root Canonicalization" above); caught by review and fixed before merge. `engine/main.py` already derives its bookmark dir from `vault_root()`/`JARVIS_VAULT_ROOT` — no change needed. |
+| PowerShell scan/cleanup scripts still list the archived root | Low — they scan a now-absent path; harmless no-op/error | `archive-rotate.ps1`, `scan-uncommitted.ps1`, `repo-remote-check.ps1` list `C:\Users\mattm\second-brain` as a scan target; `phase0-cleanup.ps1` tracks an OneNote path under it. Left for a workstation-verified pass — behavior can't be exercised from a Linux CI clone, so drop the entry only after confirming each script's intent locally. |
+| ~~`Jarvis-VaultGbrainSync` watches only `master-jarvis/second-brain/`~~ | MOOT 2026-07-07 | Was: content in `~/second-brain/raw/inbox/` is never auto-ingested. That directory no longer exists — Vault A was archived to `~/Archive/2026/second-brain-vault-a/` and the root removed. If a future working-inbox area is needed outside `master-jarvis/second-brain/`, it must be a deliberate new decision, not a resurrection of this path. |
 | Enrichment marker is location-bound | Moving files post-enrichment leaves cross-links in the old location | Re-enrich at the destination if files are relocated after enrichment |
 | OneNote `New Section 29` files with plaintext OpenAI admin key | 2 files excluded from git, not in gbrain | Rotate key at platform.openai.com, then redact and commit (see OneNote section above) |
 | OneNote `AmoSZN` notebook crashes exporter at ~page 55/1170 | AmoSZN content not exported; only Matt's Notebook (984 pages) is indexed | Partial-success fix in place; AmoSZN content requires interactive OneNote session to export cleanly |

@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useState } from "react";
 import Link from "next/link";
 import { Activity, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
@@ -13,9 +14,16 @@ import {
 } from "@/lib/api";
 import { PriceChartPanel } from "@/components/charts/PriceChartPanel";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
-import { PriceTerrain3D } from "@/components/charts/PriceTerrain3D";
+import { AuctionBiasCard } from "@/components/AuctionBiasCard";
 import { SymbolTimeframeSelector } from "@/components/command-center/charts/SymbolTimeframeSelector";
 import type { ChartSymbol, ChartTimeframe } from "@/hooks/useChartData";
+
+// Heavy 3D chart (three.js + @react-three/fiber) — only rendered on the non-default
+// "terrain3d" tab, so load it on demand to keep three.js out of the initial /analysis bundle.
+const PriceTerrain3D = dynamic(
+  () => import("@/components/charts/PriceTerrain3D").then((m) => ({ default: m.PriceTerrain3D })),
+  { ssr: false, loading: () => <div className="h-[400px] animate-pulse rounded bg-card" /> }
+);
 
 type ChartView = "jarvis" | "terrain3d";
 
@@ -182,6 +190,10 @@ export default function AnalysisPage() {
         {/* TradingView "where it makes sense": macro/market context (equities,
             indices, macro, crypto) where TV's hosted data is real-time enough. */}
         <MarketContextStrip />
+
+        {/* Advisory ES/MES overnight-bias read (Saty + TPO + Corey synthesis).
+            Fixed to MES — the only symbol GET /auction/bias/{symbol} serves in v1. */}
+        <AuctionBiasCard symbol="MES" />
 
         <div className="rounded-xl border border-border bg-card p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">

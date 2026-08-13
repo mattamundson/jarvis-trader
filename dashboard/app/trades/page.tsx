@@ -17,6 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useHonestTrades } from "@/lib/useHonestTrades";
+import { dedupCaveat, isHonestUnavailable } from "@/lib/honestTrades";
 
 function formatDuration(durationSeconds: number): string {
   if (durationSeconds < 60) return `${durationSeconds}s`;
@@ -67,6 +69,16 @@ export default function TradesPage() {
     { refreshInterval: 15000 }
   );
 
+  // Honest deduped trade record — same underlying paper_trades table as the
+  // closed-trades table below, but read-time deduped (see lib/honestTrades.ts
+  // header: raw endpoints over-count re-logged winners). The per-trade
+  // WIN/LOSS badges in the table below still come from the raw
+  // /paper/validation/trades/closed endpoint, since it carries entry/exit
+  // price + duration fields the deduped record doesn't -- but the aggregate
+  // totals must come from here, not from summing that raw table.
+  const { honest, isLoading: honestLoading } = useHonestTrades();
+  const honestUnavailable = isHonestUnavailable(honest, honestLoading);
+
   const trades = data?.trades || [];
   const openTrades = openData?.open_trades || [];
 
@@ -97,14 +109,77 @@ export default function TradesPage() {
         </p>
       </div>
 
+      {/* Honest Totals (deduped) — canonical aggregate numbers. The raw
+          closed-trades table below (and its per-trade WIN/LOSS badges) reads
+          straight off paper_trades and can over-count re-logged rows; these
+          totals come from the read-time-deduped record instead. */}
+      <div className="flex-shrink-0 px-6 py-4 border-b border-border">
+        <div className="flex items-center gap-2 mb-2">
+          <h2 className="font-mono text-sm font-bold text-foreground">Honest Totals</h2>
+          {honest && (
+            <Badge variant="info">{dedupCaveat(honest)}</Badge>
+          )}
+        </div>
+        {honestUnavailable ? (
+          <p className="text-xs text-muted-foreground">
+            Honest trade record unavailable — not falling back to raw totals to avoid
+            showing inflated numbers.
+          </p>
+        ) : !honest ? (
+          <p className="text-xs text-muted-foreground">Loading honest totals…</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total</p>
+              <p className="font-mono text-lg font-bold text-foreground">{honest.trades.length}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Wins</p>
+              <p className="font-mono text-lg font-bold text-green-500">{honest.wins}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Losses</p>
+              <p className="font-mono text-lg font-bold text-red-500">{honest.losses}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Win Rate</p>
+              <p className="font-mono text-lg font-bold text-foreground">
+                {(honest.winRate * 100).toFixed(1)}%
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-card/50 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total P&L</p>
+              <p
+                className={`font-mono text-lg font-bold ${
+                  honest.net > 0 ? "text-green-500" : honest.net < 0 ? "text-red-500" : "text-muted-foreground"
+                }`}
+              >
+                {honest.net >= 0 ? "+" : ""}
+                {honest.net.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Open Positions (live, 15s refresh) */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-border">
-        <h2 className="font-mono text-sm font-bold text-foreground mb-2">
-          Open Positions{" "}
-          <span className="text-xs font-normal text-muted-foreground">
-            ({openTrades.length} live • refreshes 15s)
-          </span>
-        </h2>
+        <div className="flex items-center gap-2 mb-2">
+          <h2 className="font-mono text-sm font-bold text-foreground">
+            Open Positions{" "}
+            <span className="text-xs font-normal text-muted-foreground">
+              ({openTrades.length} live • refreshes 15s)
+            </span>
+          </h2>
+          {openData && (
+            <Badge variant={openData.measuring_real_fills ? "live" : "static"}>
+              {openData.measuring_real_fills ? "LIVE FILLS" : "SIMULATED"}
+            </Badge>
+          )}
+        </div>
+        {openData?.note && (
+          <p className="text-[11px] text-muted-foreground mb-2">{openData.note}</p>
+        )}
         {openTrades.length === 0 ? (
           <p className="text-xs text-muted-foreground">No open positions</p>
         ) : (
@@ -157,6 +232,14 @@ export default function TradesPage() {
 
       {/* Closed Trades Table */}
       <div className="flex-1 overflow-auto px-6 py-4">
+        {trades.length > 0 && (
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            Raw per-trade rows below (entry/exit price, duration) — may include
+            re-logged/duplicate rows and is not deduped. The per-trade &quot;Result&quot; badge
+            is informational only; use the &quot;Honest Totals&quot; above for real P&amp;L,
+            win count, and loss count.
+          </p>
+        )}
         {trades.length === 0 ? (
           <div className="flex items-center justify-center h-40">
             <p className="text-muted-foreground">No closed trades yet</p>

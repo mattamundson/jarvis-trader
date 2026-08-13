@@ -207,6 +207,22 @@ class DatabaseManager(
             "row_counts": counts,
         }
 
+    def ping(self) -> bool:
+        """Cheap liveness probe: is the database reachable?
+
+        `health_check()` runs 8 full COUNT(*) scans (whole-table on a 325MB DB) and
+        is the dominant cost of a cold /health call — but /health only needs to know
+        the DB answers, not the row counts. `SELECT 1` is O(1). Raises on failure so
+        the caller can distinguish reachable from not.
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute("SELECT 1").fetchone()
+                return True
+            finally:
+                conn.close()
+
 
 # -- Singleton factory --------------------------------------------------------
 

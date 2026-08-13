@@ -1,7 +1,7 @@
 """Tests for trade-level gate-v2 metrics (correct drawdown MC + Deflated Sharpe).
 
 Pins the centralised helpers to the canonical primitives
-(`monte_carlo.bootstrap_max_dd`, `deflated_sharpe.deflated_sharpe_from_returns`)
+(`monte_carlo.permute_max_dd`, `deflated_sharpe.deflated_sharpe_from_returns`)
 that `scripts/validate_strategy.py` already uses, and proves they consume the
 real per-trade sequence rather than window-level aggregates.
 """
@@ -16,9 +16,11 @@ from backtest._gate_v2_trade_metrics import (
     concat_oos_trade_pnls,
     trade_level_dsr,
     trade_level_mc_95th_dd,
+    trade_level_p_edge,
+    trade_level_pf_ci_lower,
 )
-from backtest.deflated_sharpe import deflated_sharpe_from_returns
-from backtest.monte_carlo import bootstrap_max_dd
+from backtest.deflated_sharpe import deflated_sharpe_empirical, deflated_sharpe_from_returns
+from backtest.monte_carlo import bootstrap_pf, moving_block_bootstrap, permute_max_dd
 
 CAP = 50_000.0
 
@@ -52,12 +54,12 @@ class TestConcatOosTradePnls:
 
 class TestTradeLevelMc95thDd:
     def test_matches_canonical_primitive_as_fraction(self):
-        """The helper must equal bootstrap_max_dd on the concatenated trade list,
+        """The helper must equal permute_max_dd on the concatenated trade list,
         converted from the primitive's 0-100 scale to a fraction."""
         pnls = [200.0, -150.0, -120.0, 90.0, -200.0, 60.0, -80.0, 140.0]
         windows = [_window(pnls[:3]), _window(pnls[3:6]), _window(pnls[6:])]
         expected = (
-            bootstrap_max_dd(pnls, initial_capital=CAP, n_resamples=10_000, seed=42)["mc_95th"]
+            permute_max_dd(pnls, initial_capital=CAP, n_resamples=10_000, seed=42)["mc_95th"]
             / 100.0
         )
         assert trade_level_mc_95th_dd(windows, initial_capital=CAP) == expected
@@ -86,11 +88,12 @@ class TestTradeLevelDsr:
     def test_matches_canonical_primitive(self):
         pnls = [300.0, -100.0, 250.0, -80.0, 400.0, -120.0, 180.0, -60.0, 220.0]
         windows = [_window(pnls[:5]), _window(pnls[5:])]
-        returns = (np.asarray(pnls) / CAP).tolist()
-        expected = deflated_sharpe_from_returns(returns=returns, n_trials=3, ann_factor=252.0)[
-            "dsr"
-        ]
-        assert trade_level_dsr(windows, n_grid_combos=3, initial_capital=CAP) == expected
+        expected = deflated_sharpe_empirical(
+            pnls=pnls, n_trials=3, initial_capital=CAP, n_permutations=1_000, seed=42
+        )["dsr"]
+        assert trade_level_dsr(
+            windows, n_grid_combos=3, initial_capital=CAP, n_permutations=1_000
+        ) == expected
 
     def test_failsafe_when_empty(self):
         assert trade_level_dsr([_window([])], n_grid_combos=8, initial_capital=CAP) == 0.0
@@ -101,3 +104,87 @@ class TestTradeLevelDsr:
         windows = [_window(pnls)]
         dsr = trade_level_dsr(windows, n_grid_combos=8, initial_capital=CAP)
         assert 0.0 <= dsr <= 1.0
+
+    def test_prb02_single_fixed_params_run_understates_selection_bias(self):
+        """PRB-02 regression: a runner that evaluates ONE fixed champion param
+        set (no grid search) always calls `trade_level_dsr(..., n_grid_combos=1)`
+        -- exactly like `run_mgc_trend_mtf_rank1.py` -- which computes DSR as
+        if the strategy were the only one ever tried anywhere. That is wrong
+        whenever the strategy is actually the survivor of a larger research
+        campaign (many scripts/hypotheses tried, only the best one kept and
+        reported). This test pins the general property PRB-02's fix and the
+        `recompute_mgc_trend_baseline_dsr.py` script both rely on: the SAME
+        trade series' DSR is monotonically non-increasing in n_trials, and a
+        marginal (not overwhelming) edge that nominally PASSes at n_trials=1
+        can and does collapse below both gate floors once corrected for the
+        true campaign trial count. (Real-world instances of exactly this:
+        MGC_trend_baseline.json dsr 0.999375->0.0 at n=54/70, and
+        run_bottom_detector_sd088.py dsr 0.869307->0.000002 at n=54, per
+        ~/.claude/loops/jarvis-honest-data-drain/ledger.json.)
+        """
+        rng = np.random.default_rng(7)
+        # A modest, not-overwhelming edge (unlike a Sharpe-5.0 monster) --
+        # representative of the marginal WFO-champion strategies gate v2
+        # actually evaluates, where trial-count correction can flip the verdict.
+        pnls = (rng.normal(15, 300, size=31)).tolist()  # 31 trades, matches MGC_trend_baseline
+        windows = [_window(pnls)]
+
+        # 1,000 permutations (not the gate's 10,000): this test only asserts
+        # the monotone-in-n_trials PROPERTY, which holds at any resample count;
+        # the full 10,000 would blow the 30s per-test timeout in CI.
+        dsr_1 = trade_level_dsr(windows, n_grid_combos=1, initial_capital=CAP, n_permutations=1_000)
+        dsr_54 = trade_level_dsr(windows, n_grid_combos=54, initial_capital=CAP, n_permutations=1_000)
+        dsr_70 = trade_level_dsr(windows, n_grid_combos=70, initial_capital=CAP, n_permutations=1_000)
+
+        assert dsr_1 >= dsr_54 >= dsr_70, (
+            "DSR must be monotonically non-increasing in n_trials for a fixed "
+            "trade series -- a runner that never accounts for the real "
+            "campaign trial count can only ever overstate significance, never "
+            "understate it."
+        )
+
+
+class TestTradeLevelPfCiLower:
+    def test_matches_canonical_primitive(self):
+        pnls = [300.0, -100.0, 250.0, -80.0, 400.0, -120.0, 180.0, -60.0, 220.0]
+        windows = [_window(pnls[:5]), _window(pnls[5:])]
+        expected = moving_block_bootstrap(pnls, n_resamples=10_000, seed=42)["pf_ci_95_low"]
+        assert trade_level_pf_ci_lower(windows) == expected
+
+    def test_failsafe_when_too_few_trades(self):
+        """Found 2026-07-10: a single winning trade must not report a
+        confident pf_ci_95_low (moving_block_bootstrap would return +inf for
+        a zero-loss sample) -- fail-safe to 0.0, same as the sibling
+        trade-level metrics."""
+        assert trade_level_pf_ci_lower([_window([42.0])]) == 0.0
+        assert trade_level_pf_ci_lower([_window([])]) == 0.0
+
+    def test_sees_cross_window_serial_correlation(self):
+        """Sanity: a non-degenerate multi-window sample returns a finite,
+        non-negative lower bound."""
+        pnls = [100.0, -40.0, 120.0, -50.0, 90.0, -30.0, 110.0, -45.0]
+        windows = [_window(pnls[:4]), _window(pnls[4:])]
+        result = trade_level_pf_ci_lower(windows)
+        assert result >= 0.0 and result != float("inf")
+
+
+class TestTradeLevelPEdge:
+    def test_matches_canonical_primitive(self):
+        pnls = [300.0, -100.0, 250.0, -80.0, 400.0, -120.0, 180.0, -60.0, 220.0]
+        windows = [_window(pnls[:5]), _window(pnls[5:])]
+        expected = bootstrap_pf(pnls, n_resamples=10_000, seed=42)["p_positive_edge"]
+        assert trade_level_p_edge(windows) == expected
+
+    def test_failsafe_when_too_few_trades(self):
+        """Found 2026-07-10: a single winning trade must not report a
+        confident p_edge=1.0 (every IID resample of one win is "positive
+        edge") -- fail-safe to 0.0, same as the sibling trade-level metrics."""
+        assert trade_level_p_edge([_window([42.0])]) == 0.0
+        assert trade_level_p_edge([_window([])]) == 0.0
+
+    def test_in_unit_interval(self):
+        rng = np.random.default_rng(0)
+        pnls = (rng.normal(50, 300, size=60)).tolist()
+        windows = [_window(pnls)]
+        p_edge = trade_level_p_edge(windows)
+        assert 0.0 <= p_edge <= 1.0

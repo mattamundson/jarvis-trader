@@ -540,7 +540,9 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         # In-memory close must always work
         self.assertFalse(closed_trade.is_open)
         self.assertAlmostEqual(closed_trade.exit_price, 5250.0)
-        self.assertAlmostEqual(closed_trade.pnl, 250.0)  # (5250-5200)*1*5.0 (MES multiplier)
+        # (5250-5200)*1*5.0 (MES multiplier) = 250.0 gross, minus $1.50/contract
+        # commission (Phase 2 financial-calc fix) = 248.50 net.
+        self.assertAlmostEqual(closed_trade.pnl, 248.50)
 
         # No open trades remaining in memory
         self.assertEqual(len(tracker.get_open_positions()), 0)
@@ -571,9 +573,9 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         closed_trade = tracker.close_trade(trade_id, exit_price=19600.0)
         self.assertIsNotNone(closed_trade)
         self.assertFalse(closed_trade.is_open)
-        self.assertAlmostEqual(
-            closed_trade.pnl, 400.0
-        )  # (19600 - 19500) * 2 * 2.0 (MNQ multiplier)
+        # (19600-19500)*2*2.0 (MNQ multiplier) = 400.0 gross, minus $1.50/contract
+        # commission * 2 contracts = 3.00 → 397.00 net.
+        self.assertAlmostEqual(closed_trade.pnl, 397.00)
 
         positions_after = tracker.get_open_positions()
         self.assertEqual(len(positions_after), 0)
@@ -589,14 +591,18 @@ class TestTrackerSQLiteIntegration(unittest.TestCase):
         tracker = self._make_tracker(db=None)
         trade_id = tracker.open_trade("MES", "buy", 3, 5000.0)
         closed = tracker.close_trade(trade_id, exit_price=5010.0)
-        self.assertAlmostEqual(closed.pnl, 150.0)  # (5010-5000)*3*5.0 (MES multiplier)
+        # (5010-5000)*3*5.0 (MES multiplier) = 150.0 gross, minus $1.50/contract
+        # commission * 3 contracts = 4.50 → 145.50 net.
+        self.assertAlmostEqual(closed.pnl, 145.50)
 
     def test_tracker_pnl_short(self) -> None:
         """P&L for a short trade: (entry - exit) * qty."""
         tracker = self._make_tracker(db=None)
         trade_id = tracker.open_trade("MES", "sell", 2, 5100.0)
         closed = tracker.close_trade(trade_id, exit_price=5080.0)
-        self.assertAlmostEqual(closed.pnl, 200.0)  # (5100-5080)*2*5.0 (MES multiplier)
+        # (5100-5080)*2*5.0 (MES multiplier) = 200.0 gross, minus $1.50/contract
+        # commission * 2 contracts = 3.00 → 197.00 net.
+        self.assertAlmostEqual(closed.pnl, 197.00)
 
 
 # ===========================================================================
@@ -1431,22 +1437,21 @@ class TestSession4Endpoints(unittest.TestCase):
         self.assertIsInstance(data, dict, "Response must be a JSON object")
         self.assertGreater(len(data), 0, "Streak response body must not be empty")
 
-    # ── POST /portfolio/import/trades ─────────────────────────────────────────
+    # ── POST /portfolio/import/trades — RETIRED (D3-02) ────────────────────────
+    # Silently discarded every imported row (INSERT OR IGNORE swallowed a NOT
+    # NULL violation on idempotency_key) while reporting HTTP 200. No live
+    # caller found; now always returns 410 regardless of payload shape.
 
     def test_import_trades_empty(self) -> None:
-        """POST /portfolio/import/trades with empty list must return HTTP 200, imported=0."""
+        """POST /portfolio/import/trades — retired, must return HTTP 410 even for an empty list."""
         try:
             status, data = self._post("/portfolio/import/trades", {"trades": []})
         except ConnectionError as exc:
             raise unittest.SkipTest(f"Engine not reachable: {exc}") from exc
-        self.assertEqual(status, 200, f"Expected 200, got {status}. Body: {data}")
-        self.assertEqual(
-            data.get("imported"), 0, f"Expected 0 imports for empty list. Body: {data}"
-        )
-        self.assertIn("errors", data, f"Response missing 'errors' field. Body: {data}")
+        self.assertEqual(status, 410, f"Expected 410 (retired), got {status}. Body: {data}")
 
     def test_import_trades_single(self) -> None:
-        """POST /portfolio/import/trades with one trade must return HTTP 200, imported=1."""
+        """POST /portfolio/import/trades — retired, must return HTTP 410 and write nothing."""
         trade = {
             "trade_id": "test-import-single-fixture-001",
             "symbol": "TEST",
@@ -1462,18 +1467,15 @@ class TestSession4Endpoints(unittest.TestCase):
             status, data = self._post("/portfolio/import/trades", {"trades": [trade]})
         except ConnectionError as exc:
             raise unittest.SkipTest(f"Engine not reachable: {exc}") from exc
-        self.assertEqual(status, 200, f"Expected 200, got {status}. Body: {data}")
-        self.assertEqual(data.get("imported"), 1, f"Expected 1 import. Body: {data}")
-        self.assertEqual(data.get("skipped"), 0, f"Expected 0 skipped. Body: {data}")
-        self.assertIsInstance(data.get("errors"), list, f"'errors' must be a list. Body: {data}")
+        self.assertEqual(status, 410, f"Expected 410 (retired), got {status}. Body: {data}")
 
     def test_import_trades_bad_body(self) -> None:
-        """POST /portfolio/import/trades with non-list 'trades' must return HTTP 400."""
+        """POST /portfolio/import/trades — retired, returns HTTP 410 regardless of body shape."""
         try:
             status, data = self._post("/portfolio/import/trades", {"trades": "not-a-list"})
         except ConnectionError as exc:
             raise unittest.SkipTest(f"Engine not reachable: {exc}") from exc
-        self.assertEqual(status, 400, f"Expected 400 for invalid body, got {status}. Body: {data}")
+        self.assertEqual(status, 410, f"Expected 410 (retired), got {status}. Body: {data}")
 
 
 # ===========================================================================
@@ -1599,15 +1601,15 @@ class TestSession4ExtendedEndpoints(unittest.TestCase):
         self.assertEqual(status, 200, f"Expected 200, got {status}. Body: {data}")
         self.assertIn("symbols", data, f"Response missing 'symbols' field. Body: {data}")
 
-    # ── POST /portfolio/import/trades — over-limit validation ─────────────────
+    # ── POST /portfolio/import/trades — over-limit, RETIRED (D3-02) ─────────
 
     def test_import_trades_over_limit(self) -> None:
-        """POST /portfolio/import/trades with >1000 trades must return HTTP 400."""
+        """POST /portfolio/import/trades — retired, returns HTTP 410 even for an over-limit payload."""
         status, data = self._post("/portfolio/import/trades", {"trades": [{}] * 1001})
         self.assertEqual(
             status,
-            400,
-            f"Expected 400 for >1000-trade payload, got {status}. Body: {data}",
+            410,
+            f"Expected 410 (retired), got {status}. Body: {data}",
         )
 
     # ── POST /notifications/whatsapp/test ─────────────────────────────────────

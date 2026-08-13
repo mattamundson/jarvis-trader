@@ -127,6 +127,51 @@ async def place_manual_order(payload: ManualOrderRequest):
         is_futures,
     )
 
+    # [safety-review] Entry price sanity check — rejects corrupted/garbage limit
+    # prices (e.g. a stop_loss value typo'd into limit_price) before they reach
+    # the broker. Only applies to LIMIT orders, which are the only order type
+    # where the client supplies the entry price; MARKET orders fill at the
+    # prevailing broker price and have nothing to sanity-check. Mirrors the
+    # existing call sites in approval/service.py, scheduler/pipeline_autonomous.py,
+    # and scanner/signal_scanner.py — this endpoint was the one gap.
+    if payload.order_type == "LIMIT" and payload.limit_price is not None:
+        from risk.entry_price_sanity import (
+            check_entry_price_sanity,
+            is_entry_price_sanity_enabled,
+        )
+
+        if is_entry_price_sanity_enabled() and _data_manager is not None:
+            try:
+                is_sane, sanity_reason = await check_entry_price_sanity(
+                    symbol=payload.symbol,
+                    entry_price=payload.limit_price,
+                    data_manager=_data_manager,
+                    is_futures=is_futures,
+                )
+            except Exception as sanity_exc:
+                # Fail CLOSED: an unexpected error verifying the price rejects the
+                # order rather than booking a possibly-corrupted entry.
+                logger.critical(
+                    "[MANUAL ORDER] entry price sanity check errored for %s: %s — "
+                    "rejecting (fail-closed)",
+                    payload.symbol,
+                    sanity_exc,
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Entry price sanity check could not be verified: {sanity_exc}",
+                ) from sanity_exc
+            if not is_sane:
+                logger.error(
+                    "[MANUAL ORDER] BLOCKED by entry price sanity check — %s: %s",
+                    payload.symbol,
+                    sanity_reason,
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Entry price sanity check failed: {sanity_reason}",
+                )
+
     try:
         if is_futures:
             # [safety-review] Futures orders MUST flow through SafetyLayer.submit_paper_order()

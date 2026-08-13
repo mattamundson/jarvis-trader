@@ -56,9 +56,12 @@ def main() -> int:
         print(f"ERROR: database not found: {db_path}", file=sys.stderr)
         return 2
 
-    from readiness.phase3_criteria import _render_markdown, evaluate_all_criteria
+    from readiness.phase3_criteria import _render_markdown, evaluate_with_edge_mode
 
-    report = evaluate_all_criteria(db_path)
+    # mode=None -> honors READINESS_EDGE_MODE (default paper_accrual, byte-identical
+    # to the legacy evaluate_all_criteria plus an edge_mode key). GO/WAIT/NO-GO exit
+    # codes are unchanged.
+    report = evaluate_with_edge_mode(db_path)
 
     if args.json:
         import json

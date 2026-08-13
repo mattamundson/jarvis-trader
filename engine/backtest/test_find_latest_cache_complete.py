@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from datetime import date as date_cls
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -102,6 +103,98 @@ def test_none_trustworthy_falls_back_to_latest_end():
     print("[PASS] none trustworthy -> falls back to latest end-date")
 
 
+def _continuous_1h(start, end):
+    """Hourly bars from `start` to `end` inclusive, no gaps at all (synthetic --
+    real futures data has weekends too, but this scenario isolates the early-
+    close / stray-anomaly behavior without weekend noise)."""
+    out = []
+    t = start
+    while t <= end:
+        out.append(t)
+        t += timedelta(hours=1)
+    return out
+
+
+def _remove_window(stamps, day, start_hour, end_hour):
+    """Drop bars on `day` between start_hour (exclusive) and end_hour (exclusive),
+    i.e. the bar AT start_hour survives, the next present bar is at end_hour."""
+    return [
+        t
+        for t in stamps
+        if not (t.date() == day and start_hour < t.hour < end_hour)
+    ]
+
+
+def test_real_bug_repro_mostly_clean_latest_beats_tiny_lucky_clean_window():
+    """Reproduces the actual 2026-07-06 vwap-sharpe bug on synthetic data.
+
+    The real MES_*_1h.csv cache (12,612 bars, end 2026-07-03) was rejected as
+    "holed" by _find_latest_cache in favor of a 964-bar 2-month cache
+    (2026-03-21 -> 2026-05-20) that merely got lucky and dodged every calendar
+    landmine. Empirical inspection of the real file found 14 flagged gaps: 13
+    were legitimate CME early-close half-days (quarterly triple-witching
+    Fridays, day-before-July4, Christmas Eve) or missing 2024-holiday-whitelist
+    entries (Memorial Day / Juneteenth / Labor Day 2024) -- NONE of those imply
+    a full weekday of trading data is actually missing. Exactly 1 gap
+    (2025-10-06 20:00 -> 2025-10-07 08:00, a lone 12h overnight anomaly with no
+    missing calendar day either) had no calendar explanation at all -- a
+    genuine, isolated data blip.
+
+    This test builds that shape: a big, current, mostly-clean cache with (a)
+    one early-close-pattern gap on a real quarterly-witching Friday
+    (2024-06-21, matches the actual MES gap) and (b) one unexplained but
+    PURELY-INTRADAY anomaly gap (missing_days=[]), competing against a small,
+    later-starting, perfectly-clean 3-week cache with an EARLIER end date.
+    The fix must select the big/current file -- an isolated intraday blip in
+    an otherwise-huge cache must not lose to a tiny cache that simply avoided
+    every landmine.
+    """
+    d = tempfile.mkdtemp()
+
+    big = _continuous_1h(_utc(2024, 6, 1), _utc(2024, 9, 1))
+    # (a) early-close pattern: 2024-06-21 is a real quarterly triple-witching
+    # Friday: strip 13:00-20:00 (exclusive bounds -> bars at 13:00 present,
+    # resumes at 20:00), a 7h intraday gap, missing_days=[] either way.
+    big = _remove_window(big, date_cls(2024, 6, 21), 13, 20)
+    # (b) genuine anomaly, no calendar explanation, still purely intraday
+    # (same calendar day) so missing_days stays [].
+    big = _remove_window(big, date_cls(2024, 7, 15), 10, 20)
+    _write(d, "SYM_2024-06-01_2024-09-01_1h.csv", big)
+
+    small_clean = _continuous_1h(_utc(2024, 8, 1), _utc(2024, 8, 20))
+    _write(d, "SYM_2024-08-01_2024-08-20_1h.csv", small_clean)
+
+    chosen = _find_latest_cache(Path(d), "SYM", "_1h.csv", prefer_complete=True)
+    assert chosen.name.endswith("2024-09-01_1h.csv"), (
+        f"expected the big mostly-clean current cache, got {chosen.name} -- "
+        "an isolated intraday anomaly must not lose to a lucky tiny window"
+    )
+    print("[PASS] mostly-clean current cache beats a tiny lucky-clean window")
+
+
+def test_genuine_full_day_hole_in_latest_still_loses_to_clean_smaller():
+    """Guardrail: a REAL missing weekday in the latest cache must still be
+    rejected in favor of a smaller, genuinely clean cache -- the fix above
+    must not swallow actual holes, only calendar-explainable ones."""
+    d = tempfile.mkdtemp()
+
+    big = _continuous_1h(_utc(2024, 6, 1), _utc(2024, 9, 1))
+    big = _remove_window(big, date_cls(2024, 6, 21), 13, 20)  # legitimate, explained
+    # Entirely delete an unexplained, unwhitelisted weekday (Mon 2024-07-15) --
+    # a genuine hole, not a whitelisted closure and not a pure intraday blip.
+    big = [t for t in big if t.date() != date_cls(2024, 7, 15)]
+    _write(d, "SYM_2024-06-01_2024-09-01_1h.csv", big)
+
+    small_clean = _continuous_1h(_utc(2024, 8, 1), _utc(2024, 8, 20))
+    _write(d, "SYM_2024-08-01_2024-08-20_1h.csv", small_clean)
+
+    chosen = _find_latest_cache(Path(d), "SYM", "_1h.csv", prefer_complete=True)
+    assert chosen.name.endswith("2024-08-20_1h.csv"), (
+        f"expected the fix to still reject a genuine missing weekday, got {chosen.name}"
+    )
+    print("[PASS] a genuine missing-weekday hole still loses to a clean smaller cache")
+
+
 def main():
     tests = [
         test_prefers_clean_older_over_holed_latest_end,
@@ -109,6 +202,8 @@ def main():
         test_default_is_prefer_complete,
         test_single_candidate_returned_unchanged,
         test_none_trustworthy_falls_back_to_latest_end,
+        test_real_bug_repro_mostly_clean_latest_beats_tiny_lucky_clean_window,
+        test_genuine_full_day_hole_in_latest_still_loses_to_clean_smaller,
     ]
     failures = []
     for t in tests:

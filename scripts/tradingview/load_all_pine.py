@@ -38,7 +38,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 # ──────────────────────────────────────────────────────────────────────────
 # Configuration
@@ -289,11 +289,11 @@ def cmd_generate_load_plan(_args: argparse.Namespace) -> int:
                     "fn_in_if_warnings": r.fn_in_if_warnings,
                 },
                 "mcp_steps": [
-                    f"pine_new(type='indicator')",
+                    "pine_new(type='indicator')",
                     f"# open {r.path.name} and read its text",
-                    f"pine_set_source(source=<file content>)",
-                    f"pine_smart_compile()",
-                    f"ui_click(by='text', value='Add to chart')",
+                    "pine_set_source(source=<file content>)",
+                    "pine_smart_compile()",
+                    "ui_click(by='text', value='Add to chart')",
                 ],
             }
             for r in reports

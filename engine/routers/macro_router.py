@@ -89,6 +89,19 @@ async def get_macro_snapshot():
         "timestamp": raw.get("timestamp", now.isoformat()),
     }
 
+    # Classify VIX into a regime band so the command-center / options tiles render
+    # a real regime instead of "—". Same thresholds as the options strategy
+    # executor (LOW <15, NORMAL 15-20, HIGH 20-30, EXTREME >=30).
+    try:
+        from options.strategy_executor import classify_vix_regime
+
+        flat["vix_regime"] = (
+            classify_vix_regime(flat["vix"]).value if flat["vix"] is not None else None
+        )
+    except Exception as exc:  # never let regime enrichment break the snapshot
+        logger.debug("vix_regime classification failed: %s", exc)
+        flat["vix_regime"] = None
+
     # Store in cache with sentinel timestamp
     _macro_cache["snapshot"] = {**flat, "_ts": now}
 

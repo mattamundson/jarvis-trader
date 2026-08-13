@@ -15,17 +15,30 @@ import math
 
 import pandas as pd
 
+from backtest.contract_specs import CONTRACT_SPECS
 from backtest.indicators import atr_trailing_stop
 
 MULTIPLIERS = {"MES": 5.0, "ES": 50.0, "MNQ": 2.0, "MCL": 100.0, "MGC": 10.0}
 TICK = {"MES": 0.25, "ES": 0.25, "MNQ": 0.25, "MCL": 0.01, "MGC": 0.1}
-COMMISSION = 0.62  # $/round-trip
 SLIPPAGE_TICKS = 1.0  # per side
+
+# Fallback commission for symbols not in CONTRACT_SPECS -- MES's rate (0.62),
+# consistent with the existing MULTIPLIERS/TICK .get(symbol, ...) fallback
+# style in this module.
+_DEFAULT_COMMISSION = 0.62
 
 
 def _round_trip_cost(symbol: str) -> float:
     mult = MULTIPLIERS.get(symbol, 1.0)
-    return COMMISSION + 2 * SLIPPAGE_TICKS * TICK.get(symbol, 0.25) * mult
+    spec = CONTRACT_SPECS.get(symbol)
+    # Previously a single flat COMMISSION=0.62 was applied to every symbol.
+    # This endpoint serves MES/ES/MNQ/MCL/MGC -- MCL and MGC are both priced
+    # at 0.85/contract in contract_specs.py (the single source of truth),
+    # not 0.62 (MES's rate), so the flat constant silently understated cost
+    # for those two symbols (found 2026-07-10, same drift class as the MGC
+    # runner-script bug).
+    commission = spec.commission if spec is not None else _DEFAULT_COMMISSION
+    return commission + 2 * SLIPPAGE_TICKS * TICK.get(symbol, 0.25) * mult
 
 
 def reconstruct_flip_trades(
@@ -85,7 +98,21 @@ def compute_atr_trail_viz(
     trail, state = atr_trailing_stop(df["high"], df["low"], df["close"], period=period, factor=factor)
     n = len(df)
     stride = max(1, math.ceil(n / max_points))
-    idx = range(0, n, stride)
+    strided_idx = set(range(0, n, stride))
+
+    raw = reconstruct_flip_trades(df, symbol, period, factor)
+
+    # Trade entry/exit bars MUST be present in the sampled price series -- it's
+    # the series AtrTrailChart attaches trade markers to, and lightweight-charts
+    # needs an exact point at a marker's time to render it. Without this, entries
+    # falling on a bar the stride skipped silently lose their arrow on any cache
+    # longer than max_points (the common case for multi-month 5m/1h caches).
+    trade_times = pd.DatetimeIndex(
+        [t["entry_time"] for t in raw] + [t["exit_time"] for t in raw]
+    )
+    trade_positions = set(df.index.get_indexer(trade_times)) if len(trade_times) else set()
+    trade_positions.discard(-1)  # defensive; these times come from df.index itself
+    idx = sorted(strided_idx | trade_positions)
 
     price = [{"t": _unix(df.index[i]), "c": float(df["close"].iloc[i])} for i in idx]
     trail_pts = [
@@ -93,8 +120,6 @@ def compute_atr_trail_viz(
         for i in idx
         if not pd.isna(trail.iloc[i])
     ]
-
-    raw = reconstruct_flip_trades(df, symbol, period, factor)
     trades = [
         {
             "entry_t": _unix(t["entry_time"]), "entry_px": t["entry_px"],

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
+import { winRatePercent } from "@/lib/discordWinRate";
 
 const REFRESH_MS = 10_000;
 
@@ -160,7 +161,7 @@ export function SignalFeed() {
                       {row.stop1 != null ? row.stop1.toFixed(2) : "—"}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                      {row.win_rate != null ? `${(row.win_rate * 100).toFixed(1)}%` : "—"}
+                      {row.win_rate != null ? `${winRatePercent(row.win_rate).toFixed(1)}%` : "—"}
                     </td>
                   </tr>
                 );

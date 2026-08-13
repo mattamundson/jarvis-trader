@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { JetBrains_Mono, Orbitron } from "next/font/google";
@@ -24,18 +25,41 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { fetchEngine, fetchJournalStats, fetchBars, toggleKillSwitch, type JournalTradeStats, type OHLCVBar } from "@/lib/api";
+import {
+  fetchEngine,
+  fetchJournalStats,
+  fetchBars,
+  fetchSymbolRegime,
+  toggleKillSwitch,
+  type JournalTradeStats,
+  type OHLCVBar,
+} from "@/lib/api";
+import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
 import {
   fetchHonestTrades,
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
-import { CandlestickChart } from "@/components/command-center/charts/CandlestickChart";
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
+import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
+import { DecisionLogWidget } from "@/components/DecisionLogWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
+import { SessionBriefPanel } from "@/components/SessionBriefPanel";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
+import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
+
+// Candlestick chart (lightweight-charts) — only renders once bar data resolves, so
+// load it on demand to keep lightweight-charts off the command-center landing critical path.
+const CandlestickChart = dynamic(
+  () =>
+    import("@/components/command-center/charts/CandlestickChart").then((m) => ({
+      default: m.CandlestickChart,
+    })),
+  { ssr: false, loading: () => <div className="h-[360px] animate-pulse rounded bg-slate-950/40" /> }
+);
 
 const fontDisplay = Orbitron({
   subsets: ["latin"],
@@ -59,6 +83,10 @@ interface HealthData {
   ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
+  // D3-01: honest execution-path fields — see @/lib/executionPath.
+  execution_connected_verified?: boolean | null;
+  ib_execution_stale?: boolean | null;
+  execution_path?: ExecutionPathProbe | null;
 }
 
 interface SafetyData {
@@ -68,6 +96,9 @@ interface SafetyData {
   orders_last_minute: number;
   consecutive_losses?: number;
   kill_switch_active?: boolean;
+  daily_limit_pct?: number;
+  drawdown_limit_pct?: number;
+  orders_per_minute_limit?: number;
 }
 
 interface Position {
@@ -271,6 +302,45 @@ function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
 }
 
+function shouldRevalidateCommandCenter(event: WsEvent): boolean {
+  return (
+    event.type === "order_fill" ||
+    event.type === "pending_approval_created" ||
+    event.type === "kill_switch" ||
+    event.type === "safety_event" ||
+    event.type === "circuit_breaker" ||
+    event.type === "pipeline_complete"
+  );
+}
+
+// ── Live per-instrument regime (PRB-34) ─────────────────────────────────────
+// Ports /jarvis's RegimePulsePanel pattern: GET /analytics/regime/{symbol},
+// same live source, same 60s poll cadence. Replaces the Signal Cards' hardcoded
+// `regime` constant. lastSignal/atr have no equivalent live source from this
+// endpoint (it returns only symbol/regime/current_regime/note/error) and stay
+// static -- see constants.ts.
+function useSymbolRegime(symbol: string) {
+  const { data, error, isLoading } = useSWR(
+    `/analytics/regime/${symbol}`,
+    () => fetchSymbolRegime(symbol),
+    { refreshInterval: 60_000, shouldRetryOnError: false }
+  );
+  return {
+    regime: data?.current_regime ?? data?.regime ?? null,
+    isLoading,
+    error,
+  };
+}
+
+function regimeColorClass(regime: string | null): string {
+  if (!regime) return "text-slate-500";
+  const r = regime.toUpperCase();
+  if (r.includes("TREND") || r.includes("BULL")) return "text-green-400";
+  if (r.includes("BEAR") || r.includes("CRASH")) return "text-red-400";
+  if (r.includes("RANG") || r.includes("CHOP") || r === "UNKNOWN") return "text-yellow-400";
+  return "text-cyan-400";
+}
+
 // ── Page Component ────────────────────────────────────────────────────────
 
 // Stable placeholder session used on the server and the first client paint so
@@ -291,6 +361,9 @@ export default function CommandCenterPage() {
   // session is also deferred to post-mount: getMarketSession() reads new Date()
   // which differs server (UTC) vs client (local tz) → hydration mismatch.
   const [session, setSession] = useState<SessionInfo>(SESSION_PLACEHOLDER);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+
   useEffect(() => {
     // Initialise both clock and session together so they are always in sync.
     const tick = () => {
@@ -318,46 +391,51 @@ export default function CommandCenterPage() {
     data: health,
     error: healthErr,
     mutate: mutateHealth,
-  } = useSWR<HealthData>("/health", fetcher, { refreshInterval });
-
-  const { data: safety } = useSWR<SafetyData>("/safety/status", fetcher, {
+  } = useSWR<HealthData>("/health", fetcher, {
     refreshInterval,
+    shouldRetryOnError: false,
   });
 
-  const { data: portfolio } = useSWR<PortfolioData>("/portfolio", fetcher, {
+  const { data: safety, mutate: mutateSafety, error: safetyErr } = useSWR<SafetyData>("/safety/status", fetcher, {
     refreshInterval,
+    shouldRetryOnError: false,
   });
 
-  const { data: decisions } = useSWR<Decision[]>(
+  const { data: portfolio, mutate: mutatePortfolio, error: portfolioErr } = useSWR<PortfolioData>("/portfolio", fetcher, {
+    refreshInterval,
+    shouldRetryOnError: false,
+  });
+
+  const { data: decisions, mutate: mutateDecisions, error: decisionsErr } = useSWR<Decision[]>(
     "/decisions/recent?limit=5",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: scheduler } = useSWR<SchedulerData>(
+  const { data: scheduler, mutate: mutateScheduler, error: schedulerErr } = useSWR<SchedulerData>(
     "/scheduler/status",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: macro } = useSWR<MacroData>("/macro/snapshot", fetcher, {
+  const { data: macro, mutate: mutateMacro } = useSWR<MacroData>("/macro/snapshot", fetcher, {
     refreshInterval: 120_000,
     shouldRetryOnError: false,
   });
 
-  const { data: paperStatus } = useSWR<Record<string, PaperStatusRow>>(
+  const { data: paperStatus, mutate: mutatePaperStatus } = useSWR<Record<string, PaperStatusRow>>(
     "/backtest/paper-status",
     fetcher,
     { refreshInterval: 120_000, shouldRetryOnError: false }
   );
 
-  const { data: trades } = useSWR<Trade[]>(
+  const { data: trades, mutate: mutateTrades, error: tradesErr } = useSWR<Trade[]>(
     "/portfolio/history/trades",
     fetcher,
-    { refreshInterval }
+    { refreshInterval, shouldRetryOnError: false }
   );
 
-  const { data: journalStats } = useSWR<JournalTradeStats>(
+  const { data: journalStats, mutate: mutateJournalStats } = useSWR<JournalTradeStats>(
     "/journal/review/stats?limit=30",
     fetcher,
     { refreshInterval: 60_000, shouldRetryOnError: false }
@@ -366,14 +444,62 @@ export default function CommandCenterPage() {
   // Honest deduped set for the journal HUD row (win_rate + EV/trade).
   // /journal/review/stats over-counts re-logged winners; fetchHonestTrades
   // applies dedup at read time. All other command-center cards are LEGIT.
-  const { data: honestSet } = useSWR<HonestTradeSet>(
+  const { data: honestSet, mutate: mutateHonestSet } = useSWR<HonestTradeSet>(
     "honest-trades-cc",
     fetchHonestTrades,
     { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
   );
 
+  // Bounded retry/backoff for critical command-center data so transient engine
+  // hiccups do not hammer the proxy or silently stale out the flagship page.
+  useEffect(() => {
+    if (!healthErr && !safetyErr && !portfolioErr && !decisionsErr && !schedulerErr && !tradesErr) {
+      if (retryCount > 0) {
+        setRetryCount(0);
+        setIsRetrying(false);
+      }
+      return;
+    }
+
+    const hasError = healthErr || safetyErr || portfolioErr || decisionsErr || schedulerErr || tradesErr;
+    if (!hasError || retryCount >= 3) {
+      if (retryCount >= 3) setIsRetrying(false);
+      return;
+    }
+
+    const backoffMs = Math.min(30_000, 2_000 * Math.pow(2, retryCount - 1));
+    setIsRetrying(true);
+    const timer = setTimeout(() => {
+      mutateHealth();
+      mutateSafety();
+      mutatePortfolio();
+      mutateDecisions();
+      mutateScheduler();
+      mutateTrades();
+    }, backoffMs);
+
+    return () => clearTimeout(timer);
+  }, [healthErr, safetyErr, portfolioErr, decisionsErr, schedulerErr, tradesErr, retryCount, mutateHealth, mutateSafety, mutatePortfolio, mutateDecisions, mutateScheduler, mutateTrades]);
+
+  useWebSocket(undefined, (event) => {
+    if (!shouldRevalidateCommandCenter(event)) return;
+    mutateHealth();
+    mutateSafety();
+    mutatePortfolio();
+    mutateDecisions();
+    mutateScheduler();
+    mutateMacro();
+    mutatePaperStatus();
+    mutateTrades();
+    mutateJournalStats();
+    mutateHonestSet();
+  });
+
   const engineOnline = !healthErr && !!health;
   const killSwitchActive = health?.kill_switch_active ?? false;
+  // D3-01: derive the IBKR Gateway badge through the honesty layer — never
+  // read ibkr_execution_connected directly (see @/lib/executionPath).
+  const exec = executionStatus(health);
 
   const liveWfeRows = useMemo(() => {
     if (!paperStatus) return WFE_ROWS;
@@ -412,16 +538,28 @@ export default function CommandCenterPage() {
     portfolio?.total_equity && portfolio.total_equity > 0
       ? (portfolio.daily_pnl / portfolio.total_equity) * 100
       : 0;
+  // Live limits from /safety/status (engine/config.py MAX_DAILY_LOSS_PCT /
+  // MAX_DRAWDOWN_PCT / MAX_ORDERS_PER_MINUTE). Fallbacks only cover a missing
+  // field (older engine build); the orders fallback matches the real config
+  // default (10), not the previously-hardcoded-wrong value (40).
+  const dailyLimitPctAbs =
+    safety?.daily_limit_pct != null ? Math.abs(safety.daily_limit_pct) * 100 : 2;
+  const drawdownLimitPctAbs =
+    safety?.drawdown_limit_pct != null ? Math.abs(safety.drawdown_limit_pct) * 100 : 10;
+  const ordersLimit = safety?.orders_per_minute_limit ?? 10;
   const dailyLossProgress = Math.min(
-    (Math.abs(Math.min(dailyPnlPct, 0)) / 2) * 100,
+    (Math.abs(Math.min(dailyPnlPct, 0)) / dailyLimitPctAbs) * 100,
     100
   );
   const drawdownPct = safety?.drawdown_pct ?? 0;
-  const drawdownProgress = Math.min((Math.abs(drawdownPct) / 10) * 100, 100);
+  const drawdownProgress = Math.min(
+    (Math.abs(drawdownPct) / drawdownLimitPctAbs) * 100,
+    100
+  );
   const consecutiveLosses = safety?.consecutive_losses ?? 0;
   const consecutiveLossProgress = Math.min((consecutiveLosses / 7) * 100, 100);
   const ordersPerMin = safety?.orders_last_minute ?? 0;
-  const ordersProgress = Math.min((ordersPerMin / 40) * 100, 100);
+  const ordersProgress = Math.min((ordersPerMin / ordersLimit) * 100, 100);
 
   const handleKillSwitch = useCallback(async () => {
     const activating = !killSwitchActive;
@@ -567,6 +705,37 @@ export default function CommandCenterPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════
+          PIPELINE REASONING — why each decision was made (expandable)
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Pipeline Reasoning">
+          <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          DECISION LOG — every pipeline verdict, including WAIT/HOLD/NO_ENTRY.
+          Pipeline Reasoning above covers trades that fired; this covers the
+          "why didn't we trade" case that had no dashboard home before.
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Decision Log">
+          <DecisionLogWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          SESSION BRIEF — proactive advisor recommendations. Re-homed here from
+          the dissolved kitchen-sink overview page (#274 feature preserved on the
+          flagship HUD after the P2.1 redirect orphaned its old mount point).
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Session Brief">
+          <SessionBriefPanel />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
           ROW 1 — STATUS OVERVIEW (5 columns)
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-5 gap-3 mb-4">
@@ -645,7 +814,7 @@ export default function CommandCenterPage() {
                       : "bg-red-950 text-red-400 border border-red-800"
                   }`}
                 >
-                  {inst.status === "APPROVED" ? `WFE=${inst.wfe}` : "HALTED"}
+                  {inst.status === "APPROVED" ? `DSR=${inst.wfe}` : "HALTED"}
                 </Badge>
               </div>
             ))}
@@ -718,7 +887,7 @@ export default function CommandCenterPage() {
               <span
                 className={`font-mono text-xs ${dailyPnlPct < -1 ? "text-red-400" : "text-green-400"}`}
               >
-                {fmtPct(dailyPnlPct)} / -2%
+                {fmtPct(dailyPnlPct)} / -{dailyLimitPctAbs.toFixed(0)}%
               </span>
             </div>
             <div className="flex justify-between items-baseline">
@@ -726,7 +895,7 @@ export default function CommandCenterPage() {
               <span
                 className={`font-mono text-xs ${drawdownPct < -5 ? "text-red-400" : "text-yellow-400"}`}
               >
-                {fmtPct(drawdownPct)} / -10%
+                {fmtPct(drawdownPct)} / -{drawdownLimitPctAbs.toFixed(0)}%
               </span>
             </div>
             <div className="flex justify-between items-baseline">
@@ -793,7 +962,9 @@ export default function CommandCenterPage() {
         </Card>
 
         {/* Portfolio Correlation */}
-        <PortfolioCorrelationWidget />
+        <WidgetErrorBoundary name="Portfolio Correlation">
+          <PortfolioCorrelationWidget />
+        </WidgetErrorBoundary>
       </div>
 
       {/* ═══════════════════════════════════════════════════════
@@ -801,100 +972,7 @@ export default function CommandCenterPage() {
       ═══════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         {liveInstruments.map((inst) => (
-          <Card
-            key={inst.symbol}
-            className={`bg-slate-900/60 border ${
-              inst.status === "HALTED"
-                ? "border-red-900/60"
-                : "border-cyan-900/50"
-            }`}
-          >
-            <CardHeader className="pb-2 pt-3 px-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="font-mono text-base text-white font-bold tracking-wider">
-                    {inst.symbol}
-                  </CardTitle>
-                  <span className="font-mono text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
-                    {inst.tf}
-                  </span>
-                </div>
-                <Badge
-                  className={`text-xs font-mono py-0 px-2 border ${
-                    inst.status === "APPROVED"
-                      ? "bg-green-950 text-green-400 border-green-800"
-                      : "bg-red-950 text-red-400 border-red-800"
-                  }`}
-                >
-                  {inst.status}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              {inst.status === "HALTED" ? (
-                <div className="flex flex-col items-center justify-center py-5 gap-2">
-                  <XCircle className="w-9 h-9 text-red-500/70" />
-                  <span className="font-mono text-sm text-red-400 font-bold tracking-wider">
-                    TRADING HALTED
-                  </span>
-                  <span className="font-mono text-xs text-slate-500 text-center">
-                    WFE={inst.wfe} — OVERFIT DETECTED
-                    <br />
-                    Regime-adaptive boost insufficient
-                  </span>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">
-                      WFE Score
-                    </div>
-                    <div className="font-mono text-lg text-cyan-400 font-bold leading-none">
-                      {inst.wfe}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Regime</div>
-                    <div
-                      className={`font-mono text-sm font-bold ${
-                        inst.regime === "BULL"
-                          ? "text-green-400"
-                          : inst.regime === "BEAR"
-                            ? "text-red-400"
-                            : "text-yellow-400"
-                      }`}
-                    >
-                      {inst.regime}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">
-                      Last Signal
-                    </div>
-                    <div
-                      className={`font-mono text-sm font-bold ${
-                        inst.lastSignal === "LONG"
-                          ? "text-green-400"
-                          : inst.lastSignal === "SHORT"
-                            ? "text-red-400"
-                            : "text-slate-400"
-                      }`}
-                    >
-                      {inst.lastSignal}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 mb-0.5">
-                      ATR Approx
-                    </div>
-                    <div className="font-mono text-sm text-white">
-                      {inst.atr}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <SignalCard key={inst.symbol} inst={inst} />
         ))}
       </div>
 
@@ -918,7 +996,7 @@ export default function CommandCenterPage() {
                 <span
                   className={dailyPnlPct < -1 ? "text-red-400" : "text-green-400"}
                 >
-                  {fmtPct(dailyPnlPct)} / -2.00%
+                  {fmtPct(dailyPnlPct)} / -{dailyLimitPctAbs.toFixed(2)}%
                 </span>
               </div>
               <Progress
@@ -937,7 +1015,7 @@ export default function CommandCenterPage() {
                 <span
                   className={drawdownPct < -5 ? "text-red-400" : "text-yellow-400"}
                 >
-                  {fmtPct(drawdownPct)} / -10.00%
+                  {fmtPct(drawdownPct)} / -{drawdownLimitPctAbs.toFixed(2)}%
                 </span>
               </div>
               <Progress value={drawdownProgress} className="h-2.5 bg-slate-800" />
@@ -970,7 +1048,7 @@ export default function CommandCenterPage() {
               <div className="flex justify-between text-xs font-mono mb-1.5">
                 <span className="text-slate-400">Orders / Minute</span>
                 <span className="text-slate-300">
-                  {ordersPerMin} / 40 limit
+                  {ordersPerMin} / {ordersLimit} limit
                 </span>
               </div>
               <Progress value={ordersProgress} className="h-2.5 bg-slate-800" />
@@ -1083,6 +1161,7 @@ export default function CommandCenterPage() {
                 No trade history from /portfolio/history/trades
               </div>
             ) : (
+              <>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs font-mono">
                   <thead>
@@ -1130,6 +1209,11 @@ export default function CommandCenterPage() {
                   </tbody>
                 </table>
               </div>
+              <p className="text-[10px] text-amber-500/70 font-mono mt-2">
+                Raw record (/portfolio/history/trades) — not deduped; per-trade
+                P&amp;L may include re-logged duplicates.
+              </p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -1139,7 +1223,7 @@ export default function CommandCenterPage() {
           <CardHeader className="pb-2 pt-3 px-4">
             <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
               <RefreshCw className="w-3 h-3" />
-              WALK-FORWARD EFFICIENCY MONITOR
+              GATE-V2 DEFLATED SHARPE MONITOR
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-3 space-y-4">
@@ -1183,8 +1267,11 @@ export default function CommandCenterPage() {
             ))}
 
             <div className="pt-2 border-t border-slate-800/50 space-y-1.5">
+              <p className="text-[10px] text-slate-600 italic">
+                Configured schedule/method (static, not live-probed):
+              </p>
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-500">Next WFE Recalc</span>
+                <span className="text-slate-500">Next Recalc</span>
                 <span className="text-cyan-400">Sunday 06:00 CT</span>
               </div>
               <div className="flex justify-between text-xs font-mono">
@@ -1244,7 +1331,7 @@ export default function CommandCenterPage() {
             </div>
             <div className="flex justify-between items-baseline">
               <span className="text-xs text-slate-500">Open Positions</span>
-              <span className="font-mono text-xs text-slate-400">0</span>
+              <span className="font-mono text-xs text-slate-400">N/A — inactive</span>
             </div>
             <div className="mt-2 p-2 rounded bg-slate-800/50 border border-slate-700/40">
               <p className="text-xs text-slate-500 font-mono leading-relaxed">
@@ -1354,17 +1441,21 @@ export default function CommandCenterPage() {
               <span className="text-xs text-slate-500">IBKR Gateway</span>
               <Badge
                 className={`text-xs font-mono py-0 border ${
-                  (health?.ibkr_execution_connected ?? health?.ibkr_connected)
+                  exec.tone === "bull"
                     ? "bg-green-950 text-green-400 border-green-800"
+                    : exec.tone === "warn"
+                    ? "bg-yellow-950 text-yellow-400 border-yellow-800"
                     : "bg-red-950 text-red-400 border-red-800"
                 }`}
-                title="Reports execution-connector state when /health exposes ibkr_execution_connected; falls back to legacy ibkr_connected (OR of execution + data) on older engines."
+                title={exec.detail}
               >
-                {(health?.ibkr_execution_connected ?? health?.ibkr_connected) ? "CONNECTED" : "DISCONNECTED"}
+                {exec.label}
               </Badge>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-500">Database</span>
+              <span className="text-xs text-slate-500" title="Engine /health reachability — not a direct database probe.">
+                Engine Reachable
+              </span>
               <Badge
                 className={`text-xs font-mono py-0 border ${
                   engineOnline
@@ -1489,8 +1580,108 @@ export default function CommandCenterPage() {
           ROW 7 — SIGNAL FEED (full width)
       ═══════════════════════════════════════════════════════ */}
       <div className="mt-3">
-        <SignalFeedWidget />
+        <WidgetErrorBoundary name="Signal Feed">
+          <SignalFeedWidget />
+        </WidgetErrorBoundary>
       </div>
     </div>
+  );
+}
+
+// ── SignalCard (PRB-34: live regime, static lastSignal/atr) ────────────────
+
+function SignalCard({ inst }: { inst: (typeof INSTRUMENTS)[number] }) {
+  const { regime: liveRegime, isLoading: regimeLoading } = useSymbolRegime(inst.symbol);
+
+  return (
+    <Card
+      className={`bg-slate-900/60 border ${
+        inst.status === "HALTED" ? "border-red-900/60" : "border-cyan-900/50"
+      }`}
+    >
+      <CardHeader className="pb-2 pt-3 px-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CardTitle className="font-mono text-base text-white font-bold tracking-wider">
+              {inst.symbol}
+            </CardTitle>
+            <span className="font-mono text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
+              {inst.tf}
+            </span>
+          </div>
+          <Badge
+            className={`text-xs font-mono py-0 px-2 border ${
+              inst.status === "APPROVED"
+                ? "bg-green-950 text-green-400 border-green-800"
+                : "bg-red-950 text-red-400 border-red-800"
+            }`}
+          >
+            {inst.status}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-3">
+        {inst.status === "HALTED" ? (
+          <div className="flex flex-col items-center justify-center py-5 gap-2">
+            <XCircle className="w-9 h-9 text-red-500/70" />
+            <span className="font-mono text-sm text-red-400 font-bold tracking-wider">
+              TRADING HALTED
+            </span>
+            <span className="font-mono text-xs text-slate-500 text-center">
+              DSR={inst.wfe} — OVERFIT DETECTED
+              <br />
+              Regime-adaptive boost insufficient
+            </span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">
+                Deflated Sharpe
+              </div>
+              <div className="font-mono text-lg text-cyan-400 font-bold leading-none">
+                {inst.wfe}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">Regime</div>
+              {regimeLoading ? (
+                <div className="h-4 w-16 animate-pulse rounded bg-slate-800" />
+              ) : liveRegime ? (
+                <div className={`font-mono text-sm font-bold ${regimeColorClass(liveRegime)}`}>
+                  {liveRegime}
+                </div>
+              ) : (
+                <div className="font-mono text-sm text-slate-600">unavailable</div>
+              )}
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">
+                Last Signal (static)
+              </div>
+              <div
+                className={`font-mono text-sm font-bold ${
+                  inst.lastSignal === "LONG"
+                    ? "text-green-400"
+                    : inst.lastSignal === "SHORT"
+                      ? "text-red-400"
+                      : "text-slate-400"
+                }`}
+              >
+                {inst.lastSignal}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 mb-0.5">
+                ATR Approx (static)
+              </div>
+              <div className="font-mono text-sm text-white">
+                {inst.atr}
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

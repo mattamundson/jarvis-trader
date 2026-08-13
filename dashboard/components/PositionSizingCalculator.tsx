@@ -4,28 +4,37 @@ import React, { useState } from "react";
 import { DollarSign } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchEngine } from "@/lib/api";
+import { ALL_TRACKED_SYMBOLS, type TrackedSymbol } from "@/lib/approvedSymbols";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type Symbol = "MES" | "MNQ" | "MCL";
+type Symbol = TrackedSymbol;
 
+// Mirrors the actual fields returned by GET /position-sizing/calculate
+// (engine/routers/settings_router.py:calculate_position_size_alias) — that
+// handler currently ignores all query params and always sizes MES; the form
+// inputs below reflect what a caller COULD request, not what the response
+// reflects, until the backend accepts them.
 interface PositionSizingResponse {
   symbol: string;
   account_value: number;
-  risk_amount: number;
-  atr: number;
-  stop_distance: number;
-  multiplier: number;
   contracts: number;
-  max_contracts: number;
-  final_quantity: number;
-  formula: string;
+  risk_per_trade: number;
+  stop_distance: number;
+  dollar_risk_per_contract: number;
+  reasoning: string;
 }
 
-const SYMBOLS: Symbol[] = ["MES", "MNQ", "MCL"];
+// Active pair (MES, MGC) first, then the halted symbols (MCL, MNQ) — this is
+// a purely informational what-if calculator (GET /position-sizing/calculate
+// doesn't execute trades or touch broker/execution paths), so keeping the
+// halted symbols selectable is fine; GT-46 was that MGC — half of the
+// actually-active MES/MGC pair — was missing entirely.
+const SYMBOLS: Symbol[] = [...ALL_TRACKED_SYMBOLS];
 
 const MULTIPLIER_LABELS: Record<Symbol, string> = {
   MES: "$5/pt",
+  MGC: "$10/pt",
   MNQ: "$2/pt",
   MCL: "$100/pt",
 };
@@ -183,10 +192,18 @@ export function PositionSizingCalculator() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2">
               <div>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Risk Amount
+                  Account Value
                 </p>
                 <p className="text-sm font-semibold text-foreground font-mono">
-                  ${result.risk_amount.toFixed(2)}
+                  ${result.account_value.toFixed(2)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Risk / Trade
+                </p>
+                <p className="text-sm font-semibold text-foreground font-mono">
+                  ${result.risk_per_trade.toFixed(2)}
                 </p>
               </div>
               <div>
@@ -199,46 +216,35 @@ export function PositionSizingCalculator() {
               </div>
               <div>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Multiplier
+                  Risk / Contract
                 </p>
                 <p className="text-sm font-semibold text-foreground font-mono">
-                  ${result.multiplier}/pt
+                  ${result.dollar_risk_per_contract.toFixed(2)}
                 </p>
               </div>
               <div>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                   Calculated Contracts
                 </p>
-                <p className="text-sm font-semibold text-foreground font-mono">
-                  {result.contracts}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Max Cap
-                </p>
-                <p className="text-sm font-semibold text-foreground font-mono">
-                  {result.max_contracts}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Final Quantity
-                </p>
                 <p className="text-sm font-bold text-bull font-mono">
-                  {result.final_quantity}
+                  {result.contracts}
                 </p>
               </div>
             </div>
 
             <div className="pt-1 border-t border-bull/10">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">
-                Formula
+                Reasoning
               </p>
               <p className="text-xs text-foreground font-mono break-all">
-                {result.formula}
+                {result.reasoning}
               </p>
             </div>
+
+            <p className="text-[10px] text-muted-foreground italic">
+              Note: the engine endpoint currently always sizes MES with server-default
+              inputs — the symbol/account/ATR/risk% fields above are not yet honored server-side.
+            </p>
           </div>
         )}
       </CardContent>

@@ -164,6 +164,7 @@ async def get_atr_trail_trades(
         import pandas as pd
 
         from backtest.atr_trail_viz import compute_atr_trail_viz
+        from backtest.run_atr_trail_bounce import _pick_cache_file
 
         cache = Path(__file__).resolve().parent.parent / "backtest" / "cache"
         # Broad glob so it also matches the IBKR continuous file (..._5m_cont.csv).
@@ -172,7 +173,10 @@ async def get_atr_trail_trades(
             raise HTTPException(
                 404, f"No cached {symbol} {timeframe} bars in {cache}. Run the IBKR fetch first."
             )
-        path = max(matches, key=lambda p: p.stat().st_mtime)  # freshest pull
+        # Pick by parsed date range (latest end, longest span), NOT mtime -- a
+        # freshly-touched short recent-tail file would otherwise silently win
+        # over a longer, older-mtime full-history file. See _pick_cache_file.
+        path = _pick_cache_file(matches)
 
         df = pd.read_csv(path)
         df.columns = [c.lower() for c in df.columns]
@@ -579,6 +583,7 @@ async def get_paper_status():
             # Legacy color column reflects authorization: only ACTIVE rows show
             # their quality score; the true dsr is always in the native field.
             row: dict = {
+                "symbol": symbol,
                 "status": status,
                 "wfe": round(dsr, 4) if status == "ACTIVE" else 0.0,
                 "wfe_label": label,
@@ -1067,15 +1072,46 @@ async def get_pending_signals():
     from pathlib import Path
 
     pending_file = Path(__file__).parent.parent / "backtest" / "results" / "pending_signals.json"
+    # The dashboard's paper page reads this as a bare PendingSignal[] (it guards
+    # with Array.isArray), so return the list directly, not a {signals,count} wrapper.
     if not pending_file.exists():
-        return {"signals": [], "count": 0}
+        return []
 
     try:
         signals = _json.loads(pending_file.read_text(encoding="utf-8"))
     except Exception:
         signals = []
 
-    return {"signals": signals, "count": len(signals)}
+    return signals if isinstance(signals, list) else []
+
+
+@router.post("/paper/reset-pending-signals")
+async def reset_pending_signals():
+    """Clear the pending entry-signal queue written by the daily MGC scanner.
+
+    This only touches the display/notification file (`pending_signals.json`) —
+    it is read solely by GET /paper/pending-signals for the dashboard's paper
+    page and is never consumed by any execution path, so clearing it cannot
+    affect an in-flight paper trade.
+    """
+    import json as _json
+    from pathlib import Path
+
+    pending_file = Path(__file__).parent.parent / "backtest" / "results" / "pending_signals.json"
+
+    cleared = 0
+    if pending_file.exists():
+        try:
+            existing = _json.loads(pending_file.read_text(encoding="utf-8"))
+            if isinstance(existing, list):
+                cleared = len(existing)
+        except Exception:
+            cleared = 0
+
+    pending_file.write_text(_json.dumps([]), encoding="utf-8")
+    logger.info(f"[MGC-daily] Pending signal queue reset -> cleared {cleared} signal(s)")
+
+    return {"cleared": cleared}
 
 
 @router.get("/paper/mgc-performance")
@@ -1090,8 +1126,11 @@ async def get_mgc_paper_performance():
 
         should_kill, kill_reason = tracker.check_kill_conditions()
         metrics["kill_threshold_breached"] = should_kill
+        # Frontend MGCPerformanceResponse reads kill_switch_active — mirror it.
+        metrics["kill_switch_active"] = should_kill
         metrics["kill_reason"] = kill_reason if should_kill else None
-        metrics["monthly_summary"] = tracker.monthly_summary()
+        # Frontend reads monthly_breakdown (Array<{month,trades,pnl,win_rate}>).
+        metrics["monthly_breakdown"] = tracker.monthly_summary()
         metrics["config"] = {
             "symbol": MGC_PAPER_CONFIG["symbol"],
             "interval": MGC_PAPER_CONFIG["interval"],

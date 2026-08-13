@@ -43,9 +43,15 @@ ALLOWLIST = {
     # from closed paper_trades round-trips. Not a runtime path; derives from the same
     # single source of truth, so it cannot introduce a mismatched-basis row.
     "scripts/rebuild_daily_pnl.py",
+    # Offline manual reconciliation tool (dry-run by default; --apply is DB-backup
+    # gated). Rebuilds daily_pnl from the closed paper_trades ledger using the same
+    # absolute-anchoring formula as the live EOD writer, so it derives from the single
+    # source of truth and cannot introduce a mismatched-basis row. Consumed by the
+    # daily-pnl-reconcile drift detector.
+    "scripts/repair_daily_pnl.py",
 }
 
-EXCLUDE_DIRS = ("tests",)
+EXCLUDE_DIRS = ("tests", ".venv", "node_modules", ".git")
 
 
 def _engine_py_files():

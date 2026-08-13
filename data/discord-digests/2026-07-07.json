@@ -1,0 +1,269 @@
+{
+  "date": "2026-07-07",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "neutral",
+    "conviction": 0.4,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 37
+  },
+  "sentiment_score": 0.12612612612612614,
+  "sentiment_label": "neutral",
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7578.0,
+      "target2": 7605.0,
+      "stop1": 7533.0,
+      "win_rate": 84.04,
+      "rr": 0.63,
+      "timestamp": "2026-07-07T13:25:01.833-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7560.0,
+      "target2": 7587.0,
+      "stop1": 7515.0,
+      "win_rate": 83.99,
+      "rr": 0.62,
+      "timestamp": "2026-07-07T11:00:22.71-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7569.0,
+      "target2": 7575.75,
+      "stop1": null,
+      "win_rate": 79.36,
+      "rr": 0.55,
+      "timestamp": "2026-07-07T13:40:05.13-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7570.5,
+      "target2": 7577.25,
+      "stop1": null,
+      "win_rate": 79.32,
+      "rr": 0.55,
+      "timestamp": "2026-07-07T13:14:03.539-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7568.5,
+      "target2": 7575.25,
+      "stop1": null,
+      "win_rate": 79.28,
+      "rr": 0.55,
+      "timestamp": "2026-07-07T12:23:01.062-05:00"
+    }
+  ],
+  "corey_quote": "In divergent markets, direction is not defined by the strongest move, but by which side fails to defend its control zone first.",
+  "commentary_health": [
+    {
+      "date": "2026-07-08",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.45,
+      "message_count": 8
+    },
+    {
+      "date": "2026-07-07",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.4,
+      "message_count": 37
+    },
+    {
+      "date": "2026-07-06",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 8
+    },
+    {
+      "date": "2026-07-05",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    },
+    {
+      "date": "2026-07-04",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 1
+    },
+    {
+      "date": "2026-07-03",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 6
+    },
+    {
+      "date": "2026-07-02",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.35,
+      "message_count": 28
+    },
+    {
+      "date": "2026-07-01",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 17
+    },
+    {
+      "date": "2026-06-30",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.75,
+      "message_count": 13
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 32,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "anthropic",
+    "primary_provider": "anthropic",
+    "primary_healthy": true,
+    "providers_available": 4,
+    "google_fallback_count": 28,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 93,
+    "failing_enabled": 6,
+    "failing_disabled": 0,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-IBGateway-AtLogon",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-LifeOS-Dashboard",
+        "result": "0x2"
+      },
+      {
+        "name": "Jarvis-VaultBackup",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VerdictRefresh-Weekly",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 12.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 20.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 20.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 4.3,
+        "newest": "2026-07-04T06:00:03.932070+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.9,
+        "newest": "2026-07-07T15:31:20.148675+00:00",
+        "files": 30,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.9,
+        "newest": "2026-07-06T15:32:17.635066+00:00",
+        "files": 18,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 4.3,
+        "newest": "2026-07-04T06:00:05.595905+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 20.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 20.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

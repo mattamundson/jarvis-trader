@@ -31,15 +31,23 @@ import {
   type DailyAttributionResponse,
   type TradeJournalEntry,
 } from "@/lib/api";
+import { executionStatus } from "@/lib/executionPath";
 import {
   fetchAmoHealth,
   fetchAmoEdgeVerdict,
   fetchAmoCommodities,
+  fetchAmoSignalOutcomesAggregate,
+  fetchAmoScoreboard,
+  fetchAmoActionable,
   type AmoHealthResponse,
   type AmoEdgeVerdictResponse,
   type AmoCommodity,
+  type AmoSignalOutcomesAggregate,
+  type AmoScoreboardResponse,
+  type AmoActionableResponse,
 } from "@/lib/amo-api";
 import { PostTradeExecutionWidget } from "@/components/PostTradeExecutionWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { BarDepthCard } from "@/components/BarDepthCard";
 import { PostTradeSnippet } from "@/components/PostTradeSnippet";
 
@@ -154,7 +162,7 @@ const TV_SYMBOL: Record<string, string> = {
   MES: "CME_MINI:MES1!", ES: "CME_MINI:ES1!",
   MNQ: "CME_MINI:MNQ1!", NQ: "CME_MINI:NQ1!",
   M2K: "CME_MINI:M2K1!",
-  MGC: "COMEX:MGC1!", GC: "COMEX:GC1!",
+  MGC: "COMEX_MINI:MGC1!", GC: "COMEX:GC1!",
   MCL: "NYMEX:MCL1!", CL: "NYMEX:CL1!",
 };
 function tvTicker(symbol: string): string | null {
@@ -258,7 +266,16 @@ export default function TrustPanePage() {
   const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: 30_000 });
   const verdict = useSWR<AmoEdgeVerdictResponse>("amo-edge-verdict", () => fetchAmoEdgeVerdict(), { refreshInterval: 60_000 });
   // Commodities rarely change — refresh slowly, just enough to pick up a new listing.
-  const commodities = useSWR<AmoCommodity[]>("amo-commodities", () => fetchAmoCommodities(), { refreshInterval: 600_000 });
+  const commodities = useSWR<AmoCommodity[]>("amo-commodities", () => fetchAmoCommodities(), { refreshInterval: 300_000 });
+  const amoOutcomes = useSWR<AmoSignalOutcomesAggregate>(
+    "amo-signal-outcomes", () => fetchAmoSignalOutcomesAggregate(), { refreshInterval: 120_000 },
+  );
+  const amoScoreboard = useSWR<AmoScoreboardResponse>(
+    "amo-scoreboard", () => fetchAmoScoreboard(), { refreshInterval: 120_000 },
+  );
+  const amoActionable = useSWR<AmoActionableResponse>(
+    "amo-actionable", () => fetchAmoActionable(), { refreshInterval: 60_000 },
+  );
 
   const [secondsSince, setSecondsSince] = useState(0);
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
@@ -272,13 +289,17 @@ export default function TrustPanePage() {
   const refreshAll = useCallback(() => {
     health.mutate(); positions.mutate(); pnl.mutate(); trades.mutate();
     barQuality.mutate(); edgeLedger.mutate(); amo.mutate(); verdict.mutate(); commodities.mutate();
-  }, [health, positions, pnl, trades, barQuality, edgeLedger, amo, verdict, commodities]);
+    amoOutcomes.mutate(); amoScoreboard.mutate(); amoActionable.mutate();
+  }, [health, positions, pnl, trades, barQuality, edgeLedger, amo, verdict, commodities, amoOutcomes, amoScoreboard, amoActionable]);
 
   // ── jarvis derived ──
   const h = health.data;
   const jarvisLive = !!h && h.status === "ok";
   const dataLegDown = h?.ibkr_data_connected === false;
   const llmDegraded = !!h && h.llm_path_healthy === false;
+  // D3-01: this page's whole purpose is telling the operator what's real —
+  // never read ibkr_execution_connected directly (see @/lib/executionPath).
+  const exec = executionStatus(h);
   const jarvisDegraded = !!health.error || (!!h && h.status !== "ok");
   const openPaper = positions.data?.paper?.positions ?? [];
   const suspectCount = openPaper.filter((p) => suspectPrice(p.symbol, p.entry_price)).length;
@@ -381,14 +402,14 @@ export default function TrustPanePage() {
 
             {/* 1. Liveness */}
             <Card>
-              <PanelHeader title="Liveness" provenance="live" />
+              <PanelHeader title="Liveness" provenance={health.error ? "static" : "live"} />
               <div className="grid grid-cols-3 gap-3">
                 <Stat label="Status" value={h?.status?.toUpperCase() ?? (health.error ? "DOWN" : "…")} tone={jarvisLive ? "bull" : "bear"} />
                 <Stat label="Uptime" value={fmtUptime(h?.uptime_seconds)} />
                 <Stat label="LLM" value={h?.llm_path_healthy ? "OK" : "DEGRADED"} tone={h?.llm_path_healthy ? "bull" : "bear"} />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Badge variant={h?.ibkr_execution_connected ? "bull" : "warn"}>exec IB {h?.ibkr_execution_connected ? "✓" : "✗"}</Badge>
+                <Badge variant={exec.tone} title={exec.detail}>exec IB {exec.label}</Badge>
                 <Badge variant={h?.ibkr_data_connected ? "bull" : "bear"}>data IB {h?.ibkr_data_connected ? "✓" : "✗"}</Badge>
                 <Badge variant={h?.kill_switch_active ? "bear" : "neutral"}>kill {h?.kill_switch_active ? "ON" : "off"}</Badge>
                 <Badge variant={h?.tradingview_mcp_healthy ? "bull" : "warn"}>TV {h?.tradingview_mcp_healthy ? "✓" : "✗"}</Badge>
@@ -397,7 +418,7 @@ export default function TrustPanePage() {
 
             {/* 2. Today's P&L */}
             <Card>
-              <PanelHeader title={`Today's P&L${pnl.data?.date ? ` · ${pnl.data.date}` : ""}`} provenance="live" />
+              <PanelHeader title={`Today's P&L${pnl.data?.date ? ` · ${pnl.data.date}` : ""}`} provenance={pnl.error ? "static" : "live"} />
               {pnl.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /attribution/daily.</p>
               ) : (
@@ -411,7 +432,7 @@ export default function TrustPanePage() {
 
             {/* 3. Open positions */}
             <Card>
-              <PanelHeader title={`Open Positions (${openPaper.length})`} provenance="live" />
+              <PanelHeader title={`Open Positions (${openPaper.length})`} provenance={positions.error ? "static" : "live"} />
               {openPaper.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No open paper positions.</p>
               ) : (
@@ -470,7 +491,7 @@ export default function TrustPanePage() {
 
             {/* 5. Data-quality gate — proves the write-time bar gate is working */}
             <Card>
-              <PanelHeader title="Data-Quality Gate · 7d" provenance="live" />
+              <PanelHeader title="Data-Quality Gate · 7d" provenance={barQuality.error ? "static" : "live"} />
               {barQuality.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /analytics/bar-quality.</p>
               ) : bqTotal === 0 ? (
@@ -505,7 +526,7 @@ export default function TrustPanePage() {
 
             {/* 4b. Validated edge — which candidates clear gate-v2 right now */}
             <Card>
-              <PanelHeader title="Validated Edge · gate-v2" provenance="live" />
+              <PanelHeader title="Validated Edge · gate-v2" provenance={edgeLedger.error ? "static" : "live"} />
               {edgeLedger.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /reports/edge-ledger.</p>
               ) : !el ? (
@@ -556,7 +577,7 @@ export default function TrustPanePage() {
 
             {/* 4. Per-trade post-mortem */}
             <Card>
-              <PanelHeader title="Recent Trades — win/loss & why" provenance="live" />
+              <PanelHeader title="Recent Trades — win/loss & why" provenance={trades.error ? "static" : "live"} />
               {trades.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /trades/journal.</p>
               ) : (trades.data?.length ?? 0) === 0 ? (
@@ -592,7 +613,9 @@ export default function TrustPanePage() {
             </Card>
 
             {/* 5. Post-trade execution quality (WS4B endpoints — PR #78) */}
-            <PostTradeExecutionWidget />
+            <WidgetErrorBoundary name="Post-Trade Execution">
+              <PostTradeExecutionWidget />
+            </WidgetErrorBoundary>
 
             {/* 6. Post-trade quality — book-wide MAE/MFE + entry-timing regret (J1/J2) */}
             <PostTradeSnippet />
@@ -617,7 +640,7 @@ export default function TrustPanePage() {
 
             {/* Liveness */}
             <Card>
-              <PanelHeader title="Liveness" provenance="live" />
+              <PanelHeader title="Liveness" provenance={amo.error ? "static" : "live"} />
               <div className="grid grid-cols-3 gap-3">
                 <Stat label="Status" value={a?.status?.toUpperCase() ?? (amo.error ? "DOWN" : "…")} tone={amoLive ? "bull" : "bear"} />
                 <Stat label="Scheduler" value={a?.scheduler_running ? "RUNNING" : "STOPPED"} tone={a?.scheduler_running ? "bull" : "bear"} />
@@ -630,7 +653,7 @@ export default function TrustPanePage() {
                 The honest answer to "is any of this edge real?", straight from the
                 same correction that gates Kelly sizing. */}
             <Card>
-              <PanelHeader title="Edge Verdict — BH-FDR" provenance="live" />
+              <PanelHeader title="Edge Verdict — BH-FDR" provenance={verdict.error ? "static" : "live"} />
               {verdict.error ? (
                 <p className="text-xs text-muted-foreground">Could not load /api/edge-verdict.</p>
               ) : !v ? (
@@ -686,9 +709,155 @@ export default function TrustPanePage() {
               )}
             </Card>
 
+            {/* Signal outcomes — did amo's emitted setups actually pay off?
+                The trust check on everything above: hypothetical (amo has no
+                execution), but scored against real forward prices. */}
+            <Card>
+              <PanelHeader title="Signal Outcomes" provenance={amoOutcomes.error ? "static" : "live"} />
+              {amoOutcomes.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /api/signal-outcomes/aggregate.</p>
+              ) : !amoOutcomes.data ? (
+                <p className="text-xs text-muted-foreground">Loading outcomes…</p>
+              ) : amoOutcomes.data.provisioned === false ? (
+                <p className="text-xs text-muted-foreground">Outcome tracking not provisioned on the amo side yet.</p>
+              ) : amoOutcomes.data.total_evaluated === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No evaluated outcomes yet — setups are scored ≥10 days after emission.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Stat
+                      label="Hit rate (T1+T2)"
+                      value={amoOutcomes.data.hit_rate != null ? `${amoOutcomes.data.hit_rate.toFixed(1)}%` : "—"}
+                      tone={(amoOutcomes.data.hit_rate ?? 0) >= 50 ? "bull" : "bear"}
+                    />
+                    <Stat
+                      label="Avg hyp. P&L"
+                      value={
+                        amoOutcomes.data.avg_hypothetical_pnl_pct != null
+                          ? `${amoOutcomes.data.avg_hypothetical_pnl_pct >= 0 ? "+" : ""}${amoOutcomes.data.avg_hypothetical_pnl_pct.toFixed(2)}%`
+                          : "—"
+                      }
+                      tone={(amoOutcomes.data.avg_hypothetical_pnl_pct ?? 0) >= 0 ? "bull" : "bear"}
+                    />
+                    <Stat label="Evaluated" value={String(amoOutcomes.data.total_evaluated)} tone="muted" />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {Object.entries(amoOutcomes.data.count_by_hit).map(([k, n]) => (
+                      <Badge key={k} variant={k.startsWith("target") ? "bull" : k === "stop_hit" ? "bear" : "neutral"}>
+                        {k} · {n}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Hypothetical — amo places no orders; exits assume T1 on target hit, stop on stop hit.
+                  </p>
+                </>
+              )}
+            </Card>
+
+            {/* Backtest screen vs live forward record, per validated strategy. */}
+            <Card>
+              <PanelHeader title="Scoreboard — Backtest vs Forward" provenance={amoScoreboard.error ? "static" : "live"} />
+              {amoScoreboard.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /api/scoreboard.</p>
+              ) : !amoScoreboard.data ? (
+                <p className="text-xs text-muted-foreground">Loading scoreboard…</p>
+              ) : amoScoreboard.data.available === false ? (
+                <p className="text-xs text-muted-foreground">
+                  amo scoreboard unavailable (fail-open payload) — a feed outage,
+                  not a claim that no strategies are validated.
+                </p>
+              ) : amoScoreboard.data.strategies.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No validated strategies on the scoreboard — nothing to compare. Honest empty, not a gap.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {amoScoreboard.data.strategies.slice(0, 5).map((s) => (
+                    <div
+                      key={`${s.symbol}-${s.strategy}`}
+                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-xs font-semibold text-foreground">{s.symbol ?? "—"}</span>
+                        <Badge variant={s.kelly_sized ? "bull" : "neutral"}>{s.strategy}</Badge>
+                        {s.graduation_ready && !s.kelly_sized && <Badge variant="warn">grad-ready</Badge>}
+                      </div>
+                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono shrink-0">
+                        <span>BT PF {num(s.backtest_pf)}</span>
+                        <span className={s.forward_pf != null && s.forward_pf > 1 ? "text-bull" : ""}>
+                          Fwd PF {num(s.forward_pf)}
+                        </span>
+                        <span>
+                          {s.evidence_gathered}/{s.evidence_target} ev
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            {/* Actionable now — amo's top live setups, advisory display only.
+                Never feeds a jarvis trade/risk/fund decision (CROSS_SIGNAL spec). */}
+            <Card>
+              <PanelHeader title="Actionable Now (advisory)" provenance={amoActionable.error ? "static" : "live"} />
+              {amoActionable.error ? (
+                <p className="text-xs text-muted-foreground">Could not load /api/actionable.</p>
+              ) : !amoActionable.data ? (
+                <p className="text-xs text-muted-foreground">Loading actionable board…</p>
+              ) : !amoActionable.data.available ? (
+                <p className="text-xs text-muted-foreground">
+                  amo actionable board unavailable — a feed outage, not a
+                  confirmed absence of setups.
+                </p>
+              ) : amoActionable.data.items.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No active setups on the amo board.</p>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    {amoActionable.data.items.slice(0, 3).map((it) => (
+                      <div
+                        key={`${it.symbol}-${String(it.id)}`}
+                        className={`rounded-lg border px-3 py-2 ${
+                          it.exploratory ? "border-border/60 opacity-70" : "border-border"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-xs font-semibold text-foreground">{it.symbol}</span>
+                            <Badge variant={it.direction === "short" ? "bear" : "bull"}>{it.direction}</Badge>
+                            <Badge variant={it.status === "triggerable" || it.status === "triggered" ? "warn" : "neutral"}>
+                              {it.status.replace(/_/g, " ")}
+                            </Badge>
+                            {it.exploratory && <Badge variant="static">exploratory</Badge>}
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono shrink-0">
+                            {it.distance_atr != null && <span>{it.distance_atr.toFixed(2)} ATR to entry</span>}
+                            {it.planned_rr != null && <span>RR {it.planned_rr.toFixed(1)}</span>}
+                          </div>
+                        </div>
+                        {it.entry_price != null && (
+                          <p className="text-[11px] text-muted-foreground font-mono mt-1">
+                            entry {it.entry_price} · stop {it.stop_loss ?? "—"} · T1 {it.target_1 ?? "—"} · last{" "}
+                            {it.latest_price ?? "—"}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    Advisory display only — amo signals never gate or feed a jarvis trade decision.
+                  </p>
+                </>
+              )}
+            </Card>
+
             {/* Scheduled jobs */}
             <Card>
-              <PanelHeader title="Scheduled Jobs" provenance="live" />
+              <PanelHeader title="Scheduled Jobs" provenance={amo.error ? "static" : "live"} />
               {(a?.jobs?.length ?? 0) === 0 ? (
                 <p className="text-xs text-muted-foreground">No jobs reported.</p>
               ) : (
@@ -710,9 +879,10 @@ export default function TrustPanePage() {
                 <XCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                 <p className="text-xs text-muted-foreground">
                   amo-arbitrage is <span className="text-foreground font-medium">signal-generation only</span> — it
-                  surfaces seasonal/spread setups but has no live order execution or per-trade P&L feed yet. Trades
-                  are placed manually off its signals, so same-day P&L and post-trade analysis live on the jarvis side.
-                  Building an amo execution/outcomes view is a tracked Phase-4 item.
+                  surfaces seasonal/spread setups but has no live order execution, so there is no realized P&L feed.
+                  Trades are placed manually off its signals; same-day P&L and post-trade analysis live on the jarvis
+                  side. Hypothetical signal outcomes (did the setups pay off on paper?) are tracked in the Signal
+                  Outcomes panel above.
                 </p>
               </div>
             </Card>

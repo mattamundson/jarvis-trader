@@ -1,7 +1,12 @@
-/** Static instrument / WFE defaults; live rows merge with `/backtest/paper-status` in the page.
+/** Static instrument defaults; live rows merge with `/backtest/paper-status` in the page.
  *  Mirrors live gate-v2 reality: MES/MGC trend = PASS (active forward-proving book);
- *  MCL/MNQ = DO_NOT_TRADE (routing-blocked). The `wfe` column now carries the gate-v2
- *  deflated Sharpe for active edges. Live API values override these on load. */
+ *  MCL/MNQ = DO_NOT_TRADE (routing-blocked). The `wfe` field (kept as-is for backend/API
+ *  parity) is displayed to users as "Deflated Sharpe" / "DSR" — it is gate-v2's deflated
+ *  Sharpe ratio, NOT true walk-forward efficiency. `regime` is now overridden live per
+ *  instrument in the page via GET /analytics/regime/{symbol} (PRB-34, same source
+ *  /jarvis's RegimePulsePanel uses) -- this constant is only the pre-fetch/error
+ *  fallback. `lastSignal`/`atr` still have no live backend source and are rendered as
+ *  static/approximate in the UI. Live API values override wfe/status/regime on load. */
 
 export const INSTRUMENTS = [
   {

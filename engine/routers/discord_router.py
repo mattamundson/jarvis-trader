@@ -277,7 +277,9 @@ async def get_discord_intelligence(
     db_path: str = Depends(get_db_path),
 ):
     """
-    Aggregated Discord bot features for MCL and MNQ (dashboard widget).
+    Aggregated Discord bot features for the default briefing symbols
+    (``DEFAULT_BRIEFING_SYMBOLS`` — MES only as of 2026-08-01, after MGC
+    joined DO_NOT_TRADE_SYMBOLS (PR #552); dashboard widget).
 
     Uses ``DiscordSignalContext`` — same five features as the RL state vector.
     Live last prices come from ``data_manager`` when connected; otherwise
@@ -285,6 +287,7 @@ async def get_discord_intelligence(
     """
     from zoneinfo import ZoneInfo
 
+    from backtest.signals import DEFAULT_BRIEFING_SYMBOLS
     from discord.signal_context import DiscordSignalContext
 
     bias = (jarvis_bias or "NEUTRAL").upper()
@@ -297,7 +300,7 @@ async def get_discord_intelligence(
     now_ct = datetime.now(ZoneInfo("America/Chicago"))
     symbols: dict[str, dict[str, float]] = {}
 
-    for sym in ("MCL", "MNQ"):
+    for sym in DEFAULT_BRIEFING_SYMBOLS:
         live: Optional[float] = None
         if _data_manager is not None:
             try:

@@ -196,6 +196,7 @@ def _run_vwap(
     regime_filter: bool,
     commission: float = COMMISSION,
     slippage_ticks: float = SLIPPAGE_TICKS,
+    sota_hardening: bool = False,
 ) -> _VWAPResultWrapper:
     import backtest.vwap_backtester as vwap_bt
 
@@ -215,6 +216,21 @@ def _run_vwap(
             stop_mult=stop_mult,
             require_reversal_bar=require_reversal_bar,
             regime_filter=regime_filter,
+            # SOTA execution-realism hardening (PR #592). Opt-in: baseline runs
+            # leave all flags at defaults (False/None) so the non-SOTA
+            # invocation is byte-identical to pre-hardening behavior.
+            **(
+                {
+                    "pessimistic_tie_breaker": True,
+                    "gap_stop_worst_fill": True,
+                    "volatility_scaled_slippage": True,
+                    "max_volume_pct": 0.10,
+                    "initial_margin_per_contract": 1500.0,
+                    "initial_capital": CAPITAL,
+                }
+                if sota_hardening
+                else {}
+            )
         )
     finally:
         vwap_bt.CONTRACT_SPECS[SYMBOL] = orig_spec  # always restore
@@ -227,14 +243,16 @@ def _run_vwap(
 # ---------------------------------------------------------------------------
 
 
-def _best_is_params(df_train: pd.DataFrame, grid: list[tuple]) -> tuple:
+def _best_is_params(
+    df_train: pd.DataFrame, grid: list[tuple], sota_hardening: bool = False
+) -> tuple:
     best_score = -1.0
     best_params = None
     best_result = None
 
     for band, stop, reversal, regime in grid:
         try:
-            r = _run_vwap(df_train, band, stop, reversal, regime)
+            r = _run_vwap(df_train, band, stop, reversal, regime, sota_hardening=sota_hardening)
         except Exception as exc:
             print(
                 f"    [WARN] IS error (band={band}, stop={stop}, rev={reversal}, "
@@ -288,12 +306,14 @@ from backtest._gate_v2_helpers import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def _run_fixed_params_sweep(df: pd.DataFrame, grid: list[tuple]) -> dict:
+def _run_fixed_params_sweep(
+    df: pd.DataFrame, grid: list[tuple], sota_hardening: bool = False
+) -> dict:
     pfs = []
     combo_results = []
     for band, stop, reversal, regime in grid:
         try:
-            r = _run_vwap(df, band, stop, reversal, regime)
+            r = _run_vwap(df, band, stop, reversal, regime, sota_hardening=sota_hardening)
             if r.total_trades >= MIN_OOS_TRADES_PER_WINDOW:
                 pf_val = r.profit_factor if r.profit_factor != float("inf") else 99.0
                 pfs.append(r.profit_factor)
@@ -347,7 +367,9 @@ def _run_fixed_params_sweep(df: pd.DataFrame, grid: list[tuple]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
+def _run_cost_sweep(
+    df: pd.DataFrame, champion_params: dict, sota_hardening: bool = False
+) -> dict:
     results = {}
     last_passing = None
     band = champion_params["band_mult"]
@@ -366,6 +388,7 @@ def _run_cost_sweep(df: pd.DataFrame, champion_params: dict) -> dict:
                 regime,
                 commission=costs["commission"],
                 slippage_ticks=costs["slippage_ticks"],
+                sota_hardening=sota_hardening,
             )
             pf = r.profit_factor
             passes = pf > 1.0 and r.total_trades >= MIN_OOS_TRADES_PER_WINDOW
@@ -495,7 +518,10 @@ def _compute_gate_v2(
 # ---------------------------------------------------------------------------
 
 
-def run_wfo() -> dict:
+def run_wfo(sota_hardening: bool = False) -> dict:
+    if sota_hardening:
+        print("[MES-VWAP-R1] SOTA EXECUTION-REALISM HARDENING ENABLED (gap stops, pessimistic "
+              "tie-break, vol-scaled slippage, POV impact, margin cap).")
     data_dir = engine_root / "backtest" / "cache"
     data_file = _find_data_file(data_dir)
 
@@ -555,7 +581,7 @@ def run_wfo() -> dict:
         df_train = df[(df.index >= ts) & (df.index < te)].copy()
         df_test = df[(df.index >= os_) & (df.index <= oe)].copy()
 
-        best_params, is_result = _best_is_params(df_train, grid)
+        best_params, is_result = _best_is_params(df_train, grid, sota_hardening=sota_hardening)
         if best_params is None:
             print(f"  [SKIP] No valid IS params (all combos < {MIN_OOS_TRADES_PER_WINDOW} trades)")
             continue
@@ -578,6 +604,7 @@ def run_wfo() -> dict:
                 stop_mult=best_params["stop_mult"],
                 require_reversal_bar=best_params["require_reversal_bar"],
                 regime_filter=best_params["regime_filter"],
+                sota_hardening=sota_hardening,
             )
         except Exception as exc:
             print(f"  [SKIP] OOS error: {exc}")
@@ -616,7 +643,7 @@ def run_wfo() -> dict:
 
     # Fixed-params sweep on full dataset
     print(f"\n[MES-VWAP-R1] Fixed-params sweep on full dataset ({n_combos} combos)...")
-    fixed_params_metrics = _run_fixed_params_sweep(df, grid)
+    fixed_params_metrics = _run_fixed_params_sweep(df, grid, sota_hardening=sota_hardening)
     print(
         f"  fixed_params_min_pf  = {fixed_params_metrics['fixed_params_min_pf']:.4f}  "
         f"(need >= {GATE_FIXED_PARAMS_MIN_PF})"
@@ -640,7 +667,7 @@ def run_wfo() -> dict:
         "regime_filter": most_selected[3],
     }
     print(f"\n[MES-VWAP-R1] Cost sweep (champion: {champion_params})...")
-    cost_sweep_metrics = _run_cost_sweep(df, champion_params)
+    cost_sweep_metrics = _run_cost_sweep(df, champion_params, sota_hardening=sota_hardening)
     print(
         f"  cost_survives_through = {cost_sweep_metrics['cost_survives_through']}  "
         f"(need >= 'realistic')"
@@ -785,7 +812,19 @@ def run_wfo() -> dict:
 
 
 def main():
-    verdict = run_wfo()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="MES VWAP Reversion Rank1 gate-v2 validation")
+    parser.add_argument(
+        "--sota",
+        action="store_true",
+        help="Enable SOTA execution-realism hardening (gap stops, pessimistic "
+        "tie-break, vol-scaled slippage, POV impact, margin cap). Default: off "
+        "(baseline behavior, byte-identical to pre-hardening runs).",
+    )
+    args = parser.parse_args()
+
+    verdict = run_wfo(sota_hardening=args.sota)
     if not verdict:
         print("[MES-VWAP-R1] No verdict produced.")
         sys.exit(1)

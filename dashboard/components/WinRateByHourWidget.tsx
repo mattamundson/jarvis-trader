@@ -39,12 +39,12 @@ function HourBar({ stat }: { stat: HourlyStatItem }) {
       </div>
       <div className="text-center">
         <span className="font-mono text-[8px]" style={{ color: "#555" }}>
-          {stat.label}
+          {stat.hour_label}
         </span>
       </div>
       <div className="text-center">
         <span className="font-mono text-[8px]" style={{ color: "#444" }}>
-          {stat.trades}t
+          {stat.trade_count}t
         </span>
       </div>
     </div>
@@ -81,14 +81,14 @@ export function WinRateByHourWidget() {
               className="rounded px-2 py-1 font-mono text-[10px]"
               style={{ backgroundColor: "#00ff8812", border: "1px solid #00ff8830", color: "#00ff88" }}
             >
-              BEST {data.best_hour.label} — {Math.round(data.best_hour.win_rate * 100)}%
+              BEST {data.best_hour.hour_label} — {Math.round(data.best_hour.win_rate * 100)}%
             </div>
             {data.worst_hour && (
               <div
                 className="rounded px-2 py-1 font-mono text-[10px]"
                 style={{ backgroundColor: "#ff444412", border: "1px solid #ff444430", color: "#ff4444" }}
               >
-                WORST {data.worst_hour.label} — {Math.round(data.worst_hour.win_rate * 100)}%
+                WORST {data.worst_hour.hour_label} — {Math.round(data.worst_hour.win_rate * 100)}%
               </div>
             )}
           </div>

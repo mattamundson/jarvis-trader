@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
 
 // ── Local types (mirrors command-center page) ─────────────────────────────
 
@@ -32,6 +33,10 @@ interface HealthData {
   ibkr_data_connected?: boolean | null;
   paper_trading?: boolean;
   version?: string;
+  // D3-01: honest execution-path fields — see @/lib/executionPath.
+  execution_connected_verified?: boolean | null;
+  ib_execution_stale?: boolean | null;
+  execution_path?: ExecutionPathProbe | null;
 }
 
 interface SafetyData {
@@ -325,6 +330,9 @@ function EngineHealthCard({
 }) {
   const data = health.data;
   const isOnline = !!data && !health.error;
+  // D3-01: derive the IBKR Gateway badge through the honesty layer — never
+  // read ibkr_execution_connected directly (see @/lib/executionPath).
+  const systemsExec = executionStatus(data);
 
   return (
     <Card className="bg-slate-900/60 border border-cyan-900/50 h-full">
@@ -381,16 +389,18 @@ function EngineHealthCard({
             <Badge
               className={cn(
                 "text-xs font-mono py-0 px-1.5 border",
-                (data?.ibkr_execution_connected ?? data?.ibkr_connected)
+                systemsExec.tone === "bull"
                   ? "bg-green-950 text-green-300 border-green-800"
+                  : systemsExec.tone === "warn"
+                  ? "bg-yellow-950 text-yellow-300 border-yellow-800"
                   : "bg-red-950 text-red-300 border-red-800"
               )}
-              title="Reports execution-connector state when /health exposes ibkr_execution_connected; falls back to legacy ibkr_connected (OR of execution + data) on older engines."
+              title={systemsExec.detail}
             >
-              {(data?.ibkr_execution_connected ?? data?.ibkr_connected) ? (
-                <><Wifi className="w-2.5 h-2.5 mr-0.5 inline" />CONNECTED</>
+              {systemsExec.brokerReachable ? (
+                <><Wifi className="w-2.5 h-2.5 mr-0.5 inline" />{systemsExec.label}</>
               ) : (
-                <><WifiOff className="w-2.5 h-2.5 mr-0.5 inline" />DISCONNECTED</>
+                <><WifiOff className="w-2.5 h-2.5 mr-0.5 inline" />{systemsExec.label}</>
               )}
             </Badge>
           </div>

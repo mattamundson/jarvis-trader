@@ -276,3 +276,91 @@ async def test_execute_options_spread_error_when_not_placed():
     )
     assert trade.status == TradeState.ERROR
     assert trade.trade_id not in oms.active_trades
+
+
+# ── resolve_stop_for_symbol — stop-monitor fallback (trade #287 Bug 2) ─────
+#
+# OMS v2 bracket-executed paper trades never persist stop_loss onto the
+# paper_trades DB row (PortfolioTracker.open_trade() has no stop_loss param --
+# a separate, documented data-hygiene gap). Both stop-loss monitors
+# (PaperStopMonitor and the 5-minute "Open Position Stop Monitor" job) key off
+# that DB column, so they were silently blind to every OMS-opened position.
+# resolve_stop_for_symbol() lets them fall back to the OMS's own in-memory
+# bracket record, which DOES hold the real stop from execute_bracket() time.
+
+
+@pytest.mark.asyncio
+async def test_resolve_stop_for_symbol_returns_active_bracket_stop():
+    router = FakeRouter(is_fut=True)
+    ibom = FakeIBOM()
+    oms = OMSManager(router, ib_order_manager=ibom)
+
+    trade = await oms.execute_bracket(
+        "MGC", "BUY", 1, 4153.85, stop_loss=4134.6666, take_profit=None
+    )
+    assert trade.status == TradeState.ACTIVE
+
+    assert oms.resolve_stop_for_symbol("MGC") == 4134.6666
+    # Case-insensitive symbol match.
+    assert oms.resolve_stop_for_symbol("mgc") == 4134.6666
+
+
+@pytest.mark.asyncio
+async def test_resolve_stop_for_symbol_ignores_closed_trades():
+    router = FakeRouter()
+    oms = OMSManager(router)
+    tid = await oms.adopt_existing_trade(
+        "MES", 1, 5300.0, stop_loss_id="sl-9", take_profit_id="tp-9"
+    )
+    oms.active_trades[tid].stop_loss_price = 5280.0
+    await oms.update_trade_status("sl-9", "filled", 5280.0)  # closes the trade
+
+    assert oms.resolve_stop_for_symbol("MES") is None
+
+
+def test_resolve_stop_for_symbol_no_match_or_empty():
+    router = FakeRouter()
+    oms = OMSManager(router)
+    assert oms.resolve_stop_for_symbol("MES") is None  # nothing tracked at all
+    assert oms.resolve_stop_for_symbol("") is None
+    assert oms.resolve_stop_for_symbol(None) is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_stop_for_symbol_none_when_bracket_has_no_stop():
+    router = FakeRouter(is_fut=True)
+    ibom = FakeIBOM()
+    oms = OMSManager(router, ib_order_manager=ibom)
+    trade = await oms.execute_bracket("MGC", "BUY", 1, 4153.85)  # no stop_loss
+    assert trade.status == TradeState.ACTIVE
+    assert oms.resolve_stop_for_symbol("MGC") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_stop_for_symbol_picks_most_recent_when_multiple_active():
+    """
+    US-006 correctness audit: if two ACTIVE brackets ever exist for the same
+    symbol at once (scale-in, re-entry race), resolve_stop_for_symbol()'s
+    docstring promises "the most recent ACTIVE bracket". The prior
+    implementation returned the first match from dict.values() iteration
+    order instead, which is oldest-inserted-first, not most-recent -- a
+    latent mismatch between the doc and the code. Explicitly seed opened_at
+    out of insertion order (older trade inserted last) to prove the fix
+    picks by timestamp, not by dict order.
+    """
+    router = FakeRouter(is_fut=True)
+    ibom = FakeIBOM()
+    oms = OMSManager(router, ib_order_manager=ibom)
+
+    older = await oms.execute_bracket("MGC", "BUY", 1, 4100.0, stop_loss=4080.0)
+    newer = await oms.execute_bracket("MGC", "BUY", 1, 4200.0, stop_loss=4180.0)
+
+    # Force the "older" trade to have a LATER insertion into the dict than
+    # "newer" by touching it after the fact, while its opened_at timestamp
+    # stays earlier -- this is what would make dict-iteration-order and
+    # opened_at-order actually disagree (e.g. after adopt_existing_trade()
+    # or reload_from_db() reorders the map).
+    del oms.active_trades[older.trade_id]
+    oms.active_trades[older.trade_id] = older
+
+    assert oms.resolve_stop_for_symbol("MGC") == 4180.0

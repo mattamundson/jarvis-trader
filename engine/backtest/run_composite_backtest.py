@@ -106,6 +106,7 @@ def _run_single_instrument(args):
     try:
         from backtest.backtester import Backtester
         from backtest.composite_signals import generate_composite_signals
+        from backtest.contract_specs import get_spec
         from backtest.data_loader import BacktestDataLoader
     except ImportError as e:
         print(f"[ERROR] Import failed: {e}")
@@ -188,12 +189,16 @@ def _run_single_instrument(args):
     multiplier = loader.get_multiplier(args.symbol)
     print(f"Contract multiplier: {multiplier}")
 
+    # Per-symbol commission (was a flat 2.50 regardless of --symbol / the
+    # --all-instruments MCL/MNQ/MES loop — canonical rates live in
+    # contract_specs.CONTRACT_SPECS).
+    commission_per_contract = get_spec(args.symbol).commission
     backtester = Backtester(
         initial_capital=args.capital,
         risk_per_trade=args.risk,
         max_daily_loss=0.02,
         max_drawdown=0.05,
-        commission_per_contract=2.50,
+        commission_per_contract=commission_per_contract,
         slippage_ticks=1,
     )
 

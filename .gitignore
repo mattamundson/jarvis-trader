@@ -45,6 +45,8 @@ dist/
 .eggs/
 venv/
 .venv/
+# Linux-side venv used by cloud/CI-parity sessions (Windows venv is .venv/)
+.venv-linux/
 env/
 .virtualenv/
 
@@ -112,6 +114,8 @@ engine/data/*.jsonl
 # SQLite database files (runtime data — never commit)
 *.db-wal
 *.db-shm
+engine/domflow/domflow.db
+engine/domflow/domflow.db-*
 **/.fuse_hidden*
 engine/data/*.db
 engine/data/*.backup_*
@@ -247,6 +251,10 @@ engine/.venv.failed-*/
 
 # Runtime morning brief outputs (generated daily by EODScheduler / brief jobs)
 engine/data/morning_briefs/
+engine/data/framing_briefs/
+
+# Runtime options-implied snapshots (generated intraday by options_signals_snapshot.py)
+engine/data/options_signals/
 
 # Root-level generated/export files (not source)
 /*.html

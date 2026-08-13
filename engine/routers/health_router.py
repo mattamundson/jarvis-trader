@@ -5,6 +5,7 @@ Endpoints for monitoring system health, running preflight checks, and getting
 status information about all JARVIS TRADER subsystems.
 """
 
+import asyncio
 import logging
 import os
 import socket
@@ -39,6 +40,35 @@ _tv_mcp_health_cache: dict = {
     "status": "connecting",
 }
 
+# SOTA P1.6 — TV MCP health-flap fix.
+#
+# Before this: a single missed CDP probe (Chrome momentarily busy, one dropped
+# packet) flipped `tradingview_mcp_healthy` False for up to _TV_MCP_CACHE_TTL_SEC,
+# which the dashboard renders as a hard red dot (EngineHealthWidget.tsx) — so a
+# TV Desktop that is actually up and fine appeared to flap between red and green
+# every poll. Meanwhile "TV Desktop not installed" (port 9222 never listening —
+# a steady, expected condition for Amo, who doesn't always run TV Desktop) was
+# indistinguishable from that transient case at the boolean level.
+#
+# Fix: a *grace* cache remembers the last genuinely-good CDP probe. A transient
+# post-port-open failure (status connecting/degraded) within the grace window is
+# treated as a blip and masked behind the last-known-good result, so top-line
+# health doesn't oscillate on it. `not_running` (port closed) is NEVER masked —
+# it is reported immediately every time, because it is steady/expected, not an
+# error to paper over, and masking it would hide real information. The grace
+# memory is cleared whenever the state goes to not_running so a later relaunch's
+# own startup blips aren't compared against a long-dead session.
+_TV_MCP_GRACE_TTL_SEC = 120.0
+_tv_mcp_last_good: dict = {"at": 0.0, "details": None}
+
+# Background refresher: probes run in a thread on a faster cadence than
+# _TV_MCP_CACHE_TTL_SEC so /health almost always serves an already-warm cache
+# entry instead of making a blocking urllib call inline on the request path.
+# Started lazily (idempotent) from _health_inner on first use, since an
+# APIRouter has no lifespan hook of its own to wire this at app startup.
+_TV_MCP_REFRESH_INTERVAL_SEC = 10.0
+_tv_mcp_refresher_task: "asyncio.Task | None" = None
+
 # Cost-DB observability cache + thresholds. The DB lives under engine/data
 # regardless of cwd; resolve relative to this file so the endpoint works whether
 # the engine was launched from engine/ (pm2/restart_engine path) or repo root.
@@ -61,6 +91,62 @@ _brier_cache: dict = {"checked_at": 0.0, "value": None}
 # 2026-06-01 (trade #178). Cached 30s like the TV-CDP probe so /health stays cheap.
 _IBGW_CACHE_TTL_SEC = 30.0
 _ibgw_health_cache: dict = {"checked_at": 0.0, "alive": False, "port": None}
+
+# ---------------------------------------------------------------------------
+# /health single-flight snapshot cache (resilience under load spikes).
+#
+# The sub-diagnostics above are each 30s-cached, but `_health_inner` still makes
+# several *uncached* synchronous SQLite calls (db_manager.ping, get_pending_
+# approval_stats, futures-sentiment staleness) inside an async handler. Left
+# un-offloaded, those block the event loop. When the dashboard polls /health many
+# times per second AND the box is under contention (multiple engines/sessions
+# hammering the 325MB SQLite DB), N concurrent blocking computes pile up on the
+# single event-loop thread and latency compounds — a warm 20ms call can spike to
+# 5-12s. port_guardian probes /health with an 8s timeout; a spike past that trips
+# a force-restart, which adds load — a self-amplifying cascade (4 such restarts
+# on 2026-07-06 22:11-22:40 UTC). SOTA plan P0.5: each of those three call sites
+# now runs via asyncio.to_thread so even a cache-miss recompute can't block the
+# loop — the single-flight cache below caps *how often* the blocking work runs;
+# to_thread caps *whether it blocks* when it does run.
+#
+# Single-flight fix: at most ONE recompute per TTL window regardless of request
+# volume. A polling storm collapses to one blocking compute/sec instead of N, so
+# the event-loop pileup cannot form. Response shape is byte-identical; the only
+# effect is `timestamp`/`uptime_seconds` may be up to TTL seconds stale, which is
+# well within a health endpoint's tolerance. TTL is env-tunable; 0 disables the
+# cache (always live) for callers that need it. The FIRST call after boot is
+# always live (cold cache), so port_guardian readiness stays truthful.
+# ---------------------------------------------------------------------------
+_HEALTH_SNAPSHOT_TTL_SEC = float(os.getenv("HEALTH_SNAPSHOT_TTL_SEC", "1.0"))
+_health_snapshot: dict = {"computed_at": 0.0, "payload": None}
+_health_refresh_lock = asyncio.Lock()
+
+
+async def _health_cached() -> dict:
+    """Single-flight wrapper around _health_inner().
+
+    Serves a cached payload if computed within _HEALTH_SNAPSHOT_TTL_SEC; otherwise
+    recomputes under a lock so concurrent callers share one compute rather than
+    each triggering their own blocking DB pass. TTL<=0 always recomputes.
+    """
+    if _HEALTH_SNAPSHOT_TTL_SEC <= 0:
+        return await _health_inner()
+
+    now = time.monotonic()
+    payload = _health_snapshot["payload"]
+    if payload is not None and (now - _health_snapshot["computed_at"]) < _HEALTH_SNAPSHOT_TTL_SEC:
+        return payload
+
+    async with _health_refresh_lock:
+        # Double-check: a peer coroutine may have refreshed while we waited.
+        now2 = time.monotonic()
+        payload = _health_snapshot["payload"]
+        if payload is not None and (now2 - _health_snapshot["computed_at"]) < _HEALTH_SNAPSHOT_TTL_SEC:
+            return payload
+        fresh = await _health_inner()
+        _health_snapshot["payload"] = fresh
+        _health_snapshot["computed_at"] = time.monotonic()
+        return fresh
 
 
 def _check_ibgateway_alive() -> tuple[bool, int]:
@@ -88,6 +174,234 @@ def _check_ibgateway_alive() -> tuple[bool, int]:
 
     _ibgw_health_cache.update(checked_at=now, alive=alive, port=port)
     return alive, port
+
+
+# ---------------------------------------------------------------------------
+# PRB-24 — pm2-vs-reality process-supervision cross-check.
+#
+# Root cause this guards against: pm2 jlist (what pm2 BELIEVES it is
+# supervising) and a raw TCP port probe (what is ACTUALLY listening) can
+# independently disagree, and nothing before this cross-checked the two. A
+# WinError 10048 port-bind race left a healthy-but-pm2-unsupervised orphan
+# process serving :8010 for a stretch (2026-07-28/29 incident), and a
+# separate 2026-07-28 audit found pm2 believed jarvis-dashboard/jarvis-engine
+# were errored/stopped while orphan processes actually served both ports. A
+# human had to run `pm2 jlist` AND hit /health AND check the port side-by-side
+# to ever notice — this makes that comparison automatic and a MISMATCH a
+# first-class, unambiguous signal instead of something buried in raw JSON.
+#
+# Port-liveness probe pattern mirrors _check_ibgateway_alive above: 127.0.0.1
+# explicit (never 'localhost' — Windows resolves it to ::1 first), short
+# timeout, cached. Must NEVER raise / crash /health — pm2 missing from PATH,
+# a timed-out shell-out, or a malformed netstat parse all degrade to
+# "supervision check unavailable" rather than a 500.
+# ---------------------------------------------------------------------------
+_SUPERVISED_APPS: dict[str, int] = {
+    "jarvis-engine": 8010,
+    "jarvis-dashboard": 3010,
+    "jarvis-bridge-api": 8020,
+}
+_SUPERVISION_CACHE_TTL_SEC = 30.0
+_supervision_cache: dict = {"checked_at": 0.0, "payload": None}
+_supervision_port_cache: dict[int, dict] = {}
+
+
+async def _run_pm2_jlist() -> tuple[list[dict] | None, str | None]:
+    """Shell out to `pm2 jlist`. Returns (processes, error) — error is None on success.
+
+    Never raises: pm2 missing from PATH, a timeout, a non-zero exit, or
+    malformed JSON all resolve to (None, "<reason>") so callers can degrade
+    gracefully to "supervision check unavailable" instead of a 500.
+    """
+    import json
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            "pm2 jlist",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        if proc.returncode != 0:
+            reason = stderr.decode(errors="replace")[:200] if stderr else "no output"
+            return None, f"pm2 jlist exited {proc.returncode}: {reason}"
+        return json.loads(stdout.decode()), None
+    except FileNotFoundError:
+        return None, "pm2 not found on PATH"
+    except asyncio.TimeoutError:
+        return None, "pm2 jlist timed out after 5s"
+    except Exception as exc:
+        return None, f"pm2 jlist failed: {exc}"
+
+
+def _parse_netstat_listening_pid(output: str, port: int) -> int | None:
+    """Parse `netstat -ano` text for the PID LISTENING on the given port.
+
+    Pure function (no subprocess) so it's directly unit-testable against fixed
+    fixture text. Matches any local address ending in ':<port>' (covers
+    127.0.0.1, 0.0.0.0, and IPv6 '[::]' forms) with state LISTENING. The
+    leading colon in the match anchor prevents a numeric-suffix false match
+    (e.g. port 10 never matches a ':8010' row). Returns None if no row matches
+    or the row is malformed.
+    """
+    needle = f":{port}"
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) < 5 or parts[0] != "TCP":
+            continue
+        local_addr, state = parts[1], parts[3]
+        if state != "LISTENING" or not local_addr.endswith(needle):
+            continue
+        try:
+            return int(parts[-1])
+        except ValueError:
+            continue
+    return None
+
+
+async def _get_port_owner_pid(port: int) -> int | None:
+    """Best-effort actual TCP port-owner PID via `netstat -ano` (Windows).
+
+    Never raises — any subprocess/parse failure yields None ("can't confirm
+    owner"), which the cross-check treats as unknown rather than asserting a
+    hard mismatch it can't actually back up.
+    """
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            "netstat -ano",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        return _parse_netstat_listening_pid(stdout.decode(errors="replace"), port)
+    except Exception as exc:
+        logger.debug("supervision: netstat probe for port %s failed: %s", port, exc)
+        return None
+
+
+def _check_port_alive(port: int) -> bool:
+    """TCP liveness probe for an arbitrary port — same pattern/timeout as
+    _check_ibgateway_alive, generalized and cached per-port."""
+    now = time.monotonic()
+    cached = _supervision_port_cache.get(port)
+    if cached and now - cached["checked_at"] < _SUPERVISION_CACHE_TTL_SEC:
+        return cached["alive"]
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.5)
+    try:
+        alive = sock.connect_ex(("127.0.0.1", port)) == 0
+    except Exception:
+        alive = False
+    finally:
+        sock.close()
+
+    _supervision_port_cache[port] = {"checked_at": now, "alive": alive}
+    return alive
+
+
+async def _compute_supervision_status() -> dict:
+    """Cross-check pm2's believed state for each supervised app against the
+    actual TCP port owner. See module-level PRB-24 comment above for the
+    incident this guards against.
+
+    Returns:
+      available     : bool  — False only when pm2 itself couldn't be queried
+      supervision_ok: bool | None — None when unavailable; True iff every app
+                       agrees; False if any app has a mismatch_reason
+      error         : str | None — populated only when unavailable
+      checked_at    : ISO timestamp
+      apps          : {name: {port, pm2_found, pm2_status, pm2_pid, port_alive,
+                        actual_pid, mismatch_reason}}
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    processes, pm2_error = await _run_pm2_jlist()
+
+    if processes is None:
+        return {
+            "available": False,
+            "supervision_ok": None,
+            "error": pm2_error,
+            "checked_at": now_iso,
+            "apps": {},
+        }
+
+    by_name = {p.get("name"): p for p in processes if isinstance(p, dict)}
+    apps: dict[str, dict] = {}
+    all_ok = True
+
+    for app_name, port in _SUPERVISED_APPS.items():
+        entry = by_name.get(app_name)
+        pm2_status = entry.get("pm2_env", {}).get("status") if entry else None
+        pm2_pid = (entry.get("pid") if entry else None) or None  # pm2 uses 0 for stopped
+
+        port_alive = _check_port_alive(port)
+        actual_pid = await _get_port_owner_pid(port) if port_alive else None
+
+        mismatch_reason: str | None = None
+        pm2_believes_up = pm2_status == "online"
+
+        if entry is None and port_alive:
+            mismatch_reason = (
+                f"pm2 has no '{app_name}' entry at all, but port {port} is live "
+                f"(actual_pid={actual_pid}) — an unsupervised/orphan process is serving it"
+            )
+        elif pm2_believes_up and not port_alive:
+            mismatch_reason = (
+                f"pm2 reports '{app_name}' status=online (pid={pm2_pid}) but port {port} "
+                "is not accepting connections"
+            )
+        elif entry is not None and not pm2_believes_up and port_alive:
+            mismatch_reason = (
+                f"pm2 reports '{app_name}' status={pm2_status!r} but port {port} is live "
+                f"(actual_pid={actual_pid}) — an orphan process is serving it under pm2's back"
+            )
+        elif (
+            pm2_believes_up
+            and port_alive
+            and actual_pid is not None
+            and pm2_pid is not None
+            and actual_pid != pm2_pid
+        ):
+            mismatch_reason = (
+                f"pid mismatch on '{app_name}': pm2 believes pid={pm2_pid} but port {port} "
+                f"is actually owned by pid={actual_pid}"
+            )
+
+        if mismatch_reason is not None:
+            all_ok = False
+
+        apps[app_name] = {
+            "port": port,
+            "pm2_found": entry is not None,
+            "pm2_status": pm2_status,
+            "pm2_pid": pm2_pid,
+            "port_alive": port_alive,
+            "actual_pid": actual_pid,
+            "mismatch_reason": mismatch_reason,
+        }
+
+    return {
+        "available": True,
+        "supervision_ok": all_ok,
+        "error": None,
+        "checked_at": now_iso,
+        "apps": apps,
+    }
+
+
+async def _supervision_cached() -> dict:
+    """TTL-cached wrapper around _compute_supervision_status — avoids shelling
+    out to pm2/netstat on every /health/full or /health/supervision hit."""
+    now = time.monotonic()
+    payload = _supervision_cache["payload"]
+    if payload is not None and (now - _supervision_cache["checked_at"]) < _SUPERVISION_CACHE_TTL_SEC:
+        return payload
+
+    fresh = await _compute_supervision_status()
+    _supervision_cache["payload"] = fresh
+    _supervision_cache["checked_at"] = now
+    return fresh
 
 
 def _compute_brier_30d_rolling() -> float | None:
@@ -125,6 +439,11 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
       connecting  — port open but CDP not responding correctly
       healthy     — CDP /json/version returned 200
       degraded    — port open, CDP responded with non-200
+
+    A transient post-port-open failure (connecting/degraded) within
+    _TV_MCP_GRACE_TTL_SEC of the last genuinely-good probe is masked and reported
+    as the last-known-good state instead — see the P1.6 comment above the cache
+    declarations. `not_running` is never masked; it always reports immediately.
     """
     now = time.monotonic()
     cached_at = _tv_mcp_health_cache.get("checked_at", 0.0)
@@ -144,10 +463,13 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
         sock.close()
 
     if port_result != 0:
+        # Steady, expected condition (Amo doesn't always run TV Desktop) — report
+        # it immediately and drop any stale grace memory from a prior session.
         details = "port 9222 not listening — TV Desktop is not running"
         _tv_mcp_health_cache.update(
             checked_at=now, healthy=False, details=details, status="not_running"
         )
+        _tv_mcp_last_good.update(at=0.0, details=None)
         return False, details, "not_running"
 
     # Stage 2: CDP HTTP probe (port is open; Chrome may be still binding)
@@ -173,8 +495,54 @@ def _check_tradingview_mcp_health() -> tuple[bool, str | None, str]:
             details = f"CDP probe failed: {exc}"
             status = "connecting"
 
+    if healthy:
+        _tv_mcp_last_good.update(at=now, details=None)
+    elif now - _tv_mcp_last_good.get("at", 0.0) < _TV_MCP_GRACE_TTL_SEC:
+        # Port is open (TV Desktop IS running) but this one probe failed, and we
+        # had a real success inside the grace window — treat it as a blip, not a
+        # real outage, so top-line health doesn't flap on it. Preserve the raw
+        # failure in `details` so it's still observable, just not alarm-worthy.
+        details = f"CDP transient blip masked by grace cache (raw: {details})"
+        healthy, status = True, "healthy"
+
     _tv_mcp_health_cache.update(checked_at=now, healthy=healthy, details=details, status=status)
     return healthy, details, status
+
+
+async def _tv_mcp_background_refresh_loop() -> None:
+    """Keep the TV-MCP health cache warm off the request path.
+
+    Probes at _TV_MCP_REFRESH_INTERVAL_SEC (faster than _TV_MCP_CACHE_TTL_SEC) so
+    a /health request almost always hits an already-warm cache entry instead of
+    making a blocking urllib call inline on the event loop. Runs forever once
+    started; exceptions from a single probe are swallowed (best effort) so one
+    bad probe never kills the loop.
+    """
+    while True:
+        try:
+            await asyncio.to_thread(_check_tradingview_mcp_health)
+        except Exception as exc:  # pragma: no cover - defensive, probe itself never raises
+            logger.debug("tv_mcp background refresh failed: %s", exc)
+        await asyncio.sleep(_TV_MCP_REFRESH_INTERVAL_SEC)
+
+
+def _ensure_tv_mcp_background_refresher() -> None:
+    """Start the TV-MCP background refresher once, idempotently.
+
+    Safe to call on every /health request (e.g. from _health_inner) — a no-op
+    after the first successful start. health_router is a plain APIRouter with no
+    lifespan hook of its own, so the task is started lazily on first use instead
+    of at app startup. Never raises; if there is no running event loop (e.g. a
+    sync test context) it silently skips.
+    """
+    global _tv_mcp_refresher_task
+    if _tv_mcp_refresher_task is not None and not _tv_mcp_refresher_task.done():
+        return
+    try:
+        loop = asyncio.get_running_loop()
+        _tv_mcp_refresher_task = loop.create_task(_tv_mcp_background_refresh_loop())
+    except RuntimeError:
+        pass
 
 
 # Get limiter instance for rate limiting
@@ -243,7 +611,15 @@ async def _get_ib_gateway_health() -> dict:
         }
 
     if hasattr(ib_gw, "health_check"):
-        health = await ib_gw.health_check()
+        # Bounded: health_check() has no internal timeout of its own, so with IB
+        # Gateway down (wrong port, not logged in, dead process) this can block on
+        # the connector's internal connect timeout -- observed 30s+ hang 2026-08-03,
+        # which stalls /health, /health/full, and /ib/connection-test outright.
+        # A bounded, degraded read beats an unusable liveness signal.
+        try:
+            health = await asyncio.wait_for(ib_gw.health_check(), timeout=3.0)
+        except asyncio.TimeoutError:
+            health = {"status": "timeout", "error": "health_check exceeded 3s budget"}
     else:
         is_connected = execution_connected if ib_gw is execution_ib else data_connected
         health = {
@@ -328,7 +704,7 @@ async def get_data_integrity():
 async def health():
     """Quick health check endpoint"""
     try:
-        return await _health_inner()
+        return await _health_cached()
     except Exception as exc:
         logger.exception("Health endpoint error: %s", exc)
         raise HTTPException(status_code=503, detail=f"Health check failed: {exc}") from exc
@@ -340,7 +716,11 @@ async def _health_inner() -> dict:
     db_ok = False
     try:
         if db_manager:
-            db_manager.health_check()
+            # Cheap liveness (SELECT 1), not the 8-COUNT(*) health_check whose counts
+            # /health discards — and run it off the event loop so even the once-per-
+            # TTL cache-miss recompute can't block the async loop under contention.
+            # DatabaseManager opens a fresh connection per call, so to_thread is safe.
+            await asyncio.to_thread(db_manager.ping)
             db_ok = True
     except Exception:
         pass
@@ -372,8 +752,24 @@ async def _health_inner() -> dict:
         # If the client module hasn't been imported yet, assume healthy
         pass
 
+    _ensure_tv_mcp_background_refresher()
     tv_mcp_healthy, tv_mcp_details, tv_mcp_status = _check_tradingview_mcp_health()
     ibgateway_alive, ibgateway_port = _check_ibgateway_alive()
+
+    # Execution-connector honesty. `ibkr_execution_connected` comes from the
+    # execution connector's *cached* `is_connected` boolean (execution/
+    # ib_gateway_connector.py `_connected`) which is NOT reconciled against the
+    # live port probe — in paper mode it stays True even after the Gateway logs
+    # out, so /health can report execution-ready while `ibgateway_alive=false`.
+    # That stale True is the 2026-06-01 stop-enforcement-believed-connected class.
+    # Surface a reconciled truth (AND the live port probe) plus an explicit stale
+    # flag so consumers (stop enforcement, dashboard trust-pane) key off verified
+    # state, not the cached belief. Raw field kept for back-compat. Paging on a
+    # logged-out Gateway is already handled by IBDataWatchdog's notify_ib_disconnect;
+    # this only stops /health from *lying*, it does not re-alert.
+    _exec_connected_raw = bool(ib_health.get("execution_connected", False))
+    execution_connected_verified = _exec_connected_raw and bool(ibgateway_alive)
+    ib_execution_stale = _exec_connected_raw and not bool(ibgateway_alive)
 
     # Approval-queue visibility: a candidate that queues but is never approved
     # (e.g. because outbound notifications are silently failing) stalls the whole
@@ -381,7 +777,7 @@ async def _health_inner() -> dict:
     pending_approvals = {"count": 0, "oldest_age_min": None}
     try:
         if db_manager:
-            stats = db_manager.get_pending_approval_stats()
+            stats = await asyncio.to_thread(db_manager.get_pending_approval_stats)
             oldest = stats.get("oldest_created_at")
             age_min = None
             if oldest:
@@ -399,30 +795,53 @@ async def _health_inner() -> dict:
     # Futures-sentiment freshness: Corey #market-updates is the SOLE sanctioned
     # futures-sentiment source; its feed has silently frozen before (revoked
     # Discord token). Surface age + quality so a stale feed is observable.
+    #
+    # Both underlying reads (get_futures_sentiment_staleness, get_bias_extraction_
+    # health) open a synchronous sqlite3 connection and run a query — offload via
+    # asyncio.to_thread like the db_manager calls above so a cache-miss health
+    # check can't block the event loop on SQLite I/O (SOTA plan P0.5).
     futures_sentiment = {"quality": "unknown", "age_days": None}
     try:
-        from discord.commentary_processor import (
-            get_bias_extraction_health,
-            get_futures_sentiment_staleness,
-        )
 
-        st = get_futures_sentiment_staleness()
-        ext = get_bias_extraction_health()
-        futures_sentiment = {
-            "quality": st.get("quality", "unknown"),
-            "age_days": st.get("age_days"),
-            "latest_timestamp": st.get("latest_timestamp"),
-            "threshold_days": st.get("threshold_days"),
-            # LLM structured-bias extraction health — distinct from the ingestion
-            # freshness above. 'degraded' = extraction has fallen behind commentary
-            # (e.g. the 2026-06-29 Anthropic credit-exhaustion outage that ran two
-            # days undetected because ingestion still looked fresh). Cache-only —
-            # no LLM call. Surfaced as a field; does not flip top-level status
-            # (the live engine has its own Vertex-backed extraction path).
-            "extraction_quality": ext.get("extraction_quality", "unknown"),
-            "extraction_lag_days": ext.get("lag_days"),
-            "latest_bias_date": ext.get("latest_bias_date"),
-        }
+        def _fetch_futures_sentiment_sync() -> dict:
+            from discord.commentary_processor import (
+                get_bias_extraction_health,
+                get_futures_sentiment_staleness,
+            )
+
+            st = get_futures_sentiment_staleness()
+            ext = get_bias_extraction_health()
+            return {
+                "quality": st.get("quality", "unknown"),
+                "age_days": st.get("age_days"),
+                "latest_timestamp": st.get("latest_timestamp"),
+                "threshold_days": st.get("threshold_days"),
+                # LLM structured-bias extraction health — distinct from the ingestion
+                # freshness above. 'degraded' = extraction has fallen behind commentary
+                # (e.g. the 2026-06-29 Anthropic credit-exhaustion outage that ran two
+                # days undetected because ingestion still looked fresh). Cache-only —
+                # no LLM call. Surfaced as a field; does not flip top-level status
+                # (the live engine has its own Vertex-backed extraction path).
+                "extraction_quality": ext.get("extraction_quality", "unknown"),
+                "extraction_lag_days": ext.get("lag_days"),
+                "latest_bias_date": ext.get("latest_bias_date"),
+            }
+
+        futures_sentiment = await asyncio.to_thread(_fetch_futures_sentiment_sync)
+    except Exception:
+        pass
+
+    # Batch jobs (Anthropic Message Batches). Non-blocking observability only —
+    # batches are async by design, so this never contributes to `status` below.
+    # get_batch_health_summary() does sync sqlite3 I/O, so offload it like the
+    # other DB-backed reads above.
+    batch_jobs_health: dict = {}
+    try:
+        from llm.batch_client import JarvisBatchClient
+
+        batch_jobs_health = await asyncio.to_thread(
+            JarvisBatchClient().get_batch_health_summary
+        )
     except Exception:
         pass
 
@@ -447,6 +866,11 @@ async def _health_inner() -> dict:
         "database": "connected" if db_ok else "error",
         "ibkr_connected": ib_health.get("status") == "connected",
         "ibkr_execution_connected": ib_health.get("execution_connected", False),
+        # Reconciled against the live port probe — the field consumers should trust.
+        "execution_connected_verified": execution_connected_verified,
+        # True when the connector believes it's connected but the Gateway port is
+        # dead (logged out) — a silent stop-enforcement hazard made observable.
+        "ib_execution_stale": ib_execution_stale,
         "ibkr_data_connected": ib_health.get("data_connected", False),
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,
@@ -462,6 +886,7 @@ async def _health_inner() -> dict:
         "brier_30d_rolling": _compute_brier_30d_rolling(),
         "pending_approvals": pending_approvals,
         "futures_sentiment": futures_sentiment,
+        "batch_jobs_health": batch_jobs_health,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
@@ -511,6 +936,39 @@ async def full_health_check():
         raise HTTPException(status_code=503, detail=f"Health check failed: {exc}") from exc
 
 
+# GT-51 ordering-bug fix. Each subsystem check below used to escalate `overall`
+# with its own `if overall == "healthy": overall = <state>` guard. That pattern
+# is only safe if every check that can set a *more* severe state always runs
+# *before* every check that can set a *less* severe one — which stopped being
+# true the moment `ib_gateway` (step 3, escalates to "degraded") started
+# running ahead of `circuit_breakers` (step 4, escalates to
+# "circuit_breaker_tripped"): an ib_gateway exception flipped overall to
+# "degraded" first, so circuit_breakers's `== "healthy"` guard went false and
+# a real circuit-breaker trip could never escalate past "degraded" — silently
+# downgrading a more actionable trading-safety state. Rank-based escalation
+# fixes this for the current order AND makes any future reordering of these
+# checks safe by construction: a candidate state only ever wins if it is
+# strictly more severe than whatever is already recorded, regardless of which
+# check ran first.
+_OVERALL_SEVERITY = {
+    "healthy": 0,
+    "degraded": 1,
+    "circuit_breaker_tripped": 2,
+    "kill_switch_active": 3,
+}
+
+
+def _escalate_overall(current: str, candidate: str) -> str:
+    """Return whichever of `current`/`candidate` is the more severe `overall` state.
+
+    Unknown state strings rank as 0 (== "healthy") so a typo'd/legacy value
+    can't accidentally block a real escalation.
+    """
+    if _OVERALL_SEVERITY.get(candidate, 0) > _OVERALL_SEVERITY.get(current, 0):
+        return candidate
+    return current
+
+
 async def _full_health_inner() -> dict:
     status: dict = {}
     overall = "healthy"
@@ -522,10 +980,10 @@ async def _full_health_inner() -> dict:
             status["database"] = {"status": "ok", "details": db_health}
         else:
             status["database"] = {"status": "not_initialized"}
-            overall = "degraded"
+            overall = _escalate_overall(overall, "degraded")
     except Exception as e:
         status["database"] = {"status": "error", "error": str(e)}
-        overall = "degraded"
+        overall = _escalate_overall(overall, "degraded")
 
     # 2. Safety layer
     try:
@@ -538,19 +996,20 @@ async def _full_health_inner() -> dict:
                 "kill_switch_reason": kill_reason.value if kill_reason else None,
             }
             if kill_switch:
-                overall = "kill_switch_active"
+                overall = _escalate_overall(overall, "kill_switch_active")
         else:
             status["safety_layer"] = {"status": "not_initialized"}
-            overall = "degraded"
+            overall = _escalate_overall(overall, "degraded")
     except Exception as e:
         status["safety_layer"] = {"status": "error", "error": str(e)}
-        overall = "degraded"
+        overall = _escalate_overall(overall, "degraded")
 
     # 3. IB Gateway (optional)
     try:
         status["ib_gateway"] = await _get_ib_gateway_health()
     except Exception as e:
         status["ib_gateway"] = {"status": "error", "error": str(e)}
+        overall = _escalate_overall(overall, "degraded")
 
     # 4. Circuit breakers
     try:
@@ -564,8 +1023,7 @@ async def _full_health_inner() -> dict:
                 "details": breakers,
             }
             if not all_clear:
-                if overall == "healthy":
-                    overall = "circuit_breaker_tripped"
+                overall = _escalate_overall(overall, "circuit_breaker_tripped")
         else:
             status["circuit_breakers"] = {"status": "not_available"}
     except Exception as e:
@@ -583,6 +1041,7 @@ async def _full_health_inner() -> dict:
             status["portfolio"] = {"status": "not_initialized"}
     except Exception as e:
         status["portfolio"] = {"status": "error", "error": str(e)}
+        overall = _escalate_overall(overall, "degraded")
 
     # 6. PnL monitor
     try:
@@ -600,6 +1059,7 @@ async def _full_health_inner() -> dict:
             status["pnl_monitor"] = {"status": "not_initialized"}
     except Exception as e:
         status["pnl_monitor"] = {"status": "error", "error": str(e)}
+        overall = _escalate_overall(overall, "degraded")
 
     # 7. LLM path — which provider is serving + whether we're on a fallback leg.
     # Sustained gemini/openai fallback has been a recurring silent degrade, so
@@ -629,10 +1089,26 @@ async def _full_health_inner() -> dict:
             "google_fallback_count": int(path_state.get("google_fallback_count", 0) or 0),
             "vertex_failover_count": int(path_state.get("vertex_failover_count", 0) or 0),
         }
-        if llm_status == "degraded" and overall == "healthy":
-            overall = "degraded"
+        if llm_status == "degraded":
+            overall = _escalate_overall(overall, "degraded")
     except Exception as e:
         status["llm"] = {"status": "unknown", "error": str(e)}
+
+    # 8. Process supervision cross-check (PRB-24) — pm2 belief vs TCP-port
+    # reality for jarvis-engine/jarvis-dashboard/jarvis-bridge-api. Reuses the
+    # 30s-cached compute so /health/full never adds its own extra pm2/netstat
+    # shell-out latency. supervision_ok=False (a real mismatch) escalates
+    # overall to "degraded" — unavailable (pm2 not on PATH) does not, since
+    # that's an environment fact, not a live incident.
+    try:
+        supervision = await _supervision_cached()
+        ok = supervision.get("supervision_ok")
+        sup_status = "ok" if ok else ("unavailable" if ok is None else "mismatch")
+        status["process_supervision"] = {"status": sup_status, "details": supervision}
+        if ok is False:
+            overall = _escalate_overall(overall, "degraded")
+    except Exception as e:
+        status["process_supervision"] = {"status": "error", "error": str(e)}
 
     return {
         "overall": overall,
@@ -998,6 +1474,35 @@ async def pm2_status():
         return {"found": False, "note": "jarvis-engine not found in pm2 list"}
     except Exception as exc:
         return {"found": False, "error": str(exc)}
+
+
+@router.get(
+    "/health/supervision",
+    description="Cross-check pm2's believed process state against actual TCP "
+    "port liveness and the real port-owner PID (PRB-24). Never raises — pm2 "
+    "unavailable degrades to available=false rather than a 500.",
+)
+async def health_supervision():
+    """pm2-vs-reality process supervision cross-check.
+
+    Independently probes each supervised app's TCP port and (when the port is
+    live) the actual owning PID via `netstat -ano`, then compares against
+    pm2's believed status+pid from `pm2 jlist`. A MISMATCH — pm2 says one
+    thing, the OS says another — is the specific failure class from the
+    2026-07-28/29 incidents (an orphan process serving a port pm2 thinks is
+    dead, or pm2 believing a port is up when nothing is actually listening).
+    """
+    try:
+        return await _supervision_cached()
+    except Exception as exc:
+        logger.exception("health/supervision endpoint error: %s", exc)
+        return {
+            "available": False,
+            "supervision_ok": None,
+            "error": f"supervision check crashed: {exc}",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "apps": {},
+        }
 
 
 @router.get(

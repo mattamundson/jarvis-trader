@@ -62,7 +62,7 @@ class PostTradeAnalyzer:
             return
         try:
             with self.db._lock:
-                conn = self.db._get_connection()
+                conn = self.db._connect()
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS trade_post_mortem (
@@ -105,15 +105,25 @@ class PostTradeAnalyzer:
         )
 
         try:
-            # We use the raw client methods for direct access
-            response = await self.llm.client.messages.create(
+            # Route through .call() (not the raw SDK client) so this inherits
+            # the Anthropic -> Gemini -> OpenAI fallback chain, retries, and
+            # cost tracking. The prior raw-client call bypassed all of that:
+            # any Anthropic-specific failure (e.g. credit exhaustion) simply
+            # failed the post-mortem outright instead of failing over.
+            result_llm = await self.llm.call(
                 model=self.model,
-                max_tokens=1000,
+                system="",
                 messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000,
+                agent_name="post_mortem",
                 temperature=0.0,
             )
+            if not getattr(result_llm, "success", False):
+                raise RuntimeError(
+                    f"post_mortem LLM call failed: {getattr(result_llm, 'error', 'unknown')}"
+                )
 
-            result_text = response.content[0].text
+            result_text = result_llm.content
 
             # Extract JSON block
             start = result_text.find("{")
@@ -124,7 +134,7 @@ class PostTradeAnalyzer:
                 # Persist
                 if self.db:
                     with self.db._lock:
-                        conn = self.db._get_connection()
+                        conn = self.db._connect()
                         conn.execute(
                             "INSERT OR REPLACE INTO trade_post_mortem (trade_id, symbol, pnl, analysis, lesson, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                             (
