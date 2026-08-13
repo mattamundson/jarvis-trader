@@ -1,0 +1,95 @@
+"""Tests -- /system/data-integrity honest staleness threshold (P3-1).
+
+Prior bug: the endpoint hardcoded `latency < 10` (10 seconds) to decide
+healthy/stale, with no citation and no relationship to the tolerance the
+system actually enforces. The real-money-readiness gate (gates.py,
+FEED_STALE_SEC=900) and every dashboard consumer of this endpoint's `status`
+field treated 900s as the honest fresh/stale line -- so a source 60s old (well
+within the real tolerance) read "stale" here while the fund-ability gate
+would have called it fine. Two disagreeing staleness verdicts for the same
+underlying data is the "stale-Redis lie" this closes: the badge Amo looks at
+must agree with the gate that decides fundability.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from routers import health_router
+
+
+class _FakeAsyncRedis:
+    def __init__(self, entries: dict[str, str]):
+        self._entries = entries
+
+    async def keys(self, pattern):
+        assert pattern == "datasource:*:last_update"
+        return list(self._entries.keys())
+
+    async def get(self, key):
+        return self._entries.get(key)
+
+    async def close(self):
+        pass
+
+
+def _client(monkeypatch, entries: dict[str, str]) -> TestClient:
+    class _FakeRedisAsyncModule:
+        @staticmethod
+        def from_url(*_args, **_kwargs):
+            return _FakeAsyncRedis(entries)
+
+    # `import redis.asyncio as redis` inside get_data_integrity() resolves via
+    # attribute access on the already-imported `redis` package (compiler walks
+    # the dotted path as getattr, not a bare sys.modules['redis.asyncio']
+    # lookup) -- patch both so this doesn't silently fall through to a real
+    # local Redis and assert against live production data.
+    import sys
+
+    import redis as _real_redis_pkg
+
+    fake_mod = _FakeRedisAsyncModule()
+    monkeypatch.setattr(_real_redis_pkg, "asyncio", fake_mod, raising=False)
+    monkeypatch.setitem(sys.modules, "redis.asyncio", fake_mod)
+
+    app = FastAPI()
+    app.include_router(health_router.router)
+    return TestClient(app)
+
+
+def _ts(seconds_ago: float) -> str:
+    return (datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)).isoformat()
+
+
+def test_source_within_documented_tolerance_reads_healthy(monkeypatch):
+    """60s old used to read 'stale' under the old 10s cutoff -- must now read healthy."""
+    client = _client(monkeypatch, {"datasource:ticks:MES1!:last_update": _ts(60.0)})
+    body = client.get("/system/data-integrity").json()
+    source = next(s for s in body["sources"] if s["source"] == "ticks:MES1!")
+    assert source["status"] == "healthy"
+
+
+def test_source_beyond_documented_tolerance_reads_stale(monkeypatch):
+    client = _client(monkeypatch, {"datasource:ticks:MCL1!:last_update": _ts(950.0)})
+    body = client.get("/system/data-integrity").json()
+    source = next(s for s in body["sources"] if s["source"] == "ticks:MCL1!")
+    assert source["status"] == "stale"
+
+
+def test_threshold_matches_readiness_gate_constant(monkeypatch):
+    """Pin the boundary to gates.py's FEED_STALE_SEC=900 so the two never drift apart again."""
+    assert health_router.DATA_INTEGRITY_STALE_AFTER_S == 900.0
+
+    just_inside = _client(
+        monkeypatch, {"datasource:tv_stream:last_update": _ts(899.0)}
+    ).get("/system/data-integrity").json()
+    assert just_inside["sources"][0]["status"] == "healthy"
+
+    just_outside = _client(
+        monkeypatch, {"datasource:tv_stream:last_update": _ts(901.0)}
+    ).get("/system/data-integrity").json()
+    assert just_outside["sources"][0]["status"] == "stale"
