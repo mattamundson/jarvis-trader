@@ -658,6 +658,18 @@ async def _get_ib_gateway_health() -> dict:
     return health
 
 
+
+# P3-1 (roadmap-drain): this was a bare `10` with no citation, wildly tighter
+# than the tolerance the system actually enforces -- a source 15-30s old (a
+# normal blip, well within bounds) read "stale" here while the real-money-
+# readiness gate (gates.py FEED_STALE_SEC) and every dashboard consumer of
+# this endpoint's `status` field treated 900s as the honest fresh/stale line.
+# Two disagreeing staleness lies for the same underlying data is the bug this
+# closes -- match the one place that threshold is actually decided, so the
+# badge Amo looks at and the gate that decides fundability agree.
+DATA_INTEGRITY_STALE_AFTER_S = 900.0
+
+
 @router.get("/system/data-integrity")
 async def get_data_integrity():
     """
@@ -683,7 +695,7 @@ async def get_data_integrity():
                         "source": key.replace("datasource:", "").replace(":last_update", ""),
                         "last_update": val,
                         "latency_sec": round(latency, 2),
-                        "status": "healthy" if latency < 10 else "stale",
+                        "status": "healthy" if latency < DATA_INTEGRITY_STALE_AFTER_S else "stale",
                     }
                 )
             except Exception:
