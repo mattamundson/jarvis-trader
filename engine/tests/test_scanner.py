@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import config
 from scanner.signal_scanner import SignalScanner, _is_futures_market_hours
 from validation.api_keys import validate_api_keys
 
@@ -151,8 +152,31 @@ class TestSignalScanner:
         mock_db.insert_pending_approval.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_scan_symbol_buy_signal(self, scanner, mock_pipeline, mock_db):
-        """Test scanning symbol that returns BUY signal."""
+    async def test_scan_symbol_buy_signal_autonomous(self, scanner, mock_pipeline, mock_db):
+        """A BUY signal under the current standing config (REQUIRE_HUMAN_APPROVAL=False,
+        Amo's 2026-08-11 decision) must NOT create a pending_trade_approvals row --
+        signal_scanner.py's own comment explains why: nobody approves these in
+        autonomous mode, so a row would only time out and generate a misleading
+        'APPROVAL REQUIRED' DM for a trade that never happens."""
+        mock_pipeline.analyze_and_decide.return_value = {
+            "symbol": "MCL",
+            "final_action": "buy",
+            "final_quantity": 1,
+            "trade_decision": {"entry_price": 75.50},
+        }
+
+        with patch.object(config.settings, "REQUIRE_HUMAN_APPROVAL", False):
+            await scanner._scan_symbol("MCL")
+
+        mock_db.insert_pending_approval.assert_not_called()
+        assert scanner._approval_count == 0
+
+    @pytest.mark.asyncio
+    async def test_scan_symbol_buy_signal_requires_approval(self, scanner, mock_pipeline, mock_db):
+        """Same BUY signal, but with REQUIRE_HUMAN_APPROVAL explicitly True --
+        the approval-row code path this test protects still exists in
+        signal_scanner.py and must keep working even though it's not the
+        current deployment default."""
         mock_pipeline.analyze_and_decide.return_value = {
             "symbol": "MCL",
             "final_action": "buy",
@@ -161,9 +185,9 @@ class TestSignalScanner:
         }
         mock_db.insert_pending_approval.return_value = "approval-123"
 
-        await scanner._scan_symbol("MCL")
+        with patch.object(config.settings, "REQUIRE_HUMAN_APPROVAL", True):
+            await scanner._scan_symbol("MCL")
 
-        # Approval should be created
         mock_db.insert_pending_approval.assert_called_once()
         call_kwargs = mock_db.insert_pending_approval.call_args.kwargs
         assert call_kwargs["symbol"] == "MCL"
@@ -172,8 +196,25 @@ class TestSignalScanner:
         assert scanner._approval_count == 1
 
     @pytest.mark.asyncio
-    async def test_scan_symbol_sell_signal(self, scanner, mock_pipeline, mock_db):
-        """Test scanning symbol that returns SELL signal."""
+    async def test_scan_symbol_sell_signal_autonomous(self, scanner, mock_pipeline, mock_db):
+        """A SELL signal under the current standing config must also skip the
+        approval row (see test_scan_symbol_buy_signal_autonomous)."""
+        mock_pipeline.analyze_and_decide.return_value = {
+            "symbol": "MNQ",
+            "final_action": "sell",
+            "final_quantity": 2,
+            "trade_decision": {"entry_price": 5500.00},
+        }
+
+        with patch.object(config.settings, "REQUIRE_HUMAN_APPROVAL", False):
+            await scanner._scan_symbol("MNQ")
+
+        mock_db.insert_pending_approval.assert_not_called()
+        assert scanner._approval_count == 0
+
+    @pytest.mark.asyncio
+    async def test_scan_symbol_sell_signal_requires_approval(self, scanner, mock_pipeline, mock_db):
+        """Same SELL signal, with REQUIRE_HUMAN_APPROVAL explicitly True."""
         mock_pipeline.analyze_and_decide.return_value = {
             "symbol": "MNQ",
             "final_action": "sell",
@@ -182,9 +223,9 @@ class TestSignalScanner:
         }
         mock_db.insert_pending_approval.return_value = "approval-456"
 
-        await scanner._scan_symbol("MNQ")
+        with patch.object(config.settings, "REQUIRE_HUMAN_APPROVAL", True):
+            await scanner._scan_symbol("MNQ")
 
-        # Approval should be created for sell
         mock_db.insert_pending_approval.assert_called_once()
         call_kwargs = mock_db.insert_pending_approval.call_args.kwargs
         assert call_kwargs["action"] == "sell"
