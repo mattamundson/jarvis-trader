@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useState } from "react";
 import useSWR from "swr";
 import { GitCompare, TrendingUp, TrendingDown, Minus } from "lucide-react";
@@ -101,7 +103,7 @@ function AccountColumn({
   const { data, error, isLoading } = useSWR<AccountStatsResponse>(
     [`account-stats`, accountId, days],
     () => fetchAccountStats(accountId, days),
-    { refreshInterval: 60_000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   const isB = accountId === "B";
@@ -277,12 +279,12 @@ export default function ParallelPaperPage() {
   const { data: dataA } = useSWR<AccountStatsResponse>(
     [`account-stats`, "A", days],
     () => fetchAccountStats("A", days),
-    { refreshInterval: 60_000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
   const { data: dataB } = useSWR<AccountStatsResponse>(
     [`account-stats`, "B", days],
     () => fetchAccountStats("B", days),
-    { refreshInterval: 60_000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   // Honest combined set — used only to show combined net in the caveat badge.
@@ -290,7 +292,7 @@ export default function ParallelPaperPage() {
   const { data: honestSet } = useSWR<HonestTradeSet>(
     "honest-trades-parallel-paper",
     fetchHonestTrades,
-    { refreshInterval: 5 * 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FIVE_MINUTES, shouldRetryOnError: false }
   );
 
   const windowOptions: { label: string; value: WindowDays }[] = [

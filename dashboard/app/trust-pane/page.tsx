@@ -1,5 +1,7 @@
 "use client";
 
+import { HEALTH_KEY, POLL_INTERVAL, POSITIONS_KEY } from "@/lib/polling-config";
+
 // ── Unified Trust Pane ────────────────────────────────────────────────────────
 // One read-only surface answering, at a glance, for BOTH trading systems:
 //   1. Is it live?   2. What's open?   3. Today's P&L (one truthful number)?
@@ -249,32 +251,32 @@ export default function TrustPanePage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const onOk = useCallback(() => setLastUpdated(new Date()), []);
 
-  const health = useSWR<HealthResponse>("/health", (p: string) => fetchEngine<HealthResponse>(p), {
-    refreshInterval: 15_000, onSuccess: onOk,
+  const health = useSWR<HealthResponse>(HEALTH_KEY, (p: string) => fetchEngine<HealthResponse>(p), {
+    refreshInterval: POLL_INTERVAL.STATUS, onSuccess: onOk,
   });
   const positions = useSWR<BrokersPositionsResponse>(
-    "/brokers/positions", (p: string) => fetchEngine<BrokersPositionsResponse>(p), { refreshInterval: 15_000 },
+    POSITIONS_KEY, (p: string) => fetchEngine<BrokersPositionsResponse>(p), { refreshInterval: POLL_INTERVAL.STATUS },
   );
-  const pnl = useSWR<DailyAttributionResponse>("attr-daily", () => fetchDailyAttribution(), { refreshInterval: 30_000 });
-  const trades = useSWR<TradeJournalEntry[]>("trades-journal", () => fetchTradeJournal(undefined, undefined, 12), { refreshInterval: 30_000 });
+  const pnl = useSWR<DailyAttributionResponse>("attr-daily", () => fetchDailyAttribution(), { refreshInterval: POLL_INTERVAL.SLOW });
+  const trades = useSWR<TradeJournalEntry[]>("trades-journal", () => fetchTradeJournal(undefined, undefined, 12), { refreshInterval: POLL_INTERVAL.SLOW });
   const barQuality = useSWR<BarQualityResponse>(
-    "/analytics/bar-quality?hours=168", (p: string) => fetchEngine<BarQualityResponse>(p), { refreshInterval: 60_000 },
+    "/analytics/bar-quality?hours=168", (p: string) => fetchEngine<BarQualityResponse>(p), { refreshInterval: POLL_INTERVAL.MINUTE },
   );
   const edgeLedger = useSWR<EdgeLedgerResponse>(
-    "/reports/edge-ledger", (p: string) => fetchEngine<EdgeLedgerResponse>(p), { refreshInterval: 120_000 },
+    "/reports/edge-ledger", (p: string) => fetchEngine<EdgeLedgerResponse>(p), { refreshInterval: POLL_INTERVAL.TWO_MINUTES },
   );
-  const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: 30_000 });
-  const verdict = useSWR<AmoEdgeVerdictResponse>("amo-edge-verdict", () => fetchAmoEdgeVerdict(), { refreshInterval: 60_000 });
+  const amo = useSWR<AmoHealthResponse>("amo-health", () => fetchAmoHealth(), { refreshInterval: POLL_INTERVAL.SLOW });
+  const verdict = useSWR<AmoEdgeVerdictResponse>("amo-edge-verdict", () => fetchAmoEdgeVerdict(), { refreshInterval: POLL_INTERVAL.MINUTE });
   // Commodities rarely change — refresh slowly, just enough to pick up a new listing.
-  const commodities = useSWR<AmoCommodity[]>("amo-commodities", () => fetchAmoCommodities(), { refreshInterval: 300_000 });
+  const commodities = useSWR<AmoCommodity[]>("amo-commodities", () => fetchAmoCommodities(), { refreshInterval: POLL_INTERVAL.FIVE_MINUTES });
   const amoOutcomes = useSWR<AmoSignalOutcomesAggregate>(
-    "amo-signal-outcomes", () => fetchAmoSignalOutcomesAggregate(), { refreshInterval: 120_000 },
+    "amo-signal-outcomes", () => fetchAmoSignalOutcomesAggregate(), { refreshInterval: POLL_INTERVAL.TWO_MINUTES },
   );
   const amoScoreboard = useSWR<AmoScoreboardResponse>(
-    "amo-scoreboard", () => fetchAmoScoreboard(), { refreshInterval: 120_000 },
+    "amo-scoreboard", () => fetchAmoScoreboard(), { refreshInterval: POLL_INTERVAL.TWO_MINUTES },
   );
   const amoActionable = useSWR<AmoActionableResponse>(
-    "amo-actionable", () => fetchAmoActionable(), { refreshInterval: 60_000 },
+    "amo-actionable", () => fetchAmoActionable(), { refreshInterval: POLL_INTERVAL.MINUTE },
   );
 
   const [secondsSince, setSecondsSince] = useState(0);

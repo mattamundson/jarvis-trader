@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import {
   fetchEntryTiming,
@@ -43,7 +45,7 @@ export function EntryTimingScenarios({ tradeId, symbol }: { tradeId: string; sym
   const { data, error, isLoading } = useSWR<EntryTimingResponse>(
     symbol ? `entry-timing-${symbol}` : null,
     () => fetchEntryTiming({ symbol, limit: 200 }),
-    { refreshInterval: 60000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false }
   );
 
   const row: EntryTimingTrade | undefined = data?.trades?.find((t) => t.trade_id === tradeId);

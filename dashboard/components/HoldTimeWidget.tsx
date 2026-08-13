@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 
@@ -24,7 +26,7 @@ export default function HoldTimeWidget() {
   const { data, isLoading } = useSWR<HoldTimeData>(
     "/portfolio/paper/hold-time-stats",
     () => fetchEngine("/portfolio/paper/hold-time-stats"),
-    { refreshInterval: 60_000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false }
   );
 
   const long = data?.by_direction?.["LONG"];

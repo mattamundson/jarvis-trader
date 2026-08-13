@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Bell, MessageSquare, Hash } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -78,7 +80,7 @@ export function AlertHistoryWidget() {
   const { data, error } = useSWR<SafetyAlertHistoryResponse>(
     "/safety/alerts/history?limit=10",
     fetcher,
-    { refreshInterval: 30_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.SLOW, shouldRetryOnError: false }
   );
 
   const loading = !data && !error;

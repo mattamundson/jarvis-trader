@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React from "react";
 import useSWR from "swr";
 import { CheckCircle2, RefreshCw, ShieldCheck, XCircle } from "lucide-react";
@@ -36,7 +38,7 @@ export function ReadinessCheckWidget() {
   const { data, isLoading, mutate } = useSWR<ReadinessReport>(
     "validation/readiness-check",
     fetchReadiness,
-    { refreshInterval: 120_000 }
+    { refreshInterval: POLL_INTERVAL.TWO_MINUTES }
   );
 
   const isReady = data?.ready_for_live ?? false;

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import useSWR from "swr";
@@ -298,13 +300,13 @@ export default function KairosPage() {
     error: statusError,
     isLoading: statusLoading,
     mutate: mutateStatus,
-  } = useSWR<KairosStatus>("/kairos/status", fetcher, { refreshInterval: 30_000 });
+  } = useSWR<KairosStatus>("/kairos/status", fetcher, { refreshInterval: POLL_INTERVAL.SLOW });
 
   const {
     data: watchersData,
     error: watchersError,
     isLoading: watchersLoading,
-  } = useSWR<WatchersResponse>("/kairos/watchers", fetcher, { refreshInterval: 30_000 });
+  } = useSWR<WatchersResponse>("/kairos/watchers", fetcher, { refreshInterval: POLL_INTERVAL.SLOW });
 
   const { data: yesterdayDream } = useSWR<DreamSummary>(
     `/kairos/dream/${yesterday}`,
@@ -315,7 +317,7 @@ export default function KairosPage() {
   const { data: todayDream } = useSWR<DreamSummary>(
     `/kairos/dream/${today}`,
     fetcher,
-    { refreshInterval: 300_000 }
+    { refreshInterval: POLL_INTERVAL.FIVE_MINUTES }
   );
 
   const watchers = watchersData?.watchers ?? [];

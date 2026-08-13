@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 // Shared fetchers, formatting helpers, and small UI atoms used by more than one
 // /validation workspace section. Extracted verbatim from the former monolithic
 // app/validation/page.tsx (PRB dashboard-hardening Task 3) -- no calculation,
@@ -225,7 +227,7 @@ export interface MonteCarloResponse {
   generated_at: string;
 }
 
-export const ANALYTICS_SWR = { refreshInterval: 60_000, revalidateOnFocus: false } as const;
+export const ANALYTICS_SWR = { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false } as const;
 
 export const P_EDGE_FLOOR = 0.95; // gate-v2 edge threshold
 export const PF_CI_FLOOR = 1.1; // gate-v2 PF lower-CI floor

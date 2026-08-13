@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { BarChart2 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -42,7 +44,7 @@ export function SignalStatsCard() {
   const { data: stats, isLoading, error } = useSWR<SignalStats>(
     "/signals/stats",
     fetcher,
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
 
   const successRate = stats ? Math.round(stats.pipeline_success_rate * 100) : null;

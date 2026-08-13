@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import type { HourlyStatsResponse, HourlyStatItem } from "@/lib/api";
@@ -55,7 +57,7 @@ export function WinRateByHourWidget() {
   const { data, error, isLoading } = useSWR(
     "/portfolio/paper/hourly-stats",
     fetcher,
-    { refreshInterval: 60000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   return (

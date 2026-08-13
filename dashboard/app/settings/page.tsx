@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useState, useCallback } from "react";
 import useSWR from "swr";
 import { postEngine } from "@/lib/api";
@@ -615,25 +617,25 @@ export default function SettingsPage() {
     mutate: mutateKillSwitch,
     isLoading: loadingKS,
   } = useSWR<KillSwitchStatus>("settings/kill-switch", fetchKillSwitch, {
-    refreshInterval: 5_000,
+    refreshInterval: POLL_INTERVAL.FAST,
   });
 
   const { data: configData } = useSWR<SafetyConfig>(
     "settings/config",
     fetchConfig,
-    { refreshInterval: 60_000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
 
   const { data: gatewayData } = useSWR<IBGatewayStatus>(
     "settings/gateway",
     fetchGateway,
-    { refreshInterval: 10_000 }
+    { refreshInterval: POLL_INTERVAL.NORMAL }
   );
 
   const { data: cbData, mutate: mutateCb } = useSWR<CircuitBreakerFull>(
     "settings/circuit-breakers",
     fetchCircuitBreakers,
-    { refreshInterval: 5_000 }
+    { refreshInterval: POLL_INTERVAL.FAST }
   );
 
   const mutateAll = useCallback(() => {

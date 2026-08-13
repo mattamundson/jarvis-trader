@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -50,12 +52,12 @@ export function PostTradeSnippet() {
   const exc = useSWR<ExcursionResponse>(
     "post-trade-excursion",
     () => fetchExcursion({ limit: 100 }),
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
   const et = useSWR<EntryTimingResponse>(
     "post-trade-entry-timing",
     () => fetchEntryTiming({ limit: 100 }),
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
 
   const ea = exc.data?.aggregates;

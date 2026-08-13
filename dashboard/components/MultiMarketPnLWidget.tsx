@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 
@@ -38,7 +40,7 @@ export function MultiMarketPnLWidget({ summary: summaryProp, isLoading }: MultiM
   const { data: fetched } = useSWR<PortfolioSummary>(
     summaryProp !== undefined ? null : "/portfolio/summary",
     fetcher,
-    { refreshInterval: 5000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FAST, shouldRetryOnError: false }
   );
 
   const summary = summaryProp ?? fetched;

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useState } from "react";
 import useSWR from "swr";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -378,7 +380,7 @@ export default function LiveTradeReasoningWidget() {
   const { data, error, isLoading } = useSWR<RecentPipelineReasoningResponse>(
     "/pipeline/recent-with-reasoning?limit=5",
     (url: string) => fetchEngine<RecentPipelineReasoningResponse>(url),
-    { refreshInterval: 30_000 }
+    { refreshInterval: POLL_INTERVAL.SLOW }
   );
 
   return (

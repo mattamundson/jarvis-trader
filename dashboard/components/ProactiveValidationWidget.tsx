@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { CheckCircle, XCircle, AlertTriangle, Clock, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -126,7 +128,7 @@ function SymbolPanel({ symbol }: { symbol: string }) {
   const { data, error } = useSWR<ProactiveSuiteResponse>(
     `/validate/proactive-suite?symbol=${symbol}`,
     fetcher,
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
 
   const loading = !data && !error;

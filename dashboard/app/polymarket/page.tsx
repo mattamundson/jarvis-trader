@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { ExploratoryBanner } from "@/components/ExploratoryBanner";
 import { Activity } from "lucide-react";
@@ -66,10 +68,10 @@ export default function PolymarketPage() {
     refreshInterval: REFRESH_MS,
   });
   const { data: markets } = useSWR<PolymarketMarketsResponse>("/polymarket/markets", fetcher, {
-    refreshInterval: 30_000,
+    refreshInterval: POLL_INTERVAL.SLOW,
   });
   const { data: scan } = useSWR<PolymarketScanResponse>("/polymarket/scan", fetcher, {
-    refreshInterval: 30_000,
+    refreshInterval: POLL_INTERVAL.SLOW,
   });
   const { data: pnl } = useSWR<PolymarketPnLResponse>("/polymarket/pnl", fetcher, {
     refreshInterval: REFRESH_MS,

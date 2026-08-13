@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 
@@ -130,7 +132,7 @@ export function MarketHealthGrid({ showLinks = false }: MarketHealthGridProps) {
   const { data } = useSWR<PortfolioHealthResponse>(
     "/portfolio/health",
     fetcher,
-    { refreshInterval: 5000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.FAST, shouldRetryOnError: false }
   );
 
   const moduleMap: Record<string, MarketModuleHealth> = {};

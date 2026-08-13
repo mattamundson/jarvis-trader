@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import Link from "next/link";
 import useSWR from "swr";
 import { useHonestTrades } from "@/lib/useHonestTrades";
@@ -37,7 +39,7 @@ export function HonestPnlCard() {
   const { data: truth } = useSWR<PnlTruthResponse>(
     masterDown ? "pnl-truth-fallback" : null,
     fetchPnlTruth,
-    { refreshInterval: 60_000, shouldRetryOnError: false, errorRetryCount: 0 },
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false, errorRetryCount: 0 },
   );
 
   const pf = honest?.profitFactor ?? null;

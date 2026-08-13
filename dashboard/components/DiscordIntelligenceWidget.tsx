@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import type { DiscordIntelligenceStatus } from "@/lib/api";
@@ -105,7 +107,7 @@ export function DiscordIntelligenceWidget() {
   const { data, error, isLoading } = useSWR<DiscordIntelligenceStatus>(
     "/discord/intelligence",
     fetcher,
-    { refreshInterval: 30_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.SLOW, shouldRetryOnError: false }
   );
 
   return (

@@ -1,4 +1,6 @@
 "use client";
+
+import { POLL_INTERVAL } from "@/lib/polling-config";
 import Link from "next/link";
 import useSWR from "swr";
 import { fetchMasterStatus, aggregationBannerState } from "@/lib/masterApi";
@@ -10,7 +12,7 @@ const ORDER = ["personal", "trading", "finances", "career", "health", "knowledge
 
 export default function MasterPage() {
   const { data, error } = useSWR("master-status", fetchMasterStatus, {
-    refreshInterval: 15000,
+    refreshInterval: POLL_INTERVAL.STATUS,
   });
 
   if (error) return (

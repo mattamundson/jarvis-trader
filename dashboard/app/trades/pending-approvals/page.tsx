@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useCallback, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
@@ -61,7 +63,7 @@ export default function PendingApprovalsPage() {
   const { data: safety } = useSWR<SafetyStatus>(
     "safety-status-for-approvals",
     () => fetchEngine<SafetyStatus>("/safety/status"),
-    { refreshInterval: 60_000 }
+    { refreshInterval: POLL_INTERVAL.MINUTE }
   );
   const accountValueIsLive =
     typeof safety?.portfolio_equity === "number" && safety.portfolio_equity > 0;

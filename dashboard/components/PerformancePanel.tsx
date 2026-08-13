@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useMemo } from "react";
 import useSWR from "swr";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -40,7 +42,7 @@ export function PerformancePanel({ metrics, equityCurve }: PerformancePanelProps
   const { data: fetchedCurveData } = useSWR<EquityCurveData>(
     "/portfolio/history/equity-curve",
     fetcher,
-    { refreshInterval: 30_000 }
+    { refreshInterval: POLL_INTERVAL.SLOW }
   );
 
   const curve = useMemo(() => {

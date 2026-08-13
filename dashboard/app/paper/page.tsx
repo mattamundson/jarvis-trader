@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import useSWR from "swr";
@@ -37,14 +39,14 @@ export default function PaperTradingPage() {
   const { data: health, error: healthError, isLoading: healthLoading } = useSWR<EngineHealthPayload>(
     "/health",
     fetcher,
-    { refreshInterval: 30_000, revalidateOnFocus: true, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.SLOW, revalidateOnFocus: true, shouldRetryOnError: false }
   );
 
   // Same live source that gates MGC's ACTIVE/HALTED badge on /command-center —
   // drives the suspension banner below instead of a static hardcoded WFE value.
   const { data: paperStatus, error: paperStatusError } = useSWR<
     Record<string, { status?: string; wfe?: number; reason?: string }>
-  >("/backtest/paper-status", fetcher, { refreshInterval: 120_000, shouldRetryOnError: false });
+  >("/backtest/paper-status", fetcher, { refreshInterval: POLL_INTERVAL.TWO_MINUTES, shouldRetryOnError: false });
   const mgcStatus = paperStatus?.["MGC_1d"];
   const mgcHalted = (mgcStatus?.status || "").toUpperCase() !== "ACTIVE";
 
@@ -377,7 +379,7 @@ function KillSwitchPanel() {
   const { data: ks, error, mutate } = useSWR<KillSwitchStatus>(
     "kill-switch-status",
     fetchKillSwitchStatus,
-    { refreshInterval: 30_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.SLOW, shouldRetryOnError: false }
   );
   const [acting, setActing] = useState(false);
   const [resetResult, setResetResult] = useState<string | null>(null);
@@ -532,7 +534,7 @@ function SignalQueuePanel() {
   const { data: signals, error } = useSWR<PendingSignal[]>(
     "/paper/pending-signals",
     fetcher,
-    { refreshInterval: 60_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, shouldRetryOnError: false }
   );
 
   const allItems: PendingSignal[] = Array.isArray(signals) ? signals : [];
@@ -673,7 +675,7 @@ function PerformanceMetricsPanel() {
   const { data: perf, error: perfError } = useSWR<MGCPerformanceResponse>(
     "/paper/mgc-performance",
     fetcher,
-    { refreshInterval: 30_000, shouldRetryOnError: false }
+    { refreshInterval: POLL_INTERVAL.SLOW, shouldRetryOnError: false }
   );
 
   // Honest deduped trade record — source of truth for aggregate metrics

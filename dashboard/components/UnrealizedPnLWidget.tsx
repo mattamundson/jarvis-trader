@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchEngine } from "@/lib/api";
 import type { UnrealizedPosition, UnrealizedPositionsResponse } from "@/lib/api";
@@ -114,7 +116,7 @@ export default function UnrealizedPnLWidget() {
   const { data, error, isLoading } = useSWR<UnrealizedPositionsResponse>(
     "/portfolio/paper/positions/unrealized",
     fetchEngine,
-    { refreshInterval: 10000 }
+    { refreshInterval: POLL_INTERVAL.NORMAL }
   );
 
   const totalUnrealized =

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchPnlTruth, type PnlTruthResponse } from "@/lib/api";
 
@@ -24,7 +26,7 @@ function fmt(n: number): string {
  */
 export function EnginePnlTruthCard() {
   const { data, error } = useSWR<PnlTruthResponse>("pnl-truth", fetchPnlTruth, {
-    refreshInterval: 60_000,
+    refreshInterval: POLL_INTERVAL.MINUTE,
     shouldRetryOnError: false,
     errorRetryCount: 0,
   });

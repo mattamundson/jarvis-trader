@@ -1,4 +1,6 @@
 "use client";
+
+import { POLL_INTERVAL } from "@/lib/polling-config";
 import useSWR from "swr";
 import { fetchBars, fetchEngine } from "@/lib/api";
 import type {
@@ -38,7 +40,7 @@ export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
   const { data: bars = [], error: barsError, isLoading: barsLoading } = useSWR<OHLCVBar[]>(
     [`/analyze/bars/${symbol}`, timeframe, days],
     () => fetchBars(symbol, { timeframe, days }),
-    { refreshInterval: 60_000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false }
   );
 
   // Technical analysis (POST endpoint — use SWR with POST)
@@ -54,7 +56,7 @@ export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol, timeframe, is_futures: true }),
       }).catch(() => null),
-    { refreshInterval: 120_000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.TWO_MINUTES, revalidateOnFocus: false }
   );
 
   // Regime status
@@ -64,7 +66,7 @@ export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
       fetchEngine<RegimeStatusResult>(
         `/backtest/regime-status?symbol=${symbol}&timeframe=${timeframe}`
       ).catch(() => null),
-    { refreshInterval: 120_000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.TWO_MINUTES, revalidateOnFocus: false }
   );
 
   // Watchlist scan for signals
@@ -72,7 +74,7 @@ export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
     "/watchlist/scan",
     (): Promise<WatchlistScanResponse | null> =>
       fetchEngine<WatchlistScanResponse>("/watchlist/scan").catch(() => null),
-    { refreshInterval: 60_000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.MINUTE, revalidateOnFocus: false }
   );
 
   // Pipeline history
@@ -80,7 +82,7 @@ export function useChartData(symbol: ChartSymbol, timeframe: ChartTimeframe) {
     "/pipeline/history",
     (): Promise<PipelineHistoryEntry[] | null> =>
       fetchEngine<PipelineHistoryEntry[]>("/pipeline/history").catch(() => null),
-    { refreshInterval: 30_000, revalidateOnFocus: false }
+    { refreshInterval: POLL_INTERVAL.SLOW, revalidateOnFocus: false }
   );
 
   // Find current symbol signal from scan

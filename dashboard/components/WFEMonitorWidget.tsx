@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import React, { useMemo } from "react";
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,7 +67,7 @@ export function WFEMonitorWidget(): React.ReactNode {
     error,
     isLoading,
   } = useSWR<WFESnapshotResponse>("/wfe/snapshots", fetcher, {
-    refreshInterval: 60000, // Refresh every minute
+    refreshInterval: POLL_INTERVAL.MINUTE, // Refresh every minute
     revalidateOnFocus: true,
   });
 

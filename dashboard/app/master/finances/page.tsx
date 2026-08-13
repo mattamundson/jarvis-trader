@@ -1,4 +1,6 @@
 "use client";
+
+import { POLL_INTERVAL } from "@/lib/polling-config";
 import Link from "next/link";
 import useSWR from "swr";
 import {
@@ -28,7 +30,7 @@ export default function FinancesDetailPage() {
   const { data, error } = useSWR<FinancesDetail>(
     "finances-detail",
     fetchFinancesDetail,
-    { refreshInterval: 60000 },
+    { refreshInterval: POLL_INTERVAL.MINUTE },
   );
 
   if (error) {

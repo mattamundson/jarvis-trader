@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import {
@@ -46,7 +48,7 @@ export default function DataIntegrityPage() {
   const { data, error, mutate, isLoading } = useSWR<DataIntegrityResponse>(
     "/system/data-integrity",
     fetcher,
-    { refreshInterval: 2000 }
+    { refreshInterval: POLL_INTERVAL.REALTIME }
   );
 
   return (

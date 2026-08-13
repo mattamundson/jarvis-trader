@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchDurability, type DurabilityResponse } from "@/lib/api";
 
@@ -20,7 +22,7 @@ function fmtDuration(ms: number): string {
  */
 export function DurabilityWidget() {
   const { data, error } = useSWR<DurabilityResponse>("ops-durability", fetchDurability, {
-    refreshInterval: 60_000,
+    refreshInterval: POLL_INTERVAL.MINUTE,
     shouldRetryOnError: false,
     errorRetryCount: 0,
   });

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { fetchMacroRegime, type MacroRegime } from "@/lib/api";
 
@@ -30,7 +32,7 @@ export function MacroRegimeBadge() {
   const { data, error, isLoading } = useSWR<MacroRegime>(
     "macro-regime",
     fetchMacroRegime,
-    { refreshInterval: 300000 }
+    { refreshInterval: POLL_INTERVAL.FIVE_MINUTES }
   );
 
   const s = stateStyle(data?.state ?? "UNKNOWN");

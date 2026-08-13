@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import type { JSX } from "react";
 import { useState } from "react";
 import useSWR from "swr";
@@ -212,7 +214,7 @@ export function SignalFeedWidget() {
     "/decisions/recent",
     fetcher,
     {
-      refreshInterval: 30_000,
+      refreshInterval: POLL_INTERVAL.SLOW,
       shouldRetryOnError: false,
       revalidateOnFocus: false,
     }

@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +43,7 @@ export function PositionsPerformancePanel() {
     error: posError,
     isLoading: posLoading,
   } = useSWR<UnrealizedPosition[]>("/portfolio/paper/positions/unrealized", fetcher, {
-    refreshInterval: 15_000,
+    refreshInterval: POLL_INTERVAL.STATUS,
   });
 
   const {
@@ -49,7 +51,7 @@ export function PositionsPerformancePanel() {
     error: perfError,
     isLoading: perfLoading,
   } = useSWR<PaperPerformanceResponse>("/portfolio/paper/performance", fetcher, {
-    refreshInterval: 15_000,
+    refreshInterval: POLL_INTERVAL.STATUS,
   });
 
   const perf = perfResp?.performance;

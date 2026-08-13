@@ -1,5 +1,7 @@
 "use client";
 
+import { POLL_INTERVAL } from "@/lib/polling-config";
+
 import useSWR from "swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +56,7 @@ function CountPill({
 
 export function EnvironmentFleetPanel() {
   const { data, error, isLoading } = useSWR<FleetResponse>("/api/fleet", localFetcher, {
-    refreshInterval: 15_000,
+    refreshInterval: POLL_INTERVAL.STATUS,
   });
 
   const hb = (id: string) => data?.loops.find((l) => l.id === id)?.last_heartbeat;
