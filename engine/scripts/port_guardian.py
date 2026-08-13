@@ -23,12 +23,20 @@ Exit codes:
          Windows loopback (refuse; sleeps WSL_SQUAT_BACKOFF s first so PM2 stops
          hammering restarts while the WSL bind persists)
     2  — kill attempted but port still bound after grace period
-    3  — port held by a HEALTHY uvicorn we can't kill (likely elevated). Exits
-         non-zero so PM2 marks the start as failed (correct: we did NOT start
-         a managed engine), but sleeps before exiting so PM2's restart_delay +
+    3  — port held by a HEALTHY uvicorn: either we can't kill it (likely elevated),
+         or (2026-07-30) we deliberately refuse to try because /health answers 200
+         — a name match alone ("python"/"uvicorn") can't distinguish a genuine
+         abandoned orphan from the current live-serving engine, and PM2 restarting
+         jarvis-engine while the prior instance is still up and healthy must not
+         kill that instance out from under itself (see healthy-orphan-skip below).
+         Exits non-zero so PM2 marks the start as failed (correct: we did NOT
+         start a managed engine), but sleeps before exiting so PM2's restart_delay +
          min_uptime back off the restart loop instead of hammering taskkill.
-         Human must kill the elevated PID via Task Manager (admin) and then
-         `pm2 start jarvis-engine` to take over management.
+         If genuinely unkillable (elevated), a human must kill the PID via Task
+         Manager (admin) and then `pm2 start jarvis-engine` to take over management.
+         If it's the healthy-skip case, no action is needed — PM2 will keep the
+         existing healthy instance as the de facto server until something actually
+         stops it.
     4  — wrong Python (Store Python instead of the project venv); exits before
          touching the port to avoid double-binding.
     5  — readiness gate fired: uvicorn was launched but never served /health within
@@ -519,6 +527,28 @@ def main() -> int:
                 # own prior instance landed here repeatedly.
                 time.sleep(UNIDENTIFIED_HOLDER_BACKOFF)
                 return 1
+            if _is_healthy(PORT):
+                # 2026-07-30 crash-loop root cause: _looks_like_orphan_uvicorn() only
+                # matches on process name, so it can't tell a genuinely abandoned
+                # orphan (the 2026-04-14 case this script was built for) from the
+                # CURRENT live-serving engine that PM2 just decided to restart for an
+                # unrelated reason. Killing a healthy port-holder here creates a
+                # daisy-chain: each freshly spawned guardian kills its own just-booted,
+                # healthy predecessor, which restarts, gets killed by the next spawn,
+                # forever. If /health is answering, this is not an orphan — refuse.
+                print(
+                    f"[port_guardian] PID {pid} ({name}) matches orphan-uvicorn by name, "
+                    f"but port {PORT} IS currently serving a healthy /health — this is "
+                    "the live engine, not an orphan. REFUSING to kill. Exiting non-zero "
+                    f"after {HEALTHY_ORPHAN_BACKOFF}s backoff so PM2's restart_delay + "
+                    "min_uptime slow the loop instead of re-triggering immediately.",
+                    flush=True,
+                )
+                _record_restart_event(
+                    "healthy-orphan-skip", {"pid": pid, "name": name, "port": PORT}, RESTART_LOG
+                )
+                time.sleep(HEALTHY_ORPHAN_BACKOFF)
+                return 3
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
             killed = _kill_pid(pid)
             if killed:
