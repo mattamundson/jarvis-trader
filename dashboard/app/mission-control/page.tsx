@@ -28,7 +28,7 @@ export default function MissionControlPage() {
           <div>
             <h1 className="font-bold text-foreground tracking-tight">MISSION CONTROL</h1>
             <p className="text-xs text-muted-foreground">
-              Trading + environment fused view — auto-refreshes every 15s
+              Owns infrastructure, provider health, and data-path operations — auto-refreshes every 15s
             </p>
           </div>
         </div>
