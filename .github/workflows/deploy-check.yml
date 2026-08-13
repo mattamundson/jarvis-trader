@@ -54,9 +54,13 @@ jobs:
             --explicit-package-bases --namespace-packages || echo "::warning::mypy debt — tighten in follow-up"
 
           echo "=== Running Tests (fast then slow — parity with ci.yml engine-test) ==="
-          pytest engine/tests/ -m "not slow" \
+          # `not manual` restated in both passes: a CLI -m overrides pyproject's
+          # `-m "not manual"` default, so omitting it here re-collects the IB-Gateway
+          # e2e tests (which hang the asyncio loop with no timeout). Matches the
+          # marker expressions ci.yml uses, which this step claims parity with.
+          pytest engine/tests/ -m "not slow and not manual" \
             -v --tb=short --cov=engine --cov-report=term-missing --cov-report=xml
-          pytest engine/tests/ -m slow \
+          pytest engine/tests/ -m "slow and not manual" \
             -v --tb=short --cov=engine --cov-append --cov-report=term-missing --cov-report=xml \
             || { ec=$?; if [[ $ec -eq 5 ]]; then echo "No slow tests collected; skipping slow pass"; exit 0; fi; exit "$ec"; }
 
