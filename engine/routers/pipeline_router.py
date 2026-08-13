@@ -18,6 +18,8 @@ try:  # dual-path import (engine.* package vs bare under engine/ cwd)
 except ImportError:  # pragma: no cover
     from analytics.agent_feedback import build_analyst_signals_map
 
+from utils.data_provenance import build_data_provenance, stamp_signal_data
+
 # ── Signal Debug Log ──────────────────────────────────────────────────────────
 # Rolling log of the last 50 pipeline filter decisions (pre-filter + pass-through).
 # Populated by record_signal_debug() called from agents/pipeline.py.
@@ -86,6 +88,7 @@ _scheduler = None
 _trading_pipeline = None
 _safety_layer = None
 _db_manager = None
+_data_manager = None  # MarketDataManager, injected via inject_dependencies() — decision provenance
 _paper_tracker = None
 _telegram_notifier = None
 _sdk_pipeline = None
@@ -180,15 +183,18 @@ def inject_dependencies(
     sdk_pipeline=None,
     decision_log=None,
     log_decision_fn=None,
+    data_manager=None,
 ):
     """Inject global dependencies from main.py"""
-    global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker, _sdk_pipeline, _decision_log_ref, _log_decision_fn
+    global _scheduler, _trading_pipeline, _safety_layer, _db_manager, _paper_tracker, _sdk_pipeline, _decision_log_ref, _log_decision_fn, _data_manager
     _scheduler = scheduler
     _trading_pipeline = trading_pipeline
     _safety_layer = safety_layer
     _db_manager = db_manager
     _paper_tracker = paper_tracker
     _sdk_pipeline = sdk_pipeline
+    if data_manager is not None:
+        _data_manager = data_manager
     if decision_log is not None:
         _decision_log_ref = decision_log
     if log_decision_fn is not None:
@@ -465,12 +471,18 @@ def _log_decision_to_db(
         logger.warning("[DECISION] db_manager not injected — decision for %s not persisted", symbol)
         return
     try:
+        # Data-truth: stamp *what data* this decision was based on (tier +
+        # per-symbol serve-age), matching main.py's _log_decision (PR #286).
+        # Additive only — never changes a trade decision, never raises.
+        provenance = build_data_provenance(_data_manager, symbol)
+        sig = signal_data or {"source": source, "summary": summary}
+        sig = stamp_signal_data(sig, provenance)
         _db_manager.insert_decision(
             symbol=symbol,
             action=action,
             confidence=confidence,
             regime=regime,
-            signal_data=signal_data or {"source": source, "summary": summary},
+            signal_data=sig,
             reasoning=reasoning or summary,
             full_pipeline_data=full_pipeline_data,
         )
