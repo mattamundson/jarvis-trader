@@ -1727,7 +1727,15 @@ class TestSession4ContinuationEndpoints(unittest.TestCase):
     # ── GET /validation/readiness-check ───────────────────────────────────────
 
     def test_validation_readiness_check(self) -> None:
-        """GET /validation/readiness-check returns criteria list."""
+        """GET /validation/readiness-check returns the live per-gate checks list.
+
+        routers/validation_router.py's own docstring documents this contract
+        change: the endpoint used to return a static 'criteria' list with no
+        live values, and was rewritten to compute real 'checks' from
+        ValidationMetrics so the ReadinessCheckWidget shows actual gate
+        status. This test asserted the pre-rewrite key name.
+        """
         status, data = self._get("/validation/readiness-check")
         self.assertEqual(status, 200, f"Expected 200, got {status}. Body: {data}")
-        self.assertIn("criteria", data, f"Response missing criteria: {data}")
+        self.assertIn("checks", data, f"Response missing checks: {data}")
+        self.assertIsInstance(data["checks"], list)
