@@ -941,6 +941,7 @@ class JarvisLLMClient:
             self.provider != "ollama"
             and self.google_fallback_enabled
             and agent_name in self.GEMINI_PRIMARY_AGENTS
+            and not self._is_provider_cooling_down("gemini")
         ):
             # Enrichment/classification agents (news/technical/fundamental, etc.)
             # are pinned to the cost-efficient flash tier as their PRIMARY — they
@@ -976,6 +977,7 @@ class JarvisLLMClient:
                     cache_salt=cache_salt,
                 )
             except Exception as gex:
+                self._note_provider_rate_limited("gemini", gex)
                 logger.warning(
                     "[%s] Gemini primary failed for %s — falling through to Anthropic: %s",
                     google_model,
