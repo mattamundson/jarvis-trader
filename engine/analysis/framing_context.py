@@ -20,12 +20,19 @@ up empty is intentional, not an oversight.
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
+import sqlite3
 import sys
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, Optional
+from urllib.error import URLError
+from urllib.request import urlopen
+from zoneinfo import ZoneInfo
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +48,17 @@ _DB_PATH = _ENGINE_DIR / "data" / "jarvis_trader.db"
 FRAMING_SYMBOLS: tuple[str, ...] = ("MES", "MNQ")
 
 ConfidenceTier = Literal["HIGHEST", "HIGH", "LOW"]
+
+# SKILL.md's clock discipline (both the AM and preclose skills) is CT — the
+# trader's clock, not the DB's UTC storage or daily_morning_briefing.py's ET.
+_CT = ZoneInfo("America/Chicago")
+
+_ENGINE_PRICES_URL = "http://127.0.0.1:8010/prices/snapshot"
+_HTTP_TIMEOUT_S = 5
+# ~2 trading days of 1h bars — comfortably covers today's still-forming
+# session with room to spare, without pulling get_engine_levels()'s much
+# larger multi-week window.
+_INTRADAY_LOOKBACK_BARS = 48
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +196,164 @@ def get_system_overlay(engine_levels: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Pre-close only — today's realized intraday session (new capability;
+# get_engine_levels()/compute_key_levels() deliberately excludes today's
+# still-forming session, so it cannot be reused for this). See
+# .claude/skills/market-close-brief/SKILL.md Step 1.
+# ---------------------------------------------------------------------------
+
+
+def _fetch_price_snapshot(
+    symbols: tuple[str, ...], timeout: int = _HTTP_TIMEOUT_S
+) -> dict[str, Any]:
+    """Live current price/prev-close/pct-change via the engine's own
+    /prices/snapshot — mirrors daily_morning_briefing.fetch_engine_health()'s
+    urlopen pattern, plus the X-API-Key header the SKILL.md curl examples use
+    (unlike /health, this route sits behind the global API-key middleware even
+    though its own handler declares no route-level auth dependency — confirmed
+    live: an unauthenticated call 401s). Read fresh at call time, never cached,
+    matching this repo's "rotates — read at use time" convention. Empty dict
+    on any failure; callers fall back to the last DB bar's close."""
+    import os
+    from urllib.request import Request
+
+    url = f"{_ENGINE_PRICES_URL}?symbols={','.join(symbols)}"
+    api_key = os.getenv("API_KEY", "")
+    req = Request(url, headers={"X-API-Key": api_key} if api_key else {})
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+        data = json.loads(body)
+        return data if isinstance(data, dict) else {}
+    except (URLError, OSError, json.JSONDecodeError) as exc:
+        logger.warning("Price snapshot unavailable: %s", exc)
+        return {}
+
+
+def get_intraday_snapshot(
+    symbols: tuple[str, ...] = FRAMING_SYMBOLS,
+    db_path: Optional[Path] = None,
+) -> dict[str, Optional[dict]]:
+    """Today's realized session range + value area, per symbol.
+
+    Reuses analytics.regime.load_recent_bars (the same DB-native 1h source
+    get_engine_levels() depends on transitively) filtered to today's CT
+    calendar date, and analysis.morning_levels._value_area for VAH/VAL/POC —
+    no new TPO implementation. last_price prefers the live /prices/snapshot
+    tick, falling back to the last today-bar's close if the engine is
+    unreachable. Returns {symbol: dict | None} — never raises.
+    """
+    from analysis.morning_levels import _value_area
+    from analytics.regime import load_recent_bars
+
+    today_ct = datetime.now(_CT).date()
+    price_snapshot = _fetch_price_snapshot(symbols)
+
+    out: dict[str, Optional[dict]] = {}
+    for sym in symbols:
+        try:
+            df1h = load_recent_bars(sym, n_bars=_INTRADAY_LOOKBACK_BARS, db_path=db_path or _DB_PATH)
+            if df1h is None or len(df1h) == 0 or "timestamp" not in df1h.columns:
+                out[sym] = None
+                continue
+
+            ts_utc = pd.to_datetime(df1h["timestamp"], utc=True)
+            today_mask = ts_utc.dt.tz_convert(_CT).dt.date == today_ct
+            today_df = df1h.loc[today_mask]
+            if today_df.empty:
+                out[sym] = None
+                continue
+
+            session_open = float(today_df.iloc[0]["open"])
+            session_high = float(today_df["high"].max())
+            session_low = float(today_df["low"].min())
+            last_bar_close = float(today_df.iloc[-1]["close"])
+
+            indexed = today_df.set_index(pd.DatetimeIndex(ts_utc.loc[today_mask]))
+            vah, val, poc, va_position = _value_area(indexed)
+
+            last_price = last_bar_close
+            snap = price_snapshot.get(sym)
+            if isinstance(snap, dict) and snap.get("last_price") is not None:
+                try:
+                    last_price = float(snap["last_price"])
+                except (TypeError, ValueError):
+                    pass
+
+            out[sym] = {
+                "session_open": round(session_open, 4),
+                "session_high": round(session_high, 4),
+                "session_low": round(session_low, 4),
+                "last_price": round(last_price, 4),
+                "vah": vah,
+                "val": val,
+                "poc": poc,
+                "va_position": va_position,
+            }
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Intraday snapshot failed for %s: %s", sym, exc)
+            out[sym] = None
+    return out
+
+
+def get_corey_preclose_commentary_for(
+    target_date: date,
+    *,
+    db_path: Optional[Path] = None,
+    cutoff_ct_hour: int = 12,
+) -> Optional[dict[str, Any]]:
+    """Today's raw Corey messages posted after `cutoff_ct_hour` CT — the
+    deliberately lightweight companion to get_corey_bias_for(). Reads
+    discord_corey_commentary directly (message timestamps already exist, no
+    migration), rather than touching corey_session_bias's one-row-per-day
+    schema, which blends the whole day's commentary together. Returns raw
+    concatenated text, not an LLM-extracted bias — see market-close-brief/
+    SKILL.md for why this is the intentional MVP scope. None if unavailable.
+    """
+    path = db_path or _DB_PATH
+    if not path.exists():
+        return None
+    try:
+        con = sqlite3.connect(str(path))
+        cur = con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='discord_corey_commentary'"
+        )
+        if not cur.fetchone():
+            con.close()
+            return None
+        rows = con.execute(
+            "SELECT timestamp, content FROM discord_corey_commentary "
+            "WHERE date(timestamp) = ? ORDER BY timestamp ASC",
+            (target_date.isoformat(),),
+        ).fetchall()
+        con.close()
+    except Exception as exc:
+        logger.debug("Corey pre-close commentary lookup failed: %s", exc)
+        return None
+
+    if not rows:
+        return None
+
+    afternoon: list[str] = []
+    for ts_raw, content in rows:
+        if not content:
+            continue
+        try:
+            ts = pd.Timestamp(ts_raw)
+            if ts.tzinfo is None:
+                ts = ts.tz_localize("UTC")
+            if ts.tz_convert(_CT).hour < cutoff_ct_hour:
+                continue
+        except Exception:
+            pass  # unparseable timestamp — include rather than silently drop
+        afternoon.append(str(content))
+
+    if not afternoon:
+        return None
+    return {"raw_text": "\n\n".join(afternoon), "message_count": len(afternoon)}
+
+
+# ---------------------------------------------------------------------------
 # Final assembly
 # ---------------------------------------------------------------------------
 
@@ -194,6 +370,11 @@ class FramingContext:
     engine_levels: dict[str, Optional[dict]]
     system_overlay: dict[str, Any]
     data_quality_notes: list[str]
+    # Pre-close only (session="preclose"); always None on the premarket path —
+    # an extra null key in the JSON context doesn't affect AM required-header
+    # validation or behavior (see test_preclose_framing_brief.py's AM guard).
+    intraday_snapshot: Optional[dict] = None
+    corey_preclose_raw: Optional[dict] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -204,19 +385,27 @@ class FramingContext:
             "engine_levels": self.engine_levels,
             "system_overlay": self.system_overlay,
             "data_quality_notes": self.data_quality_notes,
+            "intraday_snapshot": self.intraday_snapshot,
+            "corey_preclose_raw": self.corey_preclose_raw,
         }
 
 
 async def assemble_context(
     target_date: date,
     *,
+    session: Literal["premarket", "preclose"] = "premarket",
     db_path: Optional[Path] = None,
     llm_client: Optional[object] = None,
 ) -> FramingContext:
     """Run the full Step 0.5 -> 1a -> (2c) gathering sequence and return the
     single context object the synthesis call consumes. Never raises — each
     sub-step degrades to None/empty on failure, matching daily_morning_briefing
-    .py's per-section graceful-degradation discipline."""
+    .py's per-section graceful-degradation discipline.
+
+    `session` defaults to "premarket", preserving the exact call shape
+    morning_framing_brief.py::_run() already uses (zero session awareness) —
+    the two preclose-only gathering calls only happen when session=="preclose".
+    """
     notes: list[str] = []
     yesterday = target_date - timedelta(days=1)
 
@@ -265,6 +454,23 @@ async def assemble_context(
 
     tier = resolve_confidence_tier(corey_today, engine_levels)
 
+    intraday_snapshot: Optional[dict] = None
+    corey_preclose_raw: Optional[dict] = None
+    if session == "preclose":
+        try:
+            intraday_snapshot = get_intraday_snapshot(db_path=db_path)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Intraday snapshot unavailable: %s", exc)
+            notes.append("Intraday snapshot unavailable")
+        if not intraday_snapshot or not any(v is not None for v in intraday_snapshot.values()):
+            notes.append("Intraday snapshot unavailable — no today-dated bars")
+
+        try:
+            corey_preclose_raw = get_corey_preclose_commentary_for(target_date, db_path=db_path)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Corey pre-close commentary unavailable: %s", exc)
+            notes.append("Corey pre-close commentary unavailable")
+
     return FramingContext(
         target_date=target_date.isoformat(),
         confidence_tier=tier,
@@ -273,4 +479,6 @@ async def assemble_context(
         engine_levels={k: (v.to_dict() if v is not None else None) for k, v in engine_levels.items()},
         system_overlay=system_overlay,
         data_quality_notes=notes,
+        intraday_snapshot=intraday_snapshot,
+        corey_preclose_raw=corey_preclose_raw,
     )
