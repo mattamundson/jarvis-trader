@@ -22,10 +22,22 @@ from starlette.requests import Request
 from api.models import FullHealthResponse, HealthResponse
 from config import settings
 from middleware.rate_limit import get_limiter
+from utils.git_provenance import get_git_provenance
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["health", "system"])
+
+# The running process's code state is fixed for its lifetime, so compute this
+# once (subprocess calls) rather than on every /health poll.
+_GIT_PROVENANCE: str | None = None
+
+
+def _get_cached_git_provenance() -> str:
+    global _GIT_PROVENANCE
+    if _GIT_PROVENANCE is None:
+        _GIT_PROVENANCE = get_git_provenance()
+    return _GIT_PROVENANCE
 
 # Chrome CDP binds to IPv4 or IPv6 depending on launch flags — try both.
 _TV_MCP_CDP_URLS = [
@@ -903,6 +915,7 @@ async def _health_inner() -> dict:
         "pending_approvals": pending_approvals,
         "futures_sentiment": futures_sentiment,
         "batch_jobs_health": batch_jobs_health,
+        "git_provenance": _get_cached_git_provenance(),
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
