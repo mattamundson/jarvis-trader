@@ -291,6 +291,23 @@ class JarvisLLMClient:
         "claude-haiku-4-5-20251001": "gpt-4o-mini",
     }
 
+    # 2026-08-13: on an Anthropic credit-exhaustion event, every pipeline agent
+    # (technical_analyst, fundamental_analyst, news_analyst, social_analyst,
+    # trader, risk_manager, fund_manager, debate agents) holds its OWN
+    # JarvisLLMClient instance (see e.g. bear_researcher.py/bull_researcher.py)
+    # and independently runs the Gemini->OpenAI cascade below within the same
+    # ~15s window. That thundering-herds Gemini/OpenAI with N simultaneous
+    # requests, tripping a 429 on both from the shared per-key rate limit even
+    # though neither provider is actually down -- self-inflicting a secondary
+    # outage on top of the real Anthropic one. This state is a CLASS attribute
+    # (not set on self in __init__) so it is shared across every instance in
+    # the process: the first agent to see a 429 protects the rest of the same
+    # pipeline cycle instead of each one re-tripping the identical limit.
+    _provider_degraded_until: dict[str, float] = {}
+    _PROVIDER_DEGRADE_WINDOW_SECONDS = float(
+        os.getenv("LLM_PROVIDER_DEGRADE_WINDOW_SECONDS", "45")
+    )
+
     # Agents routed to Gemini 2.5-flash as primary provider (not as fallback).
     # These are context-enrichment / classification tasks — not trade decisions.
     # Keeps credit consumption on cost-efficient Gemini; Anthropic reserved for
@@ -540,6 +557,27 @@ class JarvisLLMClient:
             configured.append("openai")
         _LLM_PATH_STATE["primary_provider"] = primary_provider
         _LLM_PATH_STATE["providers_configured"] = configured
+
+    def _is_provider_cooling_down(self, provider: str) -> bool:
+        """Thundering-herd guard: True if `provider` (e.g. "gemini", "openai")
+        tripped a 429 recently enough that this and every other agent's
+        concurrent cascade should skip straight past it this cycle."""
+        return time.time() < self._provider_degraded_until.get(provider, 0.0)
+
+    def _note_provider_rate_limited(self, provider: str, exc: Exception) -> None:
+        """Record a 429 from `provider` so concurrent/subsequent cascades in
+        the same window skip it instead of re-tripping the same rate limit."""
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status == 429:
+            self._provider_degraded_until[provider] = (
+                time.time() + self._PROVIDER_DEGRADE_WINDOW_SECONDS
+            )
+            logger.warning(
+                "[%s] 429 rate-limited -- cooling down %.0fs for all agents "
+                "(thundering-herd guard)",
+                provider,
+                self._PROVIDER_DEGRADE_WINDOW_SECONDS,
+            )
 
     async def _bounded(self, coro, *, what: str, model: str, agent_name: str):
         """Run a provider coroutine under a hard wall-clock ceiling.
@@ -1101,7 +1139,14 @@ class JarvisLLMClient:
                     # fallback preserves quality tier (Opus/Sonnet -> 2.5-flash,
                     # Haiku -> 2.0-flash) and returns a normal LLMCallResult so
                     # call sites are provider-agnostic.
-                    if self.google_fallback_enabled:
+                    if self.google_fallback_enabled and self._is_provider_cooling_down(
+                        "gemini"
+                    ):
+                        logger.warning(
+                            f"[{current_model}] skipping Gemini fallback for {agent_name} "
+                            f"-- cooling down from a recent 429 (thundering-herd guard)"
+                        )
+                    elif self.google_fallback_enabled:
                         google_model = self.GOOGLE_FAILOVER_MAP.get(
                             current_model, "gemini-2.5-flash"
                         )
@@ -1147,6 +1192,7 @@ class JarvisLLMClient:
                                 cache_salt=cache_salt,
                             )
                         except Exception as gex:
+                            self._note_provider_rate_limited("gemini", gex)
                             logger.error(
                                 f"[{google_model}] Gemini fallback also failed for "
                                 f"{agent_name}: {type(gex).__name__}: {gex}"
@@ -1156,7 +1202,14 @@ class JarvisLLMClient:
                     # Phase 3.6: both Anthropic and Gemini failed (or Gemini is
                     # disabled) — last-resort OpenAI before declaring the path
                     # unhealthy. Opus/Sonnet → gpt-4o, Haiku → gpt-4o-mini.
-                    if self.openai_fallback_enabled:
+                    if self.openai_fallback_enabled and self._is_provider_cooling_down(
+                        "openai"
+                    ):
+                        logger.warning(
+                            f"[{current_model}] skipping OpenAI fallback for {agent_name} "
+                            f"-- cooling down from a recent 429 (thundering-herd guard)"
+                        )
+                    elif self.openai_fallback_enabled:
                         openai_model = self.OPENAI_FAILOVER_MAP.get(current_model, "gpt-4o-mini")
                         logger.warning(
                             f"[{current_model}] Anthropic+Gemini both failed for {agent_name} -- "
@@ -1198,6 +1251,7 @@ class JarvisLLMClient:
                                 cache_salt=cache_salt,
                             )
                         except Exception as oex:
+                            self._note_provider_rate_limited("openai", oex)
                             logger.error(
                                 f"[{openai_model}] OpenAI fallback also failed for "
                                 f"{agent_name}: {type(oex).__name__}: {oex}"
