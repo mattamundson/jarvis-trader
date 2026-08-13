@@ -10,7 +10,7 @@ Endpoints:
   GET /paper/validation/trades — list of all paper trades
   GET /paper/validation/status — overall pass/fail + days remaining
   GET /paper/validation/counts — per-symbol closed-trade counts vs Q2 2026 thresholds (session-start display)
-  GET /paper/validation/approved-paper-gates — MCL/MNQ gates vs canonical thresholds (SQLite)
+  GET /paper/validation/approved-paper-gates — gates for APPROVED_PAPER_SYMBOLS (MES/MGC) vs canonical thresholds (SQLite)
   POST /paper/validation/record — DEPRECATED (kept for compatibility, no-op)
 """
 
@@ -247,7 +247,7 @@ class ValidationGatesResponse(BaseModel):
 
 
 class ApprovedInstrumentGateRow(BaseModel):
-    """Validation gates for one approved paper symbol (MCL / MNQ)."""
+    """Validation gates for one approved paper symbol (MES / MGC)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -699,7 +699,7 @@ class WFEInstrument(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    symbol: str = Field(..., description="Symbol (MCL, MNQ)")
+    symbol: str = Field(..., description="Symbol (MES, MGC)")
     current_wfe: float | None = Field(..., description="Current WFE (0-1 scale)")
     kill_threshold: float = Field(..., description="Kill threshold for WFE")
     status: str = Field(
