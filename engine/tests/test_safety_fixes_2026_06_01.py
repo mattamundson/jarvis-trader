@@ -467,13 +467,16 @@ class TestPaperModeBypassStopGuard:
 
     def test_require_human_approval_invariant_unchanged(self):
         """
-        REQUIRE_HUMAN_APPROVAL=True is never touched by the bypass guard.
-        Verify the config invariant is still True after any guard path.
+        REQUIRE_HUMAN_APPROVAL is never touched by the bypass guard, whatever
+        its currently configured value is. Not pinned to True: Amo's
+        2026-08-11 standing decision sets it False via engine/.env for this
+        deployment (see engine/.claude/rules/safety.md) -- the invariant this
+        test protects is "the guard doesn't mutate it," not a specific value.
         """
         cfg = TradingConfig()
-        assert cfg.REQUIRE_HUMAN_APPROVAL is True
+        original = cfg.REQUIRE_HUMAN_APPROVAL
         # Guard logic runs (either path) — does not mutate config
         stop_price = None
         if stop_price is None:
             pass  # blocked path
-        assert cfg.REQUIRE_HUMAN_APPROVAL is True
+        assert cfg.REQUIRE_HUMAN_APPROVAL is original

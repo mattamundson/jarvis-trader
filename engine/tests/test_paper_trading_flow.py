@@ -406,12 +406,22 @@ class TestPaperTradingIntegration(unittest.TestCase):
         assert config.MAX_CONTRACTS_PER_INSTRUMENT == 2
         assert config.LIVE_TRADING_ENABLED is False
         # REQUIRE_HUMAN_APPROVAL ships safe-by-default (True): a bare TradingConfig()
-        # with no .env requires human approval. The 2026-06-15 owner directive enables
-        # autonomous paper mode by setting REQUIRE_HUMAN_APPROVAL=False *in engine/.env*,
-        # not by changing the code default -- so a fresh checkout always fails safe
-        # (requires approval) rather than silently trading autonomously. The deployed
-        # autonomous posture is verified separately by the startup_checks WARN gate.
-        assert config.REQUIRE_HUMAN_APPROVAL is True
+        # with no .env requires human approval. Amo's 2026-08-11 standing decision
+        # enables autonomous paper mode by setting REQUIRE_HUMAN_APPROVAL=False *in
+        # engine/.env*, not by changing the code default -- so a fresh checkout
+        # always fails safe (requires approval) rather than silently trading
+        # autonomously. The deployed autonomous posture is verified separately by
+        # the startup_checks WARN gate.
+        #
+        # config.py's own load_dotenv(override=True) at import time already wrote
+        # engine/.env's REQUIRE_HUMAN_APPROVAL=False into os.environ by the time
+        # this test runs, so the plain `config` instance above reflects that
+        # deployment override, not the code default this assertion claims to
+        # check. Isolate a fresh instance to test what "ships safe-by-default"
+        # actually means: no .env value present falls back to True.
+        os.environ.pop("REQUIRE_HUMAN_APPROVAL", None)
+        isolated_config = TradingConfig(_env_file=None)
+        assert isolated_config.REQUIRE_HUMAN_APPROVAL is True
         assert config.PAPER_TRADING is True
 
     def test_paper_tracker_persistence(self):
