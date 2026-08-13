@@ -161,7 +161,12 @@ class TestSubmitEntryFlagDrift:
         from portfolio.tracker import PortfolioTracker
 
         tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
-        conn = IBGatewayConnector(paper_safety._config, paper_safety, portfolio_tracker=tracker)
+        conn = IBGatewayConnector(
+            paper_safety._config,
+            paper_safety,
+            portfolio_tracker=tracker,
+            trades_file=tmp_path / "paper_trades.json",
+        )
         await conn.connect()
         paper_safety.attach_ib_gateway(conn)
 
@@ -210,7 +215,12 @@ class TestSubmitEntryFlagDrift:
         from portfolio.tracker import PortfolioTracker
 
         tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
-        conn = IBGatewayConnector(paper_safety._config, paper_safety, portfolio_tracker=tracker)
+        conn = IBGatewayConnector(
+            paper_safety._config,
+            paper_safety,
+            portfolio_tracker=tracker,
+            trades_file=tmp_path / "paper_trades.json",
+        )
         await conn.connect()
         paper_safety.attach_ib_gateway(conn)
 
