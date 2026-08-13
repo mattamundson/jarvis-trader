@@ -124,3 +124,40 @@ def test_tracker_and_repair_daily_pnl_agree_on_breakeven_classification(
     # does not expose a raw losing_trades count) must reflect exactly the one
     # real -50 loss, not the -50 diluted by a folded-in $0.00 breakeven.
     assert perf["avg_loss"] == pytest.approx(-50.0)
+
+
+class _FakeDBBreakeven:
+    """Minimal stand-in for the SQLite db_manager, exposing only the one
+    method get_performance()'s DB-path calls: get_closed_trades(). Mirrors
+    the real paper_trades row shape -- there is no 'realized_pnl' column on
+    that table (see engine/database/migrations.py's paper_trades DDL), only
+    'pnl'."""
+
+    def get_closed_trades(self, limit: int = 10000):
+        return [
+            {"trade_id": "t1", "pnl": 100.0, "exit_time": "2026-07-01T10:00:00+00:00"},
+            {"trade_id": "t2", "pnl": -50.0, "exit_time": "2026-07-01T11:00:00+00:00"},
+            {"trade_id": "t3", "pnl": 0.0, "exit_time": "2026-07-01T12:00:00+00:00"},
+        ]
+
+
+def test_tracker_dbpath_breakeven_trade_not_dropped(tmp_path: Path) -> None:
+    """DB-read path variant of T1-14: get_performance()'s SQLite branch reads
+    ``t.pnl = row.get("pnl") or row.get("realized_pnl")``. Because 0.0 is
+    falsy in Python, a genuine $0.00 breakeven trade falls through to
+    row.get("realized_pnl") -- a key that does not exist on a paper_trades
+    row -- yielding None. get_performance() then filters `t.pnl is not None`,
+    so the breakeven trade is not merely misclassified (as T1-14 found for
+    the in-memory path) -- it vanishes from num_trades entirely, silently
+    undercounting total trades read from SQLite (the production code path,
+    since PortfolioTracker prefers self._db when set).
+    """
+    tracker = PortfolioTracker(store_path=tmp_path / "audit.jsonl", db_manager=_FakeDBBreakeven())
+
+    perf = tracker.get_performance()
+
+    assert perf["num_trades"] == 3, (
+        "breakeven trade (pnl=0.0) silently dropped by the SQLite read path's "
+        "`row.get('pnl') or row.get('realized_pnl')` falsy-zero fallback"
+    )
+    assert perf["total_pnl"] == pytest.approx(50.0)
