@@ -17,7 +17,24 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { timeAgo } from "../lib/timeAgo.ts";
+import { relativeTime, timeAgo } from "../lib/timeAgo.ts";
+
+test("future timestamps never render a negative age", () => {
+  const result = relativeTime(
+    "2026-08-13T12:00:00Z",
+    new Date("2026-08-13T07:00:00Z"),
+  );
+
+  assert.equal(result.state, "clock-skew");
+  assert.equal(result.text, "clock skew (+5h)");
+});
+
+test("invalid timestamps render unknown time", () => {
+  assert.deepEqual(relativeTime("not-a-date", new Date()), {
+    text: "unknown time",
+    state: "invalid",
+  });
+});
 
 test('timeAgo returns "just now" for sub-minute deltas', () => {
   const now = new Date("2026-07-15T12:00:30Z");
@@ -34,10 +51,10 @@ test("timeAgo returns hours for sub-day deltas", () => {
   assert.equal(timeAgo("2026-07-15T12:00:00Z", now), "3h ago");
 });
 
-test("timeAgo falls back to the raw ISO string at/after 24h", () => {
+test("timeAgo returns compact days at/after 24h", () => {
   const created = "2026-07-14T12:00:00Z";
   const now = new Date("2026-07-15T12:00:01Z");
-  assert.equal(timeAgo(created, now), created);
+  assert.equal(timeAgo(created, now), "1d ago");
 });
 
 test("timeAgo is a pure function of (isoString, now) -- no hidden clock dependency", () => {

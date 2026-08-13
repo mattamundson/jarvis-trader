@@ -4,6 +4,8 @@ import { useState } from "react";
 import useSWR from "swr";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { classifyProviderDiagnostic } from "@/lib/providerDiagnostic";
+import { relativeTime } from "@/lib/timeAgo";
 import type {
   RecentPipelineReasoningResponse,
   RecentPipelineDecision,
@@ -13,15 +15,6 @@ import type {
 } from "@/lib/api";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function timeAgo(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diff = Math.floor((now - then) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  return `${Math.floor(diff / 3600)}h ago`;
-}
 
 function actionColor(action: unknown): string {
   // Coerce defensively — the engine sometimes sends non-string enum-ish values.
@@ -90,6 +83,28 @@ function StageRow({ label, children, approved }: StageRowProps) {
   );
 }
 
+function ReasoningText({
+  text,
+  className = "text-slate-400",
+}: {
+  text: string;
+  className?: string;
+}) {
+  const diagnostic = classifyProviderDiagnostic(text);
+  if (!diagnostic) return <span className={className}>{text}</span>;
+
+  return (
+    <div className="basis-full text-amber-300 leading-snug">
+      <span className="font-medium">{diagnostic.title}</span>
+      <span className="text-amber-500"> — {diagnostic.consequence}</span>
+      <details className="mt-1 text-slate-500">
+        <summary className="cursor-pointer select-none">Provider diagnostic detail</summary>
+        <span className="block mt-1 whitespace-pre-wrap break-words">{diagnostic.detail}</span>
+      </details>
+    </div>
+  );
+}
+
 function AnalystRow({
   name,
   report,
@@ -127,10 +142,10 @@ function AnalystRow({
         <span className="text-slate-500">{(report.confidence * 100).toFixed(0)}%</span>
       )}
       {report.summary && (
-        <span className="text-slate-500 truncate max-w-xs">{report.summary}</span>
+        <ReasoningText text={report.summary} className="text-slate-500 truncate max-w-xs" />
       )}
       {expanded && report.reasoning && (
-        <span className="basis-full text-slate-400 leading-snug">{report.reasoning}</span>
+        <ReasoningText text={report.reasoning} className="basis-full text-slate-400 leading-snug" />
       )}
     </StageRow>
   );
@@ -250,7 +265,9 @@ function DecisionCard({ decision }: DecisionCardProps) {
           >
             {decision.status}
           </span>
-          <span className="text-xs text-slate-600">{timeAgo(decision.created_at)}</span>
+          <span className="text-xs text-slate-600">
+            {relativeTime(decision.created_at, new Date()).text}
+          </span>
         </div>
       </div>
 
@@ -285,7 +302,7 @@ function DecisionCard({ decision }: DecisionCardProps) {
                   </span>
                 )}
                 {expanded && td.reasoning && (
-                  <span className="basis-full text-slate-400 leading-snug">{td.reasoning}</span>
+                  <ReasoningText text={td.reasoning} className="basis-full text-slate-400 leading-snug" />
                 )}
               </>
             ) : (
@@ -301,11 +318,10 @@ function DecisionCard({ decision }: DecisionCardProps) {
                   {rd.approved ? "APPROVED" : "VETOED"}
                 </span>
                 {rd.reasoning && (
-                  <span
+                  <ReasoningText
+                    text={rd.reasoning}
                     className={`text-slate-500 ${expanded ? "basis-full leading-snug" : "truncate max-w-xs"}`}
-                  >
-                    {rd.reasoning}
-                  </span>
+                  />
                 )}
               </>
             ) : (
@@ -326,7 +342,10 @@ function DecisionCard({ decision }: DecisionCardProps) {
                   </span>
                 )}
                 {fd.reasoning && (
-                  <span className="text-slate-600 truncate max-w-xs text-xs">{fd.reasoning}</span>
+                  <ReasoningText
+                    text={fd.reasoning}
+                    className="text-slate-600 truncate max-w-xs text-xs"
+                  />
                 )}
               </>
             ) : (
@@ -338,7 +357,9 @@ function DecisionCard({ decision }: DecisionCardProps) {
           {snap.summary && (
             <>
               <div className="border-t border-slate-800/60 my-1" />
-              <div className="text-xs text-slate-500 italic px-1">{snap.summary}</div>
+              <div className="text-xs text-slate-500 italic px-1">
+                <ReasoningText text={snap.summary} />
+              </div>
             </>
           )}
         </div>

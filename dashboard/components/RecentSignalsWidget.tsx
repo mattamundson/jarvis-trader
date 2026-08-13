@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { AlertTriangle, Radio } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
+import { relativeTime } from "@/lib/timeAgo";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,18 +25,6 @@ interface RecentSignal {
 interface RecentSignalsResponse {
   signals?: RecentSignal[];
   total?: number;
-}
-
-// ── Time helper ───────────────────────────────────────────────────────────────
-
-function timeAgo(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 // ── Badge helpers ─────────────────────────────────────────────────────────────
@@ -237,7 +226,7 @@ export function RecentSignalsWidget() {
                 className="text-right tabular-nums"
                 style={{ color: "#888" }}
               >
-                {sig.timestamp ? timeAgo(sig.timestamp) : "--"}
+                {sig.timestamp ? relativeTime(sig.timestamp, new Date()).text : "--"}
               </span>
 
               {/* Status badge */}
