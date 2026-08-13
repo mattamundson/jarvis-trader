@@ -6,23 +6,8 @@ import { Activity, AlertCircle, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { fetchEngine } from "@/lib/api";
-import type {
-  ApprovedPaperGatesResponse,
-  ApprovedInstrumentGateRow,
-} from "@/lib/api";
-
-type BadgeVariant = "bull" | "bear" | "warn" | "info" | "neutral";
-
-interface InstrumentRow {
-  symbol: string;
-  timeframe: string;
-  wfe: number | string;
-  pf: number | null;
-  sharpe: number | null;
-  wr: number | null;
-  status: string;
-  badgeVariant: BadgeVariant;
-}
+import type { ApprovedPaperGatesResponse } from "@/lib/api";
+import { buildInstrumentValidationRows } from "@/lib/instrumentValidation";
 
 function fetcher<T>(path: string): Promise<T> {
   return fetchEngine<T>(path);
@@ -38,129 +23,9 @@ function InstrumentValidationScorecard() {
     }
   );
 
-  // Build instrument rows from approved gates data
-  const rows: InstrumentRow[] = React.useMemo(() => {
-    if (!data?.instruments) return getDefaultRows();
-
-    const instrumentMap = new Map<string, ApprovedInstrumentGateRow>();
-    data.instruments.forEach((inst) => {
-      instrumentMap.set(inst.symbol, inst);
-    });
-
-    // MCL and MNQ from live data, MES static
-    const rows: InstrumentRow[] = [];
-
-    // MCL
-    const mcl = instrumentMap.get("MCL");
-    if (mcl) {
-      const pfGate = mcl.gates.find((g) => g.name === "profit_factor");
-      const sharpeGate = mcl.gates.find((g) => g.name === "sharpe_ratio");
-      const wrGate = mcl.gates.find(
-        (g) => g.name === "win_rate" || g.name === "wr"
-      );
-      rows.push({
-        symbol: "MCL",
-        timeframe: "1h",
-        wfe: "0.82",
-        pf: pfGate?.current ?? null,
-        sharpe: sharpeGate?.current ?? null,
-        wr: wrGate?.current ?? null,
-        status: mcl.overall_pass ? "APPROVED" : "REVIEWING",
-        badgeVariant: mcl.overall_pass ? "bull" : "info",
-      });
-    } else {
-      rows.push({
-        symbol: "MCL",
-        timeframe: "1h",
-        wfe: "0.82",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "APPROVED",
-        badgeVariant: "bull",
-      });
-    }
-
-    // MNQ
-    const mnq = instrumentMap.get("MNQ");
-    if (mnq) {
-      const pfGate = mnq.gates.find((g) => g.name === "profit_factor");
-      const sharpeGate = mnq.gates.find((g) => g.name === "sharpe_ratio");
-      const wrGate = mnq.gates.find(
-        (g) => g.name === "win_rate" || g.name === "wr"
-      );
-      rows.push({
-        symbol: "MNQ",
-        timeframe: "1h",
-        wfe: "0.57",
-        pf: pfGate?.current ?? null,
-        sharpe: sharpeGate?.current ?? null,
-        wr: wrGate?.current ?? null,
-        status: mnq.overall_pass ? "APPROVED" : "REVIEWING",
-        badgeVariant: mnq.overall_pass ? "bull" : "info",
-      });
-    } else {
-      rows.push({
-        symbol: "MNQ",
-        timeframe: "1h",
-        wfe: "0.57",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "APPROVED",
-        badgeVariant: "bull",
-      });
-    }
-
-    // MES - revalidating
-    rows.push({
-      symbol: "MES",
-      timeframe: "1h",
-      wfe: "0.09",
-      pf: null,
-      sharpe: null,
-      wr: null,
-      status: "Revalidating",
-      badgeVariant: "warn",
-    });
-
-    return rows;
-  }, [data]);
-
-  function getDefaultRows(): InstrumentRow[] {
-    return [
-      {
-        symbol: "MCL",
-        timeframe: "1h",
-        wfe: "0.82",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "APPROVED",
-        badgeVariant: "bull",
-      },
-      {
-        symbol: "MNQ",
-        timeframe: "1h",
-        wfe: "0.57",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "APPROVED",
-        badgeVariant: "bull",
-      },
-      {
-        symbol: "MES",
-        timeframe: "1h",
-        wfe: "0.09",
-        pf: null,
-        sharpe: null,
-        wr: null,
-        status: "Revalidating",
-        badgeVariant: "warn",
-      },
-    ];
-  }
+  // Rows are derived entirely from live approved-paper-gates data (whatever
+  // APPROVED_PAPER_SYMBOLS currently is) -- no hardcoded symbol list here.
+  const rows = React.useMemo(() => buildInstrumentValidationRows(data), [data]);
 
   return (
     <Card>
@@ -174,7 +39,7 @@ function InstrumentValidationScorecard() {
               Instrument Validation Scorecard
             </p>
             <p className="text-[10px] text-muted-foreground">
-              Walk-forward efficiency and approval gates for active instruments
+              Approval gates for currently approved paper instruments
             </p>
           </div>
           {error && (
@@ -191,19 +56,19 @@ function InstrumentValidationScorecard() {
           </p>
         )}
 
-        {!isLoading && (
+        {!isLoading && rows.length === 0 && (
+          <p className="text-xs text-muted-foreground py-4 text-center">
+            No approved paper instruments reported by the engine.
+          </p>
+        )}
+
+        {!isLoading && rows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border">
                   <th className="pb-2 pr-4 text-left font-semibold text-muted-foreground uppercase tracking-wider">
                     Symbol
-                  </th>
-                  <th className="pb-2 pr-4 text-center font-semibold text-muted-foreground uppercase tracking-wider">
-                    TF
-                  </th>
-                  <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
-                    WFE
                   </th>
                   <th className="pb-2 pr-4 text-right font-semibold text-muted-foreground uppercase tracking-wider">
                     PF
@@ -221,24 +86,9 @@ function InstrumentValidationScorecard() {
               </thead>
               <tbody className="divide-y divide-border/50">
                 {rows.map((row) => (
-                  <tr
-                    key={row.symbol}
-                    className={`hover:bg-muted/20 transition-colors ${
-                      row.badgeVariant === "warn"
-                        ? "bg-muted/20"
-                        : ""
-                    }`}
-                  >
+                  <tr key={row.symbol} className="hover:bg-muted/20 transition-colors">
                     <td className="py-2.5 pr-4 font-bold text-foreground">
                       {row.symbol}
-                    </td>
-                    <td className="py-2.5 pr-4 text-center font-mono text-muted-foreground">
-                      {row.timeframe}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-foreground">
-                      {typeof row.wfe === "number"
-                        ? row.wfe.toFixed(2)
-                        : row.wfe}
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
                       {row.pf !== null
@@ -252,7 +102,7 @@ function InstrumentValidationScorecard() {
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-muted-foreground">
                       {row.wr !== null
-                        ? `${(row.wr * 100).toFixed(0)}%`
+                        ? `${row.wr.toFixed(0)}%`
                         : "—"}
                     </td>
                     <td className="py-2.5 text-center">
@@ -271,8 +121,8 @@ function InstrumentValidationScorecard() {
           <p className="flex items-start gap-2">
             <TrendingUp className="h-3 w-3 mt-0.5 flex-shrink-0" />
             <span>
-              <strong>WFE ≥ 0.40</strong> required for APPROVED status. MCL and
-              MNQ are approved and trading. MES is in active re-validation.
+              {data?.note ??
+                "Gates apply only to currently approved paper instruments (APPROVED_PAPER_SYMBOLS). Halted instruments are never listed here."}
             </span>
           </p>
         </div>
