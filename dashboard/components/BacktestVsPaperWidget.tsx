@@ -11,6 +11,7 @@ import {
   pickApprovedBacktestBaseline,
   type ScorecardBacktestBaseline,
 } from "@/lib/scorecardBaseline";
+import { PREFERRED_BASELINE_LABEL } from "@/lib/approvedSymbols";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,12 @@ export function BacktestVsPaperWidget() {
     try {
       // Paper column from the honest deduped record (was /analytics/performance,
       // which over-counts re-logged winners -> fabricated PF 2.95 / 19 trades).
+      //
+      // fetchHonestTrades() -> masterApi's fetchRealizedPnl() carries its own
+      // 15s AbortController timeout (see lib/masterApi.ts), so a stalled
+      // master-api rejects into the catch block below within a bounded time
+      // instead of leaving `loading` true forever -- the "renders
+      // placeholders forever" symptom this widget must never reproduce.
       const [honest, btRows] = await Promise.all([
         fetchHonestTrades(),
         fetchEngine<BacktestBaselineRow[]>(`/backtest/results`).catch(() => [] as BacktestBaselineRow[]),
@@ -113,7 +120,7 @@ export function BacktestVsPaperWidget() {
               Backtest vs Paper Reality
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Backtest column from saved engine results (MCL/MNQ preferred)
+              Backtest column from saved engine results ({PREFERRED_BASELINE_LABEL} preferred)
             </p>
           </div>
           {loading && (

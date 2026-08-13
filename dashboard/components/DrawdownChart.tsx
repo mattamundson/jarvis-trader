@@ -50,8 +50,15 @@ export function DrawdownChart() {
   }, [records]);
 
   const maxDrawdown =
-    drawdownPoints.length > 0 ? Math.min(...drawdownPoints.map((p) => p.drawdown)) : 0;
-  const maxDrawdownVariant = maxDrawdown < -10 ? "bear" : maxDrawdown < 0 ? "warn" : "bull";
+    drawdownPoints.length > 0 ? Math.min(...drawdownPoints.map((p) => p.drawdown)) : null;
+  const maxDrawdownVariant =
+    maxDrawdown != null && maxDrawdown < -10
+      ? "bear"
+      : maxDrawdown != null && maxDrawdown < 0
+        ? "warn"
+        : maxDrawdown === 0
+          ? "bull"
+          : "neutral";
 
   // Same drawdown values, handed to the TradingView renderer as an area series.
   const series: SeriesPoint[] = useMemo(
@@ -63,7 +70,18 @@ export function DrawdownChart() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle>Drawdown</CardTitle>
-        <Badge variant={maxDrawdownVariant}>Max: {formatCurrency(maxDrawdown)}</Badge>
+        {/*
+          maxDrawdown is null (not 0) when there's no data yet -- either still
+          loading or the endpoint returned no rows. Previously this defaulted
+          to 0 and rendered "Max: $0" regardless of loading/empty state, which
+          reads as "confirmed zero drawdown" when the real figure (e.g. the
+          engine's own -$1,981.70 max_dd) is simply not loaded. "—" makes the
+          absence of data visible instead of silently asserting a healthy
+          number.
+        */}
+        <Badge variant={maxDrawdownVariant}>
+          Max: {maxDrawdown != null ? formatCurrency(maxDrawdown) : "—"}
+        </Badge>
       </CardHeader>
       <CardContent>
         {loading ? (

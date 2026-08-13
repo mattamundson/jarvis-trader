@@ -29,9 +29,15 @@ This monitor closes that gap by decoupling stop enforcement from the
     closing the same position is harmless: whoever wins, the loser's UPDATE
     matches zero rows and no-ops.
 
-It is a *backstop*, not the primary path. It does not model slippage/commission
-the way the runner does (it records the observed breach price); the goal is to
-never again leave an open position unprotected, not to be the canonical fill.
+It is a *backstop*, not the primary path. It does not model slippage the way
+the runner does (it records the observed breach price rather than simulating
+a fill). It DOES deduct the same flat per-contract round-trip commission that
+``PortfolioTracker`` applies on its primary close path (see
+``_commission_per_contract`` below, which mirrors
+``portfolio.tracker._commission_per_contract``) — fixed 2026-07 (T0-06) after
+an audit found 0 of 27 real closed futures trades reflected any commission,
+because stop-driven exits are how nearly all real closes happen and this
+backstop's un-costed PnL was what actually got written to the ledger.
 
 Paper-only. Gated behind ``PAPER_STOP_MONITOR_ENABLED`` (default on).
 """
@@ -115,6 +121,27 @@ def is_stop_breached(side: Any, stop: Optional[float], price: Optional[float]) -
     return False
 
 
+def _commission_per_contract() -> float:
+    """Flat per-contract round-trip commission, mirroring PortfolioTracker.
+
+    Reuses ``portfolio.tracker._commission_per_contract()`` (Phase 2 / #304)
+    so this backstop's PnL matches the primary close path exactly instead of
+    reinventing a parallel commission model. Falls back to reading the same
+    ``COMMISSION_PER_CONTRACT`` env var directly (identical default, $1.50) if
+    the import fails — this module must never let an optional import take
+    down the backstop (same defensive posture as ``_load_paper_configs``).
+    """
+    try:
+        from portfolio.tracker import _commission_per_contract as _tracker_commission
+
+        return _tracker_commission()
+    except Exception:  # noqa: BLE001
+        try:
+            return float(os.environ.get("COMMISSION_PER_CONTRACT", "1.50"))
+        except (TypeError, ValueError):
+            return 1.50
+
+
 def compute_stop_pnl(
     side: Any,
     entry_price: float,
@@ -122,13 +149,21 @@ def compute_stop_pnl(
     quantity: float,
     multiplier: float,
 ) -> float:
-    """Realized PnL of closing at ``exit_price`` (no slippage/commission — backstop)."""
+    """Realized PnL of closing at ``exit_price``.
+
+    No slippage modeling (backstop records the observed breach price, not a
+    simulated fill) — but DOES deduct the same flat per-contract round-trip
+    commission PortfolioTracker applies on its primary close path (T0-06 fix;
+    see ``_commission_per_contract`` above).
+    """
     norm = normalize_side(side)
     qty = abs(float(quantity or 0.0))
     delta = float(exit_price) - float(entry_price)
     if norm == "short":
         delta = -delta
-    return round(delta * qty * float(multiplier), 2)
+    gross_pnl = delta * qty * float(multiplier)
+    commission = _commission_per_contract() * qty
+    return round(gross_pnl - commission, 2)
 
 
 def multiplier_for(symbol: str, configs: Optional[Dict[str, Any]] = None) -> float:
@@ -198,17 +233,25 @@ def _interval_from_env(default: int = 60) -> int:
         return default
 
 
-def _max_loss_usd_from_env(default: float = 750.0) -> float:
+def _max_loss_usd_from_env(default: float = 300.0) -> float:
     """Hard per-trade catastrophe cap in USD (live unrealized loss).
 
     The breach path above only protects trades that *recorded* a stop_loss; a
-    row with stop_loss NULL/0 is skipped entirely. That gap let two positions
+    row with stop_loss NULL/0 is skipped entirely. That gap let three positions
     bleed out unmanaged: MGC #178 (2026-06-01, -$1,284, null-stop skip + dark
-    feed) and the 2026-06-18 MES short (-$5,440, no stop, ran 1,088 pts to a
-    session-flatten). This cap closes it — ANY open position whose live
-    unrealized loss exceeds the cap is force-closed, stop or not. It is a
-    last-resort catastrophe brake, sized well above normal trade losses (the
-    fleet's typical loser is ~-$50), not a substitute for per-trade stops.
+    feed), the 2026-06-18 MES short (-$5,440, no stop, ran 1,088 pts to a
+    session-flatten), and MGC #287 (2026-07-07, -$1,236, naked row + delayed
+    feed). This cap closes it — ANY open position whose live unrealized loss
+    exceeds the cap is force-closed, stop or not. It is a last-resort
+    catastrophe brake, not a substitute for per-trade stops.
+
+    Default lowered 750 -> 300 (2026-07-08): on a $10K paper account the old
+    $750 (7.5% on one trade) let #287 ride to -$1,236 before it would even
+    engage. $300 sits comfortably above the worst *legitimate* stop loss
+    observed (~-$133; position sizing bounds per-trade risk to ~$100-200), so
+    it never preempts a valid stop, while capping a single-trade disaster
+    ~2.5x tighter. Still a backstop, not the primary path. Tunable via
+    PAPER_MAX_LOSS_USD_PER_TRADE.
 
     Read live from env each sweep (matches PAPER_STOP_MONITOR_* convention).
     Set PAPER_MAX_LOSS_USD_PER_TRADE=0 to disable the backstop entirely.
@@ -226,12 +269,25 @@ def _max_loss_usd_from_env(default: float = 750.0) -> float:
 class PaperStopMonitor:
     """Feed-independent stop-loss backstop for open paper trades."""
 
-    def __init__(self, db_manager, data_manager, interval_s: Optional[int] = None):
+    def __init__(
+        self,
+        db_manager,
+        data_manager,
+        interval_s: Optional[int] = None,
+        oms_manager_getter: Optional[Any] = None,
+    ):
         self.db = db_manager
         self.data = data_manager
         self.interval_s = interval_s if interval_s is not None else _interval_from_env()
         self._running = False
         self._task: Optional[asyncio.Task] = None
+        # Lazy getter (not a direct reference) because main.py constructs this
+        # monitor from a background-init task that races the OMS v2 manager's
+        # own construction -- see resolve_stop_for_symbol() below for why this
+        # fallback exists at all. A plain `oms_manager=` kwarg could capture
+        # None permanently if the race lands the wrong way; a zero-arg getter
+        # re-reads the module global fresh on every sweep instead.
+        self._oms_manager_getter = oms_manager_getter
 
     async def start(self) -> None:
         if not _is_enabled():
@@ -264,6 +320,28 @@ class PaperStopMonitor:
                 logger.error(f"[PaperStopMonitor] loop error: {exc}", exc_info=True)
             await asyncio.sleep(self.interval_s)
 
+    def _resolve_oms_fallback_stop(self, symbol: Any) -> Optional[float]:
+        """Best-effort OMS v2 stop lookup; None on any failure or absence.
+
+        See ``OMSManager.resolve_stop_for_symbol`` for why this fallback
+        exists: OMS-bracket-opened paper_trades rows can have ``stop_loss``
+        NULL in the DB even though the OMS itself holds the real stop in
+        memory. Must never raise -- a monitor sweep cannot fail because this
+        best-effort extra lookup misbehaved.
+        """
+        if self._oms_manager_getter is None:
+            return None
+        try:
+            oms = self._oms_manager_getter()
+        except Exception:  # noqa: BLE001
+            return None
+        if oms is None or not hasattr(oms, "resolve_stop_for_symbol"):
+            return None
+        try:
+            return oms.resolve_stop_for_symbol(symbol)
+        except Exception:  # noqa: BLE001
+            return None
+
     async def check_once(self) -> int:
         """One sweep over open paper trades. Returns the count of stops fired."""
         # DB calls are blocking SQLite — keep them off the event loop.
@@ -277,14 +355,26 @@ class PaperStopMonitor:
 
         for t in open_trades:
             stop = t.get("stop_loss")
+            symbol = t.get("symbol")
             has_stop = stop not in (None, "", 0, 0.0)
+            if not has_stop:
+                # OMS v2 bracket-executed trades never persist stop_loss onto
+                # the paper_trades row (PortfolioTracker.open_trade() has no
+                # stop_loss parameter -- a separate, documented data-hygiene
+                # gap, out of scope here). Fall back to the OMS's own
+                # in-memory bracket record, which DOES hold the real
+                # stop_loss_price from execute_bracket() time, before
+                # deferring to the max-loss-only path below.
+                _oms_stop = self._resolve_oms_fallback_stop(symbol)
+                if _oms_stop is not None:
+                    stop = _oms_stop
+                    has_stop = True
             if not has_stop and max_loss <= 0:
-                # No stop recorded and the catastrophe cap is disabled → nothing
-                # to enforce. (With the cap on, a null-stop row still falls through
-                # to the max-loss backstop below.)
+                # No stop recorded (DB or OMS) and the catastrophe cap is
+                # disabled → nothing to enforce. (With the cap on, a null-stop
+                # row still falls through to the max-loss backstop below.)
                 continue
 
-            symbol = t.get("symbol")
             trade_id = t.get("trade_id")
             side = t.get("side")
             if not symbol or not trade_id:

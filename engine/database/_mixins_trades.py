@@ -289,10 +289,23 @@ class TradesMixin:
                 "See docs/incident-notes/2026-04-09-mcl-inverted-stop.md"
             )
 
-        # ── Idempotency pre-check ─────────────────────────────────────────────
-        # Check for an existing row BEFORE attempting INSERT.  This avoids
+        # ── Idempotency + open-state pre-check ────────────────────────────────
+        # Two complementary guards run BEFORE attempting INSERT.  This avoids
         # relying on UNIQUE constraint exceptions (which vary in SQLite versions)
         # and gives us a clean WARNING + early-return.
+        #
+        #   1. idempotency_key — collapses EXACT re-submissions that land inside
+        #      the 5-second key window (see compute_order_idempotency_key).
+        #   2. open-state natural key (symbol, side) — collapses RE-LOGS of a
+        #      still-open position that arrive OUTSIDE the 5s window.  This is the
+        #      ~6× over-count root cause: re-emissions of the same fill land
+        #      42s–1h apart, so they receive DISTINCT idempotency keys and would
+        #      each otherwise mint a fresh open row.  The engine holds at most one
+        #      position per (symbol, side) [invariant documented in
+        #      portfolio/tracker.py], so any existing status='open' row for the
+        #      same pair IS this fill — return it instead of duplicating.  A
+        #      genuine scale-in would need a bar/decision discriminator added
+        #      here; until pyramiding exists, one-open-row-per-(symbol,side) holds.
         with self._lock:
             conn = self._connect()
             try:
@@ -300,13 +313,25 @@ class TradesMixin:
                     "SELECT id, trade_id FROM paper_trades WHERE idempotency_key = ?",
                     (idempotency_key,),
                 ).fetchone()
+                dedup_reason = "idempotency_key=%s" % idempotency_key
+                if existing is None:
+                    existing = conn.execute(
+                        "SELECT id, trade_id FROM paper_trades "
+                        "WHERE symbol = ? AND side = ? AND status = 'open' "
+                        "ORDER BY entry_time ASC LIMIT 1",
+                        (symbol.upper(), side.lower()),
+                    ).fetchone()
+                    dedup_reason = "open-position (symbol=%s side=%s)" % (
+                        symbol.upper(),
+                        side.lower(),
+                    )
             finally:
                 conn.close()
         if existing is not None:
             logger.warning(
-                "[DB] insert_paper_trade DEDUPLICATED — idempotency_key=%s already exists "
+                "[DB] insert_paper_trade DEDUPLICATED — %s already exists "
                 "(existing id=%s trade_id=%s). Returning existing id without INSERT.",
-                idempotency_key,
+                dedup_reason,
                 existing[0],
                 existing[1][:8] if existing[1] else "?",
             )

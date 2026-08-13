@@ -52,6 +52,12 @@ if _ENGINE_ROOT not in sys.path:
 
 @pytest.fixture
 def paper_safety():
+    """``ALLOW_MOCK_QUOTES`` is required (2026-07-21, see
+    ``test_ib_gateway_connector_offline.py``): no market-data manager is
+    attached here, so the static quote table is needed to produce a fill at
+    all. Production leaves this False and refuses to fill without a real
+    price basis -- see ``test_paper_fill_refuses_mock_price.py``.
+    """
     from config import settings
     from risk.safety_layer import SafetyLayer
 
@@ -61,6 +67,7 @@ def paper_safety():
             "REQUIRE_HUMAN_APPROVAL": False,
             "PAPER_TRADING": True,
             "ALLOW_PAPER_SIMULATED_ORDERS": True,
+            "ALLOW_MOCK_QUOTES": True,
             "MAX_SINGLE_ORDER_VALUE": 500_000.0,
             "MAX_POSITION_SIZE_PCT": 5.0,
             "MAX_TRADE_LOSS_USD": 500.0,

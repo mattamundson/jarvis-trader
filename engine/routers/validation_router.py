@@ -36,31 +36,102 @@ async def get_validation_progress():
 
 @router.get("/readiness-check")
 async def get_readiness_check():
-    """Return paper trading readiness criteria and current pass/fail status."""
-    criteria = [
-        {"name": "Win Rate", "target": "≥45%", "description": "Winning trades over total trades"},
+    """Return live paper-trading readiness with per-gate pass/fail status.
+
+    Emits the frontend ReadinessReport contract
+    ``{ready_for_live, all_checks_pass, checks:[{name,passed,value,requirement,
+    critical}], passed, total, summary}`` computed from live paper_trades via
+    ``ValidationMetrics().compute()`` (the same source /validation/status uses)
+    against the canonical TARGETS. Previously returned a static criteria list
+    with no live values, so the ReadinessCheckWidget could never show real gates.
+    """
+    from analytics.validation_metrics import TARGETS, ValidationMetrics
+
+    def _not_ready(reason: str) -> dict:
+        return {
+            "ready_for_live": False,
+            "all_checks_pass": False,
+            "checks": [],
+            "passed": 0,
+            "total": 0,
+            "summary": "NOT READY",
+            "error": reason,
+        }
+
+    try:
+        result = ValidationMetrics().compute()
+    except Exception as exc:  # fail-soft: never 500 the readiness widget
+        logger.warning("readiness-check: ValidationMetrics.compute() failed: %s", exc)
+        return _not_ready(str(exc))
+
+    tm = result.get("targets_met", {}) or {}
+    m = result.get("metrics", {}) or {}
+
+    checks = [
         {
-            "name": "Max Drawdown",
-            "target": "<10%",
-            "description": "Maximum peak-to-trough equity decline",
+            "name": "Trading Days",
+            "passed": bool(tm.get("days_30")),
+            "value": f"{m.get('days_elapsed', 0)} days",
+            "requirement": f"≥{TARGETS['min_days']} days",
+            "critical": True,
         },
         {
             "name": "Trade Count",
-            "target": "≥60 trades in 60 days",
-            "description": "Minimum signal frequency",
+            "passed": bool(tm.get("min_trades_60")),
+            "value": str(m.get("total_trades", 0)),
+            "requirement": f"≥{TARGETS['min_trades']} trades",
+            "critical": True,
+        },
+        {
+            "name": "Win Rate",
+            "passed": bool(tm.get("win_rate_55pct")),
+            "value": str(m.get("win_rate_pct", "—")),
+            "requirement": f"≥{TARGETS['min_win_rate_pct']:.0f}%",
+            "critical": True,
         },
         {
             "name": "Profit Factor",
-            "target": ">2.0",
-            "description": "Gross profit / gross loss ratio",
+            "passed": bool(tm.get("profit_factor_2_0")),
+            "value": str(m.get("profit_factor", "—")),
+            "requirement": f"≥{TARGETS['min_profit_factor']}",
+            "critical": True,
         },
-        {"name": "MCL WFE", "target": "≥0.40", "description": "Walk-forward efficiency for MCL 1h"},
-        {"name": "MNQ WFE", "target": "≥0.40", "description": "Walk-forward efficiency for MNQ 1h"},
+        {
+            "name": "Sharpe Ratio",
+            "passed": bool(tm.get("sharpe_1_5")),
+            "value": str(m.get("sharpe_ratio", "—")),
+            "requirement": f"≥{TARGETS['min_sharpe']}",
+            "critical": True,
+        },
+        {
+            "name": "Max Drawdown",
+            "passed": bool(tm.get("drawdown_15pct")),
+            "value": f"{m.get('max_drawdown_pct', 0)}%",
+            "requirement": f"≤{TARGETS['max_drawdown_pct']:.0f}%",
+            "critical": True,
+        },
+        {
+            # [safety-review] PR-10: blocks the false-PASS a raw Sharpe alone
+            # allowed on a tiny/lucky daily-P&L sample (observed 3.436).
+            # Requires BOTH the DSR floor and a minimum observation count --
+            # see analytics.validation_metrics for why DSR alone isn't enough.
+            "name": "Deflated Sharpe Ratio",
+            "passed": bool(tm.get("dsr_0_10")),
+            "value": f"{m.get('dsr', '—')} ({m.get('dsr_n_obs', 0)} obs)",
+            "requirement": f"≥{TARGETS['min_dsr']}, ≥{TARGETS['min_dsr_n_obs']} obs",
+            "critical": True,
+        },
     ]
+
+    all_pass = bool(result.get("all_targets_met"))
+    passed = sum(1 for c in checks if c["passed"])
     return {
-        "criteria": criteria,
-        "description": "All criteria must be met over 30 consecutive trading days before live capital deployment.",
-        "phase": "paper_trading",
+        "ready_for_live": all_pass,
+        "all_checks_pass": all_pass,
+        "checks": checks,
+        "passed": passed,
+        "total": len(checks),
+        "summary": "READY" if all_pass else "NOT READY",
     }
 
 

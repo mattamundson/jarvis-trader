@@ -18,8 +18,10 @@ import {
   BarChart3,
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
+import { executionStatus, type ExecutionPathProbe } from "@/lib/executionPath";
 import { MarketChart } from "@/components/charts/MarketChart";
 import { MarketContextStrip } from "@/components/charts/MarketContextStrip";
+import { getBannerVariant, type BannerVariant } from "@/lib/todayBanner";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,10 @@ interface HealthResponse {
   llm_path_healthy?: boolean | null;
   llm_available?: boolean | null;
   llm_providers?: LLMProviders | null;
+  // D3-01: honest execution-path fields — see @/lib/executionPath.
+  execution_connected_verified?: boolean | null;
+  ib_execution_stale?: boolean | null;
+  execution_path?: ExecutionPathProbe | null;
 }
 
 interface SessionTodayResponse {
@@ -113,17 +119,8 @@ function fetcher<T>(url: string): Promise<T> {
 }
 
 // ── Status helpers ─────────────────────────────────────────────────────────────
-
-type BannerVariant = "live_ok" | "paper_ok" | "degraded" | "unreachable";
-
-function getBannerVariant(health: HealthResponse | undefined, isError: boolean): BannerVariant {
-  if (isError || !health) return "unreachable";
-  if (health.status !== "ok") return "unreachable";
-  // If execution leg down: degraded
-  if (!health.ibkr_connected && !health.schwab_connected) return "degraded";
-  if (health.live_trading) return "live_ok";
-  return "paper_ok";
-}
+// getBannerVariant itself now lives in @/lib/todayBanner (GT-09) so it can be
+// unit-tested with node:test without pulling in this file's JSX/React deps.
 
 const BANNER_CONFIG: Record<BannerVariant, { label: string; sublabel: string; color: string; bg: string; borderColor: string }> = {
   live_ok: {
@@ -142,7 +139,7 @@ const BANNER_CONFIG: Record<BannerVariant, { label: string; sublabel: string; co
   },
   degraded: {
     label: "DEGRADED",
-    sublabel: "Engine up — data or execution leg down",
+    sublabel: "Engine connected — a subsystem (LLM/data/execution) needs attention",
     color: "#ffcc00",
     bg: "rgba(255,204,0,0.06)",
     borderColor: "rgba(255,204,0,0.35)",
@@ -277,7 +274,9 @@ export default function TodayPage() {
   const llmHealthy = health?.llm_path_healthy ?? null;
   const tvHealthy = health?.tradingview_mcp_healthy ?? null;
   const dataLegOk = health?.ibkr_data_connected ?? null;
-  const execLegOk = health?.ibkr_execution_connected ?? health?.ibkr_connected ?? null;
+  // D3-01: derive execution-leg status through the honesty layer — never
+  // read ibkr_execution_connected directly (see @/lib/executionPath).
+  const exec = executionStatus(health);
 
   // Validation status color
   const statusColor =
@@ -370,6 +369,8 @@ export default function TodayPage() {
               value={`${pnlSign}$${Math.abs(pnlRealized).toFixed(2)}`}
               sub={eod
                 ? `${eod.wins_today}W / ${eod.losses_today}L · cum $${eod.cumulative_pnl_usd.toFixed(2)}`
+                : session
+                ? "raw session record · not deduped"
                 : undefined}
               valueColor={pnlColor}
             />
@@ -443,8 +444,8 @@ export default function TodayPage() {
                 label={`Engine — ${health?.status ?? "unknown"}`}
               />
               <StatusBadge
-                ok={execLegOk}
-                label={`IBKR execution — ${execLegOk ? "connected" : "disconnected"}`}
+                ok={exec.brokerReachable}
+                label={`IBKR execution — ${exec.label.toLowerCase()}`}
               />
               <StatusBadge
                 ok={dataLegOk}

@@ -332,7 +332,10 @@ def _check_validation_gates(progress: dict) -> ValidationCheck:
         )
     pf = progress.get("pass_fail", {})
     gates = PAPER_VALIDATION_GATES
-    passing = sum(1 for v in pf.values() if v) if pf else 0
+    # NOTE: each pf value is a dict shaped {"value":..., "threshold":..., "passes": bool}.
+    # A non-empty dict is always truthy, so this must check the nested "passes" flag —
+    # never the dict itself — or every gate silently counts as passing.
+    passing = sum(1 for v in pf.values() if v.get("passes")) if pf else 0
     total_gates = len(gates)
 
     pf_val = progress.get("profit_factor", 0.0)
@@ -342,9 +345,12 @@ def _check_validation_gates(progress: dict) -> ValidationCheck:
 
     status: Literal["pass", "warn", "fail", "insufficient_data"] = "pass"
     if passing < total_gates:
-        failed = [k for k, v in pf.items() if not v]
-        # Any hard metric fail = fail; count/days shortfalls = warn
-        hard_fails = [f for f in failed if f not in ("min_trades", "min_days")]
+        failed = [k for k, v in pf.items() if not v.get("passes")]
+        # Any hard metric fail = fail; count/days shortfalls = warn.
+        # pf keys come from ValidationTracker._get_pass_fail(), which uses
+        # "total_trades" / "days_active" (NOT the threshold-dict keys
+        # "min_trades" / "min_days" from PAPER_VALIDATION_GATES).
+        hard_fails = [f for f in failed if f not in ("total_trades", "days_active")]
         status = "fail" if hard_fails else "warn"
 
     return ValidationCheck(

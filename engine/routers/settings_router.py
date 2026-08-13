@@ -86,7 +86,11 @@ async def update_risk_settings(payload: dict):
     VALIDATORS = {
         "daily_loss_limit": lambda v: float(v) > 0,
         "max_drawdown_pct": lambda v: 0 < float(v) <= 1.0,
-        "max_contracts": lambda v: 1 <= int(v) <= 10,
+        # Ceiling matches the documented safety invariant in
+        # .claude/rules/safety.md ("Max contracts per instrument: 2 micro
+        # contracts"). This DB-backed override must never permit a value the
+        # hardcoded invariant forbids (T0-07, 2026-07-09).
+        "max_contracts": lambda v: 1 <= int(v) <= 2,
         "risk_per_trade_pct": lambda v: 0 < float(v) <= 0.05,
         "atr_stop_multiplier": lambda v: 0.1 <= float(v) <= 3.0,
         "atr_target_multiplier": lambda v: 0.1 <= float(v) <= 5.0,
@@ -214,6 +218,36 @@ async def update_strategy_params(params: StrategyParams):
     except Exception as e:
         logger.error(f"[STRATEGY] Update failed: {e}")
         raise HTTPException(500, f"Failed to update strategy parameters: {e}") from e
+
+
+@router.post("/strategy/params/reset")
+async def reset_strategy_params():
+    """
+    Reset strategy parameter configuration to defaults.
+
+    Restores every field to the StrategyParams pydantic defaults (the same
+    values documented on GET /strategy/params: ema_short=8, ema_long=21,
+    ema_smoother=34, atr_length=14, atr_mult_stop=1.5, atr_mult_target=3.0,
+    min_volume_sma=20, rsi_length=14, rsi_oversold=30, rsi_overbought=70,
+    adaptive_regime=True, volume_filter=False, mtf_filter=False).
+
+    Changes take effect immediately for future backtests and live trading,
+    same as PUT /strategy/params. Existing positions are unaffected.
+    """
+    global _strategy_params
+    try:
+        old_params = _strategy_params.model_dump()
+        _strategy_params = StrategyParams()
+        logger.info(f"[STRATEGY] Parameters reset to defaults: {_strategy_params.model_dump()}")
+
+        return {
+            "status": "reset",
+            "old_params": old_params,
+            "new_params": _strategy_params.model_dump(),
+        }
+    except Exception as e:
+        logger.error(f"[STRATEGY] Reset failed: {e}")
+        raise HTTPException(500, f"Failed to reset strategy parameters: {e}") from e
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────

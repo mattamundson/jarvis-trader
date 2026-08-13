@@ -29,37 +29,64 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
     # stock price (~$80-$90), so band alone cannot rule out contamination
     # for MCL/CL — use daily volatility as secondary signal below.
     "MCL": (25.0, 150.0),
-    "CL":  (25.0, 150.0),
+    "CL": (25.0, 150.0),
     # Nasdaq-100 futures. Equity "NQ" = Nasdaq Inc. (~$50-$75) — clearly
     # distinguishable by band.
     "MNQ": (8_000.0, 32_000.0),
-    "NQ":  (8_000.0, 32_000.0),
+    "NQ": (8_000.0, 32_000.0),
     "NQ_F": (8_000.0, 32_000.0),
     # S&P 500 futures. Equity "ES" = ESSA Pharma (~$1-$15 penny stock).
     # Band ceiling set above 2026 all-time highs (~$7036).
     "MES": (3_000.0, 8_500.0),
-    "ES":  (3_000.0, 8_500.0),
+    "ES": (3_000.0, 8_500.0),
     "ES_F": (3_000.0, 8_500.0),
     # Gold futures. Equity "GC" is various small caps (<$100).
     # Band ceiling set above 2026 all-time highs (~$5591).
     "MGC": (1_400.0, 6_500.0),
-    "GC":  (1_400.0, 6_500.0),
+    "GC": (1_400.0, 6_500.0),
     # Russell 2000 micro futures.
     "M2K": (1_000.0, 3_500.0),
     "RTY": (1_000.0, 3_500.0),
     # Dow micro futures.
     "MYM": (25_000.0, 55_000.0),
-    "YM":  (25_000.0, 55_000.0),
+    "YM": (25_000.0, 55_000.0),
     # Silver futures ($/oz).
-    "SI":  (12.0, 80.0),
+    "SI": (12.0, 80.0),
     # 10-year / 30-year treasuries (price points — different order).
-    "ZB":  (90.0, 185.0),
-    "ZN":  (90.0, 155.0),
-    # SPY is an equity ETF, not a future. Included so the audit doesn't
-    # flag it as UNKNOWN_SYMBOL. A stock ETF hitting its equity ticker
-    # correctly is the expected, non-contaminated path.
-    "SPY": (250.0, 800.0),
+    "ZB": (90.0, 185.0),
+    "ZN": (90.0, 155.0),
+    # Benchmark equity ETFs (and FX micro futures) also live in the backtest
+    # cache. For an ETF the symbol *is* the equity, so there is no futures/equity
+    # ticker collision to detect (unlike ES=ESSA Pharma or GC=small caps) -- these
+    # are generous "legit full-history range" guards, sized from each series'
+    # observed dividend/price-adjusted range in this cache with margin, so a real
+    # equity-price leak (wrong scale) still lands far outside. Ceilings look high
+    # because this cache runs to 2026 levels well above nominal (GC ~5591, ES
+    # ~7630, silver ~105), and floors look low because adjusted close reaches far
+    # back (SPY ~23.8 in 1993, XLU ~3.3 in 2002).
+    #
+    # SPY floor widened from 250 to cover full adjusted history back to 1993 --
+    # the old floor false-flagged legitimate pre-2016 SPY as CONTAMINATED.
+    "SPY": (15.0, 900.0),
+    "DIA": (25.0, 650.0),   # Dow SPDR;    observed ~41.7-520
+    "QQQ": (10.0, 950.0),   # Nasdaq-100;  observed ~16.9-745
+    "IWM": (15.0, 420.0),   # Russell 2k;  observed ~23.8-298
+    "MDY": (15.0, 950.0),   # MidCap SPDR; observed ~24.7-695
+    "EEM": (4.0, 110.0),    # EM equity;   observed ~7.2-71
+    "EFA": (8.0, 160.0),    # EAFE;        observed ~15.0-105
+    "XLU": (2.0, 90.0),     # Utilities;   observed ~3.3-47 (heavy dividend adj.)
+    "GLD": (25.0, 650.0),   # Gold ETF;    observed ~41.3-496
+    "SLV": (5.0, 160.0),    # Silver ETF;  observed ~8.9-106 (2026 silver run)
+    "TLT": (22.0, 210.0),   # 20y+ treasuries; observed ~36.0-143
+    "LQD": (22.0, 170.0),   # IG credit;   observed ~36.8-113
+    "HYG": (12.0, 130.0),   # HY credit;   observed ~21.8-80 (heavy dividend adj.)
+    # FX micro futures quote the exchange rate itself (~0.8-1.8), so any equity
+    # leak ($10-500+) lands far outside. Values match master #270, so trunk->master
+    # convergence (#279) is conflict-free for this dict.
+    "M6B": (0.90, 1.80),    # Micro GBP/USD
+    "M6E": (0.80, 1.70),    # Micro EUR/USD
 }
+
 
 # For MCL specifically, Colgate-Palmolive's daily close stays within ~1-2%
 # day-to-day. Crude oil's daily close commonly moves 2-4%. If the cache's
@@ -67,7 +94,7 @@ FUTURES_PRICE_BAND: dict[str, tuple[float, float]] = {
 # in the overlap zone ($70-$95), we flag the file as SUSPECT rather than
 # CONTAMINATED.
 CRUDE_DAILY_VOL_FLOOR = 0.012  # 1.2% daily stdev is the ceiling for Colgate,
-                                # the floor for crude
+# the floor for crude
 
 
 def symbol_from_filename(name: str) -> str:
@@ -95,7 +122,9 @@ def read_closes(csv_path: Path) -> tuple[list[float], list[str]]:
             # The backtest data loader writes columns Date,Open,High,Low,Close,Volume.
             # Be permissive about casing.
             close_key = next((k for k in row if k and k.lower() == "close"), None)
-            date_key = next((k for k in row if k and k.lower() in {"date", "datetime", "timestamp"}), None)
+            date_key = next(
+                (k for k in row if k and k.lower() in {"date", "datetime", "timestamp"}), None
+            )
             if close_key is None:
                 continue
             try:
@@ -119,40 +148,62 @@ def daily_volatility_from_closes(closes: list[float]) -> float:
         return 0.0
     mean = sum(rets) / len(rets)
     var = sum((r - mean) ** 2 for r in rets) / len(rets)
-    return var ** 0.5
+    return var**0.5
 
 
 def classify(path: Path) -> dict:
     symbol = symbol_from_filename(path.name)
     closes, dates = read_closes(path)
     if not closes:
-        return {"path": path, "symbol": symbol, "verdict": "EMPTY", "reason": "no close column or no rows"}
+        return {
+            "path": path,
+            "symbol": symbol,
+            "verdict": "EMPTY",
+            "reason": "no close column or no rows",
+        }
     band = FUTURES_PRICE_BAND.get(symbol)
     if band is None:
-        return {"path": path, "symbol": symbol, "verdict": "UNKNOWN_SYMBOL", "reason": f"no band for {symbol}"}
+        return {
+            "path": path,
+            "symbol": symbol,
+            "verdict": "UNKNOWN_SYMBOL",
+            "reason": f"no band for {symbol}",
+        }
     low, high = band
     first, last = closes[0], closes[-1]
     mn, mx = min(closes), max(closes)
     in_band = low <= mn and mx <= high
     if not in_band:
         return {
-            "path": path, "symbol": symbol, "verdict": "CONTAMINATED",
+            "path": path,
+            "symbol": symbol,
+            "verdict": "CONTAMINATED",
             "reason": f"prices {mn:.2f}-{mx:.2f} outside futures band {low:.0f}-{high:.0f}",
-            "first": first, "last": last, "bars": len(closes),
+            "first": first,
+            "last": last,
+            "bars": len(closes),
         }
     # For crude oil in the overlap zone, sanity-check volatility.
     if symbol in {"MCL", "CL"} and 70 <= mn and mx <= 95:
         vol = daily_volatility_from_closes(closes)
         if vol < CRUDE_DAILY_VOL_FLOOR:
             return {
-                "path": path, "symbol": symbol, "verdict": "SUSPECT",
+                "path": path,
+                "symbol": symbol,
+                "verdict": "SUSPECT",
                 "reason": f"vol {vol:.4f} below crude floor {CRUDE_DAILY_VOL_FLOOR}; could be Colgate-Palmolive",
-                "first": first, "last": last, "bars": len(closes),
+                "first": first,
+                "last": last,
+                "bars": len(closes),
             }
     return {
-        "path": path, "symbol": symbol, "verdict": "CLEAN",
+        "path": path,
+        "symbol": symbol,
+        "verdict": "CLEAN",
         "reason": f"range {mn:.2f}-{mx:.2f} within {low:.0f}-{high:.0f}",
-        "first": first, "last": last, "bars": len(closes),
+        "first": first,
+        "last": last,
+        "bars": len(closes),
     }
 
 
@@ -172,7 +223,7 @@ def main() -> int:
 
     print(f"\n{'='*80}")
     print(f"Polygon Futures Contamination Audit — {len(csvs)} cache files")
-    print("="*80)
+    print("=" * 80)
 
     for verdict in ["CONTAMINATED", "SUSPECT", "UNKNOWN_SYMBOL", "EMPTY", "CLEAN"]:
         rows = by_verdict.get(verdict, [])
@@ -192,10 +243,10 @@ def main() -> int:
     if contaminated or suspect:
         print(f"RESULT: {len(contaminated)} CONTAMINATED, {len(suspect)} SUSPECT.")
         print("Recommended action: move flagged CSVs out of cache/ before next backtest.")
-        print("="*80)
+        print("=" * 80)
         return 1
     print("RESULT: cache is CLEAN. No futures files match equity-ticker price ranges.")
-    print("="*80)
+    print("=" * 80)
     return 0
 
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import useSWR from "swr";
 import { Activity, Cpu, Radio, Shield, ShieldOff, Zap } from "lucide-react";
 import { BookmarkThemesPanel } from "@/components/BookmarkThemesPanel";
@@ -10,13 +10,13 @@ import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { RiskAttributionPanel } from "@/components/RiskAttributionPanel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AskJarvis, type AskJarvisSend } from "@/components/AskJarvis";
 import {
   fetchEngine,
   fetchJarvisAsk,
   fetchDiscordBriefing,
   fetchBookmarksRecent,
   type HealthResponse,
-  type JarvisAskResponse,
   type BriefingResponse,
   type BookmarkRow,
 } from "@/lib/api";
@@ -25,6 +25,7 @@ import {
   type PipelineWsEvent,
   type VerdictEvent,
 } from "@/lib/pipeline_ws";
+import { DEFAULT_BRIEFING_SYMBOLS } from "@/lib/approvedSymbols";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -281,7 +282,7 @@ function RegimeRow({
 
 // ── DiscordBriefingPanel ───────────────────────────────────────────────────────
 
-const BRIEFING_SYMBOLS = ["MCL", "MNQ"] as const;
+const BRIEFING_SYMBOLS = DEFAULT_BRIEFING_SYMBOLS;
 
 function DiscordBriefingPanel() {
   return (
@@ -468,133 +469,29 @@ function ActionQueueRow({ row }: { row: BookmarkRow }) {
 }
 
 // ── AskJarvisPanel ─────────────────────────────────────────────────────────────
+// Thin trading-engine wiring over the shared, canonical <AskJarvis> console. The
+// backend transport is POST /jarvis/ask (verified live: engine/routers/jarvis_router.py).
 
 function AskJarvisPanel() {
-  const [question, setQuestion] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<JarvisAskResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleAsk = useCallback(async () => {
-    const q = question.trim();
-    if (!q || isLoading) return;
-
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      const res = await fetchJarvisAsk(q);
-      setResult(res);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // Graceful 404 handling for the not-yet-live route
-      if (msg.includes("404") || msg.includes("Not Found")) {
-        setError(
-          "Ask-Jarvis route not yet live — see CLAUDE_CODE_AND_HERMES_INTEGRATION_MAP for wiring instructions."
-        );
-      } else {
-        setError(msg);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [question, isLoading]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") handleAsk();
-    },
-    [handleAsk]
-  );
+  const send = useCallback<AskJarvisSend>(async (q, { onText, onMeta }) => {
+    const res = await fetchJarvisAsk(q);
+    onText(res.answer);
+    onMeta?.({
+      sources: res.sources,
+      actions: res.actions_taken,
+      intent: res.intent,
+      elapsedMs: res.elapsed_ms,
+    });
+  }, []);
 
   return (
-    <Card className="border-zinc-800 bg-zinc-950/60">
-      <CardHeader className="py-3">
-        <CardTitle className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-          <Activity className="h-4 w-4" /> Ask JARVIS
-        </CardTitle>
-        <p className="text-[11px] text-zinc-500">
-          Natural-language query to the engine&apos;s reasoning pipeline.
-        </p>
-      </CardHeader>
-      <CardContent className="pb-4 space-y-3">
-        {/* Input row */}
-        <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="What is MES doing right now?"
-            disabled={isLoading}
-            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 disabled:opacity-50"
-          />
-          <button
-            onClick={handleAsk}
-            disabled={isLoading || !question.trim()}
-            className="rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-3 py-1.5 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {isLoading ? "Thinking…" : "Ask"}
-          </button>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="rounded border border-rose-800/40 bg-rose-950/30 p-2.5">
-            <p className="text-[11px] text-rose-300 leading-relaxed">{error}</p>
-          </div>
-        )}
-
-        {/* Result */}
-        {result && (
-          <div className="space-y-2">
-            {/* Answer */}
-            <div className="rounded border border-zinc-800 bg-zinc-900/60 p-3">
-              <p className="text-xs text-zinc-100 leading-relaxed">{result.answer}</p>
-              {result.intent && (
-                <p className="text-[10px] text-zinc-500 mt-1.5 font-mono">
-                  intent: {result.intent}
-                </p>
-              )}
-            </div>
-
-            {/* Sources */}
-            {result.sources.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Sources</p>
-                {result.sources.map((src, i) => (
-                  <p key={i} className="text-[10px] text-zinc-500 font-mono pl-2 border-l border-zinc-800">
-                    {src}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* Actions taken */}
-            {result.actions_taken.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Actions</p>
-                {result.actions_taken.map((act, i) => (
-                  <p key={i} className="text-[10px] text-zinc-500 font-mono pl-2 border-l border-emerald-800/40">
-                    {act}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* Elapsed */}
-            {result.elapsed_ms > 0 && (
-              <p className="text-[9px] text-zinc-700 font-mono text-right">
-                {result.elapsed_ms}ms
-              </p>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <AskJarvis
+      send={send}
+      title="Ask JARVIS"
+      subtitle="Natural-language query to the engine's reasoning pipeline."
+      placeholder="What is MES doing right now?"
+      emptyHint="Ask JARVIS anything about the market, positions, or pipeline."
+    />
   );
 }
 

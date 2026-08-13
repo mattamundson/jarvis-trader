@@ -73,12 +73,20 @@ MIN_OOS_TRADES_PER_WINDOW = 1
 #: flip and the candidate is forced to FAIL even if CORE/ALT pass.
 MIN_TOTAL_OOS_TRADES = 100
 
-COST_SWEEP_TIERS = {
-    "optimistic": {"commission": 0.31, "slippage_ticks": 0.5},
-    "realistic": {"commission": 0.62, "slippage_ticks": 1.0},
-    "pessimistic": {"commission": 1.24, "slippage_ticks": 2.0},
-    "catastrophic": {"commission": 2.48, "slippage_ticks": 3.0},
-}
+# Per-symbol: ratios (0.5x/1.0x/2.0x/4.0x) scale off THIS symbol's own base
+# commission (cfg.commission, resolved in _resolve_cfg from contract_specs.py)
+# rather than a flat MES-based literal (found 2026-07-10 -- _resolve_cfg
+# already resolved the primary commission per-symbol, but the cost-sweep
+# tiers below did not, so `--symbol MGC`/`--symbol MCL` would cost-sweep at
+# the wrong tier).
+def _cost_sweep_tiers_for(cfg: "BreakoutCfg") -> dict:
+    base_commission = cfg.commission
+    return {
+        "optimistic": {"commission": round(base_commission * 0.5, 4), "slippage_ticks": 0.5},
+        "realistic": {"commission": round(base_commission * 1.0, 4), "slippage_ticks": 1.0},
+        "pessimistic": {"commission": round(base_commission * 2.0, 4), "slippage_ticks": 2.0},
+        "catastrophic": {"commission": round(base_commission * 4.0, 4), "slippage_ticks": 3.0},
+    }
 
 
 @dataclass(frozen=True)
@@ -314,8 +322,9 @@ def _run_fixed_params_sweep(cfg: BreakoutCfg, df: pd.DataFrame, grid: list[tuple
 def _run_cost_sweep(cfg: BreakoutCfg, df: pd.DataFrame, champion: dict) -> dict:
     results = {}
     last_surviving = None
+    cost_tiers = _cost_sweep_tiers_for(cfg)
     for tier in COST_TIER_ORDER:
-        costs = COST_SWEEP_TIERS[tier]
+        costs = cost_tiers[tier]
         try:
             result = _run_signals_and_backtest(
                 cfg,

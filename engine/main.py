@@ -112,10 +112,20 @@ from routers.brokers_router import inject_dependencies as inject_brokers_deps
 from routers.options_router import router as options_router
 from routers.approval_router import router as approval_router
 from routers.approval_router import inject_dependencies as inject_approval_deps
+from routers.actionable_router import router as actionable_router
+from routers.actionable_router import inject_dependencies as inject_actionable_deps
+from routers.signal_outcomes_router import router as signal_outcomes_router
+from routers.signal_outcomes_router import (
+    inject_dependencies as inject_signal_outcomes_deps,
+)
 from routers.approval_queue_router import router as approval_queue_router
 from routers.approval_queue_router import inject_approval_queue_deps
 from routers.pipeline_router import router as pipeline_router
 from routers.pipeline_router import inject_dependencies as inject_pipeline_deps
+from routers.session_brief_router import router as session_brief_router
+from routers.session_brief_router import inject_dependencies as inject_session_brief_deps
+from routers.framing_brief_router import router as framing_brief_router
+from routers.options_signals_router import router as options_signals_router
 from routers.pipeline_ws_router import router as pipeline_ws_router
 from routers.messaging_router import router as messaging_router
 from routers.messaging_router import inject_dependencies as inject_messaging_deps
@@ -148,6 +158,7 @@ from api.operations_dashboard import router as operations_dashboard_router
 from routers.attribution_router import router as attribution_router
 from routers.vault_router import router as vault_router
 from routers.pnl_truth_router import router as pnl_truth_router
+from routers.durability_router import router as durability_router
 from routers.ib_scanner_router import router as ib_scanner_router
 from routers.macro_router import router as macro_router, inject_dependencies as inject_macro_deps
 from routers.analysis_router import (
@@ -174,6 +185,10 @@ from routers.prices_router import (
     router as prices_router,
     inject_dependencies as inject_prices_deps,
 )
+from routers.auction_bias_router import (
+    router as auction_bias_router,
+    inject_dependencies as inject_auction_bias_deps,
+)
 from routers.websocket_router import (
     router as websocket_router,
     inject_dependencies as inject_websocket_deps,
@@ -193,6 +208,7 @@ from routers.crypto_router import router as crypto_router
 from routers.openclaw_router import router as openclaw_router
 from routers.openclaw_router import inject_dependencies as inject_openclaw_deps
 from data.price_cache import PriceCache
+from data.auction_bias_provider import LiveAuctionDataProvider
 from schedulers.eod_scheduler import EODScheduler
 from notifications.validation_alerts import ValidationAlertManager
 from notifications.morning_brief import inject_morning_brief_deps
@@ -276,6 +292,16 @@ def setup_logging(log_level: str = "INFO") -> None:
     file_handler.setFormatter(json_formatter)
     root_logger.addHandler(file_handler)
 
+    # Quiet pure-infrastructure loggers that flood stderr (→ the PM2 error log,
+    # 220MB on 2026-07-06) with zero diagnostic value: apscheduler emits a
+    # start+finish INFO line per interval job (Messaging Health Monitor, Auto-expire,
+    # SafetyLayer Equity Sync, ...), and httpx/httpcore log every request (the ollama
+    # /api/tags poll, every Anthropic call). Real signals (CSV-cache fallbacks,
+    # ib_async delayed-data, our own WARN/ERROR) are deliberately left untouched.
+    # This is the source-side complement to scripts/rotate_pm2_logs.ps1.
+    for _noisy in ("apscheduler", "httpx", "httpcore"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 
 # ── Global State ─────────────────────────────────────────────────────────
 data_manager: MarketDataManager | None = None
@@ -314,6 +340,7 @@ trailing_stop_manager: "TrailingStopManager | None" = None  # noqa: F821
 portfolio_allocator: "PortfolioAllocator | None" = None  # noqa: F821
 canary_manager: "CanaryManager | None" = None  # noqa: F821
 ib_data_watchdog: "IBDataWatchdog | None" = None  # noqa: F821
+ib_freshness_heartbeat: "IBFreshnessHeartbeat | None" = None  # noqa: F821
 paper_stop_monitor: "PaperStopMonitor | None" = None  # noqa: F821
 
 
@@ -427,7 +454,7 @@ async def lifespan(app: FastAPI):
         """Heavy lifting moved here to enable <10s server binding."""
         global data_manager, ib_paper_connector, schwab_connector, portfolio_allocator
         global tv_streamer, redis_trigger, trailing_stop_manager, canary_manager
-        global paper_stop_monitor, ib_data_watchdog
+        global paper_stop_monitor, ib_data_watchdog, ib_freshness_heartbeat
 
         logger.info("⏳ Starting heavy background initialization...")
 
@@ -452,11 +479,24 @@ async def lifespan(app: FastAPI):
                 if _paper_ib_ok:
                     safety_layer.attach_ib_gateway(ib_paper_connector)
                     order_router.attach_ibkr(ib_paper_connector)
-                    logger.info("✅ IBGatewayConnector (paper) connected background")
-                else:
-                    logger.warning(
-                        "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                    logger.info(
+                        "✅ %s (paper) connected + attached to order path",
+                        type(ib_paper_connector).__name__,
                     )
+                else:
+                    if getattr(settings, "IB_PAPER_BROKER_ENABLED", False):
+                        # Real gateway requested but unreachable: leave the order path
+                        # UNATTACHED (fail-closed, no orders route) and shout about it.
+                        logger.critical(
+                            "IB_PAPER_BROKER_ENABLED=1 but the REAL IB gateway failed to connect "
+                            "after 3 attempts — order path is UNATTACHED (fail-closed: no orders "
+                            "will route). Check IB Gateway on port %s.",
+                            settings.IBKR_PORT,
+                        )
+                    else:
+                        logger.warning(
+                            "⚠️ IBGatewayConnector background connect failed after 3 attempts"
+                        )
         except Exception as e:
             logger.error(f"❌ Background data/IBKR init failed: {e}")
 
@@ -530,6 +570,18 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"⚠️ IBDataWatchdog failed to start: {e}")
 
+        # 5.6. IB market-data freshness heartbeat. Keeps datasource:ib_gateway
+        # fresh in Redis on a fixed cadence regardless of open positions, so
+        # /system/data-integrity and the feeds_live readiness gate reflect the
+        # live IB feed instead of the dead TV scraper's stale keys.
+        try:
+            from services.ib_freshness_heartbeat import IBFreshnessHeartbeat
+
+            ib_freshness_heartbeat = IBFreshnessHeartbeat(data_manager)
+            await ib_freshness_heartbeat.start()
+        except Exception as e:
+            logger.warning(f"⚠️ IBFreshnessHeartbeat failed to start: {e}")
+
         # 6. Paper Stop-Loss Monitor (Initiative 1, Track A2)
         # Feed-independent backstop: enforces open paper stops via the tick-price
         # path even when the historical-bar pipeline (and thus the paper_runner
@@ -537,7 +589,15 @@ async def lifespan(app: FastAPI):
         try:
             from services.paper_stop_monitor import PaperStopMonitor
 
-            paper_stop_monitor = PaperStopMonitor(db_manager, data_manager)
+            # oms_manager_getter is a lazy zero-arg lookup, not a direct
+            # reference: this background-init task races the outer lifespan()
+            # flow that constructs OMSManager (line ~751), so capturing
+            # `oms_manager` by value here could freeze in a stale None if this
+            # branch runs first. The getter re-reads the module global fresh
+            # on every sweep instead.
+            paper_stop_monitor = PaperStopMonitor(
+                db_manager, data_manager, oms_manager_getter=lambda: oms_manager
+            )
             await paper_stop_monitor.start()
             logger.info("🛡️ Paper stop-loss monitor activated (feed-independent backstop)")
         except Exception as e:
@@ -665,11 +725,12 @@ async def lifespan(app: FastAPI):
     # Paper IB connector — Instance creation (connection moved to background)
     ib_paper_connector = None
     if settings.PAPER_TRADING:
-        ib_paper_connector = IBGatewayConnector(
-            settings,
-            safety_layer,
-            portfolio_tracker=paper_tracker,
-        )
+        from execution.order_gateway_factory import build_order_gateway
+
+        # P0-2: simulator by default; the real IBGatewayManager (port 4002 paper)
+        # only when IB_PAPER_BROKER_ENABLED is set. Same variable + duck-typed
+        # interface, so the connect/attach wiring below is unchanged either way.
+        ib_paper_connector = build_order_gateway(settings, safety_layer, paper_tracker)
 
     order_manager = IBOrderManager(
         safety_layer=safety_layer,
@@ -715,6 +776,10 @@ async def lifespan(app: FastAPI):
     # Market data connections — Instance creation (initialization moved to background)
     data_manager = MarketDataManager(settings)
     set_analytics_data_manager(data_manager)
+    # Wire the data manager into SafetyLayer so submit_paper_order() can run the
+    # entry-price-sanity check on client-supplied limit prices (2026-08-03 incident —
+    # see the price-sanity block in SafetyLayer.submit_paper_order()).
+    safety_layer.attach_data_manager(data_manager)
     # Wire the real-price source into the paper connector so simulated fills use
     # the live get_tick_price waterfall instead of static mock quotes. Without
     # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
@@ -1031,7 +1096,21 @@ async def lifespan(app: FastAPI):
                 trade_dec = result.get("trade_decision") or {}
                 confidence = fund_dec.get("final_conviction", trade_dec.get("confidence", 0.0))
                 qty = result.get("final_quantity", 0)
-                price_info = trade_dec.get("limit_price") or trade_dec.get("stop_price")
+                # Real/intended fill price for the OMS bracket call below. MUST
+                # NOT fall back to stop_price: stop_price is not a price proxy,
+                # and using it here silently defeats SafetyLayer's per-trade
+                # dollar-risk gate (points_at_risk = |entry - stop| collapses to
+                # ~0 when entry == stop). trade_dec["entry_price"] is the
+                # Trader agent's actual intended entry (see TradeDecision.
+                # entry_price docstring in agents/trader.py); limit_price wins
+                # only when this is a genuine LMT order, since that IS the
+                # price that will be submitted.
+                # Root-cause of trade #287 (MGC, 2026-07-xx): this used to be
+                # `trade_dec.get("limit_price") or trade_dec.get("stop_price")`,
+                # so a MKT order (no limit_price) always priced its bracket
+                # entry at the stop, approving trades already ~$191.83 over the
+                # $50/ticket MAX_TRADE_LOSS_USD cap before any market movement.
+                price_info = trade_dec.get("limit_price") or trade_dec.get("entry_price")
                 reasoning = trade_dec.get("reasoning", "")
 
                 # Always log to decision feed (in-memory + SQLite)
@@ -1704,12 +1783,15 @@ async def lifespan(app: FastAPI):
         db_path=str(db_manager._db_path),
     )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
+    inject_actionable_deps(db_manager)
+    inject_signal_outcomes_deps(db_manager, data_manager)
     inject_analysis_deps(technical_analyst, data_manager, cost_tracker)
     inject_regime_deps(data_manager)
     inject_watchlist_deps(db_manager, data_manager=data_manager)
     inject_sentiment_deps(data_manager)
     inject_settings_deps(settings, db_manager, safety_layer)
     inject_prices_deps(PriceCache(), data_manager=data_manager)
+    inject_auction_bias_deps(LiveAuctionDataProvider(data_manager))
     inject_websocket_deps(ws_manager)
     inject_thinkscript_deps(technical_analyst)
     inject_alerts_deps(db_manager=db_manager)
@@ -1774,6 +1856,7 @@ async def lifespan(app: FastAPI):
         scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
     )
     inject_messaging_deps(db_manager, paper_tracker=paper_tracker, safety_layer=safety_layer)
+    inject_session_brief_deps(db_manager)
     # Morning brief deps
     inject_morning_brief_deps(data_manager, paper_tracker, safety_layer)
     inject_hp_deps(data_manager, settings)
@@ -2176,11 +2259,15 @@ async def lifespan(app: FastAPI):
     # mode: existing files are skipped (preserves 2026-04-17 manual triage).
     try:
         from scripts.render_bookmarks_to_vault import render_vault as _render_vault
+        from vault.paths import vault_root as _vault_root
 
         _BOOKMARK_DB_PATH = os.environ.get("JARVIS_TRADER_DB_PATH", "engine/data/jarvis_trader.db")
+        # Default under the canonical vault root (honours JARVIS_VAULT_ROOT) instead
+        # of a hardcoded absolute path, so bookmarks land beside the other vault
+        # writers. Explicit BOOKMARK_VAULT_DIR still overrides.
         _BOOKMARK_VAULT_DIR = os.environ.get(
             "BOOKMARK_VAULT_DIR",
-            r"C:\Users\mattm\second-brain\wiki\discord-bookmarks",
+            str(_vault_root() / "discord-bookmarks"),
         )
 
         async def run_bookmark_vault_render() -> None:
@@ -2401,12 +2488,25 @@ async def lifespan(app: FastAPI):
             the daily_pnl SQLite table and causes false kill-switch fires.
             2026-06-01 incident: -$678k IBKR demo delta fired kill switch on a
             real -$1,284 scanner paper trade.
+
+            T0-02 fix (2026-07-09 dashboard-integrity audit): the 2026-06-01
+            patch above passed sync_from_broker() a static
+            ``INITIAL_CAPITAL`` as "equity" every 60s, with no cumulative P&L
+            added back in.  Since equity never varied call-to-call,
+            ``_current_equity``/``_equity_peak`` — and every
+            Sharpe/Sortino/Calmar/max-DD figure derived from them via
+            pnl_snapshots.portfolio_equity — were frozen at exactly $10,000.00
+            from 2026-06-02 onward, even though daily_pnl (and real trading)
+            moved normally.  Equity must be initial capital PLUS all-time
+            realized P&L, mirroring the same cash-basis (realized-only)
+            accounting ``daily_pnl.ending_balance`` already uses.
             """
             try:
                 if safety_layer is None:
                     return
                 today_str = date.today().isoformat()
                 paper_daily_pnl = 0.0
+                total_realized_pnl = 0.0
                 if db_manager is not None:
                     try:
                         closed_today = [
@@ -2419,12 +2519,24 @@ async def lifespan(app: FastAPI):
                         logger.warning(
                             "[sync_safety_equity] paper_trades query failed: %s", _db_exc
                         )
+                    try:
+                        stats = db_manager.get_stats_summary()
+                        total_realized_pnl = float(stats.get("total_pnl") or 0.0)
+                    except Exception as _stats_exc:
+                        logger.warning(
+                            "[sync_safety_equity] get_stats_summary failed (equity will "
+                            "fall back to initial capital only): %s",
+                            _stats_exc,
+                        )
                 config_equity = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0))
-                safety_layer.sync_from_broker(config_equity, paper_daily_pnl)
+                current_equity = config_equity + total_realized_pnl
+                safety_layer.sync_from_broker(current_equity, paper_daily_pnl)
                 logger.debug(
-                    "[sync_safety_equity] equity=%.2f daily_pnl=%.2f "
-                    "source=paper_trades today=%s",
+                    "[sync_safety_equity] equity=%.2f (initial=%.2f + "
+                    "realized=%.2f) daily_pnl=%.2f source=paper_trades today=%s",
+                    current_equity,
                     config_equity,
+                    total_realized_pnl,
                     paper_daily_pnl,
                     today_str,
                 )
@@ -2462,16 +2574,34 @@ async def lifespan(app: FastAPI):
                 if not open_trades:
                     return
                 from portfolio.tracker import (
-                    INSTRUMENT_MULTIPLIERS as _MULT,
-                    _DEFAULT_MULTIPLIER as _DEF_MULT,
+                    _resolve_multiplier as _resolve_mult_fn,
+                    UnknownInstrumentMultiplierError as _UnknownMultErr,
+                    _commission_per_contract as _commission_per_contract_fn,
                 )  # noqa: E501
 
                 for _trade in open_trades:
                     _stop = _trade.get("stop_loss")
-                    if _stop is None:
-                        continue
-                    _stop_f = float(_stop)
                     _sym = (_trade.get("symbol") or "").upper()
+                    if _stop is None:
+                        # OMS v2 bracket-executed trades never persist
+                        # stop_loss onto the paper_trades row
+                        # (PortfolioTracker.open_trade() has no stop_loss
+                        # parameter -- a separate, documented data-hygiene
+                        # gap, out of scope here). Fall back to the OMS's own
+                        # in-memory bracket record, which DOES hold the real
+                        # stop_loss_price from execute_bracket() time.
+                        if oms_manager is not None and _sym:
+                            try:
+                                _stop = oms_manager.resolve_stop_for_symbol(_sym)
+                            except Exception as _oms_fb_exc:
+                                logger.debug(
+                                    "[stop_monitor] OMS stop fallback failed for %s: %s",
+                                    _sym,
+                                    _oms_fb_exc,
+                                )
+                        if _stop is None:
+                            continue
+                    _stop_f = float(_stop)
                     if not _sym:
                         continue
                     _side = (_trade.get("side") or "buy").lower()
@@ -2498,16 +2628,31 @@ async def lifespan(app: FastAPI):
                     _hit = (_is_long and _cur <= _stop_f) or (not _is_long and _cur >= _stop_f)
                     if not _hit:
                         continue
-                    _mult = _MULT.get(_sym, _DEF_MULT)
+                    try:
+                        _mult = _resolve_mult_fn(_sym)
+                    except _UnknownMultErr:
+                        logger.error(
+                            "[stop_monitor] no contract multiplier for %s -- "
+                            "skipping stop close to avoid mis-stated P&L",
+                            _sym,
+                        )
+                        continue
                     _qty = float(_trade.get("quantity") or 1.0)
-                    _pnl = (
+                    _gross_pnl = (
                         (_stop_f - _entry) * _qty * _mult
                         if _is_long
                         else (_entry - _stop_f) * _qty * _mult
                     )
+                    # T0-06: reuse PortfolioTracker's exact commission constant/logic
+                    # (portfolio.tracker._commission_per_contract) instead of passing a
+                    # zero-commission pnl straight through — close_paper_trade() treats
+                    # an explicit `pnl` as broker-confirmed (already net of fees) and
+                    # will NOT re-deduct it, so an un-costed figure here previously
+                    # closed every stop-driven trade commission-free.
+                    _pnl = _gross_pnl - (_commission_per_contract_fn() * abs(_qty))
                     logger.warning(
                         "[stop_monitor] STOP HIT %s %s id=%s entry=%.2f "
-                        "stop=%.2f current=%.2f pnl=%.2f",
+                        "stop=%.2f current=%.2f pnl=%.2f (net of commission)",
                         _sym,
                         _side,
                         _tid[:8] if _tid else "?",
@@ -2760,6 +2905,100 @@ async def lifespan(app: FastAPI):
             )
             logger.info("✅ Weekly self-audit & drift detection registered (Sunday 18:00 CT)")
 
+        # ── Batch processing (Anthropic Message Batches API) ───────────────
+        # Generic poll sweep: harvests any ended batch job (any agent) into
+        # batch_results as soon as it ends, decoupled from each consumer's
+        # own collection cadence. See engine/llm/batch_client.py.
+        async def _run_batch_poll_sweep() -> None:
+            try:
+                from llm.batch_client import JarvisBatchClient
+
+                summary = await JarvisBatchClient().sweep_pending()
+                if summary["newly_ended"] or summary["newly_stale"]:
+                    logger.info("[BatchPollSweep] %s", summary)
+            except Exception as _sweep_err:
+                logger.warning(f"[BatchPollSweep] failed (non-fatal): {_sweep_err}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_batch_poll_sweep,
+                CronTrigger(minute="*/15"),
+                id="batch_poll_sweep",
+                name="Batch Job Poll Sweep",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("✅ Batch poll sweep registered (every 15 minutes)")
+
+        # Research agent weekend pass — batch-API pilot (replaces the
+        # standalone Windows Scheduled Task; same default symbols/cadence).
+        async def _run_research_agent_weekend_submit() -> None:
+            try:
+                from scheduler.research_agent_weekend import run_weekend_research_pass_submit
+
+                symbols_env = os.environ.get("RESEARCH_AGENT_SYMBOLS", "")
+                symbols = [s.strip().upper() for s in symbols_env.split(",") if s.strip()] or [
+                    "MES",
+                    "MNQ",
+                    "MCL",
+                    "MGC",
+                ]
+                n_hyp_env = os.environ.get("RESEARCH_AGENT_N_HYPOTHESES", "3")
+                try:
+                    n_hypotheses = int(n_hyp_env)
+                except ValueError:
+                    n_hypotheses = 3
+
+                result = await run_weekend_research_pass_submit(
+                    symbols=symbols, n_hypotheses_per_symbol=n_hypotheses
+                )
+                logger.info("[ResearchAgentWeekendSubmit] %s", result)
+            except Exception as _submit_err:
+                logger.warning(f"[ResearchAgentWeekendSubmit] failed (non-fatal): {_submit_err}")
+
+        async def _run_research_agent_weekend_collect() -> None:
+            try:
+                from scheduler.research_agent_weekend import run_weekend_research_pass_collect
+
+                result = await run_weekend_research_pass_collect()
+                logger.info("[ResearchAgentWeekendCollect] %s", result)
+            except Exception as _collect_err:
+                logger.warning(f"[ResearchAgentWeekendCollect] failed (non-fatal): {_collect_err}")
+
+        if scheduler is not None:
+            scheduler.add_job(
+                _run_research_agent_weekend_submit,
+                CronTrigger(day_of_week="sat", hour=10, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_submit",
+                name="Research Agent Weekend Batch Submit",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            scheduler.add_job(
+                _run_research_agent_weekend_collect,
+                CronTrigger(day_of_week="sat", hour=16, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_collect_sat",
+                name="Research Agent Weekend Batch Collect (Saturday)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            scheduler.add_job(
+                _run_research_agent_weekend_collect,
+                CronTrigger(day_of_week="sun", hour=8, minute=0, timezone="America/Chicago"),
+                id="research_agent_weekend_collect_sun",
+                name="Research Agent Weekend Batch Collect (Sunday)",
+                max_instances=1,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info(
+                "✅ Research agent weekend batch pass registered "
+                "(submit Sat 10:00 CT, collect Sat 16:00 CT + Sun 08:00 CT)"
+            )
+
     except Exception as _gv2_init_err:
         logger.warning(f"Weekly gate v2 job init failed (non-fatal): {_gv2_init_err}")
 
@@ -2850,6 +3089,10 @@ async def lifespan(app: FastAPI):
     # Stop IB data-leg watchdog
     if ib_data_watchdog:
         await ib_data_watchdog.stop()
+
+    # Stop IB market-data freshness heartbeat
+    if ib_freshness_heartbeat:
+        await ib_freshness_heartbeat.stop()
 
     # Stop Paper stop-loss monitor
     if paper_stop_monitor:
@@ -2978,6 +3221,7 @@ app.include_router(analytics_router)
 app.include_router(attribution_router)
 app.include_router(vault_router)
 app.include_router(pnl_truth_router)
+app.include_router(durability_router)
 app.include_router(safety_router)
 app.include_router(strategies_router)
 app.include_router(validation_router)
@@ -3002,8 +3246,13 @@ app.include_router(instruments_router)
 app.include_router(brokers_router)
 app.include_router(options_router, prefix="/options", tags=["options"])
 app.include_router(approval_router)
+app.include_router(actionable_router)
+app.include_router(signal_outcomes_router)
 app.include_router(approval_queue_router)
 app.include_router(pipeline_router)
+app.include_router(session_brief_router)
+app.include_router(framing_brief_router)
+app.include_router(options_signals_router)
 app.include_router(pipeline_ws_router)
 app.include_router(messaging_router)
 app.include_router(scanner_router)
@@ -3030,6 +3279,7 @@ app.include_router(watchlist_router)
 app.include_router(sentiment_router)
 app.include_router(settings_router)
 app.include_router(prices_router)
+app.include_router(auction_bias_router)
 app.include_router(websocket_router)
 app.include_router(thinkscript_router)
 app.include_router(alerts_router)
@@ -3102,6 +3352,7 @@ app.websocket("/ws/events")(events_handler)
 
 
 # -- /paper/pending-signals -- served by routers/backtest_router.py (wired 2026-05-22) --
+# -- /paper/reset-pending-signals (POST) -- served by routers/backtest_router.py (wired 2026-07-28, GT-40) --
 
 
 # ── Historical Query Endpoints (SQLite) ───────────────────────────────────
@@ -3152,6 +3403,44 @@ app.websocket("/ws/events")(events_handler)
 _decision_log: list[dict] = []  # In-memory ring buffer, 100 entries
 
 
+def _build_data_provenance(dm, symbol: str) -> dict | None:
+    """Snapshot *what data* a decision was based on, for honest persistence.
+
+    Answers post-hoc audits like "was this fill made on live IBKR data or a
+    stale CSV-cache fallback?" (the 2026-06-29 frozen-MES-5300 class). Sourced
+    entirely from the data manager's *existing* observability so it adds no new
+    probe and no new state:
+
+    - ``last_bar_source`` — the most-recent data tier that served bars
+      (``ibkr`` | ``sqlite_cache`` | ``polygon`` | ``csv_cache`` | ``none``).
+      This is GLOBAL on the manager, not per-symbol, so it is *approximate*
+      when several symbols are served concurrently; named honestly so a reader
+      never over-trusts it.
+    - ``serve_age_s`` — seconds since bars were last served *for this symbol*
+      (per-symbol via ``symbol_freshness()``, accurate). ``None`` if this symbol
+      has not been served yet this run.
+
+    Fully defensive: returns ``None`` when the data manager is unavailable and
+    never raises into the decision path (a provenance failure must never block
+    or corrupt a decision). Deliberately reads the manager's existing surface
+    rather than adding a public accessor, to avoid colliding with in-flight
+    market_data.py work.
+    """
+    if dm is None:
+        return None
+    prov: dict = {}
+    try:
+        prov["last_bar_source"] = getattr(dm, "_last_bar_source", None)
+    except Exception:
+        prov["last_bar_source"] = None
+    try:
+        fresh = dm.symbol_freshness()
+        prov["serve_age_s"] = fresh.get(symbol.upper()) if isinstance(fresh, dict) else None
+    except Exception:
+        prov["serve_age_s"] = None
+    return prov
+
+
 def _log_decision(
     symbol: str,
     action: str,
@@ -3164,6 +3453,13 @@ def _log_decision(
     full_pipeline_data: dict | None = None,
 ) -> None:
     """Append a decision to the in-memory ring buffer AND persist to SQLite."""
+    # Data-truth: stamp *what data* this decision was based on (tier + per-symbol
+    # serve-age) so a post-hoc audit can tell a live-IBKR decision from one made
+    # on a stale CSV-cache fallback (the 2026-06-29 frozen-MES-5300 class). The
+    # engine already has read-time freshness gates (entry_price_sanity); this
+    # records the provenance the gate saw, it does NOT change any trade decision.
+    provenance = _build_data_provenance(data_manager, symbol)
+
     entry: dict = {
         "id": len(_decision_log) + 1,
         "timestamp": datetime.now().isoformat(),
@@ -3172,20 +3468,26 @@ def _log_decision(
         "confidence": confidence,
         "source": source,
         "summary": summary,
+        "data_provenance": provenance,
     }
     _decision_log.append(entry)
     if len(_decision_log) > 100:
         _decision_log.pop(0)
 
-    # Persist to SQLite (non-blocking best-effort — never crash the caller)
+    # Persist to SQLite (non-blocking best-effort — never crash the caller).
+    # Provenance rides inside signal_data_json (no schema migration): merge into
+    # a *copy* so we never mutate the caller's dict.
     if db_manager:
         try:
+            sig = signal_data if signal_data is not None else {"source": source, "summary": summary}
+            if provenance is not None and isinstance(sig, dict):
+                sig = {**sig, "data_provenance": provenance}
             db_manager.insert_decision(
                 symbol=symbol,
                 action=action,
                 confidence=confidence,
                 regime=regime,
-                signal_data=signal_data or {"source": source, "summary": summary},
+                signal_data=sig,
                 reasoning=reasoning or summary,
                 full_pipeline_data=full_pipeline_data,
             )
@@ -3275,4 +3577,5 @@ def _log_decision(
 # -- /alerts/stats -- served by routers/alerts_router.py (wired 2026-05-22) --
 
 
-# -- /portfolio/import/trades -- served by routers/portfolio_router.py (wired 2026-05-22) --
+# -- /portfolio/import/trades -- served by routers/portfolio_router.py (wired 2026-05-22,
+#    RETIRED 2026-07-26 / D3-02: now always returns 410 -- silently discarded every row) --

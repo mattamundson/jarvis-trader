@@ -32,6 +32,7 @@ import {
 } from "@/lib/honestTrades";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatPrice, formatChangePct } from "@/lib/watchlistFormatters";
 // WatchlistScanWidget and SymbolPerformanceWidget are inlined below with the
 // double-json bug fixed (those components called fetchEngine().then(r=>r.json())
 // but fetchEngine already returns parsed JSON, so r.json() threw TypeError and
@@ -40,6 +41,7 @@ import { PerformanceTrendWidget } from "@/components/PerformanceTrendWidget";
 import { VIXRegimeCard } from "@/components/VIXRegimeCard";
 import { CurrentSignalWidget } from "@/components/CurrentSignalWidget";
 import { MesContractSpecCard } from "@/components/MesContractSpecCard";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 
 // ── Inline: WatchlistScanWidget ────────────────────────────────────────────
 // Fixed: fetchEngine already returns parsed JSON; removed double .json() call
@@ -370,7 +372,7 @@ const INSTRUMENT_SPECS: InstrumentSpec[] = [
     exchange: "CME Globex",
     multiplier: 2,
     tick: 0.25,
-    status: "RESEARCH",
+    status: "DO NOT TRADE",
   },
   {
     symbol: "MES",
@@ -433,23 +435,8 @@ function fetcher<T>(url: string): Promise<T> {
 }
 
 // ── Formatters ─────────────────────────────────────────────────────────────
-
-function formatPrice(price: number | null, symbol: string): string {
-  if (price == null) return "\u2014";
-  if (price >= 1000) {
-    return price.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-  return price.toFixed(2);
-}
-
-function formatChangePct(pct: number | null): string {
-  if (pct == null) return "\u2014";
-  const sign = pct >= 0 ? "+" : "";
-  return `${sign}${(pct * 100).toFixed(2)}%`;
-}
+// formatPrice / formatChangePct now live in lib/watchlistFormatters.ts
+// (GT-18 fix + unit tests -- see tests/watchlistFormatters.node.test.ts).
 
 function formatTimestamp(ts: string | undefined): string {
   if (!ts) return "\u2014";
@@ -1092,10 +1079,14 @@ export default function WatchlistPage() {
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-8 space-y-6">
 
         {/* Current STC Signal Widget */}
-        <CurrentSignalWidget symbol="MES" />
+        <WidgetErrorBoundary name="Current Signal">
+          <CurrentSignalWidget symbol="MES" />
+        </WidgetErrorBoundary>
 
         {/* Watchlist Scan Widget */}
-        <WatchlistScanWidget symbols="MES,MNQ,MCL,MGC" />
+        <WidgetErrorBoundary name="Watchlist Scan">
+          <WatchlistScanWidget symbols="MES,MNQ,MCL,MGC" />
+        </WidgetErrorBoundary>
 
         {/* Page title + controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1336,7 +1327,7 @@ export default function WatchlistPage() {
                           <td className="px-4 py-3 text-right">
                             <span className="font-mono tabular-nums text-sm text-foreground">
                               {row.last_price != null
-                                ? `$${formatPrice(row.last_price, row.symbol)}`
+                                ? `$${formatPrice(row.last_price)}`
                                 : "\u2014"}
                             </span>
                           </td>
@@ -1417,13 +1408,17 @@ export default function WatchlistPage() {
         </div>
 
         {/* Performance Trend Widget */}
-        <PerformanceTrendWidget />
+        <WidgetErrorBoundary name="Performance Trend">
+          <PerformanceTrendWidget />
+        </WidgetErrorBoundary>
 
         {/* VIX Regime Filter Card */}
         <VIXRegimeCard />
 
         {/* Symbol Performance Widget */}
-        <SymbolPerformanceWidget />
+        <WidgetErrorBoundary name="Symbol Performance">
+          <SymbolPerformanceWidget />
+        </WidgetErrorBoundary>
 
         {/* MES Contract Spec Card */}
         <MesContractSpecCard />

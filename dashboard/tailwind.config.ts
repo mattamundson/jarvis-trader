@@ -37,6 +37,12 @@ export default {
         bear: "#ef4444",    // red — price down / bearish
         warn: "#f59e0b",    // amber — warning / neutral
         info: "#3b82f6",    // blue — informational
+        // Dark-panel idiom — collapses two near-identical raw-hex pairs
+        // (#0a0a0a/#1a1a2e and #0d0d1a/#1a1a2e) duplicated across ~26 files
+        // into one shared token set (see phase3-design-inventory.md §2).
+        panel: "#0a0a0a",
+        "panel-alt": "#0d0d1a",
+        "panel-border": "#1a1a2e",
       },
       fontFamily: {
         mono: ["JetBrains Mono", "Fira Code", "monospace"],

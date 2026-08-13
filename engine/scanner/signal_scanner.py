@@ -759,6 +759,12 @@ class SignalScanner:
                                 strategy_params={
                                     "source": "scanner",
                                     "approval_id": approval_id,
+                                    # Persist the Stark TPO signal so DB consumers
+                                    # (gapfill_options_papertrack.py, strategy
+                                    # attribution) can identify which production
+                                    # signal drove the trade — previously this was
+                                    # only transient in the technical report.
+                                    "stark_signal": _stark_signal or None,
                                     "conviction": round(float(conviction), 4),
                                     "direction": final_action.upper(),
                                     "summary": result.get("summary", ""),

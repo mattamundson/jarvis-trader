@@ -176,13 +176,19 @@ def _find_latest_cache(
     date does NOT imply the file is COMPLETE — a holed late-end cache (e.g.
     ``MES_2025-04-09_2026-06-22_5m_cont.csv`` missing Apr–Nov 2025) can out-sort a
     clean earlier one. When more than one candidate exists and ``prefer_complete``
-    is set, this delegates to ``cache_completeness.find_trustworthy_cache`` and
-    returns the latest-end FULLY-TRUSTWORTHY cache; if none is trustworthy it falls
-    back to the latest-end file (the historical behavior) and logs a warning. The
-    completeness detector is calibrated for ~23h continuous (``_cont``) caches; for
-    RTH-only/1h caches it over-flags the legitimate ~17h nightly gap, so none score
-    fully-trustworthy and the fallback keeps the latest-end pick — i.e. 1h/RTH
-    selection is unchanged. Pass ``prefer_complete=False`` to force pure latest-end.
+    is set, this delegates to ``cache_completeness.find_trustworthy_cache`` (with
+    both the full-closure and early-close calendars whitelisted) and returns the
+    latest-end cache with no unexplained missing weekday; if none qualifies it
+    falls back to the latest-end file (the historical behavior) and logs a
+    warning. Pass ``prefer_complete=False`` to force pure latest-end.
+
+    2026-07-06 correction: this docstring previously claimed the plain 1h futures
+    caches (no ``_cont`` suffix) are RTH-only and therefore always fall back to
+    latest-end unchanged. That was wrong — they are near-continuous (~23h Globex
+    sessions) and the real failure mode was a missing early-close whitelist (see
+    ``cache_completeness.US_MARKET_EARLY_CLOSES``), which caused the latest MES
+    1h cache to be misjudged "holed" and passed over for a much smaller cache
+    (the 2026-07-06 vwap-sharpe incident). Both calendars are now applied here.
 
     Filename contract (LOAD-BEARING — see ``export_ibkr_history.py``
     ``CACHE_FILENAME_CONTRACT`` for the canonical regex):
@@ -261,12 +267,16 @@ def _find_latest_cache(
     if prefer_complete and len(candidates) > 1:
         try:
             from backtest.cache_completeness import (
+                US_MARKET_EARLY_CLOSES,
                 US_MARKET_HOLIDAYS,
                 find_trustworthy_cache,
             )
 
             pick = find_trustworthy_cache(
-                data_dir, prefix, suffix, holiday_dates=US_MARKET_HOLIDAYS
+                data_dir,
+                prefix,
+                suffix,
+                holiday_dates=US_MARKET_HOLIDAYS | US_MARKET_EARLY_CLOSES,
             )
             chosen = Path(pick["path"])
             log = logging.getLogger(__name__)

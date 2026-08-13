@@ -186,3 +186,50 @@ four additional constraints (DSR floor, WFO consistency, param robustness, cost 
 
 The latent n_trials gap in DSR should be tracked but doesn't affect any current PASS/FAIL
 decision and can be addressed in the next full WFO rerun.
+
+---
+
+## 6. Addendum (2026-07-29, PRB-02): the latent gap DID materialize — MGC_trend_baseline
+
+§4a's "low urgency" call was correct for the two strategies analyzed in this document
+(MES rank11, MGC rank4, both Sharpe ~5.0). It was **not** re-checked against every later
+verdict file. `MGC_trend_baseline.json` (`backtest/run_mgc_trend_mtf_rank1.py`, generated
+2026-07-27, the file currently authorizing MGC's live-traded champion params
+fast=50/slow=120/atr_trail_mult=2.0) hits exactly the gap this document flagged: it is a
+**single fixed-params backtest** (`n_grid_combos = 1`, no grid search), so its DSR was
+computed as if this were the only strategy ever tried.
+
+The 2026-07-27 `jarvis-honest-data-drain` loop (`~/.claude/loops/jarvis-honest-data-drain/ledger.json`)
+independently established the TRUE trial count for the full MES+MGC+MCL+MNQ+M2K honest-data
+research campaign: **70 scripts attempted, 54 of which produced an actual gate-v2 PASS/FAIL
+verdict** (the other 16 never computed a Sharpe/p-value, so they aren't valid selection-bias
+candidates). That loop found the SAME defect in a different script
+(`research_candidates/run_bottom_detector_sd088.py`) and, recomputing its DSR at n=54/70,
+watched its nominal PASS (dsr=0.869307) collapse to ~0.
+
+`engine/scripts/recompute_mgc_trend_baseline_dsr.py` (added in this PR) applies the identical,
+already-validated methodology to `MGC_trend_baseline.json`: re-run the SAME deterministic
+single-fixed-params WFO backtest against the SAME honest MGC 1h reference
+(`MGC_2024-03-04_2026-07-24_1h.csv`, the verified continuous series from the honest-data-drain
+loop), and read `trade_level_dsr()` off the SAME 31-trade OOS series at n_trials=1 (sanity
+check), 54, and 70.
+
+| n_trials | dsr | CORE (>=0.10) | ALT (>=0.30) |
+|---|---|---|---|
+| 1 (as recorded in MGC_trend_baseline.json) | 0.999375 | PASS | PASS |
+| 54 (honest-data-drain verdict-producing count) | 0.000000 | FAIL | FAIL |
+| 70 (honest-data-drain full attempted universe) | 0.000000 | FAIL | FAIL |
+
+The n_trials=1 recomputation reproduced the recorded 0.999375 exactly (same trade count, same
+data file) — confirming this is the same trade series, not a different backtest. At the
+correct campaign trial count, MGC's champion-params DSR collapses the same way sd-088's did:
+**the recorded PASS is a multiple-testing artifact, not a real edge.**
+
+Full output: `engine/data/gate_v2_dsr_corrections/MGC_trend_baseline_dsr_correction.json`.
+
+**Not done by this addendum or its script:** `engine/data/gate_v2_verdicts/MGC_trend_baseline.json`
+itself is intentionally gitignored (`.gitignore`, "Engine-mutated runtime state" comment,
+2026-06-06 incident: a `git checkout` reverted a live verdict file to a stale committed copy and
+silently mis-authorized trading) — this PR does not and cannot flip that file's `verdict` field
+via git. See PRB-02 in `~/.claude/loops/jarvis-prod-readiness/backlog.json` for the live-audit
+finding and the PR description for what Amo needs to decide.

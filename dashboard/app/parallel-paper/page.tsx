@@ -13,33 +13,11 @@ import {
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import { fmt, fmtPct, fmtCalmar, statColor } from "@/lib/parallelPaperFormat";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type WindowDays = 30 | 90 | 180;
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmt(val: number | null | undefined, decimals = 2, suffix = ""): string {
-  if (val == null) return "—";
-  return `${val.toFixed(decimals)}${suffix}`;
-}
-
-function fmtPct(val: number | null | undefined): string {
-  if (val == null) return "—";
-  if (!isFinite(val) || isNaN(val)) return "—";
-  // A valid 0–1 fraction can't exceed ±2; values outside that range are either
-  // already in percent form (±200%) or corrupted engine data. Clamp display to ±500%.
-  if (Math.abs(val) > 500) return "—(data err)";
-  if (Math.abs(val) > 2) return `${val.toFixed(1)}%`;
-  return `${(val * 100).toFixed(1)}%`;
-}
-
-function statColor(val: number | null | undefined, higherBetter = true): string {
-  if (val == null) return "text-muted-foreground";
-  const positive = higherBetter ? val > 0 : val < 0;
-  return positive ? "text-green-400" : "text-red-400";
-}
 
 // ── Inline SVG sparkline ──────────────────────────────────────────────────────
 
@@ -230,7 +208,7 @@ function AccountColumn({
             <div>
               <dt className="text-muted-foreground">Calmar</dt>
               <dd className={`font-semibold ${statColor(data.calmar)}`}>
-                {fmt(data.calmar)}
+                {fmtCalmar(data.calmar)}
               </dd>
             </div>
             <div>

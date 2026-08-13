@@ -14,6 +14,21 @@ _tests_dir = Path(__file__).resolve().parent
 if str(_tests_dir) not in sys.path:
     sys.path.insert(0, str(_tests_dir))
 
+# Tests run with cwd=engine/ (per testing.md: `cd engine && pytest tests/`), so
+# `python -m pytest`'s cwd-on-sys.path behavior already makes engine's own
+# top-level modules importable as shortcuts (`from data import ...`, `from
+# config import TradingConfig`). Production code (e.g. agents/debate.py's
+# `_get_brier_tracker`) additionally tries the absolute `engine.analytics.X`
+# form first, falling back to the shortcut on ImportError — several tests
+# patch that absolute-path module directly (test_full_brier_loop.py,
+# test_calibration_endpoint.py, test_brier_debate_wiring.py) and need it to
+# actually resolve. Append (not insert/prepend) so this never shadows the
+# engine-relative shortcuts already on sys.path for ambiguous top-level names
+# like `data` (this worktree also has an unrelated top-level `data/` dir).
+_repo_root = _tests_dir.parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.append(str(_repo_root))
+
 # Sanitize SSL_CERT_FILE / SSL_CERT_DIR before any TLS-using import. Anaconda's
 # activation hooks set these to paths that may not exist (e.g. forward-slash mix
 # `C:\Users\mattm\anaconda3/ssl/cacert.pem` vs the real `Library\ssl\cacert.pem`).
@@ -98,6 +113,26 @@ def _isolate_bars_db(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bars_repository, "_DEFAULT_DB_PATH", tmp_path / "test_bars.db"
     )
+
+
+@pytest.fixture(autouse=True)
+def _reset_health_snapshot():
+    """Clear the /health single-flight snapshot cache before every test.
+
+    /health serves a cached payload for up to HEALTH_SNAPSHOT_TTL_SEC (1s) to
+    collapse the dashboard polling storm. In production that staleness is fine,
+    but tests mock health sub-functions and expect the very next /health call to
+    reflect them — within the 1s TTL, a prior test's payload would leak and mask
+    the mock. Resetting the snapshot per-test makes each /health call recompute.
+    """
+    try:
+        from routers import health_router
+
+        health_router._health_snapshot.update(computed_at=0.0, payload=None)
+    except Exception:
+        # Router not importable in this test's context — nothing to reset.
+        pass
+    yield
 
 
 @pytest.fixture

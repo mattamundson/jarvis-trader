@@ -128,7 +128,15 @@ class HealthResponse(BaseModel):
     )
     ibkr_execution_connected: Optional[bool] = Field(
         None,
-        description="Whether the IBKR execution (paper/live trading) connector is connected — this is the path /brokers/positions queries",
+        description="Whether the IBKR execution (paper/live trading) connector is connected — this is the path /brokers/positions queries. NOTE: this is the connector's CACHED belief; it can read True after the Gateway logs out. Trust execution_connected_verified for enforcement decisions.",
+    )
+    execution_connected_verified: Optional[bool] = Field(
+        None,
+        description="Reconciled execution truth = ibkr_execution_connected AND ibgateway_alive. The field stop-enforcement/dashboard should trust — cannot report execution-ready while the Gateway port is dead.",
+    )
+    ib_execution_stale: Optional[bool] = Field(
+        None,
+        description="True when the execution connector's cached belief is 'connected' but the Gateway port is dead (logged out) — the silent stop-enforcement hazard (2026-06-01 class) made observable.",
     )
     ibkr_data_connected: Optional[bool] = Field(
         None,
@@ -188,6 +196,10 @@ class HealthResponse(BaseModel):
     brier_30d_rolling: Optional[float] = Field(
         None,
         description="30-day rolling mean Brier score across agents with ≥ min_trades closed signals. 0 = perfect calibration, 1 = always confidently wrong. None when no agent has enough data.",
+    )
+    batch_jobs_health: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Anthropic Message Batches summary: {jobs_by_status, unconsumed_results}. Non-blocking — batches are async by design, so this never flips top-level status to degraded, only surfaces counts for observability. Populated by engine/llm/batch_client.py's JarvisBatchClient.get_batch_health_summary(). Field must exist here or _health_inner's dict key gets silently stripped by FastAPI's response_model, same class of bug as llm_providers/futures_sentiment above.",
     )
 
 
@@ -274,6 +286,9 @@ class SafetyStatusResponse(BaseModel):
     )
     equity_peak: Optional[float] = Field(None, description="Peak equity from safety snapshot")
     daily_realized_pnl: Optional[float] = Field(None, description="Daily realized P&L component")
+    orders_per_minute_limit: Optional[int] = Field(
+        None, description="Configured max orders per minute (rate throttle)"
+    )
 
 
 class CircuitBreakerStatus(BaseModel):
@@ -510,7 +525,8 @@ class DecisionHistoryResponse(BaseModel):
     """Agent decisions."""
 
     decisions: List[Dict[str, Any]] = Field(default_factory=list, description="Decision records")
-    count: int = Field(0, description="Number of decisions")
+    count: int = Field(0, description="Number of decisions in this page (bounded by limit)")
+    total: int = Field(0, description="True total decision row count, ignoring limit")
 
 
 class StatsSummaryResponse(BaseModel):

@@ -752,7 +752,7 @@ class DebateOrchestrator:
             # ── Phase 3.2: Structured Confluence Scoring ──────────────────────
             logger.info(f"[Debate] {symbol} — Evaluating 6-dimension confluence")
             conf_dir, conf_scores = await self._score_confluence(
-                bull_case, bear_case, weighted_reports
+                bull, bull_case, bear_case, weighted_reports
             )
             result.confluence_scores = conf_scores
 
@@ -974,6 +974,7 @@ class DebateOrchestrator:
 
     async def _score_confluence(
         self,
+        agent: object,
         bull_case: str,
         bear_case: str,
         analyst_reports: dict,
@@ -983,13 +984,15 @@ class DebateOrchestrator:
         Returns (direction, scores_dict).
         direction: "BULL", "BEAR", or "INCONCLUSIVE"
         scores_dict: {"trend": 0.8, "mean_rev": 0.2, ...} (0-1 scale)
+
+        Routes through *agent*'s own LLM client (via _call_agent_llm, the same
+        helper _score_argument/_rebuttal use) instead of a hardcoded direct
+        Anthropic client. The direct-client version silently fell back to
+        all-zero scores on every Anthropic credit exhaustion, forcing every
+        debate to INCONCLUSIVE regardless of the real bull/bear scoring --
+        even though the rest of the pipeline had already been migrated onto
+        the multi-provider model_router and stayed healthy throughout.
         """
-        from llm.client import JarvisLLMClient
-        from llm.model_router import route_task
-
-        model = route_task("debate_orchestrator")
-        client = JarvisLLMClient(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-
         prompt = (
             "You are a quantitative trading evaluator. Review the bull and bear arguments, "
             "as well as the analyst reports, and score the market context across 6 dimensions. "
@@ -1012,14 +1015,7 @@ class DebateOrchestrator:
         )
 
         try:
-            # Bypass specific agent interface and use raw client
-            response = await client.client.messages.create(
-                model=model,
-                max_tokens=500,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-            )
-            raw = response.content[0].text
+            raw = await _call_agent_llm(agent, prompt)
             data = _parse_json_response(raw)
 
             direction = str(data.get("direction", "INCONCLUSIVE")).upper()

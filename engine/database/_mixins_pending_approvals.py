@@ -10,6 +10,21 @@ from typing import Any, Dict, List, Optional
 
 from ._helpers import _utcnow
 
+try:  # dual-path import (engine.* as package vs bare under engine/ cwd)
+    from engine.approval.audit_chain import (
+        GENESIS_HASH,
+        append_record,
+        merkle_root,
+        verify_chain,
+    )
+except ImportError:  # pragma: no cover
+    from approval.audit_chain import (
+        GENESIS_HASH,
+        append_record,
+        merkle_root,
+        verify_chain,
+    )
+
 logger = logging.getLogger("jarvis_trader.database")
 
 
@@ -33,22 +48,27 @@ class PendingApprovalsMixin:
         sql = """
             INSERT INTO pending_trade_approvals
                 (approval_id, symbol, action, quantity, entry_price, status,
-                 pipeline_snapshot_json, created_at, timeframe)
-            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                 pipeline_snapshot_json, created_at, timeframe, prev_hash, audit_hash)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
         """
-        params = (
-            approval_id,
-            symbol.upper(),
-            action.lower(),
-            float(quantity),
-            float(entry_price) if entry_price is not None else None,
-            payload,
-            created_at,
-            timeframe,
-        )
         with self._lock:
             conn = self._connect()
             try:
+                # Tamper-evident audit-chain hashes (passive; non-fatal — a hashing
+                # failure must never block the approval insert).
+                prev_hash, audit_hash = self._compute_audit_link(conn, payload)
+                params = (
+                    approval_id,
+                    symbol.upper(),
+                    action.lower(),
+                    float(quantity),
+                    float(entry_price) if entry_price is not None else None,
+                    payload,
+                    created_at,
+                    timeframe,
+                    prev_hash,
+                    audit_hash,
+                )
                 conn.execute(sql, params)
                 conn.commit()
                 logger.debug(
@@ -59,6 +79,31 @@ class PendingApprovalsMixin:
             finally:
                 conn.close()
         return approval_id
+
+    def _compute_audit_link(
+        self, conn: sqlite3.Connection, payload: str
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Compute (prev_hash, audit_hash) for a new decision row.
+
+        The hash is taken over ``json.loads(payload)`` — exactly the dict that
+        will be re-read on verification — so insert-time and verify-time digests
+        are identical regardless of any ``default=str`` coercion. ``prev_hash`` is
+        the ``audit_hash`` of the most recent hashed row (GENESIS for the first),
+        so any NULL gaps left by a prior hashing failure are skipped and the chain
+        stays contiguous. Returns ``(None, None)`` on any error — never raises.
+        """
+        try:
+            row = conn.execute(
+                "SELECT audit_hash FROM pending_trade_approvals "
+                "WHERE audit_hash IS NOT NULL ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            prev_hash = row["audit_hash"] if row else GENESIS_HASH
+            record = append_record(json.loads(payload), prev_hash)
+            return prev_hash, record.audit_hash
+        except Exception as exc:  # pragma: no cover — defensive, non-fatal
+            logger.warning("[DB] audit-chain hash computation failed (non-fatal): %s", exc)
+            return None, None
 
     def list_pending_approvals(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Return rows with status=pending, newest first."""
@@ -173,6 +218,85 @@ class PendingApprovalsMixin:
                 return cur.rowcount > 0
             finally:
                 conn.close()
+
+    # ── Audit chain (tamper-evidence) ────────────────────────────────────────
+
+    def get_decision_audit_chain(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Return the hashed decision rows in chain order (oldest first).
+
+        Each item has ``approval_id``, ``created_at``, ``prev_hash``,
+        ``audit_hash``, and the parsed ``snapshot``. Only rows written since
+        migration 041 carry hashes; earlier rows (audit_hash IS NULL) are excluded.
+        """
+        sql = (
+            "SELECT approval_id, created_at, prev_hash, audit_hash, pipeline_snapshot_json "
+            "FROM pending_trade_approvals WHERE audit_hash IS NOT NULL "
+            "ORDER BY id ASC"
+        )
+        if limit is not None:
+            sql += f" LIMIT {int(limit)}"
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(sql).fetchall()
+            finally:
+                conn.close()
+        chain: List[Dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            raw = d.pop("pipeline_snapshot_json", None)
+            try:
+                d["snapshot"] = json.loads(raw) if isinstance(raw, str) else {}
+            except json.JSONDecodeError:
+                d["snapshot"] = {}
+            chain.append(d)
+        return chain
+
+    def verify_decision_audit_chain(self) -> Dict[str, Any]:
+        """
+        Verify the decision-log hash chain end to end.
+
+        Rebuilds each row's hash from its stored snapshot and checks the
+        prev_hash links, detecting any mutated, reordered, deleted, or forged
+        row. Returns a plain dict (JSON-friendly for the API / verifier script).
+        """
+        chain = self.get_decision_audit_chain()
+        result = verify_chain(chain)
+        broken = None
+        if result.broken_index is not None and result.broken_index < len(chain):
+            broken = chain[result.broken_index].get("approval_id")
+        return {
+            "ok": result.ok,
+            "n_records": result.n_records,
+            "broken_index": result.broken_index,
+            "broken_approval_id": broken,
+            "reason": result.reason,
+        }
+
+    def decision_merkle_root(self, day: Optional[str] = None) -> str:
+        """
+        Merkle root over the day's decision hashes — a single daily integrity anchor.
+
+        ``day`` is a ``YYYY-MM-DD`` UTC date string; when None, roots the entire
+        hashed chain. Returns ``GENESIS_HASH`` when no hashed rows match.
+        """
+        sql = (
+            "SELECT audit_hash FROM pending_trade_approvals "
+            "WHERE audit_hash IS NOT NULL"
+        )
+        params: tuple = ()
+        if day is not None:
+            sql += " AND substr(created_at, 1, 10) = ?"
+            params = (day,)
+        sql += " ORDER BY id ASC"
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(sql, params).fetchall()
+            finally:
+                conn.close()
+        return merkle_root([r["audit_hash"] for r in rows])
 
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         d = dict(row)
