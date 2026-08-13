@@ -366,7 +366,17 @@ class RiskManagerAgent:
             else:
                 _pass("correlation_scaling", "No correlation scaling required")
         except Exception as _corr_err:
-            logger.debug(f"[RiskManager] Correlation scaling failed: {_corr_err}")
+            # Unlike correlation_exposure below (a hard pass/fail veto gate),
+            # this step only ever scales quantity DOWN -- skipping it means
+            # the trade proceeds at full, already-validated size, not an
+            # unvetted one. Failing the trade closed here would be
+            # disproportionate to what it protects. The actual bug (audit
+            # finding #3, 2026-08-11 fail-open-safety-checks lens) was that
+            # this had no hard_checks_detail entry at all, so a skipped scale
+            # was invisible in the dashboard pipeline detail endpoint --
+            # fixed by recording it via _pass() same as every other check.
+            logger.warning(f"[RiskManager] Correlation scaling failed (no scaling applied): {_corr_err}")
+            _pass("correlation_scaling", f"Check skipped (errored, no scaling applied): {_corr_err}")
 
         # 5. Correlation / directional-exposure check
         if _CORRELATION_MONITOR_AVAILABLE:
