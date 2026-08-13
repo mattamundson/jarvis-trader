@@ -115,6 +115,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # engine/requirements-core.txt pulls torch + gymnasium + stable-baselines3 (RL
+      # test deps). Combined with the ~3.5GB pip cache restore below, that has run
+      # ubuntu-latest's advertised free space down to 0 mid-install multiple times
+      # (2026-08-12: 6 flaked installs across this job and its siblings in one day,
+      # every one clearing on a bare rerun with no code change -- runner disk
+      # pressure, not a real failure). The Android SDK and .NET runtime this repo
+      # never touches account for ~10GB+ of the image; freeing them before install
+      # is the standard fix for this GitHub-hosted-runner symptom.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h /
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -156,6 +169,12 @@ jobs:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.fast
     steps:
       - uses: actions/checkout@v4
+
+      # See the matching step in engine-typecheck above for why this is here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h /
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -221,6 +240,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See the matching step in engine-typecheck above for why this is here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h /
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -258,6 +283,12 @@ jobs:
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
+
+      # See the matching step in engine-typecheck above for why this is here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+          df -h /
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
