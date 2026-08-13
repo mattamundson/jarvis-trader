@@ -140,14 +140,35 @@ class ActiveBracketRegistry:
         if ib_gateway is None:
             return {"cancelled": [], "errors": [], "skipped_filled": 0}
 
-        cancel_fn = getattr(ib_gateway, "cancel_order", None)
-        if not callable(cancel_fn):
-            logger.warning("ActiveBracketRegistry.cancel_all_entries: gateway has no cancel_order")
-            return {"cancelled": [], "errors": [], "skipped_filled": 0}
-
         with self._lock:
             pending = [(r.entry_id, r.symbol) for r in self._records.values() if not r.entry_filled]
             skipped = sum(1 for r in self._records.values() if r.entry_filled)
+
+        cancel_fn = getattr(ib_gateway, "cancel_order", None)
+        if not callable(cancel_fn):
+            # Report as errors, not a silent empty result: this is called from
+            # the kill-switch path specifically to stop pending entries from
+            # filling after a halt. A gateway missing cancel_order leaves
+            # every one of `pending` still live and unprotected -- the same
+            # defect class as the already-fixed get_cached_position gap
+            # (2026-08-03 MES overage incident). Populating `errors` here
+            # makes the existing caller-side `if result.get("errors"):
+            # logger.error(...)` in safety_layer.activate_kill_switch() fire,
+            # instead of this looking identical to "nothing was pending."
+            if pending:
+                logger.error(
+                    "ActiveBracketRegistry.cancel_all_entries: gateway has no "
+                    "cancel_order -- %d pending entries could NOT be cancelled "
+                    "(kill switch entry-cancel defanged)",
+                    len(pending),
+                )
+            else:
+                logger.warning("ActiveBracketRegistry.cancel_all_entries: gateway has no cancel_order")
+            errors = [
+                {"entry_id": eid, "symbol": sym, "error": "gateway has no cancel_order method"}
+                for eid, sym in pending
+            ]
+            return {"cancelled": [], "errors": errors, "skipped_filled": skipped}
 
         cancelled: list[str] = []
         errors: list[dict] = []
@@ -189,11 +210,6 @@ class ActiveBracketRegistry:
         if ib_gateway is None:
             return {"cancelled": [], "errors": []}
 
-        cancel_fn = getattr(ib_gateway, "cancel_order", None)
-        if not callable(cancel_fn):
-            logger.warning("ActiveBracketRegistry.cancel_all: gateway has no cancel_order")
-            return {"cancelled": [], "errors": []}
-
         with self._lock:
             all_legs: list[tuple[str, str, str]] = []
             for r in self._records.values():
@@ -202,6 +218,30 @@ class ActiveBracketRegistry:
                     all_legs.append((r.stp_id, r.symbol, "stp"))
                 if r.tp_id:
                     all_legs.append((r.tp_id, r.symbol, "tp"))
+
+        cancel_fn = getattr(ib_gateway, "cancel_order", None)
+        if not callable(cancel_fn):
+            # See cancel_all_entries() above for why this reports as errors
+            # rather than a silent empty result -- this is the emergency
+            # flatten path, an even higher-stakes caller than kill switch.
+            if all_legs:
+                logger.error(
+                    "ActiveBracketRegistry.cancel_all: gateway has no cancel_order "
+                    "-- %d legs could NOT be cancelled",
+                    len(all_legs),
+                )
+            else:
+                logger.warning("ActiveBracketRegistry.cancel_all: gateway has no cancel_order")
+            errors = [
+                {
+                    "order_id": order_id,
+                    "symbol": symbol,
+                    "leg": leg,
+                    "error": "gateway has no cancel_order method",
+                }
+                for order_id, symbol, leg in all_legs
+            ]
+            return {"cancelled": [], "errors": errors}
 
         cancelled: list[dict] = []
         errors: list[dict] = []
