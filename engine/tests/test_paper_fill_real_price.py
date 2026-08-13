@@ -62,7 +62,9 @@ async def test_paper_fill_uses_real_market_price_when_attached(tmp_path) -> None
     cfg = _offline_simulated_cfg()
     tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )
     conn.attach_market_data(_FakeMarketData(2300.0))
     assert await conn.connect() is True
 
@@ -81,7 +83,9 @@ async def test_paper_order_rejected_when_no_price_basis(tmp_path) -> None:
     cfg = _offline_simulated_cfg()
     tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)  # no market data
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )  # no market data
     assert await conn.connect() is True
 
     oid = await conn.place_paper_order("MGC", "BUY", 1, "MKT", None)
@@ -127,7 +131,9 @@ async def test_known_symbol_refuses_to_fill_without_manager(tmp_path) -> None:
     cfg = _offline_simulated_cfg()
     tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )
     assert await conn.connect() is True
 
     oid = await conn.place_paper_order("MES", "BUY", 1, "MKT", None)
@@ -141,7 +147,9 @@ async def test_limit_order_fills_at_limit_when_no_price(tmp_path) -> None:
     cfg = _offline_simulated_cfg()
     tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )
     assert await conn.connect() is True
 
     oid = await conn.place_paper_order("MGC", "BUY", 1, "LMT", limit_price=2310.0)

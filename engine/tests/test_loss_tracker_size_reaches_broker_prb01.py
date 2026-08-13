@@ -119,9 +119,9 @@ class _FakeMarketData:
 class TestSubmitPaperOrderAppliesReduction:
     """Entry AND its linked STP child must both carry the reduced quantity."""
 
-    async def _connected_pair(self, settings, tracker):
+    async def _connected_pair(self, settings, tracker, tmp_path):
         safety = SafetyLayer(settings, loss_tracker=tracker)
-        conn = IBGatewayConnector(settings, safety)
+        conn = IBGatewayConnector(settings, safety, trades_file=tmp_path / "paper_trades.json")
         assert await conn.connect() is True
         conn.attach_market_data(_FakeMarketData(7130.0))
         safety.attach_ib_gateway(conn)
@@ -130,7 +130,7 @@ class TestSubmitPaperOrderAppliesReduction:
     @pytest.mark.asyncio
     async def test_half_size_after_three_losses(self, prb01_settings, tmp_path):
         tracker = _tracker_with_losses(str(tmp_path), 3)
-        safety, conn = await self._connected_pair(prb01_settings, tracker)
+        safety, conn = await self._connected_pair(prb01_settings, tracker, tmp_path)
 
         result = await safety.submit_paper_order(
             symbol="MES", action="BUY", quantity=4, price=7130.0, order_type="MKT"
@@ -149,7 +149,7 @@ class TestSubmitPaperOrderAppliesReduction:
     @pytest.mark.asyncio
     async def test_quarter_size_after_five_losses(self, prb01_settings, tmp_path):
         tracker = _tracker_with_losses(str(tmp_path), 5)
-        safety, conn = await self._connected_pair(prb01_settings, tracker)
+        safety, conn = await self._connected_pair(prb01_settings, tracker, tmp_path)
 
         result = await safety.submit_paper_order(
             symbol="MES", action="BUY", quantity=4, price=7130.0, order_type="MKT"
@@ -167,7 +167,7 @@ class TestSubmitPaperOrderAppliesReduction:
     async def test_no_reduction_with_no_losses(self, prb01_settings, tmp_path):
         """Control: with zero losses the full requested size must still go out."""
         tracker = _tracker_with_losses(str(tmp_path), 0)
-        safety, conn = await self._connected_pair(prb01_settings, tracker)
+        safety, conn = await self._connected_pair(prb01_settings, tracker, tmp_path)
 
         result = await safety.submit_paper_order(
             symbol="MES", action="BUY", quantity=4, price=7130.0, order_type="MKT"
@@ -183,7 +183,7 @@ class TestSubmitPaperOrderAppliesReduction:
         the reduced size -- a full-size stop protecting a half-size entry would
         (on trigger) sell more than is actually held."""
         tracker = _tracker_with_losses(str(tmp_path), 3)
-        safety, conn = await self._connected_pair(prb01_settings, tracker)
+        safety, conn = await self._connected_pair(prb01_settings, tracker, tmp_path)
 
         result = await safety.submit_paper_order(
             symbol="MES",
@@ -215,7 +215,7 @@ class TestSubmitEntryWithStopAppliesReduction:
     async def test_stop_and_target_match_reduced_entry(self, prb01_settings, tmp_path):
         tracker = _tracker_with_losses(str(tmp_path), 3)
         safety = SafetyLayer(prb01_settings, loss_tracker=tracker)
-        conn = IBGatewayConnector(prb01_settings, safety)
+        conn = IBGatewayConnector(prb01_settings, safety, trades_file=tmp_path / "paper_trades.json")
         assert await conn.connect() is True
         conn.attach_market_data(_FakeMarketData(7130.0))
         safety.attach_ib_gateway(conn)
@@ -445,7 +445,7 @@ class TestIBGatewayConnectorSubmitOrderAppliesReduction:
     async def test_half_size_after_three_losses(self, prb01_settings, tmp_path):
         tracker = _tracker_with_losses(str(tmp_path), 3)
         safety = SafetyLayer(prb01_settings, loss_tracker=tracker)
-        conn = IBGatewayConnector(prb01_settings, safety)
+        conn = IBGatewayConnector(prb01_settings, safety, trades_file=tmp_path / "paper_trades.json")
         assert await conn.connect() is True
         conn.attach_market_data(_FakeMarketData(7130.0))
 

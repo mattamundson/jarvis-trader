@@ -46,7 +46,9 @@ async def test_place_paper_order_after_safety_no_double_reject(tmp_path) -> None
     store = tmp_path / "book.jsonl"
     tracker = PortfolioTracker(store_path=store)
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )
 
     assert await conn.connect() is True
     assert conn.is_connected() is True
@@ -73,7 +75,9 @@ async def test_get_positions_list_shape_for_order_manager(tmp_path) -> None:
     store = tmp_path / "book.jsonl"
     tracker = PortfolioTracker(store_path=store)
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )
 
     await conn.connect()
     # Place an order to create a position
@@ -94,7 +98,9 @@ async def test_ib_order_manager_uses_gateway(tmp_path) -> None:
     store = tmp_path / "book.jsonl"
     tracker = PortfolioTracker(store_path=store)
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )
 
     await conn.connect()
     safety.attach_ib_gateway(conn)

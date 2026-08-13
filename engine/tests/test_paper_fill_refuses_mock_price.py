@@ -91,6 +91,7 @@ async def test_listed_symbol_order_refused_without_real_price(tmp_path) -> None:
     conn = IBGatewayConnector(
         cfg, SafetyLayer(cfg, pnl_monitor=None),
         portfolio_tracker=PortfolioTracker(store_path=tmp_path / "book.jsonl"),
+        trades_file=tmp_path / "paper_trades.json",
     )
     assert await conn.connect() is True
 
@@ -112,6 +113,7 @@ async def test_attached_but_blind_feed_also_refuses(tmp_path) -> None:
     conn = IBGatewayConnector(
         cfg, SafetyLayer(cfg, pnl_monitor=None),
         portfolio_tracker=PortfolioTracker(store_path=tmp_path / "book.jsonl"),
+        trades_file=tmp_path / "paper_trades.json",
     )
     conn.attach_market_data(_DeadMarketData())
     assert await conn.connect() is True
@@ -154,6 +156,7 @@ async def test_limit_price_remains_a_valid_basis(tmp_path) -> None:
     conn = IBGatewayConnector(
         cfg, SafetyLayer(cfg, pnl_monitor=None),
         portfolio_tracker=PortfolioTracker(store_path=tmp_path / "book.jsonl"),
+        trades_file=tmp_path / "paper_trades.json",
     )
     assert await conn.connect() is True
 

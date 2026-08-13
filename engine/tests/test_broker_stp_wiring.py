@@ -118,7 +118,9 @@ async def test_entry_fill_triggers_stp_child_order(tmp_path) -> None:
     cfg = _paper_offline_cfg()
     tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )
 
     assert await conn.connect() is True
     safety.attach_ib_gateway(conn)
@@ -173,7 +175,9 @@ async def test_stp_child_order_linked_to_parent_entry(tmp_path) -> None:
     cfg = _paper_offline_cfg()
     tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
     safety = SafetyLayer(cfg, pnl_monitor=None)
-    conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
+    conn = IBGatewayConnector(
+        cfg, safety, portfolio_tracker=tracker, trades_file=tmp_path / "paper_trades.json"
+    )
 
     await conn.connect()
     safety.attach_ib_gateway(conn)

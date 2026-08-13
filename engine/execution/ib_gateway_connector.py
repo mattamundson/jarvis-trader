@@ -88,7 +88,7 @@ class IBGatewayConnector:
     When ready for live trading, replace order logging with actual IB API calls.
     """
 
-    def __init__(self, settings, safety_layer, portfolio_tracker=None):
+    def __init__(self, settings, safety_layer, portfolio_tracker=None, trades_file=None):
         """
         Initialize the IB Gateway connector.
 
@@ -97,10 +97,16 @@ class IBGatewayConnector:
             safety_layer: RiskSafetyLayer for pre-trade validation
             portfolio_tracker: Optional ``PortfolioTracker`` — when set, paper fills
                 can mirror to the engine API book via ``PaperTradeLogger`` (see execution README).
+            trades_file: Optional ``Path`` override for the paper-fill JSON log,
+                forwarded to ``PaperTradeLogger``. Tests MUST pass a ``tmp_path``
+                value here — omitting it silently writes real fills into the
+                production ``engine/data/paper_trades.json`` (2026-08-13 incident:
+                offline connector tests polluted the live-readiness scoreboard).
         """
         self._settings = settings
         self._safety_layer = safety_layer
         self._portfolio_tracker = portfolio_tracker
+        self._trades_file = trades_file
         self._connected = False
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
@@ -145,6 +151,7 @@ class IBGatewayConnector:
             self._paper_trade_logger = PaperTradeLogger(
                 self._settings,
                 portfolio_tracker=self._portfolio_tracker,
+                trades_file=self._trades_file,
             )
             self._connected = True
             self._connection_state = ConnectionState.CONNECTED
@@ -676,6 +683,7 @@ class IBGatewayConnector:
                 self._paper_trade_logger = PaperTradeLogger(
                     self._settings,
                     portfolio_tracker=self._portfolio_tracker,
+                    trades_file=self._trades_file,
                 )
 
             await self._paper_trade_logger.log_trade(
