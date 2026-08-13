@@ -7,5 +7,6 @@ test("mission-control smoke: renders mission control shell under mocked engine",
 
   const body = (await page.textContent("body")) || "";
   expect(body).toContain("MISSION CONTROL");
+  expect(body).toContain("Owns infrastructure, provider health, and data-path operations");
   expect(body).not.toMatch(/something went wrong/i);
 });

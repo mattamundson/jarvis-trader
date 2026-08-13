@@ -598,6 +598,9 @@ export default function CommandCenterPage() {
           >
             JARVIS TRADER — COMMAND CENTER
           </h1>
+          <p className="mt-1 text-xs text-cyan-200/70">
+            Owns immediate paper-trading decisions, readiness, approvals, and current positions.
+          </p>
           <div className="flex items-center gap-3 mt-1">
             <span className="text-xs text-slate-500 font-mono tracking-wider">
               v2.7

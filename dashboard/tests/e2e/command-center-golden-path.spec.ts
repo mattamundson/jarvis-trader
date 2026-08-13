@@ -53,6 +53,7 @@ test("flagship /command-center survives degraded engine data without white-scree
   const body = (await page.textContent("body")) || "";
 
   expect(body, "flagship header did not render").toContain("COMMAND CENTER");
+  expect(body).toContain("Owns immediate paper-trading decisions");
   expect(body, "page white-screened to the route error fallback").not.toMatch(/something went wrong/i);
 });
 
