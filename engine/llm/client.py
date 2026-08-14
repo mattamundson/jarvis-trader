@@ -336,6 +336,7 @@ class JarvisLLMClient:
     # bypass __init__ (mocks, __new__, pickle) get the default rather than an
     # AttributeError.  __init__ overwrites with the env-derived value.
     provider: str = "ollama"
+    SUPPORTED_PRIMARY_PROVIDERS = frozenset({"anthropic", "ollama"})
 
     def __init__(self, api_key: Optional[str] = None, db_path: str = "data/llm_costs.db"):
         """
@@ -346,6 +347,13 @@ class JarvisLLMClient:
             db_path: Path to SQLite cost tracking database
         """
         self.provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
+        if self.provider not in self.SUPPORTED_PRIMARY_PROVIDERS:
+            supported = ", ".join(sorted(self.SUPPORTED_PRIMARY_PROVIDERS))
+            raise ValueError(
+                "Unsupported JARVIS_LLM_PROVIDER="
+                f"{self.provider!r}; supported primary providers: {supported}. "
+                "Configure hosted fallback legs with their dedicated feature flags."
+            )
         self.api_key = "" if self.provider == "ollama" else (api_key or "")
         # Hard wall-clock ceiling for any single provider call (see module note).
         # Bounds transport stalls that slip past the per-read httpx/SDK timeout.
@@ -1050,12 +1058,16 @@ class JarvisLLMClient:
             except Exception as notify_err:
                 logger.debug(f"credits-exhausted notifier failed: {notify_err}")
         else:
-            _LLM_PATH_STATE["last_failure_reason"] = f"anthropic-api-failure (non-credit): {reason[:460]}"
+            provider_label = getattr(self, "provider", "unknown")
+            _LLM_PATH_STATE["last_failure_reason"] = (
+                f"{provider_label}-api-failure (non-credit): {reason[:460]}"
+            )
             logger.error(
-                "[%s] Anthropic API failure (non-credit) and ALL cross-provider "
+                "[%s] %s API failure (non-credit) and ALL cross-provider "
                 "fallbacks (Vertex/Gemini/OpenAI/Kimi) also failed or are "
                 "unconfigured -- pipeline unhealthy: %s",
                 agent_name,
+                provider_label,
                 reason[:300],
             )
 
@@ -2025,6 +2037,8 @@ class JarvisLLMClient:
 
     def _calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate USD cost for a single API call."""
+        if model not in self.COST_PER_MTOK and self.provider == "ollama":
+            return 0.0
         if model not in self.COST_PER_MTOK:
             logger.warning(f"Unknown model {model} — no cost calculation")
             return 0.0
