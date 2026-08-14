@@ -50,6 +50,10 @@ $cdpPort       = 9222
 $tvResolved    = Resolve-Path "C:\Program Files\WindowsApps\TradingView.Desktop_*_x64__*\TradingView.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
 $tvBinary      = if ($tvResolved) { $tvResolved.Path } else { "C:\Program Files\WindowsApps\TradingView.Desktop_3.0.0.7652_x64__n534cwy3pjxzj\TradingView.exe" }
 $logPath       = Join-Path $env:USERPROFILE "jarvis-tv-cdp.log"
+# Chromium 136+ ignores --remote-debugging-port for the default profile.
+# Use a dedicated JARVIS profile so CDP remains available without weakening
+# the protection on TradingView's normal credential-bearing profile.
+$cdpProfileDir = Join-Path $env:LOCALAPPDATA "JARVIS\TradingView-CDP-Profile"
 $maxLogBytes   = 1MB
 $launchTimeoutSec = 30  # 2026-04-24: bumped from 15s — TV cold-start observed at 22s (23:33) and 26s (failed at 23:23). 15s triggered false-failure on the 2026-04-23 22:23 scheduled-task fire (LastResult=1).
 
@@ -73,11 +77,45 @@ Write-Log "launch-tv-with-cdp.ps1 starting"
 # ── Step 1: Is CDP already alive? ──────────────────────────────────────────────
 function Test-CdpAlive {
     try {
-        $resp = Invoke-WebRequest -Uri "http://localhost:$cdpPort/json/version" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$cdpPort/json/version" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
         return $resp.StatusCode -eq 200
     } catch {
         return $false
     }
+}
+
+function Start-TradingViewMsix {
+    param([string]$Arguments)
+    if (-not ('JarvisApplicationActivation.TVLauncher' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace JarvisApplicationActivation {
+    public class TVLauncher {
+        [ComImport]
+        [Guid("2e941141-7f97-4756-ba1d-9decde894a3d")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        public interface IApplicationActivationManager {
+            int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+                [MarshalAs(UnmanagedType.LPWStr)] string arguments, int options, out uint processId);
+        }
+        [ComImport]
+        [Guid("45ba127d-10a8-46ea-8ab7-56ea9078943c")]
+        public class ApplicationActivationManager { }
+        public static uint Launch(string appUserModelId, string arguments) {
+            var manager = (IApplicationActivationManager)new ApplicationActivationManager();
+            uint processId;
+            int result = manager.ActivateApplication(appUserModelId, arguments, 0, out processId);
+            if (result != 0) { Marshal.ThrowExceptionForHR(result); }
+            return processId;
+        }
+    }
+}
+"@ -ErrorAction Stop
+    }
+    $package = Get-AppxPackage -Name 'TradingView.Desktop' -ErrorAction Stop
+    $aumid = "$($package.PackageFamilyName)!TradingView.Desktop"
+    return [JarvisApplicationActivation.TVLauncher]::Launch($aumid, $Arguments)
 }
 
 if (Test-CdpAlive) {
@@ -126,7 +164,19 @@ if (-not (Test-Path $tvBinary)) {
 
 Write-Log "Launching TV Desktop with --remote-debugging-port=$cdpPort"
 try {
-    Start-Process -FilePath $tvBinary -ArgumentList "--remote-debugging-port=$cdpPort --remote-debugging-address=0.0.0.0"
+    New-Item -ItemType Directory -Path $cdpProfileDir -Force | Out-Null
+    $launchArgs = @(
+        "--remote-debugging-port=$cdpPort"
+        "--remote-debugging-address=127.0.0.1"
+        "--user-data-dir=$cdpProfileDir"
+    )
+    if ($tvBinary -like '*\WindowsApps\*') {
+        $activatedPid = Start-TradingViewMsix -Arguments ($launchArgs -join ' ')
+        Write-Log "TradingView MSIX activated through IApplicationActivationManager (pid=$activatedPid)"
+    }
+    else {
+        Start-Process -FilePath $tvBinary -ArgumentList $launchArgs
+    }
 } catch {
     Write-Log "Start-Process failed: $($_.Exception.Message)" "ERROR"
     exit 1
