@@ -45,8 +45,8 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import settings  # noqa: E402
 import routers.observability_router as observability_router  # noqa: E402
+from config import settings  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
