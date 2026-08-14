@@ -35,8 +35,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from approval.service import ApprovalFlowError
 import routers.whatsapp_router as whatsapp_router
+from approval.service import ApprovalFlowError
 from routers.whatsapp_router import inject_dependencies
 from routers.whatsapp_router import router as whatsapp_api_router
 

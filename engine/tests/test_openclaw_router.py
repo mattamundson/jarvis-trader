@@ -17,8 +17,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from approval.service import ApprovalFlowError
 import routers.openclaw_router as openclaw_router
+from approval.service import ApprovalFlowError
 from routers.openclaw_router import inject_dependencies
 from routers.openclaw_router import router as openclaw_api_router
 

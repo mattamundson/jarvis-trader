@@ -14,9 +14,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import routers.watchlist_router as watchlist_router
 from analytics.mtf_analyzer import MTFState, TFSignal
 from config import settings
-import routers.watchlist_router as watchlist_router
 from routers.watchlist_router import inject_dependencies
 from routers.watchlist_router import router as watchlist_api_router
 
