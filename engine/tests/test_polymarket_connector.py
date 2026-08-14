@@ -41,6 +41,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytest.importorskip(
+    "py_clob_client",
+    reason="py-clob-client is in engine/requirements.txt (full dev venv) but not "
+    "requirements-core.txt (CI bootstrap) -- skip cleanly there rather than "
+    "erroring; the module-level ClobClient/MarketOrderArgs version-skew this "
+    "file otherwise exercises assumes the package is at least installed.",
+)
+
 
 def _stub_broken_clob_client_symbols(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub the 2 py_clob_client symbols that don't import in this venv (see module docstring).
