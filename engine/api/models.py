@@ -286,6 +286,9 @@ class SafetyStatusResponse(BaseModel):
     )
     equity_peak: Optional[float] = Field(None, description="Peak equity from safety snapshot")
     daily_realized_pnl: Optional[float] = Field(None, description="Daily realized P&L component")
+    orders_per_minute_limit: Optional[int] = Field(
+        None, description="Configured max orders per minute (rate throttle)"
+    )
 
 
 class CircuitBreakerStatus(BaseModel):

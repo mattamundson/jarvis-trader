@@ -1,0 +1,23 @@
+name: 'Free disk space (Android SDK + .NET)'
+description: >-
+  Removes the unused Android SDK and .NET toolchains from the ubuntu-latest
+  runner image before a disk-heavy install. engine/requirements-core.txt pulls
+  torch + gymnasium + stable-baselines3 (RL test deps); combined with pip's
+  ~3.5GB cache restore, that ran the runner's advertised free space to 0 mid-install
+  repeatedly on 2026-08-12 (6 flaked installs in one afternoon across
+  engine-typecheck/-test-fast/-test-slow/-coverage-merge, every one clearing on
+  a bare rerun with no code change -- runner disk pressure, not a real
+  regression). The Android SDK and .NET runtime this repo never touches account
+  for ~10GB+ of the image; freeing them before install is the standard fix for
+  this GitHub-hosted-runner symptom. Extracted from PR #632 (which duplicated
+  this step across 4 jobs) so any job needing the same headroom gets it via one
+  line instead of a copy-paste.
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Free disk space (unused Android SDK + .NET toolchains)
+      shell: bash
+      run: |
+        sudo rm -rf /usr/local/lib/android /usr/share/dotnet
+        df -h /

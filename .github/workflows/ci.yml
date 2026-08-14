@@ -115,6 +115,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See .github/actions/free-disk-space/action.yml for why this runs here
+      # (engine/requirements-core.txt's torch/gymnasium/stable-baselines3 install
+      # + pip's ~3.5GB cache restore ran this runner out of disk repeatedly).
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -156,6 +162,10 @@ jobs:
       COVERAGE_FILE: ${{ github.workspace }}/.coverage.fast
     steps:
       - uses: actions/checkout@v4
+
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -221,6 +231,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -258,6 +272,10 @@ jobs:
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.engine-test-fast.result == 'success' && needs.engine-test-slow.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
+
+      # See .github/actions/free-disk-space/action.yml for why this runs here.
+      - name: Free disk space (unused Android SDK + .NET toolchains)
+        uses: ./.github/actions/free-disk-space
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
