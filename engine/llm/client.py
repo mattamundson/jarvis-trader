@@ -508,17 +508,27 @@ class JarvisLLMClient:
         # decision tier (trader, risk_manager, fund_manager, debate/researchers),
         # with Anthropic/OpenAI still behind it as fallbacks.
         #
+        # 2026-08-13: extended to accept a kimi-* value too (Amo's explicit,
+        # standing decision to make Kimi the permanent decision-tier primary,
+        # superseding the 2026-07-02 Claude-primary/Gemini-failover-only design
+        # — see feedback_secret_incident.md's sibling memory
+        # project_gemini_pro_decision_routing_2026_07_02 for the prior decision
+        # this replaces). Routed via _resolve_kimi_primary, same shape as the
+        # Gemini resolver below.
+        #
         # Unset (default) => byte-identical to the previous Anthropic-primary
-        # behavior. Only Gemini values take effect today; a non-Gemini value is
-        # inert (logged at startup) rather than silently mis-routing, which is
+        # behavior. Only gemini-*/kimi-* values take effect today; anything else
+        # is inert (logged at startup) rather than silently mis-routing, which is
         # the trap JARVIS_LLM_PROVIDER=openai fell into — that var only ever
         # distinguished ollama from everything-else, so it looked configured
         # while changing nothing.
         self.decision_primary_model = os.getenv("JARVIS_DECISION_PRIMARY", "").strip()
-        if self.decision_primary_model and not self.decision_primary_model.startswith("gemini"):
+        if self.decision_primary_model and not self.decision_primary_model.startswith(
+            ("gemini", "kimi")
+        ):
             logger.warning(
                 "JARVIS_DECISION_PRIMARY='%s' is not a supported decision primary "
-                "(only gemini-* models route as primary today) — ignoring; "
+                "(only gemini-*/kimi-* models route as primary today) — ignoring; "
                 "decision tier stays on %s.",
                 self.decision_primary_model,
                 "ollama" if self.provider == "ollama" else "anthropic",
@@ -593,7 +603,11 @@ class JarvisLLMClient:
         )
         decision_primary_status = (
             self.decision_primary_model
-            if self.decision_primary_model.startswith("gemini") and self.google_fallback_enabled
+            if (
+                self.decision_primary_model.startswith("gemini")
+                and self.google_fallback_enabled
+            )
+            or (self.decision_primary_model.startswith("kimi") and self.kimi_fallback_enabled)
             else "anthropic (default)"
         )
         logger.info(
@@ -605,23 +619,35 @@ class JarvisLLMClient:
 
         # Snapshot the wired legs for /health provider-redundancy reporting.
         # Order matters: primary first, then the credit-exhaustion failover order
-        # (vertex -> gemini -> openai), so get_llm_provider_summary can tell
-        # whether the active leg has another behind it.
-        # A configured Gemini decision primary IS the primary for trade
+        # (vertex -> gemini -> openai -> kimi), so get_llm_provider_summary can
+        # tell whether the active leg has another behind it.
+        # A configured Gemini/Kimi decision primary IS the primary for trade
         # decisions — report it as such so /health's single_leg_warning and the
         # dashboard's provider badge describe the path decisions actually take,
-        # not the historical Anthropic-first one.
+        # not the historical Anthropic-first one. Gemini and Kimi decision
+        # primaries are mutually exclusive (decision_primary_model can only
+        # start with one prefix), so at most one of these two flags is ever true.
         decision_primary_active = (
             self.provider != "ollama"
             and self.google_fallback_enabled
             and self.decision_primary_model.startswith("gemini")
         )
+        kimi_decision_primary_active = (
+            self.provider != "ollama"
+            and self.kimi_fallback_enabled
+            and self.decision_primary_model.startswith("kimi")
+        )
         base_provider = "vertex" if self.use_vertex else self.provider
-        primary_provider = "gemini" if decision_primary_active else base_provider
+        if decision_primary_active:
+            primary_provider = "gemini"
+        elif kimi_decision_primary_active:
+            primary_provider = "kimi"
+        else:
+            primary_provider = base_provider
         configured = [primary_provider]
-        if decision_primary_active and base_provider != primary_provider:
-            # The former primary (anthropic/vertex) stays wired BEHIND the Gemini
-            # primary as a real fallback leg — keep it listed so
+        if (decision_primary_active or kimi_decision_primary_active) and base_provider != primary_provider:
+            # The former primary (anthropic/vertex) stays wired BEHIND the new
+            # decision primary as a real fallback leg — keep it listed so
             # single_leg_warning doesn't fire on a fully-redundant chain.
             configured.append(base_provider)
         if self.vertex_failover_enabled:
@@ -630,10 +656,12 @@ class JarvisLLMClient:
             configured.append("gemini")
         if self.openai_fallback_enabled:
             configured.append("openai")
-        if self.kimi_fallback_enabled:
+        if self.kimi_fallback_enabled and primary_provider != "kimi":
             # Kimi sits at the very back of the cross-provider cascade — the
             # final leg after openai. List it so single_leg_warning and the
-            # dashboard provider badge count it as real redundancy.
+            # dashboard provider badge count it as real redundancy. Skipped
+            # here when Kimi is already listed as the primary above (avoids
+            # double-listing it), mirroring the Gemini guard.
             configured.append("kimi")
         _LLM_PATH_STATE["primary_provider"] = primary_provider
         _LLM_PATH_STATE["providers_configured"] = configured
@@ -1080,6 +1108,24 @@ class JarvisLLMClient:
             return self.decision_primary_model
         return None
 
+    def _resolve_kimi_primary(self, agent_name: str) -> Optional[str]:
+        """Which Kimi model (if any) should serve this agent as PRIMARY.
+
+        Mirrors _resolve_google_primary's decision-tier half exactly, but for
+        JARVIS_DECISION_PRIMARY=kimi-* instead of gemini-*. Enrichment/
+        classification agents (GEMINI_PRIMARY_AGENTS) are NOT rerouted here —
+        they stay pinned to Gemini flash for cost reasons regardless of the
+        decision-tier primary; only the decision tier (trader, risk_manager,
+        fund_manager, debate/researchers) follows JARVIS_DECISION_PRIMARY.
+
+        Returns None when Kimi should not serve as primary for this agent.
+        """
+        if agent_name in self.GEMINI_PRIMARY_AGENTS:
+            return None
+        if self.decision_primary_model.startswith("kimi"):
+            return self.decision_primary_model
+        return None
+
     def _resolve_model_for_tier(
         self, model: str, tier: Literal["fast", "default", "advisor"]
     ) -> str:
@@ -1324,6 +1370,54 @@ class JarvisLLMClient:
                     google_model,
                     agent_name,
                     gex,
+                )
+
+        # Kimi decision-tier primary (2026-08-13, Amo's standing decision — see
+        # _resolve_kimi_primary). Mutually exclusive with the Gemini-primary
+        # block above in practice (JARVIS_DECISION_PRIMARY can only start with
+        # one prefix), so at most one of these two proactive blocks ever fires
+        # for a given config. Falls through to the normal Anthropic retry loop
+        # (and from there the full Vertex/Gemini/OpenAI/Kimi cascade) on any
+        # failure, so a bad Kimi call is never a single point of failure.
+        kimi_primary_model = self._resolve_kimi_primary(agent_name)
+        if (
+            self.provider != "ollama"
+            and self.kimi_fallback_enabled
+            and kimi_primary_model is not None
+        ):
+            kimi_model = kimi_primary_model
+            try:
+                kimi_result = await self._bounded(
+                    self._call_kimi(
+                        system=system,
+                        messages=working_messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        model=kimi_model,
+                    ),
+                    what="kimi primary call",
+                    model=kimi_model,
+                    agent_name=agent_name,
+                )
+                self.kimi_fallback_count += 1
+                return await self._handle_success(
+                    kimi_result,
+                    kimi_model,
+                    start_time,
+                    retries,
+                    agent_name,
+                    tier=tier,
+                    proxy=proxy,
+                    compressed_key=compressed_key,
+                    cache_salt=cache_salt,
+                    served_by="kimi",
+                )
+            except Exception as kex:
+                logger.warning(
+                    "[%s] Kimi primary failed for %s — falling through to Anthropic: %s",
+                    kimi_model,
+                    agent_name,
+                    kex,
                 )
 
         # Retry loop with exponential backoff

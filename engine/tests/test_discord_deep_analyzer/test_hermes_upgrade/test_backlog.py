@@ -13,6 +13,8 @@ from discord.hermes_upgrade.backlog import (
     assign_tier,
     default_backlog_dir,
     hydrate_entry,
+    is_classifier_error,
+    load_prior_entries,
     merge_with_existing,
     render_markdown,
     write_backlog,
@@ -355,6 +357,54 @@ def test_merge_with_existing_drops_unknown_prior_ids(tmp_path: Path):
     merged = merge_with_existing([_mk_entry("bm_new")], jsonl)
     assert len(merged) == 1
     assert merged[0].bookmark_id == "bm_new"
+
+
+# ---------------------------------------------------------------------------
+# is_classifier_error / load_prior_entries — incremental-scan cache
+# ---------------------------------------------------------------------------
+
+
+def test_is_classifier_error_true_for_error_placeholder():
+    entry = _mk_entry("bm1", title="<classifier error>")
+    assert is_classifier_error(entry) is True
+
+
+def test_is_classifier_error_false_for_real_classification():
+    entry = _mk_entry("bm1", title="Install autonomous-ai-agents/claude-code")
+    assert is_classifier_error(entry) is False
+
+
+def test_is_classifier_error_false_for_genuine_not_applicable():
+    """A real 'upgrade_type=none' verdict is a successful classification,
+    not an error — must not be confused with the error placeholder."""
+    entry = _mk_entry("bm1", tier="defer", upgrade_type="library", title="", rationale="not relevant")
+    assert is_classifier_error(entry) is False
+
+
+def test_load_prior_entries_no_file_returns_empty_dict(tmp_path: Path):
+    assert load_prior_entries(tmp_path / "nope.jsonl") == {}
+
+
+def test_load_prior_entries_keyed_by_bookmark_id(tmp_path: Path):
+    jsonl = tmp_path / "backlog.jsonl"
+    write_backlog(
+        [_mk_entry("bm1", tier="tier_1"), _mk_entry("bm2", tier="tier_3")],
+        out_dir=tmp_path,
+    )
+    prior = load_prior_entries(jsonl)
+    assert set(prior.keys()) == {"bm1", "bm2"}
+    assert prior["bm1"].tier == "tier_1"
+    assert prior["bm2"].tier == "tier_3"
+
+
+def test_load_prior_entries_skips_malformed_lines(tmp_path: Path):
+    jsonl = tmp_path / "backlog.jsonl"
+    write_backlog([_mk_entry("bm1")], out_dir=tmp_path)
+    with jsonl.open("a", encoding="utf-8") as f:
+        f.write("not json at all\n")
+        f.write("\n")  # blank line
+    prior = load_prior_entries(jsonl)
+    assert set(prior.keys()) == {"bm1"}
 
 
 # ---------------------------------------------------------------------------
