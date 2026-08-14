@@ -1111,6 +1111,71 @@ class MarketDataManager:
                 continue
         return out
 
+    def _redis_fabric_freshness(
+        self, r, symbol: str, stale_after_s: float
+    ) -> tuple[bool, Optional[float], Optional[datetime]]:
+        """Check the `datasource:ticks:{symbol}:last_update` freshness marker for
+        a `market:latest:{symbol}` Redis fabric entry.
+
+        Shared by get_tick_price()'s Tier-0 gate and check_redis_fabric_freshness()
+        (the /health observability path, P3-1) so the two can never diverge on
+        what counts as fresh. Returns (is_fresh, age_seconds, last_update) —
+        age_seconds/last_update are None only when the marker is absent or
+        unparseable, in which case is_fresh is always False (can't prove fresh).
+        """
+        last_update_raw = r.get(f"datasource:ticks:{symbol}:last_update")
+        if not last_update_raw:
+            return False, None, None
+        try:
+            last_update = datetime.fromisoformat(last_update_raw)
+            age_s = (datetime.now(last_update.tzinfo) - last_update).total_seconds()
+        except (ValueError, TypeError):
+            return False, None, None
+        return (0 <= age_s <= stale_after_s), age_s, last_update
+
+    async def check_redis_fabric_freshness(
+        self, symbols: list[str], stale_after_s: float = DEFAULT_STALE_AFTER_S
+    ) -> dict[str, dict]:
+        """Observe `market:latest:{symbol}` freshness for a symbol set WITHOUT
+        serving a price (P3-1: "kill the stale-Redis lie; put as_of on every
+        price").
+
+        Reuses the exact freshness gate get_tick_price()'s Tier 0 already
+        enforces on the hot path (GT-17, 2026-07-27) via `_redis_fabric_freshness`,
+        so a health check reports the same truth the price waterfall acts on
+        rather than a second, potentially-divergent threshold.
+
+        Returns ``{SYMBOL: {"present": bool, "age_s": float|None, "stale": bool}}``.
+        A symbol with no cached entry at all is reported present=False,
+        stale=False — nothing to be stale about. That is a different,
+        already-covered signal (e.g. tradingview_mcp_healthy), not this one.
+        """
+        out: dict[str, dict] = {}
+        try:
+            import redis as _redis_sync
+
+            r = _redis_sync.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+            for symbol in symbols:
+                sym = symbol.upper()
+                entry = {"present": False, "age_s": None, "stale": False}
+                try:
+                    val = r.get(f"market:latest:{sym}")
+                    if val:
+                        fresh, age_s, _ = self._redis_fabric_freshness(r, sym, stale_after_s)
+                        entry = {
+                            "present": True,
+                            "age_s": round(age_s, 1) if age_s is not None else None,
+                            "stale": not fresh,
+                        }
+                except Exception:
+                    pass
+                out[sym] = entry
+        except Exception as _redis_err:
+            logger.debug(f"[check_redis_fabric_freshness] Redis unavailable: {_redis_err}")
+            for symbol in symbols:
+                out.setdefault(symbol.upper(), {"present": False, "age_s": None, "stale": False})
+        return out
+
     async def initialize(self):
         """Connect to all available data sources."""
         self.ibkr = IBKRDataConnector(
@@ -1592,40 +1657,29 @@ class MarketDataManager:
             # Try symbol as-is and uppercase
             for sym_key in [symbol, symbol.upper()]:
                 val = r.get(f"market:latest:{sym_key}")
-                if val:
-                    last_update_raw = r.get(f"datasource:ticks:{sym_key}:last_update")
-                    if not last_update_raw:
-                        logger.debug(
-                            f"[get_tick_price] Redis fabric hit for {symbol} has no "
-                            f"freshness marker — treating as stale, skipping"
-                        )
-                        continue
-                    try:
-                        last_update = datetime.fromisoformat(last_update_raw)
-                        age_s = (
-                            datetime.now(last_update.tzinfo) - last_update
-                        ).total_seconds()
-                    except (ValueError, TypeError) as _ts_err:
-                        logger.debug(
-                            f"[get_tick_price] Redis fabric freshness marker for "
-                            f"{symbol} unparseable ({_ts_err}) — treating as stale"
-                        )
-                        continue
-                    if age_s > DEFAULT_STALE_AFTER_S or age_s < 0:
-                        logger.debug(
-                            f"[get_tick_price] Redis fabric entry for {symbol} is "
-                            f"{age_s:.0f}s old (> {DEFAULT_STALE_AFTER_S:.0f}s) — "
-                            f"stale, falling through to Tier 1"
-                        )
-                        continue
-                    data = json.loads(val)
-                    if data.get("close"):
-                        return {
-                            "last_price": float(data["close"]),
-                            "prev_close": float(data.get("open", 0.0)),
-                            "change_pct": None,
-                            "source": "redis_fabric",
-                        }
+                if not val:
+                    continue
+                fresh, age_s, last_update = self._redis_fabric_freshness(
+                    r, sym_key, DEFAULT_STALE_AFTER_S
+                )
+                if not fresh:
+                    logger.debug(
+                        f"[get_tick_price] Redis fabric entry for {symbol} is not "
+                        f"fresh (age_s={age_s}) — falling through to Tier 1"
+                    )
+                    continue
+                data = json.loads(val)
+                if data.get("close"):
+                    # P3-1: as_of lets any downstream envelope (build_envelope)
+                    # honestly re-derive is_live from the REAL observation time
+                    # instead of trusting this tier's own self-gating forever.
+                    return {
+                        "last_price": float(data["close"]),
+                        "prev_close": float(data.get("open", 0.0)),
+                        "change_pct": None,
+                        "source": "redis_fabric",
+                        "as_of": last_update.timestamp() if last_update else None,
+                    }
         except Exception as _redis_err:
             logger.debug(f"[get_tick_price] Redis fetch failed for {symbol}: {_redis_err}")
 

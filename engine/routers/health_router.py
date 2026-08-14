@@ -669,6 +669,13 @@ async def _get_ib_gateway_health() -> dict:
 # badge Amo looks at and the gate that decides fundability agree.
 DATA_INTEGRITY_STALE_AFTER_S = 900.0
 
+# P3-1 (roadmap-drain, actual): /system/data-integrity above reports staleness
+# but never affected /health's own `status` -- a `market:latest:MES` entry
+# could go stale (or the whole Redis fabric could die) for days with /health
+# still reading "ok". Reuses the SAME 900s threshold as /system/data-integrity
+# (not a third, divergent number) so /health and the readiness gate agree.
+MARKET_DATA_STALE_AFTER_S = DATA_INTEGRITY_STALE_AFTER_S
+
 
 @router.get("/system/data-integrity")
 async def get_data_integrity():
@@ -857,7 +864,34 @@ async def _health_inner() -> dict:
     except Exception:
         pass
 
-    status = "ok" if (db_ok and llm_path_healthy) else "degraded"
+    # Market-data freshness (P3-1): a `market:latest:{symbol}` Redis fabric
+    # entry that goes stale (or the whole fabric dying) previously had zero
+    # effect on /health -- this endpoint would read "ok" indefinitely while
+    # the badge fed from this same source silently served an old price.
+    # Checked only for the currently-authorized/tradeable symbol set (derives
+    # from the single canonical backtest.signals authority, never a hardcoded
+    # list here) so a halted instrument's dead feed can't page anyone.
+    market_data_fresh = True
+    market_data_stale_symbols: list[str] = []
+    try:
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS, TREND_INSTRUMENTS
+
+        active_symbols = sorted(TREND_INSTRUMENTS - DO_NOT_TRADE_SYMBOLS)
+        if data_manager is not None and active_symbols:
+            freshness = await data_manager.check_redis_fabric_freshness(
+                active_symbols, stale_after_s=MARKET_DATA_STALE_AFTER_S
+            )
+            market_data_stale_symbols = sorted(
+                sym for sym, v in freshness.items() if v.get("stale")
+            )
+            market_data_fresh = not market_data_stale_symbols
+    except Exception:
+        # Can't prove it's stale -- and this signal is defense-in-depth on top
+        # of ibgateway_alive/tv_mcp_healthy/llm_path_healthy, not the only
+        # liveness signal /health has. Fail open here, not closed.
+        pass
+
+    status = "ok" if (db_ok and llm_path_healthy and market_data_fresh) else "degraded"
 
     # Defensive read: a config missing this flag must never report live trading
     # (default False = paper). Also keeps /health resilient to a settings object
@@ -899,6 +933,8 @@ async def _health_inner() -> dict:
         "pending_approvals": pending_approvals,
         "futures_sentiment": futures_sentiment,
         "batch_jobs_health": batch_jobs_health,
+        "market_data_fresh": market_data_fresh,
+        "market_data_stale_symbols": market_data_stale_symbols,
     }
     if llm_path_details:
         response["llm_path_details"] = llm_path_details
