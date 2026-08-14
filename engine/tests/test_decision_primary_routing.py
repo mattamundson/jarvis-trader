@@ -20,6 +20,8 @@ These tests verify:
   - the ollama provider is unaffected.
 """
 
+import pytest
+
 from llm import JarvisLLMClient
 from llm.client import _LLM_PATH_STATE, get_llm_provider_summary
 
@@ -29,8 +31,11 @@ ENRICHMENT_AGENT = "news_analyst"
 
 def _make_client(tmp_path, monkeypatch, **env):
     """Construct a client with a clean env (provider=anthropic, google key set)."""
+    _LLM_PATH_STATE["healthy"] = True
+    _LLM_PATH_STATE["active_provider"] = None
     monkeypatch.setenv("JARVIS_LLM_PROVIDER", env.pop("JARVIS_LLM_PROVIDER", "anthropic"))
     monkeypatch.setenv("GOOGLE_API_KEY", env.pop("GOOGLE_API_KEY", "test-google-key"))
+    monkeypatch.setenv("JARVIS_LLM_GOOGLE_FALLBACK", "1")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("JARVIS_DECISION_PRIMARY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -42,6 +47,12 @@ def _make_client(tmp_path, monkeypatch, **env):
 
 
 class TestResolver:
+    @pytest.mark.parametrize("provider", ["openai", "gemini", "vertex", "kimi", ""] )
+    def test_unsupported_primary_provider_fails_fast(self, tmp_path, monkeypatch, provider):
+        monkeypatch.setenv("JARVIS_LLM_PROVIDER", provider)
+        with pytest.raises(ValueError, match="Unsupported JARVIS_LLM_PROVIDER"):
+            JarvisLLMClient(api_key="test-key", db_path=str(tmp_path / "costs.db"))
+
     def test_unset_means_no_gemini_primary_for_decisions(self, tmp_path, monkeypatch):
         client = _make_client(tmp_path, monkeypatch)
         assert client._resolve_google_primary(DECISION_AGENT) is None

@@ -86,6 +86,17 @@ class TestCostCalculation:
         assert cost == pytest.approx(0.28, rel=0.01)
 
 
+    def test_ollama_models_are_explicitly_zero_cost(self, tmp_path, monkeypatch, caplog):
+        monkeypatch.setenv("JARVIS_LLM_PROVIDER", "ollama")
+        monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
+        client = JarvisLLMClient(db_path=str(tmp_path / "ollama-costs.db"))
+
+        cost = client._calculate_cost("qwen2.5:7b", 1200, 128)
+
+        assert cost == 0.0
+        assert "Unknown model" not in caplog.text
+
+
 class TestCostTracking:
     """Test cost tracking to SQLite."""
 

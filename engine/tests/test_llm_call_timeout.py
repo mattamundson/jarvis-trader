@@ -23,6 +23,7 @@ import pytest
 
 from llm import JarvisLLMClient
 from llm.client import (
+    _LLM_PATH_STATE,
     _DEFAULT_LLM_HARD_TIMEOUT_SECONDS,
     _DEFAULT_LLM_MAX_CONCURRENCY,
     LLMHardTimeoutError,
@@ -137,6 +138,19 @@ class TestBounded:
 
 
 class TestCallDoesNotHang:
+    def test_ollama_terminal_failure_is_labeled_ollama(self, tmp_path, monkeypatch):
+        client = _make_client(tmp_path, monkeypatch, JARVIS_LLM_PROVIDER="ollama")
+
+        client._mark_unhealthy_and_notify(
+            "primary provider call for trader exceeded 90s hard ceiling",
+            "trader",
+            is_credit_exhaustion=False,
+        )
+
+        assert _LLM_PATH_STATE["last_failure_reason"].startswith(
+            "ollama-api-failure (non-credit):"
+        )
+
     @pytest.mark.asyncio
     async def test_stuck_gemini_primary_times_out_and_falls_through(
         self, tmp_path, monkeypatch
