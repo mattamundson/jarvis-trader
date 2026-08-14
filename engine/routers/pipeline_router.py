@@ -10,6 +10,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from utils.data_provenance import build_data_provenance, stamp_signal_data
+
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 logger = logging.getLogger(__name__)
 
@@ -17,8 +19,6 @@ try:  # dual-path import (engine.* package vs bare under engine/ cwd)
     from engine.analytics.agent_feedback import build_analyst_signals_map
 except ImportError:  # pragma: no cover
     from analytics.agent_feedback import build_analyst_signals_map
-
-from utils.data_provenance import build_data_provenance, stamp_signal_data
 
 # ── Signal Debug Log ──────────────────────────────────────────────────────────
 # Rolling log of the last 50 pipeline filter decisions (pre-filter + pass-through).
