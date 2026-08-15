@@ -402,6 +402,47 @@ async def get_options_skew(symbol: str):
     return result
 
 
+@router.get("/expected-move/{symbol}", tags=["options", "analyst"])
+async def get_expected_move(symbol: str, expiry: Optional[str] = None):
+    """Return the ATM-straddle-derived Expected Move for a symbol.
+
+    Computes the real Black-76 ATM straddle price (call + put at the
+    strike nearest live spot) using live spot + ATM implied volatility
+    from Polygon, and returns it alongside the textbook
+    ``0.8 * F * sigma * sqrt(T)`` approximation as a sanity cross-check.
+    See ``options.premium_calculator.expected_move`` for the derivation.
+
+    Query param ``expiry`` (optional, "YYYY-MM-DD") pins a specific
+    expiry; omit to auto-select the nearest available (2-45 DTE).
+    """
+    logger.info(
+        "[options_router] GET /options/expected-move/%s expiry=%s", symbol, expiry
+    )
+
+    try:
+        from options.chain_fetcher import get_expected_move as _get_expected_move
+    except ImportError as exc:
+        logger.error("[options_router] chain_fetcher import failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Options chain module unavailable.") from exc
+
+    try:
+        result = _get_expected_move(symbol.upper(), expiry=expiry)
+    except Exception as exc:
+        logger.exception("[options_router] expected_move error for %s: %s", symbol, exc)
+        raise HTTPException(
+            status_code=502, detail=f"Failed to compute expected move: {exc}"
+        ) from exc
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not compute expected move for '{symbol}'. "
+            "No live spot/IV data available (Polygon options data required).",
+        )
+
+    return result
+
+
 @router.get("/analyst/{symbol}", tags=["options", "analyst"])
 async def get_options_analyst_verdict(symbol: str, spot_price: Optional[float] = None):
     """Run the OptionsAnalyst directly and return its verdict.

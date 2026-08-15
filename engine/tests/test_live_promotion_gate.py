@@ -60,6 +60,18 @@ def test_unknown_ensemble_brier_blocks_failsafe():
     assert "ensemble_not_subneutral" in res["blocks"]
 
 
+def test_bool_ensemble_brier_blocks_failsafe():
+    # bool is an int subclass in Python: False<ENSEMBLE_BRIER_CEILING is 0<0.25 (True).
+    # Without an explicit bool exclusion this pillar would wrongly PASS on
+    # ensemble_brier=False, contradicting the module's own default-deny invariant
+    # ("any pillar that is absent, None, or False blocks").
+    ev = _full_pass()
+    ev["ensemble_brier"] = False
+    res = G.evaluate_promotion(ev)
+    assert res["promote"] is False
+    assert "ensemble_not_subneutral" in res["blocks"]
+
+
 def test_brier_exactly_at_ceiling_blocks():
     # 0.25 is the neutral baseline (predict 0.5 always); the edge must BEAT it.
     ev = _full_pass()

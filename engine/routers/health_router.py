@@ -675,13 +675,34 @@ async def get_data_integrity():
     """
     Returns real-time data freshness metrics from Redis.
     Pattern: datasource:*:last_update
+
+    A hard backend failure (e.g. Redis unreachable) is a distinct condition
+    from "Redis answered and there are honestly zero sources reported" — the
+    latter is a legitimate 200 with count=0, the former must NOT look like
+    it. Raising HTTPException(503) here mirrors the /health endpoint's
+    failure contract (see `health()` below) so the dashboard's shared
+    fetchEngine() throws an EngineHttpError, SWR surfaces it as `error`, and
+    the /data-integrity page's existing error branch — the same pattern the
+    Trust Pane uses for degraded upstreams — renders instead of the
+    "No data sources reported" empty state. Previously this caught ANY
+    exception and returned 200 with an untyped `error` field the dashboard
+    never read, silently repackaging a hard failure as a benign empty state
+    (T2-19).
     """
     try:
         import redis.asyncio as redis
 
         r = redis.from_url(settings.REDIS_URL or "redis://localhost:6379/0", decode_responses=True)
 
-        keys = await r.keys("datasource:*:last_update")
+        try:
+            keys = await r.keys("datasource:*:last_update")
+        except Exception as e:
+            logger.error(f"Data integrity check failed: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Data integrity check failed: Redis unreachable ({e})",
+            ) from e
+
         results = []
         now = datetime.now(timezone.utc)
 
@@ -703,9 +724,14 @@ async def get_data_integrity():
 
         await r.close()
         return {"timestamp": now.isoformat(), "sources": results, "count": len(results)}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Data integrity check failed: {e}")
-        return {"error": str(e), "sources": [], "count": 0}
+        raise HTTPException(
+            status_code=503,
+            detail=f"Data integrity check failed: {e}",
+        ) from e
 
 
 @router.get(

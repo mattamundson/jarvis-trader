@@ -180,7 +180,7 @@ def _is_futures_symbol(symbol: str) -> bool:
     return symbol.upper() in FUTURES_SYMBOLS
 
 
-def _guard_direct_paper_open(symbol: str) -> None:
+def _guard_direct_paper_open(symbol: str, quantity: int = 0) -> None:
     """
     Constrain direct paper-sync opens so they cannot bypass the core safety posture.
 
@@ -200,6 +200,26 @@ def _guard_direct_paper_open(symbol: str) -> None:
             status_code=400,
             detail=f"Symbol {symbol.upper()} not on approved futures watchlist",
         )
+
+    # Aggregated real-underlying-instrument contract-limit check. This sync
+    # path previously never checked MAX_CONTRACTS_PER_INSTRUMENT at all --
+    # check_contract_limits() below sums existing open positions sharing the
+    # same real underlying instrument (see resolve_underlying() in
+    # backtest.paper_config), not just the incoming order's own quantity.
+    # `quantity` defaults to 0 (skips the check) for close-path callers,
+    # which never pass a quantity.
+    if _safety_layer is not None and quantity:
+        from risk.safety_layer import OrderRequest
+
+        order = OrderRequest(
+            symbol=symbol,
+            quantity=int(quantity),
+            order_type="market",
+            is_futures=_is_futures_symbol(symbol),
+        )
+        result = _safety_layer.check_contract_limits(order)
+        if not result.approved:
+            raise HTTPException(status_code=409, detail=result.rejection_reason)
 
 
 def _get_orchestrator():
@@ -714,6 +734,9 @@ class PaperTradeSyncRequest(BaseModel):
     pnl: float | None = None
     trade_id: str | None = Field(None, description="PortfolioTracker id - required for close")
     notes: str = ""
+    stop_loss: float | None = Field(
+        None, description="Real decision-time stop; synthesized fallback used if omitted"
+    )
 
 
 @router.get("/paper/positions")
@@ -989,14 +1012,45 @@ async def paper_trade(req: PaperTradeSyncRequest):
         side = (req.side or "long").lower()
         if side not in ("long", "short"):
             raise HTTPException(status_code=422, detail="side must be long or short")
-        _guard_direct_paper_open(sym)
+        _guard_direct_paper_open(sym, req.quantity)
         action = "buy" if side == "long" else "sell"
+
+        if req.stop_loss is not None and is_inverted_stop(
+            action, float(req.entry_price), req.stop_loss
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Inverted stop_loss rejected: side={action} "
+                    f"entry_price={req.entry_price} stop_loss={req.stop_loss}"
+                ),
+            )
+        resolved_stop = req.stop_loss
+        stop_source = None
+        if resolved_stop is None:
+            try:
+                from services.paper_stop_monitor import synthesize_fallback_stop
+
+                resolved_stop = synthesize_fallback_stop(
+                    sym, action, float(req.entry_price), req.quantity
+                )
+                if resolved_stop is not None:
+                    stop_source = "synthesized_fallback"
+            except Exception as _stop_err:
+                logger.debug(
+                    "paper_trade sync open: stop synthesis failed for %s (non-fatal): %s",
+                    sym,
+                    _stop_err,
+                )
+
         tid = paper_tracker.open_trade(
             sym,
             action,
             req.quantity,
             float(req.entry_price),
             notes=req.notes or "paper_runner_sync",
+            stop_loss=resolved_stop,
+            stop_source=stop_source,
         )
         return {
             "status": "open",
@@ -1005,6 +1059,7 @@ async def paper_trade(req: PaperTradeSyncRequest):
             "action": action,
             "quantity": req.quantity,
             "entry_price": req.entry_price,
+            "stop_loss": resolved_stop,
         }
 
     if act == "close":
@@ -1366,71 +1421,6 @@ async def get_portfolio_risk():
         raise HTTPException(status_code=500, detail=f"Risk calculation failed: {exc}") from exc
 
 
-@router.get(
-    "/paper/streaks",
-    description="Current win/loss streak and historical max win/loss streaks from closed trades.",
-)
-async def get_streaks():
-    """Win/loss streak analysis for closed trades sorted chronologically."""
-    empty = {
-        "current_streak": {"type": "NONE", "count": 0},
-        "max_win_streak": 0,
-        "max_loss_streak": 0,
-        "total_trades": 0,
-    }
-    if not paper_tracker:
-        return empty
-
-    try:
-        rows = paper_tracker.get_trade_history(limit=5000)
-    except Exception as exc:
-        logger.warning("get_streaks: get_trade_history failed: %s", exc)
-        return empty
-
-    closed = [r for r in rows if _row_is_closed(r)]
-    if not closed:
-        return empty
-
-    def _sort_key(r: Any) -> str:
-        if isinstance(r, dict):
-            ts = r.get("exit_time") or r.get("entry_time") or ""
-        else:
-            ts = getattr(r, "exit_time", None) or getattr(r, "entry_time", None) or ""
-        return str(ts)
-
-    closed_sorted = sorted(closed, key=_sort_key)
-
-    outcomes: list[bool] = [_row_pnl(r) > 0 for r in closed_sorted]
-
-    max_win = 0
-    max_loss = 0
-    cur_win = 0
-    cur_loss = 0
-    for win in outcomes:
-        if win:
-            cur_win += 1
-            cur_loss = 0
-        else:
-            cur_loss += 1
-            cur_win = 0
-        max_win = max(max_win, cur_win)
-        max_loss = max(max_loss, cur_loss)
-
-    if cur_win > 0:
-        current = {"type": "WIN", "count": cur_win}
-    elif cur_loss > 0:
-        current = {"type": "LOSS", "count": cur_loss}
-    else:
-        current = {"type": "NONE", "count": 0}
-
-    return {
-        "current_streak": current,
-        "max_win_streak": max_win,
-        "max_loss_streak": max_loss,
-        "total_trades": len(outcomes),
-    }
-
-
 @router.get("/history/trades")
 async def portfolio_history_trades(limit: int = 50):
     """Recent closed paper trades for dashboards, including review grade."""
@@ -1604,6 +1594,13 @@ async def paper_streaks():
 
     Trades are ordered by exit_time ascending.  The current streak is the
     streak containing the most recent closed trade.
+
+    Sample-size guard: fewer than 2 closed trades cannot establish a
+    meaningful streak (a single win/loss is not a "trend"), so the streak
+    fields are reported neutral (NONE/0) while ``total_trades`` still
+    reports the honest closed-trade count. Mirrors the ``trades >= 2``
+    eligibility gate already used for best/worst hour in
+    ``paper_hourly_stats`` above.
     """
     if not paper_tracker:
         return {
@@ -1633,13 +1630,13 @@ async def paper_streaks():
         exit_date = exit_ts[:10] if len(exit_ts) >= 10 else ""
         closed.append((outcome, exit_date))
 
-    if not closed:
+    if len(closed) < 2:
         return {
             "current_streak": {"type": "NONE", "count": 0},
             "max_win_streak": 0,
             "max_loss_streak": 0,
             "streak_history": [],
-            "total_trades": 0,
+            "total_trades": len(closed),
         }
 
     streak_history: list[dict] = []
@@ -2191,12 +2188,25 @@ async def get_paper_account_stats(
     # Sharpe (std dev of all returns) — canonical module (near-zero std-dev guard -> None)
     sharpe: float | None = metrics.sharpe(pnls)
 
-    # Calmar (annualised return / abs max drawdown). abs(max_dd) is floored at
-    # CALMAR_MIN_DD_FLOOR (0.5%) before dividing -- an account that's mostly
-    # winning with only a razor-thin dip (e.g. max_dd = -0.0001) combined with
-    # a healthy annualized return otherwise explodes into millions (e.g.
-    # 2,014,774.72). Below the floor, Calmar is undefined -- report None
-    # (dashboard renders "--") rather than a fabricated ratio.
+    # Calmar (annualised return / abs max drawdown) -- both operands must
+    # share units for the ratio to be meaningful (metrics.calmar()'s own
+    # docstring says so explicitly).
+    #
+    # Annualised return here is CAGR, derived from the actual realized
+    # return over the requested `days` window and compounded to a full year
+    # -- NOT mean_pnl * 252 (a per-trade-frequency extrapolation that
+    # assumes ~1 trade per trading day forever; with only a handful of real
+    # trades over the window that wildly overstates what a full year would
+    # look like, independent of the dollar/fraction unit mismatch this block
+    # also fixes -- see git history for the pre-fix formula and the exact
+    # 184,195 blowup it produced). Sharpe/Sortino above still use * 252 --
+    # that convention is correct for per-period-return measures; Calmar's
+    # numerator is conventionally CAGR/MaxDD, not extrapolated-return/MaxDD.
+    #
+    # abs(max_dd) is still floored at CALMAR_MIN_DD_FLOOR (0.5%) before
+    # dividing -- a razor-thin dip combined with a healthy return would still
+    # blow up even with correct units. Below the floor, Calmar is undefined
+    # -- report None (dashboard renders "--") rather than a fabricated ratio.
     # NOTE (#272<>#274 merge): keep PR #272's explicit block. The canonical
     # metrics.calmar() floor was aligned 1e-6 -> 0.005 to match, so the two now
     # agree; this inline additionally enforces the max_dd < 0 guard (count real
@@ -2204,8 +2214,11 @@ async def get_paper_account_stats(
     CALMAR_MIN_DD_FLOOR = 0.005
     calmar: float | None = None
     if max_dd is not None and max_dd < 0 and abs(max_dd) >= CALMAR_MIN_DD_FLOOR:
-        ann_return = mean_pnl * 252
-        calmar = ann_return / abs(max_dd)
+        cumulative_pnl = equity_curve[-1]["equity"]
+        total_return = cumulative_pnl / settings.INITIAL_CAPITAL
+        if total_return > -1.0:  # (1 + total_return) ** x undefined at/below a total wipeout
+            ann_return_pct = (1.0 + total_return) ** (365.0 / days) - 1.0
+            calmar = ann_return_pct / abs(max_dd)
 
     return AccountStatsResponse(
         account_id=account_id,
@@ -2230,6 +2243,7 @@ class PaperTradeRequest(BaseModel):
     price: float
     notes: str = ""
     close_trade_id: str | None = None
+    stop_loss: float | None = None
 
 
 @router.post("/paper/trade/manual", response_model=PaperTradeResponse)
@@ -2298,12 +2312,51 @@ async def submit_paper_trade(req: PaperTradeRequest):
                 400,
                 f"Symbol {req.symbol.upper()} not on approved futures watchlist",
             )
+        _side_map = {
+            "buy": "long",
+            "buy_to_open": "long",
+            "long": "long",
+            "sell": "short",
+            "sell_to_open": "short",
+            "short": "short",
+            "sell_short": "short",
+        }
+        # None for buy_to_cover — a closing action, not a new open; intentionally inert here.
+        _norm_side = _side_map.get(req.action.lower())
+        if req.stop_loss is not None and _norm_side and is_inverted_stop(
+            _norm_side, req.price, req.stop_loss
+        ):
+            raise HTTPException(
+                422,
+                f"Inverted stop_loss rejected: side={_norm_side} "
+                f"entry_price={req.price} stop_loss={req.stop_loss}",
+            )
+        resolved_stop = req.stop_loss
+        stop_source = None
+        if resolved_stop is None and _norm_side:
+            try:
+                from services.paper_stop_monitor import synthesize_fallback_stop
+
+                resolved_stop = synthesize_fallback_stop(
+                    req.symbol, _norm_side, req.price, req.quantity
+                )
+                if resolved_stop is not None:
+                    stop_source = "synthesized_fallback"
+            except Exception as _stop_err:
+                logger.debug(
+                    "submit_paper_trade: stop synthesis failed for %s (non-fatal): %s",
+                    req.symbol,
+                    _stop_err,
+                )
+
         trade_id = paper_tracker.open_trade(
             symbol=req.symbol,
             action=req.action,
             quantity=req.quantity,
             price=req.price,
             notes=req.notes,
+            stop_loss=resolved_stop,
+            stop_source=stop_source,
         )
         return {
             "status": "opened",
@@ -2312,6 +2365,7 @@ async def submit_paper_trade(req: PaperTradeRequest):
             "action": req.action,
             "quantity": req.quantity,
             "entry_price": req.price,
+            "stop_loss": resolved_stop,
         }
 
 

@@ -80,6 +80,8 @@ interface NavGroup {
 //                      a tab (Phase 2 disposition). Off by default, so not in nav.
 //   /trades/[id]/review — dynamic per-trade detail, reached from Trade History/Journal.
 //   /trades/journal → /journal, /stats → /performance — intentional redirect stubs.
+//   /crypto, /polymarket — modules disabled, deprioritized per Amo request; pages
+//                      still reachable by URL, just not surfaced in nav.
 const NAV_GROUPS: NavGroup[] = [
   {
     title: "Trading",

@@ -30,9 +30,23 @@ async def test_whatsapp():
 
 @router.post("/notifications/vix-alert-check")
 async def check_vix_alert():
-    """Check VIX and send WhatsApp alert if above key thresholds."""
+    """Check VIX and send WhatsApp alert if above key thresholds.
+
+    Cooldown-gated per severity level (shared with the hourly
+    ``eod_scheduler.run_vix_alert_check`` job via
+    ``notifications.vix_alert_cooldown``). This endpoint is polled by the
+    dashboard's ``VIXRegimeCard`` every 5 minutes purely to *read* the
+    current VIX value for display — without the cooldown, that read-looking
+    poll had a live side effect of re-sending a real WhatsApp alert every
+    5 minutes for as long as VIX stayed elevated and the tab was open.
+    """
     try:
         from analytics.vix_overlay import VIXOverlay
+        from notifications.vix_alert_cooldown import (
+            get_last_vix_alert_sent,
+            mark_vix_alert_sent,
+            vix_alert_decision,
+        )
         from notifications.whatsapp import send_whatsapp_message
 
         vix = VIXOverlay()
@@ -60,6 +74,27 @@ async def check_vix_alert():
                 "reason": "VIX normal — no alert needed",
             }
 
+        # Cooldown is keyed by the numeric threshold (40/30/20), not the label
+        # text, so it stays shared with schedulers/eod_scheduler.py's hourly
+        # run_vix_alert_check even though the two call sites use slightly
+        # different label strings ("EXTREME VIX" here vs. "EXTREME" there).
+        cooldown_key = str(level)
+        now = datetime.now(timezone.utc)
+        decision = vix_alert_decision(
+            level=cooldown_key,
+            last_sent=get_last_vix_alert_sent(cooldown_key),
+            now=now,
+        )
+        if decision == "suppressed_cooldown":
+            return {
+                "sent": False,
+                "vix": state.vix_value,
+                "regime": state.regime,
+                "alert_level": alert_level,
+                "guidance": guidance,
+                "reason": "cooldown_active",
+            }
+
         msg = (
             "JARVIS TRADER - VIX Alert\n\n"
             f"VIX: {state.vix_value:.1f} - {alert_level}\n"
@@ -69,6 +104,8 @@ async def check_vix_alert():
         )
 
         success = await send_whatsapp_message(msg)
+        if success:
+            mark_vix_alert_sent(cooldown_key, now)
         return {
             "sent": success,
             "vix": state.vix_value,

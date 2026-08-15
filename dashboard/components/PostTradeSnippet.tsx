@@ -74,9 +74,17 @@ export function PostTradeSnippet() {
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-foreground tracking-wide">Post-Trade Quality</h3>
-        {ta?.systematic_bias && (
-          <Badge variant={biasVariant(ta.systematic_bias)}>entries {ta.systematic_bias}</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {ta?.systematic_bias && (
+            <Badge variant={biasVariant(ta.systematic_bias)}>entries {ta.systematic_bias}</Badge>
+          )}
+          <Badge variant={bothFailed ? "static" : "live"}>
+            <span className="flex items-center gap-1">
+              <span className={`h-1.5 w-1.5 rounded-full ${bothFailed ? "bg-muted-foreground" : "bg-bull animate-pulse"}`} />
+              {bothFailed ? "STATIC" : "LIVE"}
+            </span>
+          </Badge>
+        </div>
       </div>
 
       {loading ? (

@@ -293,10 +293,18 @@ def is_strategy_authorized(
     # outcome. It still must clear checks 1-2 above like every other symbol —
     # this carve-out narrowly targets the gate-v2-verdict check the directive
     # is actually about, not a blanket bypass of authorization.
-    if sym_upper != "MES" and not is_ungate_eligible(sym_upper, verdicts_dir):
+    #
+    # Pseudo-symbols whose verdict was filed under their real underlying
+    # instrument (e.g. MES_VA30's verdict is under "MES" -- see
+    # MES_VA30_CONFIG's own verdict_symbol field) override which symbol's
+    # verdict is consulted, while messages still reference the
+    # actually-requested symbol.
+    verdict_symbol = (cfg.get("verdict_symbol") or sym_upper).upper()
+    if sym_upper != "MES" and not is_ungate_eligible(verdict_symbol, verdicts_dir):
+        lookup_note = f" (verdict lookup: {verdict_symbol})" if verdict_symbol != sym_upper else ""
         return (
             False,
-            f"{sym_upper} has no valid non-stale gate v2 PASS verdict "
+            f"{sym_upper}{lookup_note} has no valid non-stale gate v2 PASS verdict "
             f"(verdicts expire after {MAX_VERDICT_AGE_DAYS} days — re-run gate_v2_orchestrator)",
         )
 

@@ -74,8 +74,14 @@ class MockDatabaseManager:
         mood: Optional[str] = None,
         lesson: Optional[str] = None,
         timestamp: Optional[str] = None,
+        regime_tier: Optional[int] = None,
+        deciding_stage: Optional[str] = None,
+        bull_score: Optional[float] = None,
+        bear_score: Optional[float] = None,
+        debate_confidence: Optional[float] = None,
+        timeframe: Optional[str] = None,
     ) -> int:
-        """Mock add_journal_entry."""
+        """Mock add_journal_entry — signature mirrors JournalMixin.add_journal_entry."""
         entry_id = self.journal_id_counter
         self.journal_id_counter += 1
         self.journal_entries[entry_id] = {
@@ -86,6 +92,12 @@ class MockDatabaseManager:
             "tags": tags,
             "mood": mood,
             "lesson": lesson,
+            "regime_tier": regime_tier,
+            "deciding_stage": deciding_stage,
+            "bull_score": bull_score,
+            "bear_score": bear_score,
+            "debate_confidence": debate_confidence,
+            "timeframe": timeframe,
         }
         return entry_id
 
@@ -550,19 +562,22 @@ class SqliteProvenanceDBManager:
         conn = self._connect()
         try:
             if self._with_provenance_columns:
+                # Matches migration_010's real paper_trades column set exactly
+                # (database/migrations.py) -- bull_score/bear_score/
+                # debate_confidence are NOT paper_trades columns, they live on
+                # trade_journal via migration_012. _store_signal_provenance
+                # deliberately never writes them here (see its docstring).
                 conn.execute(
                     """
                     CREATE TABLE paper_trades (
                         trade_id TEXT PRIMARY KEY,
                         regime TEXT,
+                        structure_position TEXT,
                         bias TEXT,
                         composite_score REAL,
                         stc_contrib INTEGER,
                         orb_contrib INTEGER,
-                        vwap_contrib INTEGER,
-                        bull_score REAL,
-                        bear_score REAL,
-                        debate_confidence REAL
+                        vwap_contrib INTEGER
                     )
                     """
                 )
@@ -622,13 +637,13 @@ class TestStoreSignalProvenance(unittest.TestCase):
         conn = db._connect()
         try:
             row = conn.execute(
-                "SELECT regime, bias, composite_score, bull_score, "
-                "debate_confidence FROM paper_trades WHERE trade_id = ?",
+                "SELECT regime, bias, composite_score, stc_contrib, orb_contrib, "
+                "vwap_contrib FROM paper_trades WHERE trade_id = ?",
                 ("trade-001",),
             ).fetchone()
         finally:
             conn.close()
-        self.assertEqual(row, ("TRENDING_BULL", "bullish", 0.78, 0.85, 0.83))
+        self.assertEqual(row, ("TRENDING_BULL", "bullish", 0.78, 1, 1, 0))
 
     def test_noop_when_columns_missing(self):
         """No provenance columns on paper_trades -> silently skipped, no crash."""

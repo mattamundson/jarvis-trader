@@ -1,0 +1,289 @@
+{
+  "date": "2026-07-14",
+  "session_bias": {
+    "session_type": "range_day",
+    "directional_bias": "neutral",
+    "conviction": 0.5,
+    "ib_bias": "not_mentioned",
+    "data_quality": "fresh",
+    "message_count": 10
+  },
+  "sentiment_score": 0.014803921568627454,
+  "sentiment_label": "neutral",
+  "top_signals": [
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7601.5,
+      "target2": 7628.5,
+      "stop1": 7556.5,
+      "win_rate": 84.36,
+      "rr": 0.64,
+      "timestamp": "2026-07-14T12:55:01.087-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7594.25,
+      "target2": 7621.25,
+      "stop1": 7549.25,
+      "win_rate": 84.31,
+      "rr": 0.63,
+      "timestamp": "2026-07-14T11:45:02.886-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7600.0,
+      "target2": 7627.0,
+      "stop1": 7555.0,
+      "win_rate": 84.26,
+      "rr": 0.63,
+      "timestamp": "2026-07-14T09:35:00.669-05:00"
+    },
+    {
+      "symbol": "ES",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 7569.25,
+      "target2": 7596.25,
+      "stop1": 7524.25,
+      "win_rate": 83.76,
+      "rr": 0.62,
+      "timestamp": "2026-07-14T05:10:06.814-05:00"
+    },
+    {
+      "symbol": "CL",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 81.16,
+      "target2": 82.24,
+      "stop1": 79.36,
+      "win_rate": 82.86,
+      "rr": 0.63,
+      "timestamp": "2026-07-14T08:04:00.697-05:00"
+    }
+  ],
+  "corey_quote": "The market remains rotational, not directional.",
+  "commentary_health": [
+    {
+      "date": "2026-07-15",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.5,
+      "message_count": 3
+    },
+    {
+      "date": "2026-07-14",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 10
+    },
+    {
+      "date": "2026-07-13",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 15
+    },
+    {
+      "date": "2026-07-12",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.5,
+      "message_count": 30
+    },
+    {
+      "date": "2026-07-11",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 30
+    },
+    {
+      "date": "2026-07-10",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 9
+    },
+    {
+      "date": "2026-07-09",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 9
+    },
+    {
+      "date": "2026-07-08",
+      "data_quality": "fresh",
+      "directional_bias": "bearish",
+      "conviction": 0.9,
+      "message_count": 12
+    },
+    {
+      "date": "2026-07-07",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.4,
+      "message_count": 37
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 28,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": "gemini",
+    "primary_provider": "openai",
+    "primary_healthy": false,
+    "providers_available": 4,
+    "google_fallback_count": 152,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": true
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 97,
+    "failing_enabled": 11,
+    "failing_disabled": 1,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-DataIntegritySentinel",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-DiskWatch",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-LifeOS-Dashboard",
+        "result": "0x41306"
+      },
+      {
+        "name": "jarvis-morning-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-PM2-AtLogon",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-PM2RestartWatch-15min",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultBackup",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultGbrainSync",
+        "result": "0x2"
+      },
+      {
+        "name": "Jarvis-VaultIngest-All",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-VaultIngest-XBookmarks",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-VaultIngest-XBookmarks-FullSync",
+        "result": "0x1"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 19.1,
+        "newest": "2026-06-26T12:13:38.721228+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 27.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 27.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 4.3,
+        "newest": "2026-07-11T06:00:04.986505+00:00",
+        "files": 3,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 1.9,
+        "newest": "2026-07-13T15:47:01.484738+00:00",
+        "files": 31,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 0.9,
+        "newest": "2026-07-14T15:33:24.451059+00:00",
+        "files": 18,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 4.3,
+        "newest": "2026-07-11T06:00:07.453201+00:00",
+        "files": 4,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 27.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 27.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}

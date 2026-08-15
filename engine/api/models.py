@@ -459,6 +459,9 @@ class PaperTradeResponse(BaseModel):
     action: Optional[str] = Field(None, description="Trade action")
     quantity: Optional[float] = Field(None, description="Trade quantity")
     entry_price: Optional[float] = Field(None, description="Entry price")
+    stop_loss: Optional[float] = Field(
+        None, description="Recorded stop price (real or synthesized fallback)"
+    )
 
 
 class PaperPerformanceResponse(BaseModel):

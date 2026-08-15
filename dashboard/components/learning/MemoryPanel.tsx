@@ -12,33 +12,41 @@ function fetcher<T = unknown>(url: string): Promise<T> {
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+// Mirrors the ACTUAL engine contract — engine/routers/learning_router.py:
+//   GET  /learning/memory  -> {status, data: {filter_condition, total, lessons}}
+//   POST /learning/memory  -> body must be LessonRequest {lesson, category}
+// `lessons` entries are `asdict(Lesson)` from
+// engine/learning/_experimental/session_memory.py: {date, condition,
+// lesson_text, trades_affected, outcome}. There is no id/type/symbol/
+// confidence/tags field on the wire. The POST body used to send
+// {type, content, symbol}, which does not match LessonRequest and 422'd on
+// every submit — fixed below by sending {lesson, category}.
 
 interface MemoryLesson {
-  id?: string | number;
-  type: "lesson" | "pattern" | "warning" | "rule";
-  content: string;
-  symbol?: string | null;
-  created_at?: string | null;
-  confidence?: number | null;
-  tags?: string[];
+  date: string;
+  condition: string;
+  lesson_text: string;
+  trades_affected: string[];
+  outcome: "positive" | "neutral" | "negative" | string;
 }
 
-interface MemoryResponse {
+interface MemoryData {
+  filter_condition: string | null;
+  total: number;
   lessons: MemoryLesson[];
-  total?: number;
-  error?: string;
+}
+
+interface MemoryEnvelope {
+  status: string;
+  data: MemoryData;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function lessonTypeBadgeVariant(type: string): "bull" | "warn" | "bear" | "info" | "neutral" {
-  switch (type) {
-    case "lesson":  return "info";
-    case "pattern": return "bull";
-    case "warning": return "warn";
-    case "rule":    return "bear";
-    default:        return "neutral";
-  }
+function outcomeBadgeVariant(outcome: string): "bull" | "bear" | "neutral" {
+  if (outcome === "positive") return "bull";
+  if (outcome === "negative") return "bear";
+  return "neutral";
 }
 
 function fmtDate(ts: string | null | undefined): string {
@@ -52,13 +60,17 @@ function fmtDate(ts: string | null | undefined): string {
   }
 }
 
+// The GET /learning/memory `condition` filter examples in learning_router.py
+// are market-regime strings (e.g. TRENDING, CHOPPY) — this list mirrors that
+// so a saved lesson can actually be found again by the existing filter param.
+const CONDITIONS = ["general", "TRENDING", "CHOPPY", "RANGE"] as const;
+
 // ── Add lesson form ───────────────────────────────────────────────────────────
 
 function AddLessonForm({ onAdded }: { onAdded: () => void }) {
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState("");
-  const [type, setType] = useState<MemoryLesson["type"]>("lesson");
-  const [symbol, setSymbol] = useState("");
+  const [category, setCategory] = useState<string>("general");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -68,14 +80,15 @@ function AddLessonForm({ onAdded }: { onAdded: () => void }) {
     setSaving(true);
     setSaveError(null);
     try {
+      // LessonRequest (engine/routers/learning_router.py) requires
+      // {lesson: str, category: str} — sending {type, content, symbol} (the
+      // old shape) 422'd every time.
       await postEngine("/learning/memory", {
-        type,
-        content: content.trim(),
-        symbol: symbol.trim() || null,
+        lesson: content.trim(),
+        category,
       });
       setContent("");
-      setSymbol("");
-      setType("lesson");
+      setCategory("general");
       setOpen(false);
       onAdded();
     } catch (err) {
@@ -103,18 +116,18 @@ function AddLessonForm({ onAdded }: { onAdded: () => void }) {
       </p>
 
       <div className="flex gap-2">
-        {(["lesson", "pattern", "warning", "rule"] as MemoryLesson["type"][]).map((t) => (
+        {CONDITIONS.map((c) => (
           <button
-            key={t}
+            key={c}
             type="button"
-            onClick={() => setType(t)}
+            onClick={() => setCategory(c)}
             className={`font-mono text-[10px] rounded px-2 py-1 border transition-colors ${
-              type === t
+              category === c
                 ? "border-accent/40 bg-accent/10 text-accent"
                 : "border-border text-muted-foreground hover:text-foreground"
             }`}
           >
-            {t}
+            {c}
           </button>
         ))}
       </div>
@@ -122,17 +135,10 @@ function AddLessonForm({ onAdded }: { onAdded: () => void }) {
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        placeholder="Describe the lesson, pattern, or rule…"
+        placeholder="Describe the lesson learned…"
         rows={3}
         className="w-full font-mono text-xs bg-background border border-border rounded-lg p-3 text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-accent/50"
         required
-      />
-
-      <input
-        value={symbol}
-        onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-        placeholder="Symbol (optional, e.g. MES)"
-        className="w-full font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-accent/50"
       />
 
       {saveError && (
@@ -162,13 +168,14 @@ function AddLessonForm({ onAdded }: { onAdded: () => void }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function MemoryPanel() {
-  const { data, isLoading, error, mutate } = useSWR<MemoryResponse>(
+  const { data: envelope, isLoading, error, mutate } = useSWR<MemoryEnvelope>(
     "/learning/memory",
     fetcher,
     { refreshInterval: REFRESH_MS }
   );
 
-  const lessons = data?.lessons ?? [];
+  const memData = envelope?.data;
+  const lessons = memData?.lessons ?? [];
 
   return (
     <div className="space-y-4">
@@ -180,12 +187,12 @@ export function MemoryPanel() {
               Learning Memory
             </p>
             <p className="font-mono text-[10px] text-muted-foreground/40 mt-0.5">
-              Accumulated lessons, patterns, warnings and rules
+              Accumulated lessons, keyed by market condition
             </p>
           </div>
           {!isLoading && !error && (
             <span className="font-mono text-[10px] text-muted-foreground">
-              {data?.total ?? lessons.length} entries
+              {memData?.total ?? lessons.length} entries
             </span>
           )}
         </div>
@@ -200,10 +207,10 @@ export function MemoryPanel() {
             Loading memory…
           </p>
         </div>
-      ) : error || data?.error ? (
+      ) : error ? (
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="font-mono text-xs text-red-400/70 italic">
-            {data?.error ?? "Memory unavailable — learning system may not be initialized"}
+            {error instanceof Error ? error.message : "Memory unavailable — learning system may not be initialized"}
           </p>
         </div>
       ) : lessons.length === 0 ? (
@@ -217,59 +224,29 @@ export function MemoryPanel() {
         <div className="space-y-2">
           {lessons.map((lesson, i) => (
             <div
-              key={lesson.id ?? i}
+              key={i}
               className="rounded-xl border border-border bg-card p-4 space-y-2 hover:border-border/80 transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant={lessonTypeBadgeVariant(lesson.type)}>
-                    {lesson.type}
-                  </Badge>
-                  {lesson.symbol && (
-                    <Badge variant="neutral">{lesson.symbol}</Badge>
-                  )}
-                  {lesson.tags?.map((tag) => (
-                    <span
-                      key={tag}
-                      className="font-mono text-[9px] text-muted-foreground/50 border border-border/40 rounded px-1.5 py-0.5"
-                    >
-                      {tag}
+                  <Badge variant="neutral">{lesson.condition}</Badge>
+                  <Badge variant={outcomeBadgeVariant(lesson.outcome)}>{lesson.outcome}</Badge>
+                  {lesson.trades_affected?.length > 0 && (
+                    <span className="font-mono text-[9px] text-muted-foreground/50 border border-border/40 rounded px-1.5 py-0.5">
+                      {lesson.trades_affected.length} trade{lesson.trades_affected.length !== 1 ? "s" : ""}
                     </span>
-                  ))}
+                  )}
                 </div>
-                {lesson.created_at && (
+                {lesson.date && (
                   <span className="font-mono text-[10px] text-muted-foreground/40 whitespace-nowrap shrink-0">
-                    {fmtDate(lesson.created_at)}
+                    {fmtDate(lesson.date)}
                   </span>
                 )}
               </div>
 
               <p className="font-mono text-[11px] text-foreground/80 leading-relaxed">
-                {lesson.content}
+                {lesson.lesson_text}
               </p>
-
-              {lesson.confidence != null && (
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-muted-foreground/40 uppercase tracking-wider">
-                    Confidence
-                  </span>
-                  <div className="flex-1 max-w-[80px] h-1 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.min(100, lesson.confidence * 100)}%`,
-                        backgroundColor:
-                          lesson.confidence >= 0.7 ? "#00ff88"
-                          : lesson.confidence >= 0.4 ? "#ffcc00"
-                          : "#888",
-                      }}
-                    />
-                  </div>
-                  <span className="font-mono text-[10px] text-muted-foreground/40 tabular-nums">
-                    {(lesson.confidence * 100).toFixed(0)}%
-                  </span>
-                </div>
-              )}
             </div>
           ))}
         </div>

@@ -671,11 +671,19 @@ async def get_mgc_signal():
             else:
                 signal = "NO_ENTRY"
 
-            signal_date = (
-                str(df_signals.index[-1].date())
-                if hasattr(df_signals.index[-1], "date")
-                else str(df_signals.index[-1])[:10]
-            )
+            last_index_val = df_signals.index[-1]
+            if hasattr(last_index_val, "date"):
+                signal_date = str(last_index_val.date())
+            elif "timestamp" in df_signals.columns:
+                # Index isn't a DatetimeIndex (e.g. the TradingView feed path,
+                # which carries the bar timestamp in a "timestamp" column
+                # instead of the index) -- derive the date from that column
+                # rather than stringifying the raw positional index.
+                import pandas as pd
+
+                signal_date = str(pd.to_datetime(last.get("timestamp")).date())
+            else:
+                signal_date = str(last_index_val)[:10]
 
             return {
                 "date": signal_date,
@@ -841,6 +849,22 @@ async def run_monte_carlo_analysis(req: MonteCarloRequest) -> dict:
             max_slippage_ticks=req.max_slippage_ticks,
             symbol=symbol,
             seed=42,
+        )
+
+        # Bootstrap-resampled VaR / CVaR / probability-of-ruin -- additive,
+        # report-only fields alongside the permutation-based fields above.
+        # These answer a different question than run_monte_carlo()'s
+        # prob_any_loss_permuted: the sampling-distribution risk of a
+        # plausible NEW trade sequence (IID bootstrap), not a reordering of
+        # the exact same observed trades.
+        from backtest.monte_carlo import compute_cvar, compute_var
+        from backtest.monte_carlo import probability_of_ruin as _bootstrap_probability_of_ruin
+
+        pnls = [t.pnl for t in bt_result.trades]
+        mc_results["bootstrap_var"] = compute_var(pnls, seed=42)
+        mc_results["bootstrap_cvar"] = compute_cvar(pnls, seed=42)
+        mc_results["bootstrap_probability_of_ruin"] = _bootstrap_probability_of_ruin(
+            pnls, initial_capital=req.initial_capital, seed=42
         )
 
         return mc_results

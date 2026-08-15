@@ -1,7 +1,8 @@
 """
 JARVIS Trader Options Engine — Greeks Monitor
-Black-Scholes Greeks calculator, implied volatility solver, IV rank/percentile,
-portfolio-level Greeks aggregation, and real-time delta alert monitoring.
+Black-76 Greeks calculator (options on futures), implied volatility solver,
+IV rank/percentile, portfolio-level Greeks aggregation, and real-time delta
+alert monitoring.
 """
 
 import logging
@@ -29,19 +30,20 @@ def _norm_pdf(x: float) -> float:
 
 
 def _d1_d2(
-    S: float,
+    F: float,
     K: float,
     T: float,
-    r: float,
     sigma: float,
 ) -> tuple[float, float]:
-    """Compute d1 and d2 for Black-Scholes.
+    """Compute d1 and d2 for Black-76 (options on futures).
+
+    No risk-free drift term — a futures price is already a martingale under
+    the T-forward measure, unlike spot.
 
     Args:
-        S: Current underlying price.
+        F: Futures price (underlying).
         K: Strike price.
         T: Time to expiration in years.
-        r: Risk-free interest rate (annualised, decimal).
         sigma: Implied / historical volatility (annualised, decimal).
 
     Returns:
@@ -51,8 +53,8 @@ def _d1_d2(
         raise ValueError("Time to expiration T must be positive.")
     if sigma <= 0:
         raise ValueError("Volatility sigma must be positive.")
-    log_sk = math.log(S / K)
-    d1 = (log_sk + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
+    log_fk = math.log(F / K)
+    d1 = (log_fk + 0.5 * sigma**2 * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
     return d1, d2
 
@@ -63,17 +65,17 @@ def _d1_d2(
 
 
 def calculate_greeks(
-    S: float,
+    F: float,
     K: float,
     T: float,
     r: float,
     sigma: float,
     option_type: Literal["call", "put"],
 ) -> dict[str, float]:
-    """Calculate Black-Scholes Greeks for a single option.
+    """Calculate Black-76 Greeks for a single option on a future.
 
     Args:
-        S:           Underlying price.
+        F:           Futures price (underlying).
         K:           Strike price.
         T:           Time to expiry in years (e.g. 30 days → 30/365).
         r:           Annualised risk-free rate (decimal, e.g. 0.05 for 5 %).
@@ -82,43 +84,57 @@ def calculate_greeks(
 
     Returns:
         Dictionary with keys: delta, gamma, theta, vega, rho.
-        - delta: Rate of change of option price with respect to underlying.
+        - delta: Rate of change of option price with respect to the future.
         - gamma: Rate of change of delta.
         - theta: Time decay per calendar day (negative for long options).
         - vega:  Sensitivity to 1 % change in IV (value × 0.01).
         - rho:   Sensitivity to 1 % change in risk-free rate (value × 0.01).
+
+    Notes on the Black-76 derivation (vs. spot Black-Scholes):
+        Because both legs of the Black-76 price (``F*N(d1)`` and ``K*N(d2)``)
+        are discounted by ``e^{-rT}`` — not just the strike leg, as in spot
+        Black-Scholes where only ``K`` is discounted — delta, gamma, and vega
+        all pick up an extra ``e^{-rT}`` factor relative to their spot-BS
+        counterparts, and theta gains an additional ``± r*F*e^{-rT}*N(±d1)``
+        term (see the derivation of ``d/dT[F*N(d1) - K*N(d2)]`` used below,
+        which relies on the identity ``F*N'(d1) == K*N'(d2)``). Rho reduces to
+        ``-T * price`` because, once the drift term drops out of d1/d2, the
+        option price is exactly ``e^{-rT}`` times an r-independent expectation.
     """
     otype = option_type.lower()
     if otype not in ("call", "put"):
         raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
 
-    d1, d2 = _d1_d2(S, K, T, r, sigma)
+    d1, d2 = _d1_d2(F, K, T, sigma)
     sqrt_T = math.sqrt(T)
+    disc = math.exp(-r * T)
 
     # --- Delta ---
     if otype == "call":
-        delta = _norm_cdf(d1)
+        delta = disc * _norm_cdf(d1)
     else:
-        delta = _norm_cdf(d1) - 1.0  # negative for puts
+        delta = disc * (_norm_cdf(d1) - 1.0)  # negative for puts
 
     # --- Gamma (same for calls and puts) ---
-    gamma = _norm_pdf(d1) / (S * sigma * sqrt_T)
+    gamma = disc * _norm_pdf(d1) / (F * sigma * sqrt_T)
 
     # --- Theta (per calendar day) ---
-    common_theta = -(S * _norm_pdf(d1) * sigma) / (2.0 * sqrt_T)
+    common_theta = -(F * _norm_pdf(d1) * sigma * disc) / (2.0 * sqrt_T)
     if otype == "call":
-        theta = (common_theta - r * K * math.exp(-r * T) * _norm_cdf(d2)) / 365.0
+        theta = (common_theta - r * K * disc * _norm_cdf(d2) + r * F * disc * _norm_cdf(d1)) / 365.0
     else:
-        theta = (common_theta + r * K * math.exp(-r * T) * _norm_cdf(-d2)) / 365.0
+        theta = (common_theta + r * K * disc * _norm_cdf(-d2) - r * F * disc * _norm_cdf(-d1)) / 365.0
 
     # --- Vega (per 1 % move in IV) ---
-    vega = S * _norm_pdf(d1) * sqrt_T * 0.01
+    vega = F * disc * _norm_pdf(d1) * sqrt_T * 0.01
 
     # --- Rho (per 1 % move in risk-free rate) ---
-    if otype == "call":
-        rho = K * T * math.exp(-r * T) * _norm_cdf(d2) * 0.01
-    else:
-        rho = -K * T * math.exp(-r * T) * _norm_cdf(-d2) * 0.01
+    # price = e^{-rT} * (r-independent expectation) once the drift term drops
+    # out of d1/d2, so d(price)/dr = -T * price for both calls and puts.
+    from .premium_calculator import black76_price  # local import to avoid circulars
+
+    price = black76_price(F, K, T, r, sigma, otype)
+    rho = -T * price * 0.01
 
     return {
         "delta": round(delta, 6),
@@ -136,7 +152,7 @@ def calculate_greeks(
 
 def implied_volatility(
     market_price: float,
-    S: float,
+    F: float,
     K: float,
     T: float,
     r: float,
@@ -149,7 +165,7 @@ def implied_volatility(
 
     Args:
         market_price: Observed market price (mid-price recommended).
-        S:            Underlying price.
+        F:            Futures price (underlying).
         K:            Strike price.
         T:            Time to expiry in years.
         r:            Annualised risk-free rate (decimal).
@@ -162,23 +178,23 @@ def implied_volatility(
         Implied volatility as a decimal (e.g. 0.2345 for 23.45 %).
         Returns ``float('nan')`` if the solver fails to converge.
     """
-    from .premium_calculator import black_scholes_price  # local import to avoid circulars
+    from .premium_calculator import black76_price  # local import to avoid circulars
 
     sigma = sigma_init
     for i in range(max_iter):
-        price = black_scholes_price(S, K, T, r, sigma, option_type)
+        price = black76_price(F, K, T, r, sigma, option_type)
         price_diff = price - market_price
 
         if abs(price_diff) < tol:
             return round(sigma, 6)
 
-        # Vega is the derivative of price w.r.t. sigma
+        # Vega is the derivative of price w.r.t. sigma (discounted, Black-76)
         try:
-            d1, _ = _d1_d2(S, K, T, r, sigma)
+            d1, _ = _d1_d2(F, K, T, sigma)
         except ValueError:
             return float("nan")
 
-        vega_raw = S * _norm_pdf(d1) * math.sqrt(T)  # raw vega (not scaled)
+        vega_raw = F * math.exp(-r * T) * _norm_pdf(d1) * math.sqrt(T)  # raw vega (not scaled)
         if abs(vega_raw) < 1e-10:
             logger.debug("IV solver: vega near zero at iter %d — stopping", i)
             return float("nan")

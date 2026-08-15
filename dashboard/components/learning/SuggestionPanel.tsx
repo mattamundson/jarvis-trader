@@ -11,35 +11,81 @@ function fetcher<T = unknown>(url: string): Promise<T> {
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+// Mirrors the ACTUAL engine response — GET /learning/suggestions in
+// engine/routers/learning_router.py wraps everything as {status, data}, and
+// each Suggestion (engine/learning/_experimental/strategy_tuner.py) only ever
+// carries param_name/current_value/suggested_value/confidence/reason. There is
+// no `impact` tier or `direction` field on the wire — both are derived below.
 
 interface ParamSuggestion {
   param_name: string;
   current_value: number | string | null;
   suggested_value: number | string | null;
-  reason: string;
   confidence: number;
-  impact: "high" | "medium" | "low";
-  direction?: "increase" | "decrease" | "change" | null;
+  reason: string;
 }
 
-interface SuggestionsResponse {
-  symbol: string;
-  generated_at?: string | null;
+interface SuggestionsData {
+  symbol: string | null;
+  trades_analyzed: number;
+  current_params: Record<string, number | string>;
   suggestions: ParamSuggestion[];
-  summary?: string | null;
-  data_quality?: string | null;
-  trades_analyzed?: number | null;
-  error?: string;
+  suggestion_count: number;
+}
+
+interface SuggestionsEnvelope {
+  status: string;
+  data: SuggestionsData;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function impactBadgeVariant(impact: string): "bull" | "warn" | "info" | "neutral" {
+type Impact = "high" | "medium" | "low";
+type Direction = "increase" | "decrease" | "change";
+
+// The backend does not return an impact tier — derive one from confidence
+// using the same 70%/40% thresholds the confidence bar below already uses.
+function impactFromConfidence(confidence: number): Impact {
+  if (confidence >= 0.7) return "high";
+  if (confidence >= 0.4) return "medium";
+  return "low";
+}
+
+function impactBadgeVariant(impact: Impact): "bull" | "warn" | "info" {
   switch (impact) {
     case "high":   return "bull";
     case "medium": return "warn";
     case "low":    return "info";
-    default:       return "neutral";
+  }
+}
+
+// The backend does not return a direction either — derive it by comparing
+// current_value vs suggested_value (both may be numeric or numeric strings).
+function directionFromValues(
+  current: number | string | null,
+  suggested: number | string | null
+): Direction {
+  const c = typeof current === "number" ? current : Number(current);
+  const s = typeof suggested === "number" ? suggested : Number(suggested);
+  if (!Number.isFinite(c) || !Number.isFinite(s)) return "change";
+  if (s > c) return "increase";
+  if (s < c) return "decrease";
+  return "change";
+}
+
+function directionArrow(direction: Direction): string {
+  switch (direction) {
+    case "increase": return "↑";
+    case "decrease": return "↓";
+    case "change":    return "↔";
+  }
+}
+
+function directionColor(direction: Direction): string {
+  switch (direction) {
+    case "increase": return "#00ff88";
+    case "decrease": return "#ff4444";
+    case "change":    return "#ffcc00";
   }
 }
 
@@ -61,23 +107,6 @@ function confidenceBar(confidence: number) {
   );
 }
 
-function directionArrow(direction: string | null | undefined): string {
-  switch (direction) {
-    case "increase": return "↑";
-    case "decrease": return "↓";
-    case "change":   return "↔";
-    default:         return "→";
-  }
-}
-
-function directionColor(direction: string | null | undefined): string {
-  switch (direction) {
-    case "increase": return "#00ff88";
-    case "decrease": return "#ff4444";
-    default:         return "#ffcc00";
-  }
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface SuggestionPanelProps {
@@ -85,11 +114,13 @@ interface SuggestionPanelProps {
 }
 
 export function SuggestionPanel({ symbol }: SuggestionPanelProps) {
-  const { data, isLoading, error } = useSWR<SuggestionsResponse>(
+  const { data: envelope, isLoading, error } = useSWR<SuggestionsEnvelope>(
     `/learning/suggestions?symbol=${symbol}`,
     fetcher,
     { refreshInterval: REFRESH_MS }
   );
+
+  const data = envelope?.data;
 
   if (isLoading) {
     return (
@@ -104,23 +135,26 @@ export function SuggestionPanel({ symbol }: SuggestionPanelProps) {
     );
   }
 
-  if (error || data?.error) {
+  if (error) {
     return (
       <div className="rounded-xl border border-border bg-card p-4 space-y-2">
         <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           Strategy Tuning — {symbol}
         </p>
         <p className="font-mono text-xs text-red-400/70 italic">
-          {data?.error ?? "No suggestions available — the StrategyTuner needs more trade data"}
+          {error instanceof Error ? error.message : "No suggestions available — the StrategyTuner needs more trade data"}
         </p>
         <p className="font-mono text-[10px] text-muted-foreground/40">
-          Suggestions appear after 30+ completed trades with consistent market conditions.
+          Suggestions appear after 5+ completed trades with consistent market conditions.
         </p>
       </div>
     );
   }
 
   const suggestions = data?.suggestions ?? [];
+  const highImpactCount = suggestions.filter(
+    (s) => impactFromConfidence(s.confidence) === "high"
+  ).length;
 
   return (
     <div className="space-y-4">
@@ -131,48 +165,20 @@ export function SuggestionPanel({ symbol }: SuggestionPanelProps) {
             <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Strategy Tuning — {symbol}
             </p>
-            {data?.generated_at && (
-              <p className="font-mono text-[10px] text-muted-foreground/40 mt-0.5">
-                Generated {new Date(data.generated_at).toLocaleString("en-US", {
-                  month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-                })}
-              </p>
-            )}
           </div>
-          <div className="text-right space-y-0.5">
-            {data?.trades_analyzed != null && (
-              <p className="font-mono text-[10px] text-muted-foreground/60">
-                {data.trades_analyzed} trades analyzed
-              </p>
-            )}
-            {data?.data_quality && (
-              <Badge variant={
-                data.data_quality === "good" ? "bull"
-                : data.data_quality === "fair" ? "warn"
-                : "neutral"
-              }>
-                {data.data_quality} data quality
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {data?.summary && (
-          <div className="rounded-lg border border-border/50 bg-muted/10 p-3">
-            <p className="font-mono text-[11px] text-foreground/70 leading-relaxed">
-              {data.summary}
+          {data?.trades_analyzed != null && (
+            <p className="font-mono text-[10px] text-muted-foreground/60">
+              {data.trades_analyzed} trades analyzed
             </p>
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-muted-foreground/60">
             {suggestions.length} suggestion{suggestions.length !== 1 ? "s" : ""}
           </span>
-          {suggestions.filter((s) => s.impact === "high").length > 0 && (
-            <Badge variant="bull">
-              {suggestions.filter((s) => s.impact === "high").length} high impact
-            </Badge>
+          {highImpactCount > 0 && (
+            <Badge variant="bull">{highImpactCount} high impact</Badge>
           )}
         </div>
       </div>
@@ -186,77 +192,81 @@ export function SuggestionPanel({ symbol }: SuggestionPanelProps) {
         </div>
       ) : (
         <div className="space-y-3">
-          {suggestions.map((s, i) => (
-            <div
-              key={i}
-              className="rounded-xl border border-border bg-card p-4 space-y-3"
-            >
-              {/* Param name + impact */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="font-mono text-sm font-bold"
-                    style={{ color: directionColor(s.direction) }}
+          {suggestions.map((s, i) => {
+            const direction = directionFromValues(s.current_value, s.suggested_value);
+            const impact = impactFromConfidence(s.confidence);
+            return (
+              <div
+                key={`${s.param_name}-${i}`}
+                className="rounded-xl border border-border bg-card p-4 space-y-3"
+              >
+                {/* Param name + impact */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="font-mono text-sm font-bold"
+                      style={{ color: directionColor(direction) }}
+                    >
+                      {directionArrow(direction)}
+                    </span>
+                    <span className="font-mono text-sm font-semibold text-foreground">
+                      {s.param_name}
+                    </span>
+                  </div>
+                  <Badge variant={impactBadgeVariant(impact)}>
+                    {impact} impact
+                  </Badge>
+                </div>
+
+                {/* Current → Suggested */}
+                <div className="flex items-center gap-3 font-mono text-xs">
+                  <div className="flex-1 rounded-lg bg-muted/20 border border-border/50 p-2.5 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">
+                      Current
+                    </p>
+                    <p className="text-base font-bold tabular-nums text-foreground/70">
+                      {s.current_value != null ? String(s.current_value) : "—"}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-center text-muted-foreground/40">
+                    <span className="text-lg">→</span>
+                  </div>
+
+                  <div
+                    className="flex-1 rounded-lg border p-2.5 text-center"
+                    style={{
+                      backgroundColor: `${directionColor(direction)}08`,
+                      borderColor: `${directionColor(direction)}30`,
+                    }}
                   >
-                    {directionArrow(s.direction)}
-                  </span>
-                  <span className="font-mono text-sm font-semibold text-foreground">
-                    {s.param_name}
-                  </span>
-                </div>
-                <Badge variant={impactBadgeVariant(s.impact)}>
-                  {s.impact} impact
-                </Badge>
-              </div>
-
-              {/* Current → Suggested */}
-              <div className="flex items-center gap-3 font-mono text-xs">
-                <div className="flex-1 rounded-lg bg-muted/20 border border-border/50 p-2.5 text-center">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">
-                    Current
-                  </p>
-                  <p className="text-base font-bold tabular-nums text-foreground/70">
-                    {s.current_value != null ? String(s.current_value) : "—"}
-                  </p>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">
+                      Suggested
+                    </p>
+                    <p
+                      className="text-base font-bold tabular-nums"
+                      style={{ color: directionColor(direction) }}
+                    >
+                      {s.suggested_value != null ? String(s.suggested_value) : "—"}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex flex-col items-center text-muted-foreground/40">
-                  <span className="text-lg">→</span>
-                </div>
-
-                <div
-                  className="flex-1 rounded-lg border p-2.5 text-center"
-                  style={{
-                    backgroundColor: `${directionColor(s.direction)}08`,
-                    borderColor: `${directionColor(s.direction)}30`,
-                  }}
-                >
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">
-                    Suggested
-                  </p>
-                  <p
-                    className="text-base font-bold tabular-nums"
-                    style={{ color: directionColor(s.direction) }}
-                  >
-                    {s.suggested_value != null ? String(s.suggested_value) : "—"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Reason */}
-              <p className="font-mono text-[11px] text-foreground/60 leading-relaxed">
-                {s.reason}
-              </p>
-
-              {/* Confidence bar */}
-              <div className="space-y-1">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/50">
-                  Confidence
+                {/* Reason */}
+                <p className="font-mono text-[11px] text-foreground/60 leading-relaxed">
+                  {s.reason}
                 </p>
-                {confidenceBar(s.confidence)}
+
+                {/* Confidence bar */}
+                <div className="space-y-1">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/50">
+                    Confidence
+                  </p>
+                  {confidenceBar(s.confidence)}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -49,7 +49,7 @@ skills are live as of 2026-05-20; see `CLAUDE_CODE_AND_HERMES_INTEGRATION_MAP.md
 
 No surface — not even Claude Code — can override `engine/risk/safety_layer.py`.
 `/jarvis/ask` explicitly refuses safety-override questions. Kill switch thresholds
-(-2% daily P&L, -10% drawdown) are hardcoded Python constants, not LLM-routable
+(-6% daily P&L, -20% drawdown) are hardcoded Python constants, not LLM-routable
 parameters. Any change to safety files requires a `[safety-review]` PR tag and
 does not happen from a Hermes session.
 

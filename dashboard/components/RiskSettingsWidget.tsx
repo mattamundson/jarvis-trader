@@ -125,7 +125,7 @@ export function RiskSettingsWidget() {
             <CardTitle className="text-base font-semibold">
               Risk Configuration
             </CardTitle>
-            <Badge variant="info">Live Config</Badge>
+            <Badge variant="warn">Not Enforced</Badge>
           </div>
           <button
             onClick={fetchData}

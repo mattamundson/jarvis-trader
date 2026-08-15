@@ -46,6 +46,12 @@ class GateV2Metrics(BaseModel):
     combo_results: list[dict[str, Any]] = Field(default_factory=list)
     cost_survives_through: str | None = None
     cost_tier_results: dict[str, dict[str, Any]] | None = None
+    # Breakeven-slippage stress (Monte Carlo `run_slippage_stress` /
+    # `slippage_stress_from_pnls`) — report-only, does not affect PASS/FAIL.
+    # Optional with a None default so verdict files written before this field
+    # existed still validate (backward-compatible schema addition).
+    breakeven_extra_ticks: float | None = None
+    slippage_stress_verdict: str | None = None
 
 
 class GateV2Detail(BaseModel):

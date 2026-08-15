@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import type { WatchlistItem, MGCSignalResponse } from "@/lib/api";
+import { HALTED_SYMBOLS } from "@/lib/approvedSymbols";
 import {
   fetchHonestTrades,
   type HonestTradeSet,
@@ -46,6 +47,14 @@ import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 // ── Inline: WatchlistScanWidget ────────────────────────────────────────────
 // Fixed: fetchEngine already returns parsed JSON; removed double .json() call
 // that caused TypeError → data stayed null → permanent skeleton.
+
+// Halted instruments, sourced from the single hand-mirrored + parity-tested
+// list in lib/approvedSymbols.ts (see dashboard/tests/symbol-status-halt-parity.node.test.ts)
+// rather than a second local copy of engine/backtest/signals.py::DO_NOT_TRADE_SYMBOLS.
+// The engine is the source of truth (SafetyLayer.check_order hard-blocks any
+// order for these regardless of what this list says) — kept here purely to
+// avoid rendering a plain BUY/SELL badge that implies the signal is actionable.
+const DO_NOT_TRADE_SYMBOLS: ReadonlySet<string> = new Set(HALTED_SYMBOLS);
 
 type TFResult = { alignment: string; stc_value: number; signal: string };
 type SymbolResult = {
@@ -144,21 +153,36 @@ function WatchlistScanWidget({ symbols = "MES,MNQ,MCL,MGC" }: { symbols?: string
         ) : (
           <>
             <div className="divide-y divide-border">
-              {scanData.symbols.map((s) => (
-                <div key={s.symbol} className="px-4 py-2.5 flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-mono font-semibold">{s.symbol}</span>
-                    {s.error ? (
-                      <p className="text-xs text-muted-foreground">{s.error}</p>
+              {scanData.symbols.map((s) => {
+                const isHalted = DO_NOT_TRADE_SYMBOLS.has(s.symbol.toUpperCase());
+                return (
+                  <div key={s.symbol} className="px-4 py-2.5 flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-mono font-semibold">{s.symbol}</span>
+                      {s.error ? (
+                        <p className="text-xs text-muted-foreground">{s.error}</p>
+                      ) : isHalted ? (
+                        <p className="text-xs text-muted-foreground">Halted — non-actionable</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">{s.alignment}</p>
+                      )}
+                    </div>
+                    {isHalted ? (
+                      <span
+                        title={`${s.symbol} is a halted instrument — no orders route regardless of the model's recommendation`}
+                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-[10px] font-bold bg-bear/10 text-bear border border-bear/30 tracking-wider"
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        HALTED
+                      </span>
                     ) : (
-                      <p className="text-xs text-muted-foreground">{s.alignment}</p>
+                      <Badge variant={REC_VARIANT_SCAN[s.recommendation] ?? "neutral"}>
+                        {s.recommendation}
+                      </Badge>
                     )}
                   </div>
-                  <Badge variant={REC_VARIANT_SCAN[s.recommendation] ?? "neutral"}>
-                    {s.recommendation}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="px-4 py-2 border-t border-border bg-muted/30 flex gap-3 text-xs text-muted-foreground">
               <span className="text-bull">{scanData.buy_count} BUY</span>
@@ -456,7 +480,28 @@ function changeColorClass(pct: number | null): string {
 
 // ── Signal badge ───────────────────────────────────────────────────────────
 
-function SignalBadge({ signal }: { signal: string | undefined }) {
+function SignalBadge({
+  signal,
+  halted = false,
+}: {
+  signal: string | undefined;
+  halted?: boolean;
+}) {
+  // Halted instruments (DO_NOT_TRADE_SYMBOLS) never render a plain BUY/SELL/
+  // HOLD badge, even if the pipeline emitted one \u2014 no order can ever route
+  // for these, so a directional badge would misrepresent it as actionable.
+  if (halted) {
+    return (
+      <span
+        title="Halted instrument \u2014 signal is non-actionable, no orders route"
+        className="inline-flex items-center gap-1 rounded px-2 py-0.5 font-mono text-xs font-bold bg-bear/10 text-bear border border-bear/30"
+      >
+        <AlertCircle className="h-3 w-3" />
+        HALTED
+      </span>
+    );
+  }
+
   if (!signal) return <span className="text-muted-foreground font-mono text-xs">\u2014</span>;
 
   const upper = signal.toUpperCase();
@@ -1339,7 +1384,10 @@ export default function WatchlistPage() {
                           </td>
 
                           <td className="px-4 py-3 text-center">
-                            <SignalBadge signal={row.lastSignal} />
+                            <SignalBadge
+                              signal={row.lastSignal}
+                              halted={DO_NOT_TRADE_SYMBOLS.has(row.symbol.toUpperCase())}
+                            />
                           </td>
 
                           <td className="px-4 py-3 text-center">

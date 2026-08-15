@@ -1,0 +1,14 @@
+{
+  "name": "jarvis-trader-dashboard-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:trading": "pnpm --filter trading-desk dev",
+    "dev:research": "pnpm --filter research-lab dev",
+    "dev:ops": "pnpm --filter ops-console dev",
+    "build": "pnpm --filter './apps/**' build"
+  }
+}

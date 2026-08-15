@@ -43,9 +43,10 @@ stay a **draft** until a decision (so it is never mistaken for merge-ready).
 ## Reviewer checklist — the invariants, none may regress
 
 - `LIVE_TRADING_ENABLED` stays **False**; `REQUIRE_HUMAN_APPROVAL` stays **True**.
-- Kill-switch triggers unchanged (**-2% daily P&L / -20% drawdown** runtime; `config.py` default -10%)
+- Kill-switch triggers unchanged (**-6% daily P&L / -20% drawdown**, both current `config.py` code
+  defaults reconciled to `.env` live truth 2026-06-25)
   and remain **hardcoded Python with no LLM route**.
-- Risk caps intact: 5% max position, 2 micro contracts, 1 overnight, $5,000 single-order code default,
+- Risk caps intact: 10% max position, 2 micro contracts, 1 overnight, $100,000 single-order code default,
   40% margin, 10 orders/min.
 - Port **4001 permanently blocked**; paper-only on **4002**.
 - No exception silently swallowed in `safety_layer.py`; no safety decision routed through an LLM.

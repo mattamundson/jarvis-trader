@@ -96,10 +96,21 @@ class ValidationMetrics:
                 """
             ).fetchall()
         except Exception:
-            # Fallback — fetch all and filter nothing
+            # Fallback — the primary query above failed for some reason other
+            # than a missing status column (e.g. a transient error or an
+            # unrelated schema issue). Re-apply the same terminal-status
+            # filter in Python so contaminated/duplicate/pending rows can't
+            # leak into the go/no-go readiness gate just because the SQL
+            # path degraded. Only skip filtering if the column itself is
+            # genuinely absent from this table.
             rows = conn.execute(
                 f"SELECT * FROM {trade_table} ORDER BY entry_time ASC"
             ).fetchall()
+            if rows and "status" in rows[0].keys():
+                rows = [
+                    r for r in rows
+                    if str(r["status"]).lower() in ("closed", "filled", "done")
+                ]
 
         if not rows:
             return {

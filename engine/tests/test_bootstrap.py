@@ -6,14 +6,22 @@ real statistical bug was introduced — these are not flaky implementation tests
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
+from scipy.stats import norm
 
+from backtest.metrics import calculate_metrics
 from backtest.monte_carlo import (
+    _load_result_from_json,
     bootstrap_pf,
     bootstrap_sharpe,
+    compute_cvar,
+    compute_var,
     moving_block_bootstrap,
     permute_max_dd,
+    probability_of_ruin,
 )
 
 
@@ -141,3 +149,166 @@ class TestPermuteMaxDD:
         r = permute_max_dd([1.0], n_resamples=100, seed=42)
         assert r["n_trades"] == 1
         assert r["observed_max_dd_pct"] == 0.0
+
+
+class TestComputeVar:
+    def test_normal_synthetic_var_matches_closed_form(self):
+        """5th-percentile VaR on N(0, 100) should be close to the closed-form
+        Gaussian quantile -1.645 * std (negative, matching metrics.py's
+        negative-for-loss sign convention)."""
+        rng = np.random.default_rng(1)
+        pnls = rng.normal(loc=0, scale=100, size=2000)
+        r = compute_var(list(pnls), confidence=0.95, n_resamples=2000, seed=42)
+        expected_var = norm.ppf(0.05) * 100.0  # ~ -164.5
+        assert abs(r["var_pct"] - expected_var) < 25.0  # bootstrap/sample noise tolerance
+        assert r["n_trades"] == 2000
+        assert r["confidence"] == 0.95
+
+    def test_short_pnls_returns_zeros(self):
+        r = compute_var([1.0], n_resamples=100, seed=42)
+        assert r["n_trades"] == 1
+        assert r["var_pct"] == 0.0
+
+    def test_empty_pnls_returns_zeros(self):
+        r = compute_var([], n_resamples=100, seed=42)
+        assert r["n_trades"] == 0
+        assert r["var_pct"] == 0.0
+
+    def test_all_positive_pnls_clip_toward_zero(self):
+        """No losses at all: VaR must not error and must not report a large
+        negative (loss-like) number — it should sit at/above 0."""
+        pnls = [1.0] * 100
+        r = compute_var(pnls, n_resamples=500, seed=42)
+        assert r["var_pct"] >= 0.0
+
+    def test_seed_reproducibility(self):
+        pnls = list(np.random.default_rng(0).normal(0, 50, size=200))
+        r1 = compute_var(pnls, n_resamples=500, seed=123)
+        r2 = compute_var(pnls, n_resamples=500, seed=123)
+        assert r1 == r2
+
+
+class TestComputeCvar:
+    def test_normal_synthetic_cvar_matches_closed_form(self):
+        """CVaR (Expected Shortfall) on N(0, 100) at 95% confidence should be
+        close to the closed-form Gaussian value: -std * phi(z)/alpha, with
+        z = Phi^-1(0.05) and alpha = 0.05 (~ -206.3 for std=100)."""
+        rng = np.random.default_rng(2)
+        pnls = rng.normal(loc=0, scale=100, size=2000)
+        r = compute_cvar(list(pnls), confidence=0.95, n_resamples=2000, seed=42)
+        z = norm.ppf(0.05)
+        expected_cvar = -100.0 * norm.pdf(z) / 0.05
+        assert abs(r["cvar"] - expected_cvar) < 35.0  # bootstrap/sample noise tolerance
+        assert r["n_trades"] == 2000
+
+    def test_short_pnls_returns_zeros(self):
+        r = compute_cvar([1.0], n_resamples=100, seed=42)
+        assert r["n_trades"] == 1
+        assert r["cvar"] == 0.0
+
+    def test_empty_pnls_returns_zeros(self):
+        r = compute_cvar([], n_resamples=100, seed=42)
+        assert r["cvar"] == 0.0
+
+    def test_all_positive_pnls_clip_toward_zero(self):
+        pnls = [1.0] * 100
+        r = compute_cvar(pnls, n_resamples=500, seed=42)
+        assert r["cvar"] >= 0.0
+
+    def test_seed_reproducibility(self):
+        pnls = list(np.random.default_rng(0).normal(0, 50, size=200))
+        r1 = compute_cvar(pnls, n_resamples=500, seed=123)
+        r2 = compute_cvar(pnls, n_resamples=500, seed=123)
+        assert r1 == r2
+
+    def test_cvar_at_least_as_extreme_as_var(self):
+        """CVaR (mean of the tail beyond VaR) must be <= VaR itself (more
+        negative / a bigger loss), never a smaller-magnitude number."""
+        rng = np.random.default_rng(3)
+        pnls = rng.normal(loc=0, scale=100, size=1000)
+        var_r = compute_var(list(pnls), n_resamples=500, seed=42)
+        cvar_r = compute_cvar(list(pnls), n_resamples=500, seed=42)
+        assert cvar_r["cvar"] <= var_r["var_pct"]
+
+
+class TestProbabilityOfRuin:
+    def test_one_huge_loser_pushes_ruin_probability_up(self):
+        pnls = [500.0] * 80 + [-8000.0]
+        r = probability_of_ruin(
+            pnls, initial_capital=10_000.0, ruin_threshold_pct=0.5, n_resamples=2000, seed=42
+        )
+        assert r["probability_of_ruin"] > 0.0
+
+    def test_uniformly_small_losses_no_ruin(self):
+        pnls = [50.0] * 40 + [-40.0] * 40
+        r = probability_of_ruin(
+            pnls, initial_capital=10_000.0, ruin_threshold_pct=0.5, n_resamples=2000, seed=42
+        )
+        assert r["probability_of_ruin"] == pytest.approx(0.0, abs=1e-3)
+
+    def test_monotonic_in_ruin_threshold(self):
+        """Raising ruin_threshold_pct (an easier-to-breach, higher equity
+        floor) must never DECREASE the reported probability."""
+        pnls = [500.0] * 80 + [-8000.0]
+        r_low = probability_of_ruin(
+            pnls, initial_capital=10_000.0, ruin_threshold_pct=0.5, n_resamples=2000, seed=42
+        )
+        r_high = probability_of_ruin(
+            pnls, initial_capital=10_000.0, ruin_threshold_pct=0.9, n_resamples=2000, seed=42
+        )
+        assert r_high["probability_of_ruin"] >= r_low["probability_of_ruin"]
+
+    def test_failsafe_under_two_trades_returns_zero_not_one(self):
+        """Fail-safe must be 0.0 (not 1.0) — too little data to simulate a
+        path must not silently over-flag as risky."""
+        r = probability_of_ruin([100.0], n_resamples=100, seed=42)
+        assert r["probability_of_ruin"] == 0.0
+        r0 = probability_of_ruin([], n_resamples=100, seed=42)
+        assert r0["probability_of_ruin"] == 0.0
+
+    def test_seed_reproducibility(self):
+        pnls = [500.0] * 80 + [-8000.0]
+        r1 = probability_of_ruin(pnls, n_resamples=1000, seed=7)
+        r2 = probability_of_ruin(pnls, n_resamples=1000, seed=7)
+        assert r1 == r2
+
+
+class TestBootstrapVarCvarCrossCheckAgainstMetrics:
+    """Cross-check compute_var/compute_cvar against metrics.py's single-sample
+    var_95/cvar_95 on the same real trade list -- same underlying percentile
+    method, different framing (bootstrap CI vs. point estimate) and different
+    units (dollars here vs. fraction-of-capital in metrics.py)."""
+
+    def _load_fixture(self):
+        fixture = (
+            Path(__file__).parent.parent
+            / "backtest"
+            / "results"
+            / "MES_1h_2024-06-01_2026-03-27.json"
+        )
+        return _load_result_from_json(str(fixture))
+
+    def test_compute_var_matches_metrics_var_95_after_unit_conversion(self):
+        bt_result = self._load_fixture()
+        pnls = [t.pnl for t in bt_result.trades]
+        assert len(pnls) >= 10  # calculate_metrics only sets var_95 when len(returns) >= 10
+
+        metrics_result = calculate_metrics(bt_result)
+        var_r = compute_var(pnls, confidence=0.95, n_resamples=2000, seed=42)
+
+        # compute_var reports raw dollar PnL; metrics.py reports a fraction of
+        # initial_capital. Convert dollars -> fraction before comparing (same
+        # 5th-percentile method on the same trades, just rescaled).
+        var_fraction = var_r["var_pct"] / bt_result.initial_capital
+        assert var_fraction == pytest.approx(metrics_result.var_95, abs=1e-6)
+
+    def test_compute_cvar_matches_metrics_cvar_95_after_unit_conversion(self):
+        bt_result = self._load_fixture()
+        pnls = [t.pnl for t in bt_result.trades]
+        assert len(pnls) >= 10
+
+        metrics_result = calculate_metrics(bt_result)
+        cvar_r = compute_cvar(pnls, confidence=0.95, n_resamples=2000, seed=42)
+
+        cvar_fraction = cvar_r["cvar"] / bt_result.initial_capital
+        assert cvar_fraction == pytest.approx(metrics_result.cvar_95, abs=1e-6)

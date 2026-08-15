@@ -771,7 +771,17 @@ class RLTrainer:
     # ── Model listing ─────────────────────────────────────────────────────
 
     def list_models(self, symbol: Optional[str] = None) -> list[dict]:
-        """List saved RL models. Optionally filter by symbol."""
+        """
+        List saved RL models. Optionally filter by symbol.
+
+        Each entry: run_id, symbol, path (model file without .zip extension,
+        matches the DeployRequest.model_path / EvaluateRequest.model_path
+        convention used elsewhere in this module), size_kb (real .zip file
+        size on disk), completed, metadata (training summary sidecar JSON
+        when present). symbol/path/size_kb are consumed by the dashboard's
+        SavedModel type (dashboard/app/strategies/page.tsx) — sourced here
+        from the actual filename and filesystem stat, not fabricated.
+        """
         import json
 
         models_dir = RL_MODELS_DIR
@@ -799,6 +809,9 @@ class RLTrainer:
             results.append(
                 {
                     "run_id": stem,
+                    "symbol": model_symbol,
+                    "path": str(zip_path.with_suffix("")),
+                    "size_kb": round(zip_path.stat().st_size / 1024, 1),
                     "completed": True,
                     "metadata": meta,
                 }

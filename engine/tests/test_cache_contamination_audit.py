@@ -38,7 +38,71 @@ if str(SCRIPTS_DIR) not in sys.path:
 from audit_polygon_contamination import (  # noqa: E402
     FUTURES_PRICE_BAND,
     classify,
+    read_closes,
 )
+
+
+def _write_csv(tmp_path: Path, name: str, text: str) -> Path:
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+class TestReadCloses:
+    """Header/row parsing contract for read_closes.
+
+    The column keys are resolved once from the header rather than per row (the
+    cache holds 5m series with 100k+ rows each), so these pin the behaviour that
+    the per-row scan used to provide: case-insensitive header matching, tolerance
+    of non-numeric rows, and empty output when no close column exists.
+    """
+
+    def test_parses_standard_loader_header(self, tmp_path):
+        p = _write_csv(
+            tmp_path,
+            "MES_1h.csv",
+            "Date,Open,High,Low,Close,Volume\n"
+            "2026-01-02,100,101,99,100.5,10\n"
+            "2026-01-03,100.5,102,100,101.5,12\n",
+        )
+        closes, dates = read_closes(p)
+        assert closes == [100.5, 101.5]
+        assert dates == ["2026-01-02", "2026-01-03"]
+
+    def test_header_matching_is_case_insensitive(self, tmp_path):
+        p = _write_csv(
+            tmp_path,
+            "MES_1h.csv",
+            "TIMESTAMP,open,high,low,CLOSE,volume\n2026-01-02,1,1,1,42.0,1\n",
+        )
+        closes, dates = read_closes(p)
+        assert closes == [42.0]
+        assert dates == ["2026-01-02"]
+
+    def test_no_close_column_yields_empty(self, tmp_path):
+        p = _write_csv(tmp_path, "MES_1h.csv", "Date,Open,High,Low,Volume\n2026-01-02,1,1,1,1\n")
+        assert read_closes(p) == ([], [])
+
+    def test_non_numeric_closes_are_skipped(self, tmp_path):
+        p = _write_csv(
+            tmp_path,
+            "MES_1h.csv",
+            "Date,Close\n2026-01-02,100.0\n2026-01-03,n/a\n2026-01-04,\n2026-01-05,102.0\n",
+        )
+        closes, dates = read_closes(p)
+        assert closes == [100.0, 102.0]
+        # A skipped close must not desync the parallel dates list.
+        assert dates == ["2026-01-02", "2026-01-05"]
+
+    def test_close_column_without_date_column(self, tmp_path):
+        p = _write_csv(tmp_path, "MES_1h.csv", "Close\n100.0\n101.0\n")
+        closes, dates = read_closes(p)
+        assert closes == [100.0, 101.0]
+        assert dates == []
+
+    def test_empty_file_yields_empty(self, tmp_path):
+        p = _write_csv(tmp_path, "MES_1h.csv", "")
+        assert read_closes(p) == ([], [])
 
 
 @pytest.mark.slow
@@ -46,6 +110,12 @@ from audit_polygon_contamination import (  # noqa: E402
     not CACHE_DIR.exists() or not any(CACHE_DIR.glob("*.csv")),
     reason="backtest/cache is empty or absent in this checkout",
 )
+# This test reads every bar of every cached CSV, so it scales with the cache and
+# does not fit the 30s per-test budget in pyproject.toml that unit tests assume.
+# The budget matters more than usual here: pytest-timeout's thread method cannot
+# cancel one test, so blowing it kills the whole suite run rather than failing
+# this test. It regressed exactly that way once the cache grew past ~160 files.
+@pytest.mark.timeout(180)
 def test_no_contaminated_cache_files():
     """Every cached CSV must have prices inside its futures/equity band."""
     csvs = sorted(CACHE_DIR.glob("*.csv"))

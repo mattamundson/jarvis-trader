@@ -76,11 +76,15 @@ _RE_WRITES = re.compile(r"Writes:\s*\S*gate_v2_verdicts/([A-Za-z0-9_]+)\.json")
 # paper_config block scanning.
 _RE_BLOCK_START = re.compile(r"^[A-Z][A-Z0-9_]*\s*=\s*\{\s*$")
 _RE_BLOCK_END = re.compile(r"^\}\s*$")
-_RE_SYMBOL = re.compile(r'"symbol"\s*:\s*"([A-Za-z0-9]+)"')
+_RE_SYMBOL = re.compile(r'"symbol"\s*:\s*"([A-Za-z0-9_]+)"')
 _RE_ENABLED_TRUE = re.compile(r'^\s*"enabled"\s*:\s*True\b')
 _RE_VERDICT_COMMENT = re.compile(
     r"Verdict file:\s*\S*gate_v2_verdicts/([A-Za-z0-9_]+)\.json"
 )
+# Pseudo-symbol redirect (e.g. MES_VA30 -> MES, see gate_v2_policy.py's own
+# verdict_symbol override): such a block deliberately has no Verdict file
+# comment of its own -- its canonical verdict is the redirect target's.
+_RE_VERDICT_SYMBOL = re.compile(r'"verdict_symbol"\s*:\s*"([A-Za-z0-9_]+)"')
 
 
 class RunnerInfo:
@@ -127,6 +131,7 @@ def parse_paper_config(text: str) -> dict[str, str | None]:
     had no parseable ``Verdict file:`` comment (caller treats as FATAL).
     """
     enabled: dict[str, str | None] = {}
+    redirects: dict[str, str] = {}
     in_block = False
     block: list[str] = []
     for line in text.splitlines():
@@ -137,14 +142,29 @@ def parse_paper_config(text: str) -> dict[str, str | None]:
         if _RE_BLOCK_END.match(line):
             in_block = False
             body = "\n".join(block)
-            sym_m = _RE_SYMBOL.search(body)
+            # Code-only view (drops full-comment lines) for regexes that read
+            # actual dict syntax -- a prose comment can otherwise contain a
+            # false quoted-key-value match (e.g. a block's own header comment
+            # describing a DIFFERENT file's JSON as `"symbol": "MES"`) that
+            # would out-search the block's real `"symbol": "MES_VA30"` line.
+            code_body = "\n".join(ln for ln in block if not ln.lstrip().startswith("#"))
+            sym_m = _RE_SYMBOL.search(code_body)
             is_enabled = any(_RE_ENABLED_TRUE.match(ln) for ln in block)
             if sym_m and is_enabled:
-                v_m = _RE_VERDICT_COMMENT.search(body)
-                enabled[sym_m.group(1).upper()] = v_m.group(1) if v_m else None
+                sym = sym_m.group(1).upper()
+                redirect_m = _RE_VERDICT_SYMBOL.search(code_body)
+                if redirect_m:
+                    redirects[sym] = redirect_m.group(1).upper()
+                else:
+                    v_m = _RE_VERDICT_COMMENT.search(body)
+                    enabled[sym] = v_m.group(1) if v_m else None
             block = []
             continue
         block.append(line)
+    # Resolve pseudo-symbol redirects after the full file is parsed so a
+    # redirect target's own basename is available regardless of block order.
+    for sym, target in redirects.items():
+        enabled[sym] = enabled.get(target)
     return enabled
 
 

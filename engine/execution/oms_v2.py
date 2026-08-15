@@ -307,15 +307,15 @@ class OMSManager:
         on ``symbol``, or None if none is tracked.
 
         Backstop for stop-monitor callers whose own stop-loss record is
-        missing/NULL -- e.g. paper_trades rows opened via this OMS's bracket
-        path, where the entry fill is ultimately logged through
-        ``PortfolioTracker.open_trade()`` (no ``stop_loss`` parameter -- a
-        separate, documented data-hygiene gap, not fixed here). This OMS
-        already holds the real ``stop_loss_price`` in-memory on the
-        ``BracketOrder`` from ``execute_bracket()`` time, independent of that
-        gap, so callers (the 5-minute "Open Position Stop Monitor" job and
-        ``PaperStopMonitor``) can fall back to it before giving up on
-        enforcing a per-trade stop entirely.
+        missing/NULL -- e.g. a paper_trades row opened before the #287
+        open_trade() threading fix landed (all 6 production call sites now
+        thread a real or synthesized stop, see
+        docs/incident-notes/2026-07-07-trade-287-stop-enforcement-chain.md).
+        This OMS already holds the real ``stop_loss_price`` in-memory on the
+        ``BracketOrder`` from ``execute_bracket()`` time, so callers (the
+        5-minute "Open Position Stop Monitor" job and ``PaperStopMonitor``)
+        can fall back to it before giving up on enforcing a per-trade stop
+        entirely.
 
         Matches by symbol only -- ``BracketOrder`` does not record side/action.
         Safe under this account's one-position-per-symbol trading pattern
