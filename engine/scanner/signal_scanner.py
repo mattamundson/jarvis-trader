@@ -105,11 +105,11 @@ def _symbol_is_halted_for_scanner(symbol: str) -> bool:
     as-is pending a separate, explicit policy call on that broader gap.
     """
     try:
-        from engine.backtest.signals import DO_NOT_TRADE_SYMBOLS
         from engine.backtest.paper_config import PAPER_CONFIGS
+        from engine.backtest.signals import DO_NOT_TRADE_SYMBOLS
     except ImportError:  # pragma: no cover
-        from backtest.signals import DO_NOT_TRADE_SYMBOLS
         from backtest.paper_config import PAPER_CONFIGS
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
 
     if symbol in DO_NOT_TRADE_SYMBOLS:
         return True
