@@ -92,6 +92,33 @@ def _market_hours_submission_guard_enabled() -> bool:
     }
 
 
+def _symbol_is_halted_for_scanner(symbol: str) -> bool:
+    """Fail-safe halt check for the scanner's paper-mode bypass (GT-52).
+
+    The bypass below writes straight to paper_trades without ever consulting
+    an authorization gate. This is deliberately narrower than full gate-v2
+    authorization (`gate_v2_policy.is_strategy_authorized`): it only blocks
+    symbols the repo has explicitly halted -- membership in
+    DO_NOT_TRADE_SYMBOLS, or a PAPER_CONFIGS entry disabled via
+    enabled=False. Symbols with no PAPER_CONFIGS entry at all (the equities
+    scanner population: SPY/QQQ/AAPL/TSLA) are deliberately NOT touched by
+    this check -- see the 2026-08-03 Amo decision recorded in
+    engine/CLAUDE.md "Active Instruments > Equities" to keep them trading
+    as-is pending a separate, explicit policy call on that broader gap.
+    """
+    try:
+        from engine.backtest.paper_config import PAPER_CONFIGS
+        from engine.backtest.signals import DO_NOT_TRADE_SYMBOLS
+    except ImportError:  # pragma: no cover
+        from backtest.paper_config import PAPER_CONFIGS
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
+
+    if symbol in DO_NOT_TRADE_SYMBOLS:
+        return True
+    cfg = PAPER_CONFIGS.get(symbol)
+    return cfg is not None and not cfg.get("enabled", True)
+
+
 class SignalScanner:
     """
     Background signal scanner for automated market surveillance.
@@ -637,6 +664,18 @@ class SignalScanner:
                         logger.warning(
                             "[EXECUTION] symbol=%s action=%s executed=False "
                             "reason=kill_switch_active approval_id=%s",
+                            symbol,
+                            final_action,
+                            approval_id[:8],
+                        )
+                    elif _symbol_is_halted_for_scanner(symbol):
+                        # GT-52: this bypass never consulted DO_NOT_TRADE_SYMBOLS /
+                        # paper_config.enabled before writing a paper trade. Blocks
+                        # only the explicit halt list -- equities with no
+                        # PAPER_CONFIGS entry are untouched (2026-08-03 decision).
+                        logger.critical(
+                            "[EXECUTION] symbol=%s action=%s executed=False "
+                            "reason=symbol_halted approval_id=%s",
                             symbol,
                             final_action,
                             approval_id[:8],
