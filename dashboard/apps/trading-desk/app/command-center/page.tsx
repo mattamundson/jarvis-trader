@@ -1364,6 +1364,180 @@ export default function CommandCenterPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Engine Health */}
+            <Card className="bg-slate-900/60 border border-cyan-900/50">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+                  <Database className="w-3 h-3" />
+                  ENGINE HEALTH
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500">Status</span>
+                  <Badge
+                    className={`text-xs font-mono py-0 border ${
+                      engineOnline
+                        ? "bg-green-950 text-green-400 border-green-800"
+                        : "bg-red-950 text-red-400 border-red-800"
+                    }`}
+                  >
+                    {engineOnline ? "● ONLINE" : "● OFFLINE"}
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs text-slate-500">Uptime</span>
+                  <span className="font-mono text-xs text-white">
+                    {health?.uptime_seconds != null
+                      ? fmtUptime(health.uptime_seconds)
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500">IBKR Gateway</span>
+                  <Badge
+                    className={`text-xs font-mono py-0 border ${
+                      (health?.ibkr_execution_connected ?? health?.ibkr_connected)
+                        ? "bg-green-950 text-green-400 border-green-800"
+                        : "bg-red-950 text-red-400 border-red-800"
+                    }`}
+                    title="Reports execution-connector state when /health exposes ibkr_execution_connected; falls back to legacy ibkr_connected (OR of execution + data) on older engines."
+                  >
+                    {(health?.ibkr_execution_connected ?? health?.ibkr_connected) ? "CONNECTED" : "DISCONNECTED"}
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500" title="Engine /health reachability — not a direct database probe.">
+                    Engine Reachable
+                  </span>
+                  <Badge
+                    className={`text-xs font-mono py-0 border ${
+                      engineOnline
+                        ? "bg-green-950 text-green-400 border-green-800"
+                        : "bg-slate-800 text-slate-500 border-slate-700"
+                    }`}
+                  >
+                    {engineOnline ? "OK" : "—"}
+                  </Badge>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs text-slate-500">Version</span>
+                  <span className="font-mono text-xs text-slate-400">
+                    {health?.version ?? "v2.7"}
+                  </span>
+                </div>
+                <Button
+                  onClick={() => mutateHealth()}
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                >
+                  Refresh
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ═══════════════════════════════════════════════════════
+              ROW 6 — JOURNAL REVIEW STATS
+              Win Rate + EV/Trade: migrated to honest deduped source.
+              Trades count + Diagnosis: kept from journalStats (LEGIT — not P&L aggregates).
+          ═══════════════════════════════════════════════════════ */}
+          <div className="mt-3 mb-3">
+            <a href="/journal-review" className="block">
+              <Card className="bg-slate-900/60 border border-cyan-900/50 hover:border-cyan-600/60 transition-colors cursor-pointer">
+                <CardHeader className="pb-1.5 pt-3 px-4">
+                  <CardTitle className="text-xs font-mono text-cyan-400 tracking-widest flex items-center gap-1.5">
+                    <BookOpen className="w-3 h-3" />
+                    JOURNAL REVIEW
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-3">
+                  {!journalStats ? (
+                    <span className="text-xs text-slate-500 font-mono">Loading…</span>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div>
+                          {/* Trades count from journalStats — LEGIT (not a P&L aggregate) */}
+                          <div className="text-xs text-slate-500 mb-0.5">Trades</div>
+                          <div className="font-mono text-sm text-white font-bold">
+                            {journalStats.total_trades}
+                          </div>
+                        </div>
+                        <div>
+                          {/* Win Rate — migrated to honest deduped source */}
+                          <div className="text-xs text-slate-500 mb-0.5">Win Rate</div>
+                          {honestSet ? (
+                            <div
+                              className={`font-mono text-sm font-bold ${
+                                honestSet.winRate >= 0.5
+                                  ? "text-green-400"
+                                  : honestSet.winRate >= 0.35
+                                  ? "text-yellow-400"
+                                  : "text-red-400"
+                              }`}
+                            >
+                              {(honestSet.winRate * 100).toFixed(0)}%
+                            </div>
+                          ) : (
+                            <div className="font-mono text-sm text-slate-500">—</div>
+                          )}
+                        </div>
+                        <div>
+                          {/* EV / Trade — migrated to honest deduped source (net / trade count) */}
+                          <div className="text-xs text-slate-500 mb-0.5">EV / Trade</div>
+                          {honestSet && honestSet.trades.length > 0 ? (
+                            <div
+                              className={`font-mono text-sm font-bold ${
+                                honestSet.net / honestSet.trades.length >= 0
+                                  ? "text-green-400"
+                                  : "text-red-400"
+                              }`}
+                            >
+                              {honestSet.net / honestSet.trades.length >= 0 ? "+" : ""}
+                              {(honestSet.net / honestSet.trades.length).toFixed(0)}
+                            </div>
+                          ) : (
+                            <div className="font-mono text-sm text-slate-500">—</div>
+                          )}
+                        </div>
+                        <div>
+                          {/* Diagnosis from journalStats — LEGIT (categorical field, not a P&L aggregate) */}
+                          <div className="text-xs text-slate-500 mb-0.5">Diagnosis</div>
+                          <Badge
+                            className={`text-xs font-mono py-0 border ${
+                              journalStats.diagnosis === "solid"
+                                ? "bg-green-950 text-green-400 border-green-800"
+                                : journalStats.diagnosis === "insufficient_data"
+                                ? "bg-slate-800 text-slate-400 border-slate-700"
+                                : "bg-red-950 text-red-400 border-red-800"
+                            }`}
+                          >
+                            {journalStats.diagnosis.replace("_", " ").toUpperCase()}
+                          </Badge>
+                        </div>
+                      </div>
+                      {honestSet && (
+                        <p className="mt-2 text-[10px] text-slate-600 font-mono">
+                          {dedupCaveat(honestSet)} · win rate + EV sourced from deduped record
+                        </p>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </a>
+          </div>
+
+          {/* ═══════════════════════════════════════════════════════
+              ROW 7 — SIGNAL FEED (full width)
+          ═══════════════════════════════════════════════════════ */}
+          <div className="mt-3">
+            <WidgetErrorBoundary name="Signal Feed">
+              <SignalFeedWidget />
+            </WidgetErrorBoundary>
           </div>
     </div>
   );
