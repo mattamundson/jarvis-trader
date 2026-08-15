@@ -332,6 +332,7 @@ async def portfolio_summary():
     if not orch:
         return {
             "total_daily_pnl": round(unrealized_pnl, 4),
+            "daily_realized_pnl": 0.0,
             "realized_pnl": 0.0,
             "unrealized_pnl": round(unrealized_pnl, 4),
             "total_pnl": round(unrealized_pnl, 4),
@@ -349,6 +350,10 @@ async def portfolio_summary():
     daily_target: float = summary.get("daily_target") or 500.0
 
     summary["realized_pnl"] = round(realized_pnl, 4)
+    # Explicit scope name for dashboard consumers. Keep realized_pnl as a
+    # backwards-compatible alias, but do not force clients to infer that this
+    # endpoint's value is same-day rather than lifetime realized P&L.
+    summary["daily_realized_pnl"] = round(realized_pnl, 4)
     summary["unrealized_pnl"] = round(unrealized_pnl, 4)
     summary["total_pnl"] = round(total_pnl, 4)
     summary["total_daily_pnl"] = round(total_pnl, 4)
