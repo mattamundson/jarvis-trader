@@ -286,6 +286,15 @@ class TestBootstrapVarCvarCrossCheckAgainstMetrics:
             / "results"
             / "MES_1h_2024-06-01_2026-03-27.json"
         )
+        if not fixture.exists():
+            # engine/backtest/results/ is untracked runtime state (gitignored
+            # backtest output), so a CI checkout has no fixture on disk --
+            # same class of gap as test_paper_config_donottrade_sync.py's
+            # gate_v2_verdicts/ skip.
+            pytest.skip(
+                f"{fixture.name} not on disk — engine/backtest/results/ is "
+                "gitignored runtime state, absent in a CI checkout"
+            )
         return _load_result_from_json(str(fixture))
 
     def test_compute_var_matches_metrics_var_95_after_unit_conversion(self):

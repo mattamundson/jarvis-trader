@@ -208,6 +208,11 @@ ignore = [
     "I001",  # import block unsorted — 4100-line file with sprints of appended router imports
     "E402",  # late websocket imports are intentional (circular import avoidance)
 ]
+"scripts/port_guardian.py" = [
+    "E402",  # real imports deliberately follow the foreign-PYTHONHOME guard so the
+             # guard can fail fast before any stdlib import triggers the SRE
+             # module-mismatch crash (see the file's module docstring)
+]
 "analytics/performance_evaluator.py" = [
     "I001",  # conditional try/except presence-check import; isort grouping differs
              # irreconcilably between ruff 0.8.0 (CI) and 0.15.12 (local pre-commit)

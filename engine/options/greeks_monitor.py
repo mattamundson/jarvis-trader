@@ -205,7 +205,7 @@ def implied_volatility(
         sigma = max(0.001, min(sigma, 20.0))
 
     logger.warning(
-        "implied_volatility: Newton-Raphson did not converge for S=%s K=%s T=%s", S, K, T
+        "implied_volatility: Newton-Raphson did not converge for F=%s K=%s T=%s", F, K, T
     )
     return float("nan")
 

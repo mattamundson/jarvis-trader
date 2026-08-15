@@ -46,6 +46,31 @@ def _restore_max_loss_env(prev):
         os.environ["PAPER_MAX_LOSS_USD_PER_TRADE"] = prev
 
 
+def _ensure_symbol_on_watchlist(symbol):
+    """Temporarily add *symbol* to config.settings.FUTURES_WATCHLIST.
+
+    The approval gate (approval/service.py:approved_watchlist_symbols) reads
+    the parsed settings singleton, not the environment, and the code-level
+    default ("MCL,MNQ,MES") -- unlike the real deployed engine/.env, which is
+    gitignored and absent in a fresh worktree/CI checkout -- doesn't include
+    every symbol these stop-loss-synthesis tests exercise. Returns the prior
+    value so it can be restored; symbol-membership, not the watchlist gate
+    itself, is out of scope for this test.
+    """
+    from config import settings
+
+    prev = list(settings.FUTURES_WATCHLIST)
+    if symbol not in {s.upper() for s in prev}:
+        settings.FUTURES_WATCHLIST = [*prev, symbol]
+    return prev
+
+
+def _restore_watchlist(prev):
+    from config import settings
+
+    settings.FUTURES_WATCHLIST = prev
+
+
 # ── Core: open_trade(stop_loss=...) plumbing ──────────────────────────────────
 
 
@@ -378,6 +403,7 @@ def test_paper_trade_sync_open_persists_client_stop(portfolio_router_client) -> 
 
 def test_paper_trade_sync_open_synthesizes_stop_when_omitted(portfolio_router_client) -> None:
     prev = _set_max_loss_env(300)
+    prev_watchlist = _ensure_symbol_on_watchlist("MGC")
     try:
         client, tracker = portfolio_router_client
         r = client.post(
@@ -397,6 +423,7 @@ def test_paper_trade_sync_open_synthesizes_stop_when_omitted(portfolio_router_cl
         assert positions[0]["stop_loss"] == round(4503.9 - 30.0, 4)
     finally:
         _restore_max_loss_env(prev)
+        _restore_watchlist(prev_watchlist)
 
 
 def test_paper_trade_sync_open_rejects_inverted_stop(portfolio_router_client) -> None:
@@ -435,6 +462,7 @@ def test_paper_trade_manual_open_persists_client_stop(portfolio_router_client) -
 
 def test_paper_trade_manual_open_synthesizes_stop_when_omitted(portfolio_router_client) -> None:
     prev = _set_max_loss_env(300)
+    prev_watchlist = _ensure_symbol_on_watchlist("MGC")
     try:
         client, tracker = portfolio_router_client
         r = client.post(
@@ -452,6 +480,7 @@ def test_paper_trade_manual_open_synthesizes_stop_when_omitted(portfolio_router_
         assert positions[0]["stop_loss"] == round(4503.9 - 30.0, 4)
     finally:
         _restore_max_loss_env(prev)
+        _restore_watchlist(prev_watchlist)
 
 
 def test_paper_trade_manual_open_synthesizes_stop_for_sell_short(portfolio_router_client) -> None:

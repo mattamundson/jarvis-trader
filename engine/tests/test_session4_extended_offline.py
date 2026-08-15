@@ -78,10 +78,18 @@ for _mod_name in _MODULES_TO_MOCK:
         _parent, _attr = _mod_name.rsplit(".", 1)
         _parent_mod = sys.modules.get(_parent)
         if _parent_mod is not None and hasattr(_parent_mod, _attr):
-            try:
-                delattr(_parent_mod, _attr)
-            except AttributeError:
-                pass
+            _original = _saved_modules.get(_mod_name)
+            if _original is not None:
+                # Restore the real submodule reference (not just delete it) --
+                # a later-collected test file's string-based monkeypatch/mock
+                # target (e.g. "notifications.whatsapp.send_x") resolves via
+                # this attribute, not just via sys.modules.
+                setattr(_parent_mod, _attr, _original)
+            else:
+                try:
+                    delattr(_parent_mod, _attr)
+                except AttributeError:
+                    pass
 
 # ---------------------------------------------------------------------------
 # Shared client + auth header

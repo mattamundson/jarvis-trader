@@ -4,6 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import StreamingResponse
 from starlette.types import ASGIApp
 
+
 class ProxyMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, ops_url: str, research_url: str):
         super().__init__(app)
@@ -20,7 +21,7 @@ class ProxyMiddleware(BaseHTTPMiddleware):
         elif path.startswith("/api/research/"):
             target_url = f"{self.research_url}{path.replace('/api/research', '')}"
             return await self._proxy_request(request, target_url)
-        
+
         return await call_next(request)
 
     async def _proxy_request(self, request: Request, target_url: str) -> Response:

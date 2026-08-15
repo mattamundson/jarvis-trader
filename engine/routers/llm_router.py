@@ -1,9 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
 import logging
-import json
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Header, HTTPException
+from pydantic import BaseModel
+
+# Import the LLM client
+from llm.client import _LLM_PATH_STATE, JarvisLLMClient, is_billing_error_active
+
 
 # API Key validation function
 def validate_api_key(api_key: str = Header(None)):
@@ -21,18 +25,10 @@ Replaces the missing llm_router.py with direct client integration.
 
 Endpoints:
 - /llm/test (POST) - Test LLM connectivity
-- /llm/status (GET) - Get LLM provider status  
+- /llm/status (GET) - Get LLM provider status
 - /llm/chat (POST) - Chat completion endpoint
 - /llm/stats (GET) - Get usage statistics
 """
-
-from typing import List, Dict, Any, Optional
-import logging
-import json
-from datetime import datetime
-
-# Import the LLM client
-from llm.client import JarvisLLMClient, _LLM_PATH_STATE, is_billing_error_active
 
 router = APIRouter()
 logger = logging.getLogger("jarvis_trader.llm_router")
@@ -85,7 +81,7 @@ def get_llm_client() -> JarvisLLMClient:
 async def test_llm_connection(request: TestRequest):
     """
     Test LLM connectivity.
-    
+
     Returns a simple response to verify the LLM is working.
     """
     try:
@@ -121,18 +117,18 @@ async def test_llm_connection(request: TestRequest):
         raise HTTPException(
             status_code=500,
             detail=f"LLM test failed: {str(e)}"
-        )
+        ) from e
 
 @router.get("/llm/status")
 async def get_llm_status():
     """
     Get LLM provider status.
-    
+
     Returns the current status of all configured LLM providers.
     """
     try:
-        client = get_llm_client()
-        
+        get_llm_client()  # ensure the singleton is initialized
+
         # Get current state from the client
         status = {
             "healthy": _LLM_PATH_STATE.get("healthy", False),
@@ -145,21 +141,21 @@ async def get_llm_status():
             "google_fallback_count": _LLM_PATH_STATE.get("google_fallback_count", 0),
             "timestamp": datetime.now().isoformat()
         }
-        
+
         return StatusResponse(**status)
-        
+
     except Exception as e:
         logger.error(f"[LLMRouter] Status check failed: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Status check failed: {str(e)}"
-        )
+        ) from e
 
 @router.post("/llm/chat")
 async def chat_completion(request: ChatRequest):
     """
     Chat completion endpoint.
-    
+
     Standard OpenAI-compatible chat completion endpoint.
     """
     try:
@@ -207,13 +203,13 @@ async def chat_completion(request: ChatRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Chat completion failed: {str(e)}"
-        )
+        ) from e
 
 @router.get("/llm/stats")
 async def get_llm_stats():
     """
     Get LLM usage statistics.
-    
+
     Returns token usage and cost tracking data.
     """
     try:
@@ -244,7 +240,7 @@ async def get_llm_stats():
         raise HTTPException(
             status_code=500,
             detail=f"Stats retrieval failed: {str(e)}"
-        )
+        ) from e
 
 # Health check endpoint for integration with main health endpoint
 @router.get("/llm/health")
