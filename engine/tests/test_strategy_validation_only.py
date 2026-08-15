@@ -98,7 +98,7 @@ def _build_scanner(pipeline_result: dict, paper_tracker: MagicMock) -> "object":
     scanner = SignalScanner(
         trading_pipeline=mock_pipeline,
         db_manager=mock_db,
-        symbols=["MCL"],
+        symbols=["ZZTEST"],
         initial_delay_seconds=0,
     )
     scanner.set_paper_tracker(paper_tracker)
@@ -124,7 +124,7 @@ async def test_validation_only_strategy_does_not_submit_order(caplog):
         caplog.at_level(logging.WARNING, logger="jarvis_trader.scanner"),
     ):
         mock_settings.LIVE_TRADING_ENABLED = False
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
     # Paper trade must NOT have been submitted
     paper_tracker.add_paper_trade.assert_not_called(), (
@@ -163,7 +163,7 @@ async def test_validated_strategy_still_submits(caplog):
         mock_settings.LIVE_TRADING_ENABLED = False
         # Entry price must be non-None for bypass to trigger
         result["trade_decision"]["entry_price"] = 5200.25
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
     paper_tracker.add_paper_trade.assert_called_once(), (
         "add_paper_trade must be called for LONG_VAL_BOUNCE — "
@@ -190,7 +190,7 @@ async def test_validation_only_does_not_force_close_existing(caplog):
     existing_trade = MagicMock()
     existing_trade.is_open = True
     existing_trade.entry_price = 5180.00
-    existing_trade.symbol = "MCL"
+    existing_trade.symbol = "ZZTEST"
     paper_tracker._open = {"existing-trade-id-0001": existing_trade}
 
     result = _build_pipeline_result(stark_signal="SHORT_GAP_FILL", final_action="sell")
@@ -201,7 +201,7 @@ async def test_validation_only_does_not_force_close_existing(caplog):
         patch("config.settings") as mock_settings,
     ):
         mock_settings.LIVE_TRADING_ENABLED = False
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
     # Existing open positions must not be closed
     assert (
