@@ -1,0 +1,36 @@
+{
+  "symbol": "QQQ",
+  "family": "research_equity_trend",
+  "rank": 1,
+  "strategy": "sma12_monthly_momentum",
+  "strategy_class": "equity_swing",
+  "verdict": "PASS",
+  "passed_via": "core",
+  "core_verdict": "PASS",
+  "alt_verdict": "UNSCORED",
+  "created_at": "2026-08-15T19:52:12.028923+00:00",
+  "gate_v2_metrics": {
+    "pf_ci_lower": 2.826,
+    "p_edge": 1.0,
+    "mc_95th_dd_pct": 3.9737,
+    "dsr": 0.124616
+  },
+  "gate_v2": {
+    "verdict": "PASS",
+    "passed_via": "core",
+    "core_verdict": "PASS",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=2.826 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "mc_95th_dd_pct=3.9737 <= 5.0",
+      "dsr=0.124616 >= 0.1 (not selection-bias)"
+    ]
+  },
+  "provenance": {
+    "source": "adapted from SPY sma12_monthly_momentum template",
+    "adapted_by": "GT-52 equities validation-gap fill",
+    "adapted_date": "2026-08-15"
+  },
+  "class_note": "Validation-gap fill for QQQ (no wfe_snapshots row, no results/ artifact, no run_qqq_*.py prior to this PR -- engine/CLAUDE.md 'Active Instruments > Equities'). Data-only: does not authorize or change routing."
+}
