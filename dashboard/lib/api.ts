@@ -2288,6 +2288,9 @@ export async function fetchOpenPositions(): Promise<OpenPositionsResponse> {
 // failure was drift between them.
 export interface PortfolioSummary {
   total_daily_pnl?: number;
+  /** Explicit same-day realized component; older engines may omit this. */
+  daily_realized_pnl?: number | null;
+  /** Legacy endpoint alias retained for compatibility. */
   realized_pnl?: number;
   unrealized_pnl?: number;
   total_pnl?: number;

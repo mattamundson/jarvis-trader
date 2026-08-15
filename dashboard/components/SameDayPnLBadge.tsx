@@ -10,10 +10,11 @@ import {
   type PortfolioSummary,
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { resolveDailyRealizedPnl } from "@/lib/pnlScopes";
 
 const REFRESH_MS = 15_000;
 
-function pnlColor(v: number | undefined): string {
+function pnlColor(v: number | null | undefined): string {
   if (typeof v !== "number") return "var(--muted-foreground, #9ca3af)";
   if (v > 0) return "#22c55e";
   if (v < 0) return "#ef4444";
@@ -41,7 +42,7 @@ export function SameDayPnLBadge() {
   );
 
   const aggregate = summary?.total_daily_pnl;
-  const realized = summary?.realized_pnl;
+  const realized = resolveDailyRealizedPnl(summary);
   const unrealized = summary?.unrealized_pnl;
   const snap = snapshot?.daily_pnl;
   const openCount = positions?.count;
