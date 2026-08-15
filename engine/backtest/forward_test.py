@@ -535,8 +535,8 @@ def run_lineage_track(
                 "strategy_type": strategy_type,
                 "pre_registered": pre_reg,
                 "forward": stats,
-                "trade_shuffle": ts_res,  # report-only diagnostic
-                "dsr": dsr_res,  # report-only diagnostic
+                "trade_shuffle": ts_res,  # blocking gate, see ts_gate_passes above
+                "dsr": dsr_res,  # report-only diagnostic (dormant gate, see stat_gate)
                 "stat_gate": stat_gate,  # dormant DSR+MCPT gate (off by default)
                 "survives_family_fdr": survives[i],
                 "graduated": graduated,
@@ -630,8 +630,8 @@ def run_forward_test(
                 "attribution_level": level,
                 "precise_attribution": precise,
                 "forward": stats,
-                "trade_shuffle": ts_res,  # report-only diagnostic
-                "dsr": dsr_res,  # report-only diagnostic
+                "trade_shuffle": ts_res,  # blocking gate, see ts_gate_passes above
+                "dsr": dsr_res,  # report-only diagnostic (dormant gate, see stat_gate)
                 "stat_gate": stat_gate,  # dormant DSR+MCPT gate (off by default)
                 "survives_family_fdr": survives[i],
                 "graduated": graduated,
