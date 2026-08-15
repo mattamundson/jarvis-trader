@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter
 
 from config import settings
@@ -195,6 +197,25 @@ async def config_overview():
                 )
                 seen_keys.add(key)
         categorized[category] = items
+
+    # The "llm" category's LLM_PROVIDER field is loaded from TradingConfig but
+    # not wired to any routing decision -- every real provider selection reads
+    # os.getenv("JARVIS_LLM_PROVIDER", "ollama") directly (llm/client.py,
+    # main.py), bypassing settings entirely. That left this endpoint able to
+    # show e.g. "openai" while the engine actually ran single-leg ollama, with
+    # nothing on the dashboard to catch the mismatch. Surface the value that
+    # actually drives routing, using the identical resolution both call sites
+    # use, so anyone checking "what provider is active" sees the truth
+    # alongside (not instead of) the pre-existing, non-authoritative field.
+    active_llm_provider = os.getenv("JARVIS_LLM_PROVIDER", "ollama").strip().lower()
+    categorized.setdefault("llm", []).append(
+        {
+            "key": "JARVIS_LLM_PROVIDER",
+            "value": active_llm_provider,
+            "sensitive": False,
+        }
+    )
+    seen_keys.add("JARVIS_LLM_PROVIDER")
 
     # GT-14: don't let the "feature_flags" category silently miss a flag that
     # was added to FLAG_DEFINITIONS but never back-filled into the static

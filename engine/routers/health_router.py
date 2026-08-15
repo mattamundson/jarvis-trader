@@ -907,6 +907,108 @@ async def _health_inner() -> dict:
     return response
 
 
+# MR-3.6 (roadmap-drain): a real subsystem probe backs every assertion below --
+# this derives from the same _health_cached() payload /health itself returns,
+# not a second set of re-probed values, so it can never disagree with /health
+# about the same underlying reality (see P3-1's fix, same failure class: two
+# signals for one truth drifting apart). A stuck-pending-approval hazard has
+# no documented threshold anywhere else in the codebase; 60 minutes is a
+# first-pass value chosen here, not derived from an existing constant --
+# revisit if it proves too tight/loose in practice.
+PENDING_APPROVAL_STUCK_AFTER_MIN = 60.0
+
+
+def _derive_health_assertions(health: dict) -> list[dict]:
+    """Reduce the rich /health payload to named pass/fail assertions.
+
+    Absence of evidence fails closed, not open -- mirrors gates.py's own
+    "UNKNOWN counts as NO-GO" philosophy (real-money-readiness loop) rather
+    than inventing a third truth value here.
+    """
+    pending = health.get("pending_approvals") or {}
+    oldest_age_min = pending.get("oldest_age_min")
+    sentiment = health.get("futures_sentiment") or {}
+    brier = health.get("brier_30d_rolling")
+
+    checks: list[tuple[str, bool, str]] = [
+        (
+            "database_connected",
+            health.get("database") == "connected",
+            f"database={health.get('database')}",
+        ),
+        (
+            "kill_switch_inactive",
+            not health.get("kill_switch_active", True),
+            f"kill_switch_active={health.get('kill_switch_active')}",
+        ),
+        (
+            "ib_gateway_alive",
+            bool(health.get("ibgateway_alive")),
+            f"ibgateway_alive={health.get('ibgateway_alive')}",
+        ),
+        (
+            "ib_execution_not_stale",
+            not health.get("ib_execution_stale", False),
+            "cached-connected but Gateway port is dead"
+            if health.get("ib_execution_stale")
+            else "verified or genuinely disconnected",
+        ),
+        (
+            "llm_path_healthy",
+            bool(health.get("llm_path_healthy")),
+            f"llm_path_healthy={health.get('llm_path_healthy')}",
+        ),
+        (
+            "tradingview_mcp_healthy",
+            bool(health.get("tradingview_mcp_healthy")),
+            f"tradingview_mcp_healthy={health.get('tradingview_mcp_healthy')}",
+        ),
+        (
+            "no_stuck_pending_approvals",
+            oldest_age_min is None or oldest_age_min < PENDING_APPROVAL_STUCK_AFTER_MIN,
+            f"oldest_age_min={oldest_age_min} (count={pending.get('count', 0)})",
+        ),
+        (
+            "forecasts_beat_coinflip",
+            brier is not None and brier < 0.25,
+            f"brier_30d_rolling={brier}" if brier is not None else "no rolling Brier data yet",
+        ),
+        (
+            "futures_sentiment_fresh",
+            sentiment.get("quality") == "fresh",
+            f"quality={sentiment.get('quality')} age_days={sentiment.get('age_days')}",
+        ),
+        (
+            "execution_path_verified",
+            bool(health.get("execution_connected_verified")),
+            f"execution_connected_verified={health.get('execution_connected_verified')}",
+        ),
+    ]
+    return [{"name": name, "passed": passed, "detail": detail} for name, passed, detail in checks]
+
+
+@router.get("/health/assertions")
+async def get_health_assertions():
+    """Single-pane-of-glass health: N named pass/fail assertions, one glance.
+
+    Aggregates the ~10 scattered /health* and /system/* routes this project
+    has accumulated (data-integrity, execution status, LLM path, TV MCP,
+    kill switch, pending approvals, Brier calibration, futures sentiment)
+    into one list a dashboard badge or Amo can read without cross-referencing
+    endpoints by hand. Every assertion maps to a real probe already computed
+    by /health -- this is a read-only reshape, not a new probe surface.
+    """
+    health = await _health_cached()
+    assertions = _derive_health_assertions(health)
+    failed = [a["name"] for a in assertions if not a["passed"]]
+    return {
+        "timestamp": health.get("timestamp"),
+        "all_passed": len(failed) == 0,
+        "failed": failed,
+        "assertions": assertions,
+    }
+
+
 @router.post(
     "/data/reconnect",
     description="Reconnect the IBKR market-data connector without restarting the engine. "
