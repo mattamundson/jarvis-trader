@@ -302,24 +302,51 @@ def forward_stats(windows: list[dict]) -> dict[str, Any]:
     }
 
 
-# ── trade-sign permutation diagnostic (Aronson) — REPORT ONLY ───────────────────
+# ── trade-sign permutation gate (Aronson) — BLOCKING ─────────────────────────────
 #
-# NON-BLOCKING. This computes the trade-sign permutation p-value over a unit's realized
-# P&L (the right null for a forward record: the live entry path is LLM-driven, not a
-# mechanical optimizer). It is attached to the REPORT for observation only and is NOT
-# consumed by ``meets_graduation`` — graduation inputs (``forward_stats`` + family FDR)
-# are deliberately untouched. Promoting this to a blocking gate is a separate
-# [safety-review] change, to be made only after the p-values are observed on the live
-# MES/MGC series (16 / 67 trades -> low power today).
+# This computes the trade-sign permutation p-value over a unit's realized P&L -- the
+# correct null for a forward record, because the live entry path is LLM-driven, not a
+# mechanical optimizer (there is no optimizer for the OTHER null, bar-permutation MCPT
+# in analytics/permutation_test.py + backtest/bar_permute.py, to re-optimize against on
+# this path -- that null stays a strategy-development-time diagnostic).
+#
+# Consumed by BOTH graduation loops below (``run_lineage_track`` and
+# ``run_forward_test``): a unit whose realized P&L is statistically indistinguishable
+# from a random sign-flip of the same trades (p >= TRADE_SHUFFLE_P_MAX) is BLOCKED from
+# graduating, regardless of ``meets_graduation()``. AND-ed onto the existing rule, so it
+# can only make graduation MORE restrictive -- it never rescues a non-graduating unit.
+#
+# Threshold: TRADE_SHUFFLE_P_MAX = 0.05 (ml-pitfalls-defense.md addendum:
+# ``trade_shuffle_p < 0.05``), n_iters=500 (Aronson's floor). Always-on: no env flag,
+# no minimum-trade abstention beyond the function's own fail-closed n<2 floor. A higher
+# abstention floor (e.g. the 30-trade one the dormant DSR gate below uses) would make
+# this gate inert on the only symbols with a live forward record today (16 trades on
+# MES, 67 on MGC as of 2026-08-15) -- exactly the thin samples this null exists to test.
+#
+# SMALL-SAMPLE POWER CAVEAT: a permutation test's false-positive rate is exact at any
+# n (a true no-edge sequence is rejected at ~alpha regardless of sample size -- see
+# test_forward_test_trade_shuffle_gate.py), but its POWER to *confirm* a real-but-modest
+# edge is weaker at n=16-67 than at n=500+. A genuinely edged lineage with a small
+# effect size relative to trade-to-trade variance can fail to clear p<0.05 until more
+# trades accumulate -- i.e. this gate trades some false "not yet proven" verdicts for a
+# hard floor against noise. That is the intended, conservative failure mode for a
+# paper-trading graduation gate: prefer withholding graduation over confirming a random
+# walk. Watch the live MES/MGC ts_p trend in the forward-test report; if a lineage with
+# an otherwise-strong forward record stays blocked here for many trades running, that is
+# a power problem worth revisiting (larger n_iters does not help -- more trades do).
 
 
 def trade_shuffle_diag(
     trades: list[dict], n_iters: int = 500, metric: str = "mean"
 ) -> dict[str, Any]:
-    """Trade-sign permutation p-value over a unit's realized P&L. Report-only diagnostic.
+    """Trade-sign permutation p-value over a unit's realized P&L.
 
-    Returns ``{p_value, n_trades, passes, metric}``. Fail-closed (p=1.0) under ~2 trades.
-    Lazy-imports the analytics module so forward_test stays cheap to import.
+    Pure statistic computation -- returns ``{p_value, n_trades, passes, metric}``,
+    fail-closed (p=1.0, passes=False) under ~2 trades. ``passes`` is consumed as a
+    BLOCKING graduation gate by the call sites in ``run_lineage_track`` and
+    ``run_forward_test`` (see the module comment above); this function itself does not
+    gate anything. Lazy-imports the analytics module so forward_test stays cheap to
+    import.
     """
     from analytics.permutation_test import permute_and_score  # noqa: PLC0415
 
@@ -370,30 +397,33 @@ def dsr_diag(trades: list[dict], n_trials: int, ann_factor: float = 252.0) -> di
     }
 
 
-# ── statistical graduation gate (DSR + trade-shuffle MCPT) — DORMANT ─────────────
+# ── DSR fortification gate (second-order, on top of trade-shuffle) — DORMANT ─────
 #
-# Turns the two report-only diagnostics above into graduation GATES, but OFF by
-# default and abstaining on thin samples. When FORWARD_STAT_GATE_ENFORCE is truthy
-# AND a unit has >= STAT_GATE_MIN_TRADES realized trades, graduation additionally
-# requires DSR >= dsr_min AND trade-shuffle p < TRADE_SHUFFLE_P_MAX. It is AND-ed onto
-# meets_graduation, so it can only ever make graduation MORE restrictive — it never
-# rescues a non-graduating unit. Default-OFF + thin-sample abstain keep it inert on
-# today's 16-trade (MES) / 67-trade (MGC) series (ml-pitfalls-defense.md #3, #9:
-# observe the values live before letting them block). Enabling is an Amo Tier-3 flip.
+# The trade-shuffle null above is ALREADY always-on and blocking (this PR). This is a
+# SEPARATE, additional fortification: when FORWARD_STAT_GATE_ENFORCE is truthy AND a
+# unit has >= STAT_GATE_MIN_TRADES realized trades, graduation additionally requires
+# DSR >= dsr_min (re-checking trade-shuffle p < TRADE_SHUFFLE_P_MAX too, redundantly
+# with the always-on check above -- harmless, just belt-and-suspenders). It is AND-ed
+# onto meets_graduation + the trade-shuffle gate, so it can only ever make graduation
+# MORE restrictive. Promoting DSR itself to a blocking role is explicitly OUT OF SCOPE
+# for this change -- it is a distinct, not-yet-authorized gap (ml-pitfalls-defense.md
+# #3: DSR is absent from the forward-test lineage path entirely; #9, the permutation-
+# test gap this PR closes, is a different pitfall). Kept dormant/opt-in exactly as
+# shipped in #247. Enabling is a future Amo Tier-3 act, separate from this PR.
 
 DSR_GATE_MIN = 0.10  # gate-v2 GATE_DSR (CORE)
 DSR_GATE_MIN_ALT = 0.30  # gate-v2 GATE_DSR_ALT
-TRADE_SHUFFLE_P_MAX = 0.05  # Aronson sign-flip null
-STAT_GATE_MIN_TRADES = 30  # abstain below this (thin-sample power, ml-pitfalls #9)
+TRADE_SHUFFLE_P_MAX = 0.05  # Aronson sign-flip null -- ALSO the always-on gate's threshold above
+STAT_GATE_MIN_TRADES = 30  # abstain below this (thin-sample power, ml-pitfalls #9) -- DSR gate only
 
 
 def forward_stat_gate_enforced() -> bool:
-    """Whether the DSR + trade-shuffle graduation gate BLOCKS (vs report-only).
+    """Whether the DORMANT DSR fortification gate BLOCKS (vs abstains).
 
-    Shadow-default OFF (env unset → False), mirroring the promotion-gate house
-    convention. When off, graduation is exactly ``meets_graduation(...)`` as before.
-    Flipping ``FORWARD_STAT_GATE_ENFORCE`` truthy is an Amo Tier-3 act, to be made
-    only after the DSR / ts_p values are observed on the live series.
+    Governs ONLY the second-order DSR gate below -- the trade-shuffle gate is always
+    on regardless of this flag. Shadow-default OFF (env unset -> False), mirroring the
+    promotion-gate house convention. Flipping ``FORWARD_STAT_GATE_ENFORCE`` truthy is a
+    future Amo Tier-3 act, separate from (and additional to) the trade-shuffle gate.
     """
     return os.getenv("FORWARD_STAT_GATE_ENFORCE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -478,9 +508,10 @@ def run_lineage_track(
         grad_stats = {**stats, "survives_family_fdr": survives[i]}
         ts_res = trade_shuffle_diag(buckets[lineage])
         dsr_res = dsr_diag(buckets[lineage], n_trials=len(rows))
-        stat_gate = stat_gate_verdict(dsr_res, ts_res)  # dormant unless enforced
+        ts_gate_passes = bool(ts_res["passes"])  # Aronson sign-flip null: BLOCKING, always-on
+        stat_gate = stat_gate_verdict(dsr_res, ts_res)  # dormant DSR fortification unless enforced
         base_graduated = pre_reg and dr.meets_graduation(grad_stats, reg)
-        graduated = base_graduated and stat_gate["passes"]
+        graduated = base_graduated and ts_gate_passes and stat_gate["passes"]
         if not pre_reg:
             reason = (
                 "default-material (unregistered) lineage -- pre-register it before "
@@ -488,6 +519,12 @@ def run_lineage_track(
             )
         elif not base_graduated:
             reason = "not yet graduated: forward record does not clear the rule"
+        elif not ts_gate_passes:
+            reason = (
+                f"trade-shuffle gate block: p={ts_res['p_value']} >= {TRADE_SHUFFLE_P_MAX} "
+                f"(n_trades={ts_res['n_trades']}) -- realized P&L is not distinguishable "
+                "from a no-edge sign-flip null"
+            )
         elif not stat_gate["passes"]:
             reason = "stat-gate block: " + "; ".join(stat_gate["reasons"])
         else:
@@ -565,9 +602,10 @@ def run_forward_test(
         grad_stats = {**stats, "survives_family_fdr": survives[i]}
         ts_res = trade_shuffle_diag(r["trades"])
         dsr_res = dsr_diag(r["trades"], n_trials=len(rows))
-        stat_gate = stat_gate_verdict(dsr_res, ts_res)  # dormant unless enforced
+        ts_gate_passes = bool(ts_res["passes"])  # Aronson sign-flip null: BLOCKING, always-on
+        stat_gate = stat_gate_verdict(dsr_res, ts_res)  # dormant DSR fortification unless enforced
         base_graduated = precise and meets_graduation(grad_stats, reg)
-        graduated = base_graduated and stat_gate["passes"]
+        graduated = base_graduated and ts_gate_passes and stat_gate["passes"]
         if not precise:
             reason = (
                 f"attribution is '{level or 'none'}' -- tag trades with candidate_id "
@@ -575,6 +613,12 @@ def run_forward_test(
             )
         elif not base_graduated:
             reason = "not yet graduated: forward record does not clear the rule"
+        elif not ts_gate_passes:
+            reason = (
+                f"trade-shuffle gate block: p={ts_res['p_value']} >= {TRADE_SHUFFLE_P_MAX} "
+                f"(n_trades={ts_res['n_trades']}) -- realized P&L is not distinguishable "
+                "from a no-edge sign-flip null"
+            )
         elif not stat_gate["passes"]:
             reason = "stat-gate block: " + "; ".join(stat_gate["reasons"])
         else:
@@ -627,10 +671,13 @@ def run_forward_test(
             "stamped on live paper entries (P2) -- the unit that actually trades; they "
             "graduate against the decision_registry. Default-material (unregistered:*) "
             "lineages can clear the stats but never graduate -- pre-register a lineage "
-            "before its forward window counts. ts_p (trade_shuffle p-value) and dsr "
-            "(deflated Sharpe) are report-only by default; they gate graduation only "
-            "when FORWARD_STAT_GATE_ENFORCE is on (dormant, Tier-3) and the sample is "
-            "thick enough — see stat_gate per row."
+            "before its forward window counts. ts_p (trade-sign shuffle, Aronson EBTA "
+            "ch. 6) is a BLOCKING gate: p >= 0.05 blocks graduation regardless of "
+            "meets_graduation() -- see the trade_shuffle field per row for the p-value "
+            "and n_trades behind each verdict, and 'reason' for why a unit didn't "
+            "graduate. dsr (deflated Sharpe) stays report-only unless "
+            "FORWARD_STAT_GATE_ENFORCE is on (dormant, Tier-3, a separate fortification "
+            "gate) and the sample is thick enough -- see stat_gate per row."
         ),
     }
     if persist:  # pragma: no cover - file IO exercised live
