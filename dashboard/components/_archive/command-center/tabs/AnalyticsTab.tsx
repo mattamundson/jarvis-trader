@@ -16,6 +16,7 @@ import {
   trackerStatsFor,
   buildCalendarCells,
 } from "@/lib/thirtyDayTracker";
+import { symbolTradeStatus } from "@/lib/approvedSymbols";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -38,12 +39,14 @@ interface AnalyticsTabProps {
 
 // ── Static Data ────────────────────────────────────────────────────────────
 
+// D2-02: `status` used to be hand-maintained here and drifted backwards
+// (MCL/MNQ shown APPROVED, MGC shown HALTED). Status is now always derived
+// from symbolTradeStatus() at render time — never hardcode it in this list again.
 const WFE_INSTRUMENTS = [
   {
     symbol: "MCL",
     tf: "1h",
     wfe: 0.82,
-    status: "APPROVED" as const,
     label: "Micro Crude Oil",
     detail: "Static params · regime_filter=ON",
     color: "#00ff88",
@@ -54,7 +57,6 @@ const WFE_INSTRUMENTS = [
     symbol: "MNQ",
     tf: "1h",
     wfe: 0.57,
-    status: "APPROVED" as const,
     label: "Micro Nasdaq",
     detail: "adaptive_regime=ON · no MTF · no volume",
     color: "#00d4ff",
@@ -65,7 +67,6 @@ const WFE_INSTRUMENTS = [
     symbol: "MGC",
     tf: "1d",
     wfe: 0.14,
-    status: "HALTED" as const,
     label: "Micro Gold",
     detail: "Overfit detected · small-sample bias",
     color: "#ff3b5c",
@@ -280,6 +281,7 @@ function WfeMonitor() {
           const barWidth = animated ? inst.wfe * 100 : 0;
           const scoreColor = WfeColor(inst.wfe);
           const thresholdPct = 30; // 0.30 threshold at 30%
+          const status = symbolTradeStatus(inst.symbol);
 
           return (
             <div key={inst.symbol} className="space-y-1">
@@ -292,7 +294,7 @@ function WfeMonitor() {
                     {inst.symbol}
                   </span>
                   <span className="text-xs text-slate-500 font-mono">{inst.tf}</span>
-                  <StatusBadge status={inst.status} />
+                  <StatusBadge status={status} />
                 </div>
                 <span
                   className="text-xl font-mono font-bold"

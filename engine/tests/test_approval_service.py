@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -137,3 +137,49 @@ def test_ensure_approval_allowed_handles_json_string_snapshot(mock_watchlist):
         ensure_approval_allowed(row, _make_mock_safety())
     assert exc_info.value.status_code == 409
     assert "SHORT_GAP_FILL" in exc_info.value.detail
+
+
+# ── #287 fix: the "safe" (human-approved) path was ALSO dropping its stop ─────
+# stop_price is computed at approval/service.py:~351 for the broker bracket
+# order but was never threaded into open_trade() -- even human-approved trades
+# persisted stop_loss=NULL on the paper_trades row.
+
+
+@pytest.mark.asyncio
+async def test_approve_pending_trade_threads_stop_price_into_open_trade(
+    mock_watchlist, tmp_path
+) -> None:
+    from database.manager import DatabaseManager
+    from portfolio.tracker import PortfolioTracker
+
+    db_path = tmp_path / "approval.db"
+    trades_path = tmp_path / "paper_trades.jsonl"
+    db = DatabaseManager(str(db_path))
+    db.initialize()
+    tracker = PortfolioTracker(store_path=trades_path, db_manager=db)
+
+    approval_id = db.insert_pending_approval(
+        symbol="MCL",
+        action="buy",
+        quantity=1.0,
+        entry_price=72.50,
+        pipeline_snapshot={"stop_price": 71.80},
+        timeframe="1h",
+    )
+
+    safety = _make_mock_safety()
+    safety.submit_entry_with_stop = AsyncMock(
+        return_value={"approved": True, "entry_order_id": "1", "stp_order_id": "2"}
+    )
+
+    await approve_pending_trade(
+        approval_id=approval_id,
+        db_manager=db,
+        paper_tracker=tracker,
+        safety_layer=safety,
+        resolved_by="test",
+    )
+
+    open_positions = tracker.get_open_positions()
+    assert len(open_positions) == 1
+    assert open_positions[0]["stop_loss"] == pytest.approx(71.80)

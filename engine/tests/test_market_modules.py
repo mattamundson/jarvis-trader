@@ -86,6 +86,20 @@ class TestFuturesMarketModuleInterface:
             symbols=["MES", "MNQ"],
         )
 
+    @pytest.fixture
+    def fake_data_manager(self):
+        """Fake live-quote source: MES marks at 5810 (up 10), MNQ at 17480 (down 20)."""
+
+        class FakeDataManager:
+            async def get_current_price(self, symbol: str, is_futures: bool = False) -> dict:
+                prices = {"MES": 5810.0, "MNQ": 17480.0}
+                return {
+                    "last_price": prices.get(symbol),
+                    "source": "ibkr",
+                }
+
+        return FakeDataManager()
+
     @pytest.mark.asyncio
     async def test_futures_implements_abc(self, futures_module):
         """Verify FuturesMarketModule implements all ABC methods."""
@@ -148,6 +162,124 @@ class TestFuturesMarketModuleInterface:
         pnl = await futures_module.get_daily_pnl()
         assert pnl == 150.0
         assert futures_module._daily_pnl == 150.0
+
+    @pytest.mark.asyncio
+    async def test_futures_get_positions_live_mark_long(
+        self, mock_ib_gateway, mock_safety_layer, fake_data_manager
+    ):
+        """
+        Phase 2 (2.4): unrealized_pnl/market_value for a LONG position must be
+        recomputed live from the current price at read time, not trusted from a
+        static field on the raw position dict (the tracker's get_open_positions()
+        never populates those fields at all, so the pre-fix code always silently
+        reported 0.0 regardless of price movement).
+
+        MES long, entry=5800, live mark=5810 (fake_data_manager) -> +10pt * $5/pt
+        * 1 contract = +$50.00, matching the same formula/guard helper the
+        already-fixed /portfolio/summary and /portfolio/paper/positions/unrealized
+        endpoints use.
+        """
+        tracker = MagicMock()
+        long_positions = [
+            {
+                "trade_id": "t-long-1",
+                "symbol": "MES",
+                "action": "buy",
+                "quantity": 1,
+                "entry_price": 5800.0,
+                "avg_cost": 5800.0,
+            }
+        ]
+        tracker.get_open_positions.return_value = long_positions
+        # get_positions() reads the DB-reconciled source
+        # (get_open_positions_authoritative), not the raw in-memory read.
+        tracker.get_open_positions_authoritative.return_value = (long_positions, {})
+        module = FuturesMarketModule(
+            ib_gateway=mock_ib_gateway,
+            portfolio_tracker=tracker,
+            safety_layer=mock_safety_layer,
+            symbols=["MES"],
+            data_manager=fake_data_manager,
+        )
+
+        positions = await module.get_positions()
+
+        assert len(positions) == 1
+        assert positions[0].symbol == "MES"
+        assert positions[0].unrealized_pnl == pytest.approx(50.0, abs=0.01)
+        assert positions[0].market_value == pytest.approx(5810.0 * 5.0, abs=0.01)
+
+    @pytest.mark.asyncio
+    async def test_futures_get_positions_live_mark_short(
+        self, mock_ib_gateway, mock_safety_layer, fake_data_manager
+    ):
+        """
+        Same as above for a SHORT position — sign must flip: price falling
+        below entry is a PROFIT for a short, not a loss.
+
+        MNQ short, entry=17500, live mark=17480 (fake_data_manager) -> price
+        fell 20pt in the short's favor * $2/pt * 1 contract = +$40.00.
+        """
+        tracker = MagicMock()
+        short_positions = [
+            {
+                "trade_id": "t-short-1",
+                "symbol": "MNQ",
+                "action": "sell",
+                "quantity": 1,
+                "entry_price": 17500.0,
+                "avg_cost": 17500.0,
+            }
+        ]
+        tracker.get_open_positions.return_value = short_positions
+        tracker.get_open_positions_authoritative.return_value = (short_positions, {})
+        module = FuturesMarketModule(
+            ib_gateway=mock_ib_gateway,
+            portfolio_tracker=tracker,
+            safety_layer=mock_safety_layer,
+            symbols=["MNQ"],
+            data_manager=fake_data_manager,
+        )
+
+        positions = await module.get_positions()
+
+        assert len(positions) == 1
+        assert positions[0].symbol == "MNQ"
+        assert positions[0].unrealized_pnl == pytest.approx(40.0, abs=0.01)
+
+    @pytest.mark.asyncio
+    async def test_futures_get_positions_falls_back_without_data_manager(
+        self, mock_ib_gateway, mock_safety_layer
+    ):
+        """No data_manager wired in (e.g. degraded startup) -> preserves the
+        prior passthrough behavior instead of fabricating a live mark."""
+        tracker = MagicMock()
+        passthrough_positions = [
+            {
+                "trade_id": "t-passthrough-1",
+                "symbol": "MES",
+                "action": "buy",
+                "quantity": 1,
+                "entry_price": 5800.0,
+                "avg_cost": 5800.0,
+                "unrealized_pnl": 12.5,
+                "market_value": 5812.5,
+            }
+        ]
+        tracker.get_open_positions.return_value = passthrough_positions
+        tracker.get_open_positions_authoritative.return_value = (passthrough_positions, {})
+        module = FuturesMarketModule(
+            ib_gateway=mock_ib_gateway,
+            portfolio_tracker=tracker,
+            safety_layer=mock_safety_layer,
+            symbols=["MES"],
+        )
+
+        positions = await module.get_positions()
+
+        assert len(positions) == 1
+        assert positions[0].unrealized_pnl == pytest.approx(12.5, abs=0.01)
+        assert positions[0].market_value == pytest.approx(5812.5, abs=0.01)
 
     @pytest.mark.asyncio
     async def test_futures_run_strategy_cycle(self, futures_module):

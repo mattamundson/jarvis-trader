@@ -25,7 +25,7 @@ safety-adjacent and requires explicit [safety-review] approval before any change
 - `REQUIRE_HUMAN_APPROVAL = True` — `config.py:289`
 - Live ports **4001 / 7496 hardcoded-rejected** — `ib_gateway.py:196-237` (raises `ValueError`)
 - Bracket orders hard-assert `LIVE_TRADING_ENABLED=False` — `brokers/bracket_orders.py:291`
-- Kill switch (−2% daily / −10% drawdown) — `risk/safety_layer.py:87`, human-only reset
+- Kill switch (−6% daily / −20% drawdown) — `risk/safety_layer.py:87`, human-only reset
 
 ### Two distinct order paths
 

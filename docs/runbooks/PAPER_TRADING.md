@@ -360,7 +360,7 @@ curl http://localhost:8010/v1/safety/kill-switch
 
 # 2. Check P&L Against Daily Limits
 curl http://localhost:8010/v1/trading/pnl
-# If P&L < -2% of account: Kill Switch MUST activate (safety layer)
+# If P&L < -6% of account: Kill Switch MUST activate (safety layer)
 # If P&L approaches limit: Review open positions and close if needed
 
 # 3. Verify Signal Generation is Happening
@@ -437,8 +437,8 @@ JARVIS TRADER must meet ALL criteria below to qualify for live trading. These ar
 
 | Scenario | Expected Behavior | Validation Method |
 |----------|------------------|-------------------|
-| **Daily Loss Hits -2%** | Kill Switch auto-activates | Monitor P&L; trigger manually if needed |
-| **Drawdown Hits -10%** | Kill Switch auto-activates | Monitor max drawdown in dashboard |
+| **Daily Loss Hits -6%** | Kill Switch auto-activates | Monitor P&L; trigger manually if needed |
+| **Drawdown Hits -20%** | Kill Switch auto-activates | Monitor max drawdown in dashboard |
 | **Consecutive Losses (7)** | Position size auto-reduced (first 5 losses) then halt | Induce losses; verify position sizing |
 | **Order Rate > 10/min** | Orders throttled; oldest dropped | Stress test with high-frequency signal burst |
 | **Price Collar Violation** | Order rejected (logged) | Submit orders > 5% away from NBBO |
@@ -560,12 +560,12 @@ Test kill switch functionality before live trading:
 # [ ] Orders are accepted again
 
 # Test 3: Automatic Activation (Daily Loss)
-# [ ] Simulate losing trades that hit -2% threshold
+# [ ] Simulate losing trades that hit -6% threshold
 # [ ] Kill switch must auto-activate (no manual action needed)
 # [ ] Verify reason in logs: "daily_loss_limit"
 
 # Test 4: Automatic Activation (Drawdown)
-# [ ] Simulate consecutive losses that hit -10% from peak
+# [ ] Simulate consecutive losses that hit -20% from peak
 # [ ] Kill switch must auto-activate
 # [ ] Verify reason in logs: "max_drawdown"
 

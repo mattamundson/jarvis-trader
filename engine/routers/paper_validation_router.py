@@ -10,7 +10,7 @@ Endpoints:
   GET /paper/validation/trades — list of all paper trades
   GET /paper/validation/status — overall pass/fail + days remaining
   GET /paper/validation/counts — per-symbol closed-trade counts vs Q2 2026 thresholds (session-start display)
-  GET /paper/validation/approved-paper-gates — MCL/MNQ gates vs canonical thresholds (SQLite)
+  GET /paper/validation/approved-paper-gates — gates for APPROVED_PAPER_SYMBOLS (MES/MGC) vs canonical thresholds (SQLite)
   POST /paper/validation/record — DEPRECATED (kept for compatibility, no-op)
 """
 
@@ -249,7 +249,7 @@ class ValidationGatesResponse(BaseModel):
 
 
 class ApprovedInstrumentGateRow(BaseModel):
-    """Validation gates for one approved paper symbol (MCL / MNQ)."""
+    """Validation gates for one approved paper symbol (MES / MGC)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -572,7 +572,7 @@ async def get_validation_gates():
 @router.get("/approved-paper-gates", response_model=ApprovedPaperGatesAPIResponse)
 async def get_approved_paper_gates():
     """
-    Validation gates for **MCL** and **MNQ** only (approved paper futures).
+    Validation gates for the currently-approved paper futures (`APPROVED_PAPER_SYMBOLS`).
 
     Metrics are computed from **SQLite** ``paper_trades`` closed rows per symbol.
     ``days_with_trades`` = distinct ``exit_time`` calendar dates (not ``daily_pnl`` rows).
@@ -605,9 +605,9 @@ async def get_approved_paper_gates():
             thresholds=dict(PAPER_VALIDATION_GATES),
             instruments=instruments,
             note=(
-                "Per-symbol gates use closed paper_trades (SQLite) for MCL/MNQ only; "
-                "days_active gate uses distinct exit dates. Global /gates uses all symbols "
-                "and daily_pnl row count for the days gate."
+                "Per-symbol gates use closed paper_trades (SQLite) for APPROVED_PAPER_SYMBOLS "
+                "only; days_active gate uses distinct exit dates. Global /gates uses all "
+                "symbols and daily_pnl row count for the days gate."
             ),
         )
     except Exception as exc:
@@ -744,7 +744,7 @@ class WFEInstrument(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    symbol: str = Field(..., description="Symbol (MCL, MNQ)")
+    symbol: str = Field(..., description="Symbol (MES, MGC)")
     current_wfe: float | None = Field(..., description="Current WFE (0-1 scale)")
     kill_threshold: float = Field(..., description="Kill threshold for WFE")
     status: str = Field(
@@ -789,13 +789,20 @@ def _compute_rolling_wfe(
         (gross_profit / gross_loss) if gross_loss > 0 else (9999.0 if gross_profit > 0 else 0.0)
     )
 
-    # WFE formula: (current_pf - 1.0) / (in_sample_pf - 1.0), clamped [0, 1]
-    in_sample_pf = IN_SAMPLE_PF.get(symbol, 1.0)
-    if in_sample_pf <= 1.0:
-        wfe = 0.0
-    else:
-        wfe = (current_pf - 1.0) / (in_sample_pf - 1.0)
-        wfe = max(0.0, min(1.0, wfe))
+    # WFE formula: (current_pf - 1.0) / (in_sample_pf - 1.0), clamped [0, 1].
+    # No default fallback -- IN_SAMPLE_PF only has real backtest references
+    # for MCL/MNQ (frozen historical values). The 2026-05-24 instrument
+    # switch made MES/MGC the active paper pair, but this dict was never
+    # updated; the old `.get(symbol, 1.0)` default silently forced wfe=0.0
+    # for both (reading as "actively overfit" rather than "no reference"),
+    # since neither is in this dict. A confidently-wrong number is worse
+    # than an honest insufficient_data.
+    in_sample_pf = IN_SAMPLE_PF.get(symbol)
+    if in_sample_pf is None or in_sample_pf <= 1.0:
+        return None, current_pf, "insufficient_data"
+
+    wfe = (current_pf - 1.0) / (in_sample_pf - 1.0)
+    wfe = max(0.0, min(1.0, wfe))
 
     return wfe, current_pf, "ok"
 

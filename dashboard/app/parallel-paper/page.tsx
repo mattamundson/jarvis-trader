@@ -232,14 +232,21 @@ function DeltaRow({
   b,
   higherBetter = true,
   isPct = false,
+  isCalmar = false,
 }: {
   label: string;
   a: number | null | undefined;
   b: number | null | undefined;
   higherBetter?: boolean;
   isPct?: boolean;
+  isCalmar?: boolean;
 }) {
-  const display = isPct ? fmtPct : (v: number | null | undefined) => fmt(v);
+  // Calmar gets the same magnitude-clamp as the per-account column's
+  // fmtCalmar() above -- this comparison table used to render it through the
+  // generic unclamped fmt(), so a fabricated ratio (see AccountColumn's
+  // fmtCalmar comment) could still reach the screen here even after the
+  // per-account column was clamped.
+  const display = isPct ? fmtPct : isCalmar ? fmtCalmar : (v: number | null | undefined) => fmt(v);
   if (a == null || b == null) {
     return (
       <tr>
@@ -263,7 +270,7 @@ function DeltaRow({
       <td className="py-1.5 text-xs text-foreground font-mono">{display(b)}</td>
       <td className={`py-1.5 text-xs font-semibold pl-3 ${deltaColor} flex items-center gap-1`}>
         <DeltaIcon className="h-3 w-3 shrink-0" />
-        {isPct ? fmtPct(Math.abs(diff)) : fmt(Math.abs(diff))}
+        {isPct ? fmtPct(Math.abs(diff)) : isCalmar ? fmtCalmar(Math.abs(diff)) : fmt(Math.abs(diff))}
       </td>
     </tr>
   );
@@ -385,7 +392,7 @@ export default function ParallelPaperPage() {
                   <DeltaRow label="Win rate" a={dataA.win_rate} b={dataB.win_rate} isPct />
                   <DeltaRow label="Sortino" a={dataA.sortino} b={dataB.sortino} />
                   <DeltaRow label="Sharpe" a={dataA.sharpe} b={dataB.sharpe} />
-                  <DeltaRow label="Calmar" a={dataA.calmar} b={dataB.calmar} />
+                  <DeltaRow label="Calmar" a={dataA.calmar} b={dataB.calmar} isCalmar />
                   <DeltaRow
                     label="Max DD"
                     a={dataA.max_dd}

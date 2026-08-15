@@ -157,15 +157,43 @@ def _compute_snapshot_stats(symbol: str, week_start: str, conn: sqlite3.Connecti
         else 0.0
     )
 
-    # Sharpe ratio (simplified: mean / std of returns)
-    if len(pnls) > 1:
-        import statistics
+    # Sharpe ratio — canonical formula, reused from backtest/metrics.py rather than
+    # reimplemented. The old inline version here was a RAW DOLLAR mean/std with no
+    # annualization, which disagreed with every other Sharpe in the engine (per-trade
+    # RETURNS as a fraction of capital, annualized by sqrt(252)) — same metric name,
+    # two different numbers depending which endpoint you hit. Fixed by building a
+    # minimal BacktestResult from the raw pnl list (same pattern as
+    # agents/strategy_metrics.py::compute_recent_risk_metrics) and calling the
+    # canonical compute_sharpe_sortino() directly — win_rate/profit_factor/max_dd
+    # above are untouched since they already match the canonical formulas.
+    from backtest.metrics import compute_sharpe_sortino
+    from backtest.trade_manager import BacktestResult, Trade
 
-        mean_pnl = statistics.mean(pnls)
-        std_pnl = statistics.stdev(pnls) if len(pnls) > 1 else 0.0
-        sharpe = (mean_pnl / std_pnl) if std_pnl > 0 else 0.0
-    else:
-        sharpe = 0.0
+    sharpe_trades = [
+        Trade(
+            entry_date=datetime.utcnow(),
+            symbol=symbol,
+            direction="long" if p >= 0 else "short",
+            entry_price=0.0,
+            stop_price=0.0,
+            target_1=0.0,
+            target_2=0.0,
+            contracts=1,
+            multiplier=1.0,
+            pnl=p,
+        )
+        for p in pnls
+    ]
+    sharpe_result = BacktestResult(
+        symbol=symbol,
+        start_date=week_start,
+        end_date=week_end,
+        initial_capital=settings.INITIAL_CAPITAL,
+        final_capital=settings.INITIAL_CAPITAL + sum(pnls),
+        trades=sharpe_trades,
+    )
+    compute_sharpe_sortino(sharpe_result)
+    sharpe = sharpe_result.sharpe_ratio
 
     return {
         "trades": trades_count,

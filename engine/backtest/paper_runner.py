@@ -82,7 +82,7 @@ def _setup_logging() -> None:
 # ── Deferred imports (avoid circular deps and heavy startup cost) ─────────────
 def _import_signal_deps():
     from backtest.data_loader import FUTURES_MAP
-    from backtest.paper_config import ACTIVE_INSTRUMENTS, PAPER_CONFIGS
+    from backtest.paper_config import ACTIVE_INSTRUMENTS, PAPER_CONFIGS, resolve_underlying
     from backtest.paper_tracker import PaperTradeTracker
     from backtest.signals import generate_instrument_signals, generate_signals
 
@@ -93,6 +93,7 @@ def _import_signal_deps():
         PaperTradeTracker,
         generate_signals,
         generate_instrument_signals,
+        resolve_underlying,
     )
 
 
@@ -520,6 +521,23 @@ def _compute_pnl(
     return raw - (commission * contracts * 2)  # entry + exit legs
 
 
+_RTH_CLOSE_HOUR_ET = 16  # 16:00 America/New_York, matches run_value_area_reentry_sd116.py
+
+
+def _is_at_or_after_rth_close(current_time: str) -> bool:
+    """True once the bar timestamp reaches 16:00 America/New_York (RTH close).
+
+    Used only by configs that opt into ``session_close`` (sd-116/MES_VA30) --
+    strategies validated to hold overnight are unaffected since they never
+    set that flag.
+    """
+    ts = pd.Timestamp(current_time)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    ts_et = ts.tz_convert("America/New_York")
+    return ts_et.hour >= _RTH_CLOSE_HOUR_ET
+
+
 def manage_open_position(
     symbol: str,
     pos: Dict[str, Any],
@@ -656,6 +674,43 @@ def manage_open_position(
                 return None, record
 
             return pos, record
+
+    # ── Session close (only for configs that opt in, e.g. sd-116/MES_VA30) ───
+    if cfg.get("session_close") and _is_at_or_after_rth_close(current_time):
+        bar_close = float(last_bar["close"])
+        slip = slippage_ticks * tick_size
+        exit_price = bar_close - slip if side == "long" else bar_close + slip
+        pnl = _compute_pnl(
+            entry_price, exit_price, side, contracts_remaining, multiplier, commission
+        )
+
+        record = {
+            "symbol": symbol,
+            "entry_date": pos["entry_date"],
+            "exit_date": current_time,
+            "entry_price": entry_price,
+            "exit_price": round(exit_price, 4),
+            "side": side,
+            "contracts": contracts_remaining,
+            "exit_reason": "session_close",
+            "regime_type": pos.get("regime", "unknown"),
+            "pnl": round(pnl, 2),
+            "risk_pct_used": pos.get("risk_pct_used"),
+        }
+
+        tracker.add_trade(record)
+        _try_sync_engine_close(pos, record)
+
+        log.info(
+            f"SESSION CLOSE {symbol} {side.upper()} | entry={entry_price:.2f} "
+            f"exit={exit_price:.2f} PnL=${pnl:+.2f}"
+        )
+        _notify(
+            f"🕓 JARVIS PAPER | {symbol} SESSION CLOSE\n"
+            f"{side.upper()} {entry_price:.2f} → {exit_price:.2f}\n"
+            f"PnL: ${pnl:+.2f}"
+        )
+        return None, record
 
     # No hit — position still active
     return pos, None
@@ -796,6 +851,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
         PaperTradeTracker,
         generate_signals,
         generate_instrument_signals,
+        resolve_underlying,
     ) = _import_signal_deps()
 
     if not quiet:
@@ -817,6 +873,14 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
 
         log.info(f"─── {symbol} ───────────────────────────────────────────")
 
+        # Pseudo-symbols (e.g. "MES_VA30") trade a real underlying instrument
+        # under a different key -- bar fetches must ask the data feed for the
+        # REAL instrument (there is no "MES_VA30" ticker), while every other
+        # use of `symbol` below (positions dict, tracker, dashboard sync)
+        # stays on the pseudo-symbol so PR-A's risk aggregation and the
+        # dashboard can tell the two MES strategies apart.
+        fetch_symbol = resolve_underlying(symbol)
+
         # ── Kill-condition check ──────────────────────────────────────────────
         tracker = PaperTradeTracker(cfg)
         kill, kill_reason = tracker.check_kill_conditions()
@@ -831,8 +895,8 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             summary[symbol] = {"action": "kill_switch", "reason": kill_reason}
             continue
 
-        # ── Fetch 1h bars (validated entry timeframe) ─────────────────────────
-        df = fetch_bars(symbol, FUTURES_MAP, timeframe="1h")
+        # ── Fetch bars (validated entry timeframe -- per-symbol interval) ─────
+        df = fetch_bars(fetch_symbol, FUTURES_MAP, timeframe=cfg.get("interval", "1h"))
         if df is None:
             has_open = symbol in positions
             count = data_err_state.get(symbol, 0) + 1
@@ -897,6 +961,18 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
                     atr_trail_mult=sma_params.get("atr_trail_mult", 2.0),
                     **rv_kwargs,
                 )
+            elif cfg.get("strategy") == "va_reentry":
+                # Route Value-Area re-entry pseudo-symbols (MES_VA30) through
+                # generate_instrument_signals() -> signals_va_reentry path.
+                # verdict_symbol overrides the gate v2 lookup to the real
+                # underlying instrument's verdict file (see MES_VA30_CONFIG).
+                va_params = cfg.get("va_reentry_params", {})
+                df_signals = generate_instrument_signals(
+                    df,
+                    symbol=symbol,
+                    stop_atr_mult=va_params.get("stop_atr_mult", 1.0),
+                    verdict_symbol=cfg.get("verdict_symbol", symbol),
+                )
             else:
                 params = cfg["stc_params"]
                 df_signals = generate_signals(
@@ -933,7 +1009,7 @@ def run_one_cycle(quiet: bool = False) -> Dict[str, Any]:
             # granularity so an intrabar stop/target fill isn't missed or mispriced
             # the way an hourly-only check would.
             try:
-                mgmt_bar, mgmt_time = _latest_mgmt_bar(symbol, FUTURES_MAP, df_signals)
+                mgmt_bar, mgmt_time = _latest_mgmt_bar(fetch_symbol, FUTURES_MAP, df_signals)
                 updated_pos, closed_record = manage_open_position(
                     symbol, positions[symbol], mgmt_bar, mgmt_time, cfg, tracker
                 )
@@ -1042,6 +1118,7 @@ def _cmd_status() -> None:
         PaperTradeTracker,
         _gen_signals,
         _gen_instrument_signals,
+        _resolve_underlying,
     ) = _import_signal_deps()
 
     positions = load_positions()

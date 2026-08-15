@@ -166,7 +166,11 @@ def run_monte_carlo(
     prob_profitable = float((final_capitals > initial_capital).mean() * 100.0)
     prob_better = float((final_capitals >= orig_final).mean() * 100.0)
     prob_2x = float((final_capitals >= initial_capital * 2.0).mean() * 100.0)
-    prob_ruin = float((final_capitals < initial_capital).mean() * 100.0)
+    # Fraction of PERMUTED paths (reorderings of the same trade multiset) whose
+    # FINAL capital ends below starting capital (any net loss) -- NOT a
+    # drawdown-threshold breach. Distinct from `probability_of_ruin()` below,
+    # which is an IID bootstrap over MINIMUM equity vs. a ruin threshold.
+    prob_any_loss_permuted = float((final_capitals < initial_capital).mean() * 100.0)
     var_5 = float(np.percentile(final_capitals, 5))
     bottom_5_mask = final_capitals <= np.percentile(final_capitals, 5)
     expected_shortfall = (
@@ -205,7 +209,7 @@ def run_monte_carlo(
             "prob_profitable": round(prob_profitable, 2),
             "prob_better_than_original": round(prob_better, 2),
             "prob_achieving_2x_return": round(prob_2x, 2),
-            "probability_of_ruin": round(prob_ruin, 2),
+            "prob_any_loss_permuted": round(prob_any_loss_permuted, 2),
             "value_at_risk_5pct": round(var_5, 2),
             "expected_shortfall": round(expected_shortfall, 2),
             "worst_case_max_drawdown": round(float(np.percentile(max_dds, 5)), 2),
@@ -525,35 +529,214 @@ def permute_max_dd(
     }
 
 
+def compute_var(
+    pnls: list[float] | np.ndarray,
+    confidence: float = 0.95,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Bootstrap-resampled historical-simulation VaR on the trade-P&L distribution.
+
+    VaR is the (1-confidence) percentile of the per-trade PnL distribution — e.g.
+    at confidence=0.95 this is the 5th percentile, the loss level exceeded only
+    5% of the time. Resamples pnls WITH REPLACEMENT n_resamples times, takes the
+    (1-confidence) percentile of EACH resample to build the sampling distribution
+    of the VaR estimate, and reports the point estimate from the *observed* sample
+    (not the bootstrap mean) alongside the median and 95% CI across resamples.
+
+    SIGN / UNITS CONVENTION: same units as the input `pnls` (USD dollars, per the
+    convention shared by `bootstrap_pf`/`bootstrap_max_dd` in this module) and the
+    same SIGN convention as `metrics.py`'s `var_95`/`cvar_95` fields — negative
+    for a loss level, not a positive magnitude. A strategy with no meaningful tail
+    risk can have a VaR at or above 0.0.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        confidence: VaR confidence level (default 0.95 -> 5th percentile)
+        n_resamples: bootstrap iterations
+        seed: RNG seed for reproducibility
+
+    Returns:
+        {var_pct, median_var, var_ci_95_low, var_ci_95_high, confidence, n_trades}
+        Fail-safe (all 0.0) when fewer than 2 trades exist.
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n < 2:
+        return {
+            "var_pct": 0.0,
+            "median_var": 0.0,
+            "var_ci_95_low": 0.0,
+            "var_ci_95_high": 0.0,
+            "confidence": confidence,
+            "n_trades": n,
+        }
+
+    percentile = (1.0 - confidence) * 100.0
+    point_estimate = float(np.percentile(pnls_arr, percentile))
+
+    rng = np.random.default_rng(seed)
+    resampled_vars = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        sample = pnls_arr[rng.integers(0, n, size=n)]
+        resampled_vars[i] = np.percentile(sample, percentile)
+
+    return {
+        "var_pct": round(point_estimate, 4),
+        "median_var": round(float(np.median(resampled_vars)), 4),
+        "var_ci_95_low": round(float(np.percentile(resampled_vars, 2.5)), 4),
+        "var_ci_95_high": round(float(np.percentile(resampled_vars, 97.5)), 4),
+        "confidence": confidence,
+        "n_trades": n,
+    }
+
+
+def compute_cvar(
+    pnls: list[float] | np.ndarray,
+    confidence: float = 0.95,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Bootstrap-resampled CVaR / Expected Shortfall: mean loss beyond VaR.
+
+    CVaR (also called Expected Shortfall) is the mean of the tail of the PnL
+    distribution at or beyond the VaR threshold — it answers "given that we're
+    in the bad (1-confidence) scenario, how bad on average?" Resamples pnls WITH
+    REPLACEMENT n_resamples times; on each resample, recomputes the VaR threshold
+    and averages the resample's own tail beyond it, matching the observed-sample
+    computation in `metrics.py::calculate_metrics` (`cvar_95`/`cvar_99`).
+
+    SIGN / UNITS CONVENTION: same as `compute_var` — USD dollars (module
+    convention), negative for a loss (matches `metrics.py`'s `cvar_95`/`cvar_99`
+    sign convention, just in dollars rather than fraction-of-capital).
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        confidence: CVaR confidence level (default 0.95 -> beyond 5th percentile)
+        n_resamples: bootstrap iterations
+        seed: RNG seed for reproducibility
+
+    Returns:
+        {cvar, median_cvar, cvar_ci_95_low, cvar_ci_95_high, confidence, n_trades}
+        Fail-safe (all 0.0) when fewer than 2 trades exist.
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    if n < 2:
+        return {
+            "cvar": 0.0,
+            "median_cvar": 0.0,
+            "cvar_ci_95_low": 0.0,
+            "cvar_ci_95_high": 0.0,
+            "confidence": confidence,
+            "n_trades": n,
+        }
+
+    percentile = (1.0 - confidence) * 100.0
+
+    def _cvar_of(sample: np.ndarray) -> float:
+        var_point = np.percentile(sample, percentile)
+        tail = sample[sample <= var_point]
+        return float(tail.mean()) if len(tail) > 0 else float(var_point)
+
+    point_estimate = _cvar_of(pnls_arr)
+
+    rng = np.random.default_rng(seed)
+    resampled_cvars = np.empty(n_resamples, dtype=float)
+    for i in range(n_resamples):
+        sample = pnls_arr[rng.integers(0, n, size=n)]
+        resampled_cvars[i] = _cvar_of(sample)
+
+    return {
+        "cvar": round(point_estimate, 4),
+        "median_cvar": round(float(np.median(resampled_cvars)), 4),
+        "cvar_ci_95_low": round(float(np.percentile(resampled_cvars, 2.5)), 4),
+        "cvar_ci_95_high": round(float(np.percentile(resampled_cvars, 97.5)), 4),
+        "confidence": confidence,
+        "n_trades": n,
+    }
+
+
+def probability_of_ruin(
+    pnls: list[float] | np.ndarray,
+    initial_capital: float = 10_000.0,
+    ruin_threshold_pct: float = 0.5,
+    n_resamples: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Fraction of bootstrap equity paths whose MINIMUM value breaches a ruin floor.
+
+    Distinct from `run_monte_carlo`'s `prob_any_loss_permuted` field in two ways:
+    (1) it checks the MINIMUM value along the path, not the final value — a path
+    that dips below the ruin floor mid-sequence and recovers still counts as ruin;
+    (2) it resamples pnls WITH REPLACEMENT (IID bootstrap, same as
+    `bootstrap_pf`/`bootstrap_sharpe`) rather than permuting the exact same trade
+    multiset, since ruin risk should reflect the sampling distribution of a
+    plausible new trade sequence, not just reorderings of the observed one.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        initial_capital: starting equity
+        ruin_threshold_pct: fraction of initial_capital defining the ruin floor
+            (default 0.5 -> ruin if equity ever drops to 50% of starting capital)
+        n_resamples: bootstrap iterations
+        seed: RNG seed for reproducibility
+
+    Returns:
+        {probability_of_ruin, ruin_threshold_pct, ruin_equity_level, n_resamples, n_trades}
+        Fail-safe: returns 0.0 (not 1.0) for < 2 trades -- too little data to
+        simulate a path, must not silently over-flag as risky.
+    """
+    pnls_arr = np.asarray(pnls, dtype=float)
+    n = len(pnls_arr)
+    ruin_level = initial_capital * ruin_threshold_pct
+
+    if n < 2:
+        return {
+            "probability_of_ruin": 0.0,
+            "ruin_threshold_pct": ruin_threshold_pct,
+            "ruin_equity_level": round(float(ruin_level), 2),
+            "n_resamples": n_resamples,
+            "n_trades": n,
+        }
+
+    rng = np.random.default_rng(seed)
+    breaches = 0
+    for i in range(n_resamples):
+        sample = pnls_arr[rng.integers(0, n, size=n)]
+        equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(sample)])
+        if equity.min() <= ruin_level:
+            breaches += 1
+
+    return {
+        "probability_of_ruin": round(breaches / n_resamples, 4),
+        "ruin_threshold_pct": ruin_threshold_pct,
+        "ruin_equity_level": round(float(ruin_level), 2),
+        "n_resamples": n_resamples,
+        "n_trades": n,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Slippage stress test
 # ---------------------------------------------------------------------------
 
 
-def run_slippage_stress(
-    result: BacktestResult,
-    symbol: str = "MES",
-    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+def _slippage_stress_core(
+    pnls: np.ndarray,
+    tick_value: float,
+    extra_tick_scenarios: tuple[int, ...],
 ) -> dict:
-    """Measure how PF degrades as execution slippage increases.
+    """Shared computation behind `run_slippage_stress` / `slippage_stress_from_pnls`.
 
-    For each extra-ticks scenario, adds (extra_ticks × tick_value) as a
-    fixed cost to every trade and recomputes PF. Identifies the breakeven
-    slippage — the number of extra ticks that drives PF to exactly 1.0.
-
-    Args:
-        result: BacktestResult with trades
-        symbol: instrument symbol for tick value lookup
-        extra_tick_scenarios: additional ticks per trade to stress-test
-
-    Returns:
-        {scenarios, breakeven_extra_ticks, breakeven_pf_at_1_tick, verdict}
+    Takes a flat per-trade USD PnL array — no `BacktestResult` dependency —
+    so both the `BacktestResult`-based and the flat-list-based entry points
+    (the latter used by gate-v2 runners operating on concatenated OOS trade
+    PnLs) share one tested implementation.
     """
-    tick_value = _get_tick_value(symbol)
-    pnls = np.array([t.pnl for t in result.trades], dtype=np.float64)
     n = len(pnls)
     if n == 0:
-        return {"scenarios": [], "breakeven_extra_ticks": None, "verdict": "NO_TRADES"}
+        return {"tick_value": tick_value, "n_trades": 0, "scenarios": [], "breakeven_extra_ticks": None, "verdict": "NO_TRADES"}
 
     scenarios = []
     prev_pf = None
@@ -594,13 +777,66 @@ def run_slippage_stress(
         verdict = "FRAGILE"  # even normal execution variability kills it
 
     return {
-        "symbol": symbol,
         "tick_value": tick_value,
         "n_trades": n,
         "scenarios": scenarios,
         "breakeven_extra_ticks": round(breakeven_ticks, 2) if breakeven_ticks is not None else None,
         "verdict": verdict,
     }
+
+
+def run_slippage_stress(
+    result: BacktestResult,
+    symbol: str = "MES",
+    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+) -> dict:
+    """Measure how PF degrades as execution slippage increases.
+
+    For each extra-ticks scenario, adds (extra_ticks × tick_value) as a
+    fixed cost to every trade and recomputes PF. Identifies the breakeven
+    slippage — the number of extra ticks that drives PF to exactly 1.0.
+
+    Args:
+        result: BacktestResult with trades
+        symbol: instrument symbol for tick value lookup
+        extra_tick_scenarios: additional ticks per trade to stress-test
+
+    Returns:
+        {scenarios, breakeven_extra_ticks, breakeven_pf_at_1_tick, verdict}
+    """
+    tick_value = _get_tick_value(symbol)
+    pnls = np.array([t.pnl for t in result.trades], dtype=np.float64)
+    core = _slippage_stress_core(pnls, tick_value, extra_tick_scenarios)
+    return {"symbol": symbol, **core}
+
+
+def slippage_stress_from_pnls(
+    pnls: list[float] | np.ndarray,
+    symbol: str = "MES",
+    extra_tick_scenarios: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+) -> dict:
+    """Same breakeven-slippage stress test as `run_slippage_stress`, but takes
+    a flat per-trade USD PnL list directly instead of a `BacktestResult`.
+
+    Lets callers that already work from a concatenated PnL series (e.g. gate-v2
+    runners operating on OOS trade lists, matching `bootstrap_pf` / `bootstrap_max_dd`
+    conventions elsewhere in this module) reuse the exact same computation
+    `run_slippage_stress` uses, without constructing a `BacktestResult`/`Trade`
+    wrapper first.
+
+    Args:
+        pnls: per-trade PnL values (USD)
+        symbol: instrument symbol for tick value lookup
+        extra_tick_scenarios: additional ticks per trade to stress-test
+
+    Returns:
+        Same shape as `run_slippage_stress`: {symbol, tick_value, n_trades,
+        scenarios, breakeven_extra_ticks, verdict}.
+    """
+    tick_value = _get_tick_value(symbol)
+    pnls_arr = np.asarray(pnls, dtype=np.float64)
+    core = _slippage_stress_core(pnls_arr, tick_value, extra_tick_scenarios)
+    return {"symbol": symbol, **core}
 
 
 # ---------------------------------------------------------------------------
@@ -647,7 +883,7 @@ def format_report(mc: dict) -> str:
         "",
         "CONFIDENCE ANALYSIS:",
         f"  Probability of Profit:       {c['prob_profitable']:.1f}%",
-        f"  Probability of Ruin:         {c['probability_of_ruin']:.1f}%",
+        f"  Prob Any Loss (permuted):    {c['prob_any_loss_permuted']:.1f}%",
         f"  Probability 2x Return:       {c['prob_achieving_2x_return']:.1f}%",
         f"  Original beats X% of sims:   {100.0 - c['prob_better_than_original']:.1f}%",
         f"  5% Value at Risk:            ${c['value_at_risk_5pct']:,.0f}",

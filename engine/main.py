@@ -50,6 +50,7 @@ from execution.schwab_connector import SchwabConnector
 from llm.client import JarvisLLMClient
 from llm.cost_tracker import CostTracker
 from utils.inference_router import get_inference_router
+from middleware.proxy_middleware import ProxyMiddleware
 from middleware.api_key_middleware import APIKeyMiddleware
 from middleware.exception_handler import GlobalExceptionHandler
 from middleware.rate_limit import get_limiter, rate_limit_exception_handler
@@ -63,6 +64,7 @@ from validation.shadow_mode import ShadowModeTracker
 from routers.analytics_router import router as analytics_router
 from routers.analytics_router import set_db_manager as set_analytics_db
 from routers.analytics_router import set_data_manager as set_analytics_data_manager
+from routers.llm_router import router as llm_router
 from routers.backtest_router import router as backtest_router
 from routers.backtest_router import inject_dependencies as inject_backtest_deps
 from routers.options_backtest_router import router as options_backtest_router
@@ -1940,6 +1942,7 @@ async def lifespan(app: FastAPI):
             safety_layer=safety_layer,
             trading_pipeline=trading_pipeline,
             symbols=["MCL", "MNQ", "MES"],
+            data_manager=data_manager,
         )
         _orchestrator.register(_futures_module)
         set_orchestrator(_orchestrator)
@@ -2574,22 +2577,24 @@ async def lifespan(app: FastAPI):
                 if not open_trades:
                     return
                 from portfolio.tracker import (
-                    _resolve_multiplier as _resolve_mult_fn,
                     UnknownInstrumentMultiplierError as _UnknownMultErr,
+                    _DEFAULT_MULTIPLIER as _DEF_MULT,
                     _commission_per_contract as _commission_per_contract_fn,
+                    _resolve_multiplier as _resolve_mult_fn,
                 )  # noqa: E501
 
                 for _trade in open_trades:
                     _stop = _trade.get("stop_loss")
                     _sym = (_trade.get("symbol") or "").upper()
                     if _stop is None:
-                        # OMS v2 bracket-executed trades never persist
-                        # stop_loss onto the paper_trades row
-                        # (PortfolioTracker.open_trade() has no stop_loss
-                        # parameter -- a separate, documented data-hygiene
-                        # gap, out of scope here). Fall back to the OMS's own
-                        # in-memory bracket record, which DOES hold the real
-                        # stop_loss_price from execute_bracket() time.
+                        # A null stop here means either a pre-#287-fix row or a
+                        # path with no stop in scope -- all 6 production
+                        # open_trade() call sites now thread a real or
+                        # synthesized stop (see docs/incident-notes/2026-07-07
+                        # -trade-287-stop-enforcement-chain.md). Fall back to
+                        # the OMS's own in-memory bracket record, which DOES
+                        # hold the real stop_loss_price from execute_bracket()
+                        # time.
                         if oms_manager is not None and _sym:
                             try:
                                 _stop = oms_manager.resolve_stop_for_symbol(_sym)
@@ -2601,6 +2606,20 @@ async def lifespan(app: FastAPI):
                                 )
                         if _stop is None:
                             continue
+                        # Backfill the naked row so subsequent reads (dashboard,
+                        # other monitors) see the real stop instead of NULL.
+                        # Best-effort: a persistence failure must never block
+                        # the stop-breach check this cycle is here to do.
+                        _tid_bf = _trade.get("trade_id")
+                        if _tid_bf:
+                            try:
+                                db_manager.update_paper_trade_stop_loss(_tid_bf, float(_stop))
+                            except Exception as _bf_exc:
+                                logger.debug(
+                                    "[stop_monitor] stop_loss backfill failed for %s: %s",
+                                    _sym,
+                                    _bf_exc,
+                                )
                     _stop_f = float(_stop)
                     if not _sym:
                         continue
@@ -2628,15 +2647,32 @@ async def lifespan(app: FastAPI):
                     _hit = (_is_long and _cur <= _stop_f) or (not _is_long and _cur >= _stop_f)
                     if not _hit:
                         continue
+                    _mult_is_fallback = False
                     try:
                         _mult = _resolve_mult_fn(_sym)
                     except _UnknownMultErr:
+                        # Fail LOUD, not silent -- but still close the trade.
+                        # D1-01: this loop enforces a breached stop_loss (the
+                        # 2026-06-01 MGC #178 incident this monitor exists to
+                        # prevent), so silently skipping the close on an
+                        # unmapped symbol would recreate that exact failure
+                        # mode. A visibly-wrong P&L on an ERROR log is safer
+                        # than a naked position riding past its stop -- but the
+                        # estimated P&L also gets flagged out-of-band (below)
+                        # so a human reconciles it, rather than relying on
+                        # someone noticing this log line.
                         logger.error(
-                            "[stop_monitor] no contract multiplier for %s -- "
-                            "skipping stop close to avoid mis-stated P&L",
+                            "[stop_monitor] No contract multiplier configured "
+                            "for %s -- closing at stop with a %.1fx fallback "
+                            "so the breach is still enforced, but this "
+                            "trade's P&L may be wrong. Add %s to "
+                            "INSTRUMENT_MULTIPLIERS.",
+                            _sym,
+                            _DEF_MULT,
                             _sym,
                         )
-                        continue
+                        _mult = _DEF_MULT
+                        _mult_is_fallback = True
                     _qty = float(_trade.get("quantity") or 1.0)
                     _gross_pnl = (
                         (_stop_f - _entry) * _qty * _mult
@@ -2679,6 +2715,23 @@ async def lifespan(app: FastAPI):
                             pnl=_pnl,
                             notes="stop_monitor: stop_loss breached",
                         )
+                    if _mult_is_fallback:
+                        # Best-effort: a notifier failure must never mask the
+                        # fact that the stop breach was already enforced above.
+                        try:
+                            from notifications.openclaw_notifier import (
+                                notify_pnl_estimated_close as _notify_pnl_est,
+                            )
+
+                            await _notify_pnl_est(
+                                trade_id=_tid, symbol=_sym, default_multiplier=_DEF_MULT
+                            )
+                        except Exception as _notify_exc:
+                            logger.debug(
+                                "[stop_monitor] pnl-estimated notify failed for %s: %s",
+                                _sym,
+                                _notify_exc,
+                            )
             except Exception as exc:
                 logger.warning("[stop_monitor] error: %s", exc, exc_info=True)
 
@@ -3192,6 +3245,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(
+    ProxyMiddleware,
+    ops_url="http://localhost:3030",
+    research_url="http://localhost:3020",
+)
 app.add_middleware(APIKeyMiddleware)
 app.state.limiter = get_limiter()
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
@@ -3290,6 +3348,7 @@ app.include_router(pipeline_board_router)
 app.include_router(config_router)
 app.include_router(crypto_router)
 app.include_router(openclaw_router)
+app.include_router(llm_router, prefix="/llm")
 
 # ── WebSocket Price Feed ────────────────────────────────────────────────────────
 from websocket.price_feed import price_feed_endpoint

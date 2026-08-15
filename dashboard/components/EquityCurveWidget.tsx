@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -15,6 +16,18 @@ import {
   dedupCaveat,
 } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
+import { fetchEngine } from "@/lib/api";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface PaperPhaseSummary {
+  starting_balance: number;
+}
+
+// ── Fetcher ───────────────────────────────────────────────────────────────────
+
+const fetchPaperPhaseSummary = () =>
+  fetchEngine<PaperPhaseSummary>("/portfolio/stats/paper-phase-summary");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +67,16 @@ export function EquityCurveWidget() {
   const { honest: honestSet, isLoading: loading, error: loadError } = useHonestTrades(120_000);
   const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
   const curve: EquityPoint[] = honestSet ? equityCurve(honestSet.trades) : [];
+
+  const { data: phaseSummary } = useSWR<PaperPhaseSummary>(
+    "portfolio/stats/paper-phase-summary",
+    fetchPaperPhaseSummary,
+    { refreshInterval: 120_000 }
+  );
+  const startingCapital =
+    phaseSummary && phaseSummary.starting_balance > 0
+      ? phaseSummary.starting_balance
+      : 10_000.0;
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -291,7 +314,7 @@ export function EquityCurveWidget() {
                   Starting Capital
                 </p>
                 <p className="text-sm font-bold font-mono text-foreground">
-                  $25,000
+                  {fmtCurrency(startingCapital)}
                 </p>
               </div>
               <div className="space-y-1">

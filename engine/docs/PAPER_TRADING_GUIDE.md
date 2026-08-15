@@ -227,9 +227,9 @@ Common rejection reasons and what they mean:
 
 | Rejection Reason | Meaning | Action |
 |-----------------|---------|--------|
-| `max_position_size_pct` exceeded | Position would be >5% of equity | Normal — reduce size or skip |
-| `max_daily_loss_pct` breached | Already down >2% today | Kill switch territory — correct behavior |
-| `max_single_order_value` exceeded | Order > $5,000 | Normal for micro futures sizing |
+| `max_position_size_pct` exceeded | Position would be >10% of equity | Normal — reduce size or skip |
+| `max_daily_loss_pct` breached | Already down >6% today | Kill switch territory — correct behavior |
+| `max_single_order_value` exceeded | Order > $100,000 | Normal for micro futures sizing |
 | `kill_switch_active` | Emergency halt engaged | Investigate cause immediately |
 | `BROKER_DISCONNECT` | IB Gateway lost connection | Check IB Gateway status |
 
@@ -326,11 +326,11 @@ Every order passes through `SafetyLayer.check_order()` before reaching IBKR. The
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `MAX_POSITION_SIZE_PCT` | 5% | Max per-position size as % of equity |
-| `MAX_DAILY_LOSS_PCT` | 2% | Halt trading at -2% daily P&L |
-| `MAX_DRAWDOWN_PCT` | 10% | Emergency halt at -10% from equity peak |
+| `MAX_POSITION_SIZE_PCT` | 10% | Max per-position size as % of equity |
+| `MAX_DAILY_LOSS_PCT` | 6% | Halt trading at -6% daily P&L |
+| `MAX_DRAWDOWN_PCT` | 20% | Emergency halt at -20% from equity peak |
 | `MAX_ORDERS_PER_MINUTE` | 10 | Rate throttle |
-| `MAX_SINGLE_ORDER_VALUE` | $5,000 | No single order above this |
+| `MAX_SINGLE_ORDER_VALUE` | $100,000 | No single order above this |
 | `MAX_MARGIN_UTILIZATION` | 40% | Max margin usage |
 | `MAX_CONTRACTS_PER_INSTRUMENT` | 2 | Max micro contracts per instrument |
 | `MAX_OVERNIGHT_CONTRACTS` | 1 | Max contracts held overnight |

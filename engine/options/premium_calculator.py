@@ -1,13 +1,18 @@
 """
 JARVIS Trader Options Engine — Premium Calculator
-Black-Scholes pricing, probability of profit, expected value, spread metrics.
+Black-76 pricing (options on futures), probability of profit, expected value,
+spread metrics.
+
+Black-76 (not spot Black-Scholes) is the correct model here: every symbol this
+engine trades (MES/MNQ/MCL/MGC) is a future, and a futures price is already a
+martingale under the T-forward measure — no risk-free drift term belongs in d1.
 """
 
 import logging
 import math
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal
+from typing import Literal, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,37 +30,40 @@ def _norm_pdf(x: float) -> float:
     return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
 
 
-def _d1_d2(S: float, K: float, T: float, r: float, sigma: float) -> tuple[float, float]:
+def _d1_d2(F: float, K: float, T: float, sigma: float) -> tuple[float, float]:
+    """Compute d1 and d2 for Black-76 (no risk-free drift term — F is already
+    a martingale under the T-forward measure)."""
     if T <= 0:
         raise ValueError("T must be > 0")
     if sigma <= 0:
         raise ValueError("sigma must be > 0")
-    log_sk = math.log(S / K)
-    d1 = (log_sk + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
+    log_fk = math.log(F / K)
+    d1 = (log_fk + 0.5 * sigma**2 * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
     return d1, d2
 
 
 # ---------------------------------------------------------------------------
-# Black-Scholes price
+# Black-76 price
 # ---------------------------------------------------------------------------
 
 
-def black_scholes_price(
-    S: float,
+def black76_price(
+    F: float,
     K: float,
     T: float,
     r: float,
     sigma: float,
     option_type: Literal["call", "put"],
 ) -> float:
-    """Calculate the Black-Scholes theoretical option price.
+    """Calculate the Black-76 theoretical option-on-futures price.
 
     Args:
-        S:           Current underlying price.
+        F:           Futures price (underlying).
         K:           Strike price.
         T:           Time to expiry in years.
-        r:           Annualised risk-free rate (decimal).
+        r:           Annualised risk-free rate (decimal) — used only to discount
+                     the expected payoff back to present value.
         sigma:       Annualised implied volatility (decimal).
         option_type: ``"call"`` or ``"put"``.
 
@@ -66,16 +74,16 @@ def black_scholes_price(
 
     # Handle expiry edge case
     if T <= 0:
-        intrinsic = max(S - K, 0.0) if otype == "call" else max(K - S, 0.0)
+        intrinsic = max(F - K, 0.0) if otype == "call" else max(K - F, 0.0)
         return round(intrinsic, 4)
 
-    d1, d2 = _d1_d2(S, K, T, r, sigma)
+    d1, d2 = _d1_d2(F, K, T, sigma)
     disc = math.exp(-r * T)
 
     if otype == "call":
-        price = S * _norm_cdf(d1) - K * disc * _norm_cdf(d2)
+        price = disc * (F * _norm_cdf(d1) - K * _norm_cdf(d2))
     elif otype == "put":
-        price = K * disc * _norm_cdf(-d2) - S * _norm_cdf(-d1)
+        price = disc * (K * _norm_cdf(-d2) - F * _norm_cdf(-d1))
     else:
         raise ValueError(f"option_type must be 'call' or 'put', got {option_type!r}")
 
@@ -88,26 +96,26 @@ def black_scholes_price(
 
 
 def probability_of_profit(
-    S: float,
+    F: float,
     K: float,
     T: float,
-    r: float,
     sigma: float,
     option_type: Literal["call", "put"],
     target_pct: float = 0.5,
 ) -> float:
     """Estimate the probability that an option expires in profit for the buyer.
 
-    Uses the risk-neutral probability that the option expires in-the-money,
-    adjusted by the target_pct fraction of premium retained.
+    Uses the risk-neutral probability that the option expires in-the-money.
+    Under Black-76 the drift term drops out of d1/d2 entirely (F is already a
+    martingale under the T-forward measure), so this probability has no
+    dependence on the risk-free rate — ``r`` is intentionally not a parameter.
 
     For *short* options strategies (credit), the seller's PoP = 1 - buyer's PoP.
 
     Args:
-        S:          Underlying price.
+        F:          Futures price (underlying).
         K:          Strike price.
         T:          Time to expiry in years.
-        r:          Annualised risk-free rate (decimal).
         sigma:      Annualised implied volatility (decimal).
         option_type: ``"call"`` or ``"put"``.
         target_pct: Fraction of premium to treat as the profit target for
@@ -120,10 +128,10 @@ def probability_of_profit(
     """
     if T <= 0:
         if option_type.lower() == "call":
-            return 1.0 if S > K else 0.0
-        return 1.0 if S < K else 0.0
+            return 1.0 if F > K else 0.0
+        return 1.0 if F < K else 0.0
 
-    _, d2 = _d1_d2(S, K, T, r, sigma)
+    _, d2 = _d1_d2(F, K, T, sigma)
 
     if option_type.lower() == "call":
         prob_itm = _norm_cdf(d2)
@@ -131,6 +139,100 @@ def probability_of_profit(
         prob_itm = _norm_cdf(-d2)
 
     return round(prob_itm, 6)
+
+
+# ---------------------------------------------------------------------------
+# Expected move (ATM straddle)
+# ---------------------------------------------------------------------------
+
+
+def expected_move(
+    F: float,
+    T: float,
+    sigma: float,
+    r: float = 0.0,
+    K: Optional[float] = None,
+) -> dict:
+    """Compute the options-market "Expected Move" — the 1-standard-deviation
+    price range implied by the ATM straddle.
+
+    The market convention is that the price of an at-the-money straddle
+    (ATM call + ATM put) approximates the range the underlying is expected
+    to move (up or down) by expiration, at roughly 1-sigma confidence. This
+    function returns BOTH:
+
+    1. The **exact** value — the real Black-76 ATM straddle price
+       (``black76_price(F, K, T, r, sigma, "call") + black76_price(F, K, T,
+       r, sigma, "put")``). This is the primary number: it is model-consistent
+       with every other premium this engine computes, and is preferred
+       whenever an exact pricer is available (it is, here).
+    2. The **0.8-approximation** — the textbook shorthand
+       ``EM ≈ 0.8 * F * sigma * sqrt(T)`` — returned only as a sanity
+       cross-check against the exact value.
+
+    Derivation of the 0.8 factor (for the curious / for reviewers): at the
+    ATM strike (K=F), d1 = -d2 = 0.5*sigma*sqrt(T), and the straddle price
+    reduces to ``disc * 2F * (N(d1) - N(d2)) = disc * 2F * (2*N(d1) - 1)``
+    (using N(-x) = 1 - N(x)). For short-dated ATM options d1 is small, so a
+    first-order Taylor expansion of N(d1) around 0 — N(d1) ≈ 0.5 + phi(0)*d1,
+    where phi(0) = 1/sqrt(2*pi) — gives
+    ``straddle ≈ disc * F * sigma * sqrt(T) * sqrt(2/pi)``.
+    ``sqrt(2/pi) ≈ 0.7979 ≈ 0.8``, and with `disc = exp(-r*T) ≈ 1` for
+    short-dated / low-rate cases, this collapses to the familiar
+    ``EM ≈ 0.8 * F * sigma * sqrt(T)`` heuristic. (Note: this is *not* the
+    same claim as "N(d1) + N(-d1) ≈ 0.8" — N(d1) + N(-d1) is identically 1
+    for any d1; the 0.8 factor instead comes from the small-d1 Taylor
+    expansion above.) The approximation degrades as T or sigma grows large
+    enough that d1 is no longer small, or when K != F.
+
+    Args:
+        F:     Futures price (underlying).
+        T:     Time to expiry in years.
+        sigma: Annualised implied volatility (decimal), typically ATM IV.
+        r:     Annualised risk-free rate (decimal). Default 0.0 — the
+               discount factor's effect on a short-dated ATM straddle is
+               small and expected-move quotes are conventionally undiscounted;
+               pass the real rate for a discounted (still-exact) figure.
+        K:     Strike to price the straddle at. Defaults to the ATM strike
+               (``K = F``) when not provided — use the nearest listed strike
+               when an exact chain lookup is available.
+
+    Returns:
+        Dict with:
+          - ``straddle_price``: exact Black-76 ATM call + put price (primary).
+          - ``expected_move_dollars``: same as ``straddle_price`` (the
+            1-sigma expected price range, in dollars).
+          - ``expected_move_pct``: ``expected_move_dollars / F``.
+          - ``approx_expected_move_dollars``: the ``0.8 * F * sigma *
+            sqrt(T)`` textbook approximation (sanity cross-check only).
+          - ``call_price`` / ``put_price``: the two straddle legs.
+          - ``F`` / ``K`` / ``T`` / ``r`` / ``sigma``: inputs used, echoed
+            back for easy API serialization / auditing.
+    """
+    if K is None:
+        K = F
+
+    call_price = black76_price(F, K, T, r, sigma, "call")
+    put_price = black76_price(F, K, T, r, sigma, "put")
+    straddle_price = round(call_price + put_price, 4)
+
+    expected_move_dollars = straddle_price
+    expected_move_pct = round(expected_move_dollars / F, 6) if F > 0 else 0.0
+    approx_expected_move_dollars = round(0.8 * F * sigma * math.sqrt(T), 4)
+
+    return {
+        "F": F,
+        "K": K,
+        "T": T,
+        "r": r,
+        "sigma": sigma,
+        "call_price": call_price,
+        "put_price": put_price,
+        "straddle_price": straddle_price,
+        "expected_move_dollars": expected_move_dollars,
+        "expected_move_pct": expected_move_pct,
+        "approx_expected_move_dollars": approx_expected_move_dollars,
+    }
 
 
 # ---------------------------------------------------------------------------

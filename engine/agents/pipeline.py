@@ -611,18 +611,6 @@ class TradingPipeline:
             )
             self._vision_agent = None
 
-        # Phase 5: Options Layer
-        from agents.options_analyst import OptionsAnalystAgent
-        from data.options_chain_live import OptionsChainService
-
-        # Assuming technical analyst has access to the primary data manager
-        _tech = agents.get("technical")
-        _ib_connector = getattr(getattr(_tech, "_data", None), "ibkr", None)
-
-        self._options_chain = OptionsChainService(_ib_connector) if _ib_connector else None
-        self._options_analyst = OptionsAnalystAgent(
-            self._options_chain, llm_client=getattr(_tech, "_llm", None)
-        )
         self.profiler = PipelineProfiler() if _PROFILER_AVAILABLE else None
         # _kronos is NOT set here — use _kronos_or_none property so that
         # /admin/feature-flags toggles take effect without an engine restart.

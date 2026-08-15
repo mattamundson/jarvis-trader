@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import useSWR from "swr";
 import { RefreshCw, TrendingDown, AlertTriangle, ShieldCheck } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,10 +12,22 @@ import {
   dedupCaveat,
 } from "@/lib/honestTrades";
 import { useHonestTrades } from "@/lib/useHonestTrades";
+import { fetchEngine } from "@/lib/api";
 
+// Fallback only -- used while /safety/circuit-breakers hasn't returned yet.
+// Matches engine/config.py MAX_DRAWDOWN_PCT's current code default (0.20);
+// .env remains the live source of truth, which is why this widget fetches
+// the real value instead of hardcoding it.
+const CIRCUIT_BREAKER_LIMIT_PCT_FALLBACK = 20;
 
-// Circuit breaker limit (from engine config / settings.MAX_DRAWDOWN_PCT default)
-const CIRCUIT_BREAKER_LIMIT_PCT = 15;
+// Field name matches SafetyLayer.check_circuit_breakers() / GET /safety/circuit-breakers
+// (engine/risk/safety_layer.py) -- same source RiskStatusWidget already reads.
+interface CircuitBreakerData {
+  drawdown_limit_pct?: number; // negative fraction, e.g. -0.20
+}
+
+const fetchCircuitBreakers = () =>
+  fetchEngine<CircuitBreakerData>("/safety/circuit-breakers");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -66,6 +79,16 @@ function getDrawdownLevel(pct: number): {
 export function MaxDrawdownTrackerWidget() {
   const { honest: honestSet, isLoading: loading, error: loadError, mutate: fetchData } = useHonestTrades(0);
   const error = loadError ? (loadError instanceof Error ? loadError.message : String(loadError)) : null;
+
+  const { data: circuitBreakers } = useSWR<CircuitBreakerData>(
+    "safety/circuit-breakers",
+    fetchCircuitBreakers,
+    { refreshInterval: 30_000 }
+  );
+  const CIRCUIT_BREAKER_LIMIT_PCT =
+    circuitBreakers?.drawdown_limit_pct != null
+      ? Math.abs(circuitBreakers.drawdown_limit_pct) * 100
+      : CIRCUIT_BREAKER_LIMIT_PCT_FALLBACK;
 
   // Derive max drawdown (peak-to-trough in USD) from honest equity curve
   // The honest equity curve tracks drawdown as: equity - running_peak (always <= 0)
@@ -168,9 +191,13 @@ export function MaxDrawdownTrackerWidget() {
                   style={{ width: `${gaugeWidth}%` }}
                 />
               </div>
-              {/* Tick marks at 5%, 10%, 15% */}
+              {/* Tick marks at 1/3, 2/3, and the full circuit-breaker limit */}
               <div className="relative h-2 w-full">
-                {[5, 10, 15].map((tick) => {
+                {[
+                  CIRCUIT_BREAKER_LIMIT_PCT / 3,
+                  (CIRCUIT_BREAKER_LIMIT_PCT * 2) / 3,
+                  CIRCUIT_BREAKER_LIMIT_PCT,
+                ].map((tick) => {
                   const pos = (tick / CIRCUIT_BREAKER_LIMIT_PCT) * 100;
                   return (
                     <span
@@ -178,7 +205,7 @@ export function MaxDrawdownTrackerWidget() {
                       className="absolute text-[9px] text-muted-foreground -translate-x-1/2"
                       style={{ left: `${pos}%` }}
                     >
-                      {tick}%
+                      {tick.toFixed(1)}%
                     </span>
                   );
                 })}

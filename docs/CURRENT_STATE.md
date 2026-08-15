@@ -111,11 +111,10 @@ IBKR_PORT=4002
 IBKR_CLIENT_ID=1
 IB_ACCOUNT_ID=YOUR_ACCOUNT_ID
 
-# Risk Parameters (live values from engine/.env, the source of truth --
-# engine/config.py's Field() defaults are fallbacks only and can differ)
+# Risk Parameters (hardcoded in engine/config.py, reconciled to .env live truth 2026-06-25)
 MAX_POSITION_SIZE_PCT=0.10
-MAX_DAILY_LOSS_PCT=0.08
-MAX_DRAWDOWN_PCT=0.20
+MAX_DAILY_LOSS_PCT=0.06
+MAX_DRAWDOWN_PCT=0.20   # config.py code default; engine/.env remains the source of truth for the live value
 MAX_ORDERS_PER_MINUTE=10
 MAX_SINGLE_ORDER_VALUE=100000.0
 MAX_MARGIN_UTILIZATION=0.40
@@ -144,8 +143,8 @@ FUTURES_WATCHLIST=MCL,MNQ,MES
 
 **Non-Negotiable Kill Switch Rules:**
 
-- **Daily Loss Halt:** -8% of account (`MAX_DAILY_LOSS_PCT` in `engine/.env`; `config.py`'s Field() default is a lower, unused fallback) → Auto-activates kill switch
-- **Drawdown Halt:** -20% from peak (`MAX_DRAWDOWN_PCT` in `engine/.env`, the source of truth for the live value; matches the `config.py` code default) → Auto-activates kill switch
+- **Daily Loss Halt:** -6% of account (reconciled to `.env` live truth 2026-06-25; `$10K` aggressive profile) → Auto-activates kill switch
+- **Drawdown Halt:** -20% from peak (`config.py` code default, reconciled to `.env` live truth 2026-06-25) → Auto-activates kill switch. `engine/.env` remains the source of truth for the live value.
 - **Manual Halt:** Operator can activate anytime via API or dashboard
 - **Consecutive Loss Limits:** 3→half-size, 5→quarter-size, 7→halt (24 hours)
 

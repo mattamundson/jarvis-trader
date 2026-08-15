@@ -9,10 +9,17 @@ import { fetchEngine } from "@/lib/api";
 
 // ── Response shapes ────────────────────────────────────────────────────────────
 
+// Mirrors the REAL engine/routers/health_router.py GET /health response
+// (line ~528: status = "ok" if (db_ok and llm_path_healthy) else "degraded").
+// This previously declared "healthy"/"error"/"mode" -- values the backend
+// never actually sends -- so `engineStatus === "healthy"` was always false
+// and Trading Engine showed OFFLINE unconditionally, and `h.mode` was always
+// undefined (only `paper_mode: boolean` exists) so Trading Mode showed
+// UNKNOWN unconditionally, regardless of the engine's real state.
 interface HealthResponse {
-  status: "healthy" | "degraded" | "error";
+  status: "ok" | "degraded";
   version?: string;
-  mode?: string;
+  paper_mode?: boolean;
   kill_switch_active?: boolean;
   timestamp?: string;
 }
@@ -27,15 +34,16 @@ interface IBConnectionTestResponse {
 
 // ── State defaults ─────────────────────────────────────────────────────────────
 
-const DEFAULT_ENGINE_STATUS: "healthy" | "degraded" | "error" = "error";
+// "unreachable" is a purely client-side sentinel (fetch failed / not yet
+// fetched) -- the backend itself only ever sends "ok" or "degraded".
+type EngineStatus = "ok" | "degraded" | "unreachable";
+const DEFAULT_ENGINE_STATUS: EngineStatus = "unreachable";
 const DEFAULT_IB_CONNECTED = false;
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function ConnectionHealthCard() {
-  const [engineStatus, setEngineStatus] = useState<"healthy" | "degraded" | "error">(
-    DEFAULT_ENGINE_STATUS
-  );
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>(DEFAULT_ENGINE_STATUS);
   const [engineVersion, setEngineVersion] = useState<string | null>(null);
   const [mode, setMode] = useState<string | null>(null);
   const [killSwitchActive, setKillSwitchActive] = useState(false);
@@ -52,12 +60,12 @@ export function ConnectionHealthCard() {
     // Engine health
     if (healthResult.status === "fulfilled") {
       const h = healthResult.value;
-      setEngineStatus(h.status ?? "error");
+      setEngineStatus(h.status ?? "unreachable");
       setEngineVersion(h.version ?? null);
-      setMode(h.mode ?? null);
+      setMode(h.paper_mode === undefined ? null : h.paper_mode ? "paper" : "live");
       setKillSwitchActive(h.kill_switch_active ?? false);
     } else {
-      setEngineStatus("error");
+      setEngineStatus("unreachable");
       setEngineVersion(null);
       setMode(null);
       setKillSwitchActive(false);
@@ -82,7 +90,7 @@ export function ConnectionHealthCard() {
 
   // ── Derived values ───────────────────────────────────────────────────────────
 
-  const engineConnected = engineStatus === "healthy" || engineStatus === "degraded";
+  const engineConnected = engineStatus === "ok" || engineStatus === "degraded";
   const connectedCount = [engineConnected, ibConnected].filter(Boolean).length;
   const totalCount = 2;
   const allConnected = connectedCount === totalCount;
@@ -95,10 +103,10 @@ export function ConnectionHealthCard() {
     : "bear";
 
   const engineBadgeVariant: "bull" | "warn" | "bear" =
-    engineStatus === "healthy" ? "bull" : engineStatus === "degraded" ? "warn" : "bear";
+    engineStatus === "ok" ? "bull" : engineStatus === "degraded" ? "warn" : "bear";
 
   const engineLabel =
-    engineStatus === "healthy" ? "ONLINE" : engineStatus === "degraded" ? "DEGRADED" : "OFFLINE";
+    engineStatus === "ok" ? "ONLINE" : engineStatus === "degraded" ? "DEGRADED" : "OFFLINE";
 
   const modeBadgeVariant: "info" | "bull" | "neutral" =
     mode === "paper" ? "info" : mode === "live" ? "bull" : "neutral";

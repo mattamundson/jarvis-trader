@@ -118,15 +118,18 @@ def read_closes(csv_path: Path) -> tuple[list[float], list[str]]:
     dates: list[str] = []
     with csv_path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        # The backtest data loader writes columns Date,Open,High,Low,Close,Volume.
+        # Be permissive about casing. DictReader keys are fixed by the header for
+        # the whole file, so resolve them once here rather than re-scanning every
+        # row's keys — the cache holds 5m series with 100k+ rows apiece.
+        fieldnames = reader.fieldnames or []
+        close_key = next((k for k in fieldnames if k and k.lower() == "close"), None)
+        date_key = next(
+            (k for k in fieldnames if k and k.lower() in {"date", "datetime", "timestamp"}), None
+        )
+        if close_key is None:
+            return closes, dates
         for row in reader:
-            # The backtest data loader writes columns Date,Open,High,Low,Close,Volume.
-            # Be permissive about casing.
-            close_key = next((k for k in row if k and k.lower() == "close"), None)
-            date_key = next(
-                (k for k in row if k and k.lower() in {"date", "datetime", "timestamp"}), None
-            )
-            if close_key is None:
-                continue
             try:
                 c = float(row[close_key])
             except (TypeError, ValueError):

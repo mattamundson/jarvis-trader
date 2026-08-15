@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "engine",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine && C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\engine\\.venv\\Scripts\\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8010 --log-level warning"],
+      "port": 8010
+    },
+    {
+      "name": "trading-desk",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard && pnpm --filter trading-desk dev"],
+      "port": 3010
+    },
+    {
+      "name": "research-lab",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard && pnpm --filter research-lab dev"],
+      "port": 3020
+    },
+    {
+      "name": "ops-console",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\mattm\\ThinkorSwim\\jarvis-trader\\dashboard && pnpm --filter ops-console dev"],
+      "port": 3030
+    }
+  ]
+}

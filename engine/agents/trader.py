@@ -15,6 +15,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from agents.strategy_metrics import (
+    compute_recent_risk_metrics,
+    get_gate_v2_metrics,
+    get_iv_rank,
+)
 from utils.llm_json import parse_llm_json
 from utils.position_sizing import (
     INSTRUMENT_MULTIPLIERS,
@@ -439,6 +444,11 @@ class TraderAgent:
         # trade — any failure silently falls back to the fixed-fractional result.
         sizing_method = "fixed_fractional"
         sizing_info: dict = {}
+        # Defined outside the try so the strategy_metrics best-effort block
+        # below can safely reuse the same fetch even if Half-Kelly itself
+        # raised partway through (e.g. get_closed_trades succeeded but
+        # compute_rolling_edge did not).
+        recent_trades_raw: list = []
 
         if self._db is not None:
             try:
@@ -513,6 +523,29 @@ class TraderAgent:
                     symbol,
                     _hk_err,
                 )
+
+        # ── Strategy validation metrics (informational only) ───────────────
+        # Surfaces the SAME gate-v2 verdict that already hard-gates paper order
+        # submission (backtest.gate_v2_policy.is_strategy_authorized, consulted
+        # by approval/service.py) plus a live recent-trade risk snapshot, purely
+        # as prompt context — this does NOT add a new veto, the hard gate this
+        # informs the LLM about already exists and is untouched here. Best-effort:
+        # any failure degrades to {"recent": None, "validated": None} and never
+        # blocks the decision.
+        strategy_metrics: dict = {"recent": None, "validated": None, "iv_rank": None}
+        try:
+            strategy_metrics = {
+                "recent": compute_recent_risk_metrics(recent_trades_raw, account_value),
+                "validated": get_gate_v2_metrics(symbol),
+                "iv_rank": get_iv_rank(symbol),
+            }
+        except Exception as _sm_err:
+            logger.debug(
+                "[Trader] strategy_metrics lookup failed for %s (non-fatal): %s",
+                symbol,
+                _sm_err,
+            )
+            strategy_metrics = {"recent": None, "validated": None, "iv_rank": None}
 
         # ── A2: VIX regime position-size multiplier ───────────────────────
         # Extract VIX from fundamental report and apply regime-based scaling.
@@ -747,7 +780,12 @@ class TraderAgent:
         is_paper = not getattr(settings, "LIVE_TRADING_ENABLED", False)
         system_prompt = self.SYSTEM_PROMPT_PAPER if is_paper else self.SYSTEM_PROMPT_LIVE
         prompt = self._build_prompt(
-            symbol, debate_result, analyst_reports, safety_status, position_size
+            symbol,
+            debate_result,
+            analyst_reports,
+            safety_status,
+            position_size,
+            strategy_metrics=strategy_metrics,
         )
 
         try:
@@ -1092,6 +1130,7 @@ class TraderAgent:
         safety_status: dict,
         position_size: PositionSizeResult,
         working_memory: str = "",
+        strategy_metrics: Optional[dict] = None,
     ) -> str:
         from config import settings  # local import to avoid circular deps
 
@@ -1227,7 +1266,7 @@ Best Spread: {json.dumps(analyst_reports.get("options", {}).get("best_spread"), 
 Options Summary: {analyst_reports.get("options", {}).get("summary", "No options spreads available.")}
 
 {self._forward_recorder_section(forward_recorder)}
-
+{self._strategy_metrics_section(strategy_metrics)}
 === PORTFOLIO / RISK CONTEXT ===
 Live trading enabled: {live_enabled}
 Current equity: ${current_equity:,.2f}
@@ -1435,6 +1474,93 @@ Respond with JSON in exactly this format:
             f"Use this empirically-derived feedback as directional context — "
             f"a low hit rate warrants extra caution on high-conviction entries.\n"
         )
+
+    @staticmethod
+    def _strategy_metrics_section(strategy_metrics: Optional[dict]) -> str:
+        """Render the informational strategy-validation block, if any data exists.
+
+        `strategy_metrics` is `{"recent": dict|None, "validated": dict|None,
+        "iv_rank": dict|None}` as produced in `decide()`. Returns "" (including
+        no header) when all three sub-dicts are absent, matching the
+        omit-when-absent convention used by `_forward_recorder_section` above —
+        a non-MES/MGC symbol or a symbol with no closed-trade history / no
+        gate-v2 verdict / no IV Rank data yet gets the legacy prompt shape
+        unchanged.
+
+        This block is purely informational — it does NOT instruct the LLM to
+        veto or block anything. The hard gate-v2 authorization check already
+        lives in `backtest.gate_v2_policy.is_strategy_authorized()` /
+        `approval/service.py::ensure_approval_allowed()`; this is just giving
+        the LLM the same statistical picture a human reviewing the symbol
+        would have before sizing/recommending a trade.
+        """
+        if not isinstance(strategy_metrics, dict):
+            return ""
+
+        recent = strategy_metrics.get("recent")
+        validated = strategy_metrics.get("validated")
+        iv_rank = strategy_metrics.get("iv_rank")
+        if (
+            not isinstance(recent, dict)
+            and not isinstance(validated, dict)
+            and not isinstance(iv_rank, dict)
+        ):
+            return ""
+
+        lines = ["\n=== STRATEGY VALIDATION METRICS (informational) ==="]
+
+        if isinstance(recent, dict):
+
+            def _fmt(key: str, fmt: str = "{:.2f}") -> str:
+                val = recent.get(key)
+                return fmt.format(val) if isinstance(val, (int, float)) else "N/A"
+
+            lines.append(
+                f"Recent live performance (last {recent.get('n_trades', 0)} closed trades on "
+                f"this symbol): Sharpe={_fmt('sharpe_ratio')} Sortino={_fmt('sortino_ratio')} "
+                f"Calmar={_fmt('calmar_ratio')} MaxDD={_fmt('max_drawdown_pct', '{:.1%}')} "
+                f"WinRate={_fmt('win_rate', '{:.1%}')} PF={_fmt('profit_factor')}"
+            )
+        else:
+            lines.append(
+                "Recent live performance: not enough closed trades on this symbol yet "
+                "for a reliable Sharpe/Sortino/Calmar read."
+            )
+
+        if isinstance(validated, dict):
+            dd_val = validated.get("mc_95th_dd_pct")
+            dd_str = f"{dd_val:.1%}" if isinstance(dd_val, (int, float)) else "N/A"
+            dsr_val = validated.get("dsr")
+            dsr_str = f"{dsr_val:.2f}" if isinstance(dsr_val, (int, float)) else "N/A"
+            pf_ci_val = validated.get("pf_ci_lower")
+            pf_ci_str = f"{pf_ci_val:.2f}" if isinstance(pf_ci_val, (int, float)) else "N/A"
+            lines.append(
+                f"Gate-v2 validation verdict for {validated.get('symbol', '?')} "
+                f"({validated.get('age_days', '?')}d old): verdict={validated.get('verdict')} "
+                f"(passed_via={validated.get('passed_via')}) | MC-95th-DD={dd_str} | "
+                f"DSR={dsr_str} | PF-CI-lower={pf_ci_str} | "
+                f"WFO-consistency={validated.get('wfo_consistency', 'N/A')}"
+            )
+            lines.append(
+                "Note: this same verdict already hard-gates paper order submission upstream — "
+                "a FAIL/INSUFFICIENT_SAMPLE verdict here means an order for this symbol may be "
+                "rejected downstream regardless of your recommendation. This is context, not an "
+                "instruction — use your judgment on confidence/sizing accordingly."
+            )
+        else:
+            lines.append(
+                "Gate-v2 validation verdict: no fresh verdict on file for this symbol."
+            )
+
+        if isinstance(iv_rank, dict):
+            ivr_val = iv_rank.get("iv_rank")
+            ivr_str = f"{ivr_val:.0f}" if isinstance(ivr_val, (int, float)) else "N/A"
+            lines.append(
+                f"IV Rank: {ivr_str} ({iv_rank.get('interpretation', 'N/A')})"
+            )
+
+        lines.append("")
+        return "\n".join(lines)
 
     def _compute_confluence_multiplier(
         self, analyst_reports: dict, verdict_direction: str

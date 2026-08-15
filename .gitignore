@@ -352,6 +352,14 @@ engine/data/research_reports/
 # engine/data/*.jsonl rule does not recurse into this subdirectory.
 engine/data/systematic_exec/
 
+# Auto-generated periodic reports (regenerated on schedule, never source) --
+# same convention as research_reports/ and docs/reports/backtests/ above.
+# Gap found 2026-07-14: these accumulate untracked every run with no rule.
+engine/data/forecast_reports/
+engine/data/morning_forecasts/
+docs/reports/tearsheets/
+engine/backtest/research_candidates/
+
 # Rotated paper-runner logs (e.g. paper_runner.log.1) -- *.log misses the .N suffix
 engine/backtest/results/*.log
 engine/backtest/results/*.log.*
