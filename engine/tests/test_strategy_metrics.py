@@ -26,7 +26,6 @@ from agents.strategy_metrics import (
 from backtest.metrics import calculate_metrics
 from backtest.trade_manager import BacktestResult, Trade
 
-
 # --------------------------------------------------------------------------- #
 # compute_recent_risk_metrics                                                 #
 # --------------------------------------------------------------------------- #
@@ -325,9 +324,9 @@ class TestGetIvRank:
         # Simulate the options module being unavailable entirely — must
         # degrade to None, not raise, per the "never blocks a decision"
         # contract shared with get_gate_v2_metrics/compute_recent_risk_metrics.
-        import agents.strategy_metrics as strategy_metrics
-
         import builtins
+
+        import agents.strategy_metrics as strategy_metrics
 
         real_import = builtins.__import__
 

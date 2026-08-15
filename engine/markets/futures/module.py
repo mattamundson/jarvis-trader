@@ -134,7 +134,7 @@ class FuturesMarketModule(MarketModule):
                     *[self._data_manager.get_current_price(sym) for sym in symbols],
                     return_exceptions=True,
                 )
-                for p, price_result in zip(raw_positions, price_results):
+                for p, price_result in zip(raw_positions, price_results, strict=True):
                     if isinstance(price_result, Exception):
                         logger.warning(
                             "Futures get_positions: live price fetch failed for %s: %s",

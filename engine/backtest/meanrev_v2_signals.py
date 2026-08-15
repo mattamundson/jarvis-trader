@@ -58,7 +58,7 @@ def _rolling_ou_params(
             continue
         y_lag = y[:-1]
         y_curr = y[1:]
-        
+
         # OLS via numpy (avoid sklearn dependency in hot execution path)
         X = np.column_stack([np.ones_like(y_lag), y_lag])
         try:
@@ -66,10 +66,10 @@ def _rolling_ou_params(
             alpha, beta = coef[0], coef[1]
         except np.linalg.LinAlgError:
             continue
-            
+
         if beta <= 0.001 or beta >= 0.999:
             continue  # No valid mean-reversion structure (random walk or trending)
-            
+
         theta_i = -np.log(beta)
         mu_i = alpha / (1 - beta) if abs(1 - beta) > 1e-9 else np.mean(y)
         y_pred = alpha + beta * y_lag
@@ -77,7 +77,7 @@ def _rolling_ou_params(
         sigma_i = (
             sigma_eps * np.sqrt(2 * theta_i / (1 - beta**2)) if 1 - beta**2 > 1e-9 else sigma_eps
         )
-        
+
         theta[i] = theta_i
         mu[i] = mu_i
         sigma[i] = sigma_i
@@ -129,7 +129,7 @@ def generate_meanrev_v2_signals(
     sd = close.rolling(bb_period).std(ddof=0).replace(0, 1e-9)
     bb_upper = sma + bb_std * sd
     bb_lower = sma - bb_std * sd
-    
+
     rsi = _wilder_rsi(close, period=rsi_period)
     atr = _wilder_atr(high, low, close, period=_DEFAULT_ATR_PERIOD)
 
@@ -146,10 +146,10 @@ def generate_meanrev_v2_signals(
     exit_signal = np.full(len(df), "NO_EXIT", dtype=object)
     bias = np.full(len(df), "NEUTRAL", dtype=object)
     regime = np.full(len(df), "NEUTRAL", dtype=object)
-    
+
     stop_level = np.full(len(df), np.nan)
     target_1 = np.full(len(df), np.nan)
-    
+
     active_position = None # "LONG", "SHORT", or None
     position_entry_idx = 0
     stops_hit_count = 0
@@ -168,7 +168,7 @@ def generate_meanrev_v2_signals(
         p_lower = bb_lower.iloc[i]
         p_rsi = rsi.iloc[i]
         p_atr = atr.iloc[i]
-        
+
         # Check active position management
         if active_position is not None:
             # 1. Evaluate Trailing Stop / Hard stop
@@ -186,7 +186,7 @@ def generate_meanrev_v2_signals(
                     active_position = None
                     stops_hit_count = 0
                     continue
-                    
+
             elif active_position == "SHORT":
                 if high.iloc[i] >= stop_level[position_entry_idx]:
                     active_position = None
@@ -206,7 +206,7 @@ def generate_meanrev_v2_signals(
             bars_held = i - position_entry_idx
             expected_hl = ou_half_life.iloc[position_entry_idx]
             hl_cutoff = min(time_stop_bars, expected_hl if not np.isnan(expected_hl) else time_stop_bars)
-            
+
             if bars_held >= hl_cutoff:
                 exit_signal[i] = "EXIT_NOW"
                 active_position = None
@@ -218,9 +218,9 @@ def generate_meanrev_v2_signals(
             hl_i = ou_half_life.iloc[i]
             if np.isnan(hl_i) or hl_i < ou_min_half_life or hl_i > ou_max_half_life:
                 continue # Random walk or explosive trend - reject trade entry
-                
+
             regime[i] = "MEAN_REVERTING"
-            
+
             # LONG TRIGGER (Allow only if direction is 'both' or 'long_only')
             if direction in ("both", "long_only") and p_close < p_lower and p_rsi < rsi_long and vol_adaptive_trigger.iloc[i]:
                 entry_signal[i] = "ENTRY_NOW"
@@ -229,7 +229,7 @@ def generate_meanrev_v2_signals(
                 target_1[i] = sma.iloc[i]
                 active_position = "LONG"
                 position_entry_idx = i
-                
+
             # SHORT TRIGGER (Allow only if direction is 'both' or 'short_only')
             elif direction in ("both", "short_only") and p_close > p_upper and p_rsi > rsi_short and vol_adaptive_trigger.iloc[i]:
                 entry_signal[i] = "ENTRY_NOW"

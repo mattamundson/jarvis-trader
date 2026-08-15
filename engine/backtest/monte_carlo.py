@@ -702,7 +702,7 @@ def probability_of_ruin(
 
     rng = np.random.default_rng(seed)
     breaches = 0
-    for i in range(n_resamples):
+    for _ in range(n_resamples):
         sample = pnls_arr[rng.integers(0, n, size=n)]
         equity = np.concatenate([[initial_capital], initial_capital + np.cumsum(sample)])
         if equity.min() <= ruin_level:

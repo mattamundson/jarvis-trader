@@ -99,7 +99,7 @@ def _developing_va_for_session(
     poc_list: list[float] = []
     vah_list: list[float] = []
     val_list: list[float] = []
-    for lo, hi, vol in zip(low, high, volume):
+    for lo, hi, vol in zip(low, high, volume, strict=True):
         lo_bin = _bin_index(lo, BIN_SIZE)
         hi_bin = _bin_index(hi, BIN_SIZE)
         if hi_bin < lo_bin:
@@ -238,7 +238,7 @@ def generate_va_reentry_signals(
     for local_i, sd in enumerate(rth_session_dates):
         session_groups.setdefault(sd, []).append(local_i)
 
-    for sd, local_idxs in session_groups.items():
+    for local_idxs in session_groups.values():
         sess_low = lows[local_idxs]
         sess_high = highs[local_idxs]
         sess_vol = volumes[local_idxs]

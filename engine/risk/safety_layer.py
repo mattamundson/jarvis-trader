@@ -65,11 +65,6 @@ except ImportError:
     except ImportError:
         ConsecutiveLossTracker = None  # type: ignore[assignment,misc]
 
-try:
-    from backtest.signals import DO_NOT_TRADE_SYMBOLS
-except ImportError:
-    from engine.backtest.signals import DO_NOT_TRADE_SYMBOLS
-
 logger = logging.getLogger(__name__)
 
 def _schedule_background_coro(factory: Callable[[], Coroutine[Any, Any, Any]]) -> None:
