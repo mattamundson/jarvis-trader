@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import zlib
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -29,6 +31,15 @@ _SCRIPTS = {
     "run_aapl_sma12_rank1": "AAPL",
     "run_tsla_sma12_rank1": "TSLA",
 }
+
+
+def _seed_for(symbol: str) -> int:
+    """Deterministic per-symbol seed. NOT Python's builtin ``hash()`` -- string
+    hashing is salted per-process (PYTHONHASHSEED) unless explicitly disabled,
+    so ``hash(symbol)`` would silently vary run-to-run/CI-to-CI, making the
+    synthetic fixture (and therefore this test's exercised code path) flaky
+    -- ``zlib.crc32`` is stable across processes and Python versions."""
+    return zlib.crc32(symbol.encode()) % (2**31)
 
 
 def _synthetic_daily_csv(tmp_path, seed: int) -> str:
@@ -74,7 +85,26 @@ def test_runner_end_to_end_smoke(tmp_path, monkeypatch, module_name, expected_sy
     parameterized, matching the run_spy_*.py precedent)."""
     mod = importlib.import_module(f"backtest.{module_name}")
 
-    data_csv = _synthetic_daily_csv(tmp_path, seed=hash(expected_symbol) % (2**31))
+    # CRITICAL: main() writes the research-report JSON to the CLI-controlled
+    # --out path, but its write_research_verdict(...) call has NO equivalent
+    # CLI override -- it always resolves to the real, tracked
+    # engine/data/research_verdicts/{symbol}_..._rank1.json via
+    # research_verdict.research_verdicts_dir()'s Path(__file__)-derived
+    # default. Left unpatched, running this smoke test against synthetic
+    # data silently overwrites that real committed verdict file with a
+    # bogus, non-reproducible result on every test run (discovered the hard
+    # way: a first version of this test corrupted the real QQQ/AAPL/TSLA
+    # verdicts committed earlier in this same PR). Redirect it into tmp_path
+    # so the smoke test is what it claims to be -- side-effect-free.
+    orig_write_verdict = mod.write_research_verdict
+
+    def _write_verdict_to_tmp(**kwargs):
+        kwargs.setdefault("base", tmp_path)
+        return orig_write_verdict(**kwargs)
+
+    monkeypatch.setattr(mod, "write_research_verdict", _write_verdict_to_tmp)
+
+    data_csv = _synthetic_daily_csv(tmp_path, seed=_seed_for(expected_symbol))
     out_json = tmp_path / f"{expected_symbol}_smoke_out.json"
 
     monkeypatch.setattr(
@@ -82,8 +112,22 @@ def test_runner_end_to_end_smoke(tmp_path, monkeypatch, module_name, expected_sy
         [module_name, "--data", data_csv, "--out", str(out_json)],
     )
 
+    real_verdict_file = (
+        Path(mod._ENGINE) / "data" / "research_verdicts" / f"{expected_symbol}_research_equity_trend_rank1.json"
+    )
+    before = real_verdict_file.read_bytes() if real_verdict_file.exists() else None
+
     rc = mod.main()
     assert rc == 0
+
+    # The real tracked verdict file must be byte-identical to before this
+    # test ran -- the regression guard for the corruption bug described above.
+    after = real_verdict_file.read_bytes() if real_verdict_file.exists() else None
+    assert after == before, (
+        f"{module_name} smoke test wrote to the REAL tracked verdict file "
+        f"{real_verdict_file} -- write_research_verdict's `base` redirect "
+        f"isn't taking effect."
+    )
 
     assert out_json.exists()
     payload = json.loads(out_json.read_text())
