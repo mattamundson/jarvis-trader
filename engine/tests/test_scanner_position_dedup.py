@@ -24,7 +24,7 @@ import pytest
 # A fixed instant: Tuesday 2026-06-16 17:00 UTC == 12:00 ET. Chosen so the
 # scanner's wall-clock gates in _scan_symbol() all resolve to "scan allowed":
 #   - not in the 9:30-9:35 / 15:45-16:00 ET banned session windows,
-#   - not Wednesday (so the MCL 10:15-11:00 ET EIA blackout never triggers),
+#   - not Wednesday (so no futures EIA blackout window ever triggers),
 #   - inside equity Regular Trading Hours.
 # Without this, the outcome depends on the wall-clock time CI runs at (flaky).
 _FROZEN_UTC = datetime(2026, 6, 16, 17, 0, 0, tzinfo=timezone.utc)
@@ -104,7 +104,7 @@ def _build_scanner(pipeline_result: dict, paper_tracker: MagicMock) -> "object":
     scanner = SignalScanner(
         trading_pipeline=mock_pipeline,
         db_manager=mock_db,
-        symbols=["MCL"],
+        symbols=["ZZTEST"],
         initial_delay_seconds=0,
     )
     scanner.set_paper_tracker(paper_tracker)
@@ -132,7 +132,7 @@ async def test_open_position_blocks_duplicate_auto_log(caplog):
     """An open paper position for the symbol must skip add_paper_trade()."""
     paper_tracker = MagicMock()
     paper_tracker.add_paper_trade = MagicMock()
-    paper_tracker.get_open_positions = MagicMock(return_value=[_open_position("MCL")])
+    paper_tracker.get_open_positions = MagicMock(return_value=[_open_position("ZZTEST")])
 
     scanner = _build_scanner(_build_pipeline_result(), paper_tracker)
 
@@ -142,7 +142,7 @@ async def test_open_position_blocks_duplicate_auto_log(caplog):
         caplog.at_level(logging.INFO, logger="jarvis_trader.scanner"),
     ):
         mock_settings.LIVE_TRADING_ENABLED = False
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
     paper_tracker.add_paper_trade.assert_not_called()
 
@@ -174,17 +174,17 @@ async def test_flat_symbol_still_auto_logs():
         patch("config.settings") as mock_settings,
     ):
         mock_settings.LIVE_TRADING_ENABLED = False
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
     paper_tracker.add_paper_trade.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_open_position_other_symbol_does_not_block():
-    """The guard is per-symbol: an open MGC position must not block MCL."""
+    """The guard is per-symbol: an open ZZOTHER position must not block ZZTEST."""
     paper_tracker = MagicMock()
     paper_tracker.add_paper_trade = MagicMock(return_value="trade-id-0002")
-    paper_tracker.get_open_positions = MagicMock(return_value=[_open_position("MGC")])
+    paper_tracker.get_open_positions = MagicMock(return_value=[_open_position("ZZOTHER")])
 
     scanner = _build_scanner(_build_pipeline_result(), paper_tracker)
 
@@ -193,17 +193,17 @@ async def test_open_position_other_symbol_does_not_block():
         patch("config.settings") as mock_settings,
     ):
         mock_settings.LIVE_TRADING_ENABLED = False
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
     paper_tracker.add_paper_trade.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_symbol_match_is_case_insensitive():
-    """Tracker rows may carry any casing; 'mcl' must still block MCL."""
+    """Tracker rows may carry any casing; 'zztest' must still block ZZTEST."""
     paper_tracker = MagicMock()
     paper_tracker.add_paper_trade = MagicMock()
-    paper_tracker.get_open_positions = MagicMock(return_value=[_open_position("mcl")])
+    paper_tracker.get_open_positions = MagicMock(return_value=[_open_position("zztest")])
 
     scanner = _build_scanner(_build_pipeline_result(), paper_tracker)
 
@@ -212,7 +212,7 @@ async def test_symbol_match_is_case_insensitive():
         patch("config.settings") as mock_settings,
     ):
         mock_settings.LIVE_TRADING_ENABLED = False
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
     paper_tracker.add_paper_trade.assert_not_called()
 
@@ -222,7 +222,7 @@ async def test_no_stop_takes_precedence_over_dedup_log(caplog):
     """Missing stop is still the first gate (safety logging unchanged)."""
     paper_tracker = MagicMock()
     paper_tracker.add_paper_trade = MagicMock()
-    paper_tracker.get_open_positions = MagicMock(return_value=[_open_position("MCL")])
+    paper_tracker.get_open_positions = MagicMock(return_value=[_open_position("ZZTEST")])
 
     result = _build_pipeline_result()
     result["trade_decision"]["stop_price"] = None
@@ -234,7 +234,7 @@ async def test_no_stop_takes_precedence_over_dedup_log(caplog):
         caplog.at_level(logging.INFO, logger="jarvis_trader.scanner"),
     ):
         mock_settings.LIVE_TRADING_ENABLED = False
-        await scanner._scan_symbol("MCL")
+        await scanner._scan_symbol("ZZTEST")
 
     paper_tracker.add_paper_trade.assert_not_called()
     safety_lines = [r for r in caplog.records if "paper_mode_bypass BLOCKED" in r.getMessage()]
