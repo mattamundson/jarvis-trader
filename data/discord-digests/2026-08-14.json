@@ -1,0 +1,253 @@
+{
+  "date": "2026-08-14",
+  "session_bias": null,
+  "sentiment_score": null,
+  "sentiment_label": null,
+  "top_signals": [
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.16005,
+      "target2": 1.1614,
+      "stop1": null,
+      "win_rate": 85.07,
+      "rr": 0.67,
+      "timestamp": "2026-08-14T10:02:01.107-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.15985,
+      "target2": 1.1612,
+      "stop1": null,
+      "win_rate": 84.96,
+      "rr": 0.57,
+      "timestamp": "2026-08-14T09:12:01.677-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.15845,
+      "target2": 1.1598,
+      "stop1": null,
+      "win_rate": 84.85,
+      "rr": 0.57,
+      "timestamp": "2026-08-14T08:25:01.642-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.15865,
+      "target2": 1.16,
+      "stop1": null,
+      "win_rate": 84.73,
+      "rr": 0.57,
+      "timestamp": "2026-08-14T07:04:19.266-05:00"
+    },
+    {
+      "symbol": "6E",
+      "direction": "LONG",
+      "signal_type": "ENTRY",
+      "entry_price": null,
+      "target1": 1.1572,
+      "target2": 1.15855,
+      "stop1": null,
+      "win_rate": 84.62,
+      "rr": 0.57,
+      "timestamp": "2026-08-14T03:55:01.364-05:00"
+    }
+  ],
+  "corey_quote": null,
+  "commentary_health": [
+    {
+      "date": "2026-08-25",
+      "data_quality": "none",
+      "directional_bias": "neutral",
+      "conviction": 0.0,
+      "message_count": 0
+    },
+    {
+      "date": "2026-08-15",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.85,
+      "message_count": 10
+    },
+    {
+      "date": "2026-08-13",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.7,
+      "message_count": 12
+    },
+    {
+      "date": "2026-08-12",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.5,
+      "message_count": 13
+    },
+    {
+      "date": "2026-08-11",
+      "data_quality": "fresh",
+      "directional_bias": "neutral",
+      "conviction": 0.2,
+      "message_count": 11
+    },
+    {
+      "date": "2026-08-10",
+      "data_quality": "fresh",
+      "directional_bias": "bullish",
+      "conviction": 0.65,
+      "message_count": 1
+    }
+  ],
+  "calibration_integrity": {
+    "total_outcomes": 19,
+    "rows_excluded_corrupt": 0,
+    "rows_excluded_duplicate": 0,
+    "alert": false,
+    "window_days": 30
+  },
+  "llm_provider_health": {
+    "engine_reachable": true,
+    "active_provider": null,
+    "primary_provider": "ollama",
+    "primary_healthy": true,
+    "providers_available": 1,
+    "google_fallback_count": 0,
+    "vertex_failover_count": 0,
+    "llm_path_healthy": true,
+    "alert": false
+  },
+  "task_health": {
+    "present": true,
+    "stale": false,
+    "age_hours": 0.5,
+    "scanned": 106,
+    "failing_enabled": 9,
+    "failing_disabled": 2,
+    "failing_tasks": [
+      {
+        "name": "Jarvis-DataIntegritySentinel",
+        "result": "0x1"
+      },
+      {
+        "name": "Jarvis-DiscordGitDigest",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-InsightsReview",
+        "result": "0x41306"
+      },
+      {
+        "name": "jarvis-levels-calibrator",
+        "result": "0x80070002"
+      },
+      {
+        "name": "jarvis-morning-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-PM2RestartWatch-15min",
+        "result": "0x1"
+      },
+      {
+        "name": "jarvis-preclose-framing-brief",
+        "result": "0x3"
+      },
+      {
+        "name": "Jarvis-ScanUncommitted",
+        "result": "0x41306"
+      },
+      {
+        "name": "Jarvis-Sentinel",
+        "result": "0x800710E0"
+      }
+    ],
+    "alert": true
+  },
+  "gate_verdict_freshness": {
+    "active_symbols": [
+      "MES",
+      "MGC"
+    ],
+    "max_age_days": 7.0,
+    "symbols": {
+      "M2K": {
+        "age_days": 19.4,
+        "newest": "2026-07-27T04:24:35.587736+00:00",
+        "files": 6,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "M6B": {
+        "age_days": 58.4,
+        "newest": "2026-06-18T04:01:09.485608+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "M6E": {
+        "age_days": 58.4,
+        "newest": "2026-06-18T04:00:35.531376+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "MCL": {
+        "age_days": 0.3,
+        "newest": "2026-08-15T06:00:06.334332+00:00",
+        "files": 8,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "MES": {
+        "age_days": 0.3,
+        "newest": "2026-08-15T06:00:03.646657+00:00",
+        "files": 39,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MGC": {
+        "age_days": 1.9,
+        "newest": "2026-08-13T15:31:52.324325+00:00",
+        "files": 23,
+        "latest_verdict": "FAIL",
+        "active": true
+      },
+      "MNQ": {
+        "age_days": 0.3,
+        "newest": "2026-08-15T06:00:08.313263+00:00",
+        "files": 13,
+        "latest_verdict": "FAIL",
+        "active": false
+      },
+      "ZB": {
+        "age_days": 58.4,
+        "newest": "2026-06-18T04:00:05.645209+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      },
+      "ZN": {
+        "age_days": 58.4,
+        "newest": "2026-06-18T03:59:30.450756+00:00",
+        "files": 1,
+        "latest_verdict": "INSUFFICIENT_SAMPLE",
+        "active": false
+      }
+    },
+    "stale_active": [],
+    "missing_active": [],
+    "alert": false
+  }
+}
