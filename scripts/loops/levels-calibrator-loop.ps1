@@ -18,12 +18,17 @@
 .NOTES
   Requires the engine venv at engine/.venv/Scripts/python. Set
   JARVIS_LOOP_WEBHOOK for failure alerts.
+
+  Every ERROR exit also appends "<UTC timestamp>`t<reason>" to
+  docs/loop-reports/levels-calibrator.log so the failure reason survives
+  after the Task Scheduler run ends (the .heartbeat file alone only records
+  ERROR, not why). Same fix as morning-brief-loop.ps1 (2026-07-09).
 #>
 
 [CmdletBinding()]
 param(
     [string] $RepoRoot = (Resolve-Path "$PSScriptRoot\..\..").Path,
-    [int]    $Days     = 30
+    [int]    $Days = 30
 )
 
 Set-StrictMode -Version Latest
@@ -31,13 +36,23 @@ $ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot\loop-lib.ps1"
 Initialize-LoopPaths -RepoRoot $RepoRoot | Out-Null
-$loopName   = "levels-calibrator"
-$stamp      = Get-Date -Format "yyyy-MM-dd_HHmm"
+$loopName = "levels-calibrator"
+$stamp = Get-Date -Format "yyyy-MM-dd_HHmm"
 $venvPython = Join-Path $RepoRoot "engine\.venv\Scripts\python.exe"
 
 function Stop-WithError {
     param([string] $Reason)
     Write-LoopHeartbeat -LoopName $loopName -Status "ERROR"
+    if ($script:LoopReportDir) {
+        try {
+            $failLog = Join-Path $script:LoopReportDir "levels-calibrator.log"
+            $stampUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            Add-Content -Path $failLog -Value "$stampUtc`t$Reason" -Encoding UTF8
+        }
+        catch {
+            Write-Warning "failure log write failed (non-fatal): $($_.Exception.Message)"
+        }
+    }
     Send-LoopNotification -Message "[!!] jarvis levels-calibrator FAILED - $Reason ($stamp)" | Out-Null
     Write-Warning "[levels-calibrator-loop] ERROR - $Reason"
     exit 3

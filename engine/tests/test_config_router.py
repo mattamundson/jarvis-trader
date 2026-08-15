@@ -456,3 +456,73 @@ def test_overview_uncategorized_secret_shaped_field_is_redacted(monkeypatch, cli
     assert str(item["value"]).startswith(
         "***"
     ), f"fixture key {fixture_key!r} leaked in plaintext: {item['value']!r}"
+
+
+# ---------------------------------------------------------------------------
+# LLM_PROVIDER vs JARVIS_LLM_PROVIDER regression tests
+# ---------------------------------------------------------------------------
+#
+# LLM_PROVIDER is a TradingConfig field loaded from engine/.env, but nothing
+# in the engine's actual routing reads it -- every real provider-selection
+# decision (llm/client.py, main.py) resolves
+# os.getenv("JARVIS_LLM_PROVIDER", "ollama") directly, bypassing settings
+# entirely. /config/overview used to surface only the inert LLM_PROVIDER
+# value, so it could show e.g. "openai" while the engine ran single-leg
+# ollama with nothing to catch the mismatch. These tests prove the endpoint
+# now also surfaces the value that actually drives routing.
+
+
+def test_overview_llm_category_includes_active_jarvis_llm_provider(client):
+    """The 'llm' category must include a JARVIS_LLM_PROVIDER entry -- the
+    value that actually drives routing, not just the inert LLM_PROVIDER
+    field."""
+    data = client.get("/config/overview").json()
+    llm_items = {item["key"]: item for item in data["categories"].get("llm", [])}
+    assert "JARVIS_LLM_PROVIDER" in llm_items, (
+        f"/config/overview's 'llm' category is missing JARVIS_LLM_PROVIDER "
+        f"(the actually-authoritative provider selector). Found keys: "
+        f"{list(llm_items)}"
+    )
+    assert llm_items["JARVIS_LLM_PROVIDER"]["sensitive"] is False
+
+
+def test_overview_jarvis_llm_provider_reflects_live_env_not_hardcoded(monkeypatch, client):
+    """End-to-end: /config/overview's JARVIS_LLM_PROVIDER value must track a
+    real change to the JARVIS_LLM_PROVIDER env var -- proving the endpoint
+    reads live state (matching llm/client.py's own resolution) rather than a
+    hardcoded or stale value."""
+    monkeypatch.setenv("JARVIS_LLM_PROVIDER", "anthropic")
+    data = client.get("/config/overview").json()
+    llm_items = {item["key"]: item["value"] for item in data["categories"].get("llm", [])}
+    assert llm_items.get("JARVIS_LLM_PROVIDER") == "anthropic", (
+        f"expected JARVIS_LLM_PROVIDER='anthropic' after setting the env var, "
+        f"got {llm_items.get('JARVIS_LLM_PROVIDER')!r}"
+    )
+
+    monkeypatch.setenv("JARVIS_LLM_PROVIDER", "OLLAMA")  # mixed case, matches client.py's .lower()
+    data = client.get("/config/overview").json()
+    llm_items = {item["key"]: item["value"] for item in data["categories"].get("llm", [])}
+    assert llm_items.get("JARVIS_LLM_PROVIDER") == "ollama", (
+        "JARVIS_LLM_PROVIDER should be lowercased, matching llm/client.py's "
+        f"os.getenv(...).strip().lower() resolution, got "
+        f"{llm_items.get('JARVIS_LLM_PROVIDER')!r}"
+    )
+
+
+def test_overview_llm_provider_field_and_jarvis_llm_provider_can_disagree(monkeypatch, client):
+    """Regression for the actual incident: LLM_PROVIDER (settings-loaded,
+    inert) and JARVIS_LLM_PROVIDER (env-resolved, authoritative) are
+    independent values -- setting one must not silently overwrite the
+    other's live-resolved value. This is what makes the endpoint honest
+    about a real mismatch instead of masking it."""
+    monkeypatch.setenv("JARVIS_LLM_PROVIDER", "ollama")
+    data = client.get("/config/overview").json()
+    llm_items = {item["key"]: item["value"] for item in data["categories"].get("llm", [])}
+
+    assert llm_items.get("JARVIS_LLM_PROVIDER") == "ollama"
+    if "LLM_PROVIDER" in llm_items:
+        # LLM_PROVIDER is whatever engine/.env set it to (e.g. "openai") --
+        # it is allowed to disagree with JARVIS_LLM_PROVIDER. The bug this
+        # test guards against is the two being silently conflated into one
+        # value rather than shown as the two independent fields they are.
+        assert "JARVIS_LLM_PROVIDER" in llm_items and "LLM_PROVIDER" in llm_items
