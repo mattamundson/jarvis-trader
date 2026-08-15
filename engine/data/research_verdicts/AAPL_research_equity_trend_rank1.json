@@ -4,27 +4,27 @@
   "rank": 1,
   "strategy": "sma12_monthly_momentum",
   "strategy_class": "equity_swing",
-  "verdict": "PASS",
-  "passed_via": "core",
-  "core_verdict": "PASS",
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
   "alt_verdict": "UNSCORED",
-  "created_at": "2026-08-15T19:52:10.843477+00:00",
+  "created_at": "2026-08-15T20:02:59.776586+00:00",
   "gate_v2_metrics": {
-    "pf_ci_lower": 2.7689,
+    "pf_ci_lower": 1.3065,
     "p_edge": 1.0,
-    "mc_95th_dd_pct": 3.923,
-    "dsr": 0.124954
+    "mc_95th_dd_pct": 75.5633,
+    "dsr": 0.0
   },
   "gate_v2": {
-    "verdict": "PASS",
-    "passed_via": "core",
-    "core_verdict": "PASS",
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
     "alt_verdict": "UNSCORED",
     "reasons": [
-      "mbb_pf_ci_lower=2.7689 >= 1.1",
+      "mbb_pf_ci_lower=1.3065 >= 1.1",
       "p_positive_edge=1.0 >= 0.95",
-      "mc_95th_dd_pct=3.923 <= 5.0",
-      "dsr=0.124954 >= 0.1 (not selection-bias)"
+      "FAIL mc_95th_dd_pct=75.5633 > 5.0",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
     ]
   },
   "provenance": {
