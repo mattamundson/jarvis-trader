@@ -1,0 +1,36 @@
+{
+  "symbol": "TSLA",
+  "family": "research_equity_trend",
+  "rank": 1,
+  "strategy": "sma12_monthly_momentum",
+  "strategy_class": "equity_swing",
+  "verdict": "FAIL",
+  "passed_via": null,
+  "core_verdict": "FAIL",
+  "alt_verdict": "UNSCORED",
+  "created_at": "2026-08-15T19:52:13.246134+00:00",
+  "gate_v2_metrics": {
+    "pf_ci_lower": 2.7546,
+    "p_edge": 1.0,
+    "mc_95th_dd_pct": 4.1061,
+    "dsr": 0.097024
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=2.7546 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "mc_95th_dd_pct=4.1061 <= 5.0",
+      "FAIL dsr=0.097024 < 0.1 (selection bias)"
+    ]
+  },
+  "provenance": {
+    "source": "adapted from SPY sma12_monthly_momentum template",
+    "adapted_by": "GT-52 equities validation-gap fill",
+    "adapted_date": "2026-08-15"
+  },
+  "class_note": "Validation-gap fill for TSLA (no wfe_snapshots row, no results/ artifact, no run_tsla_*.py prior to this PR -- engine/CLAUDE.md 'Active Instruments > Equities'). Data-only: does not authorize or change routing."
+}

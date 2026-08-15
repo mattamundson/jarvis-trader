@@ -1,0 +1,47 @@
+{
+  "strategy": "sma12_monthly_momentum",
+  "symbol": "AAPL",
+  "rank": 1,
+  "source": "adapted from SPY sma12_monthly_momentum template (2026-08-15, GT-52 validation-gap fill)",
+  "period": [
+    "1980-12-31",
+    "2026-08-31"
+  ],
+  "n_months": 548,
+  "n_in_market_trades": 354,
+  "n_regime_flips": 67,
+  "n_grid_trials": 12,
+  "strategy_metrics": {
+    "cagr": 0.1578,
+    "sharpe_ann": 0.613,
+    "max_dd": -0.8645,
+    "final_mult": 804.57
+  },
+  "buy_hold_metrics": {
+    "cagr": 0.1882,
+    "sharpe_ann": 0.621,
+    "max_dd": -0.7967,
+    "final_mult": 2626.74
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.3065 >= 1.1",
+      "p_positive_edge=1.0 >= 0.95",
+      "FAIL mc_95th_dd_pct=75.5633 > 5.0",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
+    ]
+  },
+  "report_keys": [
+    "bootstrap_block",
+    "bootstrap_iid",
+    "deflated_sharpe",
+    "drawdown_mc",
+    "raw",
+    "sharpe_ci"
+  ],
+  "note": "Monthly regime filter (not intraday) -- does NOT validate the live 1h options-scanner pipeline that actually generates AAPL's paper fills. Validated on monthly in-market PnL. Draft/research only -- does NOT authorize paper routing."
+}
