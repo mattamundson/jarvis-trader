@@ -1,6 +1,8 @@
 // All dashboard calls MUST use fetchEngine() or postEngine() below.
 // These functions proxy through Next.js rewrites to the engine backend.
 // NEVER hardcode an absolute engine URL or make fetch calls directly.
+import type { ExecutionPathProbe } from "@/lib/executionPath";
+
 const ENGINE = "/api/engine";
 // 65s: must be strictly GREATER than the proxy's own internal timeout
 // (app/api/engine/[...path]/route.ts, 60s) so the proxy's clean 60s abort
@@ -133,6 +135,56 @@ export async function postEngine<T = any>(path: string, body?: unknown): Promise
 }
 
 /**
+ * DOM / order-flow service calls (port 8030).
+ *
+ * These proxy through the same-origin /api/domflow route (mirroring the
+ * /api/engine convention) so the browser never makes a cross-origin request
+ * and the DOMFLOW_INTERNAL_URL stays server-only. The domflow service is a
+ * read-only, 127.0.0.1-bound market-data consumer with no API key — see
+ * app/api/domflow/[...path]/route.ts.
+ */
+const DOMFLOW = "/api/domflow";
+
+export interface DomflowSnapshot {
+  symbol: string;
+  ts_utc: string;
+  best_bid: number | null;
+  best_ask: number | null;
+  mid_price: number | null;
+  spread: number | null;
+  bid_volume_top5: number;
+  ask_volume_top5: number;
+  imbalance_ratio: number;
+  raw_book_json: string;
+  depth_tier: "L2" | "L1_DELAYED";
+  stale: boolean;
+  age_seconds: number | null;
+  connected: boolean;
+}
+
+export interface DomflowHistoryResponse {
+  symbol: string;
+  minutes: number;
+  count: number;
+  snapshots: DomflowSnapshot[];
+}
+
+export async function fetchDomflow<T = any>(path: string, options?: RequestInit): Promise<T> {
+  return fetchWithRetry<T>(`${DOMFLOW}${path}`, {
+    cache: "no-store",
+    ...options,
+  });
+}
+
+export async function postDomflow<T = any>(path: string, body?: unknown): Promise<T> {
+  return fetchWithRetry<T>(`${DOMFLOW}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+/**
  * Fetch a binary/non-JSON response from the engine (e.g. CSV downloads).
  * Returns the raw Response so the caller can call .blob(), .text(), etc.
  */
@@ -201,6 +253,13 @@ export interface HealthResponse {
   llm_providers?: LLMProviderSummary | null;
   vertex_failover_count?: number | null;
   google_fallback_count?: number | null;
+  // D3-01: the honest execution-path fields. `execution_connected_verified` is
+  // ALSO blind to `execution_path.simulated === true` at the engine level
+  // (health_router.py) — always resolve display state via
+  // `executionStatus()` from @/lib/executionPath, never read these directly.
+  execution_connected_verified?: boolean | null;
+  ib_execution_stale?: boolean | null;
+  execution_path?: ExecutionPathProbe | null;
 }
 
 export interface LLMProviderSummary {
@@ -250,6 +309,37 @@ export interface LLMSubsystemHealth {
   vertex_failover_count?: number | null;
 }
 
+// Process-supervision cross-check (/health/full -> subsystems.process_supervision,
+// PRB-24). Compares pm2's believed status+pid for each supervised app against an
+// independent TCP port probe + the real port-owner PID (netstat -ano). A MISMATCH
+// (pm2 says one thing, the OS says another) is the exact failure shape behind the
+// 2026-07-28/29 incidents: an orphan process serving a port pm2 thinks is dead, or
+// pm2 believing a port is up when nothing is actually listening. `status` is
+// "ok" | "mismatch" | "unavailable" | "error"; `unavailable` means pm2 itself
+// couldn't be queried (e.g. not on PATH) — an environment fact, not a live
+// incident, so it renders as a neutral/warn state, not red.
+export interface ProcessSupervisionAppStatus {
+  port: number;
+  pm2_found: boolean;
+  pm2_status: string | null;
+  pm2_pid: number | null;
+  port_alive: boolean;
+  actual_pid: number | null;
+  mismatch_reason: string | null;
+}
+
+export interface ProcessSupervisionHealth {
+  status?: string | null; // ok | mismatch | unavailable | error
+  details?: {
+    available: boolean;
+    supervision_ok: boolean | null;
+    error: string | null;
+    checked_at: string;
+    apps: Record<string, ProcessSupervisionAppStatus>;
+  };
+  error?: string;
+}
+
 export interface FullHealthResponse {
   overall: string;
   timestamp: string;
@@ -259,6 +349,7 @@ export interface FullHealthResponse {
   subsystems: {
     ib_gateway?: IBGatewayHealth;
     llm?: LLMSubsystemHealth;
+    process_supervision?: ProcessSupervisionHealth;
     [key: string]: unknown;
   };
 }
@@ -348,6 +439,118 @@ export interface ForwardTestReport {
   n_lineages?: number;
   n_lineages_graduated?: number;
   note?: string;
+}
+
+// ── Actionable-now board (engine /pipeline/actionable) ───────────────────────
+// Mirrors engine analytics/actionable.py derive_actionable_board(). Display
+// only — the board derives status from stored decisions + latest price and
+// never routes, sizes, or gates anything.
+export interface ActionableItem {
+  approval_id: string | null;
+  symbol: string;
+  direction: "long" | "short" | string;
+  action: string;
+  approval_status: string | null;
+  quantity: number | null;
+  confidence: number | null;
+  timeframe: string | null;
+  created_at: string | null;
+  age_days: number | null;
+  status:
+    | "awaiting_entry"
+    | "triggerable"
+    | "triggered"
+    | "target_reached"
+    | "invalidated"
+    | "expired"
+    | "unknown"
+    | string;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target_1: number | null;
+  atr: number | null;
+  latest_price: number | null;
+  price_as_of: number | null;
+  // Price provenance: is_live from the snapshot tier; stale = too old to
+  // derive a status from (the engine already degraded status to "unknown").
+  price_is_live?: boolean | null;
+  price_stale?: boolean;
+  distance_abs: number | null;
+  distance_pct: number | null;
+  distance_atr: number | null;
+  planned_rr: number | null;
+  current_r: number | null;
+  notional_per_contract: number | null;
+}
+
+export interface ActionableBoardResponse {
+  items: ActionableItem[];
+  count: number;
+  available: boolean;
+  note?: string;
+}
+
+export async function fetchActionableBoard(): Promise<ActionableBoardResponse> {
+  return fetchEngine<ActionableBoardResponse>("/pipeline/actionable");
+}
+
+// ── Paper-trading authorization status (engine /backtest/paper-status) ───────
+// Per-symbol rows derived from the LIVE gate-v2 policy (paper_config.enabled
+// + fresh PASS verdict) — the canonical "which symbols actually trade" source,
+// never a hardcoded list. Keyed like "MES_1h".
+export interface PaperStatusRow {
+  // Absent on engines predating the additive `symbol` field — consumers must
+  // fall back to parsing the record key ("MES_1h" -> "MES").
+  symbol?: string;
+  status: "ACTIVE" | "NO-TRADE" | "FAIL" | "NO-VERDICT" | string;
+  authorized: boolean;
+  verdict: string;
+  wfe_label?: string;
+  reason?: string;
+  [key: string]: unknown;
+}
+
+export type PaperStatusResponse = Record<string, PaperStatusRow>;
+
+export async function fetchPaperStatus(): Promise<PaperStatusResponse> {
+  return fetchEngine<PaperStatusResponse>("/backtest/paper-status");
+}
+
+// ── Forward-test status (engine /forward-test/status) ────────────────────────
+// Mirrors engine routers/forward_test_router.py ForwardTestStatus. Read-only
+// view of the paper-validation record for one symbol vs the canonical
+// live-readiness thresholds (no new strategy logic on either side).
+export interface ForwardTestStatusResponse {
+  symbol: string;
+  status: "not_run" | "in_progress" | "pass" | "fail" | string;
+  forward_pf: number | null;
+  forward_pf_infinite: boolean;
+  n_closed: number;
+  n_open: number;
+  days_elapsed: number | null;
+  total_pnl: number;
+  gate_verdict: string | null;
+  gate_family: string | null;
+  gate_created_at: string | null;
+  as_of: string | null;
+  as_of_age_days: number | null;
+  stale: boolean;
+  thresholds: {
+    min_days?: number;
+    min_trades?: number;
+    min_pf?: number;
+    verdict_ttl_days?: number;
+  };
+  detail: string;
+  generated_at: string;
+}
+
+export async function fetchForwardTestStatus(
+  symbol: string
+): Promise<ForwardTestStatusResponse> {
+  return fetchEngine<ForwardTestStatusResponse>(
+    `/forward-test/status?symbol=${encodeURIComponent(symbol)}`
+  );
 }
 
 export interface SafetyStatus {
@@ -601,6 +804,24 @@ export async function fetchHiddenPivotsScan(
   return fetchEngine<HPScanResponse>(
     `/hidden-pivots/scan?timeframe=${encodeURIComponent(timeframe)}&benchmark=${encodeURIComponent(benchmark)}`
   );
+}
+
+/** GET /hidden-pivots/price-coverage response (PRB-21). */
+export interface PriceCoverageResponse {
+  watchlist_size: number;
+  covered_symbols: string[];
+  uncovered_symbols: string[];
+}
+
+/**
+ * Which watchlist symbols have a real live-price fallback floor (CSV cache).
+ * The dashboard's live-price ticker poll uses this to avoid hammering symbols
+ * that will show "--" with certainty once IBKR + Polygon's rate limit both
+ * miss — see PRB-21. Pattern/level scanning (fetchHiddenPivotsScan) is
+ * unaffected and still covers the full watchlist.
+ */
+export async function fetchPriceCoverage(): Promise<PriceCoverageResponse> {
+  return fetchEngine<PriceCoverageResponse>(`/hidden-pivots/price-coverage`);
 }
 
 /**
@@ -1291,6 +1512,10 @@ export interface PendingApproval {
   orb_contrib?: boolean | null;
   vwap_contrib?: boolean | null;
   risk_pct_used?: number | null;
+  // Tamper-evident audit chain (approval/audit_chain.py, migration 041).
+  // Undefined/null on rows created before this field existed.
+  prev_hash?: string | null;
+  audit_hash?: string | null;
 }
 
 export interface PendingApprovalRow {
@@ -1302,6 +1527,10 @@ export interface PendingApprovalRow {
   created_at: string;
   pipeline_snapshot: Record<string, unknown> | null;
   status: "pending" | "approved" | "rejected" | "error";
+  // Tamper-evident audit chain (approval/audit_chain.py, migration 041).
+  // Null on rows created before this field existed.
+  prev_hash?: string | null;
+  audit_hash?: string | null;
 }
 
 export interface PendingApprovalsResponse {
@@ -1439,6 +1668,64 @@ export interface SignalQualityResponse {
   by_symbol: Record<string, SignalMetricsResponse>;
   by_regime: Record<string, SignalMetricsResponse>;
   recommendations: string[];
+}
+
+export async function fetchSignalQuality(): Promise<SignalQualityResponse> {
+  return fetchEngine<SignalQualityResponse>("/analytics/signal-quality");
+}
+
+// ── Signal outcomes (engine /analytics/signal-outcomes) ─────────────────────
+// Mirrors engine analytics/signal_outcomes.py — recent directional pipeline
+// decisions scored against subsequent daily bars. Hypothetical by design
+// (scores the SIGNAL, not an executed trade); the fill model is stated in
+// the response's `model` field.
+export interface SignalOutcome {
+  approval_id: string | null;
+  symbol: string;
+  direction: "long" | "short" | string;
+  decision_date: string | null;
+  approval_status: string | null;
+  confidence: number | null;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target_1: number | null;
+  target_2: number | null;
+  hit:
+    | "target1_hit"
+    | "target2_hit"
+    | "stop_hit"
+    | "expired"
+    | "open"
+    | string;
+  mfe_pct: number | null;
+  mae_pct: number | null;
+  hypothetical_pnl_pct: number | null;
+  evaluable: boolean;
+  note: string | null;
+}
+
+export interface SignalOutcomesAggregate {
+  hit_rate: number | null;
+  avg_hypothetical_pnl_pct: number | null;
+  total_evaluated: number;
+  total_signals: number;
+  count_by_hit: Record<string, number>;
+}
+
+export interface SignalOutcomesResponse {
+  outcomes: SignalOutcome[];
+  aggregate: SignalOutcomesAggregate;
+  available: boolean;
+  generated_at?: string;
+  note?: string | null;
+  // Which decision store the outcomes were drawn from (approval queue only
+  // for now — scheduler-only runs are a tracked expansion).
+  universe?: string;
+  model?: string;
+}
+
+export async function fetchSignalOutcomes(): Promise<SignalOutcomesResponse> {
+  return fetchEngine<SignalOutcomesResponse>("/analytics/signal-outcomes");
 }
 
 export interface TradesByDayItem {
@@ -1819,6 +2106,13 @@ export interface UnrealizedPosition {
   take_profit: number | null;
   stop_distance: number | null;
   target_distance: number | null;
+  // Data-provenance envelope (Phase 1) — see engine/data/provenance.py /
+  // dashboard/lib/provenance.ts. Describes the CURRENT_PRICE mark, not the
+  // static entry/stop/target fields above.
+  is_live?: boolean;
+  source?: string | null;
+  as_of?: number | null;
+  stale_after_s?: number;
 }
 
 export type UnrealizedPositionsResponse = UnrealizedPosition[];
@@ -2174,6 +2468,192 @@ export interface CalibrationDiagnostics {
 
 export async function fetchCalibration(): Promise<CalibrationDiagnostics> {
   return fetchEngine<CalibrationDiagnostics>("/analytics/calibration");
+}
+
+// ── Agent debate weights (/analytics/agent-weights) ───────────────────────────
+// Distinct from calibration above: this is the P&L-correlation weight
+// (AgentFeedbackTracker, 0.70-1.30) that actually scales each Stage-1
+// analyst's signal in debate.py, not the Brier/IC calibration blend.
+
+export interface AgentWeightEntry {
+  // What debate.py actually applies right now (see weights_source on the
+  // parent response) -- get_weights_by_regime(regime) when a regime is known,
+  // load_weights() otherwise. This is the number that matches live behavior.
+  live_weight: number;
+  // Freshly recomputed all-regime AgentFeedbackTracker.get_agent_weights() --
+  // a diagnostic view that can legitimately differ from live_weight. Never
+  // present this as "the" weight without the live_weight alongside it.
+  recomputed_weight: number;
+  accuracy_30d: number;
+  accuracy_90d: number;
+  sample_count_30d: number;
+  ready: boolean;
+}
+
+export interface AgentWeightsResponse {
+  min_weight: number;
+  max_weight: number;
+  default_weight: number;
+  min_trades_threshold: number;
+  agents: string[];
+  per_agent: Record<string, AgentWeightEntry>;
+  regime: string | null;
+  weights_source: string;
+  weights_file_exists: boolean;
+  saved_weights_updated_at: string | null;
+  timestamp: string;
+}
+
+export async function fetchAgentWeights(regime?: string): Promise<AgentWeightsResponse> {
+  const suffix = regime ? `?regime=${encodeURIComponent(regime)}` : "";
+  return fetchEngine<AgentWeightsResponse>(`/analytics/agent-weights${suffix}`);
+}
+
+// ── LLM daily cost stats (/llm/stats) ─────────────────────────────────────────
+
+export interface LlmModelStats {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface LlmAgentStats {
+  calls: number;
+  cost_usd: number;
+}
+
+export interface LlmDailyStats {
+  date: string;
+  total_calls: number;
+  total_cost_usd: number;
+  success_rate: number;
+  avg_latency_ms: number;
+  per_model: Record<string, LlmModelStats>;
+  per_agent: Record<string, LlmAgentStats>;
+  per_provider: Record<string, LlmModelStats>;
+}
+
+export async function fetchLlmDailyStats(daysBack: number = 0): Promise<LlmDailyStats> {
+  return fetchEngine<LlmDailyStats>(`/llm/stats?days_back=${daysBack}`);
+}
+
+// ── Trade post-mortems (/analytics/post-mortems) ──────────────────────────────
+
+export interface PostMortemEntry {
+  trade_id: string;
+  symbol: string | null;
+  pnl: number | null;
+  analysis: string | null;
+  lesson: string | null;
+  created_at: string | null;
+}
+
+export interface PostMortemsResponse {
+  entries: PostMortemEntry[];
+  total: number;
+  timestamp: string;
+}
+
+export async function fetchPostMortems(opts?: {
+  limit?: number;
+  symbol?: string;
+}): Promise<PostMortemsResponse> {
+  const q = new URLSearchParams();
+  if (opts?.limit != null) q.set("limit", String(opts.limit));
+  if (opts?.symbol) q.set("symbol", opts.symbol);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return fetchEngine<PostMortemsResponse>(`/analytics/post-mortems${suffix}`);
+}
+
+// ── Live pipeline regime classification (/analytics/regime-v2/{symbol}) ──────
+// This is backtest.regime_classifier.RegimeClassifierV2 -- the classifier
+// engine/agents/pipeline.py actually uses live for regime-based strategy
+// routing. Deterministic rule-based thresholds only: validated is always
+// false (no ground-truth accuracy score exists yet) and probability_vector
+// is always null (the classifier doesn't produce one).
+
+export interface RegimeV2Response {
+  symbol: string;
+  regime: string;
+  description: string | null;
+  atr_norm: number | null;
+  ema_alignment: Record<string, number> | null;
+  validated: boolean;
+  probability_vector: Record<string, number> | null;
+  note: string | null;
+  timestamp: string;
+}
+
+export async function fetchRegimeV2(symbol: string): Promise<RegimeV2Response> {
+  return fetchEngine<RegimeV2Response>(`/analytics/regime-v2/${encodeURIComponent(symbol)}`);
+}
+
+// ── Legacy per-symbol regime classification (/analytics/regime/{symbol}) ─────
+// backtest.regime.RegimeClassifier (3-state: TRENDING/RANGING/VOLATILE, or
+// UNKNOWN when bar data is insufficient) -- NOT the classifier the live
+// pipeline uses for routing (that's regime-v2 above). Still a genuine live
+// read off real bar data, not fabricated -- this is the endpoint /jarvis's
+// RegimePulsePanel already calls; reused here (PRB-34) for /command-center's
+// Signal Cards so `regime` stops rendering a hardcoded constant.
+
+export interface SymbolRegimeResponse {
+  symbol: string;
+  regime?: string;
+  current_regime?: string;
+  note?: string;
+  error?: string;
+}
+
+export async function fetchSymbolRegime(symbol: string): Promise<SymbolRegimeResponse> {
+  return fetchEngine<SymbolRegimeResponse>(`/analytics/regime/${encodeURIComponent(symbol)}`);
+}
+
+// ── Portfolio correlation preview (/analytics/correlation-preview) ───────────
+// risk/portfolio_sizer.py's correlation-aware sizing trim is validated but NOT
+// wired into the live order path (see the module's own docstring) -- this
+// endpoint always returns wired_into_live_sizing: false. Preview/display only.
+
+export interface CorrelationPreviewResponse {
+  symbols: string[];
+  pairs: Record<string, number>;
+  omitted_pairs: string[];
+  wired_into_live_sizing: boolean;
+  note: string;
+  timestamp: string;
+}
+
+export async function fetchCorrelationPreview(
+  symbols: string[] = ["MES", "MGC", "MCL", "MNQ"]
+): Promise<CorrelationPreviewResponse> {
+  return fetchEngine<CorrelationPreviewResponse>(
+    `/analytics/correlation-preview?symbols=${encodeURIComponent(symbols.join(","))}`
+  );
+}
+
+// ── Backup/DR health (/health/backup-status) ──────────────────────────────────
+// Note: an older, unused BackupStatusResponse/BackupFile type pair already
+// exists above (for the differently-shaped /system/backup-status endpoint,
+// with a stale `created_at` field) -- left untouched since nothing consumes
+// it. This is a fresh type matching the actual /health/backup-status shape.
+
+export interface BackupFileEntry {
+  filename: string;
+  size_bytes: number;
+  created_utc: string;
+}
+
+export interface HealthBackupStatus {
+  backup_count: number;
+  last_backup: string | null;
+  last_backup_path: string | null;
+  retention_days: number;
+  backup_dir: string | null;
+  available_backups: BackupFileEntry[];
+}
+
+export async function fetchHealthBackupStatus(): Promise<HealthBackupStatus> {
+  return fetchEngine<HealthBackupStatus>("/health/backup-status");
 }
 
 // ── Excursion analytics (MAE/MFE) (/analytics/excursion) ─────────────────────

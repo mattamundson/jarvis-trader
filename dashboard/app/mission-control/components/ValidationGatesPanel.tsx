@@ -26,10 +26,17 @@ interface ProactiveReportLive {
   next_milestone: string;
 }
 
+<<<<<<< HEAD
 // Was hardcoded to ["MCL", "MNQ"] -- the pre-2026-05-24 flagship pair, now
 // DO_NOT_TRADE_SYMBOLS (halted). This panel never showed the actually-approved
 // pair. DEFAULT_BRIEFING_SYMBOLS is the shared source of truth so it tracks
 // the active pair automatically if it changes again.
+=======
+// GT-43 (2026-07-28 dashboard-integrity audit): was hardcoded ["MCL", "MNQ"]
+// — the halted pair — so this panel proactive-validated symbols that can't
+// trade while the actually-active MES/MGC pair got no suite at all. Derived
+// from DEFAULT_BRIEFING_SYMBOLS so it can't drift from the active pair again.
+>>>>>>> origin/master
 const SYMBOLS = DEFAULT_BRIEFING_SYMBOLS;
 
 function overallBadgeVariant(

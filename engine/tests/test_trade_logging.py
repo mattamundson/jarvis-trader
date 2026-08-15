@@ -542,6 +542,310 @@ class TestTradeLogging(unittest.TestCase):
             loop.close()
 
 
+class SqliteProvenanceDBManager:
+    """
+    Minimal DatabaseManager stand-in exposing only ``_connect()`` — the sole
+    interface ``TradeLogger._store_signal_provenance`` needs. Backed by a
+    real on-disk SQLite file so the direct-SQL UPDATE path is exercised
+    against real ``PRAGMA table_info`` introspection instead of a mock.
+    """
+
+    def __init__(self, db_path: str, with_provenance_columns: bool = True):
+        self._db_path = db_path
+        self._with_provenance_columns = with_provenance_columns
+        self._init_schema()
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self._db_path)
+
+    def _init_schema(self) -> None:
+        conn = self._connect()
+        try:
+            if self._with_provenance_columns:
+                conn.execute(
+                    """
+                    CREATE TABLE paper_trades (
+                        trade_id TEXT PRIMARY KEY,
+                        regime TEXT,
+                        bias TEXT,
+                        composite_score REAL,
+                        stc_contrib INTEGER,
+                        orb_contrib INTEGER,
+                        vwap_contrib INTEGER,
+                        bull_score REAL,
+                        bear_score REAL,
+                        debate_confidence REAL
+                    )
+                    """
+                )
+            else:
+                # Legacy/un-migrated schema: no provenance columns at all.
+                conn.execute("CREATE TABLE paper_trades (trade_id TEXT PRIMARY KEY)")
+            conn.execute("INSERT INTO paper_trades (trade_id) VALUES ('trade-001')")
+            conn.commit()
+        finally:
+            conn.close()
+
+
+class TestStoreSignalProvenance(unittest.TestCase):
+    """
+    Coverage for TradeLogger._store_signal_provenance — the direct-SQL,
+    best-effort path that persists signal context onto paper_trades. This
+    is invoked internally by log_entry() but MockDatabaseManager (used by
+    the rest of this file) has no _connect(), so that branch is never
+    exercised by the other tests here.
+    """
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._db_path = str(Path(self._tmpdir.name) / "provenance.db")
+
+    def tearDown(self):
+        self._tmpdir.cleanup()
+
+    def _sample_entry(self) -> LogEntry:
+        return LogEntry(
+            trade_id="trade-001",
+            symbol="MCL",
+            side="buy",
+            quantity=1.0,
+            entry_price=85.50,
+            entry_time="2026-04-22T15:30:00Z",
+            signal_score=0.75,
+            confidence=0.82,
+            regime="TRENDING_BULL",
+            bias="bullish",
+            composite_score=0.78,
+            stc_contrib=1,
+            orb_contrib=1,
+            vwap_contrib=0,
+            bull_score=0.85,
+            bear_score=0.15,
+            debate_confidence=0.83,
+        )
+
+    def test_updates_columns_when_present(self):
+        """When paper_trades has provenance columns, they get populated."""
+        db = SqliteProvenanceDBManager(self._db_path, with_provenance_columns=True)
+        logger = TradeLogger(db)
+
+        logger._store_signal_provenance("trade-001", self._sample_entry())
+
+        conn = db._connect()
+        try:
+            row = conn.execute(
+                "SELECT regime, bias, composite_score, bull_score, "
+                "debate_confidence FROM paper_trades WHERE trade_id = ?",
+                ("trade-001",),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row, ("TRENDING_BULL", "bullish", 0.78, 0.85, 0.83))
+
+    def test_noop_when_columns_missing(self):
+        """No provenance columns on paper_trades -> silently skipped, no crash."""
+        db = SqliteProvenanceDBManager(self._db_path, with_provenance_columns=False)
+        logger = TradeLogger(db)
+
+        # Should not raise even though the UPDATE columns don't exist.
+        logger._store_signal_provenance("trade-001", self._sample_entry())
+
+    def test_noop_when_no_direct_db_access(self):
+        """A DatabaseManager without _connect() (e.g. MockDatabaseManager) is skipped."""
+        db = MockDatabaseManager()
+        logger = TradeLogger(db)
+
+        # Should not raise (no AttributeError from missing _connect).
+        logger._store_signal_provenance("trade-001", self._sample_entry())
+
+    def test_swallows_db_errors(self):
+        """A raising _connect() is caught -- provenance storage is non-critical."""
+
+        class BoomDB:
+            def _connect(self):
+                raise RuntimeError("db unavailable")
+
+        logger = TradeLogger(BoomDB())
+
+        # Should not raise -- failures here must never block trade logging.
+        logger._store_signal_provenance("trade-001", self._sample_entry())
+
+
+class TestCorrelateEntryToDecision(unittest.TestCase):
+    """Coverage for TradeLogger.correlate_entry_to_decision (background
+    attribution task); previously untested by this file."""
+
+    def setUp(self):
+        self.db_manager = MockDatabaseManager()
+        self.trade_logger = TradeLogger(self.db_manager)
+
+    @staticmethod
+    def _run(coro):
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    def test_success_appends_decision_reference_to_journal(self):
+        self.db_manager.insert_decision(
+            symbol="MCL", action="buy", timestamp="2026-04-22T15:29:00Z"
+        )
+        entry_id = self.db_manager.add_journal_entry(
+            trade_id="trade-001",
+            note="AUTO-ENTRY: BUY 1 MCL @ 85.50",
+            tags="auto_logged,entry",
+            timestamp="2026-04-22T15:30:00Z",
+        )
+
+        result = self._run(
+            self.trade_logger.correlate_entry_to_decision(
+                trade_id="trade-001", symbol="MCL", timestamp="2026-04-22T15:30:00Z"
+            )
+        )
+
+        self.assertTrue(result)
+        updated_note = self.db_manager.journal_entries[entry_id]["note"]
+        self.assertIn("[DECISION_ID: 1]", updated_note)
+
+    def test_no_decisions_for_symbol_returns_false(self):
+        self.db_manager.add_journal_entry(trade_id="trade-001", note="AUTO-ENTRY")
+
+        result = self._run(
+            self.trade_logger.correlate_entry_to_decision(
+                trade_id="trade-001", symbol="MCL", timestamp="2026-04-22T15:30:00Z"
+            )
+        )
+
+        self.assertFalse(result)
+
+    def test_no_journal_entry_for_trade_returns_false(self):
+        self.db_manager.insert_decision(symbol="MCL", action="buy")
+
+        result = self._run(
+            self.trade_logger.correlate_entry_to_decision(
+                trade_id="trade-nonexistent",
+                symbol="MCL",
+                timestamp="2026-04-22T15:30:00Z",
+            )
+        )
+
+        self.assertFalse(result)
+
+    def test_no_db_manager_returns_false(self):
+        logger = TradeLogger(None)
+
+        result = self._run(
+            logger.correlate_entry_to_decision(
+                trade_id="trade-001", symbol="MCL", timestamp="2026-04-22T15:30:00Z"
+            )
+        )
+
+        self.assertFalse(result)
+
+    def test_swallows_db_exception_and_returns_false(self):
+        db = MagicMock()
+        db.get_decisions.side_effect = Exception("db unavailable")
+        logger = TradeLogger(db)
+
+        result = self._run(
+            logger.correlate_entry_to_decision(
+                trade_id="trade-001", symbol="MCL", timestamp="2026-04-22T15:30:00Z"
+            )
+        )
+
+        self.assertFalse(result)
+
+
+class TestTradeLoggerErrorHandling(unittest.TestCase):
+    """Coverage for the guard-clause and exception-handling branches of
+    log_entry/log_exit that the happy-path tests above don't reach."""
+
+    def setUp(self):
+        self.db_manager = MockDatabaseManager()
+        self.trade_logger = TradeLogger(self.db_manager)
+
+    @staticmethod
+    def _run(coro):
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    def test_log_entry_no_db_manager_returns_none(self):
+        logger = TradeLogger(None)
+        result = self._run(
+            logger.log_entry(
+                symbol="MCL",
+                trade_decision=MockTradeDecision(),
+                debate_result={},
+                analyst_reports={},
+            )
+        )
+        self.assertIsNone(result)
+
+    def test_log_entry_swallows_exception_and_returns_none(self):
+        db = MagicMock()
+        db.insert_trade.side_effect = Exception("db write failed")
+        logger = TradeLogger(db)
+
+        result = self._run(
+            logger.log_entry(
+                symbol="MCL",
+                trade_decision=MockTradeDecision(),
+                debate_result={},
+                analyst_reports={},
+            )
+        )
+
+        self.assertIsNone(result)
+
+    def test_log_exit_no_db_manager_returns_false(self):
+        logger = TradeLogger(None)
+        result = self._run(
+            logger.log_exit(trade_id="trade-001", exit_price=87.25, pnl=175.0)
+        )
+        self.assertFalse(result)
+
+    def test_log_exit_trade_not_found_returns_false(self):
+        result = self._run(
+            self.trade_logger.log_exit(
+                trade_id="does-not-exist", exit_price=87.25, pnl=175.0
+            )
+        )
+        self.assertFalse(result)
+
+    def test_log_exit_no_journal_entry_returns_false(self):
+        # Trade exists, but no journal entry was ever created for it.
+        self.db_manager.insert_trade(
+            trade_id="trade-001",
+            symbol="MCL",
+            side="buy",
+            quantity=1.0,
+            entry_price=85.50,
+        )
+
+        result = self._run(
+            self.trade_logger.log_exit(
+                trade_id="trade-001", exit_price=87.25, pnl=175.0
+            )
+        )
+
+        self.assertFalse(result)
+
+    def test_log_exit_swallows_exception_and_returns_false(self):
+        db = MagicMock()
+        db.get_trade_by_id.side_effect = Exception("db read failed")
+        logger = TradeLogger(db)
+
+        result = self._run(
+            logger.log_exit(trade_id="trade-001", exit_price=87.25, pnl=175.0)
+        )
+
+        self.assertFalse(result)
+
+
 if __name__ == "__main__":
     # Run tests with verbose output
     unittest.main(verbosity=2)

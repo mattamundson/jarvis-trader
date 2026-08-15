@@ -25,6 +25,7 @@ import {
   pickApprovedBacktestBaseline,
   type ScorecardBacktestBaseline,
 } from "@/lib/scorecardBaseline";
+import { PREFERRED_BASELINE_LABEL } from "@/lib/approvedSymbols";
 import { formatCurrency } from "@/lib/utils";
 import { ReadinessCheckWidget } from "@/components/ReadinessCheckWidget";
 import { StreakBadge } from "@/components/StreakBadge";
@@ -38,13 +39,17 @@ import { PnLStreakWidget } from "@/components/PnLStreakWidget";
 import { MaxDrawdownTrackerWidget } from "@/components/MaxDrawdownTrackerWidget";
 import { DrawdownChartWidget } from "@/components/DrawdownChartWidget";
 import { BacktestCompareWidget } from "@/components/BacktestCompareWidget";
+import { ForwardTestPanel } from "@/components/ForwardTestPanel";
+import { ForwardVsBacktestCard } from "@/components/ForwardVsBacktestCard";
+import { ResultLabel } from "@/components/ResultLabel";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import {
-  fetchHonestTrades,
   maxDrawdownPct,
   dedupCaveat,
+  isHonestUnavailable,
   type HonestTradeSet,
 } from "@/lib/honestTrades";
+import { useHonestTrades } from "@/lib/useHonestTrades";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -210,10 +215,23 @@ function ProgressBar({
 function StatusCheck({
   label,
   pass,
+  unavailable = false,
 }: {
   label: string;
   pass: boolean | null;
+  /** Data fetch failed (not merely still loading) — render a distinct neutral
+   *  "unavailable" state so a fetch error can never read as a passed OR
+   *  failed gate (GT-06). */
+  unavailable?: boolean;
 }) {
+  if (unavailable) {
+    return (
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 text-warn flex-shrink-0" />
+        <span className="text-xs font-medium text-warn">{label} — data unavailable</span>
+      </div>
+    );
+  }
   if (pass === null) {
     return (
       <div className="flex items-center gap-2">
@@ -250,14 +268,14 @@ function SkeletonCard() {
 
 export default function ScorecardPage() {
   // ── Honest deduped trade record (primary performance source) ───────────────
+  // Shared subscription — every widget on this page reads the same cached
+  // record via this hook so the app issues ONE request per refresh cycle.
   const {
-    data: honestSet,
+    honest: honestSet,
     isLoading: loadingHonest,
     error: honestError,
     mutate: mutateHonest,
-  } = useSWR<HonestTradeSet>("scorecard/honest-trades", fetchHonestTrades, {
-    refreshInterval: REFRESH_MS,
-  });
+  } = useHonestTrades(REFRESH_MS);
 
   // ── Supplemental data (NOT used for trade counts or P&L) ──────────────────
   // /portfolio/stats/summary is used ONLY for best_day, worst_day, days_active
@@ -299,7 +317,19 @@ export default function ScorecardPage() {
   }
 
   // ── Derived values from honest deduped record ─────────────────────────────
-  // All gate-relevant metrics come exclusively from fetchHonestTrades().
+  // All gate-relevant metrics come exclusively from the shared useHonestTrades()
+  // hook's honestSet (no standalone fetch — see the subscription above).
+  //
+  // honestUnavailable: the fetch settled (not loading) but produced no record
+  // — i.e. the underlying honest-trades fetch (see lib/honestTrades.ts) threw
+  // (master-api unreachable/errored) and useHonestTrades() surfaced `error`
+  // with `data` left undefined (GT-06).
+  // Every honest-derived number below still falls back to `?? 0` so the
+  // *arithmetic* never NaNs, but every place that number reaches the UI MUST
+  // gate on honestUnavailable and render an honest "data unavailable" state
+  // instead of treating "0 because the fetch failed" the same as "0 because
+  // that's the real deduped result" (which would incorrectly paint FAIL-red).
+  const honestUnavailable = isHonestUnavailable(honestSet, loadingHonest);
 
   const pf = honestSet?.profitFactor ?? 0;
   // Sharpe is NOT available from the deduped record — it must NOT gate readiness.
@@ -323,23 +353,38 @@ export default function ScorecardPage() {
   const days = supplemental?.days_active ?? 0;
 
   // ── Gate evaluations ──────────────────────────────────────────────────────
-  const pfLvl = pfLevel(pf);
+  // pfLvl/wrLvl are pinned neutral ("yellow") when the honest record is
+  // unavailable so no widget derived from them paints a false FAIL/red verdict
+  // off of a fetch error's fallback zero.
+  const pfLvl: ColorLevel = honestUnavailable ? "yellow" : pfLevel(pf);
+  const wrLvl: ColorLevel = honestUnavailable
+    ? "yellow"
+    : wr >= TARGETS.winRate
+    ? "green"
+    : wr >= 40
+    ? "yellow"
+    : "red";
   const daysLvl = daysLevel(days);
 
-  const pfPass = pf >= TARGETS.profitFactor;
+  // pfPass/wrPass/ddPass are `null` (unknown, not false) when the honest
+  // record is unavailable — a fetch failure must never read as "gate failed".
+  const pfPass = honestUnavailable ? null : pf >= TARGETS.profitFactor;
   // srPass is intentionally excluded — Sharpe not computable, must never PASS
   const daysPass = days >= TARGETS.daysActive;
-  const wrPass = wr >= TARGETS.winRate;
-  const ddPass = maxDD < TARGETS.maxDrawdown;
+  const wrPass = honestUnavailable ? null : wr >= TARGETS.winRate;
+  const ddPass = honestUnavailable ? null : maxDD < TARGETS.maxDrawdown;
   // READY FOR LIVE requires every displayed gate to pass, not just PF + days —
   // a catastrophic win rate or a blown-through drawdown limit must never be
-  // masked by a healthy profit factor.
-  const allPass = pfPass && daysPass && wrPass && ddPass;
-  const anyPass = pfPass || daysPass;
+  // masked by a healthy profit factor. pfPass/wrPass/ddPass are compared
+  // against `true` (not truthy) so `null` (unavailable) never reads as PASS.
+  const allPass = pfPass === true && daysPass && wrPass === true && ddPass === true;
+  const anyPass = pfPass === true || daysPass;
 
-  type Verdict = "NOT READY" | "APPROACHING" | "READY FOR LIVE";
+  type Verdict = "NOT READY" | "APPROACHING" | "READY FOR LIVE" | "DATA UNAVAILABLE";
   let verdict: Verdict = "NOT READY";
-  if (allPass) {
+  if (honestUnavailable) {
+    verdict = "DATA UNAVAILABLE";
+  } else if (allPass) {
     verdict = "READY FOR LIVE";
   } else if (anyPass || pfLvl === "yellow") {
     verdict = "APPROACHING";
@@ -461,13 +506,14 @@ export default function ScorecardPage() {
         <div className="flex items-center gap-3">
           <Target className="h-5 w-5 text-muted-foreground" />
           <div>
-            <h2 className="text-lg font-bold text-foreground">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
               Paper Trading Scorecard
+              <ResultLabel kind="paper" />
             </h2>
             <p className="text-xs text-muted-foreground">
               {baseline
                 ? `${baseline.label} — ${baseline.timeframe} — Validation targets for live trading promotion`
-                : "No MCL/MNQ baseline JSON — Validation targets for live trading promotion"}
+                : `No ${PREFERRED_BASELINE_LABEL} baseline JSON — Validation targets for live trading promotion`}
             </p>
           </div>
         </div>
@@ -508,7 +554,9 @@ export default function ScorecardPage() {
         {/* ── Validation Progress ─────────────────────────────────────────── */}
         <div
           className={`rounded-xl border p-6 space-y-6 ${
-            allPass
+            honestUnavailable
+              ? "border-warn/40 bg-warn/5"
+              : allPass
               ? "border-bull/40 bg-bull/5"
               : verdict === "APPROACHING"
               ? "border-warn/40 bg-warn/5"
@@ -519,14 +567,18 @@ export default function ScorecardPage() {
             <SectionHeader title="Validation Progress" />
             <div
               className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border ${
-                allPass
+                honestUnavailable
+                  ? "border-warn/50 bg-warn/10 text-warn"
+                  : allPass
                   ? "border-bull/50 bg-bull/10 text-bull"
                   : verdict === "APPROACHING"
                   ? "border-warn/50 bg-warn/10 text-warn"
                   : "border-bear/50 bg-bear/10 text-bear"
               }`}
             >
-              {allPass ? (
+              {honestUnavailable ? (
+                <AlertTriangle className="h-3.5 w-3.5" />
+              ) : allPass ? (
                 <CheckCircle2 className="h-3.5 w-3.5" />
               ) : verdict === "APPROACHING" ? (
                 <AlertTriangle className="h-3.5 w-3.5" />
@@ -538,8 +590,9 @@ export default function ScorecardPage() {
           </div>
 
           <p className="text-xs text-muted-foreground -mt-2">
-            All criteria must be met to advance to live trading. Sharpe is not
-            gated here — it cannot be computed from the deduped trade record.
+            {honestUnavailable
+              ? "Honest trade record unavailable — readiness cannot be evaluated until the fetch succeeds."
+              : "All criteria must be met to advance to live trading. Sharpe is not gated here — it cannot be computed from the deduped trade record."}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -548,7 +601,7 @@ export default function ScorecardPage() {
               value={pf}
               target={TARGETS.profitFactor}
               level={pfLvl}
-              currentLabel={isLoading ? "—" : fmt2(pf)}
+              currentLabel={isLoading ? "—" : honestUnavailable ? "n/a" : fmt2(pf)}
               targetLabel={`${TARGETS.profitFactor}`}
             />
             <ProgressBar
@@ -564,8 +617,11 @@ export default function ScorecardPage() {
 
           <div className="flex flex-wrap items-center gap-6 pt-1">
             <StatusCheck
-              label={`PF > ${TARGETS.profitFactor} (currently ${isLoading ? "…" : fmt2(pf)})`}
+              label={`PF > ${TARGETS.profitFactor} (currently ${
+                isLoading ? "…" : honestUnavailable ? "n/a" : fmt2(pf)
+              })`}
               pass={isLoading ? null : pfPass}
+              unavailable={!isLoading && honestUnavailable}
             />
             <StatusCheck
               label={`${TARGETS.daysActive}+ trading days (currently ${isLoading ? "…" : days})`}
@@ -584,6 +640,16 @@ export default function ScorecardPage() {
         <WidgetErrorBoundary name="Backtest Compare">
           <BacktestCompareWidget />
         </WidgetErrorBoundary>
+
+        {/* ── Evidence-to-Live Gate (forward record vs backtest verdict) ──── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <WidgetErrorBoundary name="Evidence-to-Live Gate">
+            <ForwardVsBacktestCard />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary name="Forward Test">
+            <ForwardTestPanel />
+          </WidgetErrorBoundary>
+        </div>
 
         {/* ── Rolling Performance Windows ─────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -608,10 +674,13 @@ export default function ScorecardPage() {
               </>
             ) : (
               <>
+                {/* GT-06: when the honest fetch failed, these three tiles must
+                    read "data unavailable" — never the fallback-zero (`?? 0`)
+                    painted as a FAIL/red verdict. See honestUnavailable above. */}
                 <MetricCard
                   label="Profit Factor"
-                  value={fmt2(pf)}
-                  sub={`Target: > ${TARGETS.profitFactor}`}
+                  value={honestUnavailable ? "—" : fmt2(pf)}
+                  sub={honestUnavailable ? "Data unavailable" : `Target: > ${TARGETS.profitFactor}`}
                   level={pfLvl}
                   icon={BarChart3}
                 />
@@ -625,16 +694,22 @@ export default function ScorecardPage() {
                 />
                 <MetricCard
                   label="Win Rate"
-                  value={fmtPct(wr)}
-                  sub={`Target: > ${TARGETS.winRate}%`}
-                  level={wr >= TARGETS.winRate ? "green" : wr >= 40 ? "yellow" : "red"}
+                  value={honestUnavailable ? "—" : fmtPct(wr)}
+                  sub={honestUnavailable ? "Data unavailable" : `Target: > ${TARGETS.winRate}%`}
+                  level={wrLvl}
                   icon={Target}
                 />
                 <MetricCard
                   label="Total P&L"
-                  value={formatCurrency(totalPnl)}
-                  sub={totalPnl >= 0 ? "Net profit (deduped)" : "Net loss (deduped)"}
-                  level={totalPnl > 0 ? "green" : totalPnl === 0 ? "yellow" : "red"}
+                  value={honestUnavailable ? "—" : formatCurrency(totalPnl)}
+                  sub={
+                    honestUnavailable
+                      ? "Data unavailable"
+                      : totalPnl >= 0
+                      ? "Net profit (deduped)"
+                      : "Net loss (deduped)"
+                  }
+                  level={honestUnavailable ? "yellow" : totalPnl > 0 ? "green" : totalPnl === 0 ? "yellow" : "red"}
                   icon={totalPnl >= 0 ? TrendingUp : TrendingDown}
                 />
               </>
@@ -683,16 +758,16 @@ export default function ScorecardPage() {
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
-                      isLoading ? "text-muted-foreground" : colorClass(pfLvl)
+                      isLoading || honestUnavailable ? "text-muted-foreground" : colorClass(pfLvl)
                     }`}
                   >
-                    {isLoading ? "…" : fmt2(pf)}
+                    {isLoading ? "…" : honestUnavailable ? "n/a" : fmt2(pf)}
                   </td>
                   <td className="px-4 py-3.5 text-right text-muted-foreground">
                     &gt; {TARGETS.profitFactor}
                   </td>
                   <td className="px-5 py-3.5 text-center">
-                    {isLoading ? (
+                    {isLoading || honestUnavailable ? (
                       <span className="text-muted-foreground">—</span>
                     ) : pfPass ? (
                       <CheckCircle2 className="h-4 w-4 text-bull mx-auto" />
@@ -732,20 +807,20 @@ export default function ScorecardPage() {
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
-                      isLoading
+                      isLoading || honestUnavailable
                         ? "text-muted-foreground"
                         : wrPass
                         ? "text-bull"
                         : "text-bear"
                     }`}
                   >
-                    {isLoading ? "…" : fmtPct(wr)}
+                    {isLoading ? "…" : honestUnavailable ? "n/a" : fmtPct(wr)}
                   </td>
                   <td className="px-4 py-3.5 text-right text-muted-foreground">
                     &gt; {TARGETS.winRate}%
                   </td>
                   <td className="px-5 py-3.5 text-center">
-                    {isLoading ? (
+                    {isLoading || honestUnavailable ? (
                       <span className="text-muted-foreground">—</span>
                     ) : wrPass ? (
                       <CheckCircle2 className="h-4 w-4 text-bull mx-auto" />
@@ -766,20 +841,20 @@ export default function ScorecardPage() {
                   </td>
                   <td
                     className={`px-4 py-3.5 text-right font-mono font-bold ${
-                      isLoading
+                      isLoading || honestUnavailable
                         ? "text-muted-foreground"
                         : ddPass
                         ? "text-bull"
                         : "text-bear"
                     }`}
                   >
-                    {isLoading ? "…" : `-${fmtPct(maxDD)}`}
+                    {isLoading ? "…" : honestUnavailable ? "n/a" : `-${fmtPct(maxDD)}`}
                   </td>
                   <td className="px-4 py-3.5 text-right text-muted-foreground">
                     &lt; -{TARGETS.maxDrawdown}%
                   </td>
                   <td className="px-5 py-3.5 text-center">
-                    {isLoading ? (
+                    {isLoading || honestUnavailable ? (
                       <span className="text-muted-foreground">—</span>
                     ) : ddPass ? (
                       <CheckCircle2 className="h-4 w-4 text-bull mx-auto" />
@@ -827,26 +902,26 @@ export default function ScorecardPage() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <TradeStat
                 label="Total Trades"
-                value={String(totalTrades)}
+                value={honestUnavailable ? "—" : String(totalTrades)}
               />
               <TradeStat
                 label="Winning"
-                value={String(wins)}
+                value={honestUnavailable ? "—" : String(wins)}
                 valueClass="text-bull"
               />
               <TradeStat
                 label="Losing"
-                value={String(losses)}
+                value={honestUnavailable ? "—" : String(losses)}
                 valueClass="text-bear"
               />
               <TradeStat
                 label="Avg Win"
-                value={wins > 0 ? formatCurrency(avgWin) : "—"}
+                value={!honestUnavailable && wins > 0 ? formatCurrency(avgWin) : "—"}
                 valueClass="text-bull"
               />
               <TradeStat
                 label="Avg Loss"
-                value={losses > 0 ? formatCurrency(avgLoss) : "—"}
+                value={!honestUnavailable && losses > 0 ? formatCurrency(avgLoss) : "—"}
                 valueClass="text-bear"
               />
               {/* Sharpe not available from deduped record */}
@@ -881,8 +956,8 @@ export default function ScorecardPage() {
               />
               <TradeStat
                 label="Max Drawdown"
-                value={`-${fmtPct(maxDD)}`}
-                valueClass={ddPass ? "text-bull" : "text-bear"}
+                value={honestUnavailable ? "—" : `-${fmtPct(maxDD)}`}
+                valueClass={honestUnavailable ? "text-muted-foreground" : ddPass ? "text-bull" : "text-bear"}
               />
               <TradeStat
                 label="Days Active"
@@ -910,7 +985,7 @@ export default function ScorecardPage() {
             </>
           ) : (
             <>
-              Baseline from saved backtest (MCL/MNQ preferred) &mdash; none loaded &mdash;
+              Baseline from saved backtest ({PREFERRED_BASELINE_LABEL} preferred) &mdash; none loaded &mdash;
               Auto-refresh every 60s &mdash; Live metrics: deduped honest record
             </>
           )}

@@ -16,10 +16,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from api import (
@@ -31,7 +32,9 @@ from api import (
 )
 from approval.service import approved_watchlist_symbols
 from config import settings
+from data.provenance import DEFAULT_STALE_AFTER_S, DataEnvelope, derive_is_live
 from execution.order_router import FUTURES_SYMBOLS
+from portfolio.tracker import TradeCloseNotPersistedError
 from utils.position_sizing import INSTRUMENT_MULTIPLIERS as INSTRUMENT_POINT_VALUES
 from utils.trade_invariants import is_inverted_stop
 
@@ -55,6 +58,17 @@ def inject_dependencies(pt, dbm, dm=None, safety_layer=None):
     db_manager = dbm
     _data_manager = dm
     _safety_layer = safety_layer
+
+
+def _ibkr_connected() -> bool | None:
+    """IBKR data-leg connection state for the provenance envelope's ``is_live``
+    gate — mirrors ``MarketDataManager.get_current_price_envelope``'s check.
+    ``None`` (unknown) when no data manager is wired, rather than a hardcoded
+    True/False that could misrepresent connectivity.
+    """
+    if _data_manager is None:
+        return None
+    return bool(getattr(_data_manager, "ibkr", None) and _data_manager.ibkr.is_connected)
 
 
 @router.get("")
@@ -112,7 +126,11 @@ async def get_portfolio():
                     open_positions, marks, strict=True
                 ):
                     computed = _compute_unrealized(
-                        pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                        pos,
+                        current_price,
+                        INSTRUMENT_POINT_VALUES,
+                        mark_source=mark_source,
+                        ibkr_data_connected=_ibkr_connected(),
                     )
                     upnl = computed.get("unrealized_pnl")
                     if upnl:
@@ -136,6 +154,10 @@ async def get_portfolio():
                             "unrealized_pnl": upnl,
                             "unrealized_pnl_pct": computed.get("unrealized_pnl_pct"),
                             "is_futures": _is_futures_symbol(sym),
+                            "is_live": computed.get("is_live", False),
+                            "source": computed.get("source"),
+                            "as_of": computed.get("as_of"),
+                            "stale_after_s": computed.get("stale_after_s"),
                         }
                     )
         except Exception as exc:
@@ -264,6 +286,47 @@ def _row_pnl(row: Any) -> float:
         return 0.0
 
 
+def _build_price_envelope(value: float, marks: list[tuple[bool, str, float | None]]) -> dict:
+    """Aggregate per-position provenance (Phase 1) into a summary-level envelope.
+
+    P4-1: /portfolio/summary's price-derived aggregates (unrealized_pnl,
+    total_pnl, total_daily_pnl) must carry the same honest live/stale badge as
+    the individual marks that feed them. Fail-safe aggregation: ``is_live`` is
+    True only when EVERY contributing mark is live -- one stale/disconnected
+    position taints the whole aggregate (mirrors the existing
+    ``unrealized_marks_stale`` gate). No open positions -> trivially live
+    (nothing to be stale about; matches the "trade counts stay live" framing).
+    """
+    if not marks:
+        return DataEnvelope(
+            value=value, source="ledger", as_of=time.time(), is_live=True,
+            stale_after_s=DEFAULT_STALE_AFTER_S,
+        ).to_dict()
+    sources = {s for _, s, _ in marks}
+    source = next(iter(sources)) if len(sources) == 1 else "mixed"
+    as_of_values = [a for _, _, a in marks if a is not None]
+    as_of = min(as_of_values) if as_of_values else None
+    is_live = all(live for live, _, _ in marks)
+    return DataEnvelope(
+        value=value, source=source, as_of=as_of, is_live=is_live,
+        stale_after_s=DEFAULT_STALE_AFTER_S,
+    ).to_dict()
+
+
+def _ledger_envelope(value: float) -> dict:
+    """Provenance envelope for a trade-count/ledger-derived field (P4-1).
+
+    Closed-trade P&L is a booked fact from the trade ledger, not a live-feed
+    read -- it does not go stale when the price feed stops, so it is always
+    ``is_live=True`` (distinct from the price-derived envelopes above, which
+    flip False the moment a contributing mark is stale/disconnected).
+    """
+    return DataEnvelope(
+        value=value, source="ledger", as_of=time.time(), is_live=True,
+        stale_after_s=DEFAULT_STALE_AFTER_S,
+    ).to_dict()
+
+
 @router.get(
     "/summary",
     description="Unified multi-market P&L summary with total daily P&L, market breakdown, and daily target progress.",
@@ -275,6 +338,10 @@ async def portfolio_summary():
     # ── Unrealized P&L from open positions ───────────────────────────────────
     unrealized_pnl = 0.0
     unrealized_marks_stale = 0
+    unrealized_marks_live = 0
+    # (is_live, source, as_of) per contributing position -- feeds the summary-
+    # level provenance envelope built below (P4-1).
+    unrealized_marks_provenance: list[tuple[bool, str, float | None]] = []
     if paper_tracker is not None:
         try:
             open_positions: list[dict] = paper_tracker.get_open_positions()
@@ -311,16 +378,30 @@ async def portfolio_summary():
 
                 for pos, (current_price, mark_source) in zip(open_positions, marks, strict=True):
                     computed = _compute_unrealized(
-                        pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                        pos,
+                        current_price,
+                        INSTRUMENT_POINT_VALUES,
+                        mark_source=mark_source,
+                        ibkr_data_connected=_ibkr_connected(),
                     )
                     if computed.get("mark_stale"):
                         unrealized_marks_stale += 1
+                    if computed.get("is_live"):
+                        unrealized_marks_live += 1
+                    unrealized_marks_provenance.append(
+                        (
+                            bool(computed.get("is_live")),
+                            str(computed.get("source") or "unavailable"),
+                            computed.get("as_of"),
+                        )
+                    )
                     upnl = computed.get("unrealized_pnl") or 0.0
                     unrealized_pnl += upnl
         except Exception as exc:
             logger.warning("portfolio_summary: unrealized P&L fetch failed: %s", exc)
 
     if not orch:
+        unrealized_env = _build_price_envelope(round(unrealized_pnl, 4), unrealized_marks_provenance)
         return {
             "total_daily_pnl": round(unrealized_pnl, 4),
             "realized_pnl": 0.0,
@@ -329,8 +410,14 @@ async def portfolio_summary():
             "daily_target": 500.0,
             "target_progress_pct": 0.0,
             "unrealized_marks_stale": unrealized_marks_stale,
+            "unrealized_marks_live": unrealized_marks_live,
             "markets": {},
             "message": "Orchestrator not initialized",
+            # Provenance envelopes (Phase 1, P4-1) — additive; see data/provenance.py.
+            "unrealized_pnl_envelope": unrealized_env,
+            "total_pnl_envelope": {**unrealized_env, "value": round(unrealized_pnl, 4)},
+            "total_daily_pnl_envelope": {**unrealized_env, "value": round(unrealized_pnl, 4)},
+            "realized_pnl_envelope": _ledger_envelope(0.0),
         }
 
     summary = await orch.get_portfolio_summary()
@@ -345,8 +432,23 @@ async def portfolio_summary():
     # >0 means some open positions were marked from a stale/unavailable feed and
     # excluded from unrealized — the degraded-state surface reads this.
     summary["unrealized_marks_stale"] = unrealized_marks_stale
+    # Count of open positions currently marked from a genuine live-tier,
+    # freshness-passing source (provenance envelope's is_live=True).
+    summary["unrealized_marks_live"] = unrealized_marks_live
     if daily_target:
         summary["target_progress_pct"] = round(total_pnl / daily_target * 100, 2)
+
+    # Provenance envelopes (Phase 1, P4-1): additive {value,source,as_of,is_live,
+    # stale_after_s} shape alongside the existing plain numbers, so the dashboard
+    # can render an honest live/stale badge without breaking any existing
+    # consumer of the plain fields. Price-derived aggregates flip is_live False
+    # the moment any contributing mark goes stale/disconnected; realized_pnl is
+    # a ledger fact (already-booked closed trades) and always stays live.
+    unrealized_envelope = _build_price_envelope(summary["unrealized_pnl"], unrealized_marks_provenance)
+    summary["unrealized_pnl_envelope"] = unrealized_envelope
+    summary["total_pnl_envelope"] = {**unrealized_envelope, "value": summary["total_pnl"]}
+    summary["total_daily_pnl_envelope"] = {**unrealized_envelope, "value": summary["total_daily_pnl"]}
+    summary["realized_pnl_envelope"] = _ledger_envelope(summary["realized_pnl"])
     return summary
 
 
@@ -449,6 +551,60 @@ async def portfolio_capital():
 
 
 # GET /portfolio/stats/streaks - canonical handler is on the FastAPI app in main.py (StreakBadge).
+
+
+@router.get(
+    "/stats/trading-days",
+    description="Distinct calendar days with at least one closed paper exit — validation-gate counter.",
+)
+async def get_trading_days_stats():
+    """
+    Distinct calendar days with at least one closed paper trade (SQLite-first, in-memory fallback).
+
+    Restores GET /portfolio/stats/trading-days (documented in CHANGELOG v1.3.0; the handler was
+    dropped when main.py's inline routes were migrated into this router on 2026-05-22 — see
+    docs/session-logs/archive/IMPLEMENTATION_PATCH_trading_days_2026-04-02.md for the original
+    contract). Response aliases match every known dashboard consumer:
+    TradingDaysCountdownCard (``trading_days``) and ValidationChecklist
+    (``trading_days_completed`` / ``days_traded`` / ``completed_days``).
+    """
+    threshold = TARGET_TRADING_DAYS
+
+    rows: list[Any] = []
+    if db_manager:
+        try:
+            rows = db_manager.get_trade_history(limit=5000)
+        except Exception as exc:
+            logger.warning(
+                "get_trading_days_stats: SQLite get_trade_history failed, using in-memory: %s", exc
+            )
+            rows = []
+
+    if not rows and paper_tracker:
+        try:
+            rows = paper_tracker.get_trade_history(limit=5000)
+        except Exception as exc:
+            logger.warning(
+                "get_trading_days_stats: in-memory get_trade_history failed: %s", exc
+            )
+            rows = []
+
+    days_set: set[date] = set()
+    for r in rows:
+        if _row_is_closed(r):
+            d = _parse_trade_day(r)
+            if d is not None:
+                days_set.add(d)
+
+    n = len(days_set)
+    return {
+        "trading_days": n,
+        "trading_days_completed": n,
+        "days_traded": n,
+        "completed_days": n,
+        "threshold": threshold,
+        "threshold_met": n >= threshold,
+    }
 
 
 @router.get(
@@ -605,6 +761,49 @@ async def paper_positions():
     else:  # pragma: no cover - legacy tracker
         positions = paper_tracker.get_open_positions()
         recon = {"source": "memory", "reconciled": True, "count": len(positions)}
+
+    # Enrich with a live mark + unrealized P&L + provenance envelope, same
+    # helper/waterfall as /portfolio and /portfolio/summary, so OpenPositionsWidget
+    # (which reads this endpoint) is no longer stuck rendering "—" for P&L and can
+    # show the honest live/stale/static badge instead of a bare number.
+    if positions and _data_manager is not None:
+        try:
+            symbols = [str(p.get("symbol", "")) for p in positions]
+            results = await asyncio.gather(
+                *[_data_manager.get_tick_price(sym) for sym in symbols],
+                return_exceptions=True,
+            )
+            marks: list[tuple[float | None, str | None]] = [
+                (
+                    (
+                        (r.get("last_price"), r.get("source"))
+                        if isinstance(r, dict)
+                        else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
+                    )
+                    if not isinstance(r, Exception) and r is not None
+                    else (None, None)
+                )
+                for r in results
+            ]
+            ibkr_connected = _ibkr_connected()
+            for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
+                computed = _compute_unrealized(
+                    pos,
+                    current_price,
+                    INSTRUMENT_POINT_VALUES,
+                    mark_source=mark_source,
+                    ibkr_data_connected=ibkr_connected,
+                )
+                pos["current_price"] = computed.get("current_price")
+                pos["unrealized_pnl"] = computed.get("unrealized_pnl")
+                pos["unrealized_pnl_pct"] = computed.get("unrealized_pnl_pct")
+                pos["is_live"] = computed.get("is_live", False)
+                pos["source"] = computed.get("source")
+                pos["as_of"] = computed.get("as_of")
+                pos["stale_after_s"] = computed.get("stale_after_s")
+        except Exception as exc:
+            logger.warning("paper_positions: mark enrichment failed: %s", exc)
+
     return {"positions": positions, "count": len(positions), "reconciliation": recon}
 
 
@@ -716,7 +915,11 @@ async def paper_performance():
                 )
                 mark_source = price_result.get("source") if isinstance(price_result, dict) else None
                 computed = _compute_unrealized(
-                    pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                    pos,
+                    current_price,
+                    INSTRUMENT_POINT_VALUES,
+                    mark_source=mark_source,
+                    ibkr_data_connected=_ibkr_connected(),
                 )
                 upnl = computed.get("unrealized_pnl") or 0.0
                 unrealized_pnl += upnl
@@ -727,6 +930,10 @@ async def paper_performance():
                         "entry_price": computed["entry_price"],
                         "current_price": computed["current_price"],
                         "unrealized_pnl": round(upnl, 4),
+                        "is_live": computed.get("is_live", False),
+                        "source": computed.get("source"),
+                        "as_of": computed.get("as_of"),
+                        "stale_after_s": computed.get("stale_after_s"),
                     }
                 )
         except Exception as exc:
@@ -868,6 +1075,11 @@ async def paper_trade(req: PaperTradeSyncRequest):
             # ExitPriceSanityError (phantom-price guard) subclasses ValueError —
             # reject a corrupt exit with 422 rather than letting it 500.
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except TradeCloseNotPersistedError as exc:
+            # GT-48: DB UPDATE affected 0 rows (stale id, already closed
+            # elsewhere, or a race) — surface a real conflict instead of a
+            # false "closed" success or an unhandled 500.
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {
             "status": "closed",
             "trade_id": closed.trade_id,
@@ -1222,7 +1434,12 @@ async def portfolio_history_trades(limit: int = 50):
         price = d.get("exit_price")
         if price is None:
             price = d.get("entry_price")
-        side = str(d.get("action", "hold")).upper()
+        # GT-10: paper_trades rows carry direction on the `side` column
+        # (buy | sell | buy_to_open | sell_to_open) — there is no `action`
+        # column on that table. Reading a nonexistent key silently returned
+        # None -> "hold" for every row, flattening all /analysis chart
+        # markers to HOLD instead of the real buy/sell split.
+        side = str(d.get("side", "hold")).upper()
         if "BUY" in side or side == "BUY":
             action = "BUY"
         elif "SELL" in side or side == "SELL":
@@ -1599,6 +1816,11 @@ class UnrealizedPositionResponse(BaseModel):
     mark_suspect: bool = False
     mark_stale: bool = False
     mark_source: str | None = None
+    # Provenance envelope (Phase 1) — see data/provenance.py / dashboard/lib/provenance.ts.
+    is_live: bool = False
+    source: str | None = None
+    as_of: float | None = None
+    stale_after_s: float = DEFAULT_STALE_AFTER_S
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1669,13 +1891,27 @@ def _compute_unrealized(
     current_price: float | None,
     point_values: dict,
     mark_source: str | None = None,
+    ibkr_data_connected: bool | None = None,
 ) -> dict:
     """Compute unrealized P&L fields for one position.
 
     ``mark_source`` is the get_tick_price() source tag for ``current_price``. A
     stale mark (CSV-cache daily close / no data) is flagged ``mark_stale`` and
     does NOT produce an unrealized_pnl number, so it cannot poison the portfolio
-    aggregate when the live data leg is degraded.
+    aggregate when the live data leg is degraded. That P&L-blocking gate
+    (``_STALE_MARK_SOURCES``) is intentionally left untouched here — it is
+    incident-hardened (see the module comments above) and stricter changes to
+    it are out of scope.
+
+    Additionally builds the data-provenance envelope fields (``is_live``,
+    ``source``, ``as_of``, ``stale_after_s``) via ``derive_is_live`` (Phase 1
+    envelope, ``engine/data/provenance.py``) so the dashboard can render the
+    mark with the same honest live/stale/static badge every other price panel
+    uses (see ``dashboard/lib/provenance.ts`` / ``<DataValue>``), instead of a
+    portfolio-router-only ``mark_stale`` boolean nothing else understands.
+    ``LIVE_SOURCES`` and ``_STALE_MARK_SOURCES`` are disjoint, so
+    ``is_live=True`` always implies ``mark_stale=False`` — the new envelope
+    field never contradicts the existing P&L gate above.
     """
     symbol = str(pos.get("symbol", "")).upper()
     action = str(pos.get("action", "") or pos.get("side", "") or "").lower()
@@ -1705,6 +1941,20 @@ def _compute_unrealized(
     # Reject stale marks (CSV-cache daily close / no data) for the same reason —
     # a weeks-old close is not a live mark and must not drive unrealized P&L.
     mark_stale = mark_source in _STALE_MARK_SOURCES
+
+    # Provenance envelope (Phase 1). ``as_of`` is "now" when a price was
+    # actually fetched — every call site here fetches synchronously per
+    # request (no background cache to be stale relative to), so the only
+    # honest freshness signal is "did we get a value this call", not an age
+    # since some earlier poll. Mirrors ``get_current_price_envelope``'s own
+    # as_of semantics (set at fetch time via ``_mark_symbol_fresh``).
+    as_of = time.time() if current_price is not None else None
+    is_live = derive_is_live(
+        mark_source,
+        as_of,
+        DEFAULT_STALE_AFTER_S,
+        ibkr_data_connected=ibkr_data_connected,
+    )
 
     # Unrealized P&L
     unrealized_pnl: float | None = None
@@ -1751,6 +2001,12 @@ def _compute_unrealized(
         "mark_suspect": mark_suspect,
         "mark_stale": mark_stale,
         "mark_source": mark_source,
+        # Provenance envelope (Phase 1) — canonical is_live/source/as_of shape
+        # consumed by dashboard/lib/provenance.ts's classifyProvenance().
+        "is_live": is_live,
+        "source": mark_source or "unavailable",
+        "as_of": as_of,
+        "stale_after_s": DEFAULT_STALE_AFTER_S,
     }
 
 
@@ -1793,7 +2049,11 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
         enriched = []
         for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
             computed = _compute_unrealized(
-                pos, current_price, INSTRUMENT_POINT_VALUES, mark_source=mark_source
+                pos,
+                current_price,
+                INSTRUMENT_POINT_VALUES,
+                mark_source=mark_source,
+                ibkr_data_connected=_ibkr_connected(),
             )
             enriched.append(UnrealizedPositionResponse(**computed))
 
@@ -2004,6 +2264,11 @@ async def submit_paper_trade(req: PaperTradeRequest):
         except ValueError as e:
             # ExitPriceSanityError (phantom-price guard) subclasses ValueError.
             raise HTTPException(422, str(e)) from e
+        except TradeCloseNotPersistedError as e:
+            # GT-48: DB UPDATE affected 0 rows (stale id, already closed
+            # elsewhere, or a race) — surface a real conflict instead of a
+            # false "closed" success or an unhandled 500.
+            raise HTTPException(409, str(e)) from e
 
         try:
             from notifications.whatsapp import format_trade_closed_alert, send_whatsapp_message
@@ -2143,18 +2408,29 @@ async def get_history_equity_curve(days: int = 90):
 
 @router.get("/history/decisions", response_model=DecisionHistoryResponse)
 async def get_decision_history(limit: int = 50, symbol: str = ""):
-    """Return historical agent decisions from SQLite."""
+    """Return historical agent decisions from SQLite.
+
+    ``count`` is the size of this page (bounded by ``limit``); ``total`` is
+    the true row count in the ``decisions`` table for the same filter,
+    via ``SELECT COUNT(*)`` -- NOT bounded by ``limit``. Dashboard tiles
+    ("Total Decisions") must read ``total``, not ``count``. See GT-04.
+    """
     if not db_manager:
-        return {"decisions": [], "count": 0, "note": "db_manager not initialized"}
+        return {"decisions": [], "count": 0, "total": 0, "note": "db_manager not initialized"}
     try:
+        symbol_upper = symbol.upper() if symbol else None
         decisions = db_manager.get_decisions(
             limit=limit,
-            symbol=symbol.upper() if symbol else None,
+            symbol=symbol_upper,
         )
-        return {"decisions": decisions, "count": len(decisions)}
+        if hasattr(db_manager, "count_decisions"):
+            total = db_manager.count_decisions(symbol=symbol_upper)
+        else:
+            total = len(decisions)
+        return {"decisions": decisions, "count": len(decisions), "total": total}
     except Exception as exc:
         logger.error(f"[DB] get_decisions failed: {exc}")
-        return {"decisions": [], "count": 0, "error": str(exc)}
+        return {"decisions": [], "count": 0, "total": 0, "error": str(exc)}
 
 
 @router.get("/stats/summary", response_model=StatsSummaryResponse)
@@ -2384,58 +2660,41 @@ async def get_commission_stats():
 
 
 @router.post("/import/trades")
-async def import_paper_trades(request: Request):
-    """Bulk import paper trades from JSON array."""
-    if db_manager is None:
-        raise HTTPException(status_code=503, detail="DB not initialized")
-    try:
-        body = await request.json()
-        trades = body.get("trades", [])
-        if not isinstance(trades, list):
-            raise HTTPException(status_code=400, detail="'trades' must be a list")
-        if len(trades) > 1000:
-            raise HTTPException(status_code=400, detail="Max 1000 trades per import")
+async def import_paper_trades():
+    """RETIRED (D3-02, 2026-07-26) -- do not resurrect this handler's old body.
 
-        imported = 0
-        errors = []
+    The previous implementation ran a raw ``INSERT OR IGNORE INTO paper_trades``
+    that listed 12 columns and omitted ``idempotency_key`` (NOT NULL, no default
+    since migration 032), ``epoch`` and ``quote_source``. ``INSERT OR IGNORE``
+    downgrades the resulting NOT NULL violation to a silent no-op, so the insert
+    wrote ZERO rows -- while the surrounding loop did ``imported += 1``
+    unconditionally, so the endpoint returned HTTP 200
+    ``{imported: N, skipped: 0, errors: []}`` having persisted nothing. It also
+    hardcoded ``status='CLOSED'`` (uppercase) against a schema every downstream
+    analytics query filters as lowercase ``'closed'``, and defaulted ``side`` to
+    ``'LONG'`` against the live 'buy'/'sell' vocabulary.
 
-        with db_manager._lock:
-            conn = sqlite3.connect(str(db_manager._db_path))
-            try:
-                for i, t in enumerate(trades):
-                    try:
-                        import uuid as _uuid
+    Caller search (dashboard/, engine/scripts/, docs/, root-level *.ps1) found no
+    live caller -- only this repo's own contract tests exercised it. The endpoint
+    likely served the one-time JSONL-to-SQLite migration; that migration is (and
+    always was) done via the standalone script engine/scripts/migrate_json_to_sqlite.py,
+    not this HTTP route.
 
-                        trade_id = t.get("trade_id") or str(_uuid.uuid4())
-                        conn.execute(
-                            """INSERT OR IGNORE INTO paper_trades
-                               (trade_id, symbol, side, entry_price, exit_price, quantity,
-                                pnl, status, entry_time, exit_time, strategy_params, notes)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                            (
-                                trade_id,
-                                str(t.get("symbol", "UNKNOWN")),
-                                str(t.get("action", t.get("side", "LONG"))),
-                                float(t.get("entry_price", 0)),
-                                float(t.get("exit_price", 0)),
-                                int(t.get("quantity", 1)),
-                                float(t.get("pnl", 0)),
-                                "CLOSED",
-                                str(t.get("entry_time", datetime.now(timezone.utc).isoformat())),
-                                str(t.get("exit_time", datetime.now(timezone.utc).isoformat())),
-                                str(t.get("strategy", t.get("strategy_params", "imported"))),
-                                str(t.get("notes", "")),
-                            ),
-                        )
-                        imported += 1
-                    except Exception as e:
-                        errors.append({"index": i, "error": str(e)})
-                conn.commit()
-            finally:
-                conn.close()
-
-        return {"imported": imported, "skipped": len(errors), "errors": errors[:10]}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+    Any future bulk-import need should call db_manager.insert_paper_trade(...,
+    quote_source=<explicit non-empty tag, e.g. 'bulk_import'>) directly -- that
+    helper (engine/database/_mixins_trades.py) enforces idempotency_key/epoch and
+    the P1-1 provenance guard (raises on empty quote_source), so it cannot
+    reproduce this bug.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "POST /portfolio/import/trades has been retired (D3-02). It silently "
+            "discarded every imported row (INSERT OR IGNORE swallowed a NOT NULL "
+            "violation on idempotency_key) while reporting success. No live caller "
+            "was found in dashboard/, engine/scripts/, or docs/. For bulk trade "
+            "import use db_manager.insert_paper_trade(..., quote_source='bulk_import') "
+            "directly, or engine/scripts/migrate_json_to_sqlite.py for the one-time "
+            "JSONL migration this endpoint used to serve."
+        ),
+    )

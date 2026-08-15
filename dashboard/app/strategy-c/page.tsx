@@ -18,6 +18,7 @@ import {
   Layers,
 } from "lucide-react";
 import { fetchEngine, postEngine } from "@/lib/api";
+import { buildAdditionalMetricsTiles } from "@/lib/strategyCTiles";
 import { Badge } from "@/components/ui/badge";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -178,7 +179,18 @@ export default function StrategyCPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+
+  // `lastRefresh` is intentionally client-only state -- same hydration guard
+  // as WeeklyPnLCard's `today` (GT-30) and DailyPnLCalendarWidget (GT-27,
+  // PR #496). Initializing with `new Date()` directly runs the clock read
+  // during both the server render and the client's first hydration pass,
+  // and since real wall-clock time elapses between the two, the rendered
+  // "Refreshed HH:MM:SS" text can diverge -- producing a React #418
+  // hydration mismatch. Starting at `null` and letting loadData()'s finally
+  // block (below) set the real value keeps the server and first client
+  // render in agreement; the render guard near the "Refreshed" text only
+  // shows the timestamp once it's non-null.
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -325,9 +337,11 @@ export default function StrategyCPage() {
                 Signal stale
               </div>
             )}
-            <span className="text-slate-500 text-xs">
-              Refreshed {lastRefresh.toLocaleTimeString()}
-            </span>
+            {lastRefresh && (
+              <span className="text-slate-500 text-xs">
+                Refreshed {lastRefresh.toLocaleTimeString()}
+              </span>
+            )}
             <button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -683,29 +697,8 @@ export default function StrategyCPage() {
             )}
 
             {/* Additional metrics row */}
-            <div className="grid grid-cols-4 gap-3 mt-3">
-              {[
-                {
-                  label: "Sortino",
-                  live: metrics.full_period?.sortino != null,
-                  value: metrics.full_period?.sortino != null ? fmtNum(metrics.full_period.sortino) : "3.75",
-                },
-                {
-                  label: "Calmar",
-                  live: metrics.full_period?.calmar != null,
-                  value: metrics.full_period?.calmar != null ? fmtNum(metrics.full_period.calmar) : "2.09",
-                },
-                {
-                  label: "Win Rate",
-                  live: metrics.full_period?.win_rate != null,
-                  value: metrics.full_period?.win_rate != null ? fmtPct(metrics.full_period.win_rate) : "57.6%",
-                },
-                {
-                  label: "Final Equity",
-                  live: metrics.full_period?.final_multiple_x != null,
-                  value: metrics.full_period?.final_multiple_x != null ? `${fmtNum(metrics.full_period.final_multiple_x)}×` : "4.12×",
-                },
-              ].map((m) => (
+            <div className="grid grid-cols-5 gap-3 mt-3">
+              {buildAdditionalMetricsTiles(metrics.full_period).map((m) => (
                 <div key={m.label} className="bg-slate-800/30 rounded-lg p-2.5 text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <p className="text-xs text-slate-500">{m.label}</p>

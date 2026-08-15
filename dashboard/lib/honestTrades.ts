@@ -253,6 +253,11 @@ export function maxDrawdownPct(
     const dd = peak - pt.equity;
     if (dd > maxDdDollars) maxDdDollars = dd;
   }
+  // Peak never rose above the zero baseline (e.g. an all-losing sequence) --
+  // there is no established high to have drawn down from, so the fraction is
+  // undefined and defined as 0 rather than reporting a drop below a peak that
+  // was never actually reached.
+  if (peak <= 0) return 0;
   const denom = Math.max(peak, startingEquity);
   return denom > 0 ? maxDdDollars / denom : 0;
 }
@@ -278,4 +283,25 @@ export function dedupCaveat(set: HonestTradeSet): string {
   return set.relogged > 0
     ? `${set.trades.length} real trades · ${set.relogged} re-logged rows collapsed`
     : `${set.trades.length} real trades`;
+}
+
+/**
+ * GT-06: single source of truth for "the honest fetch settled with no data".
+ *
+ * `useHonestTrades()` (SWR over `fetchHonestTrades()`, which throws when
+ * master-api is unreachable/errored) resolves to exactly one of three states:
+ *   1. still in flight        -> loadingHonest === true,  set === null
+ *   2. succeeded               -> loadingHonest === false, set !== null
+ *   3. threw / settled empty   -> loadingHonest === false, set === null
+ *
+ * Only state 3 is "unavailable". Every consumer on the scorecard page (and
+ * any future page reading the shared hook) MUST gate its display on this
+ * function rather than naively falling back to `?? 0` and letting a fetch
+ * failure render as a real (and FAIL-colored) zero. See scorecard/page.tsx.
+ */
+export function isHonestUnavailable(
+  set: HonestTradeSet | null | undefined,
+  loadingHonest: boolean,
+): boolean {
+  return !loadingHonest && !set;
 }

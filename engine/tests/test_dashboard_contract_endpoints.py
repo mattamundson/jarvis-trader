@@ -26,7 +26,7 @@ def test_strategy_c_metrics_maps_keys_and_rescales_units(tmp_path, monkeypatch):
                 "full": {
                     "cagr": 17.09, "sharpe": 1.42, "sortino": 2.1, "calmar": 0.9,
                     "max_dd_close_pct": 12.5, "ann_vol": 18.0, "win_rate_pct": 56.0,
-                    "final_equity": 24700.0, "n_weeks": 260,
+                    "final_equity": 24700.0, "final_multiple_x": 2.47, "n_weeks": 260,
                 },
                 "is_period": {"cagr": 20.0, "sharpe": 1.6, "max_dd_close_pct": 10.0},
                 "oos_period": {"cagr": 15.0, "sharpe": 1.3, "max_dd_close_pct": 14.0},
@@ -52,6 +52,11 @@ def test_strategy_c_metrics_maps_keys_and_rescales_units(tmp_path, monkeypatch):
     # non-percent passthrough
     assert fp["sharpe"] == 1.42
     assert fp["final_equity"] == 24700.0
+    # GT-12: final_equity (dollar figure) and final_multiple_x (equity-curve
+    # multiple, e.g. "2.47x") are distinct fields — never conflate them. The
+    # dashboard's "Final Equity" tile must render final_equity, not this one.
+    assert fp["final_multiple_x"] == 2.47
+    assert fp["final_equity"] != fp["final_multiple_x"]
     # retention mapped + rescaled
     oos = out["out_of_sample"]
     assert oos["sharpe_retention"] == 0.81
@@ -83,10 +88,12 @@ def test_readiness_check_emits_frontend_contract(monkeypatch):
         "targets_met": {
             "days_30": True, "min_trades_60": False, "win_rate_55pct": False,
             "profit_factor_2_0": True, "sharpe_1_5": False, "drawdown_15pct": True,
+            "dsr_0_10": True,
         },
         "metrics": {
             "days_elapsed": 31, "total_trades": 39, "win_rate_pct": "38.5%",
             "profit_factor": 3.26, "sharpe_ratio": 0.9, "max_drawdown_pct": 4.2,
+            "dsr": 0.15, "dsr_n_obs": 10,
         },
     }
     monkeypatch.setattr(vm.ValidationMetrics, "compute", lambda self: canned)
@@ -96,8 +103,8 @@ def test_readiness_check_emits_frontend_contract(monkeypatch):
     # top-level ReadinessReport contract
     for key in ("ready_for_live", "all_checks_pass", "checks", "passed", "total", "summary"):
         assert key in out
-    assert out["total"] == 6
-    assert out["passed"] == 3            # days_30 + profit_factor + drawdown
+    assert out["total"] == 7             # PR-10 added the Deflated Sharpe Ratio check
+    assert out["passed"] == 4            # days_30 + profit_factor + drawdown + dsr
     assert out["ready_for_live"] is False
     assert out["summary"] == "NOT READY"
     # each check has the exact ReadinessCheck shape
@@ -107,6 +114,7 @@ def test_readiness_check_emits_frontend_contract(monkeypatch):
     assert by_name["Profit Factor"]["passed"] is True
     assert by_name["Win Rate"]["passed"] is False
     assert by_name["Trade Count"]["value"] == "39"
+    assert by_name["Deflated Sharpe Ratio"]["passed"] is True
 
 
 def test_readiness_check_fail_soft_on_compute_error(monkeypatch):

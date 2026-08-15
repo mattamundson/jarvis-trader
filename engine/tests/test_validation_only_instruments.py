@@ -392,3 +392,142 @@ def test_approval_queue_allows_non_validation_only_strategy(tmp_path):
 
     # Gate passed (not 409); safety layer blocked downstream — that's fine for this test
     assert response.status_code != 409 or "VALIDATION_ONLY" not in response.json().get("detail", "")
+
+
+# ── approval_queue_router gate_v2_policy.is_strategy_authorized gate (PRB-22 sibling, 2026-08-01) ──
+#
+# This path (the autonomous-scheduler's own approve endpoint) never re-checked the gate v2
+# verdict for the strategy actually being traded -- only approval.service.ensure_approval_allowed()
+# (the manual/messaging-bot path) did. PRB-22 (2026-07-29) closed the "enabled=False but still
+# trades" half of this gap in safety_layer.check_order(), but a symbol with enabled=True and a
+# non-PASS (or missing/stale) verdict -- e.g. MES's sma_trend config, whose own comment notes
+# "gate_v2_policy blocks trades (INSUFFICIENT_SAMPLE)" -- was never actually blocked by THIS path.
+
+
+def test_approval_queue_blocks_gate_v2_unauthorized_strategy(tmp_path):
+    """approve_candidate: gate_v2_policy.is_strategy_authorized() False -> HTTP 409.
+
+    Mirrors approval.service.ensure_approval_allowed()'s existing gate v2 check so the
+    autonomous-scheduler queue path cannot submit an order for a strategy with no fresh
+    gate v2 PASS verdict.
+    """
+    import sqlite3
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from routers.approval_queue_router import inject_approval_queue_deps, router
+
+    db_path = str(tmp_path / "aq_gate_v2_block_test.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE pipeline_approval_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            symbol TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            confidence REAL,
+            verdict_json TEXT,
+            expires_at TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            reviewed_at TEXT,
+            reviewer_notes TEXT,
+            order_id TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO pipeline_approval_queue
+            (symbol, direction, confidence, verdict_json, expires_at, status)
+        VALUES ('MES', 'LONG', 0.85, '{}', '2099-01-01T00:00:00+00:00', 'pending')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+
+    app = FastAPI()
+    app.include_router(router)
+
+    with (
+        patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+        patch("agents.pipeline.VALIDATION_ONLY_STRATEGIES", set()),
+        patch("routers.approval_queue_router._AUDIT_LOG_PATH", tmp_path / "audit.jsonl"),
+        patch(
+            "backtest.gate_v2_policy.is_strategy_authorized",
+            return_value=(False, "MES_trend_rank11 verdict is INSUFFICIENT_SAMPLE, not PASS"),
+        ),
+    ):
+        inject_approval_queue_deps(mock_safety, db_path)
+        client = TestClient(app)
+        response = client.post("/approvals/1/approve", json={"entry_price": 5000.0})
+
+    assert response.status_code == 409
+    assert "not authorized for paper orders" in response.json()["detail"]
+
+
+def test_approval_queue_allows_gate_v2_authorized_strategy(tmp_path):
+    """approve_candidate: gate_v2_policy.is_strategy_authorized() True -> gate passes."""
+    import sqlite3
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from routers.approval_queue_router import inject_approval_queue_deps, router
+
+    db_path = str(tmp_path / "aq_gate_v2_pass_test.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE pipeline_approval_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            symbol TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            confidence REAL,
+            verdict_json TEXT,
+            expires_at TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            reviewed_at TEXT,
+            reviewer_notes TEXT,
+            order_id TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO pipeline_approval_queue
+            (symbol, direction, confidence, verdict_json, expires_at, status)
+        VALUES ('MES', 'LONG', 0.85, '{}', '2099-01-01T00:00:00+00:00', 'pending')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    mock_safety = MagicMock()
+    mock_safety.get_status.return_value = {"kill_switch_active": False}
+    mock_safety.submit_paper_order = AsyncMock(
+        return_value={"approved": False, "reason": "blocked_by_safety_layer"}
+    )
+
+    app = FastAPI()
+    app.include_router(router)
+
+    with (
+        patch("routers.approval_queue_router._get_live_trading_enabled", return_value=False),
+        patch("agents.pipeline.VALIDATION_ONLY_STRATEGIES", set()),
+        patch("routers.approval_queue_router._AUDIT_LOG_PATH", tmp_path / "audit.jsonl"),
+        patch("backtest.gate_v2_policy.is_strategy_authorized", return_value=(True, "authorized")),
+    ):
+        inject_approval_queue_deps(mock_safety, db_path)
+        client = TestClient(app)
+        response = client.post("/approvals/1/approve", json={"entry_price": 5000.0})
+
+    # Gate passed (not 409 for gate v2 reasons); safety layer blocked downstream — fine here.
+    assert response.status_code != 409 or "not authorized for paper orders" not in response.json().get(
+        "detail", ""
+    )

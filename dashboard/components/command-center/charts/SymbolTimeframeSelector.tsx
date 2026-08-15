@@ -14,6 +14,7 @@ const SYMBOL_LABELS: Record<ChartSymbol, string> = {
   MGC: "Micro Gold",
 };
 
+<<<<<<< HEAD
 // Derived from symbolTradeStatus() (mirrors engine DO_NOT_TRADE_SYMBOLS) —
 // D2-02: this used to be a hand-maintained map that drifted backwards
 // (MCL/MNQ shown APPROVED, MGC shown HALTED). Never hardcode this again.
@@ -23,6 +24,9 @@ function symbolStatusDisplay(s: ChartSymbol): { label: string; color: string } {
     ? { label: "APPROVED", color: "#00ff88" }
     : { label: "HALTED", color: "#ff4466" };
 }
+=======
+const STATUS_COLOR = { APPROVED: "#00ff88", HALTED: "#ff4466" } as const;
+>>>>>>> origin/master
 
 interface Props {
   symbol: ChartSymbol;
@@ -49,7 +53,12 @@ export function SymbolTimeframeSelector({
       {/* Symbol selector */}
       <div className="flex items-center gap-1">
         {SYMBOLS.map((s) => {
+<<<<<<< HEAD
           const status = symbolStatusDisplay(s);
+=======
+          const label = symbolTradeStatus(s);
+          const status = { label, color: STATUS_COLOR[label] };
+>>>>>>> origin/master
           const isActive = s === symbol;
           return (
             <button

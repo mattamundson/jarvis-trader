@@ -470,13 +470,20 @@ def bootstrap_win_rate(
     }
 
 
-def bootstrap_max_dd(
+def permute_max_dd(
     pnls: list[float] | np.ndarray,
     initial_capital: float = 10_000.0,
     n_resamples: int = 10_000,
     seed: int = 42,
 ) -> dict:
     """Permutation distribution of max drawdown.
+
+    Renamed from `bootstrap_max_dd` (found 2026-07-10): this shuffles the
+    trade list without replacement (`rng.permutation`), preserving the exact
+    trade multiset -- a permutation, not a bootstrap. Correct for max drawdown
+    (order-dependent, must use each real trade exactly once), but the old name
+    invited confusion with the with-replacement bootstraps elsewhere in this
+    module (`bootstrap_pf`, `moving_block_bootstrap`, `bootstrap_win_rate`).
 
     Max drawdown is path-dependent, so the meaningful question is "under
     alternative trade orders, what's the worst DD we could have seen?"

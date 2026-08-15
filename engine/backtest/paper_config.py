@@ -95,17 +95,19 @@ MNQ_PAPER_CONFIG = {
 
 MGC_PAPER_CONFIG = {
     #  Instrument — SMA(50,120) trend-following, 1h bars
-    #  DISABLED 2026-06-26: config<->verdict desync. This block was authorized off
-    #  MGC_trend_rank4 "PASS via ALT (2026-05-06)", but rank4 was re-run 2026-06-24
-    #  and is now FAIL (p_edge=0.60, fixed_params_min_pf=1.179, mc_95th_dd=4.011% >
-    #  4.0% alt ceiling). Its dsr=1.0 was also the degenerate-variance fallback
-    #  (fixed af35329). Re-enable only when a fresh rank4 verdict PASSes honestly.
+    #  ENABLED 2026-08-04: fresh rank4 verdict PASSes gate v2 (CORE) honestly —
+    #  empirical DSR 0.9952 (not the degenerate-variance fallback), SOTA-hardened
+    #  execution (gap stops, pessimistic tie-break, vol-scaled slippage, POV,
+    #  margin cap), 67 OOS trades (>=30), 19/19 windows profitable, all 8 grid
+    #  combos PF>=1.36, survives catastrophic costs (PF 3.17). MGC removed from
+    #  DO_NOT_TRADE_SYMBOLS in signals.py same day. Prior disable reason
+    #  (2026-06-26 rank4 re-run FAIL) superseded by this fresh honest PASS.
     #  Verdict file: engine/data/gate_v2_verdicts/MGC_trend_rank4.json
     #  WFO champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0)
     "symbol": "MGC",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
-    "enabled": False,  # 2026-06-26: rank4 re-run FAILs gate v2; was enabled on a stale 2026-05-06 PASS
+    "enabled": True,  # 2026-08-04: fresh honest gate-v2 CORE PASS (PR #597)
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade

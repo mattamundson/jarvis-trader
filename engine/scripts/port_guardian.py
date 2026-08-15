@@ -108,6 +108,11 @@ WSL_SQUAT_BACKOFF = 30        # seconds to sleep before exiting on a wslrelay po
                               # (see _is_wsl_relay) so PM2's restart_delay+min_uptime slow
                               # the crash-loop instead of hammering ~every 2s (the
                               # 81k-restart incident, 2026-07-04)
+UNIDENTIFIED_HOLDER_BACKOFF = 30  # seconds to sleep before exiting when the port holder's
+                              # name can't be resolved at all (was 0 -- the 2026-07-30
+                              # restart storm found _process_name() intermittently missing
+                              # under host load, which fails safe into this exact branch
+                              # with no backoff, unlike its WSL-squat/healthy-orphan siblings)
 PORT_FREE_WAIT = 12.0         # seconds to poll after a kill before declaring failure
 # Readiness gate (P0.1): the guardian launches uvicorn IN-PROCESS and blocks, so PM2
 # only ever sees the guardian PID. If uvicorn never binds / never serves /health, PM2
@@ -178,6 +183,99 @@ def _record_restart_event(reason: str, details: dict, log_path: Path) -> None:
             fh.write(json.dumps(record) + "\n")
     except OSError:
         pass
+
+
+def _record_boot_duration(duration_s: float, log_path: Path = BOOT_TIME_LOG) -> None:
+    """Append one observed boot duration (watchdog start -> /health confirmed) so a
+    future start can size READINESS_DEADLINE off real behavior instead of a fixed
+    guess (P0.7). Never raises — logging must not break the guardian."""
+    record = {"ts": datetime.now(timezone.utc).isoformat(), "duration_s": round(duration_s, 1)}
+    try:
+        path = Path(log_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
+
+
+def _load_boot_durations(log_path: Path = BOOT_TIME_LOG, max_records: int = 200) -> list[float]:
+    """Read the most recent ``max_records`` recorded boot durations. A missing file
+    returns []; corrupt/malformed lines are skipped rather than raising, so a bad
+    entry can never break the guardian's startup."""
+    try:
+        path = Path(log_path)
+        if not path.exists():
+            return []
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    durations: list[float] = []
+    for line in lines[-max_records:]:
+        try:
+            rec = json.loads(line)
+            durations.append(float(rec["duration_s"]))
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            continue
+    return durations
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    """Nearest-rank-interpolated percentile, ``pct`` in [0, 100]. No numpy dependency
+    (this module has none). Raises ValueError on an empty list — callers must gate on
+    sample count first (see READINESS_DEADLINE_MIN_SAMPLES)."""
+    if not values:
+        raise ValueError("_percentile requires at least one value")
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (pct / 100.0) * (len(ordered) - 1)
+    lo = int(rank)
+    hi = min(lo + 1, len(ordered) - 1)
+    frac = rank - lo
+    return ordered[lo] + (ordered[hi] - ordered[lo]) * frac
+
+
+def _compute_adaptive_deadline(
+    durations: list[float],
+    *,
+    min_samples: int = READINESS_DEADLINE_MIN_SAMPLES,
+    multiplier: float = READINESS_DEADLINE_MULTIPLIER,
+    floor_s: float = READINESS_DEADLINE_FLOOR,
+    fallback_s: float = READINESS_DEADLINE_DEFAULT,
+) -> float:
+    """p95(``durations``) * ``multiplier``, floored at ``floor_s`` -- but only once at
+    least ``min_samples`` real boots are on record. Below that, returns ``fallback_s``
+    (the historical fixed deadline) so a fresh/near-empty history file can never
+    produce a wild, single-sample-derived deadline."""
+    if len(durations) < min_samples:
+        return fallback_s
+    p95 = _percentile(durations, 95)
+    return max(p95 * multiplier, floor_s)
+
+
+def _resolve_readiness_deadline(
+    env_override: str | None,
+    boot_log_path: Path = BOOT_TIME_LOG,
+) -> float:
+    """Resolve the effective READINESS_DEADLINE: an explicit
+    ``PORT_GUARDIAN_READINESS_DEADLINE`` env value always wins (operator escape valve,
+    matches the other env-tunable knobs in this file). Otherwise adapt off recorded
+    boot-time history via ``_compute_adaptive_deadline``, which itself falls back to
+    the fixed default until enough history exists."""
+    if env_override is not None:
+        try:
+            return float(env_override)
+        except ValueError:
+            pass
+    durations = _load_boot_durations(boot_log_path)
+    return _compute_adaptive_deadline(durations)
+
+
+# Resolved once at import time (mirrors the other env-tunable knobs above). See the
+# "Adaptive deadline (P0.7...)" comment near READINESS_DEADLINE_DEFAULT for the
+# override-vs-adaptive precedence.
+READINESS_DEADLINE = _resolve_readiness_deadline(os.getenv("PORT_GUARDIAN_READINESS_DEADLINE"))
 
 
 def _readiness_watchdog(
@@ -455,28 +553,47 @@ def _port_holders(port: int) -> list[int]:
     return sorted(pids)
 
 
-def _process_name(pid: int) -> str | None:
-    """Best-effort process name lookup. Returns None on failure."""
-    try:
-        out = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command",
-             f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | "
-             "Select-Object -ExpandProperty ProcessName"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        ).strip()
-        return out or None
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return None
+def _process_name(
+    pid: int,
+    attempts: int = 2,
+    retry_delay_s: float = 0.5,
+    sleep_fn=time.sleep,
+) -> str | None:
+    """Best-effort process name lookup. Returns None only after all attempts fail.
+
+    The 2026-07-30 restart storm found this PowerShell shell-out intermittently
+    returning no name for a real, live PID under host RAM pressure -- which made
+    the conservative orphan-check below fail safe (refuse to kill) with no retry.
+    One retry gives a transient miss a second chance before giving up.
+    """
+    for attempt in range(attempts):
+        try:
+            out = subprocess.check_output(
+                ["powershell", "-NoProfile", "-Command",
+                 f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | "
+                 "Select-Object -ExpandProperty ProcessName"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            ).strip()
+            if out:
+                return out
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        if attempt < attempts - 1:
+            sleep_fn(retry_delay_s)
+    return None
 
 
-def _looks_like_orphan_uvicorn(pid: int) -> bool:
+def _looks_like_orphan_uvicorn(name: str | None) -> bool:
     """
     Conservative check: only kill processes that look like uvicorn/python.
     Refuses to kill anything else (e.g. a debugger, Excel, etc).
+
+    Takes the already-resolved name rather than re-deriving it, so callers do a
+    single _process_name() shell-out per PID instead of two (main() used to call
+    _process_name(pid) directly, then this function called it again internally).
     """
-    name = _process_name(pid)
     if not name:
         return False
     return name.lower() in {"python", "python3.12", "python3.11", "python3.10", "uvicorn"}
@@ -649,9 +766,10 @@ def main() -> int:
         print(f"[port_guardian] port {PORT} is free", flush=True)
     else:
         for pid in holders:
-            name = _process_name(pid) or "unknown"
+            resolved_name = _process_name(pid)
+            name = resolved_name or "unknown"
             print(f"[port_guardian] port {PORT} held by PID {pid} ({name})", flush=True)
-            if not _looks_like_orphan_uvicorn(pid):
+            if not _looks_like_orphan_uvicorn(resolved_name):
                 if _is_wsl_relay(name):
                     print(
                         f"[port_guardian] port {PORT} is held by wslrelay (PID {pid}): a "
@@ -682,6 +800,13 @@ def main() -> int:
                     {"pid": pid, "name": name, "port": PORT},
                     RESTART_LOG,
                 )
+                # Back off before exiting non-zero so PM2's restart_delay + min_uptime
+                # slow the crash-loop instead of relaunching us immediately -- mirrors
+                # the wsl-port-squat and unkillable-healthy-orphan backoffs. This branch
+                # previously had zero backoff, which contributed to the 2026-07-30
+                # restart storm when a transient _process_name() miss on the guardian's
+                # own prior instance landed here repeatedly.
+                time.sleep(UNIDENTIFIED_HOLDER_BACKOFF)
                 return 1
             print(f"[port_guardian] killing orphan PID {pid}", flush=True)
             killed = _kill_pid(pid)

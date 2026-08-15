@@ -31,6 +31,8 @@ _ENGINE_DIR = _SCRIPT_DIR.parent
 if str(_ENGINE_DIR) not in sys.path:
     sys.path.insert(0, str(_ENGINE_DIR))
 
+from backtest.contract_specs import CONTRACT_SPECS  # noqa: E402
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
@@ -55,7 +57,13 @@ V3_CONFIG = {
     "band_mult": 3.0,
     "risk_per_trade": 0.01,
     "initial_capital": 10_000.0,
-    "commission_per_contract": 2.50,
+    # Per-symbol commission (was a flat 2.50 for all instruments — wrong for
+    # every symbol here; canonical rates live in contract_specs.CONTRACT_SPECS).
+    "commission_per_contract": {
+        "MES": CONTRACT_SPECS["MES"].commission,
+        "MNQ": CONTRACT_SPECS["MNQ"].commission,
+        "MCL": CONTRACT_SPECS["MCL"].commission,
+    },
     "slippage_ticks": 1,
 }
 
@@ -574,7 +582,7 @@ def run_v3_backtest(symbol: str, config: dict) -> dict:
         initial_capital=config["initial_capital"],
         risk_per_trade=config["risk_per_trade"],
         max_drawdown=config["circuit_breaker_dd"],
-        commission=config["commission_per_contract"],
+        commission=config["commission_per_contract"][symbol],
         slippage_ticks=config["slippage_ticks"],
     )
 

@@ -125,6 +125,26 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
             d["verdict"] = None
     else:
         d["verdict"] = None
+    # Surface the strategy name and its quarantine status so dashboard readers
+    # (the /signals feed) don't have to duplicate VALIDATION_ONLY_STRATEGIES
+    # client-side, where it would silently drift from the engine's gate.
+    stark_signal = ""
+    try:
+        stark_signal = (
+            (((d.get("verdict") or {}).get("analyst_reports") or {}).get("technical") or {})
+            .get("indicators", {})
+            .get("stark_signal", "")
+            or ""
+        ).upper()
+    except Exception:
+        pass
+    d["stark_signal"] = stark_signal or None
+    try:
+        from agents.pipeline import VALIDATION_ONLY_STRATEGIES
+
+        d["validation_only"] = bool(stark_signal) and stark_signal in VALIDATION_ONLY_STRATEGIES
+    except Exception:
+        d["validation_only"] = False
     return d
 
 
@@ -344,6 +364,17 @@ async def list_pending() -> dict[str, Any]:
     return {"count": len(candidates), "candidates": candidates}
 
 
+@router.get("/history", summary="Historical approved/rejected/expired candidates")
+async def get_history(days: int = 7) -> dict[str, Any]:
+    # NOTE: must be registered BEFORE the parameterized /{candidate_id} route —
+    # FastAPI matches routes in declaration order, so with this below it,
+    # GET /approvals/history 422'd trying to parse "history" as an int
+    # (found 2026-07-16; the route was unreachable dead code until then).
+    db = _require_db()
+    rows = _list_history(db, days)
+    return {"days": days, "count": len(rows), "history": rows}
+
+
 @router.get("/{candidate_id}", summary="Get single candidate detail")
 async def get_candidate(candidate_id: int) -> dict[str, Any]:
     db = _require_db()
@@ -410,6 +441,35 @@ async def approve_candidate(
         )
 
     symbol = row["symbol"]
+
+    # Gate v2 verdict authorization (PRB-22 sibling gap, found 2026-08-01): this
+    # autonomous-scheduler approve path never called gate_v2_policy.is_strategy_authorized(),
+    # unlike the manual/messaging-bot path in approval.service.ensure_approval_allowed(). PRB-22
+    # (2026-07-29) closed the "enabled=False but still trades" half of this gap by adding an
+    # enabled-boolean check to safety_layer.check_order(), but that check only reads the
+    # PAPER_CONFIGS[symbol]["enabled"] flag -- it does not re-derive whether the specific
+    # strategy's gate v2 verdict is a fresh PASS. A symbol can have enabled=True (as MES's
+    # sma_trend config does, deliberately, per its own comment) while its verdict file is
+    # INSUFFICIENT_SAMPLE/FAIL/stale, and this path would submit the order anyway. Mirrors the
+    # exact check approval.service.ensure_approval_allowed() already runs for the manual path.
+    try:
+        from backtest.gate_v2_policy import is_strategy_authorized
+
+        _authorized, _reason = is_strategy_authorized(symbol)
+        if not _authorized:
+            _audit("approve_refused_gate_v2", candidate_id, {"symbol": symbol, "reason": _reason})
+            raise HTTPException(
+                409,
+                detail=f"{symbol} is not authorized for paper orders: {_reason}",
+            )
+    except HTTPException:
+        raise
+    except Exception as _gate_exc:
+        logger.warning(
+            "ApprovalQueue: gate_v2_policy.is_strategy_authorized check raised (non-blocking): %s",
+            _gate_exc,
+        )
+
     direction = row["direction"]
 
     # Derive entry price: caller override > pipeline snapshot > reject
@@ -578,13 +638,6 @@ async def reject_candidate(
         "candidate_id": candidate_id,
         "reason": body.reason,
     }
-
-
-@router.get("/history", summary="Historical approved/rejected/expired candidates")
-async def get_history(days: int = 7) -> dict[str, Any]:
-    db = _require_db()
-    rows = _list_history(db, days)
-    return {"days": days, "count": len(rows), "history": rows}
 
 
 # ---------------------------------------------------------------------------

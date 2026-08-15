@@ -334,3 +334,33 @@ async def test_resolve_stop_for_symbol_none_when_bracket_has_no_stop():
     trade = await oms.execute_bracket("MGC", "BUY", 1, 4153.85)  # no stop_loss
     assert trade.status == TradeState.ACTIVE
     assert oms.resolve_stop_for_symbol("MGC") is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_stop_for_symbol_picks_most_recent_when_multiple_active():
+    """
+    US-006 correctness audit: if two ACTIVE brackets ever exist for the same
+    symbol at once (scale-in, re-entry race), resolve_stop_for_symbol()'s
+    docstring promises "the most recent ACTIVE bracket". The prior
+    implementation returned the first match from dict.values() iteration
+    order instead, which is oldest-inserted-first, not most-recent -- a
+    latent mismatch between the doc and the code. Explicitly seed opened_at
+    out of insertion order (older trade inserted last) to prove the fix
+    picks by timestamp, not by dict order.
+    """
+    router = FakeRouter(is_fut=True)
+    ibom = FakeIBOM()
+    oms = OMSManager(router, ib_order_manager=ibom)
+
+    older = await oms.execute_bracket("MGC", "BUY", 1, 4100.0, stop_loss=4080.0)
+    newer = await oms.execute_bracket("MGC", "BUY", 1, 4200.0, stop_loss=4180.0)
+
+    # Force the "older" trade to have a LATER insertion into the dict than
+    # "newer" by touching it after the fact, while its opened_at timestamp
+    # stays earlier -- this is what would make dict-iteration-order and
+    # opened_at-order actually disagree (e.g. after adopt_existing_trade()
+    # or reload_from_db() reorders the map).
+    del oms.active_trades[older.trade_id]
+    oms.active_trades[older.trade_id] = older
+
+    assert oms.resolve_stop_for_symbol("MGC") == 4180.0

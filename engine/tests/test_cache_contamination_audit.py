@@ -7,11 +7,17 @@ any CSV generated via Polygon would contain stock prices labeled as futures.
 The 2026-04-16 T1.5 audit scanned all 78 cached CSVs and found none matched an
 equity-ticker price range, so prior backtest validation numbers stand.
 
-This test re-runs that audit on every test invocation so a contaminated file
-can't silently sneak back in (e.g. if someone re-enables Polygon partially
-without updating the blocklist).
+This test re-runs that audit so a contaminated file can't silently sneak back
+in (e.g. if someone re-enables Polygon partially without updating the
+blocklist).
 
 Location of the audit logic: ``scripts/audit_polygon_contamination.py``
+
+2026-07-09: marked @pytest.mark.slow. The cache grew from 78 files (April
+audit) to 162 (13x the CSV volume), pushing the full scan past pytest's fixed
+30s per-test timeout even though every individual file still reads in <2.1s
+-- not a hang, just organic growth outrunning a fixed timeout. Run explicitly
+with ``pytest -m slow`` or the full (non-deselected) suite.
 """
 
 from __future__ import annotations
@@ -99,6 +105,7 @@ class TestReadCloses:
         assert read_closes(p) == ([], [])
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(
     not CACHE_DIR.exists() or not any(CACHE_DIR.glob("*.csv")),
     reason="backtest/cache is empty or absent in this checkout",

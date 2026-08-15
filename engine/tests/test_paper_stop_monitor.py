@@ -20,6 +20,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from backtest.paper_runner import should_alert_data_error  # noqa: E402
 from services.paper_stop_monitor import (  # noqa: E402
+    _LIVE_PRICE_SOURCES,
     PaperStopMonitor,
     compute_stop_pnl,
     is_stop_breached,
@@ -65,6 +66,15 @@ def test_is_stop_breached_missing_inputs():
     assert is_stop_breached("long", None, 100.0) is False
     assert is_stop_breached("long", 100.0, None) is False
     assert is_stop_breached("flat", 100.0, 50.0) is False  # unknown side
+
+
+def test_live_price_sources_excludes_ibkr_delayed():
+    """Regression guard: _LIVE_PRICE_SOURCES is an allowlist of exact strings,
+    so a new IBKR delayed-tick tag (data/market_data.py get_snapshot_price,
+    2026-07-09) is excluded by construction -- this locks that invariant
+    against someone widening the allowlist to a prefix/substring match."""
+    assert "ibkr_delayed" not in _LIVE_PRICE_SOURCES
+    assert "ibkr" in _LIVE_PRICE_SOURCES
 
 
 def test_compute_stop_pnl():

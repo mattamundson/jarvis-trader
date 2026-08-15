@@ -8,8 +8,14 @@ the rest of the codebase can advisorily consult.
 Contract:
   * `get_last_verdict(symbol) -> VerdictSnapshot | None` — newest non-stale
      verdict across all rank files for `symbol`.
-  * `is_ungate_eligible(symbol) -> bool` — True iff the most recent non-stale
-     verdict for `symbol` has `verdict == "PASS"`. Default-deny on missing.
+  * `is_ungate_eligible(symbol, family_prefixes=None) -> bool` — True iff a
+     non-stale verdict for `symbol` has `verdict == "PASS"`. Default-deny on
+     missing. `family_prefixes` optionally narrows the check to verdicts whose
+     `family` field equals one of the given prefixes or starts with
+     `"<prefix>_"` (e.g. `family_prefixes={"trend"}` matches "trend",
+     "trend_rv_filter", "trend_baseline", ... but not "stark_gapfill_long" or
+     "meanrev"). Omitting it preserves the original any-family-passes,
+     symbol-wide behavior for advisory/read-only callers.
   * `list_verdicts() -> list[VerdictSnapshot]` — all non-stale verdicts.
   * `is_strategy_authorized(symbol) -> tuple[bool, str]` — single source of
      truth for whether a symbol may submit paper orders.  Unifies
@@ -18,6 +24,17 @@ Contract:
 Staleness: any verdict older than `MAX_VERDICT_AGE_DAYS` is treated as
 missing. This prevents a one-shot PASS from implicitly authorizing live
 trading forever without a fresh re-score.
+
+PRB-02 (2026-07-29): `is_ungate_eligible` was originally symbol-wide only --
+"does ANY family have a fresh PASS for this symbol" -- which let an unrelated
+strategy's PASS (e.g. a gap-fill scanner) authorize a completely different,
+actually-failing strategy (e.g. the live SMA-trend router) for the same
+symbol. `family_prefixes` fixes the call site that gates live order routing
+(`backtest.signals.generate_instrument_signals`) without changing the
+behavior of advisory-only callers (e.g. the weekend research cron) that
+intentionally want the broader "is there any validated edge at all for this
+symbol" question. See `~/.claude/loops/jarvis-prod-readiness/backlog.json`
+PRB-02 for the live-audit finding.
 """
 
 from __future__ import annotations
@@ -171,20 +188,48 @@ def get_last_verdict(symbol: str, verdicts_dir: Optional[Path] = None) -> Option
     return candidates[0]
 
 
-def is_ungate_eligible(symbol: str, verdicts_dir: Optional[Path] = None) -> bool:
-    """Default-deny advisory: `True` iff ANY non-stale PASS verdict exists
-    for `symbol` across all families.
+def _family_matches(family: str, family_prefixes: Optional[frozenset]) -> bool:
+    """True if `family_prefixes` is unset, or `family` equals one of the given
+    prefixes or starts with `"<prefix>_"`.
 
-    A FAIL in one family (e.g. trend_rv_filter) does not negate a PASS in
-    another (e.g. trend). The routing layer decides which family to trade;
-    this function asks "is there a valid green light for this symbol at all."
+    Exact-equality plus underscore-boundary prefixing avoids an accidental
+    match like prefix "trend" matching an unrelated future family named e.g.
+    "trendline_break" — the boundary must be a literal underscore.
+    """
+    if not family_prefixes:
+        return True
+    return any(family == p or family.startswith(f"{p}_") for p in family_prefixes)
 
-    Advisory only — does NOT block any routing decision. Call sites may
-    log a warning when this disagrees with the actual routing state.
+
+def is_ungate_eligible(
+    symbol: str,
+    verdicts_dir: Optional[Path] = None,
+    family_prefixes: Optional[frozenset] = None,
+) -> bool:
+    """Default-deny advisory: `True` iff a non-stale PASS verdict exists
+    for `symbol` (optionally restricted to `family_prefixes`).
+
+    Without `family_prefixes` (the original behavior): ANY non-stale PASS
+    across ALL families authorizes the symbol. A FAIL in one family (e.g.
+    trend_rv_filter) does not negate a PASS in another (e.g. trend) — this
+    asks "is there a valid green light for this symbol at all," which is
+    appropriate for advisory/read-only callers (e.g. the weekend research
+    cron deciding whether a hypothesis is novel).
+
+    With `family_prefixes` set: only verdicts whose `family` matches one of
+    the given prefixes (see `_family_matches`) are eligible to authorize.
+    Callers that gate real order routing MUST pass the family/families that
+    correspond to the strategy code path actually being traded for `symbol`
+    — see PRB-02 in the module docstring. A verdict for a different,
+    unrelated strategy (different family) must never authorize routing.
+
+    Advisory only — does NOT block any routing decision by itself. Call
+    sites may log a warning when this disagrees with the actual routing
+    state.
     """
     sym_upper = symbol.upper()
     return any(
-        v.verdict == "PASS"
+        v.verdict == "PASS" and _family_matches(v.family, family_prefixes)
         for v in _iter_verdict_files(verdicts_dir)
         if v.symbol.upper() == sym_upper and not v.is_stale()
     )
@@ -246,8 +291,14 @@ def is_strategy_authorized(
     # MES_VA30's verdict is under "MES" -- see MES_VA30_CONFIG's own
     # verdict_symbol field) override which symbol's verdict is consulted,
     # while messages still reference the actually-requested symbol.
+    # MES is exempt from this specific check only: Amo's standing directive
+    # (2026-06-26, emphatic — "I 10000% never want to disable MES") keeps it
+    # active as the primary paper vehicle regardless of gate v2 / re-validation
+    # outcome. It still must clear checks 1-2 above like every other symbol —
+    # this carve-out narrowly targets the gate-v2-verdict check the directive
+    # is actually about, not a blanket bypass of authorization.
     verdict_symbol = (cfg.get("verdict_symbol") or sym_upper).upper()
-    if not is_ungate_eligible(verdict_symbol, verdicts_dir):
+    if sym_upper != "MES" and not is_ungate_eligible(verdict_symbol, verdicts_dir):
         lookup_note = f" (verdict lookup: {verdict_symbol})" if verdict_symbol != sym_upper else ""
         return (
             False,

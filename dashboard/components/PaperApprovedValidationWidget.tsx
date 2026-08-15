@@ -7,6 +7,10 @@ import {
   type ApprovedPaperGatesResponse,
   type ApprovedInstrumentGateRow,
 } from "@/lib/api";
+import { DEFAULT_BRIEFING_SYMBOLS } from "@/lib/approvedSymbols";
+
+/** "MES & MGC" — derived so the heading can't drift from the active pair. */
+const APPROVED_PAIR_LABEL = DEFAULT_BRIEFING_SYMBOLS.join(" & ");
 
 const fetcher = () => fetchApprovedPaperGates();
 
@@ -109,7 +113,11 @@ export function PaperApprovedValidationWidget() {
       <div className="flex items-center gap-2">
         <ClipboardCheck className="h-4 w-4" style={{ color: "#60a5fa" }} />
         <h2 className="text-sm font-semibold tracking-tight" style={{ color: "#e5e5e5" }}>
+<<<<<<< HEAD
           Paper validation — {symbolsLabel}
+=======
+          Paper validation — {APPROVED_PAIR_LABEL}
+>>>>>>> origin/master
         </h2>
         {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: "#666" }} />}
       </div>

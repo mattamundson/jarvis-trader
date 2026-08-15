@@ -11,6 +11,7 @@ import {
   Cell,
 } from "recharts";
 import { fetchEngine } from "@/lib/api";
+import { winRatePercent } from "@/lib/discordWinRate";
 
 const REFRESH_MS = 30_000;
 
@@ -81,19 +82,14 @@ export function DiscordWinRateChart() {
 
   const rawSymbols = data?.signals_by_symbol ?? [];
 
-  // Backend avg_win_rate is expected as a 0-1 fraction, but has been observed
-  // returning out-of-range values (e.g. yielding >8000% after *100) for some
-  // symbols. Clamp defensively so a bad upstream value can never blow out the
-  // chart's 0-100 axis regardless of root cause on the backend.
-  const toPct = (rate: number | null | undefined): number =>
-    Math.max(0, Math.min(100, rate != null ? rate * 100 : 0));
-
-  // Filter to focus symbols + convert win_rate to percent
+  // Filter to focus symbols + format win_rate for display.
+  // avg_win_rate is already 0-100 (see lib/discordWinRate.ts) -- do NOT
+  // re-multiply by 100 here (GT-07).
   const chartData = FOCUS_SYMBOLS.map((sym) => {
     const found = rawSymbols.find((s) => s.symbol === sym);
     return {
       symbol: sym,
-      win_rate_pct: toPct(found?.avg_win_rate),
+      win_rate_pct: winRatePercent(found?.avg_win_rate),
       cnt: found?.cnt ?? 0,
     };
   }).filter((d) => d.cnt > 0);
@@ -104,7 +100,7 @@ export function DiscordWinRateChart() {
       ? chartData
       : rawSymbols.slice(0, 8).map((s) => ({
           symbol: s.symbol,
-          win_rate_pct: toPct(s.avg_win_rate),
+          win_rate_pct: winRatePercent(s.avg_win_rate),
           cnt: s.cnt,
         }));
 
