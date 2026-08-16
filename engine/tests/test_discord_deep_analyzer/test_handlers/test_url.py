@@ -75,3 +75,25 @@ async def test_url_handler_handles_404(fake_llm):
                 {"message_id": "m9", "url": "https://example.com/gone", "content": None}
             )
     assert out.summary  # 404 doesn't kill the row — LLM gets URL as context
+
+
+@pytest.mark.asyncio
+async def test_url_handler_handles_malformed_url_port(fake_llm):
+    # A bookmark whose URL has a malformed port (e.g. pasted inside Discord
+    # markdown backticks: `http://localhost:8010`) makes httpx raise
+    # httpx.InvalidURL at request-build time. InvalidURL is not a RequestError,
+    # so it must be caught explicitly — otherwise the whole row is recorded as
+    # FAILED instead of degrading to a URL-only prompt. Regression for the
+    # deep_analyzer_loop "Invalid port: '8010`'" crash.
+    bad_url = "http://localhost:8010`"
+    with patch(
+        "discord.deep_analyzer.handlers.url.call_text", AsyncMock(return_value=fake_llm)
+    ) as mock_llm:
+        out = await UrlHandler().analyze(
+            {"message_id": "m9", "url": bad_url, "content": None}
+        )
+    assert out.summary  # malformed URL doesn't kill the row
+    assert out.artifact_type == "url"
+    # Handler still reached the LLM with the URL as context (graceful fallback).
+    prompt = mock_llm.call_args.kwargs["prompt"]
+    assert bad_url in prompt

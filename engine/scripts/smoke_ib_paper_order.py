@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import socket
 import sys
 import time
@@ -106,7 +107,7 @@ async def _run(symbol: str, quantity: int, dry_connect: bool) -> int:
         client_id=IB_CLIENT_ID,
         timeout=10.0,
         readonly=False,
-        account="DUP662235",
+        account=os.environ.get("IB_ACCOUNT_ID", ""),
     )
     manager = IBGatewayManager(cfg)
 
