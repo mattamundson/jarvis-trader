@@ -8,12 +8,12 @@
   "passed_via": null,
   "core_verdict": "FAIL",
   "alt_verdict": "UNSCORED",
-  "created_at": "2026-07-02T07:08:31.639498+00:00",
+  "created_at": "2026-08-16T05:34:40.625583+00:00",
   "gate_v2_metrics": {
     "pf_ci_lower": 1.7385,
     "p_edge": 1.0,
     "mc_95th_dd_pct": 21.9141,
-    "dsr": 1.0
+    "dsr": 0.0
   },
   "gate_v2": {
     "verdict": "FAIL",
@@ -23,8 +23,8 @@
     "reasons": [
       "mbb_pf_ci_lower=1.7385 >= 1.1",
       "p_positive_edge=1.0 >= 0.95",
-      "FAIL mc_95th_dd_pct=21.9141 > 6.0",
-      "dsr=1.0 >= 0.1 (not selection-bias)"
+      "mc_95th_dd_pct=21.9141 <= 25.0 (equity_swing class)",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
     ]
   },
   "provenance": {
