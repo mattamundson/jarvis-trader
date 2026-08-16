@@ -29,6 +29,8 @@ import time as _time_module
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+from utils.data_provenance import build_data_provenance, stamp_signal_data
+
 logger = logging.getLogger("jarvis_trader.scanner")
 
 
@@ -491,12 +493,17 @@ class SignalScanner:
                 _regime = (result.get("analyst_reports") or {}).get("technical", {}).get(
                     "regime"
                 ) or None
+                # Data-truth: stamp *what data* this decision was based on (tier +
+                # per-symbol serve-age), matching main.py's _log_decision (PR #286).
+                # Additive only — never changes a trade decision, never raises.
+                _provenance = build_data_provenance(self._data_manager, symbol)
+                _sig = stamp_signal_data({"source": "scanner", "summary": _summary}, _provenance)
                 self.db_manager.insert_decision(
                     symbol=symbol,
                     action=final_action,
                     confidence=_conf,
                     regime=_regime,
-                    signal_data={"source": "scanner", "summary": _summary},
+                    signal_data=_sig,
                     reasoning=_reasoning or _summary,
                     full_pipeline_data=result,
                 )
