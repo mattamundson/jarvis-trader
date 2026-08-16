@@ -46,6 +46,18 @@ PATTERNS=(
     'secret\s*[=:]\s*["\x27][^\s]+["\x27]'
 )
 
+# Filename patterns that are themselves a red flag, regardless of content
+# (credential exports named after their own shape, e.g. a 1Password/Perplexity
+# CSV dump — see INC-15, Secret-Value.csv sat undetected for 48 days because
+# no check ever looked at the filename, only KEY=value-style content patterns)
+FILENAME_PATTERNS=(
+    '[Ss]ecret.*\.csv$'
+    '[Cc]redential.*\.csv$'
+    '\.pem$'
+    '\.p12$'
+    '\.pfx$'
+)
+
 # Files to scan (staged files only)
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
 
@@ -60,13 +72,27 @@ FOUND_FILES=()
 
 # Scan each staged file
 for file in $STAGED_FILES; do
-    # Skip binary files
-    if ! git cat-file -t :0:"$file" 2>/dev/null | grep -q "blob"; then
+    # Skip .gitignore and .git directory
+    if [[ "$file" == ".gitignore" ]] || [[ "$file" == .git/* ]]; then
         continue
     fi
 
-    # Skip .gitignore and .git directory
-    if [[ "$file" == ".gitignore" ]] || [[ "$file" == .git/* ]]; then
+    # Check filename shape first — catches secret-export files even when
+    # their content doesn't match a KEY=value pattern (e.g. a CSV export)
+    for fnpattern in "${FILENAME_PATTERNS[@]}"; do
+        if echo "$file" | grep -E "$fnpattern" > /dev/null 2>&1; then
+            SECRETS_FOUND=$((SECRETS_FOUND + 1))
+            if [[ ! " ${FOUND_FILES[@]} " =~ " ${file} " ]]; then
+                FOUND_FILES+=("$file")
+            fi
+            echo -e "${RED}[SECRET-SHAPED FILENAME]${NC} File: $file"
+            echo -e "  Pattern: $fnpattern"
+            echo ""
+        fi
+    done
+
+    # Skip binary files for content scanning
+    if ! git cat-file -t :0:"$file" 2>/dev/null | grep -q "blob"; then
         continue
     fi
 
