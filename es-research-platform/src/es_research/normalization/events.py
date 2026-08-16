@@ -9,6 +9,7 @@ from typing import Any
 
 from es_research.contracts import TradeEvent
 
+NORMALIZED_TRADE_SCHEMA_VERSION = "es.normalized_trades.v1"
 NORMALIZED_TRADE_COLUMNS = (
     "event_timestamp",
     "receive_timestamp",
@@ -64,8 +65,10 @@ def write_normalized_trades_parquet(rows: tuple[dict[str, Any], ...], path: Path
             pa.field("receive_timestamp", pa.timestamp("us", tz="UTC")),
             pa.field("instrument_id", pa.string()),
             pa.field("symbol", pa.string()),
-            pa.field("price", pa.decimal128(18, 4)),
-            pa.field("quantity", pa.decimal128(18, 4)),
+            # 9 fractional digits to round-trip Databento's fixed-point price scale
+            # (DBN_FIXED_PRICE_SCALE = 1e-9 in normalization/databento.py) without loss.
+            pa.field("price", pa.decimal128(20, 9)),
+            pa.field("quantity", pa.decimal128(20, 9)),
             pa.field("aggressor_side", pa.string()),
             pa.field("sequence_number", pa.int64()),
             pa.field("venue", pa.string()),

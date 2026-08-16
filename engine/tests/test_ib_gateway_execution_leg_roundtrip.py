@@ -70,7 +70,7 @@ def _build_manager(*, shallow_connected: bool):
 
 class TestExecutionLegHealthCheckVerifiesRoundTrip:
     @pytest.mark.asyncio
-    async def test_reports_disconnected_when_shallow_connected_but_roundtrip_fails(self):
+    async def test_reports_degraded_when_shallow_connected_but_roundtrip_fails(self):
         mgr, fake_ib = _build_manager(shallow_connected=True)
         fake_ib.reqCurrentTimeAsync = _never_returns()
 
@@ -79,8 +79,14 @@ class TestExecutionLegHealthCheckVerifiesRoundTrip:
         # before this outer bound would otherwise race it.
         result = await asyncio.wait_for(mgr.health_check(), timeout=8)
 
-        assert result["connected"] is False
+        # PRB-28 (2026-08-16, #630): the round-trip probe failure is surfaced
+        # honestly as broker_probe_ok=False + degraded_reason, while `connected`
+        # remains the shallow socket flag (is_connected()) so /health can
+        # distinguish "socket up but broker unresponsive" from "disconnected".
+        assert result["connected"] is True
         assert result["latency_ms"] is None
+        assert result["broker_probe_ok"] is False
+        assert "latency:" in (result["degraded_reason"] or "")
 
     @pytest.mark.asyncio
     async def test_reports_connected_when_roundtrip_succeeds(self):
@@ -91,6 +97,7 @@ class TestExecutionLegHealthCheckVerifiesRoundTrip:
 
         assert result["connected"] is True
         assert result["latency_ms"] is not None
+        assert result["broker_probe_ok"] is True
 
     @pytest.mark.asyncio
     async def test_no_probe_attempted_when_shallow_already_false(self):
