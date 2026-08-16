@@ -710,6 +710,16 @@ def main() -> int:
     # sees one long-lived PID; shutdown signals propagate normally.
     print("[port_guardian] launching uvicorn in-process", flush=True)
     os.chdir(ENGINE_DIR)
+
+    # PYTHONPATH poisoning guard (2026-08-16): Hermes desktop shells can leak
+    # their own agent venv into PYTHONPATH; then this in-process uvicorn import
+    # resolves FastAPI/Pydantic from the Hermes venv instead of the engine venv
+    # and crashes on pydantic_core ABI/module mismatches. Strip only the known
+    # foreign Hermes-agent site-packages path, then prepend project/engine.
+    sys.path[:] = [
+        p for p in sys.path
+        if "hermes-agent" not in p.lower()
+    ]
     for path in (str(PROJECT_ROOT), str(ENGINE_DIR)):
         if path not in sys.path:
             sys.path.insert(0, path)
