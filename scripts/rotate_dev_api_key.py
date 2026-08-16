@@ -3,8 +3,9 @@
 Rotate the local JARVIS dev API key used between engine and dashboard.
 
 Writes:
-  - engine/.env          → API_KEY=<new>
-  - dashboard/.env.local → NEXT_PUBLIC_ENGINE_API_KEY=<same>
+  - engine/.env          -> API_KEY=<new>
+  - dashboard/.env.local -> ENGINE_API_KEY=<same>
+  - dashboard/.env.local -> NEXT_PUBLIC_ENGINE_API_KEY=<same> legacy/local alias
 
 If engine/.env is missing, it is created by copying engine/.env.example first.
 
@@ -60,9 +61,10 @@ def main() -> int:
             "# Synced with engine/.env API_KEY by scripts/rotate_dev_api_key.py\n"
             "# Do not commit this file.\n"
         )
+    dash = _set_or_append_kv(dash, "ENGINE_API_KEY", new_key)
     dash = _set_or_append_kv(dash, "NEXT_PUBLIC_ENGINE_API_KEY", new_key)
     DASH_LOCAL.write_text(dash, encoding="utf-8")
-    print(f"Updated NEXT_PUBLIC_ENGINE_API_KEY in {DASH_LOCAL}")
+    print(f"Updated ENGINE_API_KEY and NEXT_PUBLIC_ENGINE_API_KEY in {DASH_LOCAL}")
 
     print("\nNext: restart engine (restart_engine.ps1) and dashboard (pnpm dev).")
     print("Verify: curl -s http://localhost:8010/safety/status -H \"X-API-Key: <paste from engine/.env>\"")

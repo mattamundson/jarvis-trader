@@ -14,6 +14,11 @@
       "command": "node",
       "args": ["C:/Users/mattm/Code/x-mcp/dist/index.js"],
       "env": {}
+    },
+    "grok": {
+      "command": "uv",
+      "args": ["--directory", "C:/Users/mattm/Code/tools/Grok-MCP", "run", "python", "main.py"],
+      "env": {}
     }
   }
 }
