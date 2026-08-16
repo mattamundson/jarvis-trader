@@ -22,6 +22,7 @@ import { SessionSummaryWidget } from "@/components/SessionSummaryWidget";
 import { TodaySummaryWidget } from "@/components/TodaySummaryWidget";
 import { PositionSizingWidget } from "@/components/PositionSizingWidget";
 import { SignalQueueWidget } from "@/components/SignalQueueWidget";
+import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
 import { PaperApprovedValidationWidget } from "@/components/PaperApprovedValidationWidget";
 import ValidationCheckpointWidget from "@/components/ValidationCheckpointWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
@@ -155,6 +156,14 @@ export default function PaperTradingPage() {
         {/* Open Positions — safety-critical, first widget at top of page */}
         <WidgetErrorBoundary name="Open Positions">
           <OpenPositionsWidget />
+        </WidgetErrorBoundary>
+
+        {/* Trade Recommendations — entry/stop/T1 cards from the pipeline
+            actionable board (the amo-arbitrage style surface). Shows live
+            candidates + recently-resolved rows with target/stops once the
+            autonomous loop is armed. */}
+        <WidgetErrorBoundary name="Trade Recommendations">
+          <ActionableBoardWidget />
         </WidgetErrorBoundary>
 
         {/* MCL / MNQ validation gates vs project thresholds (SQLite closed trades) */}
