@@ -140,6 +140,44 @@ def test_disabled_without_user_id():
 
 
 # ---------------------------------------------------------------------------
+# 3. GATEWAY_INTENTS — no unused privileged intent, correct reaction scope
+# ---------------------------------------------------------------------------
+
+# Discord gateway intent bits (subset relevant here).
+_MESSAGE_CONTENT_BIT = 1 << 15  # 32768, privileged
+_DIRECT_MESSAGE_REACTIONS_BIT = 1 << 13  # 8192
+_GUILD_MESSAGE_REACTIONS_BIT = 1 << 10  # 1024
+
+
+def test_gateway_intents_excludes_unused_privileged_message_content():
+    """MESSAGE_CONTENT is privileged (requires Developer Portal opt-in) and this
+    listener never dispatches on a gateway event that carries message content --
+    only READY/RESUMED/MESSAGE_REACTION_ADD (see _gateway_session). Approval
+    message text is fetched via Discord REST instead (_handle_reaction), which
+    is unaffected by gateway intents. Requesting it is pure downside: an extra
+    Developer Portal dependency for zero functional benefit, and (2026-08-16
+    live diagnostic) was a candidate root cause for the IDENTIFY being rejected
+    before the real cause (an invalid bot token, close code 4004) was isolated."""
+    from discord.reaction_watcher import GATEWAY_INTENTS
+
+    assert GATEWAY_INTENTS & _MESSAGE_CONTENT_BIT == 0
+
+
+def test_gateway_intents_targets_guild_reactions_not_direct_message_reactions():
+    """PERSONAL_CHANNEL_ID lives inside a guild (personal_mcp_server.py's
+    DEFAULT_GUILD_ID), not a DM -- so the listener needs GUILD_MESSAGE_REACTIONS
+    (bit 10, 1024), not DIRECT_MESSAGE_REACTIONS (bit 13, 8192). The prior value
+    requested the DM variant under a comment that mislabeled it "GUILD_MESSAGE_
+    REACTIONS" -- functionally correct-looking but would never have delivered
+    MESSAGE_REACTION_ADD events for this guild channel even on a healthy
+    connection."""
+    from discord.reaction_watcher import GATEWAY_INTENTS
+
+    assert GATEWAY_INTENTS & _GUILD_MESSAGE_REACTIONS_BIT == _GUILD_MESSAGE_REACTIONS_BIT
+    assert GATEWAY_INTENTS & _DIRECT_MESSAGE_REACTIONS_BIT == 0
+
+
+# ---------------------------------------------------------------------------
 # 3. test_reaction_from_wrong_user_ignored
 # ---------------------------------------------------------------------------
 
