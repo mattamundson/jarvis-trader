@@ -3,11 +3,15 @@ JARVIS TRADER — Paper Trading Portfolio Tracker
 ================================================
 Tracks simulated trades and computes P&L without a broker connection.
 
-Storage (dual-mode):
-  - Without db_manager: engine/portfolio/trades.jsonl  — one JSON object per line,
-    append-only (original behaviour, fully backward compatible).
-  - With db_manager:    SQLite via DatabaseManager — all state persisted immediately;
-    JSONL file is still written as a secondary audit log.
+Storage (US-1703, 2026-06-17: SQLite is canonical — see
+docs/runbooks/PAPER_LEDGER_BOUNDARIES.md for the full history):
+  - With db_manager (true in every real deployment): SQLite via DatabaseManager
+    is the SOLE source of truth. The legacy trades.jsonl write+replay is
+    skipped entirely (see _append_record / _load_history) — the file carried
+    no status field and never reflected DB-layer curation, which is what
+    caused the phantom MES "+$30,918 / 43 open" incident (2026-06-16).
+  - Without db_manager (no-DB fallback only — some tests, degraded startup):
+    engine/portfolio/trades.jsonl, one JSON object per line, append-only.
 
 Trade lifecycle
 ---------------
@@ -238,7 +242,8 @@ class PortfolioTracker:
         Log a new simulated entry.
 
         Returns the trade_id (UUID4) assigned to this trade.
-        Persists immediately to trades.jsonl (and SQLite if db_manager set).
+        Persists immediately to SQLite (canonical); trades.jsonl only when
+        no db_manager is configured (no-DB fallback mode — see US-1703).
 
         Parameters
         ----------

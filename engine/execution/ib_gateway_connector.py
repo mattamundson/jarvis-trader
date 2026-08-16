@@ -42,6 +42,31 @@ logger = logging.getLogger(__name__)
 __all__ = ["IBGatewayConnector", "ConnectionState"]
 
 
+def _futures_multiplier(symbol: str) -> float:
+    """Return the futures contract multiplier for ``symbol`` (1.0 for
+    non-futures / unknown symbols), sourced from
+    ``portfolio.tracker.INSTRUMENT_MULTIPLIERS`` -- the same table
+    ``PortfolioTracker`` uses for realized P&L, so paper ``cash`` moves in
+    step with ``equity`` on every futures fill.
+
+    Imported lazily (inside this function, not at module level) on purpose:
+    several offline/contract test suites stub ``sys.modules["portfolio.tracker"]``
+    with a ``MagicMock`` before importing ``main`` (see e.g.
+    tests/test_session4_contract.py). A module-level import here would bind
+    to whatever ``portfolio.tracker`` happened to resolve to the FIRST time
+    this module was imported in the process -- if that happened to be during
+    one of those stub windows, the multiplier would stay a Mock for the rest
+    of the process. A lazy, per-call import re-resolves the real module
+    every time instead.
+    """
+    try:  # engine-root import (tests + runtime add engine/ to sys.path)
+        from portfolio.tracker import INSTRUMENT_MULTIPLIERS  # noqa: PLC0415
+    except Exception:  # pragma: no cover - packaged import fallback
+        from engine.portfolio.tracker import INSTRUMENT_MULTIPLIERS  # noqa: PLC0415
+
+    return float(INSTRUMENT_MULTIPLIERS.get(symbol.upper(), 1.0))
+
+
 class ConnectionState(Enum):
     """State transitions for IB Gateway connection."""
 
@@ -105,10 +130,17 @@ class IBGatewayConnector:
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
         self._market_data_manager = None  # Real-price source; attach_market_data()
+        # Starting paper balances derive from settings.INITIAL_CAPITAL -- the
+        # same source PortfolioTracker._get_starting_balance() already uses --
+        # rather than a standalone literal, so a configured capital change
+        # doesn't leave this connector's paper account out of sync with the
+        # rest of the P&L stack. buying_power preserves the existing 4x
+        # margin assumption (was previously a bare 40000.0 literal).
+        _initial_capital = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0) or 10_000.0)
         self._account_summary = {
-            "equity": 10000.0,
-            "cash": 10000.0,
-            "buying_power": 40000.0,
+            "equity": _initial_capital,
+            "cash": _initial_capital,
+            "buying_power": _initial_capital * 4,
         }
         self._positions = {}
         self._open_orders = {}
@@ -387,8 +419,13 @@ class IBGatewayConnector:
             self._positions[symbol] = 0
         self._positions[symbol] += qty
 
-        # Update cash
-        self._account_summary["cash"] -= qty * price
+        # Update cash -- apply the same futures contract multiplier
+        # PortfolioTracker uses for realized P&L, so cash moves in step with
+        # equity on every futures fill. Non-futures symbols fall back to 1.0
+        # (unchanged prior behavior). See _futures_multiplier()'s docstring
+        # for why this is resolved lazily rather than imported at module level.
+        multiplier = _futures_multiplier(symbol)
+        self._account_summary["cash"] -= qty * price * multiplier
 
         logger.info("[SIM] Paper order %s FILLED @ %.2f (OCO-active)", order_id, price)
 
@@ -699,8 +736,13 @@ class IBGatewayConnector:
             self._positions[symbol] = 0
         self._positions[symbol] += quantity
 
-        # Update cash balance
-        trade_value = abs(quantity) * filled_price
+        # Update cash balance -- apply the same futures contract multiplier
+        # PortfolioTracker uses for realized P&L, so cash moves in step with
+        # equity on every futures fill. Non-futures symbols fall back to 1.0
+        # (unchanged prior behavior). See _futures_multiplier()'s docstring
+        # for why this is resolved lazily rather than imported at module level.
+        multiplier = _futures_multiplier(symbol)
+        trade_value = abs(quantity) * filled_price * multiplier
         if quantity > 0:
             self._account_summary["cash"] -= trade_value
         else:
@@ -1051,6 +1093,32 @@ class IBGatewayConnector:
             "Set PAPER_TRADING=True for paper trading mode."
         )
 
+    def _realized_pnl_total(self) -> float:
+        """Sum of realized P&L across all closed trades, via the attached
+        PortfolioTracker.
+
+        ``_account_summary["equity"]``/``["buying_power"]`` are set once at
+        __init__ time and are never otherwise mutated (only ``cash`` moves,
+        on each fill) -- so without this, get_account_balance() reports a
+        permanently frozen equity regardless of realized wins/losses, which
+        silently disables MarginMonitorAgent's drawdown detector (it reads
+        exactly this connector via main.py's `_margin_connector = ib_paper_
+        connector or data_manager.ibkr`). Returns 0.0 (no adjustment, prior
+        behavior preserved) when no tracker is attached or the read fails.
+        """
+        if self._portfolio_tracker is None:
+            return 0.0
+        try:
+            perf = self._portfolio_tracker.get_performance()
+            return float(perf.get("total_pnl", 0.0) or 0.0)
+        except Exception as exc:
+            logger.warning(
+                "get_account_balance: portfolio_tracker.get_performance() failed "
+                "(equity will not reflect realized P&L this call): %s",
+                exc,
+            )
+            return 0.0
+
     async def get_account_balance(self) -> dict:
         """
         Get current account balances.
@@ -1071,10 +1139,11 @@ class IBGatewayConnector:
             return {}
 
         if self._settings.PAPER_TRADING:
+            realized_pnl = self._realized_pnl_total()
             return {
-                "equity": self._account_summary["equity"],
+                "equity": self._account_summary["equity"] + realized_pnl,
                 "cash": self._account_summary["cash"],
-                "buying_power": self._account_summary["buying_power"],
+                "buying_power": self._account_summary["buying_power"] + realized_pnl,
                 "margin_used": 0.0,
                 "account_type": "paper",
             }

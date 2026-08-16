@@ -11,9 +11,17 @@ These tests pin the correct column so a present snapshot reads as UP.
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 
 from api import operations_dashboard as od
+
+
+def _utc_today():
+    """`_get_uptime_7d()` anchors on `datetime.utcnow().date()`, not local
+    wall-clock time -- these tests must use the same UTC date or they go
+    flaky for the ~5-6 hours/day that US local date and UTC date disagree
+    (e.g. any evening Central-time run, since UTC is already the next day)."""
+    return datetime.now(timezone.utc).date()
 
 
 def _make_db(tmp_path, dates):
@@ -45,7 +53,7 @@ def _make_db(tmp_path, dates):
 
 
 def test_present_snapshot_reads_as_up(tmp_path, monkeypatch):
-    today = date.today().isoformat()
+    today = _utc_today().isoformat()
     db = _make_db(tmp_path, [today])
     monkeypatch.setattr(od, "_DB_PATH", db)
 
@@ -58,7 +66,7 @@ def test_present_snapshot_reads_as_up(tmp_path, monkeypatch):
 
 def test_absent_snapshot_reads_as_down(tmp_path, monkeypatch):
     # A snapshot 10 days ago is outside the 7-day window -> all False (honest DOWN).
-    old = (date.today() - timedelta(days=10)).isoformat()
+    old = (_utc_today() - timedelta(days=10)).isoformat()
     db = _make_db(tmp_path, [old])
     monkeypatch.setattr(od, "_DB_PATH", db)
 
@@ -66,7 +74,7 @@ def test_absent_snapshot_reads_as_down(tmp_path, monkeypatch):
 
 
 def test_partial_week(tmp_path, monkeypatch):
-    today = date.today()
+    today = _utc_today()
     present = [(today - timedelta(days=i)).isoformat() for i in (0, 2)]
     db = _make_db(tmp_path, present)
     monkeypatch.setattr(od, "_DB_PATH", db)
