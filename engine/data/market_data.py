@@ -302,6 +302,13 @@ class IBKRDataConnector:
         # client. No callers today (subscribe_real_time is unused) — kept so a
         # future streaming feed survives a watchdog reconnect.
         self._realtime_subs: list = []
+        # Same staleness-tracking fields/contract as IBGatewayManager
+        # (engine/execution/ib_gateway.py) -- this data-leg connection is the
+        # one GET /brokers/positions actually reads via _real_ibkr(), so it
+        # needs the same classify_positions_staleness() protection against
+        # the reqPositionsAsync()-both-empty desync signature.
+        self._positions_stale: bool = False
+        self._last_known_positions: dict = {}
 
     async def connect(self, retries: int = 2, retry_backoff: float = 2.0) -> bool:
         """Connect to IB Gateway, with a bounded retry on transient failures.
@@ -705,7 +712,7 @@ class IBKRDataConnector:
             logger.warning("IBKRDataConnector.get_executions failed: %s", exc)
             return []
 
-    async def get_positions(self) -> list[dict]:
+    async def get_positions(self, _retrying: bool = False) -> list[dict]:
         """
         Return current IB positions as a list of dicts. Same schema as
         IBGatewayManager.get_positions() (engine/execution/ib_gateway.py) so
@@ -716,6 +723,9 @@ class IBKRDataConnector:
         added 2026-08-11 (#608 follow-up) because this connector previously
         had no position-query method at all, silently masking that gap behind
         a broad try/except in the router.
+
+        Same staleness cross-check as IBGatewayManager.get_positions() --
+        see ``classify_positions_staleness()`` in execution/ib_gateway.py.
         """
         if not self._ib or not self._connected:
             return []
@@ -758,10 +768,48 @@ class IBKRDataConnector:
                         "account": pos.account,
                     }
                 )
-            return result
         except Exception as exc:
             logger.error("IBKRDataConnector.get_positions failed: %s", exc, exc_info=True)
             return []
+
+        return await self._reconcile_positions_staleness(result, _retrying=_retrying)
+
+    async def _reconcile_positions_staleness(
+        self, result: list[dict], _retrying: bool
+    ) -> list[dict]:
+        """Same shared decision logic as IBGatewayManager -- see
+        ``classify_positions_staleness`` in execution/ib_gateway.py."""
+        from execution.ib_gateway import classify_positions_staleness
+
+        is_stale, updated_last_known, unexplained = classify_positions_staleness(
+            result, self._last_known_positions, self._ib
+        )
+        self._last_known_positions = updated_last_known
+        self._positions_stale = is_stale
+
+        if not is_stale:
+            return result
+
+        logger.critical(
+            "IBKRDataConnector.get_positions: %s previously held non-zero but now "
+            "reads EMPTY with NO explaining fill on record — treating as stale, "
+            "not a real flatten.%s",
+            unexplained,
+            " Retry after reconnect also came back this way." if _retrying else "",
+        )
+
+        if not _retrying:
+            logger.warning("IBKRDataConnector.get_positions: reconnecting + retrying once.")
+            await self.disconnect()
+            if await self.connect():
+                return await self.get_positions(_retrying=True)
+
+        return result
+
+    def positions_stale(self) -> bool:
+        """True when the last get_positions() call hit the staleness
+        signature and couldn't resync via reconnect."""
+        return self._positions_stale
 
     async def health_check(self) -> dict:
         return {
