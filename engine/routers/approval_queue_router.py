@@ -47,6 +47,12 @@ router = APIRouter(prefix="/approvals", tags=["approvals", "autonomous-queue"])
 
 _safety_layer = None
 _db_path: Optional[str] = None
+# PaperTradeTracker injected at startup so an approved candidate writes its
+# ledger row (paper_trades) alongside the broker submission. Without this the
+# queue-approve path routed orders to IB but the dashboard ledger never saw
+# them (386 approved queue rows with order_ids matched ZERO paper_trades rows,
+# 2026-08-16 audit). The scanner path already does this via add_paper_trade.
+_paper_tracker = None
 # Shared cross-path submission dedup: this queue and the systematic bridge
 # consult the SAME ledger so the same (symbol, action, trading_date) is never
 # submitted twice when both paths are armed. Lazily created; overridable for tests.
@@ -64,14 +70,15 @@ def _get_dedup() -> SubmissionDedup:
 
 
 def inject_approval_queue_deps(
-    safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None
+    safety_layer, db_path: str, dedup: Optional[SubmissionDedup] = None, paper_tracker=None
 ) -> None:
     """Called from main.py during lifespan startup."""
-    global _safety_layer, _db_path, _dedup
+    global _safety_layer, _db_path, _dedup, _paper_tracker
     _safety_layer = safety_layer
     _db_path = db_path
     if dedup is not None:
         _dedup = dedup
+    _paper_tracker = paper_tracker
     # Ensure the approval queue table exists when the router is first wired.
     _ensure_schema(db_path)
     logger.info("ApprovalQueueRouter: dependencies injected (db=%s)", db_path)
@@ -534,6 +541,48 @@ async def approve_candidate(
 
     order_id = str(result.get("order_id") or result.get("fill_id") or "")
     _update_status(db, candidate_id, "approved", order_id=order_id)
+
+    # ── Ledger write: the queue-approve path previously routed the order to IB
+    # but never recorded the paper_trades row, so the dashboard/validation
+    # ledger never saw queue-approved trades (386 approved rows matched ZERO
+    # paper_trades, 2026-08-16 audit). Mirror the scanner path: write the ledger
+    # row with stop/target lifted from the pipeline snapshot. Best-effort — a
+    # ledger failure must not fail the already-submitted order (the queue row is
+    # the audit record of the broker submission).
+    if _paper_tracker is not None:
+        try:
+            _snap = row.get("verdict") or {}
+            _td = _snap.get("trade_decision") or {}
+            _stop = _td.get("stop_price") or _td.get("stop_loss") or None
+            _tgt = (
+                _td.get("target_1")
+                or _td.get("target_price")
+                or _td.get("take_profit")
+                or _td.get("target_2")
+                or None
+            )
+            _ledger_trade_id = _paper_tracker.add_paper_trade(
+                symbol=symbol,
+                side=action.lower(),
+                quantity=1.0,
+                entry_price=float(entry_price),
+                stop_loss=float(_stop) if _stop is not None else None,
+                take_profit=float(_tgt) if _tgt is not None else None,
+                strategy_params={
+                    "source": "approval_queue",
+                    "candidate_id": candidate_id,
+                    "direction": direction.upper(),
+                },
+            )
+            _audit("ledger_written", candidate_id, {"trade_id": _ledger_trade_id})
+        except Exception as _ledger_exc:
+            logger.warning(
+                "ApprovalQueue: ledger write failed for approved candidate %d "
+                "(order already submitted): %s",
+                candidate_id,
+                _ledger_exc,
+            )
+
     # Claim the shared cross-path slot only on an APPROVED submit, so a rejected
     # order never blocks the other path. Idempotent (no-op if already recorded).
     dedup.record(

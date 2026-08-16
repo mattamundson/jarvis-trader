@@ -1802,7 +1802,11 @@ async def lifespan(app: FastAPI):
     # Default-OFF: only activated when ENABLE_AUTONOMOUS_PIPELINE=1 in .env.
     # The router is always registered (serves /approvals/* to review the queue).
     # The background loop is only started when the flag is explicitly set.
-    inject_approval_queue_deps(safety_layer, db_path=str(db_manager._db_path))
+    inject_approval_queue_deps(
+        safety_layer,
+        db_path=str(db_manager._db_path),
+        paper_tracker=paper_tracker,
+    )
     logger.info("✅ Approval queue router wired (prefix=/approvals)")
     inject_openclaw_deps(db_manager, paper_tracker, safety_layer)
     logger.info("✅ OpenClaw webhook router wired (prefix=/openclaw)")
