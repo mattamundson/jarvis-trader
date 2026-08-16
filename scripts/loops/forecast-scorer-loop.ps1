@@ -17,6 +17,11 @@
 .NOTES
   Requires the engine venv at engine/.venv/Scripts/python. Set
   DISCORD_WEBHOOK_URL for the scoreline, JARVIS_LOOP_WEBHOOK for failure alerts.
+
+  Every ERROR exit also appends "<UTC timestamp>`t<reason>" to
+  docs/loop-reports/forecast-scorer.log so the failure reason survives after
+  the Task Scheduler run ends (the .heartbeat file alone only records ERROR,
+  not why). Same fix as morning-brief-loop.ps1 (2026-07-09).
 #>
 
 [CmdletBinding()]
@@ -29,13 +34,23 @@ $ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot\loop-lib.ps1"
 Initialize-LoopPaths -RepoRoot $RepoRoot | Out-Null
-$loopName   = "forecast-scorer"
-$stamp      = Get-Date -Format "yyyy-MM-dd_HHmm"
+$loopName = "forecast-scorer"
+$stamp = Get-Date -Format "yyyy-MM-dd_HHmm"
 $venvPython = Join-Path $RepoRoot "engine\.venv\Scripts\python.exe"
 
 function Stop-WithError {
     param([string] $Reason)
     Write-LoopHeartbeat -LoopName $loopName -Status "ERROR"
+    if ($script:LoopReportDir) {
+        try {
+            $failLog = Join-Path $script:LoopReportDir "forecast-scorer.log"
+            $stampUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            Add-Content -Path $failLog -Value "$stampUtc`t$Reason" -Encoding UTF8
+        }
+        catch {
+            Write-Warning "failure log write failed (non-fatal): $($_.Exception.Message)"
+        }
+    }
     Send-LoopNotification -Message "[!!] jarvis forecast-scorer FAILED - $Reason ($stamp)" | Out-Null
     Write-Warning "[forecast-scorer-loop] ERROR - $Reason"
     exit 3
