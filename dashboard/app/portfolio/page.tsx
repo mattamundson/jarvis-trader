@@ -4,6 +4,9 @@ import useSWR from "swr";
 import { Activity, TrendingUp, TrendingDown, Circle, AlertCircle } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
+import { ProvenanceBadge } from "@/components/DataValue";
+import { useProvenance } from "@/lib/useProvenance";
+import { type DataEnvelope } from "@/lib/provenance";
 
 const REFRESH_MS = 5000;
 
@@ -35,6 +38,9 @@ interface PortfolioSummary {
   target_progress_pct: number;
   markets: Record<string, MarketSummary>;
   message?: string;
+  // Provenance envelope (Phase 1, P4-1/P4-2) — additive; absent on older
+  // engine builds, so every consumer must tolerate undefined.
+  total_daily_pnl_envelope?: DataEnvelope<number>;
 }
 
 interface ModuleHealth {
@@ -92,10 +98,23 @@ function statusDot(status: string) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function DailyTargetProgress({ total, target }: { total: number; target: number }) {
+function DailyTargetProgress({
+  total,
+  target,
+  envelope,
+}: {
+  total: number;
+  target: number;
+  envelope?: DataEnvelope<number>;
+}) {
   const pct = Math.min(100, Math.max(0, target > 0 ? (total / target) * 100 : 0));
   const isPositive = total >= 0;
   const barColor = pct >= 100 ? "#00ff88" : pct >= 50 ? "#ffcc00" : isPositive ? "#00d4ff" : "#ff4444";
+  // Provenance badge (P4-2): the headline P&L figure can never be shown without
+  // an honest live/stale signal. envelope is undefined on older engine builds
+  // (additive field) -- useProvenance(undefined) safely renders "NO DATA"/static
+  // rather than throwing, so this degrades gracefully during a rolling deploy.
+  const provenance = useProvenance(envelope);
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -121,6 +140,7 @@ function DailyTargetProgress({ total, target }: { total: number; target: number 
         >
           {pct.toFixed(1)}%
         </span>
+        {envelope && <ProvenanceBadge view={provenance} className="mb-1" />}
       </div>
 
       <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
@@ -274,7 +294,7 @@ export default function PortfolioPage() {
       <main className="mx-auto max-w-[1920px] 2xl:max-w-[2400px] px-6 py-6 space-y-6">
 
         {/* Daily target progress */}
-        <DailyTargetProgress total={total} target={target} />
+        <DailyTargetProgress total={total} target={target} envelope={summary?.total_daily_pnl_envelope} />
 
         {/* Market health grid */}
         <div>
