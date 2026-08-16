@@ -39,6 +39,11 @@ from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
+try:  # engine-root import (tests + runtime add engine/ to sys.path)
+    from portfolio.tracker import INSTRUMENT_MULTIPLIERS
+except Exception:  # pragma: no cover - packaged import fallback
+    from engine.portfolio.tracker import INSTRUMENT_MULTIPLIERS
+
 __all__ = ["IBGatewayConnector", "ConnectionState"]
 
 
@@ -105,10 +110,17 @@ class IBGatewayConnector:
         self._ib_client = None  # Will hold ib_insync.IB() when live trading is implemented
         self._paper_trade_logger = None  # Lazy-loaded on first use
         self._market_data_manager = None  # Real-price source; attach_market_data()
+        # Starting paper balances derive from settings.INITIAL_CAPITAL -- the
+        # same source PortfolioTracker._get_starting_balance() already uses --
+        # rather than a standalone literal, so a configured capital change
+        # doesn't leave this connector's paper account out of sync with the
+        # rest of the P&L stack. buying_power preserves the existing 4x
+        # margin assumption (was previously a bare 40000.0 literal).
+        _initial_capital = float(getattr(settings, "INITIAL_CAPITAL", 10_000.0) or 10_000.0)
         self._account_summary = {
-            "equity": 10000.0,
-            "cash": 10000.0,
-            "buying_power": 40000.0,
+            "equity": _initial_capital,
+            "cash": _initial_capital,
+            "buying_power": _initial_capital * 4,
         }
         self._positions = {}
         self._open_orders = {}
@@ -387,8 +399,13 @@ class IBGatewayConnector:
             self._positions[symbol] = 0
         self._positions[symbol] += qty
 
-        # Update cash
-        self._account_summary["cash"] -= qty * price
+        # Update cash -- apply the same futures contract multiplier
+        # PortfolioTracker uses for realized P&L (portfolio.tracker.
+        # INSTRUMENT_MULTIPLIERS) so cash moves in step with equity on every
+        # futures fill. Non-futures symbols are absent from that table and
+        # fall back to 1.0 (unchanged prior behavior).
+        multiplier = INSTRUMENT_MULTIPLIERS.get(symbol.upper(), 1.0)
+        self._account_summary["cash"] -= qty * price * multiplier
 
         logger.info("[SIM] Paper order %s FILLED @ %.2f (OCO-active)", order_id, price)
 
@@ -699,8 +716,13 @@ class IBGatewayConnector:
             self._positions[symbol] = 0
         self._positions[symbol] += quantity
 
-        # Update cash balance
-        trade_value = abs(quantity) * filled_price
+        # Update cash balance -- apply the same futures contract multiplier
+        # PortfolioTracker uses for realized P&L (portfolio.tracker.
+        # INSTRUMENT_MULTIPLIERS) so cash moves in step with equity on every
+        # futures fill. Non-futures symbols are absent from that table and
+        # fall back to 1.0 (unchanged prior behavior).
+        multiplier = INSTRUMENT_MULTIPLIERS.get(symbol.upper(), 1.0)
+        trade_value = abs(quantity) * filled_price * multiplier
         if quantity > 0:
             self._account_summary["cash"] -= trade_value
         else:
