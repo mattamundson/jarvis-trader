@@ -320,6 +320,26 @@ PAPER_CONFIGS = {
     "MES": MES_TREND_PAPER_CONFIG,
 }
 
+#  Pseudo-symbol -> real underlying instrument, for risk-aggregation purposes
+#  only (contract-limit and correlation checks). PAPER_CONFIGS is keyed one
+#  entry per symbol; when a second strategy is later registered on an
+#  instrument that already has one (e.g. a synthetic "MES_VA30" key alongside
+#  the real "MES" trend strategy, both actually trading MES futures), that
+#  registration MUST be added here too so combined real-instrument exposure
+#  is correctly aggregated rather than tracked/capped independently per key.
+UNDERLYING_INSTRUMENT: dict[str, str] = {
+    "MES_VA30": "MES",
+}
+
+
+def resolve_underlying(symbol: str) -> str:
+    """Return the real underlying futures instrument for *symbol*, for risk
+    aggregation. Defaults to the symbol itself; only pseudo-symbols
+    registered in UNDERLYING_INSTRUMENT (multiple strategies sharing one
+    real instrument) resolve to something different."""
+    return UNDERLYING_INSTRUMENT.get(symbol.upper(), symbol.upper())
+
+
 #  15-minute configs (intraday scanner)
 FIFTEEN_MIN_CONFIGS = {
     "MCL": MCL_15M_CONFIG,
