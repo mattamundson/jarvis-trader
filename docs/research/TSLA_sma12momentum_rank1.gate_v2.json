@@ -1,0 +1,47 @@
+{
+  "strategy": "sma12_monthly_momentum",
+  "symbol": "TSLA",
+  "rank": 1,
+  "source": "adapted from SPY sma12_monthly_momentum template (2026-08-15, GT-52 validation-gap fill)",
+  "period": [
+    "2010-06-30",
+    "2026-08-31"
+  ],
+  "n_months": 194,
+  "n_in_market_trades": 120,
+  "n_regime_flips": 38,
+  "n_grid_trials": 12,
+  "strategy_metrics": {
+    "cagr": 0.1925,
+    "sharpe_ann": 0.559,
+    "max_dd": -0.6562,
+    "final_mult": 17.22
+  },
+  "buy_hold_metrics": {
+    "cagr": 0.3942,
+    "sharpe_ann": 0.815,
+    "max_dd": -0.6772,
+    "final_mult": 215.44
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "FAIL mbb_pf_ci_lower=1.0824 < 1.1",
+      "p_positive_edge=0.9905 >= 0.95",
+      "FAIL mc_95th_dd_pct=86.825 > 5.0",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
+    ]
+  },
+  "report_keys": [
+    "bootstrap_block",
+    "bootstrap_iid",
+    "deflated_sharpe",
+    "drawdown_mc",
+    "raw",
+    "sharpe_ci"
+  ],
+  "note": "Monthly regime filter (not intraday) -- does NOT validate the live 1h options-scanner pipeline that actually generates TSLA's paper fills. Validated on monthly in-market PnL. Draft/research only -- does NOT authorize paper routing."
+}
