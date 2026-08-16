@@ -95,19 +95,23 @@ MNQ_PAPER_CONFIG = {
 
 MGC_PAPER_CONFIG = {
     #  Instrument — SMA(50,120) trend-following, 1h bars
-    #  ENABLED 2026-08-04: fresh rank4 verdict PASSes gate v2 (CORE) honestly —
-    #  empirical DSR 0.9952 (not the degenerate-variance fallback), SOTA-hardened
-    #  execution (gap stops, pessimistic tie-break, vol-scaled slippage, POV,
-    #  margin cap), 67 OOS trades (>=30), 19/19 windows profitable, all 8 grid
-    #  combos PF>=1.36, survives catastrophic costs (PF 3.17). MGC removed from
-    #  DO_NOT_TRADE_SYMBOLS in signals.py same day. Prior disable reason
-    #  (2026-06-26 rank4 re-run FAIL) superseded by this fresh honest PASS.
+    #  DISABLED 2026-08-16: fresh rank4 gate-v2 re-evaluation (created_at
+    #  2026-08-16T15:29Z, on the completeness-preferred cache
+    #  MGC_2024-03-04_2026-07-24_1h.csv — clean, 14,130 bars) FAILs gate v2:
+    #  pf_ci_lower=1.0681 (< 1.1 CORE floor), mc_95th_dd=4.4212% (> 4.0 ALT
+    #  ceiling), dsr=0.9733, p_edge=0.998, fixed_params_min_pf=1.2871,
+    #  94 OOS trades / 23 windows. The 2026-08-04 PASS (PR #597/#598) ran on
+    #  less data (67 OOS trades); the edge degraded on the refreshed window.
+    #  gate_v2_policy.is_strategy_authorized("MGC") now returns False, so
+    #  paper orders are refused at runtime regardless of this flag — the
+    #  flag is synced to the honest verdict state. Re-enable only on a fresh
+    #  honest gate-v2 CORE PASS (see signals.py DO_NOT_TRADE contract).
     #  Verdict file: engine/data/gate_v2_verdicts/MGC_trend_rank4.json
     #  WFO champion params: SMA(fast=50, slow=120, atr_trail_mult=2.0)
     "symbol": "MGC",
     "interval": "1h",
     "strategy": "sma_trend",  # Routes to generate_instrument_signals() → trend_signals path
-    "enabled": True,  # 2026-08-04: fresh honest gate-v2 CORE PASS (PR #597)
+    "enabled": False,  # 2026-08-16: fresh honest gate-v2 FAIL (see comment above)
     #  Capital & Sizing
     "initial_capital": 50_000.0,  # ALT routing requires $50K+ account for DD ceiling compliance
     "risk_per_trade": 0.0025,  # 0.25% risk per trade
