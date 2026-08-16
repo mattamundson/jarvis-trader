@@ -442,3 +442,35 @@ async def test_backoff_grows_when_gateway_rejects_identify_before_ready():
         await reaction_watcher.watch_approval_reactions()
 
     assert backoff_sleep_calls == [2, 4, 8]
+
+
+@pytest.mark.asyncio
+async def test_stream_end_with_no_close_frame_logs_warning(caplog):
+    """
+    2026-08-15 incident: when the gateway's async-for iterator simply ends
+    (connection dropped with no CLOSE/CLOSING/ERROR frame at all — the
+    exact failure mode observed live, 14,632 times in one session), this
+    previously logged nothing. A `for...else` on the message loop now logs
+    a WARNING so this termination path is distinguishable from a healthy
+    idle session in the logs.
+    """
+    import logging
+
+    from discord import reaction_watcher
+
+    class FakeWS:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    with caplog.at_level(logging.WARNING, logger="discord.reaction_watcher"):
+        session_id, last_seq, should_resume = await reaction_watcher._gateway_session(
+            FakeWS(), MagicMock(), None, None
+        )
+
+    assert session_id is None
+    assert any(
+        "gateway stream ended with no close frame" in r.message for r in caplog.records
+    )

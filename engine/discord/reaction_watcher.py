@@ -597,6 +597,19 @@ async def _gateway_session(
             should_resume = True
             break
 
+    else:
+        # 2026-08-15 incident: the async-for ended by exhausting the iterator
+        # (connection dropped with no CLOSE/CLOSING/ERROR frame at all) --
+        # previously silent, so an extended run of these looked identical in
+        # the log to a healthy idle session. `for...else` skips this when a
+        # `break` fired one of the branches above, which already log their
+        # own reason.
+        logger.warning(
+            "reaction_watcher: gateway stream ended with no close frame "
+            "(session_id=%s, ready_this_cycle=%s)",
+            session_id, session_id is not None,
+        )
+
     if heartbeat_task is not None and not heartbeat_task.done():
         heartbeat_task.cancel()
         try:
