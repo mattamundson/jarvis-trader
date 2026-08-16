@@ -23,12 +23,22 @@ def _validate_required_env_vars():
     """
     # Load .env into os.environ so the checks below see file-based values
     # Use override=True to ensure .env values take precedence over system env vars (e.g., ANTHROPIC_API_KEY=test from system)
-    try:
-        from dotenv import load_dotenv as _load_dotenv
+    #
+    # Skip entirely under pytest (TESTING=1, set by tests/conftest.py before
+    # config is ever imported): loading the LIVE .env here would clobber
+    # conftest's safe test stubs and, for provider keys conftest doesn't
+    # stub (MOONSHOT_API_KEY, JARVIS_DECISION_PRIMARY, GOOGLE_API_KEY, ...),
+    # inject real credentials into a test process — llm/client.py reads
+    # those straight from os.environ, so a leaked key means a test can make
+    # a real, billed network call to an LLM provider instead of the
+    # deterministic mocked/unconfigured path it's asserting on.
+    if os.environ.get("TESTING") != "1":
+        try:
+            from dotenv import load_dotenv as _load_dotenv
 
-        _load_dotenv(dotenv_path=".env", override=True)
-    except ImportError:
-        pass  # python-dotenv not installed — fall back to os.environ only
+            _load_dotenv(dotenv_path=".env", override=True)
+        except ImportError:
+            pass  # python-dotenv not installed — fall back to os.environ only
 
     required_vars = {
         # API Security — must be set to something other than the default stub
