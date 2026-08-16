@@ -143,7 +143,9 @@ def _health_timeout_payload(stale_payload: dict | None, *, timeout_s: float) -> 
             safety = safety_layer.get_status() if safety_layer else {}
             kill_switch_active = bool(safety.get("is_killed", False))
         except Exception:
-            kill_switch_active = False
+            # Fail-closed for reporting: an unreadable safety-layer status must
+            # not be presented as "kill switch is off" to a monitoring consumer.
+            kill_switch_active = True
 
     payload.update(
         {
@@ -192,16 +194,15 @@ async def _health_cached() -> dict:
         timeout_until = float(_health_snapshot.get("timeout_until", 0.0) or 0.0)
         if payload is not None and now2 < timeout_until:
             return payload
-        if payload is not None and (now2 - _health_snapshot["computed_at"]) < _HEALTH_SNAPSHOT_TTL_SEC:
+        if (
+            payload is not None
+            and (now2 - _health_snapshot["computed_at"]) < _HEALTH_SNAPSHOT_TTL_SEC
+        ):
             return payload
         try:
-            fresh = await asyncio.wait_for(
-                _health_inner(), timeout=_HEALTH_RECOMPUTE_TIMEOUT_SEC
-            )
+            fresh = await asyncio.wait_for(_health_inner(), timeout=_HEALTH_RECOMPUTE_TIMEOUT_SEC)
         except asyncio.TimeoutError:
-            fallback = _health_timeout_payload(
-                payload, timeout_s=_HEALTH_RECOMPUTE_TIMEOUT_SEC
-            )
+            fallback = _health_timeout_payload(payload, timeout_s=_HEALTH_RECOMPUTE_TIMEOUT_SEC)
             computed_at = time.monotonic()
             _health_snapshot["payload"] = fallback
             _health_snapshot["computed_at"] = computed_at
@@ -460,7 +461,10 @@ async def _supervision_cached() -> dict:
     out to pm2/netstat on every /health/full or /health/supervision hit."""
     now = time.monotonic()
     payload = _supervision_cache["payload"]
-    if payload is not None and (now - _supervision_cache["checked_at"]) < _SUPERVISION_CACHE_TTL_SEC:
+    if (
+        payload is not None
+        and (now - _supervision_cache["checked_at"]) < _SUPERVISION_CACHE_TTL_SEC
+    ):
         return payload
 
     fresh = await _compute_supervision_status()
@@ -708,9 +712,16 @@ async def _get_ib_gateway_health() -> dict:
     # the shallow flag is already True — no wedge to detect otherwise.
     if data_connected and data_ib is not None and hasattr(data_ib, "health_check"):
         try:
-            data_probe = await asyncio.wait_for(data_ib.health_check(), timeout=3.0)
+            # Outer timeout must exceed health_check()'s own internal budget
+            # (_IBKR_DATA_REQUEST_TIMEOUT_S, 5.0s) -- a shorter outer timeout
+            # fires first on a wedged gateway and the probe never gets to
+            # report connected=False, silently defeating this check.
+            data_probe = await asyncio.wait_for(data_ib.health_check(), timeout=6.0)
             if "connected" in data_probe:
                 data_connected = bool(data_probe["connected"])
+        except asyncio.TimeoutError:
+            # Probe itself timed out -- treat as a wedge, not a pass-through.
+            data_connected = False
         except Exception:
             pass
 
@@ -937,9 +948,7 @@ async def _health_inner() -> dict:
     try:
         from llm.batch_client import JarvisBatchClient
 
-        batch_jobs_health = await asyncio.to_thread(
-            JarvisBatchClient().get_batch_health_summary
-        )
+        batch_jobs_health = await asyncio.to_thread(JarvisBatchClient().get_batch_health_summary)
     except Exception:
         pass
 
