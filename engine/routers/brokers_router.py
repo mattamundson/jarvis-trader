@@ -38,6 +38,7 @@ _data_manager = None  # MarketDataManager — holds the real ib_async connection
 _schwab = None
 _tracker = None
 _reconciler = None  # IBKRReconciler — lazily created on first use
+_settings = None
 
 
 def _real_ibkr():
@@ -47,14 +48,15 @@ def _real_ibkr():
 
 
 def inject_dependencies(
-    ibkr=None, schwab=None, tracker=None, data_manager=None, db_path: str = ""
+    ibkr=None, schwab=None, tracker=None, data_manager=None, db_path: str = "", settings=None
 ) -> None:
     """Wire connector and tracker singletons in from main.py lifespan."""
-    global _ibkr, _data_manager, _schwab, _tracker, _reconciler
+    global _ibkr, _data_manager, _schwab, _tracker, _reconciler, _settings
     _ibkr = ibkr
     _data_manager = data_manager
     _schwab = schwab
     _tracker = tracker
+    _settings = settings
     # Reconciler holds data_manager (not ibkr) because ibkr is initialized
     # asynchronously in background after this call — resolved lazily on use.
     if data_manager is not None and db_path:
@@ -89,12 +91,101 @@ def _schwab_connected() -> bool:
     return _schwab is not None and _schwab.is_connected
 
 
+def _redacted_present(value: object) -> bool:
+    """Return True when a setting has a non-placeholder value.
+
+    Never returns or logs the value itself. Placeholder strings count as absent
+    because `.env.example`-style values are operationally unusable.
+    """
+    if value is None:
+        return False
+    text = str(value).strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if lowered.startswith("your_") or lowered in {"changeme", "change_me", "placeholder"}:
+        return False
+    return True
+
+
+def _schwab_runtime_status() -> dict:
+    """Explain Schwab capability separately from raw connection state.
+
+    Schwab is intentionally dormant during the current paper phase unless
+    SCHWAB_READY is enabled. Reporting only `connected=false` makes Mission
+    Control look broken; this status tells the operator whether the issue is
+    policy-disabled, missing credentials, or an actual failed connection.
+    """
+    settings = _settings or getattr(_schwab, "_settings", None)
+    ready = bool(getattr(settings, "SCHWAB_READY", False)) if settings is not None else False
+    has_app_key = _redacted_present(getattr(settings, "SCHWAB_APP_KEY", None)) if settings is not None else False
+    has_app_secret = (
+        _redacted_present(getattr(settings, "SCHWAB_APP_SECRET", None))
+        if settings is not None
+        else False
+    )
+    configured = has_app_key and has_app_secret
+    connected = _schwab_connected()
+    state = "not_initialized"
+    if _schwab is not None and hasattr(_schwab, "state"):
+        state = _schwab.state.value
+
+    if connected:
+        status = "connected"
+        reason = None
+    elif not ready:
+        status = "disabled_by_policy"
+        reason = (
+            "SCHWAB_READY=false; Schwab equities/options broker verification is "
+            "intentionally dormant until Phase 3 approval."
+        )
+    elif not configured:
+        status = "missing_credentials"
+        reason = "SCHWAB_READY=true but usable SCHWAB_APP_KEY/SCHWAB_APP_SECRET are not configured."
+    elif _schwab is None:
+        status = "not_initialized"
+        reason = "Schwab connector was not initialized at engine startup."
+    else:
+        status = "disconnected"
+        reason = f"Schwab connector state is {state}; positions are not queryable."
+
+    return {
+        "connected": connected,
+        "queryable": connected,
+        "ready": ready,
+        "configured": configured,
+        "state": state,
+        "status": status,
+        "reason": reason,
+    }
+
+
 def _normalise_ibkr_position(raw: dict) -> dict:
-    """Map IBGatewayConnector position dict to the unified schema."""
+    """Map IBGatewayConnector position dict to the unified schema.
+
+    IBKR's `avgCost` is multiplier-included total cost per contract (for
+    futures), not the per-point/per-share price -- e.g. MES multiplier=5
+    means avgCost=38589.0475 for a real entry price of 7717.81. Divide it
+    out here so `avg_price` is genuinely a price, matching what every other
+    consumer (paper_trades, market data, the dashboard) means by that name.
+    Found 2026-08-15: a live 4-lot MES position displayed avg_price=38589.05,
+    5x any real MES level, because this endpoint passed avgCost through
+    unlabeled. Equities have no multiplier field (falls back to 1.0, so
+    avg_price stays exactly avg_cost -- no behavior change for that path).
+    """
+    avg_cost = raw.get("avg_cost")
+    multiplier_raw = raw.get("multiplier")
+    try:
+        multiplier = float(multiplier_raw) if multiplier_raw else 1.0
+        if multiplier <= 0:
+            multiplier = 1.0
+    except (TypeError, ValueError):
+        multiplier = 1.0
+    avg_price = (avg_cost / multiplier) if avg_cost is not None else None
     return {
         "symbol": raw.get("symbol", ""),
         "quantity": raw.get("position", 0),
-        "avg_price": raw.get("avg_cost"),
+        "avg_price": avg_price,
         "market_price": raw.get("market_price"),
         "unrealized_pnl": raw.get("unrealized_pnl"),
         "sec_type": raw.get("sec_type", "FUT"),
@@ -115,17 +206,60 @@ def _normalise_schwab_position(raw: dict) -> dict:
     }
 
 
+_FUTURES_ROOTS = frozenset({
+    "ES",
+    "MES",
+    "NQ",
+    "MNQ",
+    "CL",
+    "MCL",
+    "GC",
+    "MGC",
+    "RTY",
+    "M2K",
+    "YM",
+    "MYM",
+})
+_FUTURES_MONTH_CODES = frozenset("FGHJKMNQUVXZ")
+
+
+def _infer_broker_family(symbol: str, sec_type: str | None = None) -> str:
+    """Return the broker family that can verify a symbol.
+
+    IBKR is the futures verification source in this deployment; Schwab is the
+    equities/options source. Non-futures paper rows default to Schwab coverage
+    because this router's equity broker is Schwab.
+    """
+    sec = str(sec_type or "").upper()
+    if sec in {"FUT", "CONTFUT", "FOP"}:
+        return "ibkr"
+    if sec in {"STK", "EQUITY", "ETF", "OPT", "OPTION"}:
+        return "schwab"
+
+    sym = str(symbol or "").upper()
+    for root in sorted(_FUTURES_ROOTS, key=len, reverse=True):
+        if sym == root:
+            return "ibkr"
+        if sym.startswith(root) and len(sym) > len(root) and sym[len(root)] in _FUTURES_MONTH_CODES:
+            return "ibkr"
+    return "schwab"
+
+
 def _normalise_paper_position(raw: dict) -> dict:
     """Map PaperTrade.to_dict() to the unified schema."""
     action = raw.get("action", "buy").lower()
     direction = "LONG" if action in ("buy", "buy_to_open") else "SHORT"
+    symbol = raw.get("symbol", "")
+    sec_type = raw.get("sec_type") or raw.get("asset_type")
     return {
         "trade_id": raw.get("trade_id", ""),
-        "symbol": raw.get("symbol", ""),
+        "symbol": symbol,
         "direction": direction,
         "quantity": raw.get("quantity", 0),
         "entry_price": raw.get("entry_price"),
         "entry_time": raw.get("entry_time"),
+        "sec_type": sec_type,
+        "broker_family": _infer_broker_family(symbol, sec_type),
     }
 
 
@@ -135,6 +269,7 @@ def _build_reconciliation(
     paper_positions: list,
     ibkr_connected: bool,
     schwab_connected: bool,
+    broker_unavailable_reasons: dict[str, str] | None = None,
 ) -> dict:
     """
     Flag mismatches between paper tracker and live broker positions.
@@ -193,25 +328,58 @@ def _build_reconciliation(
         live_qty[sym] = live_qty.get(sym, 0.0) + _to_float(p.get("quantity"))
 
     paper_qty: dict[str, float] = {}
+    paper_by_symbol: dict[str, list[dict]] = {}
     for p in paper_positions:
         sym = p["symbol"].upper()
         qty = abs(_to_float(p.get("quantity")))
         signed = qty if str(p.get("direction", "LONG")).upper() == "LONG" else -qty
         paper_qty[sym] = paper_qty.get(sym, 0.0) + signed
+        paper_by_symbol.setdefault(sym, []).append(p)
 
     live_symbols: set[str] = set(live_qty)
     paper_symbols: set[str] = set(paper_qty)
 
     discrepancies = []
+    broker_unavailable_reasons = broker_unavailable_reasons or {}
+
+    def _unverified_detail(family: str) -> str:
+        reason = broker_unavailable_reasons.get(family)
+        if reason:
+            return f"Paper position open, but {reason} Absence is not confirmed."
+        return (
+            "Paper position open, but the broker required to verify "
+            "this symbol is not queryable. Absence is not confirmed."
+        )
+
+    def _paper_absence_queryable(sym: str) -> tuple[bool, str]:
+        families = {str(p.get("broker_family") or "unknown") for p in paper_by_symbol.get(sym, [])}
+        if "ibkr" in families and not ibkr_connected:
+            return False, "ibkr"
+        if "schwab" in families and not schwab_connected:
+            return False, "schwab"
+        if "unknown" in families and not (ibkr_connected and schwab_connected):
+            return False, "unknown"
+        return True, ",".join(sorted(families)) or "unknown"
 
     for sym in paper_symbols - live_symbols:
-        discrepancies.append(
-            {
-                "symbol": sym,
-                "type": "paper_only",
-                "detail": "Paper position open but no matching live broker position found.",
-            }
-        )
+        queryable, family = _paper_absence_queryable(sym)
+        if queryable:
+            discrepancies.append(
+                {
+                    "symbol": sym,
+                    "type": "paper_only",
+                    "detail": "Paper position open but no matching live broker position found.",
+                }
+            )
+        else:
+            discrepancies.append(
+                {
+                    "symbol": sym,
+                    "type": "paper_unverified",
+                    "broker_family": family,
+                    "detail": _unverified_detail(family),
+                }
+            )
 
     for sym in live_symbols - paper_symbols:
         discrepancies.append(
@@ -272,6 +440,7 @@ async def get_broker_positions():
         # see the same "queryable" answer the response reports.
         ibkr_conn = _ibkr_connected()
         schwab_conn = _schwab_connected()
+        schwab_status = _schwab_runtime_status()
 
         # IBKR positions
         ibkr_raw: list = []
@@ -309,15 +478,23 @@ async def get_broker_positions():
             paper_normalised,
             ibkr_connected=ibkr_conn,
             schwab_connected=schwab_conn,
+            broker_unavailable_reasons={
+                "ibkr": "IBKR is not queryable.",
+                "schwab": schwab_status["reason"] or "Schwab is not queryable.",
+            },
         )
 
         return {
             "ibkr": {
                 "connected": ibkr_conn,
+                "queryable": ibkr_conn,
+                "status": "connected" if ibkr_conn else "disconnected",
+                "mode": "paper",
+                "port": 4002,
                 "positions": ibkr_normalised,
             },
             "schwab": {
-                "connected": schwab_conn,
+                **schwab_status,
                 "positions": schwab_normalised,
             },
             "paper": {
@@ -342,18 +519,21 @@ async def get_broker_status():
         schwab_state = "DISCONNECTED"
         if _schwab is not None and hasattr(_schwab, "state"):
             schwab_state = _schwab.state.value
+        schwab_status = _schwab_runtime_status()
 
         futures_broker = "ibkr" if _ibkr_connected() else "unavailable"
-        equity_broker = "schwab" if _schwab_connected() else "unavailable"
+        equity_broker = "schwab" if _schwab_connected() else schwab_status["status"]
 
         return {
             "ibkr": {
                 "connected": _ibkr_connected(),
+                "queryable": _ibkr_connected(),
+                "status": "connected" if _ibkr_connected() else "disconnected",
                 "port": 4002,
                 "mode": "paper",
             },
             "schwab": {
-                "connected": _schwab_connected(),
+                **schwab_status,
                 "state": schwab_state,
             },
             "order_router": {
