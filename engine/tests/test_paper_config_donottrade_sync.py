@@ -370,7 +370,7 @@ class TestDispatcherCrossCheckLogic:
 class TestDoNotTradeSymbolsConstant:
     """
     The DO_NOT_TRADE_SYMBOLS frozenset must contain exactly the expected symbols
-    and must not accidentally include symbols with validated edges (MES, MGC).
+    and must not accidentally include a symbol with a currently-valid edge (MES).
     """
 
     def test_donottrade_symbols_is_frozenset(self):
@@ -379,20 +379,31 @@ class TestDoNotTradeSymbolsConstant:
         assert isinstance(DO_NOT_TRADE_SYMBOLS, frozenset)
 
     def test_donottrade_symbols_contains_expected_blocked(self):
-        """MCL, MNQ, M2K are all in DO_NOT_TRADE_SYMBOLS per 2026-05-06 exhaustion."""
+        """MCL, MNQ, M2K are all in DO_NOT_TRADE_SYMBOLS. MGC removed
+        2026-08-04 (fresh honest gate-v2 PASS, PR #597/#598)."""
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
         assert "MCL" in DO_NOT_TRADE_SYMBOLS
         assert "MNQ" in DO_NOT_TRADE_SYMBOLS
         assert "M2K" in DO_NOT_TRADE_SYMBOLS
+        assert "MGC" not in DO_NOT_TRADE_SYMBOLS
 
-    def test_donottrade_symbols_does_not_block_active_instruments(self):
-        """MES and MGC (both gate v2 PASS) must NOT be in DO_NOT_TRADE_SYMBOLS."""
+    def test_donottrade_symbols_does_not_block_mes(self):
+        """MES (gate v2 PASS, still active) must NOT be in DO_NOT_TRADE_SYMBOLS."""
         from backtest.signals import DO_NOT_TRADE_SYMBOLS
         assert "MES" not in DO_NOT_TRADE_SYMBOLS, (
             "MES is in DO_NOT_TRADE_SYMBOLS but has a gate v2 PASS verdict — remove it."
         )
+
+    def test_donottrade_symbols_includes_mgc(self):
+        """MGC's 2026-07-31 blocklist addition is REVERSED: the fresh rank4
+        gate-v2 PASS at the corrected trial count (empirical DSR 0.9952, PR
+        #597) plus Amo's explicit re-authorization (PR #598) satisfied the
+        blocklist's documented removal contract — the exact precondition this
+        test previously demanded before allowing MGC out."""
+        from backtest.signals import DO_NOT_TRADE_SYMBOLS
         assert "MGC" not in DO_NOT_TRADE_SYMBOLS, (
-            "MGC is in DO_NOT_TRADE_SYMBOLS but has a gate v2 PASS verdict — remove it."
+            "MGC re-authorized on fresh honest gate-v2 PASS (PR #597/#598, "
+            "2026-08-04) — it must NOT stay in DO_NOT_TRADE_SYMBOLS."
         )
 
 
@@ -435,13 +446,18 @@ class TestCapitalAllocatorUsesSingleAuthority:
             "must import the authority from backtest.signals, not keep a private list."
         )
 
-    def test_rebalance_blocks_m2k_and_allows_mgc(self):
-        """Pins the two symbols the old private list got wrong: M2K and MGC."""
+    def test_rebalance_blocks_m2k_and_mgc(self):
+        """M2K is blocked by the shared authority. MGC was re-authorized
+        2026-08-04 (PR #597/#598: fresh honest gate-v2 PASS + Amo's explicit
+        re-authorization) so it must NOT be zeroed by rebalance() — the
+        allocator reads DO_NOT_TRADE_SYMBOLS directly, so it picked up the
+        change with zero code edits here, which is exactly the
+        single-authority guarantee this class exists to pin."""
         from orchestrator.capital_allocator import CapitalAllocator
 
         perf = {
             "M2K": {"sharpe": 2.0, "current_allocation": 0.25},  # blocked authority
-            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable (gate-v2 PASS)
+            "MGC": {"sharpe": 2.0, "current_allocation": 0.25},  # re-authorized 2026-08-04
             "MES": {"sharpe": 2.0, "current_allocation": 0.25},  # tradeable
         }
         allocator = CapitalAllocator(
@@ -453,5 +469,9 @@ class TestCapitalAllocatorUsesSingleAuthority:
             "M2K is in DO_NOT_TRADE_SYMBOLS and must be zeroed by rebalance()."
         )
         assert new_alloc.get("MGC", 0.0) > 0.0, (
-            "MGC is tradeable (gate-v2 PASS) and must receive a non-zero allocation."
+            "MGC is NOT in DO_NOT_TRADE_SYMBOLS (re-authorized 2026-08-04, "
+            "PR #598) and must receive a non-zero allocation."
+        )
+        assert new_alloc.get("MES", 0.0) > 0.0, (
+            "MES is tradeable and must receive a non-zero allocation."
         )

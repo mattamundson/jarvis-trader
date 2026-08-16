@@ -7,13 +7,23 @@ import type { LucideIcon } from "lucide-react";
 import { Activity, TrendingUp, Award, BarChart2, Percent } from "lucide-react";
 import { fetchEngine } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { ResultLabel } from "@/components/ResultLabel";
 import { BacktestComparisonCard } from "@/components/BacktestComparisonCard";
 import { StrategyParamsCard } from "@/components/StrategyParamsCard";
 import { SignalAccuracyWidget } from "@/components/SignalAccuracyWidget";
 import { LongShortBalanceWidget } from "@/components/LongShortBalanceWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
-import { DecisionBreakdownCard } from "@/components/DecisionBreakdownCard";
-import { LightweightSeriesChart, type SeriesPoint } from "@/components/charts/LightweightSeriesChart";
+import dynamic from "next/dynamic";
+import type { SeriesPoint } from "@/components/charts/LightweightSeriesChart";
+
+const DynamicDecisionBreakdownCard = dynamic(
+  () => import("@/components/DecisionBreakdownCard").then(mod => ({ default: mod.DecisionBreakdownCard })),
+  { ssr: false, loading: () => <div className="rounded-lg border border-panel-border bg-muted/40 p-4 text-sm text-muted-foreground">Loading decision breakdown...</div> }
+);
+const DynamicLightweightSeriesChart = dynamic(
+  () => import("@/components/charts/LightweightSeriesChart").then(mod => ({ default: mod.LightweightSeriesChart })),
+  { ssr: false, loading: () => <div className="rounded-lg border border-panel-border bg-muted/40 p-4 text-sm text-muted-foreground">Loading chart...</div> }
+);
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -197,7 +207,7 @@ function EquityMiniChart({ result }: { result: BacktestResult }) {
   }));
 
   return (
-    <LightweightSeriesChart
+    <DynamicLightweightSeriesChart
       data={series}
       type="area"
       color={strokeColor}
@@ -475,7 +485,10 @@ export default function BacktestPage() {
             <Activity className="h-5 w-5 text-accent" />
           </div>
           <div>
-            <h1 className="font-bold text-foreground tracking-tight">JARVIS TRADER — Backtest Results</h1>
+            <h1 className="font-bold text-foreground tracking-tight flex items-center gap-2">
+              JARVIS TRADER — Backtest Results
+              <ResultLabel kind="backtest" />
+            </h1>
             <p className="text-xs text-muted-foreground">Historical strategy performance</p>
           </div>
           <nav className="hidden lg:flex items-center gap-4 ml-6">
@@ -523,7 +536,7 @@ export default function BacktestPage() {
         </WidgetErrorBoundary>
 
         {/* Decision breakdown from pipeline history */}
-        <DecisionBreakdownCard />
+        <DynamicDecisionBreakdownCard />
 
         {/* Summary stat cards */}
         {summaryStats && (

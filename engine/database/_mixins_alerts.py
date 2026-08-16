@@ -113,6 +113,34 @@ class AlertsMixin:
             finally:
                 conn.close()
 
+    def count_alert_history(
+        self,
+        alert_type: Optional[str] = None,
+    ) -> int:
+        """
+        Return the TRUE total row count for ``alert_log``, ignoring any
+        pagination ``limit`` -- i.e. ``SELECT COUNT(*)``, not
+        ``len(get_alert_history(limit=...))``.
+
+        Parameters mirror :meth:`get_alert_history` (minus ``limit``) so the
+        count reflects the same filter the caller applied to the page.
+        """
+        conditions: list = []
+        params: list = []
+        if alert_type:
+            conditions.append("alert_type = ?")
+            params.append(alert_type)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        sql = f"SELECT COUNT(*) AS n FROM alert_log {where}"
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(sql, params).fetchone()
+                return int(row[0]) if row else 0
+            finally:
+                conn.close()
+
     # -- pipeline_runs --------------------------------------------------------
 
     def insert_pipeline_run(self, run_data: dict) -> int:
