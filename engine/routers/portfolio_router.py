@@ -50,9 +50,16 @@ TARGET_TRADING_DAYS = 30
 # nothing for a coroutine that never returns (an IB Gateway wedge: socket
 # open, API dead). One wedged symbol among many open positions used to hang
 # these endpoints indefinitely. A timed-out symbol now degrades to a missing
-# mark (already handled -- excluded from the aggregate) instead of blocking
-# the whole batch. Mirrors `_IBKR_DATA_REQUEST_TIMEOUT_S` in data/market_data.py.
-_PRICE_FANOUT_TIMEOUT_S = float(os.getenv("PORTFOLIO_PRICE_FANOUT_TIMEOUT_SECONDS", "6.0"))
+# mark tagged "unavailable" (see `_price_result_to_mark`) instead of blocking
+# the whole batch. This wraps the full get_tick_price/get_current_price
+# waterfall (IBKR snapshot -> Schwab -> Polygon -> CSV), not just the IBKR
+# tier, so the ceiling must clear a HEALTHY IBKR snapshot's own completion
+# time, not just guard against a wedge: ib_freshness_heartbeat.py already
+# uses `timeout=8.0` for a single get_snapshot_price call, and a Codex review
+# on this diff (2026-08-16, PR #676) flagged that a normal snapshot can take
+# roughly 11s -- a 6s ceiling was cancelling healthy requests. 12.0 clears
+# that with margin while still being a real bound against an actual wedge.
+_PRICE_FANOUT_TIMEOUT_S = float(os.getenv("PORTFOLIO_PRICE_FANOUT_TIMEOUT_SECONDS", "12.0"))
 
 # Global references (injected from main.py)
 paper_tracker = None
@@ -119,20 +126,7 @@ async def get_portfolio():
                         return_exceptions=True,
                     )
                     marks: list[tuple[float | None, str | None]] = [
-                        (
-                            (
-                                (r.get("last_price"), r.get("source"))
-                                if isinstance(r, dict)
-                                else (
-                                    (float(r), None)
-                                    if isinstance(r, (int, float))
-                                    else (None, None)
-                                )
-                            )
-                            if not isinstance(r, Exception) and r is not None
-                            else (None, None)
-                        )
-                        for r in results
+                        _price_result_to_mark(r) for r in results
                     ]
                 else:
                     marks = [(None, None)] * len(open_positions)
@@ -281,6 +275,27 @@ def _row_pnl(row: Any) -> float:
         return 0.0
 
 
+def _price_result_to_mark(r: Any) -> tuple[float | None, str | None]:
+    """Convert one asyncio.gather() price-fetch result into a (price, source) mark.
+
+    A `_PRICE_FANOUT_TIMEOUT_S` timeout surfaces here as `asyncio.TimeoutError`
+    (via `return_exceptions=True`). Tagged "unavailable" -- an existing
+    `_STALE_MARK_SOURCES` member -- rather than the bare `(None, None)` other
+    exceptions get, so a timed-out position correctly increments
+    `unrealized_marks_stale` instead of silently vanishing from both the
+    live and stale counts (2026-08-16 Codex review finding on PR #676).
+    """
+    if isinstance(r, asyncio.TimeoutError):
+        return (None, "unavailable")
+    if isinstance(r, Exception) or r is None:
+        return (None, None)
+    if isinstance(r, dict):
+        return (r.get("last_price"), r.get("source"))
+    if isinstance(r, (int, float)):
+        return (float(r), None)
+    return (None, None)
+
+
 def _build_price_envelope(value: float, marks: list[tuple[bool, str, float | None]]) -> dict:
     """Aggregate per-position provenance (Phase 1) into a summary-level envelope.
 
@@ -358,20 +373,7 @@ async def portfolio_summary():
                     # Keep the (price, source) pair so a stale CSV-cache mark can
                     # be excluded from the headline rather than fabricating P&L.
                     marks: list[tuple[float | None, str | None]] = [
-                        (
-                            (
-                                (r.get("last_price"), r.get("source"))
-                                if isinstance(r, dict)
-                                else (
-                                    (float(r), None)
-                                    if isinstance(r, (int, float))
-                                    else (None, None)
-                                )
-                            )
-                            if not isinstance(r, Exception) and r is not None
-                            else (None, None)
-                        )
-                        for r in results
+                        _price_result_to_mark(r) for r in results
                     ]
                 else:
                     marks = [(None, None)] * len(open_positions)
@@ -774,16 +776,7 @@ async def paper_positions():
                 return_exceptions=True,
             )
             marks: list[tuple[float | None, str | None]] = [
-                (
-                    (
-                        (r.get("last_price"), r.get("source"))
-                        if isinstance(r, dict)
-                        else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
-                    )
-                    if not isinstance(r, Exception) and r is not None
-                    else (None, None)
-                )
-                for r in results
+                _price_result_to_mark(r) for r in results
             ]
             ibkr_connected = _ibkr_connected()
             for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
@@ -913,10 +906,7 @@ async def paper_performance():
                 return_exceptions=True,
             )
             for pos, price_result in zip(open_positions, price_results, strict=False):
-                current_price = (
-                    price_result.get("last_price") if isinstance(price_result, dict) else None
-                )
-                mark_source = price_result.get("source") if isinstance(price_result, dict) else None
+                current_price, mark_source = _price_result_to_mark(price_result)
                 computed = _compute_unrealized(
                     pos,
                     current_price,
@@ -2063,18 +2053,7 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
                 ],
                 return_exceptions=True,
             )
-            marks = [
-                (
-                    (
-                        (r.get("last_price"), r.get("source"))
-                        if isinstance(r, dict)
-                        else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
-                    )
-                    if not isinstance(r, Exception) and r is not None
-                    else (None, None)
-                )
-                for r in results
-            ]
+            marks = [_price_result_to_mark(r) for r in results]
         else:
             marks = [(None, None)] * len(positions)
 

@@ -11,9 +11,15 @@ One wedged symbol among many open positions hung the entire endpoint
 indefinitely, and every sibling fan-out shares the same unguarded shape.
 
 Fix: each per-symbol call is now wrapped in its own bounded
-``asyncio.wait_for``, so a wedge degrades that one symbol to a stale/missing
-mark (the code already has a path for this -- ``(None, None)``, excluded from
-the aggregate) while the rest of the batch still resolves normally.
+``asyncio.wait_for`` (``_PRICE_FANOUT_TIMEOUT_S``, default 12.0s -- raised
+from an initial 6.0s after a Codex review on this same PR correctly flagged
+that a healthy IBKR snapshot can legitimately take close to that long, and a
+tight ceiling would cancel real requests, not just wedges). A timeout now
+degrades that one symbol to a mark explicitly tagged ``"unavailable"`` (an
+existing ``_STALE_MARK_SOURCES`` member, via the shared
+``_price_result_to_mark`` helper) so it counts toward
+``unrealized_marks_stale`` instead of silently vanishing from both the live
+and stale counts, while the rest of the batch still resolves normally.
 """
 
 from __future__ import annotations
@@ -85,10 +91,11 @@ def test_portfolio_summary_survives_a_wedged_symbol(monkeypatch) -> None:
 
     assert dm.calls.count("MES") == 1
     assert dm.calls.count("MGC") == 1
-    # The wedged symbol produced no mark at all (timeout -> excluded via the
-    # existing (None, None) path, not a phantom zero) while the healthy
-    # symbol's P&L still landed -- proving the batch wasn't discarded wholesale.
-    assert summary["unrealized_marks_live"] == 1  # MGC only; MES has no mark
+    # The wedged symbol times out and is tagged "unavailable" -- counted as
+    # stale, not silently dropped -- while the healthy symbol's P&L still
+    # landed, proving the batch wasn't discarded wholesale.
+    assert summary["unrealized_marks_stale"] == 1  # MES: timed out
+    assert summary["unrealized_marks_live"] == 1  # MGC only
     assert summary["unrealized_pnl"] == 200.0  # (4320-4300)*10 MGC, $10/pt
 
 
@@ -104,3 +111,23 @@ def test_portfolio_summary_all_healthy_is_unaffected(monkeypatch) -> None:
 
     assert summary["unrealized_marks_stale"] == 0
     assert summary["unrealized_marks_live"] == 2
+
+
+def test_price_result_to_mark_tags_timeout_as_unavailable() -> None:
+    """The exact Codex P2 finding: a TimeoutError must not be indistinguishable
+    from any other exception -- it needs the same stale-source tag a genuine
+    "no data" response gets, so it counts toward unrealized_marks_stale."""
+    assert pr_mod._price_result_to_mark(asyncio.TimeoutError()) == (None, "unavailable")
+
+
+def test_price_result_to_mark_other_exceptions_unchanged() -> None:
+    """Non-timeout exceptions keep their pre-existing (None, None) behavior --
+    this fix is scoped to the new TimeoutError case, not a general widening."""
+    assert pr_mod._price_result_to_mark(ValueError("boom")) == (None, None)
+    assert pr_mod._price_result_to_mark(None) == (None, None)
+
+
+def test_price_result_to_mark_passthrough_shapes() -> None:
+    assert pr_mod._price_result_to_mark({"last_price": 4320.0, "source": "ibkr"}) == (4320.0, "ibkr")
+    assert pr_mod._price_result_to_mark(4320.0) == (4320.0, None)
+    assert pr_mod._price_result_to_mark({"source": "unavailable"}) == (None, "unavailable")
