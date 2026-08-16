@@ -150,6 +150,7 @@ from routers.hidden_pivots_router import router as hidden_pivots_router
 from routers.hidden_pivots_router import inject_dependencies as inject_hp_deps
 from routers.decisions_router import router as decisions_router
 from routers.decisions_router import set_db_manager as set_decisions_db
+from routers.decisions_router import set_data_manager as set_decisions_data_manager
 from routers.admin_router import router as admin_router
 from routers.cache_router import router as cache_router
 from routers.readiness_router import router as readiness_router
@@ -780,6 +781,7 @@ async def lifespan(app: FastAPI):
     # entry-price-sanity check on client-supplied limit prices (2026-08-03 incident —
     # see the price-sanity block in SafetyLayer.submit_paper_order()).
     safety_layer.attach_data_manager(data_manager)
+    set_decisions_data_manager(data_manager)
     # Wire the real-price source into the paper connector so simulated fills use
     # the live get_tick_price waterfall instead of static mock quotes. Without
     # this, unlisted symbols (e.g. MGC) filled at the 100.5 sentinel and poisoned
@@ -1853,7 +1855,13 @@ async def lifespan(app: FastAPI):
 
     inject_scheduler_router_scheduler(scheduler)
     inject_pipeline_deps(
-        scheduler, trading_pipeline, safety_layer, db_manager, paper_tracker, sdk_pipeline
+        scheduler,
+        trading_pipeline,
+        safety_layer,
+        db_manager,
+        paper_tracker,
+        sdk_pipeline,
+        data_manager=data_manager,
     )
     inject_messaging_deps(db_manager, paper_tracker=paper_tracker, safety_layer=safety_layer)
     inject_session_brief_deps(db_manager)
