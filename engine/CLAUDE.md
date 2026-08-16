@@ -20,7 +20,7 @@
 ## Safety — Non-Negotiable
 
 - `LIVE_TRADING_ENABLED = False` — paper mode only until Phase 3
-- `REQUIRE_HUMAN_APPROVAL = True` — all order confirmations
+- `REQUIRE_HUMAN_APPROVAL = False` — standing decision 2026-08-11, full-visibility trade alerts replace per-trade approval (see `.claude/rules/safety.md`)
 - Kill switch: -8% daily loss, -20% drawdown (runtime via `engine/.env`; `config.py` code default is -10%) — do not modify without Tier 3 approval
 - Safety layer is **pure Python logic** — never route safety decisions through LLM
 
@@ -58,10 +58,41 @@
 |--------|----|-----|--------|
 | MCL | 1h | 0.82 | HALTED — hypotheses A-E exhausted 2026-05-07; `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False` |
 | MNQ | 1h | 0.57 | HALTED — trend/breakout/ORB all fail gate v2 (55 trades, 0 wins 2026-05-06/07); `DO_NOT_TRADE_SYMBOLS` |
-| MGC | 1h | 0.6842 (p_edge) | APPROVED — paper active, SMA(50,120) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24. RV filter (min_rv=9%) validated CORE gate v2 2026-05-24 (p_edge=1.0, wfo=STRONG, mc_dd=0.65%, cost=catastrophic) — NOT yet enabled; requires 60+ live MGC trades for calibration |
+| MGC | 1h | 0.6842 (p_edge, stale) | **HALTED 2026-07-31** — `DO_NOT_TRADE_SYMBOLS`; `paper_config.py enabled=False`. 2026-05-24 Tier-3 "APPROVED" verdict did not survive the 2026-07-29 honest-data-drain DSR correction (recomputing DSR at the true combined-campaign trial count collapsed its one nominal ALT-path PASS to ~0 — `engine/scripts/recompute_mgc_trend_baseline_dsr.py`, PR #529). A 2026-07-29 session intended to halt it here but the edit was left uncommitted and lost; re-added 2026-07-31 (PR TBD) closing that gap. |
 | MES | 1h | 0.75 (p_edge) | APPROVED — paper active, SMA(60,200) trend, atr_trail_mult=2.0; ALT gate v2 PASS; Tier 3 auth 2026-05-24. RV filter (min_rv=9%) validated ALT gate v2 2026-05-24 — NOT yet enabled in paper config; requires 60+ live trades for confirmation |
 | M2K | 1h | — | REJECTED — SMA trend ranks 1-3 FAIL + ORB rank1 FAIL + Donchian rank1 FAIL 2026-05-24 (dch: p_edge=0.50, wfo=WEAK, dsr=0.0; cost=catastrophic but wfo blocks ALT); 3 families exhausted at 1h |
-| SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 |
+| SPY | 1h | 0.00 | REJECTED — WFE run 2026-04-02 — **but see Equities below: trading live in paper anyway** |
+
+### Equities (options underlyings — SPY, QQQ, AAPL, TSLA)
+
+**This table above was never updated when the second asset class went live.** `engine/config.py`'s
+`OPTIONS_WATCHLIST` (line ~638) defaults to `['SPY', 'QQQ', 'AAPL', 'TSLA']`, and `main.py`
+deliberately routes these four through the options/equities scanner as a separate asset class from
+the futures rows above. All four have real paper fills in the live ledger as of 2026-07-25/26
+(`paper_trades` table, `engine/data/jarvis_trader.db`, read-only query):
+
+| Symbol | Live paper fills | Last fill | Gate v2 / WFE verdict on file |
+|--------|------------------|-----------|-------------------------------|
+| SPY | 3 | 2026-07-20 | **REJECTED** — WFE 0.00, run 2026-04-02 (row above). Trading live in paper **despite** this rejection — the config/routing layer does not consult the Active Instruments table. |
+| QQQ | 6 | 2026-07-20 | **None found.** No `wfe_snapshots` row for QQQ, no `engine/backtest/results/` artifact, no `run_qqq_*.py` backtest script. |
+| AAPL | 9 | 2026-07-17 | **None found.** No `wfe_snapshots` row for AAPL, no `engine/backtest/results/` artifact, no `run_aapl_*.py` backtest script. |
+| TSLA | 5 | 2026-07-17 | **None found.** No `wfe_snapshots` row for TSLA, no `engine/backtest/results/` artifact, no `run_tsla_*.py` backtest script. |
+
+Verification method (2026-07-26): queried the live `wfe_snapshots` table directly —
+`SELECT symbol, COUNT(*) FROM wfe_snapshots GROUP BY symbol` returns rows only for
+`MCL` (615), `MNQ` (626), `MES` (17), `MGC` (1) — zero rows for SPY, QQQ, AAPL, or TSLA. Also
+searched `engine/backtest/` for any per-symbol backtest/gate-v2 script or result file
+(`run_<symbol>_*.py`, `engine/backtest/results/<SYMBOL>_*`) — SPY has four such scripts (all
+pre-2026-04-02, all folded into the REJECTED verdict above); QQQ/AAPL/TSLA have none.
+
+**Net: QQQ, AAPL, and TSLA are auto-submitting live paper orders with no gate-v2/WFE validation on
+file at all — not a failing verdict, an absent one. SPY is auto-submitting despite an explicit
+REJECTED verdict.** This is a documentation-only correction (this PR does not change routing,
+config, or gating behavior).
+
+**Decision (Amo, 2026-08-03): keep all four names (SPY, QQQ, AAPL, TSLA) trading as-is.** No
+routing/config change made or requested — this is an explicit, informed acceptance of the gap
+above, not a silent one. Revisit if a future gate-v2/WFE run actually fails one of these four.
 
 ### Validation-only lifecycle
 

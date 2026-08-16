@@ -41,13 +41,18 @@ def _wrap(underlying: Exception) -> RetryError:
 
 
 @pytest.fixture(autouse=True)
-def _reset_state():
+def _reset_state(monkeypatch):
     """Each test starts with a clean healthy state."""
     _LLM_PATH_STATE["healthy"] = True
     _LLM_PATH_STATE["last_failure_ts"] = None
     _LLM_PATH_STATE["last_failure_reason"] = None
     _LLM_PATH_STATE["last_failure_agent"] = None
-    os.environ["TESTING"] = "true"  # suppress actual WhatsApp send
+    # monkeypatch (not raw os.environ) so this reverts to the conftest.py
+    # default after every test -- a raw assignment here previously leaked
+    # TESTING="true" into every test file collected after this one for the
+    # rest of the session (surfaced by test_openclaw_fire_and_forget.py,
+    # which depends on TESTING being unset to exercise its real send path).
+    monkeypatch.setenv("TESTING", "true")  # suppress actual WhatsApp send
     yield
 
 
@@ -73,7 +78,27 @@ def test_is_credit_exhaustion_rejects_unrelated_errors():
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
+    # Hermetic: config.py's load_dotenv(override=True) pulls the LIVE
+    # engine/.env into os.environ, and PRB-10 broadened the cross-provider
+    # cascade to fire on ANY Anthropic-side failure (not just credit
+    # exhaustion). Without clearing these, a live GOOGLE_API_KEY/
+    # OPENAI_API_KEY/MOONSHOT_API_KEY would make the cascade attempt REAL
+    # network calls instead of the deterministic mocked/unconfigured paths
+    # these tests assert on.
+    for _k in (
+        "JARVIS_DECISION_PRIMARY",
+        "MOONSHOT_API_KEY",
+        "JARVIS_LLM_KIMI_FALLBACK",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "JARVIS_LLM_GOOGLE_FALLBACK",
+        "OPENAI_API_KEY",
+        "JARVIS_LLM_OPENAI_FALLBACK",
+        "JARVIS_CLAUDE_USE_VERTEX",
+        "JARVIS_LLM_VERTEX_FAILOVER",
+    ):
+        monkeypatch.delenv(_k, raising=False)
     return JarvisLLMClient(api_key="test-key", db_path=str(tmp_path / "c.db"))
 
 
@@ -115,8 +140,14 @@ async def test_credit_exhausted_flips_health_state(client):
 
 
 @pytest.mark.asyncio
-async def test_non_credit_error_does_not_flip_health(client):
-    """A generic 500 error should NOT flip the credit-exhaustion flag."""
+async def test_non_credit_error_does_not_send_credit_exhaustion_alert(client):
+    """PRB-10: a generic 500 error (no cheaper fallback configured, all
+    cross-provider legs unconfigured/exhausted) DOES flip the path unhealthy --
+    previously it skipped the cascade entirely and left `healthy` untouched,
+    which is the exact bug PRB-10 fixes. What must stay true is the specific
+    credit-exhaustion ops alert (notify_credits_exhausted) does NOT fire for a
+    non-credit failure, so ops are never told "buy more credits" for a plain
+    5xx blip -- that's the "distinct alerting message" requirement."""
     err = _FakeBadRequest("500", body={"error": {"message": "overloaded_error"}})
     wrapped = _wrap(err)
 
@@ -136,7 +167,9 @@ async def test_non_credit_error_does_not_flip_health(client):
             allow_fallback=False,
         )
 
-    assert get_llm_path_state()["healthy"] is True
+    state = get_llm_path_state()
+    assert state["healthy"] is False
+    assert "non-credit" in (state["last_failure_reason"] or "")
     mock_notify.assert_not_called()
 
 

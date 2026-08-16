@@ -22,21 +22,21 @@ const MILESTONES: Milestone[] = [
     icon: "🔄",
     label: "Paper Validation",
     description: "30+ trading days, PF≥2.0, Sharpe≥1.5",
-    date: "Apr–May 2026",
+    date: "Ongoing",
     status: "IN PROGRESS",
   },
   {
     icon: "📋",
     label: "Capital Allocation",
     description: "Allocate $10K–$25K IB account for MES",
-    date: "May 2026",
+    date: "TBD",
     status: "PENDING",
   },
   {
     icon: "🚀",
     label: "Live Trading",
-    description: "Switch IB Gateway from port 4002 → 4001",
-    date: "June 2026",
+    description: "Live routing plan: TBD, pending Amo decision",
+    date: "TBD",
     status: "PENDING",
   },
 ];
@@ -123,7 +123,7 @@ export function GoLivePlanCard() {
             </p>
             <div className="space-y-1">
               <p className="text-sm font-semibold text-foreground">$10,000–$25,000</p>
-              <p className="text-xs text-muted-foreground">IB Gateway 4001</p>
+              <p className="text-xs text-muted-foreground">Live routing: TBD, pending Amo decision</p>
               <p className="text-xs text-muted-foreground">Live mode</p>
             </div>
           </div>

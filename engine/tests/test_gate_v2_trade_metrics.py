@@ -19,7 +19,7 @@ from backtest._gate_v2_trade_metrics import (
     trade_level_p_edge,
     trade_level_pf_ci_lower,
 )
-from backtest.deflated_sharpe import deflated_sharpe_from_returns
+from backtest.deflated_sharpe import deflated_sharpe_empirical, deflated_sharpe_from_returns
 from backtest.monte_carlo import bootstrap_pf, moving_block_bootstrap, permute_max_dd
 
 CAP = 50_000.0
@@ -88,11 +88,12 @@ class TestTradeLevelDsr:
     def test_matches_canonical_primitive(self):
         pnls = [300.0, -100.0, 250.0, -80.0, 400.0, -120.0, 180.0, -60.0, 220.0]
         windows = [_window(pnls[:5]), _window(pnls[5:])]
-        returns = (np.asarray(pnls) / CAP).tolist()
-        expected = deflated_sharpe_from_returns(returns=returns, n_trials=3, ann_factor=252.0)[
-            "dsr"
-        ]
-        assert trade_level_dsr(windows, n_grid_combos=3, initial_capital=CAP) == expected
+        expected = deflated_sharpe_empirical(
+            pnls=pnls, n_trials=3, initial_capital=CAP, n_permutations=1_000, seed=42
+        )["dsr"]
+        assert trade_level_dsr(
+            windows, n_grid_combos=3, initial_capital=CAP, n_permutations=1_000
+        ) == expected
 
     def test_failsafe_when_empty(self):
         assert trade_level_dsr([_window([])], n_grid_combos=8, initial_capital=CAP) == 0.0
@@ -103,6 +104,44 @@ class TestTradeLevelDsr:
         windows = [_window(pnls)]
         dsr = trade_level_dsr(windows, n_grid_combos=8, initial_capital=CAP)
         assert 0.0 <= dsr <= 1.0
+
+    def test_prb02_single_fixed_params_run_understates_selection_bias(self):
+        """PRB-02 regression: a runner that evaluates ONE fixed champion param
+        set (no grid search) always calls `trade_level_dsr(..., n_grid_combos=1)`
+        -- exactly like `run_mgc_trend_mtf_rank1.py` -- which computes DSR as
+        if the strategy were the only one ever tried anywhere. That is wrong
+        whenever the strategy is actually the survivor of a larger research
+        campaign (many scripts/hypotheses tried, only the best one kept and
+        reported). This test pins the general property PRB-02's fix and the
+        `recompute_mgc_trend_baseline_dsr.py` script both rely on: the SAME
+        trade series' DSR is monotonically non-increasing in n_trials, and a
+        marginal (not overwhelming) edge that nominally PASSes at n_trials=1
+        can and does collapse below both gate floors once corrected for the
+        true campaign trial count. (Real-world instances of exactly this:
+        MGC_trend_baseline.json dsr 0.999375->0.0 at n=54/70, and
+        run_bottom_detector_sd088.py dsr 0.869307->0.000002 at n=54, per
+        ~/.claude/loops/jarvis-honest-data-drain/ledger.json.)
+        """
+        rng = np.random.default_rng(7)
+        # A modest, not-overwhelming edge (unlike a Sharpe-5.0 monster) --
+        # representative of the marginal WFO-champion strategies gate v2
+        # actually evaluates, where trial-count correction can flip the verdict.
+        pnls = (rng.normal(15, 300, size=31)).tolist()  # 31 trades, matches MGC_trend_baseline
+        windows = [_window(pnls)]
+
+        # 1,000 permutations (not the gate's 10,000): this test only asserts
+        # the monotone-in-n_trials PROPERTY, which holds at any resample count;
+        # the full 10,000 would blow the 30s per-test timeout in CI.
+        dsr_1 = trade_level_dsr(windows, n_grid_combos=1, initial_capital=CAP, n_permutations=1_000)
+        dsr_54 = trade_level_dsr(windows, n_grid_combos=54, initial_capital=CAP, n_permutations=1_000)
+        dsr_70 = trade_level_dsr(windows, n_grid_combos=70, initial_capital=CAP, n_permutations=1_000)
+
+        assert dsr_1 >= dsr_54 >= dsr_70, (
+            "DSR must be monotonically non-increasing in n_trials for a fixed "
+            "trade series -- a runner that never accounts for the real "
+            "campaign trial count can only ever overstate significance, never "
+            "understate it."
+        )
 
 
 class TestTradeLevelPfCiLower:

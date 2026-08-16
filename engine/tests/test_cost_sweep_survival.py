@@ -30,7 +30,10 @@ def _stub_sweep(monkeypatch, mod, pf_by_tier: dict, trades: int = 50):
     """
     seq = iter(list(mod.COST_TIER_ORDER))
 
-    def fake(df, fast, slow, atr_trail_mult, commission, slippage_ticks):
+    def fake(df, fast, slow, atr_trail_mult, commission, slippage_ticks, **kwargs):
+        # MGC runners (rewired with --sota in PR #597/#598) call
+        # _run_signals_and_backtest(..., sota_hardening=...) — accept and
+        # ignore the extra kwarg so the stub works for both runner shapes.
         tier = next(seq)
         return SimpleNamespace(profit_factor=pf_by_tier[tier], total_trades=trades)
 

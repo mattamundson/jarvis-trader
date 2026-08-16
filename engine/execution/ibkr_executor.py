@@ -406,15 +406,27 @@ class IBKRExecutor:
             }
 
         # ── Step 4: Build IB Order object ─────────────────────────────────────
-        action = "BUY" if order.quantity > 0 else "SELL"
-        qty = abs(order.quantity)
+        # CRITICAL: build from result.adjusted_order (the risk-layer's
+        # post-loss-tracker order), not the pre-check `order`. check_order()
+        # may have halved/quartered the size after consecutive losses; using
+        # the pre-check `order` here silently discarded that de-risking and
+        # sent full-size orders to IBKR regardless (PRB-01, 2026-07-29
+        # prod-readiness audit).
+        final_order = result.adjusted_order or order
+        action = "BUY" if final_order.quantity > 0 else "SELL"
+        qty = abs(final_order.quantity)
+        if qty != abs(order.quantity):
+            logger.warning(
+                f"submit_order: risk-adjusted size {abs(order.quantity)} -> {qty} "
+                f"for symbol={order.symbol}"
+            )
 
-        ib_order = self._build_ib_order(order.order_type, action, qty, order)
+        ib_order = self._build_ib_order(final_order.order_type, action, qty, final_order)
         if ib_order is None:
             return {
                 "submitted": False,
-                "reason": f"Invalid order_type '{order.order_type}'",
-                "symbol": order.symbol,
+                "reason": f"Invalid order_type '{final_order.order_type}'",
+                "symbol": final_order.symbol,
             }
 
         # ── Step 5: Place the order ───────────────────────────────────────────
@@ -423,33 +435,33 @@ class IBKRExecutor:
             ibkr_order_id = ib_order.orderId
 
             logger.info(
-                f"Order SUBMITTED — id={ibkr_order_id} symbol={order.symbol} "
-                f"action={action} qty={qty} type={order.order_type} "
-                f"limit={order.limit_price} stop={order.stop_price} "
-                f"est_value=${order.estimated_value:,.0f}"
+                f"Order SUBMITTED — id={ibkr_order_id} symbol={final_order.symbol} "
+                f"action={action} qty={qty} type={final_order.order_type} "
+                f"limit={final_order.limit_price} stop={final_order.stop_price} "
+                f"est_value=${final_order.estimated_value:,.0f}"
             )
 
             return {
                 "submitted": True,
                 "ibkr_order_id": ibkr_order_id,
-                "symbol": order.symbol,
+                "symbol": final_order.symbol,
                 "action": action,
                 "quantity": qty,
-                "order_type": order.order_type,
-                "limit_price": order.limit_price,
-                "stop_price": order.stop_price,
+                "order_type": final_order.order_type,
+                "limit_price": final_order.limit_price,
+                "stop_price": final_order.stop_price,
                 "warnings": result.warnings,
                 "trade": trade,
             }
 
         except Exception as exc:
             logger.error(
-                f"placeOrder failed — symbol={order.symbol} action={action} qty={qty}: {exc}"
+                f"placeOrder failed — symbol={final_order.symbol} action={action} qty={qty}: {exc}"
             )
             return {
                 "submitted": False,
                 "reason": f"placeOrder exception: {exc}",
-                "symbol": order.symbol,
+                "symbol": final_order.symbol,
             }
 
     # ── Order cancellation ────────────────────────────────────────────────────

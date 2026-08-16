@@ -197,6 +197,18 @@ class HealthResponse(BaseModel):
         None,
         description="30-day rolling mean Brier score across agents with ≥ min_trades closed signals. 0 = perfect calibration, 1 = always confidently wrong. None when no agent has enough data.",
     )
+    batch_jobs_health: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Anthropic Message Batches summary: {jobs_by_status, unconsumed_results}. Non-blocking — batches are async by design, so this never flips top-level status to degraded, only surfaces counts for observability. Populated by engine/llm/batch_client.py's JarvisBatchClient.get_batch_health_summary(). Field must exist here or _health_inner's dict key gets silently stripped by FastAPI's response_model, same class of bug as llm_providers/futures_sentiment above.",
+    )
+    market_data_fresh: Optional[bool] = Field(
+        True,
+        description="P3-1: whether every currently-authorized/tradeable symbol's `market:latest:{symbol}` Redis fabric entry is within MARKET_DATA_STALE_AFTER_S (900s, same threshold as /system/data-integrity). False flips top-level status to degraded. True (not stale) when the fabric can't be reached at all — a different, defense-in-depth signal (ibgateway_alive/tv_mcp_healthy) already covers total data-path outage.",
+    )
+    market_data_stale_symbols: Optional[List[str]] = Field(
+        None,
+        description="Symbols (subset of the authorized/tradeable set) whose Redis fabric entry is present but stale. Empty/None when market_data_fresh=True.",
+    )
 
 
 class SubsystemStatus(BaseModel):
@@ -282,6 +294,9 @@ class SafetyStatusResponse(BaseModel):
     )
     equity_peak: Optional[float] = Field(None, description="Peak equity from safety snapshot")
     daily_realized_pnl: Optional[float] = Field(None, description="Daily realized P&L component")
+    orders_per_minute_limit: Optional[int] = Field(
+        None, description="Configured max orders per minute (rate throttle)"
+    )
 
 
 class CircuitBreakerStatus(BaseModel):
@@ -518,7 +533,8 @@ class DecisionHistoryResponse(BaseModel):
     """Agent decisions."""
 
     decisions: List[Dict[str, Any]] = Field(default_factory=list, description="Decision records")
-    count: int = Field(0, description="Number of decisions")
+    count: int = Field(0, description="Number of decisions in this page (bounded by limit)")
+    total: int = Field(0, description="True total decision row count, ignoring limit")
 
 
 class StatsSummaryResponse(BaseModel):

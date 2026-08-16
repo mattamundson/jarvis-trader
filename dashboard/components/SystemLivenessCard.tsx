@@ -6,7 +6,9 @@ import {
   type FullHealthResponse,
   type IBGatewayHealth,
   type LLMSubsystemHealth,
+  type ProcessSupervisionHealth,
 } from "@/lib/api";
+import { supervisionChipState } from "@/lib/processSupervision";
 
 const REFRESH_MS = 15_000;
 
@@ -53,6 +55,7 @@ export function SystemLivenessCard() {
   const offline = !!error || !data;
   const ib: IBGatewayHealth | undefined = data?.subsystems?.ib_gateway;
   const llm: LLMSubsystemHealth | undefined = data?.subsystems?.llm;
+  const supervision: ProcessSupervisionHealth | undefined = data?.subsystems?.process_supervision;
 
   // Engine
   const overall = data?.overall;
@@ -112,6 +115,11 @@ export function SystemLivenessCard() {
   const llmValue = offline || !llm ? "—" : (llm.provider ?? "unknown").toString().toUpperCase();
   const llmSub = llm?.fallback_active ? "fallback" : undefined;
 
+  // Process supervision (PRB-24) — pm2's belief vs actual TCP port/PID
+  // reality. Derivation lives in lib/processSupervision.ts (pure, node --test
+  // covered) so the tone/value/sub contract stays testable without a DOM.
+  const supChip = supervisionChipState(supervision, offline);
+
   return (
     <div className="border border-border rounded-lg p-4 bg-card">
       <div className="flex items-baseline justify-between gap-3 mb-3">
@@ -120,7 +128,7 @@ export function SystemLivenessCard() {
           {offline ? "engine unreachable" : `overall ${(overall ?? "—").toUpperCase()}`}
         </span>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <Chip label="Engine" tone={engineTone} value={engineValue} />
         <Chip
           label="Data leg"
@@ -130,6 +138,7 @@ export function SystemLivenessCard() {
         />
         <Chip label="Data watchdog" tone={wdTone} value={wdValue} />
         <Chip label="LLM" tone={llmTone} value={llmValue} sub={llmSub} />
+        <Chip label="Supervision" tone={supChip.tone} value={supChip.value} sub={supChip.sub} />
       </div>
     </div>
   );
