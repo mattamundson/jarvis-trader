@@ -356,7 +356,7 @@ export default function PortfolioPage() {
                 {capital ? `$${capital.total_capital.toLocaleString()}` : "—"}
               </span>
               <span className="text-right tabular-nums">
-                {health?.modules.reduce((s, m) => s + m.open_positions, 0) ?? 0}
+                {(health?.modules ?? []).reduce((s, m) => s + m.open_positions, 0)}
               </span>
             </div>
           </div>
