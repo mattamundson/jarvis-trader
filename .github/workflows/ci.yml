@@ -370,10 +370,30 @@ jobs:
       # Output is tee'd so the bundle-budget gate below can read the route table
       # instead of paying for a second ~2 minute build to reprint numbers this
       # one already produced. pipefail keeps a build failure fatal through tee.
+      # Retry once for the transient next/font/google network flake (fonts.gstatic.com
+      # intermittently times out on the runner — proven flaky: the same build passed
+      # on rerun with identical code, and master's own pre-deploy check failed the
+      # same way on 2026-08-16). The retry stays visible (::warning::) so a genuine
+      # build regression is never silently masked. A fresh process is required —
+      # the failed font fetch leaves .next/font cache state that an in-place retry
+      # would not necessarily clear.
       - name: Build Next.js
         run: |
           set -euo pipefail
-          pnpm run build 2>&1 | tee ../build-output.log
+          set +e
+          attempts=2
+          ec=0
+          for i in $(seq 1 "$attempts"); do
+            echo "::group::next build (attempt $i/$attempts)"
+            pnpm run build 2>&1 | tee ../build-output.log
+            ec=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            [ "$ec" -eq 0 ] && break
+            if [ "$i" -lt "$attempts" ]; then
+              echo "::warning title=dashboard-build retry::attempt $i failed (exit $ec); retrying once in a fresh process (intermittent next/font/google font-fetch flake)"
+            fi
+          done
+          exit "$ec"
         working-directory: dashboard
         env:
           NODE_ENV: production
