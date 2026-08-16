@@ -1324,13 +1324,21 @@ class IBGatewayManager:
         open_order_count: int = 0
 
         if connected:
-            # Measure round-trip latency with a lightweight reqCurrentTime call
+            # Measure round-trip latency with a lightweight reqCurrentTime call.
+            # `connected` above is only the shallow is_connected() flag, captured
+            # before this probe runs -- a wedged Gateway (socket open, API dead)
+            # previously still reported connected=True here even when this exact
+            # probe failed, since nothing revised it afterward. Same class of bug
+            # as the 2026-08-15 data-leg incident (data/market_data.py's
+            # IBKRDataConnector.health_check) -- a failed round-trip means we are
+            # not actually connected, whatever the socket flag says.
             try:
                 t0 = time.monotonic()
                 await asyncio.wait_for(self._ib.reqCurrentTimeAsync(), timeout=5.0)
                 latency_ms = (time.monotonic() - t0) * 1000
             except Exception:
                 latency_ms = None
+                connected = False
 
             try:
                 net_liq = await self.get_portfolio_value()
