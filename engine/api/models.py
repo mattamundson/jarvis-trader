@@ -149,6 +149,14 @@ class HealthResponse(BaseModel):
     ibgateway_port: Optional[int] = Field(
         None, description="The IB port probed for ibgateway_alive (4002 paper / 4001 live)"
     )
+    ibkr_broker_probe_ok: Optional[bool] = Field(
+        True,
+        description="Whether the IBKR health-check RPC probes (latency/net_liq/open_orders) all responded. False = socket up but RPCs failing (degraded broker); distinct from ibkr_*_connected which is socket-level only.",
+    )
+    ibkr_degraded_reason: Optional[str] = Field(
+        None,
+        description="Which broker probe(s) failed (e.g. 'latency:TimeoutError'), populated only when ibkr_broker_probe_ok=false",
+    )
     schwab_connected: bool = Field(False, description="Whether Schwab is connected")
     uptime_seconds: float = Field(0, description="Server uptime in seconds")
     paper_trading: Optional[PaperTradingStatus] = Field(None, description="Paper trading status")
@@ -296,6 +304,17 @@ class SafetyStatusResponse(BaseModel):
     daily_realized_pnl: Optional[float] = Field(None, description="Daily realized P&L component")
     orders_per_minute_limit: Optional[int] = Field(
         None, description="Configured max orders per minute (rate throttle)"
+    )
+    last_kill_switch_ts: Optional[str] = Field(
+        None,
+        description="ISO-8601 UTC timestamp of the most recent kill-switch activation. Survives deactivate + restart. None if it has never fired.",
+    )
+    last_kill_switch_reason_value: Optional[str] = Field(
+        None, description="Reason value of the most recent kill-switch activation (history)"
+    )
+    time_since_kill_switch_sec: Optional[float] = Field(
+        None,
+        description="Seconds since the last kill-switch activation, or None if it has never fired. Lets a consumer tell a just-recovered-from-halt system from one running clean for hours.",
     )
 
 
