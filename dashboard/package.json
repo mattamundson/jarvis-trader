@@ -14,6 +14,7 @@
     "test:e2e": "playwright test",
     "test:e2e:fresh": "playwright test --config=playwright.fresh.config.ts",
     "check:live": "node scripts/check-live-data.mjs",
+    "check:runtime-contract": "node scripts/check-runtime-contract.mjs",
     "guards": "node scripts/check-guards.mjs",
     "budget": "node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"
