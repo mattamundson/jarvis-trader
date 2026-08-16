@@ -5,7 +5,8 @@ side, so a same-symbol size or sign divergence (paper LONG 2 vs broker SHORT 3)
 read as "in sync" — a silent position-state divergence at GET /brokers/positions.
 
 These tests pin the symbol-level qty_mismatch detection while preserving the
-existing paper_only / live_only / blind behavior.
+existing paper_only / live_only / blind behavior and preventing false
+paper_only claims when a symbol's responsible broker is disconnected.
 
 Run with:
     cd engine
@@ -32,6 +33,12 @@ def _ibkr(symbol: str, quantity: float) -> dict:
 def _paper(symbol: str, direction: str, quantity: float) -> dict:
     # Paper normalised position: unsigned quantity + LONG/SHORT direction.
     return {"symbol": symbol, "direction": direction, "quantity": quantity}
+
+
+def _paper_with_family(symbol: str, direction: str, quantity: float, family: str) -> dict:
+    out = _paper(symbol, direction, quantity)
+    out["broker_family"] = family
+    return out
 
 
 def _types(recon: dict) -> set[str]:
@@ -105,6 +112,69 @@ def test_paper_only_and_live_only_preserved():
     by_sym = {d["symbol"]: d["type"] for d in recon["discrepancies"]}
     assert by_sym["MES"] == "paper_only"
     assert by_sym["MNQ"] == "live_only"
+
+
+def test_equity_paper_position_is_unverified_when_schwab_disconnected():
+    """Schwab-down equity absence is unknown, not confirmed paper_only."""
+    recon = _build_reconciliation(
+        ibkr_positions=[_ibkr("MES", 1)],
+        schwab_positions=[],
+        paper_positions=[_paper_with_family("SPY", "LONG", 1, "schwab")],
+        ibkr_connected=True,
+        schwab_connected=False,
+    )
+    assert recon["health"] == "partial"
+    assert _types(recon) == {"live_only", "paper_unverified"}
+    unverified = [d for d in recon["discrepancies"] if d["type"] == "paper_unverified"]
+    assert unverified == [
+        {
+            "symbol": "SPY",
+            "type": "paper_unverified",
+            "broker_family": "schwab",
+            "detail": (
+                "Paper position open, but the broker required to verify "
+                "this symbol is not queryable. Absence is not confirmed."
+            ),
+        }
+    ]
+
+
+def test_unverified_detail_includes_broker_policy_reason_when_available():
+    """Operator-facing detail should explain policy-disabled Schwab, not just say down."""
+    reason = (
+        "SCHWAB_READY=false; Schwab equities/options broker verification is intentionally "
+        "dormant until Phase 3 approval."
+    )
+    recon = _build_reconciliation(
+        ibkr_positions=[],
+        schwab_positions=[],
+        paper_positions=[_paper_with_family("AAPL", "LONG", 2, "schwab")],
+        ibkr_connected=True,
+        schwab_connected=False,
+        broker_unavailable_reasons={"schwab": reason},
+    )
+    unverified = [d for d in recon["discrepancies"] if d["type"] == "paper_unverified"]
+    assert unverified == [
+        {
+            "symbol": "AAPL",
+            "type": "paper_unverified",
+            "broker_family": "schwab",
+            "detail": f"Paper position open, but {reason} Absence is not confirmed.",
+        }
+    ]
+
+
+def test_futures_paper_only_still_confirmed_when_ibkr_connected_and_schwab_down():
+    """A futures paper position can be confirmed missing when IBKR is queryable."""
+    recon = _build_reconciliation(
+        ibkr_positions=[],
+        schwab_positions=[],
+        paper_positions=[_paper_with_family("MES", "LONG", 1, "ibkr")],
+        ibkr_connected=True,
+        schwab_connected=False,
+    )
+    assert recon["health"] == "partial"
+    assert _types(recon) == {"paper_only"}
 
 
 def test_blind_state_unchanged():

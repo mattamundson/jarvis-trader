@@ -25,11 +25,30 @@ interface PaperPosition {
   quantity: number;
 }
 
+interface ReconciliationDiscrepancy {
+  symbol: string | null;
+  type: string;
+  detail: string;
+  broker_family?: string;
+}
+
+interface BrokerEndpointState {
+  connected: boolean;
+  queryable?: boolean;
+  status?: string;
+  reason?: string | null;
+}
+
 interface BrokerPositionsResponse {
-  ibkr: { connected: boolean; positions: BrokerPosition[] };
-  schwab: { connected: boolean; positions: BrokerPosition[] };
+  ibkr: BrokerEndpointState & { positions: BrokerPosition[] };
+  schwab: BrokerEndpointState & {
+    ready?: boolean;
+    configured?: boolean;
+    state?: string;
+    positions: BrokerPosition[];
+  };
   paper: { positions: PaperPosition[] };
-  reconciliation: { discrepancies: string[]; last_checked: string };
+  reconciliation: { discrepancies: ReconciliationDiscrepancy[]; last_checked: string };
 }
 
 interface BrokerStatusResponse {
@@ -81,11 +100,18 @@ function PositionRow({ pos }: { pos: BrokerPosition }) {
   );
 }
 
-function ColumnEmpty({ reason }: { reason: "no_positions" | "not_connected" }) {
+function ColumnEmpty({ reason, note }: { reason: "no_positions" | "not_connected"; note?: string | null }) {
   return (
-    <p className="font-mono text-[10px] text-muted-foreground/50 italic pt-1">
-      {reason === "not_connected" ? "Not connected" : "No open positions"}
-    </p>
+    <div className="space-y-1 pt-1">
+      <p className="font-mono text-[10px] text-muted-foreground/50 italic">
+        {reason === "not_connected" ? "Not connected" : "No open positions"}
+      </p>
+      {note && (
+        <p className="text-[10px] leading-snug text-muted-foreground/70">
+          {note}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -161,6 +187,11 @@ export function BrokerPositionsWidget() {
 
   const ibkrPnl = ibkr.positions.reduce((acc, p) => acc + p.unrealized_pnl, 0);
   const hasDiscrepancies = recon.discrepancies.length > 0;
+  const schwabBadgeLabel = schwab.connected
+    ? "LIVE"
+    : schwab.status === "disabled_by_policy"
+      ? "PHASE 3"
+      : "OFF";
 
   return (
     <Card>
@@ -211,12 +242,12 @@ export function BrokerPositionsWidget() {
                 Schwab Eq/Opts
               </p>
               <Badge variant={schwab.connected ? "bull" : "neutral"} className="text-[9px] px-1 py-0">
-                {schwab.connected ? "LIVE" : "OFF"}
+                {schwabBadgeLabel}
               </Badge>
             </div>
             <div className="border-t border-border/50 pt-1">
               {!schwab.connected ? (
-                <ColumnEmpty reason="not_connected" />
+                <ColumnEmpty reason="not_connected" note={schwab.reason} />
               ) : schwab.positions.length === 0 ? (
                 <ColumnEmpty reason="no_positions" />
               ) : (

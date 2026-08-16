@@ -201,6 +201,10 @@ class HealthResponse(BaseModel):
         None,
         description="Anthropic Message Batches summary: {jobs_by_status, unconsumed_results}. Non-blocking — batches are async by design, so this never flips top-level status to degraded, only surfaces counts for observability. Populated by engine/llm/batch_client.py's JarvisBatchClient.get_batch_health_summary(). Field must exist here or _health_inner's dict key gets silently stripped by FastAPI's response_model, same class of bug as llm_providers/futures_sentiment above.",
     )
+    health_timeout: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Populated when /health serves a bounded degraded fallback because the detailed recompute exceeded its timeout budget.",
+    )
 
 
 class SubsystemStatus(BaseModel):
