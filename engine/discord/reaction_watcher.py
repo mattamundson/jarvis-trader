@@ -24,9 +24,10 @@ subset used here:
   DISPATCH (op=0) → handle MESSAGE_REACTION_ADD events
   RESUME (op=6)   → reconnect with last session_id + seq after disconnect
 
-Intents bitmask (decimal 33281):
-  GUILDS (1) | GUILD_MESSAGES (512) | GUILD_MESSAGE_REACTIONS (8192) |
-  MESSAGE_CONTENT (32768) = 33281
+Intents bitmask (decimal 1537):
+  GUILDS (1) | GUILD_MESSAGES (512) | GUILD_MESSAGE_REACTIONS (1024) = 1537
+
+  (No MESSAGE_CONTENT -- not needed and not requested; see GATEWAY_INTENTS.)
 
 Security: only reactions from DISCORD_PERSONAL_USER_ID are acted upon. All
 others are silently ignored and logged at DEBUG. The bot also verifies the
@@ -76,8 +77,29 @@ OP_RESUME = 6
 OP_HELLO = 10
 OP_HEARTBEAT_ACK = 11
 
-# Gateway intents: GUILDS | GUILD_MESSAGES | GUILD_MESSAGE_REACTIONS | MESSAGE_CONTENT
-GATEWAY_INTENTS = 1 | 512 | 8192 | 32768  # 33281
+# Gateway intents: GUILDS | GUILD_MESSAGES | GUILD_MESSAGE_REACTIONS
+#
+# 2026-08-16: two corrections found while root-causing a persistent IDENTIFY
+# failure (live diagnostic: Discord closes with code 4004 "Authentication
+# failed" -- an invalid bot token, not an intents problem, but both bugs
+# below were real and worth fixing regardless).
+#
+# MESSAGE_CONTENT (privileged, 32768) removed: this listener only ever
+# dispatches on READY/RESUMED/MESSAGE_REACTION_ADD (see _gateway_session
+# below), none of which carry or require message content over the gateway --
+# the approval-message text is fetched separately via Discord REST
+# (_handle_reaction -> GET .../messages/{id}), unaffected by gateway intents.
+# Requesting an unused privileged intent only adds a Developer Portal
+# dependency (must be explicitly toggled on) for zero functional benefit.
+#
+# GUILD_MESSAGE_REACTIONS corrected from 8192 to 1024: PERSONAL_CHANNEL_ID
+# lives inside a guild (personal_mcp_server.py's DEFAULT_GUILD_ID), not a DM,
+# so the intent needed is GUILD_MESSAGE_REACTIONS (bit 10, 1024). The prior
+# value (8192, bit 13) is actually Discord's DIRECT_MESSAGE_REACTIONS --
+# mislabeled in this comment, and would never have delivered
+# MESSAGE_REACTION_ADD events for this guild channel even on a healthy
+# connection.
+GATEWAY_INTENTS = 1 | 512 | 1024  # 1537
 
 # Personal channel (same constant as personal_mcp_server.py)
 PERSONAL_CHANNEL_ID = "1490851279180660819"
