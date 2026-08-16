@@ -13,6 +13,7 @@
  * Env (same names the dashboard proxy uses):
  *   ENGINE_URL           (default http://localhost:8010)   — or ENGINE_INTERNAL_URL / NEXT_PUBLIC_ENGINE_URL
  *   ENGINE_API_KEY       (or NEXT_PUBLIC_ENGINE_API_KEY)
+ *   MASTER_API_KEY       (or NEXT_PUBLIC_MASTER_API_KEY)
  *   MASTER_API_URL       (default http://127.0.0.1:8030)   — the external honest-trade-record service
  *
  * Exit code: 0 if the engine is reachable, 1 if the engine itself is UNREACHABLE.
@@ -25,18 +26,20 @@ const ENGINE =
   process.env.NEXT_PUBLIC_ENGINE_URL ||
   "http://localhost:8010";
 const MASTER = process.env.MASTER_API_URL || process.env.NEXT_PUBLIC_MASTER_API_URL || "http://127.0.0.1:8030";
-const API_KEY = process.env.ENGINE_API_KEY || process.env.NEXT_PUBLIC_ENGINE_API_KEY || "";
+const ENGINE_API_KEY = process.env.ENGINE_API_KEY || process.env.NEXT_PUBLIC_ENGINE_API_KEY || "";
+const MASTER_API_KEY = process.env.MASTER_API_KEY || process.env.NEXT_PUBLIC_MASTER_API_KEY || "";
 const TIMEOUT_MS = 8000;
+const MAX_ATTEMPTS = 2;
 
 // (label, base, path). Extend freely — these are the core overview data sources.
 const CHECKS = [
-  ["Engine health", ENGINE, "/health"],
-  ["Prices (Signal Flow / Watchlist)", ENGINE, "/prices/snapshot"],
-  ["Safety / kill-switch", ENGINE, "/safety/status"],
-  ["P&L truth (honest realized)", ENGINE, "/pnl/truth"],
-  ["Pipeline signal debug", ENGINE, "/pipeline/signal-debug"],
-  ["Validation scorecard", ENGINE, "/validation"],
-  ["Master-API (honest trade record)", MASTER, "/health"],
+  ["Engine health", ENGINE, "/health", ENGINE_API_KEY],
+  ["Prices (Signal Flow / Watchlist)", ENGINE, "/prices/snapshot", ENGINE_API_KEY],
+  ["Safety / kill-switch", ENGINE, "/safety/status", ENGINE_API_KEY],
+  ["P&L truth (honest realized)", ENGINE, "/pnl/truth", ENGINE_API_KEY],
+  ["Pipeline signal debug", ENGINE, "/pipeline/signal-debug", ENGINE_API_KEY],
+  ["Validation scorecard", ENGINE, "/validation/status", ENGINE_API_KEY],
+  ["Master-API (honest trade record)", MASTER, "/master/health", MASTER_API_KEY],
 ];
 
 function classify(status, body) {
@@ -56,51 +59,68 @@ function classify(status, body) {
   return ["LIVE", "real data present"];
 }
 
-async function hit(base, path) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(base + path, {
-      headers: API_KEY ? { "X-API-Key": API_KEY } : {},
-      signal: ctrl.signal,
-    });
-    let body = null;
+export async function hit(base, path, apiKey = "", fetchImpl = fetch) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
-      body = await res.json();
-    } catch {
-      body = null;
+      const res = await fetchImpl(base + path, {
+        headers: apiKey ? { "X-API-Key": apiKey } : {},
+        signal: ctrl.signal,
+      });
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      return classify(res.status, body);
+    } catch (e) {
+      if (attempt === MAX_ATTEMPTS) {
+        return ["UNREACHABLE", e.name === "AbortError" ? "timeout" : (e.cause?.code || e.message)];
+      }
+    } finally {
+      clearTimeout(t);
     }
-    return classify(res.status, body);
-  } catch (e) {
-    return ["UNREACHABLE", e.name === "AbortError" ? "timeout" : (e.cause?.code || e.message)];
-  } finally {
-    clearTimeout(t);
   }
 }
 
 const ICON = { LIVE: "🟢", EMPTY: "🟡", AUTH: "🟠", HTTP: "🟠", UNREACHABLE: "🔴" };
 
-const main = async () => {
-  console.log(`\nLive-data check  engine=${ENGINE}  master-api=${MASTER}  key=${API_KEY ? "set" : "MISSING"}\n`);
+export async function runChecks({
+  checks = CHECKS,
+  fetchImpl = fetch,
+  log = console.log,
+} = {}) {
+  const engineKeyState = ENGINE_API_KEY ? "set" : "MISSING";
+  const masterKeyState = MASTER_API_KEY ? "set" : "MISSING";
+  log(`\nLive-data check  engine=${ENGINE}  master-api=${MASTER}  engine-key=${engineKeyState}  master-key=${masterKeyState}\n`);
   const rows = [];
-  for (const [label, base, path] of CHECKS) {
-    const [verdict, note] = await hit(base, path);
+  for (const [label, base, path, apiKey] of checks) {
+    const [verdict, note] = await hit(base, path, apiKey, fetchImpl);
     rows.push({ label, path, verdict, note });
-    console.log(`  ${ICON[verdict] || "⚪"} ${verdict.padEnd(11)} ${label.padEnd(38)} ${path.padEnd(24)} ${note}`);
+    log(`  ${ICON[verdict] || "⚪"} ${verdict.padEnd(11)} ${label.padEnd(38)} ${path.padEnd(24)} ${note}`);
   }
   const engineHealth = rows.find((r) => r.path === "/health" && r.label.startsWith("Engine"));
   const live = rows.filter((r) => r.verdict === "LIVE").length;
-  console.log(`\n  ${live}/${rows.length} sources returning LIVE data.`);
+  log(`\n  ${live}/${rows.length} sources returning LIVE data.`);
   if (engineHealth?.verdict === "UNREACHABLE") {
-    console.log("  🔴 Engine itself is UNREACHABLE — nothing on the dashboard can be live. Start the engine (PM2: jarvis-engine).\n");
-    process.exit(1);
+    log("  🔴 Engine itself is UNREACHABLE — nothing on the dashboard can be live. Start the engine (PM2: jarvis-engine).\n");
+    return { rows, live, exitCode: 1 };
   }
   if (live < rows.length) {
-    console.log("  🟡 Some sources are empty/degraded — expected off-hours or if IB Gateway / master-api are down.\n");
+    log("  🟡 Some sources are empty/degraded — expected off-hours or if IB Gateway / master-api are down.\n");
   } else {
-    console.log("  🟢 All core sources live.\n");
+    log("  🟢 All core sources live.\n");
   }
-  process.exit(0);
-};
+  return { rows, live, exitCode: 0 };
+}
 
-main();
+if (process.argv[1]?.endsWith("check-live-data.mjs")) {
+  runChecks().then(({ exitCode }) => {
+    process.exitCode = exitCode;
+  }).catch((error) => {
+    console.error(`Live-data check failed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  });
+}
