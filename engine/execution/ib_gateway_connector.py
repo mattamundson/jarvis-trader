@@ -1051,6 +1051,32 @@ class IBGatewayConnector:
             "Set PAPER_TRADING=True for paper trading mode."
         )
 
+    def _realized_pnl_total(self) -> float:
+        """Sum of realized P&L across all closed trades, via the attached
+        PortfolioTracker.
+
+        ``_account_summary["equity"]``/``["buying_power"]`` are set once at
+        __init__ time and are never otherwise mutated (only ``cash`` moves,
+        on each fill) -- so without this, get_account_balance() reports a
+        permanently frozen equity regardless of realized wins/losses, which
+        silently disables MarginMonitorAgent's drawdown detector (it reads
+        exactly this connector via main.py's `_margin_connector = ib_paper_
+        connector or data_manager.ibkr`). Returns 0.0 (no adjustment, prior
+        behavior preserved) when no tracker is attached or the read fails.
+        """
+        if self._portfolio_tracker is None:
+            return 0.0
+        try:
+            perf = self._portfolio_tracker.get_performance()
+            return float(perf.get("total_pnl", 0.0) or 0.0)
+        except Exception as exc:
+            logger.warning(
+                "get_account_balance: portfolio_tracker.get_performance() failed "
+                "(equity will not reflect realized P&L this call): %s",
+                exc,
+            )
+            return 0.0
+
     async def get_account_balance(self) -> dict:
         """
         Get current account balances.
@@ -1071,10 +1097,11 @@ class IBGatewayConnector:
             return {}
 
         if self._settings.PAPER_TRADING:
+            realized_pnl = self._realized_pnl_total()
             return {
-                "equity": self._account_summary["equity"],
+                "equity": self._account_summary["equity"] + realized_pnl,
                 "cash": self._account_summary["cash"],
-                "buying_power": self._account_summary["buying_power"],
+                "buying_power": self._account_summary["buying_power"] + realized_pnl,
                 "margin_used": 0.0,
                 "account_type": "paper",
             }
