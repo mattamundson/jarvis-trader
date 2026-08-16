@@ -131,6 +131,31 @@ VALIDATION_ONLY_INSTRUMENTS: frozenset[str] = frozenset()
 # NOT force-closed — the gate only prevents NEW paper submissions.
 VALIDATION_ONLY_STRATEGIES: frozenset[str] = frozenset({"SHORT_GAP_FILL"})
 
+# ── Macro-overlay staleness cutoff ────────────────────────────────────────────
+# The macro trend regime (macro_regime.py) only self-neutralizes to UNKNOWN at
+# >10 stale SPY days — its data-validity fail-safe. This is a tighter CONSUMPTION
+# cutoff: even a still-computable regime is not injected as advisory bias once the
+# underlying SPY bar is older than this, so a stale RISK_ON can't bias longs into a
+# regime change. 5 tolerates a July-4 + weekend gap (~4d) without over-suppressing.
+MACRO_BIAS_MAX_STALE_DAYS: int = 5
+
+
+def _macro_bias_allowed(mr: dict) -> bool:
+    """Whether a computed macro regime is fresh enough to inject as live advisory bias.
+
+    A regime with no ``bias_line`` (NEUTRAL / UNKNOWN) is never injected. A regime whose
+    SPY bar is older than ``MACRO_BIAS_MAX_STALE_DAYS`` is withheld so a stale RISK_ON
+    cannot bias live longs into a regime change. A missing ``stale_days`` fails OPEN —
+    ``macro_regime`` already fail-safes to UNKNOWN/empty ``bias_line`` when data is absent,
+    so reaching here with a bias_line but no stale_days means the value simply wasn't
+    surfaced, not that the data is stale.
+    """
+    if not mr.get("bias_line"):
+        return False
+    stale = mr.get("stale_days")
+    return stale is None or stale <= MACRO_BIAS_MAX_STALE_DAYS
+
+
 __all__ = [
     "TradingPipeline",
     "pre_filter_signal",
@@ -1704,7 +1729,8 @@ class TradingPipeline:
                 from backtest.macro_regime import compute_macro_regime
 
                 _mr = compute_macro_regime()
-                if _mr.get("bias_line"):
+                _stale = _mr.get("stale_days")
+                if _macro_bias_allowed(_mr):
                     macro_ctx = f"\n{_mr['bias_line']}"
                     logger.info(
                         "[Pipeline] %s — macro trend bias (%s) injected: %s",
@@ -1745,6 +1771,17 @@ class TradingPipeline:
                             )
                     except Exception as _tel_exc:
                         logger.debug("[Pipeline] macro telemetry skipped: %s", _tel_exc)
+                elif _mr.get("bias_line"):
+                    # A bias was computable but the SPY bar is too stale to trust live —
+                    # withhold it (macro_ctx stays "", i.e. flag-off baseline) and log so
+                    # the suppression is visible rather than silent.
+                    logger.info(
+                        "[Pipeline] %s — macro trend bias SUPPRESSED (stale_days=%s > %s): %s",
+                        symbol,
+                        _stale,
+                        MACRO_BIAS_MAX_STALE_DAYS,
+                        _mr.get("state"),
+                    )
         except Exception as _macro_exc:  # fail-safe: never break the pipeline
             logger.debug("[Pipeline] macro trend bias skipped: %s", _macro_exc)
 

@@ -126,13 +126,15 @@ TREND_INSTRUMENTS = {"MES", "MGC"}
 #   file engine/data/gate_v2_verdicts/MGC_trend_rank4.json.
 DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
 
-# Default symbols for dashboard/Discord briefing widgets (T3-23, 2026-07-09).
-# Canonical active paper-trading pair per the 2026-05-24 instrument switch —
-# see jarvis-trader/CLAUDE.md "Active Instruments". A single shared source so
+# Default symbol(s) for dashboard/Discord briefing widgets (T3-23, 2026-07-09;
+# reduced to MES-only 2026-08-01 after MGC joined DO_NOT_TRADE_SYMBOLS above,
+# PR #552 — this constant exists precisely so default-symbol call sites don't
+# drift out of sync with the halt list the way three separate hardcodes did
+# when MCL/MNQ were halted). Canonical active paper-trading symbol(s) per
+# jarvis-trader/CLAUDE.md "Active Instruments" — a single shared source so
 # default-symbol call sites (e.g. discord_router.py's /intelligence
-# aggregation) can't independently drift the way they did when MCL/MNQ were
-# halted and three separate hardcodes were left pointing at them.
-DEFAULT_BRIEFING_SYMBOLS = ("MES", "MGC")
+# aggregation) can't independently drift.
+DEFAULT_BRIEFING_SYMBOLS = ("MES",)
 
 # Env-var feature flag for Phase 3 FULL (gate v2 routing enforcement).
 # Default OFF — ships dormant, user activates after verifying verdict

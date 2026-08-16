@@ -28,8 +28,9 @@ import assert from "node:assert/strict";
 import { HALTED_SYMBOLS, symbolTradeStatus } from "../lib/approvedSymbols.ts";
 
 // Checked-in fixture mirroring engine/backtest/signals.py::DO_NOT_TRADE_SYMBOLS
-// (~line 113) as of 2026-07-24. Update alongside the engine source if it changes.
-const ENGINE_DO_NOT_TRADE = ["MCL", "MNQ", "M2K"];
+// (~line 122) as of 2026-08-01 (PR #552 added MGC). Update alongside the
+// engine source if it changes.
+const ENGINE_DO_NOT_TRADE = ["MCL", "MNQ", "M2K", "MGC"];
 
 test("HALTED_SYMBOLS stays in parity with the engine's DO_NOT_TRADE_SYMBOLS fixture", () => {
   assert.deepEqual([...HALTED_SYMBOLS].sort(), [...ENGINE_DO_NOT_TRADE].sort());
@@ -38,9 +39,9 @@ test("HALTED_SYMBOLS stays in parity with the engine's DO_NOT_TRADE_SYMBOLS fixt
 test("symbolTradeStatus marks halted symbols HALTED", () => {
   assert.equal(symbolTradeStatus("MCL"), "HALTED");
   assert.equal(symbolTradeStatus("MNQ"), "HALTED");
+  assert.equal(symbolTradeStatus("MGC"), "HALTED");
 });
 
-test("symbolTradeStatus marks the active trading pair APPROVED", () => {
+test("symbolTradeStatus marks the active trading symbol APPROVED", () => {
   assert.equal(symbolTradeStatus("MES"), "APPROVED");
-  assert.equal(symbolTradeStatus("MGC"), "APPROVED");
 });
