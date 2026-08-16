@@ -66,6 +66,7 @@ class IBFreshnessHeartbeat:
         self._task: asyncio.Task | None = None
         self.last_beat_ts: float | None = None      # epoch of last successful stamp
         self.last_attempt_ts: float | None = None    # epoch of last probe attempt
+        self._consecutive_probe_failures = 0          # 2026-08-15: see _beat()
 
     async def start(self) -> None:
         if self._running:
@@ -129,8 +130,24 @@ class IBFreshnessHeartbeat:
                 ibkr.get_snapshot_price(self._symbol, True), timeout=8.0
             )
         except Exception as e:
-            logger.debug("[IBHeartbeat] snapshot probe failed: %s", e)
+            # 2026-08-15 incident: this was the ONE component honestly detecting
+            # a wedged Gateway (socket up, API not answering -- is_connected
+            # can't see it) and it logged the fact at DEBUG, where nobody looks.
+            # The heartbeat aging is still the correct signal for feeds_live/the
+            # integrity panel (see class docstring) -- this only fixes the
+            # human-visible diagnostic, not the gating behavior. WARNING on the
+            # first failure and every 5th thereafter so a real outage is loud
+            # without flooding the log every `interval` seconds.
+            self._consecutive_probe_failures += 1
+            if self._consecutive_probe_failures == 1 or self._consecutive_probe_failures % 5 == 0:
+                logger.warning(
+                    "[IBHeartbeat] snapshot probe failed (%s consecutive): %s",
+                    self._consecutive_probe_failures, e,
+                )
+            else:
+                logger.debug("[IBHeartbeat] snapshot probe failed: %s", e)
             return
+        self._consecutive_probe_failures = 0
 
         if result and result.get("last_price"):
             rec = getattr(self.data, "_record_ibkr_freshness", None)
