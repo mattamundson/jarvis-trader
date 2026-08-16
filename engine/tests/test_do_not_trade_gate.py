@@ -42,12 +42,12 @@ def bullish_ohlcv_df() -> pd.DataFrame:
 
 class TestDoNotTradeGate:
     def test_membership(self):
-        """MCL, MNQ, and M2K must be in the blocklist; MGC (re-authorized
-        2026-08-04, PR #598) and MES must NOT be."""
+        """MCL, MNQ, M2K must be in the blocklist; MGC (re-added 2026-08-16
+        after fresh rank4 FAIL) must be in it too; MES must NOT."""
         assert "MCL" in DO_NOT_TRADE_SYMBOLS
         assert "MNQ" in DO_NOT_TRADE_SYMBOLS
         assert "M2K" in DO_NOT_TRADE_SYMBOLS
-        assert "MGC" not in DO_NOT_TRADE_SYMBOLS
+        assert "MGC" in DO_NOT_TRADE_SYMBOLS
         assert "MES" not in DO_NOT_TRADE_SYMBOLS
 
     def test_mcl_forced_no_trade(self, bullish_ohlcv_df):
