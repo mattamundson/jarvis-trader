@@ -364,7 +364,7 @@ const INSTRUMENT_SPECS: InstrumentSpec[] = [
     exchange: "CME Globex",
     multiplier: 10,
     tick: 0.10,
-    status: "ACTIVE",
+    status: "DO NOT TRADE",
   },
   {
     symbol: "MNQ",
