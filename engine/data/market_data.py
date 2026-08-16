@@ -215,6 +215,24 @@ _CONNECT_FAIL_LOG_BACKOFF_BASE_S = 5.0
 _CONNECT_FAIL_LOG_BACKOFF_MAX_S = 300.0
 _connect_fail_state: dict[tuple[str, int], dict] = {}
 
+# Ceiling on any single IB *data* request (2026-08-15 incident).
+#
+# ``is_connected`` is only a local ``ib_async.IB.isConnected()`` socket check —
+# it cannot tell a healthy Gateway from a wedged one. When the Gateway's API
+# stops answering while the socket stays open, an unbounded ``await`` on
+# reqTickersAsync/qualifyContractsAsync never returns and never raises, so the
+# ``except`` branches below never run and Tiers 2-5 of the price waterfall
+# (Schwab -> Polygon -> CSV cache) become unreachable. Every price-serving
+# endpoint then hangs indefinitely rather than degrading to a stale mark.
+#
+# The connection path already bounds itself (see ``_connect_timeout``), and
+# ``services/ib_freshness_heartbeat.py`` already wraps get_snapshot_price in
+# ``wait_for(timeout=8.0)`` — this applies the same discipline to the request
+# path so every caller inherits it. Sized for ~50x headroom over a typical
+# sub-100ms snapshot: long enough that a merely-slow Gateway is not
+# misreported as down, short enough that a wedge degrades instead of hangs.
+_IBKR_DATA_REQUEST_TIMEOUT_S = float(os.getenv("IBKR_DATA_REQUEST_TIMEOUT_SECONDS", "5.0"))
+
 
 def _reset_connect_fail_throttle(host: str | None = None, port: int | None = None) -> None:
     """Test/ops hook: clear throttle state for one target (or every target)."""
@@ -546,8 +564,14 @@ class IBKRDataConnector:
             # both cases (front-month for futures, qualifyContractsAsync for
             # everything else) — reuse it instead of duplicating the branch
             # with an unqualified fallback for non-futures symbols.
-            contract = await self._qualified_contract(symbol, is_futures)
-            tickers = await self._ib.reqTickersAsync(contract)
+            contract = await asyncio.wait_for(
+                self._qualified_contract(symbol, is_futures),
+                timeout=_IBKR_DATA_REQUEST_TIMEOUT_S,
+            )
+            tickers = await asyncio.wait_for(
+                self._ib.reqTickersAsync(contract),
+                timeout=_IBKR_DATA_REQUEST_TIMEOUT_S,
+            )
             if tickers:
                 t = tickers[0]
                 last = (
@@ -579,8 +603,11 @@ class IBKRDataConnector:
         # Fallback: use last historical bar close (works even without L1 subscription)
         try:
             logger.info(f"IBKR snapshot fallback: fetching last historical close for {symbol}")
-            bars_df = await self.get_historical_bars(
-                symbol, duration="1 D", bar_size="1 hour", is_futures=is_futures
+            bars_df = await asyncio.wait_for(
+                self.get_historical_bars(
+                    symbol, duration="1 D", bar_size="1 hour", is_futures=is_futures
+                ),
+                timeout=_IBKR_DATA_REQUEST_TIMEOUT_S,
             )
             if not bars_df.empty and "close" in bars_df.columns:
                 last_close = float(bars_df.iloc[-1]["close"])
@@ -752,6 +779,7 @@ class IBKRDataConnector:
                         "currency": contract.currency,
                         "position": pos.position,
                         "avg_cost": pos.avgCost,
+                        "multiplier": getattr(contract, "multiplier", None),
                         "market_price": None,
                         "market_value": None,
                         "unrealized_pnl": None,
@@ -764,8 +792,36 @@ class IBKRDataConnector:
             return []
 
     async def health_check(self) -> dict:
+        """Round-trip verify the data leg rather than trusting the shallow
+        `_connected` flag alone -- `_connected` only reflects a local socket
+        state and stayed True for hours during the 2026-08-15 wedge incident
+        (Gateway socket open, API dead). A bounded `reqCurrentTimeAsync()`
+        probe, same pattern as the execution connector's health_check, is the
+        only way to tell "socket open" from "API actually answering"."""
+        verified = False
+        latency_ms: float | None = None
+        if self._connected and self._ib is not None:
+            try:
+                t0 = time.monotonic()
+                await asyncio.wait_for(
+                    self._ib.reqCurrentTimeAsync(), timeout=_IBKR_DATA_REQUEST_TIMEOUT_S
+                )
+                latency_ms = (time.monotonic() - t0) * 1000
+                verified = True
+            except Exception:
+                verified = False
+
+        if verified:
+            status = "connected"
+        elif self._connected:
+            status = "wedged"
+        else:
+            status = "disconnected"
+
         return {
-            "status": "connected" if self._connected else "disconnected",
+            "status": status,
+            "connected": verified,
+            "latency_ms": round(latency_ms, 2) if latency_ms is not None else None,
             "mode": "live" if self._port == 4001 else "paper",
             "port": self._port,
             "host": self._host,

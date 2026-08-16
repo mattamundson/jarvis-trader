@@ -322,3 +322,188 @@ def test_extract_candidate_id_returns_none_for_no_match():
     from discord.reaction_watcher import _extract_candidate_id
 
     assert _extract_candidate_id("Just a normal message") is None
+
+
+# ---------------------------------------------------------------------------
+# watch_approval_reactions(): reconnect backoff on a WS-connects-but-never-
+# authenticates failure (2026-08-15 incident -- 14,632 reconnects over 7.5h,
+# every ~2s, never escalating).
+# ---------------------------------------------------------------------------
+
+
+class _FakeWSMsg:
+    def __init__(self, type_, data):
+        self.type = type_
+        self.data = data
+
+
+class _FakeWS:
+    """An aiohttp-shaped websocket that yields HELLO, then the connection
+    drops with no further message and no CLOSE/CLOSING/ERROR frame -- the
+    exact 'async for msg in ws' silent-termination shape observed in prod
+    (IDENTIFY sent, then nothing logged, no READY, ever)."""
+
+    def __init__(self, messages):
+        self._messages = messages
+        self.close_code = None
+
+    def __aiter__(self):
+        return self._gen()
+
+    async def _gen(self):
+        for m in self._messages:
+            yield m
+
+    async def send_str(self, _s):
+        return None
+
+
+class _FakeWSConnectCM:
+    def __init__(self, ws):
+        self._ws = ws
+
+    async def __aenter__(self):
+        return self._ws
+
+    async def __aexit__(self, *_a):
+        return False
+
+
+class _FakeHttpSession:
+    def __init__(self, ws_factory):
+        self._ws_factory = ws_factory
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_a):
+        return False
+
+    def ws_connect(self, _url, **_kw):
+        return _FakeWSConnectCM(self._ws_factory())
+
+
+@pytest.mark.asyncio
+async def test_backoff_escalates_when_ws_connects_but_never_reaches_ready(monkeypatch):
+    """The module docstring promises 'connection drops trigger exponential
+    back-off (2, 4, 8, 16, 32, 60s cap)'. It doesn't, for this failure shape:
+    the outer loop resets backoff to the INITIAL value as soon as the raw
+    WebSocket handshake succeeds -- before IDENTIFY is even acknowledged --
+    so a connect-then-silently-die cycle (auth never completes, no CLOSE
+    frame) loops forever at the 2s floor instead of escalating."""
+    import json as _json
+
+    import aiohttp
+
+    from discord import reaction_watcher as rw
+
+    monkeypatch.setattr(rw, "_get_bot_token", lambda: "fake-token")
+    monkeypatch.setattr(rw, "_get_channel_id", lambda: "chan")
+    monkeypatch.setattr(rw, "_get_personal_user_id", lambda: "user")
+
+    enabled_calls = {"n": 0}
+
+    def _enabled():
+        enabled_calls["n"] += 1
+        return enabled_calls["n"] <= 5  # let 5 reconnect cycles run, then exit
+
+    monkeypatch.setattr(rw, "is_reaction_watcher_enabled", _enabled)
+
+    def _hello_then_silence():
+        hello = _FakeWSMsg(
+            aiohttp.WSMsgType.TEXT,
+            _json.dumps({"op": rw.OP_HELLO, "d": {"heartbeat_interval": 41250}}),
+        )
+        return _FakeWS([hello])  # generator ends here -- no READY, no CLOSE
+
+    monkeypatch.setattr(
+        rw.aiohttp, "ClientSession", lambda: _FakeHttpSession(_hello_then_silence)
+    )
+
+    sleeps: list[float] = []
+
+    async def _fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(rw.asyncio, "sleep", _fake_sleep)
+
+    await rw.watch_approval_reactions()
+
+    # Current (buggy) behavior would record every sleep as 2.0 (the initial
+    # backoff, reset on every successful raw-socket connect). A correct
+    # exponential backoff must escalate across repeated auth failures.
+    assert sleeps[0] == pytest.approx(rw._INITIAL_BACKOFF_SECONDS)
+    assert sleeps[-1] > sleeps[0], (
+        f"backoff never escalated across {len(sleeps)} consecutive "
+        f"never-reached-READY cycles: {sleeps}"
+    )
+    assert sleeps == sorted(sleeps), f"backoff must be monotonically non-decreasing: {sleeps}"
+
+
+@pytest.mark.asyncio
+async def test_backoff_still_resets_after_a_session_reaches_ready(monkeypatch):
+    """Guards against a fix that satisfies the escalation test by simply never
+    resetting backoff at all -- a session that genuinely authenticates (READY)
+    and later drops must still reconnect quickly, not inherit an escalated
+    backoff from before it was healthy."""
+    import json as _json
+
+    import aiohttp
+
+    from discord import reaction_watcher as rw
+
+    monkeypatch.setattr(rw, "_get_bot_token", lambda: "fake-token")
+    monkeypatch.setattr(rw, "_get_channel_id", lambda: "chan")
+    monkeypatch.setattr(rw, "_get_personal_user_id", lambda: "user")
+
+    enabled_calls = {"n": 0}
+
+    def _enabled():
+        enabled_calls["n"] += 1
+        # +1 for the startup check at line ~609 before the reconnect loop
+        # even begins its first iteration.
+        return enabled_calls["n"] <= 4
+
+    monkeypatch.setattr(rw, "is_reaction_watcher_enabled", _enabled)
+
+    cycle = {"n": 0}
+
+    def _ws_factory():
+        cycle["n"] += 1
+        hello = _FakeWSMsg(
+            aiohttp.WSMsgType.TEXT,
+            _json.dumps({"op": rw.OP_HELLO, "d": {"heartbeat_interval": 41250}}),
+        )
+        if cycle["n"] <= 2:
+            # First two cycles: silently die before READY (as above).
+            return _FakeWS([hello])
+        # Third cycle: genuinely reaches READY, then drops.
+        ready = _FakeWSMsg(
+            aiohttp.WSMsgType.TEXT,
+            _json.dumps({
+                "op": rw.OP_DISPATCH, "t": "READY", "s": 1,
+                "d": {"session_id": "sess-abc", "user": {"id": "999"}},
+            }),
+        )
+        return _FakeWS([hello, ready])
+
+    monkeypatch.setattr(rw.aiohttp, "ClientSession", lambda: _FakeHttpSession(_ws_factory))
+
+    sleeps: list[float] = []
+
+    async def _fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(rw.asyncio, "sleep", _fake_sleep)
+
+    await rw.watch_approval_reactions()
+
+    # Cycle 1 fails pre-READY -> sleeps[0] at the floor. Cycle 2 fails
+    # pre-READY again -> must have escalated past the floor (same bug as
+    # above). Cycle 3 reaches READY -> its post-drop sleep must be back at
+    # the floor, not a further-escalated value.
+    assert sleeps[0] == pytest.approx(rw._INITIAL_BACKOFF_SECONDS)
+    assert sleeps[1] > sleeps[0]
+    assert sleeps[2] == pytest.approx(rw._INITIAL_BACKOFF_SECONDS), (
+        f"backoff didn't reset after a session reached READY: {sleeps}"
+    )
