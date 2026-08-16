@@ -261,6 +261,8 @@ engine/.venv.failed-*/
 # Runtime morning brief outputs (generated daily by EODScheduler / brief jobs)
 engine/data/morning_briefs/
 engine/data/framing_briefs/
+engine/data/morning_forecasts/
+engine/data/forecast_reports/
 
 # Runtime options-implied snapshots (generated intraday by options_signals_snapshot.py)
 engine/data/options_signals/
