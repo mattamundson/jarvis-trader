@@ -44,6 +44,43 @@ function Step([string]$name) {
     Write-Host "==> $name" -ForegroundColor Cyan
 }
 
+function Get-EnvFileValue {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Name,
+        [switch] $Required
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        if ($Required) { Fail "required env file not found: $Path" }
+        return $null
+    }
+
+    $pattern = '^\s*' + [regex]::Escape($Name) + '\s*='
+    $line = Select-String -LiteralPath $Path -Pattern $pattern | Select-Object -First 1
+    if (-not $line) {
+        if ($Required) { Fail "required variable $Name not found in $Path" }
+        return $null
+    }
+
+    return (($line.Line -split '=', 2)[1]).Trim().Trim('"').Trim("'")
+}
+
+function Set-ProcessEnvFromFile {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Name,
+        [switch] $Required
+    )
+
+    $value = Get-EnvFileValue -Path $Path -Name $Name -Required:$Required
+    if ($value) {
+        [Environment]::SetEnvironmentVariable($Name, $value, 'Process')
+        return $true
+    }
+    return $false
+}
+
 Push-Location $dashboardDir
 try {
     # ---- Everything that can fail happens before pm2 is touched -------------
@@ -77,16 +114,54 @@ try {
 
     # ---- Only now do we touch the running service --------------------------
 
-    Step "Restarting pm2 app '$Pm2App'"
-    $restartsBefore = $null
-    $desc = pm2 describe $Pm2App 2>$null
-    if ($desc) {
-        $m = ($desc | Select-String -Pattern 'restarts\s+.\s+(\d+)').Matches
-        if ($m.Count -gt 0) { $restartsBefore = [int]$m[0].Groups[1].Value }
+    Step "Loading dashboard runtime env from .env.local"
+    $dashboardEnv = Join-Path $dashboardDir '.env.local'
+    $loadedRuntimeNames = @()
+    if (Set-ProcessEnvFromFile -Path $dashboardEnv -Name 'ENGINE_API_KEY' -Required) {
+        $loadedRuntimeNames += 'ENGINE_API_KEY'
     }
+    foreach ($name in @(
+        'NEXT_PUBLIC_ENGINE_API_KEY',
+        'MASTER_API_KEY',
+        'ENGINE_INTERNAL_URL',
+        'NEXT_PUBLIC_MASTER_API_URL'
+    )) {
+        if (Set-ProcessEnvFromFile -Path $dashboardEnv -Name $name) {
+            $loadedRuntimeNames += $name
+        }
+    }
+    Write-Host ("Loaded runtime names for pm2 --update-env: {0} (values redacted)" -f ($loadedRuntimeNames -join ', ')) -ForegroundColor Green
 
-    pm2 restart $Pm2App
+    Step "Restarting pm2 app '$Pm2App'"
+    pm2 restart $Pm2App --update-env
     if ($LASTEXITCODE -ne 0) { Fail "pm2 restart failed (exit $LASTEXITCODE) -- service may be down, check 'pm2 list'" }
+
+    $pm2StatusSummary = 'not captured'
+    Step "Capturing sanitized PM2 status for '$Pm2App'"
+    $pm2SafeStatusScript = Join-Path $env:USERPROFILE 'scripts\pm2-safe-status.ps1'
+    if (Test-Path -LiteralPath $pm2SafeStatusScript) {
+        try {
+            $pm2StatusRaw = & $pm2SafeStatusScript -Name $Pm2App -JlistTimeoutMs 8000
+            $pm2StatusRows = @($pm2StatusRaw | ConvertFrom-Json)
+            $pm2Status = $pm2StatusRows | Select-Object -First 1
+            if ($pm2Status) {
+                $pm2Source = if ($pm2Status.source) { $pm2Status.source } else { 'unknown' }
+                $pm2Degraded = if ($null -ne $pm2Status.degraded) { [bool]$pm2Status.degraded } else { $false }
+                $pm2StatusSummary = "status=$($pm2Status.status), pid=$($pm2Status.pid), restarts=$($pm2Status.restarts), source=$pm2Source, degraded=$pm2Degraded"
+                Write-Host "PM2 status OK: $pm2StatusSummary" -ForegroundColor Green
+            } else {
+                $pm2StatusSummary = 'empty sanitized status response'
+                Write-Host "WARNING: $pm2StatusSummary" -ForegroundColor Yellow
+            }
+        }
+        catch {
+            $pm2StatusSummary = "status capture failed: $($_.Exception.Message)"
+            Write-Host "WARNING: $pm2StatusSummary" -ForegroundColor Yellow
+        }
+    } else {
+        $pm2StatusSummary = "safe-status script not found at $pm2SafeStatusScript"
+        Write-Host "WARNING: $pm2StatusSummary" -ForegroundColor Yellow
+    }
 
     # ---- Verify by observation, not by exit code ---------------------------
 
@@ -128,18 +203,37 @@ try {
     }
     Write-Host "All $($assets.Count) referenced assets returned 200" -ForegroundColor Green
 
-    Step "Persisting pm2 process list"
-    pm2 save
-    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: pm2 save failed (exit $LASTEXITCODE); deploy itself is fine." -ForegroundColor Yellow }
+    Step "Verifying broker endpoint stale-code contract"
+    try {
+        $broker = Invoke-RestMethod -Uri "$baseUrl/api/engine/brokers/positions" -UseBasicParsing -TimeoutSec 20
+    }
+    catch {
+        Fail "dashboard proxy could not reach /api/engine/brokers/positions after restart: $($_.Exception.Message)"
+    }
+
+    if (-not $broker.schwab -or -not $broker.schwab.status) {
+        Fail "broker endpoint response is missing schwab.status -- likely stale engine/dashboard contract"
+    }
+    if ($broker.schwab.status -eq 'disabled_by_policy') {
+        $types = @($broker.reconciliation.discrepancies | ForEach-Object { $_.type } | Sort-Object -Unique)
+        if ($types -contains 'paper_only') {
+            Fail "stale broker reconciliation contract: Schwab is disabled_by_policy but equity discrepancies still include paper_only"
+        }
+        if (-not ($types -contains 'paper_unverified')) {
+            Fail "stale broker reconciliation contract: Schwab is disabled_by_policy but paper_unverified discrepancies are absent"
+        }
+    }
+    Write-Host ("Broker contract OK: schwab.status={0}, reconciliation.health={1}" -f $broker.schwab.status, $broker.reconciliation.health) -ForegroundColor Green
+
+    Write-Host "Skipping pm2 save by design; PM2 dump files can persist process env values." -ForegroundColor Yellow
 
     Write-Host ""
     Write-Host "DEPLOY OK" -ForegroundColor Green
     Write-Host "  BUILD_ID : $previousBuildId -> $newBuildId" -ForegroundColor Gray
     Write-Host "  URL      : $baseUrl" -ForegroundColor Gray
     Write-Host "  Assets   : $($assets.Count)/$($assets.Count) resolved" -ForegroundColor Gray
-    if ($null -ne $restartsBefore) {
-        Write-Host "  pm2 restarts before this deploy: $restartsBefore" -ForegroundColor Gray
-    }
+    Write-Host "  Broker   : stale-code contract verified" -ForegroundColor Gray
+    Write-Host "  PM2      : $pm2StatusSummary" -ForegroundColor Gray
 }
 finally {
     Pop-Location
