@@ -25,8 +25,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
-
 engine_root = Path(__file__).parent.parent
 if str(engine_root) not in sys.path:
     sys.path.insert(0, str(engine_root))
