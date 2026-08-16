@@ -1,96 +1,123 @@
-"""
-Regression tests for the 2026-07-30 port_guardian crash-loop fix.
+"""Regression tests for port_guardian ownership-aware orphan handling."""
 
-Root cause: _looks_like_orphan_uvicorn() matches on process name only
-("python"/"uvicorn"), so it can't distinguish a genuinely abandoned orphan
-(the 2026-04-14 case this script was built for) from the CURRENT live-serving
-engine that PM2 just decided to restart for an unrelated reason. Before this
-fix, main() killed any name-matching port holder unconditionally, which
-produced a daisy-chain: each freshly spawned guardian killed its own
-just-booted, healthy predecessor, restarted, and was killed by the next spawn
-— observed as an "orphan-kill" restart-loop climbing ~145 restarts/hour with
-no external crash involved. These tests pin the two required behaviors: skip
-the kill when /health says the holder is alive, still kill when it doesn't.
-"""
+from __future__ import annotations
+
+import http.client
+import sys
+import types
 
 from scripts import port_guardian
 
 
-class TestSkipsKillingHealthyOrphan:
-    def test_refuses_to_kill_and_returns_3_when_health_check_passes(self, monkeypatch):
-        killed = {"called": False}
+def _base_main_mocks(monkeypatch, holders=None, command_line="python scripts/port_guardian.py"):
+    monkeypatch.setattr(port_guardian, "_check_venv_python", lambda: None)
+    monkeypatch.setattr(port_guardian, "_port_holders", lambda port: list(holders or [4242]))
+    monkeypatch.setattr(port_guardian, "_process_name", lambda pid: "python")
+    monkeypatch.setattr(port_guardian, "_process_command_line", lambda pid: command_line)
+    monkeypatch.setattr(port_guardian, "_record_restart_event", lambda *a, **k: None)
+    monkeypatch.setattr(port_guardian.time, "sleep", lambda seconds: None)
 
-        monkeypatch.setattr(port_guardian, "_check_venv_python", lambda: None)
-        monkeypatch.setattr(port_guardian, "_port_holders", lambda port: [4242])
-        monkeypatch.setattr(port_guardian, "_process_name", lambda pid: "python")
-        monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: True)
 
-        def _kill(pid):
-            killed["called"] = True
-            return True
+def test_healthy_managed_predecessor_is_not_killed(monkeypatch):
+    _base_main_mocks(monkeypatch)
+    monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: True)
 
-        monkeypatch.setattr(port_guardian, "_kill_pid", _kill)
-        monkeypatch.setattr(port_guardian.time, "sleep", lambda s: None)
+    killed = []
+    monkeypatch.setattr(port_guardian, "_kill_pid", lambda pid: killed.append(pid) or True)
 
-        events = []
-        monkeypatch.setattr(
-            port_guardian,
-            "_record_restart_event",
-            lambda reason, details, log_path: events.append((reason, details)),
-        )
+    assert port_guardian.main() == 3
+    assert killed == []
 
-        rc = port_guardian.main()
 
-        assert rc == 3
-        assert killed["called"] is False, "a healthy port holder must never be killed"
-        assert events == [("healthy-orphan-skip", {"pid": 4242, "name": "python", "port": port_guardian.PORT})]
+def test_healthy_direct_uvicorn_remains_takeover_candidate(monkeypatch):
+    _base_main_mocks(monkeypatch, command_line="python -m uvicorn main:app --port 8010")
+    monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: True)
 
-    def test_still_kills_when_orphan_is_not_healthy(self, monkeypatch):
-        killed = {"called": False}
+    killed = []
+    monkeypatch.setattr(port_guardian, "_kill_pid", lambda pid: killed.append(pid) or True)
+    monkeypatch.setattr(port_guardian, "_wait_port_free", lambda port, timeout=None: False)
 
-        monkeypatch.setattr(port_guardian, "_check_venv_python", lambda: None)
-        monkeypatch.setattr(port_guardian, "_port_holders", lambda port: [4242])
-        monkeypatch.setattr(port_guardian, "_process_name", lambda pid: "python")
-        monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: False)
+    assert port_guardian.main() == 2
+    assert killed == [4242]
 
-        def _kill(pid):
-            killed["called"] = True
-            return True
 
-        monkeypatch.setattr(port_guardian, "_kill_pid", _kill)
-        # Short-circuit before the uvicorn launch (out of scope for this unit test) by
-        # reporting the port never actually released -- main() returns 2 immediately
-        # after the kill attempt without importing/running uvicorn.
-        monkeypatch.setattr(port_guardian, "_wait_port_free", lambda port, timeout=None: False)
-        monkeypatch.setattr(port_guardian, "_record_restart_event", lambda *a, **k: None)
+def test_transient_health_timeout_is_retried_before_kill(monkeypatch):
+    _base_main_mocks(monkeypatch)
+    responses = iter([False, True, True])
+    monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: next(responses))
 
-        rc = port_guardian.main()
+    killed = []
+    monkeypatch.setattr(port_guardian, "_kill_pid", lambda pid: killed.append(pid) or True)
 
-        assert killed["called"] is True, "a genuinely unhealthy orphan must still be killed"
-        assert rc == 2
+    assert port_guardian.main() == 3
+    assert killed == []
 
-    def test_health_check_is_probed_before_any_kill_attempt(self, monkeypatch):
-        # Order matters: _is_healthy must be consulted before _kill_pid is ever
-        # invoked, not just before deciding what to do on kill failure.
-        call_order = []
 
-        monkeypatch.setattr(port_guardian, "_check_venv_python", lambda: None)
-        monkeypatch.setattr(port_guardian, "_port_holders", lambda port: [4242])
-        monkeypatch.setattr(port_guardian, "_process_name", lambda pid: "uvicorn")
+def test_malformed_http_reply_is_unhealthy(monkeypatch):
+    def malformed(*args, **kwargs):
+        raise http.client.BadStatusLine("not-http")
 
-        def _is_healthy(port):
-            call_order.append("is_healthy")
-            return True
+    monkeypatch.setattr(port_guardian.urllib.request, "urlopen", malformed)
 
-        def _kill(pid):
-            call_order.append("kill_pid")
-            return True
+    assert port_guardian._is_healthy(port_guardian.PORT) is False
 
-        monkeypatch.setattr(port_guardian, "_is_healthy", _is_healthy)
-        monkeypatch.setattr(port_guardian, "_kill_pid", _kill)
-        monkeypatch.setattr(port_guardian.time, "sleep", lambda s: None)
-        monkeypatch.setattr(port_guardian, "_record_restart_event", lambda *a, **k: None)
 
-        port_guardian.main()
+def test_port_released_during_backoff_continues_startup(monkeypatch):
+    calls = iter([[4242], []])
+    _base_main_mocks(monkeypatch)
+    monkeypatch.setattr(port_guardian, "_port_holders", lambda port: next(calls))
+    monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: True)
+    monkeypatch.setattr(port_guardian, "_wait_port_free", lambda port, timeout=None: True)
+    monkeypatch.setattr(port_guardian, "_start_readiness_watchdog", lambda: None)
 
-        assert call_order == ["is_healthy"], "kill_pid must not run once health check short-circuits"
+    run_calls = []
+    monkeypatch.setitem(
+        sys.modules,
+        "uvicorn",
+        types.SimpleNamespace(run=lambda *args, **kwargs: run_calls.append((args, kwargs))),
+    )
+
+    assert port_guardian.main() == 0
+    assert len(run_calls) == 1
+
+
+def test_multiple_holders_are_all_inspected_and_fail_closed(monkeypatch):
+    _base_main_mocks(monkeypatch, holders=[4242, 4343])
+    inspected = []
+    monkeypatch.setattr(
+        port_guardian,
+        "_process_command_line",
+        lambda pid: inspected.append(pid) or f"python scripts/port_guardian.py --pid {pid}",
+    )
+
+    killed = []
+    monkeypatch.setattr(port_guardian, "_kill_pid", lambda pid: killed.append(pid) or True)
+
+    assert port_guardian.main() == 1
+    assert inspected == [4242, 4343]
+    assert killed == []
+
+
+def test_holder_change_after_backoff_fails_closed(monkeypatch):
+    calls = iter([[4242], [4343]])
+    _base_main_mocks(monkeypatch)
+    monkeypatch.setattr(port_guardian, "_port_holders", lambda port: next(calls))
+    monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: True)
+
+    killed = []
+    monkeypatch.setattr(port_guardian, "_kill_pid", lambda pid: killed.append(pid) or True)
+
+    assert port_guardian.main() == 1
+    assert killed == []
+
+
+def test_unhealthy_orphan_is_still_killed(monkeypatch):
+    _base_main_mocks(monkeypatch)
+    monkeypatch.setattr(port_guardian, "_is_healthy", lambda port: False)
+
+    killed = []
+    monkeypatch.setattr(port_guardian, "_kill_pid", lambda pid: killed.append(pid) or True)
+    monkeypatch.setattr(port_guardian, "_wait_port_free", lambda port, timeout=None: False)
+
+    assert port_guardian.main() == 2
+    assert killed == [4242]
