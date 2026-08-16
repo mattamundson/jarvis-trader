@@ -19,9 +19,9 @@ from routers import health_router
 @pytest.fixture(autouse=True)
 def _reset_snapshot():
     """Clear the snapshot cache so cross-test state doesn't leak."""
-    health_router._health_snapshot.update(computed_at=0.0, payload=None)
+    health_router._health_snapshot.update(computed_at=0.0, payload=None, timeout_until=0.0)
     yield
-    health_router._health_snapshot.update(computed_at=0.0, payload=None)
+    health_router._health_snapshot.update(computed_at=0.0, payload=None, timeout_until=0.0)
 
 
 def _install_counting_inner(monkeypatch, delay: float = 0.05):
@@ -107,3 +107,70 @@ def test_stale_snapshot_triggers_recompute(monkeypatch):
 
     asyncio.run(_run())
     assert calls["n"] == 2
+
+
+def test_timeout_returns_degraded_minimal_payload(monkeypatch):
+    """A wedged health dependency must not make /health hang indefinitely."""
+    monkeypatch.setattr(health_router, "_HEALTH_SNAPSHOT_TTL_SEC", 1.0)
+    monkeypatch.setattr(health_router, "_HEALTH_RECOMPUTE_TIMEOUT_SEC", 0.01)
+    monkeypatch.setattr(health_router, "_HEALTH_TIMEOUT_BACKOFF_SEC", 5.0)
+
+    calls = {"n": 0}
+
+    async def _hung_inner() -> dict:
+        calls["n"] += 1
+        await asyncio.sleep(10)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(health_router, "_health_inner", _hung_inner)
+
+    result = asyncio.run(health_router._health_cached())
+
+    assert calls["n"] == 1
+    assert result["status"] == "degraded"
+    assert result["version"] == "1.1.0"
+    assert result["health_timeout"]["reason"] == "recompute_timeout"
+    assert result["health_timeout"]["served_stale_snapshot"] is False
+
+
+def test_timeout_serves_stale_snapshot_and_backs_off_recompute(monkeypatch):
+    """After a timeout, repeated pollers get the degraded snapshot, not a new stall."""
+    monkeypatch.setattr(health_router, "_HEALTH_SNAPSHOT_TTL_SEC", 1.0)
+    monkeypatch.setattr(health_router, "_HEALTH_RECOMPUTE_TIMEOUT_SEC", 0.01)
+    monkeypatch.setattr(health_router, "_HEALTH_TIMEOUT_BACKOFF_SEC", 5.0)
+    health_router._health_snapshot.update(
+        computed_at=0.0,
+        payload={
+            "status": "ok",
+            "version": "1.1.0",
+            "timestamp": "stale",
+            "live_trading": False,
+            "kill_switch_active": False,
+            "paper_mode": True,
+            "database": "connected",
+            "compute_id": 1,
+        },
+        timeout_until=0.0,
+    )
+
+    calls = {"n": 0}
+
+    async def _hung_inner() -> dict:
+        calls["n"] += 1
+        await asyncio.sleep(10)
+        return {"status": "ok", "compute_id": 2}
+
+    monkeypatch.setattr(health_router, "_health_inner", _hung_inner)
+
+    async def _run():
+        first = await health_router._health_cached()
+        second = await health_router._health_cached()
+        return first, second
+
+    first, second = asyncio.run(_run())
+
+    assert calls["n"] == 1
+    assert first is second
+    assert first["status"] == "degraded"
+    assert first["compute_id"] == 1
+    assert first["health_timeout"]["served_stale_snapshot"] is True

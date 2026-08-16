@@ -142,6 +142,62 @@ async def test_beat_swallows_snapshot_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_repeated_probe_failure_is_audible_not_buried(monkeypatch, caplog):
+    """2026-08-15 incident: this was the ONE component honestly detecting a
+    wedged Gateway, and it logged the reason at DEBUG -- invisible at the
+    default log level. The first failure and every 5th thereafter must reach
+    WARNING; the in-between ones may stay at DEBUG so an extended outage
+    doesn't flood the log every heartbeat interval."""
+    _force_market_hours(monkeypatch, True)
+
+    async def _boom(symbol, is_futures):
+        raise TimeoutError("ib slow")
+
+    ibkr = SimpleNamespace(is_connected=True, get_snapshot_price=_boom)
+    dm = SimpleNamespace(ibkr=ibkr, _record_ibkr_freshness=lambda: None,
+                         _last_ibkr_data_ts=None)
+    hb = IBFreshnessHeartbeat(dm)
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="services.ib_freshness_heartbeat"):
+        for _ in range(6):
+            await hb._beat()
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    # Failure 1 and failure 5 are audible; 2-4 and 6 are not (still DEBUG).
+    assert len(warnings) == 2
+    assert "1 consecutive" in warnings[0].message
+    assert "5 consecutive" in warnings[1].message
+    assert hb._consecutive_probe_failures == 6
+
+
+@pytest.mark.asyncio
+async def test_probe_failure_counter_resets_on_recovery(monkeypatch):
+    """A recovered probe must reset the streak, so a later isolated blip
+    doesn't inherit a stale count and mis-report as '(6 consecutive)'."""
+    _force_market_hours(monkeypatch, True)
+
+    calls = {"n": 0}
+
+    async def _flaky(symbol, is_futures):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise TimeoutError("ib slow")
+        return {"last_price": 7500.0}
+
+    ibkr = SimpleNamespace(is_connected=True, get_snapshot_price=_flaky)
+    dm = SimpleNamespace(ibkr=ibkr, _record_ibkr_freshness=lambda: None,
+                         _last_ibkr_data_ts=None)
+    hb = IBFreshnessHeartbeat(dm)
+
+    await hb._beat()  # fail 1
+    await hb._beat()  # fail 2
+    await hb._beat()  # recovers
+    assert hb._consecutive_probe_failures == 0
+
+
+@pytest.mark.asyncio
 async def test_disabled_flag_suppresses_start(monkeypatch):
     monkeypatch.setenv("IBKR_HEARTBEAT_ENABLED", "0")
     dm, _ = _dm()

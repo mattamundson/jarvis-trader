@@ -118,8 +118,50 @@ _ibgw_health_cache: dict = {"checked_at": 0.0, "alive": False, "port": None}
 # always live (cold cache), so port_guardian readiness stays truthful.
 # ---------------------------------------------------------------------------
 _HEALTH_SNAPSHOT_TTL_SEC = float(os.getenv("HEALTH_SNAPSHOT_TTL_SEC", "1.0"))
-_health_snapshot: dict = {"computed_at": 0.0, "payload": None}
+_HEALTH_RECOMPUTE_TIMEOUT_SEC = float(os.getenv("HEALTH_RECOMPUTE_TIMEOUT_SEC", "6.0"))
+_HEALTH_TIMEOUT_BACKOFF_SEC = float(os.getenv("HEALTH_TIMEOUT_BACKOFF_SEC", "15.0"))
+_health_snapshot: dict = {"computed_at": 0.0, "payload": None, "timeout_until": 0.0}
 _health_refresh_lock = asyncio.Lock()
+
+
+def _health_timeout_payload(stale_payload: dict | None, *, timeout_s: float) -> dict:
+    """Return a bounded degraded /health payload when the live recompute stalls.
+
+    The key invariant: /health is a liveness endpoint and must not become an
+    unbounded dependency fan-out. If the detailed recompute exceeds its budget,
+    serve the last snapshot if one exists, but force the top-level status to
+    degraded and attach timeout metadata. With no prior snapshot, return a
+    minimal schema-valid degraded payload.
+    """
+    now = datetime.now(timezone.utc)
+    payload = dict(stale_payload or {})
+    live_trading = bool(getattr(settings, "LIVE_TRADING_ENABLED", False))
+
+    kill_switch_active = bool(payload.get("kill_switch_active", False))
+    if not stale_payload:
+        try:
+            safety = safety_layer.get_status() if safety_layer else {}
+            kill_switch_active = bool(safety.get("is_killed", False))
+        except Exception:
+            kill_switch_active = False
+
+    payload.update(
+        {
+            "status": "degraded",
+            "version": payload.get("version", "1.1.0"),
+            "timestamp": now.isoformat(),
+            "live_trading": live_trading,
+            "kill_switch_active": kill_switch_active,
+            "paper_mode": not live_trading,
+            "database": payload.get("database", "unknown"),
+            "health_timeout": {
+                "reason": "recompute_timeout",
+                "timeout_sec": timeout_s,
+                "served_stale_snapshot": stale_payload is not None,
+            },
+        }
+    )
+    return payload
 
 
 async def _health_cached() -> dict:
@@ -130,10 +172,16 @@ async def _health_cached() -> dict:
     each triggering their own blocking DB pass. TTL<=0 always recomputes.
     """
     if _HEALTH_SNAPSHOT_TTL_SEC <= 0:
-        return await _health_inner()
+        try:
+            return await asyncio.wait_for(_health_inner(), timeout=_HEALTH_RECOMPUTE_TIMEOUT_SEC)
+        except asyncio.TimeoutError:
+            return _health_timeout_payload(None, timeout_s=_HEALTH_RECOMPUTE_TIMEOUT_SEC)
 
     now = time.monotonic()
     payload = _health_snapshot["payload"]
+    timeout_until = float(_health_snapshot.get("timeout_until", 0.0) or 0.0)
+    if payload is not None and now < timeout_until:
+        return payload
     if payload is not None and (now - _health_snapshot["computed_at"]) < _HEALTH_SNAPSHOT_TTL_SEC:
         return payload
 
@@ -141,11 +189,28 @@ async def _health_cached() -> dict:
         # Double-check: a peer coroutine may have refreshed while we waited.
         now2 = time.monotonic()
         payload = _health_snapshot["payload"]
+        timeout_until = float(_health_snapshot.get("timeout_until", 0.0) or 0.0)
+        if payload is not None and now2 < timeout_until:
+            return payload
         if payload is not None and (now2 - _health_snapshot["computed_at"]) < _HEALTH_SNAPSHOT_TTL_SEC:
             return payload
-        fresh = await _health_inner()
+        try:
+            fresh = await asyncio.wait_for(
+                _health_inner(), timeout=_HEALTH_RECOMPUTE_TIMEOUT_SEC
+            )
+        except asyncio.TimeoutError:
+            fallback = _health_timeout_payload(
+                payload, timeout_s=_HEALTH_RECOMPUTE_TIMEOUT_SEC
+            )
+            computed_at = time.monotonic()
+            _health_snapshot["payload"] = fallback
+            _health_snapshot["computed_at"] = computed_at
+            _health_snapshot["timeout_until"] = computed_at + _HEALTH_TIMEOUT_BACKOFF_SEC
+            return fallback
+
         _health_snapshot["payload"] = fresh
         _health_snapshot["computed_at"] = time.monotonic()
+        _health_snapshot["timeout_until"] = 0.0
         return fresh
 
 
@@ -631,6 +696,23 @@ async def _get_ib_gateway_health() -> dict:
         health.setdefault("source", "execution_connector")
     elif data_ib is not None and ib_gw is data_ib:
         health.setdefault("source", "market_data_connector")
+
+    # Data-leg round-trip verification, independent of which connector `ib_gw`
+    # resolved to above -- the shallow `_ib_is_connected()` flag stays True
+    # through a wedge (socket open, API dead), which is exactly what let
+    # `ibkr_data_connected` report true for hours during the 2026-08-15
+    # incident. `data_ib.health_check()` now does a bounded round-trip probe
+    # (`data/market_data.py`); consult it here instead of trusting the shallow
+    # flag alone. Bounded + best-effort: any failure here silently keeps the
+    # pre-existing shallow signal rather than 500ing /health. Only probes when
+    # the shallow flag is already True — no wedge to detect otherwise.
+    if data_connected and data_ib is not None and hasattr(data_ib, "health_check"):
+        try:
+            data_probe = await asyncio.wait_for(data_ib.health_check(), timeout=3.0)
+            if "connected" in data_probe:
+                data_connected = bool(data_probe["connected"])
+        except Exception:
+            pass
 
     health["execution_connected"] = execution_connected
     health["data_connected"] = data_connected
