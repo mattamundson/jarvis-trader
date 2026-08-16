@@ -129,6 +129,36 @@ async def _send(message: str, phone: str = _PHONE_TO) -> bool:
     return await loop.run_in_executor(None, _send_sync, message, phone)
 
 
+def _fire_and_log(coro, context: str) -> asyncio.Task:
+    """Fire-and-forget a coroutine without silently losing a failure.
+
+    Discord dispatch is fire-and-forget by design (must never block the
+    caller), but a bare `asyncio.ensure_future(coro)` drops any exception
+    the task raises — it only surfaces as an unretrieved-task warning at
+    garbage-collection time, with no indication of which trade/alert it
+    was for. Since Discord alerts are now the primary post-trade visibility
+    layer (REQUIRE_HUMAN_APPROVAL disabled 2026-08-11), a lost failure here
+    means a real autonomous trade can go completely unrecorded in the
+    human-visible alert channel. This wrapper attaches a done-callback that
+    logs the exception (with the identifying context) via the module logger
+    instead of letting it vanish.
+    """
+    task = asyncio.ensure_future(coro)
+
+    def _log_if_failed(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.error(
+                "OpenClaw Discord dispatch failed (%s): %s", context, exc,
+                exc_info=exc,
+            )
+
+    task.add_done_callback(_log_if_failed)
+    return task
+
+
 async def send_raw(message: str, phone: str = _PHONE_TO) -> bool:
     """Send a raw message string directly via OpenClaw WhatsApp. No cooldown."""
     return await _send(message, phone)
@@ -185,10 +215,11 @@ async def notify_signal(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
-    asyncio.ensure_future(
+    _fire_and_log(
         _discord.discord_signal(
             symbol=symbol, action=action, confidence=confidence, reason=reason
-        )
+        ),
+        context=f"discord_signal symbol={symbol} action={action}",
     )
     return sent
 
@@ -223,8 +254,9 @@ async def notify_kill_switch(
         + "\nAll trading halted. Deactivate at localhost:3010"
     )
     result = await _send(msg)
-    asyncio.ensure_future(
-        _discord.discord_kill_switch(reason=reason, message=message)
+    _fire_and_log(
+        _discord.discord_kill_switch(reason=reason, message=message),
+        context=f"discord_kill_switch reason={reason}",
     )
     return result
 
@@ -270,10 +302,11 @@ async def notify_approval_required(
         f"Approve at localhost:3010/trades/pending-approvals"
     )
     result = await _send(msg)
-    asyncio.ensure_future(
+    _fire_and_log(
         _discord.discord_approval_required(
             symbol=symbol, action=action, confidence=0.0,
-        )
+        ),
+        context=f"discord_approval_required symbol={symbol} action={action}",
     )
     return result
 
@@ -324,10 +357,11 @@ async def notify_trade_closed(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
-    asyncio.ensure_future(
+    _fire_and_log(
         _discord.discord_trade_closed(
             symbol=symbol, action=action, pnl=pnl
-        )
+        ),
+        context=f"discord_trade_closed symbol={symbol} action={action} pnl={pnl}",
     )
     return sent
 
@@ -366,13 +400,14 @@ async def notify_trade_opened(
     lines.append(f"({source}, paper)")
     msg = "\n".join(lines)
     sent = await _send(msg)
-    asyncio.ensure_future(
+    _fire_and_log(
         _discord.discord_trade_opened(
             symbol=symbol,
             action=action,
             quantity=float(quantity) if quantity else 1.0,
             entry_price=float(entry_price),
-        )
+        ),
+        context=f"discord_trade_opened symbol={symbol} action={action} entry_price={entry_price}",
     )
     return sent
 
@@ -417,8 +452,9 @@ async def notify_target(
     sent = await _send(msg)
     if sent:
         _mark_sent(cooldown_key)
-    asyncio.ensure_future(
-        _discord.discord_target(market=market, pnl=pnl, target=target)
+    _fire_and_log(
+        _discord.discord_target(market=market, pnl=pnl, target=target),
+        context=f"discord_target market={market} pnl={pnl} target={target}",
     )
     return sent
 
@@ -449,8 +485,9 @@ async def notify_ib_disconnect(last_connected_at: str = "") -> bool:
         f"Restart IB Gateway and reconnect."
     )
     result = await _send(msg)
-    asyncio.ensure_future(
-        _discord.discord_ib_disconnect(last_connected_at=last_connected_at)
+    _fire_and_log(
+        _discord.discord_ib_disconnect(last_connected_at=last_connected_at),
+        context=f"discord_ib_disconnect last_connected_at={last_connected_at}",
     )
     return result
 
@@ -468,8 +505,9 @@ async def notify_kill_switch_cleared(*, authorized_by: str = "") -> bool:
         f"Review positions before new entries."
     )
     result = await _send(msg)
-    asyncio.ensure_future(
-        _discord.discord_kill_switch_deactivated()
+    _fire_and_log(
+        _discord.discord_kill_switch_deactivated(),
+        context=f"discord_kill_switch_deactivated(cleared) authorized_by={authorized_by}",
     )
     return result
 
@@ -496,8 +534,9 @@ async def notify_kill_switch_deactivated(
         f"Review positions before new entries."
     )
     result = await _send(msg)
-    asyncio.ensure_future(
-        _discord.discord_kill_switch_deactivated()
+    _fire_and_log(
+        _discord.discord_kill_switch_deactivated(),
+        context=f"discord_kill_switch_deactivated authorized_by={authorized_by}",
     )
     return result
 
@@ -582,10 +621,11 @@ async def notify_regime_change(symbol: str, old_regime: str, new_regime: str) ->
     ts = _ct_time()
     msg = f"JARVIS Regime Alert\n" f"{symbol}: {old_regime} → {new_regime}\n" f"Time: {ts} CT"
     result = await _send(msg)
-    asyncio.ensure_future(
+    _fire_and_log(
         _discord.discord_regime_change(
             symbol=symbol, old_regime=old_regime, new_regime=new_regime
-        )
+        ),
+        context=f"discord_regime_change symbol={symbol} {old_regime}->{new_regime}",
     )
     return result
 
