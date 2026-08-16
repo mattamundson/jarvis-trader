@@ -43,6 +43,7 @@ import {
 import { INSTRUMENTS, WFE_ROWS } from "./constants";
 import { SignalFeedWidget } from "@/components/SignalFeedWidget";
 import LiveTradeReasoningWidget from "@/components/LiveTradeReasoningWidget";
+import { DecisionLogWidget } from "@/components/DecisionLogWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
@@ -95,6 +96,9 @@ interface SafetyData {
   orders_last_minute: number;
   consecutive_losses?: number;
   kill_switch_active?: boolean;
+  daily_limit_pct?: number;
+  drawdown_limit_pct?: number;
+  orders_per_minute_limit?: number;
 }
 
 interface Position {
@@ -534,16 +538,28 @@ export default function CommandCenterPage() {
     portfolio?.total_equity && portfolio.total_equity > 0
       ? (portfolio.daily_pnl / portfolio.total_equity) * 100
       : 0;
+  // Live limits from /safety/status (engine/config.py MAX_DAILY_LOSS_PCT /
+  // MAX_DRAWDOWN_PCT / MAX_ORDERS_PER_MINUTE). Fallbacks only cover a missing
+  // field (older engine build); the orders fallback matches the real config
+  // default (10), not the previously-hardcoded-wrong value (40).
+  const dailyLimitPctAbs =
+    safety?.daily_limit_pct != null ? Math.abs(safety.daily_limit_pct) * 100 : 2;
+  const drawdownLimitPctAbs =
+    safety?.drawdown_limit_pct != null ? Math.abs(safety.drawdown_limit_pct) * 100 : 10;
+  const ordersLimit = safety?.orders_per_minute_limit ?? 10;
   const dailyLossProgress = Math.min(
-    (Math.abs(Math.min(dailyPnlPct, 0)) / 2) * 100,
+    (Math.abs(Math.min(dailyPnlPct, 0)) / dailyLimitPctAbs) * 100,
     100
   );
   const drawdownPct = safety?.drawdown_pct ?? 0;
-  const drawdownProgress = Math.min((Math.abs(drawdownPct) / 10) * 100, 100);
+  const drawdownProgress = Math.min(
+    (Math.abs(drawdownPct) / drawdownLimitPctAbs) * 100,
+    100
+  );
   const consecutiveLosses = safety?.consecutive_losses ?? 0;
   const consecutiveLossProgress = Math.min((consecutiveLosses / 7) * 100, 100);
   const ordersPerMin = safety?.orders_last_minute ?? 0;
-  const ordersProgress = Math.min((ordersPerMin / 40) * 100, 100);
+  const ordersProgress = Math.min((ordersPerMin / ordersLimit) * 100, 100);
 
   const handleKillSwitch = useCallback(async () => {
     const activating = !killSwitchActive;
@@ -694,6 +710,17 @@ export default function CommandCenterPage() {
       <div className="mb-4">
         <WidgetErrorBoundary name="Pipeline Reasoning">
           <LiveTradeReasoningWidget />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          DECISION LOG — every pipeline verdict, including WAIT/HOLD/NO_ENTRY.
+          Pipeline Reasoning above covers trades that fired; this covers the
+          "why didn't we trade" case that had no dashboard home before.
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Decision Log">
+          <DecisionLogWidget />
         </WidgetErrorBoundary>
       </div>
 
@@ -860,7 +887,7 @@ export default function CommandCenterPage() {
               <span
                 className={`font-mono text-xs ${dailyPnlPct < -1 ? "text-red-400" : "text-green-400"}`}
               >
-                {fmtPct(dailyPnlPct)} / -2%
+                {fmtPct(dailyPnlPct)} / -{dailyLimitPctAbs.toFixed(0)}%
               </span>
             </div>
             <div className="flex justify-between items-baseline">
@@ -868,7 +895,7 @@ export default function CommandCenterPage() {
               <span
                 className={`font-mono text-xs ${drawdownPct < -5 ? "text-red-400" : "text-yellow-400"}`}
               >
-                {fmtPct(drawdownPct)} / -10%
+                {fmtPct(drawdownPct)} / -{drawdownLimitPctAbs.toFixed(0)}%
               </span>
             </div>
             <div className="flex justify-between items-baseline">
@@ -969,7 +996,7 @@ export default function CommandCenterPage() {
                 <span
                   className={dailyPnlPct < -1 ? "text-red-400" : "text-green-400"}
                 >
-                  {fmtPct(dailyPnlPct)} / -2.00%
+                  {fmtPct(dailyPnlPct)} / -{dailyLimitPctAbs.toFixed(2)}%
                 </span>
               </div>
               <Progress
@@ -988,7 +1015,7 @@ export default function CommandCenterPage() {
                 <span
                   className={drawdownPct < -5 ? "text-red-400" : "text-yellow-400"}
                 >
-                  {fmtPct(drawdownPct)} / -10.00%
+                  {fmtPct(drawdownPct)} / -{drawdownLimitPctAbs.toFixed(2)}%
                 </span>
               </div>
               <Progress value={drawdownProgress} className="h-2.5 bg-slate-800" />
@@ -1021,7 +1048,7 @@ export default function CommandCenterPage() {
               <div className="flex justify-between text-xs font-mono mb-1.5">
                 <span className="text-slate-400">Orders / Minute</span>
                 <span className="text-slate-300">
-                  {ordersPerMin} / 40 limit
+                  {ordersPerMin} / {ordersLimit} limit
                 </span>
               </div>
               <Progress value={ordersProgress} className="h-2.5 bg-slate-800" />

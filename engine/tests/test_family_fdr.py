@@ -144,6 +144,53 @@ def test_run_on_real_verdicts_smoke():
     assert set(report["robust_edge_ids"]).issubset(set(report["gate_pass_ids"]))
 
 
+# --- P5-1: the campaign path can never certify robust_edge -----------------
+#
+# The campaign scanned by this module (every gate_v2_verdicts/*.json ever
+# produced) is a post-hoc discovery set, not a pre-registered family -- it was
+# never frozen before the data was seen, so a family-wide BH line over it
+# cannot honestly authorize anything (see module docstring). robust_edge is
+# hard-coded False here regardless of how favorable the inputs are; only the
+# pre-registered forward path (forward_test.run_forward_test, BH-FDR over
+# candidate_registry.json's active set) can certify.
+
+
+def test_campaign_path_cannot_certify_even_maximally_favorable_family(monkeypatch):
+    # Construct the best possible case for every gate: perfect p_edge, ample
+    # OOS windows, ample adequate trades, fat (non-thin) per-window trades,
+    # gate-v2 PASS. Every diagnostic would fire True -- but robust_edge must
+    # still be False on every row, and n_robust_edge must still be 0.
+    verdicts = [
+        _verdict_windows(
+            f"AAA_trend#{i}", "PASS", 1.0, 1.0, 5.0,
+            [50, 55, 48, 52, 60, 49, 51],
+        )
+        for i in range(5)
+    ]
+    monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: verdicts)
+    report = ff.run(q=0.10)
+    assert report["n_family"] == 5
+    assert report["n_gate_pass"] == 5
+    for row in report["family"]:
+        assert row["bh_significant_binom"] is True
+        assert row["sample_adequate"] is True
+        assert row["per_window_adequate"] is True
+        assert row["would_survive_binom_fdr"] is True  # the diagnostic fires
+        assert row["robust_edge"] is False  # but it can never certify
+    assert report["n_robust_edge"] == 0
+    assert report["robust_edge_ids"] == []
+
+
+def test_campaign_path_reports_zero_robust_on_current_live_campaign():
+    # Locks in today's honest state on the real (gitignored, runtime-generated)
+    # verdict directory: whatever the campaign currently contains, it reports
+    # zero robust edges -- both because that's the honest current data AND
+    # because robust_edge is now structurally incapable of being True (P5-1).
+    report = ff.run(q=0.10)
+    assert report["n_robust_edge"] == 0
+    assert report["robust_edge_ids"] == []
+
+
 # --- CPCV verdicts excluded from the sign-test family ----------------------
 
 
@@ -223,16 +270,20 @@ def test_sample_inadequate_strategy_not_robust_even_if_bh_significant(monkeypatc
     assert report["n_robust_edge"] == 0
 
 
-def test_sample_adequate_strong_strategy_can_be_robust(monkeypatch):
-    # Same significance, but 40 >= 30 OOS trades -> adequacy does not over-block.
+def test_sample_adequate_strong_strategy_would_survive_fdr_but_never_robust(monkeypatch):
+    # Same significance, but 40 >= 30 OOS trades -> adequacy does not over-block
+    # the diagnostic signal. P5-1: even so, robust_edge stays False -- the
+    # campaign path can never certify (see would_survive_binom_fdr for the
+    # pre-P5-1 "would have been robust" signal).
     v = _verdict("AAA_trend#1", "PASS", 1.0, 7, 1.0, 3.18, oos_trades=40)
     monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: [v])
     report = ff.run(q=0.10)
     row = report["family"][0]
     assert row["bh_significant_binom"] is True
     assert row["sample_adequate"] is True
-    assert row["robust_edge"] is True
-    assert report["n_robust_edge"] == 1
+    assert row["would_survive_binom_fdr"] is True
+    assert row["robust_edge"] is False
+    assert report["n_robust_edge"] == 0
 
 
 # --- append_history ledger -------------------------------------------------
@@ -350,24 +401,29 @@ def test_per_window_thin_blocks_robust(monkeypatch):
     assert report["n_robust_edge"] == 0
 
 
-def test_per_window_adequate_allows_robust(monkeypatch):
-    # Fat windows -> per-window adequate -> does not over-block a genuine edge.
+def test_per_window_adequate_allows_would_survive_but_never_robust(monkeypatch):
+    # Fat windows -> per-window adequate -> does not over-block the diagnostic
+    # signal. P5-1: robust_edge is still False -- only the pre-registered
+    # forward path (forward_test.py) can certify.
     v = _verdict_windows("MGC_singlefinder#1", "PASS", 1.0, 1.0, 1.3,
                          [40, 45, 38, 42, 50, 44, 41])
     monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: [v])
     report = ff.run(q=0.10)
     row = report["family"][0]
     assert row["per_window_adequate"] is True
-    assert row["robust_edge"] is True
-    assert report["n_robust_edge"] == 1
+    assert row["would_survive_binom_fdr"] is True
+    assert row["robust_edge"] is False
+    assert report["n_robust_edge"] == 0
 
 
-def test_per_window_absent_does_not_block(monkeypatch):
+def test_per_window_absent_does_not_block_diagnostic_but_never_robust(monkeypatch):
     # No windows[] (legacy/aggregate-only verdict) -> per_window_adequate None ->
-    # must NOT manufacture a block beyond the aggregate floor (fail-open on missing).
+    # must NOT manufacture a block beyond the aggregate floor (fail-open on
+    # missing) for the diagnostic signal. robust_edge is still False (P5-1).
     v = _verdict("AAA_trend#1", "PASS", 1.0, 7, 1.0, 3.18, oos_trades=40)
     monkeypatch.setattr(ff, "load_verdicts", lambda *a, **k: [v])
     report = ff.run(q=0.10)
     row = report["family"][0]
     assert row["per_window_adequate"] is None
-    assert row["robust_edge"] is True  # unchanged from the pre-Task-5 behavior
+    assert row["would_survive_binom_fdr"] is True
+    assert row["robust_edge"] is False  # P5-1: campaign path can never certify
