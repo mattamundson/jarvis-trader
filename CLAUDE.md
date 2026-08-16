@@ -27,7 +27,7 @@ IB Gateway port 4002, account DUR375089 (confirmed live 2026-08-10 via `IB_ACCOU
 - Engine restart: `.\restart_engine.ps1`. Never use `--reload` (causes duplicate IB connections).
 - Live IB Gateway port 4001 is permanently blocked — paper only (port 4002, account DUR375089).
 - Any change to `engine/config.py`, `engine/risk/`, or kill-switch code requires `[safety-review]` PR tag.
-- `LIVE_TRADING_ENABLED = False` and `REQUIRE_HUMAN_APPROVAL = True` are invariants. Kill switch: -8% daily P&L / -10% drawdown — the drawdown limit is the `MAX_DRAWDOWN_PCT` config field (0.10 default), which the paper phase overrides higher via `engine/.env` (that file is the source of truth for the live value). The kill-switch logic is hardcoded, no LLM route.
+- `LIVE_TRADING_ENABLED = False` is an invariant. `REQUIRE_HUMAN_APPROVAL = False` as of 2026-08-11 (standing decision — full-visibility trade alerts replace per-trade approval; see `.claude/rules/safety.md`). Kill switch: -8% daily P&L / -20% drawdown — the drawdown limit is the `MAX_DRAWDOWN_PCT` config field (0.20 default as of 2026-06-25), and `engine/.env` remains the source of truth for the live value. The kill-switch logic is hardcoded, no LLM route.
 - API auth header: `X-API-Key: <current value in `engine/.env`>` (value rotates — read at use time, do not hardcode here). Port 8010.
 
 ## Verification discipline (non-negotiable)
