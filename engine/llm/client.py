@@ -312,6 +312,14 @@ class JarvisLLMClient:
     # (not set on self in __init__) so it is shared across every instance in
     # the process: the first agent to see a 429 protects the rest of the same
     # pipeline cycle instead of each one re-tripping the identical limit.
+    #
+    # Scope limitation: this is reactive repeat-storm mitigation, not first-
+    # burst admission control. The cooldown window only arms AFTER a 429 has
+    # actually been caught, so a brand-new outage's very first concurrent
+    # burst (e.g. every analyst's simultaneous asyncio.gather call in
+    # pipeline.py's _run_analysts, before any single call has recorded a
+    # 429) still hits the provider unprotected -- only repeat storms within
+    # the same window, and across subsequent cycles, are prevented.
     _provider_degraded_until: dict[str, float] = {}
     _PROVIDER_DEGRADE_WINDOW_SECONDS = float(
         os.getenv("LLM_PROVIDER_DEGRADE_WINDOW_SECONDS", "45")
@@ -686,7 +694,13 @@ class JarvisLLMClient:
     def _is_provider_cooling_down(self, provider: str) -> bool:
         """Thundering-herd guard: True if `provider` (e.g. "gemini", "openai")
         tripped a 429 recently enough that this and every other agent's
-        concurrent cascade should skip straight past it this cycle."""
+        concurrent cascade should skip straight past it this cycle.
+
+        Reactive repeat-storm mitigation, not first-burst admission control:
+        returns False for a provider's first 429 of a fresh outage (nothing
+        has armed the cooldown yet), so that initial concurrent burst is not
+        prevented -- only the repeat storms after it are.
+        """
         return time.time() < self._provider_degraded_until.get(provider, 0.0)
 
     def _note_provider_rate_limited(self, provider: str, exc: Exception) -> None:
