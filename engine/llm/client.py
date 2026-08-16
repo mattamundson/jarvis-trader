@@ -822,8 +822,10 @@ class JarvisLLMClient:
                 proxy.set_cached(
                     compressed_key, result_obj, model=str(current_model), salt=cache_salt
                 )
-            except Exception:
-                pass  # graceful — cache write failure never breaks API call
+            except Exception as exc:
+                # graceful — cache write failure never breaks the API call, but
+                # log it so a consistently-failing proxy (disk full, perms) is visible
+                logger.debug("TokenProxy cache write failed: %s", exc)
 
         return result_obj
 

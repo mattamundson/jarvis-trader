@@ -651,6 +651,11 @@ async def _get_ib_gateway_health() -> dict:
 
     health["execution_connected"] = execution_connected
     health["data_connected"] = data_connected
+    # A2: surface broker-probe honesty. health_check() sets these; the no-
+    # health_check fallback (and a fully-disconnected broker) defaults to safe
+    # values so a disconnected paper broker does NOT read as "degraded".
+    health.setdefault("broker_probe_ok", execution_connected or data_connected)
+    health.setdefault("degraded_reason", None)
 
     # Data-leg observability — which tier is actually serving data, and the
     # auto-reconnect watchdog state, so silent degrade is visible (north-star).
@@ -908,7 +913,23 @@ async def _health_inner() -> dict:
         # liveness signal /health has. Fail open here, not closed.
         pass
 
-    status = "ok" if (db_ok and llm_path_healthy and market_data_fresh) else "degraded"
+    # A2 (branch 1353bdb): a broker that reports connected but whose RPC probes
+    # failed is "degraded", not "ok" — it must not read green with
+    # latency=null/net_liq=0. A fully-disconnected broker (no `connected` key)
+    # is the known paper-hours state and does NOT degrade /health here.
+    broker_degraded = bool(ib_health.get("connected")) and not ib_health.get(
+        "broker_probe_ok", True
+    )
+    status = (
+        "ok"
+        if (
+            db_ok
+            and llm_path_healthy
+            and market_data_fresh
+            and not broker_degraded
+        )
+        else "degraded"
+    )
 
     # Defensive read: a config missing this flag must never report live trading
     # (default False = paper). Also keeps /health resilient to a settings object
@@ -935,6 +956,8 @@ async def _health_inner() -> dict:
         # dead (logged out) — a silent stop-enforcement hazard made observable.
         "ib_execution_stale": ib_execution_stale,
         "ibkr_data_connected": ib_health.get("data_connected", False),
+        "ibkr_broker_probe_ok": ib_health.get("broker_probe_ok", True),
+        "ibkr_degraded_reason": ib_health.get("degraded_reason"),
         "ibgateway_alive": ibgateway_alive,
         "ibgateway_port": ibgateway_port,
         "schwab_connected": bool(schwab_connector and schwab_connector.is_connected),
