@@ -632,6 +632,23 @@ async def _get_ib_gateway_health() -> dict:
     elif data_ib is not None and ib_gw is data_ib:
         health.setdefault("source", "market_data_connector")
 
+    # Data-leg round-trip verification, independent of which connector `ib_gw`
+    # resolved to above -- the shallow `_ib_is_connected()` flag stays True
+    # through a wedge (socket open, API dead), which is exactly what let
+    # `ibkr_data_connected` report true for hours during the 2026-08-15
+    # incident. `data_ib.health_check()` now does a bounded round-trip probe
+    # (`data/market_data.py`); consult it here instead of trusting the shallow
+    # flag alone. Bounded + best-effort: any failure here silently keeps the
+    # pre-existing shallow signal rather than 500ing /health. Only probes when
+    # the shallow flag is already True — no wedge to detect otherwise.
+    if data_connected and data_ib is not None and hasattr(data_ib, "health_check"):
+        try:
+            data_probe = await asyncio.wait_for(data_ib.health_check(), timeout=3.0)
+            if "connected" in data_probe:
+                data_connected = bool(data_probe["connected"])
+        except Exception:
+            pass
+
     health["execution_connected"] = execution_connected
     health["data_connected"] = data_connected
 
