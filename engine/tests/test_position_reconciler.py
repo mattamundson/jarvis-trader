@@ -6,6 +6,8 @@ Verifies:
   2. Reconciler detects orphaned positions (no STP) and places emergency stop
   3. Reconciler logs clean bill of health when all positions are bracketed
   4. Emergency stop price calculation: 2% adverse, tick-rounded to 0.25
+  5. Both failure paths (sweep-level, per-position) alert (2026-08-11
+     fail-open-safety-checks audit finding #5)
 """
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -141,3 +143,64 @@ async def test_emergency_stop_tick_rounded(mock_ib):
     # Must be a multiple of 0.25
     price = call_kwargs["aux_price"]
     assert price % 0.25 == pytest.approx(0, abs=1e-9), f"{price} not tick-aligned"
+
+
+# ── 7. Failure-path alerting (2026-08-11 audit finding #5) ────────────────
+
+
+@pytest.mark.asyncio
+async def test_sweep_failure_alerts(mock_ib):
+    """get_positions() raising must not just log -- it must alert, since a
+    failed sweep means any real orphaned position goes undetected."""
+    mock_ib.get_positions = AsyncMock(side_effect=ConnectionError("IB down"))
+
+    reconciler = PositionReconciler(mock_ib)
+    reconciler._alert = AsyncMock()
+
+    await reconciler.reconcile()  # must not raise
+
+    reconciler._alert.assert_awaited_once()
+    (msg,), _ = reconciler._alert.call_args
+    assert "RECONCILER FAILED" in msg
+    assert "IB down" in msg
+
+
+@pytest.mark.asyncio
+async def test_orphan_stop_attach_failure_alerts(mock_ib):
+    """A detected orphan whose emergency-stop attach itself fails must alert
+    -- this is a confirmed unprotected position, not a hypothetical one."""
+    mock_ib.get_positions = AsyncMock(return_value=[
+        {"symbol": "MES", "position": 1, "avg_cost": 5200.0}
+    ])
+    mock_ib.get_open_orders = AsyncMock(return_value=[])
+    mock_ib.place_paper_order = AsyncMock(side_effect=RuntimeError("order rejected"))
+
+    reconciler = PositionReconciler(mock_ib)
+    reconciler._alert = AsyncMock()
+
+    await reconciler.reconcile()  # must not raise
+
+    reconciler._alert.assert_awaited_once()
+    (msg,), _ = reconciler._alert.call_args
+    assert "EMERGENCY STOP ATTACH FAILED" in msg
+    assert "MES" in msg
+    assert "order rejected" in msg
+
+
+@pytest.mark.asyncio
+async def test_successful_orphan_attach_still_alerts(mock_ib):
+    """Sanity check: the pre-existing success-path alert (now routed through
+    the shared _alert() helper) still fires when a stop is attached cleanly."""
+    mock_ib.get_positions = AsyncMock(return_value=[
+        {"symbol": "MES", "position": 1, "avg_cost": 5200.0}
+    ])
+    mock_ib.get_open_orders = AsyncMock(return_value=[])
+
+    reconciler = PositionReconciler(mock_ib)
+    reconciler._alert = AsyncMock()
+
+    await reconciler.reconcile()
+
+    reconciler._alert.assert_awaited_once()
+    (msg,), _ = reconciler._alert.call_args
+    assert "ORPHANED POSITION ALERT" in msg
