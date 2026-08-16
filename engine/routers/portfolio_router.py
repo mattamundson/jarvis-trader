@@ -51,15 +51,25 @@ TARGET_TRADING_DAYS = 30
 # open, API dead). One wedged symbol among many open positions used to hang
 # these endpoints indefinitely. A timed-out symbol now degrades to a missing
 # mark tagged "unavailable" (see `_price_result_to_mark`) instead of blocking
-# the whole batch. This wraps the full get_tick_price/get_current_price
-# waterfall (IBKR snapshot -> Schwab -> Polygon -> CSV), not just the IBKR
-# tier, so the ceiling must clear a HEALTHY IBKR snapshot's own completion
-# time, not just guard against a wedge: ib_freshness_heartbeat.py already
-# uses `timeout=8.0` for a single get_snapshot_price call, and a Codex review
-# on this diff (2026-08-16, PR #676) flagged that a normal snapshot can take
-# roughly 11s -- a 6s ceiling was cancelling healthy requests. 12.0 clears
-# that with margin while still being a real bound against an actual wedge.
-_PRICE_FANOUT_TIMEOUT_S = float(os.getenv("PORTFOLIO_PRICE_FANOUT_TIMEOUT_SECONDS", "12.0"))
+# the whole batch.
+#
+# This wraps the FULL get_tick_price/get_current_price waterfall (contract
+# qualification -> IBKR snapshot -> IBKR historical-bar fallback -> Schwab ->
+# Polygon -> CSV), not just the IBKR tier -- portfolio_router.py has no
+# visibility into that internal structure to bound it tier-by-tier without
+# reaching into data/market_data.py, which is out of this PR's scope (see
+# PR #672, open separately). Two rounds of Codex review on this diff
+# (2026-08-16, PR #676) established: a normal IB snapshot alone can take
+# roughly 11s, and qualification + snapshot + the historical-bar fallback
+# together can run close to that ceiling before Schwab/Polygon/CSV even get
+# a turn -- ib_freshness_heartbeat.py's own `timeout=8.0` for a single
+# get_snapshot_price call is corroborating evidence this is a genuinely slow
+# API, not a defect. 20.0 gives the complete waterfall real margin over that
+# ~11-12s worst case while still being a hard, finite bound against an actual
+# wedge (multiple wedged symbols in one gather() batch still resolve
+# concurrently, not sequentially, so total endpoint latency in a wedge
+# scenario stays ~20s regardless of open-position count).
+_PRICE_FANOUT_TIMEOUT_S = float(os.getenv("PORTFOLIO_PRICE_FANOUT_TIMEOUT_SECONDS", "20.0"))
 
 # Global references (injected from main.py)
 paper_tracker = None
