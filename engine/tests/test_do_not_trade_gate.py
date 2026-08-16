@@ -14,6 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+
 from backtest.signals import DO_NOT_TRADE_SYMBOLS, generate_instrument_signals
 
 
