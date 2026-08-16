@@ -607,6 +607,26 @@ class BrierCalibrationTracker:
         """Diagnostic — per-agent Brier across the window."""
         return {agent: self.compute_brier(agent) for agent in self.agents}
 
+    def fit_current_calibration_curve(self, agent_name: str):
+        """Fit a monotonic signal->probability curve on this agent's history (MR-1.1, second half).
+
+        PROSPECTIVE USE ONLY — see calibration.py's module docstring. Returns a
+        callable for scoring a NEW incoming signal, or ``None`` on insufficient
+        history / sklearn unavailable. Deliberately NOT used by
+        ``compute_brier``/``compute_rolling_brier``/``get_calibration_weights``
+        above: fitting on a window and rescoring that same window would be
+        in-sample and violate the project's point-in-time discipline (see
+        ``.claude/rules/testing.md``). This method changes no existing
+        behavior — it is purely additive.
+        """
+        try:
+            from engine.analytics.calibration import fit_isotonic_calibration
+        except ImportError:
+            from analytics.calibration import fit_isotonic_calibration
+
+        pairs = self._fetch_pairs(agent_name)
+        return fit_isotonic_calibration(pairs)
+
     def compute_rolling_brier(
         self,
         agents: Optional[List[str]] = None,
