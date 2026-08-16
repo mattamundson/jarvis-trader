@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sqlite3
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -43,6 +44,32 @@ logger = logging.getLogger("jarvis_trader.routers.portfolio")
 router = APIRouter(prefix="", tags=["portfolio", "multi-market"])
 
 TARGET_TRADING_DAYS = 30
+
+# 2026-08-16: bounds each per-symbol price fetch inside the fan-outs below.
+# `return_exceptions=True` on asyncio.gather only catches exceptions -- it does
+# nothing for a coroutine that never returns (an IB Gateway wedge: socket
+# open, API dead). One wedged symbol among many open positions used to hang
+# these endpoints indefinitely. A timed-out symbol now degrades to a missing
+# mark tagged "unavailable" (see `_price_result_to_mark`) instead of blocking
+# the whole batch.
+#
+# This wraps the FULL get_tick_price/get_current_price waterfall (contract
+# qualification -> IBKR snapshot -> IBKR historical-bar fallback -> Schwab ->
+# Polygon -> CSV), not just the IBKR tier -- portfolio_router.py has no
+# visibility into that internal structure to bound it tier-by-tier without
+# reaching into data/market_data.py, which is out of this PR's scope (see
+# PR #672, open separately). Two rounds of Codex review on this diff
+# (2026-08-16, PR #676) established: a normal IB snapshot alone can take
+# roughly 11s, and qualification + snapshot + the historical-bar fallback
+# together can run close to that ceiling before Schwab/Polygon/CSV even get
+# a turn -- ib_freshness_heartbeat.py's own `timeout=8.0` for a single
+# get_snapshot_price call is corroborating evidence this is a genuinely slow
+# API, not a defect. 20.0 gives the complete waterfall real margin over that
+# ~11-12s worst case while still being a hard, finite bound against an actual
+# wedge (multiple wedged symbols in one gather() batch still resolve
+# concurrently, not sequentially, so total endpoint latency in a wedge
+# scenario stays ~20s regardless of open-position count).
+_PRICE_FANOUT_TIMEOUT_S = float(os.getenv("PORTFOLIO_PRICE_FANOUT_TIMEOUT_SECONDS", "20.0"))
 
 # Global references (injected from main.py)
 paper_tracker = None
@@ -100,24 +127,16 @@ async def get_portfolio():
                 symbols = [str(p.get("symbol", "")) for p in open_positions]
                 if _data_manager is not None:
                     results = await asyncio.gather(
-                        *[_data_manager.get_tick_price(sym) for sym in symbols],
+                        *[
+                            asyncio.wait_for(
+                                _data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S
+                            )
+                            for sym in symbols
+                        ],
                         return_exceptions=True,
                     )
                     marks: list[tuple[float | None, str | None]] = [
-                        (
-                            (
-                                (r.get("last_price"), r.get("source"))
-                                if isinstance(r, dict)
-                                else (
-                                    (float(r), None)
-                                    if isinstance(r, (int, float))
-                                    else (None, None)
-                                )
-                            )
-                            if not isinstance(r, Exception) and r is not None
-                            else (None, None)
-                        )
-                        for r in results
+                        _price_result_to_mark(r) for r in results
                     ]
                 else:
                     marks = [(None, None)] * len(open_positions)
@@ -266,6 +285,27 @@ def _row_pnl(row: Any) -> float:
         return 0.0
 
 
+def _price_result_to_mark(r: Any) -> tuple[float | None, str | None]:
+    """Convert one asyncio.gather() price-fetch result into a (price, source) mark.
+
+    A `_PRICE_FANOUT_TIMEOUT_S` timeout surfaces here as `asyncio.TimeoutError`
+    (via `return_exceptions=True`). Tagged "unavailable" -- an existing
+    `_STALE_MARK_SOURCES` member -- rather than the bare `(None, None)` other
+    exceptions get, so a timed-out position correctly increments
+    `unrealized_marks_stale` instead of silently vanishing from both the
+    live and stale counts (2026-08-16 Codex review finding on PR #676).
+    """
+    if isinstance(r, asyncio.TimeoutError):
+        return (None, "unavailable")
+    if isinstance(r, Exception) or r is None:
+        return (None, None)
+    if isinstance(r, dict):
+        return (r.get("last_price"), r.get("source"))
+    if isinstance(r, (int, float)):
+        return (float(r), None)
+    return (None, None)
+
+
 def _build_price_envelope(value: float, marks: list[tuple[bool, str, float | None]]) -> dict:
     """Aggregate per-position provenance (Phase 1) into a summary-level envelope.
 
@@ -332,26 +372,18 @@ async def portfolio_summary():
                     # once per open position and we care about tail latency,
                     # not necessarily the absolute freshest quote.
                     results = await asyncio.gather(
-                        *[_data_manager.get_tick_price(sym) for sym in symbols],
+                        *[
+                            asyncio.wait_for(
+                                _data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S
+                            )
+                            for sym in symbols
+                        ],
                         return_exceptions=True,
                     )
                     # Keep the (price, source) pair so a stale CSV-cache mark can
                     # be excluded from the headline rather than fabricating P&L.
                     marks: list[tuple[float | None, str | None]] = [
-                        (
-                            (
-                                (r.get("last_price"), r.get("source"))
-                                if isinstance(r, dict)
-                                else (
-                                    (float(r), None)
-                                    if isinstance(r, (int, float))
-                                    else (None, None)
-                                )
-                            )
-                            if not isinstance(r, Exception) and r is not None
-                            else (None, None)
-                        )
-                        for r in results
+                        _price_result_to_mark(r) for r in results
                     ]
                 else:
                     marks = [(None, None)] * len(open_positions)
@@ -747,20 +779,14 @@ async def paper_positions():
         try:
             symbols = [str(p.get("symbol", "")) for p in positions]
             results = await asyncio.gather(
-                *[_data_manager.get_tick_price(sym) for sym in symbols],
+                *[
+                    asyncio.wait_for(_data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
+                    for sym in symbols
+                ],
                 return_exceptions=True,
             )
             marks: list[tuple[float | None, str | None]] = [
-                (
-                    (
-                        (r.get("last_price"), r.get("source"))
-                        if isinstance(r, dict)
-                        else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
-                    )
-                    if not isinstance(r, Exception) and r is not None
-                    else (None, None)
-                )
-                for r in results
+                _price_result_to_mark(r) for r in results
             ]
             ibkr_connected = _ibkr_connected()
             for pos, (current_price, mark_source) in zip(positions, marks, strict=True):
@@ -883,14 +909,14 @@ async def paper_performance():
         try:
             symbols = [str(p.get("symbol", "")) for p in open_positions]
             price_results = await asyncio.gather(
-                *[_data_manager.get_current_price(sym) for sym in symbols],
+                *[
+                    asyncio.wait_for(_data_manager.get_current_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
+                    for sym in symbols
+                ],
                 return_exceptions=True,
             )
             for pos, price_result in zip(open_positions, price_results, strict=False):
-                current_price = (
-                    price_result.get("last_price") if isinstance(price_result, dict) else None
-                )
-                mark_source = price_result.get("source") if isinstance(price_result, dict) else None
+                current_price, mark_source = _price_result_to_mark(price_result)
                 computed = _compute_unrealized(
                     pos,
                     current_price,
@@ -2031,21 +2057,13 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
         symbols = [str(p.get("symbol", "")) for p in positions]
         if _data_manager is not None:
             results = await asyncio.gather(
-                *[_data_manager.get_current_price(sym) for sym in symbols],
+                *[
+                    asyncio.wait_for(_data_manager.get_current_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
+                    for sym in symbols
+                ],
                 return_exceptions=True,
             )
-            marks = [
-                (
-                    (
-                        (r.get("last_price"), r.get("source"))
-                        if isinstance(r, dict)
-                        else ((float(r), None) if isinstance(r, (int, float)) else (None, None))
-                    )
-                    if not isinstance(r, Exception) and r is not None
-                    else (None, None)
-                )
-                for r in results
-            ]
+            marks = [_price_result_to_mark(r) for r in results]
         else:
             marks = [(None, None)] * len(positions)
 
