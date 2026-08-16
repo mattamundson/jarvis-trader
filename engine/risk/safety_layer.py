@@ -67,7 +67,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 def _schedule_background_coro(factory: Callable[[], Coroutine[Any, Any, Any]]) -> None:
     """
     Schedule *factory()* on the running loop, or no-op in sync contexts (tests, scripts).
@@ -1318,13 +1317,83 @@ class SafetyLayer:
             )
         return RiskCheckResult(approved=True), now
 
-    def _check_contract_limits(self, order: OrderRequest) -> RiskCheckResult:
-        """Check futures contract limits, including overnight cap after 15:00 CT."""
-        if order.is_futures and abs(order.quantity) > self._config.MAX_CONTRACTS_PER_INSTRUMENT:
-            return RiskCheckResult(
-                approved=False,
-                rejection_reason=f"Requested {abs(order.quantity)} contracts exceeds max {self._config.MAX_CONTRACTS_PER_INSTRUMENT}",
+    def _aggregated_underlying_qty(self, symbol: str) -> int:
+        """Sum open paper-position quantity across every symbol sharing
+        *symbol*'s real underlying instrument (see resolve_underlying() in
+        backtest.paper_config) -- e.g. a trend strategy and a value-area
+        re-entry strategy both actually trading MES futures under different
+        PAPER_CONFIGS keys. Returns 0 when no db_manager is available (most
+        existing tests construct SafetyLayer(config) without one, per this
+        class's documented backward-compat contract), which preserves the
+        prior single-order-only check exactly in that case."""
+        if self._db_manager is None:
+            return 0
+        from backtest.paper_config import resolve_underlying
+
+        target = resolve_underlying(symbol)
+        try:
+            open_trades = self._db_manager.get_open_trades()
+        except Exception:
+            logger.warning(
+                "Could not fetch open trades for contract-limit aggregation", exc_info=True
             )
+            return 0
+        total = 0
+        for t in open_trades:
+            row_symbol = str(t.get("symbol", ""))
+            if not row_symbol or resolve_underlying(row_symbol) != target:
+                continue
+            try:
+                total += abs(int(t.get("quantity") or 0))
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    def check_contract_limits(self, order: OrderRequest) -> RiskCheckResult:
+        """Public entrypoint for just the contract-limit check (not the full
+        check_order() pipeline). Used by paper-trade-sync paths that record
+        an order already decided elsewhere (e.g. paper_runner's dual-emit
+        sync via POST /portfolio/paper/trade), where running check_order()'s
+        full side-effecting pipeline (order-rate tracking, tilt detector,
+        daily counters) would double-count against an order that was never
+        actually submitted through this SafetyLayer instance."""
+        return self._check_contract_limits(order)
+
+    def _check_contract_limits(self, order: OrderRequest) -> RiskCheckResult:
+        """Check futures contract limits, including overnight cap after 15:00 CT.
+
+        Aggregates against EXISTING open positions sharing the same real
+        underlying instrument (see resolve_underlying()) before comparing to
+        MAX_CONTRACTS_PER_INSTRUMENT. Previously this only checked the
+        incoming order's own quantity, so an order could pass even when
+        combined exposure (this order + already-open positions on the same
+        real instrument -- e.g. a second strategy trading the same futures
+        contract under a different symbol key) would exceed the configured
+        cap. When no db_manager is available, _aggregated_underlying_qty()
+        returns 0 and this reduces to exactly the prior single-order check.
+        """
+        if order.is_futures:
+            existing_qty = self._aggregated_underlying_qty(order.symbol)
+            combined_qty = existing_qty + abs(order.quantity)
+            if combined_qty > self._config.MAX_CONTRACTS_PER_INSTRUMENT:
+                # Preserve the exact "{n} contracts exceeds max {m}" phrasing
+                # existing tests assert on verbatim; only append aggregation
+                # detail when it's actually relevant (existing_qty > 0), which
+                # is never the case for any pre-existing test (none set up an
+                # already-open position sharing the order's underlying).
+                detail = (
+                    f" (combined with {existing_qty} already open on "
+                    f"{order.symbol.upper()})"
+                    if existing_qty > 0
+                    else ""
+                )
+                return RiskCheckResult(
+                    approved=False,
+                    rejection_reason=(
+                        f"Requested {abs(order.quantity)} contracts exceeds max "
+                        f"{self._config.MAX_CONTRACTS_PER_INSTRUMENT}{detail}"
+                    ),
+                )
         sym = order.symbol.upper()
 
         # CUMULATIVE_POSITION_CAP (2026-08-03 incident): the check above only
@@ -2276,6 +2345,7 @@ class SafetyLayer:
             drawdown_breached    (bool)  - if drawdown limit has been breached
             kill_switch_active   (bool)  - if emergency halt is engaged
             kill_switch_reason   (str)   - reason for kill switch if active
+            orders_per_minute_limit (int) - configured max orders per minute (rate throttle)
         """
         # Use PnLMonitor when available; fall back to in-memory values
         if self._pnl_monitor is not None:
@@ -2324,6 +2394,7 @@ class SafetyLayer:
             "kill_switch_reason": (
                 self._kill_switch_reason.value if self._kill_switch_reason else None
             ),
+            "orders_per_minute_limit": getattr(self._config, "MAX_ORDERS_PER_MINUTE", 10),
         }
 
     # â”€â”€ Loss Tracking API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
