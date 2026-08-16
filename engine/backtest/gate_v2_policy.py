@@ -244,6 +244,25 @@ def list_verdicts(
     return fresh
 
 
+def _strategy_family_prefixes(strategy: Optional[str]) -> Optional[frozenset]:
+    """Map a paper-config strategy name to the gate-v2 verdict families that
+    authorize it. ``None`` means "any family" (the historical behavior).
+
+    The mapping mirrors the signal-routing reality: a config that routes
+    through ``generate_sma_trend_signals()`` (``strategy == "sma_trend"``) is
+    only authorized by a gate-v2 PASS in the ``trend`` family or a
+    ``trend_*`` variant — a PASS for an unrelated family (e.g. meanrev) must
+    never green-light that code path. This is the policy-layer counterpart of
+    the signal-layer ``TREND_GATE_V2_FAMILY_PREFIXES`` (PRB-02) and closes
+    the same class of gap at the approval-router boundary: MGC's configured
+    trend path FAILed while an unrelated rv_filter PASS kept the symbol-wide
+    check green.
+    """
+    if strategy == "sma_trend":
+        return frozenset({"trend"})
+    return None
+
+
 def is_strategy_authorized(
     symbol: str,
     verdicts_dir: Optional[Path] = None,
@@ -253,7 +272,10 @@ def is_strategy_authorized(
     Three necessary conditions checked in order:
     1. Not in VALIDATION_ONLY_INSTRUMENTS (pipeline-level WFE/phase block)
     2. paper_config entry exists with enabled=True (gate v2 PASS has been recorded)
-    3. A non-stale gate v2 PASS verdict file exists on disk
+    3. A non-stale gate v2 PASS verdict file exists on disk — scoped to the
+       strategy's verdict family where the config declares one (see
+       ``_strategy_family_prefixes``), so a PASS for an unrelated strategy
+       cannot authorize the configured code path.
 
     Returns (authorized: bool, reason: str).
 
@@ -286,18 +308,26 @@ def is_strategy_authorized(
             "(gate v2 FAIL or not yet validated — see paper_config.py)",
         )
 
-    # 3. Non-stale gate v2 PASS verdict must exist on disk.
+    # 3. Non-stale gate v2 PASS verdict must exist on disk, in the family the
+    #    configured strategy actually runs (when the strategy declares one).
     # MES is exempt from this specific check only: Amo's standing directive
     # (2026-06-26, emphatic — "I 10000% never want to disable MES") keeps it
     # active as the primary paper vehicle regardless of gate v2 / re-validation
     # outcome. It still must clear checks 1-2 above like every other symbol —
     # this carve-out narrowly targets the gate-v2-verdict check the directive
     # is actually about, not a blanket bypass of authorization.
-    if sym_upper != "MES" and not is_ungate_eligible(sym_upper, verdicts_dir):
-        return (
-            False,
-            f"{sym_upper} has no valid non-stale gate v2 PASS verdict "
-            f"(verdicts expire after {MAX_VERDICT_AGE_DAYS} days — re-run gate_v2_orchestrator)",
-        )
+    if sym_upper != "MES":
+        family_prefixes = _strategy_family_prefixes(cfg.get("strategy"))
+        if not is_ungate_eligible(sym_upper, verdicts_dir, family_prefixes):
+            scope = (
+                f" in family {sorted(family_prefixes)}"
+                if family_prefixes is not None
+                else ""
+            )
+            return (
+                False,
+                f"{sym_upper} has no valid non-stale gate v2 PASS verdict{scope} "
+                f"(verdicts expire after {MAX_VERDICT_AGE_DAYS} days — re-run gate_v2_orchestrator)",
+            )
 
     return True, "authorized"
