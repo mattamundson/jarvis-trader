@@ -1,0 +1,47 @@
+{
+  "strategy": "sma12_monthly_momentum",
+  "symbol": "QQQ",
+  "rank": 1,
+  "source": "adapted from SPY sma12_monthly_momentum template (2026-08-15, GT-52 validation-gap fill)",
+  "period": [
+    "1999-03-31",
+    "2026-08-31"
+  ],
+  "n_months": 329,
+  "n_in_market_trades": 232,
+  "n_regime_flips": 39,
+  "n_grid_trials": 12,
+  "strategy_metrics": {
+    "cagr": 0.0875,
+    "sharpe_ann": 0.674,
+    "max_dd": -0.258,
+    "final_mult": 9.98
+  },
+  "buy_hold_metrics": {
+    "cagr": 0.1077,
+    "sharpe_ann": 0.559,
+    "max_dd": -0.8108,
+    "final_mult": 16.54
+  },
+  "gate_v2": {
+    "verdict": "FAIL",
+    "passed_via": null,
+    "core_verdict": "FAIL",
+    "alt_verdict": "UNSCORED",
+    "reasons": [
+      "mbb_pf_ci_lower=1.4846 >= 1.1",
+      "p_positive_edge=0.9996 >= 0.95",
+      "FAIL mc_95th_dd_pct=33.6474 > 5.0",
+      "FAIL dsr=0.0 < 0.1 (selection bias)"
+    ]
+  },
+  "report_keys": [
+    "bootstrap_block",
+    "bootstrap_iid",
+    "deflated_sharpe",
+    "drawdown_mc",
+    "raw",
+    "sharpe_ci"
+  ],
+  "note": "Monthly regime filter (not intraday) -- does NOT validate the live 1h options-scanner pipeline that actually generates QQQ's paper fills. Validated on monthly in-market PnL. Draft/research only -- does NOT authorize paper routing."
+}
