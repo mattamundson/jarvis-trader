@@ -162,12 +162,20 @@ class TestCandidateLoopGraduationIntegration:
     def _strong_closed(self) -> list[dict]:
         return [self._cand_trade(2.0 + 0.6 * ((d % 5) - 2), d) for d in range(1, 37)]
 
+    # A clearly one-sided-positive fixture that clears the always-on trade-shuffle
+    # gate on its own (p << 0.05), used to isolate the DORMANT stat_gate's own
+    # off/abstain behavior from the always-on gate -- same isolation the lineage-loop
+    # TestGraduationIntegration above uses via _closed_edged().
+    def _degenerate_closed_edged(self) -> list[dict]:
+        return [self._cand_trade(2.0 if d % 6 else -1.0, d) for d in range(1, 37)]
+
     def test_off_leaves_graduation_unchanged(self, monkeypatch):
         self._stub(monkeypatch)
         monkeypatch.setattr(ft, "forward_stat_gate_enforced", lambda: False)
-        report = ft.run_forward_test(db=_FakeDB(self._degenerate_closed()), window_days=30)
+        report = ft.run_forward_test(db=_FakeDB(self._degenerate_closed_edged()), window_days=30)
         row = next(c for c in report["candidates"] if c["id"] == "fake-cand")
-        assert row["graduated"] is True  # base graduation preserved (gate dormant)
+        assert row["trade_shuffle"]["passes"] is True  # edged fixture clears it
+        assert row["graduated"] is True  # base graduation preserved (DSR gate dormant)
         assert row["stat_gate"]["abstained"] is True
 
     def test_on_blocks_degenerate_dsr(self, monkeypatch):
@@ -176,9 +184,11 @@ class TestCandidateLoopGraduationIntegration:
         report = ft.run_forward_test(db=_FakeDB(self._degenerate_closed()), window_days=30)
         row = next(c for c in report["candidates"] if c["id"] == "fake-cand")
         assert row["stat_gate"]["enforced"] is True
-        assert row["stat_gate"]["passes"] is False
-        assert row["graduated"] is False  # gate blocked despite meets_graduation True
-        assert row["reason"].startswith("stat-gate block")
+        assert row["stat_gate"]["passes"] is False  # dormant DSR gate's own verdict
+        assert row["graduated"] is False  # blocked (both gates fail on this fixture)
+        # The always-on trade-shuffle gate is checked first in the reason chain, so it
+        # -- not the dormant stat_gate -- names itself as the block reason here.
+        assert row["reason"].startswith("trade-shuffle gate block")
 
     def test_on_graduates_when_dsr_is_strong(self, monkeypatch):
         self._stub(monkeypatch)
