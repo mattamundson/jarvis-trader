@@ -1,8 +1,14 @@
-"""Tests for the report-only trade-sign permutation diagnostic in forward_test.
+"""Tests for the trade-sign permutation and DSR diagnostics in forward_test.
 
-Verifies the diagnostic is computed and attached to the report, and crucially that it
-does NOT leak into the graduation decision (graduation must stay a function of
-forward_stats + family FDR only).
+Verifies both diagnostics are computed and attached to the report. The DSR diagnostic
+stays report-only here (it does NOT leak into the graduation decision on its own --
+graduation stays a function of forward_stats + family FDR, plus the dormant DSR gate
+only when explicitly enforced). The trade-sign shuffle diagnostic, by contrast, IS a
+BLOCKING graduation gate as of the always-on wiring in run_lineage_track /
+run_forward_test -- see test_forward_test_trade_shuffle_gate.py for that behavior.
+The tests below use fixtures where the base graduation verdict is stubbed False, so
+they cannot distinguish "blocked by the stub" from "blocked by trade-shuffle"; that
+distinction is exactly what test_forward_test_trade_shuffle_gate.py isolates.
 """
 
 from __future__ import annotations
