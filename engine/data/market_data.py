@@ -579,7 +579,13 @@ class IBKRDataConnector:
                         "source": "ibkr_delayed" if is_delayed else "ibkr",
                     }
         except Exception as e:
-            logger.debug(
+            # This was logged at debug level, but LOG_LEVEL=INFO in production means
+            # the actual failure reason is silently discarded -- only the (equally
+            # uninformative) "fetching last historical close" fallback line survives.
+            # jarvis-engine-data-integrity-watch has been flagging this exact fallback
+            # firing repeatedly for MES with zero visibility into why. Bump to warning
+            # so the real exception is captured on the next occurrence.
+            logger.warning(
                 f"IBKR reqTickersAsync failed for {symbol} (will try historical fallback): {e}"
             )
 
