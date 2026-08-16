@@ -1781,6 +1781,7 @@ async def lifespan(app: FastAPI):
         tracker=paper_tracker,
         data_manager=data_manager,
         db_path=str(db_manager._db_path),
+        settings=settings,
     )
     inject_approval_deps(safety_layer, paper_tracker, db_manager)
     inject_actionable_deps(db_manager)
