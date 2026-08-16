@@ -7,6 +7,7 @@ and PortfolioTracker-compatible aliases.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,42 @@ from utils.trade_invariants import is_inverted_stop
 from ._helpers import _from_json, _to_json, _utcnow, compute_order_idempotency_key
 
 logger = logging.getLogger("jarvis_trader.database")
+
+
+_STRATEGY_ID_BY_CONFIG_HASH = {
+    "a5282c8c": "MGC_trend_rv_filter_rank1",
+    "9c692ffb": "MGC_trend_rank4",
+}
+
+
+def _derive_strategy_id(strategy_params: Any) -> Optional[str]:
+    """Derive a strategy_id from strategy_params JSON (reader-consistent).
+
+    Precedence matches the Mission Control paper-ledger adapter:
+        1. decision_identity.config_hash -> known name if mapped, else config:<hash8>
+        2. stark_signal                  -> signal name
+        3. otherwise                     -> None
+    """
+    if not strategy_params:
+        return None
+    if isinstance(strategy_params, str):
+        try:
+            payload = json.loads(strategy_params)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    elif isinstance(strategy_params, dict):
+        payload = strategy_params
+    else:
+        return None
+    decision = payload.get("decision_identity") or {}
+    config_hash = decision.get("config_hash") or payload.get("config_hash")
+    if isinstance(config_hash, str) and config_hash:
+        prefix = config_hash[:8]
+        return _STRATEGY_ID_BY_CONFIG_HASH.get(prefix, f"config:{prefix}")
+    signal = payload.get("stark_signal")
+    if isinstance(signal, str) and signal:
+        return signal
+    return None
 
 
 class TradesMixin:
@@ -35,6 +72,7 @@ class TradesMixin:
         strategy_params: Optional[Any] = None,
         notes: str = "",
         account_id: str = "A",
+        strategy_id: Optional[str] = None,
     ) -> int:
         """
         Insert a new trade record (typically called on trade open).
@@ -45,16 +83,23 @@ class TradesMixin:
             'A' = production config (default; backwards-compatible).
             'B' = challenger config (set by parallel_paper.dual_emit_paper_trade
             when ENABLE_PARALLEL_PAPER=1).
+        strategy_id:
+            Optional explicit strategy attribution. When omitted, derived from
+            strategy_params JSON (decision_identity.config_hash / stark_signal),
+            matching the paper-ledger reader.
 
         Returns the auto-incremented ``id`` primary key.
         """
         entry_time = entry_time or _utcnow()
         idempotency_key = compute_order_idempotency_key(symbol, side, quantity, entry_price)
+        if strategy_id is None:
+            strategy_id = _derive_strategy_id(strategy_params)
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, strategy_params, notes, account_id, idempotency_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, strategy_params, notes, account_id, idempotency_key,
+                 strategy_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             trade_id,
@@ -68,6 +113,7 @@ class TradesMixin:
             notes,
             account_id,
             idempotency_key,
+            strategy_id,
         )
         with self._lock:
             conn = self._connect()
@@ -226,6 +272,7 @@ class TradesMixin:
         take_profit: Optional[float] = None,
         strategy_params: Optional[Any] = None,
         idempotency_key: str = "",  # REQUIRED — empty string signals a missing key at call site
+        strategy_id: Optional[str] = None,
     ) -> int:
         """
         Insert a new paper trade record with status='open'.
@@ -349,11 +396,14 @@ class TradesMixin:
         if take_profit is not None:
             merged_params["take_profit"] = take_profit
 
+        if strategy_id is None:
+            strategy_id = _derive_strategy_id(merged_params or strategy_params)
         sql = """
             INSERT INTO paper_trades
                 (trade_id, symbol, side, quantity, entry_price, entry_time,
-                 status, stop_loss, strategy_params, notes, idempotency_key)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '', ?)
+                 status, stop_loss, strategy_params, notes, idempotency_key,
+                 strategy_id)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, '', ?, ?)
         """
         params = (
             trade_id,
@@ -365,6 +415,7 @@ class TradesMixin:
             stop_loss,
             _to_json(merged_params) if merged_params else None,
             idempotency_key,
+            strategy_id,
         )
         with self._lock:
             conn = self._connect()
