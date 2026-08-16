@@ -22,6 +22,7 @@ import { WinRateByHourWidget } from "@/components/WinRateByHourWidget";
 import { StreakTrackerWidget } from "@/components/StreakTrackerWidget";
 import { RegimeAttributionWidget } from "@/components/RegimeAttributionWidget";
 import { QuantStatsPanel } from "@/components/QuantStatsPanel";
+import { symbolTradeStatus } from "@/lib/approvedSymbols";
 // P2.3 IA: folded in from the retired /stats page (the 10 analytics widgets not
 // already rendered above). /stats now redirects here.
 import { PerformanceSummaryWidget } from "@/components/PerformanceSummaryWidget";
@@ -675,6 +676,15 @@ function LivePriceSection() {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PerformancePage() {
+  // Live halt status pulled from the shared source of truth (never hardcode
+  // this — see D2-02 regression guard in lib/approvedSymbols.ts). The summary
+  // cards below quote a frozen 2026-03-30 backtest verdict; without this they
+  // silently claimed "APPROVED" for MCL/MNQ after both were added to the
+  // engine's live DO_NOT_TRADE_SYMBOLS list.
+  const mclLiveStatus = symbolTradeStatus("MCL");
+  const mnqLiveStatus = symbolTradeStatus("MNQ");
+  const mclOrMnqHalted = mclLiveStatus === "HALTED" || mnqLiveStatus === "HALTED";
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#050505" }}>
       {/* Header */}
@@ -819,10 +829,20 @@ export default function PerformancePage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCard label="Active Instruments" value="2" sub="MCL 1h (0.82) + MNQ 1h (0.57) APPROVED" color="#00ff88" />
+          <SummaryCard
+            label="Active Instruments"
+            value="2"
+            sub={`MCL 1h (0.82) + MNQ 1h (0.57) — 2026-03-30 backtest; live: MCL ${mclLiveStatus}, MNQ ${mnqLiveStatus}`}
+            color={mclOrMnqHalted ? "#ff4444" : "#00ff88"}
+          />
           <SummaryCard label="Research" value="0" sub="All cleared or halted" color="#555" />
           <SummaryCard label="Do Not Trade" value="8" sub="Failed walk-forward" color="#ff4444" />
-          <SummaryCard label="Best WFE" value="0.82" sub="MCL 1h APPROVED (static)" color="#00ff88" />
+          <SummaryCard
+            label="Best WFE"
+            value="0.82"
+            sub={`MCL 1h (static) — 2026-03-30 backtest; live: ${mclLiveStatus}`}
+            color={mclLiveStatus === "HALTED" ? "#ff4444" : "#00ff88"}
+          />
         </div>
 
         {/* Live per-symbol price chart — our own real-time futures bars */}
