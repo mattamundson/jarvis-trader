@@ -333,12 +333,20 @@ class AgentFeedbackTracker:
 
         Additive only. Does not read or modify anything load_weights()/
         compute_accuracy()/get_agent_weights() depend on — those stay untouched.
+
+        The ``pnl_usd IS NOT NULL`` filter is a defensive belt-and-suspenders
+        guard: record_outcome() (the sole writer) can never itself produce a
+        NULL-pnl row today (it compares ``pnl_usd > 0`` before any other
+        logic, so a None pnl raises there), but this accessor should still
+        never hand the GEPA optimizer an unrealized/open-trade row if some
+        future writer or a legacy migration ever leaves one behind.
         """
         with sqlite3.connect(DB_PATH) as conn:
             rows = conn.execute("""
                 SELECT trade_id, timestamp, symbol, direction, pnl_usd, outcome,
                        technical_signal, news_signal, social_signal, fundamental_signal, corey_signal
                 FROM trade_outcomes
+                WHERE pnl_usd IS NOT NULL
                 ORDER BY timestamp DESC
                 LIMIT ?
             """, (limit,)).fetchall()

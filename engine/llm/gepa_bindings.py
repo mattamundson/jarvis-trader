@@ -55,6 +55,7 @@ def _query_trade_outcomes(db_path: Path, limit: int) -> list[dict]:
             SELECT trade_id, timestamp, symbol, direction, pnl_usd, outcome,
                    technical_signal, news_signal, social_signal, fundamental_signal, corey_signal
             FROM trade_outcomes
+            WHERE pnl_usd IS NOT NULL
             ORDER BY timestamp DESC
             LIMIT ?
         """, (limit,)).fetchall()
