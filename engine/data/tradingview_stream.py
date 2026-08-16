@@ -208,6 +208,14 @@ class TVStreamer:
                         # errors at WARNING; route the rest to DEBUG to avoid the
                         # ~85k-line spam flood. (de-spam 2026-06-18)
                         low = text.lower()
+                        # The JS-eval "_chartWidgetCollection" error is routine
+                        # chatter that CONTAINS the word "error" (JS evaluation
+                        # error ...), so the keyword gate below would surface it
+                        # at WARNING ~2x/sec and drown real logs. Filter it
+                        # explicitly BEFORE the keyword check (2026-08-16).
+                        if "_chartwidgetcollection" in low or "chartwidgetcollection" in low:
+                            logger.debug(f"[TVStreamer:CLI] {text}")
+                            continue
                         if any(k in low for k in ("error", "exception", "traceback", "fatal", "failed")):
                             logger.warning(f"[TVStreamer:CLI] {text}")
                         else:
