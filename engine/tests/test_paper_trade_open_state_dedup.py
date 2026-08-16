@@ -52,7 +52,8 @@ class _FakeDB(TradesMixin):
                 stop_loss       REAL,
                 strategy_params TEXT,
                 notes           TEXT    DEFAULT '',
-                idempotency_key TEXT    NOT NULL
+                idempotency_key TEXT    NOT NULL,
+                strategy_id     TEXT
             )
             """
         )
