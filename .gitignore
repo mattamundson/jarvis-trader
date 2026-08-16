@@ -45,6 +45,7 @@ dist/
 .eggs/
 venv/
 .venv/
+.venv-*/
 # Linux-side venv used by cloud/CI-parity sessions (Windows venv is .venv/)
 .venv-linux/
 env/
@@ -112,6 +113,9 @@ engine/portfolio/*.jsonl
 engine/data/*.jsonl
 
 # SQLite database files (runtime data — never commit)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 *.db-wal
 *.db-shm
 engine/domflow/domflow.db
@@ -243,6 +247,7 @@ n-autoresearch-skill/mnt/
 /jarvis_trader_handoff_*.md
 /eod_compact.txt
 /eod_compact*.txt
+/worktree_list.txt
 
 # Broken / empty / failed-rebuild venv directories left behind during repair-engine-venv runs
 engine/.venv.broken-*/
