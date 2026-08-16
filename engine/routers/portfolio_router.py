@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sqlite3
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -43,6 +44,15 @@ logger = logging.getLogger("jarvis_trader.routers.portfolio")
 router = APIRouter(prefix="", tags=["portfolio", "multi-market"])
 
 TARGET_TRADING_DAYS = 30
+
+# 2026-08-16: bounds each per-symbol price fetch inside the fan-outs below.
+# `return_exceptions=True` on asyncio.gather only catches exceptions -- it does
+# nothing for a coroutine that never returns (an IB Gateway wedge: socket
+# open, API dead). One wedged symbol among many open positions used to hang
+# these endpoints indefinitely. A timed-out symbol now degrades to a missing
+# mark (already handled -- excluded from the aggregate) instead of blocking
+# the whole batch. Mirrors `_IBKR_DATA_REQUEST_TIMEOUT_S` in data/market_data.py.
+_PRICE_FANOUT_TIMEOUT_S = float(os.getenv("PORTFOLIO_PRICE_FANOUT_TIMEOUT_SECONDS", "6.0"))
 
 # Global references (injected from main.py)
 paper_tracker = None
@@ -100,7 +110,12 @@ async def get_portfolio():
                 symbols = [str(p.get("symbol", "")) for p in open_positions]
                 if _data_manager is not None:
                     results = await asyncio.gather(
-                        *[_data_manager.get_tick_price(sym) for sym in symbols],
+                        *[
+                            asyncio.wait_for(
+                                _data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S
+                            )
+                            for sym in symbols
+                        ],
                         return_exceptions=True,
                     )
                     marks: list[tuple[float | None, str | None]] = [
@@ -332,7 +347,12 @@ async def portfolio_summary():
                     # once per open position and we care about tail latency,
                     # not necessarily the absolute freshest quote.
                     results = await asyncio.gather(
-                        *[_data_manager.get_tick_price(sym) for sym in symbols],
+                        *[
+                            asyncio.wait_for(
+                                _data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S
+                            )
+                            for sym in symbols
+                        ],
                         return_exceptions=True,
                     )
                     # Keep the (price, source) pair so a stale CSV-cache mark can
@@ -747,7 +767,10 @@ async def paper_positions():
         try:
             symbols = [str(p.get("symbol", "")) for p in positions]
             results = await asyncio.gather(
-                *[_data_manager.get_tick_price(sym) for sym in symbols],
+                *[
+                    asyncio.wait_for(_data_manager.get_tick_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
+                    for sym in symbols
+                ],
                 return_exceptions=True,
             )
             marks: list[tuple[float | None, str | None]] = [
@@ -883,7 +906,10 @@ async def paper_performance():
         try:
             symbols = [str(p.get("symbol", "")) for p in open_positions]
             price_results = await asyncio.gather(
-                *[_data_manager.get_current_price(sym) for sym in symbols],
+                *[
+                    asyncio.wait_for(_data_manager.get_current_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
+                    for sym in symbols
+                ],
                 return_exceptions=True,
             )
             for pos, price_result in zip(open_positions, price_results, strict=False):
@@ -2031,7 +2057,10 @@ async def get_unrealized_positions() -> list[UnrealizedPositionResponse]:
         symbols = [str(p.get("symbol", "")) for p in positions]
         if _data_manager is not None:
             results = await asyncio.gather(
-                *[_data_manager.get_current_price(sym) for sym in symbols],
+                *[
+                    asyncio.wait_for(_data_manager.get_current_price(sym), timeout=_PRICE_FANOUT_TIMEOUT_S)
+                    for sym in symbols
+                ],
                 return_exceptions=True,
             )
             marks = [
