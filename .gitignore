@@ -24,6 +24,10 @@ token.json
 *.key
 *.pfx
 *.p12
+secret*.csv
+*secret*.csv
+Secret-Value*.csv
+*Secret-Value*.csv
 secret*.json
 *secret*.json
 *.key.txt
