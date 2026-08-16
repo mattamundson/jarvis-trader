@@ -39,12 +39,32 @@ from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-try:  # engine-root import (tests + runtime add engine/ to sys.path)
-    from portfolio.tracker import INSTRUMENT_MULTIPLIERS
-except Exception:  # pragma: no cover - packaged import fallback
-    from engine.portfolio.tracker import INSTRUMENT_MULTIPLIERS
-
 __all__ = ["IBGatewayConnector", "ConnectionState"]
+
+
+def _futures_multiplier(symbol: str) -> float:
+    """Return the futures contract multiplier for ``symbol`` (1.0 for
+    non-futures / unknown symbols), sourced from
+    ``portfolio.tracker.INSTRUMENT_MULTIPLIERS`` -- the same table
+    ``PortfolioTracker`` uses for realized P&L, so paper ``cash`` moves in
+    step with ``equity`` on every futures fill.
+
+    Imported lazily (inside this function, not at module level) on purpose:
+    several offline/contract test suites stub ``sys.modules["portfolio.tracker"]``
+    with a ``MagicMock`` before importing ``main`` (see e.g.
+    tests/test_session4_contract.py). A module-level import here would bind
+    to whatever ``portfolio.tracker`` happened to resolve to the FIRST time
+    this module was imported in the process -- if that happened to be during
+    one of those stub windows, the multiplier would stay a Mock for the rest
+    of the process. A lazy, per-call import re-resolves the real module
+    every time instead.
+    """
+    try:  # engine-root import (tests + runtime add engine/ to sys.path)
+        from portfolio.tracker import INSTRUMENT_MULTIPLIERS  # noqa: PLC0415
+    except Exception:  # pragma: no cover - packaged import fallback
+        from engine.portfolio.tracker import INSTRUMENT_MULTIPLIERS  # noqa: PLC0415
+
+    return float(INSTRUMENT_MULTIPLIERS.get(symbol.upper(), 1.0))
 
 
 class ConnectionState(Enum):
@@ -400,11 +420,11 @@ class IBGatewayConnector:
         self._positions[symbol] += qty
 
         # Update cash -- apply the same futures contract multiplier
-        # PortfolioTracker uses for realized P&L (portfolio.tracker.
-        # INSTRUMENT_MULTIPLIERS) so cash moves in step with equity on every
-        # futures fill. Non-futures symbols are absent from that table and
-        # fall back to 1.0 (unchanged prior behavior).
-        multiplier = INSTRUMENT_MULTIPLIERS.get(symbol.upper(), 1.0)
+        # PortfolioTracker uses for realized P&L, so cash moves in step with
+        # equity on every futures fill. Non-futures symbols fall back to 1.0
+        # (unchanged prior behavior). See _futures_multiplier()'s docstring
+        # for why this is resolved lazily rather than imported at module level.
+        multiplier = _futures_multiplier(symbol)
         self._account_summary["cash"] -= qty * price * multiplier
 
         logger.info("[SIM] Paper order %s FILLED @ %.2f (OCO-active)", order_id, price)
@@ -717,11 +737,11 @@ class IBGatewayConnector:
         self._positions[symbol] += quantity
 
         # Update cash balance -- apply the same futures contract multiplier
-        # PortfolioTracker uses for realized P&L (portfolio.tracker.
-        # INSTRUMENT_MULTIPLIERS) so cash moves in step with equity on every
-        # futures fill. Non-futures symbols are absent from that table and
-        # fall back to 1.0 (unchanged prior behavior).
-        multiplier = INSTRUMENT_MULTIPLIERS.get(symbol.upper(), 1.0)
+        # PortfolioTracker uses for realized P&L, so cash moves in step with
+        # equity on every futures fill. Non-futures symbols fall back to 1.0
+        # (unchanged prior behavior). See _futures_multiplier()'s docstring
+        # for why this is resolved lazily rather than imported at module level.
+        multiplier = _futures_multiplier(symbol)
         trade_value = abs(quantity) * filled_price * multiplier
         if quantity > 0:
             self._account_summary["cash"] -= trade_value
