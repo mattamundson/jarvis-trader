@@ -47,6 +47,7 @@ import { DecisionLogWidget } from "@/components/DecisionLogWidget";
 import ApprovalPanel from "@/components/ApprovalPanel";
 import { PortfolioCorrelationWidget } from "@/components/PortfolioCorrelationWidget";
 import { SessionBriefPanel } from "@/components/SessionBriefPanel";
+import { ActionableBoardWidget } from "@/components/ActionableBoardWidget";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { useToast } from "@/lib/toast-context";
 import { useWebSocket, type WsEvent } from "@/hooks/useWebSocket";
@@ -732,6 +733,18 @@ export default function CommandCenterPage() {
       <div className="mb-4">
         <WidgetErrorBoundary name="Session Brief">
           <SessionBriefPanel />
+        </WidgetErrorBoundary>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          TRADE RECOMMENDATIONS — actionable board with entry/stop/T1
+          (amo-arbitrage style). Live candidates + recently-resolved rows
+          once the autonomous pipeline is armed. Mounted on the flagship HUD
+          (2026-08-16) so recommendations are visible where Amo actually looks.
+      ═══════════════════════════════════════════════════════ */}
+      <div className="mb-4">
+        <WidgetErrorBoundary name="Trade Recommendations">
+          <ActionableBoardWidget />
         </WidgetErrorBoundary>
       </div>
 

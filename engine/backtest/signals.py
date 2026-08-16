@@ -124,7 +124,15 @@ TREND_INSTRUMENTS = {"MES", "MGC"}
 #   fallback), SOTA-hardened execution, 67 OOS trades, 19/19 windows, all 8
 #   grid combos PF>=1.36, survives catastrophic costs. See PR #597 verdict
 #   file engine/data/gate_v2_verdicts/MGC_trend_rank4.json.
-DO_NOT_TRADE_SYMBOLS = frozenset({"MCL", "MNQ", "M2K"})
+#   2026-08-16: MGC RE-ADDED to blocklist. Fresh rank4 re-evaluation
+#   (created_at 2026-08-16T15:29Z, on the completeness-preferred cache
+#   MGC_2024-03-04_2026-07-24_1h.csv) FAILs gate v2: pf_ci_lower=1.0681 < 1.1,
+#   mc_95th_dd=4.4212% > 4.0 ALT ceiling, 94 OOS trades. The 08-04 PASS
+#   degraded on the refreshed window (67→94 OOS trades). The blocklist
+#   removal contract ("fresh PASS + explicit auth") is no longer satisfied;
+#   re-removal requires a fresh honest gate-v2 CORE PASS (see PR #598
+#   contract). Paper config MGC_PAPER_CONFIG.enabled=False synced same day.
+DO_NOT_TRADE_SYMBOLS = frozenset({"MGC", "MCL", "MNQ", "M2K"})
 
 # Default symbol(s) for dashboard/Discord briefing widgets (T3-23, 2026-07-09;
 # reduced to MES-only 2026-08-01 after MGC joined DO_NOT_TRADE_SYMBOLS above,
