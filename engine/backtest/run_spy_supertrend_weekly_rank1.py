@@ -66,7 +66,7 @@ def main() -> int:
     pct_in_market = round(float((pos > 0).mean()), 3)
 
     report = vs.validate(pnls, n_grid_trials=_N_GRID_TRIALS, initial_capital=_CAPITAL)
-    verdict = vs._evaluate_gate_v2(report)
+    verdict = vs._evaluate_gate_v2(report, strategy_class="equity_swing")
 
     out = {
         "strategy": "supertrend_weekly_spx", "symbol": "SPY", "rank": 1,
