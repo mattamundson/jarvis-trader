@@ -217,7 +217,22 @@ def generate_instrument_signals(df, symbol: str, **kwargs):
                 **{
                     k: v
                     for k, v in kwargs.items()
-                    if k in ("fast", "slow", "atr_trail_mult", "min_rv_annualized")
+                    if k in (
+                        "fast",
+                        "slow",
+                        "atr_trail_mult",
+                        "min_rv_annualized",
+                        # VIX-adjustment kwargs (certified 2026-08-17 — MES VIX
+                        # percentile-tier gate v2 PASS-ALT, DSR 0.975, PF CI 2.26,
+                        # 82-window deep run). Passed through from paper_config
+                        # sma_params so the live paper path can suppress trend
+                        # entries during high-VIX regimes.
+                        "vix_df",
+                        "vix_min",
+                        "vix_max",
+                        "vix_regime_block",
+                        "vix_regime_lookback",
+                    )
                 },
             }
             result = generate_sma_trend_signals(df, **merged)
