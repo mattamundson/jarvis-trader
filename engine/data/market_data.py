@@ -1762,7 +1762,14 @@ class MarketDataManager:
 
             import redis
 
-            r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+            r = redis.Redis(
+                host="localhost",
+                port=6379,
+                db=0,
+                decode_responses=True,
+                socket_timeout=0.5,
+                socket_connect_timeout=0.5,
+            )
             # Try symbol as-is and uppercase
             for sym_key in [symbol, symbol.upper()]:
                 val = r.get(f"market:latest:{sym_key}")
