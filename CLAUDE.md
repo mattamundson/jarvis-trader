@@ -1,12 +1,12 @@
 # jarvis-trader — project memory
 
 AI-powered futures & options trading engine for Matt Morrison.
-Capital $10K total, $5K/instrument. Active paper instruments: MES (Tier-3 auth 2026-05-24)
-and MGC (reauthorized 2026-08-10, PR #598, on a fresh honest gate-v2 CORE PASS).
-MCL, MNQ, and M2K are HALTED (`DO_NOT_TRADE_SYMBOLS`). MGC was HALTED 2026-08-01 (PR #552)
-after the honest-data-drain DSR correction invalidated its 2026-05-24 gate-v2 PASS, then
-removed from `DO_NOT_TRADE_SYMBOLS` again 2026-08-10 (PR #598) — it is currently trading,
-not halted (this line previously said otherwise and had drifted stale).
+Capital $10K total, $5K/instrument. Active paper instruments: MES (Tier-3 auth 2026-05-24).
+MCL, MNQ, M2K, and MGC are HALTED (`DO_NOT_TRADE_SYMBOLS`). MGC's status has moved twice
+since: HALTED 2026-08-01 (PR #552) after the honest-data-drain DSR correction invalidated
+its 2026-05-24 PASS, REAUTHORIZED 2026-08-10 (PR #598) on a fresh honest gate-v2 CORE PASS,
+then RE-HALTED 2026-08-16 (PR #691) after a re-evaluation on refreshed data FAILed gate v2
+(pf_ci_lower 1.0681 < 1.1 floor; mc_95th_dd 4.4212% > 4.0 floor).
 `engine/CLAUDE.md` "Active Instruments" is the authoritative status table. Paper mode on
 IB Gateway port 4002, account DUR375089 (confirmed live 2026-08-10 via `IB_ACCOUNT_ID` in
 `engine/.env` and IB position/execution queries — corrects a stale `DUP662235` reference).
