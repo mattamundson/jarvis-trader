@@ -708,7 +708,12 @@ async def get_data_integrity():
     try:
         import redis.asyncio as redis
 
-        r = redis.from_url(settings.REDIS_URL or "redis://localhost:6379/0", decode_responses=True)
+        r = redis.from_url(
+            settings.REDIS_URL or "redis://localhost:6379/0",
+            decode_responses=True,
+            socket_connect_timeout=3.0,
+            socket_timeout=3.0,
+        )
 
         keys = await r.keys("datasource:*:last_update")
         results = []
