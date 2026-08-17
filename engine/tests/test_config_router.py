@@ -352,8 +352,19 @@ def test_health_check_live_trading_false_by_default(client):
     ), "live_trading_enabled should default to False for safety"
 
 
-def test_health_check_require_human_approval_true_by_default(client):
+def test_health_check_require_human_approval_true_by_default(client, monkeypatch):
     """require_human_approval must default to True (safety posture)."""
+    import routers.config_router as config_router_module
+    from config import TradingConfig
+
+    # The module singleton reads the LIVE engine/.env (pydantic-settings
+    # env_file=".env"), where REQUIRE_HUMAN_APPROVAL=False is the standing
+    # 2026-08-11 deployment decision (full-visibility alerts, no per-trade
+    # approval). This test asserts the CODE default (True) in isolation —
+    # pin the value explicitly; monkeypatch restores the singleton after.
+    monkeypatch.setattr(
+        config_router_module, "settings", TradingConfig(REQUIRE_HUMAN_APPROVAL=True)
+    )
     data = client.get("/config/health-check").json()
     assert "require_human_approval" in data, "'require_human_approval' missing"
     assert (
