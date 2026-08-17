@@ -13,44 +13,11 @@ import {
   type HonestTradeSet,
   dedupCaveat,
 } from "@/lib/honestTrades";
+import { fmt, fmtPct, fmtCalmar, statColor } from "@/lib/parallelPaperFormat";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type WindowDays = 30 | 90 | 180;
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmt(val: number | null | undefined, decimals = 2, suffix = ""): string {
-  if (val == null) return "—";
-  return `${val.toFixed(decimals)}${suffix}`;
-}
-
-function fmtPct(val: number | null | undefined): string {
-  if (val == null) return "—";
-  if (!isFinite(val) || isNaN(val)) return "—";
-  // A valid 0–1 fraction can't exceed ±2; values outside that range are either
-  // already in percent form (±200%) or corrupted engine data. Clamp display to ±500%.
-  if (Math.abs(val) > 500) return "—(data err)";
-  if (Math.abs(val) > 2) return `${val.toFixed(1)}%`;
-  return `${(val * 100).toFixed(1)}%`;
-}
-
-// Calmar is floored engine-side (portfolio_router.py CALMAR_MIN_DD_FLOOR) so a
-// near-zero max_dd no longer explodes the ratio, but clamp here too as
-// defense-in-depth against a future upstream regression -- same pattern as
-// fmtPct's magnitude clamp above.
-function fmtCalmar(val: number | null | undefined): string {
-  if (val == null) return "—";
-  if (!isFinite(val) || isNaN(val)) return "—";
-  if (Math.abs(val) > 1000) return "—(data err)";
-  return fmt(val);
-}
-
-function statColor(val: number | null | undefined, higherBetter = true): string {
-  if (val == null) return "text-muted-foreground";
-  const positive = higherBetter ? val > 0 : val < 0;
-  return positive ? "text-green-400" : "text-red-400";
-}
 
 // ── Inline SVG sparkline ──────────────────────────────────────────────────────
 
@@ -265,14 +232,21 @@ function DeltaRow({
   b,
   higherBetter = true,
   isPct = false,
+  isCalmar = false,
 }: {
   label: string;
   a: number | null | undefined;
   b: number | null | undefined;
   higherBetter?: boolean;
   isPct?: boolean;
+  isCalmar?: boolean;
 }) {
-  const display = isPct ? fmtPct : (v: number | null | undefined) => fmt(v);
+  // Calmar gets the same magnitude-clamp as the per-account column's
+  // fmtCalmar() above -- this comparison table used to render it through the
+  // generic unclamped fmt(), so a fabricated ratio (see AccountColumn's
+  // fmtCalmar comment) could still reach the screen here even after the
+  // per-account column was clamped.
+  const display = isPct ? fmtPct : isCalmar ? fmtCalmar : (v: number | null | undefined) => fmt(v);
   if (a == null || b == null) {
     return (
       <tr>
@@ -296,7 +270,7 @@ function DeltaRow({
       <td className="py-1.5 text-xs text-foreground font-mono">{display(b)}</td>
       <td className={`py-1.5 text-xs font-semibold pl-3 ${deltaColor} flex items-center gap-1`}>
         <DeltaIcon className="h-3 w-3 shrink-0" />
-        {isPct ? fmtPct(Math.abs(diff)) : fmt(Math.abs(diff))}
+        {isPct ? fmtPct(Math.abs(diff)) : isCalmar ? fmtCalmar(Math.abs(diff)) : fmt(Math.abs(diff))}
       </td>
     </tr>
   );
@@ -418,7 +392,7 @@ export default function ParallelPaperPage() {
                   <DeltaRow label="Win rate" a={dataA.win_rate} b={dataB.win_rate} isPct />
                   <DeltaRow label="Sortino" a={dataA.sortino} b={dataB.sortino} />
                   <DeltaRow label="Sharpe" a={dataA.sharpe} b={dataB.sharpe} />
-                  <DeltaRow label="Calmar" a={dataA.calmar} b={dataB.calmar} />
+                  <DeltaRow label="Calmar" a={dataA.calmar} b={dataB.calmar} isCalmar />
                   <DeltaRow
                     label="Max DD"
                     a={dataA.max_dd}
