@@ -125,15 +125,21 @@ async def test_fill_paper_order_cash_applies_futures_multiplier(tmp_path):
 
 @pytest.mark.asyncio
 async def test_paper_cash_unaffected_for_non_futures_symbol(tmp_path):
-    """Equities (e.g. SPY, not in INSTRUMENT_MULTIPLIERS) must keep the
-    existing 1x cash behavior -- this fix only changes futures fills."""
+    """Equities (SPY/QQQ/AAPL/TSLA) must keep the 1x cash behavior.
+
+    PR #450 added these names to INSTRUMENT_MULTIPLIERS at 1.0 so sizing and
+    P&L resolve them identically (previously position_sizing fell back to the
+    $5/pt futures multiplier while the tracker RAISED on them). Multiplier 1.0
+    preserves the existing $1-per-share cash behavior -- the assertion moved
+    from "not present" to "present with multiplier 1.0" to match that intent.
+    """
     cfg = _offline_simulated_cfg()
     tracker = PortfolioTracker(store_path=tmp_path / "book.jsonl")
     safety = SafetyLayer(cfg, pnl_monitor=None)
     conn = IBGatewayConnector(cfg, safety, portfolio_tracker=tracker)
     assert await conn.connect() is True
 
-    assert "SPY" not in INSTRUMENT_MULTIPLIERS
+    assert INSTRUMENT_MULTIPLIERS.get("SPY") == 1.0
 
     starting_cash = conn._account_summary["cash"]
 
