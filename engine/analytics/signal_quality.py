@@ -82,9 +82,17 @@ def analyze_signal_quality(trades: list[dict], signals: list[dict] = None) -> Si
 
     def _t(v):
         if v is None or isinstance(v, (_dt.datetime, _dt.date)):
+            # Normalize to NAIVE UTC so arithmetic between fields never mixes
+            # aware/naive (DB rows come back naive; fromisoformat('+00:00')
+            # yields aware). Strip tzinfo after parsing.
+            if isinstance(v, _dt.datetime) and v.tzinfo is not None:
+                return v.replace(tzinfo=None)
             return v
         try:
-            return _dt.datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            parsed = _dt.datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.replace(tzinfo=None)
+            return parsed
         except (TypeError, ValueError):
             return None
 
