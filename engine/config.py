@@ -643,8 +643,13 @@ class TradingConfig(BaseSettings):
         "All three are active in the FuturesMarketModule.",
     )
     # Options module: dry-run in paper before enabling live routing; see docs/backlog/EPICS_12_17_FOLLOWONS.md
+    # 2026-08-17: AAPL/TSLA REMOVED — daily SMA-trend gate-v2 WFO certification
+    # FAILED both (AAPL sample-starvation 1-3 OOS trades; TSLA p_edge 0.50-0.56).
+    # SPY/QQQ PASSED (p_edge 0.68-0.73, 15-30 OOS trades). Verdicts in
+    # data/gate_v2_verdicts/<SYM>_sma_cert_*.json. SCAN_SYMBOLS unchanged
+    # (display-only scanner never routes).
     OPTIONS_WATCHLIST: Union[str, list[str]] = Field(
-        default=["SPY", "QQQ", "AAPL", "TSLA"], description="Underlying symbols for options trading"
+        default=["SPY", "QQQ"], description="Underlying symbols for options trading"
     )
     # HiddenPivots scan universe — futures + ETFs + liquid individual names.
     # Display/analysis only (the HP scanner never routes orders), so the roster
