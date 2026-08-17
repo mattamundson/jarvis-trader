@@ -32,10 +32,11 @@ Any parameter change requires a new walk-forward evaluation:
 Current status — authoritative source is `engine/CLAUDE.md` "Active Instruments"
 (update that table, not this line):
 
-- APPROVED, paper active: **MES** (Tier-3 auth 2026-05-24, p_edge 0.75); **MGC**
-  (reauthorized 2026-08-10, PR #598, fresh honest gate-v2 CORE PASS, DSR 0.9952 —
-  NOT the invalidated 2026-05-24 p_edge=0.68 figure, which no longer applies)
-- HALTED, in `DO_NOT_TRADE_SYMBOLS`: **MCL**, **MNQ**, **M2K**
+- APPROVED, paper active: **MES** (Tier-3 auth 2026-05-24, p_edge 0.75)
+- HALTED, in `DO_NOT_TRADE_SYMBOLS`: **MCL**, **MNQ**, **M2K**, **MGC** (re-halted
+  2026-08-16, PR #691 — a re-evaluation on refreshed data FAILed gate v2 after its
+  2026-08-10 reauthorization, PR #598; see `engine/CLAUDE.md` "Active Instruments"
+  for full history)
 - REJECTED (separately from the blocklist above): **SPY** — see `engine/CLAUDE.md`
   "Active Instruments" for why it (and QQQ/AAPL/TSLA) trade anyway as equities
 
