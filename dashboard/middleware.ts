@@ -95,5 +95,11 @@ export const config = {
   // Protect every route except Next.js internals (static assets under _next
   // are fine to gate too — the browser resends credentials after the 401,
   // and it prevents unauthenticated probing of build assets).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  //
+  // /ws/:path* is EXCLUDED: WebSocket upgrades from browsers cannot carry the
+  // Authorization header, so gating them here would break every live stream.
+  // The engine authenticates WS itself (/ws/pipeline requires ?api_key=, which
+  // the Next.js rewrite injects server-side; /ws/events is a public event
+  // stream). See lib/pipeline_ws.ts security note (2026-08-17).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|ws/).*)"],
 };
