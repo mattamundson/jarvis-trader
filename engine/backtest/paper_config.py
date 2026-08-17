@@ -258,6 +258,13 @@ MES_TREND_PAPER_CONFIG = {
         "slow": 200,
         "atr_trail_mult": 2.0,
         "min_rv_annualized": 0.0,  # RV filter OFF — matches deep-validated rank11 champion (2026-08-17)
+        # VIX percentile-tier regime blocking — WIRED but DISABLED (2026-08-17).
+        # Certified gate v2 PASS-ALT (82-window deep, DSR 0.975, PF CI 2.26).
+        # Best per-trade variant: block HighVol → PF 1.74 / 99 trades vs baseline
+        # PF 1.71 / 122 trades. Leave unset (= trading through all VIX regimes)
+        # until a deliberate enablement decision; setting vix_regime_block to
+        # ("HighVol",) or ("Crisis", "HighVol") suppresses trend entries in
+        # those percentile tiers (trailing 252d VIX, point-in-time).
     },
     #  Kill Thresholds -- calibrated to ALT routing 7% MC DD ceiling
     "kill_threshold": {
